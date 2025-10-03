@@ -1,8 +1,8 @@
 @echo off
-REM Setup script for Python Ruff Conda Template (Windows)
+REM Setup script for AISCO-code (Windows)
 REM Run this script to set up the development environment
 
-echo 🚀 Setting up Python Ruff Conda Template...
+echo 🚀 Setting up AISCO-code...
 
 REM Check if conda is available
 where conda >nul 2>nul
@@ -21,7 +21,7 @@ conda env create -f environment.yml
 
 REM Activate environment
 echo 🔄 Activating environment...
-call conda activate python-ruff-template
+call conda activate AISCO-code
 
 REM Install pre-commit hooks
 echo 🪝 Installing pre-commit hooks...
@@ -35,7 +35,7 @@ echo.
 echo 🎉 Setup complete!
 echo.
 echo Next steps:
-echo 1. Activate the environment: conda activate python-ruff-template
+echo 1. Activate the environment: conda activate AISCO-code
 echo 2. Configure VS Code:
 echo    - Open project in VS Code (will prompt for extensions)
 echo    - Install Ruff and MyPy extensions: charliermarsh.ruff and ms-python.mypy-type-checker

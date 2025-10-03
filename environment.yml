@@ -1,6 +1,10 @@
-name: python-ruff-template
+name: aisco-code
 channels:
   - conda-forge
 dependencies:
   - python=3.11.8
   - pip
+  - pip:
+    - ruff>=0.1.0
+    - pre-commit>=3.0.0
+    - mypy>=1.17.1

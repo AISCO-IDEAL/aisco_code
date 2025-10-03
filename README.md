@@ -1,6 +1,7 @@
-# Python Ruff Conda Template
+# AISCO-code global
 
-ETHZ Lab Python project template with ruff linting/formatting and pre-commit hooks.
+Store all AISCO related code here. 
+Usage-Section starts at line 54
 
 ## Quick Setup
 
@@ -12,7 +13,7 @@ ETHZ Lab Python project template with ruff linting/formatting and pre-commit hoo
 
 **First, navigate to the project directory:**
 ```bash
-cd python-ruff-conda-template
+cd AISCO-code
 ```
 
 **Then run the setup script:**
@@ -54,8 +55,8 @@ cd python-ruff-conda-template
 
 **Make sure you're in the project directory and environment is activated:**
 ```bash
-cd python-ruff-conda-template
-conda activate python-ruff-template
+cd AISCO-code
+conda activate AISCO-code
 ```
 
 ### Code Quality
@@ -85,9 +86,19 @@ python src/example.py  # Run example
 ├── .vscode/
 │   ├── extensions.json          # Recommended VS Code extensions
 │   └── settings_template.json   # VS Code settings template
-├── src/                         # Your source code
-├── tests/                       # Your tests
-├── environment.yml              # Conda environment
+├── subprojects/                 # work here
+|   |── example_subproject/      # give meaningful consistent names
+│   |    ├── src/                # source code 
+│   |    │   └── example_subproject/
+│   |    │       ├── __init__.py # absolutely necessary
+│   |    │       └── module.py      
+|   |    |── tests/              # tests
+|   |    |    └──__init__.py     # absolutely necessary
+|   |    |── README.md           # subproject specific README
+|   |    |── pyproject.toml      # subproject specific python dependencies 
+|   |    └── environment.yml     # subproject specific non-python dependencies (e.g. cudatoolkit for GPU)
+|   └── ...
+├── environment.yml              # Conda environment (libaries die alle subprojecte brauchen)
 ├── pyproject.toml               # Project config & ruff settings
 ├── setup.sh / setup.bat         # One-command setup
 └── README.md                    # This file
@@ -133,8 +144,11 @@ authors = [
     {name = "Your Name", email = "your.email@ethz.ch"}  # Update with your details
 ]
 ```
+## Support
 
-### 2. Create Your Private Repository
+For issues, check the troubleshooting section above. This template is designed to be self-contained and not require external support.
+
+<!-- ### 2. Create Your Private Repository
 
 1. Create a new **private** repository on GitHub (e.g., `your-project-name`)
 2. Clone this template: `git clone https://github.com/IDEALLab/python-ruff-conda-template.git your-project-name`
@@ -143,9 +157,9 @@ authors = [
 5. Add your new repository as remote: `git remote add origin https://github.com/YOUR_USERNAME/your-project-name.git`
 6. Add all files: `git add .`
 7. Make initial commit: `git commit -m "Initial commit from IDEAL Lab template"`
-8. Push to your repository: `git push -u origin main`
+8. Push to your repository: `git push -u origin main` -->
 
-### 3. Update Repository References
+<!-- ### 3. Update Repository References
 
 Update the following files to point to your new repository:
 
@@ -183,8 +197,6 @@ name: your-project-name  # Change from "python-ruff-template"
 Update the environment name in the activation command:
 ```bash
 conda activate your-project-name  # Change from "python-ruff-template"
-```
+``` -->
 
-## Support
 
-For issues, check the troubleshooting section above. This template is designed to be self-contained and not require external support.

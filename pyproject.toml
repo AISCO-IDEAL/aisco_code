@@ -1,9 +1,10 @@
 [project]
-name = "python-ruff-template"
+name = "AISCO-code"
 version = "0.1.0"
-description = "Python project template with ruff and pre-commit for IDEAL Lab at ETHZ"
+description = "global git repo for all AISCO code"
 authors = [
-    {name = "Soheyl Massoudi", email = "smassoudi@ethz.ch"}
+    {name = "Soheyl Massoudi", email = "smassoudi@ethz.ch"},
+    {name = "Kolja Diehl", email = "kdiehl@ethz.ch"}
 ]
 readme = "README.md"
 requires-python = ">=3.11"
