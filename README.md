@@ -2,7 +2,7 @@
 
 Store all AISCO related code here. 
 Usage-Section starts at line 54
-# YABABUBA it works!
+
 ## Quick Setup
 
 ### Prerequisites
