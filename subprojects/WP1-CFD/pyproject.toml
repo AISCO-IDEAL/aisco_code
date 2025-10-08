@@ -1,0 +1,8 @@
+[WP1-CFD]
+name = "CFD"  # Change this to your project name
+version = "0.1.0"
+description = "Our goal is to create a working CFD-AI"
+authors = [
+    {name = "Tippi Engel", email = "engelt@ethz.ch"}
+    {name = "Robin Arnold", email = "roarnoldt@ethz.ch"}  # Update with your details
+]
