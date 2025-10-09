@@ -1,46 +1,49 @@
-"""
+  # noqa: N999
+""" Structure overview
 This folder is until now documented by comments in the code files.
-It was started on  Mittwoch 8.10.2025 by Clemens.
+It was started on 8.10.2025 by Clemens.
 
 Structure Overview:
 0. Imports
 1. Definition of Functions
+    1.0 currently empty
 2. Definition of Classes
+    2.1 Shape : represents a 2D shape by a pointcloud of size 1000
+    2.2 Area : represents an area between two shapes (inner and outer shape)
+    2.3 Autoencoder : trains an autoencoder to reduce the pointclouds of the inner and outer shapes of an area to a latent space
+    2.4 AutoencoderModel : the neuronal network model of the autoencoder
+    2.5 Geni : the neuronal network using reinforcement learning to find the best mu for the area
+    2.6 GeniModel : the neuronal network model of Geni
 3. Main Code Execution
 """
 #################################
 # 0. Imports
+
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import matplotlib . pyplot as plt
-
+import torch.nn.functional as F  # noqa: N812
+from torch import nn
 
 ##################################
 # 1. Definition of Functions
-def soft_max(x, alpha=10):
-    return torch.logsumexp(alpha * x, dim=0) / alpha
-
-def soft_min(x, alpha=10):
-    return -torch.logsumexp(-alpha * x, dim=0) / alpha
-
 
 
 ##################################
 # 2. Definition of Classes
-
+# 2.1 Shape : represents a 2D shape by a pointcloud of size 1000
 class Shape:
     def __init__(self, points, pointcloud=False):
         self.size = 1000
         self.orgcloud=pointcloud
         if pointcloud:
             if self.size != len(points):
-                raise ValueError("If pointcloud is True, points must be of size 'size'")
+                raise ValueError('Problem')
             self.pointcloud = points
         else:
             self.points = points
             self.pointcloud = self.create_pointcloud()
+
     def create_pointcloud(self): # creates a pointcloud of size "size" of points equally spread along the shape
         self.points.append(self.points[0])
         self.length = [] # contains the distance of the coresponding point to the next point
@@ -57,41 +60,45 @@ class Shape:
         while len(pointcloud) < self.size:
             pointcloud.append(pointcloud[-1])
         return np.array(pointcloud)
+    
     def plot(self):
         plt.scatter(np.array(self.pointcloud)[:,0], np.array(self.pointcloud)[:,1], s=1)
         if not self.orgcloud:
             plt.scatter(np.array(self.points)[:,0], np.array(self.points)[:,1], color='red', marker='x')
         plt.axis('equal')
+
     def p(self, t):
         if t<0 or t> self.size:
-            raise ValueError("t must be between 0 and size")
+            raise ValueError("t_must_be_between_0_and_size")
         return self.pointcloud[t]
 
-
+# 2.2 Area : represents an area between two shapes (inner and outer shape)
 class Area:
     def __init__(self, inner_shape, outer_shape):
         self.inner_shape = inner_shape
         self.outer_shape = outer_shape
         self.size = inner_shape.size
+
     def p(self, t, mu):
         if t<0 or t> self.size:
-            raise ValueError("t must be between 0 and size")
+            raise ValueError("t-incorrect")
         if mu<0 or mu>1:
-            raise ValueError("mu must be between 0 and 1")
+            raise ValueError("mu-incorrect")
         inner_point = self.inner_shape.p(t)
         outer_point = self.outer_shape.p(t)
         po = (1-mu)*inner_point + mu*outer_point
         return [po[0], po[1]]
+    
     def create_shape(self, mu):
         if len(mu)!=self.size:
-            raise ValueError("mu must be of size 'size'")
-        points = []
-        for t in range(self.size):
-            points.append(self.p(t, mu[t]))
+            raise ValueError("mu-wrong-size")
+        points = [self.p(t, mu[t]) for t in range(self.size)]
         return Shape(points, pointcloud=True)
+
     def plot(self):
         self.inner_shape.plot()
         self.outer_shape.plot()
+
     def pointcloud_torch(self, mu: torch.Tensor) -> torch.Tensor:
         # mu: (size,) tensor in [0,1]
         inner = torch.tensor(self.inner_shape.pointcloud, dtype=torch.float32, device=mu.device)  # (size,2)
@@ -99,6 +106,7 @@ class Area:
         mu2 = mu.view(-1, 1)  # (size,1)
         return (1 - mu2) * inner + mu2 * outer  # (size,2)
 
+# 2.3 Autoencoder : trains an autoencoder to reduce the pointclouds of the inner and outer shapes of an area to a latent space
 class Autoencoder:
     def __init__(self, areas):
         self.areas = areas
@@ -107,6 +115,7 @@ class Autoencoder:
     
     def eval_model(self): #trains the autoencoder for diffrent sized latent spaces until the smalles possible latent space with a reconstruction loss below 0.5%
         latent_size = 3
+        allowed_loss = 0.06
         best_model = None
         while True:
             model = AutoencoderModel(self.size, latent_size)
@@ -123,7 +132,7 @@ class Autoencoder:
                     total_loss += loss.item()
                 if epoch % 10 == 0:
                     print(f'Autoencoder Latent Size: {latent_size}, Epoch {epoch}, Loss: {total_loss/len(self.areas)}')
-            if total_loss/len(self.areas) < 0.06:
+            if total_loss/len(self.areas) < allowed_loss:
                 best_model = model
                 print('Best latent size found:', latent_size)
                 break
@@ -138,9 +147,10 @@ class Autoencoder:
         latent = latent.numpy().tolist()
         return latent
 
+# 2.4 AutoencoderModel : the neuronal network model of the autoencoder
 class AutoencoderModel(nn.Module):
     def __init__(self, input_size, latent_size):
-        super(AutoencoderModel, self).__init__()
+        super(AutoencoderModel, self).__init__()  # noqa: UP008
         self.encoder = nn.Sequential(
             nn.Linear(input_size*4, 512*2),
             nn.ReLU(),
@@ -160,11 +170,14 @@ class AutoencoderModel(nn.Module):
             nn.Linear(512*2, input_size*4),
             nn.Sigmoid()
         )
+    
+    
     def forward(self, x):
         latent = self.encoder(x)
         output = self.decoder(latent)
         return output
-# Geni is a neuronal network using reenforcement leraning to find the best mu for the area. As input it getsthe to a latent space reduced pointclouds of the inner and outer shapes of the area. they are reduced by an autoencoder.
+
+# 2.5 Geni : the neuronal network using reinforcement learning to find the best mu for the area
 class Geni:
     def __init__(self, areas):
         self.areas = areas
@@ -179,6 +192,7 @@ class Geni:
             nn.Sigmoid(),
         )
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)    
+    
     def encode_torch(self, area):
         x = torch.tensor(
             np.concatenate((area.inner_shape.pointcloud.flatten(),
@@ -188,6 +202,7 @@ class Geni:
         with torch.no_grad():
             z = self.autoencoder.model.encoder(x)
         return z  # torch tensor (no grad needed)
+    
     def train(self, epochs):
         for epoch in range(epochs):
             total_loss = 0.0
@@ -209,8 +224,6 @@ class Geni:
                 print(f"Epoch {epoch}, Total Loss: {total_loss.item():.6f}")
 
     def loss_function(self, points, alpha=10):
-        # points = nn.Parameter(torch.tensor(shape.pointcloud, dtype=torch.float32))
-
         def soft_max(x): return torch.logsumexp(alpha * x, dim=0) / alpha
         def soft_min(x): return -torch.logsumexp(-alpha * x, dim=0) / alpha
 
@@ -256,6 +269,7 @@ for x in range(5):
 
 geni = Geni(areas)
 for i in range(10):
+    a= i+1
     geni.train(100)
     new_shape = area.create_shape(geni.get_mu(area))
     area.plot()
