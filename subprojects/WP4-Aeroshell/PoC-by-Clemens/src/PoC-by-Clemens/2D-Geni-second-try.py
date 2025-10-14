@@ -76,6 +76,18 @@ def _ray_segment_intersection(ox, oy, theta, p1, p2):
         return None  # intersection behind ray or outside segment
 
     return t_r  # this is r distance along ray
+
+def _deg_to_index(theta_deg, dtheta_deg):
+    # map degrees in [-180, 180) to index 0..N-1, where N = 360 / dtheta_deg
+    n = int(round(360.0 / dtheta_deg))  # noqa: RUF046
+    # normalize angle into [-180, 180)
+    td = ((theta_deg + 180) % 360) - 180
+    # index 0 corresponds to -180 degrees
+    idx = int(round((td + 180.0) / dtheta_deg))  # noqa: RUF046
+    if idx == n:  # wrap 180 exactly to N-1
+        idx = n - 1
+    return idx
+
 ##################################
 # 2. Definition of Classes
 # 2.1 Shape
@@ -153,11 +165,27 @@ class Shape:
 # 2.2 Area
 class Area:
     # 2.2.1 Initialisation with inner and outer shape, and parameters
-    def __init__(self, inner_shape, outer_shape, params):
+    def __init__(self, inner_shape, outer_shape, params, must_build_zones=[]):  # noqa: B006
         self.inner_shape = inner_shape
         self.outer_shape = outer_shape
+        self.must_build_zones = must_build_zones
         self.size = min(inner_shape.size, outer_shape.size)
+        assert len(self.must_build_zones) < 100, "too_many_must_build_zones"  # noqa: PLR2004
         self.params = params
+        for i in self.must_build_zones:
+            self.params.append(i[0])
+            self.params.append(i[1])
+        for _ in range(200- 2*len(self.must_build_zones)):
+            self.params.append(0)
+  
+        self.dtheta_deg = np.rad2deg(inner_shape.dtheta)
+        self.overrides = {}  # index -> (x, y)
+
+        ox, oy = inner_shape.origin
+        for ang_deg, r in self.must_build_zones:
+            idx = _deg_to_index(ang_deg, self.dtheta_deg)
+            x, y = _polar_to_cart(r, np.deg2rad(ang_deg), ox, oy)
+            self.overrides[idx] = (float(x), float(y))
 
     # 2.2.2 Create intermediate pointcloud by interpolation with mu
     def p(self, t, mu):
@@ -165,10 +193,17 @@ class Area:
             raise ValueError("t_out_of_range")
         if not 0 <= mu <= 1:
             raise ValueError("mu_must_be_in_[0,1]")
+
+        # Hard override
+        if t in self.overrides:
+            return [self.overrides[t][0], self.overrides[t][1]]
+
         inner_point = self.inner_shape.p(t)
         outer_point = self.outer_shape.p(t)
         po = (1 - mu) * np.array(inner_point) + mu * np.array(outer_point)
         return po.tolist()
+
+
 
     # 2.2.3 Create shape from interpolation points
     def create_shape(self, mu):
@@ -184,10 +219,20 @@ class Area:
 
     # 2.2.5 Pointcloud as torch tensor for training
     def pointcloud_torch(self, mu: torch.Tensor) -> torch.Tensor:
-        inner = torch.tensor(self.inner_shape.pointcloud, dtype=torch.float32, device=mu.device)
-        outer = torch.tensor(self.outer_shape.pointcloud, dtype=torch.float32, device=mu.device)
+        device = mu.device
+        inner = torch.tensor(self.inner_shape.pointcloud, dtype=torch.float32, device=device)
+        outer = torch.tensor(self.outer_shape.pointcloud, dtype=torch.float32, device=device)
         mu2 = mu.view(-1, 1)
-        return (1 - mu2) * inner + mu2 * outer
+        cloud = (1 - mu2) * inner + mu2 * outer  # (size, 2)
+
+        # Apply hard overrides by index
+        if self.overrides:
+            for idx, (x, y) in self.overrides.items():
+                if 0 <= idx < cloud.shape[0]:
+                    cloud[idx, 0] = float(x)
+                    cloud[idx, 1] = float(y)
+
+        return cloud
     
 # 2.3 Geni
 class Geni:
@@ -203,7 +248,7 @@ class Geni:
             nn.Linear(64, self.area_size),
             nn.Sigmoid(),
         )
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)    
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.02)    
   
     def train(self, epochs):
         for epoch in range(epochs):
@@ -226,7 +271,7 @@ class Geni:
             if epoch % 10 == 0:
                 print(f"Epoch {epoch}, Total Loss: {total_loss.item():.6f}")
 
-    def loss_function(self, points, alpha=10):
+    def loss_function(self, points, alpha=100):
         def soft_max(x): return torch.logsumexp(alpha * x, dim=0) / alpha
         def soft_min(x): return -torch.logsumexp(-alpha * x, dim=0) / alpha
 
@@ -241,8 +286,12 @@ class Geni:
         diffs = points[1:] - points[:-1]
         # clacualte length of each segment
         seg_lengths = torch.sqrt(torch.sum(diffs**2, dim=1) + 1e-8)
+        # add the segment closing the shape
+        closing_seg = points[0] - points[-1]
+        closing_length = torch.sqrt(torch.sum(closing_seg**2) + 1e-8)
+        seg_lengths = torch.cat([seg_lengths, closing_length.view(1)])
         # calculate a penalty for each segment that is longer than 
-        beauty = torch.sum((F.relu(seg_lengths - 0.03))**2)
+        beauty = torch.sum((F.relu(seg_lengths - 0.02))**2)
 
         loss = beauty*10  +(height-0.5) - width 
         return loss
@@ -264,17 +313,18 @@ areas = []
 for x in range(5):
     for y in range(5):
         points1 = [[-1-x/5, -1], [1, -1], [1, 1+y/5], [-1, 1]]
-        points2 = [[-0.5-x/10, -0.5], [0.5, -0.5], [0.5, 0.5-y/10], [-0.5, 0.5]]
+        points2 = [[-0.5-x/10, -0.5], [0.5, -0.5], [0.5, 0.25-y/10], [-0.5, 0.25]]
         quader1 = Shape(points1)
         quader2 = Shape(points2)
-        area1 = Area(quader2, quader1, params = [x, y])
+        area1 = Area(quader2, quader1, params = [x, y], must_build_zones=[[270, 1], [271, 1], [272, 1]])
         areas.append(area1)
 
 # 3.2 Setup and Training of the Geni
 geni = Geni(areas)
 
-for _ in range(10):
-    geni.train(50)
+for i in range(10):
+    print(f"Training round {i+1}/10")
+    geni.train(300)
     area = areas[0]
     mu = geni.get_mu(area)
     shape = area.create_shape(mu)
