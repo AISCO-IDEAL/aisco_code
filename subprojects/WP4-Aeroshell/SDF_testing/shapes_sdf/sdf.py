@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class SDFNet(nn.Module):
-    def __init__(self, in_dim=2, hidden=64, layers=4, activation=nn.ReLU):
+    def __init__(self, in_dim=2, hidden=64, layers=4, activation=nn.LeakyReLU):
         super().__init__()
         mods = []
         last_dim = in_dim
