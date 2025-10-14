@@ -6,13 +6,14 @@ import matplotlib.pyplot as plt
 from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv, global_mean_pool
 
+
 def generate_synthetic_data(num_samples=100, num_nodes=3):
     x = torch.rand(num_samples, num_nodes, 9)
     x[:, :, 0:3] = torch.rand(num_samples, num_nodes, 3) * 2 - 1  # Position
     x[:, :, 3:6] = torch.rand(num_samples, num_nodes, 3) * np.pi - np.pi/2  # Orientation
     x[:, :, 6] = torch.rand(num_samples, num_nodes) * 0.05  # Volume
     x[:, :, 7] = torch.rand(num_samples, num_nodes) * 1500 + 250  # Solar output (Watts)
-    x[:, :, 8] = torch.rand(num_samples, num_nodes) * 0.45 + 0.05  # Local Cd contribution
+    x[:, :, 8] = torch.rand(num_samples, num_nodes) * 0.45 + +.05  # Local Cd contribution
     edge_index = torch.combinations(torch.arange(num_nodes), 2).t()
     edge_index = edge_index.repeat(num_samples, 1)
     return x, edge_index
@@ -135,6 +136,6 @@ if __name__ == "__main__":
         pred = model(x.reshape(-1, 9), edge_index)
     print("\nExample Prediction:")
     print(f"Predicted Drag Coefficient (c_d): {pred[0, 0].item():.4f}")
-    print(f"Predicted Solar Power (kW): {pred[0, 1].item():.4f}")
+    print(f"Predicted Solar Power (W): {pred[0, 1].item():.4f}")
     print(f"True Drag Coefficient (c_d): {torch.sum(x[0, :, 8]).item():.4f}")
-    print(f"True Solar Power (kW): {torch.sum(x[0, :, 7]).item():.4f}")
+    print(f"True Solar Power (W): {torch.sum(x[0, :, 7]).item():.4f}")
