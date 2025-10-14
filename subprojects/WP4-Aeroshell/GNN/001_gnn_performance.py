@@ -11,8 +11,8 @@ def generate_synthetic_data(num_samples=100, num_nodes=3):
     x[:, :, 0:3] = torch.rand(num_samples, num_nodes, 3) * 2 - 1  # Position
     x[:, :, 3:6] = torch.rand(num_samples, num_nodes, 3) * np.pi - np.pi/2  # Orientation
     x[:, :, 6] = torch.rand(num_samples, num_nodes) * 0.05  # Volume
-    x[:, :, 7] = torch.rand(num_samples, num_nodes) * 0.5  # Solar output (kW)
-    x[:, :, 8] = torch.rand(num_samples, num_nodes) * 0.1  # Local Cd contribution
+    x[:, :, 7] = torch.rand(num_samples, num_nodes) * 1500 + 250  # Solar output (Watts)
+    x[:, :, 8] = torch.rand(num_samples, num_nodes) * 0.45 + 0.05  # Local Cd contribution
     edge_index = torch.combinations(torch.arange(num_nodes), 2).t()
     edge_index = edge_index.repeat(num_samples, 1)
     return x, edge_index
