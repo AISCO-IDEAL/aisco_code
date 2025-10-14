@@ -6,8 +6,16 @@ It was started on 13.10.2025 by Clemens.
 Structure Overview:
 0. Imports
 1. Definition of Functions
+    1.1 Geometry Helper Functions
+    1.2 Ray-Segment Intersection
 2. Definition of Classes
+    2.1 Shape
+    2.2 Area
+    2.3 Geni
 3. Main Code Execution
+    3.1 Definition of Areas for Training
+    3.2 Setup and Training of the Geni
+    3.3 Visualization of Results
 """
 
 #################################
@@ -22,6 +30,7 @@ from torch import nn
 ##################################
 # 1. Definition of Functions
 
+# 1.1 Geometry Helper Functions
 def _cart_to_polar(x, y, ox=0.0, oy=0.0):
     dx, dy = x - ox, y - oy
     r = np.sqrt(dx*dx + dy*dy)
@@ -33,6 +42,7 @@ def _polar_to_cart(r, theta, ox=0.0, oy=0.0):
     y = oy + r * np.sin(theta)
     return x, y
 
+# 1.2 Ray-Segment Intersection
 def _ray_segment_intersection(ox, oy, theta, p1, p2):
     """
     Compute intersection between ray from origin (ox, oy) at angle theta
@@ -68,8 +78,9 @@ def _ray_segment_intersection(ox, oy, theta, p1, p2):
     return t_r  # this is r distance along ray
 ##################################
 # 2. Definition of Classes
-# 2.1 Form
+# 2.1 Shape
 class Shape:
+    # 2.1.1 Initialisation, with two possible ways: if pointcloud is given, or if cornor points are given (both with variable points)
     def __init__(self, points, pointcloud=False, *, origin=(0.0, 0.0), dtheta_deg=1.0):
         self.origin = tuple(origin)
         self.dtheta = np.deg2rad(dtheta_deg)
@@ -82,6 +93,7 @@ class Shape:
             self.pointcloud = self.create_pointcloud()
             self.size = len(self.pointcloud)
 
+    # 2.1.2 Create pointcloud by ray-segment intersection, if necessary
     def create_pointcloud(self):
         """Sample the shape by sweeping a ray from origin every dtheta."""
         ox, oy = self.origin
@@ -124,6 +136,7 @@ class Shape:
         )
         return cloud
 
+    # 2.1.3 Plotting and point access
     def plot(self):
         plt.scatter(self.pointcloud[:, 0], self.pointcloud[:, 1], s=1)
         if not self.orgcloud:
@@ -131,19 +144,22 @@ class Shape:
             plt.scatter(pts[:, 0], pts[:, 1], color='red', marker='x')
         plt.axis('equal')
 
-    def p(self, t):
-        if t < 0 or t >= len(self.pointcloud):
+    # 2.1.4 Point access
+    def p(self, theta):
+        if theta < 0 or theta >= len(self.pointcloud):
             raise ValueError("t_out_of_range")
-        return self.pointcloud[t]
+        return self.pointcloud[theta]
 
-
+# 2.2 Area
 class Area:
+    # 2.2.1 Initialisation with inner and outer shape, and parameters
     def __init__(self, inner_shape, outer_shape, params):
         self.inner_shape = inner_shape
         self.outer_shape = outer_shape
         self.size = min(inner_shape.size, outer_shape.size)
         self.params = params
 
+    # 2.2.2 Create intermediate pointcloud by interpolation with mu
     def p(self, t, mu):
         if t < 0 or t >= self.size:
             raise ValueError("t_out_of_range")
@@ -154,23 +170,26 @@ class Area:
         po = (1 - mu) * np.array(inner_point) + mu * np.array(outer_point)
         return po.tolist()
 
+    # 2.2.3 Create shape from interpolation points
     def create_shape(self, mu):
         if len(mu) != self.size:
             raise ValueError("mu-wrong-size")
         points = [self.p(t, mu[t]) for t in range(self.size)]
         return Shape(points, pointcloud=True)
 
+    # 2.2.4 Plotting
     def plot(self):
         self.inner_shape.plot()
         self.outer_shape.plot()
 
+    # 2.2.5 Pointcloud as torch tensor for training
     def pointcloud_torch(self, mu: torch.Tensor) -> torch.Tensor:
         inner = torch.tensor(self.inner_shape.pointcloud, dtype=torch.float32, device=mu.device)
         outer = torch.tensor(self.outer_shape.pointcloud, dtype=torch.float32, device=mu.device)
         mu2 = mu.view(-1, 1)
         return (1 - mu2) * inner + mu2 * outer
     
-
+# 2.3 Geni
 class Geni:
     def __init__(self, areas):
         self.areas = areas
@@ -185,8 +204,7 @@ class Geni:
             nn.Sigmoid(),
         )
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)    
-
-    
+  
     def train(self, epochs):
         for epoch in range(epochs):
             total_loss = 0.0
@@ -241,6 +259,7 @@ class Geni:
 ##################################
 # 3. Main Code Execution
 
+# 3.1 Definition of Areas for Training
 areas = []
 for x in range(5):
     for y in range(5):
@@ -251,6 +270,7 @@ for x in range(5):
         area1 = Area(quader2, quader1, params = [x, y])
         areas.append(area1)
 
+# 3.2 Setup and Training of the Geni
 geni = Geni(areas)
 
 for _ in range(10):
@@ -262,6 +282,7 @@ for _ in range(10):
     shape.plot()
     plt.show()
 
+# 3.3 Visualization of Results
 for area in areas:
     mu = geni.get_mu(area)
     shape = area.create_shape(mu)
