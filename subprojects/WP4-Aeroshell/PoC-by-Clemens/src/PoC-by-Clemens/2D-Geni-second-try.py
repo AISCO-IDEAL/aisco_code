@@ -203,8 +203,6 @@ class Area:
         po = (1 - mu) * np.array(inner_point) + mu * np.array(outer_point)
         return po.tolist()
 
-
-
     # 2.2.3 Create shape from interpolation points
     def create_shape(self, mu):
         if len(mu) != self.size:
@@ -240,6 +238,7 @@ class Geni:
         self.areas = areas
         self.area_size = areas[0].size
         self.latent_size = len(areas[0].params)
+        self.origin = areas[0].inner_shape.origin
         self.model = nn.Sequential(
             nn.Linear(self.latent_size, 128),
             nn.ReLU(),
@@ -248,9 +247,9 @@ class Geni:
             nn.Linear(64, self.area_size),
             nn.Sigmoid(),
         )
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.02)    
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.01)    
   
-    def train(self, epochs):
+    def train(self, epochs, e_0 = 0):
         for epoch in range(epochs):
             total_loss = 0.0
             self.optimizer.zero_grad()
@@ -261,7 +260,7 @@ class Geni:
                 z = torch.tensor(z, dtype=torch.float32)  # (latent_size,)
                 mu = self.model(z)                        # (size,) differentiable
                 pts = area.pointcloud_torch(mu)           # (size,2) differentiable wrt mu
-                loss = self.loss_function(pts)            # scalar tensor
+                loss = self.loss_function(pts, epoch=epoch+e_0)            # scalar tensor
                 batch_losses.append(loss)
 
             total_loss = torch.stack(batch_losses).mean()
@@ -271,7 +270,7 @@ class Geni:
             if epoch % 10 == 0:
                 print(f"Epoch {epoch}, Total Loss: {total_loss.item():.6f}")
 
-    def loss_function(self, points, alpha=100):
+    def loss_function(self, points, alpha=1000, epoch=0):
         def soft_max(x): return torch.logsumexp(alpha * x, dim=0) / alpha
         def soft_min(x): return -torch.logsumexp(-alpha * x, dim=0) / alpha
 
@@ -290,10 +289,14 @@ class Geni:
         closing_seg = points[0] - points[-1]
         closing_length = torch.sqrt(torch.sum(closing_seg**2) + 1e-8)
         seg_lengths = torch.cat([seg_lengths, closing_length.view(1)])
+        # adjust length for distance to origin
+        ox, oy = self.origin
+        dists = torch.sqrt((points[:, 0]-ox)**2 + (points[:, 1]-oy)**2 + 1e-8)
+        seg_lengths = seg_lengths / dists
         # calculate a penalty for each segment that is longer than 
         beauty = torch.sum((F.relu(seg_lengths - 0.02))**2)
 
-        loss = beauty*10  +(height-0.5) - width 
+        loss = beauty*10  + height*(1+epoch/100) - width # *(1+epoch/100) 
         return loss
 
     def get_mu(self, area):
@@ -312,30 +315,38 @@ class Geni:
 areas = []
 for x in range(5):
     for y in range(5):
-        points1 = [[-1-x/5, -1], [1, -1], [1, 1+y/5], [-1, 1]]
-        points2 = [[-0.5-x/10, -0.5], [0.5, -0.5], [0.5, 0.25-y/10], [-0.5, 0.25]]
-        quader1 = Shape(points1)
-        quader2 = Shape(points2)
-        area1 = Area(quader2, quader1, params = [x, y], must_build_zones=[[270, 1], [271, 1], [272, 1]])
-        areas.append(area1)
+        for z in range(5):
+            points1 = [[-2-x/5, -0.5], [-0.5, -1], [0.5, -1], [1, -0.5], [2, 0],[1, 1+y/5], [-2, 1]]
+            points2 = [[-0.5-x/10, -0.5], [0.5, -0.5], [0.5, 0.25+y/10], [-0.5, 0.25]]
+            quader1 = Shape(points1, origin=(0.08*z, 0.0))
+            quader2 = Shape(points2, origin=(0.08*z, 0.0))
+            area1 = Area(quader2, quader1, params = [x, y], must_build_zones=[[250, 1], [251, 1], [252, 1], [290, 1], [291, 1], [292, 1]])
+            areas.append(area1)
+            # area1.plot()
+            # plt.show()
 
 # 3.2 Setup and Training of the Geni
 geni = Geni(areas)
 
-for i in range(10):
-    print(f"Training round {i+1}/10")
-    geni.train(300)
+for i in range(2):
+    print(f"Training round {i+1}")
+    geni.train(100, e_0 = i*100)
     area = areas[0]
     mu = geni.get_mu(area)
     shape = area.create_shape(mu)
-    area.plot()
-    shape.plot()
-    plt.show()
+    # area.plot()
+    # shape.plot()
+    # plt.show()
 
 # 3.3 Visualization of Results
+mus = []
 for area in areas:
     mu = geni.get_mu(area)
-    shape = area.create_shape(mu)
-    area.plot()
-    shape.plot()
-    plt.show()
+    mus.append(mu)
+    # shape = area.create_shape(mu)
+    # area.plot()
+    # shape.plot()
+for i in mus:
+    s=areas[0].create_shape(i)
+    s.plot()
+plt.show()
