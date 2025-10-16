@@ -42,6 +42,17 @@ def _polar_to_cart(r, theta, ox=0.0, oy=0.0):
     y = oy + r * np.sin(theta)
     return x, y
 
+def _deg_to_index(theta_deg, dtheta_deg):
+    # map degrees in [-180, 180) to index 0..N-1, where N = 360 / dtheta_deg
+    n = int(round(360.0 / dtheta_deg))  # noqa: RUF046
+    # normalize angle into [-180, 180)
+    td = ((theta_deg + 180) % 360) - 180
+    # index 0 corresponds to -180 degrees
+    idx = int(round((td + 180.0) / dtheta_deg))  # noqa: RUF046
+    if idx == n:  # wrap 180 exactly to N-1
+        idx = n - 1
+    return idx
+
 # 1.2 Ray-Segment Intersection
 def _ray_segment_intersection(ox, oy, theta, p1, p2):
     """
@@ -76,17 +87,6 @@ def _ray_segment_intersection(ox, oy, theta, p1, p2):
         return None  # intersection behind ray or outside segment
 
     return t_r  # this is r distance along ray
-
-def _deg_to_index(theta_deg, dtheta_deg):
-    # map degrees in [-180, 180) to index 0..N-1, where N = 360 / dtheta_deg
-    n = int(round(360.0 / dtheta_deg))  # noqa: RUF046
-    # normalize angle into [-180, 180)
-    td = ((theta_deg + 180) % 360) - 180
-    # index 0 corresponds to -180 degrees
-    idx = int(round((td + 180.0) / dtheta_deg))  # noqa: RUF046
-    if idx == n:  # wrap 180 exactly to N-1
-        idx = n - 1
-    return idx
 
 ##################################
 # 2. Definition of Classes
@@ -203,8 +203,6 @@ class Area:
         po = (1 - mu) * np.array(inner_point) + mu * np.array(outer_point)
         return po.tolist()
 
-
-
     # 2.2.3 Create shape from interpolation points
     def create_shape(self, mu):
         if len(mu) != self.size:
@@ -240,6 +238,7 @@ class Geni:
         self.areas = areas
         self.area_size = areas[0].size
         self.latent_size = len(areas[0].params)
+        self.origin = areas[0].inner_shape.origin
         self.model = nn.Sequential(
             nn.Linear(self.latent_size, 128),
             nn.LeakyReLU(),
@@ -248,9 +247,9 @@ class Geni:
             nn.Linear(64, self.area_size),
             nn.Sigmoid(),
         )
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.02)    
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.01)    
   
-    def train(self, epochs):
+    def train(self, epochs, e_0 = 0):
         for epoch in range(epochs):
             total_loss = 0.0
             self.optimizer.zero_grad()
@@ -261,7 +260,7 @@ class Geni:
                 z = torch.tensor(z, dtype=torch.float32)  # (latent_size,)
                 mu = self.model(z)                        # (size,) differentiable
                 pts = area.pointcloud_torch(mu)           # (size,2) differentiable wrt mu
-                loss = self.loss_function(pts)            # scalar tensor
+                loss = self.loss_function(pts, epoch=epoch+e_0)            # scalar tensor
                 batch_losses.append(loss)
 
             total_loss = torch.stack(batch_losses).mean()
@@ -271,29 +270,40 @@ class Geni:
             if epoch % 10 == 0:
                 print(f"Epoch {epoch}, Total Loss: {total_loss.item():.6f}")
 
-    def loss_function(self, points, alpha=100):
+    # 2.3.3 Loss-function: Errechnet 3 verschiedene Losses und kombiniert diese:
+    def loss_function(self, points, alpha=10, epoch=0):  # noqa: ARG002
+        # 2.3.3.0 Definition of differentiable max and min functions:
         def soft_max(x): return torch.logsumexp(alpha * x, dim=0) / alpha
         def soft_min(x): return -torch.logsumexp(-alpha * x, dim=0) / alpha
-
+        
+        # 2.3.3.1 Calculation of width
         x_max = soft_max(points[:, 0])
         x_min = soft_min(points[:, 0])
+        width = x_max - x_min
+
+        # 2.3.3.2 Calculation of height
         y_max = soft_max(points[:, 1])
         y_min = soft_min(points[:, 1])
-
-        width = x_max - x_min
         height = y_max - y_min
-
+        
+        # 2.3.3.3 Calculation of a Loss for making the Points get near to each other
+        # 2.3.3.3.1 Calculation of all the distances between two neighbouring Points
         diffs = points[1:] - points[:-1]
-        # clacualte length of each segment
         seg_lengths = torch.sqrt(torch.sum(diffs**2, dim=1) + 1e-8)
-        # add the segment closing the shape
+        # 2.3.3.3.2 Adding the closing segment
         closing_seg = points[0] - points[-1]
         closing_length = torch.sqrt(torch.sum(closing_seg**2) + 1e-8)
         seg_lengths = torch.cat([seg_lengths, closing_length.view(1)])
-        # calculate a penalty for each segment that is longer than 
-        beauty = torch.sum((F.relu(seg_lengths - 0.02))**2)
+        # 2.3.3.3.3 adjust length for distance to origin
+        ox, oy = self.origin
+        dists = torch.sqrt((points[:, 0]-ox)**2 + (points[:, 1]-oy)**2 + 1e-8)
+        seg_lengths = seg_lengths / dists
+        # 2.3.3.3.4 calculate a penalty for each segment that is longer than max_length
+        max_length = 0.02
+        beauty = torch.sum((F.relu(seg_lengths - max_length))**2)
 
-        loss = beauty*10  +(height-0.5) - width 
+        # 2.3.3.4 Adding the Losses up:
+        loss = beauty*10 + height - width  
         return loss
 
     def get_mu(self, area):
@@ -304,7 +314,6 @@ class Geni:
         mu = output.numpy()
         return mu
 
-
 ##################################
 # 3. Main Code Execution
 
@@ -312,19 +321,21 @@ class Geni:
 areas = []
 for x in range(5):
     for y in range(5):
-        points1 = [[-1-x/5, -1], [1, -1], [1, 1+y/5], [-1, 1]]
-        points2 = [[-0.5-x/10, -0.5], [0.5, -0.5], [0.5, 0.25-y/10], [-0.5, 0.25]]
-        quader1 = Shape(points1)
-        quader2 = Shape(points2)
-        area1 = Area(quader2, quader1, params = [x, y], must_build_zones=[[270, 1], [271, 1], [272, 1]])
-        areas.append(area1)
+        for z in range(5):
+            points1 = [[-2-x/5, -0.5], [-0.5, -1], [0.5, -1], [1, -0.5], [2, 0],[1, 1+y/5], [-2, 1]]
+            points2 = [[-0.5-x/10, -0.5], [0.5, -0.5], [0.5, 0.25+y/10], [-0.5, 0.25]]
+            quader1 = Shape(points1, origin=(0.08*z, 0.0))
+            quader2 = Shape(points2, origin=(0.08*z, 0.0))
+            area1 = Area(quader2, quader1, params = [x, y], must_build_zones=[[250, 1], [251, 1], [252, 1], [290, 1], [291, 1], [292, 1]])
+            areas.append(area1)
+
 
 # 3.2 Setup and Training of the Geni
 geni = Geni(areas)
 
 for i in range(10):
-    print(f"Training round {i+1}/10")
-    geni.train(300)
+    print(f"Training round {i+1}")
+    geni.train(100, e_0 = i*100)
     area = areas[0]
     mu = geni.get_mu(area)
     shape = area.create_shape(mu)
@@ -333,9 +344,10 @@ for i in range(10):
     plt.show()
 
 # 3.3 Visualization of Results
+mus = []
 for area in areas:
     mu = geni.get_mu(area)
+    mus.append(mu)
     shape = area.create_shape(mu)
     area.plot()
     shape.plot()
-    plt.show()
