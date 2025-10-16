@@ -162,6 +162,11 @@ class Shape:
             raise ValueError("t_out_of_range")
         return self.pointcloud[theta]
 
+    def x(self): # returns all x-coordinates of the pointcloud
+        return self.pointcloud[:, 0]
+    def y(self): # returns all y-coordinates of the pointcloud
+        return self.pointcloud[:, 1]
+
 # 2.2 Area
 class Area:
     # 2.2.1 Initialisation with inner and outer shape, and parameters
@@ -242,14 +247,15 @@ class Geni:
         self.model = nn.Sequential(
             nn.Linear(self.latent_size, 128),
             nn.LeakyReLU(),
-            nn.Linear(128, 64),
+            nn.Linear(128, 512),
             nn.LeakyReLU(),
-            nn.Linear(64, self.area_size),
+            nn.Linear(512, self.area_size),
             nn.Sigmoid(),
         )
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.01)    
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)    
   
     def train(self, epochs, e_0 = 0):
+        losses = []
         for epoch in range(epochs):
             total_loss = 0.0
             self.optimizer.zero_grad()
@@ -269,6 +275,8 @@ class Geni:
 
             if epoch % 10 == 0:
                 print(f"Epoch {epoch}, Total Loss: {total_loss.item():.6f}")
+            losses.append(total_loss.item())
+        return losses
 
     # 2.3.3 Loss-function: Errechnet 3 verschiedene Losses und kombiniert diese:
     def loss_function(self, points, alpha=10, epoch=0):  # noqa: ARG002
@@ -303,7 +311,7 @@ class Geni:
         beauty = torch.sum((F.relu(seg_lengths - max_length))**2)
 
         # 2.3.3.4 Adding the Losses up:
-        loss = beauty*10 + height - width  
+        loss = 3 + beauty*10 + height - width  
         return loss
 
     def get_mu(self, area):
@@ -322,26 +330,38 @@ areas = []
 for x in range(5):
     for y in range(5):
         for z in range(5):
-            points1 = [[-2-x/5, -0.5], [-0.5, -1], [0.5, -1], [1, -0.5], [2, 0],[1, 1+y/5], [-2, 1]]
+            points1 = [[-2-x/5, -0.5], [-0.5, -1], [1, -1], [1.5, -0.5], [2, 0],[1, 1+y/5], [-2, 1]]
             points2 = [[-0.5-x/10, -0.5], [0.5, -0.5], [0.5, 0.25+y/10], [-0.5, 0.25]]
             quader1 = Shape(points1, origin=(0.08*z, 0.0))
             quader2 = Shape(points2, origin=(0.08*z, 0.0))
             area1 = Area(quader2, quader1, params = [x, y], must_build_zones=[[250, 1], [251, 1], [252, 1], [290, 1], [291, 1], [292, 1]])
             areas.append(area1)
 
-
 # 3.2 Setup and Training of the Geni
 geni = Geni(areas)
 
-for i in range(10):
-    print(f"Training round {i+1}")
-    geni.train(100, e_0 = i*100)
+plt.ion()  # Turn on interactive mode
+area = areas[0]
+area.plot()
+line, = plt.plot([], [], 'o', markersize=1, color='green')  # Use plt.plot instead of plt.scatter
+loss = []
+train_rounds = 200
+epochs_per_round = 5
+for i in range(train_rounds):
+    print(f"Training round {i+1}/{train_rounds}")
+    loss = loss + geni.train(epochs_per_round, e_0=i*epochs_per_round)
+    x = list(range(len(loss)))
     area = areas[0]
     mu = geni.get_mu(area)
     shape = area.create_shape(mu)
-    area.plot()
-    shape.plot()
-    plt.show()
+    line.set_xdata(shape.x())
+    line.set_ydata(shape.y())
+    plt.suptitle(f"Epoch: {i*epochs_per_round} of {train_rounds*epochs_per_round}, Loss: {loss[-1]:.6f}")
+    plt.draw()
+    plt.pause(0.01)
+plt.ioff()  # Turn off interactive mode
+plt.show()    
+
 
 # 3.3 Visualization of Results
 mus = []
@@ -349,5 +369,7 @@ for area in areas:
     mu = geni.get_mu(area)
     mus.append(mu)
     shape = area.create_shape(mu)
-    area.plot()
-    shape.plot()
+    # area.plot()  # noqa: ERA001
+    # shape.plot()  # noqa: ERA001
+    # plt.show()  # noqa: ERA001
+
