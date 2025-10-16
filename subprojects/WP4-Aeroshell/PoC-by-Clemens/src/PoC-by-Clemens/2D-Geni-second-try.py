@@ -242,9 +242,9 @@ class Geni:
         self.latent_size = len(areas[0].params)
         self.model = nn.Sequential(
             nn.Linear(self.latent_size, 128),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(128, 64),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(64, self.area_size),
             nn.Sigmoid(),
         )
