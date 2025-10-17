@@ -1,4 +1,4 @@
-""" ### GNN from Scratch
+ ### GNN from Scratch
 ## Imports
 import numpy as np
 import torch
@@ -87,4 +87,3 @@ def combined_loss(
 ## GNN Model
 
 ## Training
- """
