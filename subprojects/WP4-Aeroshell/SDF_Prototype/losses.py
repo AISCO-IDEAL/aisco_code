@@ -56,7 +56,7 @@ class SDFLosses:
 
 
         # Placeholder for total loss computation
-        placeholder = eikonal_loss(model, points ) + smoothness_loss(model, points)  # Example combination
+        placeholder = self.eikonal_loss(model, points ) + self.smoothness_loss(model, points)  # Example combination
         
         #Ensure compatibility
         total_loss = torch.tensor(placeholder)  

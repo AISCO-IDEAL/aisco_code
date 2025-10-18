@@ -41,7 +41,7 @@ def train_sdf_model(model: SDFNetwork, config: T.Dict) -> SDFNetwork:
         
 
 
-        loss = loss_fn.get_losses(model)
+        loss = loss_fn.get_total_loss(model)
         loss.backward()
         optimizer.step()
 
