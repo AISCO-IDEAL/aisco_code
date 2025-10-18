@@ -58,7 +58,7 @@ class SDF3DTrainer:
 
         # Training parameters
         self.learning_rate = 0.001
-        self.num_iterations = 1000
+        self.num_iterations = 2000
         self.sample_points_per_iter = 2048
 
         # Initialize empty loss history
@@ -80,7 +80,7 @@ class SDF3DTrainer:
         points = torch.rand(n_points, 3, device=self.device) * 4.0 - 2.0  # Range [-2, 2]
         return points
 
-    def train(self, save_checkpoints=True, checkpoint_interval=500):
+    def train(self, save_checkpoints=False, checkpoint_interval=500):
         """
         Main training loop for SDF optimization.
 
@@ -260,7 +260,7 @@ def main():
     trainer = SDF3DTrainer()
 
     # Run training
-    trainer.train(save_checkpoints=True)
+    trainer.train()
 
     # Generate visualizations and results
     metrics = trainer.visualize_results(save_plots=True)

@@ -1,5 +1,4 @@
 # Create the loss functions module
-
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -21,9 +20,9 @@ class SDF3DLossCalculator:
         # Loss weights - these can be tuned for different priorities
         self.weights = {
             'eikonal': 1.0,          # Ensures valid SDF field
-            'size_constraint': 10.0,  # Enforces bounding box limits
+            'size_constraint': 20.0,  # Enforces bounding box limits
             'frontal_area': 5.0,     # Minimizes drag
-            'top_area': -3.0,        # Maximizes solar area (negative for maximization)
+            'top_area': -7.0,        # Maximizes solar area (negative for maximization)
             'smoothness': 0.5        # Encourages smooth surfaces
         }
     
@@ -181,7 +180,7 @@ class SDF3DLossCalculator:
         grid_spacing = (4.0 / resolution) * (4.0 / resolution)  # dx * dy
         top_area = torch.sum(heaviside_approx) * grid_spacing
         
-        return -top_area  # Negative for maximization
+        return top_area  # Negative for maximization
     
     def compute_smoothness_loss(self, sdf_net, points):
         """

@@ -118,7 +118,7 @@ class SDF3DVisualizer:
 
         plt.show()
 
-    def plot_3d_surface_plotly(self, sdf_net, bounds=(-2, 2), resolution=64, save_path=None):
+    def plot_3d_surface_plotly(self, sdf_net, bounds=(-2, 2), resolution=64, save_path=None,show_plot=True):
         """
         Create interactive 3D surface plot using plotly.
 
@@ -174,10 +174,10 @@ class SDF3DVisualizer:
         if save_path:
             fig.write_html(save_path)
             print(f"Interactive 3D plot saved to {save_path}")
+        if show_plot:
+            fig.show()
 
-        fig.show()
-
-    def plot_cross_sections(self, sdf_net, bounds=(-2, 2), resolution=128, save_path=None):
+    def plot_cross_sections(self, sdf_net, bounds=(-2, 2), resolution=128, save_path=None,show_plot=False):
         """
         Plot cross-sectional views of the SDF.
 
@@ -297,9 +297,11 @@ class SDF3DVisualizer:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             print(f"Cross-section plots saved to {save_path}")
 
-        plt.show()
+        if show_plot:
+            plt.show()
 
-    def plot_loss_curves(self, loss_history, save_path=None):
+
+    def plot_loss_curves(self, loss_history, save_path=None,show_plot=False):
         """
         Plot training loss curves for all loss components.
 
@@ -371,8 +373,8 @@ class SDF3DVisualizer:
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             print(f"Loss curves saved to {save_path}")
-
-        plt.show()
+        if show_plot:
+            plt.show()
 
     def _add_bounding_boxes(self, ax, outer_bounds, inner_bounds):
         """Add bounding box wireframes to matplotlib 3D plot"""
