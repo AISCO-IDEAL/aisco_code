@@ -1,3 +1,4 @@
+from sdf import SDFNetwork
 
 
 
@@ -5,9 +6,8 @@
 
 
 
-
-
-print("Hello World!")
+initial_test = SDFNetwork()
+print("SDF Network initialized successfully.")
 
 
 
