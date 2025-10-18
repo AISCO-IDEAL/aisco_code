@@ -7,21 +7,28 @@
 # My Opinion: choice is yours, but I think it makes computational sense to have the Network as input instead of raw predictions
 # We need losses that work 
 
-"""
+import torch
+from sdf import SDFNetwork
+import typing as T
 
+"""
 Proposal: make a class that has losses as member functions and is able
 to shift the weighting of different losses according to some type of input config (e.g. list of weights)
 Goal: Should be modular if we implement different losses later on
-
 """
 
 
 class SDFLosses:
-    def __init__(self, weights):
+    def __init__(self, weights: list[float] = [1.0]):
         self.weights = weights
 
-    def get_losses(self):
+    def get_losses(self, model: SDFNetwork) -> torch.Tensor:
         #Compute different losses here
-        total_loss = 0
-        
+        placeholder = 0
+
+        # Placeholder for total loss computation
+
+
+        #Ensure compatibility
+        total_loss = torch.tensor(placeholder)  
         return total_loss
