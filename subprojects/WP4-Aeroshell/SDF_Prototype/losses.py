@@ -22,7 +22,6 @@ class SDFLosses:
     def __init__(self, weights: list[float] = [1.0,1.0]):
         self.weights = weights
 
-
     def eikonal_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
         #Compute Eikonal loss here
         placeholder = 0
@@ -93,7 +92,7 @@ class SDFLosses:
 
 
         # Placeholder for total loss computation
-        placeholder = self.eikonal_loss(model, points ) + self.smoothness_loss(model, points)  # Example combination
+        placeholder = eikonal_loss + smoothness_loss + bounding_boxes_loss + watertightness_loss + performance_loss  # Example combination
         
         #Ensure compatibility
         total_loss = torch.tensor(placeholder)  
