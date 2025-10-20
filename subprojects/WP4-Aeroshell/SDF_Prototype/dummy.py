@@ -63,16 +63,7 @@ def get_sdf_sphere_network(use_original: bool = False, radius: float = 1.0, save
         model = torch.load(model_path)
         return model
 
-def visualise_model(model: SDFNetwork, grid_size: int = 32, threshold: float = 0.0) -> T.Any:
-    """
-    Visualize the SDFNetwork model using marching cubes.
-    Args:
-        model: The SDFNetwork model to visualize.
-        grid_size: The size of the voxel grid along each dimension.
-        threshold: The isosurface threshold for marching cubes.
-    Returns:
-        A mesh object representing the visualized model.
-    """
+def visualise_model(model: SDFNetwork, grid_size: int = 32, threshold: float = 0.0):
     x = np.linspace(-2, 2, grid_size)
     y = np.linspace(-2, 2, grid_size)
     z = np.linspace(-2, 2, grid_size)
@@ -83,12 +74,12 @@ def visualise_model(model: SDFNetwork, grid_size: int = 32, threshold: float = 0
         sdf_values = model(grid_points_tensor).cpu().numpy().reshape((grid_size, grid_size, grid_size))
     verts, faces, normals, values = measure.marching_cubes(sdf_values, level=threshold)
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_normals=normals)
-    mesh.export('sdf_sphere_mesh.ply')
-    return mesh
+    mesh.export('sdf_sphere_mesh.ply')  # Save to file
+    print("Mesh saved to sdf_sphere_mesh.ply. Transfer to local machine for visualization. Use 3D Point Cloud Visualizer (PLY, ...) Extension in VS Code by Florian Nick.")
+
 
 # Train and save the model
 model = get_sdf_sphere_network(use_original=True, radius=1.0, save_network=True)
 
 # Visualize the model
 mesh = visualise_model(model, grid_size=32, threshold=0.0)
-
