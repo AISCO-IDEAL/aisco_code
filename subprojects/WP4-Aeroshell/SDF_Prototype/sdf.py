@@ -79,3 +79,7 @@ class SDFNetwork(nn.Module):
         
         # Output layer (no activation - raw SDF values)
         return self.output_layer(x).squeeze(-1)
+    
+
+
+    

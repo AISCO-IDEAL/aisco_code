@@ -2,12 +2,13 @@
 import torch
 import torch.nn as nn
 import typing as T
-
+import datetime
 from sdf import SDFNetwork
+import os
 
 def sphere_gt(points: torch.Tensor, coordinates: torch.Tensor = torch.tensor([0,0,0]), radius: float = 1.0) -> torch.Tensor:
     """
-    Generate signed distance values for a sphere centered at the origin.
+    Generate signed distance ground truth values for a sphere centered at the origin.
     
     Args:
         points: Input coordinates of shape (batch_size, 3)
@@ -31,7 +32,7 @@ def train_sphere(radius: float = 1.0) -> SDFNetwork:
     """
     model = SDFNetwork()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    num_epochs = 1000
+    num_epochs = 600
     batch_size = 1024
 
     for epoch in range(num_epochs):
@@ -50,7 +51,7 @@ def train_sphere(radius: float = 1.0) -> SDFNetwork:
 
     return model
 
-def get_sdf_sphere_network(use_original: bool = False, radius: float = 1.0) -> T.Union[SDFNetwork, T.Callable]:
+def get_sdf_sphere_network(use_original: bool = False, radius: float = 1.0, save_network = True) -> T.Union[SDFNetwork, T.Callable]:
 
     """
     
@@ -63,7 +64,16 @@ def get_sdf_sphere_network(use_original: bool = False, radius: float = 1.0) -> T
 
     if use_original:
         model= train_sphere(radius=radius)
+        if save_network:
+            save_dir = "subprojects\WP4-Aeroshell\SDF_Prototype\dummy_models"  # Define a proper save directory
+            os.makedirs(save_dir, exist_ok=True)
+            save_path = os.path.join(save_dir, f'sdf_sphere_model_{datetime.date.today()}.pth')
+            torch.save(model, save_path)
         return model
     else: 
-        model=torch.load('dummy_models/sdf_sphere_model.pth')
+        model=torch.load('subprojects\WP4-Aeroshell\SDF_Prototype\dummy_models\sdf_sphere_model.pth')
         return model
+
+
+#Used this line to generate basic sphere model
+#get_sdf_sphere_network(use_original=True, radius=1.0, save_network=True)
