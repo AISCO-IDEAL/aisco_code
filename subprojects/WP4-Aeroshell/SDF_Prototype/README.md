@@ -5,7 +5,9 @@ POST:
 A 3D SDF representation of an Aeroshell
 PPOST:
 A converted Mesh representation of the Aeroshell
-#################################################
+##################################################################################################
+CAD Assembly → [Assembler] → SDF Network → [Training] → Trained SDF → [Mesh Conversion] → 3D Mesh
+##################################################################################################
 
 #aalthaus
 
