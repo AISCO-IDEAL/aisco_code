@@ -37,7 +37,7 @@ def train_sdf_model(model: SDFNetwork, config: T.Dict) -> SDFNetwork:
 	
 	
 	
-	#Return type is also satisfied
+	#Return type is also satisfied, outputs the model after training
 	return model
 ```
 
