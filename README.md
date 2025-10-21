@@ -203,6 +203,17 @@ Potential improvements:
 - **Structural analysis**: Stress and load considerations
 - **Multi-objective Pareto optimization**: Trade-off curve analysis
 
+
+## Contributing to this module
+
+If you'd like to contribute to this code, please follow good practices as outlined in the subprojects
+
+
+| WP4 Guidelines: | [Insert link to WP4 Guidelines here] |
+| --------------- | ------------------------------------ |
+|                 |                                      |
+
+
 ## License
 
 This implementation is provided for educational and research purposes. Feel free to modify and extend for your specific applications.
