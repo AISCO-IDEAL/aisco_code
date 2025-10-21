@@ -289,7 +289,7 @@ Potential improvements:
 This implementation is provided for educational and research purposes. Feel free to modify and extend for your specific applications.
 '''
 
-with open('README.md', 'w') as f:
+with open('README.md', 'w', encoding='utf-8') as f:
     f.write(code_readme)
 
 print("Created comprehensive README.md")
