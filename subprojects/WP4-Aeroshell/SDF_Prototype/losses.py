@@ -153,10 +153,40 @@ class SDFLosses:
         
         return self.weights[4] * frontal_area
         
-    def solar_area_loss(self, model: SDFNetwork) -> torch.Tensor:
-        # Placeholder for solar area loss computation
-        # This should be implemented based on specific requirements
-        return self.weights[4]* torch.tensor(0.0)
+    def solar_area_loss(self, model: SDFNetwork, resolution: int = 128,length: float = 8.0, width: float = 6.0) -> torch.Tensor:
+        """
+        Compute top area loss (maximize solar collection area on top surface).
+        
+        Args:
+            model: The SDF network
+            resolution: Resolution for area computation
+        
+        Returns:
+            NOTE: As of now only calculates area of a given slice thorugh the car at arbitrary height!
+            Negative top area (for maximization, more area = better)
+        """
+        # Create a grid in the X-Y plane (top projection)
+        x_coords = torch.linspace(-length/2, length/2, resolution)
+        y_coords = torch.linspace(-width/2, width/2, resolution)
+        x_grid, y_grid = torch.meshgrid(x_coords, y_coords, indexing='ij')
+        
+        # Fix z at the top of the vehicle (z = 1.2 for top area)
+        # again arbitrary height, just to get an area on top, need to be fixed later
+        z_coords = torch.full_like(x_grid, 1.2)
+        
+        # Create points for evaluation
+        points = torch.stack([x_grid.flatten(), y_grid.flatten(), z_coords.flatten()], dim=1)
+        sdf_values = model(points).reshape(resolution, resolution)
+        
+        # Approximate area using the Heaviside function
+        epsilon = 0.02
+        heaviside_approx = torch.sigmoid(-sdf_values / epsilon)
+        
+        # Integrate over the grid to get area
+        grid_spacing = (length / resolution) * (width / resolution)  # dx * dy
+        top_area = torch.sum(heaviside_approx) * grid_spacing
+        
+        return - self.weights[5] * top_area  # Negative for maximization
     
 
     def get_total_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
