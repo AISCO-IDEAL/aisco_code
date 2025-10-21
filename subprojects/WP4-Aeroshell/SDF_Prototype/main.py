@@ -7,7 +7,7 @@ from utils import visualize_sdf  # Import the new utilities
 
 def main():
     model = SDFNetwork()
-    loss_fn = SDFLosses(weights=[1.0, 1.0, 1.0, 1.0, 1.0])
+    loss_fn = SDFLosses(weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0])  # Adjust weights as needed
     #################### ADD ASSEMBLY POINTS HERE ####################
     points = torch.randn(1000, 3, requires_grad=True)
     ##################################################################
