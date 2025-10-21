@@ -1,99 +1,41 @@
-#Do the losses here
-
-
-
-# @aalthaus
-# You get: An SDF Network as an object OR ALTERNATIVELY it's predictions in certain areas/points, depending on what you need
-# My Opinion: choice is yours, but I think it makes computational sense to have the Network as input instead of raw predictions
-# We need losses that work 
-
 import torch
 from sdf import SDFNetwork
 import typing as T
-
-"""
-Proposal: make a class that has losses as member functions and is able
-to shift the weighting of different losses according to some type of input config (e.g. list of weights)
-Goal: Should be modular if we implement different losses later on
-"""
-
+# Define various loss functions for training the SDFNetwork
+# These losses include eikonal loss, smoothness loss, bounding box constraints,
+# watertightness loss, and performance-related losses.
 
 class SDFLosses:
-    def __init__(self, weights: list[float] = [1.0,1.0]):
+    def __init__(self, weights: T.List[float] = [1.0, 1.0, 1.0, 1.0, 1.0]):
+        assert len(weights) == 5, "Weights must match the number of losses: [eikonal, smoothness, bounding_box, watertightness, performance]"
         self.weights = weights
-
-    def eikonal_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
-        #Compute Eikonal loss here
-        placeholder = 0
-
-        # Placeholder for Eikonal loss computation
-
-
-        #Ensure compatibility
-        eikonal_loss = torch.tensor(placeholder)  
-        return eikonal_loss
+  
+    def eikonal_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor: 
+        sdf, grad_sdf = model(points) ######## DO NOT TOUCH #######
+        return self.weights[0] * torch.abs(torch.norm(grad_sdf, p=2, dim=-1) - 1.0).mean() 
 
     def smoothness_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
-        #Compute Smoothness loss here
-        placeholder = 0
-
-        # Placeholder for Smoothness loss computation
-
-
-        #Ensure compatibility
-        smoothness_loss = torch.tensor(placeholder)  
-        return smoothness_loss
+        sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True) ######## DO NOT TOUCH #######
+        return self.weights[1] * (laplacian_sdf**2).mean() 
 
     def bounding_boxes_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
-        #Compute Bounding Boxes loss here
-        placeholder = 0
+        sdf, _ = model(points)
+        return self.weights[2] * (sdf**2).mean()
 
-        # Placeholder for Bounding Boxes loss computation
-
-
-        #Ensure compatibility
-        bounding_boxes_loss = torch.tensor(placeholder)  
-        return bounding_boxes_loss
-    
     def watertightness_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
-        #Compute Watertightness loss here
-        placeholder = 0
+        sdf, _ = model(points)
+        return self.weights[3] * (sdf**2).mean()
 
-        # Placeholder for Watertightness loss computation
-
-
-        #Ensure compatibility
-        watertightness_loss = torch.tensor(placeholder)  
-        return watertightness_loss
-    
     def performance_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
-        #Compute Performance loss here
-        placeholder = 0
+        # TODO: Replace with actual solar/drag performance loss
+        sdf, _ = model(points)
+        return self.weights[4] * (sdf**2).mean()
 
-        # Placeholder for Performance loss computation
-
-
-        #Ensure compatibility
-        performance_loss = torch.tensor(placeholder)  
-        return performance_loss
-       
-    
-    def get_total_loss(self, model: SDFNetwork) -> torch.Tensor:
-        #Compute different losses here
-        eikonal_loss = self.eikonal_loss(model, points)
-        smoothness_loss = self.smoothness_loss(model, points)
-        bounding_boxes_loss = self.bounding_boxes_loss(model, points)
-        watertightness_loss = self.watertightness_loss(model, points)
-        performance_loss = self.performance_loss(model, points)
-
-        #Idea: sample here some points to compute losses on
-        points = torch.tensor([0]) 
-
-
-
-        # Placeholder for total loss computation
-        placeholder = eikonal_loss + smoothness_loss + bounding_boxes_loss + watertightness_loss + performance_loss  # Example combination
-        
-        #Ensure compatibility
-        total_loss = torch.tensor(placeholder)  
-        return total_loss
+    def get_total_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
+        return (
+            self.eikonal_loss(model, points) +
+            self.smoothness_loss(model, points) +
+            self.bounding_boxes_loss(model, points) +
+            self.watertightness_loss(model, points) +
+            self.performance_loss(model, points)
+        )
