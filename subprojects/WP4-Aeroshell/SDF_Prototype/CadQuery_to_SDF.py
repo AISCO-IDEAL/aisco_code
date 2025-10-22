@@ -1,5 +1,7 @@
 """
-In this code, there is a way of transfering a CadQuery shape to a SDF representation using a neural network.
+This Code is written by written by Clemens Huber
+This coded is used in the following files:
+- 
 """
 from typing import cast
 
@@ -10,6 +12,15 @@ from OCP.gp import gp_Pnt  # type: ignore  # noqa: PGH003
 
 
 class SDFfromCadQuery:
+    """
+    Pre Conditions:
+    - shape: CadQuery Shape
+    - pointgrid (optional): list of points where the SDF is calculated
+
+    Post Conditions:
+        If you want to get the SDF value of all Points in the pointgrid use sdf_at_pointgrid() to get the list of the corresponding SDF values
+        If you want the SDF value of a single point use sdf(x,y,z)
+    """
     def __init__(self, shape: cq.Shape, pointgrid:list[list[float]]=[[x/10, y/10, z/10] for x in range(-10, 11) for y in range(-10, 11) for z in range(-10, 11)]):  # noqa: B006
         self._shape = shape
         self._pointgrid = pointgrid
@@ -36,5 +47,3 @@ class SDFfromCadQuery:
     def sdf_at_pointgrid(self) -> list[float]:
         return self._sdf_at_pointgrid
     
-    def pointgrid(self) -> list[list[float]]:
-        return self._pointgrid
