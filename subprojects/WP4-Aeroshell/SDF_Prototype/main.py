@@ -5,6 +5,8 @@ from sdf import SDFNetwork
 from losses import SDFLosses  # Assuming you save the above in losses.py
 from utils import visualize_sdf  # Import the new utilities
 
+username="aalthaus"  # Replace with your actual username
+
 def main():
     model = SDFNetwork()
     loss_fn = SDFLosses(weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0])  # Adjust weights as needed
@@ -23,7 +25,7 @@ def main():
             print(f"Epoch {epoch}, Total Loss: {total_loss.item():.4f}")
 
     # Save the trained model
-    save_dir = "/cluster/home/eschaerer/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/main_models"
+    save_dir = "/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/main_models"
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, f'sdf_model_{datetime.date.today()}.pth')
     torch.save(model, save_path)
