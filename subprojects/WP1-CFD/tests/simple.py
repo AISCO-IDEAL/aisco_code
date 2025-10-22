@@ -1,16 +1,25 @@
-import numpy as np
-from plyfile import PlyData
+import sys
+from pathlib import Path
+
 import matplotlib.pyplot as plt
+import numpy as np
+from plyfile import PlyData  # type : ignore
+
+# Get the directory where this script is located
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+# Define the path to the PLY file, relative to this script
+PLY_FILE_PATH = SCRIPT_DIR / "sample.ply"  # <--- 2. Build the full path
 
 # --- 1. Read the PLY file ---
 try:
-    plydata = PlyData.read("sample.ply")
+    plydata = PlyData.read(PLY_FILE_PATH)  # <--- 4. Use the new, full path
     print("PLY file read successfully.")
 except FileNotFoundError:
     print(
         "Error: 'sample.ply' not found. Make sure you created it in the same directory."
     )
-    exit()
+    sys.exit()
 
 # --- 2. Extract and Inspect the Data ---
 # This is the key part for your AI application!
