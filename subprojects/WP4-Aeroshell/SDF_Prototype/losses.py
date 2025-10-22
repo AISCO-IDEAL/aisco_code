@@ -1,7 +1,9 @@
-import torch
-from sdf import SDFNetwork
 import typing as T
 
+import cadquery as cq
+import torch
+from CadQuery_to_SDF import SDFfromCadQuery
+from sdf import SDFNetwork
 
 # Define various loss functions for training the SDFNetwork
 # These losses include eikonal loss, smoothness loss, bounding box constraints,
@@ -21,17 +23,35 @@ class SDFLosses:
         sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True) ######## DO NOT TOUCH #######
         return self.weights[1] * (laplacian_sdf**2).mean() 
 
-    def bounding_boxes_loss(self, model, inner_box=None, outer_box=None) -> torch.Tensor:
-        #Compute Bounding Boxes loss here
+    def bounding_boxes_loss(self, model, inner_box:cq.Shape, outer_box:cq.Shape, pointgrid:list[list[float]]=[[x/10, y/10, z/10] for x in range(-10, 11) for y in range(-10, 11) for z in range(-10, 11)]) -> torch.Tensor:   # noqa: B006
         total_loss = 0.0
-
+        inner = SDFfromCadQuery(inner_box, pointgrid)
+        outer = SDFfromCadQuery(outer_box, pointgrid)
+        sdf_inner = inner.sdf_at_pointgrid()
+        sdf_outer = outer.sdf_at_pointgrid()
+        for p in pointgrid:
+            sdf_value, _ = model(torch.tensor(p).unsqueeze(0).float())
+            sdf_value = sdf_value.item()
+            idx = pointgrid.index(p)
+            total_loss += torch.relu(sdf_value - sdf_inner[idx]).item()
+            total_loss += torch.relu(-sdf_value + sdf_outer[idx]).item()
         #Ensure compatibility
-        bounding_boxes_loss = torch.tensor(total_loss)  
+        bounding_boxes_loss = torch.tensor(total_loss / len(pointgrid)).float()  
         return self.weights[2]* bounding_boxes_loss
 
-    def watertightness_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
-        sdf, _ = model(points)
-        return self.weights[3] * (sdf**2).mean()
+    def watertightness_loss(self, model: SDFNetwork, infinity_box:list[list[float]]=None) -> torch.Tensor:  # noqa: RUF013
+        total_loss = 0.0
+        if infinity_box is None: # samples points on a large box around the object
+            infinity_box = [[x, y, z] for x in [-10.0, 10.0] for y in [-10.0, 10.0] for z in [-10.0, 10.0, 19.9]]
+            infinity_box += [[x, y, z] for x in [-10.0, 10.0] for y in [-10.0, 10.0, 19.9] for z in [-10.0, 10.0]]
+            infinity_box += [[x, y, z] for x in [-10.0, 10.0, 19.9] for y in [-10.0, 10.0] for z in [-10.0, 10.0]]
+            
+            
+        for p in infinity_box:
+            sdf_value, _ = model(torch.tensor(p).unsqueeze(0).float())
+            sdf_value = sdf_value.item()
+            total_loss += torch.relu(-sdf_value).item()
+        return self.weights[3] * torch.tensor(total_loss / len(infinity_box)).float()
 
     def frontal_area_loss(self, model: SDFNetwork,resolution: int=128,height: float = 4.0, width: float = 6.0) -> torch.Tensor:
         """
