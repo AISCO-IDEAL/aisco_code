@@ -46,4 +46,7 @@ class SDFfromCadQuery:
 
     def sdf_at_pointgrid(self) -> list[float]:
         return self._sdf_at_pointgrid
+
+    def pointgrid(self) -> list[list[float]]:
+        return self._pointgrid
     
