@@ -8,3 +8,7 @@ authors = [
     {name = "Elias Huber", email = "elihuber@ethz.ch"}
       # Update with your details
 ]
+[tool.ruff.lint]
+# Add "F401" (unused import) to the list of rules Ruff should NOT fix automatically.
+unfixable = ["F401"]
+
