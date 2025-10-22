@@ -1,9 +1,17 @@
-import open3d as o3d
+from pathlib import Path
+
+import open3d as o3d  # type: ignore [import-untyped]
+
+# Get the directory where this script is located
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+# Define the path to the PLY file, relative to this script
+PLY_FILE_PATH = SCRIPT_DIR / "Goat_skull.ply"  # <--- 2. Build the full path
 
 # --- 1. Load the PLY file ---
 # This single line reads the file, parses vertices, faces, and vertex colors.
 try:
-    mesh = o3d.io.read_triangle_mesh("sample.ply")
+    mesh = o3d.io.read_triangle_mesh(PLY_FILE_PATH)
 except Exception as e:
     print(f"Error: {e}. Make sure 'sample.ply' exists.")
     exit()
