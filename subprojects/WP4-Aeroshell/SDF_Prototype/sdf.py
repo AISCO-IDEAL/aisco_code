@@ -58,7 +58,7 @@ class SDFNetwork(nn.Module):
                     only_inputs=True,
                 )[0]
                 grad_sdf[:, dim] = grad[:, dim]
-            print("grad_sdf shape:", grad_sdf.shape)  # Debug print
+            #print("grad_sdf shape:", grad_sdf.shape)  # Debug print
             if not return_laplacian:
                 return sdf, grad_sdf
             # Compute Laplacian (sum of second derivatives)

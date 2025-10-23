@@ -14,20 +14,21 @@ def main():
     points = torch.randn(1000, 3, requires_grad=True)
     ##################################################################
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-
-    for epoch in range(2):
+    epochs=500
+    for epoch in range(epochs):
         optimizer.zero_grad()
         total_loss = loss_fn.get_total_loss(model, points)
         total_loss.backward()
         optimizer.step()
 
-        if epoch % 10 == 0:
+        if epoch % 100 == 0:
             print(f"Epoch {epoch}, Total Loss: {total_loss.item():.4f}")
 
     # Save the trained model
     save_dir = f"/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/main_models"
     os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, f'sdf_model_{datetime.date.today()}.pth')
+    datum = datetime.datetime.now()
+    save_path = os.path.join(save_dir, f'sdf_model_{datum.strftime("%m_%d_%H_%M")}.pth')
     torch.save(model, save_path)
     print(f"Model saved to: {save_path}")
    
