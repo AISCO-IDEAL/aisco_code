@@ -9,15 +9,19 @@ import numpy as np
 from CadQuery_to_SDF import SDFfromCadQuery
 
 # test with a Cylinder
-# cylinder = cq.Workplane("XY").circle(0.5).extrude(1).objects[0]
-# cylinder = cast(cq.Shape, cylinder)
-# print(type(cylinder))
-# sdf_converter = SDFfromCadQuery(cylinder)
+if False:
+    cylinder = cq.Workplane("XY").circle(0.5).extrude(1).objects[0]
+    cylinder = cast(cq.Shape, cylinder)
+    print(type(cylinder))
+    sdf_converter = SDFfromCadQuery(cylinder)
 
 # test with a cube
-cube = cq.Workplane("XY").box(0.75, 0.75, 0.75).objects[0]
-cube = cast(cq.Shape, cube)
-sdf_converter = SDFfromCadQuery(cube)
+if False:
+    cube = cq.Workplane("XY").box(0.75, 0.75, 0.75).objects[0]
+    cube = cast(cq.Shape, cube)
+    sdf_converter = SDFfromCadQuery(cube)
+
+
 
 sdf_valus = sdf_converter.sdf_at_pointgrid()
 

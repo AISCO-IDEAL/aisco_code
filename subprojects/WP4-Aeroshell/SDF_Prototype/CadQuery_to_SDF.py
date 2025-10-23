@@ -50,3 +50,19 @@ class SDFfromCadQuery:
     def pointgrid(self) -> list[list[float]]:
         return self._pointgrid
     
+class BackupAssembly:
+    def __init__(self):
+        def m(value: float) -> float:
+            return value * 1000.0
+        outer_len, outer_wid, outer_ht = 2.0, 1.2, 0.8     # outer cuboid: 2.0 m × 1.2 m × 0.8 m
+        inner_len, inner_wid, inner_ht = 1.2, 0.6, 0.4     # inner cuboid: 1.2 m × 0.6 m × 0.4 m
+        inner_offset_m = (0.0, 0.0, 0.0)
+        self._outer = (cq.Workplane("XY").box(m(outer_len), m(outer_wid), m(outer_ht), centered=True))
+        self.inner = (cq.Workplane("XY")
+            .transformed(offset=(m(inner_offset_m[0]), m(inner_offset_m[1]), m(inner_offset_m[2])))
+            .box(m(inner_len), m(inner_wid), m(inner_ht), centered=True)
+        )
+    def outer_solid(self) -> cq.Shape:
+        return self._outer
+    def inner_solid(self) -> cq.Shape:
+        return self.inner
