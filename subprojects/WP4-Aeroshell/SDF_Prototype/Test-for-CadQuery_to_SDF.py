@@ -8,11 +8,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 from CadQuery_to_SDF import SDFfromCadQuery
 
-# test with a Cylindric shape (radius = 0.5, height (in z-direction) = 1)
-cylinder = cq.Workplane("XY").circle(0.5).extrude(1).objects[0]
-cylinder = cast(cq.Shape, cylinder)
-print(type(cylinder))
-sdf_converter = SDFfromCadQuery(cylinder)
+# test with a Cylinder
+# cylinder = cq.Workplane("XY").circle(0.5).extrude(1).objects[0]
+# cylinder = cast(cq.Shape, cylinder)
+# print(type(cylinder))
+# sdf_converter = SDFfromCadQuery(cylinder)
+
+# test with a cube
+cube = cq.Workplane("XY").box(0.75, 0.75, 0.75).objects[0]
+cube = cast(cq.Shape, cube)
+sdf_converter = SDFfromCadQuery(cube)
 
 sdf_valus = sdf_converter.sdf_at_pointgrid()
 
