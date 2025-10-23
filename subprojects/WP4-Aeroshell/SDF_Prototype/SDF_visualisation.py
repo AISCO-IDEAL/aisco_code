@@ -5,7 +5,7 @@ import torch
 from sdf import SDFNetwork
 
 
-class SDFVisaulizer:
+class SDFVisualizer:
     def __init__(self, model: SDFNetwork):
         self.model = model
         self.inner_solid = None
