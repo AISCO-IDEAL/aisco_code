@@ -57,7 +57,14 @@ class SDFLosses:
         # Create points for evaluation
         #As of yet: takes primitive area at x=0 (middle of car in theory)
         points = torch.stack([x_coords.flatten(), y_grid.flatten(), z_grid.flatten()], dim=1)
-        sdf_values = model(points).reshape(resolution, resolution)
+        points.requires_grad = True
+        outputs = model(points)
+        # Ensure only the scalar field is extracted
+        if isinstance(outputs, tuple):
+            sdf_values = outputs[0]  # first element = scalar SDF field
+        else:
+            sdf_values = outputs
+        sdf_values.reshape(resolution, resolution)
         
         # Approximate area using the Heaviside function
         # Use a smooth approximation of the Heaviside function
@@ -93,8 +100,14 @@ class SDFLosses:
         
         # Create points for evaluation
         points = torch.stack([x_grid.flatten(), y_grid.flatten(), z_coords.flatten()], dim=1)
-        sdf_values = model(points).reshape(resolution, resolution)
-        
+        points.requires_grad = True
+        outputs = model(points)
+        # Ensure only the scalar field is extracted
+        if isinstance(outputs, tuple):
+            sdf_values = outputs[0]  # first element = scalar SDF field
+        else:
+            sdf_values = outputs
+        sdf_values.reshape(resolution, resolution)
         # Approximate area using the Heaviside function
         epsilon = 0.02
         heaviside_approx = torch.sigmoid(-sdf_values / epsilon)

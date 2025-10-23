@@ -25,7 +25,7 @@ def main():
             print(f"Epoch {epoch}, Total Loss: {total_loss.item():.4f}")
 
     # Save the trained model
-    save_dir = "/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/main_models"
+    save_dir = f"/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/main_models"
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, f'sdf_model_{datetime.date.today()}.pth')
     torch.save(model, save_path)
