@@ -44,7 +44,7 @@ class SDFNetwork(nn.Module):
                 x = torch.cat([x, original_x], dim=1)
                 x = F.leaky_relu(self.skip_layer(x), negative_slope=0.1)
         sdf = self.output_layer(x).squeeze(-1)
-
+        
         # Only compute gradients if input requires grad (i.e., during training)
         if x.requires_grad:
             grad_sdf = torch.zeros((x.shape[0], self.in_dim), device=x.device)
