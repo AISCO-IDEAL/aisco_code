@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=AISCO_elihuber_Test1
+#SBATCH --job-name=cuda_solver
 #SBATCH --time=00:20:00                    # Adjust time as needed
 
 #SBATCH --ntasks=1
@@ -53,4 +53,4 @@ export HF_TOKEN="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"  # Replace with your act
 #------------------------------------------------------------------------------
 # Run the Relevant script
 #------------------------------------------------------------------------------
-python "/cluster/home/elihuber/cuda.py"
+python "/cluster/home/elihuber/AISCO-code/subprojects/WP1-CFD/deepxde/caivity_solver.py"

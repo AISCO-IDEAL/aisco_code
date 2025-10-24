@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')  # <-- ADD THIS LINE
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -102,13 +104,12 @@ print("Starting Adam optimization...")
 model.compile("adam", lr=1e-3)
 # Note: I'm lowering iterations to 10,000 for a faster (but less accurate) result.
 # Feel free to change it back to 20,000.
-losshistory, train_state = model.train(iterations=2000, display_every=10)
+losshistory, train_state = model.train(iterations=4000, display_every=1000)
 
 print("Starting L-BFGS optimization...")
 model.compile("L-BFGS")
 losshistory, train_state = model.train()
 print("Training complete.")
-
 
 # --- 6. Plot the Results ---
 print("Generating plot...")
@@ -126,7 +127,8 @@ p = solution[:, 2].reshape(resolution, resolution)
 
 # Plot Velocity
 plt.figure(figsize=(10, 8))
-plt.quiver(X, Y, u, v, C=u)
+# Use 'color=u' instead of 'C=u'
+plt.quiver(X, Y, u, v, color=u) # <-- FIX HERE
 plt.colorbar(label="u-velocity (m/s)")
 plt.title(f"2D Lid-Driven Cavity Flow (Re={1 / nu}) - Velocity")
 plt.xlabel("X Coordinate")
