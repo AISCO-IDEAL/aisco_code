@@ -132,3 +132,10 @@ paddle supports more examples now and is recommended.
 Using backend: pytorch
 Other supported backends: tensorflow.compat.v1, tensorflow, jax, paddle.
 paddle supports more examples now and is recommended.
+slurmstepd: error: *** STEP 46779307.0 ON eu-g6-035 CANCELLED AT 2025-10-24T17:26:30 ***
+slurmstepd: error: *** JOB 46779307 ON eu-g6-035 CANCELLED AT 2025-10-24T17:26:30 ***
+W1024 17:26:30.170000 3221430 torch/distributed/elastic/agent/server/api.py:725] Received 15 death signal, shutting down workers
+W1024 17:26:30.173000 3221430 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 3221475 closing signal SIGTERM
+W1024 17:26:30.173000 3221430 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 3221476 closing signal SIGTERM
+W1024 17:26:30.174000 3221430 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 3221478 closing signal SIGTERM
+W1024 17:26:30.174000 3221430 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 3221479 closing signal SIGTERM
