@@ -9,8 +9,8 @@
 #SBATCH --gpus=rtx_4090:2
 
 # --- Use %x for job name and %j for job ID ---
-#SBATCH --output=/cluster/home/elihuber/logs/%x_%j.out
-#SBATCH --error=/cluster/home/elihuber/logs/%x_%j.err
+#SBATCH --output=/cluster/home/elihuber/AISCO-code/subprojects/WP1-CFD/euler_tests/logs/%x_%j.out
+#SBATCH --error=/cluster/home/elihuber/AISCO-code/subprojects/WP1-CFD/euler_tests/logs/%x_%j.err
 
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=elihuber@ethz.ch
@@ -53,4 +53,4 @@ export HF_TOKEN="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"  # Replace with your act
 #------------------------------------------------------------------------------
 # Run the Relevant script
 #------------------------------------------------------------------------------
-python "$HOME/testing_euler/test_multiple_gpu.py"
+python "/cluster/home/elihuber/AISCO-code/subprojects/WP1-CFD/euler_tests/testing_euler/test_multiple_gpu.py"
