@@ -1,0 +1,5 @@
+Many modules are hidden in this stack. Use "module --show_hidden spider SOFTWARE" if you are not able to find the required software
+Traceback (most recent call last):
+  File "/cluster/home/elihuber/AISCO-code/subprojects/WP1-CFD/deepxde/caivity_solver.py", line 7, in <module>
+    import deepxde as dde
+ModuleNotFoundError: No module named 'deepxde'
