@@ -8,10 +8,10 @@ import datetime
 from sdf import SDFNetwork
 
 # In utils.py
-def visualize_sdf(model, grid_size=32, threshold=0.0, filename="sdf_mesh.ply"):
-    x = np.linspace(-2, 2, grid_size)
-    y = np.linspace(-2, 2, grid_size)
-    z = np.linspace(-2, 2, grid_size)
+def visualize_sdf(model, grid_size=128, threshold=0.0, filename="sdf_mesh.ply"):
+    x = np.linspace(-8, 8, grid_size)
+    y = np.linspace(-8, 8, grid_size)
+    z = np.linspace(-8, 8, grid_size)
     grid_x, grid_y, grid_z = np.meshgrid(x, y, z)
     grid_points = np.vstack([grid_x.ravel(), grid_y.ravel(), grid_z.ravel()]).T
     grid_points_tensor = torch.tensor(grid_points, dtype=torch.float32)
