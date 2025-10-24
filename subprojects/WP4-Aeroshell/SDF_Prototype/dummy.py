@@ -33,7 +33,7 @@ def train_sphere(radius: float = 1.0) -> SDFNetwork:
         points = torch.rand(batch_size, 3) * 4.0 - 2.0  # Sample in range [-2, 2]
         sdf_values = sphere_gt(points, radius=radius)
         optimizer.zero_grad()
-        preds = model(points).squeeze()
+        preds = model(points)[0].squeeze()
         loss = nn.MSELoss()(preds, sdf_values)
         loss.backward()
         optimizer.step()
@@ -41,7 +41,7 @@ def train_sphere(radius: float = 1.0) -> SDFNetwork:
             print(f"Epoch {epoch}, Loss: {loss.item()}")
     return model
 
-def get_sdf_sphere_network(use_original: bool = False, radius: float = 1.0, save_network: bool = True) -> T.Union[SDFNetwork, T.Callable]:
+def get_sdf_sphere_network(use_original: bool = False, radius: float = 1.0, save_network: bool = True,username: str="aalthaus") -> T.Union[SDFNetwork, T.Callable]:
     """
     Return an SDFNetwork representing a sphere of given radius.
     Args:
@@ -51,15 +51,15 @@ def get_sdf_sphere_network(use_original: bool = False, radius: float = 1.0, save
     if use_original:
         model = train_sphere(radius=radius)
         if save_network:
-            save_dir = "/cluster/home/eschaerer/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/dummy_models"
+            save_dir = f"/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/dummy_models"
             os.makedirs(save_dir, exist_ok=True)
             save_path = os.path.join(save_dir, f'sdf_sphere_model_{datetime.date.today()}.pth')
             torch.save(model, save_path)
             print(f"Model saved to: {save_path}")
         return model
     else:
-        save_dir = "/cluster/home/eschaerer/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/dummy_models"
-        model_path = os.path.join(save_dir, 'sdf_sphere_model.pth')
+        save_dir = f"/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/dummy_models"
+        model_path = os.path.join(save_dir, 'sdf_new_sphere_model.pth')
         model = torch.load(model_path)
         return model
 
@@ -71,7 +71,7 @@ def visualise_model(model: SDFNetwork, grid_size: int = 32, threshold: float = 0
     grid_points = np.vstack([grid_x.ravel(), grid_y.ravel(), grid_z.ravel()]).T
     grid_points_tensor = torch.tensor(grid_points, dtype=torch.float32)
     with torch.no_grad():
-        sdf_values = model(grid_points_tensor).cpu().numpy().reshape((grid_size, grid_size, grid_size))
+        sdf_values = model(grid_points_tensor)[0].cpu().numpy().reshape((grid_size, grid_size, grid_size))
     verts, faces, normals, values = measure.marching_cubes(sdf_values, level=threshold)
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_normals=normals)
     mesh.export('sdf_sphere_mesh.ply')  # Save to file
