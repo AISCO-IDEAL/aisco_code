@@ -8,16 +8,7 @@ from utils import visualize_sdf  # Import the new utilities
 
 username="aalthaus"  # Replace with your actual username
 
-def main(load_pretrained_model: bool = False):
-    if load_pretrained_model:
-        # Load a pre-trained model
-        load_dir = f"/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/dummy_models"
-        model_path = os.path.join(load_dir, 'sdf_sphere_model_2025-10-24.pth')  # Specify the correct model filename
-        model = torch.load(model_path)
-        print(f"Model loaded from: {model_path}")
-        
-    else:
-        model = SDFNetwork()
+
 def main(load_pretrained_model: bool = False):
     if load_pretrained_model:
         # Load a pre-trained model
@@ -29,6 +20,8 @@ def main(load_pretrained_model: bool = False):
     else:
         model = SDFNetwork()
     loss_fn = SDFLosses(weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0])  # Adjust weights as needed
+    #WTF is going on here? we need points for our loss function though, what happened to them?
+    """
     #################### ADD ASSEMBLY POINTS HERE ####################
     # Path to your STL file
     stl_file_path = '/cluster/home/eschaerer/AISCO-code/subprojects/WP2-Assembler/shells/shell0.stl'
@@ -39,6 +32,8 @@ def main(load_pretrained_model: bool = False):
     # Save the point cloud to a .npy file
     np.save('shell0_point_cloud.npy', point_cloud.detach().numpy())
     print(f"Point cloud generated and saved as 'shell0_point_cloud.npy' with {len(point_cloud)} points.")
+
+    """
     ##################################################################
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     epochs= 50 
@@ -65,5 +60,5 @@ def main(load_pretrained_model: bool = False):
 
 if __name__ == "__main__":
     main(load_pretrained_model=True)
-    main(load_pretrained_model=True)
+    
 
