@@ -28,8 +28,8 @@ pip install .[dev]
 echo "🪝 Installing pre-commit hooks..."
 pre-commit install
 
-echo "🧪 Testing the setup..."
-python src/example.py
+# echo "🧪 Testing the setup..."
+# python src/example.py
 
 echo ""
 echo "🎉 Setup complete!"

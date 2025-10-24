@@ -15,6 +15,13 @@ dev = [
   "ruff",
   "pre-commit",
 ]
+WP1_CFD_AI = [
+
+]
+
+WP2_ASSEMBLER =[
+
+]
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
