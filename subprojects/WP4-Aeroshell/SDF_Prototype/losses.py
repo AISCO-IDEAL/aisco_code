@@ -23,7 +23,13 @@ class SDFLosses:
         sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True) ######## DO NOT TOUCH #######
         return self.weights[1] * (laplacian_sdf**2).mean() 
 
-    def bounding_boxes_loss(self, model:SDFNetwork, inner_box:cq.Shape=None, outer_box:cq.Shape=None, pointgrid:list[list[float]]=None) -> torch.Tensor:  # noqa: RUF013
+    def bounding_boxes_loss(
+        self,
+        model: SDFNetwork,
+        inner_box: cq.Shape = None,
+        outer_box: cq.Shape = None,
+        pointgrid: list[list[float]] = None,
+        ) -> torch.Tensor:
         """
         Arguments:
             model: The SDF network                                              NO Default!!
@@ -33,36 +39,49 @@ class SDFLosses:
         
         Returns:
             Bounding boxes loss (to be minimized)
-            
+
+        Constrains model SDF to lie between outer and inner SDFs:
+            sdf_outer(p) <= sdf_model(p) <= sdf_inner(p)
+        Loss = mean( relu(sdf_model - sdf_inner) + relu(sdf_outer - sdf_model) )
         """
-        total_loss = 0.0
+        # Defaults (build backup assembly once)
+        if inner_box is None or outer_box is None:
+            backup_assembly = BackupAssembly()
+            if inner_box is None:
+                inner_box = backup_assembly.inner_solid()
+            if outer_box is None:
+                outer_box = backup_assembly.outer_solid()
 
-        # Provide default boxes and pointgrid if not supplied:
-        if inner_box is None: 
-            backup_assembly = BackupAssembly()
-            inner_box = backup_assembly.inner_solid()
-        if outer_box is None:
-            backup_assembly = BackupAssembly()
-            outer_box = backup_assembly.outer_solid()
         if pointgrid is None:
-            pointgrid = [[x/5, y/5, z/5] for x in range(-10, 11) for y in range(-10, 11) for z in range(-10, 11)]
+            # 21^3 grid from -2..2
+            coords = [i / 5 for i in range(-10, 11)]
+            pointgrid = [[x, y, z] for x in coords for y in coords for z in coords]
 
-
+        # Evaluate reference SDFs (assumed to return arrays aligned with pointgrid)
         inner = SDFfromCadQuery(inner_box, pointgrid)
         outer = SDFfromCadQuery(outer_box, pointgrid)
-        sdf_inner = inner.sdf_at_pointgrid()
-        sdf_outer = outer.sdf_at_pointgrid()
+        sdf_inner = inner.sdf_at_pointgrid()  # shape [N]
+        sdf_outer = outer.sdf_at_pointgrid()  # shape [N]
 
-        for p in pointgrid:
-            sdf_value, _ = model(torch.tensor(p).unsqueeze(0).float())
-            sdf_value = sdf_value.item()
-            idx = pointgrid.index(p)
-            total_loss += torch.relu(sdf_value - sdf_inner[idx]).item()
-            total_loss += torch.relu(-sdf_value + sdf_outer[idx]).item()
+        # Device & tensors
+        device = next(model.parameters()).device
+        P = torch.tensor(pointgrid, dtype=torch.float32, device=device)  # [N,3]
+        sdf_inner_t = torch.as_tensor(sdf_inner, dtype=torch.float32, device=device)  # [N]
+        sdf_outer_t = torch.as_tensor(sdf_outer, dtype=torch.float32, device=device)  # [N]
 
-        
-        bounding_boxes_loss = torch.tensor(total_loss / len(pointgrid)).float()  
-        return self.weights[2]* bounding_boxes_loss
+        # Batch forward
+        with torch.enable_grad():
+            sdf_pred, _ = model(P)                       # expect shape [N,1] or [N]
+        sdf_pred = sdf_pred.squeeze(-1)              # [N]
+
+        # Box constraints: clamp violations with ReLU
+        upper_violation = torch.relu(sdf_pred - sdf_inner_t)     # penalize > inner
+        lower_violation = torch.relu(sdf_outer_t - sdf_pred)     # penalize < outer
+
+        loss = (upper_violation + lower_violation).mean()
+
+        return self.weights[2] * loss
+
 
     def watertightness_loss(self, model: SDFNetwork, infinity_box:list[list[float]]=None) -> torch.Tensor:  # noqa: RUF013
         total_loss = 0.0
@@ -168,8 +187,8 @@ class SDFLosses:
         return (
             self.eikonal_loss(model, points) +
             self.smoothness_loss(model, points) +
-            self.bounding_boxes_loss(model, points) +
-            self.watertightness_loss(model, points) +
+            self.bounding_boxes_loss(model) +
+            self.watertightness_loss(model) +
             self.frontal_area_loss(model) +
             self.solar_area_loss(model)
         )
