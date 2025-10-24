@@ -2,7 +2,7 @@ import typing as T
 
 import cadquery as cq
 import torch
-from CadQuery_to_SDF import SDFfromCadQuery
+from CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
 from sdf import SDFNetwork
 
 # Define various loss functions for training the SDFNetwork
@@ -23,19 +23,44 @@ class SDFLosses:
         sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True) ######## DO NOT TOUCH #######
         return self.weights[1] * (laplacian_sdf**2).mean() 
 
-    def bounding_boxes_loss(self, model, inner_box:cq.Shape, outer_box:cq.Shape, pointgrid:list[list[float]]=[[x/10, y/10, z/10] for x in range(-10, 11) for y in range(-10, 11) for z in range(-10, 11)]) -> torch.Tensor:   # noqa: B006
+    def bounding_boxes_loss(self, model:SDFNetwork, inner_box:cq.Shape=None, outer_box:cq.Shape=None, pointgrid:list[list[float]]=None) -> torch.Tensor:  # noqa: RUF013
+        """
+        Arguments:
+            model: The SDF network                                              NO Default!!
+            inner_box: CadQuery Shape representing the inner bounding box       Defaults to BackupAssembly boxes if None
+            outer_box: CadQuery Shape representing the outer bounding box       Defaults to BackupAssembly boxes if None
+            pointgrid: List of points at which compatibility is enforced        Defaults to a 21x21x21 grid from -2 to 2 in each axis if None
+        
+        Returns:
+            Bounding boxes loss (to be minimized)
+            
+        """
         total_loss = 0.0
+
+        # Provide default boxes and pointgrid if not supplied:
+        if inner_box is None: 
+            backup_assembly = BackupAssembly()
+            inner_box = backup_assembly.inner_solid()
+        if outer_box is None:
+            backup_assembly = BackupAssembly()
+            outer_box = backup_assembly.outer_solid()
+        if pointgrid is None:
+            pointgrid = [[x/5, y/5, z/5] for x in range(-10, 11) for y in range(-10, 11) for z in range(-10, 11)]
+
+
         inner = SDFfromCadQuery(inner_box, pointgrid)
         outer = SDFfromCadQuery(outer_box, pointgrid)
         sdf_inner = inner.sdf_at_pointgrid()
         sdf_outer = outer.sdf_at_pointgrid()
+
         for p in pointgrid:
             sdf_value, _ = model(torch.tensor(p).unsqueeze(0).float())
             sdf_value = sdf_value.item()
             idx = pointgrid.index(p)
             total_loss += torch.relu(sdf_value - sdf_inner[idx]).item()
             total_loss += torch.relu(-sdf_value + sdf_outer[idx]).item()
-        #Ensure compatibility
+
+        
         bounding_boxes_loss = torch.tensor(total_loss / len(pointgrid)).float()  
         return self.weights[2]* bounding_boxes_loss
 
