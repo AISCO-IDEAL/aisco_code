@@ -1,6 +1,8 @@
-numpy==1.25.2
+cadquery==2.6.0
+matplotlib==3.10.7
+numpy>=2
+plotly==5.22.0
 scikit-image>=0.0
 torch==2.3.1
+torch_geometric==2.7.0
 trimesh==4.8.3
-OCP==7.8.1.1
-cadquery==2.6.0
