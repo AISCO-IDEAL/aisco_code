@@ -1,3 +1,4 @@
+#kdiehl
 [build-system]
 
 requires = ["setuptools>=74.0.0"]
@@ -13,8 +14,6 @@ authors = [
 readme = "README.md"
 requires-python = "==3.11.6"
 
-# standard environments
-
 dependencies = [
   "gymnasium >= 1.0.0",
   "pandas >= 2.2.3",
@@ -27,11 +26,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-#dev = [
- # "mypy",
-  #"ruff",
- # "pre-commit",
-#]
 WP1_CFD_AI = [
 
 ]
@@ -44,6 +38,10 @@ WP3_Solarestimator = [
 WP4_Aeroshell_Optimizer = [
 
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["AISCO*", "subprojects_legacy*"]
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
@@ -147,9 +145,14 @@ max-args = 5
 "scripts/**/*" = ["T20"]
 
 [tool.mypy]
+
+python_version = "3.11"
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "AISCO/"
 warn_redundant_casts = true
 warn_unused_ignores = true
-files = ["src/", "tests/"]
+files = ["AISCO/", "tests/"]
 exclude = [
   "^build/",
   "^docs/",

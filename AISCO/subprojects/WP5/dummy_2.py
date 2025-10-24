@@ -4,6 +4,7 @@ import numpy as np
 
 
 def test(x: int) -> str:
+    #kdiehl
     """Beispiel-Funktion: gibt eine stringbasierte Bestätigung zurück.
 
     Args:
