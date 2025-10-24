@@ -1,0 +1,142 @@
+Many modules are hidden in this stack. Use "module --show_hidden spider SOFTWARE" if you are not able to find the required software
+Traceback (most recent call last):
+  File "/cluster/home/elihuber/venvs/aisco-code/bin/torchrun", line 7, in <module>
+Traceback (most recent call last):
+  File "/cluster/home/elihuber/venvs/aisco-code/bin/torchrun", line 7, in <module>
+Traceback (most recent call last):
+  File "/cluster/home/elihuber/venvs/aisco-code/bin/torchrun", line 7, in <module>
+    sys.exit(main())
+    sys.exit(main())
+             ^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 357, in wrapper
+             ^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 357, in wrapper
+    sys.exit(main())
+             ^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 357, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/run.py", line 936, in main
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/run.py", line 936, in main
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/run.py", line 936, in main
+    run(args)
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/run.py", line 927, in run
+    run(args)
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/run.py", line 927, in run
+    run(args)
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/run.py", line 927, in run
+    elastic_launch(
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 156, in __call__
+    elastic_launch(
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 156, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 284, in launch_agent
+    elastic_launch(
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 156, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 284, in launch_agent
+    result = agent.run()
+             ^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/metrics/api.py", line 138, in wrapper
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 284, in launch_agent
+    result = f(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/agent/server/api.py", line 717, in run
+    result = agent.run()
+             ^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/metrics/api.py", line 138, in wrapper
+    result = agent.run()
+    result = self._invoke_run(role)
+             ^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/metrics/api.py", line 138, in wrapper
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/agent/server/api.py", line 875, in _invoke_run
+    result = f(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/agent/server/api.py", line 717, in run
+    result = f(*args, **kwargs)
+    self._initialize_workers(self._worker_group)
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/metrics/api.py", line 138, in wrapper
+             ^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/agent/server/api.py", line 717, in run
+    result = self._invoke_run(role)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/agent/server/api.py", line 875, in _invoke_run
+    result = self._invoke_run(role)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/agent/server/api.py", line 875, in _invoke_run
+    result = f(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/agent/server/api.py", line 685, in _initialize_workers
+    self._initialize_workers(self._worker_group)
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/metrics/api.py", line 138, in wrapper
+    self._initialize_workers(self._worker_group)
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/metrics/api.py", line 138, in wrapper
+    self._rendezvous(worker_group)
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/metrics/api.py", line 138, in wrapper
+    result = f(*args, **kwargs)
+    result = f(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/agent/server/api.py", line 685, in _initialize_workers
+             ^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/agent/server/api.py", line 685, in _initialize_workers
+    result = f(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/agent/server/api.py", line 500, in _rendezvous
+    self._rendezvous(worker_group)
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/metrics/api.py", line 138, in wrapper
+    rdzv_info = spec.rdzv_handler.next_rendezvous()
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/rendezvous/static_tcp_rendezvous.py", line 67, in next_rendezvous
+    self._rendezvous(worker_group)
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/metrics/api.py", line 138, in wrapper
+    result = f(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/agent/server/api.py", line 500, in _rendezvous
+    result = f(*args, **kwargs)
+    self._store = TCPStore(  # type: ignore[call-arg]
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.distributed.DistNetworkError: The server socket has failed to listen on any local network address. port: 29500, useIpv6: false, code: -98, name: EADDRINUSE, message: address already in use
+             ^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/agent/server/api.py", line 500, in _rendezvous
+    rdzv_info = spec.rdzv_handler.next_rendezvous()
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/rendezvous/static_tcp_rendezvous.py", line 67, in next_rendezvous
+    rdzv_info = spec.rdzv_handler.next_rendezvous()
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/distributed/elastic/rendezvous/static_tcp_rendezvous.py", line 67, in next_rendezvous
+    self._store = TCPStore(  # type: ignore[call-arg]
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.distributed.DistNetworkError: The server socket has failed to listen on any local network address. port: 29500, useIpv6: false, code: -98, name: EADDRINUSE, message: address already in use
+    self._store = TCPStore(  # type: ignore[call-arg]
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.distributed.DistNetworkError: The server socket has failed to listen on any local network address. port: 29500, useIpv6: false, code: -98, name: EADDRINUSE, message: address already in use
+srun: error: eu-g6-045: tasks 0-2: Exited with exit code 1
+Using backend: pytorch
+Other supported backends: tensorflow.compat.v1, tensorflow, jax, paddle.
+paddle supports more examples now and is recommended.
+Using backend: pytorch
+Other supported backends: tensorflow.compat.v1, tensorflow, jax, paddle.
+paddle supports more examples now and is recommended.
+Using backend: pytorch
+Other supported backends: tensorflow.compat.v1, tensorflow, jax, paddle.
+paddle supports more examples now and is recommended.
+Using backend: pytorch
+Other supported backends: tensorflow.compat.v1, tensorflow, jax, paddle.
+paddle supports more examples now and is recommended.
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
+slurmstepd: error: *** STEP 46778898.0 ON eu-g6-045 CANCELLED AT 2025-10-24T17:21:53 ***
+slurmstepd: error: *** JOB 46778898 ON eu-g6-045 CANCELLED AT 2025-10-24T17:21:53 ***
+W1024 17:21:53.910000 911798 torch/distributed/elastic/agent/server/api.py:725] Received 15 death signal, shutting down workers
+W1024 17:21:53.912000 911798 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 911867 closing signal SIGTERM
+W1024 17:21:53.912000 911798 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 911868 closing signal SIGTERM
+W1024 17:21:53.921000 911798 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 911869 closing signal SIGTERM
+W1024 17:21:53.921000 911798 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 911870 closing signal SIGTERM
