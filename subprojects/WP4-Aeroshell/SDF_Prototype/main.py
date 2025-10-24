@@ -42,14 +42,12 @@ def main(load_pretrained_model: bool = False):
     ##################################################################
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     epochs= 50 
-    epochs= 50 
     for epoch in range(epochs):
         optimizer.zero_grad()
         total_loss = loss_fn.get_total_loss(model, point_cloud)
         total_loss.backward()
         optimizer.step()
 
-        if epoch % 10 == 0:
         if epoch % 10 == 0:
             print(f"Epoch {epoch}, Total Loss: {total_loss.item():.4f}")
     # Save the trained model
