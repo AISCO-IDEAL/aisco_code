@@ -35,11 +35,15 @@ def main(load_pretrained_model: bool = False):
 
     """
     ##################################################################
+
+    #Replaced the above snippet with this as a quick fix
+    points = torch.randn(1000, 3, requires_grad=True)
+
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     epochs= 50 
     for epoch in range(epochs):
         optimizer.zero_grad()
-        total_loss = loss_fn.get_total_loss(model, point_cloud)
+        total_loss = loss_fn.get_total_loss(model, points)
         total_loss.backward()
         optimizer.step()
 
