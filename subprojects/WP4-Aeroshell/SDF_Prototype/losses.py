@@ -84,6 +84,7 @@ class SDFLosses:
 
 
     def watertightness_loss(self, model: SDFNetwork, infinity_box:list[list[float]]=None) -> torch.Tensor:  # noqa: RUF013
+        return torch.Tensor(0.0) #Avoid crash
         total_loss = 0.0
         if infinity_box is None: # samples points on a large box around the object
             infinity_box = [[x, y, z] for x in [-10.0, 10.0] for y in [-10.0, 10.0] for z in [-10.0, 10.0, 19.9]]
@@ -188,7 +189,7 @@ class SDFLosses:
             self.eikonal_loss(model, points) +
             self.smoothness_loss(model, points) +
             self.bounding_boxes_loss(model) +
-            self.watertightness_loss(model) +
+            #self.watertightness_loss(model) +
             self.frontal_area_loss(model) +
             self.solar_area_loss(model)
         )
