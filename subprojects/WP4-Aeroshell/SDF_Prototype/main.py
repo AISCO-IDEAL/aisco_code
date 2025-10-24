@@ -18,6 +18,16 @@ def main(load_pretrained_model: bool = False):
         
     else:
         model = SDFNetwork()
+def main(load_pretrained_model: bool = False):
+    if load_pretrained_model:
+        # Load a pre-trained model
+        load_dir = f"/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/dummy_models"
+        model_path = os.path.join(load_dir, 'sdf_sphere_model_2025-10-24.pth')  # Specify the correct model filename
+        model = torch.load(model_path)
+        print(f"Model loaded from: {model_path}")
+        
+    else:
+        model = SDFNetwork()
     loss_fn = SDFLosses(weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0])  # Adjust weights as needed
     #################### ADD ASSEMBLY POINTS HERE ####################
     # Path to your STL file
@@ -32,12 +42,14 @@ def main(load_pretrained_model: bool = False):
     ##################################################################
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     epochs= 50 
+    epochs= 50 
     for epoch in range(epochs):
         optimizer.zero_grad()
         total_loss = loss_fn.get_total_loss(model, point_cloud)
         total_loss.backward()
         optimizer.step()
 
+        if epoch % 10 == 0:
         if epoch % 10 == 0:
             print(f"Epoch {epoch}, Total Loss: {total_loss.item():.4f}")
     # Save the trained model
@@ -49,10 +61,11 @@ def main(load_pretrained_model: bool = False):
     print(f"Model saved to: {save_path}")
 
     # Visualize the SDF
-    visualize_sdf(model, grid_size=32, threshold=0.0, filename="sdf_aeroshell_mesh_BiggerSphereStart.ply")
+    visualize_sdf(model, grid_size=32, threshold=0.0, filename="sdf_aeroshell_mesh_SphereStart.ply")
 
     print("Training complete. A mesh has been generated and saved as 'sdf_aeroshell_mesh.ply'. It can be viewed using 3D Point Cloud Visualizer (PLY, ...) from Florian Nick")
 
 if __name__ == "__main__":
+    main(load_pretrained_model=True)
     main(load_pretrained_model=True)
 
