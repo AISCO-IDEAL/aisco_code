@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pyvista as pv
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -204,87 +205,161 @@ for epoch in range(epochs):
         )
 
 print("Training Finished.")
+# --- (Previous script code up to the end of training and inference) ---
 
-# --- 6. Inference & Comparison with Analytical Solution ---
+# --- 6. Inference & Comparison ---
 model.eval()
 with torch.no_grad():
     final_predictions = model(data).cpu().numpy()
-
-# Get node coordinates
 pos_np = data.pos.detach().cpu().numpy()
 x_np, y_np = pos_np[:, 0], pos_np[:, 1]
-
-# Calculate analytical solution at node coordinates
-u_analytical, v_analytical, p_analytical = poiseuille_analytical(
-    x_np, y_np, H, dpdx, mu, p0
-)
-
-# Extract GNN predictions
 u_pred, v_pred, p_pred = (
     final_predictions[:, 0],
     final_predictions[:, 1],
     final_predictions[:, 2],
 )
 
-# --- Calculate Errors ---
-mae_u = np.mean(np.abs(u_pred - u_analytical))
-mae_v = np.mean(np.abs(v_pred - v_analytical))
-mae_p = np.mean(np.abs(p_pred - p_analytical))
+# --- Visualize Results with Velocity Vectors ---
+print("Visualizing results using Matplotlib...")
 
-print("\n--- Comparison ---")
-print(f"Mean Absolute Error (u): {mae_u:.4e}")
-print(f"Mean Absolute Error (v): {mae_v:.4e}")  # Should be very small
-print(f"Mean Absolute Error (p): {mae_p:.4e}")
-
-# --- Visualize Results and Comparison ---
 xx_plot = x_np.reshape(grid_size, grid_size)
 yy_plot = y_np.reshape(grid_size, grid_size)
 u_pred_plot = u_pred.reshape(grid_size, grid_size)
 v_pred_plot = v_pred.reshape(grid_size, grid_size)
 p_pred_plot = p_pred.reshape(grid_size, grid_size)
-u_ana_plot = u_analytical.reshape(grid_size, grid_size)
-p_ana_plot = p_analytical.reshape(grid_size, grid_size)
 
-fig, axes = plt.subplots(2, 3, figsize=(15, 8), sharex=True, sharey=True)
-levels = 50  # Number of contour levels
+fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 
-# Predicted U
-cf = axes[0, 0].contourf(xx_plot, yy_plot, u_pred_plot, cmap="viridis", levels=levels)
-fig.colorbar(cf, ax=axes[0, 0])
-axes[0, 0].set_title("Predicted u")
-axes[0, 0].set_ylabel("y")
+# Plot Pressure Contours as background
+cf = ax.contourf(xx_plot, yy_plot, p_pred_plot, cmap="viridis", levels=50, alpha=0.7)
+fig.colorbar(cf, label="Pressure (p)")
 
-# Predicted V
-cf = axes[0, 1].contourf(xx_plot, yy_plot, v_pred_plot, cmap="viridis", levels=levels)
-fig.colorbar(cf, ax=axes[0, 1])
-axes[0, 1].set_title("Predicted v")
-
-# Predicted P
-cf = axes[0, 2].contourf(xx_plot, yy_plot, p_pred_plot, cmap="viridis", levels=levels)
-fig.colorbar(cf, ax=axes[0, 2])
-axes[0, 2].set_title("Predicted p")
-
-# Analytical U
-cf = axes[1, 0].contourf(xx_plot, yy_plot, u_ana_plot, cmap="viridis", levels=levels)
-fig.colorbar(cf, ax=axes[1, 0])
-axes[1, 0].set_title("Analytical u")
-axes[1, 0].set_xlabel("x")
-axes[1, 0].set_ylabel("y")
-
-# Analytical V (should be zero)
-axes[1, 1].contourf(
-    xx_plot, yy_plot, np.zeros_like(v_pred_plot), cmap="viridis", levels=levels
+# Plot Velocity Vectors (Quiver Plot)
+# Use a subset of points for quiver to avoid clutter (e.g., every 2nd point)
+skip = 2
+ax.quiver(
+    xx_plot[::skip, ::skip],
+    yy_plot[::skip, ::skip],
+    u_pred_plot[::skip, ::skip],
+    v_pred_plot[::skip, ::skip],
+    color="red",
+    scale=20,  # Adjust scale for vector length
+    alpha=0.8,
 )
-axes[1, 1].set_title("Analytical v (0)")
-axes[1, 1].set_xlabel("x")
 
-# Analytical P
-cf = axes[1, 2].contourf(xx_plot, yy_plot, p_ana_plot, cmap="viridis", levels=levels)
-fig.colorbar(cf, ax=axes[1, 2])
-axes[1, 2].set_title("Analytical p")
-axes[1, 2].set_xlabel("x")
+# Draw the "Object" (Channel Walls)
+ax.plot([0, 1], [0, 0], color="black", linewidth=3)  # Bottom wall
+ax.plot([0, 1], [H, H], color="black", linewidth=3)  # Top wall (Lid)
+ax.plot([0, 0], [0, H], color="gray", linewidth=2)  # Inlet side (optional)
+ax.plot([1, 1], [0, H], color="gray", linewidth=2)  # Outlet side (optional)
 
 
-plt.suptitle("GNN Prediction vs Analytical Solution (Poiseuille Flow)")
-plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust layout to make room for title
+ax.set_title("Predicted Pressure Contours and Velocity Vectors")
+ax.set_xlabel("x")
+ax.set_ylabel("y")
+ax.set_aspect("equal", adjustable="box")  # Make aspect ratio realistic
+plt.tight_layout()
 plt.show()
+
+# --- 7. Visualize Results using PyVista ---
+try:
+    import pyvista as pv
+
+    print("\nVisualizing results using PyVista...")
+
+    # ... (Create grid_pv as before) ...
+    points_pv = np.hstack((pos_np, np.zeros((pos_np.shape[0], 1))))  # Add z=0
+    grid_pv = pv.StructuredGrid(xx_plot, yy_plot, np.zeros_like(xx_plot))
+    grid_pv["u"] = u_pred_plot.flatten(order="F")
+    grid_pv["v"] = v_pred_plot.flatten(order="F")
+    grid_pv["p"] = p_pred_plot.flatten(order="F")
+    grid_pv["velocity"] = np.vstack(
+        (grid_pv["u"], grid_pv["v"], np.zeros(grid_pv.n_points))
+    ).T
+
+    # --- Create PyVista Plotter ---
+    plotter = pv.Plotter(window_size=[800, 600])
+
+    # --- Add the Grid (Object/Domain Representation), colored by pressure ---
+    plotter.add_mesh(
+        grid_pv, scalars="p", cmap="viridis", scalar_bar_args={"title": "Pressure"}
+    )
+
+    # --- Add Glyphs (Arrows) for Velocity ---
+    subset_indices = np.arange(grid_pv.n_points)
+    np.random.shuffle(subset_indices)
+    subset_indices = subset_indices[: min(500, grid_pv.n_points // 5)]
+
+    points_subset = grid_pv.points[subset_indices]
+    vectors_subset = grid_pv["velocity"][subset_indices]
+
+    if points_subset.size > 0 and vectors_subset.size > 0:
+        # 1. Create a PolyData object for the subset points
+        subset_points_pv = pv.PolyData(points_subset)
+        # 2. Add the vectors
+        subset_points_pv["velocity"] = vectors_subset
+        # --- CHANGE HERE ---
+        # 3. Calculate magnitudes and add them as SCALARS *before* glyphing
+        subset_points_pv["magnitude"] = np.linalg.norm(vectors_subset, axis=1)
+        # --- END CHANGE ---
+
+        # 4. Create glyphs using the .glyph() method
+        #    It will automatically use the active vectors ('velocity') for orientation
+        #    and the active scalars ('magnitude') for coloring.
+        subset_points_pv.active_vectors_name = (
+            "velocity"  # Explicitly set active vectors
+        )
+        # Set magnitude as the active scalars for coloring glyphs
+        subset_points_pv.active_scalars_name = "magnitude"
+
+        # Adjust factor for glyph size
+        max_mag = subset_points_pv["magnitude"].max()
+        scale_factor = (
+            (grid_pv.bounds[1] - grid_pv.bounds[0]) * 0.05 / max_mag
+            if max_mag > 1e-9
+            else 0.05
+        )
+        scale_factor = min(scale_factor, 1.0)
+
+        # Create the glyphs, they will inherit the 'magnitude' scalar data
+        glyphs = subset_points_pv.glyph(
+            orient="velocity", scale="magnitude", factor=scale_factor
+        )
+
+        # REMOVE THIS LINE - scalars are now part of 'glyphs' automatically
+        # glyphs["scalars"] = np.linalg.norm(vectors_subset, axis=1)
+
+        # Add the glyphs mesh to the plotter, coloring by the inherited 'magnitude'
+        plotter.add_mesh(
+            glyphs,
+            scalars="magnitude",
+            cmap="coolwarm",
+            scalar_bar_args={"title": "Velocity Mag."},
+        )
+    else:
+        print("Warning: No points or vectors found for glyph visualization.")
+
+    # --- Add Object Boundaries (Lines) ---
+    bottom_wall = pv.Line([0, 0, 0], [1, 0, 0])
+    top_wall = pv.Line([0, H, 0], [1, H, 0])
+    inlet_wall = pv.Line([0, 0, 0], [0, H, 0])
+    outlet_wall = pv.Line([1, 0, 0], [1, H, 0])
+    plotter.add_mesh(bottom_wall, color="black", line_width=5)
+    plotter.add_mesh(top_wall, color="black", line_width=5)
+    plotter.add_mesh(inlet_wall, color="grey", line_width=3)
+    plotter.add_mesh(outlet_wall, color="grey", line_width=3)
+
+    # --- Customize and Show Plot ---
+    plotter.view_xy()
+    plotter.enable_parallel_projection()
+    plotter.add_text(
+        "CFD Prediction (Pressure Contours, Velocity Glyphs)",
+        position="upper_edge",
+        font_size=10,
+    )
+    plotter.show()
+
+except ImportError:
+    print("\nPyVista not installed. Skipping PyVista visualization.")
+except Exception as e:
+    print(f"\nError during PyVista visualization: {e}")
