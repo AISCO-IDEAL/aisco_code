@@ -1,7 +1,6 @@
 cadquery==2.6.0
 matplotlib==3.10.7
 numpy>=2
-
 plotly==5.22.0
 scikit-image>=0.0
 torch==2.3.1
