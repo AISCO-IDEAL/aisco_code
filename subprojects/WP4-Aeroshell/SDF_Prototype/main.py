@@ -5,11 +5,12 @@ import numpy as np
 from sdf import SDFNetwork
 from losses import SDFLosses  # Assuming you save the above in losses.py
 from utils import visualize_sdf  # Import the new utilities
-from mesh_to_pointcloud import stl_to_point_cloud
+
+username="aalthaus"  # Replace with your actual username
 
 def main():
     model = SDFNetwork()
-    loss_fn = SDFLosses(weights=[1.0, 1.0, 1.0, 1.0, 1.0])
+    loss_fn = SDFLosses(weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0])  # Adjust weights as needed
     #################### ADD ASSEMBLY POINTS HERE ####################
     # Path to your STL file
     stl_file_path = '/cluster/home/eschaerer/AISCO-code/subprojects/WP2-Assembler/shells/shell0.stl'
@@ -22,17 +23,20 @@ def main():
     print(f"Point cloud generated and saved as 'shell0_point_cloud.npy' with {len(point_cloud)} points.")
     ##################################################################
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    for epoch in range(1):
+    epochs=500
+    for epoch in range(epochs):
         optimizer.zero_grad()
         total_loss = loss_fn.get_total_loss(model, point_cloud)
         total_loss.backward()
         optimizer.step()
-        if epoch % 10 == 0:
+
+        if epoch % 100 == 0:
             print(f"Epoch {epoch}, Total Loss: {total_loss.item():.4f}")
     # Save the trained model
-    save_dir = "/cluster/home/eschaerer/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/main_models"
+    save_dir = f"/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/main_models"
     os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, f'sdf_model_{datetime.date.today()}.pth')
+    datum = datetime.datetime.now()
+    save_path = os.path.join(save_dir, f'sdf_model_{datum.strftime("%m_%d_%H_%M")}.pth')
     torch.save(model, save_path)
     print(f"Model saved to: {save_path}")
 

@@ -1,0 +1,6 @@
+numpy==1.25.2
+scikit-image>=0.0
+torch==2.3.1
+trimesh==4.8.3
+OCP==7.8.1.1
+cadquery==2.6.0

@@ -36,7 +36,7 @@ def train_sdf_model(model: SDFNetwork, config: T.Dict) -> SDFNetwork:
 
     # Initialize optimizer and loss function
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    loss_fn = SDFLosses()
+    loss_fn = SDFLosses(weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0])  # Adjust weights as needed
 
     for epoch in range(num_epochs):
         # Pre-condition for each epoch:

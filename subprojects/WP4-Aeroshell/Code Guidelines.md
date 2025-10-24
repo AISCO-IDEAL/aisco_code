@@ -1,6 +1,12 @@
 #aalthaus 
 This markdown file should serve as a code guideline we would like to enforce in the WP4 submodule (aeroshell generation)
 
+You can create a requirements file by navigating to this folder in a terminal and running 
+```sh
+pip freeze > requirements.txt
+```
+
+
 
 ## Example code on how to use typing and document codes
 
