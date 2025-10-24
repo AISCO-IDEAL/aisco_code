@@ -1,9 +1,9 @@
 import datetime
-import torch
 import os
-import numpy as np
-from sdf import SDFNetwork
+
+import torch
 from losses import SDFLosses  # Assuming you save the above in losses.py
+from sdf import SDFNetwork
 from utils import visualize_sdf  # Import the new utilities
 
 username="aalthaus"  # Replace with your actual username
@@ -16,7 +16,6 @@ def main(load_pretrained_model: bool = False):
         model_path = os.path.join(load_dir, 'sdf_sphere_model_2025-10-24.pth')  # Specify the correct model filename
         model = torch.load(model_path)
         print(f"Model loaded from: {model_path}")
-        
     else:
         model = SDFNetwork()
     loss_fn = SDFLosses(weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0])  # Adjust weights as needed
@@ -40,7 +39,7 @@ def main(load_pretrained_model: bool = False):
     points = torch.randn(1000, 3, requires_grad=True)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    epochs= 50 
+    epochs= 50
     for epoch in range(epochs):
         optimizer.zero_grad()
         total_loss = loss_fn.get_total_loss(model, points)
@@ -64,5 +63,3 @@ def main(load_pretrained_model: bool = False):
 
 if __name__ == "__main__":
     main(load_pretrained_model=True)
-    
-

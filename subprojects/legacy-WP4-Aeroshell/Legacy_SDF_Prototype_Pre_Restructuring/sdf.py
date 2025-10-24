@@ -1,12 +1,8 @@
+
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-import typing as T
-import numpy as np
-import trimesh
-import os
-import datetime
-from skimage import measure
+from torch import nn
+
 
 class SDFNetwork(nn.Module):
     def __init__(self, in_dim=3, hidden=128, layers=6, use_skip_connection=False):
@@ -44,7 +40,6 @@ class SDFNetwork(nn.Module):
                 x = torch.cat([x, original_x], dim=1)
                 x = F.leaky_relu(self.skip_layer(x), negative_slope=0.1)
         sdf = self.output_layer(x).squeeze(-1)
-        
         # Only compute gradients if input requires grad (i.e., during training)
         if original_x.requires_grad: # Updated x to original_x by Clemens
             grad_sdf = torch.zeros((x.shape[0], self.in_dim), device=x.device)

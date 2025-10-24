@@ -1,6 +1,8 @@
 
 import matplotlib.pyplot as plt
 import numpy
+
+
 #plot different losses and total loss over epochs:
 def plot_loss_curve(losses, title="Training Loss Curve"):
 

@@ -1,7 +1,6 @@
 """
 This Code is written by written by Clemens Huber
 This coded is used in the following files:
-- 
 """
 from typing import cast
 
@@ -10,7 +9,7 @@ from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeVertex
 from OCP.BRepClass3d import BRepClass3d_SolidClassifier
 from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
-from OCP.TopAbs import TopAbs_IN, TopAbs_ON, TopAbs_OUT
+from OCP.TopAbs import TopAbs_IN, TopAbs_ON
 
 
 class SDFfromCadQuery:
@@ -27,7 +26,6 @@ class SDFfromCadQuery:
         self._shape = shape
         self._pointgrid = pointgrid
         self._sdf_at_pointgrid = [self.sdf(x, y, z) for x, y, z in self._pointgrid]
-    
     def sdf(self, x: float, y: float, z: float) -> float:
         """
         Signed distance from (x, y, z) to self._shape (CadQuery shape).
@@ -63,20 +61,20 @@ class SDFfromCadQuery:
 
     def fsdf(self, x: float, y: float, z: float) -> float:
         # calculates the signed distance form point (x, y, z) to the CadQuery shape boints inside the shape are negative
-        pnt = gp_Pnt(x, y, z) 
-        vertex = BRepBuilderAPI_MakeVertex(pnt).Vertex() 
-        shape_ocp = self._shape.wrapped 
-        dist_shape_shape = BRepExtrema_DistShapeShape(vertex, shape_ocp) 
-        dist_shape_shape.Perform() 
-        d = dist_shape_shape.Value()  
+        pnt = gp_Pnt(x, y, z)
+        vertex = BRepBuilderAPI_MakeVertex(pnt).Vertex()
+        shape_ocp = self._shape.wrapped
+        dist_shape_shape = BRepExtrema_DistShapeShape(vertex, shape_ocp)
+        dist_shape_shape.Perform()
+        d = dist_shape_shape.Value()
         print(d)
         if d==0: # Point is either on the surface or inside the shape
             world = cq.Workplane("XY").box(100, 100, 100)
             negativ = world.cut(cq.Workplane().newObject([self._shape])).val()
             negativ = cast(cq.Shape, negativ)
-            negativ = negativ.wrapped 
-            dist_shape_shape = BRepExtrema_DistShapeShape(vertex, negativ) 
-            dist_shape_shape.Perform() 
+            negativ = negativ.wrapped
+            dist_shape_shape = BRepExtrema_DistShapeShape(vertex, negativ)
+            dist_shape_shape.Perform()
             d = - dist_shape_shape.Value()
             print(d)
         return d
@@ -86,7 +84,6 @@ class SDFfromCadQuery:
 
     def pointgrid(self) -> list[list[float]]:
         return self._pointgrid
-    
 class BackupAssembly:
     def __init__(self):
         def m(value: float) -> float:
@@ -94,7 +91,7 @@ class BackupAssembly:
         outer_len, outer_wid, outer_ht = 2.0, 1.2, 0.8     # outer cuboid: 2.0 m × 1.2 m × 0.8 m
         inner_len, inner_wid, inner_ht = 1.2, 0.6, 0.4     # inner cuboid: 1.2 m × 0.6 m × 0.4 m
         inner_offset_m = (0.0, 0.0, 0.0)
-        self._outer = cast(cq.Solid, 
+        self._outer = cast(cq.Solid,
                            cq.Workplane("XY").box(m(outer_len), m(outer_wid), m(outer_ht), centered=True).val())
         self._inner = cast(cq.Solid,
             cq.Workplane("XY")
