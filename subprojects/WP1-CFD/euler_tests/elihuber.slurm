@@ -53,4 +53,4 @@ export HF_TOKEN="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"  # Replace with your act
 #------------------------------------------------------------------------------
 # Run the Relevant script
 #------------------------------------------------------------------------------
-python "/cluster/home/elihuber/AISCO-code/subprojects/WP1-CFD/euler_tests/testing_euler/test_multiple_gpu.py"
+python "/cluster/home/elihuber/cuda.py"
