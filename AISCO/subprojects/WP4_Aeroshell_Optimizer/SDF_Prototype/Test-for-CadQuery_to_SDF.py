@@ -26,7 +26,7 @@ if False:
 sdf_valus = sdf_converter.sdf_at_pointgrid()
 
 # sort them for their z values and plot each layer
-pointgrid = sdf_converter.pointgrid()  
+pointgrid = sdf_converter.pointgrid()
 pointgrid_np = np.array(pointgrid)
 sdf_values_np = np.array(sdf_valus)
 z_values = np.unique(pointgrid_np[:, 2])
@@ -35,7 +35,7 @@ for z in z_values:
     x_vals = pointgrid_np[mask][:, 0]
     y_vals = pointgrid_np[mask][:, 1]
     sdf_vals_layer = sdf_values_np[mask]
-    
+
     # create a imshow plot
     plt.figure()
     plt.tricontourf(x_vals, y_vals, sdf_vals_layer, levels=14, cmap="RdBu_r")

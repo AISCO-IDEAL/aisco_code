@@ -1,8 +1,7 @@
-from sdf import SDFNetwork
+
 import torch
-import torch.nn as nn
-import typing as T
 from losses import SDFLosses
+from sdf import SDFNetwork
 
 basic_config = {
     "learning_rate": 1e-3,
@@ -12,7 +11,7 @@ basic_config = {
     # Add other training parameters as needed, don't forget to update training loop accordingly
 }
 
-def train_sdf_model(model: SDFNetwork, config: T.Dict) -> SDFNetwork:
+def train_sdf_model(model: SDFNetwork, config: dict) -> SDFNetwork:
     """
     Train the given SDFNetwork model based on the provided configuration.
 

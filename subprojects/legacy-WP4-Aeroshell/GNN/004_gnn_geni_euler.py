@@ -1,14 +1,14 @@
+import argparse
+import os
+
 import matplotlib.pyplot as plt
-import numpy as np
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 from torch import nn
-from torch_geometric.data import Data
-from torch_geometric.nn import GCNConv, global_mean_pool
-import os
-import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-import argparse
+from torch_geometric.nn import GCNConv, global_mean_pool
+
 
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
@@ -90,10 +90,9 @@ class Autoencoder:
                     if self.rank == 0:
                         print(f'Best latent size found: {latent_size}')
                     break
-        else:
-            best_model = model
-            if self.rank == 0:
-                print(f'Using latent size: {latent_size} (loss threshold not met)')
+        best_model = model
+        if self.rank == 0:
+            print(f'Using latent size: {latent_size} (loss threshold not met)')
         return best_model, latent_size
 
     def encode(self, area):

@@ -1,6 +1,5 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from torch import nn
+
 
 class SDFNet(nn.Module):
     def __init__(self, in_dim=2, hidden=64, layers=4, activation=nn.LeakyReLU):

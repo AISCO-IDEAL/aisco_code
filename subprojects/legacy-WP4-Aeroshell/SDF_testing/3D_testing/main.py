@@ -1,15 +1,16 @@
 
-import torch
-import torch.optim as optim
-import numpy as np
 import time
 from datetime import datetime
 from pathlib import Path
 
+import torch
+from losses import SDF3DLossCalculator
+
 # Import our custom modules
 from sdf import SDF3DNet
-from losses import SDF3DLossCalculator
+from torch import optim
 from visualization import SDF3DVisualizer
+
 
 class SDF3DTrainer:
     """
@@ -33,9 +34,9 @@ class SDF3DTrainer:
 
         # Initialize network
         self.sdf_net = SDF3DNet(
-            in_dim=3, 
-            hidden=128, 
-            layers=6, 
+            in_dim=3,
+            hidden=128,
+            layers=6,
             use_skip_connection=True
         ).to(self.device)
 
@@ -50,7 +51,7 @@ class SDF3DTrainer:
             torch.tensor([1.8, 1.8, 0.8], device=self.device)       # max (x, y, z)
         )
 
-        # Inner bounds: vehicle must fill at least this much space  
+        # Inner bounds: vehicle must fill at least this much space
         self.inner_bounds = (
             torch.tensor([-0.5, -0.5, -0.2], device=self.device),   # min (x, y, z)
             torch.tensor([0.5, 0.5, 0.2], device=self.device)        # max (x, y, z)
@@ -89,7 +90,7 @@ class SDF3DTrainer:
             checkpoint_interval: Frequency of checkpoint saving
         """
         print("\nStarting SDF3D Shape Optimization...")
-        print(f"Target: Minimize frontal area, maximize top area")
+        print("Target: Minimize frontal area, maximize top area")
         print(f"Constraints: Outer bounds {self.outer_bounds}, Inner bounds {self.inner_bounds}")
         print(f"Training for {self.num_iterations} iterations...")
 
@@ -110,9 +111,9 @@ class SDF3DTrainer:
 
             # Compute all loss components
             losses = self.loss_calculator.compute_total_loss(
-                self.sdf_net, 
-                sample_points, 
-                self.outer_bounds, 
+                self.sdf_net,
+                sample_points,
+                self.outer_bounds,
                 self.inner_bounds
             )
 
@@ -231,7 +232,7 @@ class SDF3DTrainer:
         if save_plots:
             # Save metrics to text file
             metrics_path = output_dir / "final_metrics.txt"
-            
+
             # Prepare metrics text
             metrics_text = ["=== Final Shape Optimization Results ===\n"]
             metrics_text.extend(f"{key}: {value}\n" for key, value in metrics.items())
@@ -243,7 +244,7 @@ class SDF3DTrainer:
                 f"Network Architecture: {self.sdf_net.hidden} hidden units, {self.sdf_net.layers} layers\n",
                 f"Final Loss: {self.loss_history['total'][-1]:.6f}\n"
             ])
-            
+
             # Write all lines at once
             metrics_path.write_text("".join(metrics_text))
 

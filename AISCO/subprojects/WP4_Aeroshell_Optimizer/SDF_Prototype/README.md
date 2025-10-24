@@ -14,7 +14,7 @@ CAD Assembly → [Assembler] → SDF Network → [Training] → Trained SDF → 
 This SDF_Prototype folder serves as a week long experiment where @aalthaus @eschaerer @chuber test the concept of a 3D SDF generator
 
 
-Some flaws that still need to be adressed: 
+Some flaws that still need to be adressed:
 
 | Transition from flat to src/ folder structure | Purpose: Get used to real deep learning workflow and keep structure cleaner. For detailed advantages: https://medium.com/@adityaghadge99/python-project-structure-why-the-src-layout-beats-flat-folders-and-how-to-use-my-free-template-808844d16f35 |
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

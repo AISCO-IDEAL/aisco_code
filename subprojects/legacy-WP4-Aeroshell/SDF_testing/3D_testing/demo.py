@@ -12,28 +12,28 @@ tqdm>=4.60.0
 #    f.write(code_requirements)
 
 # Create a simple demo script for quick testing
-'''code_demo = 
+'''code_demo =
 #!/usr/bin/env python3
 """
 Simple demo script for 3D SDF shape optimization.
 This runs a shorter optimization for quick testing.
 """
 '''
-import torch
 from main import SDF3DTrainer
+
 
 def run_quick_demo():
     """Run a quick demo with reduced iterations for testing"""
     print("=== Quick Demo: 3D SDF Shape Optimization ===")
     print("Running with reduced iterations for fast testing...")
-    
+
     # Initialize trainer
     trainer = SDF3DTrainer()
-    
+
     # Reduce iterations for quick demo
     trainer.num_iterations = 200
     trainer.sample_points_per_iter = 512
-    
+
     # Adjust loss weights for faster convergence in demo
     trainer.loss_calculator.update_weights({
         'eikonal': 0.5,
@@ -42,30 +42,30 @@ def run_quick_demo():
         'top_area': -2.0,
         'smoothness': 0.2
     })
-    
-    print(f"Demo configuration:")
+
+    print("Demo configuration:")
     print(f"  - Iterations: {trainer.num_iterations}")
     print(f"  - Sample points per iteration: {trainer.sample_points_per_iter}")
-    print(f"  - Reduced complexity for fast results")
+    print("  - Reduced complexity for fast results")
     print()
-    
+
     # Run training
     trainer.train(save_checkpoints=False)
-    
+
     # Generate basic visualizations
     print("\\nGenerating demo visualizations...")
     trainer.sdf_net.eval()
-    
+
     # Just show cross-sections and loss curves (faster than 3D)
     trainer.visualizer.plot_loss_curves(trainer.loss_history, save_path="demo_loss_curves.png")
     trainer.visualizer.plot_cross_sections(trainer.sdf_net, save_path="demo_cross_sections.png")
-    
+
     # Compute final metrics
     metrics = trainer.visualizer.compute_final_metrics(trainer.sdf_net)
-    
+
     print("\\n=== Demo Complete ===")
     print("Check demo_loss_curves.png and demo_cross_sections.png for results")
-    
+
     return trainer, metrics
 
 if __name__ == "__main__":
@@ -197,7 +197,7 @@ After training, the system generates:
 ### SDF Representation
 The neural network learns to map 3D coordinates to signed distances:
 - **Negative values**: Inside the vehicle shape
-- **Positive values**: Outside the vehicle shape  
+- **Positive values**: Outside the vehicle shape
 - **Zero level set**: The vehicle surface
 
 ### Bounding Box Constraints
@@ -207,7 +207,7 @@ The neural network learns to map 3D coordinates to signed distances:
 
 ### Area Computation
 - **Frontal area**: YZ projection at x=0 (drag-relevant)
-- **Top area**: XY projection at z=0.5 (solar-relevant)  
+- **Top area**: XY projection at z=0.5 (solar-relevant)
 - **Smooth approximations**: Differentiable Heaviside functions
 
 ## Customization
@@ -271,7 +271,7 @@ The final vehicle shape typically resembles an elongated droplet or optimized ae
 4. **Slow convergence**: Adjust loss weights or use learning rate scheduling
 
 ### GPU Memory Issues
-- Reduce `sample_points_per_iter` 
+- Reduce `sample_points_per_iter`
 - Use smaller network (`hidden=64, layers=4`)
 - Enable gradient checkpointing
 
@@ -297,7 +297,7 @@ print()
 print("=== Project Structure Created ===")
 print("Files created:")
 print("  - sdf_network.py         (3D Neural SDF Network)")
-print("  - loss_functions.py      (Multi-objective loss functions)")  
+print("  - loss_functions.py      (Multi-objective loss functions)")
 print("  - visualization.py       (3D visualization tools)")
 print("  - main_training.py       (Complete training pipeline)")
 print("  - demo.py               (Quick demo script)")

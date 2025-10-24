@@ -1,12 +1,11 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import torch_geometric
+import numpy as np
+import torch
+import torch.nn.functional as F
+from torch import nn
 from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv
+
 
 # --- 1. Generate Synthetic Data ---
 def generate_synthetic_data(num_samples=100, num_nodes=3, num_points=100):

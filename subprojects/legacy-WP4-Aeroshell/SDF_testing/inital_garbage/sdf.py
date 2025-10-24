@@ -1,8 +1,8 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import matplotlib.pyplot as plt
 import numpy as np
-import matplotlib.pyplot as plt 
+import torch
+import torch.nn.functional as F
+from torch import nn
 
 #inital copilot generation, to be checked
 
@@ -14,7 +14,7 @@ class SDFNetwork(nn.Module):
         self.d_out = d_out
         self.d_hidden = d_hidden
         self.n_layers = n_layers
-        
+
         layers = []
         for l in range(n_layers-1):
             if l == 0:
@@ -22,13 +22,13 @@ class SDFNetwork(nn.Module):
             else:
                 layer = nn.Linear(d_hidden, d_hidden)
 
-            
+
             layers.append(layer)
             #layers.append(nn.ReLU(d_hidden))
         layers.append(nn.Linear(d_hidden, d_out,bias=False))
         self.layers = nn.ModuleList(layers)
         self.activation = F.leaky_relu
-        
+
 
     def forward(self, x):
         h = x
@@ -39,12 +39,12 @@ class SDFNetwork(nn.Module):
             h = layer(h)
             if l < self.n_layers - 2:
                 h = self.activation(h)
-            
+
         return h
-    
+
 
     def validate(self, radius,size=100):
-        
+
         phis=np.linspace(0,2*np.pi,size)
         points=np.zeros((size,2))
         for i in range(size):
@@ -63,8 +63,8 @@ class SDFNetwork(nn.Module):
                 sdf_values = np.array(out_t.tolist())
         loss=np.mean(np.abs(sdf_values))
         print("Validation loss in avg units away: ",loss)
-        
-        
+
+
 
     #Custom Network Member Function to visualize SDF on 2x2 grid:
 
@@ -109,23 +109,23 @@ class SDFNetwork(nn.Module):
         y = np.linspace(-2, 2, grid_size)
         xx, yy = np.meshgrid(x, y)
         points = np.stack([xx.ravel(), yy.ravel()], axis=-1)
-        
+
         points_tensor = torch.tensor(points, dtype=torch.float32, requires_grad=True)
         out_t = self(points_tensor)
-        
+
         grad_outputs = torch.ones_like(out_t)
-        gradients = torch.autograd.grad(outputs=out_t, 
+        gradients = torch.autograd.grad(outputs=out_t,
                                       inputs=points_tensor,
                                       grad_outputs=grad_outputs,
                                       create_graph=True)[0]
-        
+
         gradient_magnitudes = torch.norm(gradients, dim=1).detach().cpu()
         try:
             gradient_magnitudes = gradient_magnitudes.numpy()
         except Exception:
             gradient_magnitudes = np.array(gradient_magnitudes.tolist())
         gradient_grid = gradient_magnitudes.reshape((grid_size, grid_size))
-        
+
         plt.figure(figsize=(8, 8))
         plt.contourf(xx, yy, gradient_grid, levels=50, vmin=0, vmax=2)
         plt.colorbar(label='Gradient Magnitude')
@@ -133,5 +133,5 @@ class SDFNetwork(nn.Module):
         plt.ylabel('Y')
         plt.title('SDF Gradient Magnitudes')
         plt.show()
-        
+
         return gradient_grid

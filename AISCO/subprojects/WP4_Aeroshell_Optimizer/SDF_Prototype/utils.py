@@ -1,11 +1,11 @@
 # utils.py
-import torch
+
 import numpy as np
-from skimage import measure
+import torch
 import trimesh
-import os
-import datetime
 from sdf import SDFNetwork
+from skimage import measure
+
 
 # In utils.py
 def visualize_sdf(model, grid_size=128, threshold=0.0, filename="sdf_mesh.ply"):

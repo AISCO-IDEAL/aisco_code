@@ -1,9 +1,8 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
 import matplotlib.pyplot as plt
-from torch_geometric.data import Data
+import numpy as np
+import torch
+import torch.nn.functional as F
+from torch import nn
 from torch_geometric.nn import GCNConv, global_mean_pool
 
 
@@ -37,7 +36,7 @@ class SolarCarGNN(nn.Module):
         x = global_mean_pool(x, torch.zeros(x.size(0), dtype=torch.long).to(x.device))
         return self.lin(x)
 
-    
+
 def train(num_epochs=50, num_samples=100, num_nodes=3):
     x, _ = generate_synthetic_data(num_samples, num_nodes)
     model = SolarCarGNN()

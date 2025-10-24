@@ -3,7 +3,7 @@ import time
 import sys
 import os
 
-print(f"--- GPU Compute Test Starting ---")
+print("--- GPU Compute Test Starting ---")
 print(f"Python Version: {sys.version.split()[0]}")
 print(f"PyTorch Version: {torch.__version__}")
 
@@ -18,7 +18,7 @@ print(f"\n[INFO] Success! PyTorch is using device: {torch.cuda.get_device_name(d
 
 # 2. Set up large matrices
 # 15000 x 15000 matrices will make an RTX 4090 work for a moment
-matrix_size = 15000 
+matrix_size = 15000
 print(f"[INFO] Creating two random {matrix_size}x{matrix_size} matrices on the CPU...")
 
 # Create on CPU first
@@ -31,7 +31,7 @@ start_transfer = time.time()
 a_gpu = a_cpu.to(device)
 b_gpu = b_cpu.to(device)
 # Wait for the transfer to complete (synchronize)
-torch.cuda.synchronize() 
+torch.cuda.synchronize()
 end_transfer = time.time()
 print(f"  -> Transfer to GPU took: {end_transfer - start_transfer:.4f} seconds.")
 
@@ -44,7 +44,7 @@ for i in range(10):
     c_gpu = torch.matmul(a_gpu, b_gpu)
 
 # Wait for all computations to finish
-torch.cuda.synchronize() 
+torch.cuda.synchronize()
 end_compute = time.time()
 
 total_time = end_compute - start_compute
@@ -56,4 +56,4 @@ print(f"  -> Average time per multiplication: {avg_time:.4f} seconds.")
 print("\n[INFO] Moving result matrix back to the CPU...")
 c_cpu = c_gpu.cpu()
 
-print(f"\n--- GPU Compute Test Finished Successfully ---")
+print("\n--- GPU Compute Test Finished Successfully ---")

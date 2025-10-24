@@ -1,6 +1,8 @@
 #Signed Distance Functions (SDFs) for basic geometries and operations
-import torch
 import matplotlib.pyplot as plt
+import torch
+
+
 def get_points(batch_size=512):
     device="cpu"
     points = torch.rand(batch_size, 2) * 2 - 1
@@ -71,9 +73,9 @@ def visualize_gradients(model):
     # Calculate gradient magnitudes and reshape to grid
     gradient_magnitudes = torch.norm(gradients, dim=1).reshape(X.shape)
     gradient_magnitudes = gradient_magnitudes.detach().numpy()
-    
+
     plt.figure(figsize=(8, 8))
-    contour = plt.contourf(X.numpy(), Y.numpy(), gradient_magnitudes, 
+    contour = plt.contourf(X.numpy(), Y.numpy(), gradient_magnitudes,
                           levels=50, cmap='viridis', vmin=0, vmax=2)
     plt.colorbar(contour, label='Gradient Magnitude')
     plt.title('Gradient Magnitude Field of the SDF')

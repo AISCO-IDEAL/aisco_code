@@ -1,12 +1,14 @@
-import torch
-import torch.nn as nn
-import typing as T
 import datetime
-from sdf import SDFNetwork
 import os
+import typing as T
+
 import numpy as np
-from skimage import measure
+import torch
 import trimesh
+from sdf import SDFNetwork
+from skimage import measure
+from torch import nn
+
 
 def sphere_gt(points: torch.Tensor, coordinates: torch.Tensor = torch.tensor([0,0,0]), radius: float = 1.0) -> torch.Tensor:
     """
@@ -41,7 +43,7 @@ def train_sphere(radius: float = 1.0) -> SDFNetwork:
             print(f"Epoch {epoch}, Loss: {loss.item()}")
     return model
 
-def get_sdf_sphere_network(use_original: bool = False, radius: float = 1.0, save_network: bool = True,username: str="aalthaus") -> T.Union[SDFNetwork, T.Callable]:
+def get_sdf_sphere_network(use_original: bool = False, radius: float = 1.0, save_network: bool = True,username: str="aalthaus") -> SDFNetwork | T.Callable:
     """
     Return an SDFNetwork representing a sphere of given radius.
     Args:

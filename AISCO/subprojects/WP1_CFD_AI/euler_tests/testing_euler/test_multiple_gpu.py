@@ -4,7 +4,7 @@ import time
 import sys
 import os
 
-print(f"--- Multi-GPU Compute Test Starting ---")
+print("--- Multi-GPU Compute Test Starting ---")
 print(f"Python Version: {sys.version.split()[0]}")
 print(f"PyTorch Version: {torch.__version__}")
 
@@ -19,7 +19,7 @@ print(f"\n[INFO] Found {gpu_count} GPU(s).")
 if gpu_count < 2:
     print(f"[WARNING] Only found {gpu_count} GPU. Request 2 or more GPUs in your SLURM script to test parallelism.")
 else:
-    print(f"[INFO] This is a multi-GPU node. Proceeding with DataParallel test.")
+    print("[INFO] This is a multi-GPU node. Proceeding with DataParallel test.")
 
 # 2. Define a simple model
 class SimpleModel(nn.Module):
@@ -76,5 +76,5 @@ for i in range(gpu_count):
     print(f"  -> GPU {i} ({torch.cuda.get_device_name(i)}) Memory Used: "
           f"{torch.cuda.memory_allocated(i) / 1024**3:.2f} GB")
 
-print(f"\n[INFO] If all GPUs have memory allocated, DataParallel worked!")
-print(f"--- Multi-GPU Compute Test Finished Successfully ---")
+print("\n[INFO] If all GPUs have memory allocated, DataParallel worked!")
+print("--- Multi-GPU Compute Test Finished Successfully ---")

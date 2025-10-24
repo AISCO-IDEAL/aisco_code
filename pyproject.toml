@@ -1,25 +1,47 @@
+[build-system]
+
+requires = ["setuptools>=74.0.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "AISCO-code"
 version = "0.1.0"
-description = "global git repo for all AISCO code"
+description = "Monorepo for all AISCO code"
 authors = [
-    {name = "Soheyl Massoudi", email = "smassoudi@ethz.ch"},
     {name = "Kolja Diehl", email = "kdiehl@ethz.ch"}
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = "==3.11.6"
+
+# standard environments
+
+dependencies = [
+  "gymnasium >= 1.0.0",
+  "pandas >= 2.2.3",
+  "matplotlib >= 3.9.3",
+  "numpy",
+  "ruff>=0.1.0",
+  "pre-commit>=3.0.0",
+  "mypy>=1.17.1",
+  "torch>=2.6.0"
+]
 
 [project.optional-dependencies]
-dev = [
-  "mypy",
-  "ruff",
-  "pre-commit",
-]
+#dev = [
+ # "mypy",
+  #"ruff",
+ # "pre-commit",
+#]
 WP1_CFD_AI = [
 
 ]
+WP2_Assembler =[
 
-WP2_ASSEMBLER =[
+]
+WP3_Solarestimator = [
+
+]
+WP4_Aeroshell_Optimizer = [
 
 ]
 

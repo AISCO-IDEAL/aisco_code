@@ -1,11 +1,14 @@
 import torch
-from geometries import sdf_circle, sdf_box, sdf_union_GT,sdf_intersection_GT, visualization, visualize_gradients
+from geometries import (
+    sdf_intersection_GT,
+    sdf_union_GT,
+    visualization,
+    visualize_gradients,
+)
 from training import train
-import numpy
-
 
 if __name__ == "__main__":
-    
+
     # Create a grid of points
     x = torch.linspace(-1.0, 1.0, 400)
     y = torch.linspace(-1.0, 1.0, 400)
@@ -29,6 +32,3 @@ if __name__ == "__main__":
     intersect_outputs=intersect_model(points)
     visualization(intersect_outputs.reshape(X.shape),text="Intersection Network")
     visualize_gradients(intersect_model)
-
-
-    

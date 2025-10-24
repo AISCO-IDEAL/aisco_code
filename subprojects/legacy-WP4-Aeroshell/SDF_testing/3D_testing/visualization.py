@@ -1,14 +1,13 @@
 
-import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
-import torch
-from skimage import measure
 import warnings
+
+import matplotlib.pyplot as plt
+import numpy as np
+import plotly.graph_objects as go
+import torch
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from skimage import measure
+
 warnings.filterwarnings('ignore')
 
 class SDF3DVisualizer:
@@ -66,7 +65,7 @@ class SDF3DVisualizer:
             print(f"Marching cubes failed: {e}")
             return None, None, sdf_grid
 
-    def plot_3d_surface_matplotlib(self, sdf_net, bounds=(-2, 2), resolution=64, 
+    def plot_3d_surface_matplotlib(self, sdf_net, bounds=(-2, 2), resolution=64,
                                   save_path=None, show_wireframe=False):
         """
         Create 3D surface plot using matplotlib.
@@ -106,7 +105,7 @@ class SDF3DVisualizer:
         ax.set_zlim(bounds)
 
         # Add bounding box visualization
-        self._add_bounding_boxes(ax, 
+        self._add_bounding_boxes(ax,
                                outer_bounds=((-1.8, -1.8, -0.8), (1.8, 1.8, 0.8)),
                                inner_bounds=((-0.5, -0.5, -0.2), (0.5, 0.5, 0.2)))
 
@@ -139,7 +138,7 @@ class SDF3DVisualizer:
         fig = go.Figure(data=[
             go.Mesh3d(
                 x=vertices[:, 0],
-                y=vertices[:, 1], 
+                y=vertices[:, 1],
                 z=vertices[:, 2],
                 i=faces[:, 0],
                 j=faces[:, 1],
@@ -194,7 +193,7 @@ class SDF3DVisualizer:
         # XY cross-section (top view) at z=0
         X, Y = np.meshgrid(coords, coords, indexing='ij')
         Z = np.zeros_like(X)
-        points = torch.tensor(np.stack([X.flatten(), Y.flatten(), Z.flatten()], axis=1), 
+        points = torch.tensor(np.stack([X.flatten(), Y.flatten(), Z.flatten()], axis=1),
                             dtype=torch.float32, device=self.device)
 
         with torch.no_grad():
@@ -211,7 +210,7 @@ class SDF3DVisualizer:
         # XZ cross-section (side view) at y=0
         X, Z = np.meshgrid(coords, coords, indexing='ij')
         Y = np.zeros_like(X)
-        points = torch.tensor(np.stack([X.flatten(), Y.flatten(), Z.flatten()], axis=1), 
+        points = torch.tensor(np.stack([X.flatten(), Y.flatten(), Z.flatten()], axis=1),
                             dtype=torch.float32, device=self.device)
 
         with torch.no_grad():
@@ -228,7 +227,7 @@ class SDF3DVisualizer:
         # YZ cross-section (front view) at x=0
         Y, Z = np.meshgrid(coords, coords, indexing='ij')
         X = np.zeros_like(Y)
-        points = torch.tensor(np.stack([X.flatten(), Y.flatten(), Z.flatten()], axis=1), 
+        points = torch.tensor(np.stack([X.flatten(), Y.flatten(), Z.flatten()], axis=1),
                             dtype=torch.float32, device=self.device)
 
         with torch.no_grad():
@@ -255,7 +254,7 @@ class SDF3DVisualizer:
 
         # Highlight the frontal area (where SDF <= 0)
         frontal_mask = sdf_front <= 0
-        axes[1, 0].imshow(frontal_mask, extent=[-2, 2, -1, 1], origin='lower', 
+        axes[1, 0].imshow(frontal_mask, extent=[-2, 2, -1, 1], origin='lower',
                          cmap='Reds', alpha=0.8, aspect='equal')
         axes[1, 0].contour(Y_front, Z_front, sdf_front, levels=[0], colors='black', linewidths=2)
         axes[1, 0].set_title('Frontal Area (Drag-relevant)')
@@ -276,7 +275,7 @@ class SDF3DVisualizer:
 
         # Highlight the top area (where SDF <= 0)
         top_mask = sdf_top <= 0
-        axes[1, 1].imshow(top_mask, extent=[-2, 2, -2, 2], origin='lower', 
+        axes[1, 1].imshow(top_mask, extent=[-2, 2, -2, 2], origin='lower',
                          cmap='Blues', alpha=0.8, aspect='equal')
         axes[1, 1].contour(X_top, Y_top, sdf_top, levels=[0], colors='black', linewidths=2)
         axes[1, 1].set_title('Top Area (Solar Collection)')
@@ -285,7 +284,7 @@ class SDF3DVisualizer:
         axes[1, 1].grid(True, alpha=0.3)
 
         # 3D visualization of level sets
-        axes[1, 2].text(0.5, 0.5, 'See separate\n3D visualization\nfor complete view', 
+        axes[1, 2].text(0.5, 0.5, 'See separate\n3D visualization\nfor complete view',
                        transform=axes[1, 2].transAxes, ha='center', va='center',
                        fontsize=12, bbox=dict(boxstyle='round', facecolor='lightgray'))
         axes[1, 2].set_title('3D View (Separate Plot)')
@@ -409,16 +408,15 @@ class SDF3DVisualizer:
                     ax.plot3D([p1[0]], [p1[1]], [p1[2]], 'b.', alpha=0.5)
 
         # Add labels
-        ax.text(outer_max[0], outer_max[1], outer_max[2], 'Outer Bound', 
+        ax.text(outer_max[0], outer_max[1], outer_max[2], 'Outer Bound',
                color='red', fontsize=8)
-        ax.text(inner_max[0], inner_max[1], inner_max[2], 'Inner Bound', 
+        ax.text(inner_max[0], inner_max[1], inner_max[2], 'Inner Bound',
                color='blue', fontsize=8)
 
     def _add_plotly_bounding_boxes(self, fig, outer_bounds, inner_bounds):
         """Add bounding box wireframes to plotly 3D plot"""
         # This would add wireframe boxes to the plotly figure
         # Implementation simplified for brevity
-        pass
 
     def compute_final_metrics(self, sdf_net):
         """
