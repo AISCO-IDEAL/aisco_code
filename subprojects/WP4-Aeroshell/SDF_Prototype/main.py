@@ -61,7 +61,7 @@ def main(load_pretrained_model: bool = False):
     print(f"Model saved to: {save_path}")
 
     # Visualize the SDF
-    visualize_sdf(model, grid_size=32, threshold=0.0, filename="sdf_aeroshell_mesh_SphereStart.ply")
+    visualize_sdf(model, grid_size=32, threshold=0.0, filename="sdf_aeroshell_mesh_BiggerSphereStart.ply")
 
     print("Training complete. A mesh has been generated and saved as 'sdf_aeroshell_mesh.ply'. It can be viewed using 3D Point Cloud Visualizer (PLY, ...) from Florian Nick")
 
