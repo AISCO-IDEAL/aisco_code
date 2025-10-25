@@ -1,3 +1,7 @@
+### OUTDATED DO NOT ALTER ###
+### kdiehl created this file on 2024-06-10 15:30:00 ###
+### This file is no longer in use and has been replaced by pyproject.toml ###
+
 name: aisco-code
 channels:
   - conda-forge

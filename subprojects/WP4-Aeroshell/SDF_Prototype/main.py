@@ -3,56 +3,40 @@ import torch
 import os
 import numpy as np
 from sdf import SDFNetwork
-from losses import SDFLosses  # Assuming you save the above in losses.py
-from utils import visualize_sdf  # Import the new utilities
+from train import train_sdf_model  # Import the training function
 
-username="aalthaus"  # Replace with your actual username
+username = "aalthaus"  # Replace with your actual username
 
 def main(load_pretrained_model: bool = False):
+    # Paths and config
+    load_dir = f"/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/dummy_models"
+    model_path = os.path.join(load_dir, 'sdf_sphere_model_2025-10-24.pth')
+    save_dir = f"/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/main_models"
+    stl_file_path = f'/cluster/home/{username}/AISCO-code/subprojects/WP2-Assembler/shells/shell0.stl'
+
+    # Config for training
+    config = {
+        "learning_rate": 1e-4,
+        "num_epochs": 50,
+        "batch_size": 1024,
+    }
+
+    # Initialize or load model
     if load_pretrained_model:
-        # Load a pre-trained model
-        load_dir = f"/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/dummy_models"
-        model_path = os.path.join(load_dir, 'sdf_sphere_model_2025-10-24.pth')  # Specify the correct model filename
         model = torch.load(model_path)
-        print(f"Model loaded from: {model_path}")
-        
     else:
         model = SDFNetwork()
-    loss_fn = SDFLosses(weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0])  # Adjust weights as needed
-    #################### ADD ASSEMBLY POINTS HERE ####################
-    # Path to your STL file
-    stl_file_path = '/cluster/home/eschaerer/AISCO-code/subprojects/WP2-Assembler/shells/shell0.stl'
-    # Generate the point cloud
-    point_cloud = stl_to_point_cloud(stl_file_path)
-    # Convert to PyTorch tensor, ensure float32, and enable gradient tracking
-    point_cloud = torch.from_numpy(point_cloud).float().requires_grad_(True)
-    # Save the point cloud to a .npy file
-    np.save('shell0_point_cloud.npy', point_cloud.detach().numpy())
-    print(f"Point cloud generated and saved as 'shell0_point_cloud.npy' with {len(point_cloud)} points.")
-    ##################################################################
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    epochs= 50 
-    for epoch in range(epochs):
-        optimizer.zero_grad()
-        total_loss = loss_fn.get_total_loss(model, point_cloud)
-        total_loss.backward()
-        optimizer.step()
 
-        if epoch % 10 == 0:
-            print(f"Epoch {epoch}, Total Loss: {total_loss.item():.4f}")
-    # Save the trained model
-    save_dir = f"/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/main_models"
-    os.makedirs(save_dir, exist_ok=True)
-    datum = datetime.datetime.now()
-    save_path = os.path.join(save_dir, f'sdf_model_{datum.strftime("%m_%d_%H_%M")}.pth')
-    torch.save(model, save_path)
-    print(f"Model saved to: {save_path}")
-
-    # Visualize the SDF
-    visualize_sdf(model, grid_size=32, threshold=0.0, filename="sdf_aeroshell_mesh_BiggerSphereStart.ply")
-
-    print("Training complete. A mesh has been generated and saved as 'sdf_aeroshell_mesh.ply'. It can be viewed using 3D Point Cloud Visualizer (PLY, ...) from Florian Nick")
+    # Train the model
+    train_sdf_model(
+        model=model,
+        config=config,
+        point_cloud=None,  # Will be generated in train_sdf_model if stl_file_path is provided
+        load_pretrained_model=load_pretrained_model,
+        model_path=model_path if load_pretrained_model else None,
+        save_dir=save_dir,
+        stl_file_path=stl_file_path,
+    )
 
 if __name__ == "__main__":
     main(load_pretrained_model=True)
-
