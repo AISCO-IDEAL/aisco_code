@@ -14,7 +14,7 @@ def test(x: int) -> str:
         Eine Bestätigungszeichenkette mit dem übergebenen Wert.
     """
 
-    outdir = Path('/home/kdiehl/Dokumente/Studium__Stipendium__Lebenslauf/ETH/AISCO/AISCO-code/AISCO/subprojects/WP5/data/')  # setze hier deinen Zielpfad
+    outdir = Path('/home/kdiehl/Dokumente/Studium__Stipendium__Lebenslauf/ETH/AISCO/AISCO-code/AISCO/subprojects/wp5/data/')  # setze hier deinen Zielpfad
     outdir.mkdir(parents=True, exist_ok=True)       # Verzeichnis anlegen, falls noch nicht vorhanden
 
     # Speichern als .npy

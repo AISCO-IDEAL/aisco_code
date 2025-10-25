@@ -26,16 +26,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-WP1_CFD_AI = [
+wp1_cfd_ai = [
 
 ]
-WP2_Assembler =[
+wp2_assembler =[
 
 ]
 WP3_Solarestimator = [
 
 ]
-WP4_Aeroshell_Optimizer = [
+wp4_aeroshell_optimizer = [
 
 ]
 

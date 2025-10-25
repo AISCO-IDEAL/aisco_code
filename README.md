@@ -23,7 +23,7 @@ There is also a test folder. Store your test cases here
 
 
 # Naming Conventions
-folders use capital letters and underscores, e.g.: WP1_CFD_AI
+folders use capital letters and underscores, e.g.: wp1_cfd_ai
 files only use small letters and underscroes, e.g.: dummy_2.py
 
 classes use capitals for every first letter and do not use underscores, e.g.: ExampleClass
@@ -49,7 +49,7 @@ only one person works per definition. Put you tag (#eth_kuerzel) in every functi
 
 # Coding
 - always define the input and output of a functions, e.g. `def test(x: int) -> str:`
-- call functions via `from AISCO.subprojects.WP5.dummy_2 import test`
+- call functions via `from AISCO.subprojects.wp5.dummy_2 import test`
     - this should also work for folders above or in parallel to yours
 - store generated data in the data folder within your subfolder/WP
     - will be synced via gDrive or NAS later on
