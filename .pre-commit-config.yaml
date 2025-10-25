@@ -1,3 +1,4 @@
+#kdiehl
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0
@@ -24,5 +25,3 @@ repos:
       - id: mypy
         # Optional: MyPy-Konfiguration aus pyproject.toml nutzen
         additional_dependencies: [types-requests]  # Falls du spezifische Typen brauchst
-
-

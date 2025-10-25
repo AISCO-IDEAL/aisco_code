@@ -44,11 +44,11 @@ def _polar_to_cart(r, theta, ox=0.0, oy=0.0):
 
 def _deg_to_index(theta_deg, dtheta_deg):
     # map degrees in [-180, 180) to index 0..N-1, where N = 360 / dtheta_deg
-    n = int(round(360.0 / dtheta_deg))  # noqa: RUF046
+    n = int(round(360.0 / dtheta_deg))
     # normalize angle into [-180, 180)
     td = ((theta_deg + 180) % 360) - 180
     # index 0 corresponds to -180 degrees
-    idx = int(round((td + 180.0) / dtheta_deg))  # noqa: RUF046
+    idx = int(round((td + 180.0) / dtheta_deg))
     if idx == n:  # wrap 180 exactly to N-1
         idx = n - 1
     return idx
@@ -182,7 +182,7 @@ class Area:
             self.params.append(i[1])
         for _ in range(200- 2*len(self.must_build_zones)):
             self.params.append(0)
-  
+
         self.dtheta_deg = np.rad2deg(inner_shape.dtheta)
         self.overrides = {}  # index -> (x, y)
 
@@ -236,7 +236,7 @@ class Area:
                     cloud[idx, 1] = float(y)
 
         return cloud
-    
+
 # 2.3 Geni
 class Geni:
     def __init__(self, areas):
@@ -252,8 +252,8 @@ class Geni:
             nn.Linear(512, self.area_size),
             nn.Sigmoid(),
         )
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)    
-  
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
+
     def train(self, epochs, e_0 = 0):
         losses = []
         for epoch in range(epochs):
@@ -283,7 +283,6 @@ class Geni:
         # 2.3.3.0 Definition of differentiable max and min functions:
         def soft_max(x): return torch.logsumexp(alpha * x, dim=0) / alpha
         def soft_min(x): return -torch.logsumexp(-alpha * x, dim=0) / alpha
-        
         # 2.3.3.1 Calculation of width
         x_max = soft_max(points[:, 0])
         x_min = soft_min(points[:, 0])
@@ -293,7 +292,6 @@ class Geni:
         y_max = soft_max(points[:, 1])
         y_min = soft_min(points[:, 1])
         height = y_max - y_min
-        
         # 2.3.3.3 Calculation of a Loss for making the Points get near to each other
         # 2.3.3.3.1 Calculation of all the distances between two neighbouring Points
         diffs = points[1:] - points[:-1]
@@ -311,7 +309,7 @@ class Geni:
         beauty = torch.sum((F.relu(seg_lengths - max_length))**2)
 
         # 2.3.3.4 Adding the Losses up:
-        loss = 3 + beauty*10 + height - width  
+        loss = 3 + beauty*10 + height - width
         return loss
 
     def get_mu(self, area):
@@ -360,7 +358,7 @@ for i in range(train_rounds):
     plt.draw()
     plt.pause(0.01)
 plt.ioff()  # Turn off interactive mode
-plt.show()    
+plt.show()
 
 
 # 3.3 Visualization of Results
@@ -372,4 +370,3 @@ for area in areas:
     # area.plot()  # noqa: ERA001
     # shape.plot()  # noqa: ERA001
     # plt.show()  # noqa: ERA001
-
