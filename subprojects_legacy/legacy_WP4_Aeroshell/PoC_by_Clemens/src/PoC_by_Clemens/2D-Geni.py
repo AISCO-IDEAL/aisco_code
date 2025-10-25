@@ -60,7 +60,7 @@ class Shape:
         while len(pointcloud) < self.size:
             pointcloud.append(pointcloud[-1])
         return np.array(pointcloud)
-    
+
     def plot(self):
         plt.scatter(np.array(self.pointcloud)[:,0], np.array(self.pointcloud)[:,1], s=1)
         if not self.orgcloud:
@@ -88,7 +88,7 @@ class Area:
         outer_point = self.outer_shape.p(t)
         po = (1-mu)*inner_point + mu*outer_point
         return [po[0], po[1]]
-    
+
     def create_shape(self, mu):
         if len(mu)!=self.size:
             raise ValueError("mu-wrong-size")
@@ -112,7 +112,7 @@ class Autoencoder:
         self.areas = areas
         self.size = areas[0].size
         self.model, self.latent_size = self.eval_model()
-    
+
     def eval_model(self): #trains the autoencoder for diffrent sized latent spaces until the smalles possible latent space with a reconstruction loss below 0.5%
         latent_size = 3
         allowed_loss = 0.06
@@ -170,8 +170,8 @@ class AutoencoderModel(nn.Module):
             nn.Linear(512*2, input_size*4),
             nn.Sigmoid()
         )
-    
-    
+
+
     def forward(self, x):
         latent = self.encoder(x)
         output = self.decoder(latent)
@@ -191,8 +191,8 @@ class Geni:
             nn.Linear(64, area.size),
             nn.Sigmoid(),
         )
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)    
-    
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
+
     def encode_torch(self, area):
         x = torch.tensor(
             np.concatenate((area.inner_shape.pointcloud.flatten(),
@@ -202,7 +202,7 @@ class Geni:
         with torch.no_grad():
             z = self.autoencoder.model.encoder(x)
         return z  # torch tensor (no grad needed)
-    
+
     def train(self, epochs):
         for epoch in range(epochs):
             total_loss = 0.0
@@ -238,7 +238,7 @@ class Geni:
         diffs = points[1:] - points[:-1]
         circumference = torch.norm(diffs, dim=1).sum() + torch.norm(points[0] - points[-1])
 
-        loss = circumference/10  +(height-0.5) + 1/width 
+        loss = circumference/10  +(height-0.5) + 1/width
         return loss
 
     def get_mu(self, area):
