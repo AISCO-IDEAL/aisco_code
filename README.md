@@ -23,8 +23,8 @@ There is also a test folder. Store your test cases here
 
 
 # Naming Conventions
-folders use capital letters and underscores, e.g.: wp1_cfd_ai
-files only use small letters and underscroes, e.g.: dummy_2.py
+folders and files use small letters and underscores, e.g.: wp1_cfd_ai
+
 
 classes use capitals for every first letter and do not use underscores, e.g.: ExampleClass
 functions use captials for every first letter besides the very first and do not use underscores, e.g.: exampleFunction
