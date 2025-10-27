@@ -32,7 +32,7 @@ wp1_cfd_ai = [
 wp2_assembler =[
 
 ]
-WP3_Solarestimator = [
+wp3_solar_estimator = [
 
 ]
 wp4_aeroshell_optimizer = [
