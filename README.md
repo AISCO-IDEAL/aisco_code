@@ -7,7 +7,11 @@ git clone git@github.com:IDEALLab/AISCO-code.git
 # Quick installation guide
 Linux/Windows symply run `bash ./setup_conda.sh`
 Windows symply run `python ./setup_conda.bat`
-*a venv version for Euler will be discussed with ffelten*
+Euler environment guide:
+1. `deactivate` any environment that might be active
+2.
+3. run `./setup_venv.sh`
+4. enjoy!
 
 the script will create a python 3.11.6 environment and most used dependencies. You can manually install workpage specific dependencies
 
