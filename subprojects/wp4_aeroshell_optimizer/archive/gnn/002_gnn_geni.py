@@ -281,7 +281,7 @@ for x in range(5):
 
 geni = Geni(areas)
 for i in range(10):
-    geni.train(100)  
+    geni.train(100)
     new_shape = area.create_shape(geni.get_mu(area))
     area.plot()
     new_shape.plot()

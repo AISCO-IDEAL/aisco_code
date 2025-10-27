@@ -115,7 +115,7 @@ class Area:
         outer = self.outer_shape.graph.x
         mu2 = mu.view(-1, 1)
         return (1 - mu2) * inner + mu2 * outer
-    
+
     def plot(self, color_inner='blue', color_outer='orange'):
         self.inner_shape.plot(color=color_inner)
         self.outer_shape.plot(color=color_outer)
@@ -247,14 +247,14 @@ class Geni:
         circumference = torch.norm(diffs, dim=1).sum() + torch.norm(points[0] - points[-1])
         loss = circumference/10 + (height-0.5) + 1/width
         return loss
-    
+
     def get_mu(self, area):
         latent = self.encode_torch(area)
         with torch.no_grad():
             output = self.model(latent)
         return output.squeeze(0).cpu().numpy()  # now shape = (1000,)
 
-    
+
 # ===== Main Execution =====
 def main():
     # Create shapes and areas

@@ -10,7 +10,7 @@ class SDFVisualizer:
         self.model = model
         self.inner_solid = None
         self.outer_solid = None
-    
+
     def visualize_slice(self, direction: str, slice_index: int, grid_size: int = 100, grid_range: float = 2.0):
         """
         Args:

@@ -6,7 +6,6 @@ import datetime
 import os
 import numpy as np
 from utils import visualize_sdf
-from
 
 def train_sdf_model(
     model: SDFNetwork,
