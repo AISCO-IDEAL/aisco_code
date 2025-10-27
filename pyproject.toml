@@ -18,11 +18,11 @@ dependencies = [
   "gymnasium >= 1.0.0",
   "pandas >= 2.2.3",
   "matplotlib >= 3.9.3",
-  "numpy",
+  "numpy>=2.0.0",
   "ruff>=0.1.0",
   "pre-commit>=3.0.0",
   "mypy>=1.17.1",
-  "torch>=2.6.0"
+  "torch==2.4.0"
 ]
 
 [project.optional-dependencies]
@@ -36,6 +36,13 @@ wp3_solar_estimator = [
 
 ]
 wp4_aeroshell_optimizer = [
+
+  "cadquery == 2.6.0",
+  "matplotlib==3.10.7",
+  "plotly==5.22.0",
+  "scikit-image>=0.0.0",
+  "torch_geometric==2.7.0",
+  "trimesh==4.8.3",
 
 ]
 
