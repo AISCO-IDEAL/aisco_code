@@ -1,3 +1,7 @@
+# eschaerer
+# This is the automated setup script to create the Python virtual environment for AISCO-code, called aisco_env
+# It is intended to be run on the Euler cluster at ETH Zurich.
+
 #!/bin/bash
 # setup_venv.sh – Setup Python project with venv + pyproject.toml on Euler cluster
 set -e  # Exit on any error
