@@ -1,7 +1,6 @@
-import datetime
-import torch
 import os
-import numpy as np
+
+import torch
 from sdf import SDFNetwork
 from train import train_sdf_model  # Import the training function
 
@@ -10,7 +9,7 @@ username = "aalthaus"  # Replace with your actual username
 def main(load_pretrained_model: bool = False):
     # Paths and config
     load_dir = f"/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/dummy_models"
-    model_path = os.path.join(load_dir, 'sdf_sphere_model_2025-10-24.pth')
+    model_path = os.path.join(load_dir, 'sdf_sphere_model_2025-10-24.pth')  # noqa: PTH118
     save_dir = f"/cluster/home/{username}/AISCO-code/subprojects/WP4-Aeroshell/SDF_Prototype/main_models"
     stl_file_path = f'/cluster/home/{username}/AISCO-code/subprojects/WP2-Assembler/shells/shell0.stl'
 
@@ -22,10 +21,7 @@ def main(load_pretrained_model: bool = False):
     }
 
     # Initialize or load model
-    if load_pretrained_model:
-        model = torch.load(model_path)
-    else:
-        model = SDFNetwork()
+    model = torch.load(model_path) if load_pretrained_model else SDFNetwork()
 
     # Train the model
     train_sdf_model(

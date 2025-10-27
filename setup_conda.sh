@@ -3,7 +3,7 @@
 # setup.sh – Setup Python project with Conda + pyproject.toml
 set -e  # Exit on any error
 
-ENV_NAME="aisco-code"
+ENV_NAME="aisco_env"
 PYTHON_VERSION="3.11.6"
 
 # 1. Check if conda is installed

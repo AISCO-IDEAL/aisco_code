@@ -5,7 +5,7 @@ REM Setup script for AISCO-code (Windows)
 REM Run this script to set up the development environment
 
 echo 🚀 Setting up AISCO-code...
-set "ENV_NAME=aisco-code"
+set "ENV_NAME=aisco_env"
 set "PYTHON_VERSION=3.11.6"
 
 REM Check if conda is available
