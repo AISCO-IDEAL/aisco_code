@@ -4,7 +4,7 @@ This Code is written by written by Clemens Huber
 This coded is used in the following files:
 ========
 This code is used in the following files:
-- 
+-
 >>>>>>>> WP4_SDF_Development:subprojects/WP4-Aeroshell/src/CadQuery_to_SDF.py
 """
 from typing import cast

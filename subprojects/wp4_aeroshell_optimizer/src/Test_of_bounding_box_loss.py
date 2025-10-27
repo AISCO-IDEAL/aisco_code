@@ -4,7 +4,7 @@ from losses import SDFLosses
 from sdf import SDFNetwork
 from SDF_visualisation import SDFVisualizer
 
-""" Test script for Bounding Box Loss function 
+""" Test script for Bounding Box Loss function
 Trains the SDFNEtwork on just the bounding box loss and visualizes the result using SDF_visualizer
 """
 
@@ -15,7 +15,7 @@ if __name__ == "__main__":
     # Initialize Losses with only bounding box loss weight set
     losses = SDFLosses(weights=[0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
 
-    # Define optimizerpip 
+    # Define optimizerpip
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     # Training loop
