@@ -13,6 +13,7 @@ class SDFLosses:
     def __init__(self, weights: list[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]):
         assert len(weights) == 6, "Weights must match the number of losses: [eikonal, smoothness, bounding_box, watertightness, fronatl_area, solar_area]"
         self.weights = weights
+<<<<<<<< HEAD:subprojects_legacy/legacy_WP4_Aeroshell/Legacy_SDF_Prototype_Pre_Restructuring/losses.py
     def eikonal_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
         sdf, grad_sdf = model(points) ######## DO NOT TOUCH #######
         return self.weights[0] * torch.abs(torch.norm(grad_sdf, p=2, dim=-1) - 1.0).mean()
@@ -21,6 +22,19 @@ class SDFLosses:
         sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True) ######## DO NOT TOUCH #######
         return self.weights[1] * (laplacian_sdf**2).mean()
 
+========
+
+    ### DO NOT TOUCH WORK FROM EMANUEL ###
+    def eikonal_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor: 
+        sdf, grad_sdf = model(points) ######## DO NOT TOUCH #######
+        return self.weights[0] * torch.abs(torch.norm(grad_sdf, p=2, dim=-1) - 1.0).mean() 
+    ################################
+    ### DO NOT TOUCH WORK FROM EMANUEL ###
+    def smoothness_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
+        sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True) ######## DO NOT TOUCH #######
+        return self.weights[1] * (laplacian_sdf**2).mean() 
+    ################################
+>>>>>>>> WP4_SDF_Development:subprojects/WP4-Aeroshell/src/losses.py
     def bounding_boxes_loss(
         self,
         model: SDFNetwork,

@@ -43,6 +43,7 @@ wp4_aeroshell_optimizer = [
 where = ["."]
 include = ["AISCO*", "subprojects_legacy*"]
 
+]
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
 exclude = [
