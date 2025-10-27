@@ -1,4 +1,7 @@
-#kdiehl
+# kdiehl
+# .pre-commit-config.yaml
+# Pre-Commit-Konfiguration für Python-Projekte mit Ruff und MyPy
+
 exclude: ^subprojects_legacy/
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
