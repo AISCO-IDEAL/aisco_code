@@ -1,7 +1,8 @@
-import matplotlib.cm as cm
-import matplotlib.colors as colors
-import trimesh
 import numpy as np
+import trimesh
+from matplotlib import cm
+
+
 def color_faces_by_weight(mesh: trimesh.Trimesh, weights: np.ndarray, gamma: float = 1.0) -> trimesh.Trimesh:
     """
     Colors the faces of a trimesh object based on a weight array (0.0 to 1.0)
@@ -10,7 +11,7 @@ def color_faces_by_weight(mesh: trimesh.Trimesh, weights: np.ndarray, gamma: flo
 
     Args:
         mesh (trimesh.Trimesh): The mesh object to color.
-        weights (np.ndarray): A 1D float array of shape (n_faces,) with 
+        weights (np.ndarray): A 1D float array of shape (n_faces,) with
                               values between 0.0 and 1.0.
         gamma (float): Controls the non-linear stretching of the color map.
                        > 1.0: Stretches high values (e.g., 0.9 to 1.0) for better visibility.
@@ -20,12 +21,12 @@ def color_faces_by_weight(mesh: trimesh.Trimesh, weights: np.ndarray, gamma: flo
     Returns:
         trimesh.Trimesh: The mesh with updated face colors.
     """
-    
+
     if len(weights) != len(mesh.faces):
-        raise ValueError(
+        raise ValueError(  # noqa: TRY003
             f"Weight array length ({len(weights)}) must match the number of faces ({len(mesh.faces)})."
         )
-    
+
     # 1. Normalize and Clip Weights
     normalized_weights = np.clip(weights, 0.0, 1.0)
 
@@ -46,5 +47,5 @@ def color_faces_by_weight(mesh: trimesh.Trimesh, weights: np.ndarray, gamma: flo
 
     # 6. Assign colors
     mesh.visual.face_colors = face_colors
-    
+
     return mesh
