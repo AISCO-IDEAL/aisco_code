@@ -24,7 +24,7 @@ Linux/Mac simply run `bash ./setup_conda.sh`
 Windows symply run `python ./setup_conda.bat`
 Euler environment guide:
 1. `deactivate` any environment that might be active
-2.
+2. run `chmod +x setup_conda.sh setup_venv.sh` to gain access rights for running the scripts
 3. run `./setup_venv.sh`
 4. enjoy!
 
