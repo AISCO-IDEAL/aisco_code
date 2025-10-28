@@ -1,3 +1,4 @@
+rem DON'T USE THIS FILE ANYMORE, USE SETUP_VENV.SH AS WE USE EULER HPC NOW
 REM kdiehl
 @echo off
 REM Setup script for AISCO-code (Windows)

@@ -1,3 +1,4 @@
+#### DON'T USE THIS FILE ANYMORE, USE SETUP_VENV.SH AS WE USE EULER HPC NOW
 #kdiehl
 #!/bin/bash
 # setup.sh – Setup Python project with Conda + pyproject.toml
