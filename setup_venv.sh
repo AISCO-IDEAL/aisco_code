@@ -12,8 +12,10 @@ echo "🔍 Loading Python module..."
 module load fast_python_workshop_cpu/2025.0.0 
 
 # 2. Check if Python is available after loading the module
-if ! command -v python3 &> /dev/null; then
-    echo "❌ Python 3 not found. Please load the correct Python module or check your environment."
+PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
+if [[ "$PYTHON_VERSION" != "3.11.6" ]]; then
+    echo "❌ Python 3.11.6 not found. Current version: $PYTHON_VERSION"
+    echo "Please load the correct Python module or check your environment."
     exit 1
 fi
 
@@ -27,19 +29,19 @@ source "$ENV_NAME/bin/activate"
 
 # 5. Upgrade pip and install standard dependencies in editable mode
 echo "📦 Upgrading pip and installing standard dependencies from pyproject.toml..."
-pip install --upgrade pip
-pip install -e .
+python3 -m pip install --upgrade pip
+python3 -m pip install -e .
 
 # 6. Print instructions for optional dependencies
 echo ""
 echo "✅ Standard dependencies installed."
 echo ""
 echo "📌 Optional dependencies can be installed manually:"
-echo "   - Workpackage 1 (WP1_WP1_CFD_AI):                  pip install '.[wp1_cfd_ai]'"
-echo "   - Workpackage 2 (wp2_assembler):                   pip install '.[wp2_assembler]'"
-echo "   - Workpackage 3 (WP_3_Solarestimator):             pip install '.[WP3_Solarestimator]'"
-echo "   - Workpackage 4 (WP_4_Aeroshell_optimizer):        pip install '.[wp4_aeroshell_optimizer]'"
-echo "   - All optional dependencies:                       pip install '.[all]'"
+echo "   - Workpackage 1 (WP1_WP1_CFD_AI):                  python3 -m pip install '.[wp1_cfd_ai]'"
+echo "   - Workpackage 2 (wp2_assembler):                   python3 -m pip install '.[wp2_assembler]'"
+echo "   - Workpackage 3 (WP_3_Solarestimator):             python3 -m pip install '.[WP3_Solarestimator]'"
+echo "   - Workpackage 4 (WP_4_Aeroshell_optimizer):        python3 -m pip install '.[wp4_aeroshell_optimizer]'"
+echo "   - All optional dependencies:                       python3 -m pip install '.[all]'"
 echo ""
 echo "🪝 Set up Pre-commit Hooks (if Dev Tools are installed):"
 echo "   pre-commit install"

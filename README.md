@@ -20,12 +20,16 @@ Lets clone the AISCO-code Repo via SSH:
 - add folder name starting with `**/`
 
 # Environment Installation Guide
-Linux/Mac simply run `bash ./setup_conda.sh`
-Windows symply run `python ./setup_conda.bat`
+Linux (not Euler)/Mac run `bash ./setup_conda.sh`
+Windows run `python ./setup_conda.bat`
 Euler environment guide:
 1. `deactivate` any environment that might be active
 2. run `chmod +x setup_conda.sh setup_venv.sh` to gain access rights for running the scripts
-3. run `./setup_venv.sh`
+3. run `~/AISCO-code/setup_venv.sh`
 4. enjoy!
 
 these scripts will create a python 3.11.6 environment and most used dependencies. You can manually install workpage specific dependencies, by commanding `pip install [<wpX_name>]`. Replace `<wpX_name>` with the workpage name, you want to use.
+
+# Environment Activation Guide (do this every time you open a new terminal)
+for AISCO, please activate myenv in the `cd ~/AISCO-code/` folder: 
+`source aisco_env/bin/activate`
