@@ -47,7 +47,7 @@ class SDFVisualizer:
 
 
 
-def visualize_loaded_model(path: str ):
+def visualize_loaded_model(path: str )-> SDFNetwork:
     network = torch.load(path)
     visualize_sdf(model=network,filename="NewBranchSphere.ply")
-    return
+    return network

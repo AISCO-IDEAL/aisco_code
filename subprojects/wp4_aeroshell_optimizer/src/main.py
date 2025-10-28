@@ -2,12 +2,14 @@
 import train
 from sdf import SDFNetwork
 from SDF_visualisation import visualize_loaded_model
-
+import kaolin_test
 def main(load_pretrained: bool=False):
 
+    
+    sphere=visualize_loaded_model("/cluster/home/aalthaus/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/DummySphere/sdf_sphere_model_2025-10-24.pth")
+    sphere.to('cuda')
+    vertices, faces = kaolin_test.get_diff_mesh(sphere,grid_res=64)
     print("Hello world")
-    visualize_loaded_model("/cluster/home/aalthaus/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/DummySphere/sdf_sphere_model_2025-10-24.pth")
-
 
     return
 
