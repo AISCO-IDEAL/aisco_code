@@ -60,6 +60,27 @@ echo    - Workpackage 3 (wp3_Solarestimator):             pip install '.[wp3_Sol
 echo    - Workpackage 4 (wp4_Aeroshell_optimizer):        pip install '.[wp4_Aeroshell_optimizer]'
 echo    - All optional dependencies:                       pip install '.[all]'
 
+REM eschaerer addition for kaolin install #############
+
+echo.
+echo 🔍 Checking if Kaolin should be installed...
+set /p install_kaolin="Do you want to install Kaolin (GPU/CUDA-dependent)? [y/N]: "
+
+REM Convert to lowercase for easier comparison (Windows doesn't have easy lowercase conversion, so we just check both)
+if /i "%install_kaolin%"=="y" (
+    echo 🐍 Installing Kaolin from NVIDIA link...
+    python -m pip install -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.4.0_cu124.html kaolin==0.18.0
+    if %errorlevel% neq 0 (
+        echo ❌ Kaolin installation failed.
+    ) else (
+        echo ✅ Kaolin installation complete.
+    )
+) else (
+    echo ⏭️ Skipping Kaolin installation.
+)
+echo.
+REM End of eschaerer addition for kaolin install #########
+
 echo ✅ Setup complete!
 echo
 echo Next steps:
