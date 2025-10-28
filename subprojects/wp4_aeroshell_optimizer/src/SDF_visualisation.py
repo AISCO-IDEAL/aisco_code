@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from sdf import SDFNetwork
-
+from utils import visualize_sdf
 
 class SDFVisualizer:
     def __init__(self, model: SDFNetwork):
@@ -44,3 +44,10 @@ class SDFVisualizer:
         plt.ylabel('Y-axis' if direction != 'xz' else 'Z-axis')
         plt.axis('equal')
         plt.show()
+
+
+
+def visualize_loaded_model(path: str ):
+    network = torch.load(path)
+    visualize_sdf(model=network,filename="NewBranchSphere.ply")
+    return
