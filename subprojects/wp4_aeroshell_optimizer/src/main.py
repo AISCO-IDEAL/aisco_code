@@ -19,11 +19,5 @@ def main(load_pretrained: bool=False):
 
 
 
-
-
-
-
-
-
 if __name__ == "__main__":
     main(True)
