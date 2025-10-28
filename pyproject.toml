@@ -44,8 +44,6 @@ wp4_aeroshell_optimizer = [
   "torch_geometric==2.7.0",
   "torchvision==0.19.1",
   "trimesh==4.8.3",
-  #Adapt kaolin install depending on cuda/torch version use (aalthaus for more info)
-  "kaolin==0.18.0 -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.4.0_cu124.html"
   "typing==3.10.0"
 ]
 
