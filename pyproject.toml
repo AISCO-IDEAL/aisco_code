@@ -46,6 +46,7 @@ wp4_aeroshell_optimizer = [
   "trimesh==4.8.3",
   #Adapt kaolin install depending on cuda/torch version use (aalthaus for more info)
   "kaolin==0.18.0 -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.4.0_cu124.html"
+  "typing==3.10.0"
 ]
 
 [tool.setuptools.packages.find]
@@ -159,6 +160,7 @@ python_version = "3.11"
 namespace_packages = true
 explicit_package_bases = true
 mypy_path = "AISCO/"
+ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 files = ["AISCO/", "tests/"]
@@ -166,8 +168,4 @@ exclude = [
   "^build/",
   "^docs/",
 ]
-[[tool.mypy.overrides]]
-module = [
-  # Put dependencies without type hints here
-]
-ignore_missing_imports = true
+

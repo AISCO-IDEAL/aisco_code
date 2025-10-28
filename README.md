@@ -29,7 +29,7 @@ Euler environment guide:
 4. for AISCO, please activate myenv in the `cd ~/AISCO-code` folder: 
 `source aisco_env/bin/activate`
 
-these scripts will create a python 3.11.6 environment and most used dependencies. You can manually install workpage specific dependencies, by commanding `pip install [<wpX_name>]`. Replace `<wpX_name>` with the workpage name, you want to use.
+these scripts will create a python 3.11.6 environment and most used dependencies. You can manually install workpage specific dependencies, by commanding `python3 -m pip install '.[<wpX_name>S]'"`. Replace `<wpX_name>` with the workpage name, you want to use.
 
 # Environment Activation Guide (do this every time you open a new terminal)
 for AISCO, please activate myenv in the `cd ~/AISCO-code/` folder: 

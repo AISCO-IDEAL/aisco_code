@@ -3,7 +3,7 @@
 # It is intended to be run on the Euler cluster at ETH Zurich.
 
 #!/bin/bash
-# setup_venv.sh – Setup Python project with venv + pyproject.toml on Euler cluster
+# setup_ven~/setup_venv.shv.sh – Setup Python project with venv + pyproject.toml on Euler cluster
 set -e  # Exit on any error
 ENV_NAME="aisco_env"
 
