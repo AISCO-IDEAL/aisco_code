@@ -4,15 +4,17 @@ from   kaolin.ops.conversions import FlexiCubes
 
 from sdf import SDFNetwork  
 #All Code her by aalthaus
-def get_diff_mesh(model: SDFNetwork, flexicubes: FlexiCubes, grid_res: int = 10,box_dim: list=[-1,1,-1,1,-1,1], device: str = 'cuda'):
+def get_diff_mesh(model: SDFNetwork, grid_res: int = 128,box_dim: list=[-5,5,-5,5,-5,5], device: str = 'cuda'):
     # At the moment unsure what happens when we change the size 
     # of the sampled cube, so be careful here
+
     x = torch.linspace(box_dim[0],box_dim[1], grid_res, device=device)
     y = torch.linspace(box_dim[2],box_dim[3], grid_res, device=device)
     z = torch.linspace(box_dim[4],box_dim[5], grid_res, device=device)
     grid_x, grid_y, grid_z = torch.meshgrid(x, y, z, indexing='ij')
     grid_points = torch.stack([grid_x, grid_y, grid_z], dim=-1).reshape(-1, 3)
 
+    flexicubes=FlexiCubes()
     with torch.enable_grad():
         sdf_values = model(grid_points)[0]
         #sdf_grid = sdf_values.reshape(grid_res, grid_res, grid_res)

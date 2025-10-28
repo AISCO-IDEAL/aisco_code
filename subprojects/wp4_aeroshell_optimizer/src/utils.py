@@ -5,10 +5,10 @@ import torch
 import trimesh
 from sdf import SDFNetwork
 from skimage import measure
-
+import os
 
 # In utils.py
-def visualize_sdf(model, grid_size=128, threshold=0.0, filename="sdf_mesh.ply"):
+def visualize_sdf(model, username = "aalthaus", grid_size=128, threshold=0.0, filename="sdf_mesh.ply"):
     x = np.linspace(-8, 8, grid_size)
     y = np.linspace(-8, 8, grid_size)
     z = np.linspace(-8, 8, grid_size)
@@ -21,8 +21,9 @@ def visualize_sdf(model, grid_size=128, threshold=0.0, filename="sdf_mesh.ply"):
 
     verts, faces, normals, _ = measure.marching_cubes(sdf_values, level=threshold)
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_normals=normals)
-    mesh.export(filename)
-    print(f"Mesh saved to {filename}.")
+    export_path= f"/cluster/home/{username}/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/MainModels"
+    mesh.export(os.path.join(export_path,filename))
+    print(f"Mesh saved to {export_path}/{filename}.")
 
 def load_model(model_path: str) -> SDFNetwork:
     model = torch.load(model_path)
