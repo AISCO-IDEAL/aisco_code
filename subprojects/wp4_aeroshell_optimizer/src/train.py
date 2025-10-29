@@ -10,11 +10,9 @@ from utils import visualize_sdf
 def train_sdf_model(
     model: SDFNetwork,
     config: T.Dict,
-    point_cloud: torch.Tensor = None,
-    load_pretrained_model: bool = False,
     model_path: str = None,
     save_dir: str = None,
-    stl_file_path: str = None,
+    
 ) -> SDFNetwork:
     """
     Train the given SDFNetwork model based on the provided configuration.
@@ -30,27 +28,19 @@ def train_sdf_model(
         - The loss is printed every 10 epochs.
         - The trained model is saved and returned.
     """
-    # Load pre-trained model if specified
-    if load_pretrained_model and model_path:
-        model = torch.load(model_path)
-        print(f"Model loaded from: {model_path}")
-
-    # Generate point cloud if STL file is provided
-    if stl_file_path:
-        point_cloud = stl_to_point_cloud(stl_file_path)
-        point_cloud = torch.from_numpy(point_cloud).float().requires_grad_(True)
-        np.save('shell0_point_cloud.npy', point_cloud.detach().numpy())
-        print(f"Point cloud generated and saved as 'shell0_point_cloud.npy' with {len(point_cloud)} points.")
-
+    
+    
+    
     # Initialize optimizer and loss function
-    learning_rate = config.get("learning_rate", 1e-3)
-    num_epochs = config.get("num_epochs", 1000)
+    learning_rate = float(config.get("learning_rate"))
+    num_epochs = config["num_epochs"]
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_fn = SDFLosses(weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
-
+    
     for epoch in range(num_epochs):
+        points = torch.randn(1000, 3, requires_grad=True,device='cuda') 
         optimizer.zero_grad()
-        total_loss = loss_fn.get_total_loss(model, point_cloud)
+        total_loss = loss_fn.get_total_loss(model, points)
         total_loss.backward()
         optimizer.step()
         if epoch % 10 == 0:
@@ -65,7 +55,7 @@ def train_sdf_model(
         print(f"Model saved to: {save_path}")
 
     # Visualize the SDF
-    visualize_sdf(model, grid_size=32, threshold=0.0, filename="sdf_aeroshell_mesh_BiggerSphereStart.ply")
+    visualize_sdf(model, grid_size=64, threshold=0.0, filename="NewPipelineTest.ply")
     print("Training complete. A mesh has been generated and saved as 'sdf_aeroshell_mesh.ply'.")
 
     return model
