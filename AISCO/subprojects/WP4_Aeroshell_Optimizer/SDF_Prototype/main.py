@@ -1,9 +1,8 @@
 import datetime
 import os
-import numpy as np
+
 import torch
 from losses import SDFLosses  # Assuming you save the above in losses.py
-from mesh_to_pointcloud import stl_to_point_cloud
 from sdf import SDFNetwork
 from utils import visualize_sdf  # Import the new utilities
 

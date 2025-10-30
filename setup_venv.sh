@@ -9,7 +9,7 @@ ENV_NAME="aisco_env"
 
 # 1. Load the required Python module (adjust as needed for your cluster)
 echo "🔍 Loading Python module..."
-module load fast_python_workshop_cpu/2025.0.0 
+module load fast_python_workshop_cpu/2025.0.0
 
 # 2. Check if Python is available after loading the module
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
