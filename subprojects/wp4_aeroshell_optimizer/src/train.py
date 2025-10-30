@@ -5,14 +5,15 @@ from losses import SDFLosses
 import datetime
 import os
 import numpy as np
-from utils import visualize_sdf
+from utils import save_sdf2mesh
 
 def train_sdf_model(
     model: SDFNetwork,
-    config: T.Dict,
+    train_config: T.Dict,
     model_path: str = None,
-    save_dir: str = None,
-    
+    mesh_path: str = None,
+    model_name: str = "sdf_model",
+    mesh_name: str = "sdf_mesh"
 ) -> SDFNetwork:
     """
     Train the given SDFNetwork model based on the provided configuration.
@@ -32,8 +33,8 @@ def train_sdf_model(
     
     
     # Initialize optimizer and loss function
-    learning_rate = float(config.get("learning_rate"))
-    num_epochs = config["num_epochs"]
+    learning_rate = float(train_config.get("learning_rate",1e-4))
+    num_epochs = train_config["num_epochs"]
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_fn = SDFLosses(weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
     
@@ -47,15 +48,24 @@ def train_sdf_model(
             print(f"Epoch {epoch}, Total Loss: {total_loss.item():.4f}")
 
     # Save the trained model
-    if save_dir:
-        os.makedirs(save_dir, exist_ok=True)
+    if model_path:
+        os.makedirs(model_path, exist_ok=True)
         datum = datetime.datetime.now()
-        save_path = os.path.join(save_dir, f'sdf_model_{datum.strftime("%m_%d_%H_%M")}.pth')
-        torch.save(model, save_path)
-        print(f"Model saved to: {save_path}")
+        model_path = os.path.join(model_path, f'{model_name}_{datum.strftime("%m_%d_%H_%M")}.pth')
+        torch.save(model, model_path)
+        print(f"Model saved to: {model_path}")
 
     # Visualize the SDF
-    visualize_sdf(model, grid_size=128, threshold=0.0, filename="MergedPipelineTest.ply")
-    print("Training complete. A mesh has been generated and saved as 'sdf_aeroshell_mesh.ply'.")
+    if mesh_path:
+        os.makedirs(mesh_path, exist_ok=True)
+        datum = datetime.datetime.now()
+        save_sdf2mesh(model,
+                      grid_size=128, 
+                      threshold=0.0,
+                      mesh_dir=mesh_path,
+                      filename=f'{mesh_name}_{datum.strftime("%m_%d_%H_%M")}.ply',
+                      device='cuda'
+                      )
+        print(f"A mesh has been generated and saved as '{mesh_name}.ply'.")
 
     return model
