@@ -1,21 +1,21 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=cuda_solver
-#SBATCH --time=00:20:00                    # Adjust time as needed
+#SBATCH --job-name=cuda_solver_test1
+#SBATCH --time=00:20:00
 
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem-per-cpu=7G                  # Total 28G memory
+# Use your original, correct directives
+#SBATCH --ntasks=2
+#SBATCH --cpus-per-task=2
+#SBATCH --mem-per-cpu=7G
 #SBATCH --gpus=rtx_4090:2
 
 # --- Use %x for job name and %j for job ID ---
-#SBATCH --output=/cluster/home/elihuber/AISCO-code/subprojects/WP1-CFD/euler_tests/logs/%x_%j.out
-#SBATCH --error=/cluster/home/elihuber/AISCO-code/subprojects/WP1-CFD/euler_tests/logs/%x_%j.err
+#SBATCH --output=/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/logs/%x_%j.out
+#SBATCH --error=/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/logs/%x_%j.err
 
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=elihuber@ethz.ch
 
-# Create the folders on $SCRATCH if it doesn't exist
 mkdir -p "$HOME/logs"
 mkdir -p "$HOME/datasets"
 mkdir -p "$HOME/models"
@@ -31,7 +31,7 @@ module load cuda/12.1.1
 module load eth_proxy
 
 #------------------------------------------------------------------------------
-# Activate the Python virtual environment (engibench)
+# Activate Python virtual environment
 #------------------------------------------------------------------------------
 VENV_DIR="$HOME/venvs/aisco-code"
 source "$VENV_DIR/bin/activate"
@@ -39,7 +39,7 @@ source "$VENV_DIR/bin/activate"
 #------------------------------------------------------------------------------
 # Set WANDB environment variables
 #------------------------------------------------------------------------------
-export WANDB_API_KEY="1a4ee339e3efa412724849b14253d8b04f49ac3a"  # connect to wandb, then go to wandb.ai/settings, scroll down to API key and reveal
+export WANDB_API_KEY="1a4ee339e3efa412724849b14253d8b04f49ac3a"
 export WANDB_PROJECT="CFD-AI"
 export WANDB_ENTITY="aisco"
 
@@ -48,9 +48,18 @@ export WANDB_ENTITY="aisco"
 #------------------------------------------------------------------------------
 export HF_HOME="$SCRATCH/hf_models"
 export HF_DATASETS_CACHE="$SCRATCH/hf_datasets"
-export HF_TOKEN="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"  # Replace with your actual Huggingface token, create in Settings, Access Tokens, Read
+export HF_TOKEN="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"
 
 #------------------------------------------------------------------------------
 # Run the Relevant script
 #------------------------------------------------------------------------------
-python "/cluster/home/elihuber/AISCO-code/subprojects/WP1-CFD/deepxde/caivity_solver.py"
+# --- CORRECTED LAUNCH COMMAND ---
+# REMOVE torchrun.
+# srun will launch 4 tasks (from --ntasks=4), and each will be one
+# python process. DeepXDE/PyTorch will automatically detect the Slurm
+# environment variables and initialize the distributed group.
+# Add -u for unbuffered output.
+#
+srun python "$HOME/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/main.py" \
+    --save_model \
+    --problem_id="AISCO_WP4_Test1"

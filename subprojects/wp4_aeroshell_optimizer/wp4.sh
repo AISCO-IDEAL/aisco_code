@@ -9,14 +9,13 @@ USERNAME="eschaerer"
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=7G                  # Total 28G memory
-#SBATCH --gpus=1
-#SBATCH --constraint=gpu:nvidia_geforce_rtx_4090
+#SBATCH --gpus=rtx_4090:2
 
-#SBATCH --output=/cluster/home/eschaerer/logs/AISCO_TEST_%j.out     #adjust path as needed
-#SBATCH --error=/cluster/home/eschaerer/logs/AISCO_TEST_%j.err      #adjust path as needed
+#SBATCH --output=/cluster/home/elihuber/logs/AISCO_TEST_%j.out     #adjust path as needed
+#SBATCH --error=/cluster/home/elihuber/logs/AISCO_TEST_%j.err      #adjust path as needed
 
-#SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=eschaerer@ethz.ch
+##SBATCH --mail-type=END,FAIL
+##SBATCH --mail-user=elihuber@ethz.ch
 
 #------------------------------------------------------------------------------
 # Print job information
