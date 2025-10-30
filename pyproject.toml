@@ -42,9 +42,8 @@ wp4_aeroshell_optimizer = [
   "plotly==5.22.0",
   "scikit-image>=0.0.0",
   "torch_geometric==2.7.0",
-  "torchvision==0.19.1",
+  "torchvision", # changed by eschaerer from torchvision==0.19.1, because it requires torch==2.4.1
   "trimesh==4.8.3",
-  "typing==3.10.0"
 ]
 
 testing = ["pytest >= 8.3.2"]
@@ -84,6 +83,7 @@ exclude = [
     "venv",
 ]
 
+
 # Same as Black.
 line-length = 88
 
@@ -121,6 +121,7 @@ select = [
     "FURB", # refurb
     "LOG",  # flake8-logging
     "RUF",  # Ruff-specific rules
+
 ]
 
 ignore = [
@@ -139,7 +140,8 @@ ignore = [
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
-unfixable = []
+# Add "F401" (unused import) to the list of rules Ruff should NOT fix automatically.
+unfixable = ["F401", "PLR0911", "PLR0913", "N806"]
 
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
