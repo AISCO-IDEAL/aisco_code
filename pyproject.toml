@@ -77,6 +77,7 @@ exclude = [
     "venv",
 ]
 
+
 # Same as Black.
 line-length = 88
 
@@ -114,6 +115,7 @@ select = [
     "FURB", # refurb
     "LOG",  # flake8-logging
     "RUF",  # Ruff-specific rules
+
 ]
 
 ignore = [
@@ -132,8 +134,12 @@ ignore = [
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
+<<<<<<< HEAD
 # Add "F401" (unused import) to the list of rules Ruff should NOT fix automatically.
 unfixable = ["F401", "PLR0911"]
+=======
+unfixable = ["F401"]
+>>>>>>> aa7ba9bb2b0620843e2c05df63c17becf0b990ba
 
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
