@@ -105,5 +105,5 @@ def flexicubes_to_PLY(verts: torch.tensor,faces: torch.tensor, save_mesh: bool=T
     if save_mesh:
         mesh.export(filename)
         print(f"Mesh saved to {filename}")
-    print(type(mesh))
+    #print(type(mesh))
     return mesh
