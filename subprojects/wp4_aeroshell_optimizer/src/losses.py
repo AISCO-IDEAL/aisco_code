@@ -3,6 +3,7 @@ import cadquery as cq
 import torch
 from CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
 from sdf import SDFNetwork
+from tracking_loss_for_vis import LossTracker
 
 # Define various loss functions for training the SDFNetwork
 # These losses include eikonal loss, smoothness loss, bounding box constraints,
@@ -14,6 +15,7 @@ class SDFLosses:
         assert len(weights) == 6, "Weights must match the number of losses: [eikonal, smoothness, bounding_box, watertightness, fronatl_area, solar_area]"
         self.weights = weights
         self.device=dev
+        self.loss_tracker = LossTracker(['eikonal', 'smoothness', 'bounding_box', 'frontal_area', 'solar_area'])
 
 
     ### DO NOT TOUCH WORK FROM EMANUEL ###
@@ -78,8 +80,8 @@ class SDFLosses:
         sdf_pred = sdf_pred.squeeze(-1)              # [N]
 
         # Box constraints: clamp violations with ReLU
-        upper_violation = torch.relu(sdf_pred - sdf_inner_t)     # penalize > inner
-        lower_violation = torch.relu(sdf_outer_t - sdf_pred)     # penalize < outer
+        upper_violation = torch.relu(sdf_pred - sdf_inner_t)     
+        lower_violation = torch.relu(sdf_outer_t - sdf_pred)   
 
         loss = (upper_violation + lower_violation).mean()
 
@@ -171,12 +173,17 @@ class SDFLosses:
         top_area = torch.sum(heaviside_approx) * grid_spacing
         return - self.weights[5] * top_area  # Negative for maximization
 
-    def get_total_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
-        return (
-            self.eikonal_loss(model, points) +
-            self.smoothness_loss(model, points) +
-            self.bounding_boxes_loss(model) +
-            #self.watertightness_loss(model) +
-            self.frontal_area_loss(model) +
-            self.solar_area_loss(model)
-        )
+    def get_total_loss(self, model: SDFNetwork, points: torch.Tensor, epoch_name:str='-1') -> torch.Tensor:
+        l1 = self.eikonal_loss(model, points)
+        l2 = self.smoothness_loss(model, points)
+        l3 = self.bounding_boxes_loss(model)
+        l4 = self.frontal_area_loss(model)
+        l5 = self.solar_area_loss(model) 
+
+        # The following two lines track and store the individual losses per epoch
+        losses = {'eikonal': l1.item(), 'smoothness': l2.item(), 'bounding_box': l3.item(), 'frontal_area': l4.item(), 'solar_area': l5.item()}
+        self.loss_tracker.add_epoch(losses)  
+           
+        return l1 + l2 + l3 + l4 + l5
+
+    
