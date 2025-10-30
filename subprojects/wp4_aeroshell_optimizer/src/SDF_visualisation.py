@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from sdf import SDFNetwork
-from utils import visualize_sdf
+from utils import save_sdf2mesh
 
 class SDFVisualizer:
     def __init__(self, model: SDFNetwork):
