@@ -46,10 +46,10 @@ def get_diff_mesh(model: SDFNetwork, grid_res: int = 128,box_dim: list=[-5,5,-5,
     return vertices, faces
 
 
-def facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_direction=torch.tensor([0., 0., 1.], device='cuda')) -> torch.Tensor:
+def kaolin_facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_direction=torch.tensor([0., 0., 1.], device='cuda')) -> torch.Tensor:
     """
     Calculates the angle in degrees between each face normal of the mesh and the sun direction.
-    Returns a (F,) torch tensor of angles in degrees.
+    Returns a (F,) torch tensor of angles in degrees. Serves solely debugging purposes
     """
     # Get face vertices
     v0 = verts[faces[:, 0]]
@@ -74,7 +74,7 @@ def facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_direction=tor
 
     return angle_deg
 
-def primitive_max_angle_loss(verts: torch.Tensor, faces: torch.Tensor, sun_direction=torch.tensor([0., 0., 1.], device='cuda')) -> torch.Tensor:
+def kaolin_primitive_max_angle_loss(verts: torch.Tensor, faces: torch.Tensor, sun_direction=torch.tensor([0., 0., 1.], device='cuda')) -> torch.Tensor:
     """
     Calculates a loss based on the maximum angle between face normals and the sun direction.
     The loss is higher when the maximum angle is larger, encouraging faces to align with the sun direction.
@@ -105,4 +105,5 @@ def flexicubes_to_PLY(verts: torch.tensor,faces: torch.tensor, save_mesh: bool=T
     if save_mesh:
         mesh.export(filename)
         print(f"Mesh saved to {filename}")
+    #print(type(mesh))
     return mesh

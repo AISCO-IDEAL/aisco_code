@@ -10,9 +10,10 @@ from sdf import SDFNetwork
 
 
 class SDFLosses:
-    def __init__(self, weights: list[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]):
+    def __init__(self, weights: list[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],dev: str = 'cuda'):
         assert len(weights) == 6, "Weights must match the number of losses: [eikonal, smoothness, bounding_box, watertightness, fronatl_area, solar_area]"
         self.weights = weights
+        self.device=dev
 
 
     ### DO NOT TOUCH WORK FROM EMANUEL ###
@@ -67,9 +68,9 @@ class SDFLosses:
 
         # Device & tensors
         device = next(model.parameters()).device
-        P = torch.tensor(pointgrid, dtype=torch.float32, device=device)  # [N,3]
-        sdf_inner_t = torch.as_tensor(sdf_inner, dtype=torch.float32, device=device)  # [N]
-        sdf_outer_t = torch.as_tensor(sdf_outer, dtype=torch.float32, device=device)  # [N]
+        P = torch.tensor(pointgrid, dtype=torch.float32, device=self.device)  # [N,3]
+        sdf_inner_t = torch.as_tensor(sdf_inner, dtype=torch.float32, device=self.device)  # [N]
+        sdf_outer_t = torch.as_tensor(sdf_outer, dtype=torch.float32, device=self.device)  # [N]
 
         # Batch forward
         with torch.enable_grad():
@@ -108,13 +109,13 @@ class SDFLosses:
             Frontal area loss (to be minimized)
         """
         # Create a grid in the Y-Z plane (frontal projection)
-        y_coords = torch.linspace(-width/2, width/2, resolution)
-        z_coords = torch.linspace(-1.0, height, resolution)
+        y_coords = torch.linspace(-width/2, width/2, resolution,device=self.device)
+        z_coords = torch.linspace(-1.0, height, resolution,device=self.device)
         # z coords from -1 to height to still evaluate at least some area under the ground for now
 
         y_grid, z_grid = torch.meshgrid(y_coords, z_coords, indexing='ij')
         # Fix x at the front of the vehicle (x = 0 for frontal area)
-        x_coords = torch.zeros_like(y_grid)
+        x_coords = torch.zeros_like(y_grid,device=self.device)
         # Create points for evaluation
         #As of yet: takes primitive area at x=0 (middle of car in theory)
         points = torch.stack([x_coords.flatten(), y_grid.flatten(), z_grid.flatten()], dim=1)
@@ -134,6 +135,7 @@ class SDFLosses:
         grid_spacing = (width / resolution) * ((1+height) / resolution)  # dy * dz
         frontal_area = torch.sum(heaviside_approx) * grid_spacing
         return self.weights[4] * frontal_area
+    
     def solar_area_loss(self, model: SDFNetwork, resolution: int = 128,length: float = 8.0, width: float = 6.0) -> torch.Tensor:
         """
         Compute top area loss (maximize solar collection area on top surface).
@@ -145,12 +147,12 @@ class SDFLosses:
             Negative top area (for maximization, more area = better)
         """
         # Create a grid in the X-Y plane (top projection)
-        x_coords = torch.linspace(-length/2, length/2, resolution)
-        y_coords = torch.linspace(-width/2, width/2, resolution)
+        x_coords = torch.linspace(-length/2, length/2, resolution, device=self.device)
+        y_coords = torch.linspace(-width/2, width/2, resolution, device=self.device)
         x_grid, y_grid = torch.meshgrid(x_coords, y_coords, indexing='ij')
         # Fix z at the top of the vehicle (z = 1.2 for top area)
         # again arbitrary height, just to get an area on top, need to be fixed later
-        z_coords = torch.full_like(x_grid, 1.2)
+        z_coords = torch.full_like(x_grid, 1.2, device=self.device)
         # Create points for evaluation
         points = torch.stack([x_grid.flatten(), y_grid.flatten(), z_coords.flatten()], dim=1)
         points.requires_grad = True
