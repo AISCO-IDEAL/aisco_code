@@ -1,11 +1,15 @@
 # utils.py
 
+import json
+import time
+from pathlib import Path
+
 import numpy as np
 import torch
 import trimesh
 from sdf import SDFNetwork
 from skimage import measure
-import os
+
 
 # In utils.py
 def visualize_sdf(model, username = "aalthaus", grid_size=128, threshold=0.0, filename="sdf_mesh.ply"):
@@ -21,10 +25,36 @@ def visualize_sdf(model, username = "aalthaus", grid_size=128, threshold=0.0, fi
 
     verts, faces, normals, _ = measure.marching_cubes(sdf_values, level=threshold)
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_normals=normals)
-    export_path= f"/cluster/home/{username}/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/MainModels"
-    mesh.export(os.path.join(export_path,filename))
-    print(f"Mesh saved to {export_path}/{filename}.")
+    export_path = Path(f"/cluster/home/{username}/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/MainModels")
+    mesh.export(str(export_path / filename))
+    print(f"Mesh saved to {export_path / filename}.")
 
 def load_model(model_path: str) -> SDFNetwork:
     model = torch.load(model_path)
     return model
+
+
+def filenamer(hyperparams: dict, general_info: dict, metadata: dict) -> str:
+    # Create a filename based on current timestamp
+    timestamp = time.strftime('%Y%m%d_%H%M%S')
+    filename = f"{metadata['Username']}_{general_info['Model']}_{timestamp}.json"
+
+    # Define the full path to save the JSON file
+    save_path = Path(f"/cluster/scratch/{metadata['Username']}/models")
+    full_path = save_path / filename
+
+    # Create the JSON structure
+    json_data = {
+        "Metadata": {
+            "Username": metadata['Username'],
+            "Timestamp": timestamp,
+            "Filename": filename
+        },
+        "General Information": general_info,
+        "Hyperparameters": hyperparams
+    }
+
+    # Save the JSON file
+    full_path.write_text(json.dumps(json_data, indent=4))
+
+    return filename

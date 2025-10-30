@@ -8,8 +8,8 @@ USERNAME="eschaerer"
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=7G
 #SBATCH --gpus=rtx_4090:1
-#SBATCH --output=/cluster/scratch/$USERNAME/logs/AISCO_TEST_%j.out
-#SBATCH --error=/cluster/scratch/$USERNAME/logs/AISCO_TEST_%j.err
+#SBATCH --output=/cluster/home/$USERNAME/logs/AISCO_TEST_%j.out
+#SBATCH --error=/cluster/home/$USERNAME/logs/AISCO_TEST_%j.err
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=$USERNAME@ethz.ch
 
@@ -51,6 +51,6 @@ source "$VENV_DIR/bin/activate"
 #------------------------------------------------------------------------------
 # Run the Relevant script
 #------------------------------------------------------------------------------
-python "$HOME/AISCO-code/subprojects/wp4_aeroshell_optimiser/SDF_Prototype/main.py" \
+python3 -m "$HOME/AISCO-code/subprojects/wp4_aeroshell_optimiser/src/main" \
     --save_model \
     --problem_id="AISCO_WP4_Test1"

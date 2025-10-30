@@ -1,8 +1,10 @@
-import torch
 import kaolin as kal
-from   kaolin.ops.conversions import FlexiCubes
+import torch
 import trimesh
-from sdf import SDFNetwork  
+from kaolin.ops.conversions import FlexiCubes
+from sdf import SDFNetwork
+
+
 #All Code her by aalthaus
 def get_diff_mesh(model: SDFNetwork, grid_res: int = 128,box_dim: list=[-5,5,-5,5,-5,5], device: str = 'cuda'):
     # At the moment unsure what happens when we change the size 
@@ -90,8 +92,6 @@ def primitive_max_angle_loss(verts: torch.Tensor, faces: torch.Tensor, sun_direc
     #print("max_angle: ", max_angle.shape)
     loss = max_angle / 180.0  # Normalize to [0, 1]
     return loss
-
-
 
 def flexicubes_to_PLY(verts: torch.tensor,faces: torch.tensor, save_mesh: bool=True, filename: str= "loading_test.ply"): # -> mesh format or none??
     """
