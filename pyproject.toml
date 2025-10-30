@@ -135,7 +135,7 @@ ignore = [
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
 # Add "F401" (unused import) to the list of rules Ruff should NOT fix automatically.
-unfixable = ["F401", "PLR0911"]
+unfixable = ["F401", "PLR0911", "PLR0913", "N806"]
 
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
