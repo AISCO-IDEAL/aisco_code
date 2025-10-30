@@ -1,13 +1,15 @@
-from dataclasses import dataclass, asdict
+from dataclasses import asdict
+
 import cadquery as cq
 from cadquery import Assembly, Color, Location
-from ocp_vscode import *
-from .seat import *
-from .chassis import *
-from .params import *
-from .wheels import *
+
 from utils.constraints import chassis_constraints, seat_constraints, wheels_constraints
-from utils.randomize import *
+from utils.randomize import randomize
+
+from .chassis import Chassis
+from .params import ChassisParams, SeatParams, WheelParams
+from .seat import Seat
+from .wheels import Wheels
 
 
 class CarAssembly:

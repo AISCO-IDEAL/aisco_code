@@ -1,58 +1,20 @@
-import components.nbz as nbz
-import components
 import cadquery as cq
 from cadquery import Assembly, Color
-from ocp_vscode import *
+from components import nbz
 
-
-# Generate inner no-build-zone (innerNBZ) car assembly
-def innerNBZ(
-    random_magnitude_chassis: float = 0.1,
-    random_magnitude_seat: float = 0.0,
-    random_magnitude_wheels: float = 0.2,
-):  # -> TopoDS_Shape
-    """
-    Generates an inner no-build-zone (innerNBZ) car assembly with randomized parameters.
-    Args:
-        random_magnitude_chassis (float): Magnitude of randomization for the chassis component.
-        random_magnitude_seat (float): Magnitude of randomization for the seat component.
-        random_magnitude_wheels (float): Magnitude of randomization for the wheel component.
-    Returns:
-        TopoDS_Shape: The generated inner no-build-zone car assembly.
-    """
-    assy = components.CarAssembly().randomized(
-        random_magnitude_chassis=random_magnitude_chassis,
-        random_magnitude_seat=random_magnitude_seat,
-        random_magnitude_wheels=random_magnitude_wheels,
-    )
-
-    # make assembly one solid shape
-    compound = assy.model.toCompound()
-    solid = compound.fuse()
-
-    return solid
-
-
-# Generate outer no-build-zone (outerNBZ) car assembly with dimensions 5800mm x 2300mm x 1650mm
-def outerNBZ():  # -> TopoDS_Shape
-    """
-    Generates an outer no-build-zone (outerNBZ) car assembly with fixed dimensions.
-    Returns:
-        TopoDS_Shape: The generated outer no-build-zone car assembly.
-    """
-    box = nbz.outerBoundingBox(
-        height=1650, width=2300, depth=5800
-    )  # do not hardcode dimensions here, create extra input files later
-    return box
-
+try:
+    from ocp_vscode import show
+except ImportError:
+    print("Warning: ocp_vscode not available. Visualization will not work.")
+    show = None
 
 if __name__ == "__main__":  # only run when executing this file directly
     # Create inner NBZ
-    inner_nbz = innerNBZ()
+    inner_nbz = nbz.innerNBZ()
     print("Inner no-build-zone created")
 
     # Create outer NBZ
-    outer_nbz = outerNBZ()
+    outer_nbz = nbz.outerNBZ()
     print("Outer no-build-zone created")
 
     # Create assembly of both NBZs
@@ -64,6 +26,9 @@ if __name__ == "__main__":  # only run when executing this file directly
     while True:
         userinput = input("Visualize innerNBZ and/or outerNBZ? (y/n): ")
         if userinput.lower() == "y":
+            if show is None:
+                print("Visualization not available. ocp_vscode is not installed.")
+                break
             userinput2 = input("Visualize innerNBZ, outerNBZ or both? (i/o/b): ")
             if userinput2.lower() == "i":
                 show(inner_nbz)
