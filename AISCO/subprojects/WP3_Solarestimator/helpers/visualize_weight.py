@@ -3,6 +3,7 @@ import matplotlib.colors as colors
 import trimesh
 import numpy as np
 def color_faces_by_weight(mesh: trimesh.Trimesh, weights: np.ndarray, gamma: float = 1.0) -> trimesh.Trimesh:
+    #nserck
     """
     Colors the faces of a trimesh object based on a weight array (0.0 to 1.0)
     with a Green (0.0) to Red (1.0) gradient, using gamma correction to

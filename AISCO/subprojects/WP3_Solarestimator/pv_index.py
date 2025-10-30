@@ -3,11 +3,23 @@ import numpy as np
 
 from read_mesh import facenormal_angle, sky_face,powerratio_iam
 def pv_perf_index(mesh,sun_direction, max_area=6.0,):
+    #nserck
+    """
+    Compares the Mesh to a perfectly sun-perfendicular area of the given size. If the Mesh is larger than given max_area it selects the bst performing facettes individually.
+    Args:
+        mesh: The geometry of the object
+        sun_direction: Direction to the sun eg. [0,0,1]
+        max_area: Maximum area that should be considered.
+    Returns:
+        (performance_index, best_mesh): 
+        **performance_index:** float in range [0;1] \n
+        **best_mesh:** The selection mask of the best perfoming facettes within max_area
+    """
     
     max_area = max_area * 1e6  # Convert m² to mm²
     top_mesh = sky_face(mesh)
     angles = facenormal_angle(top_mesh,sun_direction)
-    weights = powerratio_iam(angles,b0=0.15) # default b0 is 0.05
+    weights = powerratio_iam(angles)
     
 
     #get areas and weighted areas
@@ -59,10 +71,9 @@ def pv_perf_index(mesh,sun_direction, max_area=6.0,):
 
    
     #construct best mesh for  later visualization
-    best_faces = mesh.faces[selected_face_indices]
+    #best_faces = mesh.faces[selected_face_indices]
     best_mesh = trimesh.Trimesh(vertices=top_mesh.vertices, faces=top_mesh.faces[selected_face_indices])
     
     ##In future we might want to pass a Performance object or smth, to get further indices like, atual used area etc.
-    # --- WP4 Feel free to change the output to our needs ---
     return performance_index,best_mesh
 
