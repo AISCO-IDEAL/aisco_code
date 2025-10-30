@@ -1,12 +1,18 @@
 # utils.py
 
+import json
+import os
+import time
+from pathlib import Path
+
+import kaolin_test
 import numpy as np
 import torch
 import trimesh
 from sdf import SDFNetwork
 from skimage import measure
-import os
-import kaolin_test
+
+
 # In utils.py
 def visualize_sdf(model, username = "aalthaus"
     , grid_size: int =128,
@@ -26,12 +32,38 @@ def visualize_sdf(model, username = "aalthaus"
     verts, faces, normals, _ = measure.marching_cubes(sdf_values, level=threshold)
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_normals=normals)
     """
-    verts,faces = kaolin_test.get_diff_mesh(model)
+    verts,faces = kaolin_test.get_diff_mesh(model,grid_res=grid_size)
     mesh=kaolin_test.flexicubes_to_PLY(verts,faces,filename=filename)
-    export_path= "AISCO-code/subprojects/wp4_aeroshell_optimizer/src/MainModels/"
-    mesh.export(os.path.join(export_path,filename))
-    print(f"Mesh saved to {export_path}/{filename}.")
+    export_path = Path("AISCO-code/subprojects/wp4_aeroshell_optimizer/src/MainModels/")
+    mesh.export(str(export_path / filename))
+    print(f"Mesh saved to {export_path / filename}.")
 
 def load_model(model_path: str) -> SDFNetwork:
     model = torch.load(model_path)
     return model
+
+
+def filenamer(hyperparams: dict, general_info: dict, metadata: dict) -> str:
+    # Create a filename based on current timestamp
+    timestamp = time.strftime('%Y%m%d_%H%M%S')
+    filename = f"{metadata['Username']}_{general_info['Model']}_{timestamp}.json"
+
+    # Define the full path to save the JSON file
+    save_path = Path(f"/cluster/scratch/{metadata['Username']}/models")
+    full_path = save_path / filename
+
+    # Create the JSON structure
+    json_data = {
+        "Metadata": {
+            "Username": metadata['Username'],
+            "Timestamp": timestamp,
+            "Filename": filename
+        },
+        "General Information": general_info,
+        "Hyperparameters": hyperparams
+    }
+
+    # Save the JSON file
+    full_path.write_text(json.dumps(json_data, indent=4))
+
+    return filename

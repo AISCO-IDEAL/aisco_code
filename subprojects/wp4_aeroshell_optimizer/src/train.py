@@ -55,7 +55,7 @@ def train_sdf_model(
         print(f"Model saved to: {save_path}")
 
     # Visualize the SDF
-    visualize_sdf(model, grid_size=64, threshold=0.0, filename="NewPipelineTest.ply")
+    visualize_sdf(model, grid_size=128, threshold=0.0, filename="MergedPipelineTest.ply")
     print("Training complete. A mesh has been generated and saved as 'sdf_aeroshell_mesh.ply'.")
 
     return model
