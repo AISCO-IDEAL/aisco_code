@@ -1,7 +1,83 @@
+import components.nbz as nbz
 import components
 import cadquery as cq
+from cadquery import Assembly, Color
 from ocp_vscode import *
 
-assy=components.CarAssembly().randomized(0.3, 0.05, 0.1)
-set_port(49152)
-show_object(assy.model,clear=True)
+
+# Generate inner no-build-zone (innerNBZ) car assembly
+def innerNBZ(
+    random_magnitude_chassis: float = 0.1,
+    random_magnitude_seat: float = 0.0,
+    random_magnitude_wheels: float = 0.2,
+):  # -> TopoDS_Shape
+    """
+    Generates an inner no-build-zone (innerNBZ) car assembly with randomized parameters.
+    Args:
+        random_magnitude_chassis (float): Magnitude of randomization for the chassis component.
+        random_magnitude_seat (float): Magnitude of randomization for the seat component.
+        random_magnitude_wheels (float): Magnitude of randomization for the wheel component.
+    Returns:
+        TopoDS_Shape: The generated inner no-build-zone car assembly.
+    """
+    assy = components.CarAssembly().randomized(
+        random_magnitude_chassis=random_magnitude_chassis,
+        random_magnitude_seat=random_magnitude_seat,
+        random_magnitude_wheels=random_magnitude_wheels,
+    )
+
+    # make assembly one solid shape
+    compound = assy.model.toCompound()
+    solid = compound.fuse()
+
+    return solid
+
+
+# Generate outer no-build-zone (outerNBZ) car assembly with dimensions 5800mm x 2300mm x 1650mm
+def outerNBZ():  # -> TopoDS_Shape
+    """
+    Generates an outer no-build-zone (outerNBZ) car assembly with fixed dimensions.
+    Returns:
+        TopoDS_Shape: The generated outer no-build-zone car assembly.
+    """
+    box = nbz.outerBoundingBox(
+        height=1650, width=2300, depth=5800
+    )  # do not hardcode dimensions here, create extra input files later
+    return box
+
+
+if __name__ == "__main__":  # only run when executing this file directly
+    # Create inner NBZ
+    inner_nbz = innerNBZ()
+    print("Inner no-build-zone created")
+
+    # Create outer NBZ
+    outer_nbz = outerNBZ()
+    print("Outer no-build-zone created")
+
+    # Create assembly of both NBZs
+    assembled_car = Assembly(outer_nbz, name="outerNBZ", color=Color(1, 0, 0, 0.3))
+    assembled_car.add(inner_nbz, name="innerNBZ", color=Color(0, 0, 1))
+    print("Assembly created")
+
+    # Prompt to visualize the shapes
+    while True:
+        userinput = input("Visualize innerNBZ and/or outerNBZ? (y/n): ")
+        if userinput.lower() == "y":
+            userinput2 = input("Visualize innerNBZ, outerNBZ or both? (i/o/b): ")
+            if userinput2.lower() == "i":
+                show(inner_nbz)
+                print(type(inner_nbz))
+            elif userinput2.lower() == "o":
+                show(outer_nbz)
+                print(type(outer_nbz))
+            elif userinput2.lower() == "b":
+                show(assembled_car)
+                print(type(assembled_car))
+            else:
+                print("Invalid input. Please enter 'i' or 'o'.")
+        elif userinput.lower() == "n":
+            print("Visualization stopped.")
+            break
+        else:
+            print("Invalid input. Please enter 'y' or 'n'.")
