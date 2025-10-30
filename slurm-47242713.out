@@ -1,0 +1,26 @@
+==========================================
+Job started on: Thu Oct 30 01:56:07 PM CET 2025
+Job ID: 47242713
+Running on node: eu-g5-048-3
+Number of CPUs: 1
+Allocated memory per CPU: 1024 MB
+Number of GPUs: 
+GPU type: NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver. Make sure that the latest NVIDIA driver is installed and running.
+Allocated memory per GPU: NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver. Make sure that the latest NVIDIA driver is installed and running. MB
+Working directory: /cluster/home/eschaerer/AISCO-code
+==========================================
+Many modules are hidden in this stack. Use "module --show_hidden spider SOFTWARE" if you are not able to find the required software
+Warp CUDA error 100: no CUDA-capable device is detected (in function init_cuda_driver, /builds/omniverse/warp/warp/native/cuda_util.cpp:279)
+Traceback (most recent call last):
+  File "/cluster/home/eschaerer/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/main.py", line 3, in <module>
+    import kaolin_test
+  File "/cluster/home/eschaerer/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/kaolin_test.py", line 49, in <module>
+    def kaolin_facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_direction=torch.tensor([0., 0., 1.], device='cuda')) -> torch.Tensor:
+                                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/cluster/home/eschaerer/AISCO-code/aisco_env/lib/python3.11/site-packages/torch/cuda/__init__.py", line 314, in _lazy_init
+    torch._C._cuda_init()
+RuntimeError: No CUDA GPUs are available
+==========================================
+Job ended on: Thu Oct 30 01:56:24 PM CET 2025
+Total elapsed time: 17 seconds
+==========================================

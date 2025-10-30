@@ -42,9 +42,8 @@ wp4_aeroshell_optimizer = [
   "plotly==5.22.0",
   "scikit-image>=0.0.0",
   "torch_geometric==2.7.0",
-  "torchvision==0.19.1",
+  "torchvision", # changed by eschaerer from torchvision==0.19.1, because it requires torch==2.4.1
   "trimesh==4.8.3",
-  "typing==3.10.0"
 ]
 
 [tool.setuptools.packages.find]

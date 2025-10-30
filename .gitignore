@@ -3,7 +3,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+##################
+*.out # from eschaerer
+##################
 # C extensions
 *.so
 
@@ -55,6 +57,7 @@ cover/
 # Translations
 *.mo
 *.pot
+
 
 # Django stuff:
 *.log

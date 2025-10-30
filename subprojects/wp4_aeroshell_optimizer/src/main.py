@@ -1,4 +1,7 @@
+from pathlib import Path
+
 import kaolin_test
+import torch
 import yaml
 from sdf import SDFNetwork
 from SDF_visualisation import visualize_loaded_model
@@ -27,13 +30,14 @@ general_info = {
     "Pre": "a sphere as initial shape, datatype: SDF",
     "Post": "a PLY file representing the optimized aeroshell shape",
 }
+
 metadata = {
         "Username": "eschaerer",
     }
 
 def main():
     # 1. Load settings from config:
-    with open('AISCO-code/subprojects/wp4_aeroshell_optimizer/src/wp4_config.yaml') as f:
+    with Path.open('AISCO-code/subprojects/wp4_aeroshell_optimizer/src/wp4_config.yaml') as f:
         config = yaml.safe_load(f)
 
 
