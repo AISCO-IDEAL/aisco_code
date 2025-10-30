@@ -41,6 +41,7 @@ echo "   - Workpackage 1 (WP1_WP1_CFD_AI):                  python3 -m pip insta
 echo "   - Workpackage 2 (wp2_assembler):                   python3 -m pip install '.[wp2_assembler]'"
 echo "   - Workpackage 3 (WP_3_Solarestimator):             python3 -m pip install '.[WP3_Solarestimator]'"
 echo "   - Workpackage 4 (WP_4_Aeroshell_optimizer):        python3 -m pip install '.[wp4_aeroshell_optimizer]'"
+echo "   - testing dependencies:                            python3 -m pip install '.[testing]'"
 echo "   - All optional dependencies:                       python3 -m pip install '.[all]'"
 echo ""
 ############# eschaerer addition for kaolin install #############

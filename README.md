@@ -12,6 +12,13 @@ Lets clone the AISCO-code Repo via SSH:
 - install `ruff`
 - install `mypy type checker`
 
+### Important VS Code settings 
+- open settings `ctrl + ,` -> enter `git blame` -> enable
+	- shows who edited what line of code => no tags necessary 
+- open settings `ctrl + ,` -> enter `format on save` -> enable
+	- activates ruff, to make your code look nice and work well
+	- reduces ruff errors later on
+
 ### hide unnecessary folders
 - open VS Code
 - `strg + , ` to open settings

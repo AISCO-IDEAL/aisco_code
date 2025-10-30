@@ -47,6 +47,13 @@ wp4_aeroshell_optimizer = [
   "typing==3.10.0"
 ]
 
+testing = ["pytest >= 8.3.2"]
+
+all = [
+  "aisco_env[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer]"
+]
+
+#make a all command 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["AISCO*", "subprojects_legacy*"]
