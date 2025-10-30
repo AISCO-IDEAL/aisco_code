@@ -6,14 +6,14 @@ import numpy as np
 import trimesh
 
 
-def calculateCdProxy(
+def calculateCdProxy(  # noqa: N802
     path_to_file: str,
     create_visualization: bool,
     visualization_path: str,
     slicing_axis: str = "x",
     slicing_direction: str = "-",
-    weights: Optional[List[float]] = None,
-) -> Optional[float]:
+    weights: list[float] | None = None,
+) -> float | None:
     """
     Calculates a drag coefficient (Cd) proxy for a given STL file.
 
@@ -186,15 +186,14 @@ def calculateCdProxy(
                 v_mask = (vertices[:, axis_idx] >= a_start) & (
                     vertices[:, axis_idx] < a_end
                 )
-        else:  # slicing_direction is '-'
-            if i == (N_SLICES - 1):
-                v_mask = (vertices[:, axis_idx] <= a_start) & (
-                    vertices[:, axis_idx] >= a_end
-                )
-            else:
-                v_mask = (vertices[:, axis_idx] <= a_start) & (
-                    vertices[:, axis_idx] > a_end
-                )
+        elif i == (N_SLICES - 1):
+            v_mask = (vertices[:, axis_idx] <= a_start) & (
+                vertices[:, axis_idx] >= a_end
+            )
+        else:
+            v_mask = (vertices[:, axis_idx] <= a_start) & (
+                vertices[:, axis_idx] > a_end
+            )
 
         slice_points = vertices[v_mask]
 
