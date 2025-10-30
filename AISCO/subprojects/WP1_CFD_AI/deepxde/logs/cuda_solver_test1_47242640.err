@@ -1,0 +1,8 @@
+Many modules are hidden in this stack. Use "module --show_hidden spider SOFTWARE" if you are not able to find the required software
+
+The following have been reloaded with a version change:
+  1) cuda/12.1.1 => cuda/12.8.0
+
+/cluster/home/elihuber/venvs/aisco-code/bin/python: can't open file '/cluster/home/elihuber/AISCO-code/AISCO/subprojects/WP1_CFD_AI/deepxde/cavity_solver.py': [Errno 2] No such file or directory
+/cluster/home/elihuber/venvs/aisco-code/bin/python: can't open file '/cluster/home/elihuber/AISCO-code/AISCO/subprojects/WP1_CFD_AI/deepxde/cavity_solver.py': [Errno 2] No such file or directory
+srun: error: eu-g6-020: tasks 0-1: Exited with exit code 2
