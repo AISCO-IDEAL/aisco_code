@@ -26,7 +26,7 @@ def visualize_sdf(model, username = "aalthaus"
     verts, faces, normals, _ = measure.marching_cubes(sdf_values, level=threshold)
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_normals=normals)
     """
-    verts,faces = kaolin_test.get_diff_mesh(model)
+    verts,faces = kaolin_test.get_diff_mesh(model,grid_res=grid_size)
     mesh=kaolin_test.flexicubes_to_PLY(verts,faces,filename=filename)
     export_path= "AISCO-code/subprojects/wp4_aeroshell_optimizer/src/MainModels/"
     mesh.export(os.path.join(export_path,filename))
