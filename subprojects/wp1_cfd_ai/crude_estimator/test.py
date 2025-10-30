@@ -6,6 +6,6 @@ print(
         True,
         "silvretta_big_rot_viz.glb",
         slicing_direction="-",
-        slicing_axis="z",
+        slicing_axis="x",
     )
 )
