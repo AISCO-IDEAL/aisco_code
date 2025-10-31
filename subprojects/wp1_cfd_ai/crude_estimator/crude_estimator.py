@@ -298,7 +298,8 @@ def calculateCdProxy(  # noqa: N802
         normalized_loss = (
             final_weighted_loss
             * sorted_areas[0]  # A_max
-            / (A_norm * A_norm * N_SLICES * realistic_factor)
+            / N_SLICES
+            * realistic_factor
         )
 
         print(

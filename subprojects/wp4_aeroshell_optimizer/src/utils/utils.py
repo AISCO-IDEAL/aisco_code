@@ -5,7 +5,7 @@ import os
 import time
 from pathlib import Path
 
-from .kaolin_utils import flexicubes_to_PLY, kaolin_primitive_max_angle_loss, kaolin_facenormal_angle, get_diff_mesh
+import .kaolin_utils
 import numpy as np
 import trimesh
 from ..models.sdf import SDFNetwork
