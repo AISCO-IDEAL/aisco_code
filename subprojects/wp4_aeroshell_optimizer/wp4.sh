@@ -1,6 +1,5 @@
 #!/bin/bash
-# Define username variable
-USERNAME="eschaerer"
+
 
 #SBATCH --partition=gpu
 #SBATCH --job-name=AISCO_Test_SLURM
@@ -11,11 +10,15 @@ USERNAME="eschaerer"
 #SBATCH --mem-per-cpu=7G                  # Total 28G memory
 #SBATCH --gpus=rtx_4090:2
 
-#SBATCH --output=/cluster/home/elihuber/logs/AISCO_TEST_%j.out     #adjust path as needed
-#SBATCH --error=/cluster/home/elihuber/logs/AISCO_TEST_%j.err      #adjust path as needed
+#SBATCH --output=/cluster/home/eschaerer/logs/AISCO_TEST_%j.out     #adjust path as needed
+#SBATCH --error=/cluster/home/eschaerer/logs/AISCO_TEST_%j.err      #adjust path as needed
 
 ##SBATCH --mail-type=END,FAIL
-##SBATCH --mail-user=elihuber@ethz.ch
+##SBATCH --mail-user=eschaerer@ethz.ch
+#------------------------------------------------------------------------------
+# Define username variable (must come after all #SBATCH directives)
+#------------------------------------------------------------------------------
+USERNAME="eschaerer"
 
 #------------------------------------------------------------------------------
 # Print job information
@@ -41,13 +44,20 @@ mkdir -p "$SCRATCH/logs" "$SCRATCH/datasets" "$SCRATCH/models"
 # Load modules
 #------------------------------------------------------------------------------
 module purge
-module load stack/2024-06 gcc/12.2.0 python_cuda/3.11.6 cuda/12.1.1 eth_proxy
+module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
 
 #------------------------------------------------------------------------------
 # Activate the Python virtual environment
 #------------------------------------------------------------------------------
 VENV_DIR="/cluster/home/$USERNAME/AISCO-code/aisco_env"
 source "$VENV_DIR/bin/activate"
+
+#------------------------------------------------------------------------------
+# Verify GPU access
+#------------------------------------------------------------------------------
+echo "Verifying GPU access..."
+nvidia-smi
+echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 
 #------------------------------------------------------------------------------
 # Set WANDB environment variables (not used for now)
