@@ -9,7 +9,6 @@ from tracking_loss_for_vis import LossTracker
 # These losses include eikonal loss, smoothness loss, bounding box constraints,
 # watertightness loss, and performance-related losses.
 
-
 class SDFLosses:
     def __init__(self, weights: list[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],dev: str = 'cuda'):
         assert len(weights) == 6, "Weights must match the number of losses: [eikonal, smoothness, bounding_box, watertightness, fronatl_area, solar_area]"

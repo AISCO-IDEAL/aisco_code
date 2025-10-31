@@ -6,6 +6,7 @@ __pycache__/
 ##################
 *.out # from eschaerer
 aisco_env/
+*.err # from eschaerer
 ##################
 # C extensions
 *.so
