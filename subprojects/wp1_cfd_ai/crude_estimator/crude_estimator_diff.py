@@ -4,12 +4,35 @@ import numpy as np
 import torch
 import trimesh
 
-# Epsilon from your loss function, needed to replicate logic
+# --- Constants (Consolidated at the top) ---
+
+# Epsilon for numerical stability (avoiding div/sqrt of zero)
 EPSILON = 1e-10
 
-
-# Epsilon from your loss function, needed to replicate logic
-EPSILON = 1e-10
+# Default weights from the original script
+# These are defined from MIN to MAX axis
+_DEFAULT_WEIGHTS_LIST = [
+    8.0,
+    7.39,
+    6.78,
+    2.07,
+    1.2,
+    1.2,
+    1.1,
+    0.75,
+    0.75,
+    0.9,
+    1.05,
+    1.7,
+    2.0,
+    2.3,
+    3.0,
+    3.5,
+    3.7,
+    4.8,
+    6.25,
+    8.0,
+]
 
 
 def visualize_slices(
@@ -75,7 +98,11 @@ def visualize_slices(
     split_points = np.linspace(min_bound, max_bound, N_SLICES + 1)
 
     # --- 3. Create a Box for Each Slice ---
-    colors = [[255, 0, 0, 150], [0, 0, 255, 150]]
+    # --- MODIFIED ---
+    FIRST_BOX_COLOR = [0, 255, 0, 150]  # Green, semi-transparent
+    alternating_colors = [[255, 0, 0, 150], [0, 0, 255, 150]]  # Red/Blue
+    n_alternating_colors = len(alternating_colors)
+    # --- END MODIFIED ---
 
     for i in range(N_SLICES):
         a_start = split_points[i]
@@ -115,7 +142,20 @@ def visualize_slices(
             extents=box_extents, transform=box_tf
         )
 
-        box_outline.colors = [colors[i % 2]] * len(box_outline.entities)
+        # --- MODIFIED ---
+        # Set the color based on the index 'i'
+        current_color = None
+        if i == 0:
+            current_color = FIRST_BOX_COLOR
+        else:
+            # Use (i - 1) so the alternating pattern starts at index 0
+            # for the *second* box (which has i = 1)
+            color_index = (i - 1) % n_alternating_colors
+            current_color = alternating_colors[color_index]
+
+        box_outline.colors = [current_color] * len(box_outline.entities)
+        # --- END MODIFIED ---
+
         scene.add_geometry(box_outline, geom_name=f"slice_box_{i + 1}")
 
     # --- 4. Export the Scene to a File ---
@@ -131,34 +171,6 @@ def visualize_slices(
         scene.export(output_filepath)
     except Exception as e:
         print(f"ERROR: Could not save visualization to {output_filepath}: {e}")
-
-
-# --- Default weights from the original script ---
-# These are defined from MIN to MAX axis
-_DEFAULT_WEIGHTS_LIST = [
-    8.0,
-    7.39,
-    6.78,
-    2.07,
-    1.2,
-    1.2,
-    1.1,
-    0.75,
-    0.75,
-    0.9,
-    1.05,
-    1.7,
-    2.0,
-    2.3,
-    3.0,
-    3.5,
-    3.7,
-    4.8,
-    6.25,
-    8.0,
-]
-# Epsilon for numerical stability (avoiding div/sqrt of zero)
-EPSILON = 1e-10
 
 
 def calculateCdProxyDifferentiable(
