@@ -2,7 +2,7 @@
 import torch
 from losses import SDFLosses
 from sdf import SDFNetwork
-from SDF_visualisation import SDFVisualizer
+from /cluster/home/clhuber/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/utils/SDF_visualisation.py import SDFVisualizer
 
 """ Test script for Bounding Box Loss function
 Trains the SDFNEtwork on just the bounding box loss and visualizes the result using SDF_visualizer

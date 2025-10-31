@@ -26,7 +26,7 @@ class SDFfromCadQuery:
     def __init__(self, shape: cq.Shape, pointgrid:list[list[float]]=[[x/10, y/10, z/10] for x in range(-10, 11) for y in range(-10, 11) for z in range(-10, 11)]):  # noqa: B006
         self._shape = shape
         self._pointgrid = pointgrid
-        self._sdf_at_pointgrid = [self.sdf(x, y, z) for x, y, z in self._pointgrid]
+        self._sdf_at_pointgrid = [self.fsdf(x, y, z) for x, y, z in self._pointgrid]
     def sdf(self, x: float, y: float, z: float) -> float:
         """
         Signed distance from (x, y, z) to self._shape (CadQuery shape).
@@ -68,7 +68,6 @@ class SDFfromCadQuery:
         dist_shape_shape = BRepExtrema_DistShapeShape(vertex, shape_ocp)
         dist_shape_shape.Perform()
         d = dist_shape_shape.Value()
-        print(d)
         if d==0: # Point is either on the surface or inside the shape
             world = cq.Workplane("XY").box(100, 100, 100)
             negativ = world.cut(cq.Workplane().newObject([self._shape])).val()
@@ -77,7 +76,6 @@ class SDFfromCadQuery:
             dist_shape_shape = BRepExtrema_DistShapeShape(vertex, negativ)
             dist_shape_shape.Perform()
             d = - dist_shape_shape.Value()
-            print(d)
         return d
 
     def sdf_at_pointgrid(self) -> list[float]:
