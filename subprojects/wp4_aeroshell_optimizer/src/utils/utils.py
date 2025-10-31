@@ -5,10 +5,10 @@ import os
 import time
 from pathlib import Path
 
-import kaolin_test
+from .kaolin_utils import flexicubes_to_PLY, kaolin_primitive_max_angle_loss, kaolin_facenormal_angle, get_diff_mesh
 import numpy as np
 import trimesh
-from .sdf import SDFNetwork
+from ..models.sdf import SDFNetwork
 from skimage import measure
 
 import torch

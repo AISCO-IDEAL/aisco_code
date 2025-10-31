@@ -1,4 +1,4 @@
-import kaolin_utils
+from .kaolin_utils import flexicubes_to_PLY, kaolin_primitive_max_angle_loss, kaolin_facenormal_angle, get_diff_mesh
 import numpy as np
 import trimesh
 from ..models.sdf import SDFNetwork
@@ -28,12 +28,12 @@ def save_sdf2mesh(
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_normals=normals)
     """
 
-    verts, faces = kaolin_utils.get_diff_mesh(model, grid_res=grid_size)
+    verts, faces = get_diff_mesh(model, grid_res=grid_size)
 
     if mesh_dir:
         export_path = mesh_dir
         export_path = os.path.join(export_path, filename)
-        mesh = kaolin_utils.flexicubes_to_PLY(verts, faces, filename=filename, mesh_dir=mesh_dir)
+        mesh = flexicubes_to_PLY(verts, faces, filename=filename, mesh_dir=mesh_dir)
         print(f"Mesh saved to {export_path}.")
         return mesh
     return
