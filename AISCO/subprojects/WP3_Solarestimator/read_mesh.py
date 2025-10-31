@@ -70,7 +70,7 @@ def powerratio_iam(theta_grad, b0=0.05):
     iam_factor = 1.0 - b0 * ((1.0 / cos_theta_safe) - 1.0)
 
     # 4. Berechnung des Gesamtverhältnisses
-    ratio = iam_factor ##* cos_theta fehlerhaft?
+    ratio = iam_factor ##  * cos_theta fehlerhaft?
 
     # 5. ANGLE CHECK (Vectorized Fix): Set ratio to 0.0 where angle >= 90°
     # np.where checks the condition element-wise:

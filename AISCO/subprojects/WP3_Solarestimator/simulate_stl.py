@@ -74,9 +74,9 @@ def simulate_stl(path_csv: str, mesh_path: str, max_area=6.0):
             row['time_utc']
             )
         angles = facenormal_angle(top_mesh,sun_dir)
-        shadow_mask = shadowing_factor(top_mesh, -1*sun_dir)
+        #shadow_mask = shadowing_factor(top_mesh, -1*sun_dir)
         power_weight = powerratio_iam(angles)
-        power_weight[shadow_mask]=0
+        #power_weight[shadow_mask]=0
         res[f'{index}']=power_weight
 
     # Computes the performance of the solar deck over the entire run
