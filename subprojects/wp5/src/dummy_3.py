@@ -1,0 +1,2 @@
+def hihi():
+    return "hihi"
