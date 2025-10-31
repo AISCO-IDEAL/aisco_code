@@ -3,7 +3,7 @@ import torch
 from sdf import SDFNetwork
 import matplotlib.pyplot as plt
 
-def visualize_network(model: SDFNetwork,
+def visualize_network(model: SDFNetwork = None,
                       save_dir: str="AISCO-code/subprojects/wp4_aeroshell_optimizer/data/architecture_visualizations/",
                       filename: str="sdf_network_visualization"):
     """
@@ -16,8 +16,13 @@ def visualize_network(model: SDFNetwork,
         None
 
     """
-    # Create the visualization
+    
 
+    # If no model is provided, create a randomly initiated SDFNetwork
+    if not model:
+        model = SDFNetwork()
+
+    # Create the visualization
     input_shape = (1, 3)  # Assuming input is a single point with 3 coordinates (x, y, z)
     img = visualtorch.graph_view(model, input_shape)
 
