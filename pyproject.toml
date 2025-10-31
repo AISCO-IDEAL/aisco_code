@@ -46,6 +46,7 @@ wp4_aeroshell_optimizer = [
   "torchvision", # changed by eschaerer from torchvision==0.19.1, because it requires torch==2.4.1
   "trimesh==4.8.3",
   "visualtorch",
+  "mesh2sdf", #From https://github.com/wang-ps/mesh2sdf?tab=readme-ov-file
 ]
 
 testing = ["pytest >= 8.3.2"]
