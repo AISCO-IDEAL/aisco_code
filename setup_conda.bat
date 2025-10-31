@@ -59,6 +59,7 @@ echo    - Workpackage 1 (wp1_WP1_CFD_AI):                  pip install '.[wp1_CF
 echo    - Workpackage 2 (wp2_Assembler):                   pip install '.[wp2_Assembler]'
 echo    - Workpackage 3 (wp3_Solarestimator):             pip install '.[wp3_Solarestimator]'
 echo    - Workpackage 4 (wp4_Aeroshell_optimizer):        pip install '.[wp4_Aeroshell_optimizer]'
+echo    - Testing dependencies:                            pip install '.[testing]'
 echo    - All optional dependencies:                       pip install '.[all]'
 
 REM eschaerer addition for kaolin install #############
