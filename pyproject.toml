@@ -30,7 +30,8 @@ wp1_cfd_ai = [
 
 ]
 wp2_assembler =[
-
+  "cadquery >= 2.6.0",
+  "ocp_vscode >= 2.9.0"
 ]
 wp3_solar_estimator = [
 
@@ -45,6 +46,7 @@ wp4_aeroshell_optimizer = [
   "torchvision", # changed by eschaerer from torchvision==0.19.1, because it requires torch==2.4.1
   "trimesh==4.8.3",
   "visualtorch",
+  "mesh2sdf", #From https://github.com/wang-ps/mesh2sdf?tab=readme-ov-file
 ]
 
 testing = ["pytest >= 8.3.2"]

@@ -1,11 +1,11 @@
-from sdf import SDFNetwork
+from .sdf import SDFNetwork
 import torch
 import typing as T
-from losses import SDFLosses
+from .losses import SDFLosses
 import datetime
 import os
 import numpy as np
-from sdf2mesh import save_sdf2mesh
+from ..utils.sdf2mesh import save_sdf2mesh
 
 def train_sdf_model(
     model: SDFNetwork,

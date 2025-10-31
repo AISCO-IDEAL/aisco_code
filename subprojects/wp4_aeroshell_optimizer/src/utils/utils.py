@@ -8,7 +8,7 @@ from pathlib import Path
 import kaolin_test
 import numpy as np
 import trimesh
-from sdf import SDFNetwork
+from .sdf import SDFNetwork
 from skimage import measure
 
 import torch

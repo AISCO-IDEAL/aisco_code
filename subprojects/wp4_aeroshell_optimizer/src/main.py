@@ -1,9 +1,9 @@
 from pathlib import Path
 import torch
 import yaml
-from sdf import SDFNetwork
-from train import train_sdf_model
-from utils import (
+from .models.sdf import SDFNetwork
+from .models.train import train_sdf_model
+from .utils.utils import (
     check_cuda_health,
     initialize_cuda,
     load_pretrained_model,

@@ -1,7 +1,7 @@
+# Written by @clhuber
+
 """
 This Code is written by written by Clemens Huber
-This coded is used in the following files:
--
 """
 from typing import cast
 
