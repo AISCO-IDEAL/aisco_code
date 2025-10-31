@@ -17,5 +17,9 @@ if wp4_src_path not in sys.path:
 
 # --- Now you can import it like it's in the same folder ---
 import kaolin_test
-from crude_estimator_diff import calculateCdProxy_differentiable
+from crude_estimator_diff import calculateCdProxyDifferentiable
 from kaolin_test import get_diff_mesh
+
+vertices, _ = get_diff_mesh()
+
+print(calculateCdProxyDifferentiable(vertices))

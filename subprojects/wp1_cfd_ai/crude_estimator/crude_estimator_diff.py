@@ -3,13 +3,32 @@ import torch
 # --- Default weights from the original script ---
 # These are defined from MIN to MAX axis
 _DEFAULT_WEIGHTS_LIST = [
-    8.0, 7.39, 6.78, 2.07, 1.2, 1.2, 1.1, 0.75, 0.75, 0.9,
-    1.05, 1.7, 2.0, 2.3, 3.0, 3.5, 3.7, 4.8, 6.25, 8.0,
+    8.0,
+    7.39,
+    6.78,
+    2.07,
+    1.2,
+    1.2,
+    1.1,
+    0.75,
+    0.75,
+    0.9,
+    1.05,
+    1.7,
+    2.0,
+    2.3,
+    3.0,
+    3.5,
+    3.7,
+    4.8,
+    6.25,
+    8.0,
 ]
 # Epsilon for numerical stability (avoiding div/sqrt of zero)
 EPSILON = 1e-10
 
-def calculateCdProxy_differentiable(
+
+def calculateCdProxyDifferentiable(
     vertices: torch.Tensor,
     slicing_axis: str = "x",
     slicing_direction: str = "-",
@@ -54,16 +73,16 @@ def calculateCdProxy_differentiable(
         manual_weights_to_use = _DEFAULT_WEIGHTS_LIST
 
     if len(manual_weights_to_use) != N_SLICES:
-        print(f"FATAL ERROR: Weights list has {len(manual_weights_to_use)} items, but N_SLICES is {N_SLICES}.")
+        print(
+            f"FATAL ERROR: Weights list has {len(manual_weights_to_use)} items, but N_SLICES is {N_SLICES}."
+        )
         return None
 
     weights_to_use_list = manual_weights_to_use
     if slicing_direction == "-":
         weights_to_use_list = manual_weights_to_use[::-1]
-    
-    weights_tensor = torch.tensor(
-        weights_to_use_list, dtype=dtype, device=device
-    )
+
+    weights_tensor = torch.tensor(weights_to_use_list, dtype=dtype, device=device)
 
     # --- 1. Set up axis indices ---
     slicing_axis_lower = slicing_axis.lower()
@@ -78,9 +97,9 @@ def calculateCdProxy_differentiable(
         return None
 
     # --- 2. Differentiable "Soft" Slicing ---
-    
+
     # Get all vertex coordinates for the slicing axis
-    vert_coords = vertices[:, axis_idx] # Shape: [N_verts]
+    vert_coords = vertices[:, axis_idx]  # Shape: [N_verts]
 
     # --- THIS IS THE STANDARD DEVIATION BOX METHOD ---
     if slice_bounds is not None:
@@ -90,7 +109,7 @@ def calculateCdProxy_differentiable(
         # 2. DYNAMIC mode: Differentiably calculate bounds
         center = torch.mean(vert_coords)
         spread = torch.std(vert_coords)
-        
+
         # Add epsilon to spread to prevent 0 spread on a flat plane
         min_bound = center - num_std_devs * (spread + EPSILON)
         max_bound = center + num_std_devs * (spread + EPSILON)
@@ -100,7 +119,7 @@ def calculateCdProxy_differentiable(
         min_bound, max_bound, N_SLICES + 1, device=device, dtype=dtype
     )
     # --- END OF THE METHOD IMPLEMENTATION ---
-    
+
     all_slice_weights = []
     for i in range(N_SLICES):
         a_start = split_points[i]
@@ -112,41 +131,41 @@ def calculateCdProxy_differentiable(
 
     # --- 3. Differentiable Frontal Area Calculation ---
     slice_frontal_areas = []
-    coords_1 = vertices[:, area_idx_1] # e.g., Y-coords
-    coords_2 = vertices[:, area_idx_2] # e.g., Z-coords
+    coords_1 = vertices[:, area_idx_1]  # e.g., Y-coords
+    coords_2 = vertices[:, area_idx_2]  # e.g., Z-coords
 
     for in_slice_weight in all_slice_weights:
         total_weight = in_slice_weight.sum() + EPSILON
 
         # Calculate spread on Area_1 axis
         mean_1 = (coords_1 * in_slice_weight).sum() / total_weight
-        variance_1 = (((coords_1 - mean_1)**2) * in_slice_weight).sum() / total_weight
-        
+        variance_1 = (((coords_1 - mean_1) ** 2) * in_slice_weight).sum() / total_weight
+
         # Calculate spread on Area_2 axis
         mean_2 = (coords_2 * in_slice_weight).sum() / total_weight
-        variance_2 = (((coords_2 - mean_2)**2) * in_slice_weight).sum() / total_weight
+        variance_2 = (((coords_2 - mean_2) ** 2) * in_slice_weight).sum() / total_weight
 
         # Differentiable "area" = product of "spreads" (std devs)
         spread_1 = torch.sqrt(variance_1 + EPSILON)
         spread_2 = torch.sqrt(variance_2 + EPSILON)
-        
+
         proxy_area = spread_1 * spread_2
         slice_frontal_areas.append(proxy_area)
 
-    all_slice_areas = torch.stack(slice_frontal_areas) # Shape: [N_SLICES]
+    all_slice_areas = torch.stack(slice_frontal_areas)  # Shape: [N_SLICES]
 
     # --- 4. Final Weighted Loss ---
     final_weighted_loss = torch.dot(all_slice_areas, weights_tensor)
 
     # --- 5. Differentiable Normalization ---
     # (Weighted Loss * A_max) / (A_norm**2)
-    
+
     A_max_proxy = torch.max(all_slice_areas)
     A_norm_proxy = torch.mean(all_slice_areas)
 
     numerator = final_weighted_loss * A_max_proxy
     denominator = (A_norm_proxy**2) + EPSILON
-    
+
     normalized_loss = numerator / denominator
-    
+
     return normalized_loss
