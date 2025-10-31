@@ -3,7 +3,7 @@ import trimesh
 from crude_estimator_diff import calculateCdProxyDifferentiable, visualize_slices
 
 # --- CONFIGURATION ---
-STL_FILE_PATH = "/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/scaled_up_mesh.ply"  # <-- PUT YOUR STL PATH HERE
+STL_FILE_PATH = "/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/sdf_sphere_mesh.ply"  # <-- PUT YOUR STL PATH HERE
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 print(f"--- Running Gradient Check on {STL_FILE_PATH} ---")
@@ -47,6 +47,6 @@ except Exception as e:
 
 visualize_slices(
     vertices,
-    "/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/scaled_up_mesh_test.glb",
+    "/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/sdf_sphere_mesh_test.glb",
 )
 print("--- Test Complete ---")
