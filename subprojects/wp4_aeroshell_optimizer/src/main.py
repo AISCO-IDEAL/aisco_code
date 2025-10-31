@@ -1,3 +1,12 @@
+"""
+Run this file by running the two follwoing commands in the terminal:
+
+cd /cluster/home/clhuber/AISCO-code/subprojects/wp4_aeroshell_optimizer
+
+python -m src.main
+"""
+
+
 from pathlib import Path
 import torch
 import yaml
