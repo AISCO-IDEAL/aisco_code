@@ -36,17 +36,23 @@ wp3_solar_estimator = [
 
 ]
 wp4_aeroshell_optimizer = [
-  
+
   "cadquery == 2.6.0",
   "matplotlib==3.10.7",
   "plotly==5.22.0",
   "scikit-image>=0.0.0",
   "torch_geometric==2.7.0",
-  "torchvision==0.19.1",
+  "torchvision", # changed by eschaerer from torchvision==0.19.1, because it requires torch==2.4.1
   "trimesh==4.8.3",
-  "typing==3.10.0"
 ]
 
+testing = ["pytest >= 8.3.2"]
+
+all = [
+  "aisco_env[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer]"
+]
+
+#make a all command
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["AISCO*", "subprojects_legacy*"]
@@ -169,4 +175,3 @@ exclude = [
   "^build/",
   "^docs/",
 ]
-

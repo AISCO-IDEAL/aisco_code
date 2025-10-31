@@ -1,3 +1,8 @@
 use_pretrained: True
-learning_rate: 1e-4
-num_epochs: 75
+
+training_params:
+  learning_rate: 1e-4
+  num_epochs: 75
+
+model_dir: "AISCO-code/subprojects/wp4_aeroshell_optimizer/data/test_models"
+mesh_dir: "AISCO-code/subprojects/wp4_aeroshell_optimizer/data/test_meshes"

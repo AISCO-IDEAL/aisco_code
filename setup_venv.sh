@@ -9,7 +9,7 @@ ENV_NAME="aisco_env"
 
 # 1. Load the required Python module (adjust as needed for your cluster)
 echo "🔍 Loading Python module..."
-module load fast_python_workshop_cpu/2025.0.0 
+module load fast_python_workshop_cpu/2025.0.0
 
 # 2. Check if Python is available after loading the module
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
@@ -41,6 +41,7 @@ echo "   - Workpackage 1 (WP1_WP1_CFD_AI):                  python3 -m pip insta
 echo "   - Workpackage 2 (wp2_assembler):                   python3 -m pip install '.[wp2_assembler]'"
 echo "   - Workpackage 3 (WP_3_Solarestimator):             python3 -m pip install '.[WP3_Solarestimator]'"
 echo "   - Workpackage 4 (WP_4_Aeroshell_optimizer):        python3 -m pip install '.[wp4_aeroshell_optimizer]'"
+echo "   - testing dependencies:                            python3 -m pip install '.[testing]'"
 echo "   - All optional dependencies:                       python3 -m pip install '.[all]'"
 echo ""
 ############# eschaerer addition for kaolin install #############

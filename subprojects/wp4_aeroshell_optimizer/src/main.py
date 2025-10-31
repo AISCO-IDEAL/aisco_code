@@ -1,11 +1,17 @@
-import kaolin_test
+from pathlib import Path
+
+import torch
 import yaml
 from sdf import SDFNetwork
-from SDF_visualisation import visualize_loaded_model
 from train import train_sdf_model
-from utils import filenamer
+from utils import (
+    check_cuda_health,
+    initialize_cuda,
+    load_pretrained_model,
+    setup_training_environment,
+)
 
-# eschaerer, just a proposal for the informative .json
+# Hyperparameters - consider moving to config file
 hyperparams = {
     "learning_rate": 0.0001,
     "batch_size": 4096,
@@ -20,39 +26,72 @@ hyperparams = {
     "scheduler_gamma": 0.5,
 }
 
-# eschaerer, just a proposal for the informative .json
+# General information - consider moving to config file
 general_info = {
     "Model": "SDFNetwork",
     "Model_Expl": "an SDF Network with torch Neural Network",
     "Pre": "a sphere as initial shape, datatype: SDF",
     "Post": "a PLY file representing the optimized aeroshell shape",
 }
+
 metadata = {
-        "Username": "eschaerer",
-    }
+    "Username": "eschaerer",
+}
+
 
 def main():
-    # 1. Load settings from config:
-    with open('AISCO-code/subprojects/wp4_aeroshell_optimizer/src/wp4_config.yaml') as f:
-        config = yaml.safe_load(f)
+    """Main execution function for WP4 aeroshell optimizer."""
 
+    print("=" * 60)
+    print("WP4 Aeroshell Optimizer - Starting")
+    print("=" * 60)
 
-    load_pretrained = config["use_pretrained"]
+    # Perform CUDA health check (optional, remove if too verbose)
+    check_cuda_health()
+
+    # Initialize CUDA context early - CRITICAL for avoiding cuBLAS warnings
+    device = initialize_cuda()
+
+    # Setup training environment
+    setup_training_environment(device)
+
+    # Load configuration
+    config_path = (
+        Path.home()
+        / "AISCO-code"
+        / "subprojects"
+        / "wp4_aeroshell_optimizer"
+        / "src"
+        / "wp4_config.yaml"
+    )
+
+    try:
+        with config_path.open() as f:
+            config = yaml.safe_load(f)
+        print(f"✓ Configuration loaded from {config_path}")
+    except FileNotFoundError:
+        print(f"✗ Configuration file not found at {config_path}")
+        return
+    except yaml.YAMLError as e:
+        print(f"✗ Error parsing configuration file: {e}")
+        return
+
+    # Load or initialize model
+    load_pretrained = config.get("use_pretrained", False)
 
     if load_pretrained:
-        #This loads a model while we redo the training loop and main structure
-        
-        model=torch.load("AISCO-code/subprojects/wp4_aeroshell_optimizer/src/DummySphere/sdf_sphere_model_2025-10-24.pth")
+        # This loads a sphere model while we redo the training loop and main structure
+        model = torch.load(
+            "AISCO-code/subprojects/wp4_aeroshell_optimizer/src/DummySphere/sdf_sphere_model_2025-10-24.pth"
+        )
     else:
-        model=SDFNetwork()
-    model.to('cuda')
+        model = SDFNetwork()
+    model.to("cuda")
 
-    train_sdf_model(model,config)
-    
-    
-
-
-
+    save_dir = config.get("model_dir", "")
+    mesh_dir = config.get("mesh_dir", "")
+    train_sdf_model(model, config["training_params"], save_dir, mesh_dir)
+    print("WP4 Main.py executed successfully")
 
 
 if __name__ == "__main__":

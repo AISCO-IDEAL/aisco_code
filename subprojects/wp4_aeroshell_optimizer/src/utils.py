@@ -7,16 +7,20 @@ from pathlib import Path
 
 import kaolin_test
 import numpy as np
-import torch
 import trimesh
 from sdf import SDFNetwork
 from skimage import measure
 
 
 # In utils.py
-def visualize_sdf(model, username = "aalthaus"
-    , grid_size: int =128,
-    threshold: float = 0.0, filename: str="sdf_mesh.ply",device: str='cuda'):
+def save_sdf2mesh(
+    model,
+    grid_size: int = 128,
+    threshold: float = 0.0,
+    mesh_dir: str = "AISCO-code/subprojects/wp4_aeroshell_optimizer/data",
+    filename: str = "sdf_mesh.ply",
+    device: str = "cuda",
+):
     """
     x = torch.linspace(-8, 8, grid_size, device= device)
     y = torch.linspace(-8, 8, grid_size, device= device)
@@ -32,11 +36,17 @@ def visualize_sdf(model, username = "aalthaus"
     verts, faces, normals, _ = measure.marching_cubes(sdf_values, level=threshold)
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_normals=normals)
     """
-    verts,faces = kaolin_test.get_diff_mesh(model,grid_res=grid_size)
-    mesh=kaolin_test.flexicubes_to_PLY(verts,faces,filename=filename)
-    export_path = Path("AISCO-code/subprojects/wp4_aeroshell_optimizer/src/MainModels/")
-    mesh.export(str(export_path / filename))
-    print(f"Mesh saved to {export_path / filename}.")
+
+    verts, faces = kaolin_test.get_diff_mesh(model, grid_res=grid_size)
+
+    if mesh_dir:
+        export_path = mesh_dir
+        export_path = os.path.join(export_path, filename)
+        mesh = kaolin_test.flexicubes_to_PLY(verts, faces, filename=filename)
+        print(f"Mesh saved to {export_path}.")
+        return mesh
+    return
+
 
 def load_model(model_path: str) -> SDFNetwork:
     model = torch.load(model_path)
@@ -45,7 +55,7 @@ def load_model(model_path: str) -> SDFNetwork:
 
 def filenamer(hyperparams: dict, general_info: dict, metadata: dict) -> str:
     # Create a filename based on current timestamp
-    timestamp = time.strftime('%Y%m%d_%H%M%S')
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
     filename = f"{metadata['Username']}_{general_info['Model']}_{timestamp}.json"
 
     # Define the full path to save the JSON file
@@ -55,12 +65,12 @@ def filenamer(hyperparams: dict, general_info: dict, metadata: dict) -> str:
     # Create the JSON structure
     json_data = {
         "Metadata": {
-            "Username": metadata['Username'],
+            "Username": metadata["Username"],
             "Timestamp": timestamp,
-            "Filename": filename
+            "Filename": filename,
         },
         "General Information": general_info,
-        "Hyperparameters": hyperparams
+        "Hyperparameters": hyperparams,
     }
 
     # Save the JSON file
