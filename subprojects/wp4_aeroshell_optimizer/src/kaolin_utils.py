@@ -32,7 +32,7 @@ def get_diff_mesh(model: SDFNetwork, grid_res: list[int] | int = 128,box_dim: li
     grid_x, grid_y, grid_z = torch.meshgrid(x, y, z, indexing='ij')
     grid_points = torch.stack([grid_x, grid_y, grid_z], dim=-1).reshape(-1, 3)
 
-    flexicubes=FlexiCubes()
+    flexicubes=FlexiCubes(device=device)
     with torch.enable_grad():
         sdf_values = model(grid_points)[0] #Get SDF values from model, first element of tuple is the scalar SDF field
         
