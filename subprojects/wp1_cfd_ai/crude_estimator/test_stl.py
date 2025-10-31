@@ -1,9 +1,9 @@
 import torch
 import trimesh
-from crude_estimator_diff import calculateCdProxyDifferentiable
+from crude_estimator_diff import calculateCdProxyDifferentiable, visualize_slices
 
 # --- CONFIGURATION ---
-STL_FILE_PATH = "AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/SilvrettaAeroskin.stl"  # <-- PUT YOUR STL PATH HERE
+STL_FILE_PATH = "/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/scaled_up_mesh.ply"  # <-- PUT YOUR STL PATH HERE
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 print(f"--- Running Gradient Check on {STL_FILE_PATH} ---")
@@ -18,7 +18,7 @@ try:
     # 2. Convert numpy vertices to a PyTorch tensor
     #    THIS IS THE CRITICAL STEP:
     #    We tell PyTorch to track gradients for this tensor.
-    vertices_tensor = torch.tensor(
+    vertices = torch.tensor(
         mesh.vertices,
         dtype=torch.float32,
         device=DEVICE,
@@ -27,7 +27,7 @@ try:
 
     # 3. Calculate the loss
     #    We use dynamic bounds (slice_bounds=None)
-    loss = calculateCdProxyDifferentiable(vertices_tensor)
+    loss = calculateCdProxyDifferentiable(vertices)
 
     print(f"Calculated Loss: {loss.item():.6f}")
 
@@ -36,13 +36,17 @@ try:
     loss.backward()
 
     # 5. Check if the gradient exists
-    if vertices_tensor.grad is not None:
+    if vertices.grad is not None:
         print("✅ Backpropagation Successful!")
-        print(f"Gradients were computed (shape: {vertices_tensor.grad.shape}).")
+        print(f"Gradients were computed (shape: {vertices.grad.shape}).")
     else:
         print("❌ Backpropagation FAILED: Gradients are None.")
 
 except Exception as e:
     print(f"❌ Test FAILED with an error: {e}")
 
+visualize_slices(
+    vertices,
+    "/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/scaled_up_mesh_test.glb",
+)
 print("--- Test Complete ---")
