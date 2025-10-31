@@ -1,7 +1,8 @@
-import trimesh
 import numpy as np
+import trimesh
+from read_mesh import facenormal_angle, powerratio_iam, sky_face
 
-from read_mesh import facenormal_angle, sky_face,powerratio_iam
+
 def pv_perf_index(mesh,sun_direction, max_area=6.0,):
     #nserck
     """

@@ -3,7 +3,7 @@ import trimesh
 import pandas as pd
 import numpy as np
 
-from read_mesh import facenormal_angle, sky_face,powerratio_iam
+from AISCO.subprojects.WP3_Solarestimator.read_mesh import facenormal_angle, sky_face,powerratio_iam
 def pv_perf_index(top_mesh, periodic_power_weights, max_area=6.0,):
     #llinsi, #baural
     """
