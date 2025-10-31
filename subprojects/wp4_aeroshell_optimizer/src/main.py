@@ -6,10 +6,11 @@ cd /cluster/home/clhuber/AISCO-code/subprojects/wp4_aeroshell_optimizer
 python -m src.main
 """
 
-
 from pathlib import Path
+
 import torch
 import yaml
+
 from .models.sdf import SDFNetwork
 from .models.train import train_sdf_model
 from .utils.utils import (
