@@ -19,8 +19,9 @@ if wp4_src_path not in sys.path:
 
 # --- Now you can import it like it's in the same folder ---
 import kaolin_test
-from crude_estimator_diff import calculateCdProxyDifferentiable
-from kaolin_test import get_diff_mesh
+from crude_estimator import calculateCdProxy
+from crude_estimator_diff import calculateCdProxyDifferentiable, visualize_slices
+from kaolin_test import flexicubes_to_PLY, get_diff_mesh
 
 # --- Start of Test ---
 print("--- Running Full Differentiation Test (Model -> Vertices -> Loss) ---")
@@ -39,12 +40,16 @@ try:
     # 2. Get Differentiable Mesh
     # get_diff_mesh should have torch.enable_grad() inside it
     print("Generating differentiable mesh from model...")
-    vertices, _ = get_diff_mesh(model)
+    vertices, faces = get_diff_mesh(model)
 
     if vertices.shape[0] == 0:
         raise RuntimeError("get_diff_mesh produced 0 vertices.")
 
     print(f"Generated {vertices.shape[0]} vertices.")
+
+    print(
+        f"Calculated CD Proxy (easy) for SDF: {calculateCdProxy('/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/test_output_diff_mesh.ply', True, '/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator')}"
+    )
 
     # 3. Calculate Loss
     # We use the dynamic "std dev" bounds
@@ -83,4 +88,8 @@ try:
 except Exception as e:
     print(f"❌ Backpropagation FAILED with an error: {e}")
 
+visualize_slices(
+    vertices,
+    "/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/test_output_diff_mesh_slices.glb",
+)
 print("--- Test Complete ---")

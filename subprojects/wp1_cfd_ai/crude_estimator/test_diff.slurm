@@ -4,10 +4,10 @@
 #SBATCH --time=00:20:00
 
 # Use your original, correct directives
-#SBATCH --ntasks=2
+#SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=7G
-#SBATCH --gpus=rtx_4090:2
+#SBATCH --gpus=rtx_4090:1
 
 # --- Use %x for job name and %j for job ID ---
 #SBATCH --output=/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/logs/%x_%j.out
