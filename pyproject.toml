@@ -30,7 +30,8 @@ wp1_cfd_ai = [
 
 ]
 wp2_assembler =[
-
+  "cadquery >= 2.6.0",
+  "ocp_vscode >= 2.9.0"
 ]
 wp3_solar_estimator = [
 
