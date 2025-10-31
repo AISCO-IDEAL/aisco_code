@@ -2,7 +2,7 @@
 Loading model...
 Model loaded onto cuda:0.
 Generating differentiable mesh from model...
-Generated 126 vertices.
+Generated 1118 vertices.
 --- Using default weights. ---
 --- Slicing direction is 'Max to Min' (x-axis). Reversing weights list. ---
 Loading mesh: /cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/test_output_diff_mesh.ply
@@ -65,7 +65,7 @@ Normalized Loss (Cd proxy):   1.8310
 Error exporting scene to /cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator: unsupported export format: /cluster/home/elihuber/aisco-code/subprojects/wp1_cfd_ai/data/crude_estimator
 Calculated CD Proxy (easy) for SDF: 1.8310494839487343
 Calculating differentiable loss...
-Calculated Loss: 85.862823
+Calculated Loss: 80.183258
 Performing backward pass...
 ✅ Backpropagation Successful!
 Valid gradients were computed for model parameters.
