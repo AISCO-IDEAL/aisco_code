@@ -1,18 +1,18 @@
 """
 Run this file by running the two follwoing commands in the terminal:
 
-cd /cluster/home/clhuber/AISCO-code/subprojects/wp4_aeroshell_optimizer
+cd /cluster/home/username/AISCO-code/subprojects/wp4_aeroshell_optimizer
 
 python -m src.main
 """
 
-
+import subprojects.wp1_cfd_ai.crude_estimator.crude_estimator_diff as crude_estimator
 from pathlib import Path
 import torch
 import yaml
-from .models.sdf import SDFNetwork
-from .models.train import train_sdf_model
-from .utils.utils import (
+from models.sdf import SDFNetwork
+from models.train import train_sdf_model
+from utils.utils import (
     check_cuda_health,
     initialize_cuda,
     load_pretrained_model,
