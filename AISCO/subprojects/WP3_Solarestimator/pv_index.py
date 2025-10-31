@@ -23,7 +23,7 @@ def pv_perf_index(mesh,sun_direction, max_area=6.0,):
     
 
     #get areas and weighted areas
-    areas = top_mesh.area_faces
+    areas = top_mesh.area_faces #gives area of each face (triangle, return type: np.array)
 
     # Sortafter performance weight (best are first)
     sort_weights = np.argsort(weights)[::-1]

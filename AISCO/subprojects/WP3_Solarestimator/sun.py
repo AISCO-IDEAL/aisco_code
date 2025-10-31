@@ -30,7 +30,7 @@ def get_sun_direction(latitude, longitude, altitude, time_utc):
     )
 
     
-    azimuth = np.deg2rad(solpos['azimuth'].iloc[0]) # convert azumutfrom degrees to radians
+    azimuth = np.deg2rad(solpos['azimuth'].iloc[0]) # convert azimuth from degrees to radians
     elevation = np.deg2rad(solpos['elevation'].iloc[0]) 
 
     # 2. Umwandlung von Azimut und Elevation in einen kartesischen Vektor (x, y, z)
