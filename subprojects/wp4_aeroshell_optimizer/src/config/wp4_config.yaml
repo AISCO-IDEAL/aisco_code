@@ -19,5 +19,5 @@ training_params:
   scheduler_step_size: 200
   scheduler_gamma: 0.5
 
-model_dir: "AISCO-code/subprojects/wp4_aeroshell_optimizer/data/test_models"
-mesh_dir: "AISCO-code/subprojects/wp4_aeroshell_optimizer/data/test_meshes"
+model_dir: "subprojects/wp4_aeroshell_optimizer/data/test_models"
+mesh_dir: "subprojects/wp4_aeroshell_optimizer/data/test_meshes"

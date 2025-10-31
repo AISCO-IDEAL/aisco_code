@@ -46,7 +46,6 @@ def get_diff_mesh(model: SDFNetwork, grid_res: int = 128,box_dim: list=[-5,5,-5,
 
     return vertices, faces
 
-
 def kaolin_facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_direction=None) -> torch.Tensor:
     """
     Calculates the angle in degrees between each face normal of the mesh and the sun direction.

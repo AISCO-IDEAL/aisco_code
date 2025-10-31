@@ -5,7 +5,7 @@ from losses import SDFLosses
 import datetime
 import os
 import numpy as np
-from utils import save_sdf2mesh
+from sdf2mesh import save_sdf2mesh
 
 def train_sdf_model(
     model: SDFNetwork,

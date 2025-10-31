@@ -1,5 +1,4 @@
 from pathlib import Path
-
 import torch
 import yaml
 from sdf import SDFNetwork
@@ -39,6 +38,7 @@ def main():
         / "subprojects"
         / "wp4_aeroshell_optimizer"
         / "src"
+        / "config"
         / "wp4_config.yaml"
     )
 
