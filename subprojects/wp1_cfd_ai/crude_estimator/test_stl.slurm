@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=test_diff
+#SBATCH --job-name=test_stl
 #SBATCH --time=00:20:00
 
 # Use your original, correct directives

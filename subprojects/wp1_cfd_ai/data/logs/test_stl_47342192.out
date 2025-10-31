@@ -1,0 +1,8 @@
+--- Running Gradient Check on AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/SilvrettaAeroskin.stl ---
+Using device: cuda
+Loaded mesh with 87746 vertices.
+Calculated Loss: 154531856384.000000
+Performing backward pass...
+✅ Backpropagation Successful!
+Gradients were computed (shape: torch.Size([87746, 3])).
+--- Test Complete ---
