@@ -6,24 +6,16 @@ cd /cluster/home/username/AISCO-code/subprojects/wp4_aeroshell_optimizer
 python -m src.main
 """
 
-<<<<<<< HEAD
-=======
-import subprojects.wp1_cfd_ai.crude_estimator.crude_estimator_diff as crude_estimator
->>>>>>> 3774b6d601904acbbe6031e013284c0fffc2d8ea
 from pathlib import Path
 
 import torch
 import yaml
-<<<<<<< HEAD
+
+import subprojects.wp1_cfd_ai.crude_estimator.crude_estimator_diff as crude_estimator
 
 from .models.sdf import SDFNetwork
 from .models.train import train_sdf_model
 from .utils.utils import (
-=======
-from models.sdf import SDFNetwork
-from models.train import train_sdf_model
-from utils.utils import (
->>>>>>> 3774b6d601904acbbe6031e013284c0fffc2d8ea
     check_cuda_health,
     initialize_cuda,
     load_pretrained_model,
@@ -79,7 +71,7 @@ def main():
     if load_pretrained:
         # This loads a sphere model while we redo the training loop and main structure
         model = torch.load(
-            "/cluster/home/eschaerer/AISCO-code/subprojects/wp4_aeroshell_optimizer/archive/dummy_models/sdf_sphere_model_2025-10-24.pth"
+            f"/cluster/home/{metadata['Username']}/AISCO-code/subprojects/wp4_aeroshell_optimizer/archive/dummy_models/sdf_sphere_model_2025-10-24.pth"
         )
     else:
         model = SDFNetwork()
