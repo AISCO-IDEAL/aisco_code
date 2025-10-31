@@ -1,14 +1,11 @@
 from pathlib import Path
-
-import kaolin_test
 import torch
 import yaml
 from sdf import SDFNetwork
-from SDF_visualisation import visualize_loaded_model
 from train import train_sdf_model
-from utils import filenamer
+from utils import initialize_cuda, load_pretrained_model, setup_training_environment, check_cuda_health
 
-# eschaerer, just a proposal for the informative .json
+# Hyperparameters - consider moving to config file
 hyperparams = {
     "learning_rate": 0.0001,
     "batch_size": 4096,
@@ -23,7 +20,7 @@ hyperparams = {
     "scheduler_gamma": 0.5,
 }
 
-# eschaerer, just a proposal for the informative .json
+# General information - consider moving to config file
 general_info = {
     "Model": "SDFNetwork",
     "Model_Expl": "an SDF Network with torch Neural Network",
@@ -32,33 +29,98 @@ general_info = {
 }
 
 metadata = {
-        "Username": "eschaerer",
-    }
+    "Username": "eschaerer",
+}
+
 
 def main():
-    # 1. Load settings from config:
-    with Path.open('AISCO-code/subprojects/wp4_aeroshell_optimizer/src/wp4_config.yaml') as f:
-        config = yaml.safe_load(f)
-
-
-    load_pretrained = config["use_pretrained"]
-
-    if load_pretrained:
-        #This loads a model while we redo the training loop and main structure
-        model=torch.load(f"/cluster/home/{metadata['Username']}/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/DummySphere/sdf_sphere_model_2025-10-24.pth")
-
-    else:
-        model=SDFNetwork()
-    model.to('cuda')
-
-    save_dir=config.get("model_dir","")
-    mesh_dir=config.get("mesh_dir","")
-    train_sdf_model(model,config["training_params"],save_dir,mesh_dir)
-    print("WP4 Main.py executed successfully")
+    """Main execution function for WP4 aeroshell optimizer."""
     
-
-
-
+    print("=" * 60)
+    print("WP4 Aeroshell Optimizer - Starting")
+    print("=" * 60)
+    
+    # Perform CUDA health check (optional, remove if too verbose)
+    check_cuda_health()
+    
+    # Initialize CUDA context early - CRITICAL for avoiding cuBLAS warnings
+    device = initialize_cuda()
+    
+    # Setup training environment
+    setup_training_environment(device)
+    
+    # Load configuration
+    config_path = Path.home() / "AISCO-code" / "subprojects" / "wp4_aeroshell_optimizer" / "src" / "wp4_config.yaml"
+    
+    try:
+        with config_path.open() as f:
+            config = yaml.safe_load(f)
+        print(f"✓ Configuration loaded from {config_path}")
+    except FileNotFoundError:
+        print(f"✗ Configuration file not found at {config_path}")
+        return
+    except yaml.YAMLError as e:
+        print(f"✗ Error parsing configuration file: {e}")
+        return
+    
+    # Load or initialize model
+    load_pretrained = config.get("use_pretrained", False)
+    
+    if load_pretrained:
+        model_path = Path.home() / "AISCO-code" / "subprojects" / "wp4_aeroshell_optimizer" / "archive" / "dummy_models" / "sdf_sphere_model_2025-10-24.pth"
+        print(f"Loading pretrained model from {model_path}")
+        model = load_pretrained_model(model_path, device, SDFNetwork)
+    else:
+        print("Initializing new SDFNetwork model")
+        model = SDFNetwork()
+        model = model.to(device)
+    
+    # Ensure model is in training mode
+    model.train()
+    
+    # Perform a dummy forward pass to fully initialize CUDA context
+    # This helps prevent the cuBLAS warning during actual training
+    if device == 'cuda':
+        print("Warming up CUDA context...")
+        with torch.no_grad():
+            dummy_input = torch.randn(10, 3, device=device)
+            _ = model(dummy_input)
+            torch.cuda.synchronize()
+        print("✓ CUDA context warmed up")
+    
+    # Get directories from config
+    save_dir = config.get("model_dir", "")
+    mesh_dir = config.get("mesh_dir", "")
+    
+    # Ensure directories exist
+    if save_dir:
+        Path(save_dir).mkdir(parents=True, exist_ok=True)
+        print(f"✓ Model directory: {save_dir}")
+    if mesh_dir:
+        Path(mesh_dir).mkdir(parents=True, exist_ok=True)
+        print(f"✓ Mesh directory: {mesh_dir}")
+    
+    # Train the model
+    print("\n" + "=" * 60)
+    print("Starting SDF model training...")
+    print("=" * 60 + "\n")
+    
+    try:
+        train_sdf_model(
+            model,
+            config["training_params"],
+            save_dir,
+            mesh_dir
+        )
+        print("\n" + "=" * 60)
+        print("✓ WP4 Main.py executed successfully")
+        print("=" * 60)
+    except KeyError as e:
+        print(f"✗ Missing configuration key: {e}")
+        print("Please check your wp4_config.yaml file")
+    except Exception as e:
+        print(f"✗ Training failed with error: {e}")
+        raise
 
 
 if __name__ == "__main__":
