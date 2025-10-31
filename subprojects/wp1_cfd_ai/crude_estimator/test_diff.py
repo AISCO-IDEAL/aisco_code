@@ -1,6 +1,8 @@
 import os
 import sys
 
+import torch
+
 # 1. Get the path to the current file (test_diff.py)
 current_file_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -20,6 +22,65 @@ import kaolin_test
 from crude_estimator_diff import calculateCdProxyDifferentiable
 from kaolin_test import get_diff_mesh
 
-vertices, _ = get_diff_mesh()
+# --- Start of Test ---
+print("--- Running Full Differentiation Test (Model -> Vertices -> Loss) ---")
 
-print(calculateCdProxyDifferentiable(vertices))
+try:
+    # 1. Load Model
+    print("Loading model...")
+    model = torch.load(
+        "AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/sdf_model_10_31_09_32.pth",
+        map_location="cuda",
+    )
+    # Ensure model is in training mode and gradients are enabled
+    model.train()
+    print(f"Model loaded onto {next(model.parameters()).device}.")
+
+    # 2. Get Differentiable Mesh
+    # get_diff_mesh should have torch.enable_grad() inside it
+    print("Generating differentiable mesh from model...")
+    vertices, _ = get_diff_mesh(model)
+
+    if vertices.shape[0] == 0:
+        raise RuntimeError("get_diff_mesh produced 0 vertices.")
+
+    print(f"Generated {vertices.shape[0]} vertices.")
+
+    # 3. Calculate Loss
+    # We use the dynamic "std dev" bounds
+    print("Calculating differentiable loss...")
+    loss = calculateCdProxyDifferentiable(vertices, slice_bounds=None)
+
+    if loss is None:
+        raise RuntimeError("Loss calculation returned None.")
+
+    print(f"Calculated Loss: {loss.item():.6f}")
+
+    # 4. Perform Backpropagation
+    # This calculates gradients from the 'loss' all the way
+    # back to the 'model.parameters()'
+    print("Performing backward pass...")
+    loss.backward()
+
+    # 5. Check for Gradients on the Model
+    # The gradient should flow back to the model that *generated* the vertices
+    grad_found = False
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            # Check if gradients are valid (not all NaN or Inf)
+            if torch.isfinite(param.grad).all():
+                grad_found = True
+            else:
+                print(f"⚠️ Warning: Found non-finite gradients (NaN/Inf) in {name}.")
+            break  # We only need to find one valid gradient
+
+    if grad_found:
+        print("✅ Backpropagation Successful!")
+        print("Valid gradients were computed for model parameters.")
+    else:
+        print("❌ Backpropagation FAILED: No gradients found on model parameters.")
+
+except Exception as e:
+    print(f"❌ Backpropagation FAILED with an error: {e}")
+
+print("--- Test Complete ---")
