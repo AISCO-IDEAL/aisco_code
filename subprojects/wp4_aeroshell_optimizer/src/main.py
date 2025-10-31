@@ -45,14 +45,16 @@ def main():
 
     if load_pretrained:
         #This loads a model while we redo the training loop and main structure
-        model=torch.load("/cluster/home/eschaerer/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/DummySphere/sdf_sphere_model_2025-10-24.pth")
-    
+        model=torch.load(f"/cluster/home/{metadata['Username']}/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/DummySphere/sdf_sphere_model_2025-10-24.pth")
+
     else:
         model=SDFNetwork()
     model.to('cuda')
 
-    train_sdf_model(model,config)
-    
+    save_dir=config.get("model_dir","")
+    mesh_dir=config.get("mesh_dir","")
+    train_sdf_model(model,config["training_params"],save_dir,mesh_dir)
+    print("WP4 Main.py executed successfully")
     
 
 
