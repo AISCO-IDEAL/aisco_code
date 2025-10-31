@@ -6,7 +6,7 @@ general_info:
   Pre: "a sphere as initial shape, datatype: SDF"
   Post: "a PLY file representing the optimized aeroshell shape"
 
-hyperparams:
+training_params:
   learning_rate: 0.0001
   batch_size: 4096
   num_epochs: 75

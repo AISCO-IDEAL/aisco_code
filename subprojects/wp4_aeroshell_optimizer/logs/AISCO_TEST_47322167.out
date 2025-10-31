@@ -1,7 +1,7 @@
 ==========================================
-Job started on: Fri Oct 31 11:07:56 AM CET 2025
-Job ID: 47320872
-Running on node: eu-g6-013
+Job started on: Fri Oct 31 11:32:10 AM CET 2025
+Job ID: 47322167
+Running on node: eu-g6-016
 Number of CPUs: 4
 Allocated memory per CPU: 7168 MB
 Number of GPUs: nvidia_geforce_rtx_4090:2
@@ -12,7 +12,7 @@ Allocated memory per GPU: 24564
 Working directory: /cluster/home/eschaerer/AISCO-code
 ==========================================
 Verifying GPU access...
-Fri Oct 31 11:07:58 2025       
+Fri Oct 31 11:32:11 2025       
 +-----------------------------------------------------------------------------------------+
 | NVIDIA-SMI 570.195.03             Driver Version: 570.195.03     CUDA Version: 12.8     |
 |-----------------------------------------+------------------------+----------------------+
@@ -20,12 +20,12 @@ Fri Oct 31 11:07:58 2025
 | Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
 |                                         |                        |               MIG M. |
 |=========================================+========================+======================|
-|   0  NVIDIA GeForce RTX 4090        On  |   00000000:21:00.0 Off |                  Off |
-| 30%   33C    P8             13W /  450W |       1MiB /  24564MiB |      0%      Default |
+|   0  NVIDIA GeForce RTX 4090        On  |   00000000:01:00.0 Off |                  Off |
+| 30%   33C    P8             28W /  450W |       1MiB /  24564MiB |      0%      Default |
 |                                         |                        |                  N/A |
 +-----------------------------------------+------------------------+----------------------+
-|   1  NVIDIA GeForce RTX 4090        On  |   00000000:41:00.0 Off |                  Off |
-| 30%   34C    P8             16W /  450W |       1MiB /  24564MiB |      0%      Default |
+|   1  NVIDIA GeForce RTX 4090        On  |   00000000:61:00.0 Off |                  Off |
+| 30%   33C    P8             23W /  450W |       1MiB /  24564MiB |      0%      Default |
 |                                         |                        |                  N/A |
 +-----------------------------------------+------------------------+----------------------+
                                                                                          
@@ -38,7 +38,7 @@ Fri Oct 31 11:07:58 2025
 +-----------------------------------------------------------------------------------------+
 CUDA_VISIBLE_DEVICES: 0,1
 GPU Info:
-Fri Oct 31 11:07:58 2025       
+Fri Oct 31 11:32:12 2025       
 +-----------------------------------------------------------------------------------------+
 | NVIDIA-SMI 570.195.03             Driver Version: 570.195.03     CUDA Version: 12.8     |
 |-----------------------------------------+------------------------+----------------------+
@@ -46,12 +46,12 @@ Fri Oct 31 11:07:58 2025
 | Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
 |                                         |                        |               MIG M. |
 |=========================================+========================+======================|
-|   0  NVIDIA GeForce RTX 4090        On  |   00000000:21:00.0 Off |                  Off |
-| 30%   33C    P8             13W /  450W |       1MiB /  24564MiB |      0%      Default |
+|   0  NVIDIA GeForce RTX 4090        On  |   00000000:01:00.0 Off |                  Off |
+| 30%   33C    P8             28W /  450W |       1MiB /  24564MiB |      0%      Default |
 |                                         |                        |                  N/A |
 +-----------------------------------------+------------------------+----------------------+
-|   1  NVIDIA GeForce RTX 4090        On  |   00000000:41:00.0 Off |                  Off |
-| 30%   34C    P8             16W /  450W |       1MiB /  24564MiB |      0%      Default |
+|   1  NVIDIA GeForce RTX 4090        On  |   00000000:61:00.0 Off |                  Off |
+| 30%   33C    P8             23W /  450W |       1MiB /  24564MiB |      0%      Default |
 |                                         |                        |                  N/A |
 +-----------------------------------------+------------------------+----------------------+
                                                                                          
@@ -78,10 +78,10 @@ Core(s) per socket:                      64
 Socket(s):                               2
 Stepping:                                1
 Frequency boost:                         enabled
-CPU(s) scaling MHz:                      52%
+CPU(s) scaling MHz:                      42%
 CPU max MHz:                             3764.2019
 CPU min MHz:                             1500.0000
-BogoMIPS:                                6199.82
+BogoMIPS:                                6200.32
 Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 pcid sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpb cat_l3 cdp_l3 invpcid_single hw_pstate ssbd mba ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd amd_ppin cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif v_spec_ctrl avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq la57 rdpid overflow_recov succor smca fsrm flush_l1d
 Virtualization:                          AMD-V
 L1d cache:                               4 MiB (128 instances)
@@ -121,7 +121,48 @@ Vulnerability Spectre v2:                Mitigation; Enhanced / Automatic IBRS; 
 Vulnerability Srbds:                     Not affected
 Vulnerability Tsa:                       Vulnerable: Clear CPU buffers attempted, no microcode
 Vulnerability Tsx async abort:           Not affected
+============================================================
+WP4 Aeroshell Optimizer - Starting
+============================================================
+
+=== CUDA Health Check ===
+PyTorch version: 2.4.0+cu121
+CUDA available: True
+CUDA version: 12.1
+cuDNN version: 90100
+Number of GPUs: 2
+
+GPU 0: NVIDIA GeForce RTX 4090
+  Memory: 25.26 GB
+  Compute Capability: 8.9
+
+GPU 1: NVIDIA GeForce RTX 4090
+  Memory: 25.26 GB
+  Compute Capability: 8.9
+
+✓ Basic CUDA operations working
+=========================
+
+CUDA initialized successfully
+GPU: NVIDIA GeForce RTX 4090
+CUDA version: 12.1
+Available GPU memory: 25.26 GB
+Training environment configured for CUDA
+✓ Configuration loaded from /cluster/home/eschaerer/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/wp4_config.yaml
+Epoch 0, Total Loss: 4.3915
+Epoch 10, Total Loss: 3.3601
+Epoch 20, Total Loss: 2.7751
+Epoch 30, Total Loss: 2.3856
+Epoch 40, Total Loss: 2.1179
+Epoch 50, Total Loss: 1.9011
+Epoch 60, Total Loss: 1.6983
+Epoch 70, Total Loss: 1.4380
+Model saved to: AISCO-code/subprojects/wp4_aeroshell_optimizer/data/test_models/sdf_model_10_31_11_38.pth
+Mesh saved to sdf_mesh_10_31_11_38.ply
+Mesh saved to AISCO-code/subprojects/wp4_aeroshell_optimizer/data/test_meshes/sdf_mesh_10_31_11_38.ply.
+A mesh has been generated and saved as 'sdf_mesh.ply'.
+WP4 Main.py executed successfully
 ==========================================
-Job ended on: Fri Oct 31 11:08:21 AM CET 2025
-Total elapsed time: 25 seconds
+Job ended on: Fri Oct 31 11:38:56 AM CET 2025
+Total elapsed time: 406 seconds
 ==========================================

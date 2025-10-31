@@ -52,7 +52,6 @@ def initialize_cuda() -> str:
     
     return device
 
-
 def load_pretrained_model(model_path: Path, device: str = 'cuda', model_class=None) -> torch.nn.Module:
     """
     Safely load a pretrained model with proper error handling.
@@ -112,7 +111,6 @@ def load_pretrained_model(model_path: Path, device: str = 'cuda', model_class=No
             return model_class()
         raise
 
-
 def setup_training_environment(device: str):
     """
     Configure PyTorch training environment settings.
@@ -134,7 +132,6 @@ def setup_training_environment(device: str):
         print("Training environment configured for CUDA")
     else:
         print("Training environment configured for CPU")
-
 
 def check_cuda_health():
     """
@@ -167,14 +164,14 @@ def check_cuda_health():
             print(f"\n✗ CUDA operation failed: {e}")
     
     print("=========================\n")
-    
+
 # In utils.py
 def save_sdf2mesh(
     model,
     grid_size: int = 128,
     threshold: float = 0.0,
-    mesh_dir: str = "AISCO-code/subprojects/wp4_aeroshell_optimizer/data",
     filename: str = "sdf_mesh.ply",
+    mesh_dir: str = None,
     device: str = "cuda",
 ):
     """
@@ -198,7 +195,7 @@ def save_sdf2mesh(
     if mesh_dir:
         export_path = mesh_dir
         export_path = os.path.join(export_path, filename)
-        mesh = kaolin_test.flexicubes_to_PLY(verts, faces, filename=filename)
+        mesh = kaolin_test.flexicubes_to_PLY(verts, faces, filename=filename, mesh_dir=mesh_dir)
         print(f"Mesh saved to {export_path}.")
         return mesh
     return

@@ -11,9 +11,6 @@ from utils import (
     setup_training_environment,
 )
 
-# Hyperparameters - consider moving to config file
-
-
 metadata = {
     "Username": "eschaerer",
 }
@@ -62,7 +59,7 @@ def main():
     if load_pretrained:
         # This loads a sphere model while we redo the training loop and main structure
         model = torch.load(
-            "AISCO-code/subprojects/wp4_aeroshell_optimizer/src/DummySphere/sdf_sphere_model_2025-10-24.pth"
+            "/cluster/home/eschaerer/AISCO-code/subprojects/wp4_aeroshell_optimizer/archive/dummy_models/sdf_sphere_model_2025-10-24.pth"
         )
     else:
         model = SDFNetwork()
