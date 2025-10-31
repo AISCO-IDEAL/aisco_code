@@ -1,9 +1,12 @@
-import torch
 import kaolin as kal
-from   kaolin.ops.conversions import FlexiCubes
+import torch
 import trimesh
-from sdf import SDFNetwork  
-#All Code her by aalthaus
+from kaolin.ops.conversions import FlexiCubes
+from sdf import SDFNetwork
+
+
+#All Code here by aalthaus, adjusted by @eschaerer for CUDA compatibility
+
 def get_diff_mesh(model: SDFNetwork, grid_res: int = 128,box_dim: list=[-5,5,-5,5,-5,5], device: str = 'cuda'):
     # At the moment unsure what happens when we change the size 
     # of the sampled cube, so be careful here
@@ -44,11 +47,14 @@ def get_diff_mesh(model: SDFNetwork, grid_res: int = 128,box_dim: list=[-5,5,-5,
     return vertices, faces
 
 
-def facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_direction=torch.tensor([0., 0., 1.], device='cuda')) -> torch.Tensor:
+def kaolin_facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_direction=None) -> torch.Tensor:
     """
     Calculates the angle in degrees between each face normal of the mesh and the sun direction.
-    Returns a (F,) torch tensor of angles in degrees.
+    Returns a (F,) torch tensor of angles in degrees. Serves solely debugging purposes
     """
+    if sun_direction is None:
+        sun_direction = torch.tensor([0., 0., 1.], device=verts.device)
+    
     # Get face vertices
     v0 = verts[faces[:, 0]]
     v1 = verts[faces[:, 1]]
@@ -72,7 +78,7 @@ def facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_direction=tor
 
     return angle_deg
 
-def primitive_max_angle_loss(verts: torch.Tensor, faces: torch.Tensor, sun_direction=torch.tensor([0., 0., 1.], device='cuda')) -> torch.Tensor:
+def kaolin_primitive_max_angle_loss(verts: torch.Tensor, faces: torch.Tensor, sun_direction=None) -> torch.Tensor:
     """
     Calculates a loss based on the maximum angle between face normals and the sun direction.
     The loss is higher when the maximum angle is larger, encouraging faces to align with the sun direction.
@@ -80,18 +86,19 @@ def primitive_max_angle_loss(verts: torch.Tensor, faces: torch.Tensor, sun_direc
     Note that this loss has no purpose other than to prove the mesh differentiablility works
     Therefore the loss is pretty bad and just a playground
     """
-    angles = facenormal_angle(verts, faces, sun_direction)
+    if sun_direction is None:
+        sun_direction = torch.tensor([0., 0., 1.], device=verts.device)
+    
+    angles = kaolin_facenormal_angle(verts, faces, sun_direction)
     
     # Very primitive loss: just take the maximum angle for differentiation.
     #print("angles: ",angles.shape)
     if torch.numel(angles) == 0:
-        return torch.tensor(0.0,device='cuda')
+        return torch.tensor(0.0, device=verts.device)
     max_angle = torch.max(angles)
     #print("max_angle: ", max_angle.shape)
     loss = max_angle / 180.0  # Normalize to [0, 1]
     return loss
-
-
 
 def flexicubes_to_PLY(verts: torch.tensor,faces: torch.tensor, save_mesh: bool=True, filename: str= "loading_test.ply"): # -> mesh format or none??
     """
@@ -105,4 +112,5 @@ def flexicubes_to_PLY(verts: torch.tensor,faces: torch.tensor, save_mesh: bool=T
     if save_mesh:
         mesh.export(filename)
         print(f"Mesh saved to {filename}")
+    #print(type(mesh))
     return mesh
