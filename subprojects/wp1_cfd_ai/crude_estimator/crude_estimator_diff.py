@@ -1,4 +1,137 @@
+import os  # Added for path handling
+
+import numpy as np
 import torch
+import trimesh
+
+# Epsilon from your loss function, needed to replicate logic
+EPSILON = 1e-10
+
+
+# Epsilon from your loss function, needed to replicate logic
+EPSILON = 1e-10
+
+
+def visualize_slices(
+    vertices: torch.Tensor,
+    output_filepath: str,  # <-- RENAMED for clarity
+    slicing_axis: str = "x",
+    N_SLICES: int = 20,
+    slice_bounds: tuple[float, float] | None = None,
+    num_std_devs: float = 3.0,
+):
+    """
+    Creates a 3D visualization of the slicing boxes and the input vertex cloud.
+    This is a non-differentiable function for debugging.
+
+    Args:
+        vertices: The input vertex tensor, shape [N_verts, 3].
+        output_filepath: The FULL path to save the file,
+                           e.g., "/home/user/project/debug/epoch_100.glb".
+        slicing_axis: 'x', 'y', or 'z'.
+        N_SLICES: Number of slices.
+        slice_bounds: Fixed bounds (min, max). If None, calculates dynamically.
+        num_std_devs: Used for dynamic bounds calculation.
+    """
+    print(f"--- Saving visualization to {output_filepath} ---")
+
+    # --- 1. Setup Scene and Convert Data ---
+    scene = trimesh.Scene()
+
+    if vertices.requires_grad:
+        verts_np = vertices.detach().cpu().numpy()
+    else:
+        verts_np = vertices.cpu().numpy()
+
+    point_cloud = trimesh.points.PointCloud(verts_np)
+    point_cloud.colors = [128, 128, 128, 100]  # Semi-transparent gray
+    scene.add_geometry(point_cloud, geom_name="input_vertices")
+
+    # --- 2. Re-calculate Slicing Bounds (matching the loss fn) ---
+
+    slicing_axis_lower = slicing_axis.lower()
+    if slicing_axis_lower == "x":
+        axis_idx, area_idx_1, area_idx_2 = 0, 1, 2
+    elif slicing_axis_lower == "y":
+        axis_idx, area_idx_1, area_idx_2 = 1, 0, 2
+    elif slicing_axis_lower == "z":
+        axis_idx, area_idx_1, area_idx_2 = 2, 0, 1
+    else:
+        print(f"FATAL: Invalid slicing_axis '{slicing_axis}'")
+        return
+
+    vert_coords_torch = vertices[:, axis_idx]
+
+    if slice_bounds is not None:
+        min_bound, max_bound = slice_bounds[0], slice_bounds[1]
+    else:
+        center = torch.mean(vert_coords_torch)
+        spread = torch.std(vert_coords_torch)
+        min_bound_t = center - num_std_devs * (spread + EPSILON)
+        max_bound_t = center + num_std_devs * (spread + EPSILON)
+        min_bound = min_bound_t.item()
+        max_bound = max_bound_t.item()
+
+    split_points = np.linspace(min_bound, max_bound, N_SLICES + 1)
+
+    # --- 3. Create a Box for Each Slice ---
+    colors = [[255, 0, 0, 150], [0, 0, 255, 150]]
+
+    for i in range(N_SLICES):
+        a_start = split_points[i]
+        a_end = split_points[i + 1]
+
+        v_coords_np = verts_np[:, axis_idx]
+        mask = (v_coords_np >= a_start) & (v_coords_np < a_end)
+        slice_points = verts_np[mask]
+
+        if len(slice_points) == 0:
+            continue
+
+        try:
+            min_1, max_1 = (
+                slice_points[:, area_idx_1].min(),
+                slice_points[:, area_idx_1].max(),
+            )
+            min_2, max_2 = (
+                slice_points[:, area_idx_2].min(),
+                slice_points[:, area_idx_2].max(),
+            )
+        except Exception:
+            continue
+
+        box_extents = [0, 0, 0]
+        box_extents[axis_idx] = a_end - a_start
+        box_extents[area_idx_1] = max_1 - min_1
+        box_extents[area_idx_2] = max_2 - min_2
+
+        box_center = [0, 0, 0]
+        box_center[axis_idx] = (a_start + a_end) / 2
+        box_center[area_idx_1] = (min_1 + max_1) / 2
+        box_center[area_idx_2] = (min_2 + max_2) / 2
+
+        box_tf = trimesh.transformations.translation_matrix(box_center)
+        box_outline = trimesh.path.creation.box_outline(
+            extents=box_extents, transform=box_tf
+        )
+
+        box_outline.colors = [colors[i % 2]] * len(box_outline.entities)
+        scene.add_geometry(box_outline, geom_name=f"slice_box_{i + 1}")
+
+    # --- 4. Export the Scene to a File ---
+    try:
+        # Get the directory part of the full path
+        output_dir = os.path.dirname(output_filepath)
+
+        # Ensure the directory exists, creating it if necessary
+        if output_dir:  # Check if output_dir is not empty (e.g., for relative paths)
+            os.makedirs(output_dir, exist_ok=True)
+
+        # Export the scene to the full path
+        scene.export(output_filepath)
+    except Exception as e:
+        print(f"ERROR: Could not save visualization to {output_filepath}: {e}")
+
 
 # --- Default weights from the original script ---
 # These are defined from MIN to MAX axis

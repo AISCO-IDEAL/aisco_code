@@ -1,0 +1,17 @@
+--- Running Full Differentiation Test (Model -> Vertices -> Loss) ---
+Loading model...
+Model loaded onto cuda:0.
+Generating differentiable mesh from model...
+Generated 126 vertices.
+Mesh saved to loading_test.ply
+--- Using default weights. ---
+--- Slicing direction is 'Max to Min' (x-axis). Reversing weights list. ---
+Loading mesh: /cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/test_output_diff_mesh.ply
+FATAL ERROR: File not found at '/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/test_output_diff_mesh.ply'
+Calculated CD Proxy (easy) for SDF: None
+Calculating differentiable loss...
+Calculated Loss: 85.862823
+Performing backward pass...
+✅ Backpropagation Successful!
+Valid gradients were computed for model parameters.
+--- Test Complete ---
