@@ -25,6 +25,7 @@ def get_diff_mesh(model: SDFNetwork, grid_res: list[int] | int = 128,box_dim: li
     # At the moment unsure what happens when we change the size 
     # of the sampled cube, so be careful here
 
+    # 1. Sample sdf function inside box
     x = torch.linspace(box_dim[0],box_dim[1], grid_res, device=device)
     y = torch.linspace(box_dim[2],box_dim[3], grid_res, device=device)
     z = torch.linspace(box_dim[4],box_dim[5], grid_res, device=device)
@@ -35,8 +36,7 @@ def get_diff_mesh(model: SDFNetwork, grid_res: list[int] | int = 128,box_dim: li
     with torch.enable_grad():
         sdf_values = model(grid_points)[0] #Get SDF values from model, first element of tuple is the scalar SDF field
         
-    # 1. Compute cube_idx: (num_cubes, 8), each row indexes the 8 corners of a cube
-    
+    # 2. Compute cube_idx of FlexiCubes: Has shape (num_cubes, 8), each row indexes the 8 corners of a cube
     ind=flexicubes.construct_voxel_grid(grid_res-1)[1] 
     
     """
@@ -49,10 +49,9 @@ def get_diff_mesh(model: SDFNetwork, grid_res: list[int] | int = 128,box_dim: li
     print("grid_res-1 :", grid_res-1)
     """
 
-    #Creates cube indices that flexicubes needs
-
-    # 2. Use FlexiCubes to extract the mesh
-    vertices, faces,l_dev = flexicubes(
+    
+    # 3. Use FlexiCubes to extract the mesh
+    vertices, faces, l_dev = flexicubes(
         voxelgrid_vertices=grid_points,  #Points
         scalar_field=sdf_values,         #Values
         cube_idx = ind,                  #Cube Indices   
