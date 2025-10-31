@@ -1,0 +1,73 @@
+--- Running Full Differentiation Test (Model -> Vertices -> Loss) ---
+Loading model...
+Model loaded onto cuda:0.
+Generating differentiable mesh from model...
+Generated 1118 vertices.
+--- Using default weights. ---
+--- Slicing direction is 'Max to Min' (x-axis). Reversing weights list. ---
+Loading mesh: /cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/test_output_diff_mesh.ply
+Original mesh has 126 vertices.
+Sampling 50000 points from the mesh surface...
+Using 50000 sampled points for analysis.
+Slicing points into 20 parts along X-axis from 0.93 to 0.34 (max to min)
+
+--- Analyzing Slices ---
+Slice 1: Found 2203  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.13,   0.16], Frontal Area =   0.0216
+Slice 2: Found 2143  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.18,   0.21], Frontal Area =   0.0368
+Slice 3: Found 2464  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.21,   0.24], Frontal Area =   0.0505
+Slice 4: Found 2583  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.23,   0.26], Frontal Area =   0.0596
+Slice 5: Found 2655  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.25,   0.27], Frontal Area =   0.0674
+Slice 6: Found 2760  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.26,   0.28], Frontal Area =   0.0749
+Slice 7: Found 2736  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.27,   0.29], Frontal Area =   0.0789
+Slice 8: Found 2849  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.27,   0.30], Frontal Area =   0.0820
+Slice 9: Found 2931  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.27,   0.31], Frontal Area =   0.0836
+Slice 10: Found 2929  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.27,   0.31], Frontal Area =   0.0840
+Slice 11: Found 2875  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.27,   0.32], Frontal Area =   0.0843
+Slice 12: Found 2928  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.26,   0.31], Frontal Area =   0.0820
+Slice 13: Found 3016  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.25,   0.31], Frontal Area =   0.0791
+Slice 14: Found 2646  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.24,   0.30], Frontal Area =   0.0717
+Slice 15: Found 2704  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.22,   0.28], Frontal Area =   0.0625
+Slice 16: Found 2449  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.20,   0.26], Frontal Area =   0.0520
+Slice 17: Found 2080  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.18,   0.23], Frontal Area =   0.0412
+Slice 18: Found 1916  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.15,   0.20], Frontal Area =   0.0305
+Slice 19: Found 1571  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.13,   0.16], Frontal Area =   0.0201
+Slice 20: Found 1562  points. Dims (Depth, Area_1, Area_2) = [  0.03,   0.10,   0.12], Frontal Area =   0.0120
+------------------------
+Calculating Weighted Loss:
+Slice 1: Area =   0.0216 * Weight = 8.00 ->   0.1731
+Slice 2: Area =   0.0368 * Weight = 6.25 ->   0.2298
+Slice 3: Area =   0.0505 * Weight = 4.80 ->   0.2426
+Slice 4: Area =   0.0596 * Weight = 3.70 ->   0.2206
+Slice 5: Area =   0.0674 * Weight = 3.50 ->   0.2360
+Slice 6: Area =   0.0749 * Weight = 3.00 ->   0.2247
+Slice 7: Area =   0.0789 * Weight = 2.30 ->   0.1814
+Slice 8: Area =   0.0820 * Weight = 2.00 ->   0.1641
+Slice 9: Area =   0.0836 * Weight = 1.70 ->   0.1420
+Slice 10: Area =   0.0840 * Weight = 1.05 ->   0.0883
+Slice 11: Area =   0.0843 * Weight = 0.90 ->   0.0759
+Slice 12: Area =   0.0820 * Weight = 0.75 ->   0.0615
+Slice 13: Area =   0.0791 * Weight = 0.75 ->   0.0593
+Slice 14: Area =   0.0717 * Weight = 1.10 ->   0.0789
+Slice 15: Area =   0.0625 * Weight = 1.20 ->   0.0750
+Slice 16: Area =   0.0520 * Weight = 1.20 ->   0.0624
+Slice 17: Area =   0.0412 * Weight = 2.07 ->   0.0854
+Slice 18: Area =   0.0305 * Weight = 6.78 ->   0.2070
+Slice 19: Area =   0.0201 * Weight = 7.39 ->   0.1485
+Slice 20: Area =   0.0120 * Weight = 8.00 ->   0.0964
+========================
+Final Weighted Loss:   2.8528
+========================
+Normalization Factors: A_5th_biggest =   0.0810, N_Slices = 20, Realistic_Factor = 1.0
+Normalized Loss (Cd proxy):   1.8310
+========================
+------------------------
+
+Error exporting scene to /cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator: unsupported export format: /cluster/home/elihuber/aisco-code/subprojects/wp1_cfd_ai/data/crude_estimator
+Calculated CD Proxy (easy) for SDF: 1.8310494839487343
+Calculating differentiable loss...
+Calculated Loss: 0.002367
+Performing backward pass...
+✅ Backpropagation Successful!
+Valid gradients were computed for model parameters.
+--- Saving visualization to /cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/test_output_diff_mesh_slices_2.glb ---
+--- Test Complete ---

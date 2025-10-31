@@ -92,6 +92,6 @@ except Exception as e:
 
 visualize_slices(
     vertices,
-    "/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/test_output_diff_mesh_slices.glb",
+    "/cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/test_output_diff_mesh_slices_2.glb",
 )
 print("--- Test Complete ---")

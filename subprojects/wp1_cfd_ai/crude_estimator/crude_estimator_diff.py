@@ -294,11 +294,7 @@ def calculateCdProxyDifferentiable(
     # (Weighted Loss * A_max) / (A_norm**2)
 
     A_max_proxy = torch.max(all_slice_areas)
-    A_norm_proxy = torch.mean(all_slice_areas)
 
     numerator = final_weighted_loss * A_max_proxy
-    denominator = (A_norm_proxy**2) + EPSILON
 
-    normalized_loss = numerator / denominator
-
-    return normalized_loss
+    return numerator
