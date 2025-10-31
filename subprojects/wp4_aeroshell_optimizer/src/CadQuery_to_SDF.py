@@ -2,7 +2,6 @@
 
 """
 This Code is written by written by Clemens Huber
-Do not Edit without permission
 """
 from typing import cast
 
@@ -25,9 +24,9 @@ class SDFfromCadQuery:
         If you want the SDF value of a single point use sdf(x,y,z) it returns just one value
     """
     def __init__(self, shape: cq.Shape, pointgrid:list[list[float]]=[[x/10, y/10, z/10] for x in range(-10, 11) for y in range(-10, 11) for z in range(-10, 11)]):  # noqa: B006
-        self.__shape = shape
-        self.__pointgrid = pointgrid
-        self.__sdf_at_pointgrid = [self.sdf(x, y, z) for x, y, z in self.__pointgrid]
+        self._shape = shape
+        self._pointgrid = pointgrid
+        self._sdf_at_pointgrid = [self.sdf(x, y, z) for x, y, z in self._pointgrid]
     def sdf(self, x: float, y: float, z: float) -> float:
         """
         Signed distance from (x, y, z) to self._shape (CadQuery shape).
@@ -37,7 +36,7 @@ class SDFfromCadQuery:
         # Build point and shape
         pnt = gp_Pnt(x, y, z)
         vertex = BRepBuilderAPI_MakeVertex(pnt).Vertex()
-        shape_ocp = self.__shape.wrapped  # TopoDS_Shape
+        shape_ocp = self._shape.wrapped  # TopoDS_Shape
 
         # --- Step 1: Unsigned distance ---
         dist_shape_shape = BRepExtrema_DistShapeShape(vertex, shape_ocp)
@@ -65,14 +64,14 @@ class SDFfromCadQuery:
         # calculates the signed distance form point (x, y, z) to the CadQuery shape boints inside the shape are negative
         pnt = gp_Pnt(x, y, z)
         vertex = BRepBuilderAPI_MakeVertex(pnt).Vertex()
-        shape_ocp = self.__shape.wrapped
+        shape_ocp = self._shape.wrapped
         dist_shape_shape = BRepExtrema_DistShapeShape(vertex, shape_ocp)
         dist_shape_shape.Perform()
         d = dist_shape_shape.Value()
         print(d)
         if d==0: # Point is either on the surface or inside the shape
             world = cq.Workplane("XY").box(100, 100, 100)
-            negativ = world.cut(cq.Workplane().newObject([self.__shape])).val()
+            negativ = world.cut(cq.Workplane().newObject([self._shape])).val()
             negativ = cast(cq.Shape, negativ)
             negativ = negativ.wrapped
             dist_shape_shape = BRepExtrema_DistShapeShape(vertex, negativ)
@@ -82,12 +81,10 @@ class SDFfromCadQuery:
         return d
 
     def sdf_at_pointgrid(self) -> list[float]:
-        return self.__sdf_at_pointgrid
+        return self._sdf_at_pointgrid
 
     def pointgrid(self) -> list[list[float]]:
-        return self.__pointgrid
-
-
+        return self._pointgrid
 class BackupAssembly:
     def __init__(self):
         def m(value: float) -> float:
