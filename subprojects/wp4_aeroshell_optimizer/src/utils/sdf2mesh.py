@@ -1,7 +1,7 @@
 import kaolin_utils
 import numpy as np
 import trimesh
-from sdf import SDFNetwork
+from ..models.sdf import SDFNetwork
 from skimage import measure
 
 def save_sdf2mesh(

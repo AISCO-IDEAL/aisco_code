@@ -1,6 +1,6 @@
 import visualtorch
 import torch
-from sdf import SDFNetwork
+from ..models.sdf import SDFNetwork
 import matplotlib.pyplot as plt
 
 def visualize_network(model: SDFNetwork = None,

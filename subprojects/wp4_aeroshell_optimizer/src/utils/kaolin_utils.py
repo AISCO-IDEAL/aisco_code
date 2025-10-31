@@ -2,7 +2,7 @@ import kaolin as kal
 import torch
 import trimesh
 from kaolin.ops.conversions import FlexiCubes
-from sdf import SDFNetwork
+from ..models.sdf import SDFNetwork
 import os
 
 #All Code here by aalthaus, adjusted by @eschaerer for CUDA compatibility
