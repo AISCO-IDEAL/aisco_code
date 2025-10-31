@@ -6,3 +6,5 @@ WP4, the Aeroshell Optimizer, uses our product to tell the NN where to build and
 
 Relevant info for WP4:
 Status (31.10.25) - under components/nbz.py you will be able to find the functions innerNBZ and outerNBZ (for inner and outer no-build-zone respectively)
+
+//federico test
