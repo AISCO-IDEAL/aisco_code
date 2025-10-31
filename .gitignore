@@ -5,6 +5,7 @@ __pycache__/
 *$py.class
 ##################
 *.out # from eschaerer
+aisco_env/
 ##################
 # C extensions
 *.so
