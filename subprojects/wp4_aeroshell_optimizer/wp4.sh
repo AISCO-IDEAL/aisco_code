@@ -15,6 +15,7 @@
 
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=eschaerer@ethz.ch
+
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------

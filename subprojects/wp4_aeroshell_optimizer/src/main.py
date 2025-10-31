@@ -6,27 +6,7 @@ from train import train_sdf_model
 from utils import initialize_cuda, load_pretrained_model, setup_training_environment, check_cuda_health
 
 # Hyperparameters - consider moving to config file
-hyperparams = {
-    "learning_rate": 0.0001,
-    "batch_size": 4096,
-    "num_epochs": 1000,
-    "model_capacity": 256,
-    "num_layers": 8,
-    "skip_connections": [4],
-    "weight_decay": 0.0,
-    "activation": "relu",
-    "optimizer": "adam",
-    "scheduler_step_size": 200,
-    "scheduler_gamma": 0.5,
-}
 
-# General information - consider moving to config file
-general_info = {
-    "Model": "SDFNetwork",
-    "Model_Expl": "an SDF Network with torch Neural Network",
-    "Pre": "a sphere as initial shape, datatype: SDF",
-    "Post": "a PLY file representing the optimized aeroshell shape",
-}
 
 metadata = {
     "Username": "eschaerer",
