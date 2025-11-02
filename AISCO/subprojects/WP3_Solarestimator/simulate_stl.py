@@ -130,7 +130,6 @@ def process_stl_file(stl_folder: str, filename: str, path_csv: str, max_area: fl
             "filename": filename,
             "performance_index": performance_index,
             "duration_s": duration,
-            "output_file": os.path.relpath(output_path, start=os.getcwd())
         }
 
     except Exception as e:
@@ -140,7 +139,6 @@ def process_stl_file(stl_folder: str, filename: str, path_csv: str, max_area: fl
             "filename": filename,
             "performance_index": None,
             "duration_s": duration,
-            "output_file": None
         }
     
 
