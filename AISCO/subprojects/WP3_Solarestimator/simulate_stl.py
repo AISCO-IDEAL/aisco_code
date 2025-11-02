@@ -7,6 +7,7 @@ import pandas as pd
 from tqdm import tqdm
 from joblib import Parallel, delayed
 import pytz
+import unicodedata
 import trimesh
 from AISCO.subprojects.WP3_Solarestimator.pv_index_for_run import pv_perf_index
 from AISCO.subprojects.WP3_Solarestimator.read_mesh import facenormal_angle, powerratio_iam, shadowing_factor, sky_face
@@ -18,6 +19,7 @@ DATA_FOLDER = os.path.join(os.path.dirname(__file__), "data")
 SELECTED_FOLDER = os.path.join(DATA_FOLDER, "selected_solardecks")
 
 # create Folder "selected_solardecks" if not available
+SELECTED_FOLDER = unicodedata.normalize("NFC", SELECTED_FOLDER)
 os.makedirs(SELECTED_FOLDER, exist_ok=True)
 
 
@@ -186,8 +188,10 @@ def run_parallel_simulations(
 
     # Convert results to DataFrame and export as CSV
     df = pd.DataFrame(results)
-    df.to_csv(output_csv, index=False)
+    df = df.sort_values(by='filename', ascending=True)
+    df_export = df.drop(columns=['output_file'], errors="ignore")
+    df_export.to_csv(output_csv, index=False)
 
     print(f"\n✅ Simulation completed. Results saved to {output_csv}")
-    return df   
+    return df_export  
 
