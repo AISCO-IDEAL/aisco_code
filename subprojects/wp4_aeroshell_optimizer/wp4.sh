@@ -3,9 +3,9 @@
 #SBATCH --job-name=AISCO_Test_SLURM
 #SBATCH --time=00:10:00                   # Adjust time as needed
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem-per-cpu=7G                  # Total 28G memory
-#SBATCH --gpus=rtx_4090:2
+#SBATCH --cpus-per-task=2
+#SBATCH --mem-per-cpu=5G                  # Total 28G memory
+#SBATCH --gpus=rtx_4090:1
 #SBATCH --output=/cluster/home/eschaerer/AISCO-code/subprojects/wp4_aeroshell_optimizer/logs/AISCO_TEST_%j.out     #adjust path as needed
 #SBATCH --error=/cluster/home/eschaerer/AISCO-code/subprojects/wp4_aeroshell_optimizer/logs/AISCO_TEST_%j.err      #adjust path as needed
 ##SBATCH --mail-type=END,FAIL

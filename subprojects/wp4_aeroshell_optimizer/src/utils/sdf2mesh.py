@@ -1,4 +1,4 @@
-from .kaolin_utils import flexicubes_to_PLY, kaolin_primitive_max_angle_loss, kaolin_facenormal_angle, get_diff_mesh
+from .kaolin_utils import get_diff_mesh, flexicubes_to_PLY
 import numpy as np
 import trimesh
 from ..models.sdf import SDFNetwork
