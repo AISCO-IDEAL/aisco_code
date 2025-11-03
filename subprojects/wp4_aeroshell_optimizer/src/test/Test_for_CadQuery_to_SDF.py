@@ -2,9 +2,9 @@
 In this file the CadQueryToSDF class from CadQuery_to_SDF.py is tested with a simple shapes.
 Run this file by running the two follwoing commands in the terminal:
 
-cd /cluster/home/clhuber/AISCO-code/subprojects/wp4_aeroshell_optimizer
+cd /cluster/home/clhuber/AISCO-code
 
-python -m src.test.Test_for_CadQuery_to_SDF
+python -m subprojects.wp4_aeroshell_optimizer.src.test.Test_for_CadQuery_to_SDF
 """
 from typing import cast
 
@@ -12,12 +12,14 @@ import cadquery as cq
 import matplotlib.pyplot as plt
 import numpy as np
 from ..utils.CadQuery_to_SDF import SDFfromCadQuery
+from ....wp2_assembler.version1.components.nbz import outerNBZ, innerNBZ
 
+sdf_converter: SDFfromCadQuery
 # test with a Cylinder
-if True:
+if False:
     cylinder = cq.Workplane("XY").circle(0.5).extrude(1).objects[0]
     cylinder = cast(cq.Shape, cylinder)
-    print(type(cylinder))
+    # print(type(cylinder))
     sdf_converter = SDFfromCadQuery(cylinder)
 
 # test with a cube
@@ -26,7 +28,14 @@ if False:
     cube = cast(cq.Shape, cube)
     sdf_converter = SDFfromCadQuery(cube)
 
-
+# use the innerNBZ from wp2_assembler
+if True:
+    inner_nbz_shape = innerNBZ(
+        random_magnitude_chassis=0.0,
+        random_magnitude_seat=0.0,
+        random_magnitude_wheels=0.0,
+    )
+    sdf_converter = SDFfromCadQuery(inner_nbz_shape)
 
 sdf_valus = sdf_converter.sdf_at_pointgrid()
 
