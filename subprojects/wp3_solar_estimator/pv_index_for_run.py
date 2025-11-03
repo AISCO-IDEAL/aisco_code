@@ -7,6 +7,12 @@ from AISCO.subprojects.WP3_Solarestimator.read_mesh import (
     sky_face,
 )
 
+from subprojects.wp3_solar_estimator.read_mesh import (
+    facenormal_angle,
+    sky_face,
+    powerratio_iam,
+)
+
 
 def pv_perf_index(
     top_mesh,
