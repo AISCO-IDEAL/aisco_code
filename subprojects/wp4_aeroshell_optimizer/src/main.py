@@ -13,13 +13,11 @@ import yaml
 
 import subprojects.wp1_cfd_ai.crude_estimator.crude_estimator_diff as crude_estimator
 from subprojects.wp4_aeroshell_optimizer.src.models.sdf import SDFNetwork
-from subprojects.wp4_aeroshell_optimizer.src.models.train import train_sdf_model
+from subprojects.wp4_aeroshell_optimizer.src.models.train import \
+    train_sdf_model
 from subprojects.wp4_aeroshell_optimizer.src.utils.utils import (
-    check_cuda_health,
-    initialize_cuda,
-    load_pretrained_model,
-    setup_training_environment,
-)
+    check_cuda_health, initialize_cuda, load_pretrained_model,
+    setup_training_environment)
 
 metadata = {
     "Username": "eschaerer",
@@ -42,17 +40,13 @@ def main():
     # Setup training environment
     setup_training_environment(device)
 
-    # Load configuration
-    config_path = (
-        Path.home()
-        / "AISCO-code"
-        / "subprojects"
-        / "wp4_aeroshell_optimizer"
-        / "src"
-        / "config"
-        / "wp4_config.yaml"
-    )
+    # Get the directory of the current script
+    script_dir = Path(__file__).resolve().parent
+    # Define the base directory of the project
+    base_dir = script_dir.parent.parent.parent  # Adjust based on your project structure
 
+    # Load configuration
+    config_path = base_dir / "subprojects" / "wp4_aeroshell_optimizer" / "src" / "config" / "wp4_config.yaml"
     try:
         with config_path.open() as f:
             config = yaml.safe_load(f)
@@ -63,21 +57,22 @@ def main():
     except yaml.YAMLError as e:
         print(f"✗ Error parsing configuration file: {e}")
         return
-
+    
     # Load or initialize model
     load_pretrained = config.get("use_pretrained", False)
-
     if load_pretrained:
-        # This loads a sphere model while we redo the training loop and main structure
-        model = torch.load(
-            f"/cluster/home/{metadata['Username']}/AISCO-code/subprojects/wp4_aeroshell_optimizer/archive/dummy_models/sdf_sphere_model_2025-10-24.pth"
-        )
+        model_path = base_dir / "subprojects" / "wp4_aeroshell_optimizer" / "archive" / "dummy_models" / "sdf_sphere_model_2025-10-24.pth"
+        model = torch.load(model_path)
     else:
         model = SDFNetwork()
     model.to("cuda")
 
-    save_dir = config.get("model_dir", "")
-    mesh_dir = config.get("mesh_dir", "")
+
+    # Define save and mesh directories relative to the project root
+    save_dir = base_dir / "subprojects" / "wp4_aeroshell_optimizer" / config.get("model_dir", "")
+    mesh_dir = base_dir / "subprojects" / "wp4_aeroshell_optimizer" / config.get("mesh_dir", "")
+    
+    # Train the model
     train_sdf_model(model, config["training_params"], save_dir, mesh_dir)
     print("WP4 Main.py executed successfully")
 

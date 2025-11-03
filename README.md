@@ -32,8 +32,8 @@ Windows run `python ./setup_conda.bat`
 Euler environment guide:
 1. `deactivate` any environment that might be active
 2. run `chmod +x setup_conda.sh setup_venv.sh` to gain access rights for running the scripts
-3. run `~/AISCO-code/setup_venv.sh`
-4. for AISCO, please activate myenv in the `cd ~/AISCO-code` folder:
+3. run `~/AISCO_code/setup_venv.sh`
+4. for AISCO, please activate myenv in the `cd ~/AISCO_code` folder:
 `source aisco_env/bin/activate`
 
 these scripts will create a python 3.11.6 environment and most used dependencies. You can manually install workpage specific dependencies, by commanding `python3 -m pip install '.[<wpX_name>S]'"`. Replace `<wpX_name>` with the workpage name, you want to use.
