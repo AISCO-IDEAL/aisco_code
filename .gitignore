@@ -199,5 +199,5 @@ cython_debug/
 ehthumbs.db
 Thumbs.db
 
-data/
+**/data/
 /aisco_env/
