@@ -1,4 +1,3 @@
-
 import torch
 from losses import SDFLosses
 from sdf import SDFNetwork
@@ -30,4 +29,4 @@ if __name__ == "__main__":
 
     # Visualize the result using SDFVisualizer
     visualizer = SDFVisualizer(model)
-    visualizer.visualize_slice(direction='xy', slice_index=50)
+    visualizer.visualize_slice(direction="xy", slice_index=50)

@@ -26,17 +26,21 @@ def generate_synthetic_data(num_samples=100, num_nodes=3, num_points=100):
     # Node features: [position (3), orientation (3), volume (1)]
     x = torch.rand(num_samples, num_nodes, 7)
     x[:, :, 0:3] = torch.rand(num_samples, num_nodes, 3) * 2 - 1  # Position in [-1, 1]
-    x[:, :, 3:6] = torch.rand(num_samples, num_nodes, 3) * np.pi - np.pi/2  # Orientation in [-π/2, π/2]
+    x[:, :, 3:6] = (
+        torch.rand(num_samples, num_nodes, 3) * np.pi - np.pi / 2
+    )  # Orientation in [-π/2, π/2]
     x[:, :, 6] = torch.rand(num_samples, num_nodes) * 0.05  # Volume in [0, 0.05]
 
     # Edges: Fully connected graph (simplified)
-    edge_index = torch.tensor([[0, 0, 1, 1, 2, 2],
-                               [1, 2, 0, 2, 0, 1]], dtype=torch.long)
+    edge_index = torch.tensor(
+        [[0, 0, 1, 1, 2, 2], [1, 2, 0, 2, 0, 1]], dtype=torch.long
+    )
 
     # Point clouds: Random 3D points for each part
     point_clouds = torch.randn(num_samples, num_nodes, num_points, 3) * 0.1
 
     return x, edge_index, point_clouds
+
 
 # --- 2. Define GNN Model ---
 class SimpleGNN(nn.Module):
@@ -72,6 +76,7 @@ class SimpleGNN(nn.Module):
         x = F.relu(self.conv2(x, edge_index))
         return self.lin(x)
 
+
 # --- 3. Loss Functions ---
 def cd_loss(deformed_clouds):
     """
@@ -85,6 +90,7 @@ def cd_loss(deformed_clouds):
     """
     return torch.abs(deformed_clouds[..., 0]).mean()  # Minimize frontal area
 
+
 def solar_loss(deformed_clouds):
     """
     Compute solar performance loss (maximize exposed area).
@@ -96,6 +102,7 @@ def solar_loss(deformed_clouds):
         - Returns a scalar torch.Tensor in [0, 1], where higher values indicate better solar exposure.
     """
     return 1.0 / (1.0 + torch.abs(deformed_clouds[..., 1]).mean())  # Maximize side area
+
 
 # --- 4. Training Loop ---
 def train(num_epochs=50):
@@ -127,7 +134,9 @@ def train(num_epochs=50):
             batch_deformations.append(deform)
 
         batch_deformations = torch.stack(batch_deformations)
-        deformed_clouds = point_clouds + batch_deformations.unsqueeze(2)  # Apply deformations
+        deformed_clouds = point_clouds + batch_deformations.unsqueeze(
+            2
+        )  # Apply deformations
 
         # Compute losses
         loss_cd = cd_loss(deformed_clouds)
@@ -139,9 +148,12 @@ def train(num_epochs=50):
         optimizer.step()
 
         if epoch % 10 == 0:
-            print(f"Epoch {epoch}, Loss: {loss.item():.4f}, CD: {loss_cd.item():.4f}, Solar: {loss_solar.item():.4f}")
+            print(
+                f"Epoch {epoch}, Loss: {loss.item():.4f}, CD: {loss_cd.item():.4f}, Solar: {loss_solar.item():.4f}"
+            )
 
     return model, deformed_clouds
+
 
 # --- 5. Visualization ---
 def plot_point_clouds(original, deformed, node_idx=0):
@@ -159,26 +171,27 @@ def plot_point_clouds(original, deformed, node_idx=0):
     fig = plt.figure(figsize=(12, 6))
 
     # Original point cloud
-    ax1 = fig.add_subplot(121, projection='3d')
+    ax1 = fig.add_subplot(121, projection="3d")
     ax1.scatter(
         original[0, node_idx, :, 0].detach().numpy(),
         original[0, node_idx, :, 1].detach().numpy(),
         original[0, node_idx, :, 2].detach().numpy(),
-        c='b'
+        c="b",
     )
     ax1.set_title("Original")
 
     # Deformed point cloud
-    ax2 = fig.add_subplot(122, projection='3d')
+    ax2 = fig.add_subplot(122, projection="3d")
     ax2.scatter(
         deformed[0, node_idx, :, 0].detach().numpy(),
         deformed[0, node_idx, :, 1].detach().numpy(),
         deformed[0, node_idx, :, 2].detach().numpy(),
-        c='r'
+        c="r",
     )
     ax2.set_title("Deformed")
 
     plt.show()
+
 
 # --- 6. Execute ---
 if __name__ == "__main__":

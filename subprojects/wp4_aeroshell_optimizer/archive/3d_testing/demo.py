@@ -1,14 +1,14 @@
 # Create a requirements file and a simple demo script
-code_requirements = '''# Requirements for 3D SDF Shape Optimization
+code_requirements = """# Requirements for 3D SDF Shape Optimization
 torch>=1.9.0
 numpy>=1.20.0
 matplotlib>=3.3.0
 plotly>=5.0.0
 scikit-image>=0.18.0
 tqdm>=4.60.0
-'''
+"""
 #
-#with open('requirements.txt', 'w') as f:
+# with open('requirements.txt', 'w') as f:
 #    f.write(code_requirements)
 
 # Create a simple demo script for quick testing
@@ -35,13 +35,15 @@ def run_quick_demo():
     trainer.sample_points_per_iter = 512
 
     # Adjust loss weights for faster convergence in demo
-    trainer.loss_calculator.update_weights({
-        'eikonal': 0.5,
-        'size_constraint': 5.0,
-        'frontal_area': 3.0,
-        'top_area': -2.0,
-        'smoothness': 0.2
-    })
+    trainer.loss_calculator.update_weights(
+        {
+            "eikonal": 0.5,
+            "size_constraint": 5.0,
+            "frontal_area": 3.0,
+            "top_area": -2.0,
+            "smoothness": 0.2,
+        }
+    )
 
     print("Demo configuration:")
     print(f"  - Iterations: {trainer.num_iterations}")
@@ -57,8 +59,12 @@ def run_quick_demo():
     trainer.sdf_net.eval()
 
     # Just show cross-sections and loss curves (faster than 3D)
-    trainer.visualizer.plot_loss_curves(trainer.loss_history, save_path="demo_loss_curves.png")
-    trainer.visualizer.plot_cross_sections(trainer.sdf_net, save_path="demo_cross_sections.png")
+    trainer.visualizer.plot_loss_curves(
+        trainer.loss_history, save_path="demo_loss_curves.png"
+    )
+    trainer.visualizer.plot_cross_sections(
+        trainer.sdf_net, save_path="demo_cross_sections.png"
+    )
 
     # Compute final metrics
     metrics = trainer.visualizer.compute_final_metrics(trainer.sdf_net)
@@ -68,18 +74,19 @@ def run_quick_demo():
 
     return trainer, metrics
 
+
 if __name__ == "__main__":
     run_quick_demo()
 
 
-#with open('demo.py', 'w') as f:
+# with open('demo.py', 'w') as f:
 #    f.write(code_demo)
 
 print("Created requirements.txt and demo.py")
 print()
 
 # Create a comprehensive README file
-code_readme = '''# 3D SDF Vehicle Shape Optimization
+code_readme = """# 3D SDF Vehicle Shape Optimization
 
 This project implements a neural signed distance field (SDF) approach for optimizing 3D vehicle shapes, specifically targeting aerodynamic efficiency and solar collection area for solar race cars.
 
@@ -287,9 +294,9 @@ Potential improvements:
 ## License
 
 This implementation is provided for educational and research purposes. Feel free to modify and extend for your specific applications.
-'''
+"""
 
-with open('README.md', 'w', encoding='utf-8') as f:
+with open("README.md", "w", encoding="utf-8") as f:
     f.write(code_readme)
 
 print("Created comprehensive README.md")

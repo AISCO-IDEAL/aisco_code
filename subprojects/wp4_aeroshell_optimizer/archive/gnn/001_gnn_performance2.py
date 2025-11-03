@@ -9,19 +9,26 @@ from torch_geometric.nn import GCNConv, global_mean_pool
 def generate_synthetic_data(num_samples=100, num_nodes=3):
     x = torch.rand(num_samples, num_nodes, 9)
     x[:, :, 0:3] = torch.rand(num_samples, num_nodes, 3) * 2 - 1  # Position
-    x[:, :, 3:6] = torch.rand(num_samples, num_nodes, 3) * np.pi - np.pi/2  # Orientation
+    x[:, :, 3:6] = (
+        torch.rand(num_samples, num_nodes, 3) * np.pi - np.pi / 2
+    )  # Orientation
     x[:, :, 6] = torch.rand(num_samples, num_nodes) * 0.05  # Volume
     x[:, :, 7] = torch.rand(num_samples, num_nodes) * 1500 + 250  # Solar output (Watts)
-    x[:, :, 8] = torch.rand(num_samples, num_nodes) * 0.45 + +.05  # Local Cd contribution
+    x[:, :, 8] = (
+        torch.rand(num_samples, num_nodes) * 0.45 + +0.05
+    )  # Local Cd contribution
     edge_index = torch.combinations(torch.arange(num_nodes), 2).t()
     edge_index = edge_index.repeat(num_samples, 1)
     return x, edge_index
 
+
 def drag_loss(x):
     return torch.sum(x[:, :, 8])
 
+
 def solar_loss(x):
     return -torch.sum(x[:, :, 7])
+
 
 class SolarCarGNN(nn.Module):
     def __init__(self, input_dim=9, hidden_dim=32, output_dim=2):
@@ -64,13 +71,16 @@ def train(num_epochs=50, num_samples=100, num_nodes=3):
             epoch_solar += loss_solar.item()
 
         optimizer.step()
-        drag_losses.append(epoch_drag/num_samples)
-        solar_losses.append(epoch_solar/num_samples)
+        drag_losses.append(epoch_drag / num_samples)
+        solar_losses.append(epoch_solar / num_samples)
 
         if epoch % 10 == 0:
-            print(f"Epoch {epoch}, Avg Drag Loss: {epoch_drag/num_samples:.4f}, Avg Solar Loss: {epoch_solar/num_samples:.4f}")
+            print(
+                f"Epoch {epoch}, Avg Drag Loss: {epoch_drag / num_samples:.4f}, Avg Solar Loss: {epoch_solar / num_samples:.4f}"
+            )
 
     return model, drag_losses, solar_losses
+
 
 def plot_training_progress(drag_losses, solar_losses):
     plt.figure(figsize=(10, 5))
@@ -82,6 +92,7 @@ def plot_training_progress(drag_losses, solar_losses):
     plt.legend()
     plt.grid()
     plt.show()
+
 
 def plot_predictions_vs_true(model, x, num_samples=5):
     model.eval()
@@ -102,8 +113,13 @@ def plot_predictions_vs_true(model, x, num_samples=5):
 
     # Drag Coefficient
     plt.subplot(1, 2, 1)
-    plt.scatter(true_cds, pred_cds, c='blue', label="Predictions")
-    plt.plot([min(true_cds), max(true_cds)], [min(true_cds), max(true_cds)], 'r--', label="Perfect Prediction")
+    plt.scatter(true_cds, pred_cds, c="blue", label="Predictions")
+    plt.plot(
+        [min(true_cds), max(true_cds)],
+        [min(true_cds), max(true_cds)],
+        "r--",
+        label="Perfect Prediction",
+    )
     plt.xlabel("True Drag Coefficient (Cd)")
     plt.ylabel("Predicted Drag Coefficient (Cd)")
     plt.title("Drag Coefficient: True vs. Predicted")
@@ -112,8 +128,13 @@ def plot_predictions_vs_true(model, x, num_samples=5):
 
     # Solar Power
     plt.subplot(1, 2, 2)
-    plt.scatter(true_solars, pred_solars, c='green', label="Predictions")
-    plt.plot([min(true_solars), max(true_solars)], [min(true_solars), max(true_solars)], 'r--', label="Perfect Prediction")
+    plt.scatter(true_solars, pred_solars, c="green", label="Predictions")
+    plt.plot(
+        [min(true_solars), max(true_solars)],
+        [min(true_solars), max(true_solars)],
+        "r--",
+        label="Perfect Prediction",
+    )
     plt.xlabel("True Solar Power (kW)")
     plt.ylabel("Predicted Solar Power (kW)")
     plt.title("Solar Power: True vs. Predicted")
@@ -122,6 +143,7 @@ def plot_predictions_vs_true(model, x, num_samples=5):
 
     plt.tight_layout()
     plt.show()
+
 
 if __name__ == "__main__":
     model, drag_losses, solar_losses = train(num_epochs=50)

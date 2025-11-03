@@ -1,4 +1,3 @@
-
 import time
 from datetime import datetime
 from pathlib import Path
@@ -26,7 +25,7 @@ class SDF3DTrainer:
     def __init__(self, device=None):
         # Set device
         if device is None:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
             self.device = device
 
@@ -34,10 +33,7 @@ class SDF3DTrainer:
 
         # Initialize network
         self.sdf_net = SDF3DNet(
-            in_dim=3,
-            hidden=128,
-            layers=6,
-            use_skip_connection=True
+            in_dim=3, hidden=128, layers=6, use_skip_connection=True
         ).to(self.device)
 
         # Initialize loss calculator and visualizer
@@ -48,13 +44,13 @@ class SDF3DTrainer:
         # Outer bounds: vehicle cannot exceed these limits
         self.outer_bounds = (
             torch.tensor([-1.8, -1.8, -0.8], device=self.device),  # min (x, y, z)
-            torch.tensor([1.8, 1.8, 0.8], device=self.device)       # max (x, y, z)
+            torch.tensor([1.8, 1.8, 0.8], device=self.device),  # max (x, y, z)
         )
 
         # Inner bounds: vehicle must fill at least this much space
         self.inner_bounds = (
-            torch.tensor([-0.5, -0.5, -0.2], device=self.device),   # min (x, y, z)
-            torch.tensor([0.5, 0.5, 0.2], device=self.device)        # max (x, y, z)
+            torch.tensor([-0.5, -0.5, -0.2], device=self.device),  # min (x, y, z)
+            torch.tensor([0.5, 0.5, 0.2], device=self.device),  # max (x, y, z)
         )
 
         # Training parameters
@@ -78,7 +74,9 @@ class SDF3DTrainer:
             Random 3D points tensor
         """
         # Sample points in an extended region around the shape
-        points = torch.rand(n_points, 3, device=self.device) * 4.0 - 2.0  # Range [-2, 2]
+        points = (
+            torch.rand(n_points, 3, device=self.device) * 4.0 - 2.0
+        )  # Range [-2, 2]
         return points
 
     def train(self, save_checkpoints=False, checkpoint_interval=500):
@@ -91,17 +89,21 @@ class SDF3DTrainer:
         """
         print("\nStarting SDF3D Shape Optimization...")
         print("Target: Minimize frontal area, maximize top area")
-        print(f"Constraints: Outer bounds {self.outer_bounds}, Inner bounds {self.inner_bounds}")
+        print(
+            f"Constraints: Outer bounds {self.outer_bounds}, Inner bounds {self.inner_bounds}"
+        )
         print(f"Training for {self.num_iterations} iterations...")
 
         # Initialize optimizer
         optimizer = optim.Adam(self.sdf_net.parameters(), lr=self.learning_rate)
 
         # Learning rate scheduler
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.num_iterations)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=self.num_iterations
+        )
 
         start_time = time.time()
-        best_loss = float('inf')
+        best_loss = float("inf")
 
         for iteration in range(self.num_iterations):
             optimizer.zero_grad()
@@ -111,14 +113,11 @@ class SDF3DTrainer:
 
             # Compute all loss components
             losses = self.loss_calculator.compute_total_loss(
-                self.sdf_net,
-                sample_points,
-                self.outer_bounds,
-                self.inner_bounds
+                self.sdf_net, sample_points, self.outer_bounds, self.inner_bounds
             )
 
             # Backward pass and optimization
-            losses['total'].backward()
+            losses["total"].backward()
 
             # Gradient clipping for stability
             torch.nn.utils.clip_grad_norm_(self.sdf_net.parameters(), max_norm=1.0)
@@ -130,7 +129,9 @@ class SDF3DTrainer:
             for loss_name, loss_value in losses.items():
                 if loss_name not in self.loss_history:
                     self.loss_history[loss_name] = []
-                self.loss_history[loss_name].append(loss_value.item() if torch.is_tensor(loss_value) else loss_value)
+                self.loss_history[loss_name].append(
+                    loss_value.item() if torch.is_tensor(loss_value) else loss_value
+                )
 
             # Progress reporting
             if iteration % 100 == 0 or iteration == self.num_iterations - 1:
@@ -147,24 +148,27 @@ class SDF3DTrainer:
                 print(f"  Smoothness: {losses['smoothness'].item():.6f}")
 
             # Save best model
-            if losses['total'].item() < best_loss:
-                best_loss = losses['total'].item()
+            if losses["total"].item() < best_loss:
+                best_loss = losses["total"].item()
                 if save_checkpoints:
-                    self.save_model('best_model.pth')
+                    self.save_model("best_model.pth")
 
             # Periodic checkpoints
-            if save_checkpoints and iteration % checkpoint_interval == 0 and iteration > 0:
-                checkpoint_path = f'checkpoint_iter_{iteration}.pth'
+            if (
+                save_checkpoints
+                and iteration % checkpoint_interval == 0
+                and iteration > 0
+            ):
+                checkpoint_path = f"checkpoint_iter_{iteration}.pth"
                 self.save_model(checkpoint_path)
                 print(f"Checkpoint saved: {checkpoint_path}")
 
             # Adaptive loss weight adjustment (optional)
             if iteration == self.num_iterations // 4:
                 # Increase emphasis on area optimization after initial shape formation
-                self.loss_calculator.update_weights({
-                    'frontal_area': 8.0,
-                    'top_area': -5.0
-                })
+                self.loss_calculator.update_weights(
+                    {"frontal_area": 8.0, "top_area": -5.0}
+                )
                 print("Updated loss weights for area optimization focus")
 
         total_time = time.time() - start_time
@@ -173,23 +177,26 @@ class SDF3DTrainer:
 
         # Save final model
         if save_checkpoints:
-            self.save_model('final_model.pth')
+            self.save_model("final_model.pth")
 
     def save_model(self, filename):
         """Save model state dict"""
-        torch.save({
-            'model_state_dict': self.sdf_net.state_dict(),
-            'loss_history': self.loss_history,
-            'outer_bounds': self.outer_bounds,
-            'inner_bounds': self.inner_bounds
-        }, filename)
+        torch.save(
+            {
+                "model_state_dict": self.sdf_net.state_dict(),
+                "loss_history": self.loss_history,
+                "outer_bounds": self.outer_bounds,
+                "inner_bounds": self.inner_bounds,
+            },
+            filename,
+        )
 
     def load_model(self, filename):
         """Load model state dict"""
         checkpoint = torch.load(filename, map_location=self.device)
-        self.sdf_net.load_state_dict(checkpoint['model_state_dict'])
-        if 'loss_history' in checkpoint:
-            self.loss_history = checkpoint['loss_history']
+        self.sdf_net.load_state_dict(checkpoint["model_state_dict"])
+        if "loss_history" in checkpoint:
+            self.loss_history = checkpoint["loss_history"]
         print(f"Model loaded from {filename}")
 
     def visualize_results(self, save_plots=True):
@@ -220,11 +227,17 @@ class SDF3DTrainer:
 
         # 3. 3D surface visualization (matplotlib)
         surface_3d_path = (output_dir / "surface_3d.png") if save_plots else None
-        self.visualizer.plot_3d_surface_matplotlib(self.sdf_net, save_path=surface_3d_path)
+        self.visualizer.plot_3d_surface_matplotlib(
+            self.sdf_net, save_path=surface_3d_path
+        )
 
         # 4. Interactive 3D visualization (plotly)
-        interactive_3d_path = (output_dir / "interactive_3d.html") if save_plots else None
-        self.visualizer.plot_3d_surface_plotly(self.sdf_net, save_path=interactive_3d_path)
+        interactive_3d_path = (
+            (output_dir / "interactive_3d.html") if save_plots else None
+        )
+        self.visualizer.plot_3d_surface_plotly(
+            self.sdf_net, save_path=interactive_3d_path
+        )
 
         # 5. Compute and display final metrics
         metrics = self.visualizer.compute_final_metrics(self.sdf_net)
@@ -237,13 +250,15 @@ class SDF3DTrainer:
             metrics_text = ["=== Final Shape Optimization Results ===\n"]
             metrics_text.extend(f"{key}: {value}\n" for key, value in metrics.items())
             metrics_text.append("\n=== Training Configuration ===\n")
-            metrics_text.extend([
-                f"Iterations: {self.num_iterations}\n",
-                f"Learning Rate: {self.learning_rate}\n",
-                f"Sample Points per Iteration: {self.sample_points_per_iter}\n",
-                f"Network Architecture: {self.sdf_net.hidden} hidden units, {self.sdf_net.layers} layers\n",
-                f"Final Loss: {self.loss_history['total'][-1]:.6f}\n"
-            ])
+            metrics_text.extend(
+                [
+                    f"Iterations: {self.num_iterations}\n",
+                    f"Learning Rate: {self.learning_rate}\n",
+                    f"Sample Points per Iteration: {self.sample_points_per_iter}\n",
+                    f"Network Architecture: {self.sdf_net.hidden} hidden units, {self.sdf_net.layers} layers\n",
+                    f"Final Loss: {self.loss_history['total'][-1]:.6f}\n",
+                ]
+            )
 
             # Write all lines at once
             metrics_path.write_text("".join(metrics_text))
@@ -251,10 +266,13 @@ class SDF3DTrainer:
             print(f"\nAll results saved to directory: {output_dir}")
         return metrics
 
+
 def main():
     """Main function to run the complete SDF optimization pipeline"""
     print("=== 3D SDF Vehicle Shape Optimization ===")
-    print("Objective: Minimize frontal area (drag) while maximizing top area (solar collection)")
+    print(
+        "Objective: Minimize frontal area (drag) while maximizing top area (solar collection)"
+    )
     print()
 
     # Initialize trainer
@@ -270,6 +288,7 @@ def main():
     print("Check the generated plots and results directory for detailed analysis.")
 
     return trainer, metrics
+
 
 if __name__ == "__main__":
     # Run the complete pipeline
