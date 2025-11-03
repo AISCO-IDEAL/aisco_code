@@ -3,7 +3,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+##################
+*.out # from eschaerer
+##################
 # C extensions
 *.so
 
@@ -26,6 +28,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+*kate-swp
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -56,6 +60,7 @@ cover/
 *.mo
 *.pot
 
+
 # Django stuff:
 *.log
 local_settings.py
@@ -82,6 +87,13 @@ target/
 # IPython
 profile_default/
 ipython_config.py
+
+# # large files
+# *.pdf
+# *.jpeg
+# *.stl
+# *.ply
+# *.glb
 
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is
@@ -187,4 +199,5 @@ cython_debug/
 ehthumbs.db
 Thumbs.db
 
-.data/
+data/
+/aisco_env/

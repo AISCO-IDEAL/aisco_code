@@ -1,0 +1,245 @@
+
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from sklearn.neighbors import NearestNeighbors
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D  # for 3D plotting
+
+# Hyperparameters
+hyperparams = {
+    "l_range": (4.0, 7.0),
+    "w_range": (1.0, 2.5),
+    "h_range": (1.0, 2.0),
+    "noise": 0.1
+}
+
+# Point cloud generation
+def generate_point_cloud(
+    num_points: int,
+    l_range: tuple[float, float] = hyperparams["l_range"],
+    w_range: tuple[float, float] = hyperparams["w_range"],
+    h_range: tuple[float, float] = hyperparams["h_range"],
+    noise: float = hyperparams["noise"],
+) -> np.ndarray:
+    """
+    Generates a random point cloud within a cuboid of dimensions (l, w, h).
+    l, w, h are sampled i.i.d. from the given ranges.
+    PRE: l_range, w_range, h_range are tuples of (min, max) and noise >= 0.
+    POST: Returns a numpy array of shape (num_points, 3) representing the point cloud.
+    """
+    l = np.random.uniform(*l_range)
+    w = np.random.uniform(*w_range)
+    h = np.random.uniform(*h_range)
+    points = np.random.rand(num_points, 3)
+    points[:, 0] *= l
+    points[:, 1] *= w
+    points[:, 2] *= h
+    if noise > 0:
+        points += np.random.normal(0, noise, points.shape)
+    points[:, 0] = np.clip(points[:, 0], 0, l)
+    points[:, 1] = np.clip(points[:, 1], 0, w)
+    points[:, 2] = np.clip(points[:, 2], 0, h)
+    return points, (l, w, h)
+
+# Performance Metrics
+def solar_performance(w: float, l: float, max_wl: float) -> float:
+    """Evaluate solar performance (maximize top area: w*l)."""
+    return (w * l) / max_wl
+
+def aerodynamic_performance(w: float, h: float, max_wh: float) -> float:
+    """Evaluate aerodynamic performance (minimize frontal area: w*h)."""
+    return 1 - ((w * h) / max_wh)
+
+def combined_loss(w, l, h, original_dims, max_wl, max_wh, alpha=0.5, lambda_reg=0.1):
+    solar = (w * l) / max_wl
+    aero = 1 - ((w * h) / max_wh)
+    performance = (1 - alpha) * solar + alpha * aero
+
+    # Average predicted dimensions over all points
+    w_mean = torch.mean(w)
+    l_mean = torch.mean(l)
+    h_mean = torch.mean(h)
+    predicted_dims = torch.stack([w_mean, l_mean, h_mean], dim=0)
+
+    original_dims_tensor = torch.tensor(original_dims, dtype=torch.float32)
+    mse_loss = F.mse_loss(predicted_dims, original_dims_tensor)
+
+    return -torch.mean(performance) + lambda_reg * mse_loss
+
+
+# GNN Model
+class GNNLayer(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(GNNLayer, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+
+    def forward(self, node_features, adjacency_matrix):
+        agg_features = torch.matmul(adjacency_matrix, node_features)
+        return self.linear(agg_features)
+
+class GNNModel(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(GNNModel, self).__init__()
+        self.layer1 = GNNLayer(input_size, hidden_size)
+        self.layer2 = GNNLayer(hidden_size, hidden_size)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, node_features, adjacency_matrix):
+        x = F.relu(self.layer1(node_features, adjacency_matrix))
+        x = F.relu(self.layer2(x, adjacency_matrix))
+        x = self.fc(x)
+        return torch.sigmoid(x)  # constrain outputs between 0 and 1
+
+
+# Adjacency Matrix Generation
+def generate_adjacency_matrix(points: np.ndarray, k: int = 5) -> np.ndarray:
+    knn = NearestNeighbors(n_neighbors=k)
+    knn.fit(points)
+    distances, indices = knn.kneighbors(points)
+    adj_matrix = np.zeros((len(points), len(points)))
+    for i in range(len(points)):
+        adj_matrix[i, indices[i]] = 1
+    return torch.tensor(adj_matrix, dtype=torch.float32)
+
+# Training Function
+def train_gnn(model, points, original_dims, max_wl, max_wh, epochs=50, alpha=0.5, lr=0.001):
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    adjacency_matrix = generate_adjacency_matrix(points)
+    for epoch in range(epochs):
+        model.train()
+        optimizer.zero_grad()
+        node_features = torch.tensor(points, dtype=torch.float32)
+        outputs = model(node_features, adjacency_matrix)
+        w, l, h = outputs[:, 0], outputs[:, 1], outputs[:, 2]
+        loss = combined_loss(w, l, h, original_dims, max_wl, max_wh, alpha)
+        loss.backward()
+        optimizer.step()
+
+        predicted_points = model(node_features, adjacency_matrix).detach().numpy()
+
+        if (epoch + 1) % 10 == 0:
+            print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
+            visualize_point_cloud_and_bounding_box(points, predicted_points, hyperparams["l_range"], hyperparams["w_range"], hyperparams["h_range"])
+
+# Evaluation Function
+def evaluate_model(model, points, original_dims, max_wl, max_wh, alpha=0.5):
+    model.eval()
+    with torch.no_grad():
+        adjacency_matrix = generate_adjacency_matrix(points)
+        node_features = torch.tensor(points, dtype=torch.float32)
+        outputs = model(node_features, adjacency_matrix)
+        w, l, h = outputs[:, 0], outputs[:, 1], outputs[:, 2]
+        loss = combined_loss(w, l, h, original_dims, max_wl, max_wh, alpha)
+        print(f"Evaluation Loss: {loss.item():.4f}")
+
+# Visualization Function
+def visualize_point_cloud_and_bounding_box(points, predicted_points, l_range, w_range, h_range):
+    fig = plt.figure(figsize=(14, 6))
+
+    # Original Point Cloud
+    ax1 = fig.add_subplot(121, projection='3d')
+    ax1.scatter(points[:, 0], points[:, 1], points[:, 2], c='b', label='Original Points')
+    ax1.set_title('Original Point Cloud')
+    ax1.set_xlabel('Length (l)')
+    ax1.set_ylabel('Width (w)')
+    ax1.set_zlabel('Height (h)')
+
+    # Draw bounding box for original ranges
+    l_min, l_max = l_range
+    w_min, w_max = w_range
+    h_min, h_max = h_range
+
+    vertices = np.array([
+        [l_min, w_min, h_min],
+        [l_max, w_min, h_min],
+        [l_max, w_max, h_min],
+        [l_min, w_max, h_min],
+        [l_min, w_min, h_max],
+        [l_max, w_min, h_max],
+        [l_max, w_max, h_max],
+        [l_min, w_max, h_max]
+    ])
+
+    edges = [
+        [vertices[0], vertices[1]],
+        [vertices[1], vertices[2]],
+        [vertices[2], vertices[3]],
+        [vertices[3], vertices[0]],
+        [vertices[4], vertices[5]],
+        [vertices[5], vertices[6]],
+        [vertices[6], vertices[7]],
+        [vertices[7], vertices[4]],
+        [vertices[0], vertices[4]],
+        [vertices[1], vertices[5]],
+        [vertices[2], vertices[6]],
+        [vertices[3], vertices[7]]
+    ]
+
+    for edge in edges:
+        ax1.plot(*zip(edge[0], edge[1]), color='r')
+
+    # Predicted Point Cloud
+    ax2 = fig.add_subplot(122, projection='3d')
+    ax2.scatter(predicted_points[:, 0], predicted_points[:, 1], predicted_points[:, 2], c='g', label='Predicted Points')
+    ax2.set_title('Predicted Point Cloud')
+    ax2.set_xlabel('Predicted Length (l)')
+    ax2.set_ylabel('Predicted Width (w)')
+    ax2.set_zlabel('Predicted Height (h)')
+
+    # Draw bounding box for predicted ranges
+    l_min_pred, l_max_pred = np.min(predicted_points[:, 0]), np.max(predicted_points[:, 0])
+    w_min_pred, w_max_pred = np.min(predicted_points[:, 1]), np.max(predicted_points[:, 1])
+    h_min_pred, h_max_pred = np.min(predicted_points[:, 2]), np.max(predicted_points[:, 2])
+
+    vertices_pred = np.array([
+        [l_min_pred, w_min_pred, h_min_pred],
+        [l_max_pred, w_min_pred, h_min_pred],
+        [l_max_pred, w_max_pred, h_min_pred],
+        [l_min_pred, w_max_pred, h_min_pred],
+        [l_min_pred, w_min_pred, h_max_pred],
+        [l_max_pred, w_min_pred, h_max_pred],
+        [l_max_pred, w_max_pred, h_max_pred],
+        [l_min_pred, w_max_pred, h_max_pred]
+    ])
+
+    edges_pred = [
+        [vertices_pred[0], vertices_pred[1]],
+        [vertices_pred[1], vertices_pred[2]],
+        [vertices_pred[2], vertices_pred[3]],
+        [vertices_pred[3], vertices_pred[0]],
+        [vertices_pred[4], vertices_pred[5]],
+        [vertices_pred[5], vertices_pred[6]],
+        [vertices_pred[6], vertices_pred[7]],
+        [vertices_pred[7], vertices_pred[4]],
+        [vertices_pred[0], vertices_pred[4]],
+        [vertices_pred[1], vertices_pred[5]],
+        [vertices_pred[2], vertices_pred[6]],
+        [vertices_pred[3], vertices_pred[7]]
+    ]
+
+    for edge in edges_pred:
+        ax2.plot(*zip(edge[0], edge[1]), color='r')
+
+    plt.tight_layout()
+    plt.show()
+
+
+# Main Function
+def main():
+    input_size = 3
+    hidden_size = 64
+    output_size = 3
+    model = GNNModel(input_size, hidden_size, output_size)
+    num_points = 100
+    points, original_dims = generate_point_cloud(num_points, **hyperparams)
+    max_wl = 2.0
+    max_wh = 1.5
+    train_gnn(model, points, original_dims, max_wl, max_wh, epochs=50)
+    evaluate_model(model, points, original_dims, max_wl, max_wh)
+
+
+if __name__ == "__main__":
+    main()

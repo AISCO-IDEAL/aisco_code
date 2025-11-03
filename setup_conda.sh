@@ -1,9 +1,10 @@
+#### DON'T USE THIS FILE ANYMORE, USE SETUP_VENV.SH AS WE USE EULER HPC NOW
 #kdiehl
 #!/bin/bash
 # setup.sh – Setup Python project with Conda + pyproject.toml
 set -e  # Exit on any error
 
-ENV_NAME="aisco-code"
+ENV_NAME="aisco_env"
 PYTHON_VERSION="3.11.6"
 
 # 1. Check if conda is installed
@@ -31,11 +32,24 @@ echo ""
 echo "✅ Standard dependencies installed."
 echo ""
 echo "📌 Optional dependencies can be installed manually:"
-echo "   - Workpackage 1 (WP1_WP1_CFD_AI):                  pip install '.[WP1_CFD_AI]'"
-echo "   - Workpackage 2 (WP2_Assembler):                   pip install '.[WP2_Assembler]'"
+echo "   - Workpackage 1 (WP1_WP1_CFD_AI):                  pip install '.[wp1_cfd_ai]'"
+echo "   - Workpackage 2 (wp2_assembler):                   pip install '.[wp2_assembler]'"
 echo "   - Workpackage 3 (WP_3_Solarestimator):             pip install '.[WP3_Solarestimator]'"
-echo "   - Workpackage 4 (WP_4_Aeroshell_optimizer):        pip install '.[WP4_Aeroshell_Optimizer]'"
+echo "   - Workpackage 4 (WP_4_Aeroshell_optimizer):        pip install '.[wp4_aeroshell_optimizer]'"
+echo "   - testing dependencies:                            pip install '.[testing]'"
 echo "   - All optional dependencies:                       pip install '.[all]'"
+############# eschaerer addition for kaolin install #############
+echo "🔍 Checking if Kaolin should be installed..."
+read -p "Do you want to install Kaolin (GPU/CUDA-dependent)? [y/n]: " install_kaolin
+if [[ "$install_kaolin" == "y" ]]; then
+    echo "🐍 Installing Kaolin from NVIDIA link..."
+    pip install -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.4.0_cu124.html kaolin==0.18.0
+    echo "✅ Kaolin installation complete."
+else
+    echo "⏭️ Skipping Kaolin installation."
+fi
+echo ""
+##############################################################
 echo ""
 echo "🪝 Set up Pre-commit Hooks (if Dev Tools are installed):"
 echo "   pre-commit install"

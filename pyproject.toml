@@ -5,7 +5,7 @@ requires = ["setuptools>=74.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "AISCO-code"
+name = "aisco_env"
 version = "0.1.0"
 description = "Monorepo for all AISCO code"
 authors = [
@@ -18,27 +18,42 @@ dependencies = [
   "gymnasium >= 1.0.0",
   "pandas >= 2.2.3",
   "matplotlib >= 3.9.3",
-  "numpy",
+  "numpy>=2.0.0",
   "ruff>=0.1.0",
   "pre-commit>=3.0.0",
   "mypy>=1.17.1",
-  "torch>=2.6.0"
+  "torch==2.4.0"
 ]
 
 [project.optional-dependencies]
-WP1_CFD_AI = [
+wp1_cfd_ai = [
 
 ]
-WP2_Assembler =[
+wp2_assembler =[
+  "cadquery >= 2.6.0",
+  "ocp_vscode >= 2.9.0"
+]
+wp3_solar_estimator = [
 
 ]
-WP3_Solarestimator = [
+wp4_aeroshell_optimizer = [
 
+  "cadquery == 2.6.0",
+  "matplotlib==3.10.7",
+  "plotly==5.22.0",
+  "scikit-image>=0.0.0",
+  "torch_geometric==2.7.0",
+  "torchvision", # changed by eschaerer from torchvision==0.19.1, because it requires torch==2.4.1
+  "trimesh==4.8.3",
 ]
-WP4_Aeroshell_Optimizer = [
 
+testing = ["pytest >= 8.3.2"]
+
+all = [
+  "aisco_env[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer]"
 ]
 
+#make a all command
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["AISCO*", "subprojects_legacy*"]
@@ -68,6 +83,7 @@ exclude = [
     "node_modules",
     "venv",
 ]
+
 
 # Same as Black.
 line-length = 88
@@ -106,6 +122,7 @@ select = [
     "FURB", # refurb
     "LOG",  # flake8-logging
     "RUF",  # Ruff-specific rules
+
 ]
 
 ignore = [
@@ -124,7 +141,8 @@ ignore = [
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
-unfixable = []
+# Add "F401" (unused import) to the list of rules Ruff should NOT fix automatically.
+unfixable = ["F401", "PLR0911", "PLR0913", "N806"]
 
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
@@ -150,6 +168,7 @@ python_version = "3.11"
 namespace_packages = true
 explicit_package_bases = true
 mypy_path = "AISCO/"
+ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 files = ["AISCO/", "tests/"]
@@ -157,8 +176,3 @@ exclude = [
   "^build/",
   "^docs/",
 ]
-[[tool.mypy.overrides]]
-module = [
-  # Put dependencies without type hints here
-]
-ignore_missing_imports = true
