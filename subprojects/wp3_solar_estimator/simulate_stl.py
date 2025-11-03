@@ -9,9 +9,9 @@ from joblib import Parallel, delayed
 import pytz
 import unicodedata
 import trimesh
-from AISCO.subprojects.WP3_Solarestimator.pv_index_for_run import pv_perf_index
-from AISCO.subprojects.WP3_Solarestimator.read_mesh import facenormal_angle, powerratio_iam, shadowing_factor, sky_face
-from AISCO.subprojects.WP3_Solarestimator.sun import get_sun_direction
+from subprojects.wp3_solar_estimator.pv_index_for_run import pv_perf_index
+from subprojects.wp3_solar_estimator.read_mesh import facenormal_angle, powerratio_iam, shadowing_factor, sky_face
+from subprojects.wp3_solar_estimator.sun import get_sun_direction
 
 # data-Folder relative to AISCO-code
 DATA_FOLDER = os.path.join(os.path.dirname(__file__), "data")

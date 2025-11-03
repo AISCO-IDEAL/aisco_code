@@ -71,24 +71,14 @@ def powerratio_iam(theta_grad, b0=0.05):
     iam_factor = 1.0 - b0 * ((1.0 / cos_theta_safe) - 1.0)
 
     # 4. Berechnung des Gesamtverhältnisses
-<<<<<<< HEAD:AISCO/subprojects/WP3_Solarestimator/read_mesh.py
     ratio = iam_factor ##  * cos_theta fehlerhaft?
-=======
-
-    ratio = iam_factor * cos_theta
->>>>>>> 0ff87d6da3670271cec9a2cc432d0b9be56d513e:subprojects/wp3_solar_estimator/read_mesh.py
 
     # 5. ANGLE CHECK (Vectorized Fix): Set ratio to 0.0 where angle >= 90°
     # np.where checks the condition element-wise:
     # - If True (angle >= 90): returns 0.0
     # - If False (angle < 90): returns the calculated 'verhaeltnis'
-<<<<<<< HEAD:AISCO/subprojects/WP3_Solarestimator/read_mesh.py
     ratio_final = np.where(theta_grad >= 90.0, 0.0, ratio)
     ratio_final = np.clip(ratio_final, a_min=0.0, a_max=None)
-=======
-    orthonormal = 90.0
-    ratio_final = np.where(theta_grad >= orthonormal, 0.0, ratio)
->>>>>>> 0ff87d6da3670271cec9a2cc432d0b9be56d513e:subprojects/wp3_solar_estimator/read_mesh.py
 
     return ratio_final
 
@@ -110,7 +100,6 @@ def sky_face(mesh, threshold=0.01) -> trimesh.Trimesh:
     top_faces = mesh.faces[top_face_indices]
     top_mesh = trimesh.Trimesh(vertices=mesh.vertices, faces=top_faces)
     return top_mesh
-<<<<<<< HEAD:AISCO/subprojects/WP3_Solarestimator/read_mesh.py
 
 
 def shadowing_factor(mesh: trimesh.Trimesh, sun_direction=np.array([0,0,-1]), ) -> np.ndarray:
@@ -161,5 +150,3 @@ def shadowing_factor(mesh: trimesh.Trimesh, sun_direction=np.array([0,0,-1]), ) 
     # shadowed_faces_indices = np.where(hit_any)[0]
     # illuminated_faces_indices = np.where(~hit_any)[0]
     return hit_any
-=======
->>>>>>> 0ff87d6da3670271cec9a2cc432d0b9be56d513e:subprojects/wp3_solar_estimator/read_mesh.py
