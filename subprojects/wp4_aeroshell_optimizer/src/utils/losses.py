@@ -50,6 +50,16 @@ class SDFLosses:
     ################################
     ### DO NOT TOUCH WORK FROM EMANUEL ###
     def smoothness_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
+        """
+        This Loss encourages the SDF to be smooth by penalizing large values of the Laplacian.
+        The Laplacian of the SDF measures local curvature; minimizing its magnitude reduces high-frequency variations.
+        Args:
+            self: SDFLosses Class
+            model: The SDF Network
+            points: a Batch of 3D points to evaluate the loss at
+        Returns:
+            loss: The computed smoothness loss for the given points.
+        """
         sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True)
         return self.weights[1] * (laplacian_sdf**2).mean()
 
