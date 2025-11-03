@@ -1,8 +1,9 @@
-import torch
-import torch.nn as nn
-import time
-import sys
 import os
+import sys
+import time
+
+import torch
+from torch import nn
 
 print("--- Multi-GPU Compute Test Starting ---")
 print(f"Python Version: {sys.version.split()[0]}")
@@ -17,9 +18,12 @@ gpu_count = torch.cuda.device_count()
 print(f"\n[INFO] Found {gpu_count} GPU(s).")
 
 if gpu_count < 2:
-    print(f"[WARNING] Only found {gpu_count} GPU. Request 2 or more GPUs in your SLURM script to test parallelism.")
+    print(
+        f"[WARNING] Only found {gpu_count} GPU. Request 2 or more GPUs in your SLURM script to test parallelism."
+    )
 else:
     print("[INFO] This is a multi-GPU node. Proceeding with DataParallel test.")
+
 
 # 2. Define a simple model
 class SimpleModel(nn.Module):
@@ -31,6 +35,7 @@ class SimpleModel(nn.Module):
 
     def forward(self, x):
         return self.layer2(self.relu(self.layer1(x)))
+
 
 # 3. Create and wrap the model for DataParallel
 print("\n[INFO] Creating a simple model...")
@@ -48,7 +53,7 @@ print(f"[INFO] Model moved to primary device: {torch.cuda.get_device_name(device
 
 # 4. Create a large batch of dummy data
 # Batch size 1024, data dimension 1024
-batch_size = 1024 * gpu_count # Make the batch bigger for more GPUs
+batch_size = 1024 * gpu_count  # Make the batch bigger for more GPUs
 input_dim = 1024
 print(f"[INFO] Creating dummy data batch (size: {batch_size} x {input_dim}) on GPU...")
 data = torch.randn(batch_size, input_dim).to(device)
@@ -73,8 +78,10 @@ print(f"  -> Average time per iteration: {total_time / 10:.4f} seconds.")
 
 # 6. Check GPU memory usage (as a proxy for work)
 for i in range(gpu_count):
-    print(f"  -> GPU {i} ({torch.cuda.get_device_name(i)}) Memory Used: "
-          f"{torch.cuda.memory_allocated(i) / 1024**3:.2f} GB")
+    print(
+        f"  -> GPU {i} ({torch.cuda.get_device_name(i)}) Memory Used: "
+        f"{torch.cuda.memory_allocated(i) / 1024**3:.2f} GB"
+    )
 
 print("\n[INFO] If all GPUs have memory allocated, DataParallel worked!")
 print("--- Multi-GPU Compute Test Finished Successfully ---")

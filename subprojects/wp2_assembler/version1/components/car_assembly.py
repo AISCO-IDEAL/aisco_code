@@ -2,7 +2,6 @@ from dataclasses import asdict
 
 import cadquery as cq
 from cadquery import Assembly, Color, Location
-
 from utils.constraints import chassis_constraints, seat_constraints, wheels_constraints
 from utils.randomize import randomize
 

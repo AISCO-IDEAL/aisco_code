@@ -1,7 +1,8 @@
-import torch
-import time
-import sys
 import os
+import sys
+import time
+
+import torch
 
 print("--- GPU Compute Test Starting ---")
 print(f"Python Version: {sys.version.split()[0]}")
@@ -10,11 +11,15 @@ print(f"PyTorch Version: {torch.__version__}")
 # 1. Check if GPU is available
 if not torch.cuda.is_available():
     print("\n[ERROR] PyTorch cannot see a GPU. Exiting.")
-    print(f"SLURM allocated GPU(s): {os.environ.get('CUDA_VISIBLE_DEVICES', 'Not Set')}")
+    print(
+        f"SLURM allocated GPU(s): {os.environ.get('CUDA_VISIBLE_DEVICES', 'Not Set')}"
+    )
     sys.exit()
 
 device = torch.device("cuda")
-print(f"\n[INFO] Success! PyTorch is using device: {torch.cuda.get_device_name(device)}")
+print(
+    f"\n[INFO] Success! PyTorch is using device: {torch.cuda.get_device_name(device)}"
+)
 
 # 2. Set up large matrices
 # 15000 x 15000 matrices will make an RTX 4090 work for a moment
@@ -36,10 +41,12 @@ end_transfer = time.time()
 print(f"  -> Transfer to GPU took: {end_transfer - start_transfer:.4f} seconds.")
 
 # 4. Perform computation on GPU
-print(f"\n[INFO] Performing {matrix_size}x{matrix_size} matrix multiplication on the GPU (10 iterations)...")
+print(
+    f"\n[INFO] Performing {matrix_size}x{matrix_size} matrix multiplication on the GPU (10 iterations)..."
+)
 start_compute = time.time()
 
-c_gpu = None # Initialize
+c_gpu = None  # Initialize
 for i in range(10):
     c_gpu = torch.matmul(a_gpu, b_gpu)
 

@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -34,14 +33,16 @@ class SDFNetwork(nn.Module):
                 x = torch.tanh(layer(x))
             else:
                 x = F.leaky_relu(layer(x), negative_slope=0.1)
-            if (self.use_skip_connection and
-                i == len(self.middle_layers) // 2 and
-                hasattr(self, 'skip_layer')):
+            if (
+                self.use_skip_connection
+                and i == len(self.middle_layers) // 2
+                and hasattr(self, "skip_layer")
+            ):
                 x = torch.cat([x, original_x], dim=1)
                 x = F.leaky_relu(self.skip_layer(x), negative_slope=0.1)
         sdf = self.output_layer(x).squeeze(-1)
         # Only compute gradients if input requires grad (i.e., during training)
-        if original_x.requires_grad: # Updated x to original_x by Clemens
+        if original_x.requires_grad:  # Updated x to original_x by Clemens
             grad_sdf = torch.zeros((x.shape[0], self.in_dim), device=x.device)
             for dim in range(self.in_dim):
                 grad = torch.autograd.grad(
@@ -53,7 +54,7 @@ class SDFNetwork(nn.Module):
                     only_inputs=True,
                 )[0]
                 grad_sdf[:, dim] = grad[:, dim]
-            #print("grad_sdf shape:", grad_sdf.shape)  # Debug print
+            # print("grad_sdf shape:", grad_sdf.shape)  # Debug print
             if not return_laplacian:
                 return sdf, grad_sdf
             # Compute Laplacian (sum of second derivatives)
