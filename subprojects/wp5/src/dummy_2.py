@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 import numpy as np
 
+from subprojects.wp5.src.dummy_3 import llinsi
+
 
 def test(x: int) -> str:
     # kdiehl

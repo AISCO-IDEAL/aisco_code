@@ -1,2 +1,6 @@
 def hihi():
-    return "hihi"
+    return "hihihi"
+
+
+def llinsi():
+    return "llinsi"
