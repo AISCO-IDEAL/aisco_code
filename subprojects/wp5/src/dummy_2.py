@@ -2,6 +2,8 @@ from pathlib import Path
 
 import numpy as np
 
+from subprojects.wp5.src.dummy_3 import llinsi
+
 
 def test(x: int) -> str:
     # kdiehl
@@ -13,7 +15,7 @@ def test(x: int) -> str:
     Returns:
         Eine Bestätigungszeichenkette mit dem übergebenen Wert.
     """
-
+    print(llinsi())
     outdir = Path(
         "/home/kdiehl/Dokumente/Studium__Stipendium__Lebenslauf/ETH/AISCO/AISCO_code/AISCO/subprojects/wp5/data/"
     )  # setze hier deinen Zielpfad

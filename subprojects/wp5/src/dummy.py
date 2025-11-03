@@ -1,4 +1,4 @@
-from subprojects.wp5.src.dummy_2 import test
+from wp5.src.dummy_2 import test
 from subprojects.wp5.src.dummy_3 import hihi
 
 if __name__ == "__main__":
