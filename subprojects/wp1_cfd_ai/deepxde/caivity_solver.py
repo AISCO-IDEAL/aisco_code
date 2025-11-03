@@ -1,10 +1,10 @@
 import matplotlib
-matplotlib.use('Agg')  # <-- ADD THIS LINE
+
+matplotlib.use("Agg")  # <-- ADD THIS LINE
+import deepxde as dde
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-
-import deepxde as dde
 
 # --- 1. Set the Backend ---
 dde.backend.set_default_backend("pytorch")
@@ -128,7 +128,7 @@ p = solution[:, 2].reshape(resolution, resolution)
 # Plot Velocity
 plt.figure(figsize=(10, 8))
 # Use 'color=u' instead of 'C=u'
-plt.quiver(X, Y, u, v, color=u) # <-- FIX HERE
+plt.quiver(X, Y, u, v, color=u)  # <-- FIX HERE
 plt.colorbar(label="u-velocity (m/s)")
 plt.title(f"2D Lid-Driven Cavity Flow (Re={1 / nu}) - Velocity")
 plt.xlabel("X Coordinate")
