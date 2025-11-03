@@ -1,6 +1,7 @@
 """
 In this file the CadQueryToSDF class from CadQuery_to_SDF.py is tested with a simple shapes.
 """
+
 from typing import cast
 
 import cadquery as cq
@@ -22,7 +23,6 @@ if False:
     sdf_converter = SDFfromCadQuery(cube)
 
 
-
 sdf_valus = sdf_converter.sdf_at_pointgrid()
 
 # sort them for their z values and plot each layer
@@ -39,9 +39,9 @@ for z in z_values:
     # create a imshow plot
     plt.figure()
     plt.tricontourf(x_vals, y_vals, sdf_vals_layer, levels=14, cmap="RdBu_r")
-    plt.colorbar(label='SDF Value')
-    plt.title(f'SDF values at z={z}')
-    plt.xlabel('X')
-    plt.ylabel('Y')
-    plt.axis('equal')
+    plt.colorbar(label="SDF Value")
+    plt.title(f"SDF values at z={z}")
+    plt.xlabel("X")
+    plt.ylabel("Y")
+    plt.axis("equal")
     plt.show()

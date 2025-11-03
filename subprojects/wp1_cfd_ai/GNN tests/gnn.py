@@ -2,8 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
 import torch
-import torch.nn as nn
-import torch.optim as optim
+from torch import nn, optim
 from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv
 from torch_geometric.utils import grid
