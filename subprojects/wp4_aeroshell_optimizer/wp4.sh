@@ -41,6 +41,10 @@ module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
 VENV_DIR="/cluster/home/$USERNAME/AISCO-code/aisco_env"
 source "$VENV_DIR/bin/activate"
 #------------------------------------------------------------------------------
+# Set PYTHONPATH to include the root directory of your project
+#------------------------------------------------------------------------------
+export PYTHONPATH="${PYTHONPATH}:/cluster/home/$USERNAME/AISCO-code/"
+#------------------------------------------------------------------------------
 # Verify GPU access
 #------------------------------------------------------------------------------
 echo "Verifying GPU access..."

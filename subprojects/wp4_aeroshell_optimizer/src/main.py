@@ -12,10 +12,9 @@ import torch
 import yaml
 
 import subprojects.wp1_cfd_ai.crude_estimator.crude_estimator_diff as crude_estimator
-
-from .models.sdf import SDFNetwork
-from .models.train import train_sdf_model
-from .utils.utils import (
+from subprojects.wp4_aeroshell_optimizer.src.models.sdf import SDFNetwork
+from subprojects.wp4_aeroshell_optimizer.src.models.train import train_sdf_model
+from subprojects.wp4_aeroshell_optimizer.src.utils.utils import (
     check_cuda_health,
     initialize_cuda,
     load_pretrained_model,
