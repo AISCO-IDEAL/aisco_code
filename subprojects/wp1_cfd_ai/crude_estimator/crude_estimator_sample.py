@@ -155,16 +155,15 @@ def approximate_drag_with_sampled_points(
                 v_mask = (vertices[:, axis_idx] >= a_start) & (
                     vertices[:, axis_idx] < a_end
                 )
+        # Slicing max to min (a_start > a_end)
+        elif i == (num_slices - 1):  # Handle last slice
+            v_mask = (vertices[:, axis_idx] <= a_start) & (
+                vertices[:, axis_idx] >= a_end
+            )
         else:
-            # Slicing max to min (a_start > a_end)
-            if i == (num_slices - 1):  # Handle last slice
-                v_mask = (vertices[:, axis_idx] <= a_start) & (
-                    vertices[:, axis_idx] >= a_end
-                )
-            else:
-                v_mask = (vertices[:, axis_idx] <= a_start) & (
-                    vertices[:, axis_idx] > a_end
-                )
+            v_mask = (vertices[:, axis_idx] <= a_start) & (
+                vertices[:, axis_idx] > a_end
+            )
         # --- END MODIFIED ---
 
         slice_points = vertices[v_mask]

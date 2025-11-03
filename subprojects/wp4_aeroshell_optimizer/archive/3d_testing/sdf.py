@@ -1,4 +1,3 @@
-
 import torch
 from torch import nn
 
@@ -70,11 +69,15 @@ class SDF3DNet(nn.Module):
                 x = torch.nn.functional.leaky_relu(layer(x), negative_slope=0.1)
 
             # Skip connection at middle of network
-            if (self.use_skip_connection and
-                i == len(self.middle_layers) // 2 and
-                hasattr(self, 'skip_layer')):
+            if (
+                self.use_skip_connection
+                and i == len(self.middle_layers) // 2
+                and hasattr(self, "skip_layer")
+            ):
                 x = torch.cat([x, original_x], dim=1)
-                x = torch.nn.functional.leaky_relu(self.skip_layer(x), negative_slope=0.1)
+                x = torch.nn.functional.leaky_relu(
+                    self.skip_layer(x), negative_slope=0.1
+                )
 
         # Output layer (no activation - raw SDF values)
         return self.output_layer(x).squeeze(-1)

@@ -10,6 +10,7 @@ from torch_geometric.nn import GCNConv, global_mean_pool
 # 1. Definition of Classes
 ##################################
 
+
 # 2.1 Shape: Represents a 2D shape as a graph
 class Shape:
     def __init__(self, points, pointcloud=False):
@@ -17,7 +18,7 @@ class Shape:
         self.orgcloud = pointcloud
         if pointcloud:
             if self.size != len(points):
-                raise ValueError('Point cloud size must match.')
+                raise ValueError("Point cloud size must match.")
             self.pointcloud = points
         else:
             self.points = points
@@ -27,14 +28,18 @@ class Shape:
     def create_pointcloud(self):
         self.points.append(self.points[0])
         self.length = []
-        for i in range(len(self.points)-1):
-            self.length.append(np.linalg.norm(np.array(self.points[i+1])-np.array(self.points[i])))
+        for i in range(len(self.points) - 1):
+            self.length.append(
+                np.linalg.norm(np.array(self.points[i + 1]) - np.array(self.points[i]))
+            )
         self.total_length = sum(self.length)
         pointcloud = []
-        for i in range(len(self.points)-1):
+        for i in range(len(self.points) - 1):
             num_points = int(self.size * self.length[i] / self.total_length)
             for j in range(num_points):
-                point = np.array(self.points[i]) + (j / num_points) * (np.array(self.points[i+1]) - np.array(self.points[i]))
+                point = np.array(self.points[i]) + (j / num_points) * (
+                    np.array(self.points[i + 1]) - np.array(self.points[i])
+                )
                 pointcloud.append(point)
         while len(pointcloud) < self.size:
             pointcloud.append(pointcloud[-1])
@@ -47,15 +52,21 @@ class Shape:
         return Data(x=x, edge_index=edge_index)
 
     def plot(self):
-        plt.scatter(self.pointcloud[:,0], self.pointcloud[:,1], s=1)
+        plt.scatter(self.pointcloud[:, 0], self.pointcloud[:, 1], s=1)
         if not self.orgcloud:
-            plt.scatter(np.array(self.points)[:,0], np.array(self.points)[:,1], color='red', marker='x')
-        plt.axis('equal')
+            plt.scatter(
+                np.array(self.points)[:, 0],
+                np.array(self.points)[:, 1],
+                color="red",
+                marker="x",
+            )
+        plt.axis("equal")
 
     def p(self, t):
         if t < 0 or t >= self.size:
             raise ValueError("t must be between 0 and size")
         return self.pointcloud[t]
+
 
 # 2.2 Area: Represents an area as a graph
 class Area:
@@ -69,15 +80,23 @@ class Area:
         inner = self.inner_shape.graph.x  # shape: (1000, 2)
         outer = self.outer_shape.graph.x  # shape: (1000, 2)
         x = torch.cat([inner, outer], dim=0)  # shape: (2000, 2)
-        edge_index = torch.cat([
-            self.inner_shape.graph.edge_index,  # edges within inner shape
-            self.outer_shape.graph.edge_index + self.size,  # edges within outer shape (offset by 1000)
-            torch.stack([
-                torch.arange(self.size),  # connect inner[i] to outer[i]
-                torch.arange(self.size, 2*self.size)
-            ], dim=0)
-        ], dim=1)
+        edge_index = torch.cat(
+            [
+                self.inner_shape.graph.edge_index,  # edges within inner shape
+                self.outer_shape.graph.edge_index
+                + self.size,  # edges within outer shape (offset by 1000)
+                torch.stack(
+                    [
+                        torch.arange(self.size),  # connect inner[i] to outer[i]
+                        torch.arange(self.size, 2 * self.size),
+                    ],
+                    dim=0,
+                ),
+            ],
+            dim=1,
+        )
         return Data(x=x, edge_index=edge_index)
+
 
 # 2.3 Autoencoder: GNN-based autoencoder
 class Autoencoder:
@@ -104,10 +123,12 @@ class Autoencoder:
                     optimizer.step()
                     total_loss += loss.item()
                 if epoch % 10 == 0:
-                    print(f'Autoencoder Latent Size: {latent_size}, Epoch {epoch}, Loss: {total_loss/len(self.areas)}')
-            if total_loss/len(self.areas) < allowed_loss:
+                    print(
+                        f"Autoencoder Latent Size: {latent_size}, Epoch {epoch}, Loss: {total_loss / len(self.areas)}"
+                    )
+            if total_loss / len(self.areas) < allowed_loss:
                 best_model = model
-                print('Best latent size found:', latent_size)
+                print("Best latent size found:", latent_size)
                 break
             latent_size += 1
         return best_model, latent_size
@@ -144,14 +165,18 @@ class Autoencoder:
                     optimizer.step()
                     total_loss += loss.item()
                 if epoch % 10 == 0:
-                    print(f'Autoencoder Latent Size: {latent_size}, Epoch {epoch}, Loss: {total_loss/len(self.areas)}')
-            if total_loss/len(self.areas) < allowed_loss:
+                    print(
+                        f"Autoencoder Latent Size: {latent_size}, Epoch {epoch}, Loss: {total_loss / len(self.areas)}"
+                    )
+            if total_loss / len(self.areas) < allowed_loss:
                 best_model = model
-                print('Best latent size found:', latent_size)
+                print("Best latent size found:", latent_size)
                 break
             latent_size += 1
         return best_model, latent_size
+
     # ... (rest of the class)
+
 
 # 2.6 GeniModel: GNN-based model (fixed)
 class GeniModel(nn.Module):
@@ -194,6 +219,7 @@ class AutoencoderModel(nn.Module):
         output = self.decoder(latent)
         return output.view(-1, 2000, 2)  # Reshape to (batch, 2000, 2)
 
+
 # 2.5 Geni: GNN-based reinforcement learning
 class Geni:
     def __init__(self, areas):
@@ -218,7 +244,9 @@ class Geni:
             batch_losses = []
             for area in self.areas:
                 z = self.encode_torch(area)
-                mu = self.model(z.unsqueeze(0), area.graph.edge_index)  # Add batch dimension
+                mu = self.model(
+                    z.unsqueeze(0), area.graph.edge_index
+                )  # Add batch dimension
                 pts = area.pointcloud_torch(mu.squeeze(0))  # Remove batch dimension
                 loss = self.loss_function(pts)
                 batch_losses.append(loss)
@@ -229,8 +257,12 @@ class Geni:
                 print(f"Epoch {epoch}, Total Loss: {total_loss.item():.6f}")
 
     def loss_function(self, points, alpha=10):
-        def soft_max(x): return torch.logsumexp(alpha * x, dim=0) / alpha
-        def soft_min(x): return -torch.logsumexp(-alpha * x, dim=0) / alpha
+        def soft_max(x):
+            return torch.logsumexp(alpha * x, dim=0) / alpha
+
+        def soft_min(x):
+            return -torch.logsumexp(-alpha * x, dim=0) / alpha
+
         x_max = soft_max(points[:, 0])
         x_min = soft_min(points[:, 0])
         y_max = soft_max(points[:, 1])
@@ -238,8 +270,10 @@ class Geni:
         width = x_max - x_min
         height = y_max - y_min
         diffs = points[1:] - points[:-1]
-        circumference = torch.norm(diffs, dim=1).sum() + torch.norm(points[0] - points[-1])
-        loss = circumference/10 + (height-0.5) + 1/width
+        circumference = torch.norm(diffs, dim=1).sum() + torch.norm(
+            points[0] - points[-1]
+        )
+        loss = circumference / 10 + (height - 0.5) + 1 / width
         return loss
 
     def get_mu(self, area):
@@ -264,16 +298,29 @@ class GeniModel(nn.Module):
         x = global_mean_pool(x, torch.zeros(x.size(0), dtype=torch.long))
         return torch.sigmoid(self.lin(x))
 
+
 ##################################
 # 3. Main Code Execution
-quader1 = Shape([[0,0],[1,0],[1.5, 0.5], [1,1],[0,1], [-0.5, 0.5]])
-quader2 = Shape([[0.25,0.25],[0.75,0.25],[0.75,0.75],[0.25,0.75]])
+quader1 = Shape([[0, 0], [1, 0], [1.5, 0.5], [1, 1], [0, 1], [-0.5, 0.5]])
+quader2 = Shape([[0.25, 0.25], [0.75, 0.25], [0.75, 0.75], [0.25, 0.75]])
 area = Area(quader2, quader1)
 areas = []
 for x in range(5):
     for y in range(5):
-        points1 = [[0,0],[1,0-0.2*y],[1.5+0.1*x, 0.5+0.05*y], [1+0.1*x,1+0.1*y],[0,1], [-0.5-0.2*x, 0.5+0.02*y]]
-        points2 = [[0.25-0.1*x,0.25],[0.75+0.1*x,0.25-0.1*y],[0.75-0.1*x,0.75+0.1*y],[0.25+0.1*x,0.75-0.1*y]]
+        points1 = [
+            [0, 0],
+            [1, 0 - 0.2 * y],
+            [1.5 + 0.1 * x, 0.5 + 0.05 * y],
+            [1 + 0.1 * x, 1 + 0.1 * y],
+            [0, 1],
+            [-0.5 - 0.2 * x, 0.5 + 0.02 * y],
+        ]
+        points2 = [
+            [0.25 - 0.1 * x, 0.25],
+            [0.75 + 0.1 * x, 0.25 - 0.1 * y],
+            [0.75 - 0.1 * x, 0.75 + 0.1 * y],
+            [0.25 + 0.1 * x, 0.75 - 0.1 * y],
+        ]
         quader1 = Shape(points1)
         quader2 = Shape(points2)
         area1 = Area(quader2, quader1)

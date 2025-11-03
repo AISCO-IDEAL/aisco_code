@@ -1,5 +1,5 @@
-  # noqa: N999
-""" Structure overview
+# noqa: N999
+"""Structure overview
 This folder is until now documented by comments in the code files.
 It was started on 13.10.2025 by Clemens.
 
@@ -30,17 +30,20 @@ from torch import nn
 ##################################
 # 1. Definition of Functions
 
+
 # 1.1 Geometry Helper Functions
 def _cart_to_polar(x, y, ox=0.0, oy=0.0):
     dx, dy = x - ox, y - oy
-    r = np.sqrt(dx*dx + dy*dy)
+    r = np.sqrt(dx * dx + dy * dy)
     theta = np.arctan2(dy, dx)
     return r, theta
+
 
 def _polar_to_cart(r, theta, ox=0.0, oy=0.0):
     x = ox + r * np.cos(theta)
     y = oy + r * np.sin(theta)
     return x, y
+
 
 def _deg_to_index(theta_deg, dtheta_deg):
     # map degrees in [-180, 180) to index 0..N-1, where N = 360 / dtheta_deg
@@ -52,6 +55,7 @@ def _deg_to_index(theta_deg, dtheta_deg):
     if idx == n:  # wrap 180 exactly to N-1
         idx = n - 1
     return idx
+
 
 # 1.2 Ray-Segment Intersection
 def _ray_segment_intersection(ox, oy, theta, p1, p2):
@@ -73,8 +77,7 @@ def _ray_segment_intersection(ox, oy, theta, p1, p2):
     # Solve:
     # (ox, oy) + t_r*(dx_r, dy_r) = (x1, y1) + t_s*(dx_s, dy_s)
     # => two linear equations:
-    a = np.array([[dx_r, -dx_s],
-                  [dy_r, -dy_s]])
+    a = np.array([[dx_r, -dx_s], [dy_r, -dy_s]])
     b = np.array([x1 - ox, y1 - oy])
 
     det = np.linalg.det(a)
@@ -87,6 +90,7 @@ def _ray_segment_intersection(ox, oy, theta, p1, p2):
         return None  # intersection behind ray or outside segment
 
     return t_r  # this is r distance along ray
+
 
 ##################################
 # 2. Definition of Classes
@@ -153,8 +157,8 @@ class Shape:
         plt.scatter(self.pointcloud[:, 0], self.pointcloud[:, 1], s=1)
         if not self.orgcloud:
             pts = np.array(self.points)
-            plt.scatter(pts[:, 0], pts[:, 1], color='red', marker='x')
-        plt.axis('equal')
+            plt.scatter(pts[:, 0], pts[:, 1], color="red", marker="x")
+        plt.axis("equal")
 
     # 2.1.4 Point access
     def p(self, theta):
@@ -162,10 +166,12 @@ class Shape:
             raise ValueError("t_out_of_range")
         return self.pointcloud[theta]
 
-    def x(self): # returns all x-coordinates of the pointcloud
+    def x(self):  # returns all x-coordinates of the pointcloud
         return self.pointcloud[:, 0]
-    def y(self): # returns all y-coordinates of the pointcloud
+
+    def y(self):  # returns all y-coordinates of the pointcloud
         return self.pointcloud[:, 1]
+
 
 # 2.2 Area
 class Area:
@@ -180,7 +186,7 @@ class Area:
         for i in self.must_build_zones:
             self.params.append(i[0])
             self.params.append(i[1])
-        for _ in range(200- 2*len(self.must_build_zones)):
+        for _ in range(200 - 2 * len(self.must_build_zones)):
             self.params.append(0)
 
         self.dtheta_deg = np.rad2deg(inner_shape.dtheta)
@@ -223,8 +229,12 @@ class Area:
     # 2.2.5 Pointcloud as torch tensor for training
     def pointcloud_torch(self, mu: torch.Tensor) -> torch.Tensor:
         device = mu.device
-        inner = torch.tensor(self.inner_shape.pointcloud, dtype=torch.float32, device=device)
-        outer = torch.tensor(self.outer_shape.pointcloud, dtype=torch.float32, device=device)
+        inner = torch.tensor(
+            self.inner_shape.pointcloud, dtype=torch.float32, device=device
+        )
+        outer = torch.tensor(
+            self.outer_shape.pointcloud, dtype=torch.float32, device=device
+        )
         mu2 = mu.view(-1, 1)
         cloud = (1 - mu2) * inner + mu2 * outer  # (size, 2)
 
@@ -236,6 +246,7 @@ class Area:
                     cloud[idx, 1] = float(y)
 
         return cloud
+
 
 # 2.3 Geni
 class Geni:
@@ -254,7 +265,7 @@ class Geni:
         )
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
 
-    def train(self, epochs, e_0 = 0):
+    def train(self, epochs, e_0=0):
         losses = []
         for epoch in range(epochs):
             total_loss = 0.0
@@ -264,9 +275,9 @@ class Geni:
             for area in self.areas:
                 z = area.params
                 z = torch.tensor(z, dtype=torch.float32)  # (latent_size,)
-                mu = self.model(z)                        # (size,) differentiable
-                pts = area.pointcloud_torch(mu)           # (size,2) differentiable wrt mu
-                loss = self.loss_function(pts, epoch=epoch+e_0)            # scalar tensor
+                mu = self.model(z)  # (size,) differentiable
+                pts = area.pointcloud_torch(mu)  # (size,2) differentiable wrt mu
+                loss = self.loss_function(pts, epoch=epoch + e_0)  # scalar tensor
                 batch_losses.append(loss)
 
             total_loss = torch.stack(batch_losses).mean()
@@ -281,8 +292,12 @@ class Geni:
     # 2.3.3 Loss-function: Errechnet 3 verschiedene Losses und kombiniert diese:
     def loss_function(self, points, alpha=10, epoch=0):  # noqa: ARG002
         # 2.3.3.0 Definition of differentiable max and min functions:
-        def soft_max(x): return torch.logsumexp(alpha * x, dim=0) / alpha
-        def soft_min(x): return -torch.logsumexp(-alpha * x, dim=0) / alpha
+        def soft_max(x):
+            return torch.logsumexp(alpha * x, dim=0) / alpha
+
+        def soft_min(x):
+            return -torch.logsumexp(-alpha * x, dim=0) / alpha
+
         # 2.3.3.1 Calculation of width
         x_max = soft_max(points[:, 0])
         x_min = soft_min(points[:, 0])
@@ -302,14 +317,14 @@ class Geni:
         seg_lengths = torch.cat([seg_lengths, closing_length.view(1)])
         # 2.3.3.3.3 adjust length for distance to origin
         ox, oy = self.origin
-        dists = torch.sqrt((points[:, 0]-ox)**2 + (points[:, 1]-oy)**2 + 1e-8)
+        dists = torch.sqrt((points[:, 0] - ox) ** 2 + (points[:, 1] - oy) ** 2 + 1e-8)
         seg_lengths = seg_lengths / dists
         # 2.3.3.3.4 calculate a penalty for each segment that is longer than max_length
         max_length = 0.02
-        beauty = torch.sum((F.relu(seg_lengths - max_length))**2)
+        beauty = torch.sum((F.relu(seg_lengths - max_length)) ** 2)
 
         # 2.3.3.4 Adding the Losses up:
-        loss = 3 + beauty*10 + height - width
+        loss = 3 + beauty * 10 + height - width
         return loss
 
     def get_mu(self, area):
@@ -320,6 +335,7 @@ class Geni:
         mu = output.numpy()
         return mu
 
+
 ##################################
 # 3. Main Code Execution
 
@@ -328,11 +344,36 @@ areas = []
 for x in range(5):
     for y in range(5):
         for z in range(5):
-            points1 = [[-2-x/5, -0.5], [-0.5, -1], [1, -1], [1.5, -0.5], [2, 0],[1, 1+y/5], [-2, 1]]
-            points2 = [[-0.5-x/10, -0.5], [0.5, -0.5], [0.5, 0.25+y/10], [-0.5, 0.25]]
-            quader1 = Shape(points1, origin=(0.08*z, 0.0))
-            quader2 = Shape(points2, origin=(0.08*z, 0.0))
-            area1 = Area(quader2, quader1, params = [x, y], must_build_zones=[[250, 1], [251, 1], [252, 1], [290, 1], [291, 1], [292, 1]])
+            points1 = [
+                [-2 - x / 5, -0.5],
+                [-0.5, -1],
+                [1, -1],
+                [1.5, -0.5],
+                [2, 0],
+                [1, 1 + y / 5],
+                [-2, 1],
+            ]
+            points2 = [
+                [-0.5 - x / 10, -0.5],
+                [0.5, -0.5],
+                [0.5, 0.25 + y / 10],
+                [-0.5, 0.25],
+            ]
+            quader1 = Shape(points1, origin=(0.08 * z, 0.0))
+            quader2 = Shape(points2, origin=(0.08 * z, 0.0))
+            area1 = Area(
+                quader2,
+                quader1,
+                params=[x, y],
+                must_build_zones=[
+                    [250, 1],
+                    [251, 1],
+                    [252, 1],
+                    [290, 1],
+                    [291, 1],
+                    [292, 1],
+                ],
+            )
             areas.append(area1)
 
 # 3.2 Setup and Training of the Geni
@@ -341,20 +382,24 @@ geni = Geni(areas)
 plt.ion()  # Turn on interactive mode
 area = areas[0]
 area.plot()
-line, = plt.plot([], [], 'o', markersize=1, color='green')  # Use plt.plot instead of plt.scatter
+(line,) = plt.plot(
+    [], [], "o", markersize=1, color="green"
+)  # Use plt.plot instead of plt.scatter
 loss = []
 train_rounds = 200
 epochs_per_round = 5
 for i in range(train_rounds):
-    print(f"Training round {i+1}/{train_rounds}")
-    loss = loss + geni.train(epochs_per_round, e_0=i*epochs_per_round)
+    print(f"Training round {i + 1}/{train_rounds}")
+    loss = loss + geni.train(epochs_per_round, e_0=i * epochs_per_round)
     x = list(range(len(loss)))
     area = areas[0]
     mu = geni.get_mu(area)
     shape = area.create_shape(mu)
     line.set_xdata(shape.x())
     line.set_ydata(shape.y())
-    plt.suptitle(f"Epoch: {i*epochs_per_round} of {train_rounds*epochs_per_round}, Loss: {loss[-1]:.6f}")
+    plt.suptitle(
+        f"Epoch: {i * epochs_per_round} of {train_rounds * epochs_per_round}, Loss: {loss[-1]:.6f}"
+    )
     plt.draw()
     plt.pause(0.01)
 plt.ioff()  # Turn off interactive mode
