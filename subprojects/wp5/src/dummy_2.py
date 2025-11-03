@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+
 import numpy as np
 
 from subprojects.wp5.src.dummy_3 import llinsi
@@ -15,7 +16,7 @@ def test(x: int) -> str:
     Returns:
         Eine Bestätigungszeichenkette mit dem übergebenen Wert.
     """
-
+    print(llinsi())  # lets see if it works
     # Determine data output directory portably:
     # 1) Allow user override via environment variable AISCO_DATA_DIR
     env = os.getenv("AISCO_DATA_DIR")
