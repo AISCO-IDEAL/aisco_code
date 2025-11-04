@@ -1,7 +1,7 @@
 """
 Run this file by running the two follwoing commands in the terminal:
 
-cd /cluster/home/username/AISCO-code/subprojects/wp4_aeroshell_optimizer
+cd /cluster/home/username/AISCO_code/subprojects/wp4_aeroshell_optimizer
 
 python -m src.main
 """
@@ -10,8 +10,6 @@ from pathlib import Path
 
 import torch
 import yaml
-
-import subprojects.wp1_cfd_ai.crude_estimator.crude_estimator_diff as crude_estimator
 
 from .models.sdf import SDFNetwork
 from .models.train import train_sdf_model
@@ -46,7 +44,7 @@ def main():
     # Load configuration
     config_path = (
         Path.home()
-        / "AISCO-code"
+        / "AISCO_code"
         / "subprojects"
         / "wp4_aeroshell_optimizer"
         / "src"
@@ -71,7 +69,7 @@ def main():
     if load_pretrained:
         # This loads a sphere model while we redo the training loop and main structure
         model = torch.load(
-            f"/cluster/home/{metadata['Username']}/AISCO-code/subprojects/wp4_aeroshell_optimizer/archive/dummy_models/sdf_sphere_model_2025-10-24.pth"
+            f"/cluster/home/{metadata['Username']}/AISCO_code/subprojects/wp4_aeroshell_optimizer/archive/dummy_models/sdf_sphere_model_2025-10-24.pth"
         )
     else:
         model = SDFNetwork()
