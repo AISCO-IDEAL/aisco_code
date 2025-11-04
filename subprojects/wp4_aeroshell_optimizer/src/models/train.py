@@ -3,11 +3,9 @@ import os
 import typing as T
 
 import numpy as np
-import torch
+import wandb
 
 from ..utils.sdf2mesh import save_sdf2mesh
-from .losses import SDFLosses
-from .sdf import SDFNetwork
 
 
 def train_sdf_model(
@@ -45,6 +43,7 @@ def train_sdf_model(
         total_loss = loss_fn.get_total_loss(model, points)
         total_loss.backward()
         optimizer.step()
+        wandb.log({"epoch": epoch, "total_loss": total_loss.item()})
         if epoch % 10 == 0:
             print(f"Epoch {epoch}, Total Loss: {total_loss.item():.4f}")
 

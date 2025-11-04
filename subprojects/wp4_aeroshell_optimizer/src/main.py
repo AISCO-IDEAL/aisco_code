@@ -56,6 +56,18 @@ def main():
         print(f"✗ Error parsing configuration file: {e}")
         return
 
+    run = wandb.init(
+        # Set the wandb log directory
+        dir="wp4_aeroshell_optimizer/data/wandb_logs",
+        # Set the wandb entity where your project will be logged (generally your team name).
+        entity="aisco",
+        # Set the wandb project where this run will be logged.
+        project="Aeroshell Optimizer",
+        # Track hyperparameters and run metadata.
+        config=config
+)
+    
+
     # Load or initialize model
     load_pretrained = config.get("use_pretrained", False)
 
@@ -71,6 +83,7 @@ def main():
     save_dir = config.get("model_dir", "")
     mesh_dir = config.get("mesh_dir", "")
     train_sdf_model(model, config["training_params"], save_dir, mesh_dir)
+    run.finish()
     print("WP4 Main.py executed successfully")
 
 
