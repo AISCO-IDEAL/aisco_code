@@ -38,6 +38,6 @@ no_build_zones:
 # Wheel and tire specs
 wheels:
   min_wheel_count: 3
-  max_wheel_count: 4
   tire_width: 96   # mm Silvretta tyre width
   tire_radius: 557  # mm Silvretta tyre radius
+
