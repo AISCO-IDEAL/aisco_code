@@ -81,10 +81,10 @@ def main():
     save_dir = config.get("model_dir", "")
     mesh_dir = config.get("mesh_dir", "")
     train_sdf_model(model, config["training_params"], save_dir, mesh_dir, track_run=track_run)
-    
+
     if track_run:
         run.finish()
-    
+
     print("WP4 Main.py executed successfully")
 
 
