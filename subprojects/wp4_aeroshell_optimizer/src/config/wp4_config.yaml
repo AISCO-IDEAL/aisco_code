@@ -1,4 +1,4 @@
-use_pretrained: False
+use_pretrained: True
 
 general_info:
   Model: "SDFNetwork"
