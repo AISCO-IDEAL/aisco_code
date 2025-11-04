@@ -3,8 +3,11 @@ import os
 import typing as T
 
 import numpy as np
-from ..utils.sdf2mesh import save_sdf2mesh
 import wandb
+
+from ..utils.sdf2mesh import save_sdf2mesh
+
+
 def train_sdf_model(
     model: SDFNetwork,
     train_config: dict,
