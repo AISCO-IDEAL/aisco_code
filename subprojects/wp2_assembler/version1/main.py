@@ -1,7 +1,7 @@
 import cadquery as cq
 from cadquery import Assembly, Color
 from components import nbz
-from ocp_vscode import show
+from ocp_vscode import show, set_port
 
 
 def create_coordinate_system(axis_length=100, axis_radius=2):
@@ -58,6 +58,10 @@ if __name__ == "__main__":  # only run when executing this file directly
     assembled_car.add(inner_nbzWCS, name="innerNBZ", color=Color(0, 0, 1))
     assembled_car.add(coord_system, name="coordinate_systemA")
     print("Assembly created")
+
+    # use port 49152 for visualization
+    print("Starting visualization server on port 49152...")
+    set_port(49152)
 
     # Prompt to visualize the shapes
     while True:
