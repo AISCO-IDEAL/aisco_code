@@ -3,7 +3,7 @@ import numpy as np
 import trimesh
 from ..models.sdf import SDFNetwork
 from skimage import measure
-
+import os
 def save_sdf2mesh(
     model,
     grid_size: int = 128,
