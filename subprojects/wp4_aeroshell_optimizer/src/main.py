@@ -1,16 +1,9 @@
-"""
-Run this file by running the two follwoing commands in the terminal:
-
-cd /cluster/home/username/AISCO_code/subprojects/wp4_aeroshell_optimizer
-
-python -m src.main
-"""
-
 from pathlib import Path
 
 import torch
 import yaml
-import wandb
+
+# import wandb
 from .models.sdf import SDFNetwork
 from .models.train import train_sdf_model
 from .utils.utils import (

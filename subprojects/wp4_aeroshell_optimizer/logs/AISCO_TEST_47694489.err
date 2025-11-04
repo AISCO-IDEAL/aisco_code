@@ -1,0 +1,2 @@
+Many modules are hidden in this stack. Use "module --show_hidden spider SOFTWARE" if you are not able to find the required software
+slurmstepd: error: *** JOB 47694489 ON eu-g6-078 CANCELLED AT 2025-11-04T11:57:07 DUE TO TIME LIMIT ***
