@@ -1,8 +1,8 @@
 import cadquery as cq
 import torch
-
-from ....wp1_cfd_ai.crude_estimator.crude_estimator_diff import \
+from wp1_cfd_ai.crude_estimator.crude_estimator_diff import \
     calculateCdProxyDifferentiable
+
 from ..models.sdf import SDFNetwork
 from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
 from ..utils.tracking_loss_for_vis import LossTracker
