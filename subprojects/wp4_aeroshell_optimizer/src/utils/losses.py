@@ -8,7 +8,7 @@ from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
 from ..utils.tracking_loss_for_vis import LossTracker
 from .kaolin_utils import get_diff_mesh
 
-# Losses being defined here: 
+# Losses being defined here:
 # - Eikonal Loss [ES]
 # - Smoothness Loss [ES]
 # - Bounding Boxes Loss [CH]
@@ -67,7 +67,7 @@ class SDFLosses:
         """
         sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True)
         return self.weights[1] * (laplacian_sdf**2).mean()
-    
+
     def bounding_boxes_loss(
         self,
         model: SDFNetwork,

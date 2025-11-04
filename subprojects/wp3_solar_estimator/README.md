@@ -1,4 +1,4 @@
-# Solar Estimator 
+# Solar Estimator
 
 
 ## Structure:
