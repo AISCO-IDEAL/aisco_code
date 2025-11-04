@@ -6,18 +6,34 @@ cd /cluster/home/username/AISCO-code/subprojects/wp4_aeroshell_optimizer
 python -m src.main
 """
 
+import sys
+import traceback
 from pathlib import Path
 
 import torch
 import yaml
 
-import subprojects.wp1_cfd_ai.crude_estimator.crude_estimator_diff as crude_estimator
-from subprojects.wp4_aeroshell_optimizer.src.models.sdf import SDFNetwork
-from subprojects.wp4_aeroshell_optimizer.src.models.train import \
-    train_sdf_model
-from subprojects.wp4_aeroshell_optimizer.src.utils.utils import (
-    check_cuda_health, initialize_cuda, load_pretrained_model,
-    setup_training_environment)
+
+########################################################
+# Custom error handler to flush outputs on exceptions
+def excepthook(type, value, tb):
+    traceback.print_exception(type, value, tb)
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+
+sys.excepthook = excepthook
+print("DEBUG: Skript gestartet. Versuche Imports...")
+########################################################
+# WP4 Imports
+from .models.sdf import SDFNetwork  # one dot as in subfolder of src and main is in src
+from .models.train import train_sdf_model
+from .utils.utils import (
+    check_cuda_health,
+    initialize_cuda,
+    load_pretrained_model,
+    setup_training_environment,
+)
 
 metadata = {
     "Username": "eschaerer",
@@ -25,6 +41,12 @@ metadata = {
 
 
 def main():
+    print("DEBUG: Starte main()")
+    print("DEBUG: Führe CUDA-Health-Check durch...")
+    check_cuda_health()
+    print("DEBUG: Initialisiere CUDA...")
+    device = initialize_cuda()
+    print("DEBUG: Lade Konfiguration...")
     """Main execution function for WP4 aeroshell optimizer."""
 
     print("=" * 60)
@@ -46,7 +68,14 @@ def main():
     base_dir = script_dir.parent.parent.parent  # Adjust based on your project structure
 
     # Load configuration
-    config_path = base_dir / "subprojects" / "wp4_aeroshell_optimizer" / "src" / "config" / "wp4_config.yaml"
+    config_path = (
+        base_dir
+        / "subprojects"
+        / "wp4_aeroshell_optimizer"
+        / "src"
+        / "config"
+        / "wp4_config.yaml"
+    )
     try:
         with config_path.open() as f:
             config = yaml.safe_load(f)
@@ -57,21 +86,48 @@ def main():
     except yaml.YAMLError as e:
         print(f"✗ Error parsing configuration file: {e}")
         return
-    
+
     # Load or initialize model
     load_pretrained = config.get("use_pretrained", False)
+    model = SDFNetwork()
     if load_pretrained:
-        model_path = base_dir / "subprojects" / "wp4_aeroshell_optimizer" / "archive" / "dummy_models" / "sdf_sphere_model_2025-10-24.pth"
-        model = torch.load(model_path)
-    else:
-        model = SDFNetwork()
-    model.to("cuda")
+        model_path = (
+            base_dir
+            / "subprojects"
+            / "wp4_aeroshell_optimizer"
+            / "archive"
+            / "dummy_models"
+            / "sdf_sphere_model_2025-10-24.pth"
+        )
+        try:
+            # Load only the state_dict (safe)
+            state_dict = torch.load(model_path, map_location="cuda")
+            if "state_dict" in state_dict:
+                # if saved as {"state_dict": ...}
+                model.load_state_dict(state_dict["state_dict"])
+            else:
+                model.load_state_dict(state_dict)
+            print(f"✓ Pretrained model loaded from {model_path}")
+        except Exception as e:
+            print(f"✗ Failed to load pretrained model: {e}")
+            print("Using freshly initialized model instead.")
 
+    model.to(device)
 
     # Define save and mesh directories relative to the project root
-    save_dir = base_dir / "subprojects" / "wp4_aeroshell_optimizer" / config.get("model_dir", "")
-    mesh_dir = base_dir / "subprojects" / "wp4_aeroshell_optimizer" / config.get("mesh_dir", "")
-    
+    save_dir = (
+        base_dir
+        / "subprojects"
+        / "wp4_aeroshell_optimizer"
+        / config.get("model_dir", "")
+    )
+    mesh_dir = (
+        base_dir
+        / "subprojects"
+        / "wp4_aeroshell_optimizer"
+        / config.get("mesh_dir", "")
+    )
+
     # Train the model
     train_sdf_model(model, config["training_params"], save_dir, mesh_dir)
     print("WP4 Main.py executed successfully")

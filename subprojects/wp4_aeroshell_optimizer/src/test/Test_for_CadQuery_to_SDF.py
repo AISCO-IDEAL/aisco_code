@@ -6,13 +6,21 @@ cd /cluster/home/clhuber/AISCO-code
 
 python -m subprojects.wp4_aeroshell_optimizer.src.test.Test_for_CadQuery_to_SDF
 """
+# one point if in the same folder, more if outwards
+# file without .py ending
+#
+# cd /cluster/home/clhuber/AISCO-code
+# python -m subprojects.wp4_aeroshell_optimizer.src.test.Test_for_CadQuery_to_SDF
+# 
+
 from typing import cast
 
 import cadquery as cq
 import matplotlib.pyplot as plt
 import numpy as np
+
+from ....wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
 from ..utils.CadQuery_to_SDF import SDFfromCadQuery
-from ....wp2_assembler.version1.components.nbz import outerNBZ, innerNBZ
 
 sdf_converter: SDFfromCadQuery
 # test with a Cylinder
@@ -61,9 +69,10 @@ for z in z_values:
     # save the figure at a certain path
     plt.savefig(f'/cluster/home/clhuber/immages/sdf_layer_z_{z:.2f}.png')
     plt.close()
-
+    
     # print the value at the center
     center_mask = (np.isclose(x_vals, 0.0)) & (np.isclose(y_vals, 0.0))
     if np.any(center_mask):
         center_sdf_value = sdf_vals_layer[center_mask][0]
+        print(f'SDF value at center (0,0,{z}): {center_sdf_value}')
         print(f'SDF value at center (0,0,{z}): {center_sdf_value}')

@@ -5,9 +5,9 @@ import typing as T
 import numpy as np
 import torch
 
-from .losses import SDFLosses
+from ..utils.losses import SDFLosses
+from ..utils.sdf2mesh import save_sdf2mesh
 from .sdf import SDFNetwork
-from .subprojects.wp4_aeroshell_optimizer.src.utils.sdf2mesh import save_sdf2mesh
 
 
 def train_sdf_model(
@@ -72,10 +72,4 @@ def train_sdf_model(
         )
         print(f"A mesh has been generated and saved as '{mesh_name}.ply'.")
 
-    return model
-    return model
-    return model
-    return model
-    return model
-    return model
     return model

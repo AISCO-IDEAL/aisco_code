@@ -11,8 +11,8 @@ import torch
 import trimesh
 from skimage import measure
 
-import subprojects.wp4_aeroshell_optimizer.src.utils.kaolin_utils
-from subprojects.wp4_aeroshell_optimizer.src.models.sdf import SDFNetwork
+from ..models.sdf import SDFNetwork
+from .kaolin_utils import get_diff_mesh
 
 
 def initialize_cuda() -> str:
