@@ -5,10 +5,14 @@ from ..models.sdf import SDFNetwork
 from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
 from ..utils.tracking_loss_for_vis import LossTracker
 
-# Define various loss functions for training the SDFNetwork
-# These losses include eikonal loss, smoothness loss, bounding box constraints,
-# watertightness loss, and performance-related losses.
-
+# Losses being defined here: 
+# - Eikonal Loss [ES]
+# - Smoothness Loss [ES]
+# - Bounding Boxes Loss [CH]
+# - Watertightness Loss [CH] (currently disabled)
+# - Frontal Area Loss [AA] (currently replaced by drag loss)
+# - Drag Loss [ES] (to be implemented)
+# - Solar Area Loss [AA]
 
 class SDFLosses:
     def __init__(
@@ -23,7 +27,6 @@ class SDFLosses:
             ["eikonal", "smoothness", "bounding_box", "frontal_area", "solar_area"]
         )
 
-    ### DO NOT TOUCH WORK FROM EMANUEL ###
     def eikonal_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
         """
         This Loss ensures that the gradient of our SDF
@@ -47,8 +50,6 @@ class SDFLosses:
         )
         return loss
 
-    ################################
-    ### DO NOT TOUCH WORK FROM EMANUEL ###
     def smoothness_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
         """
         This Loss encourages the SDF to be smooth by penalizing large values of the Laplacian.
@@ -62,9 +63,7 @@ class SDFLosses:
         """
         sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True)
         return self.weights[1] * (laplacian_sdf**2).mean()
-
-    ################################
-
+    
     def bounding_boxes_loss(
         self,
         model: SDFNetwork,
@@ -266,4 +265,5 @@ class SDFLosses:
         }
         self.loss_tracker.add_epoch(losses)
 
+        return l1 + l2 + l3 + l4 + l5
         return l1 + l2 + l3 + l4 + l5
