@@ -10,7 +10,7 @@ from pathlib import Path
 
 import torch
 import yaml
-
+import wandb
 from .models.sdf import SDFNetwork
 from .models.train import train_sdf_model
 from .utils.utils import (
