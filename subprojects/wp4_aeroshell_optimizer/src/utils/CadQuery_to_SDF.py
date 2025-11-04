@@ -1,5 +1,3 @@
-# Written by @clhuber
-
 """
 This Code is written by written by Clemens Huber
 """
@@ -13,7 +11,35 @@ from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
 
+# The following Code is in mms
+rand = 1500
+default_pointgrid_ranges = [
+    [int(-5800 / 2 - rand), int(5800 / 2 + rand)],
+    [int(-1150 - rand), int(1150 + rand)],
+    [int(-rand), int(1650 + rand)],
+]
+default_pointgrid_steps = [200, 150, 50]
+default_pointgrid = [
+    [x, y, z]
+    for x in range(
+        default_pointgrid_ranges[0][0],
+        default_pointgrid_ranges[0][1],
+        default_pointgrid_steps[0],
+    )
+    for y in range(
+        default_pointgrid_ranges[1][0],
+        default_pointgrid_ranges[1][1],
+        default_pointgrid_steps[1],
+    )
+    for z in range(
+        default_pointgrid_ranges[2][0],
+        default_pointgrid_ranges[2][1],
+        default_pointgrid_steps[2],
+    )
+]
 
+
+# print(f"Default pointgrid has {len(default_pointgrid)} points.")
 class SDFfromCadQuery:
     """
     Pre Conditions:
@@ -34,7 +60,7 @@ class SDFfromCadQuery:
             for y in range(-10, 11)
             for z in range(-10, 11)
         ],
-    ):  # noqa: B006
+    ):
         self._shape = shape
         self._pointgrid = pointgrid
         self._sdf_at_pointgrid = [self.sdf(x, y, z) for x, y, z in self._pointgrid]

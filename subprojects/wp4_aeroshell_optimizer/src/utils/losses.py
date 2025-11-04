@@ -1,13 +1,18 @@
 import cadquery as cq
 import torch
-from CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
-from sdf import SDFNetwork
-from tracking_loss_for_vis import LossTracker
 
-# Define various loss functions for training the SDFNetwork
-# These losses include eikonal loss, smoothness loss, bounding box constraints,
-# watertightness loss, and performance-related losses.
+from ..models.sdf import SDFNetwork
+from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
+from ..utils.tracking_loss_for_vis import LossTracker
 
+# Losses being defined here: 
+# - Eikonal Loss [ES]
+# - Smoothness Loss [ES]
+# - Bounding Boxes Loss [CH]
+# - Watertightness Loss [CH] (currently disabled)
+# - Frontal Area Loss [AA] (currently replaced by drag loss)
+# - Drag Loss [ES] (to be implemented)
+# - Solar Area Loss [AA]
 
 class SDFLosses:
     def __init__(
@@ -22,21 +27,43 @@ class SDFLosses:
             ["eikonal", "smoothness", "bounding_box", "frontal_area", "solar_area"]
         )
 
-    ### DO NOT TOUCH WORK FROM EMANUEL ###
     def eikonal_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
+        """
+        This Loss ensures that the gradient of our SDF
+        has a unit norm (magnit ude of 1) everywhere in space.
+        Args:
+            self: SDFLosses Class
+            model: The SDF Network
+            points: a Batch of 3D points to evaluate the loss at
+        Returns:
+            loss: The computed Eikonal loss for the given points.
+        """
+        # sdf: the sdf function values for each point
+        # grad_sdf: the gradients of the sdf function at each point
+        # both are torch.Tensors
         sdf, grad_sdf = model(points)
-        return (
+        # loss: Mean absolute difference between the norm of the gradients and 1
+        # loss = 1/n * sum from 1 to n of  ( ||grad_sdf||_2 - 1 )^2
+        # source: https://arxiv.org/pdf/2002.10099, Implicit Geometric Regularization for Learning Shapes, Page 2, 2. Method l(theta)
+        loss = (
             self.weights[0] * torch.abs(torch.norm(grad_sdf, p=2, dim=-1) - 1.0).mean()
         )
+        return loss
 
-    ################################
-    ### DO NOT TOUCH WORK FROM EMANUEL ###
     def smoothness_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
+        """
+        This Loss encourages the SDF to be smooth by penalizing large values of the Laplacian.
+        The Laplacian of the SDF measures local curvature; minimizing its magnitude reduces high-frequency variations.
+        Args:
+            self: SDFLosses Class
+            model: The SDF Network
+            points: a Batch of 3D points to evaluate the loss at
+        Returns:
+            loss: The computed smoothness loss for the given points.
+        """
         sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True)
         return self.weights[1] * (laplacian_sdf**2).mean()
-
-    ################################
-
+    
     def bounding_boxes_loss(
         self,
         model: SDFNetwork,
@@ -101,7 +128,7 @@ class SDFLosses:
 
     def watertightness_loss(
         self, model: SDFNetwork, infinity_box: list[list[float]] = None
-    ) -> torch.Tensor:  # noqa: RUF013
+    ) -> torch.Tensor:
         return torch.Tensor(0.0)  # Avoid crash
         total_loss = 0.0
         if infinity_box is None:  # samples points on a large box around the object
@@ -238,4 +265,5 @@ class SDFLosses:
         }
         self.loss_tracker.add_epoch(losses)
 
+        return l1 + l2 + l3 + l4 + l5
         return l1 + l2 + l3 + l4 + l5

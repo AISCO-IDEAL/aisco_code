@@ -22,7 +22,8 @@ dependencies = [
   "ruff>=0.1.0",
   "pre-commit>=3.0.0",
   "mypy>=1.17.1",
-  "torch==2.4.0"
+  "torch==2.4.0",
+  "wandb>=0.17.2"
 ]
 
 [project.optional-dependencies]
@@ -45,6 +46,8 @@ wp4_aeroshell_optimizer = [
   "torch_geometric==2.7.0",
   "torchvision", # changed by eschaerer from torchvision==0.19.1, because it requires torch==2.4.1
   "trimesh==4.8.3",
+  "visualtorch",
+  "mesh2sdf", #From https://github.com/wang-ps/mesh2sdf?tab=readme-ov-file
 ]
 
 testing = ["pytest >= 8.3.2"]
