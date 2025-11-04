@@ -1,3 +1,0 @@
-Many modules are hidden in this stack. Use "module --show_hidden spider SOFTWARE" if you are not able to find the required software
-/var/spool/slurm/slurmd/state/job47614633/slurm_script: line 47: pip: command not found
-/var/spool/slurm/slurmd/state/job47614633/slurm_script: line 85: pip: command not found

@@ -1,5 +1,3 @@
-# Written by @clhuber
-
 """
 This Code is written by written by Clemens Huber
 """
@@ -12,7 +10,12 @@ from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
 
-
+# The following Code is in mms
+rand = 1500
+default_pointgrid_ranges = [[int(-5800/2-rand), int(5800/2 + rand)], [int(-1150 - rand),int(1150 + rand)], [int(-rand), int(1650 + rand)]]
+default_pointgrid_steps = [200, 150, 50]
+default_pointgrid = [[x, y, z] for x in range(default_pointgrid_ranges[0][0], default_pointgrid_ranges[0][1], default_pointgrid_steps[0]) for y in range(default_pointgrid_ranges[1][0], default_pointgrid_ranges[1][1], default_pointgrid_steps[1]) for z in range(default_pointgrid_ranges[2][0], default_pointgrid_ranges[2][1], default_pointgrid_steps[2])]
+# print(f"Default pointgrid has {len(default_pointgrid)} points.")
 class SDFfromCadQuery:
     """
     Pre Conditions:
@@ -23,7 +26,7 @@ class SDFfromCadQuery:
         If you want to get the SDF value of all Points in the pointgrid use sdf_at_pointgrid() to get the list of the corresponding SDF values
         If you want the SDF value of a single point use sdf(x,y,z) it returns just one value
     """
-    def __init__(self, shape: cq.Shape, pointgrid:list[list[float]]=[[x/10, y/10, z/10] for x in range(-10, 11) for y in range(-10, 11) for z in range(-10, 11)]):  # noqa: B006
+    def __init__(self, shape: cq.Shape, pointgrid:list[list[float]]=default_pointgrid):  # noqa: B006
         self._shape = shape
         self._pointgrid = pointgrid
         self._sdf_at_pointgrid = [self.fsdf(x, y, z) for x, y, z in self._pointgrid]
@@ -68,8 +71,9 @@ class SDFfromCadQuery:
         dist_shape_shape = BRepExtrema_DistShapeShape(vertex, shape_ocp)
         dist_shape_shape.Perform()
         d = dist_shape_shape.Value()
-        if d==0: # Point is either on the surface or inside the shape
-            world = cq.Workplane("XY").box(100, 100, 100)
+        if d==0 : # Point is either on the surface or inside the shape
+            # crate a large shape that goes into negative distance values
+            world = cq.Workplane("XY").box(200000, 200000, 200000, centered=True)
             negativ = world.cut(cq.Workplane().newObject([self._shape])).val()
             negativ = cast(cq.Shape, negativ)
             negativ = negativ.wrapped

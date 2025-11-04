@@ -6,15 +6,15 @@
 #SBATCH --cpus-per-task=2
 #SBATCH --mem-per-cpu=5G                  # Total 28G memory
 #SBATCH --gpus=rtx_4090:1
-#SBATCH --output=/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/AISCO_TEST_%j.out     #adjust path as needed
-#SBATCH --error=/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/AISCO_TEST_%j.err      #adjust path as needed
+#SBATCH --output=/cluster/home/eschaerer/AISCO-code/subprojects/wp4_aeroshell_optimizer/logs/AISCO_TEST_%j.out     #adjust path as needed
+#SBATCH --error=/cluster/home/eschaerer/AISCO-code/subprojects/wp4_aeroshell_optimizer/logs/AISCO_TEST_%j.err      #adjust path as needed
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=eschaerer@ethz.ch
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
 USERNAME="eschaerer"
-LOG_DIR="/cluster/home/$USERNAME/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs"
+LOG_DIR="/cluster/home/$USERNAME/AISCO-code/subprojects/wp4_aeroshell_optimizer/logs"
 mkdir -p "$LOG_DIR"  # Ensure the log directory exists
 #------------------------------------------------------------------------------
 # Print job information
@@ -38,13 +38,8 @@ module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
 #------------------------------------------------------------------------------
 # Activate the Python virtual environment
 #------------------------------------------------------------------------------
-VENV_DIR="/cluster/home/$USERNAME/AISCO_code/aisco_env"
+VENV_DIR="/cluster/home/$USERNAME/AISCO-code/aisco_env"
 source "$VENV_DIR/bin/activate"
-### DEBUG INFO ###
-echo "Python executable: $(which python3)"
-echo "Python version: $(python3 --version)"
-
-### END DEBUG INFO ###
 #------------------------------------------------------------------------------
 # Verify GPU access
 #------------------------------------------------------------------------------
@@ -73,20 +68,9 @@ lscpu >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
 #------------------------------------------------------------------------------
 # Run the Relevant script
 #------------------------------------------------------------------------------
-################################################################################
-# Set PYTHONPATH to include AISCO_code directory
-################################################################################
-export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH" # new
-################################################################################
-# Navigate to the subprojects root
-################################################################################
-cd /cluster/home/$USERNAME/AISCO_code/subprojects
-################################################################################
-# Run wp4 main as a module (so relative imports work!)
-################################################################################
-python3 -m wp4_aeroshell_optimizer.src.main \
+python3 "$HOME/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/main.py" \
     --save_model \
-    --problem_id="AISCO_WP4_Test1" 2>&1 # 2>&1 leitet alle Fehler (stderr) in die .out-Datei um, sodass du siehst, was schiefgeht
+    --problem_id="AISCO_WP4_Test1"
 #------------------------------------------------------------------------------
 # Print job end information
 #------------------------------------------------------------------------------

@@ -27,7 +27,7 @@ dependencies = [
 
 [project.optional-dependencies]
 wp1_cfd_ai = [
-  "trimesh >= 3.20.2", # done by eschaerer, please check compatibility
+
 ]
 wp2_assembler =[
   "cadquery >= 2.6.0",

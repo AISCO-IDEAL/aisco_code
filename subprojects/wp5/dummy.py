@@ -1,4 +1,5 @@
-from src.dummy_2 import test
+
+from .dummy_2 import test
 
 if __name__ == "__main__":
     print(test(7))
