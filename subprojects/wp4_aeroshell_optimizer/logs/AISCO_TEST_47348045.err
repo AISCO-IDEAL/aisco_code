@@ -1,5 +1,0 @@
-Many modules are hidden in this stack. Use "module --show_hidden spider SOFTWARE" if you are not able to find the required software
-Traceback (most recent call last):
-  File "/cluster/home/eschaerer/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/main.py", line 4, in <module>
-    from sdf import SDFNetwork
-ModuleNotFoundError: No module named 'sdf'

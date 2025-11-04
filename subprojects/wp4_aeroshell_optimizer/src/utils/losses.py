@@ -1,9 +1,9 @@
 import cadquery as cq
 import torch
 
+from ..models.sdf import SDFNetwork
 from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
 from ..utils.tracking_loss_for_vis import LossTracker
-from .sdf import SDFNetwork
 
 # Define various loss functions for training the SDFNetwork
 # These losses include eikonal loss, smoothness loss, bounding box constraints,

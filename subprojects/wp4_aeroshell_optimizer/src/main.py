@@ -1,9 +1,9 @@
 from pathlib import Path
 
 import torch
+import wandb
 import yaml
 
-# import wandb
 from .models.sdf import SDFNetwork
 from .models.train import train_sdf_model
 from .utils.utils import (
@@ -64,9 +64,8 @@ def main():
         # Set the wandb project where this run will be logged.
         project="Aeroshell Optimizer",
         # Track hyperparameters and run metadata.
-        config=config
-)
-    
+        config=config,
+    )
 
     # Load or initialize model
     load_pretrained = config.get("use_pretrained", False)
