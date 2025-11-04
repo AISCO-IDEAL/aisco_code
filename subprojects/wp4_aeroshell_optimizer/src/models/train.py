@@ -18,6 +18,7 @@ def train_sdf_model(
     mesh_path: str = None,
     model_name: str = "sdf_model",
     mesh_name: str = "sdf_mesh",
+    track_run: bool = False
 ) -> SDFNetwork:
     """
     Train the given SDFNetwork model based on the provided configuration.
@@ -46,7 +47,8 @@ def train_sdf_model(
         total_loss = loss_fn.get_total_loss(model, points)
         total_loss.backward()
         optimizer.step()
-        wandb.log({"epoch": epoch, "total_loss": total_loss.item()})
+        if track_run:
+            wandb.log({"epoch": epoch, "total_loss": total_loss.item()})
         if epoch % 10 == 0:
             print(f"Epoch {epoch}, Total Loss: {total_loss.item():.4f}")
 
