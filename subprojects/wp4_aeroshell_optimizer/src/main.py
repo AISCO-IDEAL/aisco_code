@@ -89,7 +89,6 @@ def main():
 
     # Load or initialize model
     load_pretrained = config.get("use_pretrained", False)
-    model = SDFNetwork()
     if load_pretrained:
         model_path = (
             base_dir
@@ -99,20 +98,10 @@ def main():
             / "dummy_models"
             / "sdf_sphere_model_2025-10-24.pth"
         )
-        try:
-            # Load only the state_dict (safe)
-            state_dict = torch.load(model_path, map_location="cuda")
-            if "state_dict" in state_dict:
-                # if saved as {"state_dict": ...}
-                model.load_state_dict(state_dict["state_dict"])
-            else:
-                model.load_state_dict(state_dict)
-            print(f"✓ Pretrained model loaded from {model_path}")
-        except Exception as e:
-            print(f"✗ Failed to load pretrained model: {e}")
-            print("Using freshly initialized model instead.")
-
-    model.to(device)
+        model = torch.load(model_path)
+    else:
+        model = SDFNetwork()
+    model.to("cuda")
 
     # Define save and mesh directories relative to the project root
     save_dir = (
