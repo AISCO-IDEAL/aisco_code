@@ -4,9 +4,10 @@ import typing as T
 
 import numpy as np
 import torch
-from losses import SDFLosses
-from sdf import SDFNetwork
-from utils import save_sdf2mesh
+
+from ..utils.sdf2mesh import save_sdf2mesh
+from .losses import SDFLosses
+from .sdf import SDFNetwork
 
 
 def train_sdf_model(
