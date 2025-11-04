@@ -1,4 +1,4 @@
- ### GNN from Scratch
+### GNN from Scratch
 ## Imports
 import numpy as np
 

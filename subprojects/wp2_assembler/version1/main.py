@@ -1,12 +1,7 @@
 import cadquery as cq
 from cadquery import Assembly, Color
 from components import nbz
-
-try:
-    from ocp_vscode import show
-except ImportError:
-    print("Warning: ocp_vscode not available. Visualization will not work.")
-    show = None
+from ocp_vscode import show
 
 
 def create_coordinate_system(axis_length=100, axis_radius=2):

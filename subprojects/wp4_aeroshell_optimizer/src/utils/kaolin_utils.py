@@ -1,14 +1,21 @@
+import os
+
 import kaolin as kal
 import torch
 import trimesh
 from kaolin.ops.conversions import FlexiCubes
+
 from ..models.sdf import SDFNetwork
-import os
 
-#All Code here by aalthaus, adjusted by @eschaerer for CUDA compatibility
+# All Code here by aalthaus, adjusted by @eschaerer for CUDA compatibility
 
-def get_diff_mesh(model: SDFNetwork, grid_res: list[int] | int = 128,box_dim: list=[-5,5,-5,5,-5,5], device: str = 'cuda'):
-    
+
+def get_diff_mesh(
+    model: SDFNetwork,
+    grid_res: list[int] | int = 128,
+    box_dim: list = [-5, 5, -5, 5, -5, 5],
+    device: str = "cuda",
+):
     """
     Pre: Gets an arbitrary SDF Model together with parameters that influence the mesh estraction process
     Post: Outputs vertices and faces that fully describe the sdf, but now converted into a mesh.
@@ -21,24 +28,26 @@ def get_diff_mesh(model: SDFNetwork, grid_res: list[int] | int = 128,box_dim: li
     Returns:
         Vertices and Faces as torch.Tensor
     """
-    
-    # At the moment unsure what happens when we change the size 
+
+    # At the moment unsure what happens when we change the size
     # of the sampled cube, so be careful here
 
     # 1. Sample sdf function inside box
-    x = torch.linspace(box_dim[0],box_dim[1], grid_res, device=device)
-    y = torch.linspace(box_dim[2],box_dim[3], grid_res, device=device)
-    z = torch.linspace(box_dim[4],box_dim[5], grid_res, device=device)
-    grid_x, grid_y, grid_z = torch.meshgrid(x, y, z, indexing='ij')
+    x = torch.linspace(box_dim[0], box_dim[1], grid_res, device=device)
+    y = torch.linspace(box_dim[2], box_dim[3], grid_res, device=device)
+    z = torch.linspace(box_dim[4], box_dim[5], grid_res, device=device)
+    grid_x, grid_y, grid_z = torch.meshgrid(x, y, z, indexing="ij")
     grid_points = torch.stack([grid_x, grid_y, grid_z], dim=-1).reshape(-1, 3)
 
-    flexicubes=FlexiCubes(device=device)
+    flexicubes = FlexiCubes(device=device)
     with torch.enable_grad():
-        sdf_values = model(grid_points)[0] #Get SDF values from model, first element of tuple is the scalar SDF field
-        
+        sdf_values = model(grid_points)[
+            0
+        ]  # Get SDF values from model, first element of tuple is the scalar SDF field
+
     # 2. Compute cube_idx of FlexiCubes: Has shape (num_cubes, 8), each row indexes the 8 corners of a cube
-    ind=flexicubes.construct_voxel_grid(grid_res-1)[1] 
-    
+    ind = flexicubes.construct_voxel_grid(grid_res - 1)[1]
+
     """
     Debug print:
     print("x_shape: ",x.shape)
@@ -49,26 +58,28 @@ def get_diff_mesh(model: SDFNetwork, grid_res: list[int] | int = 128,box_dim: li
     print("grid_res-1 :", grid_res-1)
     """
 
-    
     # 3. Use FlexiCubes to extract the mesh
     vertices, faces, l_dev = flexicubes(
-        voxelgrid_vertices=grid_points,  #Points
-        scalar_field=sdf_values,         #Values
-        cube_idx = ind,                  #Cube Indices   
-        resolution=grid_res-1              #Resolution
+        voxelgrid_vertices=grid_points,  # Points
+        scalar_field=sdf_values,  # Values
+        cube_idx=ind,  # Cube Indices
+        resolution=grid_res - 1,  # Resolution
     )
 
     return vertices, faces
 
-def kaolin_facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_direction=None) -> torch.Tensor:
+
+def kaolin_facenormal_angle(
+    verts: torch.Tensor, faces: torch.Tensor, sun_direction=None
+) -> torch.Tensor:
     """
     Calculates the angle in degrees between each face normal of the mesh and the sun direction.
-    Returns a (F,) torch tensor of angles in degrees. 
+    Returns a (F,) torch tensor of angles in degrees.
     Serves solely debugging purposes! Code is stolen from solar estimator
     """
     if sun_direction is None:
-        sun_direction = torch.tensor([0., 0., 1.], device=verts.device)
-    
+        sun_direction = torch.tensor([0.0, 0.0, 1.0], device=verts.device)
+
     # Get face vertices
     v0 = verts[faces[:, 0]]
     v1 = verts[faces[:, 1]]
@@ -81,7 +92,7 @@ def kaolin_facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_direct
     sun_dir = sun_direction / torch.norm(sun_direction)
 
     # Cosine of angle between normal and sun
-    cos_angle = (normals @ sun_dir)
+    cos_angle = normals @ sun_dir
 
     # Clamp (all values between 0 and 1)
     cos_angle_clamped = torch.clamp(cos_angle, min=0.0, max=1.0)
@@ -92,40 +103,44 @@ def kaolin_facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_direct
 
     return angle_deg
 
-def kaolin_primitive_max_angle_loss(verts: torch.Tensor, faces: torch.Tensor, sun_direction=None) -> torch.Tensor:
+
+def kaolin_primitive_max_angle_loss(
+    verts: torch.Tensor, faces: torch.Tensor, sun_direction=None
+) -> torch.Tensor:
     """
     Calculates a loss based on the maximum angle between face normals and the sun direction.
     The loss is higher when the maximum angle is larger, encouraging faces to align with the sun direction.
-    
+
     Note that this loss has no purpose other than to prove the mesh differentiablility works
     Therefore the loss is pretty bad and just a playground
     """
     if sun_direction is None:
-        sun_direction = torch.tensor([0., 0., 1.], device=verts.device)
-    
+        sun_direction = torch.tensor([0.0, 0.0, 1.0], device=verts.device)
+
     angles = kaolin_facenormal_angle(verts, faces, sun_direction)
-    
+
     # Very primitive loss: just take the maximum angle for differentiation.
-    #print("angles: ",angles.shape)
+    # print("angles: ",angles.shape)
     if torch.numel(angles) == 0:
         return torch.tensor(0.0, device=verts.device)
     max_angle = torch.max(angles)
-    #print("max_angle: ", max_angle.shape)
+    # print("max_angle: ", max_angle.shape)
     loss = max_angle / 180.0  # Normalize to [0, 1]
     return loss
+
 
 def flexicubes_to_PLY(
     verts: torch.tensor,
     faces: torch.tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.ply",
-    mesh_dir: str = None  # Default to None, not a space
+    mesh_dir: str = None,  # Default to None, not a space
 ):
     """
     Pre: Vertices and Faces generated from kaolin flexicubes algorithm
     Post: Mesh generated by trimesh from these faces
 
-    Note that the PLY generation is not differentiable! 
+    Note that the PLY generation is not differentiable!
     This should be the end of the pipeline and serve only for visualization and Postprocessing of mesh
     """
     verts_np = verts.detach().cpu().numpy()
