@@ -13,10 +13,6 @@ from .utils.utils import (
     setup_training_environment,
 )
 
-metadata = {
-    "Username": "eschaerer",
-}
-
 
 def main():
     """Main execution function for WP4 aeroshell optimizer."""
@@ -73,7 +69,7 @@ def main():
     if load_pretrained:
         # This loads a sphere model while we redo the training loop and main structure
         model = torch.load(
-            f"/cluster/home/{metadata['Username']}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025-11-04.pth"
+            "wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025-11-04.pth"
         )
     else:
         model = SDFNetwork()
