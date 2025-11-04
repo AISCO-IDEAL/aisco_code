@@ -4,15 +4,16 @@ import torch
 from ..models.sdf import SDFNetwork
 from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
 from ..utils.tracking_loss_for_vis import LossTracker
-
+from ....wp1_cfd_ai.crude_estimator.crude_estimator_diff import calculateCdProxyDifferentiable
 # Losses being defined here: 
 # - Eikonal Loss [ES]
 # - Smoothness Loss [ES]
 # - Bounding Boxes Loss [CH]
 # - Watertightness Loss [CH] (currently disabled)
-# - Frontal Area Loss [AA] (currently replaced by drag loss)
+# - Frontal Area Loss [AA] (TODO: archive, as currently replaced by drag loss)
 # - Drag Loss [ES] (to be implemented)
 # - Solar Area Loss [AA]
+# - Total Loss (weighted sum of all losses)
 
 class SDFLosses:
     def __init__(
@@ -200,6 +201,19 @@ class SDFLosses:
         grid_spacing = (width / resolution) * ((1 + height) / resolution)  # dy * dz
         frontal_area = torch.sum(heaviside_approx) * grid_spacing
         return self.weights[4] * frontal_area
+
+    def drag_loss(
+        self,
+        model: SDFNetwork,
+        resolution: int = 128,
+        height: float = 4.0,
+        width: float = 6.0,
+    ) -> torch.Tensor:
+        """
+        Placeholder for drag loss computation.
+        Args:
+            model: The SDF network
+            resolution: Resolution for area computation
 
     def solar_area_loss(
         self,
