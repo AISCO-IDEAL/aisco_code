@@ -13,10 +13,6 @@ from .utils.utils import (
     setup_training_environment,
 )
 
-metadata = {
-    "Username": "eschaerer",
-}
-
 
 def main():
     """Main execution function for WP4 aeroshell optimizer."""
@@ -56,16 +52,19 @@ def main():
         print(f"✗ Error parsing configuration file: {e}")
         return
 
-    run = wandb.init(
-        # Set the wandb log directory
-        dir="wp4_aeroshell_optimizer/data/wandb_logs",
-        # Set the wandb entity where your project will be logged (generally your team name).
-        entity="aisco",
-        # Set the wandb project where this run will be logged.
-        project="Aeroshell Optimizer",
-        # Track hyperparameters and run metadata.
-        config=config,
-    )
+    track_run=config["wandb"].get("track_run",False)
+
+    if track_run:
+        run = wandb.init(
+            # Set the wandb log directory
+            dir="wp4_aeroshell_optimizer/data/wandb_logs",
+            # Set the wandb entity where your project will be logged (generally your team name).
+            entity="aisco",
+            # Set the wandb project where this run will be logged.
+            project="Aeroshell Optimizer",
+            # Track hyperparameters and run metadata.
+            config=config,
+        )
 
     # Load or initialize model
     load_pretrained = config.get("use_pretrained", False)
@@ -73,7 +72,7 @@ def main():
     if load_pretrained:
         # This loads a sphere model while we redo the training loop and main structure
         model = torch.load(
-            f"/cluster/home/{metadata['Username']}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025-11-04.pth"
+            "wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025-11-04.pth"
         )
     else:
         model = SDFNetwork()
@@ -81,8 +80,11 @@ def main():
 
     save_dir = config.get("model_dir", "")
     mesh_dir = config.get("mesh_dir", "")
-    train_sdf_model(model, config["training_params"], save_dir, mesh_dir)
-    run.finish()
+    train_sdf_model(model, config["training_params"], save_dir, mesh_dir, track_run=track_run)
+    
+    if track_run:
+        run.finish()
+    
     print("WP4 Main.py executed successfully")
 
 

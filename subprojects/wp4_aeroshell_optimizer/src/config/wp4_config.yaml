@@ -7,9 +7,9 @@ general_info:
   Post: "a PLY file representing the optimized aeroshell shape"
 
 training_params:
-  learning_rate: 0.0001
+  learning_rate: 0.01
   batch_size: 4096
-  num_epochs: 5
+  num_epochs: 300
   model_capacity: 256
   num_layers: 8
   skip_connections: [4]
@@ -21,3 +21,6 @@ training_params:
 
 model_dir: "wp4_aeroshell_optimizer/data/test_models"
 mesh_dir: "wp4_aeroshell_optimizer/data/test_meshes"
+
+wandb:
+  track_run: True

@@ -1,14 +1,22 @@
 import cadquery as cq
 import torch
+from wp1_cfd_ai.crude_estimator.crude_estimator_diff import \
+    calculateCdProxyDifferentiable
 
 from ..models.sdf import SDFNetwork
 from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
 from ..utils.tracking_loss_for_vis import LossTracker
+from .kaolin_utils import get_diff_mesh
 
-# Define various loss functions for training the SDFNetwork
-# These losses include eikonal loss, smoothness loss, bounding box constraints,
-# watertightness loss, and performance-related losses.
-
+# Losses being defined here: 
+# - Eikonal Loss [ES]
+# - Smoothness Loss [ES]
+# - Bounding Boxes Loss [CH]
+# - Watertightness Loss [CH] (currently disabled)
+# - Frontal Area Loss [AA] (TODO: archive, as currently replaced by drag loss)
+# - Drag Loss [ES] (to be implemented)
+# - Solar Area Loss [AA]
+# - Total Loss (weighted sum of all losses)
 
 class SDFLosses:
     def __init__(
@@ -23,7 +31,6 @@ class SDFLosses:
             ["eikonal", "smoothness", "bounding_box", "frontal_area", "solar_area"]
         )
 
-    ### DO NOT TOUCH WORK FROM EMANUEL ###
     def eikonal_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
         """
         This Loss ensures that the gradient of our SDF
@@ -47,8 +54,6 @@ class SDFLosses:
         )
         return loss
 
-    ################################
-    ### DO NOT TOUCH WORK FROM EMANUEL ###
     def smoothness_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
         """
         This Loss encourages the SDF to be smooth by penalizing large values of the Laplacian.
@@ -62,9 +67,7 @@ class SDFLosses:
         """
         sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True)
         return self.weights[1] * (laplacian_sdf**2).mean()
-
-    ################################
-
+    
     def bounding_boxes_loss(
         self,
         model: SDFNetwork,
@@ -202,6 +205,22 @@ class SDFLosses:
         frontal_area = torch.sum(heaviside_approx) * grid_spacing
         return self.weights[4] * frontal_area
 
+    def drag_loss(
+        self,
+        model: SDFNetwork,
+    ) -> torch.Tensor:
+        """
+        Placeholder for drag loss computation.
+        Args:
+            model: The SDF network
+            resolution: Resolution for area computation
+        """
+        vertices, faces = get_diff_mesh(model)
+
+        drag = calculateCdProxyDifferentiable(vertices)
+
+        return drag
+        
     def solar_area_loss(
         self,
         model: SDFNetwork,
@@ -254,7 +273,8 @@ class SDFLosses:
         l2 = self.smoothness_loss(model, points)
         l3 = self.bounding_boxes_loss(model)
         l4 = self.frontal_area_loss(model)
-        l5 = self.solar_area_loss(model)
+        l5 = self.drag_loss(model)
+        l6  = self.solar_area_loss(model)
 
         # The following two lines track and store the individual losses per epoch
         losses = {
@@ -262,8 +282,9 @@ class SDFLosses:
             "smoothness": l2.item(),
             "bounding_box": l3.item(),
             "frontal_area": l4.item(),
-            "solar_area": l5.item(),
+            "drag_loss": l5.item(),
+            "solar_area": l6.item(),
         }
         self.loss_tracker.add_epoch(losses)
 
-        return l1 + l2 + l3 + l4 + l5
+        return l1 + l2 + l3 + l4 + l5 + l6
