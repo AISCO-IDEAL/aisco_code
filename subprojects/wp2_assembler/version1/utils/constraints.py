@@ -1,7 +1,7 @@
 import math
 
-from components.params import *
-from components.seat import Seat
+from ..components.params import *
+from ..components.seat import Seat
 
 
 def chassis_constraints(
