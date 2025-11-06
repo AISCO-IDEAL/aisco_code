@@ -309,10 +309,10 @@ class SDFLosses:
             f"losses/bounding_box_loss": l3.item(),
             f"losses/frontal_area_loss": l4.item(),
             f"losses/drag_loss": l5.item(),
-            f"losses/solar_area_loss    ": l6.item(),
+            f"losses/solar_area_loss": l6.item(),
         })
 
-        return l1/1.4 + l2/2.5 + l3/4 + l4/30 + l5/1000 + l6/40 # normed by hand for debugging purposes
+        return l1/1.4 + l2/2.5 + l3/4 + 0*l4/30 + l5/1000 + l6/40 # normed by hand for debugging purposes
 
 #### 1. Eikonal loss
 #### 2. Smoothness loss

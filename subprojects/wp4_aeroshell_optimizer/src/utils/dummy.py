@@ -65,7 +65,7 @@ def get_sdf_sphere_network(
     if use_original:
         model = train_sphere(radius=radius)
         if save_network:
-            save_dir = f"/cluster/home/{username}/AISCO_code/subprojects/WP4-Aeroshell/SDF_Prototype/dummy_models"
+            save_dir = f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/test_meshes"
             os.makedirs(save_dir, exist_ok=True)
             save_path = os.path.join(
                 save_dir, f"sdf_sphere_model_{datetime.date.today()}.pth"
@@ -74,13 +74,13 @@ def get_sdf_sphere_network(
             print(f"Model saved to: {save_path}")
         return model
     else:
-        save_dir = f"/cluster/home/{username}/AISCO_code/subprojects/WP4-Aeroshell/SDF_Prototype/dummy_models"
+        save_dir = f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/test_models"
         model_path = os.path.join(save_dir, "sdf_new_sphere_model.pth")
         model = torch.load(model_path)
         return model
 
 
-def visualise_model(model: SDFNetwork, grid_size: int = 32, threshold: float = 0.0):
+def visualise_model(model: SDFNetwork, grid_size: int = 64, threshold: float = 0.0):
     x = np.linspace(-2, 2, grid_size)
     y = np.linspace(-2, 2, grid_size)
     z = np.linspace(-2, 2, grid_size)
