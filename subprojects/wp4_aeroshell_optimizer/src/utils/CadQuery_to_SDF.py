@@ -12,13 +12,14 @@ from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
 
 # The following Code is in mms
-rand = 1500
+rand = 0
+dr = 1
 default_pointgrid_ranges = [
-    [int(-5800 / 2 - rand), int(5800 / 2 + rand)],
-    [int(-1150 - rand), int(1150 + rand)],
-    [int(-rand), int(1650 + rand)],
+    [int(-5800 / 2 - rand + dr), int(5800 / 2 + rand)],
+    [int(-1150 - rand + dr), int(1150 + rand)],
+    [int(-rand+dr), int(1650 + rand)],
 ]
-default_pointgrid_steps = [200, 150, 50]
+default_pointgrid_steps = [150, 50, 50]
 default_pointgrid = [
     [x, y, z]
     for x in range(
@@ -54,76 +55,77 @@ class SDFfromCadQuery:
     def __init__(
         self,
         shape: cq.Shape,
-        pointgrid: list[list[float]] = [
-            [x / 10, y / 10, z / 10]
-            for x in range(-10, 11)
-            for y in range(-10, 11)
-            for z in range(-10, 11)
-        ],
+        pointgrid: list[list[float]] = default_pointgrid,
+        in_mms: bool = False,
     ):
-        self._shape = shape
-        self._pointgrid = pointgrid
-        self._sdf_at_pointgrid = [self.sdf(x, y, z) for x, y, z in self._pointgrid]
+        self.__shape = shape
+        self.__pointgrid = pointgrid
+        self.__negativ = cq.Workplane("XY").box(100000, 100000, 100000, centered=True).cut(cq.Workplane().newObject([self.__shape])).val()
+        self.__negativ = cast(cq.Shape, self.__negativ).wrapped
+        self.__sdf_at_pointgrid = [self.sdf(x, y, z) for x, y, z in self.__pointgrid]
+        self.__in_mms = in_mms
 
+        if min(self.__sdf_at_pointgrid) > -1:
+            self.__sdf_at_pointgrid = [self.sdf2(x, y, z) for x, y, z in self.__pointgrid]
+        
+    
     def sdf(self, x: float, y: float, z: float) -> float:
-        """
-        Signed distance from (x, y, z) to self._shape (CadQuery shape).
-        Negative inside, zero on surface, positive outside.
-        """
+        # assumes self.__shape is a CadQuery Shape wrapping a closed solid
+        shape = self.__shape.wrapped
 
-        # Build point and shape
+        # classify sign
         pnt = gp_Pnt(x, y, z)
-        vertex = BRepBuilderAPI_MakeVertex(pnt).Vertex()
-        shape_ocp = self._shape.wrapped  # TopoDS_Shape
-
-        # --- Step 1: Unsigned distance ---
-        dist_shape_shape = BRepExtrema_DistShapeShape(vertex, shape_ocp)
-        dist_shape_shape.Perform()
-
-        if not dist_shape_shape.IsDone() or dist_shape_shape.NbSolution() == 0:
-            raise RuntimeError(
-                "Distance computation failed (not done or no solutions)."
-            )
-
-        d = dist_shape_shape.Value()
-
-        # --- Step 2: Inside/outside check ---
-        classifier = BRepClass3d_SolidClassifier(shape_ocp)
-        classifier.Perform(pnt, 1e-7)
+        classifier = BRepClass3d_SolidClassifier(shape)
+        classifier.Perform(pnt, 1e-6)
         state = classifier.State()
 
-        if state == TopAbs_IN:
-            return -d
-        elif state == TopAbs_ON:
+        # unsigned distance
+        vtx = BRepBuilderAPI_MakeVertex(pnt).Vertex()
+        dss = BRepExtrema_DistShapeShape(vtx, shape)
+        dss.Perform()
+        if not dss.IsDone():
+            return float("inf")  # or raise
+
+        d = dss.Value()
+
+        if state == TopAbs_ON:
             return 0.0
-        else:  # TopAbs_OUT
+        elif state == TopAbs_IN:
+            return -d
+        else:
             return d
 
-    def fsdf(self, x: float, y: float, z: float) -> float:
+    def sdf2(self, x: float, y: float, z: float) -> float: # old but gold?
         # calculates the signed distance form point (x, y, z) to the CadQuery shape boints inside the shape are negative
         pnt = gp_Pnt(x, y, z)
         vertex = BRepBuilderAPI_MakeVertex(pnt).Vertex()
-        shape_ocp = self._shape.wrapped
+        shape_ocp = self.__shape.wrapped
         dist_shape_shape = BRepExtrema_DistShapeShape(vertex, shape_ocp)
         dist_shape_shape.Perform()
         d = dist_shape_shape.Value()
-        print(d)
-        if d == 0:  # Point is either on the surface or inside the shape
-            world = cq.Workplane("XY").box(100, 100, 100)
-            negativ = world.cut(cq.Workplane().newObject([self._shape])).val()
-            negativ = cast(cq.Shape, negativ)
-            negativ = negativ.wrapped
-            dist_shape_shape = BRepExtrema_DistShapeShape(vertex, negativ)
+        
+        threshold = 0.1  
+        
+        if d < threshold:  # Point is either on the surface or inside the shape
+            dist_shape_shape = BRepExtrema_DistShapeShape(vertex, self.__negativ)
             dist_shape_shape.Perform()
             d = -dist_shape_shape.Value()
-            print(d)
+            # print(f"Point ({x}, {y}, {z}) is inside the shape, SDF value: {d}")
         return d
 
     def sdf_at_pointgrid(self) -> list[float]:
-        return self._sdf_at_pointgrid
+        return self.__sdf_at_pointgrid
 
     def pointgrid(self) -> list[list[float]]:
-        return self._pointgrid
+        return self.__pointgrid
+
+    def volume(self) -> float:
+        """Returns the volume of the CadQuery shape in cubic millimeters or cubic meters depending on the in_mms flag."""
+        volume = self.__shape.Volume()
+        if self.__in_mms:
+            return volume  # in cubic millimeters
+        else:
+            return volume / 1e9  # convert to cubic meters
 
 
 class BackupAssembly:
