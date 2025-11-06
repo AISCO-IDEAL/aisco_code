@@ -1,3 +1,4 @@
+
 import os
 
 import kaolin as kal
@@ -6,6 +7,10 @@ import trimesh
 from kaolin.ops.conversions import FlexiCubes
 
 from ..models.sdf import SDFNetwork
+
+####################### eschaerer #################
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"  # or ":16:8"
+###################################################
 
 # All Code here by aalthaus, adjusted by @eschaerer for CUDA compatibility
 
@@ -28,6 +33,11 @@ def get_diff_mesh(
     Returns:
         Vertices and Faces as torch.Tensor
     """
+    ####################### eschaerer #################
+    # Enforce deterministic behavior for PyTorch operations (needed for backpropagation tests)
+    torch.use_deterministic_algorithms(True)
+    torch.manual_seed(42)  # Set a fixed seed
+    ###################################################
 
     # At the moment unsure what happens when we change the size
     # of the sampled cube, so be careful here
@@ -39,13 +49,18 @@ def get_diff_mesh(
     grid_x, grid_y, grid_z = torch.meshgrid(x, y, z, indexing="ij")
     grid_points = torch.stack([grid_x, grid_y, grid_z], dim=-1).reshape(-1, 3)
 
-    flexicubes = FlexiCubes(device=device)
     with torch.enable_grad():
         sdf_values = model(grid_points)[
             0
         ]  # Get SDF values from model, first element of tuple is the scalar SDF field
+    ####################### eschaerer #################
+    # Detach and clone to avoid gradient issues
+    sdf_values = sdf_values.detach().clone()  # Problem: Enabling gradients (torch.enable_grad()) inside mesh extraction can corrupt the mesh if sdf_values or grid_points are modified elsewhere
+    grid_points = grid_points.detach().clone()
+    ##################################################
 
     # 2. Compute cube_idx of FlexiCubes: Has shape (num_cubes, 8), each row indexes the 8 corners of a cube
+    flexicubes = FlexiCubes(device=device)
     ind = flexicubes.construct_voxel_grid(grid_res - 1)[1]
 
     """
@@ -59,12 +74,20 @@ def get_diff_mesh(
     """
 
     # 3. Use FlexiCubes to extract the mesh
+    ####################### eschaerer #################
+    torch.cuda.synchronize()
+    ##################################################
+
     vertices, faces, l_dev = flexicubes(
         voxelgrid_vertices=grid_points,  # Points
         scalar_field=sdf_values,  # Values
         cube_idx=ind,  # Cube Indices
         resolution=grid_res - 1,  # Resolution
     )
+
+    # 54 Validate output
+    if vertices.numel() == 0 or faces.numel() == 0:
+        print("Warning: Empty mesh generated!")
 
     return vertices, faces
 
@@ -154,4 +177,5 @@ def flexicubes_to_PLY(
             filepath = filename
         mesh.export(filepath)
         print(f"Mesh saved to {filepath}")
+    return mesh
     return mesh
