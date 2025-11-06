@@ -1,5 +1,6 @@
 import cadquery as cq
 import torch
+import wandb
 from wp1_cfd_ai.crude_estimator.crude_estimator_diff import \
     calculateCdProxyDifferentiable
 
@@ -300,5 +301,22 @@ class SDFLosses:
             "solar_area": l6.item(),
         }
         self.loss_tracker.add_epoch(losses)
+        
+        # logging with wandb, added by eschaerer
+        wandb.log({
+            f"losses/eikonal_loss": l1.item(),
+            f"losses/smoothness_loss": l2.item(),
+            f"losses/bounding_box_loss": l3.item(),
+            f"losses/frontal_area_loss": l4.item(),
+            f"losses/drag_loss": l5.item(),
+            f"losses/solar_area_loss    ": l6.item(),
+        })
 
-        return l1 + l2 + l3 + l4 + l5 + l6
+        return l1/1.4 + l2/2.5 + l3/4 + l4/30 + l5/1000 + l6/40 # normed by hand for debugging purposes
+
+#### 1. Eikonal loss
+#### 2. Smoothness loss
+#### 3. Bounding box loss
+#### 4. Frontal area loss
+#### 5. Drag loss
+#### 6. Solar area loss

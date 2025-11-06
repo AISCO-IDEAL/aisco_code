@@ -55,6 +55,7 @@ def get_diff_mesh(
         ]  # Get SDF values from model, first element of tuple is the scalar SDF field
     ####################### eschaerer #################
     # Detach and clone to avoid gradient issues
+    print(f"SDF min={sdf_values.min().item():.3f}, max={sdf_values.max().item():.3f}")
     sdf_values = sdf_values.detach().clone()  # Problem: Enabling gradients (torch.enable_grad()) inside mesh extraction can corrupt the mesh if sdf_values or grid_points are modified elsewhere
     grid_points = grid_points.detach().clone()
     ##################################################
