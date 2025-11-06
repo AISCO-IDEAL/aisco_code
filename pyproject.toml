@@ -140,6 +140,7 @@ ignore = [
     "D104",  # Missing docstring in public package
     "D105",  # Missing docstring in magic method
     "D107",  # Missing docstring in __init__
+    "N999",  # ignoring PEP8 convention to enable us to call our project AISCO_code instead of aisco_code
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
