@@ -1,9 +1,0 @@
---- Running Gradient Check on /cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/sdf_sphere_mesh.ply ---
-Using device: cuda
-Loaded mesh with 1206 vertices.
-Calculated Loss: 10502.098633
-Performing backward pass...
-✅ Backpropagation Successful!
-Gradients were computed (shape: torch.Size([1206, 3])).
---- Saving visualization to /cluster/home/elihuber/AISCO-code/subprojects/wp1_cfd_ai/data/crude_estimator/sdf_sphere_mesh_test.glb ---
---- Test Complete ---

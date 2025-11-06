@@ -44,7 +44,7 @@ def train_sdf_model(
     for epoch in range(num_epochs):
         points = torch.randn(1000, 3, requires_grad=True, device="cuda")
         optimizer.zero_grad()
-        total_loss = loss_fn.get_total_loss(model, points)
+        total_loss = loss_fn.get_total_loss(model=model, points=points, epoch_name=epoch)
         total_loss.backward()
         optimizer.step()
         if track_run:

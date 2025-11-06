@@ -207,6 +207,12 @@ def calculateCdProxyDifferentiable(
     Returns:
         The calculated normalized loss as a single-item PyTorch tensor.
     """
+    # --- 0. Initial Debugging and Checks by @eschaerer ---
+    print("--- CdProxy Input Debug ---")
+    print("Vertices shape:", vertices.shape)
+    if vertices.numel() == 0:
+        print("WARNING: Empty vertices in CdProxy!")
+        return torch.tensor(0.0, device=vertices.device, dtype=vertices.dtype)
 
     # --- 0. Setup ---
     device = vertices.device

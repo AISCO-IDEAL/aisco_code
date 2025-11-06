@@ -3,11 +3,13 @@
 __pycache__/
 *.py[cod]
 *$py.class
+
 ##################
 *.out # from eschaerer
 aisco_env/
 *.err # from eschaerer
 ##################
+
 # C extensions
 *.so
 
