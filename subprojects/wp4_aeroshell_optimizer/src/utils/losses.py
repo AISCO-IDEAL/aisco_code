@@ -31,9 +31,7 @@ class SDFLosses:
         )
         self.weights = weights
         self.device = dev
-        self.loss_tracker = LossTracker(
-            ["eikonal", "smoothness", "bounding_box", "frontal_area", "solar_area"]
-
+        
 
         # initialize the Bounding Boxes here to avoid re-creating them every time
         self.__in_mms = False
@@ -289,18 +287,7 @@ class SDFLosses:
         l6 = self.drag_loss(model)
         l7 = self.solar_area_loss(model)
 
-        # The following two lines track and store the individual losses per epoch
-        losses = {
-            "eikonal": l1.item(),
-            "smoothness": l2.item(),
-            "bounding_box_1": l3.item(),
-            "bounding_box_2": l4.item(),
-            "frontal_area": l5.item(),
-            "drag_loss": l6.item(),
-            "solar_area": l7.item(),
-        }
-        self.loss_tracker.add_epoch(losses)
-
+        
         # logging with wandb, added by eschaerer
         wandb.log({
             f"losses/eikonal_loss": l1.item(),
