@@ -5,17 +5,39 @@ The Solar Estimator evaluates solar deck concepts for the aCentauri race car. St
 
 ## Requirements
 - Python 3.10 or later (tested on macOS/Linux).
-- Python packages: `numpy`, `pandas`, `trimesh`, `pvlib`, `joblib`, `tqdm`, `pytz`, `matplotlib`.
-- Install from the project root (`AISCO_code`):
+
+### Core Python Packages
+| Package | Reason |
+| --- | --- |
+| `numpy` | Vectorised geometry math (angles, weights, masks). |
+| `pandas` | Route CSV ingestion plus performance matrices. |
+| `trimesh` | Mesh loading, filtering (`sky_face`), ray casting. |
+| `pvlib` | Sun position (`sun.get_sun_direction`). |
+| `joblib` | Parallel STL batch processing. |
+| `tqdm` | Progress bar around batch simulations. |
+| `pytz` | Local-to-UTC timestamp conversion. |
+| `matplotlib` | Helper visualisations (`helpers/visualize_weight`). |
+
+Install all core dependencies from the project root (`AISCO_code`) so they stay in sync with the code:
 
 ```bash
 pip install -e .
+# or, if you prefer a one-off install
+pip install numpy pandas trimesh pvlib joblib tqdm pytz matplotlib
 ```
 
-Alternatively install packages manually:
+### Notebook Extras
+Some notebooks rely on additional packages:
+
+| Package | Used in | Why |
+| --- | --- | --- |
+| `ipywidgets` | `pv_index_simulator.ipynb` | Interactive sliders for parameter sweeps. |
+| `cadquery`, `ocp_vscode` | `helpers/generate_car.ipynb` | Procedural geometry generation for test meshes. |
+
+Install these only if you plan to run the corresponding notebooks:
 
 ```bash
-pip install numpy pandas trimesh pvlib joblib tqdm pytz matplotlib
+pip install ipywidgets cadquery ocp_vscode
 ```
 
 ## Typical Workflow
