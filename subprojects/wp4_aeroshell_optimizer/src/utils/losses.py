@@ -61,7 +61,7 @@ class SDFLosses:
             for point, sdf_value in zip(pointgrid, outer_sdf_values, strict=False)
             if sdf_value > 0
         ]
-        )
+        
 
     def eikonal_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
         """
