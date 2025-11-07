@@ -24,7 +24,7 @@ from .kaolin_utils import get_diff_mesh
 
 class SDFLosses:
     def __init__(
-        self, weights: list[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dev: str = "cuda"
+        self, weights: list[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 0.0], dev: str = "cuda"
     ):
         assert len(weights) == 6, (
             "Weights must match the number of losses: [eikonal, smoothness, bounding_box_1, bounding_box_2, fronatl_area, solar_area]"
