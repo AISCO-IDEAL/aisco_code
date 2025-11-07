@@ -10,12 +10,26 @@ from .utils.utils import (check_cuda_health, initialize_cuda,
                           load_pretrained_model, setup_training_environment)
 
 def deep_update(base, updates):
+    """
+    Recursively updates base dict with updates dict.
+    Supports dot notation keys: e.g., 'training_params.learning_rate'.
+    """
     for key, value in updates.items():
-        if isinstance(value, dict) and key in base:
+        if '.' in key:
+            # Split and insert recursively
+            parts = key.split('.')
+            d = base
+            for part in parts[:-1]:
+                if part not in d or not isinstance(d[part], dict):
+                    d[part] = {}
+                d = d[part]
+            d[parts[-1]] = value
+        elif isinstance(value, dict) and key in base and isinstance(base[key], dict):
             base[key] = deep_update(base[key], value)
         else:
             base[key] = value
     return base
+
 
 def main():
     """Main execution function for WP4 aeroshell optimizer."""
@@ -70,7 +84,9 @@ def main():
             # Track hyperparameters and run metadata.
             config=config,
         )
+        config = deep_update(config, dict(wandb.config))
 
+        
     # Load or initialize model
     load_pretrained = config.get("use_pretrained", False)
 
