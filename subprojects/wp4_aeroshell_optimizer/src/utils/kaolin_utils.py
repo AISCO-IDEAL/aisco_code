@@ -18,7 +18,7 @@ os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"  # or ":16:8"
 def get_diff_mesh(
     model: SDFNetwork,
     grid_res: list[int] | int = 128,
-    box_dim: list = [-5, 5, -5, 5, -5, 5],
+    box_dim: list = [-5000, 5000, -5000, 5000, -5000, 5000],
     device: str = "cuda",
 ):
     """
