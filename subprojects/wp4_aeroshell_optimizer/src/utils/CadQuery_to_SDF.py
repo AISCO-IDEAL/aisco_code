@@ -114,7 +114,7 @@ class SDFfromCadQuery:
         return d
 
     def sdf_at_pointgrid(self) -> list[float]:
-        if self.in_mms:
+        if self.__in_mms:
             return self.__sdf_at_pointgrid
         else:
             return [s / 1000.0 for s in self.__sdf_at_pointgrid]  # convert to meters
