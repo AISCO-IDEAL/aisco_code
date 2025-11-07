@@ -9,6 +9,13 @@ from .models.train import train_sdf_model
 from .utils.utils import (check_cuda_health, initialize_cuda,
                           load_pretrained_model, setup_training_environment)
 
+def deep_update(base, updates):
+    for key, value in updates.items():
+        if isinstance(value, dict) and key in base:
+            base[key] = deep_update(base[key], value)
+        else:
+            base[key] = value
+    return base
 
 def main():
     """Main execution function for WP4 aeroshell optimizer."""
@@ -49,6 +56,8 @@ def main():
         return
 
     track_run=config["wandb"].get("track_run",False)
+    sweep_mode = config["wandb"].get("sweep_mode", False)
+
 
     if track_run:
         run = wandb.init(
