@@ -26,7 +26,7 @@ class SDFNetwork(nn.Module):
                 nn.init.zeros_(m.bias)
 
     def forward(self, x, return_laplacian=False):
-        original_x = x
+        original_x = x * 1000  # convert to mm for consistency, eschaerer
         x = F.leaky_relu(self.input_layer(x), negative_slope=0.1)
         for i, layer in enumerate(self.middle_layers):
             if i % 2 == 0:
@@ -41,7 +41,9 @@ class SDFNetwork(nn.Module):
                 x = torch.cat([x, original_x], dim=1)
                 x = F.leaky_relu(self.skip_layer(x), negative_slope=0.1)
         sdf = self.output_layer(x).squeeze(-1)
+
         # Only compute gradients if input requires grad (i.e., during training)
+
         if original_x.requires_grad:  # Updated x to original_x by Clemens
             grad_sdf = torch.zeros((x.shape[0], self.in_dim), device=x.device)
             for dim in range(self.in_dim):

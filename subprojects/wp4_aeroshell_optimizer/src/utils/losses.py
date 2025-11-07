@@ -1,8 +1,9 @@
 import cadquery as cq
 import torch
 import wandb
-from wp1_cfd_ai.crude_estimator.crude_estimator_diff import \
-    calculateCdProxyDifferentiable
+from wp1_cfd_ai.crude_estimator.crude_estimator_diff import (
+    calculateCdProxyDifferentiable,
+)
 
 from ..models.sdf import SDFNetwork
 from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
@@ -301,18 +302,22 @@ class SDFLosses:
             "solar_area": l6.item(),
         }
         self.loss_tracker.add_epoch(losses)
-        
-        # logging with wandb, added by eschaerer
-        wandb.log({
-            f"losses/eikonal_loss": l1.item(),
-            f"losses/smoothness_loss": l2.item(),
-            f"losses/bounding_box_loss": l3.item(),
-            f"losses/frontal_area_loss": l4.item(),
-            f"losses/drag_loss": l5.item(),
-            f"losses/solar_area_loss": l6.item(),
-        })
 
-        return l1/1.4 + l2/2.5 + l3/4 + 0*l4/30 + l5/1000 + l6/40 # normed by hand for debugging purposes
+        # logging with wandb, added by eschaerer
+        wandb.log(
+            {
+                "losses/eikonal_loss": l1.item(),
+                "losses/smoothness_loss": l2.item(),
+                "losses/bounding_box_loss": l3.item(),
+                "losses/frontal_area_loss": l4.item(),
+                "losses/drag_loss": l5.item(),
+                "losses/solar_area_loss": l6.item(),
+            }
+        )
+
+        return l1 / 1.4 + l2 / 2.5 + l3 / 4 + 0 * l4 / 30 + l5 / 1000 + l6 / 40
+        # normed by hand for debugging purposes
+
 
 #### 1. Eikonal loss
 #### 2. Smoothness loss
