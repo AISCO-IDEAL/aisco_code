@@ -56,7 +56,7 @@ class SDFfromCadQuery:
         self,
         shape: cq.Shape,
         pointgrid: list[list[float]] = default_pointgrid,
-        in_mms: bool = False,
+        in_mms: bool = True,
     ):
         self.__shape = shape
         self.__pointgrid = pointgrid
