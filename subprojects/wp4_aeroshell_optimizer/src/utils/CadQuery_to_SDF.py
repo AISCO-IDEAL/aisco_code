@@ -12,7 +12,7 @@ from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
 
 # The following Code is in mms
-rand = 0
+rand = 1500
 dr = 1
 default_pointgrid_ranges = [
     [int(-5800 / 2 - rand + dr), int(5800 / 2 + rand)],
@@ -114,10 +114,16 @@ class SDFfromCadQuery:
         return d
 
     def sdf_at_pointgrid(self) -> list[float]:
-        return self.__sdf_at_pointgrid
+        if self.in_mms:
+            return self.__sdf_at_pointgrid
+        else:
+            return [s / 1000.0 for s in self.__sdf_at_pointgrid]  # convert to meters
 
     def pointgrid(self) -> list[list[float]]:
-        return self.__pointgrid
+        if self.in_mms:
+            return self.__pointgrid
+        else:
+            return [[x / 1000.0, y / 1000.0, z / 1000.0] for x, y, z in self.__pointgrid]
 
     def volume(self) -> float:
         """Returns the volume of the CadQuery shape in cubic millimeters or cubic meters depending on the in_mms flag."""
