@@ -19,7 +19,7 @@ default_pointgrid_ranges = [
     [int(-1150 - rand + dr), int(1150 + rand)],
     [int(-rand+dr), int(1650 + rand)],
 ]
-default_pointgrid_steps = [150, 50, 50]
+default_pointgrid_steps = [200, 200, 200]
 default_pointgrid = [
     [x, y, z]
     for x in range(
