@@ -284,7 +284,7 @@ class SDFLosses:
         l1 = self.eikonal_loss(model, points)
         l2 = self.smoothness_loss(model, points)
         l3 = self.bounding_boxes_loss_1(model)
-        # l4 = self.bounding_box_loss_2(model)
+        l4 = self.bounding_box_loss_2(model)
         l5 = self.frontal_area_loss(model)
         l6 = self.drag_loss(model)
         l7 = self.solar_area_loss(model)
@@ -295,7 +295,7 @@ class SDFLosses:
             f"losses/eikonal_loss": l1.item(),
             f"losses/smoothness_loss": l2.item(),
             f"losses/bounding_box_loss": l3.item(),
-            # f"losses/frontal_area_loss": l4.item(),
+            f"losses/frontal_area_loss": l4.item(),
             f"losses/drag_loss": l5.item(),
             f"losses/solar_area_loss": l6.item(),
         },step=epoch_name)
