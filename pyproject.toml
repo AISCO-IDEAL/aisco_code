@@ -29,15 +29,18 @@ dependencies = [
 wp1_cfd_ai = [
 
 ]
+
 wp2_assembler =[
   "cadquery >= 2.6.0",
-  "ocp_vscode >= 2.9.0"
+  "ocp_vscode >= 2.9.0",
+  "types-PyYAML >= 6.0.12"  # Type stubs for PyYAML [vdiekmann]
 ]
+
 wp3_solar_estimator = [
 
 ]
-wp4_aeroshell_optimizer = [
 
+wp4_aeroshell_optimizer = [
   "cadquery == 2.6.0",
   "matplotlib==3.10.7",
   "plotly==5.22.0",

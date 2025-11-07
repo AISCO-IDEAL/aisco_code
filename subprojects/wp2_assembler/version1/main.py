@@ -73,10 +73,10 @@ if __name__ == "__main__":  # only run when executing this file directly
             userinput2 = input("Visualize innerNBZ, outerNBZ or both? (i/o/b): ")
             if userinput2.lower() == "i":
                 show(inner_nbzWCS)
-                print(type(inner_nbzWCS))
+                print(type(inner_nbz))
             elif userinput2.lower() == "o":
                 show(outer_nbzWCS)
-                print(type(outer_nbzWCS))
+                print(type(outer_nbz))
             elif userinput2.lower() == "b":
                 show(assembled_car)
                 print(type(assembled_car))
