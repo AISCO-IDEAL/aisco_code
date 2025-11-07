@@ -140,7 +140,7 @@ class SDFLosses:
         # Batch forward
         with torch.enable_grad():
             sdf_pred = model(P)[0]  
-        sdf_pred = sdf_pred.squeeze(-1)  # [N]
+            sdf_pred = sdf_pred.squeeze(-1)  # [N]
 
             # Box constraints: clamp violations with ReLU
             upper_violation = torch.relu(sdf_pred - sdf_inner_t)
