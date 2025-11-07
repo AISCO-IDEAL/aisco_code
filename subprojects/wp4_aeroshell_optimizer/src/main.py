@@ -1,42 +1,13 @@
 from pathlib import Path
 
 import torch
+import wandb
 import yaml
-from sdf import SDFNetwork
-from train import train_sdf_model
-from utils import (
-    check_cuda_health,
-    initialize_cuda,
-    load_pretrained_model,
-    setup_training_environment,
-)
 
-# Hyperparameters - consider moving to config file
-hyperparams = {
-    "learning_rate": 0.0001,
-    "batch_size": 4096,
-    "num_epochs": 1000,
-    "model_capacity": 256,
-    "num_layers": 8,
-    "skip_connections": [4],
-    "weight_decay": 0.0,
-    "activation": "relu",
-    "optimizer": "adam",
-    "scheduler_step_size": 200,
-    "scheduler_gamma": 0.5,
-}
-
-# General information - consider moving to config file
-general_info = {
-    "Model": "SDFNetwork",
-    "Model_Expl": "an SDF Network with torch Neural Network",
-    "Pre": "a sphere as initial shape, datatype: SDF",
-    "Post": "a PLY file representing the optimized aeroshell shape",
-}
-
-metadata = {
-    "Username": "eschaerer",
-}
+from .models.sdf import SDFNetwork
+from .models.train import train_sdf_model
+from .utils.utils import (check_cuda_health, initialize_cuda,
+                          load_pretrained_model, setup_training_environment)
 
 
 def main():
@@ -58,10 +29,11 @@ def main():
     # Load configuration
     config_path = (
         Path.home()
-        / "AISCO-code"
+        / "AISCO_code"
         / "subprojects"
         / "wp4_aeroshell_optimizer"
         / "src"
+        / "config"
         / "wp4_config.yaml"
     )
 
@@ -76,13 +48,27 @@ def main():
         print(f"✗ Error parsing configuration file: {e}")
         return
 
+    track_run=config["wandb"].get("track_run",False)
+
+    if track_run:
+        run = wandb.init(
+            # Set the wandb log directory
+            dir="wp4_aeroshell_optimizer/data/wandb_logs",
+            # Set the wandb entity where your project will be logged (generally your team name).
+            entity="aisco",
+            # Set the wandb project where this run will be logged.
+            project="Aeroshell Optimizer",
+            # Track hyperparameters and run metadata.
+            config=config,
+        )
+
     # Load or initialize model
     load_pretrained = config.get("use_pretrained", False)
 
     if load_pretrained:
         # This loads a sphere model while we redo the training loop and main structure
         model = torch.load(
-            "AISCO-code/subprojects/wp4_aeroshell_optimizer/src/DummySphere/sdf_sphere_model_2025-10-24.pth"
+            "wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025-11-06.pth"
         )
     else:
         model = SDFNetwork()
@@ -90,7 +76,11 @@ def main():
 
     save_dir = config.get("model_dir", "")
     mesh_dir = config.get("mesh_dir", "")
-    train_sdf_model(model, config["training_params"], save_dir, mesh_dir)
+    train_sdf_model(model, config["training_params"], save_dir, mesh_dir, track_run=track_run)
+
+    if track_run:
+        run.finish()
+
     print("WP4 Main.py executed successfully")
 
 

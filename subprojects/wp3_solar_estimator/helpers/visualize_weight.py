@@ -3,7 +3,10 @@ import trimesh
 from matplotlib import cm
 
 
-def color_faces_by_weight(mesh: trimesh.Trimesh, weights: np.ndarray, gamma: float = 1.0) -> trimesh.Trimesh:
+def color_faces_by_weight(
+    mesh: trimesh.Trimesh, weights: np.ndarray, gamma: float = 1.0
+) -> trimesh.Trimesh:
+    # nserck
     """
     Colors the faces of a trimesh object based on a weight array (0.0 to 1.0)
     with a Green (0.0) to Red (1.0) gradient, using gamma correction to
@@ -31,13 +34,13 @@ def color_faces_by_weight(mesh: trimesh.Trimesh, weights: np.ndarray, gamma: flo
     normalized_weights = np.clip(weights, 0.0, 1.0)
 
     # 2. Apply Gamma Correction
-    stretched_weights = normalized_weights ** gamma
+    stretched_weights = normalized_weights**gamma
     # With gamma > 1.0, small numbers stay small (compressed), large numbers stay large (stretched).
     # E.g., for gamma=2: (0.1)^2 = 0.01, (0.9)^2 = 0.81. The high values retain more "color budget".
 
     # 3. Select Colormap
     # 'RdYlGn_r': Green (low) -> Yellow -> Red (high)
-    colormap = cm.get_cmap('cool')#cm.get_cmap('RdYlGn_r')
+    colormap = cm.get_cmap("cool")  # cm.get_cmap('RdYlGn_r')
 
     # 4. Map stretched weights to RGBA colors (0.0 to 1.0)
     rgba_float_colors = colormap(stretched_weights)

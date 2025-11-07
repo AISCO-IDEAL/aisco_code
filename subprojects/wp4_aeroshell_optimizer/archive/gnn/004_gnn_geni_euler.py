@@ -11,10 +11,11 @@ from torch_geometric.nn import GCNConv, global_mean_pool
 
 
 def setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
     dist.init_process_group("gloo", rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
+
 
 # ===== Hyperparameters =====
 HYPERPARAMS = {
@@ -33,6 +34,7 @@ HYPERPARAMS = {
 
 # ===== Shape and Area Classes =====
 # (Keep your Shape and Area classes as-is)
+
 
 # ===== AutoencoderModel =====
 class AutoencoderModel(nn.Module):
@@ -53,9 +55,12 @@ class AutoencoderModel(nn.Module):
         x = F.relu(self.conv1(x, edge_index))
         x = F.relu(self.conv2(x, edge_index))
         latent = self.conv3(x, edge_index)
-        latent = global_mean_pool(latent, torch.zeros(latent.size(0), dtype=torch.long, device=x.device))
+        latent = global_mean_pool(
+            latent, torch.zeros(latent.size(0), dtype=torch.long, device=x.device)
+        )
         output = self.decoder(latent)
         return output.view(-1, 2000, 2)
+
 
 # ===== Autoencoder =====
 class Autoencoder:
@@ -67,11 +72,15 @@ class Autoencoder:
 
     def eval_model(self):
         best_model = None
-        device = torch.device(f"cuda:{self.rank}" if torch.cuda.is_available() else "cpu")
+        device = torch.device(
+            f"cuda:{self.rank}" if torch.cuda.is_available() else "cpu"
+        )
         for latent_size in HYPERPARAMS["autoencoder_latent_sizes"]:
             model = AutoencoderModel(latent_size).to(device)
             model = DDP(model, device_ids=[self.rank])
-            optimizer = torch.optim.Adam(model.parameters(), lr=HYPERPARAMS["autoencoder_lr"])
+            optimizer = torch.optim.Adam(
+                model.parameters(), lr=HYPERPARAMS["autoencoder_lr"]
+            )
             for epoch in range(HYPERPARAMS["autoencoder_epochs"]):
                 total_loss = 0
                 for area in self.areas:
@@ -84,26 +93,33 @@ class Autoencoder:
                     total_loss += loss.item()
                 avg_loss = total_loss / len(self.areas)
                 if self.rank == 0:
-                    print(f'Autoencoder Latent Size: {latent_size}, Epoch {epoch}, Loss: {avg_loss:.6f}')
+                    print(
+                        f"Autoencoder Latent Size: {latent_size}, Epoch {epoch}, Loss: {avg_loss:.6f}"
+                    )
                 if avg_loss < HYPERPARAMS["autoencoder_allowed_loss"]:
                     best_model = model
                     if self.rank == 0:
-                        print(f'Best latent size found: {latent_size}')
+                        print(f"Best latent size found: {latent_size}")
                     break
         best_model = model
         if self.rank == 0:
-            print(f'Using latent size: {latent_size} (loss threshold not met)')
+            print(f"Using latent size: {latent_size} (loss threshold not met)")
         return best_model, latent_size
 
     def encode(self, area):
-        device = torch.device(f"cuda:{self.rank}" if torch.cuda.is_available() else "cpu")
+        device = torch.device(
+            f"cuda:{self.rank}" if torch.cuda.is_available() else "cpu"
+        )
         data = area.graph.to(device)
         with torch.no_grad():
             latent = F.relu(self.model.conv1(data.x, data.edge_index))
             latent = F.relu(self.model.conv2(latent, data.edge_index))
             latent = self.model.conv3(latent, data.edge_index)
-            latent = global_mean_pool(latent, torch.zeros(latent.size(0), dtype=torch.long, device=device))
+            latent = global_mean_pool(
+                latent, torch.zeros(latent.size(0), dtype=torch.long, device=device)
+            )
         return latent.cpu().numpy().tolist()
+
 
 # ===== GeniModel =====
 class GeniModel(nn.Module):
@@ -118,6 +134,7 @@ class GeniModel(nn.Module):
         x = F.relu(self.fc2(x))
         return torch.sigmoid(self.fc3(x))
 
+
 # ===== Geni =====
 class Geni:
     def __init__(self, areas, rank, world_size):
@@ -127,10 +144,14 @@ class Geni:
         self.autoencoder = Autoencoder(self.areas, self.rank)
         self.latent_size = self.autoencoder.latent_size
         self.output_size = areas[0].size
-        device = torch.device(f"cuda:{self.rank}" if torch.cuda.is_available() else "cpu")
+        device = torch.device(
+            f"cuda:{self.rank}" if torch.cuda.is_available() else "cpu"
+        )
         self.model = GeniModel(self.latent_size, self.output_size).to(device)
         self.model = DDP(self.model, device_ids=[self.rank])
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=HYPERPARAMS["geni_lr"])
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), lr=HYPERPARAMS["geni_lr"]
+        )
         self.device = device
 
     def encode_torch(self, area):
@@ -139,7 +160,10 @@ class Geni:
             latent = F.relu(self.autoencoder.model.conv1(data.x, data.edge_index))
             latent = F.relu(self.autoencoder.model.conv2(latent, data.edge_index))
             latent = self.autoencoder.model.conv3(latent, data.edge_index)
-            latent = global_mean_pool(latent, torch.zeros(latent.size(0), dtype=torch.long, device=self.device))
+            latent = global_mean_pool(
+                latent,
+                torch.zeros(latent.size(0), dtype=torch.long, device=self.device),
+            )
         return latent
 
     def train(self):
@@ -163,14 +187,21 @@ class Geni:
 
     def loss_function(self, points):
         alpha = HYPERPARAMS["geni_alpha"]
-        def soft_max(x): return torch.logsumexp(alpha * x, dim=0) / alpha
-        def soft_min(x): return -torch.logsumexp(-alpha * x, dim=0) / alpha
+
+        def soft_max(x):
+            return torch.logsumexp(alpha * x, dim=0) / alpha
+
+        def soft_min(x):
+            return -torch.logsumexp(-alpha * x, dim=0) / alpha
+
         x_max, x_min = soft_max(points[:, 0]), soft_min(points[:, 0])
         y_max, y_min = soft_max(points[:, 1]), soft_min(points[:, 1])
         width, height = x_max - x_min, y_max - y_min
         diffs = points[1:] - points[:-1]
-        circumference = torch.norm(diffs, dim=1).sum() + torch.norm(points[0] - points[-1])
-        loss = circumference/10 + (height-0.5) + 1/width
+        circumference = torch.norm(diffs, dim=1).sum() + torch.norm(
+            points[0] - points[-1]
+        )
+        loss = circumference / 10 + (height - 0.5) + 1 / width
         return loss
 
     def get_mu(self, area):
@@ -179,14 +210,27 @@ class Geni:
             output = self.model(latent)
         return output.squeeze(0).cpu().numpy()
 
+
 # ===== Main Execution =====
 def main(rank, world_size):
     setup(rank, world_size)
     areas = []
     for x in range(HYPERPARAMS["num_areas_x"]):
         for y in range(HYPERPARAMS["num_areas_y"]):
-            points1 = [[0,0],[1,0-0.2*y],[1.5+0.1*x, 0.5+0.05*y], [1+0.1*x,1+0.1*y],[0,1], [-0.5-0.2*x, 0.5+0.02*y]]
-            points2 = [[0.25-0.1*x,0.25],[0.75+0.1*x,0.25-0.1*y],[0.75-0.1*x,0.75+0.1*y],[0.25+0.1*x,0.75-0.1*y]]
+            points1 = [
+                [0, 0],
+                [1, 0 - 0.2 * y],
+                [1.5 + 0.1 * x, 0.5 + 0.05 * y],
+                [1 + 0.1 * x, 1 + 0.1 * y],
+                [0, 1],
+                [-0.5 - 0.2 * x, 0.5 + 0.02 * y],
+            ]
+            points2 = [
+                [0.25 - 0.1 * x, 0.25],
+                [0.75 + 0.1 * x, 0.25 - 0.1 * y],
+                [0.75 - 0.1 * x, 0.75 + 0.1 * y],
+                [0.25 + 0.1 * x, 0.75 - 0.1 * y],
+            ]
             quader1 = Shape(points1)
             quader2 = Shape(points2)
             area1 = Area(quader2, quader1)
@@ -196,11 +240,12 @@ def main(rank, world_size):
     if rank == 0:
         area = areas[0]
         new_shape = area.create_shape(geni.get_mu(area))
-        area.plot(color_inner='blue', color_outer='orange')
-        new_shape.plot(color='green')
+        area.plot(color_inner="blue", color_outer="orange")
+        new_shape.plot(color="green")
         plt.title(HYPERPARAMS["plot_title"])
         plt.savefig("result.png")
     dist.destroy_process_group()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

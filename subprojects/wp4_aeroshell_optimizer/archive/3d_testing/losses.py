@@ -14,16 +14,16 @@ class SDF3DLossCalculator:
     4. Top area maximization (solar collection)
     """
 
-    def __init__(self, device='cpu'):
+    def __init__(self, device="cpu"):
         self.device = device
 
         # Loss weights - these can be tuned for different priorities
         self.weights = {
-            'eikonal': 1.0,          # Ensures valid SDF field
-            'size_constraint': 20.0,  # Enforces bounding box limits
-            'frontal_area': 5.0,     # Minimizes drag
-            'top_area': -7.0,        # Maximizes solar area (negative for maximization)
-            'smoothness': 0.5        # Encourages smooth surfaces
+            "eikonal": 1.0,  # Ensures valid SDF field
+            "size_constraint": 20.0,  # Enforces bounding box limits
+            "frontal_area": 5.0,  # Minimizes drag
+            "top_area": -7.0,  # Maximizes solar area (negative for maximization)
+            "smoothness": 0.5,  # Encourages smooth surfaces
         }
 
     def compute_eikonal_loss(self, sdf_net, points):
@@ -48,7 +48,7 @@ class SDF3DLossCalculator:
             grad_outputs=grad_outputs,
             create_graph=True,
             retain_graph=True,
-            only_inputs=True
+            only_inputs=True,
         )[0]
 
         # Eikonal loss: penalize deviation from unit gradient norm
@@ -84,8 +84,11 @@ class SDF3DLossCalculator:
 
                 # Random sampling on the face
                 for j, dim in enumerate(other_dims):
-                    coords[:, dim] = torch.rand(100, device=self.device) * \
-                                   (outer_max[dim] - outer_min[dim]) + outer_min[dim]
+                    coords[:, dim] = (
+                        torch.rand(100, device=self.device)
+                        * (outer_max[dim] - outer_min[dim])
+                        + outer_min[dim]
+                    )
                 outer_points.append(coords)
 
         outer_points = torch.cat(outer_points, dim=0)
@@ -103,8 +106,11 @@ class SDF3DLossCalculator:
                 coords[:, i] = val
 
                 for j, dim in enumerate(other_dims):
-                    coords[:, dim] = torch.rand(100, device=self.device) * \
-                                   (inner_max[dim] - inner_min[dim]) + inner_min[dim]
+                    coords[:, dim] = (
+                        torch.rand(100, device=self.device)
+                        * (inner_max[dim] - inner_min[dim])
+                        + inner_min[dim]
+                    )
                 inner_points.append(coords)
 
         inner_points = torch.cat(inner_points, dim=0)
@@ -129,13 +135,15 @@ class SDF3DLossCalculator:
         # Create a grid in the Y-Z plane (frontal projection)
         y_coords = torch.linspace(-2.0, 2.0, resolution, device=self.device)
         z_coords = torch.linspace(-1.0, 1.0, resolution, device=self.device)
-        y_grid, z_grid = torch.meshgrid(y_coords, z_coords, indexing='ij')
+        y_grid, z_grid = torch.meshgrid(y_coords, z_coords, indexing="ij")
 
         # Fix x at the front of the vehicle (x = 0 for frontal area)
         x_coords = torch.zeros_like(y_grid)
 
         # Create points for evaluation
-        points = torch.stack([x_coords.flatten(), y_grid.flatten(), z_grid.flatten()], dim=1)
+        points = torch.stack(
+            [x_coords.flatten(), y_grid.flatten(), z_grid.flatten()], dim=1
+        )
         sdf_values = sdf_net(points).reshape(resolution, resolution)
 
         # Approximate area using the Heaviside function
@@ -163,13 +171,15 @@ class SDF3DLossCalculator:
         # Create a grid in the X-Y plane (top projection)
         x_coords = torch.linspace(-2.0, 2.0, resolution, device=self.device)
         y_coords = torch.linspace(-2.0, 2.0, resolution, device=self.device)
-        x_grid, y_grid = torch.meshgrid(x_coords, y_coords, indexing='ij')
+        x_grid, y_grid = torch.meshgrid(x_coords, y_coords, indexing="ij")
 
         # Fix z at the top of the vehicle (z = 0.8 for top area)
         z_coords = torch.full_like(x_grid, 0.8)
 
         # Create points for evaluation
-        points = torch.stack([x_grid.flatten(), y_grid.flatten(), z_coords.flatten()], dim=1)
+        points = torch.stack(
+            [x_grid.flatten(), y_grid.flatten(), z_coords.flatten()], dim=1
+        )
         sdf_values = sdf_net(points).reshape(resolution, resolution)
 
         # Approximate area using the Heaviside function
@@ -204,7 +214,7 @@ class SDF3DLossCalculator:
             grad_outputs=grad_outputs,
             create_graph=True,
             retain_graph=True,
-            only_inputs=True
+            only_inputs=True,
         )[0]
 
         # Compute second derivatives (Laplacian)
@@ -216,12 +226,12 @@ class SDF3DLossCalculator:
                 grad_outputs=torch.ones_like(first_derivs[:, i]),
                 create_graph=True,
                 retain_graph=True,
-                only_inputs=True
+                only_inputs=True,
             )[0][:, i]
             laplacian += second_deriv
 
         # Penalize high curvature (large Laplacian)
-        smoothness_loss = torch.mean(laplacian ** 2)
+        smoothness_loss = torch.mean(laplacian**2)
 
         return smoothness_loss
 
@@ -241,26 +251,33 @@ class SDF3DLossCalculator:
         losses = {}
 
         # Compute individual loss components
-        losses['eikonal'] = self.compute_eikonal_loss(sdf_net, sample_points)
-        losses['size_constraint'] = self.compute_size_constraint_loss(
-            sdf_net, outer_bounds, inner_bounds)
-        losses['frontal_area'] = self.compute_frontal_area_loss(sdf_net)
-        losses['top_area'] = self.compute_top_area_loss(sdf_net)
-        losses['smoothness'] = self.compute_smoothness_loss(sdf_net, sample_points)
+        losses["eikonal"] = self.compute_eikonal_loss(sdf_net, sample_points)
+        losses["size_constraint"] = self.compute_size_constraint_loss(
+            sdf_net, outer_bounds, inner_bounds
+        )
+        losses["frontal_area"] = self.compute_frontal_area_loss(sdf_net)
+        losses["top_area"] = self.compute_top_area_loss(sdf_net)
+        losses["smoothness"] = self.compute_smoothness_loss(sdf_net, sample_points)
 
         # Compute weighted losses separately
         weighted_losses = {}
         total_loss = 0
 
         # Calculate weighted losses for original loss components
-        for loss_name in ['eikonal', 'size_constraint', 'frontal_area', 'top_area', 'smoothness']:
+        for loss_name in [
+            "eikonal",
+            "size_constraint",
+            "frontal_area",
+            "top_area",
+            "smoothness",
+        ]:
             if loss_name in losses:
                 weighted_loss = self.weights[loss_name] * losses[loss_name]
-                weighted_losses[f'{loss_name}_weighted'] = weighted_loss
+                weighted_losses[f"{loss_name}_weighted"] = weighted_loss
                 total_loss += weighted_loss
 
         # Combine original and weighted losses
-        combined_losses = {**losses, **weighted_losses, 'total': total_loss}
+        combined_losses = {**losses, **weighted_losses, "total": total_loss}
 
         return combined_losses
 
@@ -269,4 +286,6 @@ class SDF3DLossCalculator:
         self.weights.update(new_weights)
 
 
-print("Created loss_functions.py - Comprehensive loss functions for 3D SDF optimization")
+print(
+    "Created loss_functions.py - Comprehensive loss functions for 3D SDF optimization"
+)

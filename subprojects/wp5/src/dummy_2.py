@@ -1,10 +1,13 @@
+import os
 from pathlib import Path
 
 import numpy as np
 
+from subprojects.wp5.src.dummy_3 import llinsi
+
 
 def test(x: int) -> str:
-    #kdiehl
+    # kdiehl
     """Beispiel-Funktion: gibt eine stringbasierte Bestätigung zurück.
 
     Args:
@@ -13,15 +16,43 @@ def test(x: int) -> str:
     Returns:
         Eine Bestätigungszeichenkette mit dem übergebenen Wert.
     """
+    print(llinsi())  # lets see if it works
 
-    outdir = Path('/home/kdiehl/Dokumente/Studium__Stipendium__Lebenslauf/ETH/AISCO/AISCO-code/AISCO/subprojects/wp5/data/')  # setze hier deinen Zielpfad
-    outdir.mkdir(parents=True, exist_ok=True)       # Verzeichnis anlegen, falls noch nicht vorhanden
+    # # Determine data output directory portably:
+    # # 1) Allow user override via environment variable AISCO_DATA_DIR
+    # env = os.getenv("AISCO_DATA_DIR")
+    # if env:
+    #     outdir = Path(env)
+    # else:
+    #     # 2) Try to locate repository root (ancestor that contains 'subprojects')
+    #     here = Path(__file__).resolve()
+    #     repo_root = None
+    #     for parent in here.parents:
+    #         if (parent / "subprojects").is_dir():
+    #             repo_root = parent
+    #             break
+    #     # Fallback: use a fixed ancestor level if repo_root not found
+    #     if repo_root is None:
+    #         repo_parent_level = 3
+    #         repo_root = (
+    #             here.parents[repo_parent_level]
+    #             if len(here.parents) > repo_parent_level
+    #             else here.parents[-1]
+    #         )
+
+    #     outdir = repo_root / "subprojects" / "wp5" / "data"
+
+    # outdir.mkdir(parents=True, exist_ok=True)
+
+    outdir = Path("/cluster/work/fuge/AISCO/wp5")
+    # Ensure the directory exists on the HPC (Euler)
+    outdir.mkdir(parents=True, exist_ok=True)
 
     # Speichern als .npy
-    np.save(outdir / 'x.npy', x)
+    np.save(outdir / "x.npy", x)
 
     # Laden
-    loaded = np.load(outdir / 'x.npy')
+    loaded = np.load(outdir / "x.npy")
     print(loaded)
 
     return f"hat funktioniert: {x}"
