@@ -72,7 +72,7 @@ class SDFLosses:
         sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True)
         return self.weights[1] * (laplacian_sdf**2).mean()
 
-    def bounding_boxes_loss(
+    def bounding_boxes_loss_1(
         self,
         model: SDFNetwork,
         inner_box: cq.Solid = innerNBZ(
@@ -133,35 +133,53 @@ class SDFLosses:
 
         return self.weights[2] * loss
 
-    def watertightness_loss(
-        self, model: SDFNetwork, infinity_box: list[list[float]] = None
-    ) -> torch.Tensor:
-        return torch.Tensor(0.0)  # Avoid crash
-        total_loss = 0.0
-        if infinity_box is None:  # samples points on a large box around the object
-            infinity_box = [
-                [x, y, z]
-                for x in [-10.0, 10.0]
-                for y in [-10.0, 10.0]
-                for z in [-10.0, 10.0, 19.9]
-            ]
-            infinity_box += [
-                [x, y, z]
-                for x in [-10.0, 10.0]
-                for y in [-10.0, 10.0, 19.9]
-                for z in [-10.0, 10.0]
-            ]
-            infinity_box += [
-                [x, y, z]
-                for x in [-10.0, 10.0, 19.9]
-                for y in [-10.0, 10.0]
-                for z in [-10.0, 10.0]
-            ]
-        for p in infinity_box:
-            sdf_value, _ = model(torch.tensor(p).unsqueeze(0).float())
-            sdf_value = sdf_value.item()
-            total_loss += torch.relu(-sdf_value).item()
-        return self.weights[3] * torch.tensor(total_loss / len(infinity_box)).float()
+    def bounding_box_loss_2(self, model: SDFNetwork) -> torch.Tensor:
+        """
+        Calculates a Bounding Box Loss based on an Idea of Alex
+        """
+
+        # Create SDFs for inner and outer boxes
+        inner_box: cq.Solid = innerNBZ(
+            random_magnitude_chassis=0.0,
+            random_magnitude_seat=0.0,
+            random_magnitude_wheels=0.0,
+        )
+        inner_SDF: SDFfromCadQuery = SDFfromCadQuery(inner_box, in_mms=False)
+        outer_box: cq.Solid = outerNBZ()
+        outer_SDF: SDFfromCadQuery = SDFfromCadQuery(outer_box, in_mms=False)
+
+        # get pointgrid and sdf values of both boxes
+        pointgrid: list[list[float]] = inner_SDF.pointgrid()
+        inner_sdf_values: list[float] = inner_SDF.sdf_at_pointgrid()
+        outer_sdf_values: list[float] = outer_SDF.sdf_at_pointgrid()
+
+        # get all points where sdf is negative (inside the inner box)
+        inner_bb_points = [
+            point
+            for point, sdf_value in zip(pointgrid, inner_sdf_values, strict=False)
+            if sdf_value < 0
+        ]
+
+        # get all points where sdf is positive (outside the outer box)
+        outer_bb_points = [
+            point
+            for point, sdf_value in zip(pointgrid, outer_sdf_values, strict=False)
+            if sdf_value > 0
+        ]
+
+        # get the SDF model values at these points
+        inner_bb_points_model = model(
+            torch.tensor(inner_bb_points, dtype=torch.float32, device=self.device)
+        )
+        outer_bb_points_model = model(
+            torch.tensor(outer_bb_points, dtype=torch.float32, device=self.device)
+        )
+
+        # compute the loss
+        inner_loss = torch.relu(inner_bb_points_model[0]).mean()
+        outer_loss = torch.relu(-outer_bb_points_model[0]).mean()
+        total_loss = inner_loss + outer_loss
+        return self.weights[3] * total_loss
 
     def frontal_area_loss(
         self,
@@ -287,19 +305,21 @@ class SDFLosses:
     ) -> torch.Tensor:
         l1 = self.eikonal_loss(model, points)
         l2 = self.smoothness_loss(model, points)
-        l3 = self.bounding_boxes_loss(model)
-        l4 = self.frontal_area_loss(model)
-        l5 = self.drag_loss(model)
-        l6 = self.solar_area_loss(model)
+        l3 = self.bounding_boxes_loss_1(model)
+        l4 = self.bounding_box_loss_2(model)
+        l5 = self.frontal_area_loss(model)
+        l6 = self.drag_loss(model)
+        l7 = self.solar_area_loss(model)
 
         # The following two lines track and store the individual losses per epoch
         losses = {
             "eikonal": l1.item(),
             "smoothness": l2.item(),
-            "bounding_box": l3.item(),
-            "frontal_area": l4.item(),
-            "drag_loss": l5.item(),
-            "solar_area": l6.item(),
+            "bounding_box_1": l3.item(),
+            "bounding_box_2": l4.item(),
+            "frontal_area": l5.item(),
+            "drag_loss": l6.item(),
+            "solar_area": l7.item(),
         }
         self.loss_tracker.add_epoch(losses)
 
@@ -315,8 +335,9 @@ class SDFLosses:
             }
         )
 
-        return l1 / 1.4 + l2 / 2.5 + l3 / 4 + 0 * l4 / 30 + l5 / 1000 + l6 / 40
-        # normed by hand for debugging purposes
+        return (
+            l1 / 1.4 + l2 / 2.5 + l3 / 4 + 0 * l4 / 30 + l5 / 1000 + l6 / 40 + l7
+        )  # normed by hand for debugging purposes
 
 
 #### 1. Eikonal loss
