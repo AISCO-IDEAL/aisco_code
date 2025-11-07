@@ -35,7 +35,7 @@ no_build_zones:
 wheel:
   min_wheel_count: 3
   tire_width: 96   # mm Silvretta tyre width
-  tire_radius: 557  # mm Silvretta tyre radius
+  tire_diameter: 557  # mm Silvretta tyre radius
   margin_axial: 50   # mm minimum clearance between tire and NBZ
   margin_radial: 20  # mm minimum clearance around tire will go outside outer NBZ
 
@@ -48,9 +48,6 @@ wheel:
     shape2: 2.0   # Makes it a hump-shaped, bell-like curve
     scale1: 4.0   # Makes the distribution wider in x-direction 
     scale2: 2.0   # Makes the distribution wider in y-direction - scale = 1 -> exponential decay
-
-seat:
-  min_above_ground: 150  # mm minimum seat height from ground
 
 
 

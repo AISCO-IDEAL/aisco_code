@@ -13,8 +13,8 @@ class Wheels:
     wheel_count: int = field(
         default_factory=lambda: get_regulation("wheel.min_wheel_count")
     )
-    wheel_radius: float = field(
-        default_factory=lambda: get_regulation("wheel.tire_radius")
+    wheel_diameter: float = field(
+        default_factory=lambda: get_regulation("wheel.tire_diameter")
     )
     wheel_width: float = field(
         default_factory=lambda: get_regulation("wheel.tire_width")
@@ -28,7 +28,7 @@ class Wheels:
 
     def get_wheel_info(self) -> str:
         """Return a description of the wheel configuration."""
-        return f"This vehicle has {self.wheel_count} wheels with radius {self.wheel_radius}m and width {self.wheel_width}m."
+        return f"This vehicle has {self.wheel_count} wheels with diameter {self.wheel_diameter}m and width {self.wheel_width}m."
 
     def create_wheel(self) -> cq.Workplane:
         """
@@ -40,7 +40,7 @@ class Wheels:
         """
         return (
             cq.Workplane("XZ")
-            .circle(self.wheel_radius)
+            .circle(self.wheel_diameter / 2)
             .extrude(self.wheel_width)
             .translate((0, self.wheel_width / 2, 0))
         )
@@ -53,6 +53,6 @@ class Wheels:
         Returns:
             A cadquery Workplane object representing the wheel with margins.
         """
-        total_radius = self.wheel_radius + self.wheel_margin_radial
+        total_diameter = self.wheel_diameter + self.wheel_margin_radial
         total_width = self.wheel_width + 2 * self.wheel_margin_axial
-        return cq.Workplane("XY").circle(total_radius).extrude(total_width)
+        return cq.Workplane("XY").circle(total_diameter).extrude(total_width)

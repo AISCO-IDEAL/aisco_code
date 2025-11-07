@@ -3,7 +3,9 @@ from components.outer.outer_box import outerBox
 
 from .inner.base_triangle import Triangle
 from .inner.wheels import Wheels
+from .inner.seat import Seat
 
+import random
 
 def inner_nbz2_sym():
     """
@@ -19,6 +21,9 @@ def inner_nbz2_sym():
     # add wheels to the corners of the triangle
     wheels = Wheels()
     wheel = wheels.create_wheel()
+
+    seat_class = Seat()
+    seat = seat_class.create_seat()
 
     assembly = (
         cq.Assembly(triangle, name="triangle")
@@ -37,6 +42,11 @@ def inner_nbz2_sym():
             wheel,
             loc=cq.Location(points[2].x, points[2].y, points[2].z),
             name="wheel_3",
+        )
+        .add(
+            seat,
+            loc=cq.Location(random.randint(0, int(points[2].x)),0,-100),
+            name="Seat",
         )
     )
 
