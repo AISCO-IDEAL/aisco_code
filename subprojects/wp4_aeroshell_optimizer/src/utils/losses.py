@@ -137,10 +137,10 @@ class SDFLosses:
                 self.__outer_sdf_values, dtype=torch.float32, device=self.device
             )  # [N]
 
-            # Batch forward
-            with torch.enable_grad():
-                sdf_pred, _ = model(P)  # expect shape [N,1] or [N]
-            sdf_pred = sdf_pred.squeeze(-1)  # [N]
+        # Batch forward
+        with torch.enable_grad():
+            sdf_pred = model(P)[0]  
+        sdf_pred = sdf_pred.squeeze(-1)  # [N]
 
             # Box constraints: clamp violations with ReLU
             upper_violation = torch.relu(sdf_pred - sdf_inner_t)
@@ -161,12 +161,12 @@ class SDFLosses:
                 torch.tensor(
                     self.__inner_bb_points, dtype=torch.float32, device=self.device
                 )
-            )
+            )[0]
             outer_bb_points_model = model(
                 torch.tensor(
                     self.__outer_bb_points, dtype=torch.float32, device=self.device
                 )
-            )
+            )[0]
 
             # compute the loss
             inner_loss = torch.relu(inner_bb_points_model[0]).mean()

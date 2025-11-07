@@ -19,7 +19,7 @@ default_pointgrid_ranges = [
     [int(-1150 - rand + dr), int(1150 + rand)],
     [int(-rand+dr), int(1650 + rand)],
 ]
-default_pointgrid_steps = [150, 50, 50]
+default_pointgrid_steps = [200, 200, 200]
 default_pointgrid = [
     [x, y, z]
     for x in range(
@@ -114,13 +114,13 @@ class SDFfromCadQuery:
         return d
 
     def sdf_at_pointgrid(self) -> list[float]:
-        if self.in_mms:
+        if self.__in_mms:
             return self.__sdf_at_pointgrid
         else:
             return [s / 1000.0 for s in self.__sdf_at_pointgrid]  # convert to meters
 
     def pointgrid(self) -> list[list[float]]:
-        if self.in_mms:
+        if self.__in_mms:
             return self.__pointgrid
         else:
             return [[x / 1000.0, y / 1000.0, z / 1000.0] for x, y, z in self.__pointgrid]
