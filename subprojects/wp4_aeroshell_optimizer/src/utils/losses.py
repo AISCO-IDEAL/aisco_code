@@ -76,10 +76,10 @@ class SDFLosses:
         self,
         model: SDFNetwork,
         inner_box: cq.Solid = innerNBZ(
-        random_magnitude_chassis=0.0,
-        random_magnitude_seat=0.0,
-        random_magnitude_wheels=0.0,
-    ),
+            random_magnitude_chassis=0.0,
+            random_magnitude_seat=0.0,
+            random_magnitude_wheels=0.0,
+        ),
         outer_box: cq.Solid = outerNBZ(),
         pointgrid: list[list[float]] = None,
     ) -> torch.Tensor:

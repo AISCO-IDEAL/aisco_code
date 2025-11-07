@@ -26,8 +26,20 @@ class SDFNetwork(nn.Module):
                 nn.init.zeros_(m.bias)
 
     def forward(self, x, return_laplacian=False):
-        original_x = x * 1000  # convert to mm for consistency, eschaerer
-        x = F.leaky_relu(self.input_layer(x), negative_slope=0.1)
+        """
+        Args:
+            x: Coordinate points of shape (N, 3), i.e. a tensor of 3D points.
+                Example: x = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+            return_laplacian: If True, also compute and return the Laplacian of the SDF.
+                The laplacian is the sum of second derivatives of the SDF with respect to input coordinates.
+                It is useful for certain regularization techniques during training.
+        Returns:
+            sdf: Signed distance values of shape (N,). (in millimeters)
+            grad_sdf: Gradients of the SDF with respect to input points of shape (N, in_dim). (in millimeters)
+            laplacian_sdf: (Optional) Laplacian of the SDF of shape (N,). (in millimeters)
+        """
+        original_x = x / 1000.0  # Scale input to meters
+        x = F.leaky_relu(self.input_layer(original_x), negative_slope=0.1)
         for i, layer in enumerate(self.middle_layers):
             if i % 2 == 0:
                 x = torch.tanh(layer(x))
@@ -71,7 +83,7 @@ class SDFNetwork(nn.Module):
                     only_inputs=True,
                 )[0]
                 laplacian_sdf += second_deriv[:, dim]
-            return sdf, grad_sdf, laplacian_sdf
+            return sdf * 1000, grad_sdf, laplacian_sdf
         else:
             # During inference, return only SDF and None for grad/laplacian
-            return sdf, None
+            return sdf * 1000, None
