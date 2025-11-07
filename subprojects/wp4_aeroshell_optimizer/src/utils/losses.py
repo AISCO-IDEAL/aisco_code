@@ -51,14 +51,14 @@ class SDFLosses:
         # Setup for bounding box loss 2
         self.__inner_bb_points = [
             point
-            for point, sdf_value in zip(pointgrid, inner_sdf_values, strict=False)
+            for point, sdf_value in zip(self.__pointgrid, self.__inner_sdf_values, strict=False)
             if sdf_value < 0
         ]
 
         # get all points where sdf is positive (outside the outer box)
         self.__outer_bb_points = [
             point
-            for point, sdf_value in zip(pointgrid, outer_sdf_values, strict=False)
+            for point, sdf_value in zip(self.__pointgrid, self.__outer_sdf_values, strict=False)
             if sdf_value > 0
         ]
         
