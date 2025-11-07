@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=AISCO_Test_SLURM
-#SBATCH --time=00:10:00                   # Adjust time as needed
+#SBATCH --job-name=Clemens_Test_SLURM
+#SBATCH --time=01:00:00                   # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=5G                  # Total 5G memory

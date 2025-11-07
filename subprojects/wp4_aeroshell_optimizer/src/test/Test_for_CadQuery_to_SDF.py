@@ -1,11 +1,14 @@
 """
 In this file the CadQueryToSDF class from CadQuery_to_SDF.py is tested with a simple shapes.
-Run this file by running the two follwoing commands in the terminal:
-
-cd /cluster/home/clhuber/AISCO-code
-
-python -m subprojects.wp4_aeroshell_optimizer.src.test.Test_for_CadQuery_to_SDF
+Set testcase to one of the following values to test different shapes:
+- 1: cylinder
+- 2: cube
+- 3: innerNBZ from wp2_assembler version1
+- 4: outerNBZ from wp2_assembler version1
 """
+
+testcase = 4
+
 from typing import cast
 
 import cadquery as cq
@@ -16,32 +19,35 @@ from ....wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
 from ..utils.CadQuery_to_SDF import SDFfromCadQuery
 
 username = "clhuber"
+h = ""  # string to hold csv header info
 sdf_converter: SDFfromCadQuery
 # test with a Cylinder
-if False:
+if testcase == 1:
     cylinder = cq.Workplane("XY").circle(500).extrude(200).objects[0]
     cylinder = cast(cq.Shape, cylinder)
     # print(type(cylinder))
     sdf_converter = SDFfromCadQuery(cylinder)
 
 # test with a cube
-if False:
+if testcase == 2:
     cube = cq.Workplane("XY").box(0.75, 0.75, 0.75).objects[0]
     cube = cast(cq.Shape, cube)
     sdf_converter = SDFfromCadQuery(cube)
 
 # use the innerNBZ from wp2_assembler
-if True:
+if testcase == 3:
     inner_nbz_shape = innerNBZ(
         random_magnitude_chassis=0.0,
         random_magnitude_seat=0.0,
         random_magnitude_wheels=0.0,
     )
+    h += f"Volume of innerNBZ: {inner_nbz_shape.Volume()} mm^3\n"
     sdf_converter = SDFfromCadQuery(inner_nbz_shape)
 
 # use the outerNBZ from wp2_assembler
-if False:
+if testcase == 4:
     outer_nbz_shape = outerNBZ()
+    h += f"Volume of outerNBZ: {outer_nbz_shape.Volume()} mm^3\n"
     sdf_converter = SDFfromCadQuery(outer_nbz_shape)
 
 sdf_valus = sdf_converter.sdf_at_pointgrid()
@@ -54,9 +60,10 @@ z_values = np.unique(pointgrid_np[:, 2])
 
 # picking certain layers to plot
 layers_to_plot = [-1000, -200, 0, 50, 100, 150, 200, 250, 300, 400, 500,1000, 2000, 2900]
+layers_to_plot = [z+1 for z in layers_to_plot]
 z_values = np.array([z for z in layers_to_plot if z in z_values])
 
-csv_string = f"{type(sdf_converter._shape)}"  # initialize csv string with header
+csv_string = h  # initialize csv string with header
 
 for z in z_values:
     mask = pointgrid_np[:, 2] == z
@@ -66,14 +73,14 @@ for z in z_values:
 
     # create a imshow plot
     plt.figure()
-    plt.tricontourf(x_vals, y_vals, sdf_vals_layer, cmap="coolwarm", levels=[-1000, -500, -400, -300, -200, -100, 0, 100, 400, 500, 1000])
+    plt.tricontourf(x_vals, y_vals, sdf_vals_layer, cmap="coolwarm", levels=14)
     plt.colorbar(label='SDF Value')
     plt.title(f'SDF values at z={z}')
     plt.xlabel('X')
     plt.ylabel('Y')
     plt.axis('equal')
     # save the figure at a certain path
-    plt.savefig(f'/cluster/home/{username}/AISCO-code/subprojects/wp4_aeroshell_optimizer/data/sdf_conversions_tests/sdf_layer_z_{z:.2f}.png')
+    plt.savefig(f'/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/sdf_conversions_tests/sdf_layer_z_{z:.2f}.png')
     plt.close()
     # add centre values to csv string - find closest point to (0,0,z)
     distances = np.sqrt((x_vals - 0)**2 + (y_vals - 0)**2)
@@ -81,23 +88,9 @@ for z in z_values:
     closest_sdf_value = sdf_vals_layer[closest_index]
     csv_string += f"\n{z},{closest_sdf_value}"
 
+csv_string += f"\n{sdf_converter.volume()} "
 # save csv string to a file
-with open(f'/cluster/home/{username}/AISCO-code/subprojects/wp4_aeroshell_optimizer/data/sdf_conversions_tests/sdf_centre_values.csv', 'w') as f:
+with open(f'/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/sdf_conversions_tests/sdf_centre_values.csv', 'w') as f:
     f.write(csv_string)
 
-# plot the SDV vales at z=200, y=0 and varrying x
-for z in range(0, 1650, 50):
-    z_fixed = z # 200
-    y_fixed = 50
-    mask = pointgrid_np[:, 2] == z_fixed
-    mask = mask & (pointgrid_np[:, 1] == y_fixed)
-    x_vals = pointgrid_np[mask][:, 0]
-    sdf_vals_line = sdf_values_np[mask]
-    plt.figure()
-    plt.plot(x_vals, sdf_vals_line, marker='o')
-    plt.title(f'SDF values at z={z_fixed}, y={y_fixed}')
-    plt.xlabel('X')
-    plt.ylabel('SDF Value')
-    plt.grid()
-    plt.savefig(f'/cluster/home/{username}/AISCO-code/subprojects/wp4_aeroshell_optimizer/data/sdf_conversions_tests/sdf_line_z_{z_fixed}_y_{y_fixed}.png')
-    plt.close()
+
