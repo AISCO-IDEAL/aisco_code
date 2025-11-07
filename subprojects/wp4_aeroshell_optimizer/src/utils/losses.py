@@ -214,7 +214,7 @@ class SDFLosses:
             model: The SDF network
             resolution: Resolution for area computation
         """
-        vertices, faces = get_diff_mesh(model)
+        vertices, faces = get_diff_mesh(model,grid_res=64)
         ########### DEBUG PRINTS ############
         print("--- Mesh Debug ---")
         print("Vertices shape:", vertices.shape)
@@ -279,7 +279,7 @@ class SDFLosses:
         return -self.weights[5] * top_area  # Negative for maximization
 
     def get_total_loss(
-        self, model: SDFNetwork, points: torch.Tensor, epoch_name: str = "-1"
+        self, model: SDFNetwork, points: torch.Tensor, epoch_name: int = -1
     ) -> torch.Tensor:
         l1 = self.eikonal_loss(model, points)
         l2 = self.smoothness_loss(model, points)
@@ -302,16 +302,14 @@ class SDFLosses:
         self.loss_tracker.add_epoch(losses)
 
         # logging with wandb, added by eschaerer
-        wandb.log(
-            {
-                "losses/eikonal_loss": l1.item(),
-                "losses/smoothness_loss": l2.item(),
-                "losses/bounding_box_loss": l3.item(),
-                "losses/frontal_area_loss": l4.item(),
-                "losses/drag_loss": l5.item(),
-                "losses/solar_area_loss": l6.item(),
-            }
-        )
+        wandb.log({
+            f"losses/eikonal_loss": l1.item(),
+            f"losses/smoothness_loss": l2.item(),
+            f"losses/bounding_box_loss": l3.item(),
+            f"losses/frontal_area_loss": l4.item(),
+            f"losses/drag_loss": l5.item(),
+            f"losses/solar_area_loss": l6.item(),
+        },step=epoch_name)
 
         return (
             l1 / 1.4 + l2 / 2.5 + l3 / 4 + 0 * l4 / 30 + l5 / 1000 + l6 / 40 + l7

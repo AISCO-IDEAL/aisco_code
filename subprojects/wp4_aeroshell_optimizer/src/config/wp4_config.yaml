@@ -7,9 +7,9 @@ general_info:
   Post: "a PLY file representing the optimized aeroshell shape"
 
 training_params:
-  learning_rate: 0.01
+  learning_rate: 0.0005
   batch_size: 4096
-  num_epochs: 80
+  num_epochs: 150
   model_capacity: 256
   num_layers: 8
   skip_connections: [4]

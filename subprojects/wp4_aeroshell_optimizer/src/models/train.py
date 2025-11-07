@@ -1,7 +1,7 @@
 import datetime
 import os
 import typing as T
-
+import tempfile
 import numpy as np
 import torch
 import wandb
@@ -9,7 +9,7 @@ import wandb
 from ..models.sdf import SDFNetwork
 from ..utils.losses import SDFLosses
 from ..utils.sdf2mesh import save_sdf2mesh
-
+from ..utils.kaolin_utils import get_diff_mesh, flexicubes_to_PLY
 
 def train_sdf_model(
     model: SDFNetwork,
@@ -48,7 +48,14 @@ def train_sdf_model(
         total_loss.backward()
         optimizer.step()
         if track_run:
-            wandb.log({"epoch": epoch, "total_loss": total_loss.item()})
+            wandb.log({"epoch": epoch, "total_loss": total_loss.item()},step=epoch)
+            if epoch %1 == 0:
+                verts,faces = get_diff_mesh(model,grid_res=64,device="cuda")
+                mesh = flexicubes_to_PLY(verts, faces,save_mesh=False)
+                with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
+                    mesh.export(tmp.name, file_type="stl")
+                    wandb.log({"sdf_mesh": wandb.Object3D(tmp.name)}, step=epoch)
+        
         if epoch % 10 == 0:
             print(f"Epoch {epoch}, Total Loss: {total_loss.item():.4f}")
 
