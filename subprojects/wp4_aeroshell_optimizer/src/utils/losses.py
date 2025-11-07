@@ -27,7 +27,7 @@ class SDFLosses:
         self, weights: list[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dev: str = "cuda"
     ):
         assert len(weights) == 6, (
-            "Weights must match the number of losses: [eikonal, smoothness, bounding_box, watertightness, fronatl_area, solar_area]"
+            "Weights must match the number of losses: [eikonal, smoothness, bounding_box_1, bounding_box_2, fronatl_area, solar_area]"
         )
         self.weights = weights
         self.device = dev
@@ -127,7 +127,7 @@ class SDFLosses:
 
         # Batch forward
         with torch.enable_grad():
-            sdf_pred, _ = model(P)  # expect shape [N,1] or [N]
+            sdf_pred = model(P)  
         sdf_pred = sdf_pred.squeeze(-1)  # [N]
 
         # Box constraints: clamp violations with ReLU
@@ -284,7 +284,7 @@ class SDFLosses:
         l1 = self.eikonal_loss(model, points)
         l2 = self.smoothness_loss(model, points)
         l3 = self.bounding_boxes_loss_1(model)
-        l4 = self.bounding_box_loss_2(model)
+        # l4 = self.bounding_box_loss_2(model)
         l5 = self.frontal_area_loss(model)
         l6 = self.drag_loss(model)
         l7 = self.solar_area_loss(model)
@@ -295,13 +295,13 @@ class SDFLosses:
             f"losses/eikonal_loss": l1.item(),
             f"losses/smoothness_loss": l2.item(),
             f"losses/bounding_box_loss": l3.item(),
-            f"losses/frontal_area_loss": l4.item(),
+            # f"losses/frontal_area_loss": l4.item(),
             f"losses/drag_loss": l5.item(),
             f"losses/solar_area_loss": l6.item(),
         },step=epoch_name)
 
         return (
-            l1 / 1.4 + l2 / 2.5 + l3 / 4 + 0 * l4 / 30 + l5 / 1000 + l6 / 40 + l7
+            l1 / 1.4 + l2 / 2.5 + l3 / 4 + l5 / 1000 + l6 / 40 + l7
         )  # normed by hand for debugging purposes
 
 
