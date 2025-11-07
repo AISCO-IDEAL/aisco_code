@@ -1,3 +1,0 @@
-Many modules are hidden in this stack. Use "module --show_hidden spider SOFTWARE" if you are not able to find the required software
-/cluster/home/elihuber/venvs/aisco-code/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: Attempting to run cuBLAS, but there was no current CUDA context! Attempting to set the primary context... (Triggered internally at /pytorch/aten/src/ATen/cuda/CublasHandlePool.cpp:270.)
-  return F.linear(input, self.weight, self.bias)
