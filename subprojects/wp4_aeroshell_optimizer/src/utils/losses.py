@@ -33,6 +33,36 @@ class SDFLosses:
         self.device = dev
         self.loss_tracker = LossTracker(
             ["eikonal", "smoothness", "bounding_box", "frontal_area", "solar_area"]
+
+
+        # initialize the Bounding Boxes here to avoid re-creating them every time
+        self.__in_mms = False
+                # Create SDFs for inner and outer boxes
+        inner_box: cq.Solid = innerNBZ(
+            random_magnitude_chassis=0.0,
+            random_magnitude_seat=0.0,
+            random_magnitude_wheels=0.0,
+        )
+        self.__inner_SDF: SDFfromCadQuery = SDFfromCadQuery(inner_box, in_mms=self.__in_mms)
+        outer_box: cq.Solid = outerNBZ()
+        self.__outer_SDF: SDFfromCadQuery = SDFfromCadQuery(outer_box, in_mms=self.__in_mms)
+        self.__pointgrid: list[list[float]] = self.__inner_SDF.pointgrid()
+        self.__inner_sdf_values: list[float] = self.__inner_SDF.sdf_at_pointgrid()
+        self.__outer_sdf_values: list[float] = self.__outer_SDF.sdf_at_pointgrid()
+
+        # Setup for bounding box loss 2
+        self.__inner_bb_points = [
+            point
+            for point, sdf_value in zip(pointgrid, inner_sdf_values, strict=False)
+            if sdf_value < 0
+        ]
+
+        # get all points where sdf is positive (outside the outer box)
+        self.__outer_bb_points = [
+            point
+            for point, sdf_value in zip(pointgrid, outer_sdf_values, strict=False)
+            if sdf_value > 0
+        ]
         )
 
     def eikonal_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
@@ -72,17 +102,7 @@ class SDFLosses:
         sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True)
         return self.weights[1] * (laplacian_sdf**2).mean()
 
-    def bounding_boxes_loss_1(
-        self,
-        model: SDFNetwork,
-        inner_box: cq.Solid = innerNBZ(
-            random_magnitude_chassis=0.0,
-            random_magnitude_seat=0.0,
-            random_magnitude_wheels=0.0,
-        ),
-        outer_box: cq.Solid = outerNBZ(),
-        pointgrid: list[list[float]] = None,
-    ) -> torch.Tensor:
+    def bounding_boxes_loss_1(self, model: SDFNetwork) -> torch.Tensor:
         """
         Arguments:
             model: The SDF network                                              NO Default!!
@@ -96,28 +116,15 @@ class SDFLosses:
             sdf_outer(p) <= sdf_model(p) <= sdf_inner(p)
         Loss = mean( relu(sdf_model - sdf_inner) + relu(sdf_outer - sdf_model) )
         """
-        # Defaults (build backup assembly once)
-        if inner_box is None or outer_box is None:
-            backup_assembly = BackupAssembly()
-            if inner_box is None:
-                inner_box = backup_assembly.inner_solid()
-            if outer_box is None:
-                outer_box = backup_assembly.outer_solid()
-
-        # Evaluate reference SDFs (assumed to return arrays aligned with pointgrid)
-        inner = SDFfromCadQuery(inner_box, in_mms=False)
-        outer = SDFfromCadQuery(outer_box, in_mms=False)
-        sdf_inner = inner.sdf_at_pointgrid()  # shape [N]
-        sdf_outer = outer.sdf_at_pointgrid()  # shape [N]
 
         # Device & tensors
         device = next(model.parameters()).device
-        P = torch.tensor(pointgrid, dtype=torch.float32, device=self.device)  # [N,3]
+        P = torch.tensor(self.__pointgrid, dtype=torch.float32, device=self.device)  # [N,3]
         sdf_inner_t = torch.as_tensor(
-            sdf_inner, dtype=torch.float32, device=self.device
+            self.__inner_sdf_values , dtype=torch.float32, device=self.device
         )  # [N]
         sdf_outer_t = torch.as_tensor(
-            sdf_outer, dtype=torch.float32, device=self.device
+            self.__outer_sdf_values, dtype=torch.float32, device=self.device
         )  # [N]
 
         # Batch forward
@@ -138,41 +145,12 @@ class SDFLosses:
         Calculates a Bounding Box Loss based on an Idea of Alex
         """
 
-        # Create SDFs for inner and outer boxes
-        inner_box: cq.Solid = innerNBZ(
-            random_magnitude_chassis=0.0,
-            random_magnitude_seat=0.0,
-            random_magnitude_wheels=0.0,
-        )
-        inner_SDF: SDFfromCadQuery = SDFfromCadQuery(inner_box, in_mms=False)
-        outer_box: cq.Solid = outerNBZ()
-        outer_SDF: SDFfromCadQuery = SDFfromCadQuery(outer_box, in_mms=False)
-
-        # get pointgrid and sdf values of both boxes
-        pointgrid: list[list[float]] = inner_SDF.pointgrid()
-        inner_sdf_values: list[float] = inner_SDF.sdf_at_pointgrid()
-        outer_sdf_values: list[float] = outer_SDF.sdf_at_pointgrid()
-
-        # get all points where sdf is negative (inside the inner box)
-        inner_bb_points = [
-            point
-            for point, sdf_value in zip(pointgrid, inner_sdf_values, strict=False)
-            if sdf_value < 0
-        ]
-
-        # get all points where sdf is positive (outside the outer box)
-        outer_bb_points = [
-            point
-            for point, sdf_value in zip(pointgrid, outer_sdf_values, strict=False)
-            if sdf_value > 0
-        ]
-
         # get the SDF model values at these points
         inner_bb_points_model = model(
-            torch.tensor(inner_bb_points, dtype=torch.float32, device=self.device)
+            torch.tensor(self.__inner_bb_points, dtype=torch.float32, device=self.device)
         )
         outer_bb_points_model = model(
-            torch.tensor(outer_bb_points, dtype=torch.float32, device=self.device)
+            torch.tensor(self.__outer_bb_points, dtype=torch.float32, device=self.device)
         )
 
         # compute the loss
