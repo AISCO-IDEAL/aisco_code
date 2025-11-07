@@ -16,6 +16,19 @@ no_build_zones:
     height: 1650  # mm from ground
     length: 5800  # mm 
     width: 2300   # mm
+  
+  wheel_based_rules:
+    front_overhang: 0.6       # percentage, with 1 = 100%
+    rear_overhang: 0.6        # percentage, with 1 = 100%
+    road_apex_incline : 15  # in degrees. 3.81 degrees = 1:15 incline
+    approach_angle: 10        # in degrees
+    departure_angle: 10       # in degrees
+    speed_hump:
+      height: 75              # mm
+      inner_lenght: 100       # mm
+      outer_lenght: 150       # mm
+
+
 
   
 # Wheel and tire specs
