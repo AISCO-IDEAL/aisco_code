@@ -5,7 +5,7 @@ from wp1_cfd_ai.crude_estimator.crude_estimator_diff import (
     calculateCdProxyDifferentiable,
 )
 
-from ....wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
+from wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
 from ..models.sdf import SDFNetwork
 from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
 from ..utils.tracking_loss_for_vis import LossTracker
@@ -214,6 +214,7 @@ class SDFLosses:
         """
         vertices, faces = get_diff_mesh(model,grid_res=64)
         ########### DEBUG PRINTS ############
+        """
         print("--- Mesh Debug ---")
         print("Vertices shape:", vertices.shape)
         print("Faces shape:", faces.shape)
@@ -226,6 +227,7 @@ class SDFLosses:
             vertices[:5] if vertices.numel() > 0 else "Empty",
         )
         print("Faces sample (first 5):", faces[:5] if faces.numel() > 0 else "Empty")
+        """
         ######################################
         drag = calculateCdProxyDifferentiable(vertices)
 
