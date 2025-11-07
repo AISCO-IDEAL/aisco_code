@@ -34,7 +34,7 @@ class SDFLosses:
         
 
         # initialize the Bounding Boxes here to avoid re-creating them every time
-        self.__in_mms = False
+        self.__in_mms = True
                 # Create SDFs for inner and outer boxes
         inner_box: cq.Solid = innerNBZ(
             random_magnitude_chassis=0.0,
