@@ -85,7 +85,7 @@ cd /cluster/home/$USERNAME/AISCO_code/subprojects
 # Run wp4 main as a module (so relative imports work!)
 ################################################################################
 cd /cluster/home/$USERNAME/AISCO_code
-python3 -m subprojects.wp4_aeroshell_optimizer.src.test.Test_of_Loss\
+python3 -m subprojects.wp4_aeroshell_optimizer.src.utils.Export_as_stl\
     --save_model \
     --problem_id="AISCO_WP4_Test1" 2>&1 # 2>&1 leitet alle Fehler (stderr) in die .out-Datei um, sodass du siehst, was schiefgeht
 #------------------------------------------------------------------------------
