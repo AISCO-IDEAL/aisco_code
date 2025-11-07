@@ -4,6 +4,7 @@ import wandb
 from wp1_cfd_ai.crude_estimator.crude_estimator_diff import \
     calculateCdProxyDifferentiable
 
+from ....wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
 from ..models.sdf import SDFNetwork
 from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
 from ..utils.tracking_loss_for_vis import LossTracker
@@ -73,8 +74,12 @@ class SDFLosses:
     def bounding_boxes_loss(
         self,
         model: SDFNetwork,
-        inner_box: cq.Shape = None,
-        outer_box: cq.Shape = None,
+        inner_box: cq.Solid = innerNBZ(
+        random_magnitude_chassis=0.0,
+        random_magnitude_seat=0.0,
+        random_magnitude_wheels=0.0,
+    ),
+        outer_box: cq.Solid = outerNBZ(),
         pointgrid: list[list[float]] = None,
     ) -> torch.Tensor:
         """
@@ -98,14 +103,9 @@ class SDFLosses:
             if outer_box is None:
                 outer_box = backup_assembly.outer_solid()
 
-        if pointgrid is None:
-            # 21^3 grid from -2..2
-            coords = [i / 5 for i in range(-10, 11)]
-            pointgrid = [[x, y, z] for x in coords for y in coords for z in coords]
-
         # Evaluate reference SDFs (assumed to return arrays aligned with pointgrid)
-        inner = SDFfromCadQuery(inner_box, pointgrid)
-        outer = SDFfromCadQuery(outer_box, pointgrid)
+        inner = SDFfromCadQuery(inner_box, in_mms=False)
+        outer = SDFfromCadQuery(outer_box, in_mms=False)
         sdf_inner = inner.sdf_at_pointgrid()  # shape [N]
         sdf_outer = outer.sdf_at_pointgrid()  # shape [N]
 
