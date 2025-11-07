@@ -1,5 +1,6 @@
 import cadquery as cq
 import torch
+import wandb
 from wp1_cfd_ai.crude_estimator.crude_estimator_diff import \
     calculateCdProxyDifferentiable
 
@@ -8,7 +9,7 @@ from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
 from ..utils.tracking_loss_for_vis import LossTracker
 from .kaolin_utils import get_diff_mesh
 
-# Losses being defined here: 
+# Losses being defined here:
 # - Eikonal Loss [ES]
 # - Smoothness Loss [ES]
 # - Bounding Boxes Loss [CH]
@@ -17,6 +18,7 @@ from .kaolin_utils import get_diff_mesh
 # - Drag Loss [ES] (to be implemented)
 # - Solar Area Loss [AA]
 # - Total Loss (weighted sum of all losses)
+
 
 class SDFLosses:
     def __init__(
@@ -67,7 +69,7 @@ class SDFLosses:
         """
         sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True)
         return self.weights[1] * (laplacian_sdf**2).mean()
-    
+
     def bounding_boxes_loss(
         self,
         model: SDFNetwork,
@@ -216,11 +218,24 @@ class SDFLosses:
             resolution: Resolution for area computation
         """
         vertices, faces = get_diff_mesh(model)
-
+        ########### DEBUG PRINTS ############
+        print("--- Mesh Debug ---")
+        print("Vertices shape:", vertices.shape)
+        print("Faces shape:", faces.shape)
+        if vertices.numel() == 0:
+            print("WARNING: Empty vertices!")
+        if faces.numel() == 0:
+            print("WARNING: Empty faces!")
+        print(
+            "Vertices sample (first 5):",
+            vertices[:5] if vertices.numel() > 0 else "Empty",
+        )
+        print("Faces sample (first 5):", faces[:5] if faces.numel() > 0 else "Empty")
+        ######################################
         drag = calculateCdProxyDifferentiable(vertices)
 
         return drag
-        
+
     def solar_area_loss(
         self,
         model: SDFNetwork,
@@ -274,7 +289,7 @@ class SDFLosses:
         l3 = self.bounding_boxes_loss(model)
         l4 = self.frontal_area_loss(model)
         l5 = self.drag_loss(model)
-        l6  = self.solar_area_loss(model)
+        l6 = self.solar_area_loss(model)
 
         # The following two lines track and store the individual losses per epoch
         losses = {
@@ -286,5 +301,22 @@ class SDFLosses:
             "solar_area": l6.item(),
         }
         self.loss_tracker.add_epoch(losses)
+        
+        # logging with wandb, added by eschaerer
+        wandb.log({
+            f"losses/eikonal_loss": l1.item(),
+            f"losses/smoothness_loss": l2.item(),
+            f"losses/bounding_box_loss": l3.item(),
+            f"losses/frontal_area_loss": l4.item(),
+            f"losses/drag_loss": l5.item(),
+            f"losses/solar_area_loss": l6.item(),
+        })
 
-        return l1 + l2 + l3 + l4 + l5 + l6
+        return l1/1.4 + l2/2.5 + l3/4 + 0*l4/30 + l5/1000 + l6/40 # normed by hand for debugging purposes
+
+#### 1. Eikonal loss
+#### 2. Smoothness loss
+#### 3. Bounding box loss
+#### 4. Frontal area loss
+#### 5. Drag loss
+#### 6. Solar area loss

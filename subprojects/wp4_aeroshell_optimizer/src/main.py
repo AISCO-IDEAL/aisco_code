@@ -6,12 +6,8 @@ import yaml
 
 from .models.sdf import SDFNetwork
 from .models.train import train_sdf_model
-from .utils.utils import (
-    check_cuda_health,
-    initialize_cuda,
-    load_pretrained_model,
-    setup_training_environment,
-)
+from .utils.utils import (check_cuda_health, initialize_cuda,
+                          load_pretrained_model, setup_training_environment)
 
 
 def main():
@@ -72,7 +68,7 @@ def main():
     if load_pretrained:
         # This loads a sphere model while we redo the training loop and main structure
         model = torch.load(
-            "wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025-11-04.pth"
+            "wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025-11-06.pth"
         )
     else:
         model = SDFNetwork()
@@ -81,10 +77,10 @@ def main():
     save_dir = config.get("model_dir", "")
     mesh_dir = config.get("mesh_dir", "")
     train_sdf_model(model, config["training_params"], save_dir, mesh_dir, track_run=track_run)
-    
+
     if track_run:
         run.finish()
-    
+
     print("WP4 Main.py executed successfully")
 
 

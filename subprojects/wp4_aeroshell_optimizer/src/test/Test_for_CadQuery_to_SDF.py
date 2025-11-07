@@ -14,8 +14,9 @@ from typing import cast
 import cadquery as cq
 import matplotlib.pyplot as plt
 import numpy as np
+
+from ....wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
 from ..utils.CadQuery_to_SDF import SDFfromCadQuery
-from ....wp2_assembler.version1.components.nbz import outerNBZ, innerNBZ
 
 username = "clhuber"
 h = ""  # string to hold csv header info

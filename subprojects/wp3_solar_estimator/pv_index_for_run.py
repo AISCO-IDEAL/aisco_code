@@ -9,8 +9,8 @@ from AISCO.subprojects.WP3_Solarestimator.read_mesh import (
 
 from subprojects.wp3_solar_estimator.read_mesh import (
     facenormal_angle,
-    sky_face,
     powerratio_iam,
+    sky_face,
 )
 
 

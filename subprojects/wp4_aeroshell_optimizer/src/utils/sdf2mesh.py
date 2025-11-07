@@ -1,9 +1,13 @@
-from .kaolin_utils import get_diff_mesh, flexicubes_to_PLY
+import os
+
 import numpy as np
 import trimesh
-from ..models.sdf import SDFNetwork
 from skimage import measure
-import os
+
+from ..models.sdf import SDFNetwork
+from .kaolin_utils import flexicubes_to_PLY, get_diff_mesh
+
+
 def save_sdf2mesh(
     model,
     grid_size: int = 128,

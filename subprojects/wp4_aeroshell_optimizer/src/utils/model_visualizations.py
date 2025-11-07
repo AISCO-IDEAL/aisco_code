@@ -1,7 +1,9 @@
-import visualtorch
-import torch
-from ..models.sdf import SDFNetwork
 import matplotlib.pyplot as plt
+import torch
+import visualtorch
+
+from ..models.sdf import SDFNetwork
+
 
 def visualize_network(model: SDFNetwork = None,
                       save_dir: str="AISCO-code/subprojects/wp4_aeroshell_optimizer/data/architecture_visualizations/",
@@ -16,7 +18,7 @@ def visualize_network(model: SDFNetwork = None,
         None
 
     """
-    
+
 
     # If no model is provided, create a randomly initiated SDFNetwork
     if not model:
@@ -31,4 +33,3 @@ def visualize_network(model: SDFNetwork = None,
     plt.imshow(img)
     plt.show()
     plt.savefig(f"{save_dir}/{filename}.png", bbox_inches='tight', pad_inches=0, dpi=300)
-    return
