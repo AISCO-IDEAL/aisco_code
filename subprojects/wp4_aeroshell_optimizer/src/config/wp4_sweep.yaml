@@ -1,7 +1,8 @@
 command:
   - ${env}
   - python3
-  - /wp4_aeroshell_optimizer/src/main.py
+  - -m
+  - wp4_aeroshell_optimizer.src.main
 program: main.py
 method: bayes  # or 'random', or 'grid' as needed
 metric:
