@@ -385,7 +385,7 @@ def render_cq_solids_and_ply(
 if __name__ == "__main__":
 
     # Replace with your actual PLY file path
-    ply_file = "/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh.ply"
+    ply_file = "/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh1.ply"
 
     out = render_cq_solids_and_ply(
         solid_a=innerNBZ(),
