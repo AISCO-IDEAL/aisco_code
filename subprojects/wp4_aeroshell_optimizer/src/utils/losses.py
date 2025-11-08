@@ -134,7 +134,7 @@ class SDFLosses:
         upper_violation = torch.relu(sdf_pred - sdf_inner_t)
         lower_violation = torch.relu(sdf_outer_t - sdf_pred)
 
-        loss = (upper_violation + lower_violation).mean()
+        loss = (upper_violation + lower_violation).mean()**0.5
 
         return self.weights[2] * loss
 
@@ -152,8 +152,8 @@ class SDFLosses:
         )[0]
 
         # compute the loss
-        inner_loss = torch.relu(inner_bb_points_model[0]).mean()
-        outer_loss = torch.relu(-outer_bb_points_model[0]).mean()
+        inner_loss = torch.relu(inner_bb_points_model[0]).mean()**0.5
+        outer_loss = torch.relu(-outer_bb_points_model[0]).mean()**0.5
         total_loss = inner_loss + outer_loss
         return self.weights[3] * total_loss
 
