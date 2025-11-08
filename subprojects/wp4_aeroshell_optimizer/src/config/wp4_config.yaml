@@ -9,15 +9,15 @@ general_info:
 
 # loss: [active (enables computing & logging (bool), weight (float)]
 losses:
-  eikonal: [true, 1.0]
-  smoothness: [true, 1.0]
-  bounding_boxes_1: [true, 1.0]
-  bounding_boxes_2: [true, 1.0]
-  watertightness: [true, 1.0]
-  frontal_area: [true, 10.0]
-  drag: [true, 100.0]
-  solar_area: [true, 10.0]
-  total: [true, 1.0]
+  eikonal: [True, 1.0]
+  smoothness: [True, 1.0]
+  bounding_boxes_1: [True, 1.0]
+  bounding_boxes_2: [True, 1.0]
+  watertightness: [True, 1.0]
+  frontal_area: [True, 10.0]
+  drag: [True, 100.0]
+  solar_area: [False, 10.0]
+  total: [True, 1.0]
 
 training_params:
   learning_rate: 0.0008
