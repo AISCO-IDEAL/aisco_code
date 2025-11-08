@@ -1,15 +1,17 @@
 import datetime
 import os
-import typing as T
 import tempfile
+import typing as T
+
 import numpy as np
 import torch
 import wandb
 
 from ..models.sdf import SDFNetwork
+from ..utils.kaolin_utils import flexicubes_to_PLY, get_diff_mesh
 from ..utils.losses import SDFLosses
 from ..utils.sdf2mesh import save_sdf2mesh
-from ..utils.kaolin_utils import get_diff_mesh, flexicubes_to_PLY
+
 
 def train_sdf_model(
     model: SDFNetwork,
@@ -18,7 +20,7 @@ def train_sdf_model(
     mesh_path: str = None,
     model_name: str = "sdf_model",
     mesh_name: str = "sdf_mesh",
-    track_run: bool = False
+    track_run: bool = False,
 ) -> SDFNetwork:
     """
     Train the given SDFNetwork model based on the provided configuration.
@@ -39,23 +41,25 @@ def train_sdf_model(
     learning_rate = float(train_config.get("learning_rate", 1e-4))
     num_epochs = train_config["num_epochs"]
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    loss_fn = SDFLosses(weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+    loss_fn = SDFLosses()
 
     for epoch in range(num_epochs):
         points = (torch.rand(1000, 3, requires_grad=True, device="cuda") - 0.5) * 10
         optimizer.zero_grad()
-        total_loss = loss_fn.get_total_loss(model=model, points=points, epoch_name=epoch)
+        total_loss = loss_fn.get_total_loss(
+            model=model, points=points, epoch_name=epoch
+        )
         total_loss.backward()
         optimizer.step()
         if track_run:
-            wandb.log({"epoch": epoch, "total_loss": total_loss.item()},step=epoch)
-            if epoch %1 == 0:
-                verts,faces = get_diff_mesh(model,grid_res=64,device="cuda")
-                mesh = flexicubes_to_PLY(verts, faces,save_mesh=False)
+            wandb.log({"epoch": epoch, "total_loss": total_loss.item()}, step=epoch)
+            if epoch % 1 == 0:
+                verts, faces = get_diff_mesh(model, grid_res=64, device="cuda")
+                mesh = flexicubes_to_PLY(verts, faces, save_mesh=False)
                 with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
                     mesh.export(tmp.name, file_type="stl")
                     wandb.log({"sdf_mesh": wandb.Object3D(tmp.name)}, step=epoch)
-        
+
         if epoch % 10 == 0:
             print(f"Epoch {epoch}, Total Loss: {total_loss.item():.4f}")
 
