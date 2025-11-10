@@ -29,6 +29,10 @@ no_build_zones:
       outer_lenght: 150       # mm
 
 
+seat:
+  position:
+    min_distance_to_back_wheel: 300   # mm from backwheel to seating position
+  dimensions:
 
   
 # Wheel and tire specs
@@ -40,6 +44,8 @@ wheel:
   margin_radial: 20  # mm minimum clearance around tire will go outside outer NBZ
 
   base:
+    min_length: 2000  # mm
+    min_width: 500  # mm
     max_front_margin: 600  # mm distance to front of outerNBZ to wheel base front edge - random value
     max_rear_margin: 600   # mm distance to rear of outerNBZ to wheel base rear edge - random value
   

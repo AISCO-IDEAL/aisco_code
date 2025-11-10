@@ -30,7 +30,7 @@ class Wheels:
         """Return a description of the wheel configuration."""
         return f"This vehicle has {self.wheel_count} wheels with diameter {self.wheel_diameter}m and width {self.wheel_width}m."
 
-    def create_wheel(self) -> cq.Workplane:
+    def create_wheel(self, diameter: int = 596) -> cq.Workplane:
         """
         Create a wheel object based on the specifications.
         Args:
