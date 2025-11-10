@@ -4,11 +4,11 @@ from utils.distributions import truncated_gamma
 
 class Triangle:
     def __init__(self):
-        self.a = cq.Vector(0, 0, 0)
-        self.b = cq.Vector(2000, 500, 0)
-        self.c = cq.Vector(2000, -500, 0)
+        self.a = None
+        self.b = None
+        self.c = None
 
-    def buildRandom(self) -> cq.Workplane:
+    def buildRandom(self) -> "Triangle":
         self.a = cq.Vector(0, 0, 0)
         self.b = cq.Vector(
             truncated_gamma("l"),  # get value lengthwise in x-direction
@@ -20,19 +20,15 @@ class Triangle:
             -self.b.y,
             0,
         )
-        triangle = (
-            cq.Workplane("XY")
-            .moveTo(self.a.x, self.a.y)  # Explicitly start at point a
-            .lineTo(self.b.x, self.b.y)  # Draw to point b
-            .lineTo(self.c.x, self.c.y)  # Draw to point c
-            .close()  # Close back to point a
-        )
-        return triangle
+        return self
 
-    def build(self, wheel_base_length: int, wheel_base_width: int) -> cq.Workplane:
+    def build(self, wheel_base_length: int, wheel_base_width: int) -> "Triangle":
         self.a = cq.Vector(0, 0, 0)
         self.b = cq.Vector(wheel_base_length, wheel_base_width / 2, 0)
         self.c = cq.Vector(wheel_base_length, -wheel_base_width / 2, 0)
+        return self
+
+    def construct(self) -> cq.Workplane:
         triangle = (
             cq.Workplane("XY")
             .moveTo(self.a.x, self.a.y)  # Explicitly start at point a

@@ -1,15 +1,14 @@
 import random
+from pathlib import Path
 
 import cadquery as cq
-from matplotlib.pylab import number
-from components.outer.outer_box import outerBox
+import yaml
 from utils.reg_imp import get_regulation
 
 from .inner.base_triangle import Triangle
 from .inner.seat import Seat
 from .inner.wheels import Wheels
-import yaml
-from pathlib import Path
+from .outer.outer_box import outerBox
 
 
 def inner_nbz2_sym_rand():
@@ -50,7 +49,7 @@ def inner_nbz2_sym_rand():
         )
         .add(
             seat,
-            loc=cq.Location(random.randint(0, int(points[2].x)), 0, -100),
+            loc=cq.Location(random.randint(0, float(points[2].x)), 0, -100),
             name="Seat",
         )
     )
@@ -122,7 +121,7 @@ def save_assembly_parameters(parameters: dict) -> str:
     # Get next ID number
     if assembly_map:
         # Keys are strings like '001', '002', etc.
-        id_numbers = [int(key) for key in assembly_map.keys()]
+        id_numbers = [float(key) for key in assembly_map]
         next_id = max(id_numbers) + 1
     else:
         next_id = 1
@@ -152,9 +151,9 @@ def call_assembly(id_number: int) -> cq.Assembly:
     with config_path.open("r") as file:
         assembly_map = yaml.safe_load(file) or {}
 
-    id_string = f"{id - number:03d}"
+    id_string = f"{id_number:03d}"
     if id_string not in assembly_map:
-        raise ValueError(f"ID {id_string} not found in assembly map.")
+        raise ValueError(f"ID {id_string} not found in assembly map.")  # noqa: TRY003
 
     params = assembly_map[id_string]
 
@@ -170,10 +169,10 @@ def call_assembly(id_number: int) -> cq.Assembly:
 
 def inner_nbz2_sym(
     wheel_base_width=1000,
-    wheel_base_length=3500,
-    tyre_diameter=596,
+    wheel_base_length=2500,
+    tyre_diameter=557,
     seat_position=800,
-    shift=0,
+    shift=-500,
 ):
     """
     Deterministic implementation of innerNBZ for version 2
@@ -181,35 +180,41 @@ def inner_nbz2_sym(
     Returns: cq.shape.solid of inner NBZ shape
     """
     # draw triangle
-    triangle = Triangle().build(wheel_base_length, wheel_base_width)
-    points = Triangle().get_points()
+    triangle = Triangle().build(
+        wheel_base_length, wheel_base_width
+    )  # triangle as Triangle()
+    triangle_wp = triangle.construct()  # triangle as cq.workplane
+    points = triangle.get_points()
 
     # add wheels to the corners of the triangle
     wheel = Wheels().create_wheel(tyre_diameter)
 
     seat = Seat().create_seat()
 
+    # Calculate shift vector - shift along x-axis and raise by half the tire diameter
+    shift_vector = cq.Vector(shift, 0, tyre_diameter / 2)
+
     assembly = (
-        cq.Assembly(triangle, name="triangle")
-        # move to 0,0,0
+        cq.Assembly(triangle_wp, name="triangle", loc=cq.Location(shift_vector))
+        # Add wheels with shift applied
         .add(
             wheel,
-            loc=cq.Location(points[0].x, points[0].y, points[0].z),
+            loc=cq.Location(cq.Vector(points[0].x, points[0].y, points[0].z)),
             name="wheel_1",
         )
         .add(
             wheel,
-            loc=cq.Location(points[1].x, points[1].y, points[1].z),
+            loc=cq.Location(cq.Vector(points[1].x, points[1].y, points[1].z)),
             name="wheel_2",
         )
         .add(
             wheel,
-            loc=cq.Location(points[2].x, points[2].y, points[2].z),
+            loc=cq.Location(cq.Vector(points[2].x, points[2].y, points[2].z)),
             name="wheel_3",
         )
         .add(
             seat,
-            loc=cq.Location(seat_position, 0, -100),
+            loc=cq.Location(cq.Vector(seat_position, 0, -100)),
             name="Seat",
         )
     )
@@ -236,7 +241,7 @@ def get_range_wheels() -> dict:
     return ranges
 
 
-def get_range_seat_and_pos(wheelbase_width: int, wheelbase_length: int) -> dict:
+def get_range_seat_and_pos(wheelbase_width: float, wheelbase_length: float) -> dict:
     """
     After wheelbase is generated, get ranges for seat and position from regulations
     Args: regulations.yaml
@@ -254,7 +259,7 @@ def get_range_seat_and_pos(wheelbase_width: int, wheelbase_length: int) -> dict:
     return ranges
 
 
-def outer_nbz2():
+def outer_nbz():
     """
     New implementation of outerNBZ for version 2
     Args: constraints from regulations
