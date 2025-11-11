@@ -36,5 +36,5 @@ model_dir: "wp4_aeroshell_optimizer/data/test_models"
 mesh_dir: "wp4_aeroshell_optimizer/data/test_meshes"
 
 wandb:
-  track_run: True
-  use_sweep: False
+  track_run: true
+  use_sweep: false
