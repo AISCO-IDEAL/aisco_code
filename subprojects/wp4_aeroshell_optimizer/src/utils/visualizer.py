@@ -632,6 +632,7 @@ class CADVisualizer:
             return out_image_path, True
         else:
             return False, False
+            
     def __has_blue_color(self, image_path: str) -> bool:
         """
         Check if the rendered image contains any significant blue color.
