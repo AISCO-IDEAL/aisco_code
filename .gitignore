@@ -204,4 +204,5 @@ ehthumbs.db
 Thumbs.db
 
 **/data/
+**/wandb/
 /aisco_env/
