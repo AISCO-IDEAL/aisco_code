@@ -743,7 +743,7 @@ class CADVisualizer:
                     total_pixels = blue_channel.size
                     blue_pixels = np.sum(blue_dominant)
                     blue_ratio = blue_pixels / total_pixels
-                    
+                    print(f"Blue pixel ratio: {blue_ratio:.6f}")
                     return blue_ratio >= self.__min_blue_ratio
                 else:
                     return False
@@ -868,30 +868,11 @@ class CADVisualizer:
             self.__fill_light_intensity = original_fill_light
 
 if __name__ == "__main__":
-    # Example usage of the new class-based approach
+    # Example usage 
     visualizer = CADVisualizer(
         solid_a=innerNBZ(),
         solid_b=outerNBZ(),
-        ply_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh.ply",
+        ply_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/sdf_mesh_E.ply",
         out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1.png"
     )
     out = visualizer.render_until_blue_detected()
-    print(out)
-    
-    visualizer = CADVisualizer(
-        solid_a=innerNBZ(),
-        solid_b=outerNBZ(),
-        ply_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh1.ply",
-        out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply2.png"
-    )
-    out = visualizer.render_until_blue_detected()
-    print(out)
-    
-    visualizer = CADVisualizer(
-        solid_a=innerNBZ(),
-        solid_b=outerNBZ(),
-        ply_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh_g.ply",
-        out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply3.png"
-    )
-    out = visualizer.render_until_blue_detected()
-    print(out)
