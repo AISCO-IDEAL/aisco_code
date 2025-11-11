@@ -26,6 +26,7 @@ from .kaolin_utils import get_diff_mesh
 # - Total Loss (weighted sum of all losses)
 # WEIGHTING: see config_wp4.yaml
 
+
 class SDFLosses:
     def __init__(self, dev: str = "cuda"):
         self.device = dev
@@ -137,18 +138,17 @@ class SDFLosses:
                 self.__outer_sdf_values, dtype=torch.float32, device=self.device
             )  # [N]
 
-        # Batch forward
-        with torch.enable_grad():
-            sdf_pred = model(P)[0]  
-            sdf_pred = sdf_pred.squeeze(-1)  # [N]
+            # Batch forward
+            with torch.enable_grad():
+                sdf_pred = model(P)[0]
+                sdf_pred = sdf_pred.squeeze(-1)  # [N]
 
-            # Box constraints: clamp violations with ReLU
-            upper_violation = torch.relu(sdf_pred - sdf_inner_t)
-            lower_violation = torch.relu(sdf_outer_t - sdf_pred)
+                # Box constraints: clamp violations with ReLU
+                upper_violation = torch.relu(sdf_pred - sdf_inner_t)
+                lower_violation = torch.relu(sdf_outer_t - sdf_pred)
 
-        loss = (upper_violation + lower_violation).mean()**0.5
-
-        return loss
+            loss = (upper_violation + lower_violation).mean() ** 0.5
+            return loss
 
     def bounding_box_loss_2(self, model: SDFNetwork) -> torch.Tensor:
         """
@@ -169,8 +169,8 @@ class SDFLosses:
             )[0]
 
         # compute the loss
-        inner_loss = torch.relu(inner_bb_points_model[0]).mean()**0.5
-        outer_loss = torch.relu(-outer_bb_points_model[0]).mean()**0.5
+        inner_loss = torch.relu(inner_bb_points_model[0]).mean() ** 0.5
+        outer_loss = torch.relu(-outer_bb_points_model[0]).mean() ** 0.5
         total_loss = inner_loss + outer_loss
         return total_loss
 
@@ -260,6 +260,11 @@ class SDFLosses:
             Negative top area (for maximization, more area = better)
         """
         if self.weights["solar_area"][0] == False:
+            print("Solar area loss disabled.")
+            print(
+                "Type of weights['solar_area'][0]: ",
+                type(self.weights["solar_area"][0]),
+            )
             return 0
         else:
             # Create a grid in the X-Y plane (top projection)
