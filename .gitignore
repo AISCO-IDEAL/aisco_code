@@ -19,6 +19,7 @@ build/
 develop-eggs/
 dist/
 downloads/
+*.egg-info
 # Large 3D models and binary assets — prefer Git LFS or external storage
 *.stl
 *.ply
