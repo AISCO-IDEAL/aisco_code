@@ -68,6 +68,7 @@ def main():
             config=config,
         )
         config = deep_update(config, dict(wandb.config))
+        run.config.update(config, allow_val_change=True)
 
     # Load or initialize model
     load_pretrained = config.get("use_pretrained", False)
