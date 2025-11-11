@@ -841,7 +841,7 @@ class CADVisualizer:
                     total_pixels = blue_channel.size
                     blue_pixels = np.sum(blue_dominant)
                     blue_ratio = blue_pixels / total_pixels
-
+                    print(f"Blue pixel ratio: {blue_ratio:.6f}")
                     return blue_ratio >= self.__min_blue_ratio
                 else:
                     return False
@@ -972,7 +972,7 @@ class CADVisualizer:
 
 
 if __name__ == "__main__":
-    # Example usage of the new class-based approach
+    # Example usage
     visualizer = CADVisualizer(
         solid_a=innerNBZ(),
         solid_b=outerNBZ(),
