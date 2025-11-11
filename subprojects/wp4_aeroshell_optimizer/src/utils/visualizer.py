@@ -18,10 +18,11 @@ from wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
 
 class CADVisualizer:
     """
-    A class for visualizing CadQuery solids and PLY meshes with flexible rendering options.
+    A class for visualizing the two CadQuery solids from the Assembler and the generated PLY mesh.
     """
     
     def __init__(self, 
+                 ply_path: [str],
                  # Rendering parameters
                  image_size: Tuple[int, int] = (1200, 900),
                  bg_color: Tuple[int, int, int, int] = (255, 255, 255, 0),
@@ -52,9 +53,8 @@ class CADVisualizer:
                  blue_threshold: float = 0.1,
                  min_blue_ratio: float = 0.001,
                  # Render until blue detected parameters
-                 solid_a: Optional[cq.Solid] = None,
-                 solid_b: Optional[cq.Solid] = None,
-                 ply_path: Optional[str] = None,
+                 solid_a: [cq.Solid] = innerNBZ(),
+                 solid_b: [cq.Solid] = outerNBZ(),
                  colors: List[Tuple[float, float, float, float]] = None,
                  show_edges: List[bool] = None,
                  out_image_path: str = "render.png",
@@ -630,73 +630,8 @@ class CADVisualizer:
             os.makedirs(os.path.dirname(out_image_path), exist_ok=True)
             imageio.imwrite(out_image_path, color)
             return out_image_path, True
-        
-        # Fallback to matplotlib-based rendering
-        print("Using matplotlib fallback rendering...")
-        try:
-            fig = plt.figure(figsize=(width / 100, height / 100), dpi=100)
-            ax = fig.add_subplot(111, projection='3d')
-            
-            # Set background color
-            fig.patch.set_facecolor([c/255.0 for c in self.__bg_color[:3]])
-            ax.set_facecolor([c/255.0 for c in self.__bg_color[:3]])
-            
-            # Render each mesh
-            for mesh, color_val, show_edge, mesh_type in all_ordered_meshes:
-                if len(mesh.faces) > 0:
-                    # Create 3D polygon collection
-                    poly3d = [[mesh.vertices[vert_idx] for vert_idx in face] for face in mesh.faces]
-                    collection = Poly3DCollection(
-                        poly3d, 
-                        alpha=color_val[3], 
-                        facecolor=color_val[:3],
-                        edgecolor='black' if show_edge else color_val[:3],
-                        linewidth=0.5 if show_edge else 0
-                    )
-                    ax.add_collection3d(collection)
-                else:
-                    # For point clouds or meshes without faces, use scatter plot
-                    ax.scatter(
-                        mesh.vertices[:, 0], 
-                        mesh.vertices[:, 1], 
-                        mesh.vertices[:, 2],
-                        c=[color_val[:3]], 
-                        alpha=color_val[3],
-                        s=1
-                    )
-            
-            # Set axis properties
-            ax.set_xlim(-radius, radius)
-            ax.set_ylim(-radius, radius)
-            ax.set_zlim(-radius, radius)
-            ax.set_box_aspect([1, 1, 1])
-            
-            # Set camera angle similar to pyrender
-            ax.view_init(elev=self.__camera_tilt_down_degrees, azim=self.__camera_azimuth_degrees)
-            
-            # Remove axes for cleaner look
-            ax.set_axis_off()
-            
-            # Ensure output directory exists
-            os.makedirs(os.path.dirname(out_image_path), exist_ok=True)
-            
-            # Save with high DPI and tight layout
-            plt.savefig(
-                out_image_path, 
-                dpi=100, 
-                bbox_inches='tight', 
-                pad_inches=0,
-                facecolor=fig.get_facecolor(),
-                edgecolor='none'
-            )
-            plt.close(fig)
-            
-            return out_image_path, False
-            
-        except Exception as fallback_error:
-            plt.close('all')  # Clean up any open figures
-            raise RuntimeError(f"Both pyrender and matplotlib rendering failed. Matplotlib error: {fallback_error}")
-
+        else:
+            return False, False
     def __has_blue_color(self, image_path: str) -> bool:
         """
         Check if the rendered image contains any significant blue color.
@@ -870,9 +805,21 @@ class CADVisualizer:
 if __name__ == "__main__":
     # Example usage 
     visualizer = CADVisualizer(
-        solid_a=innerNBZ(),
-        solid_b=outerNBZ(),
-        ply_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/sdf_mesh_E.ply",
+        ply_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh1.ply",
         out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1.png"
+    )
+    out = visualizer.render_until_blue_detected()
+
+    # Example usage 
+    visualizer = CADVisualizer(
+        ply_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh.ply",
+        out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply2.png"
+    )
+    out = visualizer.render_until_blue_detected()
+
+    # Example usage 
+    visualizer = CADVisualizer(
+        ply_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh_g.ply",
+        out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply3.png"
     )
     out = visualizer.render_until_blue_detected()
