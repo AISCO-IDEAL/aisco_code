@@ -148,7 +148,7 @@ class SDFLosses:
 
         loss = (upper_violation + lower_violation).mean()**0.5
 
-            return loss
+        return loss
 
     def bounding_box_loss_2(self, model: SDFNetwork) -> torch.Tensor:
         """
