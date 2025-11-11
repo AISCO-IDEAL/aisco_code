@@ -172,7 +172,7 @@ class SDFLosses:
         inner_loss = torch.relu(inner_bb_points_model[0]).mean()**0.5
         outer_loss = torch.relu(-outer_bb_points_model[0]).mean()**0.5
         total_loss = inner_loss + outer_loss
-        return self.weights[3] * total_loss
+        return total_loss
 
     def frontal_area_loss(
         self,
