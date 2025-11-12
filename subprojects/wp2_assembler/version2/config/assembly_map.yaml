@@ -1,6 +1,50 @@
-001:
+1:
   wheel_base_width: 1000
-  wheel_base_length: 3500
+  wheel_base_length: 2500
   tyre_diameter: 596
-  seat_position: 200
-  shift: 0
+  seat_position: 300
+2:
+  wheel_base_width: 821.6760894506078
+  wheel_base_length: 2259.306298902169
+  tyre_diameter: 557.0
+  seat_position: 738.6412061023473
+3:
+  wheel_base_width: 591.7366082982371
+  wheel_base_length: 2590.705778223961
+  tyre_diameter: 557.0
+  seat_position: 963.8535842202303
+4:
+  wheel_base_width: 958.787113057233
+  wheel_base_length: 1512.7723464601463
+  tyre_diameter: 557.0
+  seat_position: 594.7038670425563
+5:
+  wheel_base_width: 964.2520671011717
+  wheel_base_length: 1634.7714077357477
+  tyre_diameter: 557.0
+  seat_position: 599.093447575742
+6:
+  wheel_base_width: 712.7973829147567
+  wheel_base_length: 2043.5199072342366
+  tyre_diameter: 557.0
+  seat_position: 1201.955562573838
+7:
+  wheel_base_width: 847.5007701723243
+  wheel_base_length: 1886.2529734897475
+  tyre_diameter: 557.0
+  seat_position: 1100.02591675867
+8:
+  wheel_base_width: 776.7383516830479
+  wheel_base_length: 1468.1841232251577
+  tyre_diameter: 557.0
+  seat_position: 519.2483779278106
+9:
+  wheel_base_width: 886.8081055456496
+  wheel_base_length: 2471.1441470210957
+  tyre_diameter: 557.0
+  seat_position: 1200.0226361755974
+10:
+  wheel_base_width: 1062.723140434529
+  wheel_base_length: 1508.099967052337
+  tyre_diameter: 557.0
+  seat_position: 505.2937944154934

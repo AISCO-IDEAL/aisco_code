@@ -1,27 +1,107 @@
 import cadquery as cq
 from components import nbz
 from ocp_vscode import show
+from utils.reg_imp import get_regulation
+
+
+def visualize_multiple(lower_id: int, upper_id: int):
+    """
+    Visualize multiple assemblies by adding them all into a single assembly by expanding in the y-direction
+    Args:
+        lower_id (int): The starting id-number of the assemblies to visualize.
+        upper_id (int): The ending id-number of the assemblies to visualize.
+    """
+    # check if all assemblies exist
+    grouped = cq.Assembly(name="groupedNBZ")
+    for count, id_number in enumerate(range(lower_id, upper_id + 1)):
+        inner_nbz, outer_nbz = nbz.call_assembly(id_number)
+        assembly = cq.Assembly(outer_nbz, name="outerNBZ", color=cq.Color(1, 0, 0, 0.3))
+        assembly.add(inner_nbz, name="innerNBZ", color=cq.Color(0, 0, 1, 0.3))
+        show(assembly)
+        grouped.add(
+            assembly,
+            name=f"assembly_{id_number}",
+            loc=cq.Location(
+                cq.Vector(
+                    0, count * get_regulation("no_build_zones.outer_prism.width"), 0
+                ),
+            ),
+        )
+        print(f"Added assembly with id-number: {id_number}")
+    show(grouped)
+
 
 if __name__ == "__main__":  # only run when executing this file directly
     while True:
-        userinput = input("Visualize innerNBZ (WIP), outerNBZ or stop? (i/o/b/s): ")
+        userinput = input(
+            "Visualize inner NBZ, outer NBZ, both, multiple (both inner and outer), generate or stop? (i/o/b/m/g/s): "
+        )
         if userinput.lower() == "i":
-            inner_nbz = nbz.inner_nbz2_sym()
+            userinput = input("Which id-number to visualize?")
+            if userinput.isdigit():
+                id_number = int(userinput)
+                inner_nbz, _ = nbz.call_assembly(id_number)
+            else:
+                print("Invalid input. Please enter a valid id-number.")
+                continue
             show(inner_nbz)
             print(type(inner_nbz))
+
         elif userinput.lower() == "o":
-            outer_nbz = nbz.outer_nbz()
+            userinput = input("Which id-number to visualize?")
+            if userinput.isdigit():
+                id_number = int(userinput)
+                _, outer_nbz = nbz.call_assembly(id_number)
+            else:
+                print("Invalid input. Please enter a valid id-number.")
+                continue
             show(outer_nbz)
             print(type(outer_nbz))
+
         elif userinput.lower() == "b":
-            inner_nbz = nbz.inner_nbz2_sym()
-            outer_nbz = nbz.outer_nbz()
+            userinput = input("Which id-number to visualize?")
+            if userinput.isdigit():
+                id_number = int(userinput)
+                inner_nbz, outer_nbz = nbz.call_assembly(id_number)
+            else:
+                print("Invalid input. Please enter a valid id-number.")
+                continue
             assembly = cq.Assembly(
                 outer_nbz, name="outerNBZ", color=cq.Color(1, 0, 0, 0.3)
             )
             assembly.add(inner_nbz, name="innerNBZ", color=cq.Color(0, 0, 1, 0.3))
             show(assembly)
             print(type(assembly))
+
+        elif userinput.lower() == "m":
+            userinput = input(
+                "Which assemblies are to be visualized? (ranged as 'start-end')"
+            )
+            userinput_split = userinput.split("-")
+            if int(userinput_split[0]) > 0:
+                lower_id = int(userinput_split[0])
+            else:
+                print("Invalid input. Please enter a valid range.")
+                continue
+            if int(userinput_split[1]) > lower_id:
+                upper_id = int(userinput_split[1])
+            else:
+                print("Invalid input. Please enter a valid range.")
+                continue
+            visualize_multiple(lower_id, upper_id)
+
+        elif userinput.lower() == "g":
+            userinput = input("How many assemblies are to be generated?")
+            if userinput.isdigit():
+                n_assemblies = int(userinput)
+                for _ in range(n_assemblies):
+                    nbz.generate_assembly()
+                print(f"{n_assemblies} assemblies generated and saved.")
+                # show in 2 second intervals
+            else:
+                print("Invalid input. Please enter a valid number.")
+                continue
+
         elif userinput.lower() == "s":
             print("Visualization stopped.")
             break

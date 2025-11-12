@@ -8,7 +8,7 @@ class Triangle:
         self.b = None
         self.c = None
 
-    def buildRandom(self) -> "Triangle":
+    def build_random(self) -> "Triangle":
         self.a = cq.Vector(0, 0, 0)
         self.b = cq.Vector(
             truncated_gamma("l"),  # get value lengthwise in x-direction

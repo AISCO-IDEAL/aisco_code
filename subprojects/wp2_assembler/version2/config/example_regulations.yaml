@@ -31,29 +31,38 @@ no_build_zones:
 
 seat:
   position:
-    min_distance_to_back_wheel: 300   # mm from backwheel to seating position
-  dimensions:
+    min_distance_to_back_wheel: 50   # mm from backwheel to seating position
+  dimension:
+    width: 450.0            # general width of the seat
+    radius_top: 835.0       # radius used to build the backrest
+    minus_angle: 27.0       # angle of the backrest backwards [°]
+    plus_angle: 45.0        # angle of the backrest forwards [°]
+    lr_l: 1000.0            # legroom length
+    lr_h: 350.0             # legroom height
+    width_hr: 280.0         # headroom width
+    height_hr: 300.0        # headroom height
 
   
 # Wheel and tire specs
 wheel:
   min_wheel_count: 3
-  tire_width: 96   # mm Silvretta tyre width
-  tire_diameter: 557  # mm Silvretta tyre radius
-  margin_axial: 50   # mm minimum clearance between tire and NBZ
-  margin_radial: 20  # mm minimum clearance around tire will go outside outer NBZ
+  tire_width: 96            # mm Silvretta tyre width
+  tire_diameter: 557        # mm Silvretta tyre radius
+  margin_axial: 50          # mm minimum clearance between tire and NBZ
+  margin_radial: 20         # mm minimum clearance around tire will go outside outer NBZ
 
   base:
-    min_length: 2000  # mm
-    min_width: 500  # mm
-    max_front_margin: 600  # mm distance to front of outerNBZ to wheel base front edge - random value
-    max_rear_margin: 600   # mm distance to rear of outerNBZ to wheel base rear edge - random value
+    min_length: 2000        # mm
+    min_width: 500          # mm
+    max_front_margin: 600   # mm distance to front of outerNBZ to wheel base front edge - random value
+    max_rear_margin: 600    # mm distance to rear of outerNBZ to wheel base rear edge - random value
   
   gamma_distribution:
-    shape1: 2.0   # Makes it a hump-shaped, bell-like curve
-    shape2: 2.0   # Makes it a hump-shaped, bell-like curve
-    scale1: 4.0   # Makes the distribution wider in x-direction 
-    scale2: 2.0   # Makes the distribution wider in y-direction - scale = 1 -> exponential decay
+    shape1: 2.0             # Makes it a hump-shaped, bell-like curve
+    shape2: 2.0             # Makes it a hump-shaped, bell-like curve
+    scale1: 4.0             # Makes the distribution wider in x-direction 
+    scale2: 2.0             # Makes the distribution wider in y-direction - scale = 1 -> exponential decay
+    cut_off_point: 20       # where to truncate/cut the distribution before shifting and scaling
 
 
 
