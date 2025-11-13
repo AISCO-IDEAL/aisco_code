@@ -1,0 +1,8 @@
+commit ed87c2d164e417864133147decb6ba7ce70349c7
+Author: Kdiehl <kdiehl@ethz.ch>
+Date:   Thu Nov 13 16:55:46 2025 +0100
+
+    Stop tracking ignored files
+
+.gitignore
+ignore_ouput.txt
