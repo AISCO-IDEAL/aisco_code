@@ -6,8 +6,12 @@
 **
 
 # Whitelist all directories (but not their contents yet)
-!**/
-
+#!**/
+# Whitelist some directories and their  contents 
+!subprojects/
+!subprojects/**/
+!tests/
+!tests/**/
 # Blacklist certain folders entirely 
 ##############################
 # Python-related directories
@@ -17,6 +21,10 @@ venv/            # Virtual environments
 ENV/             # Virtual environments
 env.bak/         # Backup of virtual environment
 venv.bak/        # Backup of virtual environment
+AISCO_env/
+*.egg-info/
+.vscode/
+__pycache__/
 
 ##############################
 # Build/Packaging directories
