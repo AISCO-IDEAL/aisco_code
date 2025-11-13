@@ -21,7 +21,9 @@ venv/            # Virtual environments
 ENV/             # Virtual environments
 env.bak/         # Backup of virtual environment
 venv.bak/        # Backup of virtual environment
-AISCO_env/
+aisco_env/
+aisco_env.egg-info/
+
 *.egg-info/
 .vscode/
 __pycache__/
