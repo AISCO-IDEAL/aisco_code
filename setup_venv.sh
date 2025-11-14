@@ -32,6 +32,9 @@ echo "📦 Upgrading pip and installing standard dependencies from pyproject.tom
 python3 -m pip install --upgrade pip
 python3 -m pip install -e .
 
+echo "🪝 Setting up Pre-commit Hooks..."
+pre-commit install
+
 # 6. Print instructions for optional dependencies
 echo ""
 echo "✅ Standard dependencies installed."
@@ -56,9 +59,6 @@ else
 fi
 echo ""
 ##############################################################
-echo "🪝 Set up Pre-commit Hooks (if Dev Tools are installed):"
-echo "   pre-commit install"
-echo ""
 echo "✅ Setup complete!"
 echo ""
 echo "Next steps:"

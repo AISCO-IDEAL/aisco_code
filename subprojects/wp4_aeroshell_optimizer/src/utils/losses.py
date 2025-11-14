@@ -8,6 +8,9 @@ from wp1_cfd_ai.crude_estimator.crude_estimator_diff import (
     calculateCdProxyDifferentiable,
 )
 from wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
+from wp1_cfd_ai.crude_estimator.crude_estimator_diff import (
+    calculateCdProxyDifferentiable,
+)
 
 from ..models.sdf import SDFNetwork
 from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
