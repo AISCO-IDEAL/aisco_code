@@ -62,7 +62,7 @@ def train_sdf_model(
                     wandb.log({"sdf_mesh": wandb.Object3D(tmp.name)}, step=epoch)
 
                     # Creating an immage and logging it with WandB
-                    pth = "/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/"+f"Visualisation_of_Epoch{epoch}.png"
+                    pth = mesh_path+f"Visualisation_of_Epoch{epoch}.png" # Adjust Path to somewhere for temporary data storage
                     vs = CADVisualizer(stl_path=tmp.name, out_image_path = pth)
                     print(vs.render_until_blue_detected())
                     wandb.log({"sdf_image": wandb.Image(pth, caption=f"Epoch {epoch}")},step=epoch)
