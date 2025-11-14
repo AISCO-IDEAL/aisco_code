@@ -4,10 +4,18 @@
 # gitignore traverses from top to bottom through this file
 #ignore everything per default
 **
-
-# Whitelist all directories (but not their contents yet)
-#!**/
-# Whitelist some directories and their  contents
+# Whitelist specific files in root
+!/.gitattributes
+!/.gitignore
+!/pyproject.toml
+!/setup.py
+!/setup.cfg
+!/requirements.txt
+!/Pipfile
+!/.pre-commit-config.yaml
+!/tox.ini
+!/LICENSE
+# Whitelist specific directories and all child directories
 !subprojects/
 !subprojects/**/
 !tests/
@@ -46,7 +54,7 @@ share/python-wheels/  # Shared wheel files
 
 ##############################
 # Data-related directories (usually user-specific)
-**/data/         # User-specific data (to be ignored everywhere)
+/data/         # User-specific data (to be ignored everywhere)
 
 ##############################
 # Testing-related directories
@@ -62,17 +70,6 @@ cover/           # Coverage data (e.g., from pytest-cov)
 aisco_env/       # Environment directory for 'aisco' (if specific to your project)
 
 ######################
-
-# Whitelist specific files in root
-!/.gitignore
-!/pyproject.toml
-!/setup.py
-!/setup.cfg
-!/requirements.txt
-!/Pipfile
-!/.pre-commit-config.yaml
-!/tox.ini
-!/LICENSE
 
 # Whitelist file types anywhere in the repo
 !**/README.md #
