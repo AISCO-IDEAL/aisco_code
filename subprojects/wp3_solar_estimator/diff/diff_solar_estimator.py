@@ -1,8 +1,8 @@
 import torch
 import kaolin
-from subprojects.wp3_solar_estimator.diff.alex_input import soft_knapsack_selection
-from subprojects.wp4_aeroshell_optimizer.src.models.sdf import SDFNetwork
-from subprojects.wp4_aeroshell_optimizer.src.utils.kaolin_utils import (
+from wp3_solar_estimator.diff.alex_input import soft_knapsack_selection
+from wp4_aeroshell_optimizer.src.models.sdf import SDFNetwork
+from wp4_aeroshell_optimizer.src.utils.kaolin_utils import (
     flexicubes_to_PLY,
     get_diff_mesh,
 )

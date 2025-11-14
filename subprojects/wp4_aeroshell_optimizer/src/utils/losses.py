@@ -8,6 +8,7 @@ from wp1_cfd_ai.crude_estimator.crude_estimator_diff import (
     calculateCdProxyDifferentiable,
 )
 from wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
+from wp3_solar_estimator.diff.diff_solar_estimator import diff_solar_loss
 
 from ..models.sdf import SDFNetwork
 from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
@@ -259,7 +260,7 @@ class SDFLosses:
             NOTE: As of now only calculates area of a given slice thorugh the car at arbitrary height!
             Negative top area (for maximization, more area = better)
         """
-        if self.weights["solar_area"][0] == False:
+        if self.weights["solar_area"][0] == 0:
             print("Solar area loss disabled.")
             print(
                 "Type of weights['solar_area'][0]: ",
@@ -267,6 +268,10 @@ class SDFLosses:
             )
             return 0
         else:
+            
+            verts, faces = get_diff_mesh(model, grid_res=64)
+            return diff_solar_loss(model, verts,faces)
+            """
             # Create a grid in the X-Y plane (top projection)
             x_coords = torch.linspace(
                 -length / 2, length / 2, resolution, device=self.device
@@ -297,6 +302,9 @@ class SDFLosses:
             grid_spacing = (length / resolution) * (width / resolution)  # dx * dy
             top_area = torch.sum(heaviside_approx) * grid_spacing
             return -top_area  # Negative for maximization
+            """
+
+
 
     def get_total_loss(
         self, model: SDFNetwork, points: torch.Tensor, epoch_name: int = -1
