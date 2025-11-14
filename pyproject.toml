@@ -41,7 +41,7 @@ wp2_assembler =[
 wp3_solar_estimator = [
 
 ]
- 
+
 wp4_aeroshell_optimizer = [
   "cadquery == 2.6.0",
   "matplotlib==3.10.7",
@@ -63,7 +63,7 @@ all = [
 #make a all command
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["subprojects*"] 
+include = ["subprojects*"]
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
@@ -89,6 +89,7 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
+    "**/archive/**"
 ]
 
 

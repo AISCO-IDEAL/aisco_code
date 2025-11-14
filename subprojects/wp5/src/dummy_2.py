@@ -44,9 +44,9 @@ def file_saving(x: int) -> str:
 
     outdir.mkdir(parents=True, exist_ok=True)
 
-    # outdir = Path("/cluster/work/fuge/AISCO/wp5")
+    # outdir = Path("/cluster/work/fuge/AISCO/wp5") # noqa: ERA001
     # # Ensure the directory exists on the HPC (Euler)
-    # outdir.mkdir(parents=True, exist_ok=True)
+    # outdir.mkdir(parents=True, exist_ok=True) # noqa: ERA001
 
     # Speichern als .npy
     np.save(outdir / "x.npy", x)

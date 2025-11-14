@@ -6,8 +6,12 @@ import yaml
 
 from .models.sdf import SDFNetwork
 from .models.train import train_sdf_model
-from .utils.utils import (check_cuda_health, initialize_cuda,
-                          load_pretrained_model, setup_training_environment)
+from .utils.utils import (
+    check_cuda_health,
+    initialize_cuda,
+    load_pretrained_model,
+    setup_training_environment,
+)
 
 
 def main():

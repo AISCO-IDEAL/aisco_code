@@ -1,7 +1,7 @@
 import cadquery as cq
 from cadquery import Assembly, Color
 from components import nbz
-from ocp_vscode import show, set_port
+from ocp_vscode import set_port, show
 
 
 def create_coordinate_system(axis_length=100, axis_radius=2):
