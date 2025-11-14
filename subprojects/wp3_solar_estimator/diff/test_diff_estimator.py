@@ -9,7 +9,7 @@ model=torch.load("wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025
 model.to("cuda")
 vertices,faces=get_diff_mesh(model)
 
-loss=diff_solar_loss(vertices,faces)
+loss=diff_solar_loss(model,vertices,faces)
 print("Loss calculated")
 loss.backward()
 print("Loss propagated")
