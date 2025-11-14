@@ -52,6 +52,7 @@ def get_diff_mesh(
         sdf_values = model(grid_points)[
             0
         ]  # Get SDF values from model, first element of tuple is the scalar SDF field
+
     ####################### eschaerer #################
     # Detach and clone to avoid gradient issues
     """

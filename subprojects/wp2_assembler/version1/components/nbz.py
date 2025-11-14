@@ -18,7 +18,7 @@ def outerBoundingBox(height: float, width: float, depth: float):  # -> TopoDS_Sh
     bounding_box = (
         cq.Workplane("XY").box(depth, width, height, centered=(True, True, False)).val()
     )
-    return bounding_box
+    return bounding_box  # return type is cq.Workplane
 
 
 # Generate outer no-build-zone (outerNBZ) car assembly with dimensions 5800mm x 2300mm x 1650mm
@@ -31,7 +31,7 @@ def outerNBZ():  # -> TopoDS_Shape  # noqa: N802
     box = outerBoundingBox(
         height=1650, width=2300, depth=5800
     )  # do not hardcode dimensions here, create extra input files later
-    return box
+    return box  # return type is cq.Workplane
 
 
 # Generate inner no-build-zone (innerNBZ) car assembly

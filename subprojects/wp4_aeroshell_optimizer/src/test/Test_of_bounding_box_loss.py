@@ -1,11 +1,12 @@
+"""Test script for Bounding Box Loss function
+Trains the SDFNEtwork on just the bounding box loss and visualizes the result using SDF_visualizer
+"""
+
 import torch
 from losses import SDFLosses
 from sdf import SDFNetwork
-from /cluster/home/clhuber/AISCO-code/subprojects/wp4_aeroshell_optimizer/src/utils/SDF_visualisation.py import SDFVisualizer
 
-""" Test script for Bounding Box Loss function
-Trains the SDFNEtwork on just the bounding box loss and visualizes the result using SDF_visualizer
-"""
+# from /cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/src/utils/SDF_visualisation.py import SDFVisualizer
 
 if __name__ == "__main__":
     # Initialize SDF Network

@@ -1,7 +1,7 @@
 import cadquery as cq
 from cadquery import Assembly, Color
 from components import nbz
-from ocp_vscode import show
+from ocp_vscode import set_port, show
 
 
 def create_coordinate_system(axis_length=100, axis_radius=2):
@@ -59,6 +59,10 @@ if __name__ == "__main__":  # only run when executing this file directly
     assembled_car.add(coord_system, name="coordinate_systemA")
     print("Assembly created")
 
+    # use port 49152 for visualization
+    print("Starting visualization server on port 49152...")
+    set_port(49152)
+
     # Prompt to visualize the shapes
     while True:
         userinput = input("Visualize innerNBZ and/or outerNBZ? (y/n): ")
@@ -69,10 +73,10 @@ if __name__ == "__main__":  # only run when executing this file directly
             userinput2 = input("Visualize innerNBZ, outerNBZ or both? (i/o/b): ")
             if userinput2.lower() == "i":
                 show(inner_nbzWCS)
-                print(type(inner_nbzWCS))
+                print(type(inner_nbz))
             elif userinput2.lower() == "o":
                 show(outer_nbzWCS)
-                print(type(outer_nbzWCS))
+                print(type(outer_nbz))
             elif userinput2.lower() == "b":
                 show(assembled_car)
                 print(type(assembled_car))

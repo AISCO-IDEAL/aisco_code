@@ -6,7 +6,7 @@ import numpy as np
 from subprojects.wp5.src.dummy_3 import llinsi
 
 
-def test(x: int) -> str:
+def file_saving(x: int) -> str:
     # kdiehl
     """Beispiel-Funktion: gibt eine stringbasierte Bestätigung zurück.
 
@@ -17,6 +17,7 @@ def test(x: int) -> str:
         Eine Bestätigungszeichenkette mit dem übergebenen Wert.
     """
     print(llinsi())  # lets see if it works
+
     # Determine data output directory portably:
     # 1) Allow user override via environment variable AISCO_DATA_DIR
     env = os.getenv("AISCO_DATA_DIR")
@@ -42,6 +43,10 @@ def test(x: int) -> str:
         outdir = repo_root / "subprojects" / "wp5" / "data"
 
     outdir.mkdir(parents=True, exist_ok=True)
+
+    # outdir = Path("/cluster/work/fuge/AISCO/wp5") # noqa: ERA001
+    # # Ensure the directory exists on the HPC (Euler)
+    # outdir.mkdir(parents=True, exist_ok=True) # noqa: ERA001
 
     # Speichern als .npy
     np.save(outdir / "x.npy", x)
