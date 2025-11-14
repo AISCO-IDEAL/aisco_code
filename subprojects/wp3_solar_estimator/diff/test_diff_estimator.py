@@ -5,8 +5,8 @@ from subprojects.wp4_aeroshell_optimizer.src.utils.kaolin_utils import flexicube
 from subprojects.wp3_solar_estimator.diff.diff_solar_estimator import diff_solar_loss
 
 
-model=torch.load("AISCO_code/subprojects/wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025-11-04.pth")
-
+model=torch.load("wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025-11-04.pth")
+model.to("cuda")
 vertices,faces=get_diff_mesh(model)
 
 loss=diff_solar_loss(vertices,faces)
