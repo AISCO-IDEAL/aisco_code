@@ -11,11 +11,36 @@ def diff_solar_loss(model: SDFNetwork, verts: torch.tensor, faces: torch.tensor,
     max_area = 4e6 # 4 m^2
     # ToDO Aldo
     sun_dir = torch.tensor([0.0, -0.7071, 0.7071], dtype=torch.float32,device=dev)
-    angles = facenormal_angle(verts, faces, sun_dir)
-    powerratio = powerratio_iam(angles)
-    areas = kaolin.ops.mesh.face_areas(verts, faces)[0] # [0] needed cause kaolin is weird with batch size
+    
+    #GPT fix
+    verts_b = verts.unsqueeze(0)     # (1, V, 3)
+    faces_b = faces.unsqueeze(0)   
+
+    angles = facenormal_angle(verts_b, faces_b, sun_dir)
+    powerratio = dot_product(angles,sun_dir)
+
+    # ensure expected dtypes/devices/contiguity
+    assert verts_b.ndim == 3 and verts_b.shape[2] == 3
+    assert faces_b.ndim == 3 and faces_b.shape[2] == 3
+    faces_b = faces_b.long()
+    if not verts_b.is_contiguous():
+        verts_b = verts_b.contiguous()
+    if not faces_b.is_contiguous():
+        faces_b = faces_b.contiguous()
+
+    # gather v0,v1,v2 -> shapes (B, F, 3)
+    v0 = torch.gather(verts_b, 1, faces_b[:, :, 0:1].expand(-1, -1, 3))
+    v1 = torch.gather(verts_b, 1, faces_b[:, :, 1:2].expand(-1, -1, 3))
+    v2 = torch.gather(verts_b, 1, faces_b[:, :, 2:3].expand(-1, -1, 3))
+
+    # cross product of edges, to get area in mm^2
+    cross = torch.cross(v1 - v0, v2 - v0, dim=-1)   # (B, F, 3)
+    areas = 0.5 * torch.norm(cross, dim=-1)   
     loss, _, _, _ = soft_knapsack_selection(powerratio, areas, area_budget=max_area)
+    print(loss)
     return loss
+
+
 def facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_dir: torch.Tensor):
     """
     Differentiable incidence-angle computation.
@@ -24,20 +49,24 @@ def facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_dir: torch.Te
     # Normalize sun direction
     s = sun_dir / (torch.norm(sun_dir) + 1e-12)
     # Face vertices
-    v0 = verts[faces[:, 0]]
-    v1 = verts[faces[:, 1]]
-    v2 = verts[faces[:, 2]]
+    #The first [0] index is due to some nvidia fuckery
+    v0 = verts[0][faces[:, 0]] 
+    v1 = verts[0][faces[:, 1]]
+    v2 = verts[0][faces[:, 2]]
     # Differentiable face normals
     normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
     normals = normals / (torch.norm(normals, dim=-1, keepdim=True) + 1e-12)
     # Cosine of incidence angle
     cosang = torch.sum(normals * s[None, :], dim=-1)
     # Clamp to [0, 1] -> ensures angle = 0–90°
-    cosang_clamped = torch.clamp(cosang, min=0.0, max=1.0)
+    #cosang_clamped = torch.clamp(cosang, min=0.0, max=1.0)
     # Compute angle in degrees
-    angle_rad = torch.acos(cosang_clamped)
+    angle_rad = torch.acos(cosang)
     angle_deg = angle_rad * 180.0 / torch.pi
     return angle_deg  # shape = (F,)
+
+def dot_product(normals: torch.Tensor, sun: torch.Tensor):
+    return (normals * sun).sum(dim=-1)
 
 def powerratio_iam(theta_deg: torch.Tensor, b0: float = 0.05):
     """

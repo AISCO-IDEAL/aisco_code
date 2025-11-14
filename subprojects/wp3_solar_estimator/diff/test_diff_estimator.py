@@ -7,14 +7,18 @@ from subprojects.wp3_solar_estimator.diff.diff_solar_estimator import diff_solar
 
 model=torch.load("wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025-11-04.pth")
 model.to("cuda")
+for p in model.parameters():
+    p.requires_grad_(True)
 vertices,faces=get_diff_mesh(model)
-verts_b = vertices.unsqueeze(0)     # (1, V, 3)
-faces_b = faces.unsqueeze(0)     # (1, F, 3)
+
+print(vertices.requires_grad)
+print(vertices.grad_fn)
 
 
 
 
-loss=diff_solar_loss(model,verts_b,faces_b)
+
+loss=diff_solar_loss(model,vertices,faces)
 print("Loss calculated")
 loss.backward()
 print("Loss propagated")
