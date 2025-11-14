@@ -1,4 +1,3 @@
-# noqa: N999
 """Structure overview
 This folder is until now documented by comments in the code files.
 It was started on 13.10.2025 by Clemens.

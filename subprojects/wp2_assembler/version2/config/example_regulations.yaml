@@ -9,14 +9,14 @@ metadata:
   year: 2025
   class: "Cruiser"
   version: "1.2.0"
-  
+
 # No-Build Zones (NBZ)
 no_build_zones:
   outer_prism:
     height: 1650  # mm from ground
-    length: 5800  # mm 
+    length: 5800  # mm
     width: 2300   # mm
-  
+
   wheel_based_rules:
     front_overhang: 0.6       # percentage, with 1 = 100%
     rear_overhang: 0.6        # percentage, with 1 = 100%
@@ -30,7 +30,7 @@ no_build_zones:
 
 
 
-  
+
 # Wheel and tire specs
 wheel:
   min_wheel_count: 3
@@ -42,11 +42,11 @@ wheel:
   base:
     max_front_margin: 600  # mm distance to front of outerNBZ to wheel base front edge - random value
     max_rear_margin: 600   # mm distance to rear of outerNBZ to wheel base rear edge - random value
-  
+
   gamma_distribution:
     shape1: 2.0   # Makes it a hump-shaped, bell-like curve
     shape2: 2.0   # Makes it a hump-shaped, bell-like curve
-    scale1: 4.0   # Makes the distribution wider in x-direction 
+    scale1: 4.0   # Makes the distribution wider in x-direction
     scale2: 2.0   # Makes the distribution wider in y-direction - scale = 1 -> exponential decay
 
 
@@ -57,11 +57,11 @@ examples:
     min_headroom: 800        # mm above seating position
     min_leg_room: 600        # mm
     emergency_egress_time: 10  # seconds
-  
+
   wheel_wells:
     clearance_around_wheel: 50  # mm
     allow_fenders: true
-  
+
   ground_clearance:
     min_clearance: 100  # mm
     measurement_method: "laden"  # laden or unladen
@@ -73,6 +73,4 @@ examples:
     min_ground_clearance: 100  # mm
   wheelbase:
     min: 2000  # mm
-    max: 3500  # mm 
-
-
+    max: 3500  # mm

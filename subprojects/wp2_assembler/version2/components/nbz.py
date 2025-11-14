@@ -1,11 +1,12 @@
+import random
+
 import cadquery as cq
 from components.outer.outer_box import outerBox
 
 from .inner.base_triangle import Triangle
-from .inner.wheels import Wheels
 from .inner.seat import Seat
+from .inner.wheels import Wheels
 
-import random
 
 def inner_nbz2_sym():
     """

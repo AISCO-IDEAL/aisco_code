@@ -1,6 +1,7 @@
-from dataclasses import dataclass
-import cadquery as cq
 import math
+from dataclasses import dataclass
+
+import cadquery as cq
 
 
 # --- Seat class (hard-coded parameters) ---
