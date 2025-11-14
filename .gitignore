@@ -19,6 +19,7 @@ build/
 develop-eggs/
 dist/
 downloads/
+*.egg-info
 # Large 3D models and binary assets — prefer Git LFS or external storage
 *.stl
 *.ply
@@ -39,7 +40,7 @@ downloads/
 *.idx
 
 # Notebook outputs and large notebooks (prefer stripped .ipynb or exports)
-*.ipynb
+#*.ipynb
 
 # Binary build/artifact files
 *.so
@@ -230,8 +231,6 @@ Thumbs.db
 *.pack
 *.idx
 
-# Notebook outputs (strip outputs before committing) — ignore large notebooks if you prefer
-*.ipynb
 
 # Binary build/artifact files
 *.so
