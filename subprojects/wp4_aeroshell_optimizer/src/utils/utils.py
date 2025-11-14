@@ -9,6 +9,7 @@ from typing import Optional
 import numpy as np
 import torch
 import trimesh
+import yaml
 from skimage import measure
 
 from ..models.sdf import SDFNetwork
@@ -194,3 +195,29 @@ def filenamer(hyperparams: dict, general_info: dict, metadata: dict) -> str:
     full_path.write_text(json.dumps(json_data, indent=4))
 
     return filename
+
+
+def load_config() -> dict:
+    config_path = (
+        Path.home()
+        / "AISCO_code"
+        / "subprojects"
+        / "wp4_aeroshell_optimizer"
+        / "src"
+        / "config"
+        / "wp4_config.yaml"
+    )
+    ####################### DEBUG #############################
+    print(f"Looking for config at: {config_path}")
+    ###########################################################
+    try:
+        with config_path.open() as f:
+            config = yaml.safe_load(f)
+        print(f"✓ Configuration loaded from {config_path}")
+        return config
+    except FileNotFoundError:
+        print(f"✗ Configuration file not found at {config_path}")
+        raise
+    except yaml.YAMLError as e:
+        print(f"✗ Error parsing configuration file: {e}")
+        raise

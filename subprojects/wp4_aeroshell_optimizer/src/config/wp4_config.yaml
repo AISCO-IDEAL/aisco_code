@@ -6,10 +6,23 @@ general_info:
   Pre: "a sphere as initial shape, datatype: SDF"
   Post: "a PLY file representing the optimized aeroshell shape"
 
+
+# loss: [active (enables computing & logging (bool), weight (float)]
+losses:
+  eikonal: [1, 1.0]
+  smoothness: [1, 1.0]
+  bounding_boxes_1: [1, 1.0]
+  bounding_boxes_2: [1, 1.0]
+  watertightness: [1, 1.0]
+  frontal_area: [1, 10.0]
+  drag: [1, 100.0]
+  solar_area: [0, 10.0]
+  total: [1, 1.0]
+
 training_params:
-  learning_rate: 0.01
+  learning_rate: 0.0008
   batch_size: 4096
-  num_epochs: 80
+  num_epochs: 300
   model_capacity: 256
   num_layers: 8
   skip_connections: [4]
@@ -23,4 +36,5 @@ model_dir: "wp4_aeroshell_optimizer/data/test_models"
 mesh_dir: "wp4_aeroshell_optimizer/data/test_meshes"
 
 wandb:
-  track_run: True
+  track_run: 1
+  use_sweep: 0

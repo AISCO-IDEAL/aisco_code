@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=AISCO_Test_SLURM
-#SBATCH --time=00:10:00                   # Adjust time as needed
+#SBATCH --job-name=Clemens_Test_SLURM
+#SBATCH --time=00:05:00                   # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=5G                  # Total 5G memory
@@ -85,7 +85,7 @@ cd /cluster/home/$USERNAME/AISCO_code/subprojects
 # Run wp4 main as a module (so relative imports work!)
 ################################################################################
 cd /cluster/home/$USERNAME/AISCO_code
-python3 -m subprojects.wp4_aeroshell_optimizer.src.test.Test_for_CadQuery_to_SDF \
+python3 -m subprojects.wp4_aeroshell_optimizer.src.utils.visualizer\
     --save_model \
     --problem_id="AISCO_WP4_Test1" 2>&1 # 2>&1 leitet alle Fehler (stderr) in die .out-Datei um, sodass du siehst, was schiefgeht
 #------------------------------------------------------------------------------

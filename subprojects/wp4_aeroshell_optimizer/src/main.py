@@ -6,8 +6,35 @@ import yaml
 
 from .models.sdf import SDFNetwork
 from .models.train import train_sdf_model
-from .utils.utils import (check_cuda_health, initialize_cuda,
-                          load_pretrained_model, setup_training_environment)
+from .utils.utils import (
+    check_cuda_health,
+    initialize_cuda,
+    load_config,
+    load_pretrained_model,
+    setup_training_environment,
+)
+
+
+def deep_update(base, updates):
+    """
+    Recursively updates base dict with updates dict.
+    Supports dot notation keys: e.g., 'training_params.learning_rate'.
+    """
+    for key, value in updates.items():
+        if "." in key:
+            # Split and insert recursively
+            parts = key.split(".")
+            d = base
+            for part in parts[:-1]:
+                if part not in d or not isinstance(d[part], dict):
+                    d[part] = {}
+                d = d[part]
+            d[parts[-1]] = value
+        elif isinstance(value, dict) and key in base and isinstance(base[key], dict):
+            base[key] = deep_update(base[key], value)
+        else:
+            base[key] = value
+    return base
 
 
 def main():
@@ -25,30 +52,9 @@ def main():
 
     # Setup training environment
     setup_training_environment(device)
+    config = load_config()
 
-    # Load configuration
-    config_path = (
-        Path.home()
-        / "AISCO_code"
-        / "subprojects"
-        / "wp4_aeroshell_optimizer"
-        / "src"
-        / "config"
-        / "wp4_config.yaml"
-    )
-
-    try:
-        with config_path.open() as f:
-            config = yaml.safe_load(f)
-        print(f"✓ Configuration loaded from {config_path}")
-    except FileNotFoundError:
-        print(f"✗ Configuration file not found at {config_path}")
-        return
-    except yaml.YAMLError as e:
-        print(f"✗ Error parsing configuration file: {e}")
-        return
-
-    track_run=config["wandb"].get("track_run",False)
+    track_run = config["wandb"].get("track_run", False)
 
     if track_run:
         run = wandb.init(
@@ -61,6 +67,8 @@ def main():
             # Track hyperparameters and run metadata.
             config=config,
         )
+        config = deep_update(config, dict(wandb.config))
+        run.config.update(config, allow_val_change=True)
 
     # Load or initialize model
     load_pretrained = config.get("use_pretrained", False)
@@ -68,7 +76,7 @@ def main():
     if load_pretrained:
         # This loads a sphere model while we redo the training loop and main structure
         model = torch.load(
-            "wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025-11-06.pth"
+            "wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025-11-04.pth"
         )
     else:
         model = SDFNetwork()
@@ -76,7 +84,9 @@ def main():
 
     save_dir = config.get("model_dir", "")
     mesh_dir = config.get("mesh_dir", "")
-    train_sdf_model(model, config["training_params"], save_dir, mesh_dir, track_run=track_run)
+    train_sdf_model(
+        model, config["training_params"], save_dir, mesh_dir, track_run=track_run
+    )
 
     if track_run:
         run.finish()
