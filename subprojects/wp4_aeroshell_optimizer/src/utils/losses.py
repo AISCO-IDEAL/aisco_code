@@ -303,7 +303,7 @@ class SDFLosses:
     ) -> torch.Tensor:
         l1 = self.eikonal_loss(model, points)
         l2 = self.smoothness_loss(model, points)
-        l3 = self.bounding_box_loss_1(model)
+        l3 = self.bounding_boxes_loss_1(model)
         l4 = self.bounding_box_loss_2(model)
         l5 = self.frontal_area_loss(model)
         l6 = self.drag_loss(model)
@@ -311,8 +311,8 @@ class SDFLosses:
         total_loss = (
             self.weights["eikonal"][1] * l1
             + self.weights["smoothness"][1] * l2
-            + self.weights["bounding_boxes"][1] * l3
-            + self.weights["bounding_boxes"][1] * l4  # Assuming l4 is also bounding_box
+            + self.weights["bounding_boxes_1"][1] * l3
+            + self.weights["bounding_boxes_2"][1] * l4  # Assuming l4 is also bounding_box
             + self.weights["frontal_area"][1] * l5
             + self.weights["drag"][1] * l6
             + self.weights["solar_area"][1] * l7

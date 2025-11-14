@@ -20,9 +20,9 @@ losses:
   total: [true, 1.0]
 
 training_params:
-  learning_rate: 0.0005
+  learning_rate: 0.0008
   batch_size: 4096
-  num_epochs: 150
+  num_epochs: 300
   model_capacity: 256
   num_layers: 8
   skip_connections: [4]
