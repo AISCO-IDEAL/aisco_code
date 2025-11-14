@@ -29,6 +29,7 @@ def soft_knapsack_selection(scores_per_area, areas, area_budget, tau=0.1, penalt
 
 
 # ---- Example usage ----
+"""
 
 N = 8
 scores_per_area = torch.tensor([5., 3., 8., 1., 7., 4., 6., 2.], requires_grad=True)
@@ -43,3 +44,4 @@ print("Expected score:", score.item())
 print("Expected area:", used_area.item())
 print("Selection weights:", w)
 
+"""
