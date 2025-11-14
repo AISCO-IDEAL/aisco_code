@@ -207,7 +207,9 @@ def load_config() -> dict:
         / "config"
         / "wp4_config.yaml"
     )
-
+    ####################### DEBUG #############################
+    print(f"Looking for config at: {config_path}")
+    ###########################################################
     try:
         with config_path.open() as f:
             config = yaml.safe_load(f)
