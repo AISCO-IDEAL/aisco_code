@@ -80,8 +80,8 @@ class SDFLosses:
         Returns:
             loss: The computed Eikonal loss for the given points.
         """
-        if self.weights["eikonal"][0] == False:
-            return 0
+        if self.weights["eikonal"][0] == 0:
+            return torch.tensor(0.0, device=self.device)
         else:
             # sdf: the sdf function values for each point
             # grad_sdf: the gradients of the sdf function at each point
@@ -104,8 +104,8 @@ class SDFLosses:
         Returns:
             loss: The computed smoothness loss for the given points.
         """
-        if self.weights["smoothness"][0] == False:
-            return 0
+        if self.weights["smoothness"][0] == 0:
+            return torch.tensor(0.0, device=self.device)
         else:
             sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True)
             return (laplacian_sdf**2).mean()
@@ -124,8 +124,8 @@ class SDFLosses:
             sdf_outer(p) <= sdf_model(p) <= sdf_inner(p)
         Loss = mean( relu(sdf_model - sdf_inner) + relu(sdf_outer - sdf_model) )
         """
-        if self.weights["bounding_boxes_1"][0] == False:
-            return 0
+        if self.weights["bounding_boxes_1"][0] == 0:
+            return torch.tensor(0.0, device=self.device)
         else:  # Device & tensors
             device = next(model.parameters()).device
             P = torch.tensor(
@@ -154,8 +154,8 @@ class SDFLosses:
         """
         Calculates a Bounding Box Loss based on an Idea of Alex
         """
-        if self.weights["bounding_boxes_2"][0] == False:
-            return 0
+        if self.weights["bounding_boxes_2"][0] == 0:
+            return torch.tensor(0.0, device=self.device)
         else:  # get the SDF model values at these points
             inner_bb_points_model = model(
                 torch.tensor(
@@ -189,8 +189,8 @@ class SDFLosses:
         Returns:
             Frontal area loss (to be minimized)
         """
-        if self.weights["frontal_area"][0] == False:
-            return 0
+        if self.weights["frontal_area"][0] == 0:
+            return torch.tensor(0.0, device=self.device)
         else:
             # Create a grid in the Y-Z plane (frontal projection)
             y_coords = torch.linspace(
@@ -234,8 +234,8 @@ class SDFLosses:
             model: The SDF network
             resolution: Resolution for area computation
         """
-        if self.weights["drag"][0] == False:
-            return 0
+        if self.weights["drag"][0] == 0:
+            return torch.tensor(0.0, device=self.device)
         else:
             vertices, faces = get_diff_mesh(model, grid_res=64)
 
@@ -259,13 +259,13 @@ class SDFLosses:
             NOTE: As of now only calculates area of a given slice thorugh the car at arbitrary height!
             Negative top area (for maximization, more area = better)
         """
-        if self.weights["solar_area"][0] == False:
+        if self.weights["solar_area"][0] == 0:
             print("Solar area loss disabled.")
             print(
                 "Type of weights['solar_area'][0]: ",
                 type(self.weights["solar_area"][0]),
             )
-            return 0
+            return torch.tensor(0.0, device=self.device)
         else:
             # Create a grid in the X-Y plane (top projection)
             x_coords = torch.linspace(
@@ -312,7 +312,7 @@ class SDFLosses:
             self.weights["eikonal"][1] * l1
             + self.weights["smoothness"][1] * l2
             + self.weights["bounding_boxes_1"][1] * l3
-            + self.weights["bounding_boxes_2"][1] * l4  # Assuming l4 is also bounding_box
+            + self.weights["bounding_boxes_2"][1] * l4
             + self.weights["frontal_area"][1] * l5
             + self.weights["drag"][1] * l6
             + self.weights["solar_area"][1] * l7
@@ -323,9 +323,9 @@ class SDFLosses:
                 "losses/eikonal_loss": l1.item(),
                 "losses/smoothness_loss": l2.item(),
                 "losses/bounding_box_loss": l3.item(),
-                "losses/frontal_area_loss": l4.item(),
-                "losses/drag_loss": l5.item(),
-                "losses/solar_area_loss": l6.item(),
+                "losses/frontal_area_loss": l5.item(),
+                "losses/drag_loss": l6.item(),
+                "losses/solar_area_loss": l7.item(),
             },
             step=epoch_name,
         )
