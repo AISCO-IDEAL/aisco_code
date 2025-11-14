@@ -20,8 +20,39 @@
 !subprojects/**/
 !tests/
 !tests/**/
+# Blacklist data folder
+subprojects/**/data/
+tests/**/data/
+# Whitelist file types anywhere in the repo
+!**/README.md #
+!**/*.py
+!**/*.md
+!**/*.yml
+!**/*.yaml
+!**/*.rst
+!**/*.json
+!**/*.toml
+!**/*.cfg
+!**/*.ini
+!**/*.txt
+!**/*.sh
+!**/*.slurm
+!**/*.bat
+!**/*.ps1
+!**/*.ipynb
+# Blacklist specific files of a whitelisted file type
+pip-log.txt
+pip-delete-this-directory.txt
+
+local_settings.py
+ipython_config.py
+
+##############################
 # Blacklist certain folders entirely
 ##############################
+# Data-related directories (usually user-specific)
+**/data/         # User-specific data (to be ignored everywhere)
+
 # Python-related directories
 .Python          # Python environment folders (common in some workflows)
 env/             # Virtual environments
@@ -53,8 +84,7 @@ wheels/          # Python Wheel files (package format)
 share/python-wheels/  # Shared wheel files
 
 ##############################
-# Data-related directories (usually user-specific)
-/data/         # User-specific data (to be ignored everywhere)
+
 
 ##############################
 # Testing-related directories
@@ -71,30 +101,7 @@ aisco_env/       # Environment directory for 'aisco' (if specific to your projec
 
 ######################
 
-# Whitelist file types anywhere in the repo
-!**/README.md #
-!**/*.py
-!**/*.md
-!**/*.yml
-!**/*.yaml
-!**/*.rst
-!**/*.json
-!**/*.toml
-!**/*.cfg
-!**/*.ini
-!**/*.txt
-!**/*.sh
-!**/*.slurm
-!**/*.bat
-!**/*.ps1
-!**/*.ipynb
 
-# Blacklist specific files of a whitelisted file type
-pip-log.txt
-pip-delete-this-directory.txt
-
-local_settings.py
-ipython_config.py
 
 # useful for explanations? -> no we got Obsidian
 #!docs/**/*.md
