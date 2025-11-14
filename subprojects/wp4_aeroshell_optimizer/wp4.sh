@@ -14,7 +14,7 @@
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
 USERNAME="eschaerer"
-LOG_DIR="/cluster/home/$USERNAME/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs"
+LOG_DIR="/cluster/scratch/$USERNAME/logs"
 mkdir -p "$LOG_DIR"  # Ensure the log directory exists
 #------------------------------------------------------------------------------
 # Print job information
