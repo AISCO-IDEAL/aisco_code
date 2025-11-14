@@ -1,18 +1,19 @@
 import torch
+import kaolin
 from subprojects.wp3_solar_estimator.diff.alex_input import soft_knapsack_selection
 from subprojects.wp4_aeroshell_optimizer.src.models.sdf import SDFNetwork
 from subprojects.wp4_aeroshell_optimizer.src.utils.kaolin_utils import (
     flexicubes_to_PLY,
     get_diff_mesh,
 )
-def diff_solar_loss(model: SDFNetwork, verts: torch.tensor, faces: torch.tensor):
+def diff_solar_loss(model: SDFNetwork, verts: torch.tensor, faces: torch.tensor, dev: str="cuda"):
     # Const Area for testing
-    max_area = 4e6
+    max_area = 4e6 # 4 m^2
     # ToDO Aldo
-    sun_dir = torch.tensor([0.0, -0.7071, 0.7071], dtype=torch.float32)
+    sun_dir = torch.tensor([0.0, -0.7071, 0.7071], dtype=torch.float32,device=dev)
     angles = facenormal_angle(verts, faces, sun_dir)
     powerratio = powerratio_iam(angles)
-    areas = kaolin.ops.mesh.face_areas(vertices, faces)
+    areas = kaolin.ops.mesh.face_areas(verts, faces)[0] # [0] needed cause kaolin is weird with batch size
     loss, _, _, _ = soft_knapsack_selection(powerratio, areas, area_budget=max_area)
     return loss
 def facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_dir: torch.Tensor):
