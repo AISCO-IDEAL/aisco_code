@@ -194,7 +194,7 @@ class SDFLosses:
             Frontal area loss (to be minimized)
         """
         if self.weights["frontal_area"][0] == 0:
-            return torch.tensor(0.0, device=self.device)
+            return torch.tensor(1.0, device=self.device)
         else:
             # Create a grid in the Y-Z plane (frontal projection)
             y_coords = torch.linspace(
@@ -331,12 +331,13 @@ class SDFLosses:
         # logging with wandb, added by eschaerer
         wandb.log(
             {
-                "losses/eikonal_loss": l1.item(),
-                "losses/smoothness_loss": l2.item(),
-                "losses/bounding_box_loss": l3.item(),
-                "losses/frontal_area_loss": l5.item(),
-                "losses/drag_loss": l6.item(),
-                "losses/solar_area_loss": l7.item(),
+                "losses/eikonal_loss": l1.item()*self.weights["eikonal"][1],
+                "losses/smoothness_loss": l2.item()*self.weights["smoothness"][1],
+                "losses/bounding_box_loss1": l3.item()*self.weights["bounding_boxes_1"][1],
+                "losses/bounding_box_loss2": l4.item()*self.weights["bounding_boxes_2"][1],
+                "losses/frontal_area_loss": l5.item()*self.weights["frontal_area"][1],
+                "losses/drag_loss": l6.item()*self.weights["drag"][1],
+                "losses/solar_area_loss": l7.item()*self.weights["solar_area"][1],
             },
             step=epoch_name,
         )
