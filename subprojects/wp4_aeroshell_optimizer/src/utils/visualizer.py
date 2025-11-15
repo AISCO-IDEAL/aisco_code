@@ -23,7 +23,8 @@ class CADVisualizer:
     """
     
     def __init__(self, 
-                 ply_path: [str],
+                 ply_path: [str] = None,
+                 stl_path: [str] = None,
                  # Rendering parameters
                  image_size: Tuple[int, int] = (1200, 900),
                  bg_color: Tuple[int, int, int, int] = (255, 255, 255, 0),
@@ -60,7 +61,7 @@ class CADVisualizer:
                  show_edges: List[bool] = None,
                  out_image_path: str = "render.png",
                  max_attempts: int = 100,
-                 verbose: bool = True):
+                 verbose: bool = False):
         """
         Initialize the CAD Visualizer.
 
@@ -136,6 +137,7 @@ class CADVisualizer:
         self.__solid_a = solid_a
         self.__solid_b = solid_b
         self.__ply_path = ply_path
+        self.__stl_path = stl_path
         self.__colors = (
             colors
             if colors is not None
@@ -409,6 +411,61 @@ class CADVisualizer:
 
         raise RuntimeError(f"Failed to load PLY file: {ply_path}")
 
+    def __load_stl_as_trimesh(self, stl_path: str) -> trimesh.Trimesh:
+        """Load STL file with robust error handling and retry logic."""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                tm = trimesh.load(stl_path, file_type="stl")
+                if isinstance(tm, trimesh.Scene):
+                    tm = trimesh.util.concatenate(
+                        tuple(g for g in tm.geometry.values())
+                    )
+
+                # Validate mesh has data
+                if tm.vertices.shape[0] == 0:
+                    raise ValueError(f"STL mesh is empty: {stl_path}")
+
+                # Robustness fixes with error handling
+                try:
+                    tm.remove_infinite_values()
+                    tm.remove_unreferenced_vertices()
+
+                    if len(tm.faces) > 0:
+                        trimesh.repair.fix_inversion(tm)
+                        trimesh.repair.fix_normals(tm)
+                        try:
+                            trimesh.repair.fill_holes(tm)
+                        except:
+                            pass
+
+                        tm.process(validate=True)
+
+                        if tm.face_normals is None or len(tm.face_normals) == 0:
+                            tm.fix_normals()
+
+                        if not tm.is_watertight:
+                            # As with PLY, we don't forcibly invert unless clearly needed
+                            pass
+
+                    return tm
+
+                except Exception as repair_error:
+                    if tm.vertices.shape[0] > 0:
+                        return tm
+                    else:
+                        raise repair_error
+
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise RuntimeError(
+                        f"Failed to load STL file {stl_path} after {max_retries} attempts: {e}"
+                    )
+                import time
+                time.sleep(0.1)
+
+        raise RuntimeError(f"Failed to load STL file: {stl_path}")
+
     def __add_edges_to_scene(self, scene: pyrender.Scene, mesh: trimesh.Trimesh):
         """Add wireframe edges to the scene for a given mesh."""
         edges = mesh.edges_unique
@@ -546,6 +603,7 @@ class CADVisualizer:
         solid_a: cq.Solid | None = None,
         solid_b: cq.Solid | None = None,
         ply_path: str | None = None,
+        stl_path: str | None = None,
         colors: list[tuple[float, float, float, float]] = None,
         show_edges: list[bool] = None,
         out_image_path: str = "render.png",
@@ -577,6 +635,9 @@ class CADVisualizer:
         if ply_path is not None and os.path.exists(ply_path):
             meshes.append(self.__load_ply_as_trimesh(ply_path))
             mesh_types.append("ply")
+        if stl_path is not None and os.path.exists(stl_path):
+            meshes.append(self.__load_stl_as_trimesh(stl_path))
+            mesh_types.append("stl")
 
         if not meshes:
             raise ValueError("No valid objects to render")
@@ -823,6 +884,7 @@ class CADVisualizer:
                         solid_a=self.__solid_a,
                         solid_b=self.__solid_b,
                         ply_path=self.__ply_path,
+                        stl_path=self.__stl_path,
                         colors=self.__colors,
                         show_edges=self.__show_edges,
                         out_image_path=current_image_path,
