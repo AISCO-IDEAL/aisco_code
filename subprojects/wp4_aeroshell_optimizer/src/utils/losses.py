@@ -37,8 +37,36 @@ class SDFLosses:
         self.device = dev
         # eschaerer: get weights for losses from config
         self.weights = load_config().get("losses")
+        print(self.weights)
+
         # initialize the Bounding Boxes here to avoid re-creating them every time
         self.__in_mms = True
+
+        if self.weights["bounding_boxes_1"][0] != 0:
+            self.__setup_bounding_boxes_loss_1()
+
+        if self.weights["bounding_boxes_2"][0] != 0:
+            self.__setup_bounding_boxes_loss_2()
+
+    def __setup_bounding_boxes_loss_1(self):
+        # Create SDFs for inner and outer boxes
+        inner_box: cq.Solid = innerNBZ(
+            random_magnitude_chassis=0.0,
+            random_magnitude_seat=0.0,
+            random_magnitude_wheels=0.0,
+        )
+        self.__inner_SDF: SDFfromCadQuery = SDFfromCadQuery(
+            inner_box, in_mms=self.__in_mms
+        )
+        outer_box: cq.Solid = outerNBZ()
+        self.__outer_SDF: SDFfromCadQuery = SDFfromCadQuery(
+            outer_box, in_mms=self.__in_mms
+        )
+        self.__pointgrid: list[list[float]] = self.__inner_SDF.pointgrid()
+        self.__inner_sdf_values: list[float] = self.__inner_SDF.sdf_at_pointgrid()
+        self.__outer_sdf_values: list[float] = self.__outer_SDF.sdf_at_pointgrid()
+    
+    def __setup_bounding_boxes_loss_2(self):
         # Create SDFs for inner and outer boxes
         inner_box: cq.Solid = innerNBZ(
             random_magnitude_chassis=0.0,
@@ -155,7 +183,7 @@ class SDFLosses:
             loss = (upper_violation + lower_violation).mean() ** 0.5
             return loss
 
-    def bounding_box_loss_2(self, model: SDFNetwork) -> torch.Tensor:
+    def bounding_boxes_loss_2(self, model: SDFNetwork) -> torch.Tensor:
         """
         Calculates a Bounding Box Loss based on an Idea of Alex
         """
@@ -176,8 +204,8 @@ class SDFLosses:
         # compute the loss
         inner_loss = torch.relu(inner_bb_points_model[0]).mean() ** 0.5
         outer_loss = torch.relu(-outer_bb_points_model[0]).mean() ** 0.5
-        total_loss = inner_loss + outer_loss
-        return total_loss
+        loss = inner_loss + outer_loss
+        return loss
 
     def frontal_area_loss(
         self,
@@ -315,7 +343,7 @@ class SDFLosses:
         l1 = self.eikonal_loss(model, points)
         l2 = self.smoothness_loss(model, points)
         l3 = self.bounding_boxes_loss_1(model)
-        l4 = self.bounding_box_loss_2(model)
+        l4 = self.bounding_boxes_loss_2(model)
         l5 = self.frontal_area_loss(model)
         l6 = self.drag_loss(model)
         l7 = self.solar_area_loss(model)
