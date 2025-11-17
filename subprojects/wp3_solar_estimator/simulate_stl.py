@@ -7,6 +7,9 @@ import numpy as np
 import pandas as pd
 import pytz
 import trimesh
+from tqdm import tqdm
+from joblib import Parallel, delayed
+
 
 from subprojects.wp3_solar_estimator.pv_index_for_run import pv_perf_index
 from subprojects.wp3_solar_estimator.read_mesh import (
@@ -30,21 +33,17 @@ os.makedirs(SELECTED_FOLDER, exist_ok=True)
 def simulate_stl(path_csv: str, mesh_path: str, max_area=6.0):
     # llinsi
     """
-    Takes a CSV file that defines the route (with longitude/latitude, altitude above sea level, and local time)
-    that the car will take, the file path of the solar car to be simulated (stl file) and the maximum solar area.
-    Calculates a performance value (between 0 and 1) and returns the selected solar area (in m^3)
-    and the corresponding mesh.
+    Run a single STL mesh against a race route and return performance + deck mesh.
 
     Args:
-        path_mesh: File-Path (str) of the csv, which defines the path the solar car should drive.
-        mesh_path: File-Path (str) of the solarcar to be simulated.
-        max_area: Maximum area (floar in m^3) that should be considered (per default: 6.0)
-    Returns:
-        pv_performance: Value representing the ratio of a solar deck to the same area
-                        with a perfect angle of solar radiation (90 degrees) -> (float value between 0 and 1)
-        selected_solardeck: Mesh (file format Trimmest) representing the selected solar area.
-        solar_area: Solar area of the selceted solardeck (just litte faces, no solar cells) in m^3 -> float
+        path_csv (str): Route definition with `Lat,Long,altitude,time` columns
+            (time in local timezone; converted to UTC internally).
+        mesh_path (str): Absolute or relative path to the STL mesh to evaluate.
+        max_area (float): Maximum deployable area in square metres (default 6 m²).
 
+    Returns:
+        tuple[float, trimesh.Trimesh]: Performance index in [0, 1] relative to the
+        same area at perfect incidence, and the mesh containing the selected faces.
     """
     # loading the mesh to be simulated
     mesh = trimesh.load_mesh(mesh_path)
@@ -90,25 +89,16 @@ def process_stl_file(
     stl_folder: str, filename: str, path_csv: str, max_area: float = 6.0
 ) -> dict:
     """
-    Executes the solar deck simulation for a single STL file.
-
-    Loads the STL mesh, runs the simulation using simulate_stl(), measures the computation time,
-    and saves the resulting selected solar deck mesh as an STL file inside
-    /data/selected_solardecks/.
+    Wrapper around `simulate_stl` for a single mesh, including export + timing.
 
     Args:
-        stl_folder: Folder (str) containing the STL files to be simulated.
-        filename: Name (str) of the STL file to be processed.
-        path_csv: Path (str) to the route definition CSV file
-                  (containing latitude, longitude, altitude, and timestamp).
-        max_area: Maximum solar area (float, in m²) to be considered (default: 6.0).
+        stl_folder (str): Directory containing the STL file.
+        filename (str): Name of the STL file relative to `stl_folder`.
+        path_csv (str): Route CSV used for all candidates.
+        max_area (float): Maximum selectable area in square metres.
 
     Returns:
-        dict: Dictionary with the following fields:
-            - "filename": name of the processed STL file.
-            - "performance_index": float representing the PV performance [0–1].
-            - "duration_s": runtime in seconds (float).
-            - "output_file": relative path (str) to the exported solardeck STL file.
+        dict: Contains `filename`, `performance_index`, and `duration_s`.
     """
     mesh_path = os.path.join(stl_folder, filename)
     start_time = time.time()
@@ -151,25 +141,17 @@ def run_parallel_simulations(
     n_jobs: int = 4,
 ) -> pd.DataFrame:
     """
-    Runs the solar deck performance simulation for all STL files in a given folder in parallel.
-
-    Each STL file is processed by process_stl_file(), which executes the simulation,
-    measures runtime, and saves the selected solar deck. The aggregated results are stored
-    in a DataFrame and exported as a CSV file.
+    Batch runner that evaluates every STL in a folder using parallel workers.
 
     Args:
-        stl_folder: Folder (str) containing all STL files to be simulated.
-        path_csv: Path (str) to the route CSV file (latitude, longitude, altitude, time).
-        output_csv: Path (str) to the output CSV file where results will be stored.
-        max_area: Maximum solar area (float, in m²) to be considered per simulation (default: 6.0).
-        n_jobs: Number of CPU cores to use in parallel (-1 uses all available cores).
+        stl_folder (str): Folder containing the candidate meshes.
+        path_csv (str): Route CSV shared by all runs.
+        output_csv (str): Where to store the aggregated results table.
+        max_area (float): Maximum selectable area in square metres.
+        n_jobs (int): Number of workers (`-1` uses all logical cores).
 
     Returns:
-        pd.DataFrame: DataFrame containing for each STL file:
-            - filename
-            - performance_index
-            - duration_s
-            - output_file
+        pd.DataFrame: Sorted table containing filename, performance index, and runtime.
     """
     stl_files = [f for f in os.listdir(stl_folder) if f.lower().endswith(".stl")]
     if not stl_files:

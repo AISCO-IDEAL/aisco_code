@@ -8,6 +8,7 @@ from wp1_cfd_ai.crude_estimator.crude_estimator_diff import (
     calculateCdProxyDifferentiable,
 )
 from wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
+from wp3_solar_estimator.diff.diff_solar_estimator import diff_solar_loss
 from wp1_cfd_ai.crude_estimator.crude_estimator_diff import (
     calculateCdProxyDifferentiable,
 )
@@ -193,7 +194,7 @@ class SDFLosses:
             Frontal area loss (to be minimized)
         """
         if self.weights["frontal_area"][0] == 0:
-            return torch.tensor(0.0, device=self.device)
+            return torch.tensor(1.0, device=self.device)
         else:
             # Create a grid in the Y-Z plane (frontal projection)
             y_coords = torch.linspace(
@@ -270,6 +271,10 @@ class SDFLosses:
             )
             return torch.tensor(0.0, device=self.device)
         else:
+            
+            verts, faces = get_diff_mesh(model, grid_res=64)
+            return diff_solar_loss(model, verts,faces)
+            """
             # Create a grid in the X-Y plane (top projection)
             x_coords = torch.linspace(
                 -length / 2, length / 2, resolution, device=self.device
@@ -300,6 +305,9 @@ class SDFLosses:
             grid_spacing = (length / resolution) * (width / resolution)  # dx * dy
             top_area = torch.sum(heaviside_approx) * grid_spacing
             return -top_area  # Negative for maximization
+            """
+
+
 
     def get_total_loss(
         self, model: SDFNetwork, points: torch.Tensor, epoch_name: int = -1
@@ -323,12 +331,13 @@ class SDFLosses:
         # logging with wandb, added by eschaerer
         wandb.log(
             {
-                "losses/eikonal_loss": l1.item(),
-                "losses/smoothness_loss": l2.item(),
-                "losses/bounding_box_loss": l3.item(),
-                "losses/frontal_area_loss": l5.item(),
-                "losses/drag_loss": l6.item(),
-                "losses/solar_area_loss": l7.item(),
+                "losses/eikonal_loss": l1.item()*self.weights["eikonal"][1],
+                "losses/smoothness_loss": l2.item()*self.weights["smoothness"][1],
+                "losses/bounding_box_loss1": l3.item()*self.weights["bounding_boxes_1"][1],
+                "losses/bounding_box_loss2": l4.item()*self.weights["bounding_boxes_2"][1],
+                "losses/frontal_area_loss": l5.item()*self.weights["frontal_area"][1],
+                "losses/drag_loss": l6.item()*self.weights["drag"][1],
+                "losses/solar_area_loss": l7.item()*self.weights["solar_area"][1],
             },
             step=epoch_name,
         )

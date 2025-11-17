@@ -7,14 +7,17 @@ def facenormal_angle(
 ) -> np.ndarray:
     # nserck
     """
-    Calculates the angle in degrees between each face normal of the mesh and the sun direction.
-    0° means the face normal is aligned with the sun direction (face directly facing the sun),
-    90° means the face normal is perpendicular to the sun direction (zero direct sunlight). Clips angles > 90°.
+    Compute the incidence angle between each face normal and the sun vector.
+
+    Angles are clipped to [0°, 90°] so faces pointing away from the sun saturate at
+    90°. This avoids negative cosines downstream.
+
     Args:
-        mesh: Mesh that we want to analize
-        sun_direction: Direction TO the sun, eg [0,0,1] (default)
+        mesh (trimesh.Trimesh): Mesh whose face normals should be compared.
+        sun_direction (np.ndarray): Vector pointing from the panel towards the sun.
+
     Returns:
-        np.ndarray: Array of angles in degrees for each face.
+        np.ndarray: Angle in degrees for every face in `mesh`.
     """
 
     # 1. Normalize the sun direction
@@ -43,12 +46,14 @@ def facenormal_angle(
 def powerratio_iam(theta_grad, b0=0.05):
     # nserck
     """
-    Calculates the power ratio based on the incidence angle modifier (IAM) according to ASHRAE. Outputs a weight Mask, that does NOT consider shadowing effects!
+    Convert incidence angles to a relative power weight via the ASHRAE IAM model.
+
     Args:
-        theta_grad (float or np.ndarray): Incidence angle in degrees.
-        b0 (float): IAM coefficient, default is 0.05. (larger b0 means stronger punishment for less optimal angles)
+        theta_grad (float | np.ndarray): Incidence angle(s) in degrees.
+        b0 (float): IAM coefficient; larger values penalise oblique angles more.
+
     Returns:
-        np.ndarray: Power ratio (0.0 to 1.0) corresponding to the incidence angles.
+        np.ndarray: Weight mask between 0.0 and 1.0 (shadowing is not considered).
     """
 
     # Ensure all inputs are treated as arrays for vectorized operation
@@ -84,12 +89,14 @@ def powerratio_iam(theta_grad, b0=0.05):
 def sky_face(mesh, threshold=0.01) -> trimesh.Trimesh:
     # nserck
     """
-    Returns a mesh containing only the faces that are oriented upwards (sky-facing).
+    Filter a mesh down to faces whose normals have a positive Z component.
+
     Args:
-        mesh (trimesh.Trimesh): The input mesh.
-        threshold (float): The minimum Z-component of the face normal to be considered sky-facing.
+        mesh (trimesh.Trimesh): Source mesh in the same units as downstream code.
+        threshold (float): Minimum Z-component of the face normal to keep the face.
+
     Returns:
-        top_mesh: the mesh that qualifies the condition
+        trimesh.Trimesh: Mesh containing only faces that exceed `threshold`.
     """
     threshold = 0.01
     face_normals = mesh.face_normals
@@ -107,11 +114,16 @@ def shadowing_factor(
 ) -> np.ndarray:
     # nserck
     """
+    Estimate whether each face centre is self-shadowed via ray casting.
+
     Args:
-        mesh (entire mesh, not only sky-facing)
-        sun_dir, as sunrays direction eg  [0,0,-1]
-    Returns
-        np.array True/False, (True means shadowed.)
+        mesh (trimesh.Trimesh): Full geometry (not just sky-facing subsets).
+        sun_direction (np.ndarray): Direction the sun rays travel towards (usually
+            the negative of the sun vector, e.g. `[0, 0, -1]`).
+
+    Returns:
+        np.ndarray: Boolean mask where `True` indicates the ray hit geometry,
+        meaning the face is shadowed.
     """
     # TODO: adapt Function so it can evaluate shadowing given the entire mesh,
     # but then only outputs the mask for the relevant area (eg. Sky facing area, intended solar area..)
