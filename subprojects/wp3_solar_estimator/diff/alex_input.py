@@ -49,7 +49,7 @@ print("Selection weights:", w)
 """
 
 def dummy_solar_loss(verts: torch.Tensor, faces: torch.Tensor, sun_dir: torch.Tensor, dev: str="cuda",
-                     slope_param: float = 4.0, offset_param: float = 4.0):
+                     slope_param: float = 7.0, offset_param: float = 3.0):
     """
     A dummy loss function, written by Alex in order to have at least something working properly 
     for system integration at 18.11/25
@@ -57,6 +57,11 @@ def dummy_solar_loss(verts: torch.Tensor, faces: torch.Tensor, sun_dir: torch.Te
     Calculates the normal vectors, takes the scalar product of normals and sun_dir and applies some activations
     For visual of the custom activation function see https://drive.google.com/file/d/1UEoSXcBtUWlcOHO_iL99V6blMAmkrygP/view?usp=drive_link
     """
+    if faces.numel() == 0:
+        # skip or return a safe zero-loss
+        print("Warning: Empty mesh received in dummy_solar_loss!")
+        return torch.tensor(2.0, device=verts.device, requires_grad=True)
+
     verts_b = verts.unsqueeze(0)     # (1, V, 3)
     faces_b = faces.unsqueeze(0) 
 

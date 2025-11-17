@@ -18,7 +18,7 @@ from ..models.sdf import SDFNetwork
 from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
 from ..utils.tracking_loss_for_vis import LossTracker
 from ..utils.utils import load_config
-from .kaolin_utils import get_diff_mesh
+from .kaolin_utils import get_diff_mesh, marching_tetrahedra
 
 # Losses being defined here:
 # - Eikonal Loss [ES]
@@ -300,7 +300,7 @@ class SDFLosses:
             return torch.tensor(0.0, device=self.device)
         else:
             
-            verts, faces = get_diff_mesh(model, grid_res=128)
+            verts, faces = marching_tetrahedra(model, grid_res=128, dev=self.device)
             return dummy_solar_loss(verts, faces, sun_dir=torch.tensor([0.0, -1.0, 1.0], device=self.device))
             """
             # Create a grid in the X-Y plane (top projection)
