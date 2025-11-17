@@ -20,7 +20,7 @@ import imageio.v2 as imageio
 import os
 import tempfile
 from typing import List, Tuple
-from wp4_aershell_optimizer.src.utils.utls import load_config
+from wp4_aeroshell_optimizer.src.utils.utils import load_config
 
 
 class CADVisualizer:
@@ -165,28 +165,15 @@ class CADVisualizer:
         num_frames: int = 18,
         image_size: Tuple[int, int] = (640, 480),
         duration_per_frame: float = 0.1,
-        parallel_workers: int = 4,
+        parallel_workers: int = 1,  # Reduce to 1 for now (see below)
     ) -> str:
-        """
-        Render a 360° GIF from multiple POVs in parallel.
-
-        Args:
-            out_gif_path: Path to save the output GIF.
-            num_frames: Number of frames (angles) to render.
-            image_size: Size of each rendered image (width, height).
-            duration_per_frame: Duration of each frame in seconds.
-            parallel_workers: Number of parallel rendering workers.
-
-        Returns:
-            Path to the created GIF.
-        """
         # Store original image size
         original_image_size = self.__image_size
         self.__image_size = image_size
 
         # Create a temporary directory for frames
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Generate camera angles (evenly spaced around the object)
+            # Generate camera angles
             azimuths = [360 * (i / num_frames) for i in range(num_frames)]
 
             # Render all frames in parallel
@@ -197,9 +184,7 @@ class CADVisualizer:
                 futures = []
                 for i, azimuth in enumerate(azimuths):
                     frame_path = os.path.join(temp_dir, f"frame_{i:03d}.png")
-                    # Set camera azimuth for this frame
                     self.__set_camera_params(azimuth_degrees=azimuth)
-                    # Submit rendering task
                     futures.append(
                         executor.submit(
                             self.__render,
@@ -212,12 +197,14 @@ class CADVisualizer:
                             out_image_path=frame_path,
                         )
                     )
-                # Wait for all renders to complete
+                # Collect only successful renders
                 for future in concurrent.futures.as_completed(futures):
-                    frame_paths.append(future.result()[0])
+                    result = future.result()
+                    if isinstance(result[0], str):  # Only append if result is a path
+                        frame_paths.append(result[0])
 
-            # Sort frame paths by angle
-            frame_paths.sort()
+            # Sort frame paths by angle (using the index in the filename)
+            frame_paths.sort(key=lambda x: int(x.split("_")[-1].split(".")[0]))
 
             # Create GIF from frames
             with imageio.get_writer(
@@ -1054,11 +1041,12 @@ if __name__ == "__main__":
         out_image_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1.png",
         image_size=(640, 480),  # Smaller for speed (eschaerer)
     )
+
     out = visualizer.render_until_blue_detected()
 
     # Render a 360° GIF with 18 frames (20° per frame)
     gif_path = visualizer.render_360_gif(
-        out_gif_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1/output.gif",
+        out_gif_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/output.gif",
         num_frames=18,
         parallel_workers=4,  # Use 4 CPU cores
     )
