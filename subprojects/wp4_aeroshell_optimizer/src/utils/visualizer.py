@@ -158,6 +158,79 @@ class CADVisualizer:
         # Initialize headless rendering
         self.__setup_headless_rendering()
 
+    def render_360_gif(
+        self,
+        out_gif_path: str,
+        num_frames: int = 18,
+        image_size: Tuple[int, int] = (640, 480),
+        duration_per_frame: float = 0.1,
+        parallel_workers: int = 4,
+    ) -> str:
+        """
+        Render a 360° GIF from multiple POVs in parallel.
+
+        Args:
+            out_gif_path: Path to save the output GIF.
+            num_frames: Number of frames (angles) to render.
+            image_size: Size of each rendered image (width, height).
+            duration_per_frame: Duration of each frame in seconds.
+            parallel_workers: Number of parallel rendering workers.
+
+        Returns:
+            Path to the created GIF.
+        """
+        # Store original image size
+        original_image_size = self.__image_size
+        self.__image_size = image_size
+
+        # Create a temporary directory for frames
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Generate camera angles (evenly spaced around the object)
+            azimuths = [360 * (i / num_frames) for i in range(num_frames)]
+
+            # Render all frames in parallel
+            frame_paths = []
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=parallel_workers
+            ) as executor:
+                futures = []
+                for i, azimuth in enumerate(azimuths):
+                    frame_path = os.path.join(temp_dir, f"frame_{i:03d}.png")
+                    # Set camera azimuth for this frame
+                    self.__set_camera_params(azimuth_degrees=azimuth)
+                    # Submit rendering task
+                    futures.append(
+                        executor.submit(
+                            self.__render,
+                            solid_a=self.__solid_a,
+                            solid_b=self.__solid_b,
+                            ply_path=self.__ply_path,
+                            stl_path=self.__stl_path,
+                            colors=self.__colors,
+                            show_edges=self.__show_edges,
+                            out_image_path=frame_path,
+                        )
+                    )
+                # Wait for all renders to complete
+                for future in concurrent.futures.as_completed(futures):
+                    frame_paths.append(future.result()[0])
+
+            # Sort frame paths by angle
+            frame_paths.sort()
+
+            # Create GIF from frames
+            with imageio.get_writer(
+                out_gif_path, mode="I", duration=duration_per_frame
+            ) as writer:
+                for frame_path in frame_paths:
+                    image = imageio.imread(frame_path)
+                    writer.append_data(image)
+
+        # Restore original image size
+        self.__image_size = original_image_size
+
+        return out_gif_path
+
     def __setup_headless_rendering(self):
         """Setup environment for headless rendering on HPC clusters."""
         # Set comprehensive OpenGL environment variables for headless rendering
