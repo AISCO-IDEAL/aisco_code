@@ -61,7 +61,8 @@ def train_sdf_model(
                     mesh.export(tmp.name, file_type="stl")
                     wandb.log({"sdf_mesh": wandb.Object3D(tmp.name)}, step=epoch)
                     #Image logging during training
-                    if load_config()["wandb"].get("rendering_frequency", 1) and epoch % load_config()["wandb"].get("render_frequency", 1) == 0:
+                    ddd = load_config()["wandb"].get("rendering_frequency")
+                    if epoch % ddd==0:
                         pth = mesh_path+f"Visualisation_of_Epoch{epoch}.png" # Adjust Path to somewhere for temporary data storage
                         vs = CADVisualizer(stl_path=tmp.name, out_image_path = pth)
                         print(vs.render_until_blue_detected())
