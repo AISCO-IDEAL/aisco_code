@@ -12,14 +12,14 @@ from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
 
 # The following Code is in mms
-rand = 1500
+rand = 400
 dr = 1
 default_pointgrid_ranges = [
     [int(-5800 / 2 - rand + dr), int(5800 / 2 + rand)],
     [int(-1150 - rand + dr), int(1150 + rand)],
     [int(-rand+dr), int(1650 + rand)],
 ]
-default_pointgrid_steps = [200, 200, 200]
+default_pointgrid_steps = [100, 100, 100]
 default_pointgrid = [
     [x, y, z]
     for x in range(
