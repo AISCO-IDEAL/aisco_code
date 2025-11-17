@@ -30,7 +30,7 @@ class Wheels:
         """Return a description of the wheel configuration."""
         return f"This vehicle has {self.wheel_count} wheels with diameter {self.wheel_diameter}m and width {self.wheel_width}m."
 
-    def create_wheel(self, diameter: int = 596) -> cq.Workplane:
+    def create_wheel(self, diameter: float = 0.0) -> cq.Workplane:
         """
         Create a wheel object based on the specifications.
         Args:
@@ -38,9 +38,12 @@ class Wheels:
         Returns:
             A cadquery Workplane object representing the wheel.
         """
+        if diameter == 0:
+            diameter = self.wheel_diameter
+
         return (
             cq.Workplane("XZ")
-            .circle(self.wheel_diameter / 2)
+            .circle(diameter / 2)
             .extrude(self.wheel_width)
             .translate((0, self.wheel_width / 2, 0))
         )

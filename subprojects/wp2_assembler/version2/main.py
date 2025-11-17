@@ -37,7 +37,7 @@ if __name__ == "__main__":  # only run when executing this file directly
             "Visualize inner NBZ, outer NBZ, both, multiple (both inner and outer), generate or stop? (i/o/b/m/g/s): "
         )
         if userinput.lower() == "i":
-            userinput = input("Which id-number to visualize?")
+            userinput = input("Which id-number to visualize? ")
             if userinput.isdigit():
                 id_number = int(userinput)
                 inner_nbz, _ = nbz.call_assembly(id_number)
@@ -48,7 +48,7 @@ if __name__ == "__main__":  # only run when executing this file directly
             print(type(inner_nbz))
 
         elif userinput.lower() == "o":
-            userinput = input("Which id-number to visualize?")
+            userinput = input("Which id-number to visualize? ")
             if userinput.isdigit():
                 id_number = int(userinput)
                 _, outer_nbz = nbz.call_assembly(id_number)
@@ -59,7 +59,7 @@ if __name__ == "__main__":  # only run when executing this file directly
             print(type(outer_nbz))
 
         elif userinput.lower() == "b":
-            userinput = input("Which id-number to visualize?")
+            userinput = input("Which id-number to visualize? ")
             if userinput.isdigit():
                 id_number = int(userinput)
                 inner_nbz, outer_nbz = nbz.call_assembly(id_number)
@@ -75,7 +75,7 @@ if __name__ == "__main__":  # only run when executing this file directly
 
         elif userinput.lower() == "m":
             userinput = input(
-                "Which assemblies are to be visualized? (ranged as 'start-end')"
+                "Which assemblies are to be visualized? (ranged as 'start-end') "
             )
             userinput_split = userinput.split("-")
             if int(userinput_split[0]) > 0:
