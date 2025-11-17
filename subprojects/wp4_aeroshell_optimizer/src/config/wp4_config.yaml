@@ -13,7 +13,7 @@ general_info:
 losses:
   eikonal: [1, 1.0]
   smoothness: [1, 0.5]
-  bounding_boxes_1: [1, 0.0]
+  bounding_boxes_1: [1, 1.0]
   bounding_boxes_2: [1, 10.0]
   watertightness: [1, 0.0]
   frontal_area: [1, 0.0]
@@ -22,9 +22,9 @@ losses:
   total: [1, 1.0]
 
 training_params:
-  learning_rate: 0.000008
+  learning_rate: 0.00008
   batch_size: 4096
-  num_epochs: 700
+  num_epochs: 400
   model_capacity: 256
   num_layers: 8
   skip_connections: [4]

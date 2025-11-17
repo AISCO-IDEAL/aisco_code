@@ -36,7 +36,7 @@ def diff_solar_loss(model: SDFNetwork, verts: torch.tensor, faces: torch.tensor,
     # cross product of edges, to get area in mm^2
     cross = torch.cross(v1 - v0, v2 - v0, dim=-1)   # (B, F, 3)
     areas = 0.5 * torch.norm(cross, dim=-1)   
-    loss, _, _, _ = soft_knapsack_selection(powerratio, areas, area_budget=max_area)
+    loss, _, _, _ = soft_knapsack_selection(powerratio, areas, area_budget=max_area,tau=0.2,penalty=1.0)
     return loss
 
 
