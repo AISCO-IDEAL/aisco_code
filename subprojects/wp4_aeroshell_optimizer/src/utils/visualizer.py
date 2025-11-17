@@ -151,7 +151,9 @@ class CADVisualizer:
             if colors is not None
             else [(1.0, 0.0, 0.0, 1.0), (0.0, 1.0, 0.0, 0.3), (0.0, 0.0, 1.0, 0.6)]
         )
-        self.__show_edges = show_edges
+        self.__show_edges = (
+            show_edges if show_edges is not None else [False, True, False]
+        )
         self.__out_image_path = out_image_path
         self.__max_attempts = max_attempts
         self.__verbose = verbose
@@ -201,8 +203,7 @@ class CADVisualizer:
                 azimuth = 360 * (i / num_frames)
                 self.__set_camera_params(azimuth_degrees=azimuth)
 
-                # Render the scene with the updated camera
-                frame_path = os.path.join(temp_dir, f"frame_{i:03d}.png")
+                # Create a new scene for each frame
                 scene = pyrender.Scene(
                     bg_color=np.array(self.__bg_color, dtype=np.uint8),
                     ambient_light=np.ones(3) * self.__ambient_intensity,
@@ -224,19 +225,21 @@ class CADVisualizer:
                     if show_edge:
                         self.__add_edges_to_scene(scene, mesh)
 
-                # Set up camera and lighting
+                # Set up camera and lighting for this frame
                 self.__setup_camera_and_lighting(scene, radius)
 
                 # Render the scene
                 try:
                     renderer = pyrender.OffscreenRenderer(*self.__image_size)
                     color, _ = renderer.render(scene, flags=RenderFlags.RGBA)
+                    color_rgb = color[..., :3]  # Drop alpha channel
                     renderer.delete()
-                    imageio.imwrite(frame_path, color)
+                    # Define frame_path INSIDE the loop
+                    frame_path = os.path.join(temp_dir, f"frame_{i:03d}.png")
+                    imageio.imwrite(frame_path, color_rgb)
                     frame_paths.append(frame_path)
                 except Exception as e:
                     print(f"Failed to render frame {i}: {e}")
-                    # Fall back to matplotlib or skip the frame
                     continue
 
             # Create GIF from frames
@@ -649,16 +652,17 @@ class CADVisualizer:
 
         eye_x_rotated = eye_x * cos_azimuth - eye_y * sin_azimuth
         eye_y_rotated = eye_x * sin_azimuth + eye_y * cos_azimuth
+        eye_z_rotated = eye_z
 
         # Apply tilt
         tilt_angle_rad = np.deg2rad(-self.__camera_tilt_down_degrees)
         cos_tilt = np.cos(tilt_angle_rad)
         sin_tilt = np.sin(tilt_angle_rad)
 
-        eye_x_final = eye_x_rotated * cos_tilt - eye_z * sin_tilt
-        eye_z_final = eye_x_rotated * sin_tilt + eye_z * cos_tilt
-
-        eye = np.array([eye_x_final, eye_y_rotated, eye_z_final])
+        eye_x_final = eye_x_rotated * cos_tilt - eye_z_rotated * sin_tilt
+        eye_y_final = eye_y_rotated
+        eye_z_final = eye_x_rotated * sin_tilt + eye_z_rotated * cos_tilt
+        eye = np.array([eye_x_final, eye_y_final, eye_z_final])
         target = np.array([0.0, 0.0, 0.0])
 
         # Look-at matrix
