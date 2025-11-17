@@ -110,10 +110,11 @@ def marching_tetrahedra(model: SDFNetwork,
         
     )
     model.cuda() #necessary?
-    grid=grid.to(dev)
-    print("Grid sum:", grid.sum())
-    voxels = (grid < 0).float() # inside = 1, outside = 0
-    voxels = voxels.to(dev)
+    # move to GPU
+    grid = grid.to(dev)
+
+    # grid is already 0/1 occupancy
+    voxels = grid.float()
     if voxels.sum() == 0:
         print("Warning: Empty voxel grid generated!")
     verts, faces = voxelgrids_to_trianglemeshes(voxels)
