@@ -1083,6 +1083,5 @@ if __name__ == "__main__":
     gif_path = visualizer.render_360_gif(
         out_gif_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders//output.gif",
         num_frames=18,
-        parallel_workers=1,  # Use 1 CPU core, so no parallelism (eschaerer)
     )
     print(f"GIF saved to: {gif_path}")
