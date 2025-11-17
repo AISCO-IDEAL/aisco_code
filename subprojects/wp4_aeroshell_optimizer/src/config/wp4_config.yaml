@@ -11,14 +11,14 @@ general_info:
 
 # loss: [active (enables computing & logging (bool), weight (float)]
 losses:
-  eikonal: [1, 1.0]
+  eikonal: [1, 0.5]
   smoothness: [1, 0.5]
-  bounding_boxes_1: [1, 1.0]
-  bounding_boxes_2: [1, 10.0]
+  bounding_boxes_1: [1, 0.0]
+  bounding_boxes_2: [1, 15.0]
   watertightness: [1, 0.0]
   frontal_area: [1, 0.0]
   drag: [1, 0]
-  solar_area: [1, 2]
+  solar_area: [1, 0.5]
   total: [1, 1.0]
 
 training_params:
@@ -39,4 +39,5 @@ mesh_dir: "wp4_aeroshell_optimizer/data/test_meshes"
 
 wandb:
   track_run: 1
+  rendering_frequency: 0
   use_sweep: 0

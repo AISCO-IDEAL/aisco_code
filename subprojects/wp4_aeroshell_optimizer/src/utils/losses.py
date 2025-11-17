@@ -261,8 +261,7 @@ class SDFLosses:
             model: The SDF network
             resolution: Resolution for area computation
         Returns:
-            NOTE: As of now only calculates area of a given slice thorugh the car at arbitrary height!
-            Negative top area (for maximization, more area = better)
+            NOTE: Still WIP, currently running a dummy version of the loss 
         """
         if self.weights["solar_area"][0] == 0:
             print("Solar area loss disabled.")
@@ -273,8 +272,8 @@ class SDFLosses:
             return torch.tensor(0.0, device=self.device)
         else:
             
-            verts, faces = get_diff_mesh(model, grid_res=64)
-            return dummy_solar_loss(verts, faces, torch.tensor([0.0, -0.7071, 0.7071], device=self.device))
+            verts, faces = get_diff_mesh(model, grid_res=128)
+            return dummy_solar_loss(verts, faces, sun_dir=torch.tensor([0.0, -1.0, 1.0], device=self.device))
             """
             # Create a grid in the X-Y plane (top projection)
             x_coords = torch.linspace(
