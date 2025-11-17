@@ -15,6 +15,11 @@ from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from pyrender import RenderFlags
 from wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
+import concurrent.futures
+import imageio.v2 as imageio
+import os
+import tempfile
+from typing import List, Tuple
 
 
 class CADVisualizer:
