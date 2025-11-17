@@ -20,6 +20,7 @@ import imageio.v2 as imageio
 import os
 import tempfile
 from typing import List, Tuple
+from wp4_aershell_optimizer.src.utils.utls import load_config
 
 
 class CADVisualizer:
@@ -1047,22 +1048,18 @@ class CADVisualizer:
 
 if __name__ == "__main__":
     # Example usage
+    USERNAME = load_config()["username"]
     visualizer = CADVisualizer(
-        ply_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh1.ply",
-        out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1.png",
+        ply_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh1.ply",
+        out_image_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1.png",
+        image_size=(640, 480),  # Smaller for speed (eschaerer)
     )
     out = visualizer.render_until_blue_detected()
 
-    # Example usage
-    visualizer = CADVisualizer(
-        ply_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh.ply",
-        out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply2.png",
+    # Render a 360° GIF with 18 frames (20° per frame)
+    gif_path = visualizer.render_360_gif(
+        out_gif_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1/output.gif",
+        num_frames=18,
+        parallel_workers=4,  # Use 4 CPU cores
     )
-    out = visualizer.render_until_blue_detected()
-
-    # Example usage
-    visualizer = CADVisualizer(
-        ply_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh_g.ply",
-        out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply3.png",
-    )
-    out = visualizer.render_until_blue_detected()
+    print(f"GIF saved to: {gif_path}")
