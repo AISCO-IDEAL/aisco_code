@@ -221,3 +221,10 @@ def load_config() -> dict:
     except yaml.YAMLError as e:
         print(f"✗ Error parsing configuration file: {e}")
         raise
+
+
+def config_debug(config: dict):
+    print("\n=== Loaded Configuration ===")
+    print("Config Contents:")
+    print(json.dumps(config, indent=4))
+    print("============================\n")

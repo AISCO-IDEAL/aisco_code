@@ -6,7 +6,7 @@ import typing as T
 import numpy as np
 import torch
 import wandb
-
+from wp4_aeroshell_optimizer.src.utils.utils import load_config
 from ..models.sdf import SDFNetwork
 from ..utils.kaolin_utils import flexicubes_to_PLY, get_diff_mesh
 from ..utils.losses import SDFLosses
@@ -60,14 +60,21 @@ def train_sdf_model(
                 with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
                     mesh.export(tmp.name, file_type="stl")
                     wandb.log({"sdf_mesh": wandb.Object3D(tmp.name)}, step=epoch)
-
-                    # Creating an immage and logging it with WandB
-                    pth = mesh_path+f"Visualisation_of_Epoch{epoch}.png" # Adjust Path to somewhere for temporary data storage
-                    vs = CADVisualizer(stl_path=tmp.name, out_image_path = pth)
-                    print(vs.render_until_blue_detected())
-                    wandb.log({"sdf_image": wandb.Image(pth, caption=f"Epoch {epoch}")},step=epoch)
-                    os.remove(pth)
-
+                    #Image logging during training
+                    if load_config()["wandb"].get("rendering_frequency", 1) and epoch % load_config()["wandb"].get("render_frequency", 1) == 0:
+                        pth = mesh_path+f"Visualisation_of_Epoch{epoch}.png" # Adjust Path to somewhere for temporary data storage
+                        vs = CADVisualizer(stl_path=tmp.name, out_image_path = pth)
+                        print(vs.render_until_blue_detected())
+                        wandb.log({"sdf_image": wandb.Image(pth, caption=f"Epoch {epoch}")},step=epoch)
+                        os.remove(pth)
+                    #final image logging
+                    if epoch >= num_epochs -1:
+                        pth = mesh_path+f"Visualisation_of_Epoch{epoch}.png" # Adjust Path to somewhere for temporary data storage
+                        vs = CADVisualizer(stl_path=tmp.name, out_image_path = pth)
+                        print(vs.render_until_blue_detected())
+                        wandb.log({"sdf_image": wandb.Image(pth, caption=f"Epoch {epoch}")},step=epoch)
+                        os.remove(pth)
+                    
 
 
         if epoch % 10 == 0:

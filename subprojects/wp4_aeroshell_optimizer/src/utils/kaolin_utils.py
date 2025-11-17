@@ -3,7 +3,7 @@ import os
 import kaolin as kal
 import torch
 import trimesh
-from kaolin.ops.conversions import FlexiCubes
+from kaolin.ops.conversions import FlexiCubes, voxelgrids_to_trianglemeshes, sdf_to_voxelgrids
 
 from ..models.sdf import SDFNetwork
 
@@ -66,15 +66,6 @@ def get_diff_mesh(
     flexicubes = FlexiCubes(device=device)
     ind = flexicubes.construct_voxel_grid(grid_res - 1)[1]
 
-    """
-    Debug print:
-    print("x_shape: ",x.shape)
-    print("grid_x shape:",grid_x.shape)
-    print("grid_points shape:", grid_points.shape)
-    print("sdf_values shape:", sdf_values.shape)
-    print("ind shape:", ind.shape)
-    print("grid_res-1 :", grid_res-1)
-    """
 
     # 3. Use FlexiCubes to extract the mesh
     ####################### eschaerer #################

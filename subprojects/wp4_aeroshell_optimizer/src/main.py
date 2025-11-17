@@ -3,7 +3,7 @@ from pathlib import Path
 import torch
 import wandb
 import yaml
-
+from wp4_aeroshell_optimizer.src.utils.utils import config_debug
 from .models.sdf import SDFNetwork
 from .models.train import train_sdf_model
 from .utils.utils import (
@@ -69,7 +69,7 @@ def main():
         )
         config = deep_update(config, dict(wandb.config))
         run.config.update(config, allow_val_change=True)
-
+    config_debug(config)
     # Load or initialize model
     load_pretrained = config.get("use_pretrained", False)
 
