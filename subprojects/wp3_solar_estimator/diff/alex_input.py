@@ -47,3 +47,37 @@ print("Expected area:", used_area.item())
 print("Selection weights:", w)
 
 """
+
+def dummy_solar_loss(verts: torch.Tensor, faces: torch.Tensor, sun_dir: torch.Tensor, dev: str="cuda",
+                     slope_param: float = 8.0, offset_param: float = 3.0):
+    """
+    A dummy loss function, written by Alex in order to have at least something working properly 
+    for system integration at 18.11/25
+
+
+
+    Calculates the normal vectors, takes the scalar product of normals and sun_dir and applies some activations
+    For visual of the custom activation function see https://drive.google.com/file/d/1UEoSXcBtUWlcOHO_iL99V6blMAmkrygP/view?usp=drive_link
+    """
+    verts_b = verts.unsqueeze(0)     # (1, V, 3)
+    faces_b = faces.unsqueeze(0) 
+
+    # Face vertices
+    v0 = verts_b[0][faces_b[:, 0]] 
+    v1 = verts_b[0][faces_b[:, 1]]
+    v2 = verts_b[0][faces_b[:, 2]]
+
+    # Compute face normals
+    normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
+    normals = normals / (torch.norm(normals, dim=-1, keepdim=True) + 1e-12)
+
+    # Normalize sun direction
+    s = sun_dir / (torch.norm(sun_dir) + 1e-12)
+
+    # Compute power ratio (dot product of normals and sun direction)
+    score = (normals * s).sum(dim=-1)
+
+    
+    #Compute loss with custom activation function that flows well with gradients
+    loss = (torch.sigmoid(slope_param * torch.log(score + 1.01) - offset_param)).mean()
+    return -loss

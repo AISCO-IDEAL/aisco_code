@@ -18,7 +18,7 @@ losses:
   watertightness: [1, 0.0]
   frontal_area: [1, 0.0]
   drag: [1, 0]
-  solar_area: [1, 0.00000001]
+  solar_area: [1, 2]
   total: [1, 1.0]
 
 training_params:

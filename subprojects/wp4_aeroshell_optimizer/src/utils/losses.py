@@ -9,6 +9,7 @@ from wp1_cfd_ai.crude_estimator.crude_estimator_diff import (
 )
 from wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
 from wp3_solar_estimator.diff.diff_solar_estimator import diff_solar_loss
+from wp3_solar_estimator.diff.alex_input import dummy_solar_loss
 from wp1_cfd_ai.crude_estimator.crude_estimator_diff import (
     calculateCdProxyDifferentiable,
 )
@@ -273,7 +274,7 @@ class SDFLosses:
         else:
             
             verts, faces = get_diff_mesh(model, grid_res=64)
-            return diff_solar_loss(model, verts,faces)
+            return dummy_solar_loss(verts, faces, torch.tensor([0.0, -0.7071, 0.7071], device=self.device))
             """
             # Create a grid in the X-Y plane (top projection)
             x_coords = torch.linspace(
