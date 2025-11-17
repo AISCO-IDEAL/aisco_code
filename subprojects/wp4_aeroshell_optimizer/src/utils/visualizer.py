@@ -162,51 +162,85 @@ class CADVisualizer:
     def render_360_gif(
         self,
         out_gif_path: str,
-        num_frames: int = 18,
+        num_frames: int = 20,
         image_size: Tuple[int, int] = (640, 480),
         duration_per_frame: float = 0.1,
-        parallel_workers: int = 1,  # Reduce to 1 for now (see below)
     ) -> str:
-        # Store original image size
+        # Store original settings
         original_image_size = self.__image_size
+        original_azimuth = self.__camera_azimuth_degrees
         self.__image_size = image_size
+
+        # Load the object(s) once
+        meshes = []
+        if self.__solid_a is not None:
+            meshes.append(self.__cq_solid_to_trimesh(self.__solid_a))
+        if self.__solid_b is not None:
+            meshes.append(self.__cq_solid_to_trimesh(self.__solid_b))
+        if self.__ply_path is not None and os.path.exists(self.__ply_path):
+            meshes.append(self.__load_ply_as_trimesh(self.__ply_path))
+        if self.__stl_path is not None and os.path.exists(self.__stl_path):
+            meshes.append(self.__load_stl_as_trimesh(self.__stl_path))
+
+        # Center and scale the object(s)
+        all_vertices = np.vstack([mesh.vertices for mesh in meshes])
+        center = np.mean(all_vertices, axis=0)
+        for mesh in meshes:
+            mesh.vertices -= center
+            mesh.vertices *= self.__additional_scale
+
+        # Calculate scene radius for camera positioning
+        combined = trimesh.util.concatenate(meshes)
+        radius = np.linalg.norm(combined.extents) / 2.0
 
         # Create a temporary directory for frames
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Generate camera angles
-            azimuths = [360 * (i / num_frames) for i in range(num_frames)]
-
-            # Render all frames in parallel
             frame_paths = []
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=parallel_workers
-            ) as executor:
-                futures = []
-                for i, azimuth in enumerate(azimuths):
-                    frame_path = os.path.join(temp_dir, f"frame_{i:03d}.png")
-                    self.__set_camera_params(azimuth_degrees=azimuth)
-                    futures.append(
-                        executor.submit(
-                            self.__render,
-                            solid_a=self.__solid_a,
-                            solid_b=self.__solid_b,
-                            ply_path=self.__ply_path,
-                            stl_path=self.__stl_path,
-                            colors=self.__colors,
-                            show_edges=self.__show_edges,
-                            out_image_path=frame_path,
-                        )
-                    )
-                # Collect only successful renders
-                for future in concurrent.futures.as_completed(futures):
-                    result = future.result()
-                    if isinstance(result[0], str):  # Only append if result is a path
-                        frame_paths.append(result[0])
+            for i in range(num_frames):
+                # Update camera azimuth
+                azimuth = 360 * (i / num_frames)
+                self.__set_camera_params(azimuth_degrees=azimuth)
 
-            # Sort frame paths by angle (using the index in the filename)
-            frame_paths.sort(key=lambda x: int(x.split("_")[-1].split(".")[0]))
+                # Render the scene with the updated camera
+                frame_path = os.path.join(temp_dir, f"frame_{i:03d}.png")
+                scene = pyrender.Scene(
+                    bg_color=np.array(self.__bg_color, dtype=np.uint8),
+                    ambient_light=np.ones(3) * self.__ambient_intensity,
+                )
+
+                # Add the same meshes to the scene for each frame
+                for mesh, color_val, show_edge in zip(
+                    meshes, self.__colors, self.__show_edges
+                ):
+                    material = pyrender.MetallicRoughnessMaterial(
+                        baseColorFactor=color_val,
+                        metallicFactor=self.__metallic_factor,
+                        roughnessFactor=self.__roughness_factor,
+                        alphaMode="OPAQUE" if color_val[3] >= 0.99 else "BLEND",
+                        doubleSided=True,
+                    )
+                    pyrender_mesh = pyrender.Mesh.from_trimesh(mesh, material=material)
+                    scene.add(pyrender_mesh)
+                    if show_edge:
+                        self.__add_edges_to_scene(scene, mesh)
+
+                # Set up camera and lighting
+                self.__setup_camera_and_lighting(scene, radius)
+
+                # Render the scene
+                try:
+                    renderer = pyrender.OffscreenRenderer(*self.__image_size)
+                    color, _ = renderer.render(scene, flags=RenderFlags.RGBA)
+                    renderer.delete()
+                    imageio.imwrite(frame_path, color)
+                    frame_paths.append(frame_path)
+                except Exception as e:
+                    print(f"Failed to render frame {i}: {e}")
+                    # Fall back to matplotlib or skip the frame
+                    continue
 
             # Create GIF from frames
+            frame_paths.sort()
             with imageio.get_writer(
                 out_gif_path, mode="I", duration=duration_per_frame
             ) as writer:
@@ -214,8 +248,9 @@ class CADVisualizer:
                     image = imageio.imread(frame_path)
                     writer.append_data(image)
 
-        # Restore original image size
+        # Restore original settings
         self.__image_size = original_image_size
+        self.__camera_azimuth_degrees = original_azimuth
 
         return out_gif_path
 
@@ -1046,8 +1081,8 @@ if __name__ == "__main__":
 
     # Render a 360° GIF with 18 frames (20° per frame)
     gif_path = visualizer.render_360_gif(
-        out_gif_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/output.gif",
+        out_gif_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders//output.gif",
         num_frames=18,
-        parallel_workers=4,  # Use 4 CPU cores
+        parallel_workers=1,  # Use 1 CPU core, so no parallelism (eschaerer)
     )
     print(f"GIF saved to: {gif_path}")

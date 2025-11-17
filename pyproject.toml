@@ -52,6 +52,7 @@ wp4_aeroshell_optimizer = [
   "trimesh==4.8.3",
   "visualtorch",
   "mesh2sdf", #From https://github.com/wang-ps/mesh2sdf?tab=readme-ov-file
+  "imageio",
 ]
 
 testing = ["pytest >= 8.3.2"]
