@@ -54,7 +54,10 @@ wp4_aeroshell_optimizer = [
   "mesh2sdf", #From https://github.com/wang-ps/mesh2sdf?tab=readme-ov-file
 ]
 
-testing = ["pytest >= 9.0.1"]
+testing = [
+  "pytest >= 9.0.1",
+  "pytest-mock"
+  ]
 
 all = [
   "aisco_env[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer]"
