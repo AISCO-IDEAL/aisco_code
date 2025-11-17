@@ -1,4 +1,4 @@
-username: "eschaerer"
+username: "clhuber"
 
 use_pretrained: True
 
@@ -11,10 +11,10 @@ general_info:
 
 # loss: [active (enables computing & logging (bool), weight (float)]
 losses:
-  eikonal: [1, 0.5]
+  eikonal: [1, 1000]
   smoothness: [1, 0.5]
-  bounding_boxes_1: [1, 0.0]
-  bounding_boxes_2: [1, 15.0]
+  bounding_boxes_1: [1, 1000]
+  bounding_boxes_2: [0, 1000]
   watertightness: [1, 0.0]
   frontal_area: [1, 0.0]
   drag: [1, 0]
@@ -39,5 +39,5 @@ mesh_dir: "wp4_aeroshell_optimizer/data/test_meshes"
 
 wandb:
   track_run: 1
-  rendering_frequency: 0
+  rendering_frequency: 5
   use_sweep: 0
