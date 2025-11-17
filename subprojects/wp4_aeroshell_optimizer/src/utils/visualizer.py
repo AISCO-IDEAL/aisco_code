@@ -21,46 +21,48 @@ class CADVisualizer:
     """
     A class for visualizing the two CadQuery solids from the Assembler and the generated PLY mesh.
     """
-    
-    def __init__(self, 
-                 ply_path: [str],
-                 # Rendering parameters
-                 image_size: Tuple[int, int] = (1200, 900),
-                 bg_color: Tuple[int, int, int, int] = (255, 255, 255, 0),
-                 scale_factor: float = 0.001,
-                 additional_scale: float = 2.0,
-                 mesh_tolerance: float = 0.1,
-                 angular_tolerance: float = 0.1,
-                 # Camera parameters
-                 camera_distance_factor: float = 1.5,
-                 camera_fov_degrees: float = 65.0,
-                 camera_tilt_down_degrees: float = -50.0,
-                 camera_azimuth_degrees: float = 0.0,
-                 camera_position_factors: Tuple[float, float, float] = (1, 1, 1),
-                 # Lighting parameters
-                 ambient_intensity: float = 0.3,
-                 key_light_intensity: float = 5.0,
-                 fill_light_intensity: float = 2.0,
-                 # Material parameters
-                 metallic_factor: float = 0.0,
-                 roughness_factor: float = 0.5,
-                 # Edge rendering parameters
-                 edge_color: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
-                 edge_radius: float = 0.002,
-                 # Display settings
-                 display_port: str = ':99',
-                 xvfb_screen_size: str = '1024x768x24',
-                 # Blue detection parameters
-                 blue_threshold: float = 0.1,
-                 min_blue_ratio: float = 0.001,
-                 # Render until blue detected parameters
-                 solid_a: [cq.Solid] = innerNBZ(),
-                 solid_b: [cq.Solid] = outerNBZ(),
-                 colors: List[Tuple[float, float, float, float]] = None,
-                 show_edges: List[bool] = None,
-                 out_image_path: str = "render.png",
-                 max_attempts: int = 100,
-                 verbose: bool = True):
+
+    def __init__(
+        self,
+        ply_path: [str],
+        # Rendering parameters
+        image_size: Tuple[int, int] = (1200, 900),
+        bg_color: Tuple[int, int, int, int] = (255, 255, 255, 0),
+        scale_factor: float = 0.001,
+        additional_scale: float = 2.0,
+        mesh_tolerance: float = 0.1,
+        angular_tolerance: float = 0.1,
+        # Camera parameters, if we vary these, we can get different views.
+        camera_distance_factor: float = 1.5,
+        camera_fov_degrees: float = 65.0,
+        camera_tilt_down_degrees: float = -50.0,
+        camera_azimuth_degrees: float = 0.0,
+        camera_position_factors: Tuple[float, float, float] = (1, 1, 1),
+        # Lighting parameters
+        ambient_intensity: float = 0.3,
+        key_light_intensity: float = 5.0,
+        fill_light_intensity: float = 2.0,
+        # Material parameters
+        metallic_factor: float = 0.0,
+        roughness_factor: float = 0.5,
+        # Edge rendering parameters
+        edge_color: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
+        edge_radius: float = 0.002,
+        # Display settings
+        display_port: str = ":99",
+        xvfb_screen_size: str = "1024x768x24",
+        # Blue detection parameters
+        blue_threshold: float = 0.1,
+        min_blue_ratio: float = 0.001,
+        # Render until blue detected parameters
+        solid_a: [cq.Solid] = innerNBZ(),
+        solid_b: [cq.Solid] = outerNBZ(),
+        colors: List[Tuple[float, float, float, float]] = None,
+        show_edges: List[bool] = None,
+        out_image_path: str = "render.png",
+        max_attempts: int = 100,
+        verbose: bool = True,
+    ):
         """
         Initialize the CAD Visualizer.
 
@@ -466,6 +468,10 @@ class CADVisualizer:
         """Setup camera and lighting for the scene."""
         cam_distance = radius * self.__camera_distance_factor
 
+        # how do we vary these parameters such that we can create images from different POV's?
+        # 
+
+        # create camera
         camera = pyrender.PerspectiveCamera(
             yfov=np.deg2rad(self.__camera_fov_degrees),
             znear=max(0.001, cam_distance * 0.01),
@@ -720,7 +726,7 @@ class CADVisualizer:
             return out_image_path, True
         else:
             return False, False
-            
+
     def __has_blue_color(self, image_path: str) -> bool:
         """
         Check if the rendered image contains any significant blue color.
@@ -902,20 +908,20 @@ if __name__ == "__main__":
     # Example usage
     visualizer = CADVisualizer(
         ply_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh1.ply",
-        out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1.png"
+        out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1.png",
     )
     out = visualizer.render_until_blue_detected()
 
-    # Example usage 
+    # Example usage
     visualizer = CADVisualizer(
         ply_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh.ply",
-        out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply2.png"
+        out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply2.png",
     )
     out = visualizer.render_until_blue_detected()
 
-    # Example usage 
+    # Example usage
     visualizer = CADVisualizer(
         ply_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh_g.ply",
-        out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply3.png"
+        out_image_path="/cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply3.png",
     )
     out = visualizer.render_until_blue_detected()
