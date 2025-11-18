@@ -86,10 +86,10 @@ def get_diff_mesh(
     return vertices, faces
 
 def marching_tetrahedra(model: SDFNetwork,
-                        grid_res: list[int] | int = 64,
+                        grid_res: list[int] | int = 32,
                         origin: float = 0.0,
                         box_size: float = 12000.0,
-                        upsampling: int = 1,
+                        upsampling: int = 4,
                         dev: str="cuda"):
     """
     Alternative mesh extraction using marching tetrahedra from Kaolin.
@@ -137,6 +137,29 @@ def flexicubes_to_PLY(
 
     Note that the PLY generation is not differentiable!
     This should be the end of the pipeline and serve only for visualization and Postprocessing of mesh
+    """
+    verts_np = verts.detach().cpu().numpy()
+    faces_np = faces.detach().cpu().numpy()
+    mesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, process=False)
+    if save_mesh:
+        if mesh_dir is not None:
+            os.makedirs(mesh_dir, exist_ok=True)
+            filepath = os.path.join(mesh_dir, filename)
+        else:
+            filepath = filename
+        mesh.export(filepath)
+        print(f"Mesh saved to {filepath}")
+        return mesh
+    return mesh
+
+def kaolin_to_STL(verts: torch.tensor,
+    faces: torch.tensor,
+    save_mesh: bool = True,
+    filename: str = "loading_test.ply",
+    mesh_dir: str = None,  # Default to None, not a space)
+    ):
+    """
+    Same as flexicubes_to_PLY but saves as STL. Verts and faces in the kaolin format.
     """
     verts_np = verts.detach().cpu().numpy()
     faces_np = faces.detach().cpu().numpy()
