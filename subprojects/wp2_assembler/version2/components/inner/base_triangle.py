@@ -1,5 +1,5 @@
 import cadquery as cq
-from utils.distributions import truncated_gamma
+from subprojects.wp2_assembler.utils.distributions import truncated_gamma
 
 
 class Triangle:
