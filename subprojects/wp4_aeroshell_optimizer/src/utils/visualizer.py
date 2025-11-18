@@ -199,6 +199,7 @@ class CADVisualizer:
         # Create a temporary directory for frames
         with tempfile.TemporaryDirectory() as temp_dir:
             frame_paths = []
+
             for i in range(num_frames):
                 # Update camera azimuth
                 azimuth = 360 * (i / num_frames)
@@ -260,6 +261,7 @@ class CADVisualizer:
         self,
         out_gif_path: str,
         num_frames: int = 2,
+        frame_duration: float = 0.5,
     ) -> str:
         """
         Render a 360° GIF by rotating the camera azimuthally around the object.
@@ -281,6 +283,7 @@ class CADVisualizer:
             self.__camera_azimuth_degrees = azimuth
 
             # Render the current view
+            print(f"Rendering frame {i}/{num_frames} (azimuth={azimuth}°)")
             frame_path = os.path.join(temp_dir, f"frame_{i:03d}.png")
             self.__out_image_path = frame_path
             self.render_until_blue_detected()  # Or your render method
@@ -289,7 +292,9 @@ class CADVisualizer:
             frame_paths.append(frame_path)
 
         # Create GIF from frames
-        with imageio.get_writer(out_gif_path, mode="I", duration=0.5) as writer:
+        with imageio.get_writer(
+            out_gif_path, mode="I", duration=frame_duration
+        ) as writer:
             for frame_path in frame_paths:
                 image = imageio.imread(frame_path)
                 writer.append_data(image)
@@ -672,17 +677,21 @@ class CADVisualizer:
 
     def __setup_camera_and_lighting(self, scene: pyrender.Scene, radius: float):
         """Setup camera and lighting for the scene."""
-        
+
         # Set the distance of the camera from the center of the scene.
-        cam_distance = radius * self.__camera_distance_factor¨
+        cam_distance = radius * self.__camera_distance_factor
 
         # create camera
         camera = pyrender.PerspectiveCamera(
-            yfov=np.deg2rad(self.__camera_fov_degrees), # yfov: Vertical field of view in radians (converted from degrees).
-            znear=max(0.001, cam_distance * 0.01), # znear: Near clipping plane (minimum distance the camera can see).
-            zfar=cam_distance * 20.0, # zfar: Far clipping plane (maximum distance the camera can see).
+            yfov=np.deg2rad(
+                self.__camera_fov_degrees
+            ),  # yfov: Vertical field of view in radians (converted from degrees).
+            znear=max(
+                0.001, cam_distance * 0.01
+            ),  # znear: Near clipping plane (minimum distance the camera can see).
+            zfar=cam_distance
+            * 20.0,  # zfar: Far clipping plane (maximum distance the camera can see).
         )
-
 
         # Calculate initial camera position
         eye_x = cam_distance * self.__camera_position_factors[0]
@@ -711,14 +720,14 @@ class CADVisualizer:
 
         # Create a view matrix for the camera
         def look_at(eye, target, up=np.array([0, 0, 1], dtype=float)):
-            f = target - eye # f: Forward vector (camera direction
+            f = target - eye  # f: Forward vector (camera direction
             f_norm = np.linalg.norm(f)
             if f_norm < 1e-12:
                 raise ValueError("Eye and target are too close")
             f = f / f_norm
 
-            u = up / np.linalg.norm(up) # u: Up vector (camera orientation).
-            s = np.cross(f, u) # s: Side vector (right vector).
+            u = up / np.linalg.norm(up)  # u: Up vector (camera orientation).
+            s = np.cross(f, u)  # s: Side vector (right vector).
             s_norm = np.linalg.norm(s)
             if s_norm < 1e-12:
                 up = (
@@ -738,7 +747,9 @@ class CADVisualizer:
             return m
 
         cam_pose = look_at(eye, target)
-        scene.add(camera, pose=cam_pose) # Add a directional light (key light) to the scene.
+        scene.add(
+            camera, pose=cam_pose
+        )  # Add a directional light (key light) to the scene.
 
         # Add lighting
         key_light = pyrender.DirectionalLight(intensity=self.__key_light_intensity)
@@ -1127,12 +1138,11 @@ if __name__ == "__main__":
         camera_distance_factor=1.5,
         camera_fov_degrees=65.0,
         camera_tilt_down_degrees=-50.0,
-        camera_azimuth_degrees=0.0,
-        camera_position_factors= (5, 0, 2),
+        camera_azimuth_degrees=90.0,
+        camera_position_factors=(5, 0, 2),
     )
 
     gif_path = visualizer.render_360_gif_2(
         out_gif_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/output.gif",
         num_frames=4,
     )
-
