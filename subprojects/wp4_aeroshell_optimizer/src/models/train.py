@@ -43,7 +43,7 @@ def train_sdf_model(
     num_epochs = train_config["num_epochs"]
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_fn = SDFLosses()
-    assembly_points=loss_fn.__inner_bb_points
+    # assembly_points=loss_fn.__inner_bb_points
     
     for epoch in range(num_epochs):
         points = (torch.rand(1000, 3, requires_grad=True, device="cuda") - 0.5) * 10
