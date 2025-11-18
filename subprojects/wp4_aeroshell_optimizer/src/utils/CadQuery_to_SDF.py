@@ -16,7 +16,7 @@ from subprojects.wp4_aeroshell_optimizer.src.utils.utils import load_config
 def pointgrid_geni() -> list[list[float]]:
     config = load_config()
     pointgrid_params = config["pointgrid_params"]
-    dx, dy, dz, rand = pointgrid_params["dx"], pointgrid_params["dy"], pointgrid_params["dz"], pointgrid_params["rand"]
+    dx, dy, dz, rand = pointgrid_params.get("dx") , pointgrid_params.get("dy"), pointgrid_params.get("dz"), pointgrid_params.get("rand")
     dr = 1
     ranges = [
         (int(-2900 - rand + dr), int(2900 + rand)),   #  -5800/2 →  -2900
