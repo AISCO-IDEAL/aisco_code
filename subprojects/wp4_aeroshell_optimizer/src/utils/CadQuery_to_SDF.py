@@ -10,9 +10,14 @@ from OCP.BRepClass3d import BRepClass3d_SolidClassifier
 from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
+from subprojects.wp4_aeroshell_optimizer.src.utils.utils import load_config
 
-def default_poingrid_geni(dx: int = 100, dy: int = 100, dz: int = 100) -> list[list[float]]:
-    rand, dr = 400, 1
+
+def pointgrid_geni() -> list[list[float]]:
+    config = load_config()
+    pointgrid_params = config["pointgrid_params"]
+    dx, dy, dz, rand = pointgrid_params["dx"], pointgrid_params["dy"], pointgrid_params["dz"], pointgrid_params["rand"]
+    dr = 1
     ranges = [
         (int(-2900 - rand + dr), int(2900 + rand)),   #  -5800/2 →  -2900
         (int(-1150 - rand + dr), int(1150 + rand)),
@@ -32,8 +37,7 @@ def default_poingrid_geni(dx: int = 100, dy: int = 100, dz: int = 100) -> list[l
 class SDFfromCadQuery:
     """
     Pre Conditions:
-    - shape: CadQuery Shape
-    - pointgrid (optional): list of points where the SDF is calculated
+    - shape: CadQuery Shape: cq.Solid
 
     Post Conditions:
         If you want to get the SDF value of all Points in the pointgrid use sdf_at_pointgrid() to get the list of the corresponding SDF values
@@ -43,11 +47,10 @@ class SDFfromCadQuery:
     def __init__(
         self,
         shape: cq.Shape,
-        pointgrid: list[list[float]] = default_pointgrid_geni(),
         in_mms: bool = True,
     ):
         self.__shape = shape
-        self.__pointgrid = pointgrid
+        self.__pointgrid = pointgrid_geni()
         self.__negativ = cq.Workplane("XY").box(100000, 100000, 100000, centered=True).cut(cq.Workplane().newObject([self.__shape])).val()
         self.__negativ = cast(cq.Shape, self.__negativ).wrapped
         self.__sdf_at_pointgrid = [self.sdf(x, y, z) for x, y, z in self.__pointgrid]
@@ -55,6 +58,8 @@ class SDFfromCadQuery:
 
         if min(self.__sdf_at_pointgrid) > -1:
             self.__sdf_at_pointgrid = [self.sdf2(x, y, z) for x, y, z in self.__pointgrid]
+        if min(self.__sdf_at_pointgrid) > -1:
+            print("SDF from cq.solid conversion Problem")
         
     
     def sdf(self, x: float, y: float, z: float) -> float:
@@ -120,8 +125,6 @@ class SDFfromCadQuery:
             return volume  # in cubic millimeters
         else:
             return volume / 1e9  # convert to cubic meters
-
-
 
 
 # The following code should be outdated and no longer be used:
