@@ -7,7 +7,6 @@
 #SBATCH --mem-per-cpu=5G                  # Total 5G memory
 #SBATCH --gpus=rtx_4090:1
 #SBATCH --output=/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/Clemens_TEST_%j.out     #adjust path as needed
-#SBATCH --error=/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/Clemens_TEST_%j.err      #adjust path as needed
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=eschaerer@ethz.ch
 #------------------------------------------------------------------------------
@@ -51,25 +50,6 @@ echo "Python version: $(python3 --version)"
 echo "Verifying GPU access..."
 nvidia-smi
 echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
-#------------------------------------------------------------------------------
-# Set WANDB environment variables (not used for now)
-#------------------------------------------------------------------------------
-# export WANDB_API_KEY="API_KEY_HERE"  # connect to wandb, then go to wandb.ai/settings, scroll down to API key and reveal
-# export WANDB_PROJECT="test"
-# export WANDB_ENTITY="aisco"
-#------------------------------------------------------------------------------
-# Set Hugging Face environment variables (not used for now)
-#------------------------------------------------------------------------------
-# export HF_HOME="$SCRATCH/hf_models"
-# export HF_DATASETS_CACHE="$SCRATCH/hf_datasets"
-# export HF_TOKEN="HuggingFace_TOKEN"  # Replace with your actual Huggingface token, create in Settings, Access Tokens, Read
-#------------------------------------------------------------------------------
-# Log GPU/CPU info to the same log directory
-#------------------------------------------------------------------------------
-echo "GPU Info:" >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
-nvidia-smi >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
-echo "CPU Info:" >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
-lscpu >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
 #------------------------------------------------------------------------------
 # Run the Relevant script
 #------------------------------------------------------------------------------

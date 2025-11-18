@@ -14,13 +14,14 @@ from cadquery import exporters
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from pyrender import RenderFlags
-from wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
+from subprojects.wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
 import concurrent.futures
 import imageio.v2 as imageio
 import os
 import tempfile
 from typing import List, Tuple
-from wp4_aeroshell_optimizer.src.utils.utils import load_config
+from subprojects.wp4_aeroshell_optimizer.src.utils.utils import load_config
+import shutil
 
 
 class CADVisualizer:
@@ -166,7 +167,7 @@ class CADVisualizer:
         out_gif_path: str,
         num_frames: int = 20,
         image_size: Tuple[int, int] = (640, 480),
-        duration_per_frame: float = 0.1,
+        fps: float = 1,
     ) -> str:
         # Store original settings
         original_image_size = self.__image_size
@@ -244,9 +245,7 @@ class CADVisualizer:
 
             # Create GIF from frames
             frame_paths.sort()
-            with imageio.get_writer(
-                out_gif_path, mode="I", duration=duration_per_frame
-            ) as writer:
+            with imageio.get_writer(out_gif_path, mode="I", fps=fps) as writer:
                 for frame_path in frame_paths:
                     image = imageio.imread(frame_path)
                     writer.append_data(image)
@@ -255,6 +254,51 @@ class CADVisualizer:
         self.__image_size = original_image_size
         self.__camera_azimuth_degrees = original_azimuth
 
+        return out_gif_path
+
+    def render_360_gif_2(
+        self,
+        out_gif_path: str,
+        num_frames: int = 2,
+    ) -> str:
+        """
+        Render a 360° GIF by rotating the camera azimuthally around the object.
+
+        Args:
+            out_gif_path: Path to save the output GIF.
+            num_frames: Number of frames to render (default: 2, i.e., 180° per frame).
+
+        Returns:
+            Path to the saved GIF.
+        """
+        frames = []
+        temp_dir = tempfile.mkdtemp()
+        frame_paths = []
+
+        for i in range(num_frames):
+            # Calculate azimuth angle for this frame
+            azimuth = 360 * (i / num_frames)
+            self.__camera_azimuth_degrees = azimuth
+
+            # Render the current view
+            frame_path = os.path.join(temp_dir, f"frame_{i:03d}.png")
+            self.__out_image_path = frame_path
+            self.render_until_blue_detected()  # Or your render method
+
+            # Append the frame path
+            frame_paths.append(frame_path)
+
+        # Create GIF from frames
+        with imageio.get_writer(out_gif_path, mode="I", duration=0.5) as writer:
+            for frame_path in frame_paths:
+                image = imageio.imread(frame_path)
+                writer.append_data(image)
+
+        # Clean up temporary files
+        for frame_path in frame_paths:
+            if os.path.exists(frame_path):
+                os.remove(frame_path)
+        shutil.rmtree(temp_dir)
         return out_gif_path
 
     def __setup_headless_rendering(self):
@@ -628,24 +672,24 @@ class CADVisualizer:
 
     def __setup_camera_and_lighting(self, scene: pyrender.Scene, radius: float):
         """Setup camera and lighting for the scene."""
-        cam_distance = radius * self.__camera_distance_factor
-
-        # how do we vary these parameters such that we can create images from different POV's?
-        #
+        
+        # Set the distance of the camera from the center of the scene.
+        cam_distance = radius * self.__camera_distance_factor¨
 
         # create camera
         camera = pyrender.PerspectiveCamera(
-            yfov=np.deg2rad(self.__camera_fov_degrees),
-            znear=max(0.001, cam_distance * 0.01),
-            zfar=cam_distance * 20.0,
+            yfov=np.deg2rad(self.__camera_fov_degrees), # yfov: Vertical field of view in radians (converted from degrees).
+            znear=max(0.001, cam_distance * 0.01), # znear: Near clipping plane (minimum distance the camera can see).
+            zfar=cam_distance * 20.0, # zfar: Far clipping plane (maximum distance the camera can see).
         )
 
-        # Calculate camera position
+
+        # Calculate initial camera position
         eye_x = cam_distance * self.__camera_position_factors[0]
         eye_y = cam_distance * self.__camera_position_factors[1]
         eye_z = cam_distance * self.__camera_position_factors[2]
 
-        # Apply azimuth rotation
+        #  Rotate the camera around the vertical (Y) axis (azimuth)
         azimuth_rad = np.deg2rad(self.__camera_azimuth_degrees)
         cos_azimuth = np.cos(azimuth_rad)
         sin_azimuth = np.sin(azimuth_rad)
@@ -654,7 +698,7 @@ class CADVisualizer:
         eye_y_rotated = eye_x * sin_azimuth + eye_y * cos_azimuth
         eye_z_rotated = eye_z
 
-        # Apply tilt
+        # Tilt the camera up or down.
         tilt_angle_rad = np.deg2rad(-self.__camera_tilt_down_degrees)
         cos_tilt = np.cos(tilt_angle_rad)
         sin_tilt = np.sin(tilt_angle_rad)
@@ -665,16 +709,16 @@ class CADVisualizer:
         eye = np.array([eye_x_final, eye_y_final, eye_z_final])
         target = np.array([0.0, 0.0, 0.0])
 
-        # Look-at matrix
+        # Create a view matrix for the camera
         def look_at(eye, target, up=np.array([0, 0, 1], dtype=float)):
-            f = target - eye
+            f = target - eye # f: Forward vector (camera direction
             f_norm = np.linalg.norm(f)
             if f_norm < 1e-12:
                 raise ValueError("Eye and target are too close")
             f = f / f_norm
 
-            u = up / np.linalg.norm(up)
-            s = np.cross(f, u)
+            u = up / np.linalg.norm(up) # u: Up vector (camera orientation).
+            s = np.cross(f, u) # s: Side vector (right vector).
             s_norm = np.linalg.norm(s)
             if s_norm < 1e-12:
                 up = (
@@ -694,13 +738,13 @@ class CADVisualizer:
             return m
 
         cam_pose = look_at(eye, target)
-        scene.add(camera, pose=cam_pose)
+        scene.add(camera, pose=cam_pose) # Add a directional light (key light) to the scene.
 
         # Add lighting
         key_light = pyrender.DirectionalLight(intensity=self.__key_light_intensity)
         scene.add(key_light, pose=cam_pose)
 
-        # Fill lights
+        # Fill lights, add three fill lights to soften shadows.
         center = np.array([0.0, 0.0, 0.0])
         for direction in [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]:
             fill_pose = np.eye(4)
@@ -1021,7 +1065,8 @@ class CADVisualizer:
 
                         if self.__verbose:
                             print(
-                                f"SUCCESS: Blue color detected after {attempts} attempts!"
+                                f"after {attempts} attempts!"
+                                f"SUCCESS: Blue color detected"
                             )
 
                         return self.__out_image_path, render_success, attempts
@@ -1073,19 +1118,21 @@ class CADVisualizer:
 
 
 if __name__ == "__main__":
-    # Example usage
     USERNAME = load_config()["username"]
+
     visualizer = CADVisualizer(
         ply_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh1.ply",
         out_image_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1.png",
-        image_size=(640, 480),  # Smaller for speed (eschaerer)
+        image_size=(640, 480),
+        camera_distance_factor=1.5,
+        camera_fov_degrees=65.0,
+        camera_tilt_down_degrees=-50.0,
+        camera_azimuth_degrees=0.0,
+        camera_position_factors= (5, 0, 2),
     )
 
-    out = visualizer.render_until_blue_detected()
-
-    # Render a 360° GIF with 18 frames (20° per frame)
-    gif_path = visualizer.render_360_gif(
-        out_gif_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders//output.gif",
-        num_frames=18,
+    gif_path = visualizer.render_360_gif_2(
+        out_gif_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/output.gif",
+        num_frames=4,
     )
-    print(f"GIF saved to: {gif_path}")
+
