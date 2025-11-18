@@ -41,3 +41,9 @@ wandb:
   track_run: 1
   rendering_frequency: 5
   use_sweep: 0
+
+pointgrid_params:
+  dx: 100
+  dy: 100
+  dz: 100
+  rand: 400

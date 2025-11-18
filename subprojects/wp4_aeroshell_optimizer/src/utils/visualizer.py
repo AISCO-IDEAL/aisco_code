@@ -14,14 +14,10 @@ from cadquery import exporters
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from pyrender import RenderFlags
-from subprojects.wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
-import concurrent.futures
-import imageio.v2 as imageio
-import os
-import tempfile
-from typing import List, Tuple
+from wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
 from subprojects.wp4_aeroshell_optimizer.src.utils.utils import load_config
-import shutil
+
+username = load_config().get("username")
 
 
 class CADVisualizer:
@@ -152,154 +148,13 @@ class CADVisualizer:
             if colors is not None
             else [(1.0, 0.0, 0.0, 1.0), (0.0, 1.0, 0.0, 0.3), (0.0, 0.0, 1.0, 0.6)]
         )
-        self.__show_edges = (
-            show_edges if show_edges is not None else [False, True, False]
-        )
+        self.__show_edges = show_edges
         self.__out_image_path = out_image_path
         self.__max_attempts = max_attempts
         self.__verbose = verbose
 
         # Initialize headless rendering
         self.__setup_headless_rendering()
-
-    def render_360_gif(
-        self,
-        out_gif_path: str,
-        num_frames: int = 20,
-        image_size: Tuple[int, int] = (640, 480),
-        fps: float = 1,
-    ) -> str:
-        # Store original settings
-        original_image_size = self.__image_size
-        original_azimuth = self.__camera_azimuth_degrees
-        self.__image_size = image_size
-
-        # Load the object(s) once
-        meshes = []
-        if self.__solid_a is not None:
-            meshes.append(self.__cq_solid_to_trimesh(self.__solid_a))
-        if self.__solid_b is not None:
-            meshes.append(self.__cq_solid_to_trimesh(self.__solid_b))
-        if self.__ply_path is not None and os.path.exists(self.__ply_path):
-            meshes.append(self.__load_ply_as_trimesh(self.__ply_path))
-        if self.__stl_path is not None and os.path.exists(self.__stl_path):
-            meshes.append(self.__load_stl_as_trimesh(self.__stl_path))
-
-        # Center and scale the object(s)
-        all_vertices = np.vstack([mesh.vertices for mesh in meshes])
-        center = np.mean(all_vertices, axis=0)
-        for mesh in meshes:
-            mesh.vertices -= center
-            mesh.vertices *= self.__additional_scale
-
-        # Calculate scene radius for camera positioning
-        combined = trimesh.util.concatenate(meshes)
-        radius = np.linalg.norm(combined.extents) / 2.0
-
-        # Create a temporary directory for frames
-        with tempfile.TemporaryDirectory() as temp_dir:
-            frame_paths = []
-            for i in range(num_frames):
-                # Update camera azimuth
-                azimuth = 360 * (i / num_frames)
-                self.__set_camera_params(azimuth_degrees=azimuth)
-
-                # Create a new scene for each frame
-                scene = pyrender.Scene(
-                    bg_color=np.array(self.__bg_color, dtype=np.uint8),
-                    ambient_light=np.ones(3) * self.__ambient_intensity,
-                )
-
-                # Add the same meshes to the scene for each frame
-                for mesh, color_val, show_edge in zip(
-                    meshes, self.__colors, self.__show_edges
-                ):
-                    material = pyrender.MetallicRoughnessMaterial(
-                        baseColorFactor=color_val,
-                        metallicFactor=self.__metallic_factor,
-                        roughnessFactor=self.__roughness_factor,
-                        alphaMode="OPAQUE" if color_val[3] >= 0.99 else "BLEND",
-                        doubleSided=True,
-                    )
-                    pyrender_mesh = pyrender.Mesh.from_trimesh(mesh, material=material)
-                    scene.add(pyrender_mesh)
-                    if show_edge:
-                        self.__add_edges_to_scene(scene, mesh)
-
-                # Set up camera and lighting for this frame
-                self.__setup_camera_and_lighting(scene, radius)
-
-                # Render the scene
-                try:
-                    renderer = pyrender.OffscreenRenderer(*self.__image_size)
-                    color, _ = renderer.render(scene, flags=RenderFlags.RGBA)
-                    color_rgb = color[..., :3]  # Drop alpha channel
-                    renderer.delete()
-                    # Define frame_path INSIDE the loop
-                    frame_path = os.path.join(temp_dir, f"frame_{i:03d}.png")
-                    imageio.imwrite(frame_path, color_rgb)
-                    frame_paths.append(frame_path)
-                except Exception as e:
-                    print(f"Failed to render frame {i}: {e}")
-                    continue
-
-            # Create GIF from frames
-            frame_paths.sort()
-            with imageio.get_writer(out_gif_path, mode="I", fps=fps) as writer:
-                for frame_path in frame_paths:
-                    image = imageio.imread(frame_path)
-                    writer.append_data(image)
-
-        # Restore original settings
-        self.__image_size = original_image_size
-        self.__camera_azimuth_degrees = original_azimuth
-
-        return out_gif_path
-
-    def render_360_gif_2(
-        self,
-        out_gif_path: str,
-        num_frames: int = 2,
-    ) -> str:
-        """
-        Render a 360° GIF by rotating the camera azimuthally around the object.
-
-        Args:
-            out_gif_path: Path to save the output GIF.
-            num_frames: Number of frames to render (default: 2, i.e., 180° per frame).
-
-        Returns:
-            Path to the saved GIF.
-        """
-        frames = []
-        temp_dir = tempfile.mkdtemp()
-        frame_paths = []
-
-        for i in range(num_frames):
-            # Calculate azimuth angle for this frame
-            azimuth = 360 * (i / num_frames)
-            self.__camera_azimuth_degrees = azimuth
-
-            # Render the current view
-            frame_path = os.path.join(temp_dir, f"frame_{i:03d}.png")
-            self.__out_image_path = frame_path
-            self.render_until_blue_detected()  # Or your render method
-
-            # Append the frame path
-            frame_paths.append(frame_path)
-
-        # Create GIF from frames
-        with imageio.get_writer(out_gif_path, mode="I", duration=0.5) as writer:
-            for frame_path in frame_paths:
-                image = imageio.imread(frame_path)
-                writer.append_data(image)
-
-        # Clean up temporary files
-        for frame_path in frame_paths:
-            if os.path.exists(frame_path):
-                os.remove(frame_path)
-        shutil.rmtree(temp_dir)
-        return out_gif_path
 
     def __setup_headless_rendering(self):
         """Setup environment for headless rendering on HPC clusters."""
@@ -672,53 +527,48 @@ class CADVisualizer:
 
     def __setup_camera_and_lighting(self, scene: pyrender.Scene, radius: float):
         """Setup camera and lighting for the scene."""
-        
-        # Set the distance of the camera from the center of the scene.
-        cam_distance = radius * self.__camera_distance_factor¨
+        cam_distance = radius * self.__camera_distance_factor
 
-        # create camera
         camera = pyrender.PerspectiveCamera(
-            yfov=np.deg2rad(self.__camera_fov_degrees), # yfov: Vertical field of view in radians (converted from degrees).
-            znear=max(0.001, cam_distance * 0.01), # znear: Near clipping plane (minimum distance the camera can see).
-            zfar=cam_distance * 20.0, # zfar: Far clipping plane (maximum distance the camera can see).
+            yfov=np.deg2rad(self.__camera_fov_degrees),
+            znear=max(0.001, cam_distance * 0.01),
+            zfar=cam_distance * 20.0,
         )
 
-
-        # Calculate initial camera position
+        # Calculate camera position
         eye_x = cam_distance * self.__camera_position_factors[0]
         eye_y = cam_distance * self.__camera_position_factors[1]
         eye_z = cam_distance * self.__camera_position_factors[2]
 
-        #  Rotate the camera around the vertical (Y) axis (azimuth)
+        # Apply azimuth rotation
         azimuth_rad = np.deg2rad(self.__camera_azimuth_degrees)
         cos_azimuth = np.cos(azimuth_rad)
         sin_azimuth = np.sin(azimuth_rad)
 
         eye_x_rotated = eye_x * cos_azimuth - eye_y * sin_azimuth
         eye_y_rotated = eye_x * sin_azimuth + eye_y * cos_azimuth
-        eye_z_rotated = eye_z
 
-        # Tilt the camera up or down.
+        # Apply tilt
         tilt_angle_rad = np.deg2rad(-self.__camera_tilt_down_degrees)
         cos_tilt = np.cos(tilt_angle_rad)
         sin_tilt = np.sin(tilt_angle_rad)
 
-        eye_x_final = eye_x_rotated * cos_tilt - eye_z_rotated * sin_tilt
-        eye_y_final = eye_y_rotated
-        eye_z_final = eye_x_rotated * sin_tilt + eye_z_rotated * cos_tilt
-        eye = np.array([eye_x_final, eye_y_final, eye_z_final])
+        eye_x_final = eye_x_rotated * cos_tilt - eye_z * sin_tilt
+        eye_z_final = eye_x_rotated * sin_tilt + eye_z * cos_tilt
+
+        eye = np.array([eye_x_final, eye_y_rotated, eye_z_final])
         target = np.array([0.0, 0.0, 0.0])
 
-        # Create a view matrix for the camera
+        # Look-at matrix
         def look_at(eye, target, up=np.array([0, 0, 1], dtype=float)):
-            f = target - eye # f: Forward vector (camera direction
+            f = target - eye
             f_norm = np.linalg.norm(f)
             if f_norm < 1e-12:
                 raise ValueError("Eye and target are too close")
             f = f / f_norm
 
-            u = up / np.linalg.norm(up) # u: Up vector (camera orientation).
-            s = np.cross(f, u) # s: Side vector (right vector).
+            u = up / np.linalg.norm(up)
+            s = np.cross(f, u)
             s_norm = np.linalg.norm(s)
             if s_norm < 1e-12:
                 up = (
@@ -738,13 +588,13 @@ class CADVisualizer:
             return m
 
         cam_pose = look_at(eye, target)
-        scene.add(camera, pose=cam_pose) # Add a directional light (key light) to the scene.
+        scene.add(camera, pose=cam_pose)
 
         # Add lighting
         key_light = pyrender.DirectionalLight(intensity=self.__key_light_intensity)
         scene.add(key_light, pose=cam_pose)
 
-        # Fill lights, add three fill lights to soften shadows.
+        # Fill lights
         center = np.array([0.0, 0.0, 0.0])
         for direction in [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]:
             fill_pose = np.eye(4)
@@ -1065,8 +915,7 @@ class CADVisualizer:
 
                         if self.__verbose:
                             print(
-                                f"after {attempts} attempts!"
-                                f"SUCCESS: Blue color detected"
+                                f"SUCCESS: Blue color detected after {attempts} attempts!"
                             )
 
                         return self.__out_image_path, render_success, attempts
@@ -1118,21 +967,9 @@ class CADVisualizer:
 
 
 if __name__ == "__main__":
-    USERNAME = load_config()["username"]
-
+    # Example usage
     visualizer = CADVisualizer(
-        ply_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh1.ply",
-        out_image_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1.png",
-        image_size=(640, 480),
-        camera_distance_factor=1.5,
-        camera_fov_degrees=65.0,
-        camera_tilt_down_degrees=-50.0,
-        camera_azimuth_degrees=0.0,
-        camera_position_factors= (5, 0, 2),
+        ply_path=f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh1.ply",
+        out_image_path=f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1.png",
     )
-
-    gif_path = visualizer.render_360_gif_2(
-        out_gif_path=f"/cluster/home/{USERNAME}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/output.gif",
-        num_frames=4,
-    )
-
+    out = visualizer.render_until_blue_detected()

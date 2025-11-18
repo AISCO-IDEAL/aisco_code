@@ -10,42 +10,34 @@ from OCP.BRepClass3d import BRepClass3d_SolidClassifier
 from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
+from subprojects.wp4_aeroshell_optimizer.src.utils.utils import load_config
 
-# The following Code is in mms
-rand = 400
-dr = 1
-default_pointgrid_ranges = [
-    [int(-5800 / 2 - rand + dr), int(5800 / 2 + rand)],
-    [int(-1150 - rand + dr), int(1150 + rand)],
-    [int(-rand+dr), int(1650 + rand)],
-]
-default_pointgrid_steps = [100, 100, 100]
-default_pointgrid = [
-    [x, y, z]
-    for x in range(
-        default_pointgrid_ranges[0][0],
-        default_pointgrid_ranges[0][1],
-        default_pointgrid_steps[0],
-    )
-    for y in range(
-        default_pointgrid_ranges[1][0],
-        default_pointgrid_ranges[1][1],
-        default_pointgrid_steps[1],
-    )
-    for z in range(
-        default_pointgrid_ranges[2][0],
-        default_pointgrid_ranges[2][1],
-        default_pointgrid_steps[2],
-    )
-]
+
+def pointgrid_geni() -> list[list[float]]:
+    config = load_config()
+    pointgrid_params = config["pointgrid_params"]
+    dx, dy, dz, rand = pointgrid_params.get("dx") , pointgrid_params.get("dy"), pointgrid_params.get("dz"), pointgrid_params.get("rand")
+    dr = 1
+    ranges = [
+        (int(-2900 - rand + dr), int(2900 + rand)),   #  -5800/2 →  -2900
+        (int(-1150 - rand + dr), int(1150 + rand)),
+        (int(-rand + dr), int(1650 + rand)),
+    ]
+    steps = (dx, dy, dz)
+
+    return [
+        [x, y, z]
+        for x in range(ranges[0][0], ranges[0][1], steps[0])
+        for y in range(ranges[1][0], ranges[1][1], steps[1])
+        for z in range(ranges[2][0], ranges[2][1], steps[2])
+    ]
 
 
 # print(f"Default pointgrid has {len(default_pointgrid)} points.")
 class SDFfromCadQuery:
     """
     Pre Conditions:
-    - shape: CadQuery Shape
-    - pointgrid (optional): list of points where the SDF is calculated
+    - shape: CadQuery Shape: cq.Solid
 
     Post Conditions:
         If you want to get the SDF value of all Points in the pointgrid use sdf_at_pointgrid() to get the list of the corresponding SDF values
@@ -55,11 +47,10 @@ class SDFfromCadQuery:
     def __init__(
         self,
         shape: cq.Shape,
-        pointgrid: list[list[float]] = default_pointgrid,
         in_mms: bool = True,
     ):
         self.__shape = shape
-        self.__pointgrid = pointgrid
+        self.__pointgrid = pointgrid_geni()
         self.__negativ = cq.Workplane("XY").box(100000, 100000, 100000, centered=True).cut(cq.Workplane().newObject([self.__shape])).val()
         self.__negativ = cast(cq.Shape, self.__negativ).wrapped
         self.__sdf_at_pointgrid = [self.sdf(x, y, z) for x, y, z in self.__pointgrid]
@@ -67,6 +58,8 @@ class SDFfromCadQuery:
 
         if min(self.__sdf_at_pointgrid) > -1:
             self.__sdf_at_pointgrid = [self.sdf2(x, y, z) for x, y, z in self.__pointgrid]
+        if min(self.__sdf_at_pointgrid) > -1:
+            print("SDF from cq.solid conversion Problem")
         
     
     def sdf(self, x: float, y: float, z: float) -> float:
@@ -134,6 +127,7 @@ class SDFfromCadQuery:
             return volume / 1e9  # convert to cubic meters
 
 
+# The following code should be outdated and no longer be used:
 class BackupAssembly:
     def __init__(self):
         def m(value: float) -> float:

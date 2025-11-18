@@ -12,7 +12,7 @@ from ..utils.kaolin_utils import flexicubes_to_PLY, get_diff_mesh
 from ..utils.losses import SDFLosses
 from ..utils.sdf2mesh import save_sdf2mesh
 from ..utils.visualizer import CADVisualizer
-
+from subprojects.wp4_aeroshell_optimizer.src.utils.validation import validation_score
 
 def train_sdf_model(
     model: SDFNetwork,
@@ -43,17 +43,19 @@ def train_sdf_model(
     num_epochs = train_config["num_epochs"]
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_fn = SDFLosses()
-
+    # assembly_points=loss_fn.__inner_bb_points
+    
     for epoch in range(num_epochs):
         points = (torch.rand(1000, 3, requires_grad=True, device="cuda") - 0.5) * 10
         optimizer.zero_grad()
         total_loss = loss_fn.get_total_loss(
             model=model, points=points, epoch_name=epoch
         )
+        val_score = validation_score(model)
         total_loss.backward()
         optimizer.step()
         if track_run:
-            wandb.log({"epoch": epoch, "total_loss": total_loss.item()}, step=epoch)
+            wandb.log({"epoch": epoch, "total_loss": total_loss.item(),"Validation_loss": val_score}, step=epoch)
             if epoch % 1 == 0:
                 verts, faces = get_diff_mesh(model, grid_res=64, device="cuda")
                 mesh = flexicubes_to_PLY(verts, faces, save_mesh=False)
