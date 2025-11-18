@@ -11,33 +11,21 @@ from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
 
-# The following Code is in mms
-rand = 400
-dr = 1
-default_pointgrid_ranges = [
-    [int(-5800 / 2 - rand + dr), int(5800 / 2 + rand)],
-    [int(-1150 - rand + dr), int(1150 + rand)],
-    [int(-rand+dr), int(1650 + rand)],
-]
-default_pointgrid_steps = [100, 100, 100]
-default_pointgrid = [
-    [x, y, z]
-    for x in range(
-        default_pointgrid_ranges[0][0],
-        default_pointgrid_ranges[0][1],
-        default_pointgrid_steps[0],
-    )
-    for y in range(
-        default_pointgrid_ranges[1][0],
-        default_pointgrid_ranges[1][1],
-        default_pointgrid_steps[1],
-    )
-    for z in range(
-        default_pointgrid_ranges[2][0],
-        default_pointgrid_ranges[2][1],
-        default_pointgrid_steps[2],
-    )
-]
+def default_poingrid_geni(dx: int = 100, dy: int = 100, dz: int = 100) -> list[list[float]]:
+    rand, dr = 400, 1
+    ranges = [
+        (int(-2900 - rand + dr), int(2900 + rand)),   #  -5800/2 →  -2900
+        (int(-1150 - rand + dr), int(1150 + rand)),
+        (int(-rand + dr), int(1650 + rand)),
+    ]
+    steps = (dx, dy, dz)
+
+    return [
+        [x, y, z]
+        for x in range(ranges[0][0], ranges[0][1], steps[0])
+        for y in range(ranges[1][0], ranges[1][1], steps[1])
+        for z in range(ranges[2][0], ranges[2][1], steps[2])
+    ]
 
 
 # print(f"Default pointgrid has {len(default_pointgrid)} points.")
@@ -55,7 +43,7 @@ class SDFfromCadQuery:
     def __init__(
         self,
         shape: cq.Shape,
-        pointgrid: list[list[float]] = default_pointgrid,
+        pointgrid: list[list[float]] = default_pointgrid_geni(),
         in_mms: bool = True,
     ):
         self.__shape = shape
@@ -134,6 +122,9 @@ class SDFfromCadQuery:
             return volume / 1e9  # convert to cubic meters
 
 
+
+
+# The following code should be outdated and no longer be used:
 class BackupAssembly:
     def __init__(self):
         def m(value: float) -> float:
