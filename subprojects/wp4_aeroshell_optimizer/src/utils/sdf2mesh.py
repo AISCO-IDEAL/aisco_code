@@ -32,7 +32,7 @@ def save_sdf2mesh(
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_normals=normals)
     """
 
-    verts, faces = get_diff_mesh(model, grid_res=grid_size)
+    verts, faces = get_diff_mesh(model, grid_res=grid_size,device=device)
 
     if mesh_dir:
         export_path = mesh_dir
