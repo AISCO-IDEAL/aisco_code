@@ -7,7 +7,6 @@
 #SBATCH --mem-per-cpu=5G                  # Total 5G memory
 #SBATCH --gpus=1
 #SBATCH --output=/cluster/scratch/eschaerer/logs/AISCO_TEST_%j.out     #adjust path as needed
-#SBATCH --error=/cluster/scratch/eschaerer/logs/AISCO_TEST_%j.err      #adjust path as needed
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=eschaerer@ethz.ch
 #------------------------------------------------------------------------------
