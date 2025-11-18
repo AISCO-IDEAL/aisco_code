@@ -5,7 +5,7 @@ requires = ["setuptools>=74.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "aisco_env"
+name = "AISCO_code"
 version = "0.1.0"
 description = "Monorepo for all AISCO code"
 authors = [
@@ -41,7 +41,7 @@ wp2_assembler =[
 wp3_solar_estimator = [
 
 ]
- 
+
 wp4_aeroshell_optimizer = [
   "cadquery == 2.6.0",
   "matplotlib==3.10.7",
@@ -54,7 +54,10 @@ wp4_aeroshell_optimizer = [
   "mesh2sdf", #From https://github.com/wang-ps/mesh2sdf?tab=readme-ov-file
 ]
 
-testing = ["pytest >= 8.3.2"]
+testing = [
+  "pytest >= 9.0.1",
+  "pytest-mock"
+  ]
 
 all = [
   "aisco_env[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer]"
@@ -63,7 +66,7 @@ all = [
 #make a all command
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["AISCO*", "subprojects_legacy*"]
+include = ["subprojects*"]
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
@@ -89,6 +92,7 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
+    "**/archive/**"
 ]
 
 

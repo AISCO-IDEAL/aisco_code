@@ -18,9 +18,9 @@ version2/
 │   ├── seat.py              # Skeleton structure
 │   ├── bounding_box.py      # Bounding box generation
 │   └── ...                  # more to come
-│ 
+│
 ├── utils/                   # Helper utilities
-│   ├── __init__.py 
+│   ├── __init__.py
 │   ├── geometry.py          # Geometric calculations
 │   ├── validators.py        # Rule & regulation validators
 │   ├── converters.py        # Format conversions

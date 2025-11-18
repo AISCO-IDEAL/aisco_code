@@ -1,5 +1,6 @@
 import cadquery as cq
-from subprojects.wp2_assembler.utils.distributions import truncated_gamma
+
+from subprojects.wp2_assembler.version2.utils.distributions import truncated_gamma
 
 
 class Triangle:
@@ -11,8 +12,8 @@ class Triangle:
     def build_random(self) -> "Triangle":
         self.a = cq.Vector(0, 0, 0)
         self.b = cq.Vector(
-            truncated_gamma("l"),  # get value lengthwise in x-direction
-            truncated_gamma("w"),  # get value widthwise in y-direction
+            truncated_gamma(),  # get value lengthwise in x-direction
+            truncated_gamma(),  # get value widthwise in y-direction
             0,  # get value heightwise in z-direction
         )
         self.c = cq.Vector(

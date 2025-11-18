@@ -1,7 +1,8 @@
-from dataclasses import dataclass, field  # for defining parameter classes
+from dataclasses import dataclass, field
 
-import cadquery as cq  # for CAD modeling
-from subprojects.wp2_assembler.utils.reg_imp import get_regulation
+import cadquery as cq
+
+from subprojects.wp2_assembler.version2.utils.reg_imp import get_regulation
 
 
 # --- Wheels class: ---

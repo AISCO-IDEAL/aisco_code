@@ -1,7 +1,8 @@
 import cadquery as cq
 from ocp_vscode import show
-from subprojects.wp2_assembler.components import nbz
-from subprojects.wp2_assembler.utils.reg_imp import get_regulation
+
+from subprojects.wp2_assembler.version2.components import nbz
+from subprojects.wp2_assembler.version2.utils.reg_imp import get_regulation
 
 
 def visualize_multiple(lower_id: int, upper_id: int):

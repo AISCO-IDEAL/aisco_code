@@ -9,10 +9,10 @@ analysis (Pylance/mypy/ruff) fail to detect available names, so we import the
 public symbols explicitly and define __all__.
 """
 
-from subprojects.wp5.src.dummy_2 import test
+from subprojects.wp5.src.dummy_2 import file_saving
 from subprojects.wp5.src.dummy_3 import hihi
 
 __all__ = [  # these functions will be imported when calling from subprojects.wp5 import *
+    "file_saving",
     "hihi",
-    "test",
 ]

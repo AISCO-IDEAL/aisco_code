@@ -2,7 +2,8 @@ import math
 from dataclasses import dataclass, field
 
 import cadquery as cq
-from subprojects.wp2_assembler.utils.reg_imp import get_regulation
+
+from subprojects.wp2_assembler.version2.utils.reg_imp import get_regulation
 
 
 # --- Seat class (hard-coded parameters) ---

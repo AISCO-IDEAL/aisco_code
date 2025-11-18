@@ -1,8 +1,0 @@
-README.md
-pyproject.toml
-AISCO/subprojects/WP4_Aeroshell_Optimizer/SDF_Prototype/main.py
-aisco_env.egg-info/PKG-INFO
-aisco_env.egg-info/SOURCES.txt
-aisco_env.egg-info/dependency_links.txt
-aisco_env.egg-info/requires.txt
-aisco_env.egg-info/top_level.txt

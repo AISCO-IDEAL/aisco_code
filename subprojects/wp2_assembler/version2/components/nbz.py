@@ -3,12 +3,13 @@ from pathlib import Path
 
 import cadquery as cq
 import yaml
-from subprojects.wp2_assembler.components.inner.base_triangle import Triangle
-from subprojects.wp2_assembler.components.inner.seat import Seat
-from subprojects.wp2_assembler.components.inner.wheels import Wheels
-from subprojects.wp2_assembler.components.outer.outer_box import outer_box2
-from subprojects.wp2_assembler.utils.distributions import uniform_distribution
-from subprojects.wp2_assembler.utils.reg_imp import get_regulation
+
+from subprojects.wp2_assembler.version2.components.inner.base_triangle import Triangle
+from subprojects.wp2_assembler.version2.components.inner.seat import Seat
+from subprojects.wp2_assembler.version2.components.inner.wheels import Wheels
+from subprojects.wp2_assembler.version2.components.outer.outer_box import outer_box2
+from subprojects.wp2_assembler.version2.utils.distributions import uniform_distribution
+from subprojects.wp2_assembler.version2.utils.reg_imp import get_regulation
 
 
 class WheelbaseTooSmallError(Exception):

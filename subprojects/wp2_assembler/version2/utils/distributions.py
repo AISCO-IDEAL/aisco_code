@@ -1,6 +1,7 @@
 import numpy as np
 import scipy as sp
-from subprojects.wp2_assembler.utils.reg_imp import get_regulation
+
+from subprojects.wp2_assembler.version2.utils.reg_imp import get_regulation
 
 
 def uniform_distribution(low: float, high: float, size: int = 1) -> float | np.ndarray:
@@ -46,7 +47,7 @@ def truncated_gamma(  # noqa: PLR0913
 
     # Generate uniform samples in [-fa, 0] and inverse transform
     u = rng.uniform(0, fa, size=size)
-    samples = -gamma_dist.ppf(u)
+    samples = np.array(-gamma_dist.ppf(u))
     # shift all entries by c and then multiply by (y-x)/c to scale to [x,y]
     samples = (samples + c) * ((y - x) / c) + y
 

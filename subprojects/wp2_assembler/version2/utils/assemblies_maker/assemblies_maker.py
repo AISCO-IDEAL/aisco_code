@@ -23,7 +23,7 @@ def ensure_output_dir() -> Path:
     return ASSEMBLIES_DIR
 
 
-def export_step_files(count: int) -> List[Path]:
+def export_step_files(count: int) -> list[Path]:
     """
     Build `count` symmetric inner NBZ assemblies and export each as a STEP file.
 
@@ -34,7 +34,7 @@ def export_step_files(count: int) -> List[Path]:
         raise ValueError("Count must be greater than zero.")
 
     output_dir = ensure_output_dir()
-    exported_files: List[Path] = []
+    exported_files: list[Path] = []
 
     start_index = _next_file_index(output_dir, BASE_FILENAME)
     end_index = start_index + count
