@@ -3,13 +3,12 @@ from pathlib import Path
 
 import cadquery as cq
 import yaml
-from utils.distributions import uniform_distribution
-from utils.reg_imp import get_regulation
-
-from .inner.base_triangle import Triangle
-from .inner.seat import Seat
-from .inner.wheels import Wheels
-from .outer.outer_box import outer_box2
+from subprojects.wp2_assembler.components.inner.base_triangle import Triangle
+from subprojects.wp2_assembler.components.inner.seat import Seat
+from subprojects.wp2_assembler.components.inner.wheels import Wheels
+from subprojects.wp2_assembler.components.outer.outer_box import outer_box2
+from subprojects.wp2_assembler.utils.distributions import uniform_distribution
+from subprojects.wp2_assembler.utils.reg_imp import get_regulation
 
 
 class WheelbaseTooSmallError(Exception):
@@ -67,7 +66,7 @@ def inner_nbz2_sym(
     wheel_base_width=1000,
     wheel_base_length=2500,
     tyre_diameter=557,
-    seat_position=300,
+    seat_position=400,
 ):
     """
     Deterministic implementation of innerNBZ for version 2
@@ -116,7 +115,7 @@ def inner_nbz2_sym(
         .add(
             seat,
             loc=cq.Location(
-                cq.Vector(seat_position + 500, 0, -100)
+                cq.Vector(seat_position, 0, -100)
             ),  # the 500 shall be removed, after correction in seat.py
             name="Seat",
         )

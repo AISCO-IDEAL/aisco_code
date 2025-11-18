@@ -1,7 +1,6 @@
 import numpy as np
 import scipy as sp
-
-from .reg_imp import get_regulation
+from subprojects.wp2_assembler.utils.reg_imp import get_regulation
 
 
 def uniform_distribution(low: float, high: float, size: int = 1) -> float | np.ndarray:

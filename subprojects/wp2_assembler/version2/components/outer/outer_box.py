@@ -1,5 +1,5 @@
 import cadquery as cq
-from utils.reg_imp import get_regulation
+from subprojects.wp2_assembler.utils.reg_imp import get_regulation
 
 
 def outer_box():

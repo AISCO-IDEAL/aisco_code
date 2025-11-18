@@ -31,7 +31,7 @@ no_build_zones:
 
 seat:
   position:
-    min_distance_to_back_wheel: 50   # mm from backwheel to seating position
+    min_distance_to_back_wheel: 400   # mm from backwheel to seating position
   dimension:
     width: 450.0            # general width of the seat
     radius_top: 835.0       # radius used to build the backrest

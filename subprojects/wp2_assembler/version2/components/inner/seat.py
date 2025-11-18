@@ -1,10 +1,8 @@
 import math
-import sys
 from dataclasses import dataclass, field
 
 import cadquery as cq
-from ocp_vscode import show
-from utils.reg_imp import get_regulation
+from subprojects.wp2_assembler.utils.reg_imp import get_regulation
 
 
 # --- Seat class (hard-coded parameters) ---
@@ -65,78 +63,91 @@ class Seat:
             h_hr (float): Headroom height.
             w_hr (float): Headroom width.
         """
-        # create two rectangles with curved tops, by intersecting a circle with a rectangle with width = wid
+        # create two rectangles with curved tops, by intersecting a circle with a rectangle with width = wid - see documentation for more details
 
         rad_s = rad - h_hr  # radius for headroom curve
 
-        sketch = (
-            cq.Sketch("XY")
-            .circle(rad_s)
-            .push([(rad_s / 2, 0)])
-            .rect(rad_s, wid, mode="i")
-            .push([(rad / 2, 0)])
-            .rect(rad, w_hr, mode="a")
-            .push([(0, 0)])
-            .circle(rad, mode="i")
-        )
+        # the apothem is the height of a triangle formed by radius and half the width - check wikipedia
+        apothem_1 = math.sqrt(rad**2 - (w_hr / 2) ** 2)
+        apothem_2 = math.sqrt(rad_s**2 - (w_hr / 2) ** 2)
+        apothem_3 = math.sqrt(rad_s**2 - (wid / 2) ** 2)
 
-        userinput = input("Show sketch? (y/-) ")
-        if userinput == "y":
-            show(sketch)
+        point_a = (0, rad)
+        # point b is the right lower corner of a circular segment with width w_hr and radius rad
+        point_b = (w_hr / 2, apothem_1)
+        # point c is the right lower corner of a circular segment with width w_hr and radius rad_s
+        point_c = (w_hr / 2, apothem_2)
+        # point d is the right lower corner of a circular segment with width wid and radius rad_s
+        point_d = (wid / 2, apothem_3)
+        point_e = (wid / 2, 1)  # avoid exact zero for sweeping - will cause errors
+        point_f = (0, 1)
 
-        # recreate sketch as workplane object for sweeping
-        w_sketch = (
+        # profile to sweep the wedge
+        profile_head = (
             cq.Workplane("YZ")
-            .sketch()
-            .circle(rad_s)
-            .push([(0, rad_s / 2)])
-            .rect(wid, rad_s, mode="i")
-            .push([(0, rad / 2)])
-            .rect(w_hr, rad, mode="a")
-            .push([(0, 0)])
-            .circle(rad, mode="i")
-            .finalize()
+            .moveTo(point_a[0], point_a[1])
+            .radiusArc(endPoint=point_b, radius=rad)
+            .lineTo(point_c[0], point_c[1])
+            .radiusArc(endPoint=(point_d[0], point_d[1]), radius=rad_s)
+            .lineTo(point_e[0], point_e[1])
+            .lineTo(point_f[0], point_f[1])
+            .close()
         )
-        userinput = input("Show workplane sketch faces? (y/-) ")
-        if userinput == "y":
-            show(w_sketch)
 
+        # make to cq.Face and mirror profile, to sweep around centerline with 1mm margin
+        profile = profile_head.wires().val()
+        face1 = cq.Face.makeFromWires(
+            profile
+        )  # it works like this - ignore error from mypy
+        face2 = face1.mirror("XZ")
+        w_sketch = face1.fuse(face2)
+
+        # start point is the point the most backward on the wedge
+        # end point is the point the most forward on the wedge
         start_point = cq.Vector(-math.sin(ang_min) * rad, 0, math.cos(ang_min) * rad)
         end_point = cq.Vector(math.sin(ang_plus) * rad, 0, math.cos(ang_plus) * rad)
-        arc = (
+
+        # create arcs to sweep along
+        arc_bwd = (
             cq.Workplane("XZ")
-            .moveTo(start_point.x, start_point.z)
-            .radiusArc(endPoint=(end_point.x, end_point.z), radius=rad)
+            .moveTo(point_a[0], point_a[1])
+            .radiusArc(endPoint=(start_point.x, start_point.z), radius=-rad)
+        )
+        arc_fwd = (
+            cq.Workplane("XZ")
+            .moveTo(end_point.x, end_point.z)
+            .radiusArc(endPoint=(point_a[0], point_a[1]), radius=-rad)
         )
 
-        userinput = input("Show arc? (y/-) ")
-        if userinput == "y":
-            show(arc)
-        # add sketch to YZ-workplane and revolve by corresponding angles
-        # Convert sketch to face first, then sweep along the arc
-        # Get the wire from the arc path
-        arc_wire = arc.val()
-
-        # Get the actual face objects from the finalized sketch
-        face_list = w_sketch.faces().vals()
-
-        # Create a new workplane and add the faces, then sweep
-        wedge = cq.Workplane("YZ")
-        for face in face_list:
-            wedge = wedge.add(face)
-        wedge = wedge.sweep(arc_wire, isFrenet=True)
-
-        userinput = input("Show wedge? (y/-) ")
-        if userinput == "y":
-            show(wedge)
-
-        userinput = input("Continue? (y/-) ")
-        if userinput != "y":
-            sys.exit("Seat creation aborted by user.")
+        # do the sweeping
+        sweep_bwd = cq.Workplane("YZ").add(w_sketch).sweep(arc_bwd, isFrenet=True)
+        sweep_fwd = cq.Workplane("YZ").add(w_sketch).sweep(arc_fwd, isFrenet=True)
+        wedge = sweep_bwd.union(sweep_fwd)
 
         return wedge
 
-    def create_seat(self) -> cq.Workplane:
+    def _create_legroom(
+        self,
+        lr_l: float,  # legroom length
+        lr_h: float,  # legroom height
+        wid: float,  # width of seat
+    ) -> cq.Workplane:
+        """
+        Create the legroom part of the seat.
+        Args:
+            Lr_l (float): Legroom length.
+            Lr_h (float): Legroom height.
+            wid (float): Width of the seat.
+        """
+        solid_legroom = (
+            cq.Workplane("YZ").rect(wid, lr_h, centered=(True, False)).extrude(lr_l)
+        )
+
+        return solid_legroom
+
+    def create_seat(
+        self,
+    ) -> cq.Workplane:  # test failed - sweep function not working as expected
         """
         Create a CAD model of the seat using regulation parameters.
         Args:
@@ -154,7 +165,9 @@ class Seat:
             self.width_hr,
         )
 
-        return wedge
+        legroom = self._create_legroom(self.Lr_l, self.Lr_h, self.width)
+
+        return wedge.union(legroom)
 
     def create_seat_old(self) -> cq.Workplane:
         """
@@ -202,28 +215,14 @@ class Seat:
             (0, self.width / 2, 0)
         )
 
-        userinput = input("Show wedge from seat? (y/-)")
-        if userinput == "y":
-            show(solid_wedge)
-
-        legroom_face = (
-            cq.Workplane("XZ")
-            .rect(self.Lr_l, self.Lr_h)
+        legroom_face = cq.Workplane("XZ").rect(self.Lr_l, self.Lr_h)
+        solid_legroom = (
+            legroom_face.extrude(self.width)
+            .translate((0, self.width / 2, 0))
             .translate((self.Lr_l / 2, 0, self.Lr_h / 2))
         )
-        solid_legroom = legroom_face.extrude(self.width).translate(
-            (0, self.width / 2, 0)
-        )
-
-        userinput = input("Show legroom from seat? (y/-)")
-        if userinput == "y":
-            show(solid_legroom)
 
         seat_base = solid_wedge.union(solid_legroom)
-
-        userinput = input("Show union from seat? (y/-)")
-        if userinput == "y":
-            show(seat_base)
 
         # --- create head cutout ---
         profile_head = (
