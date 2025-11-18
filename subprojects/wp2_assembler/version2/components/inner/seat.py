@@ -45,7 +45,7 @@ class Seat:
             f"legroom={self.Lr_l}x{self.Lr_h}mm, headroom={self.width_hr}x{self.height_hr}mm."
         )
 
-    def _create_wedge(  # noqa: PLR0913
+    def _create_wedge(
         self,
         rad: float,  # radius
         ang_min: float,  # angle backwards

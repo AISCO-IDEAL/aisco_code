@@ -10,7 +10,7 @@ def uniform_distribution(low: float, high: float, size: int = 1) -> float | np.n
     return samples[0] if size == 1 else samples
 
 
-def truncated_gamma(  # noqa: PLR0913
+def truncated_gamma(
     x: float = 0.0,
     y: float = 100.0,
     k: float = get_regulation("wheel.gamma_distribution.shape1"),
