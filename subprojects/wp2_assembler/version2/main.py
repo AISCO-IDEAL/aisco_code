@@ -68,11 +68,11 @@ if __name__ == "__main__":  # only run when executing this file directly
                 print("Invalid input. Please enter a valid id-number.")
                 continue
             inner_nbz, outer_nbz = nbz.call_assembly(id_number)
-            assembly = cq.Assembly(name=f"NBZ_{id_number}")
+            assembly = cq.Assembly(inner_nbz, name=f"NBZ_{id_number}")
             assembly.add(outer_nbz, name="outerNBZ", color=cq.Color(1, 0, 0, 0.3))
-            assembly.add(inner_nbz, name="innerNBZ", color=cq.Color(0, 0, 1, 0.3))
             show(assembly)
-            show(assembly)
+            print(type(inner_nbz))
+            print(type(outer_nbz))
             print(type(assembly))
 
         elif userinput.lower() == "m":

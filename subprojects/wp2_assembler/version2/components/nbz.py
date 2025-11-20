@@ -225,7 +225,7 @@ def save_assembly_parameters(parameters: dict) -> str:
     return str(next_id)
 
 
-def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Assembly]:
+def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
     """
     Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
     Args: id-number
@@ -249,13 +249,16 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Assembly]:
         tyre_diameter=params["tyre_diameter"],
         seat_position=params["seat_position"],
     )
+    # Convert assembly to solid by fusing all shapes
+    compound = assembly.toCompound()
+    inner_solid = cq.Solid(compound.wrapped)
 
     box_width = get_regulation("no_build_zones.outer_prism.width")
     box_height = get_regulation("no_build_zones.outer_prism.height")
 
     outer = outer_nbz2(params["wheel_base_length"] * 2.2, box_width, box_height)
 
-    return assembly, outer
+    return inner_solid, outer
 
 
 def get_range_wheels() -> dict:
