@@ -2,13 +2,19 @@ import numpy as np
 import trimesh
 
 
-def facenormal_angle(mesh: trimesh.Trimesh, sun_direction=np.array([0,0,1])) -> np.ndarray:
+def facenormal_angle(
+    mesh: trimesh.Trimesh, sun_direction=np.array([0, 0, 1])
+) -> np.ndarray:
+    # nserck
     """
     Calculates the angle in degrees between each face normal of the mesh and the sun direction.
     0° means the face normal is aligned with the sun direction (face directly facing the sun),
-    90° means the face normal is perpendicular to the sun direction (zero direct sunlight). Clampes angles > 90°.
-
-    returns: np.ndarray: Array of angles in degrees for each face.
+    90° means the face normal is perpendicular to the sun direction (zero direct sunlight). Clips angles > 90°.
+    Args:
+        mesh: Mesh that we want to analize
+        sun_direction: Direction TO the sun, eg [0,0,1] (default)
+    Returns:
+        np.ndarray: Array of angles in degrees for each face.
     """
 
     # 1. Normalize the sun direction
@@ -34,19 +40,16 @@ def facenormal_angle(mesh: trimesh.Trimesh, sun_direction=np.array([0,0,1])) -> 
     return angle_deg
 
 
-
-
 def powerratio_iam(theta_grad, b0=0.05):
+    # nserck
     """
-    Calculates the power ratio based on the incidence angle modifier (IAM) according to ASHRAE.
+    Calculates the power ratio based on the incidence angle modifier (IAM) according to ASHRAE. Outputs a weight Mask, that does NOT consider shadowing effects!
     Args:
         theta_grad (float or np.ndarray): Incidence angle in degrees.
         b0 (float): IAM coefficient, default is 0.05. (larger b0 means stronger punishment for less optimal angles)
     Returns:
         np.ndarray: Power ratio (0.0 to 1.0) corresponding to the incidence angles.
     """
-
-
 
     # Ensure all inputs are treated as arrays for vectorized operation
     theta_grad = np.asarray(theta_grad)
@@ -58,7 +61,7 @@ def powerratio_iam(theta_grad, b0=0.05):
     #
 
     # For the IAM formula, we must prevent division by zero (when cos_theta is 0, i.e., theta=90°).
-    #clip cos_theta to a minimum value slightly above 0 to avoid division by zero
+    # clip cos_theta to a minimum value slightly above 0 to avoid division by zero
     cos_theta_safe = np.clip(cos_theta, a_min=1e-6, a_max=1.0)
 
     # 3. Berechnung des Incidence Angle Modifier (IAM) nach ASHRAE
@@ -66,24 +69,27 @@ def powerratio_iam(theta_grad, b0=0.05):
     iam_factor = 1.0 - b0 * ((1.0 / cos_theta_safe) - 1.0)
 
     # 4. Berechnung des Gesamtverhältnisses
-
-    ratio = iam_factor * cos_theta
+    ratio = iam_factor  ##  * cos_theta fehlerhaft?
 
     # 5. ANGLE CHECK (Vectorized Fix): Set ratio to 0.0 where angle >= 90°
     # np.where checks the condition element-wise:
     # - If True (angle >= 90): returns 0.0
     # - If False (angle < 90): returns the calculated 'verhaeltnis'
-    orthonormal = 90.0
-    ratio_final = np.where(theta_grad >= orthonormal, 0.0, ratio)
+    ratio_final = np.where(theta_grad >= 90.0, 0.0, ratio)
+    ratio_final = np.clip(ratio_final, a_min=0.0, a_max=None)
 
     return ratio_final
 
+
 def sky_face(mesh, threshold=0.01) -> trimesh.Trimesh:
+    # nserck
     """
     Returns a mesh containing only the faces that are oriented upwards (sky-facing).
     Args:
         mesh (trimesh.Trimesh): The input mesh.
         threshold (float): The minimum Z-component of the face normal to be considered sky-facing.
+    Returns:
+        top_mesh: the mesh that qualifies the condition
     """
     threshold = 0.01
     face_normals = mesh.face_normals
@@ -93,3 +99,53 @@ def sky_face(mesh, threshold=0.01) -> trimesh.Trimesh:
     top_faces = mesh.faces[top_face_indices]
     top_mesh = trimesh.Trimesh(vertices=mesh.vertices, faces=top_faces)
     return top_mesh
+
+
+def shadowing_factor(
+    mesh: trimesh.Trimesh,
+    sun_direction=np.array([0, 0, -1]),
+) -> np.ndarray:
+    # nserck
+    """
+    Args:
+        mesh (entire mesh, not only sky-facing)
+        sun_dir, as sunrays direction eg  [0,0,-1]
+    Returns
+        np.array True/False, (True means shadowed.)
+    """
+    # TODO: adapt Function so it can evaluate shadowing given the entire mesh,
+    # but then only outputs the mask for the relevant area (eg. Sky facing area, intended solar area..)
+
+    intersector = mesh.ray
+
+    sun_direction = sun_direction / np.linalg.norm(sun_direction)
+
+    # 3. Bestimmen Sie die Startpunkte der Strahlen
+    # Wir verwenden die Zentroiden (Mittelpunkte) jeder Facette
+    epsilon = 1e-4
+    face_normals = mesh.face_normals
+
+    # Verschieben Sie den Startpunkt jeder Facette leicht entlang ihrer Normalen
+    ray_origins_offset = mesh.triangles_center + epsilon * face_normals
+
+    # 4. Definieren Sie die Richtungen der Strahlen
+    # Die Strahlen zeigen in die entgegengesetzte Sonnenrichtung.
+    # Jeder Strahl hat dieselbe Richtung.
+    ray_directions = np.tile(-sun_direction, (len(ray_origins_offset), 1))
+
+    # 5. Raycasting durchführen
+    # Wir nutzen intersects_any, was sehr schnell ist:
+    # Es prüft, ob JEDER Strahl ÜBERHAUPT eine Oberfläche trifft.
+    # Wenn ein Strahl trifft, ist die Facette (deren Zentrum) beschattet.
+    # hit_any ist ein Boolean-Array, so groß wie die Anzahl der Facetten.
+    hit_any = intersector.intersects_any(
+        ray_origins=ray_origins_offset, ray_directions=ray_directions
+    )
+
+    # hit_any = True bedeutet, dass der Strahl die Oberfläche getroffen hat -> Facette ist beschattet
+    # hit_any = False bedeutet, dass der Strahl die Oberfläche nicht getroffen hat -> Facette ist unbeschattet
+
+    # 6. Ergebnisse interpretieren
+    # shadowed_faces_indices = np.where(hit_any)[0]
+    # illuminated_faces_indices = np.where(~hit_any)[0]
+    return hit_any

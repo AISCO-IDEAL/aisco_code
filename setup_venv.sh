@@ -32,6 +32,9 @@ echo "📦 Upgrading pip and installing standard dependencies from pyproject.tom
 python3 -m pip install --upgrade pip
 python3 -m pip install -e .
 
+echo "🪝 Setting up Pre-commit Hooks..."
+pre-commit install
+
 # 6. Print instructions for optional dependencies
 echo ""
 echo "✅ Standard dependencies installed."
@@ -49,16 +52,13 @@ echo "🔍 Checking if Kaolin should be installed..."
 read -p "Do you want to install Kaolin (GPU/CUDA-dependent)? [y/n]: " install_kaolin
 if [[ "$install_kaolin" == "y" ]]; then
     echo "🐍 Installing Kaolin from NVIDIA link..."
-    python3 -m pip install -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.4.0_cu124.html kaolin==0.18.0
+    python3 -m pip install -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.4.0_cu121.html kaolin==0.18.0
     echo "✅ Kaolin installation complete."
 else
     echo "⏭️ Skipping Kaolin installation."
 fi
 echo ""
 ##############################################################
-echo "🪝 Set up Pre-commit Hooks (if Dev Tools are installed):"
-echo "   pre-commit install"
-echo ""
 echo "✅ Setup complete!"
 echo ""
 echo "Next steps:"
