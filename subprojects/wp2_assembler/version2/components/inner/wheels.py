@@ -12,10 +12,10 @@ class Wheels:
 
     # Import from regulations wheel dimensions
     wheel_count: int = field(
-        default_factory=lambda: get_regulation("wheel.min_wheel_count")
+        default_factory=lambda: int(get_regulation("wheel.min_wheel_count"))
     )
     wheel_diameter: float = field(
-        default_factory=lambda: get_regulation("wheel.tire_diameter")
+        default_factory=lambda: float(get_regulation("wheel.tire_diameter"))
     )
     wheel_width: float = field(
         default_factory=lambda: get_regulation("wheel.tire_width")

@@ -144,15 +144,20 @@ def generate_assembly() -> str:
     """
     # get ranges for wheelbase from regulations
     wheel_ranges = get_range_wheels()
-    wheel_base_width = uniform_distribution(
-        wheel_ranges["wheel_base_width"][0],
-        wheel_ranges["wheel_base_width"][1],
-        size=1,
+    # generate random wheelbase values within ranges
+    wheel_base_width = float(
+        uniform_distribution(
+            wheel_ranges["wheel_base_width"][0],
+            wheel_ranges["wheel_base_width"][1],
+            size=1,
+        )
     )
-    wheel_base_length = uniform_distribution(
-        wheel_ranges["wheel_base_length"][0],
-        wheel_ranges["wheel_base_length"][1],
-        size=1,
+    wheel_base_length = float(
+        uniform_distribution(
+            wheel_ranges["wheel_base_length"][0],
+            wheel_ranges["wheel_base_length"][1],
+            size=1,
+        )
     )
     # print ranges
     print(
@@ -161,8 +166,12 @@ def generate_assembly() -> str:
 
     # get ranges for seat and position from regulations
     seat_ranges = get_range_seat(wheel_base_width, wheel_base_length)
-    seat_position = uniform_distribution(
-        seat_ranges["seat_position"][0], seat_ranges["seat_position"][1]
+    seat_position = float(
+        uniform_distribution(
+            seat_ranges["seat_position"][0],
+            seat_ranges["seat_position"][1],
+            size=1,
+        )
     )
 
     tyre_diameter = get_regulation("wheel.tire_diameter")

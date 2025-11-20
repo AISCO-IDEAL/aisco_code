@@ -12,42 +12,28 @@ def get_regulation(section: str) -> int | float:
         int | float: The value of the specified regulation section, or -1 if not found.
     """
     keys = section.split(".")
-    # Get the path relative to this file's location
     config_path = Path(__file__).parent.parent / "config" / "example_regulations.yaml"
-    with config_path.open() as file:
-        regulations = yaml.safe_load(file)
 
-    value = -1
+    with config_path.open() as file:
+        data = yaml.safe_load(file)
+
+    # Traverse the nested dictionary structure
+    current = data
     for key in keys:
-        if not isinstance(regulations, dict):  # check if current node is a dictionary
-            break
-        next_value = regulations.get(key)
-        if isinstance(next_value, dict):  # check if next node is a dictionary
-            regulations = next_value
-        elif isinstance(
-            next_value, (int, float)
-        ):  # if not a node - check if it's a value
-            value = next_value
-            break
+        if isinstance(current, dict) and key in current:
+            current = current[key]
         else:
-            break  # if neither, break the loop
-    return value
+            return -1  # Key not found or current is not a dict
+
+    # Check if we ended up at a numeric value
+    if isinstance(current, (int, float)):
+        return current
+
+    return -1  # Final value is not a number
 
 
-def get_regulation_with_key(section: str) -> int:
-    """
-    Fetch regulation data from a YAML configuration file.
-    Args:
-        section (str): The section of the regulations to retrieve, e.g. dimensions.max_length
-    Returns:
-        int: The value of the specified regulation section, or -1 if not found.
-    """
-    keys = section.split(".")
-    # Get the path relative to this file's location
-    config_path = Path(__file__).parent.parent / "config" / "example_regulations.yaml"
-    with config_path.open() as file:
-        regulations = yaml.safe_load(file)
-    for key in keys:
-        print(key)
-        regulations = regulations.get(key, -1)
-    return regulations
+if __name__ == "__main__":
+    # Example usage - get values from nested YAML structure in test - print values 3 2 1
+    print(get_regulation("test.text.secondIndent.thirdIndent.drink"))
+    print(get_regulation("test.text.secondIndent.food"))
+    print(get_regulation("test.firstIndent.launch"))

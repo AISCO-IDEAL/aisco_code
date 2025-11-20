@@ -16,7 +16,8 @@ def visualize_multiple(lower_id: int, upper_id: int):
     grouped = cq.Assembly(name="groupedNBZ")
     for count, id_number in enumerate(range(lower_id, upper_id + 1)):
         inner_nbz, outer_nbz = nbz.call_assembly(id_number)
-        assembly = cq.Assembly(outer_nbz, name="outerNBZ", color=cq.Color(1, 0, 0, 0.3))
+        assembly = cq.Assembly(name=f"NBZ_{id_number}")
+        assembly.add(outer_nbz, name="outerNBZ", color=cq.Color(1, 0, 0, 0.3))
         assembly.add(inner_nbz, name="innerNBZ", color=cq.Color(0, 0, 1, 0.3))
         show(assembly)
         grouped.add(
@@ -63,14 +64,14 @@ if __name__ == "__main__":  # only run when executing this file directly
             userinput = input("Which id-number to visualize? ")
             if userinput.isdigit():
                 id_number = int(userinput)
-                inner_nbz, outer_nbz = nbz.call_assembly(id_number)
             else:
                 print("Invalid input. Please enter a valid id-number.")
                 continue
-            assembly = cq.Assembly(
-                outer_nbz, name="outerNBZ", color=cq.Color(1, 0, 0, 0.3)
-            )
+            inner_nbz, outer_nbz = nbz.call_assembly(id_number)
+            assembly = cq.Assembly(name=f"NBZ_{id_number}")
+            assembly.add(outer_nbz, name="outerNBZ", color=cq.Color(1, 0, 0, 0.3))
             assembly.add(inner_nbz, name="innerNBZ", color=cq.Color(0, 0, 1, 0.3))
+            show(assembly)
             show(assembly)
             print(type(assembly))
 
@@ -95,7 +96,8 @@ if __name__ == "__main__":  # only run when executing this file directly
             userinput = input("How many assemblies are to be generated?")
             if userinput.isdigit():
                 n_assemblies = int(userinput)
-                for _ in range(n_assemblies):
+                for j in range(n_assemblies):
+                    print(f"Generating assembly {j + 1} of {n_assemblies}...")
                     nbz.generate_assembly()
                 print(f"{n_assemblies} assemblies generated and saved.")
                 # show in 2 second intervals

@@ -1,5 +1,9 @@
-from subprojects.wp2_assembler.version2.components.nbz import call_assembly
+"""
+WP2 Assembler - Solar car chassis assembly generation and and regulation implementation.
 
-__all__ = ["call_assembly"]
+This package contains different versions of the assembler tool.
+Import from specific version directories as needed.
+"""
 
-__version__ = "2.2.1"
+__version__ = "2.2.2"
+__author__ = "vdiekmann", "fsanchez"
