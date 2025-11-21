@@ -6,4 +6,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.losses.ground_truth_masks.simple
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 
 
+def pretraining():
 
+
+    return
