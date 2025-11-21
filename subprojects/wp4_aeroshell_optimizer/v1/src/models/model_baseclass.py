@@ -55,8 +55,8 @@ class BaseModel(nn.Module):
         print("Model Debug Info:")
 
         print(self)
-        total_params = sum(p.numel() for p in self.parameters())
-        print(f"Total number of parameters: {total_params}")
+        
+        print(f"Total number of parameters: {sum(p.numel() for p in self.parameters())}")
         print("Model Layers:")
         for i, layer in enumerate(self.model_layers):
             print(f" Layer {i}: {layer}")
