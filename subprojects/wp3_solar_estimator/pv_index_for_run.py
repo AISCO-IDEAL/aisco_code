@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import trimesh
-from AISCO.subprojects.WP3_Solarestimator.read_mesh import (
+from subprojects.wp3_solar_estimator.read_mesh import (
     facenormal_angle,
     powerratio_iam,
     sky_face,
@@ -21,15 +21,17 @@ def pv_perf_index(
 ):
     # llinsi, #baural
     """
-    Computes an performance index for an entire run
+    Aggregate time-series face weights and rank the best solar deck region.
+
     Args:
-        top_mesh: mesh of the solar deck
-        periodic_power_weights: DataFrame (pd.DataFrame) with power_weights over periodic time snapshots
-        max_area: Maximum area that should be considered.
+        top_mesh (trimesh.Trimesh): Upward-facing subset of the vehicle mesh.
+        periodic_power_weights (pd.DataFrame): Columns represent timesteps and rows
+            map to `top_mesh` faces, containing per-face weights (0–1).
+        max_area (float): Maximum selectable area in square metres.
+
     Returns:
-        (performance_index, best_mesh):
-        **performance_index:** float in range [0;1] \n
-        **best_mesh:** The selection mask of the best perfoming facettes within max_area
+        tuple[float, trimesh.Trimesh]: Performance index averaged over the run, and
+        the mesh of faces that best fit inside `max_area`.
     """
 
     max_area = max_area * 1e6  # Convert m² to mm²

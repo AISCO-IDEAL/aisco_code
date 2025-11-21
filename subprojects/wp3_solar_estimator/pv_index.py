@@ -10,15 +10,17 @@ def pv_perf_index(
 ):
     # nserck
     """
-    Compares the Mesh to a perfectly sun-perfendicular area of the given size. If the Mesh is larger than given max_area it selects the bst performing facettes individually.
+    Score a mesh for a single sun direction and return the best-performing faces.
+
     Args:
-        mesh: The geometry of the object
-        sun_direction: Direction to the sun eg. [0,0,1]
-        max_area: Maximum area that should be considered.
+        mesh (trimesh.Trimesh): Full vehicle mesh (typically in millimetres).
+        sun_direction (array-like): Normalised vector pointing towards the sun.
+        max_area (float): Maximum deployable area in square metres that should be
+            considered while selecting faces.
+
     Returns:
-        (performance_index, best_mesh):
-        **performance_index:** float in range [0;1] \n
-        **best_mesh:** The selection mask of the best perfoming facettes within max_area
+        tuple[float, trimesh.Trimesh]: Performance index in [0, 1] referenced to the
+        same area at optimal incidence, and a mesh containing only the selected faces.
     """
 
     max_area = max_area * 1e6  # Convert m² to mm²
