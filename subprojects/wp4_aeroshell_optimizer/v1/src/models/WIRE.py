@@ -4,6 +4,16 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import Ba
 import torch
 from torch import nn
 
+"""
+WIRE architecture from https://arxiv.org/pdf/2301.05187
+
+This code is from the GINN PAPER repo: https://github.com/ml-jku/GINNs-Geometry-informed-Neural-Networks/blob/main/models/wire.py
+Modified by Alex to inherit from BaseModel class instead of nn.Module (BaseModel already inherits from nn.Module)
+
+Note that this implementation uses complex numbers!
+"""
+
+
 class ComplexGaborLayer(nn.Module):
     '''
         Implicit representation with complex Gabor nonlinearity
@@ -94,7 +104,7 @@ class WIRE_original(BaseModel):
         
         self.net = nn.Sequential(*self.net)
     
-    def forward(self, coords):
+    def forward(self, coords: torch.Tensor) -> torch.Tensor:
         output = self.net(coords)
         
         if self.wavelet == 'gabor':

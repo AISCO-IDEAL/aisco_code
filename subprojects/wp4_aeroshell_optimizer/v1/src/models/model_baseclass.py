@@ -40,8 +40,8 @@ class BaseModel(nn.Module):
     
     def train(self):
         super(BaseModel, self).train() #Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
-        #Training Logic TODO 
-        return 
+        raise NotImplementedError("Train method not implemented yet in BaseModel. Please implement in the subclass inheriting.")
+        
     
     def validation(self):
         super(BaseModel, self).eval() #Set training attribute of inherited model to false, ensures things like e.g. dropout are disabled
