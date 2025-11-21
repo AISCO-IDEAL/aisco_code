@@ -1,0 +1,1 @@
+# solar loss v0
