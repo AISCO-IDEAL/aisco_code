@@ -1,15 +1,17 @@
-
 from pathlib import Path
 import yaml
-def load_config() -> dict:
+import json
+
+
+def load_config(v="v1", cfg_name="wp4_config.yaml") -> dict:
     config_path = (
         Path.home()
         / "AISCO_code"
         / "subprojects"
         / "wp4_aeroshell_optimizer"
-        / "v1"
-        / "config"
-        / "wp4_config.yaml"
+        / v
+        / "configs"
+        / cfg_name
     )
     ####################### DEBUG #############################
     print(f"Looking for config at: {config_path}")
