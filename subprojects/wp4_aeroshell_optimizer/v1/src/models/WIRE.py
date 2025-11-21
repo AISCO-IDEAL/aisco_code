@@ -61,7 +61,7 @@ class ComplexGaborLayer(nn.Module):
         return torch.exp(1j*omega - scale.abs().square())
 
 
-class WIRE_original(BaseModel):
+class WIRE(BaseModel):
     def __init__(self, in_features, hidden_features, 
                  hidden_layers, 
                  out_features, outermost_linear=True,
