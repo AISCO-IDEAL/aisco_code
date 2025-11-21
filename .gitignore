@@ -24,6 +24,8 @@
 !subprojects/**/
 !tests/
 !tests/**/
+!.github/
+!.github/**/
 # Blacklist data folder
 subprojects/**/data/
 tests/**/data/

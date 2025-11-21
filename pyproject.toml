@@ -58,7 +58,10 @@ wp4_aeroshell_optimizer = [
   "shutil", # for forced rmdir (even when dir not empty)
 ]
 
-testing = ["pytest >= 8.3.2"]
+testing = [
+  "pytest >= 9.0.1",
+  "pytest-mock"
+  ]
 
 all = [
   "aisco_env[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer]"
@@ -167,7 +170,7 @@ known-first-party = ["src"]
 max-complexity = 10
 
 [tool.ruff.lint.pylint]
-max-args = 5
+max-args = 8
 
 [tool.ruff.lint.per-file-ignores]
 # Tests can use magic values, assertions, and relative imports
