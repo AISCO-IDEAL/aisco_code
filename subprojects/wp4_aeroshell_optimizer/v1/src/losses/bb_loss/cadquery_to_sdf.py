@@ -26,7 +26,7 @@ class SDFfromCadQuery:
 
     def __init__(
         self,
-        shape: cq.Shape,
+        shape: cq.Solid,
     ):
         self.__shape = shape
         self.__pointgrid = self.__pointgrid_geni()
@@ -37,7 +37,7 @@ class SDFfromCadQuery:
         if min(self.__sdf_at_pointgrid) > -1:
             self.__sdf_at_pointgrid = [self.sdf2(x, y, z) for x, y, z in self.__pointgrid]
         if min(self.__sdf_at_pointgrid) > -1:
-            print("SDF from cq.solid conversion Problem")
+            print("SDF from cq.Solid conversion Problem")
         
     def __pointgrid_geni(self) -> list[list[float]]:
         config = load_config()
