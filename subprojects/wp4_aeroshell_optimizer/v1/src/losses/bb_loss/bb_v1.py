@@ -3,6 +3,7 @@ import torch
 import cadquery as cq
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
 from wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.cadquery_to_sdf import SDFfromCadQuery
 
 class BbLoss1(ParentLoss):
     def __setup(self)->None:
@@ -12,18 +13,14 @@ class BbLoss1(ParentLoss):
             random_magnitude_seat=0.0,
             random_magnitude_wheels=0.0,
         )
-        self.__inner_SDF: SDFfromCadQuery = SDFfromCadQuery(
-            inner_box, in_mms=self.__in_mms
-        )
+        self.__inner_SDF: SDFfromCadQuery = SDFfromCadQuery(inner_box)
         outer_box: cq.Solid = outerNBZ()
-        self.__outer_SDF: SDFfromCadQuery = SDFfromCadQuery(
-            outer_box, in_mms=self.__in_mms
-        )
+        self.__outer_SDF: SDFfromCadQuery = SDFfromCadQuery(outer_box)
         self.__pointgrid: list[list[float]] = self.__inner_SDF.pointgrid()
         self.__inner_sdf_values: list[float] = self.__inner_SDF.sdf_at_pointgrid()
         self.__outer_sdf_values: list[float] = self.__outer_SDF.sdf_at_pointgrid()
     
-    def loss(self, model) ->torch.Tensor:
+    def __loss(self, model) ->torch.Tensor:
         """
         Arguments:
             model: The SDF network                                              NO Default!!
