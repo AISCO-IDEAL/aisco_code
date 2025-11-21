@@ -38,7 +38,7 @@ class BaseModel(nn.Module):
         output = x.squeeze(-1)
         return output
     
-    def train(self):
+    def optimise(self):
         super(BaseModel, self).train() #Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
         raise NotImplementedError("Train method not implemented yet in BaseModel. Please implement in the subclass inheriting.")
         
