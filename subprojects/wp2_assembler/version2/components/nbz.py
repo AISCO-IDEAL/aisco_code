@@ -93,33 +93,31 @@ def inner_nbz2_sym(
     seat = Seat().create_seat()
 
     # Calculate shift vector - shift along x-axis and raise by half the tire diameter
-    shift_vector = cq.Vector(-wheel_base_length / 2, 0, tyre_diameter / 2)
+    shift_vec = cq.Vector(-wheel_base_length / 2, 0, tyre_diameter / 2)
 
-    assembly = (
-        cq.Assembly(triangle_wp, name="triangle", loc=cq.Location(shift_vector))
-        # Add wheels with shift applied
-        .add(
-            wheel,
-            loc=cq.Location(cq.Vector(points[0].x, points[0].y, points[0].z)),
-            name="wheel_1",
-        )
-        .add(
-            wheel,
-            loc=cq.Location(cq.Vector(points[1].x, points[1].y, points[1].z)),
-            name="wheel_2",
-        )
-        .add(
-            wheel,
-            loc=cq.Location(cq.Vector(points[2].x, points[2].y, points[2].z)),
-            name="wheel_3",
-        )
-        .add(
-            seat,
-            loc=cq.Location(
-                cq.Vector(seat_position, 0, -100)
-            ),  # the 500 shall be removed, after correction in seat.py
-            name="Seat",
-        )
+    assembly = cq.Assembly(name="inner_nbz")
+    assembly.add(triangle_wp, name="triangle", loc=cq.Location(shift_vec))
+    assembly.add(
+        wheel,
+        loc=cq.Location(cq.Vector(points[0].x, points[0].y, points[0].z) + shift_vec),
+        name="wheel_1",
+    )
+    assembly.add(
+        wheel,
+        loc=cq.Location(cq.Vector(points[1].x, points[1].y, points[1].z) + shift_vec),
+        name="wheel_2",
+    )
+    assembly.add(
+        wheel,
+        loc=cq.Location(cq.Vector(points[2].x, points[2].y, points[2].z) + shift_vec),
+        name="wheel_3",
+    )
+    assembly.add(
+        seat,
+        loc=cq.Location(
+            cq.Vector(seat_position, 0, -100) + shift_vec
+        ),  # the 500 shall be removed, after correction in seat.py
+        name="Seat",
     )
 
     return assembly
