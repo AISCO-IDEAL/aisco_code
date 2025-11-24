@@ -10,6 +10,7 @@ Overwrite the following methods:
 
 import torch
 
+
 class ParentLoss:
     def __init__(self, device, weight: list[float]=[0.0, 0.0])->None:
         self.device = device

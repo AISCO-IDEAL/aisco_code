@@ -7,6 +7,7 @@ import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.bb_v1 import BbLoss1
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.bb_v2 import BbLoss2
 
+
 class TotalLoss:
     def __init__(self, dev: str = "cuda")->None:
         self.device = dev

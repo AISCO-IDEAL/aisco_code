@@ -1,9 +1,13 @@
 
-import torch
 import cadquery as cq
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
+import torch
 from wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.cadquery_to_sdf import SDFfromCadQuery
+
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.cadquery_to_sdf import (
+    SDFfromCadQuery,
+)
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
+
 
 class BbLoss1(ParentLoss):
     def __setup(self)->None:
