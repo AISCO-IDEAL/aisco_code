@@ -39,7 +39,7 @@ def visualize_multiple(lower_id: int, upper_id: int):
 if __name__ == "__main__":  # only run when executing this file directly
     while True:
         userinput = input(
-            "Visualize inner NBZ, outer NBZ, both, multiple (both inner and outer), vision NBZ, generate or stop? (i/o/b/v/m/g/s): "
+            "Visualize inner NBZ, outer NBZ, both, multiple (both inner and outer), generate or stop? (i/o/b/m/g/s): "
         )
         if userinput.lower() == "i":
             userinput = input("Which id-number to visualize? ")
@@ -95,10 +95,6 @@ if __name__ == "__main__":  # only run when executing this file directly
                 print("Invalid input. Please enter a valid range.")
                 continue
             visualize_multiple(lower_id, upper_id)
-
-        elif userinput.lower() == "v":
-            vision_nbz = nbz.vision_nbz()
-            show(vision_nbz)
 
         elif userinput.lower() == "g":
             userinput = input("How many assemblies are to be generated?")
