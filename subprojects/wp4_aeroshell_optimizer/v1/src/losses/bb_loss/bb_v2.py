@@ -1,7 +1,7 @@
 import cadquery as cq
 import torch
-from wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
 
+from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.cadquery_to_sdf import (
     SDFfromCadQuery,
 )
@@ -9,7 +9,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import Parent
 
 
 class BbLoss2(ParentLoss):
-    def __setup(self)->None:
+    def _setup(self)->None:
         # Create SDFs for inner and outer boxes
         inner_box: cq.Solid = innerNBZ(
             random_magnitude_chassis=0.0,
@@ -40,7 +40,7 @@ class BbLoss2(ParentLoss):
             if sdf_value > 0
         ]
 
-    def __loss(self, model) -> torch.Tensor:
+    def _loss(self, model) -> torch.Tensor:
         inner_bb_points_model = model(
             torch.tensor(
                 self.__inner_bb_points, dtype=torch.float32, device=self.device
