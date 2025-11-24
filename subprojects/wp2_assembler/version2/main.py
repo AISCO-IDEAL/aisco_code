@@ -23,9 +23,12 @@ def visualize_multiple(lower_id: int, upper_id: int):
         grouped.add(
             assembly,
             name=f"assembly_{id_number}",
+            # after each 10th assembly start a new row
             loc=cq.Location(
                 cq.Vector(
-                    0, count * get_regulation("no_build_zones.outer_prism.width"), 0
+                    0,
+                    (count % 10) * get_regulation("no_build_zones.outer_prism.width"),
+                    (count // 10) * get_regulation("no_build_zones.outer_prism.height"),
                 ),
             ),
         )
@@ -36,7 +39,7 @@ def visualize_multiple(lower_id: int, upper_id: int):
 if __name__ == "__main__":  # only run when executing this file directly
     while True:
         userinput = input(
-            "Visualize inner NBZ, outer NBZ, both, multiple (both inner and outer), generate or stop? (i/o/b/m/g/s): "
+            "Visualize inner NBZ, outer NBZ, both, multiple (both inner and outer), vision NBZ, generate or stop? (i/o/b/v/m/g/s): "
         )
         if userinput.lower() == "i":
             userinput = input("Which id-number to visualize? ")
@@ -68,8 +71,9 @@ if __name__ == "__main__":  # only run when executing this file directly
                 print("Invalid input. Please enter a valid id-number.")
                 continue
             inner_nbz, outer_nbz = nbz.call_assembly(id_number)
-            assembly = cq.Assembly(inner_nbz, name=f"NBZ_{id_number}")
+            assembly = cq.Assembly(name=f"NBZ_{id_number}")
             assembly.add(outer_nbz, name="outerNBZ", color=cq.Color(1, 0, 0, 0.3))
+            assembly.add(inner_nbz, name="innerNBZ", color=cq.Color(0, 0, 1, 0.3))
             show(assembly)
             print(type(inner_nbz))
             print(type(outer_nbz))
@@ -91,6 +95,10 @@ if __name__ == "__main__":  # only run when executing this file directly
                 print("Invalid input. Please enter a valid range.")
                 continue
             visualize_multiple(lower_id, upper_id)
+
+        elif userinput.lower() == "v":
+            vision_nbz = nbz.vision_nbz()
+            show(vision_nbz)
 
         elif userinput.lower() == "g":
             userinput = input("How many assemblies are to be generated?")

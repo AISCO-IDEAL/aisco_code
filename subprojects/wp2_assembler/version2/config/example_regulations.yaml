@@ -27,6 +27,14 @@ no_build_zones:
       height: 75              # mm
       inner_lenght: 100       # mm
       outer_lenght: 150       # mm
+  
+  vision_box:
+    radius: 4000            # mm
+    pos_height: 700            # mm from ground
+    neg_height: 400
+    pos_angle: 100            # degrees from x-axis around z-axis in positive direction (right-hand rule)
+    neg_angle: 100             # degrees from x-axis around z-axis in negative direction (right-hand rule)
+    inner_radius: 500       # mm distance from centerline to start of vision box
 
 
 seat:
