@@ -10,7 +10,7 @@ from OCP.BRepClass3d import BRepClass3d_SolidClassifier
 from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
-from subprojects.wp4_aeroshell_optimizer.v1.src.??? import load_config
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 
 
 
