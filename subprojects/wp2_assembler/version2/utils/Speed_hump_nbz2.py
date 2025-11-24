@@ -73,8 +73,18 @@ if __name__ == "__main__":  # pragma: no cover - manual visualization helper
 
     # Build an ocp_vscode Animation and register a translation track for inner_nbz.
     animation = Animation(assembly)
+
+    from subprojects.wp2_assembler.version2.utils.pybullet_test import sim
+
+    times, offsets, rolls, pitchs, yaws, offset_ground = sim()
+
     animation.add_track(f"/{assembly.name}/inner_nbz", "t", times, offsets)
-    animation.add_track(f"/{assembly.name}/outer_nbz", "t", times, offsets)
+    animation.add_track(f"/{assembly.name}/inner_nbz", "rx", times, rolls)
+    animation.add_track(f"/{assembly.name}/inner_nbz", "ry", times, pitchs)
+
+    animation.add_track(f"/{assembly.name}/speed_bump", "t", times, offset_ground)
+    
+    #animation.add_track(f"/{assembly.name}/outer_nbz", "t", times, offsets)
 
 
     # Play the animation if the viewer exposes animate(); otherwise just show frames.

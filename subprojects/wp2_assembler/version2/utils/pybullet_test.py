@@ -3,31 +3,29 @@ Drop the inner NBZ (assembly 30) onto the speed hump + floor in PyBullet.
 Meshes are written next to this script under helper_files_pybullet_test/.
 """
 
-from __future__ import annotations
-
 import math
 from pathlib import Path
 
 import cadquery as cq
 import numpy as np
 import pybullet as p
-import pybullet_data
 from cadquery import exporters
 
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly
 from subprojects.wp2_assembler.version2.utils.Speed_hump import create_speed_hump_and_floor
 
 
-def export_shape_to_stl(shape: cq.Shape, name: str, folder: Path) -> str:
+def export_shape_to_stl(shape: cq.Shape, name: str) -> str:
     """
     Save a CadQuery shape to STL so PyBullet can load it.
     Returns the filesystem path as a string.
     """
+    folder = Path(__file__).parent / "helper_files_pybullet_test"
+
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{name}.stl"
     exporters.export(shape, str(path))  # exporter expects a string path
     return str(path)
-
 
 def is_stable(lin_vel, ang_vel, tol: float = 1e-3) -> bool:
     """Check if linear and angular speeds are below tol."""
@@ -40,49 +38,77 @@ inner_asm, _ = call_assembly(30)
 inner_shape = inner_asm.toCompound()
 ground_shape = create_speed_hump_and_floor()
 
-mesh_dir = Path(__file__).parent / "helper_files_pybullet_test"
-inner_stl = export_shape_to_stl(inner_shape, "inner_nbz", mesh_dir)
-ground_stl = export_shape_to_stl(ground_shape, "ground", mesh_dir)
-
+inner_stl = export_shape_to_stl(inner_shape, "inner_nbz")
+ground_stl = export_shape_to_stl(ground_shape, "ground")
 
 # --- PyBullet setup ----------------------------------------------------------
 
 cid = p.connect(p.DIRECT)  # use p.GUI if you want a window
-p.setAdditionalSearchPath(pybullet_data.getDataPath())
 p.setGravity(0, 0, -9.81)
 
-ground_col = p.createCollisionShape(p.GEOM_MESH, fileName=ground_stl)
-ground_vis = p.createVisualShape(p.GEOM_MESH, fileName=ground_stl)
 ground_id = p.createMultiBody(
     baseMass=0.0,
-    baseCollisionShapeIndex=ground_col,
-    baseVisualShapeIndex=ground_vis,
+    baseCollisionShapeIndex = p.createCollisionShape(p.GEOM_MESH, fileName=ground_stl, meshScale=[0.001, 0.001, 0.001]), # mm → meters
     basePosition=[0, 0, 0],
 )
 
-car_col = p.createCollisionShape(p.GEOM_MESH, fileName=inner_stl)
-car_vis = p.createVisualShape(p.GEOM_MESH, fileName=inner_stl, rgbaColor=[0.8, 0.2, 0.2, 0.8])
 car_id = p.createMultiBody(
     baseMass=50.0,
-    baseCollisionShapeIndex=car_col,
-    baseVisualShapeIndex=car_vis,
-    basePosition=[0, 0, 1.0],  # start 1 m above
-    baseOrientation=[0, 0, 0, 1],
+    baseCollisionShapeIndex= p.createCollisionShape(p.GEOM_MESH, fileName=inner_stl, meshScale=[0.001, 0.001, 0.001]), # mm → meters
+    basePosition=[1.556, 0, 1.0],  # start 1 m above
 )
 
+p.changeDynamics(car_id, -1,
+                 lateralFriction=0.0,
+                 rollingFriction=0.0,
+                 spinningFriction=0.0)
+
+p.changeDynamics(ground_id, -1,
+                 lateralFriction=0.0,
+                 rollingFriction=0.0,
+                 spinningFriction=0.0)
 
 # --- Drop and wait for stabilization ----------------------------------------
 
+x_lock = 0.0
+y_lock = 0.0
+yaw_lock = 0.0      # Radians!
+
 stable_counter = 0
-xy_anchor = (0.0, 0.0)  # lock X/Y by resetting each step
 max_steps = 10_000
 sim_dt = p.getPhysicsEngineParameters().get("fixedTimeStep", 1.0 / 240.0)
-required_stable_steps = 500
+required_stable_steps = 100
+
+time = []
+rolls = []
+pitchs = []
+yaws = []
+offset = []
+
+offset_ground =[]
 
 for step in range(max_steps):
     pos, orn = p.getBasePositionAndOrientation(car_id)
     x, y, z = pos
-    p.resetBasePositionAndOrientation(car_id, [xy_anchor[0], xy_anchor[1], z], orn)
+    roll, pitch, yaw = p.getEulerFromQuaternion(orn)    # Radians!
+
+    x, y, z = x, y, z
+    roll, pitch, yaw = roll, pitch, yaw_lock
+
+    #p.resetBasePositionAndOrientation(car_id, [x, y, z], p.getQuaternionFromEuler([roll, pitch, yaw]))
+
+    #p.resetBasePositionAndOrientation(car_id, [x, y, z], orn)
+
+    time.append(step/1000)
+    
+    rolls.append(roll)
+    pitchs.append(pitch)
+    yaws.append(yaw)
+
+    offset.append((x*1000, y*1000, z*1000))
+
+    pos2, orn2 = p.getBasePositionAndOrientation(ground_id)
+    offset_ground.append(pos2)
 
     p.stepSimulation()
 
@@ -104,4 +130,5 @@ print("Final orientation (deg):", final_euler)
 
 p.disconnect()
 
-print(f"Meshes saved under: {mesh_dir}")
+def sim():
+    return time, offset, rolls, pitchs, yaws, offset_ground
