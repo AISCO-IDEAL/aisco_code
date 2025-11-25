@@ -13,10 +13,7 @@ class SolarLoss(ParentLoss):
     def _setup(self)->None:
         return
     
-    def _loss(self, model)-> torch.Tensor:
-        resolution: int = 128
-        length: float = 8.0
-        width: float = 6.0
+    def _loss(self, model: BaseModel, grid_res: int = 64)-> torch.Tensor:
         """
         Compute top area loss (maximize solar collection area on top surface).
         NOTE: Still WIP, currently running a dummy version of the loss 
