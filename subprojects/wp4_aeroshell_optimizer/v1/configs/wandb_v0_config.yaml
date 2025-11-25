@@ -1,0 +1,25 @@
+# wandb_v0_config.yaml
+
+general:
+  track_run: 1
+  rendering_frequency: 5
+  use_sweep: 0
+
+sweeping:
+  command:
+    - ${env}
+    - python3
+    - -m
+    - wp4_aeroshell_optimizer.src.main
+  program: main.py
+  method: bayes  # or 'random', or 'grid' as needed
+  metric:
+    goal: minimize
+    name: total_loss
+  parameters:
+    training_params.learning_rate:
+      distribution: log_uniform_values
+      min: 0.00001
+      max: 0.01
+    #training_params.optimizer:
+    #  values: ["adam", "sgd"]
