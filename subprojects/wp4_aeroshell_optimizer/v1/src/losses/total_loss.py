@@ -17,8 +17,8 @@ class TotalLoss:
         self.device = dev
         self.general_config = load_general_config()
         losses_config = load_specific_config(
-            v=general_config["general_info"]["version"],
-            cfg_name=general_config["active_configs"]["losses"],
+            v=self.general_config["general_info"]["version"],
+            cfg_name=self.general_config["active_configs"]["losses"],
         )
         self.weights = losses_config.get("losses")
 
