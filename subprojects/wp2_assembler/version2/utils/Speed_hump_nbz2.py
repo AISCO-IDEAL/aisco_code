@@ -59,7 +59,7 @@ if __name__ == "__main__":  # pragma: no cover - manual visualization helper
     assembly.add(
         outer,
         name="outer_nbz",
-        loc=cq.Location(shift_vec),
+        loc=cq.Location((0,0,0)),
         color=cq.Color(0.7, 0.7, 0.7, 0.15),  # light tint so inner parts stay visible
     )
     assembly.add(
@@ -88,13 +88,28 @@ if __name__ == "__main__":  # pragma: no cover - manual visualization helper
 
     from subprojects.wp2_assembler.version2.utils.pybullet_test import sim
 
-    times, offsets, rolls, pitchs, yaws, offset_ground = sim()
+    times, pos_array, orn_array = sim()
 
-    animation.add_track(f"/{assembly.name}/inner_nbz", "t", times, offsets)
-    animation.add_track(f"/{assembly.name}/inner_nbz", "rx", times, rolls)
-    animation.add_track(f"/{assembly.name}/inner_nbz", "ry", times, pitchs)
+    def _quat_dict(quat):
+        x, y, z, w = quat
+        # ocp_vscode expects Three.js Quaternion-like objects with _x.._w fields
+        return {"_x": x, "_y": y, "_z": z, "_w": w}
 
-    animation.add_track(f"/{assembly.name}/speed_bump", "t", times, offset_ground)
+    animation.add_track(f"/{assembly.name}/inner_nbz", "t", times, pos_array)
+    animation.add_track(
+        f"/{assembly.name}/inner_nbz",
+        "q",
+        times,
+        [_quat_dict(q) for q in orn_array],
+    )
+
+    animation.add_track(f"/{assembly.name}/outer_nbz", "t", times, pos_array)
+    animation.add_track(
+        f"/{assembly.name}/outer_nbz",
+        "q",
+        times,
+        [_quat_dict(q) for q in orn_array],
+    )
 
     #animation.add_track(f"/{assembly.name}/outer_nbz", "t", times, offsets)
 
@@ -106,6 +121,5 @@ if __name__ == "__main__":  # pragma: no cover - manual visualization helper
         animate(1.0)  # play once; change the argument for repeats (e.g., animate(3))
     else:
         show(animation)  # fallback display if animate is absent
-
 
     print("Elapsed:", time.time() - start, "seconds")

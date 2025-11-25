@@ -1,15 +1,71 @@
 """
 Drop the inner NBZ (assembly 30) onto the speed hump + floor in PyBullet.
-Meshes are written next to this script under helper_files_pybullet_test/.
+Meshes are written next to this script under helper_files_pybullet_test2/.
 """
 
 import math
-import os
+from pathlib import Path
 from time import sleep
 
+import cadquery as cq
 import numpy as np
 import pybullet as p
-import trimesh
+from cadquery import exporters
+
+from subprojects.wp2_assembler.version2.components.nbz import call_assembly
+from subprojects.wp2_assembler.version2.utils.Speed_hump import (
+    create_speed_hump_and_floor,
+)
+
+
+def export_shape_to_stl(shape: cq.Shape, path: Path) -> str:
+    """Export a CadQuery shape to STL and return the file path."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    exporters.export(shape, str(path))
+    return str(path)
+
+
+def assembly_obj_to_shape(asm_obj) -> cq.Shape:
+    """Get a Shape located in world coordinates from an AssemblyObject."""
+    base_obj = asm_obj.obj
+    if isinstance(base_obj, cq.Assembly):
+        shape = base_obj.toCompound()
+    elif isinstance(base_obj, cq.Workplane):
+        shape = base_obj.val()
+    elif isinstance(base_obj, cq.Shape):
+        shape = base_obj
+    else:
+        raise TypeError(f"Unsupported assembly object type: {type(base_obj)!r}")
+    return shape.located(asm_obj.loc) if getattr(asm_obj, "loc", None) else shape
+
+
+def export_inner_parts(inner_assembly: cq.Assembly, folder: Path):
+    """
+    Export wheels individually and group the remaining geometry as the canopy.
+    Returns (canopy_path, [(part_name, path), ...] for wheels).
+    """
+    wheel_paths: list[tuple[str, str]] = []
+    canopy_shapes: list[cq.Shape] = []
+
+    for name, asm_obj in inner_assembly.objects.items():
+        if name == inner_assembly.name:
+            continue
+        if asm_obj is None or getattr(asm_obj, "obj", None) is None:
+            continue
+        shape = assembly_obj_to_shape(asm_obj)
+        part_name = name or "part"
+        if part_name.lower().startswith("wheel"):
+            wheel_path = export_shape_to_stl(shape, folder / f"{part_name}.stl")
+            wheel_paths.append((part_name, wheel_path))
+        else:
+            canopy_shapes.append(shape)
+
+    canopy_path = None
+    if canopy_shapes:
+        canopy_shape = cq.Compound.makeCompound(canopy_shapes)
+        canopy_path = export_shape_to_stl(canopy_shape, folder / "canopy.stl")
+
+    return canopy_path, wheel_paths
 
 
 def is_stable(lin_vel, ang_vel, tol: float = 1e-3) -> bool:
@@ -17,32 +73,24 @@ def is_stable(lin_vel, ang_vel, tol: float = 1e-3) -> bool:
 
 
 # ============================================================
-#  Build & export convex pieces with trimesh
+#  Build & export pieces from CadQuery assemblies
 # ============================================================
 
-base_dir = "/Users/federicosanchez/Documents/ETH/Aisco"
-ground_stl = os.path.join(base_dir, "ground.stl")
-inner_stl = os.path.join(base_dir, "inner_nbz.stl")
+EXPORT_DIR = Path(__file__).parent / "helper_files_pybullet_test2"
+inner_asm, _ = call_assembly(30)
 
-print("Loading STL...")
-mesh = trimesh.load(inner_stl)
+ground_shape = create_speed_hump_and_floor()
+ground_stl = export_shape_to_stl(ground_shape, EXPORT_DIR / "ground.stl")
 
-# Split into connected components
-parts = mesh.split(only_watertight=False)
-if len(parts) == 1:
-    print("Only one shell found. Running convex decomposition...")
-    parts = mesh.convex_decomposition()
+canopy_path, wheel_paths = export_inner_parts(inner_asm, EXPORT_DIR)
 
-print(f"Found {len(parts)} parts")
+car_part_paths: list[tuple[str, str]] = []
+if canopy_path:
+    car_part_paths.append(("canopy", canopy_path))
+car_part_paths.extend(wheel_paths)
 
-# Export each part
-part_paths = []
-for i, pm in enumerate(parts):
-    out_path = os.path.join(base_dir, f"inner_part_{i}.stl")
-    pm.export(out_path)
-    part_paths.append(out_path)
-
-print("Exported decomposed parts.")
+if not car_part_paths:
+    raise RuntimeError("No parts exported for PyBullet simulation.")
 
 
 # ============================================================
@@ -75,13 +123,13 @@ p.changeDynamics(ground_id, -1,
 # ============================================================
 
 car_parts = []
-num_parts = len(part_paths)
+num_parts = len(car_part_paths)
 mass_each = 50.0 / num_parts
 
 start_pos = [1.0, 0, 1.0]
 start_orn = p.getQuaternionFromEuler([0, 0, 0])
 
-for path in part_paths:
+for part_name, path in car_part_paths:
     col = p.createCollisionShape(
         p.GEOM_MESH,
         fileName=path,
@@ -133,7 +181,7 @@ y_lock = 0.0
 yaw_lock = 0.0
 
 stable_counter = 0
-max_steps = 1_000
+max_steps = 5_000
 sim_dt = p.getPhysicsEngineParameters().get("fixedTimeStep", 1.0 / 240.0)
 required_stable_steps = 100
 

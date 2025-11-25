@@ -115,7 +115,7 @@ for name, path in car_part_paths:
 
 # --- PyBullet setup ----------------------------------------------------------
 
-cid = p.connect(p.DIRECT)  # use p.GUI if you want a window
+cid = p.connect(p.GUI)  # use p.GUI if you want a window
 p.setGravity(0, 0, -9.81)
 
 ground_id = p.createMultiBody(
@@ -144,7 +144,7 @@ yaw_lock = 0.0      # Radians!
 car_parts: list[tuple[str, int]] = []
 total_mass = 50.0
 mass_each = total_mass / len(car_part_paths)
-start_pos = [1.2, 0, 1.0]  # start 1 m above
+start_pos = [1.0, 0, 1.0]  # start 1 m above
 start_orn = p.getQuaternionFromEuler([0, 0, 0])
 
 for name, path in car_part_paths:
@@ -181,7 +181,7 @@ for _, child in car_parts[1:]:
     )
 
 stable_counter = 0
-max_steps = 1_000
+max_steps = 10_000
 sim_dt = p.getPhysicsEngineParameters().get("fixedTimeStep", 1.0 / 240.0)
 required_stable_steps = 100
 
@@ -191,22 +191,23 @@ pitchs = []
 yaws = []
 offset = []
 
+pos_array = []
+orn_array = []
+
 offset_ground =[]
 
 for step in range(max_steps):
 
+    #sleep(1/4800)
     pos, orn = p.getBasePositionAndOrientation(root)
     x, y, z = pos
     roll, pitch, yaw = p.getEulerFromQuaternion(orn)    # Radians!
-
-    x, y, z = x, y, z
-    roll, pitch, yaw = roll, pitch, yaw_lock
 
     #p.resetBasePositionAndOrientation(root, [x, y, z], p.getQuaternionFromEuler([roll, pitch, yaw]))
 
     #p.resetBasePositionAndOrientation(root, [x, y, z], orn)
 
-    time_arr.append(step/500)
+    time_arr.append(step/1000)
 
     rolls.append(roll)
     pitchs.append(pitch)
@@ -214,8 +215,8 @@ for step in range(max_steps):
 
     offset.append((x*1000, y*1000, z*1000))
 
-    pos2, orn2 = p.getBasePositionAndOrientation(ground_id)
-    offset_ground.append(pos2)
+    pos_array.append([i * 1000 for i in pos])
+    orn_array.append(orn)
 
     p.stepSimulation()
 
@@ -235,7 +236,11 @@ final_euler = [math.degrees(a) for a in p.getEulerFromQuaternion(final_orn)]
 print("Final position (m):", final_pos)
 print("Final orientation (deg):", final_euler)
 
+#sleep(1)
+
 p.disconnect()
 
+print(len(time_arr),len(pos_array),len(orn_array))
+
 def sim():
-    return time_arr, offset, rolls, pitchs, yaws, offset_ground
+    return time_arr, pos_array, orn_array
