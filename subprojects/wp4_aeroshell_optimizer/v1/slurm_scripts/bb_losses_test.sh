@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=16G                  
-#SBATCH --gpus=rtx_4090:1
+#SBATCH --gpus=1  # rtx_4090:1
 #SBATCH --output=/cluster/home/clhuber/logs/AISCO_TEST_%j.out     #adjust path as needed
 #SBATCH --error=/cluster/home/clhuber/logs/AISCO_TEST_%j.err      #adjust path as needed
 ##SBATCH --mail-type=END,FAIL
