@@ -5,7 +5,11 @@ import os
 import kaolin as kal
 import torch
 import trimesh
-from kaolin.ops.conversions import FlexiCubes, voxelgrids_to_trianglemeshes, sdf_to_voxelgrids
+from kaolin.ops.conversions import (
+    FlexiCubes,
+    voxelgrids_to_trianglemeshes,
+    sdf_to_voxelgrids,
+)
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 
@@ -68,7 +72,6 @@ def get_diff_mesh(
     flexicubes = FlexiCubes(device=device)
     ind = flexicubes.construct_voxel_grid(grid_res - 1)[1]
 
-
     # 3. Use FlexiCubes to extract the mesh
     ####################### eschaerer #################
     torch.cuda.synchronize()
@@ -87,15 +90,18 @@ def get_diff_mesh(
 
     return vertices, faces
 
-def marching_tetrahedra(model: BaseModel,
-                        grid_res: list[int] | int = 32,
-                        origin: float = 0.0,
-                        box_size: float = 12000.0,
-                        upsampling: int = 4,
-                        dev: str="cuda"):
+
+def marching_tetrahedra(
+    model: BaseModel,
+    grid_res: list[int] | int = 32,
+    origin: float = 0.0,
+    box_size: float = 12000.0,
+    upsampling: int = 4,
+    dev: str = "cuda",
+):
     """
     Alternative mesh extraction using marching tetrahedra from Kaolin.
-    
+
     Should provide more stable normals than flexicubes, though it can't remove discontinuities completely
     Also really not differentiable on its own.
 
@@ -106,9 +112,9 @@ def marching_tetrahedra(model: BaseModel,
         box_size: Size of the bounding box (from origin box_size/2 in each direction).
         upsampling: Number of upsampling steps to increase resolution.
         dev: Device to run the computations on.
-    
+
     """
-    
+
     model.cpu()
     adjusted_model = lambda x: (model(x)[0].cpu()).squeeze(-1)  # return CPU for Kaolin
 
@@ -118,9 +124,8 @@ def marching_tetrahedra(model: BaseModel,
         bbox_dim=box_size,
         init_res=grid_res,
         upsampling_steps=upsampling,
-        
     )
-    model.cuda() #necessary?
+    model.cuda()  # necessary?
     # move to GPU
     grid = grid.to(dev)
 
@@ -129,10 +134,10 @@ def marching_tetrahedra(model: BaseModel,
     if voxels.sum() == 0:
         print("Warning: Empty voxel grid generated!")
     verts, faces = voxelgrids_to_trianglemeshes(voxels)
-    verts = verts[0] / (voxels.shape[1] - 1)          # normalize to [0,1]
-    verts = verts * box_size + (origin - box_size/2)  # map back to real world coords
-    #verts = verts.to(dev)
-    #faces = faces.to(dev)
+    verts = verts[0] / (voxels.shape[1] - 1)  # normalize to [0,1]
+    verts = verts * box_size + (origin - box_size / 2)  # map back to real world coords
+    # verts = verts.to(dev)
+    # faces = faces.to(dev)
     return verts, faces[0]
 
 
@@ -164,12 +169,14 @@ def kaolin_to_PLY(
         return mesh
     return mesh
 
-def kaolin_to_STL(verts: torch.tensor,
+
+def kaolin_to_STL(
+    verts: torch.tensor,
     faces: torch.tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.stl",
     mesh_dir: str = None,  # Default to None, not a space
-    ):
+):
     """
     Same as kaolin_to_PLY (see above) but saves as STL. Needs Verts and faces in the kaolin format.
     """
