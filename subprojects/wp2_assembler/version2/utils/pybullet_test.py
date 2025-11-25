@@ -5,6 +5,7 @@ Meshes are written next to this script under helper_files_pybullet_test/.
 
 import math
 from pathlib import Path
+from typing import Any, List, Optional, Tuple
 
 import cadquery as cq
 import numpy as np
@@ -27,6 +28,54 @@ def export_shape_to_stl(shape: cq.Shape, name: str) -> str:
     exporters.export(shape, str(path))  # exporter expects a string path
     return str(path)
 
+
+def assembly_obj_to_shape(asm_obj: Any) -> cq.Shape:
+    """Extract a world-space CadQuery shape from an AssemblyObject."""
+    base_obj = asm_obj.obj
+    if isinstance(base_obj, cq.Assembly):
+        shape = base_obj.toCompound()
+    elif isinstance(base_obj, cq.Workplane):
+        shape = base_obj.val()
+    elif isinstance(base_obj, cq.Shape):
+        shape = base_obj
+    else:
+        raise TypeError(f"Cannot export object type {type(base_obj)} for {asm_obj.name}")
+
+    return shape.located(asm_obj.loc) if getattr(asm_obj, "loc", None) else shape
+
+
+def export_inner_nbz_parts(
+    assembly: cq.Assembly,
+) -> Tuple[Optional[str], List[Tuple[str, str]]]:
+    """
+    Export the inner NBZ as one body STL and individual wheel STLs.
+    Wheels are detected by name prefix 'wheel' / 'Wheel'.
+    Returns (body_path, [(wheel_name, wheel_path), ...]).
+    """
+    wheel_paths: List[Tuple[str, str]] = []
+    body_shapes: List[cq.Shape] = []
+
+    for name, asm_obj in assembly.objects.items():
+        # Skip self-reference to avoid duplicating the full assembly
+        if name == assembly.name:
+            continue
+        if asm_obj is None or getattr(asm_obj, "obj", None) is None:
+            continue
+        part_name = name or "part"
+        shape = assembly_obj_to_shape(asm_obj)
+        if part_name.lower().startswith("wheel"):
+            wheel_paths.append((part_name, export_shape_to_stl(shape, part_name)))
+        else:
+            body_shapes.append(shape)
+
+    body_path: Optional[str] = None
+    if body_shapes:
+        body_compound = cq.Compound.makeCompound(body_shapes)
+        body_path = export_shape_to_stl(body_compound, "inner_nbz_body")
+
+    return body_path, wheel_paths
+
+
 def is_stable(lin_vel, ang_vel, tol: float = 1e-3) -> bool:
     """Check if linear and angular speeds are below tol."""
     return np.linalg.norm(lin_vel) < tol and np.linalg.norm(ang_vel) < tol
@@ -35,11 +84,21 @@ def is_stable(lin_vel, ang_vel, tol: float = 1e-3) -> bool:
 # --- Build and export meshes -------------------------------------------------
 
 inner_asm, _ = call_assembly(30)
-inner_shape = inner_asm.toCompound()
 ground_shape = create_speed_hump_and_floor()
 
-inner_stl = export_shape_to_stl(inner_shape, "inner_nbz")
 ground_stl = export_shape_to_stl(ground_shape, "ground")
+body_stl, wheel_parts = export_inner_nbz_parts(inner_asm)
+
+if body_stl is None and not wheel_parts:
+    body_stl = export_shape_to_stl(inner_asm.toCompound(), "inner_nbz")
+
+car_part_paths: List[Tuple[str, str]] = []
+if body_stl:
+    car_part_paths.append(("body", body_stl))
+car_part_paths.extend(wheel_parts)
+
+if not car_part_paths:
+    raise RuntimeError("No car parts were exported for PyBullet.")
 
 # --- PyBullet setup ----------------------------------------------------------
 
@@ -48,20 +107,14 @@ p.setGravity(0, 0, -9.81)
 
 ground_id = p.createMultiBody(
     baseMass=0.0,
-    baseCollisionShapeIndex = p.createCollisionShape(p.GEOM_MESH, fileName=ground_stl, meshScale=[0.001, 0.001, 0.001]), # mm → meters
+    baseCollisionShapeIndex=p.createCollisionShape(
+        p.GEOM_MESH,
+        fileName=ground_stl,
+        meshScale=[0.001, 0.001, 0.001],
+        flags=p.GEOM_FORCE_CONCAVE_TRIMESH,  # floor + hump can be concave
+    ),  # mm → meters
     basePosition=[0, 0, 0],
 )
-
-car_id = p.createMultiBody(
-    baseMass=50.0,
-    baseCollisionShapeIndex= p.createCollisionShape(p.GEOM_MESH, fileName=inner_stl, meshScale=[0.001, 0.001, 0.001]), # mm → meters
-    basePosition=[1.556, 0, 1.0],  # start 1 m above
-)
-
-p.changeDynamics(car_id, -1,
-                 lateralFriction=0.0,
-                 rollingFriction=0.0,
-                 spinningFriction=0.0)
 
 p.changeDynamics(ground_id, -1,
                  lateralFriction=0.0,
@@ -74,8 +127,48 @@ x_lock = 0.0
 y_lock = 0.0
 yaw_lock = 0.0      # Radians!
 
+# Build the multibody from the exported STL parts (body + wheels)
+car_parts: List[Tuple[str, int]] = []
+total_mass = 50.0
+mass_each = total_mass / len(car_part_paths)
+start_pos = [1.556, 0, 1.0]  # start 1 m above
+start_orn = p.getQuaternionFromEuler([0, 0, 0])
+
+for name, path in car_part_paths:
+    col = p.createCollisionShape(
+        p.GEOM_MESH, fileName=path, meshScale=[0.001, 0.001, 0.001]
+    )
+    vis = p.createVisualShape(
+        p.GEOM_MESH, fileName=path, meshScale=[0.001, 0.001, 0.001]
+    )
+    body_id = p.createMultiBody(
+        baseMass=mass_each,
+        baseCollisionShapeIndex=col,
+        baseVisualShapeIndex=vis,
+        basePosition=start_pos,
+        baseOrientation=start_orn,
+    )
+    p.changeDynamics(
+        body_id, -1, lateralFriction=0.0, rollingFriction=0.0, spinningFriction=0.0
+    )
+    car_parts.append((name, body_id))
+
+# Fix all parts together (root = first entry)
+root = car_parts[0][1]
+for _, child in car_parts[1:]:
+    p.createConstraint(
+        parentBodyUniqueId=root,
+        parentLinkIndex=-1,
+        childBodyUniqueId=child,
+        childLinkIndex=-1,
+        jointType=p.JOINT_FIXED,
+        jointAxis=[0, 0, 0],
+        parentFramePosition=[0, 0, 0],
+        childFramePosition=[0, 0, 0],
+    )
+
 stable_counter = 0
-max_steps = 10_000
+max_steps = 1_000
 sim_dt = p.getPhysicsEngineParameters().get("fixedTimeStep", 1.0 / 240.0)
 required_stable_steps = 100
 
@@ -88,16 +181,16 @@ offset = []
 offset_ground =[]
 
 for step in range(max_steps):
-    pos, orn = p.getBasePositionAndOrientation(car_id)
+    pos, orn = p.getBasePositionAndOrientation(root)
     x, y, z = pos
     roll, pitch, yaw = p.getEulerFromQuaternion(orn)    # Radians!
 
     x, y, z = x, y, z
     roll, pitch, yaw = roll, pitch, yaw_lock
 
-    #p.resetBasePositionAndOrientation(car_id, [x, y, z], p.getQuaternionFromEuler([roll, pitch, yaw]))
+    #p.resetBasePositionAndOrientation(root, [x, y, z], p.getQuaternionFromEuler([roll, pitch, yaw]))
 
-    #p.resetBasePositionAndOrientation(car_id, [x, y, z], orn)
+    #p.resetBasePositionAndOrientation(root, [x, y, z], orn)
 
     time.append(step/1000)
     
@@ -112,7 +205,7 @@ for step in range(max_steps):
 
     p.stepSimulation()
 
-    lin_vel, ang_vel = p.getBaseVelocity(car_id)
+    lin_vel, ang_vel = p.getBaseVelocity(root)
     stable_counter = stable_counter + 1 if is_stable(lin_vel, ang_vel) else 0
     if stable_counter >= required_stable_steps:
         print(f"Settled after {step} steps ({step * sim_dt:.2f} s)")
@@ -123,7 +216,7 @@ else:
 
 # --- Report final pose and exit ---------------------------------------------
 
-final_pos, final_orn = p.getBasePositionAndOrientation(car_id)
+final_pos, final_orn = p.getBasePositionAndOrientation(root)
 final_euler = [math.degrees(a) for a in p.getEulerFromQuaternion(final_orn)]
 print("Final position (m):", final_pos)
 print("Final orientation (deg):", final_euler)
