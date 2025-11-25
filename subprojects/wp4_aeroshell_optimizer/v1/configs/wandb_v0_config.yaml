@@ -1,6 +1,7 @@
 # wandb_v0_config.yaml
 
 general:
+  use_wandb: True
   track_run: 1
   rendering_frequency: 5
   use_sweep: 0
