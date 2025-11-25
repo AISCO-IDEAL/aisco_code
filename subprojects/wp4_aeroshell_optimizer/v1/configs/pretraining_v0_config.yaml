@@ -1,0 +1,4 @@
+#Here put the config for model pretraining
+pretraining:
+  use_pretrained: True # True or False possible
+  pretraining_model_path: "wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025-11-04.pth" # must be .pth file compatible with model_vxy
