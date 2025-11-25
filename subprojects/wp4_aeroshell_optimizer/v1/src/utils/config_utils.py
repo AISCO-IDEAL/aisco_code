@@ -29,8 +29,7 @@ def load_general_config(v="v1", cfg_name="general_config.yaml") -> dict:
         raise
 
 
-
-def load_specific_config(v="v1", cfg_name:str) -> dict:
+def load_specific_config(v="v1", cfg_name="losses_v0_config.yaml") -> dict:
     config_path = (
         Path.home()
         / "AISCO_code"
@@ -54,7 +53,6 @@ def load_specific_config(v="v1", cfg_name:str) -> dict:
     except yaml.YAMLError as e:
         print(f"✗ Error parsing configuration file: {e}")
         raise
-
 
 
 def print_config(config: dict):

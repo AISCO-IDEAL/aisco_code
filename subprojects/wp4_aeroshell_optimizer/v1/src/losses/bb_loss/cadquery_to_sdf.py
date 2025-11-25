@@ -53,7 +53,7 @@ class SDFfromCadQuery:
         general_config = load_general_config()
         training_config = load_specific_config(
             v=general_config["general_info"]["version"],
-            cfg_name=general_config["general_info"]["training_config_name"],
+            cfg_name=general_config["active_configs"]["training"],
         )
         # load pointgrid params
         pointgrid_params = training_config["pointgrid_params"]
