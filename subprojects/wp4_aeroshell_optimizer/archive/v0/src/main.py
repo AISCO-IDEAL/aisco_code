@@ -54,8 +54,8 @@ def main():
     setup_training_environment(device)
     config = load_config()
 
+    # Setup Tracking with Weights & Biases (wandb)
     track_run = config["wandb"].get("track_run", False)
-
     if track_run:
         run = wandb.init(
             # Set the wandb log directory
@@ -70,6 +70,7 @@ def main():
         config = deep_update(config, dict(wandb.config))
         run.config.update(config, allow_val_change=True)
     config_debug(config)
+
     # Load or initialize model
     load_pretrained = config.get("use_pretrained", False)
 
