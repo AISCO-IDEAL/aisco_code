@@ -17,7 +17,7 @@ if __name__ == "__main__":
     num_epochs = 10
     for epoch in range(num_epochs):
         optimizer.zero_grad()
-        loss = lossm.get_loss(model)
+        loss = lossm.get_total_loss(model)
         print("loss.requires_grad:", loss.requires_grad)
         loss.backward()
         optimizer.step()

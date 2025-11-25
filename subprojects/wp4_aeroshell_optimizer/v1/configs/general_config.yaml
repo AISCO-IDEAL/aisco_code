@@ -13,9 +13,9 @@ active_configs:
   losses: "losses_v0_config.yaml"
   pretraining: "pretraining_v0_config.yaml"
   training: "training_v0_config.yaml"
-  wandb: "wandb_v0_config.yaml"
+  wandb: "wandb_v0_sweep.yaml"
 
-wand_general:
+wandb_general:
   use_wandb: True
   track_run: 1
   rendering_frequency: 5

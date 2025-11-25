@@ -36,11 +36,7 @@ class TotalLoss:
 
         # Logging them on WandB
 
-        wandb_config = load_specific_config(
-            v=self.general_config["general_info"]["version"],
-            cfg_name=self.general_config["active_configs"]["wandb"],
-        )
-        if wandb_config.get("general")["use_wandb"] is True:
+        if self.general_config["wandb_general"]["use_wandb"] is True:
             wandb.log(
                 {
                     "Bounding Box Loss 1:": bb1.item(),
