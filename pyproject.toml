@@ -35,7 +35,8 @@ wp2_assembler =[
   "cadquery >= 2.6.0",
   "ocp_vscode >= 2.9.0",
   "scipy >= 1.16.0",
-  "types-PyYAML >= 6.0.12"  # Type stubs for PyYAML [vdiekmann]
+  "types-PyYAML >= 6.0.12",  # Type stubs for PyYAML [vdiekmann]
+
 ]
 
 wp3_solar_estimator = [
@@ -44,7 +45,6 @@ wp3_solar_estimator = [
 
 wp4_aeroshell_optimizer = [
   "cadquery == 2.6.0",
-  "matplotlib==3.10.7",
   "plotly==5.22.0",
   "scikit-image>=0.0.0",
   "torch_geometric==2.7.0",
@@ -55,7 +55,7 @@ wp4_aeroshell_optimizer = [
   "imageio>=2.31",
   "pyrender>=0.1.45",
   "PyOpenGL>=3.1.7",
-  "shutil", # for forced rmdir (even when dir not empty)
+  "pyvista",
 ]
 
 testing = [
