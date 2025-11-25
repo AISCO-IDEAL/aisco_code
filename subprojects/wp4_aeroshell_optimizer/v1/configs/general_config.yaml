@@ -26,11 +26,12 @@ Storage_paths:
   mesh_dir: "wp4_aeroshell_optimizer/data/test_meshes"
 
 # master example of how to reference other config files:
+#     def __pointgrid_geni(self) -> list[list[float]]:
 #         # load training config
 #         general_config = load_general_config()
 #         training_config = load_specific_config(
 #             v=general_config["general_info"]["version"],
-#             cfg_name=general_config["general_info"]["training_config_name"],
+#             cfg_name=general_config["active_configs"]["training"],
 #         )
 #         # load pointgrid params
 #         pointgrid_params = training_config["pointgrid_params"]
