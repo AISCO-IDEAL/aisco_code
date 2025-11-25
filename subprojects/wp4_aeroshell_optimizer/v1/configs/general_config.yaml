@@ -15,6 +15,12 @@ active_configs:
   training: "training_v0_config.yaml"
   wandb: "wandb_v0_config.yaml"
 
+wand_general:
+  use_wandb: True
+  track_run: 1
+  rendering_frequency: 5
+  use_sweep: 0
+
 Storage_paths:
   model_dir: "wp4_aeroshell_optimizer/data/test_models"
   mesh_dir: "wp4_aeroshell_optimizer/data/test_meshes"
