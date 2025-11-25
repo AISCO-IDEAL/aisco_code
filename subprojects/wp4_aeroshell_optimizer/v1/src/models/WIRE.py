@@ -62,14 +62,18 @@ class ComplexGaborLayer(nn.Module):
 
 
 class WIRE(BaseModel):
-    def __init__(self, in_features, hidden_features, 
-                 hidden_layers, 
-                 out_features, outermost_linear=True,
+    def __init__(self, config = {}, in_features = 3, hidden_features=256, 
+                 hidden_layers=16, 
+                 out_features = 1, outermost_linear=True,
                  first_omega_0=30, hidden_omega_0=30., scale=10.0,
                  pos_encode=False, sidelength=512, fn_samples=None,
                  use_nyquist=True):
-        super().__init__()
+        super().__init__(config=config) #Initialize config to satisfy BaseModel inheritance (does nothing for now)
         
+         
+
+
+
         # All results in the paper were with the default complex 'gabor' nonlinearity
         self.nonlin = ComplexGaborLayer
         
@@ -105,10 +109,11 @@ class WIRE(BaseModel):
         self.net = nn.Sequential(*self.net)
     
     def forward(self, coords: torch.Tensor) -> torch.Tensor:
+        coords=coords/1000 #Scale mm to meters, nicer for activations
         output = self.net(coords)
         
         if self.wavelet == 'gabor':
             return output.real
          
-        return output
+        return output*1000 #Scale back to mm
     

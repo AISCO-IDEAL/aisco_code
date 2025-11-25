@@ -1,4 +1,13 @@
 #Here put the config for model pretraining
 pretraining:
   use_pretrained: True # True or False possible
-  pretraining_model_path: "wp4_aeroshell_optimizer/data/test_models/sdf_sphere_model_2025-11-04.pth" # must be .pth file compatible with model_vxy
+  pretraining_model_path: "subprojects/wp4_aeroshell_optimizer/data/test_models/WIRE_sphere_model_2025-11-25.pth" # must be .pth file compatible with model_vxy
+
+model:
+  "WIRE"
+
+training_loop:
+  epochs: 500
+  learning_rate: 0.0001
+  random_batch_size: 512
+  print_interval: 10
