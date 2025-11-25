@@ -15,7 +15,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
 class TotalLoss:
     def __init__(self, dev: str = "cuda") -> None:
         self.device = dev
-        general_config = load_general_config()
+        self.general_config = load_general_config()
         losses_config = load_specific_config(
             v=general_config["general_info"]["version"],
             cfg_name=general_config["active_configs"]["losses"],
@@ -37,8 +37,8 @@ class TotalLoss:
         # Logging them on WandB
 
         wandb_config = load_specific_config(
-            v=general_config["general_info"]["version"],
-            cfg_name=general_config["active_configs"]["wandb"],
+            v=self.general_config["general_info"]["version"],
+            cfg_name=self.general_config["active_configs"]["wandb"],
         )
         if wandb_config.get("general")["use_wandb"] is True:
             wandb.log(
