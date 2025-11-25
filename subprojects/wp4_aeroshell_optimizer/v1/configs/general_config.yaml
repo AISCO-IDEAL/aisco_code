@@ -4,6 +4,7 @@
 general_info:
   username: "eschaerer"
   version: "v1"
+  device: "cuda"
   model: "SDFNetwork"
   model_Expl: "an SDF Network with torch Neural Network"
   pre: "a sphere as initial shape, datatype: SDF"

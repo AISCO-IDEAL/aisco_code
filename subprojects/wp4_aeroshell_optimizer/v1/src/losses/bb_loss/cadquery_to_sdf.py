@@ -29,9 +29,10 @@ class SDFfromCadQuery:
     def __init__(
         self,
         shape: cq.Solid,
+        training_config: dict,
     ):
         self.__shape = shape
-        self.__pointgrid = self.__pointgrid_geni()
+        self.__pointgrid = self.__pointgrid_geni(training_config)
         self.__negativ = (
             cq.Workplane("XY")
             .box(100000, 100000, 100000, centered=True)
@@ -48,13 +49,7 @@ class SDFfromCadQuery:
         if min(self.__sdf_at_pointgrid) > -1:
             print("SDF from cq.Solid conversion Problem")
 
-    def __pointgrid_geni(self) -> list[list[float]]:
-        # load training config
-        general_config = load_general_config()
-        training_config = load_specific_config(
-            v=general_config["general_info"]["version"],
-            cfg_name=general_config["active_configs"]["training"],
-        )
+    def __pointgrid_geni(self, training_config) -> list[list[float]]:
         # load pointgrid params
         pointgrid_params = training_config["pointgrid_params"]
         dx, dy, dz, rand = (
