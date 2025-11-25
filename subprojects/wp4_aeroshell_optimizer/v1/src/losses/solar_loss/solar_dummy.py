@@ -56,4 +56,4 @@ def solar_mesh_deformation(raw_vertices: torch.Tensor, faces: torch.Tensor, sun_
 
 
 
-    return loss
+    
