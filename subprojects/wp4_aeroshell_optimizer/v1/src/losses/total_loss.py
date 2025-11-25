@@ -10,15 +10,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
     load_general_config,
     load_specific_config,
 )
-general_config = load_general_config()
-        training_config = load_specific_config(
-            v=general_config["general_info"]["version"],
-            cfg_name=general_config["general_info"]["training_config_name"],
-        )
-        # load pointgrid params
-        pointgrid_params = training_config["pointgrid_params"]
-        dx, dy, dz, rand = (
-            pointgrid_params.get("dx"),
+
 
 class TotalLoss:
     def __init__(self, dev: str = "cuda") -> None:
@@ -41,16 +33,19 @@ class TotalLoss:
 
         # Add them up
         total_loss = bb1 + bb2
-        
+
         # Logging them on WandB
-        
+
         wandb_config = load_specific_config(
             v=general_config["general_info"]["version"],
             cfg_name=general_config["active_configs"]["wandb"],
         )
         if wandb_config.get("general")["use_wandb"] is True:
             wandb.log(
-                {"Bounding Box Loss 1:": bb1.item(), "Bounding Box Loss 2:": bb2.item()},
+                {
+                    "Bounding Box Loss 1:": bb1.item(),
+                    "Bounding Box Loss 2:": bb2.item(),
+                },
                 step=epoch_name,
             )
         return total_loss
