@@ -1,14 +1,26 @@
 import time
+
 start = time.time()
 
 import math
+import sys
+from pathlib import Path
+
 import cadquery as cq
 from ocp_vscode import Animation, show
 
+# Prefer the in-repo package (which includes config files) over any installed copy
+REPO_ROOT = Path(__file__).resolve().parents[4]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly
-from subprojects.wp2_assembler.version2.utils.Speed_hump import create_speed_hump_and_floor
-from subprojects.wp2_assembler.version2.utils.reg_imp import get_regulation
 from subprojects.wp2_assembler.version2.utils import Speed_hump
+from subprojects.wp2_assembler.version2.utils.reg_imp import get_regulation
+from subprojects.wp2_assembler.version2.utils.Speed_hump import (
+    create_speed_hump_and_floor,
+)
+
 
 def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
     if isinstance(obj, cq.Assembly):
@@ -28,7 +40,7 @@ def import_speed_bump() -> cq.Shape:
 if __name__ == "__main__":  # pragma: no cover - manual visualization helper
     print("Elapsed:", time.time() - start, "seconds")
     start = time.time()
-    
+
     # Build the three pieces we want to see in the viewer.
     assembly_id = 30
     inner, outer = call_assembly(assembly_id)
@@ -47,13 +59,13 @@ if __name__ == "__main__":  # pragma: no cover - manual visualization helper
     assembly.add(
         outer,
         name="outer_nbz",
-        loc=cq.Location((shift_vec)),
+        loc=cq.Location(shift_vec),
         color=cq.Color(0.7, 0.7, 0.7, 0.15),  # light tint so inner parts stay visible
     )
     assembly.add(
         inner,
         name="inner_nbz",
-        loc=cq.Location((shift_vec)),
+        loc=cq.Location((0,0,0)),
         color=cq.Color(0.9, 0.2, 0.2, 0.8),  # solid car geometry for clarity
     )
     assembly.mates = []  # Minimal mate list lets ocp_vscode detect this as animatable
@@ -65,9 +77,9 @@ if __name__ == "__main__":  # pragma: no cover - manual visualization helper
     # Build quaternions for outer_nbz: rotate about Z by 0→360 deg across frames.
     rotations = []
     for i in range(frame_count):
-        rotations.append((5*i))
+        rotations.append(5*i)
     times = [i * time_step for i in range(frame_count)]  # timestamps per frame
-    
+
 
     # offsets = [(0,0,0),(outer.BoundingBox().xlen + 400,0,0)]
 
@@ -83,7 +95,7 @@ if __name__ == "__main__":  # pragma: no cover - manual visualization helper
     animation.add_track(f"/{assembly.name}/inner_nbz", "ry", times, pitchs)
 
     animation.add_track(f"/{assembly.name}/speed_bump", "t", times, offset_ground)
-    
+
     #animation.add_track(f"/{assembly.name}/outer_nbz", "t", times, offsets)
 
 

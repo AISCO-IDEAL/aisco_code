@@ -4,8 +4,15 @@ Meshes are written next to this script under helper_files_pybullet_test/.
 """
 
 import math
+import sys
 from pathlib import Path
+from time import sleep
 from typing import Any, List, Optional, Tuple
+
+# Ensure local package (with config files) is on sys.path ahead of any installed copy
+REPO_ROOT = Path(__file__).resolve().parents[4]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import cadquery as cq
 import numpy as np
@@ -13,7 +20,9 @@ import pybullet as p
 from cadquery import exporters
 
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly
-from subprojects.wp2_assembler.version2.utils.Speed_hump import create_speed_hump_and_floor
+from subprojects.wp2_assembler.version2.utils.Speed_hump import (
+    create_speed_hump_and_floor,
+)
 
 
 def export_shape_to_stl(shape: cq.Shape, name: str) -> str:
@@ -46,14 +55,14 @@ def assembly_obj_to_shape(asm_obj: Any) -> cq.Shape:
 
 def export_inner_nbz_parts(
     assembly: cq.Assembly,
-) -> Tuple[Optional[str], List[Tuple[str, str]]]:
+) -> tuple[Optional[str], list[tuple[str, str]]]:
     """
     Export the inner NBZ as one body STL and individual wheel STLs.
     Wheels are detected by name prefix 'wheel' / 'Wheel'.
     Returns (body_path, [(wheel_name, wheel_path), ...]).
     """
-    wheel_paths: List[Tuple[str, str]] = []
-    body_shapes: List[cq.Shape] = []
+    wheel_paths: list[tuple[str, str]] = []
+    body_shapes: list[cq.Shape] = []
 
     for name, asm_obj in assembly.objects.items():
         # Skip self-reference to avoid duplicating the full assembly
@@ -92,13 +101,17 @@ body_stl, wheel_parts = export_inner_nbz_parts(inner_asm)
 if body_stl is None and not wheel_parts:
     body_stl = export_shape_to_stl(inner_asm.toCompound(), "inner_nbz")
 
-car_part_paths: List[Tuple[str, str]] = []
+car_part_paths: list[tuple[str, str]] = []
 if body_stl:
     car_part_paths.append(("body", body_stl))
 car_part_paths.extend(wheel_parts)
 
 if not car_part_paths:
     raise RuntimeError("No car parts were exported for PyBullet.")
+
+print("Exported parts:")
+for name, path in car_part_paths:
+    print(f" - {name}: {path}")
 
 # --- PyBullet setup ----------------------------------------------------------
 
@@ -128,10 +141,10 @@ y_lock = 0.0
 yaw_lock = 0.0      # Radians!
 
 # Build the multibody from the exported STL parts (body + wheels)
-car_parts: List[Tuple[str, int]] = []
+car_parts: list[tuple[str, int]] = []
 total_mass = 50.0
 mass_each = total_mass / len(car_part_paths)
-start_pos = [1.556, 0, 1.0]  # start 1 m above
+start_pos = [1.2, 0, 1.0]  # start 1 m above
 start_orn = p.getQuaternionFromEuler([0, 0, 0])
 
 for name, path in car_part_paths:
@@ -172,7 +185,7 @@ max_steps = 1_000
 sim_dt = p.getPhysicsEngineParameters().get("fixedTimeStep", 1.0 / 240.0)
 required_stable_steps = 100
 
-time = []
+time_arr = []
 rolls = []
 pitchs = []
 yaws = []
@@ -181,6 +194,7 @@ offset = []
 offset_ground =[]
 
 for step in range(max_steps):
+
     pos, orn = p.getBasePositionAndOrientation(root)
     x, y, z = pos
     roll, pitch, yaw = p.getEulerFromQuaternion(orn)    # Radians!
@@ -192,8 +206,8 @@ for step in range(max_steps):
 
     #p.resetBasePositionAndOrientation(root, [x, y, z], orn)
 
-    time.append(step/1000)
-    
+    time_arr.append(step/500)
+
     rolls.append(roll)
     pitchs.append(pitch)
     yaws.append(yaw)
@@ -224,4 +238,4 @@ print("Final orientation (deg):", final_euler)
 p.disconnect()
 
 def sim():
-    return time, offset, rolls, pitchs, yaws, offset_ground
+    return time_arr, offset, rolls, pitchs, yaws, offset_ground
