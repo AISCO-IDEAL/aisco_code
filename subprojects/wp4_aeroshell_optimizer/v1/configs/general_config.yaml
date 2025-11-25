@@ -3,6 +3,7 @@
 
 general_info:
   username: "eschaerer"
+  version: "v1"
   model: "SDFNetwork"
   model_Expl: "an SDF Network with torch Neural Network"
   pre: "a sphere as initial shape, datatype: SDF"
@@ -17,3 +18,19 @@ active_configs:
 Storage_paths:
   model_dir: "wp4_aeroshell_optimizer/data/test_models"
   mesh_dir: "wp4_aeroshell_optimizer/data/test_meshes"
+
+# master example of how to reference other config files:
+#         # load training config
+#         general_config = load_general_config()
+#         training_config = load_specific_config(
+#             v=general_config["general_info"]["version"],
+#             cfg_name=general_config["general_info"]["training_config_name"],
+#         )
+#         # load pointgrid params
+#         pointgrid_params = training_config["pointgrid_params"]
+#         dx, dy, dz, rand = (
+#             pointgrid_params.get("dx"),
+#             pointgrid_params.get("dy"),
+#             pointgrid_params.get("dz"),
+#             pointgrid_params.get("rand"),
+#         )

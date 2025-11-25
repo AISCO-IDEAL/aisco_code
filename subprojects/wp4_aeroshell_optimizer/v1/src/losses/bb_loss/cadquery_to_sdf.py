@@ -10,8 +10,10 @@ from OCP.BRepClass3d import BRepClass3d_SolidClassifier
 from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
-
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
+    load_general_config,
+    load_specific_config,
+)
 
 
 class SDFfromCadQuery:
@@ -30,22 +32,40 @@ class SDFfromCadQuery:
     ):
         self.__shape = shape
         self.__pointgrid = self.__pointgrid_geni()
-        self.__negativ = cq.Workplane("XY").box(100000, 100000, 100000, centered=True).cut(cq.Workplane().newObject([self.__shape])).val()
+        self.__negativ = (
+            cq.Workplane("XY")
+            .box(100000, 100000, 100000, centered=True)
+            .cut(cq.Workplane().newObject([self.__shape]))
+            .val()
+        )
         self.__negativ = cast(cq.Shape, self.__negativ).wrapped
         self.__sdf_at_pointgrid = [self.sdf(x, y, z) for x, y, z in self.__pointgrid]
 
         if min(self.__sdf_at_pointgrid) > -1:
-            self.__sdf_at_pointgrid = [self.sdf2(x, y, z) for x, y, z in self.__pointgrid]
+            self.__sdf_at_pointgrid = [
+                self.sdf2(x, y, z) for x, y, z in self.__pointgrid
+            ]
         if min(self.__sdf_at_pointgrid) > -1:
             print("SDF from cq.Solid conversion Problem")
-        
+
     def __pointgrid_geni(self) -> list[list[float]]:
-        config = load_config()
-        pointgrid_params = config["pointgrid_params"]
-        dx, dy, dz, rand = pointgrid_params.get("dx") , pointgrid_params.get("dy"), pointgrid_params.get("dz"), pointgrid_params.get("rand")
+        # load training config
+        general_config = load_general_config()
+        training_config = load_specific_config(
+            v=general_config["general_info"]["version"],
+            cfg_name=general_config["general_info"]["training_config_name"],
+        )
+        # load pointgrid params
+        pointgrid_params = training_config["pointgrid_params"]
+        dx, dy, dz, rand = (
+            pointgrid_params.get("dx"),
+            pointgrid_params.get("dy"),
+            pointgrid_params.get("dz"),
+            pointgrid_params.get("rand"),
+        )
         dr = 1
         ranges = [
-            (int(-2900 - rand + dr), int(2900 + rand)), 
+            (int(-2900 - rand + dr), int(2900 + rand)),
             (int(-1150 - rand + dr), int(1150 + rand)),
             (int(-rand + dr), int(1650 + rand)),
         ]
@@ -84,7 +104,7 @@ class SDFfromCadQuery:
         else:
             return d
 
-    def sdf2(self, x: float, y: float, z: float) -> float: # old but gold?
+    def sdf2(self, x: float, y: float, z: float) -> float:  # old but gold?
         # calculates the signed distance form point (x, y, z) to the CadQuery shape boints inside the shape are negative
         pnt = gp_Pnt(x, y, z)
         vertex = BRepBuilderAPI_MakeVertex(pnt).Vertex()
@@ -92,9 +112,9 @@ class SDFfromCadQuery:
         dist_shape_shape = BRepExtrema_DistShapeShape(vertex, shape_ocp)
         dist_shape_shape.Perform()
         d = dist_shape_shape.Value()
-        
-        threshold = 0.1  
-        
+
+        threshold = 0.1
+
         if d < threshold:  # Point is either on the surface or inside the shape
             dist_shape_shape = BRepExtrema_DistShapeShape(vertex, self.__negativ)
             dist_shape_shape.Perform()
