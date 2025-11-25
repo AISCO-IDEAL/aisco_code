@@ -1,0 +1,110 @@
+import datetime
+import os
+import tempfile
+import typing as T
+
+import numpy as np
+import torch
+import wandb
+from wp4_aeroshell_optimizer.src.utils.utils import load_config
+from ..models.sdf import SDFNetwork
+from ..utils.kaolin_utils import flexicubes_to_PLY, get_diff_mesh
+from ..utils.losses import SDFLosses
+from ..utils.sdf2mesh import save_sdf2mesh
+from ..utils.visualizer import CADVisualizer
+from subprojects.wp4_aeroshell_optimizer.src.utils.validation import validation_score
+
+def train_sdf_model(
+    model: SDFNetwork,
+    train_config: dict,
+    model_path: str = None,
+    mesh_path: str = None,
+    model_name: str = "sdf_model",
+    mesh_name: str = "sdf_mesh",
+    track_run: bool = False,
+) -> SDFNetwork:
+    """
+    Train the given SDFNetwork model based on the provided configuration.
+    Pre-conditions:
+        - model: An instance of SDFNetwork, already initialized and ready for training.
+        - config: A dictionary containing at least the following keys:
+            - learning_rate: Positive float (default: 1e-3).
+            - num_epochs: Positive integer (default: 1000).
+            - batch_size: Positive integer (default: 1024).
+            - (Optional) Any additional parameters required by SDFLosses or the training process.
+    Post-conditions:
+        - The model's parameters are updated via gradient descent for num_epochs iterations.
+        - The loss is printed every 10 epochs.
+        - The trained model is saved and returned.
+    """
+
+    # Initialize optimizer and loss function
+    learning_rate = float(train_config.get("learning_rate", 1e-4))
+    num_epochs = train_config["num_epochs"]
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    loss_fn = SDFLosses()
+    # assembly_points=loss_fn.__inner_bb_points
+    
+    for epoch in range(num_epochs):
+        points = (torch.rand(1000, 3, requires_grad=True, device="cuda") - 0.5) * 10
+        optimizer.zero_grad()
+        total_loss = loss_fn.get_total_loss(
+            model=model, points=points, epoch_name=epoch
+        )
+        val_score = validation_score(model)
+        total_loss.backward()
+        optimizer.step()
+        if track_run:
+            wandb.log({"epoch": epoch, "total_loss": total_loss.item(),"Validation_loss": val_score}, step=epoch)
+            if epoch % 1 == 0:
+                verts, faces = get_diff_mesh(model, grid_res=64, device="cuda")
+                mesh = flexicubes_to_PLY(verts, faces, save_mesh=False)
+                with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
+                    mesh.export(tmp.name, file_type="stl")
+                    wandb.log({"sdf_mesh": wandb.Object3D(tmp.name)}, step=epoch)
+                    #Image logging during training
+                    ddd = load_config()["wandb"].get("rendering_frequency")
+                    if epoch % ddd==0:
+                        pth = mesh_path+f"Visualisation_of_Epoch{epoch}.png" # Adjust Path to somewhere for temporary data storage
+                        vs = CADVisualizer(stl_path=tmp.name, out_image_path = pth)
+                        print(vs.render_until_blue_detected())
+                        wandb.log({"sdf_image": wandb.Image(pth, caption=f"Epoch {epoch}")},step=epoch)
+                        os.remove(pth)
+                    #final image logging
+                    if epoch >= num_epochs -1:
+                        pth = mesh_path+f"Visualisation_of_Epoch{epoch}.png" # Adjust Path to somewhere for temporary data storage
+                        vs = CADVisualizer(stl_path=tmp.name, out_image_path = pth)
+                        print(vs.render_until_blue_detected())
+                        wandb.log({"sdf_image": wandb.Image(pth, caption=f"Epoch {epoch}")},step=epoch)
+                        os.remove(pth)
+                    
+
+
+        if epoch % 10 == 0:
+            print(f"Epoch {epoch}, Total Loss: {total_loss.item():.4f}")
+
+    # Save the trained model
+    if model_path:
+        os.makedirs(model_path, exist_ok=True)
+        datum = datetime.datetime.now()
+        model_path = os.path.join(
+            model_path, f"{model_name}_{datum.strftime('%m_%d_%H_%M')}.pth"
+        )
+        torch.save(model, model_path)
+        print(f"Model saved to: {model_path}")
+
+    # Visualize the SDF
+    if mesh_path:
+        os.makedirs(mesh_path, exist_ok=True)
+        datum = datetime.datetime.now()
+        save_sdf2mesh(
+            model,
+            grid_size=128,
+            threshold=0.0,
+            mesh_dir=mesh_path,
+            filename=f"{mesh_name}_{datum.strftime('%m_%d_%H_%M')}.ply",
+            device="cuda",
+        )
+        print(f"A mesh has been generated and saved as '{mesh_name}.ply'.")
+
+    return model
