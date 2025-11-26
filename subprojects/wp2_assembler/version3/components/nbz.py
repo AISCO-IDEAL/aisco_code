@@ -17,7 +17,7 @@ class WheelbaseTooSmallError(Exception):
         super().__init__(f"Wheelbase {dim} too small")
 
 
-def inner_nbz2_sym_rand():
+def inner_nbz_sym_rand():
     """
     New implementation of innerNBZ for version 2
     Args: constraints from regulations
@@ -63,7 +63,7 @@ def inner_nbz2_sym_rand():
     return assembly
 
 
-def inner_nbz2_sym(
+def inner_nbz_sym(
     wheel_base_width=1000,
     wheel_base_length=2500,
     tyre_diameter=557,
@@ -123,7 +123,7 @@ def inner_nbz2_sym(
     return assembly
 
 
-def outer_nbz2(length: float, width: float, height: float):
+def outer_nbz(length: float, width: float, height: float):
     """
     New implementation of outerNBZ for version 2
     Args: constraints from regulations
@@ -241,7 +241,7 @@ def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
 
     params = assembly_map[id_number]
 
-    assembly = inner_nbz2_sym(
+    assembly = inner_nbz_sym(
         wheel_base_width=params["wheel_base_width"],
         wheel_base_length=params["wheel_base_length"],
         tyre_diameter=params["tyre_diameter"],
@@ -254,7 +254,7 @@ def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
     box_width = get_regulation("no_build_zones.outer_prism.width")
     box_height = get_regulation("no_build_zones.outer_prism.height")
 
-    outer = outer_nbz2(params["wheel_base_length"] * 2.2, box_width, box_height)
+    outer = outer_nbz(params["wheel_base_length"] * 2.2, box_width, box_height)
 
     return assembly, outer
 

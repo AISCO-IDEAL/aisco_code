@@ -29,13 +29,28 @@ no_build_zones:
       outer_lenght: 150       # mm
   
   vision_box:
-    radius: 4000            # mm
-    pos_height: 700            # mm from ground
-    neg_height: 400
-    pos_angle: 100            # degrees from x-axis around z-axis in positive direction (right-hand rule)
-    neg_angle: 100             # degrees from x-axis around z-axis in negative direction (right-hand rule)
-    inner_radius: 500       # mm distance from centerline to start of vision box
+    radius: 4000             # mm
+    pos_height: 700          # mm from eye level
+    neg_height: 400          # mm from eye level
+    pos_angle: 100           # degrees from x-axis around z-axis in positive direction (right-hand rule)
+    neg_angle: 100           # degrees from x-axis around z-axis in negative direction (right-hand rule)
+    inner_radius: 1          # mm distance from centerline to start of vision box
 
+tracker_box:
+  dimension:
+    length: 120              # mm
+    width: 120               # mm
+    height: 70               # mm
+  def_position:
+    x: 2000                  # mm from front of outer NBZ
+    y: 0                     # mm from centerline
+    z: 1200                  # mm from ground
+  def_angle:
+    pitch: -20               # degrees around y-axis
+    roll: 0                  # degrees around x-axis
+  cone:
+    height: 3000              # mm
+    apex_angle: 120           # degrees
 
 seat:
   position:

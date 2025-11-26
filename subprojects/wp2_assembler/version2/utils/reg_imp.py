@@ -23,6 +23,7 @@ def get_regulation(section: str) -> int | float:
         if isinstance(current, dict) and key in current:
             current = current[key]
         else:
+            print(f"Key '{key}' not found in section '{section}'.")
             return -1  # Key not found or current is not a dict
 
     # Check if we ended up at a numeric value
