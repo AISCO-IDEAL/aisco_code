@@ -65,7 +65,7 @@ class WIRE(BaseModel):
     def __init__(self, config = {}, in_features = 3, hidden_features=256, 
                  hidden_layers=16, 
                  out_features = 1, outermost_linear=True,
-                 first_omega_0=30, hidden_omega_0=30., scale=10.0,
+                 first_omega_0=30, hidden_omega_0=1.0, scale=1.0,
                  pos_encode=False, sidelength=512, fn_samples=None,
                  use_nyquist=True):
         super().__init__(config=config) #Initialize config to satisfy BaseModel inheritance (does nothing for now)
@@ -86,14 +86,14 @@ class WIRE(BaseModel):
         
         # Legacy parameter
         self.pos_encode = False
-            
+        
         self.net = []
         self.net.append(self.nonlin(in_features,
                                     hidden_features, 
                                     omega0=first_omega_0,
                                     sigma0=scale,
                                     is_first=True,
-                                    trainable=False))
+                                    trainable=True))
 
         for i in range(hidden_layers):
             self.net.append(self.nonlin(hidden_features,
@@ -107,13 +107,20 @@ class WIRE(BaseModel):
         self.net.append(final_linear)
         
         self.net = nn.Sequential(*self.net)
+
+        # Small-weight init for stability: limit Linear weights, zero biases
+        for m in self.net.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, mean=0.0, std=0.1)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
     
     def forward(self, coords: torch.Tensor) -> torch.Tensor:
         coords=coords/1000 #Scale mm to meters, nicer for activations
         output = self.net(coords)
         
         if self.wavelet == 'gabor':
-            return output.real
-         
-        return output*1000 #Scale back to mm
+            return 1000*(output.real)  #Scale back to mm
+        else:
+            return output*1000 #Scale back to mm
     

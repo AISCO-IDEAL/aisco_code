@@ -4,7 +4,7 @@ import torch
 def sphere_gt(
     points: torch.Tensor,
     coordinates: torch.Tensor = torch.tensor([0, 0, 0]),
-    radius: float = 1.0,
+    radius: float = 1000.0,
 ) -> torch.Tensor:
     """
     Generate signed distance ground truth values for a sphere centered at the coordinates.
@@ -13,8 +13,8 @@ def sphere_gt(
         radius: Radius of the sphere
     """
 
-
-    return torch.norm(points-coordinates, dim=-1) - radius
+    coordinates = coordinates.to(points.device)
+    return torch.norm(points, dim=-1) - radius
 
 
 def cube_gt(

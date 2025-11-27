@@ -5,7 +5,7 @@ from torch import nn
 
 
 class BaseModel(nn.Module):
-    def __init__(self, config: dict, in_dim: int=3, hidden: int=128, layers: int=6):
+    def __init__(self, config: dict, in_dim: int=3, hidden: int=64, layers: int=3):
         
         super(BaseModel, self).__init__()
 
@@ -32,11 +32,11 @@ class BaseModel(nn.Module):
         
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        
+        x = x / 1000.0  # Scale input to meters
         for layer in self.model_layers:
             x = layer(x)
         output = x.squeeze(-1)
-        return output
+        return output * 1000.0
     
     def optimise(self):
         super(BaseModel, self).train() #Set training attribute of inherited model to true, ensures things like e.g. dropout work properly

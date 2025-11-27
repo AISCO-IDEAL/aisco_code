@@ -55,9 +55,10 @@ def get_diff_mesh(
     grid_points = torch.stack([grid_x, grid_y, grid_z], dim=-1).reshape(-1, 3)
 
     with torch.enable_grad():
-        sdf_values = model(grid_points)[
-            0
-        ]  # Get SDF values from model, first element of tuple is the scalar SDF field
+        sdf_values = model(grid_points)
+        # Ensure sdf_values is 1D: (num_vertices,)
+        if sdf_values.dim() > 1:
+            sdf_values = sdf_values.squeeze()
 
     ####################### eschaerer #################
     # Detach and clone to avoid gradient issues

@@ -8,7 +8,7 @@ import importlib
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.WIRE import WIRE
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.ground_truth_masks.simple_geoms import sphere_gt
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_general_config
-
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh, kaolin_to_PLY
 
 def dynamic_loading(config_name: str="pretraining_v0_config.yaml"):
     """
@@ -16,9 +16,10 @@ def dynamic_loading(config_name: str="pretraining_v0_config.yaml"):
     I.e. imports only from the relevant file, not all the models
     """
     config = load_general_config(cfg_name=config_name) #not yet implemented there!
-    architecture_name = config['model'] #dynamically import the model module
-    module = importlib.import_module("subprojects.wp4_aeroshell_optimizer.v1.src.models." + architecture_name)
-    ModelClass = getattr(module, architecture_name) #gets model class
+    model_name = config['model'] #dynamically import the model module
+    model_file_name = config['model_filename'] #file where the model is located
+    module = importlib.import_module("subprojects.wp4_aeroshell_optimizer.v1.src.models." + model_file_name)
+    ModelClass = getattr(module, model_name) #gets model class
 
 
     #adjust to include config parameters here
@@ -44,21 +45,31 @@ def pretraining(config_name: str="pretraining_v0_config.yaml"):
         optimizer.zero_grad()
         
         
-        # Randomly sample spatial points within a certain range (Normal dist with mu = 0, sigma=5000)
-        input_data = torch.randn(3,config['training_loop']['random_batch_size'],
-                                device=device)*5000
+        # Constrained uniform sampling in a tighter box around the sphere (±2.5 m)
+        input_data = (torch.rand(config['training_loop']['random_batch_size'], 3, device=device) - 0.5) * 5000.0
         
         output = model(input_data)
         
         # Dummy target data, replace with actual target generation
         target = sphere_gt(input_data)
         
-        loss = torch.nn.functional.mse_loss(output, target)
+        
+        # Eikonal regularization: ||∇f(x)|| = 1 in meters
+        
+        input_m = (input_data / 1000.0).detach().requires_grad_(True)
+        sdf_m = (model(input_m * 1000.0).squeeze()) / 1000.0
+        grad = torch.autograd.grad(outputs=sdf_m, inputs=input_m,
+                                   grad_outputs=torch.ones_like(sdf_m), create_graph=True, retain_graph=True)[0]
+        eikonal = ((grad.norm(dim=-1) - 1.0) ** 2).mean()
+
+        #eikonal = torch.tensor(0.0, device=device)  # Placeholder if Eikonal is disabled
+        loss = torch.nn.MSELoss()((target/1000).squeeze(),(output/1000).squeeze()) + 0.1 * eikonal
+        
         loss.backward()
         optimizer.step()
         
         if i % config['training_loop']['print_interval'] == 0:
-            print(f"Epoch {i}, Loss: {loss.item()}")
+            print(f"Epoch {i}, Loss: {loss.item():.4f}, Eikonal: {eikonal.item():.4f}")
     
 
     return model
@@ -66,5 +77,9 @@ def pretraining(config_name: str="pretraining_v0_config.yaml"):
 
 
 if __name__ == "__main__":
+    config=load_general_config(cfg_name="pretraining_v0_config.yaml")
     config_name = "pretraining_v0_config.yaml"
-    pretraining(config_name)
+    model=pretraining(config_name)
+    verts, faces= get_diff_mesh(model,grid_res=48,box_dim=[-2500,2500,-2500,2500,-2500,2500])
+    kaolin_to_PLY(verts, faces, mesh_dir="subprojects/wp4_aeroshell_optimizer/data/test_meshes", filename="WIRE_sphere.ply")
+    torch.save(model.state_dict(), "subprojects/wp4_aeroshell_optimizer/data/test_models/pretrained_WIRE_sphere.pth")
