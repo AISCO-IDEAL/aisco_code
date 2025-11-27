@@ -30,8 +30,8 @@ def allround_save_data(model: BaseModel, # Model to save data from
         hash_length (int, optional): Length of the hash string used for directory naming. Defaults to 12.
         
     """
-
-    model_data = model.get_model_info_dict() #Dictonary containing all relevant model information needed to recreate the model
+    # Get Dictonary containing all relevant model information needed to recreate the model
+    model_data = model.get_model_info_dict() 
     if model_data is None or file_path is None:
         raise ValueError("Both model_data and file_path must be provided.")
 
@@ -76,7 +76,9 @@ def allround_save_data(model: BaseModel, # Model to save data from
         model=model.to('cpu')
         verts,faces = get_diff_mesh(model,grid_res=64, device='cpu')
         kaolin_to_PLY(verts, faces, filename=f"{wandb_run}_{epoch_str}.ply",mesh_dir=mesh_dir)
-        
+        if verbose:
+            print(f"Mesh saved to {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
+
     if save_model:
         model_file_path = model_dir / f"{wandb_run}_{epoch_str}.pth"
         torch.save(model.state_dict(), model_file_path)
