@@ -76,11 +76,17 @@ def allround_save_data(model: BaseModel, # Model to save data from
         model=model.to('cpu')
         verts,faces = get_diff_mesh(model,grid_res=64, device='cpu')
         kaolin_to_PLY(verts, faces, filename=f"{wandb_run}_{epoch_str}.ply",mesh_dir=mesh_dir)
+        if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
+            print(f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
         if verbose:
             print(f"Mesh saved to {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
 
     if save_model:
         model_file_path = model_dir / f"{wandb_run}_{epoch_str}.pth"
+        #Check if you would overwrite an existing model
+        if model_file_path.exists():
+            print(f"Warning: Overwriting existing model at {model_file_path}")
+        
         torch.save(model.state_dict(), model_file_path)
         if verbose:
             print(f"Model state_dict saved to {model_file_path}")
