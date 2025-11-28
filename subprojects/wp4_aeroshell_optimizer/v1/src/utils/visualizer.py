@@ -87,10 +87,7 @@ class CADVisualizer:
         for k, v in env.items():
             os.environ[k] = v
 
-        # np.random.seed(42)
-
         subprocess.run(["pkill", "-f", "Xvfb"], check=False, capture_output=True)
-        time.sleep(1)
         subprocess.Popen(
             [
                 "Xvfb",
