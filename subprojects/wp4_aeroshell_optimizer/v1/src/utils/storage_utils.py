@@ -7,6 +7,7 @@ from pathlib import Path
 import torch
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import AISCO_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import (
     get_diff_mesh,
     kaolin_to_PLY,
@@ -22,7 +23,6 @@ def allround_save_data(
     epoch: int = None,  # Current epoch number
     storage_path: str = "cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/bulk_storage",
     verbose: bool = True,
-    hash_length: int = 12,
 ) -> None:
     """
     Save model data to a specified file path in JSON format.
@@ -35,7 +35,7 @@ def allround_save_data(
         epoch (int, optional): The current epoch number. If None, 'no_epoch' will be used in the filename.
         storage_path (str, optional): The base directory where data will be stored. Defaults to a predefined path.
         verbose (bool, optional): Whether to print verbose output. Defaults to True.
-        hash_length (int, optional): Length of the hash string used for directory naming. Defaults to 12.
+        
 
     """
     # Get Dictonary containing all relevant model information needed to recreate the model
@@ -44,11 +44,7 @@ def allround_save_data(
         raise ValueError("Both model_data and file_path must be provided.")
 
     # Hash the model_data dictionary
-    canonical_bytes = json.dumps(
-        model_data, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
-    hash_value = hashlib.sha1(canonical_bytes).hexdigest()[:hash_length]
-
+    hash_value = AISCO_hashing(model_data)
     # Baed on hash value see if directory exists, if not create it
     dir_path = Path(storage_path) / hash_value
     os.makedirs(dir_path, exist_ok=True)
@@ -72,10 +68,8 @@ def allround_save_data(
     if wandb_run is None:
         current_time = datetime.datetime.now().isoformat()
         canonical_time_bytes = current_time.encode("utf-8")
-        wandb_hash = hashlib.sha1(canonical_time_bytes).hexdigest()[
-            :10
-        ]  # arbitrarily fix time hash length to 10
-        wandb_run = wandb_hash
+        wandb_run = AISCO_hashing(canonical_time_bytes)
+        
 
     if epoch is None:
         epoch_str = "no_epoch"

@@ -8,8 +8,8 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLo
 
 
 class BasicMLP(BaseModel):
-    def __init__(self, config: dict = {}, in_dim: int=3, hidden: int=128, layers: int=6):
-        super(BasicMLP, self).__init__(config, in_dim, hidden, layers)
+    def __init__(self, config: dict = {}, overwrite_base_init: bool = False, in_dim: int=3, hidden: int=128, layers: int=6):
+        super(BasicMLP, self).__init__(config, overwrite_base_init, in_dim, hidden, layers)
         
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -40,7 +40,25 @@ class BasicMLP(BaseModel):
             optimizer.step()
 
 
+    def debug_info(self):
+        #Print model architecture and number of parameters, or anthing you might want to debug
+        print("===================================")
+        print("Model Debug Info:")
 
+        print(self)
+        
+        print(f"Total number of parameters: {sum(p.numel() for p in self.parameters())}")
+        print("Model Layers:")
+        for i, layer in enumerate(self.model_layers):
+            print(f" Layer {i}: {layer}")
+        
+        print("Device/Gradient Info:")
+        print(f" Model is on device: {self.device}")
+        print(f"Do Model Parameters require Gradients? (Y/N): {any(p.requires_grad for p in self.parameters())}")
+
+        print("End of Model Debug Info")
+        print("===================================")
+        return
             
 
             
