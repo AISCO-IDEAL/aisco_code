@@ -1,6 +1,8 @@
 #WIRE model
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
+
 import torch
 from torch import nn
 
@@ -133,7 +135,6 @@ class WIRE(BaseModel):
     
     def get_model_info_dict(self):
         model_info = {
-            "config" : self.config,
             "in_features": self.in_features,
             "hidden_features": self.hidden_features,
             "hidden_layers": self.hidden_layers,
@@ -146,3 +147,28 @@ class WIRE(BaseModel):
 
         }
         return model_info
+    
+    def optimise(self, training_config: dict = None) -> None:
+        if training_config is None:
+            raise ValueError("Training config must be provided for optimisation.")
+        
+        self.train() # Set model to training mode, i.e. things like dropout layers are active, turn off by using self.eval() or model.eval()
+        optimizer = torch.optim.Adam(self.parameters(), lr=training_config.get("learning_rate", 1e-3))
+        num_epochs = training_config.get("epochs", 1000)
+        
+        # IMPORTANT: the device the model is on defines the device passed to the loss_class
+        loss_function = TotalLoss(self.device)
+
+        for epoch in range(num_epochs):
+            #Clear gradients
+            optimizer.zero_grad()
+
+            # Calculate loss, Tracking should also be done in TotalLoss
+            loss = loss_function.get_total_loss(model=self, epoch_name=epoch)
+
+            # Optimize w.r.t. total loss
+            # Do this by calculating the gradients of the weights w.r.t. the loss 
+            loss.backward()
+            # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
+            optimizer.step()
+

@@ -2,19 +2,16 @@ import os
 import shutil
 import subprocess
 import tempfile
-import time
 
 import cadquery as cq
 import imageio.v2 as imageio
 import numpy as np
-
 import OpenGL
 import pyrender
 import trimesh
 from pyrender import RenderFlags
-from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
 
-username = "clhuber"
+from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
 
 
 class CADVisualizer:
@@ -26,7 +23,7 @@ class CADVisualizer:
         solid_b=outerNBZ(),
         out_image_path="render.png",
         max_attempts=100,
-    ):
+    ) -> None:
         self.__image_size = (1200, 900)
         self.__bg_color = (255, 255, 255, 0)
         self.__scale_factor = 0.001
@@ -65,13 +62,13 @@ class CADVisualizer:
             (0.0, 1.0, 0.0, 0.3),
             (0.0, 0.0, 1.0, 0.6),
         ]
-        self.__show_edges = None
+        self.__show_edges = [False, True, False]
         self.__out_image_path = out_image_path
         self.__max_attempts = max_attempts
 
         self.__setup_headless_rendering()
 
-    def __setup_headless_rendering(self):
+    def __setup_headless_rendering(self) -> None:
         env = {
             "PYOPENGL_PLATFORM": "osmesa",
             "DISPLAY": self.__display_port,
@@ -87,10 +84,7 @@ class CADVisualizer:
         for k, v in env.items():
             os.environ[k] = v
 
-        # np.random.seed(42)
-
         subprocess.run(["pkill", "-f", "Xvfb"], check=False, capture_output=True)
-        time.sleep(1)
         subprocess.Popen(
             [
                 "Xvfb",
@@ -120,39 +114,7 @@ class CADVisualizer:
         r = pyrender.OffscreenRenderer(1, 1)
         r.delete()
 
-    def __set_camera_params(
-        self,
-        distance_factor=None,
-        fov_degrees=None,
-        tilt_down_degrees=None,
-        azimuth_degrees=None,
-        position_factors=None,
-    ):
-        for name, val in [
-            ("__camera_distance_factor", distance_factor),
-            ("__camera_fov_degrees", fov_degrees),
-            ("__camera_tilt_down_degrees", tilt_down_degrees),
-            ("__camera_azimuth_degrees", azimuth_degrees),
-            ("__camera_position_factors", position_factors),
-        ]:
-            if val is not None:
-                setattr(self, name, val)
-
-    def __set_lighting(
-        self,
-        ambient_intensity=None,
-        key_light_intensity=None,
-        fill_light_intensity=None,
-    ):
-        for name, val in [
-            ("__ambient_intensity", ambient_intensity),
-            ("__key_light_intensity", key_light_intensity),
-            ("__fill_light_intensity", fill_light_intensity),
-        ]:
-            if val is not None:
-                setattr(self, name, val)
-
-    def __cq_solid_to_trimesh(self, solid):
+    def __cq_solid_to_trimesh(self, solid) -> trimesh.Trimesh:
         with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
             path = tmp.name
         cq.exporters.export(
@@ -186,7 +148,7 @@ class CADVisualizer:
                     tm.fix_normals()
             return tm
 
-    def __add_edges_to_scene(self, scene, mesh):
+    def __add_edges_to_scene(self, scene, mesh) -> None:
         edges = mesh.edges_unique
         vs = mesh.vertices[edges]
         for e in vs:
@@ -222,7 +184,7 @@ class CADVisualizer:
                 )
             )
 
-    def __setup_camera_and_lighting(self, scene, radius):
+    def __setup_camera_and_lighting(self, scene, radius) -> None:
         d = radius * self.__camera_distance_factor
         cam = pyrender.PerspectiveCamera(
             yfov=np.deg2rad(self.__camera_fov_degrees),
@@ -281,9 +243,7 @@ class CADVisualizer:
                 pose=p,
             )
 
-    def __render(self, out_image_path: str):
-        self.__show_edges = [False, True, False]
-
+    def __render(self, out_image_path: str) -> tuple[str | bool, bool]:
         meshes, types = (
             [
                 self.__cq_solid_to_trimesh(self.__solid_a),
@@ -363,15 +323,15 @@ class CADVisualizer:
             return out_image_path, True
         return False, False
 
-    def __has_blue_color(self, image_path):
+    def __has_blue_color(self, image_path) -> bool:
         img = imageio.imread(image_path)
-        img = img.astype(np.float32) / 255.0
+        img = np.asarray(img.astype(np.float32) / 255.0, dtype=np.ndarray)
         b, r, g = img[:, :, 2], img[:, :, 0], img[:, :, 1]
         blue_dom = (b > self.__blue_threshold) & (b > (r + g) / 2)
         ratio = blue_dom.sum() / b.size
         return ratio >= self.__min_blue_ratio
 
-    def render_until_blue_detected(self):
+    def render_until_blue_detected(self) -> tuple[str, bool, int]:
         attempts = 0
         last_ok = False
         while attempts < self.__max_attempts:
@@ -391,6 +351,7 @@ class CADVisualizer:
 
 
 if __name__ == "__main__":
+    username = "clhuber"
     visualizer = CADVisualizer(
         ply_path=f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh1.ply",
         out_image_path=f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1.png",

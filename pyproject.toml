@@ -66,7 +66,7 @@ testing = [
   ]
 
 all = [
-  "aisco_env[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer]"
+  "aisco_env[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer, testing]"
 ]
 
 #make a all command
@@ -103,7 +103,7 @@ exclude = [
 
 
 # Same as Black.
-line-length = 88
+line-length = 130
 
 # Assume Python 3.11
 target-version = "py311"

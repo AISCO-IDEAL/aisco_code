@@ -5,7 +5,7 @@ from torch import nn
 
 
 class BaseModel(nn.Module):
-    def __init__(self, config: dict, in_dim: int=3, hidden: int=64, layers: int=3):
+    def __init__(self, config: dict, overwrite_base_init: bool = True, in_dim: int=3, hidden: int=64, layers: int=3):
         
         super(BaseModel, self).__init__()
 
@@ -14,7 +14,8 @@ class BaseModel(nn.Module):
         self.hidden = hidden
         self.layers = layers    
 
-
+        if overwrite_base_init:
+            return # Skip base init if overwritten in subclass, avoids creating redundant layers
         
         #Define a simple MLP with Relu and Tanh activations
         self.model_layers = nn.ModuleList()
@@ -40,6 +41,8 @@ class BaseModel(nn.Module):
     
     def optimise(self):
         super(BaseModel, self).train() #Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
+
+        # For textbook example of how our optimization works, look at basic_MLP_v1.py
         raise NotImplementedError("Train method not implemented yet in BaseModel. Please implement in the subclass inheriting.")
         
     
@@ -53,7 +56,6 @@ class BaseModel(nn.Module):
     
         #Return model info as a dictionary
         model_info = {
-            "config": self.config,
             "in_dim": self.in_dim,
             "hidden": self.hidden,
             "layers": self.layers,
@@ -62,21 +64,5 @@ class BaseModel(nn.Module):
         return model_info
 
     def debug_info(self):
-        #Print model architecture and number of parameters, or anthing you might want to debug
-        print("===================================")
-        print("Model Debug Info:")
-
-        print(self)
-        
-        print(f"Total number of parameters: {sum(p.numel() for p in self.parameters())}")
-        print("Model Layers:")
-        for i, layer in enumerate(self.model_layers):
-            print(f" Layer {i}: {layer}")
-        
-        print("Device/Gradient Info:")
-        print(f" Model is on device: {self.device}")
-        print(f"Do Model Parameters require Gradients? (Y/N): {any(p.requires_grad for p in self.parameters())}")
-
-        print("End of Model Debug Info")
-        print("===================================")
+        print("No Debug Info implemented")
         return
