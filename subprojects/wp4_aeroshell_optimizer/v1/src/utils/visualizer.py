@@ -1,23 +1,24 @@
 # render_cq_and_ply.py
 
 import os
-import tempfile
-import subprocess
 import shutil
+import subprocess
+import tempfile
 import time
 
 import cadquery as cq
 import imageio.v2 as imageio
 import numpy as np
+import OpenGL
 import pyrender
 import trimesh
-import OpenGL
 from cadquery import exporters
 from pyrender import RenderFlags
 
 from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
 
 username = "clhuber"
+
 
 class CADVisualizer:
     def __init__(
@@ -118,7 +119,7 @@ class CADVisualizer:
         OpenGL.ERROR_LOGGING = False
         OpenGL.FULL_LOGGING = False
 
-        os.environ["PYOPENGL_PLATFORM"] = "egl" 
+        os.environ["PYOPENGL_PLATFORM"] = "egl"
         r = pyrender.OffscreenRenderer(1, 1)
         r.delete()
 
@@ -163,33 +164,34 @@ class CADVisualizer:
             tolerance=self.__mesh_tolerance,
             angularTolerance=self.__angular_tolerance,
         )
-                
+
         tm = trimesh.load(path, file_type="stl")
         if isinstance(tm, trimesh.Scene):
             tm = trimesh.util.concatenate(tuple(tm.geometry.values()))
         return tm
 
-    def __load_mesh(self, path, file_type, label):
+    def __load_mesh(self, path, file_type):
         max_retries = 3
         for attempt in range(max_retries):
             tm = trimesh.load(path, file_type=file_type)
             if isinstance(tm, trimesh.Scene):
                 tm = trimesh.util.concatenate(tuple(tm.geometry.values()))
-            if tm.vertices.shape[0] == 0:
-                raise ValueError(f"{file_type.upper()} mesh is empty: {path}")
+            """if tm.vertices.shape[0] == 0:
+                raise ValueError(f"{file_type.upper()} mesh is empty: {path}")"""
             tm.remove_infinite_values()
             tm.remove_unreferenced_vertices()
             if len(tm.faces) > 0:
                 trimesh.repair.fix_inversion(tm)
                 trimesh.repair.fix_normals(tm)
-                try:
+                """try:
                     trimesh.repair.fill_holes(tm)
                 except Exception:
-                    pass
+                    pass"""
                 tm.process(validate=True)
-                if not getattr(tm, "face_normals", None) is not None or len(
-                    tm.face_normals
-                ) == 0:
+                if (
+                    not getattr(tm, "face_normals", None) is not None
+                    or len(tm.face_normals) == 0
+                ):
                     tm.fix_normals()
             return tm
 
@@ -199,25 +201,25 @@ class CADVisualizer:
         for e in vs:
             a, b = e
             v = b - a
-            L = np.linalg.norm(v)
-            if L <= 1e-6:
+            l = np.linalg.norm(v)  # noqa: E741
+            if l <= 1e-6:  # noqa: PLR2004
                 continue
             cyl = trimesh.creation.cylinder(
-                radius=self.__edge_radius, height=L, sections=8
+                radius=self.__edge_radius, height=l, sections=8
             )
             z = np.array([0, 0, 1])
-            u = v / L
+            u = v / l
             if not (np.allclose(u, z) or np.allclose(u, -z)):
                 axis = np.cross(z, u)
                 axis /= np.linalg.norm(axis)
                 ang = np.arccos(np.clip(np.dot(z, u), -1, 1))
-                R = trimesh.transformations.rotation_matrix(ang, axis)
+                r = trimesh.transformations.rotation_matrix(ang, axis)
             elif np.allclose(u, -z):
-                R = trimesh.transformations.rotation_matrix(np.pi, [1, 0, 0])
+                r = trimesh.transformations.rotation_matrix(np.pi, [1, 0, 0])
             else:
-                R = np.eye(4)
-            R[:3, 3] = (a + b) / 2
-            cyl.apply_transform(R)
+                r = np.eye(4)
+            r[:3, 3] = (a + b) / 2
+            cyl.apply_transform(r)
             scene.add(
                 pyrender.Mesh.from_trimesh(
                     cyl,
@@ -257,14 +259,12 @@ class CADVisualizer:
         def look_at(eye, target, up=np.array([0, 0, 1.0])):
             f = target - eye
             fn = np.linalg.norm(f)
-            if fn < 1e-12:
-                raise ValueError("Eye and target are too close")
             f /= fn
             u = up / np.linalg.norm(up)
             s = np.cross(f, u)
             sn = np.linalg.norm(s)
-            if sn < 1e-12:
-                up = np.array([1, 0, 0]) if abs(f[0]) < 0.9 else np.array([0, 1, 0])
+            if sn < 1e-12:  # noqa: PLR2004
+                up = np.array([1, 0, 0]) if abs(f[0]) < 0.9 else np.array([0, 1, 0])  # noqa: PLR2004
                 u = up / np.linalg.norm(up)
                 s = np.cross(f, u)
                 sn = np.linalg.norm(s)
@@ -290,20 +290,22 @@ class CADVisualizer:
                 pose=p,
             )
 
-    def __render(
-        self,
-        out_image_path:str
-    ):
-        colors = self.__colors
+    def __render(self, out_image_path: str):
         self.__show_edges = [False, True, False]
 
-        meshes, types = [self.__cq_solid_to_trimesh(self.__solid_a), self.__cq_solid_to_trimesh(self.__solid_b)], ["solid_a", "solid_b"]
+        meshes, types = (
+            [
+                self.__cq_solid_to_trimesh(self.__solid_a),
+                self.__cq_solid_to_trimesh(self.__solid_b),
+            ],
+            ["solid_a", "solid_b"],
+        )
 
         if self.__ply_path and os.path.exists(self.__ply_path):
-            meshes.append(self.__load_mesh(self.__ply_path, "ply", "PLY"))
+            meshes.append(self.__load_mesh(self.__ply_path, "ply"))
             types.append("ply")
         if self.__stl_path and os.path.exists(self.__stl_path):
-            meshes.append(self.__load_mesh(self.__stl_path, "stl", "STL"))
+            meshes.append(self.__load_mesh(self.__stl_path, "stl"))
             types.append("stl")
 
         for m in meshes:
@@ -321,8 +323,8 @@ class CADVisualizer:
 
         data = list(zip(meshes, self.__colors, self.__show_edges, types, strict=False))
 
-        opaque = [(m, c, e, t) for m, c, e, t in data if c[3] >= 0.99]
-        transp = [(m, c, e, t) for m, c, e, t in data if c[3] < 0.99]
+        opaque = [(m, c, e, t) for m, c, e, t in data if c[3] >= 0.99]  # noqa: PLR2004
+        transp = [(m, c, e, t) for m, c, e, t in data if c[3] < 0.99]  # noqa: PLR2004
 
         cam_pos = np.array([0, 0, radius * self.__camera_distance_factor])
 
@@ -344,12 +346,12 @@ class CADVisualizer:
             ambient_light=np.ones(3) * self.__ambient_intensity,
         )
 
-        for m, col, edge, t in ordered:
+        for m, col, edge, _ in ordered:
             mat = pyrender.MetallicRoughnessMaterial(
                 baseColorFactor=col,
                 metallicFactor=self.__metallic_factor,
                 roughnessFactor=self.__roughness_factor,
-                alphaMode="OPAQUE" if col[3] >= 0.99 else "BLEND",
+                alphaMode="OPAQUE" if col[3] >= 0.99 else "BLEND",  # noqa: PLR2004
                 doubleSided=True,
                 alphaCutoff=0.01,
             )
@@ -363,7 +365,6 @@ class CADVisualizer:
         color, _ = renderer.render(scene, flags=RenderFlags.RGBA)
         renderer.delete()
         pyrender_success = True
-                    
 
         if pyrender_success and color is not None:
             os.makedirs(os.path.dirname(out_image_path), exist_ok=True)
@@ -384,19 +385,18 @@ class CADVisualizer:
         last_ok = False
         while attempts < self.__max_attempts:
             attempts += 1
-            base, ext = os.path.splitext(self.__out_image_path)
+            base, ext = os.path.splitext(self.__out_image_path)  # noqa: PTH122
             cur = f"{base}_attempt_{attempts}{ext}"
-            img_path, ok = self.__render(out_image_path=cur)
+            _, ok = self.__render(out_image_path=cur)
             last_ok = ok
             has_blue = self.__has_blue_color(cur)
             if has_blue:
                 shutil.copy2(cur, self.__out_image_path)
-                os.remove(cur)
+                os.remove(cur)  # noqa: PTH107
                 return self.__out_image_path, ok, attempts
             else:
-                os.remove(cur)
+                os.remove(cur)  # noqa: PTH107
         return self.__out_image_path, last_ok, attempts
-
 
 
 if __name__ == "__main__":
