@@ -13,7 +13,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.losses.solar_loss.solar_dummy im
 )
 
 
-class SolarLoss(ParentLoss):
+class SolarV0(ParentLoss):
     def _setup(self) -> None:
         return
 

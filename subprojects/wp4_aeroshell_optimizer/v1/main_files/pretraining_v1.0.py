@@ -22,7 +22,7 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
     Dynamically loads the model architecture based on the configuration file.
     I.e. imports only from the relevant file, not all the models
     """
-    config = load_general_config(cfg_name=config_name)  # not yet implemented there!
+    config = load_general_config(cfg_name=config_name)  # still not great
     model_name = config["model"]  # dynamically import the model module
     model_file_name = config["model_filename"]  # file where the model is located
     module = importlib.import_module(
@@ -30,7 +30,7 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
     )
     ModelClass = getattr(module, model_name)  # gets model class
 
-    # adjust to include config parameters here
+    # adjust to include config parameters here, stil WIP
     model = ModelClass()
     return model
 

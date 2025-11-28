@@ -40,6 +40,8 @@ class BaseModel(nn.Module):
     
     def optimise(self):
         super(BaseModel, self).train() #Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
+
+        # For textbook example of how our optimization works, look at basic_MLP_v1.py
         raise NotImplementedError("Train method not implemented yet in BaseModel. Please implement in the subclass inheriting.")
         
     
@@ -53,7 +55,6 @@ class BaseModel(nn.Module):
     
         #Return model info as a dictionary
         model_info = {
-            "config": self.config,
             "in_dim": self.in_dim,
             "hidden": self.hidden,
             "layers": self.layers,
