@@ -99,3 +99,27 @@ def allround_save_data(
         torch.save(model.state_dict(), model_file_path)
         if verbose:
             print(f"Model state_dict saved to {model_file_path}")
+
+
+
+def save_pretrained_model(
+    model: BaseModel,
+    file_path: str = "cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/pretrained_models",
+    verbose: bool = True,
+) -> None:
+    """
+    Save the state dictionary of a pretrained model to a specified file path.
+
+    Args:
+        model (BaseModel): The model instance containing the pretrained weights.
+        file_path (str): The file path where the state dictionary will be saved.
+        verbose (bool, optional): Whether to print verbose output. Defaults to True.
+        
+    """
+    if model is None or file_path is None:
+        raise ValueError("Both model and file_path must be provided.")
+    
+    model_name = "pretrained_"+AISCO_hashing(model.get_model_info_dict())+".pth"
+    torch.save(model.state_dict(), Path(file_path) / model_name)
+    if verbose:
+        print(f"Pretrained model state_dict saved to {Path(file_path) / model_name}")
