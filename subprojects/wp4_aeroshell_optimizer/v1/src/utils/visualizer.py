@@ -1,4 +1,3 @@
-# render_cq_and_ply.py
 
 import os
 import shutil
@@ -176,17 +175,11 @@ class CADVisualizer:
             tm = trimesh.load(path, file_type=file_type)
             if isinstance(tm, trimesh.Scene):
                 tm = trimesh.util.concatenate(tuple(tm.geometry.values()))
-            """if tm.vertices.shape[0] == 0:
-                raise ValueError(f"{file_type.upper()} mesh is empty: {path}")"""
             tm.remove_infinite_values()
             tm.remove_unreferenced_vertices()
             if len(tm.faces) > 0:
                 trimesh.repair.fix_inversion(tm)
                 trimesh.repair.fix_normals(tm)
-                """try:
-                    trimesh.repair.fill_holes(tm)
-                except Exception:
-                    pass"""
                 tm.process(validate=True)
                 if (
                     not getattr(tm, "face_normals", None) is not None
