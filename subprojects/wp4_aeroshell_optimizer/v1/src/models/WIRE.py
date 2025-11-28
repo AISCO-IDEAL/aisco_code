@@ -146,3 +146,27 @@ class WIRE(BaseModel):
 
         }
         return model_info
+    
+    def optimise(self, training_config: dict = None) -> None:
+        if training_config is None:
+            raise ValueError("Training config must be provided for optimisation.")
+        
+        self.train() # Set model to training mode, i.e. things like dropout layers are active, turn off by using self.eval() or model.eval()
+        optimizer = torch.optim.Adam(self.parameters(), lr=training_config.get("learning_rate", 1e-3))
+        num_epochs = training_config.get("epochs", 1000)
+        
+        # IMPORTANT: the device the model is on defines the device passed to the loss_class
+        loss_function = TotalLoss(self.device)
+
+        for epoch in range(num_epochs):
+            #Clear gradients
+            optimizer.zero_grad()
+
+            # Calculate loss, Tracking should also be done in TotalLoss
+            loss = loss_function.get_total_loss(model=self, epoch_name=epoch)
+
+            # Optimize w.r.t. total loss
+            # Do this by calculating the gradients of the weights w.r.t. the loss 
+            loss.backward()
+            # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
+            optimizer.step()

@@ -36,8 +36,9 @@ class BasicMLP(BaseModel):
             # Optimize w.r.t. total loss
             # Do this by calculating the gradients of the weights w.r.t. the loss 
             loss.backward()
-            # THe optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
+            # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
             optimizer.step()
+
 
 
             
