@@ -1,4 +1,3 @@
-
 import os
 import shutil
 import subprocess
@@ -8,12 +7,11 @@ import time
 import cadquery as cq
 import imageio.v2 as imageio
 import numpy as np
-import OpenGL
-import pyrender
-import trimesh
-from cadquery import exporters
-from pyrender import RenderFlags
 
+# import OpenGL
+# import pyrender
+import trimesh
+from pyrender import RenderFlags
 from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
 
 username = "clhuber"
@@ -89,7 +87,7 @@ class CADVisualizer:
         for k, v in env.items():
             os.environ[k] = v
 
-        np.random.seed(42)
+        # np.random.seed(42)
 
         subprocess.run(["pkill", "-f", "Xvfb"], check=False, capture_output=True)
         time.sleep(1)
@@ -171,7 +169,7 @@ class CADVisualizer:
 
     def __load_mesh(self, path, file_type):
         max_retries = 3
-        for attempt in range(max_retries):
+        for _ in range(max_retries):
             tm = trimesh.load(path, file_type=file_type)
             if isinstance(tm, trimesh.Scene):
                 tm = trimesh.util.concatenate(tuple(tm.geometry.values()))
@@ -294,10 +292,10 @@ class CADVisualizer:
             ["solid_a", "solid_b"],
         )
 
-        if self.__ply_path and os.path.exists(self.__ply_path):
+        if self.__ply_path and os.path.exists(self.__ply_path):  # noqa: PTH110
             meshes.append(self.__load_mesh(self.__ply_path, "ply"))
             types.append("ply")
-        if self.__stl_path and os.path.exists(self.__stl_path):
+        if self.__stl_path and os.path.exists(self.__stl_path):  # noqa: PTH110
             meshes.append(self.__load_mesh(self.__stl_path, "stl"))
             types.append("stl")
 
@@ -360,7 +358,7 @@ class CADVisualizer:
         pyrender_success = True
 
         if pyrender_success and color is not None:
-            os.makedirs(os.path.dirname(out_image_path), exist_ok=True)
+            os.makedirs(os.path.dirname(out_image_path), exist_ok=True)  # noqa: PTH120, PTH103
             imageio.imwrite(out_image_path, color)
             return out_image_path, True
         return False, False
