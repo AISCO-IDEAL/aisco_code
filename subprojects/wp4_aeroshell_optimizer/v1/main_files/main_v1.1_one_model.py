@@ -39,7 +39,7 @@ def check_pretrained(model: BaseModel) -> bool:
 
 
     """
-def initilise_model():
+def initialise_model():
 
     # gehe in general config
     model_name = general_config["model"]
@@ -58,9 +58,14 @@ def initilise_model():
         # model = ... to be used further on
         raise("Not implemented yes")
 
-def main() -> None:
-    # start training
-    initilise_model()
+def main(verbose: bool = True) -> None:
+    
+    # Get general config
+
+    general_config = load_general_config(v="v1", cfg_name="general_config.yaml")
+    
+
+    print("Succesfully loaded configs")
 
 
 if __name__ == "__main__":

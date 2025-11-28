@@ -11,6 +11,7 @@ active_configs:
   losses: "losses_v0_config.yaml"
   pretraining: "pretraining_v0_config.yaml"
   training: "training_v0_config.yaml"
+  model: "basic_MLP_v1.yaml"
   wandb: "wandb_v0_sweep.yaml"
 
 wandb_general:
