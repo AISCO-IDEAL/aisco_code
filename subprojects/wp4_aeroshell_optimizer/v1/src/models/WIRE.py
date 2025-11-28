@@ -66,13 +66,17 @@ class WIRE(BaseModel):
                  hidden_layers=16, 
                  out_features = 1, outermost_linear=True,
                  first_omega_0=30, hidden_omega_0=1.0, scale=1.0,
+                 trainable_params = True,
                  pos_encode=False, sidelength=512, fn_samples=None,
                  use_nyquist=True):
         super().__init__(config=config) #Initialize config to satisfy BaseModel inheritance (does nothing for now)
         
-         
-
-
+         # variables needed for model info stored here
+        self.in_features = in_features
+        self.hidden_features = hidden_features
+        self.hidden_layers = hidden_layers
+        self.out_features = out_features
+        self.trainable_params = trainable_params
 
         # All results in the paper were with the default complex 'gabor' nonlinearity
         self.nonlin = ComplexGaborLayer
@@ -93,13 +97,14 @@ class WIRE(BaseModel):
                                     omega0=first_omega_0,
                                     sigma0=scale,
                                     is_first=True,
-                                    trainable=True))
+                                    trainable=self.trainable_params))
 
         for i in range(hidden_layers):
             self.net.append(self.nonlin(hidden_features,
                                         hidden_features, 
                                         omega0=hidden_omega_0,
-                                        sigma0=scale))
+                                        sigma0=scale,
+                                        trainable=self.trainable_params))
 
         final_linear = nn.Linear(hidden_features,
                                  out_features,
@@ -124,3 +129,15 @@ class WIRE(BaseModel):
         else:
             return output*1000 #Scale back to mm
     
+    def get_model_info_dict(self):
+        model_info = {
+            "config" : self.config,
+            "in_features": self.in_features,
+            "hidden_features": self.hidden_features,
+            "hidden_layers": self.hidden_layers,
+            "out_features": self.out_features,
+            "trainable_params": self.trainable_params,
+            "total_parameters": sum(p.numel() for p in self.parameters()),
+
+        }
+        return model_info
