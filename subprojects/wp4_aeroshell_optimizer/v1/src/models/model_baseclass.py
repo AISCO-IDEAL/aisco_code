@@ -5,7 +5,7 @@ from torch import nn
 
 
 class BaseModel(nn.Module):
-    def __init__(self, config: dict, in_dim: int=3, hidden: int=64, layers: int=3):
+    def __init__(self, config: dict, overwrite_base_init: bool = True, in_dim: int=3, hidden: int=64, layers: int=3):
         
         super(BaseModel, self).__init__()
 
@@ -14,7 +14,8 @@ class BaseModel(nn.Module):
         self.hidden = hidden
         self.layers = layers    
 
-
+        if overwrite_base_init:
+            return # Skip base init if overwritten in subclass, avoids creating redundant layers
         
         #Define a simple MLP with Relu and Tanh activations
         self.model_layers = nn.ModuleList()

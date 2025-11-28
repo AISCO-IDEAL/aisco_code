@@ -8,8 +8,8 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLo
 
 
 class BasicMLP(BaseModel):
-    def __init__(self, config: dict = {}, in_dim: int=3, hidden: int=128, layers: int=6):
-        super(BasicMLP, self).__init__(config, in_dim, hidden, layers)
+    def __init__(self, config: dict = {}, overwrite_base_init: bool = False, in_dim: int=3, hidden: int=128, layers: int=6):
+        super(BasicMLP, self).__init__(config, overwrite_base_init, in_dim, hidden, layers)
         
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
