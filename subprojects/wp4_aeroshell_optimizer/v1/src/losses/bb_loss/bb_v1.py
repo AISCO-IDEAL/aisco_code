@@ -46,15 +46,21 @@ class BbV1(ParentLoss):
                 self.__pointgrid, dtype=torch.float32, device=self.device
             )  # [N,3]
             sdf_inner_t = torch.as_tensor(
-                self.__inner_sdf_values, dtype=torch.float32, device=self.device
+                self.__inner_sdf_values,
+                dtype=torch.float32,
+                device=self.device,
             )  # [N]
             sdf_outer_t = torch.as_tensor(
                 self.__outer_sdf_values, dtype=torch.float32, device=self.device
             )  # [N]
 
             # Batch forward
+            output = model(P)
+            if isinstance(output, tuple):
+                sdf_pred = output[0]
+            else:
+                sdf_pred = output
 
-            sdf_pred = model(P)[0]
             sdf_pred = sdf_pred.squeeze(-1)  # [N]
 
             # Box constraints: clamp violations with ReLU

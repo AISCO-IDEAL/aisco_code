@@ -65,8 +65,8 @@ def get_diff_mesh(
     """
     print(f"SDF min={sdf_values.min().item():.3f}, max={sdf_values.max().item():.3f}")
     """
-    sdf_values = sdf_values.detach().clone()  # Problem: Enabling gradients (torch.enable_grad()) inside mesh extraction can corrupt the mesh if sdf_values or grid_points are modified elsewhere
-    grid_points = grid_points.detach().clone()
+    # sdf_values = sdf_values.detach().clone()  # Problem: Enabling gradients (torch.enable_grad()) inside mesh extraction can corrupt the mesh if sdf_values or grid_points are modified elsewhere
+    # grid_points = grid_points.detach().clone()
     ##################################################
 
     # 2. Compute cube_idx of FlexiCubes: Has shape (num_cubes, 8), each row indexes the 8 corners of a cube

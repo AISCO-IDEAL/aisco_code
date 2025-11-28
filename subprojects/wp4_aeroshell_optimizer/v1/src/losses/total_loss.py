@@ -48,7 +48,9 @@ class TotalLoss:
                         str(absolute_path), class_name
                     )
                     loss_instance = loss_class(
-                        device=dev, losses_config=self.losses_config
+                        device=dev,
+                        loss_name=loss_name,
+                        losses_config=self.losses_config,
                     )
                     self.__active_losses[loss_name] = loss_instance
 

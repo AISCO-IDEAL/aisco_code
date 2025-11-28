@@ -21,7 +21,21 @@ class EikonalV0(ParentLoss):
                     source: https://arxiv.org/pdf/2002.10099, Implicit Geometric Regularization for Learning Shapes, Page 2, 2. Method l(theta)
         """
         with torch.enable_grad():
-            sdf, grad_sdf = model(self.points)
+            output = model(self.points)
+            if isinstance(output, tuple):
+                sdf, grad_sdf = output
+            else:
+                sdf = output
+                # Compute gradient if not returned
+                grad_sdf = torch.autograd.grad(
+                    outputs=sdf,
+                    inputs=self.points,
+                    grad_outputs=torch.ones_like(sdf),
+                    create_graph=True,
+                    retain_graph=True,
+                    only_inputs=True,
+                )[0]
+
             diff = torch.norm(grad_sdf, p=2, dim=-1) - 1.0
             eikonal_loss = (
                 torch.pow(diff, 2).mean()

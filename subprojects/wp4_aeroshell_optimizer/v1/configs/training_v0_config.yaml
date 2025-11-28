@@ -1,7 +1,7 @@
 training_params:
   learning_rate: 0.00008
   batch_size: 4096
-  num_epochs: 400
+  num_epochs: 1
   model_capacity: 256
   num_layers: 8
   skip_connections: [4]
@@ -13,7 +13,7 @@ training_params:
 
 # is this used for random point sampling to optimise the sdf network? if no, please move to correct file.
 pointgrid_params:
-  dx: 100
-  dy: 100
-  dz: 100
+  dx: 500
+  dy: 500
+  dz: 500
   rand: 400

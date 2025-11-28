@@ -45,16 +45,21 @@ class BbV2(ParentLoss):
         ]
 
     def _loss(self, model) -> torch.Tensor:
-        inner_bb_points_model = model(
+        # Helper to get SDF
+        def get_sdf(points):
+            out = model(points)
+            return out[0] if isinstance(out, tuple) else out
+
+        inner_bb_points_model = get_sdf(
             torch.tensor(
                 self.__inner_bb_points, dtype=torch.float32, device=self.device
             )
-        )[0]
-        outer_bb_points_model = model(
+        )
+        outer_bb_points_model = get_sdf(
             torch.tensor(
                 self.__outer_bb_points, dtype=torch.float32, device=self.device
             )
-        )[0]
+        )
 
         # compute the loss
         inner_loss = torch.relu(inner_bb_points_model[0]).mean() ** 0.5
