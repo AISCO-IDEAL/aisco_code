@@ -2,6 +2,7 @@ import torch
 import importlib
 
 
+from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.ground_truth_masks.simple_geoms import sphere_gt
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_general_config
@@ -32,12 +33,10 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
     return model
 
 
-def pretraining(config_name: str = "pretraining_v0_config.yaml"):
+def pretraining(model: BaseModel = None, pretraining_config_name: str = "pretraining_v0_config.yaml"):
     # Does pretraining, for now only on a sphere
 
-    config = load_general_config(cfg_name=config_name)
-    model = dynamic_model_loading(config_name)
-
+    config= load_general_config(v="v1", cfg_name=pretraining_config_name)
     # Try to use GPU if available
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -88,6 +87,7 @@ def pretraining(config_name: str = "pretraining_v0_config.yaml"):
 
     return model
 
+""" Outdated, now that pretraining is done from main script
 
 if __name__ == "__main__":
     config = load_general_config(cfg_name="pretraining_v0_config.yaml")
@@ -104,3 +104,4 @@ if __name__ == "__main__":
         filename="WIRE_sphere.ply",
     )
     torch.save(model.state_dict(), "subprojects/wp4_aeroshell_optimizer/data/test_models/pretrained_WIRE_sphere.pth")
+"""

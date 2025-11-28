@@ -7,7 +7,7 @@ from pathlib import Path
 import torch
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import AISCO_hashing
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing, str_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import (
     get_diff_mesh,
     kaolin_to_PLY,
@@ -23,6 +23,7 @@ def allround_save_data(
     epoch: int = None,  # Current epoch number
     storage_path: str = "cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/bulk_storage",
     verbose: bool = True,
+    pretraining: bool = False,
 ) -> None:
     """
     Save model data to a specified file path in JSON format.
@@ -44,12 +45,12 @@ def allround_save_data(
         raise ValueError("Both model_data and file_path must be provided.")
 
     # Hash the model_data dictionary
-    hash_value = AISCO_hashing(model_data)
+    hash_value = dict_hashing(model_data)
     # Baed on hash value see if directory exists, if not create it
     dir_path = Path(storage_path) / hash_value
     os.makedirs(dir_path, exist_ok=True)
     # If not present, instantly store the model_data in a json file for readability
-    if not (dir_path / "Architecture.json").exists():
+    if not (dir_path / "Architecture.json").exists() and not pretraining:
         file_path = dir_path / "Architecture.json"
         with open(file_path, "w") as f:
             json.dump(model_data, f, indent=4)
@@ -68,7 +69,7 @@ def allround_save_data(
     if wandb_run is None:
         current_time = datetime.datetime.now().isoformat()
         canonical_time_bytes = current_time.encode("utf-8")
-        wandb_run = AISCO_hashing(canonical_time_bytes)
+        wandb_run = str_hashing(canonical_time_bytes)
         
 
     if epoch is None:
@@ -120,7 +121,7 @@ def save_pretrained_model(
     if model is None or file_path is None:
         raise ValueError("Both model and file_path must be provided.")
     
-    model_name = f"{shape}_" + AISCO_hashing(model.get_model_info_dict()) + ".pth"
+    model_name = f"{shape}_" + dict_hashing(model.get_model_info_dict()) + ".pth"
     torch.save(model.state_dict(), Path(file_path) / model_name)
     if verbose:
         print(f"Pretrained model state_dict saved to {Path(file_path) / model_name}")
