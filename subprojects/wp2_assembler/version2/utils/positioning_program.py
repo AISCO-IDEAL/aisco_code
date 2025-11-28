@@ -88,7 +88,7 @@ def is_stable(body_id: int, tol: float = 1e-3) -> bool:
     lin_vel, ang_vel = p.getBaseVelocity(body_id)
     return np.linalg.norm(lin_vel) < tol and np.linalg.norm(ang_vel) < tol
 
-def sim(assembly_number, x_position, only_final: bool = True):
+def sim(assembly_number, only_final: bool = False):
 
     #returns position in meters and orientation in quaterion radians of the settled car
 
@@ -238,8 +238,11 @@ def sim(assembly_number, x_position, only_final: bool = True):
     else:
         return pos_array, orn_array
 
-"""
-carid = 10
-pos_array2, orn_array2 = sim(carid, -5, False)
-animate(carid, pos_array2, orn_array2)
-"""
+
+if __name__ == "__main__":
+    # Example manual run; uncomment to execute.
+    carid = 10
+
+    pos_array2, orn_array2 = sim(carid)
+    animate(carid, pos_array2, orn_array2)
+    pass
