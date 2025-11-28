@@ -115,7 +115,7 @@ for name, path in car_part_paths:
 
 # --- PyBullet setup ----------------------------------------------------------
 
-cid = p.connect(p.GUI)  # use p.GUI if you want a window
+cid = p.connect(p.DIRECT)  # use p.GUI if you want a window
 p.setGravity(0, 0, -9.81)
 
 ground_id = p.createMultiBody(
