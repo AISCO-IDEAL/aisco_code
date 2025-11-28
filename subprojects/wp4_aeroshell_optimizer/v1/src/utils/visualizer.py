@@ -115,38 +115,6 @@ class CADVisualizer:
         r = pyrender.OffscreenRenderer(1, 1)
         r.delete()
 
-    def __set_camera_params(
-        self,
-        distance_factor=None,
-        fov_degrees=None,
-        tilt_down_degrees=None,
-        azimuth_degrees=None,
-        position_factors=None,
-    ):
-        for name, val in [
-            ("__camera_distance_factor", distance_factor),
-            ("__camera_fov_degrees", fov_degrees),
-            ("__camera_tilt_down_degrees", tilt_down_degrees),
-            ("__camera_azimuth_degrees", azimuth_degrees),
-            ("__camera_position_factors", position_factors),
-        ]:
-            if val is not None:
-                setattr(self, name, val)
-
-    def __set_lighting(
-        self,
-        ambient_intensity=None,
-        key_light_intensity=None,
-        fill_light_intensity=None,
-    ):
-        for name, val in [
-            ("__ambient_intensity", ambient_intensity),
-            ("__key_light_intensity", key_light_intensity),
-            ("__fill_light_intensity", fill_light_intensity),
-        ]:
-            if val is not None:
-                setattr(self, name, val)
-
     def __cq_solid_to_trimesh(self, solid):
         with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
             path = tmp.name
