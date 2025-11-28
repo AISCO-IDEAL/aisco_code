@@ -88,7 +88,6 @@ class CADVisualizer:
             os.environ[k] = v
 
         subprocess.run(["pkill", "-f", "Xvfb"], check=False, capture_output=True)
-        time.sleep(1)
         subprocess.Popen(
             [
                 "Xvfb",

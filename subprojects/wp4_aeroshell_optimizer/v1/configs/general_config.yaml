@@ -1,6 +1,3 @@
-# this file is just a suggestion of how a config file could look like,
-# this file is not used and has purely illustrative purpose
-
 general_info:
   username: "eschaerer"
   version: "v1"
@@ -18,6 +15,7 @@ active_configs:
 
 wandb_general:
   use_wandb: True
+  project_name: "AISCO WP4 Aeroshell Optimisation"
   track_run: 1
   rendering_frequency: 5
   use_sweep: 0
