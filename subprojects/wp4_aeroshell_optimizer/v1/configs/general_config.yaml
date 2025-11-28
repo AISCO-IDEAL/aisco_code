@@ -4,6 +4,7 @@
 general_info:
   username: "eschaerer"
   version: "v1"
+  device: "cuda"
   model: "SDFNetwork"
   model_Expl: "an SDF Network with torch Neural Network"
   pre: "a sphere as initial shape, datatype: SDF"
@@ -13,9 +14,9 @@ active_configs:
   losses: "losses_v0_config.yaml"
   pretraining: "pretraining_v0_config.yaml"
   training: "training_v0_config.yaml"
-  wandb: "wandb_v0_config.yaml"
+  wandb: "wandb_v0_sweep.yaml"
 
-wand_general:
+wandb_general:
   use_wandb: True
   track_run: 1
   rendering_frequency: 5
@@ -26,11 +27,12 @@ Storage_paths:
   mesh_dir: "wp4_aeroshell_optimizer/data/test_meshes"
 
 # master example of how to reference other config files:
+#     def __pointgrid_geni(self) -> list[list[float]]:
 #         # load training config
 #         general_config = load_general_config()
 #         training_config = load_specific_config(
 #             v=general_config["general_info"]["version"],
-#             cfg_name=general_config["general_info"]["training_config_name"],
+#             cfg_name=general_config["active_configs"]["training"],
 #         )
 #         # load pointgrid params
 #         pointgrid_params = training_config["pointgrid_params"]

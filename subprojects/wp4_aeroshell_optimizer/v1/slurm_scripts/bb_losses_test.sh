@@ -5,6 +5,9 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=16G                  
+#SBATCH --gpus=rtx_4090:1
+##SBATCH --output=/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/AISCO_TEST_%j.out     #adjust path as needed
+##SBATCH --error=/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/AISCO_TEST_%j.err      #adjust path as needed
 #SBATCH --gpus=1  # rtx_4090:1
 #SBATCH --output=/cluster/home/clhuber/logs/AISCO_TEST_%j.out     #adjust path as needed
 #SBATCH --error=/cluster/home/clhuber/logs/AISCO_TEST_%j.err      #adjust path as needed
@@ -14,7 +17,7 @@
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
 USERNAME="clhuber"
-LOG_DIR="/cluster/home/$USERNAME/logs"
+LOG_DIR="/cluster/home/$USERNAME/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs"
 mkdir -p "$LOG_DIR"  # Ensure the log directory exists
 #------------------------------------------------------------------------------
 # Print job information

@@ -3,10 +3,11 @@
 losses:
   eikonal: [1, 1000]
   smoothness: [1, 0.5]
-  bounding_boxes_1: [1, 1000]
-  bounding_boxes_2: [0, 1000]
+  bb_loss_1: [1, 1000]
+  bb_loss_2: [0, 1000]
   watertightness: [1, 0.0]
   frontal_area: [1, 0.0]
   drag: [1, 0]
-  solar_area: [1, 1.0]
+  solar_power: [1, 1.0]
   total: [1, 1.0]
+ 
