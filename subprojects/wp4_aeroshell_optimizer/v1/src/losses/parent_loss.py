@@ -13,31 +13,47 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
     load_general_config,
     load_specific_config,
 )
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import get_points
 
 
 class ParentLoss:
-    def __init__(self, device: str = "cuda", weight: list[float] = [0.0, 0.0]) -> None:
-        # general
+    def __init__(
+        self,
+        device: str = "cuda",
+        losses_config: dict = None,
+        weight: list[float] = [0.0, 0.0],
+        loss_name: str = None,
+    ) -> None:
+        # general initialisation
         self.device = device
         self.general_config = load_general_config()
-        # losses
-        self.losses_config = load_specific_config(
-            v=self.general_config["general_info"]["version"],
-            cfg_name=self.general_config["active_configs"]["losses"],
-        )
-        self.weights = self.losses_config.get("losses")
-        # training
+        self.losses_config = losses_config
         self.training_config = load_specific_config(
             v=self.general_config["general_info"]["version"],
             cfg_name=self.general_config["active_configs"]["training"],
         )
-        self.device = device
+
+        # initialise weight
         self.__weight = weight
+        if self.__weight == [0.0, 0.0] and loss_name:
+            for losses in self.losses_config.get("losses", {}).values():
+                if isinstance(losses, dict) and loss_name in losses:
+                    self.__weight = losses[loss_name]
+                    break
+
         if self.__weight[0] == 0.0:
             return
-        else:
-            self._setup()
-            return
+
+        # Initialise points if eikonal or smoothness loss
+        if loss_name and (
+            "eikonal" in loss_name.lower() or "smoothness" in loss_name.lower()
+        ):
+            self.points = get_points(
+                num_points=self.losses_config["get_points_params"]["num_points"],
+                bbox_size=self.losses_config["get_points_params"]["bbox_size"],
+            )
+
+        self._setup()
 
     def _setup(self) -> None:
         return
