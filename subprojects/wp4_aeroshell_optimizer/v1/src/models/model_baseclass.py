@@ -55,7 +55,6 @@ class BaseModel(nn.Module):
     
         #Return model info as a dictionary
         model_info = {
-            "config": self.config,
             "in_dim": self.in_dim,
             "hidden": self.hidden,
             "layers": self.layers,

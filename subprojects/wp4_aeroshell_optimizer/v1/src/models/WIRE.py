@@ -1,6 +1,8 @@
 #WIRE model
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
+
 import torch
 from torch import nn
 
@@ -133,7 +135,6 @@ class WIRE(BaseModel):
     
     def get_model_info_dict(self):
         model_info = {
-            "config" : self.config,
             "in_features": self.in_features,
             "hidden_features": self.hidden_features,
             "hidden_layers": self.hidden_layers,
@@ -170,3 +171,4 @@ class WIRE(BaseModel):
             loss.backward()
             # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
             optimizer.step()
+
