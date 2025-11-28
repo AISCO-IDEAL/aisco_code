@@ -8,7 +8,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.cadquery_to_sdf i
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
 
 
-class BbLoss1(ParentLoss):
+class BbV1(ParentLoss):
     def _setup(self) -> None:
         # Create SDFs for inner and outer boxes
         inner_box: cq.Solid = innerNBZ(

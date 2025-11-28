@@ -9,7 +9,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import 
 )
 
 
-class CrudeEstimator(ParentLoss):
+class CrudeEstimatorV0(ParentLoss):
     def _setup(self) -> None:
         return
 
