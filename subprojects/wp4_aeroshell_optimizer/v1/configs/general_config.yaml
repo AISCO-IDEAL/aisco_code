@@ -16,7 +16,8 @@ active_configs:
 
 wandb_general:
   use_wandb: True
-  project_name: "AISCO WP4 Aeroshell Optimisation"
+  project_name: "Aeroshell Optimiser"
+  entity_name: "aisco"
   track_run: 1
   rendering_frequency: 5
   use_sweep: 0

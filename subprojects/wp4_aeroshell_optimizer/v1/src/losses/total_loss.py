@@ -3,8 +3,6 @@
 
 import torch
 import wandb
-import importlib.util
-import sys
 from pathlib import Path
 
 # NOTE: You can remove all hardcoded loss imports (like BbLoss1, SolarLoss, etc.)
@@ -14,6 +12,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
     load_general_config,
     load_specific_config,
 )
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
 
 
 class TotalLoss:
@@ -44,34 +43,13 @@ class TotalLoss:
                     class_name = Path(path).stem.title().replace("_", "")
 
                     # 2. Call load_class_from_path with the absolute path string
-                    loss_class = self.load_class_from_path(
-                        str(absolute_path), class_name
-                    )
+                    loss_class = load_class_from_path(path=str(absolute_path), class_name=class_name)
                     loss_instance = loss_class(
                         device=dev,
                         loss_name=loss_name,
                         losses_config=self.losses_config,
                     )
                     self.__active_losses[loss_name] = loss_instance
-
-    def load_class_from_path(self, path: str, class_name: str):
-        """Dynamically load a class from a file path."""
-        spec = importlib.util.spec_from_file_location("module.name", path)
-
-        # 3. Add explicit check for None to prevent AttributeError
-        if spec is None:
-            raise FileNotFoundError(
-                f"Cannot find module file for dynamic loading. "
-                f"Path provided: {path}. "
-                f"Please verify the file exists and the path in the config (must use '/' separators)."
-            )
-
-        module = importlib.util.module_from_spec(spec)
-        sys.modules["module.name"] = module
-        spec.loader.exec_module(module)
-        return getattr(module, class_name)
-
-    # ... (get_total_loss method remains the same) ...
 
     def get_total_loss(self, model, epoch_name: int = -1) -> torch.Tensor:
         # Calculate the individual Losses
@@ -95,17 +73,16 @@ class TotalLoss:
         # Add the total loss to the logging dictionary
         individual_losses["total_loss"] = total_loss.item()
 
-        # # 2. Logging them on WandB (not working as of now)
-        # if self.__general_config.get("wandb_general", {}).get("use_wandb") is True:
-        #     # Only reinit if necessary, often it's better to manage the run externally
-        #     # but sticking to your original logic for reinit=True.
-        #     wandb.init(
-        #         project=self.__general_config["wandb_general"]["project_name"],
-        #         entity=self.__general_config["general_info"]["username"],
-        #         reinit=True,
-        #     )
+        # 2. Logging them on WandB (not working as of now)
+        if self.__general_config.get("wandb_general", {}).get("use_wandb") is True:
+            # Only reinit if necessary, often it's better to manage the run externally
+            # but sticking to your original logic for reinit=True.
+            wandb.init(
+                project=self.__general_config["wandb_general"]["project_name"],
+                entity=self.__general_config["wandb_general"]["entity_name"],
+            )
 
-        #     # Log the collected individual losses
-        #     wandb.log(individual_losses, step=epoch_name)
+            # Log the collected individual losses
+            wandb.log(individual_losses, step=epoch_name)
 
         return total_loss
