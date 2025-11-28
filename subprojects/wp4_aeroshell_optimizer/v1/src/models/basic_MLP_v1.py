@@ -10,3 +10,8 @@ class BasicMLP(BaseModel):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return super(BasicMLP, self).forward(x)
+    
+    def optimise(self, training_config: dict = None):
+        if training_config is None:
+            raise ValueError("Training config must be provided for optimisation.")
+        return 

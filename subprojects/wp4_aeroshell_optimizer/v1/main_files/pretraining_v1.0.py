@@ -17,7 +17,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import 
 )
 
 
-def dynamic_loading(config_name: str = "pretraining_v0_config.yaml"):
+def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
     """
     Dynamically loads the model architecture based on the configuration file.
     I.e. imports only from the relevant file, not all the models
@@ -39,7 +39,7 @@ def pretraining(config_name: str = "pretraining_v0_config.yaml"):
     # Does pretraining, for now only on a sphere
 
     config = load_general_config(cfg_name=config_name)
-    model = dynamic_loading(config_name)
+    model = dynamic_model_loading(config_name)
 
     # Try to use GPU if available
     device = "cuda" if torch.cuda.is_available() else "cpu"

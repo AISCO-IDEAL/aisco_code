@@ -77,7 +77,9 @@ class WIRE(BaseModel):
         self.hidden_layers = hidden_layers
         self.out_features = out_features
         self.trainable_params = trainable_params
-
+        self.first_omega_0 = first_omega_0
+        self.hidden_omega_0 = hidden_omega_0
+        self.scale = scale
         # All results in the paper were with the default complex 'gabor' nonlinearity
         self.nonlin = ComplexGaborLayer
         
@@ -137,6 +139,9 @@ class WIRE(BaseModel):
             "hidden_layers": self.hidden_layers,
             "out_features": self.out_features,
             "trainable_params": self.trainable_params,
+            "first_omega_0":self.first_omega_0,
+            "hidden_omega_0":self.hidden_omega_0,
+            "scale":self.scale,
             "total_parameters": sum(p.numel() for p in self.parameters()),
 
         }
