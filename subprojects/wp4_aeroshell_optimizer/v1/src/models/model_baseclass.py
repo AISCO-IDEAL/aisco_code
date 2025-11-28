@@ -49,8 +49,20 @@ class BaseModel(nn.Module):
         return
     
 
+    def get_model_info_dict(self):
+    
+        #Return model info as a dictionary
+        model_info = {
+            "config": self.config,
+            "in_dim": self.in_dim,
+            "hidden": self.hidden,
+            "layers": self.layers,
+            "total_parameters": sum(p.numel() for p in self.parameters()),
+        }
+        return model_info
+
     def debug_info(self):
-        #Print model architecture and number of parameters
+        #Print model architecture and number of parameters, or anthing you might want to debug
         print("===================================")
         print("Model Debug Info:")
 
