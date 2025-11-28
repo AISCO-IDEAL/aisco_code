@@ -64,7 +64,7 @@ testing = [
   ]
 
 all = [
-  "aisco_env[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer]"
+  "aisco_env[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer, testing]"
 ]
 
 #make a all command
@@ -73,6 +73,7 @@ where = ["."]
 include = ["subprojects*"]
 
 [tool.ruff]
+line-length = 150
 # Exclude a variety of commonly ignored directories.
 exclude = [
     ".bzr",
