@@ -7,14 +7,12 @@ import time
 import cadquery as cq
 import imageio.v2 as imageio
 import numpy as np
+
 import OpenGL
 import pyrender
 import trimesh
 from pyrender import RenderFlags
-
 from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
-
-username = "clhuber"
 
 
 class CADVisualizer:
@@ -388,6 +386,7 @@ class CADVisualizer:
 
 
 if __name__ == "__main__":
+    username = "clhuber"
     visualizer = CADVisualizer(
         ply_path=f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh1.ply",
         out_image_path=f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1.png",
