@@ -82,10 +82,10 @@ if /i "%install_kaolin%"=="y" (
 )
 echo.
 REM End of eschaerer addition for kaolin install #########
-
+echo
 echo ✅ Setup complete!
+echo
 echo
 echo Next steps:
 echo 1. Activate the environment: conda activate %ENV_NAME%
-echo 2. Configure VS Code (install Ruff/MyPy extensions).
-echo 3. Start coding! 🚀
+echo 2. Start coding! 🚀
