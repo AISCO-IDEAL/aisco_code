@@ -8,8 +8,8 @@ import cadquery as cq
 import imageio.v2 as imageio
 import numpy as np
 
-# import OpenGL
-# import pyrender
+import OpenGL
+import pyrender
 import trimesh
 from pyrender import RenderFlags
 from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
