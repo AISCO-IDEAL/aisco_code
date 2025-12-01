@@ -15,26 +15,36 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allro
 # use the train config file
 
 
-def get_pretrained_model(model: BaseModel,
-                        pretrained_path: str = "cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/pretrained_models/models",
+def fetch_pretrained_model(model: BaseModel,
+                        pretrained_path: str = "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset",
                         verbose: bool = True) -> None | Path:
     """
     Check whether a pretrained model exists for the given model architecture in the pretrained_path.
     Returns the path to the pretrained model if found, else None.
 
     """
+    if pretrained_path is None:
+        print("No valid pretrained path provided, skipping pretrained model fetch.")
+        return None
+    
     model_hash = dict_hashing(model.get_model_info_dict())
     found = False
     file = None
-    # Check whether there is a .pth file containing the hash in its name
-    for f in Path(pretrained_path).glob(f"*{model_hash}*.pth"):
-        found = True
-        file = f
+    # Check whether there is a directory containing the hash in its name and whether theres a corresponding .pth file (also with hash in name)
+    for d in Path(pretrained_path).glob(f"*{model_hash}*"):
+        if d.is_dir():
+            for f in d.glob(f"*{model_hash}*.pth"):
+                file = f
+                found = True
+                break
+        if found:
+            break
+
                 
     if verbose and found:
-        print(f"Pretrained model found: {file}")
+        print(f"Pretrained model for {model_hash} found: {file}")
     elif verbose and not found:
-        print("No pretrained model found.")
+        print(f"No pretrained model found for {model_hash}.")
 
     if not found:
         return None
@@ -75,7 +85,9 @@ def main(verbose: bool = True) -> None:
     # Check if there is a pretrained model already
     # Note that for now this only includes pretrained spheres
 
-    pretrained_model = get_pretrained_model(model, verbose=verbose)
+    pretrained_model = fetch_pretrained_model(model,
+                                              pretrained_path=general_config["storage_paths"].get("pretrained_dir", None),
+                                              verbose=verbose)
     if pretrained_model is not None:
         model.load_state_dict(torch.load(pretrained_model, map_location=device))
         if verbose:
@@ -84,11 +96,11 @@ def main(verbose: bool = True) -> None:
 
         if verbose:
             print("No pretrained model found, proceeding by pretraining")
-        model= pretraining(model=model)
+        model = pretraining(model=model)
         # Save pretrained model and mesh for sanity check
         allround_save_data(
             model=model,
-            storage_path=general_config["general_info"].get("storage_path","cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/pretrained_models"),
+            storage_path=general_config["storage_paths"].get("pretrained_dir","/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_models"),
             save_model=True,
             save_mesh=True,
             verbose=verbose,
@@ -97,7 +109,11 @@ def main(verbose: bool = True) -> None:
     
     # Start optimisation
     training_config= load_general_config(v="v1", cfg_name=general_config["active_configs"].get("training",None))
+    
+    # Check if model still is on device after pretraining
+    model = model.to(device)
 
+    
     model.optimise(training_config=training_config)
     if verbose:
         print("Model optimisation completed.")
@@ -106,10 +122,11 @@ def main(verbose: bool = True) -> None:
     # Save final model and mesh
     allround_save_data(
         model=model,
-        storage_path=general_config["general_info"].get("storage_path","cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/bulk_storage"),
+        storage_path=general_config["general_info"].get("storage_path","/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"),
         save_model=True,
         save_mesh=True,
         verbose=verbose,
+        pretraining=False
     )
 
     print("Completed job successfully.")

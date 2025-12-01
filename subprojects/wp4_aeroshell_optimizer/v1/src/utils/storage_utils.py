@@ -26,7 +26,7 @@ def allround_save_data(
     pretraining: bool = False,
 ) -> None:
     """
-    Save model data to a specified file path in JSON format.
+    Save model data to a specified file path in JSON format, with options to save mesh and model state dictionary.
 
     Args:
         model (BaseModel): The model instance containing the data to save.
@@ -37,7 +37,7 @@ def allround_save_data(
         storage_path (str, optional): The base directory where data will be stored. Defaults to a predefined path.
         verbose (bool, optional): Whether to print verbose output. Defaults to True.
         
-
+    For questions regarding this function, talk to #aalthaus
     """
     # Get Dictonary containing all relevant model information needed to recreate the model
     model_data = model.get_model_info_dict()
@@ -45,13 +45,13 @@ def allround_save_data(
         raise ValueError("Both model_data and file_path must be provided.")
 
     # Hash the model_data dictionary
-    hash_value = dict_hashing(model_data)
+    model_hash_value = dict_hashing(model_data)
     # Baed on hash value see if directory exists, if not create it
-    dir_path = Path(storage_path) / hash_value
+    dir_path = Path(storage_path) / model_hash_value
     os.makedirs(dir_path, exist_ok=True)
     # If not present, instantly store the model_data in a json file for readability
-    if not (dir_path / "Architecture.json").exists() and not pretraining:
-        file_path = dir_path / "Architecture.json"
+    if not (dir_path / f"Architecture_{model_hash_value}.json").exists():
+        file_path = dir_path / f"Architecture_{model_hash_value}.json"
         with open(file_path, "w") as f:
             json.dump(model_data, f, indent=4)
         if verbose:
@@ -59,38 +59,52 @@ def allround_save_data(
                 f"Info about Model Architecture saved to {file_path}, created directory accordingly"
             )
 
-    # Make a folder for meshes and models if they don't exist
-    mesh_dir = dir_path / "meshes"
-    model_dir = dir_path / "models"
+    # Make a folder for meshes and models if they don't exist 
+    # If we're pretraining, we want to store everything in the same folder
+    if not pretraining:
+        mesh_dir = dir_path / "meshes"
+        model_dir = dir_path / "models"
+    else:
+        mesh_dir = dir_path
+        model_dir = dir_path
     os.makedirs(mesh_dir, exist_ok=True)
     os.makedirs(model_dir, exist_ok=True)
 
-    # If there is no wandb_name, differentiate by using the time, but hashed to avoid conflicts if runs end at the same time
-    if wandb_run is None:
-        current_time = datetime.datetime.now().isoformat()
-        canonical_time_bytes = current_time.encode("utf-8")
-        wandb_run = str_hashing(canonical_time_bytes)
-        
 
-    if epoch is None:
-        epoch_str = "no_epoch"
+    # if in pretraining, we want model to have the name of its hash value only
+    if pretraining:
+        epoch_str = "pretrained"
+        wandb_run = model_hash_value
     else:
-        epoch_str = f"epoch{epoch:04d}"
+    # Otherwise, proceed as usual and set wandb_run and epoch_str accordingly
+        # If there is no wandb_name, differentiate by using the time, but hashed to avoid conflicts if runs end at the same time
+        if wandb_run is None:
+            current_time = datetime.datetime.now().isoformat()
+            canonical_time_bytes = str(current_time.encode("utf-8"))
+            wandb_run = str_hashing(canonical_time_bytes)
+            
+        if epoch is None:
+            epoch_str = "no_epoch"
+        else:
+            epoch_str = f"epoch{epoch:04d}"
+
+
+
 
     if save_mesh:
         # get a model using kaolin conversions
         model = model.to("cpu")
         verts, faces = get_diff_mesh(model, grid_res=64, device="cpu")
-        kaolin_to_PLY(
-            verts, faces, filename=f"{wandb_run}_{epoch_str}.ply", mesh_dir=mesh_dir
-        )
         if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
             print(
                 f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}"
             )
-        if verbose:
-            print(f"Mesh saved to {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
-
+        
+        kaolin_to_PLY(
+            verts, faces, filename=f"{wandb_run}_{epoch_str}.ply", mesh_dir=mesh_dir, verbose=verbose
+        )
+        
+            
     if save_model:
         model_file_path = model_dir / f"{wandb_run}_{epoch_str}.pth"
         # Check if you would overwrite an existing model
@@ -103,6 +117,7 @@ def allround_save_data(
 
 
 
+#Not usesd as of yet. Maybe once we create different pretrained shapes
 def save_pretrained_model(
     model: BaseModel,
     file_path: str = "cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/pretrained_models",
