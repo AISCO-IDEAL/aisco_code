@@ -1,36 +1,33 @@
 # just the models class which calls other models here
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 
 class BaseModel(nn.Module):
-    def __init__(self, config: dict, overwrite_base_init: bool = True, in_dim: int=3, hidden: int=64, layers: int=3):
-        
-        super(BaseModel, self).__init__()
+    def __init__(self, config: dict, overwrite_base_init: bool = True, in_dim: int = 3, hidden: int = 64, layers: int = 3):
+        super().__init__()
 
         self.config = config
         self.in_dim = in_dim
         self.hidden = hidden
-        self.layers = layers    
+        self.layers = layers
 
         if overwrite_base_init:
-            return # Skip base init if overwritten in subclass, avoids creating redundant layers
-        
-        #Define a simple MLP with Relu and Tanh activations
+            return  # Skip base init if overwritten in subclass, avoids creating redundant layers
+
+        # Define a simple MLP with Relu and Tanh activations
         self.model_layers = nn.ModuleList()
         self.model_layers.append(nn.Linear(in_dim, hidden))
-        
+
         for i in range(layers - 1):
             self.model_layers.append(nn.Linear(hidden, hidden))
-            #Alternate activations
+            # Alternate activations
             if i % 2:
                 self.model_layers.append(nn.Tanh())
             else:
                 self.model_layers.append(nn.ReLU())
-        
+
         self.model_layers.append(nn.Linear(hidden, 1))
-        
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x / 1000.0  # Scale input to meters
@@ -38,23 +35,19 @@ class BaseModel(nn.Module):
             x = layer(x)
         output = x.squeeze(-1)
         return output * 1000.0
-    
+
     def optimise(self):
-        super(BaseModel, self).train() #Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
+        super().train()  # Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
 
         # For textbook example of how our optimization works, look at basic_MLP_v1.py
         raise NotImplementedError("Train method not implemented yet in BaseModel. Please implement in the subclass inheriting.")
-        
-    
+
     def validation(self):
-        super(BaseModel, self).eval() #Set training attribute of inherited model to false, ensures things like e.g. dropout are disabled
-        #Validation Logic TODO
-        return
-    
+        super().eval()  # Set training attribute of inherited model to false, ensures things like e.g. dropout are disabled
+        # Validation Logic TODO
 
     def get_model_info_dict(self):
-    
-        #Return model info as a dictionary
+        # Return model info as a dictionary
         model_info = {
             "in_dim": self.in_dim,
             "hidden": self.hidden,
@@ -64,5 +57,4 @@ class BaseModel(nn.Module):
         return model_info
 
     def debug_info(self):
-        print("No Debug Info implemented")
-        return
+        raise ValueError("No Debug Info implemented")  # noqa: TRY003

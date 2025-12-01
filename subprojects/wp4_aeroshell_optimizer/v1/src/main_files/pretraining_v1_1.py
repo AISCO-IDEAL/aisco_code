@@ -1,18 +1,10 @@
-import torch
 import importlib
 
+import torch
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.ground_truth_masks.simple_geoms import sphere_gt
-
+from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_general_config
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import (
-    get_diff_mesh,
-    kaolin_to_PLY,
-    kaolin_to_STL,
-)
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import dynamic_type_loading
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data
 
 
 def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
@@ -23,10 +15,8 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
     config = load_general_config(cfg_name=config_name)  # still not great
     model_name = config["model"]  # dynamically import the model module
     model_file_name = config["model_filename"]  # file where the model is located
-    module = importlib.import_module(
-        "subprojects.wp4_aeroshell_optimizer.v1.src.models." + model_file_name
-    )
-    ModelClass = getattr(module, model_name)  # gets model class
+    module = importlib.import_module("subprojects.wp4_aeroshell_optimizer.v1.src.models." + model_file_name)
+    ModelClass = getattr(module, model_name)  # noqa: N806
 
     # adjust to include config parameters here, stil WIP
     model = ModelClass()
@@ -36,24 +26,19 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
 def pretraining(model: BaseModel = None, pretraining_config_name: str = "pretraining_v0_config.yaml"):
     # Does pretraining, for now only on a sphere
 
-    config= load_general_config(v="v1", cfg_name=pretraining_config_name)
+    config = load_general_config(v="v1", cfg_name=pretraining_config_name)
     # Try to use GPU if available
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     model = model.to(device)
 
     # Training loop
-    optimizer = torch.optim.Adam(
-        model.parameters(), lr=config["training_loop"]["learning_rate"]
-    )
+    optimizer = torch.optim.Adam(model.parameters(), lr=config["training_loop"]["learning_rate"])
     for i in range(config["training_loop"]["epochs"]):
         optimizer.zero_grad()
 
         # Constrained uniform sampling in a tighter box around the sphere (±2.5 m)
-        input_data = (
-            torch.rand(config["training_loop"]["random_batch_size"], 3, device=device)
-            - 0.5
-        ) * 5000.0
+        input_data = (torch.rand(config["training_loop"]["random_batch_size"], 3, device=device) - 0.5) * 5000.0
 
         output = model(input_data)
 
@@ -73,11 +58,8 @@ def pretraining(model: BaseModel = None, pretraining_config_name: str = "pretrai
         )[0]
         eikonal = ((grad.norm(dim=-1) - 1.0) ** 2).mean()
 
-        # eikonal = torch.tensor(0.0, device=device)  # Placeholder if Eikonal is disabled 
-        loss = (
-            torch.nn.MSELoss()((target / 1000).squeeze(), (output / 1000).squeeze())
-            + 0.1 * eikonal
-        )
+        # eikonal = torch.tensor(0.0, device=device)  # Placeholder if Eikonal is disabled # noqa: ERA001
+        loss = torch.nn.MSELoss()((target / 1000).squeeze(), (output / 1000).squeeze()) + 0.1 * eikonal
 
         loss.backward()
         optimizer.step()
@@ -86,22 +68,3 @@ def pretraining(model: BaseModel = None, pretraining_config_name: str = "pretrai
             print(f"Epoch {i}, Loss: {loss.item():.4f}, Eikonal: {eikonal.item():.4f}")
 
     return model
-
-""" Outdated, now that pretraining is done from main script
-
-if __name__ == "__main__":
-    config = load_general_config(cfg_name="pretraining_v0_config.yaml")
-    config_name = "pretraining_v0_config.yaml"
-    model = pretraining(config_name)
-    verts, faces = get_diff_mesh(
-        model, grid_res=48, box_dim=[-2500, 2500, -2500, 2500, -2500, 2500]
-    )
-
-    kaolin_to_PLY(
-        verts,
-        faces,
-        mesh_dir="subprojects/wp4_aeroshell_optimizer/data/test_meshes",
-        filename="WIRE_sphere.ply",
-    )
-    torch.save(model.state_dict(), "subprojects/wp4_aeroshell_optimizer/data/test_models/pretrained_WIRE_sphere.pth")
-"""
