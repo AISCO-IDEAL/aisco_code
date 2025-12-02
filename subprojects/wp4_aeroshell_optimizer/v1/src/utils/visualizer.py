@@ -62,7 +62,6 @@ class CADVisualizer:
 
         # Cache for meshes to avoid redundant conversions
         self.__mesh_cache: dict[str, trimesh.Trimesh] = {}
-        self.__renderer: pyrender.OffscreenRenderer | None = None
 
         self.__setup_headless_rendering()
 
@@ -94,15 +93,9 @@ class CADVisualizer:
 
         OpenGL.ERROR_CHECKING = OpenGL.ERROR_LOGGING = OpenGL.FULL_LOGGING = False
 
-        # Create persistent renderer for reuse
-        w, h = self.__image_size
-        self.__renderer = pyrender.OffscreenRenderer(w, h)
-
     def __del__(self):
         """Cleanup renderer on object destruction"""
-        if self.__renderer:
-            with suppress(TypeError, AttributeError):
-                self.__renderer.delete()
+        pass
 
     def __cq_solid_to_trimesh(self, solid, cache_key=None) -> trimesh.Trimesh:
         # Check cache first
@@ -298,9 +291,11 @@ class CADVisualizer:
 
         self.__setup_camera_and_lighting(scene, radius)
 
-        # Render using persistent renderer
-        assert self.__renderer is not None
-        color, _ = self.__renderer.render(scene, flags=RenderFlags.RGBA)
+        # Create fresh renderer for each render to avoid EGL context issues
+        w, h = self.__image_size
+        renderer = pyrender.OffscreenRenderer(w, h)
+        color, _ = renderer.render(scene, flags=RenderFlags.RGBA)
+        renderer.delete()
 
         Path(out_image_path).parent.mkdir(parents=True, exist_ok=True)
         imageio.imwrite(out_image_path, color)
