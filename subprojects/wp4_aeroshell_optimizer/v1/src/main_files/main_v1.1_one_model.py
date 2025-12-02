@@ -7,8 +7,8 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import Ba
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_general_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import dynamic_type_loading
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data
-
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data, fetch_pretrained_model
+import wandb
 # we want to dynamically run an entire optimization process for the WIRE model.
 # we need the model, config and (losses)
 # we need paths to store model (aka the sdf) in the end
@@ -16,42 +16,6 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allro
 # use the train config file
 
 
-def fetch_pretrained_model(
-    model: BaseModel,
-    pretrained_path: str = "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset",
-    verbose: bool = True,
-) -> None | Path:
-    """
-    Check whether a pretrained model exists for the given model architecture in the pretrained_path.
-    Returns the path to the pretrained model if found, else None.
-
-    """
-    if pretrained_path is None:
-        print("No valid pretrained path provided, skipping pretrained model fetch.")
-        return None
-
-    model_hash = dict_hashing(model.get_model_info_dict())
-    found = False
-    file = None
-    # Check whether there is a directory containing the hash in its name and whether theres a corresponding .pth file (also with hash in name)
-    for d in Path(pretrained_path).glob(f"*{model_hash}*"):
-        if d.is_dir():
-            for f in d.glob(f"*{model_hash}*.pth"):
-                file = f
-                found = True
-                break
-        if found:
-            break
-
-    if verbose and found:
-        print(f"Pretrained model for {model_hash} found: {file}")
-    elif verbose and not found:
-        print(f"No pretrained model found for {model_hash}.")
-
-    if not found:
-        return None
-    else:
-        return file
 
 
 def main(verbose: bool = True) -> None:
@@ -115,6 +79,10 @@ def main(verbose: bool = True) -> None:
         print("Model optimisation completed.")
 
     # Save final model and mesh
+    if general_config["wandb_general"].get("use_wandb", False):
+        wandb_name = wandb.run.name
+    else: 
+        wandb_name = None
     allround_save_data(
         model=model,
         storage_path=general_config["general_info"].get(
@@ -124,6 +92,7 @@ def main(verbose: bool = True) -> None:
         save_mesh=True,
         verbose=verbose,
         pretraining=False,
+        wandb_run=wandb_name
     )
 
     print("Completed job successfully.")
