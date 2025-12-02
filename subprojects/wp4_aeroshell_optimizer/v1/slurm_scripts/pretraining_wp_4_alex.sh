@@ -73,7 +73,7 @@ export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
 cd /cluster/home/aalthaus/AISCO_code/
 #python -m src.main
 
-python subprojects/wp4_aeroshell_optimizer/v1/main_files/pretraining_v1.0.py \
+python subprojects/wp4_aeroshell_optimizer/v1/src/main_files/pretraining_v1.0.py \
     --save_model \
     --problem_id="AISCO_WP4_Test1"
 #------------------------------------------------------------------------------

@@ -18,10 +18,12 @@ class BasicMLP(BaseModel):
 
         self.train()  # Set model to training mode, i.e. things like dropout layers are active, turn off by using self.eval() or model.eval()
         optimizer = torch.optim.Adam(self.parameters(), lr=training_config.get("learning_rate", 1e-3))
-        num_epochs = training_config.get("epochs", 1000)
+        num_epochs = training_config["training_params"].get("num_epochs", 1000)
 
-        # IMPORTANT: the device the model is on defines the device passed to the loss_class
-        loss_function = TotalLoss(self.device)
+        # IMPORTANT: the device the model is on at time of function call defines the device passed to the loss_class
+        # Get device from model parameters since nn.Module doesn't have a .device attribute
+        device = next(self.parameters()).device
+        loss_function = TotalLoss(device)
 
         for epoch in range(num_epochs):
             # Clear gradients
@@ -49,7 +51,8 @@ class BasicMLP(BaseModel):
             print(f" Layer {i}: {layer}")
 
         print("Device/Gradient Info:")
-        print(f" Model is on device: {self.device}")
+        device = next(self.parameters()).device
+        print(f" Model is on device: {device}")
         print(f"Do Model Parameters require Gradients? (Y/N): {any(p.requires_grad for p in self.parameters())}")
 
         print("End of Model Debug Info")
