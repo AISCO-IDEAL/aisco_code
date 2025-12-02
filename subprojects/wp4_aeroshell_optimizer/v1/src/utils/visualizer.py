@@ -139,7 +139,7 @@ class CADVisualizer:
             if isinstance(loaded, trimesh.Scene):
                 geoms = tuple(loaded.geometry.values())
                 tm: trimesh.Trimesh = trimesh.util.concatenate(geoms)
-            else:
+            elif isinstance(loaded, trimesh.Trimesh):
                 tm = loaded
 
             tm.remove_infinite_values()
@@ -253,7 +253,7 @@ class CADVisualizer:
         for m in meshes:
             m.vertices = (m.vertices - center) * self.__additional_scale
 
-        radius = np.linalg.norm(trimesh.util.concatenate(meshes).extents) / 2.0  # type: ignore[arg-type]
+        radius = np.linalg.norm(trimesh.util.concatenate(meshes).extents) / 2.0
 
         # Sort meshes: opaque first, then transparent by distance
         data = list(zip(meshes, self.__colors, self.__show_edges, types, strict=False))
