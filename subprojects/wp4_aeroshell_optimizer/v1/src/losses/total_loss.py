@@ -4,11 +4,10 @@
 import importlib.util
 import sys
 from pathlib import Path
-import os
 
 import torch
-import wandb
 import trimesh
+import wandb  # type: ignore  # noqa: PGH003
 
 # NOTE: You can remove all hardcoded loss imports (like BbLoss1, SolarLoss, etc.)
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
@@ -36,13 +35,13 @@ class TotalLoss:
 
         track_run = self.__general_config["wandb_general"].get("use_wandb", False)
         if track_run:
-            run = wandb.init(
+            wandb.init(
                 # Set the wandb log directory
                 dir="wp4_aeroshell_optimizer/data/wandb_logs",
                 # Set the wandb entity where your project will be logged (generally your team name).
                 entity="aisco",
                 # Set the wandb project where this run will be logged.
-                project="Aeroshell Optimizer",
+                project="Aeroshell Optimiser",
                 # Track hyperparameters and run metadata.
                 config=self.__general_config,
             )
@@ -53,7 +52,7 @@ class TotalLoss:
                 continue
 
             # loss_name: frontal_area_v0, ... | compute: bool | weight: float | path: str
-            for loss_name, (compute, weight, path) in losses.items():
+            for loss_name, (compute, _weight, path) in losses.items():
                 if compute:
                     # Dynamically load the loss class
                     # 1. Correctly construct the absolute path from the relative path in config
@@ -77,8 +76,8 @@ class TotalLoss:
         spec = importlib.util.spec_from_file_location("module.name", path)
 
         # 3. Add explicit check for None to prevent AttributeError
-        if spec is None:
-            raise FileNotFoundError(
+        if spec is None or spec.loader is None:
+            raise FileNotFoundError(  # noqa: TRY003
                 f"Cannot find module file for dynamic loading. "
                 f"Path provided: {path}. "
                 f"Please verify the file exists and the path in the config (must use '/' separators)."
@@ -89,12 +88,10 @@ class TotalLoss:
         spec.loader.exec_module(module)
         return getattr(module, class_name)
 
-    # ... (get_total_loss method remains the same) ...
-
     def get_total_loss(self, model, epoch_name: int = -1) -> torch.Tensor:
         # Calculate the individual Losses
         individual_losses = {}
-        total_loss = torch.tensor(0.0, device=list(model.parameters())[0].device)
+        total_loss = torch.tensor(0.0, device=next(iter(model.parameters())).device)
 
         # TODO: add config for individual losses (e.g. flexicubes resolution)
 
@@ -117,8 +114,8 @@ class TotalLoss:
         if self.__general_config.get("wandb_general", {}).get("use_wandb") is True:
             wandb.log(individual_losses, step=epoch_name)
 
-            if epoch_name%self.__rendering_frequency == 0:
-                verts, faces = get_diff_mesh(model, grid_res=64, device=list(model.parameters())[0].device)
+            if epoch_name % self.__rendering_frequency == 0:
+                verts, faces = get_diff_mesh(model, grid_res=64, device=next(iter(model.parameters())).device)
 
                 # Convert to numpy if tensors
                 if torch.is_tensor(verts):
@@ -140,9 +137,9 @@ class TotalLoss:
                 # Delete local files after logging to WandB
                 if stl_path.exists():
                     wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name)
-                    os.remove(stl_path)
+                    stl_path.unlink()
                 if image_path.exists():
-                    wandb.log({ "render_image": wandb.Image(str(image_path))}, step=epoch_name)
-                    os.remove(image_path)
+                    wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
+                    image_path.unlink()
 
         return total_loss
