@@ -117,6 +117,45 @@ def allround_save_data(
 
 
 
+def fetch_pretrained_model(
+    model: BaseModel,
+    pretrained_path: str = "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset",
+    verbose: bool = True,
+) -> None | Path:
+    """
+    Check whether a pretrained model exists for the given model architecture in the pretrained_path.
+    Returns the path to the pretrained model if found, else None.
+
+    """
+    if pretrained_path is None:
+        print("No valid pretrained path provided, skipping pretrained model fetch.")
+        return None
+
+    model_hash = dict_hashing(model.get_model_info_dict())
+    found = False
+    file = None
+    # Check whether there is a directory containing the hash in its name and whether theres a corresponding .pth file (also with hash in name)
+    for d in Path(pretrained_path).glob(f"*{model_hash}*"):
+        if d.is_dir():
+            for f in d.glob(f"*{model_hash}*.pth"):
+                file = f
+                found = True
+                break
+        if found:
+            break
+
+    if verbose and found:
+        print(f"Pretrained model for {model_hash} found: {file}")
+    elif verbose and not found:
+        print(f"No pretrained model found for {model_hash}.")
+
+    if not found:
+        return None
+    else:
+        return file
+
+
+
 #Not usesd as of yet. Maybe once we create different pretrained shapes
 def save_pretrained_model(
     model: BaseModel,
