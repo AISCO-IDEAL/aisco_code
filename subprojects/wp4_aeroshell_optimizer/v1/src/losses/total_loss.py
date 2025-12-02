@@ -1,19 +1,24 @@
 # just the loss class which calls other losses here
 
 
-import torch
-import wandb
 import importlib.util
 import sys
 from pathlib import Path
+import os
+
+import torch
+import wandb
+import trimesh
 
 # NOTE: You can remove all hardcoded loss imports (like BbLoss1, SolarLoss, etc.)
-# because you are now dynamically loading them based on the config path.
-
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
     load_general_config,
     load_specific_config,
 )
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import (
+    get_diff_mesh,
+)
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 
 
 class TotalLoss:
@@ -42,7 +47,6 @@ class TotalLoss:
                 config=self.__general_config,
             )
 
-
         # category: aero, ... | losses: frontal_area_v0, ...
         for category, losses in self.weights.items():
             if category == "total":
@@ -58,15 +62,15 @@ class TotalLoss:
                     class_name = Path(path).stem.title().replace("_", "")
 
                     # 2. Call load_class_from_path with the absolute path string
-                    loss_class = self.load_class_from_path(
-                        str(absolute_path), class_name
-                    )
+                    loss_class = self.load_class_from_path(str(absolute_path), class_name)
                     loss_instance = loss_class(
                         device=dev,
                         loss_name=loss_name,
                         losses_config=self.losses_config,
                     )
                     self.__active_losses[loss_name] = loss_instance
+
+        self.__rendering_frequency = self.__general_config.get("wandb_general", {}).get("rendering_frequency")
 
     def load_class_from_path(self, path: str, class_name: str):
         """Dynamically load a class from a file path."""
@@ -112,5 +116,33 @@ class TotalLoss:
         # # 2. Logging them on WandB (not working as of now)
         if self.__general_config.get("wandb_general", {}).get("use_wandb") is True:
             wandb.log(individual_losses, step=epoch_name)
+
+            if epoch_name%self.__rendering_frequency == 0:
+                verts, faces = get_diff_mesh(model, grid_res=64, device=list(model.parameters())[0].device)
+
+                # Convert to numpy if tensors
+                if torch.is_tensor(verts):
+                    verts = verts.detach().cpu().numpy()
+                if torch.is_tensor(faces):
+                    faces = faces.detach().cpu().numpy()
+
+                # Create trimesh object and export to STL
+                mesh = trimesh.Trimesh(vertices=verts, faces=faces)
+                stl_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/mesh_epoch_{epoch_name}.stl")
+                stl_path.parent.mkdir(parents=True, exist_ok=True)
+                mesh.export(str(stl_path))
+
+                # Visualize the mesh using CADVisualizer
+                image_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/render_epoch_{epoch_name}.png")
+                visualizer = CADVisualizer(stl_path=str(stl_path), out_image_path=str(image_path))
+                visualizer.render_until_blue_detected()
+
+                # Delete local files after logging to WandB
+                if stl_path.exists():
+                    wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name)
+                    os.remove(stl_path)
+                if image_path.exists():
+                    wandb.log({ "render_image": wandb.Image(str(image_path))}, step=epoch_name)
+                    os.remove(image_path)
 
         return total_loss
