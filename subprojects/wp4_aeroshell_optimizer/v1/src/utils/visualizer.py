@@ -27,11 +27,11 @@ class CADVisualizer:
         self.__image_size = (1200, 900)
         self.__bg_color = (255, 255, 255, 0)
         self.__scale_factor = 0.001
-        self.__additional_scale = 2.0
+        self.__additional_scale = 1 
         self.__mesh_tolerance = 0.1
         self.__angular_tolerance = 1
 
-        self.__camera_distance_factor = 1.5
+        self.__camera_distance_factor = 1 
         self.__camera_fov_degrees = 65.0
         self.__camera_tilt_down_degrees = -50.0
         self.__camera_azimuth_degrees = 0.0
