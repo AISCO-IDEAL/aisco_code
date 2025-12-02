@@ -1,6 +1,5 @@
 import os
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 
@@ -58,35 +57,42 @@ class CADVisualizer:
         self.__out_image_path = out_image_path
         self.__max_attempts = max_attempts
 
+        # Cache for meshes to avoid redundant conversions
+        self.__mesh_cache: dict[str, trimesh.Trimesh] = {}
+        self.__renderer: pyrender.OffscreenRenderer | None = None
+
         self.__setup_headless_rendering()
 
     def __setup_headless_rendering(self) -> None:
+        # RTX 4090 optimized settings - use EGL for direct GPU acceleration
         os.environ.update(
             {
                 "PYOPENGL_PLATFORM": "egl",
-                "DISPLAY": ":99",
-                "MESA_GL_VERSION_OVERRIDE": "3.3",
-                "MESA_GLSL_VERSION_OVERRIDE": "330",
-                "LIBGL_ALWAYS_SOFTWARE": "1",
-                "GALLIUM_DRIVER": "llvmpipe",
-                "MESA_LOADER_DRIVER_OVERRIDE": "llvmpipe",
-                "EGL_PLATFORM": "surfaceless",
-                "MESA_GLAPI_NO_REMAP": "1",
+                "EGL_PLATFORM": "device",
+                "MESA_GL_VERSION_OVERRIDE": "4.6",
+                "MESA_GLSL_VERSION_OVERRIDE": "460",
+                "__GL_SYNC_TO_VBLANK": "0",
+                "__GL_YIELD": "NOTHING",
                 "PYTHONHASHSEED": "0",
             }
         )
 
-        subprocess.run(["pkill", "-f", "Xvfb"], check=False, capture_output=True)
-        subprocess.Popen(
-            ["Xvfb", ":99", "-screen", "0", "1024x768x24", "-ac", "+extension", "GLX", "+render", "-noreset"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-
         OpenGL.ERROR_CHECKING = OpenGL.ERROR_LOGGING = OpenGL.FULL_LOGGING = False
-        pyrender.OffscreenRenderer(1, 1).delete()
 
-    def __cq_solid_to_trimesh(self, solid) -> trimesh.Trimesh:
+        # Create persistent renderer for reuse
+        w, h = self.__image_size
+        self.__renderer = pyrender.OffscreenRenderer(w, h)
+
+    def __del__(self):
+        """Cleanup renderer on object destruction"""
+        if self.__renderer:
+            self.__renderer.delete()
+
+    def __cq_solid_to_trimesh(self, solid, cache_key=None) -> trimesh.Trimesh:
+        # Check cache first
+        if cache_key and cache_key in self.__mesh_cache:
+            return self.__mesh_cache[cache_key]
+
         with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
             path = tmp.name
         cq.exporters.export(
@@ -96,43 +102,61 @@ class CADVisualizer:
             angularTolerance=1,
         )
         mesh = self.__load_mesh(path, "stl")
+        Path(path).unlink()  # Clean up temp file immediately
         assert mesh is not None, "Failed to load mesh from CQ solid"
+
+        # Cache the result
+        if cache_key:
+            self.__mesh_cache[cache_key] = mesh
+
         return mesh
 
     def __load_mesh(self, path, file_type) -> trimesh.Trimesh | None:
-        for _ in range(3):
-            loaded = trimesh.load(path, file_type=file_type)
-            if isinstance(loaded, trimesh.Scene):
-                geoms = tuple(loaded.geometry.values())
-                tm: trimesh.Trimesh = trimesh.util.concatenate(geoms)
-            elif isinstance(loaded, trimesh.Trimesh):
-                tm = loaded
+        # Check cache first
+        cache_key = f"{path}_{file_type}"
+        if cache_key in self.__mesh_cache:
+            return self.__mesh_cache[cache_key]
 
-            tm.remove_infinite_values()
-            tm.remove_unreferenced_vertices()
-            if len(tm.faces) > 0:
-                trimesh.repair.fix_inversion(tm)
-                trimesh.repair.fix_normals(tm)
-                tm.process(validate=True)
-                if not hasattr(tm, "face_normals") or len(tm.face_normals) == 0:
-                    tm.fix_normals()
-            return tm
-        return None
+        loaded = trimesh.load(path, file_type=file_type, process=False)
+        if isinstance(loaded, trimesh.Scene):
+            geoms = tuple(loaded.geometry.values())
+            tm: trimesh.Trimesh = trimesh.util.concatenate(geoms)
+        elif isinstance(loaded, trimesh.Trimesh):
+            tm = loaded
+        else:
+            return None
+
+        # Minimal processing for speed
+        tm.remove_infinite_values()
+        tm.remove_unreferenced_vertices()
+        if len(tm.faces) > 0:
+            trimesh.repair.fix_normals(tm, multibody=False)
+
+        # Cache the result
+        self.__mesh_cache[cache_key] = tm
+        return tm
 
     def __add_edges_to_scene(self, scene, mesh) -> None:
-        for e in mesh.vertices[mesh.edges_unique]:
-            a, b = e
-            v = b - a
-            length = np.linalg.norm(v)
-            if length <= _MIN_EDGE_LENGTH:
-                continue
+        # Batch edge creation for better performance
+        edges_unique = mesh.edges_unique
+        vertices = mesh.vertices
 
-            cyl = trimesh.creation.cylinder(radius=self.__edge_radius, height=length, sections=8)
+        # Pre-allocate arrays
+        edge_vectors = vertices[edges_unique[:, 1]] - vertices[edges_unique[:, 0]]
+        edge_lengths = np.linalg.norm(edge_vectors, axis=1)
+        valid_edges = edge_lengths > _MIN_EDGE_LENGTH
+
+        for idx in np.where(valid_edges)[0]:
+            a, b = vertices[edges_unique[idx]]
+            v = edge_vectors[idx]
+            length = edge_lengths[idx]
+
+            cyl = trimesh.creation.cylinder(radius=self.__edge_radius, height=length, sections=6)
             z, u = np.array([0, 0, 1]), v / length
 
             if np.allclose(u, -z):
                 r = trimesh.transformations.rotation_matrix(np.pi, [1, 0, 0])
-            elif not (np.allclose(u, z)):
+            elif not np.allclose(u, z):
                 axis = np.cross(z, u)
                 axis /= np.linalg.norm(axis)
                 ang = np.arccos(np.clip(np.dot(z, u), -1, 1))
@@ -195,9 +219,10 @@ class CADVisualizer:
             scene.add(pyrender.DirectionalLight(intensity=2.0), pose=p)
 
     def __render(self, out_image_path: str) -> tuple[str, bool]:
+        # Use cached meshes
         meshes = [
-            self.__cq_solid_to_trimesh(self.__solid_a),
-            self.__cq_solid_to_trimesh(self.__solid_b),
+            self.__cq_solid_to_trimesh(self.__solid_a, cache_key="solid_a"),
+            self.__cq_solid_to_trimesh(self.__solid_b, cache_key="solid_b"),
         ]
         types = ["solid_a", "solid_b"]
 
@@ -212,12 +237,13 @@ class CADVisualizer:
                 meshes.append(loaded_mesh)
                 types.append("stl")
 
-        # Scale and center meshes
+        # Vectorized scaling and centering
         for m in meshes:
             m.vertices *= self.__scale_factor
-        center = np.mean(np.vstack([m.vertices for m in meshes]), axis=0)
+        all_vertices = np.vstack([m.vertices for m in meshes])
+        center = np.mean(all_vertices, axis=0)
         for m in meshes:
-            m.vertices = (m.vertices - center) * 1
+            m.vertices -= center
 
         radius = np.linalg.norm(trimesh.util.concatenate(meshes).extents) / 2.0
 
@@ -249,11 +275,9 @@ class CADVisualizer:
 
         self.__setup_camera_and_lighting(scene, radius)
 
-        # Render
-        w, h = self.__image_size
-        renderer = pyrender.OffscreenRenderer(w, h)
-        color, _ = renderer.render(scene, flags=RenderFlags.RGBA)
-        renderer.delete()
+        # Render using persistent renderer
+        assert self.__renderer is not None
+        color, _ = self.__renderer.render(scene, flags=RenderFlags.RGBA)
 
         Path(out_image_path).parent.mkdir(parents=True, exist_ok=True)
         imageio.imwrite(out_image_path, color)
@@ -261,9 +285,10 @@ class CADVisualizer:
 
     def __has_blue_color(self, image_path) -> bool:
         img = imageio.imread(image_path).astype(np.float32) / 255.0
+        # Vectorized operations for faster blue detection
         b, r, g = img[:, :, 2], img[:, :, 0], img[:, :, 1]
-        blue_dom = (b > self.__blue_threshold) & (b > (r + g) / 2)
-        return blue_dom.sum() / b.size >= self.__min_blue_ratio
+        blue_dom = (b > self.__blue_threshold) & (b > (r + g) * 0.5)
+        return bool(np.mean(blue_dom) >= self.__min_blue_ratio)
 
     def render_until_blue_detected(self) -> tuple[str, bool, int]:
         for attempts in range(1, self.__max_attempts + 1):
