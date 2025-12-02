@@ -7,7 +7,7 @@ from pathlib import Path
 
 import torch
 import trimesh
-import wandb  # type: ignore  # noqa: PGH003
+import wandb
 
 # NOTE: You can remove all hardcoded loss imports (like BbLoss1, SolarLoss, etc.)
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
