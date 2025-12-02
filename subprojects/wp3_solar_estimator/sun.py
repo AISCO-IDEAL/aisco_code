@@ -6,20 +6,19 @@ from pvlib import solarposition
 def get_sun_direction(latitude, longitude, altitude, time_utc):
     # nserck
     """
-    Calculated the vector of the sun direction [x,y,z]
+    Convert geographic coordinates plus UTC timestamp to a sun direction vector.
 
-    x: east
-    y: north
-    z: zenit (facing upwards!)
+    The coordinate system is right-handed with:
+        x → East, y → North, z → Zenith (upwards).
 
     Args:
-        latitude (float): [Grad]
-        longitude (float):  [Grad]
-        altitude (float): [Meter] avobe sea leevel
-        time_utc: UTC!
+        latitude (float): Degrees North.
+        longitude (float): Degrees East.
+        altitude (float): Elevation above sea level in metres.
+        time_utc (datetime | pandas.Timestamp): Time in UTC.
 
-    Rückgabe:
-    numpy.array: norm-vec (x, y, z)
+    Returns:
+        np.ndarray: Normalised vector `[x, y, z]` pointing from the car to the sun.
     """
 
     # 1. Calculate Sun position

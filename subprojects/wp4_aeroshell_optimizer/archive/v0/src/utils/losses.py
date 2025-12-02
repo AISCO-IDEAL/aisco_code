@@ -1,0 +1,373 @@
+from pathlib import Path
+
+import cadquery as cq
+import torch
+import wandb
+import yaml
+from wp1_cfd_ai.crude_estimator.crude_estimator_diff import (
+    calculateCdProxyDifferentiable,
+)
+from wp2_assembler.version1.components.nbz import innerNBZ, outerNBZ
+from wp3_solar_estimator.diff.diff_solar_estimator import diff_solar_loss
+from wp3_solar_estimator.diff.alex_input import dummy_solar_loss
+from wp1_cfd_ai.crude_estimator.crude_estimator_diff import (
+    calculateCdProxyDifferentiable,
+)
+
+from ..models.sdf import SDFNetwork
+from ..utils.CadQuery_to_SDF import BackupAssembly, SDFfromCadQuery
+from ..utils.tracking_loss_for_vis import LossTracker
+from ..utils.utils import load_config
+from .kaolin_utils import get_diff_mesh, marching_tetrahedra
+
+# Losses being defined here:
+# - Eikonal Loss [ES]
+# - Smoothness Loss [ES]
+# - Bounding Boxes Loss [CH]
+# - Watertightness Loss [CH] (currently disabled)
+# - Frontal Area Loss [AA] (TODO: archive, as currently replaced by drag loss)
+# - Drag Loss [ES] (to be implemented)
+# - Solar Area Loss [AA]
+# - Total Loss (weighted sum of all losses)
+# WEIGHTING: see config_wp4.yaml
+
+
+class SDFLosses:
+    def __init__(self, dev: str = "cuda"):
+        self.device = dev
+        # eschaerer: get weights for losses from config
+        self.weights = load_config().get("losses")
+        print(self.weights)
+
+        # initialize the Bounding Boxes here to avoid re-creating them every time
+        self.__in_mms = True
+
+        if self.weights["bounding_boxes_1"][0] != 0:
+            self.__setup_bounding_boxes_loss_1()
+
+        if self.weights["bounding_boxes_2"][0] != 0:
+            self.__setup_bounding_boxes_loss_2()
+
+    def __setup_bounding_boxes_loss_1(self):
+        # Create SDFs for inner and outer boxes
+        inner_box: cq.Solid = innerNBZ(
+            random_magnitude_chassis=0.0,
+            random_magnitude_seat=0.0,
+            random_magnitude_wheels=0.0,
+        )
+        self.__inner_SDF: SDFfromCadQuery = SDFfromCadQuery(
+            inner_box, in_mms=self.__in_mms
+        )
+        outer_box: cq.Solid = outerNBZ()
+        self.__outer_SDF: SDFfromCadQuery = SDFfromCadQuery(
+            outer_box, in_mms=self.__in_mms
+        )
+        self.__pointgrid: list[list[float]] = self.__inner_SDF.pointgrid()
+        self.__inner_sdf_values: list[float] = self.__inner_SDF.sdf_at_pointgrid()
+        self.__outer_sdf_values: list[float] = self.__outer_SDF.sdf_at_pointgrid()
+    
+    def __setup_bounding_boxes_loss_2(self):
+        # Create SDFs for inner and outer boxes
+        inner_box: cq.Solid = innerNBZ(
+            random_magnitude_chassis=0.0,
+            random_magnitude_seat=0.0,
+            random_magnitude_wheels=0.0,
+        )
+        self.__inner_SDF: SDFfromCadQuery = SDFfromCadQuery(
+            inner_box, in_mms=self.__in_mms
+        )
+        outer_box: cq.Solid = outerNBZ()
+        self.__outer_SDF: SDFfromCadQuery = SDFfromCadQuery(
+            outer_box, in_mms=self.__in_mms
+        )
+        self.__pointgrid: list[list[float]] = self.__inner_SDF.pointgrid()
+        self.__inner_sdf_values: list[float] = self.__inner_SDF.sdf_at_pointgrid()
+        self.__outer_sdf_values: list[float] = self.__outer_SDF.sdf_at_pointgrid()
+
+        # Setup for bounding box loss 2
+        self.__inner_bb_points = [
+            point
+            for point, sdf_value in zip(
+                self.__pointgrid, self.__inner_sdf_values, strict=False
+            )
+            if sdf_value < 0
+        ]
+
+        # get all points where sdf is positive (outside the outer box)
+        self.__outer_bb_points = [
+            point
+            for point, sdf_value in zip(
+                self.__pointgrid, self.__outer_sdf_values, strict=False
+            )
+            if sdf_value > 0
+        ]
+
+    def eikonal_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
+        """
+        This Loss ensures that the gradient of our SDF
+        has a unit norm (magnit ude of 1) everywhere in space.
+        Args:
+            self: SDFLosses Class
+            model: The SDF Network
+            points: a Batch of 3D points to evaluate the loss at
+        Returns:
+            loss: The computed Eikonal loss for the given points.
+        """
+        if self.weights["eikonal"][0] == 0:
+            return torch.tensor(0.0, device=self.device)
+        else:
+            # sdf: the sdf function values for each point
+            # grad_sdf: the gradients of the sdf function at each point
+            # both are torch.Tensors
+            sdf, grad_sdf = model(points)
+            # loss: Mean absolute difference between the norm of the gradients and 1
+            # loss = 1/n * sum from 1 to n of  ( ||grad_sdf||_2 - 1 )^2
+            # source: https://arxiv.org/pdf/2002.10099, Implicit Geometric Regularization for Learning Shapes, Page 2, 2. Method l(theta)
+            loss = torch.abs(torch.norm(grad_sdf, p=2, dim=-1) - 1.0).mean()
+            return loss
+
+    def smoothness_loss(self, model: SDFNetwork, points: torch.Tensor) -> torch.Tensor:
+        """
+        This Loss encourages the SDF to be smooth by penalizing large values of the Laplacian.
+        The Laplacian of the SDF measures local curvature; minimizing its magnitude reduces high-frequency variations.
+        Args:
+            self: SDFLosses Class
+            model: The SDF Network
+            points: a Batch of 3D points to evaluate the loss at
+        Returns:
+            loss: The computed smoothness loss for the given points.
+        """
+        if self.weights["smoothness"][0] == 0:
+            return torch.tensor(0.0, device=self.device)
+        else:
+            sdf, grad_sdf, laplacian_sdf = model(points, return_laplacian=True)
+            return (laplacian_sdf**2).mean()
+
+    def bounding_boxes_loss_1(self, model: SDFNetwork) -> torch.Tensor:
+        """
+        Arguments:
+            model: The SDF network                                              NO Default!!
+            inner_box: CadQuery Shape representing the inner bounding box       Defaults to BackupAssembly boxes if None
+            outer_box: CadQuery Shape representing the outer bounding box       Defaults to BackupAssembly boxes if None
+            pointgrid: List of points at which compatibility is enforced        Defaults to a 21x21x21 grid from -2 to 2 in each axis if None
+        Returns:
+            Bounding boxes loss (to be minimized)
+
+        Constrains model SDF to lie between outer and inner SDFs:
+            sdf_outer(p) <= sdf_model(p) <= sdf_inner(p)
+        Loss = mean( relu(sdf_model - sdf_inner) + relu(sdf_outer - sdf_model) )
+        """
+        if self.weights["bounding_boxes_1"][0] == 0:
+            return torch.tensor(0.0, device=self.device)
+        else:  # Device & tensors
+            device = next(model.parameters()).device
+            P = torch.tensor(
+                self.__pointgrid, dtype=torch.float32, device=self.device
+            )  # [N,3]
+            sdf_inner_t = torch.as_tensor(
+                self.__inner_sdf_values, dtype=torch.float32, device=self.device
+            )  # [N]
+            sdf_outer_t = torch.as_tensor(
+                self.__outer_sdf_values, dtype=torch.float32, device=self.device
+            )  # [N]
+
+            # Batch forward
+            with torch.enable_grad():
+                sdf_pred = model(P)[0]
+                sdf_pred = sdf_pred.squeeze(-1)  # [N]
+
+                # Box constraints: clamp violations with ReLU
+                upper_violation = torch.relu(sdf_pred - sdf_inner_t)
+                lower_violation = torch.relu(sdf_outer_t - sdf_pred)
+
+            loss = (upper_violation + lower_violation).mean() ** 0.5
+            return loss
+
+    def bounding_boxes_loss_2(self, model: SDFNetwork) -> torch.Tensor:
+        """
+        Calculates a Bounding Box Loss based on an Idea of Alex
+        """
+        if self.weights["bounding_boxes_2"][0] == 0:
+            return torch.tensor(0.0, device=self.device)
+        else:  # get the SDF model values at these points
+            inner_bb_points_model = model(
+                torch.tensor(
+                    self.__inner_bb_points, dtype=torch.float32, device=self.device
+                )
+            )[0]
+            outer_bb_points_model = model(
+                torch.tensor(
+                    self.__outer_bb_points, dtype=torch.float32, device=self.device
+                )
+            )[0]
+
+        # compute the loss
+        inner_loss = torch.relu(inner_bb_points_model[0]).mean() ** 0.5
+        outer_loss = torch.relu(-outer_bb_points_model[0]).mean() ** 0.5
+        loss = inner_loss + outer_loss
+        return loss
+
+    def frontal_area_loss(
+        self,
+        model: SDFNetwork,
+        resolution: int = 128,
+        height: float = 4.0,
+        width: float = 6.0,
+    ) -> torch.Tensor:
+        """
+        Compute frontal area loss (minimize drag by reducing frontal area).
+        Args:
+            model: The SDF network
+            resolution: Resolution for area computation
+        Returns:
+            Frontal area loss (to be minimized)
+        """
+        if self.weights["frontal_area"][0] == 0:
+            return torch.tensor(1.0, device=self.device)
+        else:
+            # Create a grid in the Y-Z plane (frontal projection)
+            y_coords = torch.linspace(
+                -width / 2, width / 2, resolution, device=self.device
+            )
+            z_coords = torch.linspace(-1.0, height, resolution, device=self.device)
+            # z coords from -1 to height to still evaluate at least some area under the ground for now
+
+            y_grid, z_grid = torch.meshgrid(y_coords, z_coords, indexing="ij")
+            # Fix x at the front of the vehicle (x = 0 for frontal area)
+            x_coords = torch.zeros_like(y_grid, device=self.device)
+            # Create points for evaluation
+            # As of yet: takes primitive area at x=0 (middle of car in theory)
+            points = torch.stack(
+                [x_coords.flatten(), y_grid.flatten(), z_grid.flatten()], dim=1
+            )
+            points.requires_grad = True
+            outputs = model(points)
+            # Ensure only the scalar field is extracted
+            if isinstance(outputs, tuple):
+                sdf_values = outputs[0]  # first element = scalar SDF field
+            else:
+                sdf_values = outputs
+            sdf_values.reshape(resolution, resolution)
+            # Approximate area using the Heaviside function
+            # Use a smooth approximation of the Heaviside function
+            epsilon = 0.02
+            heaviside_approx = torch.sigmoid(-sdf_values / epsilon)
+            # Integrate over the grid to get area
+            grid_spacing = (width / resolution) * ((1 + height) / resolution)  # dy * dz
+            frontal_area = torch.sum(heaviside_approx) * grid_spacing
+            return frontal_area
+
+    def drag_loss(
+        self,
+        model: SDFNetwork,
+    ) -> torch.Tensor:
+        """
+        Placeholder for drag loss computation.
+        Args:
+            model: The SDF network
+            resolution: Resolution for area computation
+        """
+        if self.weights["drag"][0] == 0:
+            return torch.tensor(0.0, device=self.device)
+        else:
+            vertices, faces = get_diff_mesh(model, grid_res=64)
+
+            drag = calculateCdProxyDifferentiable(vertices)
+
+            return drag
+
+    def solar_area_loss(
+        self,
+        model: SDFNetwork,
+        resolution: int = 128,
+        length: float = 8.0,
+        width: float = 6.0,
+    ) -> torch.Tensor:
+        """
+        Compute top area loss (maximize solar collection area on top surface).
+        Args:
+            model: The SDF network
+            resolution: Resolution for area computation
+        Returns:
+            NOTE: Still WIP, currently running a dummy version of the loss 
+        """
+        if self.weights["solar_area"][0] == 0:
+            print("Solar area loss disabled.")
+            print(
+                "Type of weights['solar_area'][0]: ",
+                type(self.weights["solar_area"][0]),
+            )
+            return torch.tensor(0.0, device=self.device)
+        else:
+            
+            verts, faces = marching_tetrahedra(model, grid_res=128, dev=self.device)
+            return dummy_solar_loss(verts, faces, sun_dir=torch.tensor([0.0, -1.0, 1.0], device=self.device))
+            """
+            # Create a grid in the X-Y plane (top projection)
+            x_coords = torch.linspace(
+                -length / 2, length / 2, resolution, device=self.device
+            )
+            y_coords = torch.linspace(
+                -width / 2, width / 2, resolution, device=self.device
+            )
+            x_grid, y_grid = torch.meshgrid(x_coords, y_coords, indexing="ij")
+            # Fix z at the top of the vehicle (z = 1.2 for top area)
+            # again arbitrary height, just to get an area on top, need to be fixed later
+            z_coords = torch.full_like(x_grid, 1.2, device=self.device)
+            # Create points for evaluation
+            points = torch.stack(
+                [x_grid.flatten(), y_grid.flatten(), z_coords.flatten()], dim=1
+            )
+            points.requires_grad = True
+            outputs = model(points)
+            # Ensure only the scalar field is extracted
+            if isinstance(outputs, tuple):
+                sdf_values = outputs[0]  # first element = scalar SDF field
+            else:
+                sdf_values = outputs
+            sdf_values.reshape(resolution, resolution)
+            # Approximate area using the Heaviside function
+            epsilon = 0.02
+            heaviside_approx = torch.sigmoid(-sdf_values / epsilon)
+            # Integrate over the grid to get area
+            grid_spacing = (length / resolution) * (width / resolution)  # dx * dy
+            top_area = torch.sum(heaviside_approx) * grid_spacing
+            return -top_area  # Negative for maximization
+            """
+
+
+
+    def get_total_loss(
+        self, model: SDFNetwork, points: torch.Tensor, epoch_name: int = -1
+    ) -> torch.Tensor:
+        l1 = self.eikonal_loss(model, points)
+        l2 = self.smoothness_loss(model, points)
+        l3 = self.bounding_boxes_loss_1(model)
+        l4 = self.bounding_boxes_loss_2(model)
+        l5 = self.frontal_area_loss(model)
+        l6 = self.drag_loss(model)
+        l7 = self.solar_area_loss(model)
+        total_loss = (
+            self.weights["eikonal"][1] * l1
+            + self.weights["smoothness"][1] * l2
+            + self.weights["bounding_boxes_1"][1] * l3
+            + self.weights["bounding_boxes_2"][1] * l4
+            + self.weights["frontal_area"][1] * l5
+            + self.weights["drag"][1] * l6
+            + self.weights["solar_area"][1] * l7
+        )
+        # logging with wandb, added by eschaerer
+        wandb.log(
+            {
+                "losses/eikonal_loss": l1.item()*self.weights["eikonal"][1],
+                "losses/smoothness_loss": l2.item()*self.weights["smoothness"][1],
+                "losses/bounding_box_loss1": l3.item()*self.weights["bounding_boxes_1"][1],
+                "losses/bounding_box_loss2": l4.item()*self.weights["bounding_boxes_2"][1],
+                "losses/frontal_area_loss": l5.item()*self.weights["frontal_area"][1],
+                "losses/drag_loss": l6.item()*self.weights["drag"][1],
+                "losses/solar_area_loss": l7.item()*self.weights["solar_area"][1],
+            },
+            step=epoch_name,
+        )
+
+        return total_loss
