@@ -3,7 +3,6 @@ import shutil
 import subprocess
 import tempfile
 import time
-from contextlib import suppress
 from pathlib import Path
 
 import cadquery as cq
@@ -60,12 +59,23 @@ class CADVisualizer:
         self.__out_image_path = out_image_path
         self.__max_attempts = max_attempts
 
-        # Cache for meshes to avoid redundant conversions
-        self.__mesh_cache: dict[str, trimesh.Trimesh] = {}
+        # Track Xvfb process for cleanup
+        self.__xvfb_process: subprocess.Popen | None = None
 
-        self.__setup_headless_rendering()
+    def __setup_rendering_environment(self) -> None:
+        """Setup rendering environment - called fresh for each render"""
+        # Cleanup previous Xvfb if exists
+        if self.__xvfb_process:
+            try:
+                self.__xvfb_process.terminate()
+                self.__xvfb_process.wait(timeout=1)
+            except:  # noqa: E722
+                pass
 
-    def __setup_headless_rendering(self) -> None:
+        # Kill any existing Xvfb processes
+        subprocess.run(["pkill", "-f", "Xvfb"], check=False, capture_output=True)
+        time.sleep(0.1)
+
         # Cluster-optimized settings for RTX 4090 with Xvfb
         os.environ.update(
             {
@@ -80,9 +90,8 @@ class CADVisualizer:
             }
         )
 
-        # Start Xvfb for headless rendering
-        subprocess.run(["pkill", "-f", "Xvfb"], check=False, capture_output=True)
-        subprocess.Popen(
+        # Start fresh Xvfb for headless rendering
+        self.__xvfb_process = subprocess.Popen(
             ["Xvfb", ":99", "-screen", "0", "1920x1080x24", "-ac", "+extension", "GLX", "+render", "-noreset"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -93,15 +102,25 @@ class CADVisualizer:
 
         OpenGL.ERROR_CHECKING = OpenGL.ERROR_LOGGING = OpenGL.FULL_LOGGING = False
 
-    def __del__(self):
-        """Cleanup renderer on object destruction"""
-        pass
+    def __del__(self) -> None:
+        """Cleanup Xvfb process on object destruction"""
+        try:
+            if self.__xvfb_process:
+                try:
+                    self.__xvfb_process.terminate()
+                    self.__xvfb_process.wait(timeout=2)
+                except:  # noqa: E722
+                    pass
 
-    def __cq_solid_to_trimesh(self, solid, cache_key=None) -> trimesh.Trimesh:
-        # Check cache first
-        if cache_key and cache_key in self.__mesh_cache:
-            return self.__mesh_cache[cache_key]
+            # Final cleanup of any lingering Xvfb processes
+            try:
+                subprocess.run(["pkill", "-f", "Xvfb"], check=False, capture_output=True, timeout=2)
+            except:  # noqa: E722
+                pass
+        except:  # noqa: E722
+            pass
 
+    def __cq_solid_to_trimesh(self, solid) -> trimesh.Trimesh:
         with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
             path = tmp.name
         cq.exporters.export(
@@ -114,18 +133,9 @@ class CADVisualizer:
         Path(path).unlink()  # Clean up temp file immediately
         assert mesh is not None, "Failed to load mesh from CQ solid"
 
-        # Cache the result
-        if cache_key:
-            self.__mesh_cache[cache_key] = mesh
-
         return mesh
 
     def __load_mesh(self, path, file_type) -> trimesh.Trimesh | None:
-        # Check cache first
-        cache_key = f"{path}_{file_type}"
-        if cache_key in self.__mesh_cache:
-            return self.__mesh_cache[cache_key]
-
         loaded = trimesh.load(path, file_type=file_type, process=False)
         if isinstance(loaded, trimesh.Scene):
             geoms = tuple(loaded.geometry.values())
@@ -141,8 +151,6 @@ class CADVisualizer:
         if len(tm.faces) > 0:
             trimesh.repair.fix_normals(tm, multibody=False)
 
-        # Cache the result
-        self.__mesh_cache[cache_key] = tm
         return tm
 
     def __add_edges_to_scene(self, scene, mesh) -> None:
@@ -235,10 +243,13 @@ class CADVisualizer:
             scene.add(pyrender.DirectionalLight(intensity=2.0), pose=p)
 
     def __render(self, out_image_path: str) -> tuple[str, bool]:
-        # Use cached meshes
+        # Setup fresh rendering environment for each render attempt
+        self.__setup_rendering_environment()
+
+        # Load meshes fresh each time to avoid state from previous attempts
         meshes = [
-            self.__cq_solid_to_trimesh(self.__solid_a, cache_key="solid_a"),
-            self.__cq_solid_to_trimesh(self.__solid_b, cache_key="solid_b"),
+            self.__cq_solid_to_trimesh(self.__solid_a),
+            self.__cq_solid_to_trimesh(self.__solid_b),
         ]
         types = ["solid_a", "solid_b"]
 
