@@ -29,6 +29,20 @@ class TotalLoss:
 
         project_root = Path.cwd()  # Correctly defines project root
 
+        track_run = self.__general_config["wandb_general"].get("use_wandb", False)
+        if track_run:
+            run = wandb.init(
+                # Set the wandb log directory
+                dir="wp4_aeroshell_optimizer/data/wandb_logs",
+                # Set the wandb entity where your project will be logged (generally your team name).
+                entity="aisco",
+                # Set the wandb project where this run will be logged.
+                project="Aeroshell Optimizer",
+                # Track hyperparameters and run metadata.
+                config=self.__general_config,
+            )
+
+
         # category: aero, ... | losses: frontal_area_v0, ...
         for category, losses in self.weights.items():
             if category == "total":
@@ -96,16 +110,7 @@ class TotalLoss:
         individual_losses["total_loss"] = total_loss.item()
 
         # # 2. Logging them on WandB (not working as of now)
-        # if self.__general_config.get("wandb_general", {}).get("use_wandb") is True:
-        #     # Only reinit if necessary, often it's better to manage the run externally
-        #     # but sticking to your original logic for reinit=True.
-        #     wandb.init(
-        #         project=self.__general_config["wandb_general"]["project_name"],
-        #         entity=self.__general_config["general_info"]["username"],
-        #         reinit=True,
-        #     )
-
-        #     # Log the collected individual losses
-        #     wandb.log(individual_losses, step=epoch_name)
+        if self.__general_config.get("wandb_general", {}).get("use_wandb") is True:
+            wandb.log(individual_losses, step=epoch_name)
 
         return total_loss
