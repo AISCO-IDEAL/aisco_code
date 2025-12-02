@@ -32,11 +32,7 @@ class CADVisualizer:
         max_attempts=100,
     ) -> None:
         self.__image_size = (1200, 900)
-        self.__bg_color = (255, 255, 255, 0)
         self.__scale_factor = 0.001
-        self.__additional_scale = 1
-        self.__mesh_tolerance = 0.1
-        self.__angular_tolerance = 1
 
         self.__camera_distance_factor = 1
         self.__camera_fov_degrees = 65.0
@@ -44,18 +40,7 @@ class CADVisualizer:
         self.__camera_azimuth_degrees = 0.0
         self.__camera_position_factors = (1, 1, 1)
 
-        self.__ambient_intensity = 0.3
-        self.__key_light_intensity = 5.0
-        self.__fill_light_intensity = 2.0
-
-        self.__metallic_factor = 0.0
-        self.__roughness_factor = 0.5
-
-        self.__edge_color = (0.0, 0.0, 0.0, 1.0)
         self.__edge_radius = 0.002
-
-        self.__display_port = ":99"
-        self.__xvfb_screen_size = "1024x768x24"
 
         self.__blue_threshold = 0.1
         self.__min_blue_ratio = 0.001
@@ -78,7 +63,7 @@ class CADVisualizer:
     def __setup_headless_rendering(self) -> None:
         env = {
             "PYOPENGL_PLATFORM": "osmesa",
-            "DISPLAY": self.__display_port,
+            "DISPLAY": ":99",
             "MESA_GL_VERSION_OVERRIDE": "3.3",
             "MESA_GLSL_VERSION_OVERRIDE": "330",
             "LIBGL_ALWAYS_SOFTWARE": "1",
@@ -94,10 +79,10 @@ class CADVisualizer:
         subprocess.Popen(
             [
                 "Xvfb",
-                self.__display_port,
+                ":99",
                 "-screen",
                 "0",
-                self.__xvfb_screen_size,
+                "1024x768x24",
                 "-ac",
                 "+extension",
                 "GLX",
@@ -126,8 +111,8 @@ class CADVisualizer:
         cq.exporters.export(
             cq.Workplane().add(solid),
             path,
-            tolerance=self.__mesh_tolerance,
-            angularTolerance=self.__angular_tolerance,
+            tolerance=0.1,
+            angularTolerance=1,
         )
         mesh = self.__load_mesh(path, "stl")
         assert mesh is not None, "Failed to load mesh from CQ solid"
@@ -180,7 +165,7 @@ class CADVisualizer:
                 pyrender.Mesh.from_trimesh(
                     cyl,
                     material=pyrender.MetallicRoughnessMaterial(
-                        baseColorFactor=self.__edge_color,
+                        baseColorFactor=(0.0, 0.0, 0.0, 1.0),
                         metallicFactor=0.0,
                         roughnessFactor=1.0,
                     ),
@@ -220,13 +205,13 @@ class CADVisualizer:
         pose[:3, 3] = eye
 
         scene.add(cam, pose=pose)
-        scene.add(pyrender.DirectionalLight(intensity=self.__key_light_intensity), pose=pose)
+        scene.add(pyrender.DirectionalLight(intensity=5.0), pose=pose)
 
         # Add fill lights
         for dvec in [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]:
             p = np.eye(4)
             p[:3, 3] = np.array(dvec) * d * 0.5
-            scene.add(pyrender.DirectionalLight(intensity=self.__fill_light_intensity), pose=p)
+            scene.add(pyrender.DirectionalLight(intensity=2.0), pose=p)
 
     def __render(self, out_image_path: str) -> tuple[str, bool]:
         meshes = [
@@ -251,7 +236,7 @@ class CADVisualizer:
             m.vertices *= self.__scale_factor
         center = np.mean(np.vstack([m.vertices for m in meshes]), axis=0)
         for m in meshes:
-            m.vertices = (m.vertices - center) * self.__additional_scale
+            m.vertices = (m.vertices - center) * 1
 
         radius = np.linalg.norm(trimesh.util.concatenate(meshes).extents) / 2.0
 
@@ -264,15 +249,15 @@ class CADVisualizer:
 
         # Build scene
         scene = pyrender.Scene(
-            bg_color=np.array(self.__bg_color, dtype=np.uint8),
-            ambient_light=np.ones(3) * self.__ambient_intensity,
+            bg_color=np.array((255, 255, 255, 0), dtype=np.uint8),
+            ambient_light=np.ones(3) * 0.3,
         )
 
         for m, col, edge, _ in opaque + transp:
             mat = pyrender.MetallicRoughnessMaterial(
                 baseColorFactor=col,
-                metallicFactor=self.__metallic_factor,
-                roughnessFactor=self.__roughness_factor,
+                metallicFactor=0.0,
+                roughnessFactor=0.5,
                 alphaMode="OPAQUE" if col[3] >= _OPACITY_THRESHOLD else "BLEND",
                 doubleSided=True,
                 alphaCutoff=0.01,
