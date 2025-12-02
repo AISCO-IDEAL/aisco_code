@@ -1,6 +1,9 @@
 import os
 import shutil
+import subprocess
 import tempfile
+import time
+from contextlib import suppress
 from pathlib import Path
 
 import cadquery as cq
@@ -64,18 +67,30 @@ class CADVisualizer:
         self.__setup_headless_rendering()
 
     def __setup_headless_rendering(self) -> None:
-        # RTX 4090 optimized settings - use EGL for direct GPU acceleration
+        # Cluster-optimized settings for RTX 4090 with Xvfb
         os.environ.update(
             {
                 "PYOPENGL_PLATFORM": "egl",
-                "EGL_PLATFORM": "device",
+                "DISPLAY": ":99",
                 "MESA_GL_VERSION_OVERRIDE": "4.6",
                 "MESA_GLSL_VERSION_OVERRIDE": "460",
+                "EGL_PLATFORM": "surfaceless",
                 "__GL_SYNC_TO_VBLANK": "0",
                 "__GL_YIELD": "NOTHING",
                 "PYTHONHASHSEED": "0",
             }
         )
+
+        # Start Xvfb for headless rendering
+        subprocess.run(["pkill", "-f", "Xvfb"], check=False, capture_output=True)
+        subprocess.Popen(
+            ["Xvfb", ":99", "-screen", "0", "1920x1080x24", "-ac", "+extension", "GLX", "+render", "-noreset"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        # Give Xvfb time to start
+        time.sleep(0.5)
 
         OpenGL.ERROR_CHECKING = OpenGL.ERROR_LOGGING = OpenGL.FULL_LOGGING = False
 
@@ -86,10 +101,8 @@ class CADVisualizer:
     def __del__(self):
         """Cleanup renderer on object destruction"""
         if self.__renderer:
-            try:
+            with suppress(TypeError, AttributeError):
                 self.__renderer.delete()
-            except (TypeError, AttributeError):
-                pass  # Ignore errors during cleanup
 
     def __cq_solid_to_trimesh(self, solid, cache_key=None) -> trimesh.Trimesh:
         # Check cache first
