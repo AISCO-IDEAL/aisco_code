@@ -10,10 +10,6 @@ from OCP.BRepClass3d import BRepClass3d_SolidClassifier
 from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
-    load_general_config,
-    load_specific_config,
-)
 
 
 class SDFfromCadQuery:
@@ -28,26 +24,32 @@ class SDFfromCadQuery:
 
     def __init__(
         self,
-        shape: cq.Solid,
+        shape: cq.Solid | list[cq.Solid],
         training_config: dict,
     ):
         self.__shape = shape
         self.__pointgrid = self.__pointgrid_geni(training_config)
-        self.__negativ = (
-            cq.Workplane("XY")
-            .box(100000, 100000, 100000, centered=True)
-            .cut(cq.Workplane().newObject([self.__shape]))
-            .val()
-        )
-        self.__negativ = cast(cq.Shape, self.__negativ).wrapped
-        self.__sdf_at_pointgrid = [self.sdf(x, y, z) for x, y, z in self.__pointgrid]
-
-        if min(self.__sdf_at_pointgrid) > -1:
+        self.__plural = type(shape) is list[cq.Solid]
+        if self.__plural:
+            l = len(shape) if isinstance(shape, list) else 0  # noqa: E741
+            self.__sdfs = []
+            for x in shape:
+                self.__sdfs.append(SDFfromCadQuery(shape=cast(cq.Solid, x), training_config=training_config))
             self.__sdf_at_pointgrid = [
-                self.sdf2(x, y, z) for x, y, z in self.__pointgrid
+                min(self.__sdfs[i].sdf_at_pointgrid()[j] for i in range(l))
+                for j in range(len(self.__pointgrid))  # From all shapes take the minimum SDF at each point
             ]
-        if min(self.__sdf_at_pointgrid) > -1:
-            print("SDF from cq.Solid conversion Problem")
+        else:
+            self.__negativ = (
+                cq.Workplane("XY").box(100000, 100000, 100000, centered=True).cut(cq.Workplane().newObject([self.__shape])).val()
+            )
+            self.__negativ = cast(cq.Shape, self.__negativ).wrapped
+            self.__sdf_at_pointgrid = [self.__sdf(x, y, z) for x, y, z in self.__pointgrid]
+
+            if min(self.__sdf_at_pointgrid) > -1:
+                self.__sdf_at_pointgrid = [self.__sdf2(x, y, z) for x, y, z in self.__pointgrid]
+            if min(self.__sdf_at_pointgrid) > -1:
+                print("SDF from cq.Solid conversion Problem")
 
     def __pointgrid_geni(self, training_config) -> list[list[float]]:
         # load pointgrid params
@@ -73,7 +75,7 @@ class SDFfromCadQuery:
             for z in range(ranges[2][0], ranges[2][1], steps[2])
         ]
 
-    def sdf(self, x: float, y: float, z: float) -> float:
+    def __sdf(self, x: float, y: float, z: float) -> float:
         # assumes self.__shape is a CadQuery Shape wrapping a closed solid
         shape = self.__shape.wrapped
 
@@ -99,7 +101,7 @@ class SDFfromCadQuery:
         else:
             return d
 
-    def sdf2(self, x: float, y: float, z: float) -> float:  # old but gold?
+    def __sdf2(self, x: float, y: float, z: float) -> float:  # old but gold?
         # calculates the signed distance form point (x, y, z) to the CadQuery shape boints inside the shape are negative
         pnt = gp_Pnt(x, y, z)
         vertex = BRepBuilderAPI_MakeVertex(pnt).Vertex()
@@ -114,7 +116,6 @@ class SDFfromCadQuery:
             dist_shape_shape = BRepExtrema_DistShapeShape(vertex, self.__negativ)
             dist_shape_shape.Perform()
             d = -dist_shape_shape.Value()
-            # print(f"Point ({x}, {y}, {z}) is inside the shape, SDF value: {d}")
         return d
 
     def sdf_at_pointgrid(self) -> list[float]:
@@ -124,4 +125,10 @@ class SDFfromCadQuery:
         return self.__pointgrid
 
     def volume(self) -> float:
-        return self.__shape.Volume()
+        if self.__plural:
+            vol = 0.0
+            for sdf in self.__sdfs:
+                vol += sdf.volume()
+            return vol
+        else:
+            return self.__shape.Volume()
