@@ -12,6 +12,7 @@ import cadquery as cq
 import numpy as np
 import pybullet as p
 from cadquery import exporters
+from ocp_vscode import show
 
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly
 from subprojects.wp2_assembler.version2.utils import Speed_hump  # Added helper import
@@ -19,6 +20,7 @@ from subprojects.wp2_assembler.version2.utils.animation_speed_hump import animat
 from subprojects.wp2_assembler.version2.utils.Speed_hump import (
     create_speed_hump_and_floor,
 )
+
 
 
 def get_speed_hump_total_length() -> float:
@@ -51,6 +53,81 @@ def assembly_obj_to_shape(asm_obj: Any) -> cq.Shape:
         raise TypeError(f"Cannot export object type {type(base_obj)} for {asm_obj.name}")
 
     return shape.located(asm_obj.loc) if getattr(asm_obj, "loc", None) else shape
+
+def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
+    """Return a CadQuery shape regardless of whether a Workplane or Assembly was provided."""
+    if isinstance(obj, cq.Assembly):
+        return obj.toCompound()
+    if isinstance(obj, cq.Workplane):
+        return obj.val()
+    if isinstance(obj, cq.Shape):
+        return obj
+    raise TypeError(f"Unsupported CadQuery object type: {type(obj)!r}")
+
+def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
+
+    """
+    Trims the outer nbz for a specific assembly.
+
+    Args:
+        assembly_number: ID used by call_assembly to fetch the NBZ geometry.
+        pos_array: array of positions of the car
+        orn_array: array of orientations of the car
+
+    Returns:
+         trimmed_outer as CadQuery shape.
+    """
+
+    inner, outer = call_assembly(assembly_number)
+
+    ground_shape = _as_shape(create_speed_hump_and_floor())
+
+    if len(pos_array) != len(orn_array):
+        raise ValueError("Error in trim_outer_nbz: pos_array and orn_array must have the same length")
+
+    i=0
+    for pos, orn in zip(pos_array, orn_array):
+        i+=1
+
+        roll, pitch, yaw = p.getEulerFromQuaternion(orn)
+        roll_deg, pitch_deg, yaw_deg = (
+            math.degrees(roll),
+            math.degrees(pitch),
+            math.degrees(yaw),
+        )
+
+        location = cq.Location(x=pos[0], y=pos[1], z=pos[2], rx= roll_deg, ry= pitch_deg, rz= yaw_deg)
+        
+        outer = outer.cut(ground_shape)
+
+        assembly = cq.Assembly(name="SpeedHumpPreview")
+        assembly.add(
+            ground_shape,
+            name="speed_bump",
+            color=cq.Color(0, 1, 0, 0.4),
+        )
+        assembly.add(
+            outer,
+            name="outer_nbz",
+            loc=location,
+            color=cq.Color(0.7, 0.7, 0.7, 0.15),  # light tint so inner parts stay visible
+        )
+        assembly.add(
+            inner,
+            loc=location,
+            name="inner_nbz",
+            color=cq.Color(0.9, 0.2, 0.2, 0.8),  # solid car geometry for clarity
+        )
+        assembly.mates = []
+
+        
+        
+        if(i == 2500):
+            show(assembly, progress=None)
+            
+
+    trimmed_outer = outer.cut(ground_shape)
+    return trimmed_outer
 
 def export_inner_nbz_parts(
     assembly: cq.Assembly,
@@ -240,9 +317,16 @@ def sim(assembly_number, only_final: bool = False):
 
 
 if __name__ == "__main__":
-    # Example manual run; uncomment to execute.
-    carid = 10
+    # Visualization: show and trim the intersection between ground + speed hump and outer NBZ.
+    # Adjust the ID to any assembly present in your assembly_map.yaml.
+    demo_id = 10
+    print(f"Showing outer NBZ vs speed hump for assembly {demo_id}...")
 
-    pos_array2, orn_array2 = sim(carid)
-    animate(carid, pos_array2, orn_array2)
-    pass
+    # Uncomment to run the PyBullet drop + slide simulation.
+
+    pos_array2, orn_array2 = sim(demo_id)
+
+    # animate(carid, pos_array2, orn_array2)
+
+    trimmed_outer = trim_outer_nbz(demo_id, pos_array2, orn_array2)
+    
