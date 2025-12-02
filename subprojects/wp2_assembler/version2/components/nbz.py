@@ -93,33 +93,31 @@ def inner_nbz2_sym(
     seat = Seat().create_seat()
 
     # Calculate shift vector - shift along x-axis and raise by half the tire diameter
-    shift_vector = cq.Vector(-wheel_base_length / 2, 0, tyre_diameter / 2)
+    shift_vec = cq.Vector(-wheel_base_length / 2, 0, tyre_diameter / 2)
 
-    assembly = (
-        cq.Assembly(triangle_wp, name="triangle", loc=cq.Location(shift_vector))
-        # Add wheels with shift applied
-        .add(
-            wheel,
-            loc=cq.Location(cq.Vector(points[0].x, points[0].y, points[0].z)),
-            name="wheel_1",
-        )
-        .add(
-            wheel,
-            loc=cq.Location(cq.Vector(points[1].x, points[1].y, points[1].z)),
-            name="wheel_2",
-        )
-        .add(
-            wheel,
-            loc=cq.Location(cq.Vector(points[2].x, points[2].y, points[2].z)),
-            name="wheel_3",
-        )
-        .add(
-            seat,
-            loc=cq.Location(
-                cq.Vector(seat_position, 0, -100)
-            ),  # the 500 shall be removed, after correction in seat.py
-            name="Seat",
-        )
+    assembly = cq.Assembly(name="inner_nbz")
+    assembly.add(triangle_wp, name="triangle", loc=cq.Location(shift_vec))
+    assembly.add(
+        wheel,
+        loc=cq.Location(cq.Vector(points[0].x, points[0].y, points[0].z) + shift_vec),
+        name="wheel_1",
+    )
+    assembly.add(
+        wheel,
+        loc=cq.Location(cq.Vector(points[1].x, points[1].y, points[1].z) + shift_vec),
+        name="wheel_2",
+    )
+    assembly.add(
+        wheel,
+        loc=cq.Location(cq.Vector(points[2].x, points[2].y, points[2].z) + shift_vec),
+        name="wheel_3",
+    )
+    assembly.add(
+        seat,
+        loc=cq.Location(
+            cq.Vector(seat_position, 0, -100) + shift_vec
+        ),  # the 500 shall be removed, after correction in seat.py
+        name="Seat",
     )
 
     return assembly
@@ -144,15 +142,20 @@ def generate_assembly() -> str:
     """
     # get ranges for wheelbase from regulations
     wheel_ranges = get_range_wheels()
-    wheel_base_width = uniform_distribution(
-        wheel_ranges["wheel_base_width"][0],
-        wheel_ranges["wheel_base_width"][1],
-        size=1,
+    # generate random wheelbase values within ranges
+    wheel_base_width = float(
+        uniform_distribution(
+            wheel_ranges["wheel_base_width"][0],
+            wheel_ranges["wheel_base_width"][1],
+            size=1,
+        )
     )
-    wheel_base_length = uniform_distribution(
-        wheel_ranges["wheel_base_length"][0],
-        wheel_ranges["wheel_base_length"][1],
-        size=1,
+    wheel_base_length = float(
+        uniform_distribution(
+            wheel_ranges["wheel_base_length"][0],
+            wheel_ranges["wheel_base_length"][1],
+            size=1,
+        )
     )
     # print ranges
     print(
@@ -161,8 +164,12 @@ def generate_assembly() -> str:
 
     # get ranges for seat and position from regulations
     seat_ranges = get_range_seat(wheel_base_width, wheel_base_length)
-    seat_position = uniform_distribution(
-        seat_ranges["seat_position"][0], seat_ranges["seat_position"][1]
+    seat_position = float(
+        uniform_distribution(
+            seat_ranges["seat_position"][0],
+            seat_ranges["seat_position"][1],
+            size=1,
+        )
     )
 
     tyre_diameter = get_regulation("wheel.tire_diameter")
@@ -216,7 +223,7 @@ def save_assembly_parameters(parameters: dict) -> str:
     return str(next_id)
 
 
-def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Assembly]:
+def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
     """
     Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
     Args: id-number
@@ -240,6 +247,9 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Assembly]:
         tyre_diameter=params["tyre_diameter"],
         seat_position=params["seat_position"],
     )
+    # Convert assembly to solid by fusing all shapes
+    compound = assembly.toCompound()
+    inner_solid = cq.Solid(compound.wrapped)
 
     box_width = get_regulation("no_build_zones.outer_prism.width")
     box_height = get_regulation("no_build_zones.outer_prism.height")
