@@ -61,49 +61,30 @@ class CADVisualizer:
         self.__setup_headless_rendering()
 
     def __setup_headless_rendering(self) -> None:
-        env = {
-            "PYOPENGL_PLATFORM": "osmesa",
-            "DISPLAY": ":99",
-            "MESA_GL_VERSION_OVERRIDE": "3.3",
-            "MESA_GLSL_VERSION_OVERRIDE": "330",
-            "LIBGL_ALWAYS_SOFTWARE": "1",
-            "GALLIUM_DRIVER": "llvmpipe",
-            "MESA_LOADER_DRIVER_OVERRIDE": "llvmpipe",
-            "EGL_PLATFORM": "surfaceless",
-            "MESA_GLAPI_NO_REMAP": "1",
-            "PYTHONHASHSEED": "0",
-        }
-        os.environ.update(env)
+        os.environ.update(
+            {
+                "PYOPENGL_PLATFORM": "egl",
+                "DISPLAY": ":99",
+                "MESA_GL_VERSION_OVERRIDE": "3.3",
+                "MESA_GLSL_VERSION_OVERRIDE": "330",
+                "LIBGL_ALWAYS_SOFTWARE": "1",
+                "GALLIUM_DRIVER": "llvmpipe",
+                "MESA_LOADER_DRIVER_OVERRIDE": "llvmpipe",
+                "EGL_PLATFORM": "surfaceless",
+                "MESA_GLAPI_NO_REMAP": "1",
+                "PYTHONHASHSEED": "0",
+            }
+        )
 
         subprocess.run(["pkill", "-f", "Xvfb"], check=False, capture_output=True)
         subprocess.Popen(
-            [
-                "Xvfb",
-                ":99",
-                "-screen",
-                "0",
-                "1024x768x24",
-                "-ac",
-                "+extension",
-                "GLX",
-                "+render",
-                "-noreset",
-                "-nolisten",
-                "tcp",
-                "-dpi",
-                "96",
-            ],
+            ["Xvfb", ":99", "-screen", "0", "1024x768x24", "-ac", "+extension", "GLX", "+render", "-noreset"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
 
-        OpenGL.ERROR_CHECKING = False
-        OpenGL.ERROR_LOGGING = False
-        OpenGL.FULL_LOGGING = False
-
-        os.environ["PYOPENGL_PLATFORM"] = "egl"
-        r = pyrender.OffscreenRenderer(1, 1)
-        r.delete()
+        OpenGL.ERROR_CHECKING = OpenGL.ERROR_LOGGING = OpenGL.FULL_LOGGING = False
+        pyrender.OffscreenRenderer(1, 1).delete()
 
     def __cq_solid_to_trimesh(self, solid) -> trimesh.Trimesh:
         with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
