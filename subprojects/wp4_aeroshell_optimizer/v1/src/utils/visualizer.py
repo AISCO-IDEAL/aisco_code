@@ -86,7 +86,10 @@ class CADVisualizer:
     def __del__(self):
         """Cleanup renderer on object destruction"""
         if self.__renderer:
-            self.__renderer.delete()
+            try:
+                self.__renderer.delete()
+            except (TypeError, AttributeError):
+                pass  # Ignore errors during cleanup
 
     def __cq_solid_to_trimesh(self, solid, cache_key=None) -> trimesh.Trimesh:
         # Check cache first
@@ -178,11 +181,18 @@ class CADVisualizer:
             )
 
     def __setup_camera_and_lighting(self, scene, radius) -> None:
+        # Ensure radius is valid and set minimum distance
+        radius = max(radius, 0.1)  # Prevent zero or very small radius
         d = radius * self.__camera_distance_factor
+
+        # Ensure znear and zfar are valid
+        znear = max(0.001, d * 0.01)
+        zfar = max(znear * 2, d * 20.0)  # Ensure zfar > znear
+
         cam = pyrender.PerspectiveCamera(
             yfov=np.deg2rad(self.__camera_fov_degrees),
-            znear=max(0.001, d * 0.01),
-            zfar=d * 20.0,
+            znear=znear,
+            zfar=zfar,
         )
 
         # Apply azimuth and tilt transformations
