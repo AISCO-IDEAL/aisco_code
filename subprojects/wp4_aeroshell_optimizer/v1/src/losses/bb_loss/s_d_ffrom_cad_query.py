@@ -24,16 +24,21 @@ class SDFfromCadQuery:
 
     def __init__(
         self,
-        shape: cq.Solid | list[cq.Solid],
         training_config: dict,
+        shape: cq.Solid | None = None,
+        shape_list: list[cq.Solid] | None = None,
     ):
+        if shape is None and shape_list is None:
+            raise ValueError("Either shape or shape_list must be provided.")  # noqa: TRY003
+        if shape is not None and shape_list is not None:
+            raise ValueError("Only one of shape or shape_list must be provided.")  # noqa: TRY003
         self.__shape = shape
+        self.__shape_list = shape_list
         self.__pointgrid = self.__pointgrid_geni(training_config)
-        self.__plural = type(shape) is list[cq.Solid]
-        if self.__plural:
-            l = len(shape) if isinstance(shape, list) else 0  # noqa: E741
+        if self.__shape is None:
+            l = len(self.__shape_list) if self.__shape_list is not None else 0  # noqa: E741
             self.__sdfs = []
-            for x in shape:
+            for x in self.__shape_list or []:
                 self.__sdfs.append(SDFfromCadQuery(shape=cast(cq.Solid, x), training_config=training_config))
             self.__sdf_at_pointgrid = [
                 min(self.__sdfs[i].sdf_at_pointgrid()[j] for i in range(l))
@@ -41,7 +46,10 @@ class SDFfromCadQuery:
             ]
         else:
             self.__negativ = (
-                cq.Workplane("XY").box(100000, 100000, 100000, centered=True).cut(cq.Workplane().newObject([self.__shape])).val()
+                cq.Workplane("XY")
+                .box(100000, 100000, 100000, centered=True)
+                .cut(cq.Workplane().newObject([cast(cq.Shape, self.__shape)]))
+                .val()
             )
             self.__negativ = cast(cq.Shape, self.__negativ).wrapped
             self.__sdf_at_pointgrid = [self.__sdf(x, y, z) for x, y, z in self.__pointgrid]
@@ -125,7 +133,7 @@ class SDFfromCadQuery:
         return self.__pointgrid
 
     def volume(self) -> float:
-        if self.__plural:
+        if self.__shape is None:
             vol = 0.0
             for sdf in self.__sdfs:
                 vol += sdf.volume()
