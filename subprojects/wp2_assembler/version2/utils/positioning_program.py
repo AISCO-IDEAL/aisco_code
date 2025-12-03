@@ -21,7 +21,49 @@ from subprojects.wp2_assembler.version2.utils.Speed_hump import (
     create_speed_hump_and_floor,
 )
 
+def safe_extract_solid(shape):
+    """Return the first solid inside a CadQuery shape or None if empty."""
+    if shape is None:
+        return None
+    try:
+        solids = list(shape.Solids())
+    except:
+        return None
+    if len(solids) == 0:
+        return None
+    if len(solids) != 1:
+        raise Exception("Error in safe extract solid, in positioning program")
+    
+    return solids[0]   # always pick the main solid
 
+def safe_fuse(a, b):
+    """Fuse two solids with complete null-protection."""
+    # guard 1: either side is None
+    if a is None and b is None:
+        return None
+    if a is None:
+        return b
+    if b is None:
+        return a
+
+    # guard 2: extract solids
+    a_sol = safe_extract_solid(a)
+    b_sol = safe_extract_solid(b)
+
+    if a_sol is None and b_sol is None:
+        return None
+    if a_sol is None:
+        return b_sol
+    if b_sol is None:
+        return a_sol
+
+    # guard 3: run fuse safely
+    try:
+        fused = a_sol.fuse(b_sol)
+        return safe_extract_solid(fused)   # ensure result is valid
+    except:
+        # if OCC dies, just return a_sol (best effort)
+        return a_sol
 
 def get_speed_hump_total_length() -> float:
     """Return the total speed hump length from regulations (mm).  # Added helper"""
@@ -85,48 +127,101 @@ def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     if len(pos_array) != len(orn_array):
         raise ValueError("Error in trim_outer_nbz: pos_array and orn_array must have the same length")
 
+
+    '''
+    trimmed_outer = outer
+    knife = [ground_shape]
+    for i in range(400):
+        loc = cq.Location(x=i*10-200, y=0, z=0, rx= 0, ry= 0, rz= 0)
+        neg_loc = cq.Location(x=-0, y=0, z=0, rx= 0, ry= 0, rz= 0)
+        trimmed_outer = trimmed_outer.located(loc)
+        knife.append(trimmed_outer.intersect(ground_shape).located(loc))
+        if(i%10==0):
+            print(i)
+
+    trimmed_outer = outer
+    for i in knife:
+        trimmed_outer=trimmed_outer.cut(i)
+    '''
+   
     i=0
+    knife = []
+    moved_outer = outer
+    l = len(pos_array)
+
     for pos, orn in zip(pos_array, orn_array):
         i+=1
+        if(i%10==0):
+            roll, pitch, yaw = p.getEulerFromQuaternion(orn)
+            roll_deg, pitch_deg, yaw_deg = (
+                math.degrees(roll),
+                math.degrees(pitch),
+                math.degrees(yaw),
+            )
+            r = 1
+            location = cq.Location(x=round(pos[0], r), y=round(pos[1], r), z=round(pos[2], r), rx= round(roll_deg, r), ry= round(pitch_deg, r), rz= round(yaw_deg, r))
 
-        roll, pitch, yaw = p.getEulerFromQuaternion(orn)
-        roll_deg, pitch_deg, yaw_deg = (
-            math.degrees(roll),
-            math.degrees(pitch),
-            math.degrees(yaw),
-        )
+            moved_outer=moved_outer.located(location)
 
-        location = cq.Location(x=pos[0], y=pos[1], z=pos[2], rx= roll_deg, ry= pitch_deg, rz= yaw_deg)
-        
-        outer = outer.cut(ground_shape)
+            knife.append(moved_outer.intersect(ground_shape).located(location))
 
-        assembly = cq.Assembly(name="SpeedHumpPreview")
-        assembly.add(
-            ground_shape,
-            name="speed_bump",
-            color=cq.Color(0, 1, 0, 0.4),
-        )
-        assembly.add(
-            outer,
-            name="outer_nbz",
-            loc=location,
-            color=cq.Color(0.7, 0.7, 0.7, 0.15),  # light tint so inner parts stay visible
-        )
-        assembly.add(
-            inner,
-            loc=location,
-            name="inner_nbz",
-            color=cq.Color(0.9, 0.2, 0.2, 0.8),  # solid car geometry for clarity
-        )
-        assembly.mates = []
+            if(i%100==0):
+                print(i, l)
 
-        
-        
-        if(i == 2500):
-            show(assembly, progress=None)
-            
+    #input("Continue? ")
+    trimmed_outer = outer
+    a=0
 
-    trimmed_outer = outer.cut(ground_shape)
+    #for i in knife:
+        #show(i)
+    
+    print("To compund")
+    combined_compound = cq.Compound.makeCompound(knife)
+    show(combined_compound)
+
+    input("simple? ")
+
+    simple_tunnel = combined_compound.clean()
+    show(simple_tunnel)
+    input("fuse? ")
+
+    
+    fused_tunnel = knife[0]
+
+    # Loop through the rest and add them one by one
+    a = 0
+    for shape in knife[1:]:
+        a+=1
+        fused_tunnel = fused_tunnel.fuse(shape, tol=0.1)
+        if(a%10 == 0):
+            print(a,len(knife))
+            show(fused_tunnel)
+    
+    show(fused_tunnel)
+
+    input("Continue? ")
+
+    final_outer = trimmed_outer.cut(combined_compound)
+    show(final_outer)
+    
+    input("Continue? ")
+
+    for i in knife:
+        pass
+
+    for i in knife:
+        a+=1
+        try:
+            trimmed_outer=trimmed_outer.cut(i)
+        except:
+            print("error at a:", a)
+        if(a%10==0):
+            print(a, len(knife))
+            show(trimmed_outer, i)
+
+    input("Continue? ")
+    show(trimmed_outer)
+
     return trimmed_outer
 
 def export_inner_nbz_parts(
