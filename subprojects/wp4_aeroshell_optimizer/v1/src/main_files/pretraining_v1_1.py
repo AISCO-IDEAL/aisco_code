@@ -4,7 +4,7 @@ import torch
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.ground_truth_masks.simple_geoms import sphere_gt
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_general_config
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 
 
 def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
@@ -12,7 +12,7 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
     Dynamically loads the model architecture based on the configuration file.
     I.e. imports only from the relevant file, not all the models
     """
-    config = load_general_config(cfg_name=config_name)  # still not great
+    config = load_config(cfg_name=config_name)  # still not great
     model_name = config["model"]  # dynamically import the model module
     model_file_name = config["model_filename"]  # file where the model is located
     module = importlib.import_module("subprojects.wp4_aeroshell_optimizer.v1.src.models." + model_file_name)
@@ -26,7 +26,7 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
 def pretraining(model: BaseModel = None, pretraining_config_name: str = "pretraining_v0_config.yaml"):
     # Does pretraining, for now only on a sphere
 
-    config = load_general_config(v="v1", cfg_name=pretraining_config_name)
+    config = load_config(v="v1", cfg_name=pretraining_config_name)
     # Try to use GPU if available
     device = "cuda" if torch.cuda.is_available() else "cpu"
 

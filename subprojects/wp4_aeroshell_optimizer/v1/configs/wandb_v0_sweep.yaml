@@ -1,6 +1,4 @@
 # wandb_v0_config.yaml
-general_info:
-  config_debugging: "True"
 command:
   - ${env}
   - python3

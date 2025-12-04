@@ -11,7 +11,7 @@ import trimesh
 import wandb
 
 # NOTE: You can remove all hardcoded loss imports (like BbLoss1, SolarLoss, etc.)
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_general_config, load_specific_config
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 
@@ -19,8 +19,8 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisua
 class TotalLoss:
     def __init__(self, dev: str = "cuda") -> None:
         # set up configs
-        self.__general_config = load_general_config()
-        self.losses_config = load_specific_config(
+        self.__general_config = load_config()
+        self.losses_config = load_config(
             v=self.__general_config["general_info"]["version"],
             cfg_name=self.__general_config["active_configs"]["losses"],
         )

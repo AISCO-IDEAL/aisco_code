@@ -4,7 +4,7 @@ import torch
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_general_config
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import dynamic_type_loading
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data, fetch_pretrained_model
@@ -21,8 +21,8 @@ import wandb
 def main(verbose: bool = True) -> None:
     # Get general config
 
-    general_config = load_general_config(v="v1", cfg_name="general_config.yaml")
-    model_config = load_general_config(v="v1", cfg_name=general_config["active_configs"]["model_params"])
+    general_config = load_config(v="v1", cfg_name="general_config.yaml")
+    model_config = load_config(v="v1", cfg_name=general_config["active_configs"]["model_params"])
     if verbose:
         print("Successfully loaded general and model config")
 
@@ -69,7 +69,7 @@ def main(verbose: bool = True) -> None:
         )
 
     # Start optimisation
-    training_config = load_general_config(v="v1", cfg_name=general_config["active_configs"].get("training", None))
+    training_config = load_config(v="v1", cfg_name=general_config["active_configs"].get("training", None))
 
     # Check if model still is on device after pretraining
     model = model.to(device)

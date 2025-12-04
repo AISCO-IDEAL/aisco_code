@@ -10,7 +10,7 @@ Overwrite the following methods:
 
 import torch
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_general_config, load_specific_config
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import get_points
 
 
@@ -24,9 +24,9 @@ class ParentLoss:
     ) -> None:
         # general initialisation
         self.device = device
-        self.general_config = load_general_config()
+        self.general_config = load_config()
         self.losses_config = losses_config
-        self.training_config = load_specific_config(
+        self.training_config = load_config(
             v=self.general_config["general_info"].get("version", "v1"),
             cfg_name=self.general_config["active_configs"]["training"],
         )
