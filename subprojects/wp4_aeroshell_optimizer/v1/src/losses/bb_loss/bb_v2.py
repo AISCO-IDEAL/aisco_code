@@ -2,7 +2,7 @@ import cadquery as cq
 import torch
 
 from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.cadquery_to_sdf import (
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.s_d_ffrom_cad_query import (
     SDFfromCadQuery,
 )
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss

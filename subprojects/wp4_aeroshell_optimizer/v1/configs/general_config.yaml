@@ -2,16 +2,19 @@ general_info:
   username: "eschaerer"
   version: "v1"
   device: "cuda"
-  model: "SDFNetwork"
-  model_Expl: "an SDF Network with torch Neural Network"
   pre: "a sphere as initial shape, datatype: SDF"
   post: "a PLY file representing the optimized aeroshell shape"
+
+model_def:
+  model_name: "BasicMLP"
+  model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/basic_MLP_v1"
+
 
 active_configs:
   losses: "losses_v0_config.yaml"
   pretraining: "pretraining_v0_config.yaml"
   training: "training_v0_config.yaml"
-  model: "basic_MLP_v1.yaml"
+  model_params: "basic_MLP_v1.yaml"
   wandb: "wandb_v0_sweep.yaml"
 
 wandb_general:
@@ -22,9 +25,11 @@ wandb_general:
   rendering_frequency: 5
   use_sweep: 0
 
-Storage_paths:
-  model_dir: "wp4_aeroshell_optimizer/data/test_models"
-  mesh_dir: "wp4_aeroshell_optimizer/data/test_meshes"
+storage_paths: # Don't change stuff if you don't know what you're doing. Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
+  pretrained_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset"
+  storage_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+  model_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/models"
+  mesh_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/meshes"
 
 # master example of how to reference other config files:
 #     def __pointgrid_geni(self) -> list[list[float]]:

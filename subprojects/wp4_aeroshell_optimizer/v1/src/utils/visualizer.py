@@ -2,6 +2,8 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
+from pathlib import Path
 
 import cadquery as cq
 import imageio.v2 as imageio
@@ -12,6 +14,12 @@ import trimesh
 from pyrender import RenderFlags
 
 from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
+
+# Constants for numerical thresholds
+_MIN_EDGE_LENGTH = 1e-6
+_MIN_VECTOR_NORM = 1e-12
+_CAMERA_ALIGNMENT_THRESHOLD = 0.9
+_OPACITY_THRESHOLD = 0.99
 
 
 class CADVisualizer:
@@ -25,30 +33,15 @@ class CADVisualizer:
         max_attempts=100,
     ) -> None:
         self.__image_size = (1200, 900)
-        self.__bg_color = (255, 255, 255, 0)
         self.__scale_factor = 0.001
-        self.__additional_scale = 2.0
-        self.__mesh_tolerance = 0.1
-        self.__angular_tolerance = 1
 
-        self.__camera_distance_factor = 1.5
+        self.__camera_distance_factor = 1
         self.__camera_fov_degrees = 65.0
         self.__camera_tilt_down_degrees = -50.0
         self.__camera_azimuth_degrees = 0.0
         self.__camera_position_factors = (1, 1, 1)
 
-        self.__ambient_intensity = 0.3
-        self.__key_light_intensity = 5.0
-        self.__fill_light_intensity = 2.0
-
-        self.__metallic_factor = 0.0
-        self.__roughness_factor = 0.5
-
-        self.__edge_color = (0.0, 0.0, 0.0, 1.0)
         self.__edge_radius = 0.002
-
-        self.__display_port = ":99"
-        self.__xvfb_screen_size = "1024x768x24"
 
         self.__blue_threshold = 0.1
         self.__min_blue_ratio = 0.001
@@ -66,53 +59,66 @@ class CADVisualizer:
         self.__out_image_path = out_image_path
         self.__max_attempts = max_attempts
 
-        self.__setup_headless_rendering()
+        # Track Xvfb process for cleanup
+        self.__xvfb_process: subprocess.Popen | None = None
 
-    def __setup_headless_rendering(self) -> None:
-        env = {
-            "PYOPENGL_PLATFORM": "osmesa",
-            "DISPLAY": self.__display_port,
-            "MESA_GL_VERSION_OVERRIDE": "3.3",
-            "MESA_GLSL_VERSION_OVERRIDE": "330",
-            "LIBGL_ALWAYS_SOFTWARE": "1",
-            "GALLIUM_DRIVER": "llvmpipe",
-            "MESA_LOADER_DRIVER_OVERRIDE": "llvmpipe",
-            "EGL_PLATFORM": "surfaceless",
-            "MESA_GLAPI_NO_REMAP": "1",
-            "PYTHONHASHSEED": "0",
-        }
-        for k, v in env.items():
-            os.environ[k] = v
+    def __setup_rendering_environment(self) -> None:
+        """Setup rendering environment - called fresh for each render"""
+        # Cleanup previous Xvfb if exists
+        if self.__xvfb_process:
+            try:
+                self.__xvfb_process.terminate()
+                self.__xvfb_process.wait(timeout=1)
+            except:  # noqa: E722
+                pass
 
+        # Kill any existing Xvfb processes
         subprocess.run(["pkill", "-f", "Xvfb"], check=False, capture_output=True)
-        subprocess.Popen(
-            [
-                "Xvfb",
-                self.__display_port,
-                "-screen",
-                "0",
-                self.__xvfb_screen_size,
-                "-ac",
-                "+extension",
-                "GLX",
-                "+render",
-                "-noreset",
-                "-nolisten",
-                "tcp",
-                "-dpi",
-                "96",
-            ],
+        time.sleep(0.1)
+
+        # Cluster-optimized settings for RTX 4090 with Xvfb
+        os.environ.update(
+            {
+                "PYOPENGL_PLATFORM": "egl",
+                "DISPLAY": ":99",
+                "MESA_GL_VERSION_OVERRIDE": "4.6",
+                "MESA_GLSL_VERSION_OVERRIDE": "460",
+                "EGL_PLATFORM": "surfaceless",
+                "__GL_SYNC_TO_VBLANK": "0",
+                "__GL_YIELD": "NOTHING",
+                "PYTHONHASHSEED": "0",
+            }
+        )
+
+        # Start fresh Xvfb for headless rendering
+        self.__xvfb_process = subprocess.Popen(
+            ["Xvfb", ":99", "-screen", "0", "1920x1080x24", "-ac", "+extension", "GLX", "+render", "-noreset"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
 
-        OpenGL.ERROR_CHECKING = False
-        OpenGL.ERROR_LOGGING = False
-        OpenGL.FULL_LOGGING = False
+        # Give Xvfb time to start
+        time.sleep(0.5)
 
-        os.environ["PYOPENGL_PLATFORM"] = "egl"
-        r = pyrender.OffscreenRenderer(1, 1)
-        r.delete()
+        OpenGL.ERROR_CHECKING = OpenGL.ERROR_LOGGING = OpenGL.FULL_LOGGING = False
+
+    def __del__(self) -> None:
+        """Cleanup Xvfb process on object destruction"""
+        try:
+            if self.__xvfb_process:
+                try:
+                    self.__xvfb_process.terminate()
+                    self.__xvfb_process.wait(timeout=2)
+                except:  # noqa: E722
+                    pass
+
+            # Final cleanup of any lingering Xvfb processes
+            try:
+                subprocess.run(["pkill", "-f", "Xvfb"], check=False, capture_output=True, timeout=2)
+            except:  # noqa: E722
+                pass
+        except:  # noqa: E722
+            pass
 
     def __cq_solid_to_trimesh(self, solid) -> trimesh.Trimesh:
         with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
@@ -120,64 +126,68 @@ class CADVisualizer:
         cq.exporters.export(
             cq.Workplane().add(solid),
             path,
-            tolerance=self.__mesh_tolerance,
-            angularTolerance=self.__angular_tolerance,
+            tolerance=0.1,
+            angularTolerance=1,
         )
+        mesh = self.__load_mesh(path, "stl")
+        Path(path).unlink()  # Clean up temp file immediately
+        assert mesh is not None, "Failed to load mesh from CQ solid"
 
-        tm = trimesh.load(path, file_type="stl")
-        if isinstance(tm, trimesh.Scene):
-            tm = trimesh.util.concatenate(tuple(tm.geometry.values()))
+        return mesh
+
+    def __load_mesh(self, path, file_type) -> trimesh.Trimesh | None:
+        loaded = trimesh.load(path, file_type=file_type, process=False)
+        if isinstance(loaded, trimesh.Scene):
+            geoms = tuple(loaded.geometry.values())
+            tm: trimesh.Trimesh = trimesh.util.concatenate(geoms)
+        elif isinstance(loaded, trimesh.Trimesh):
+            tm = loaded
+        else:
+            return None
+
+        # Minimal processing for speed
+        tm.remove_infinite_values()
+        tm.remove_unreferenced_vertices()
+        if len(tm.faces) > 0:
+            trimesh.repair.fix_normals(tm, multibody=False)
+
         return tm
 
-    def __load_mesh(self, path, file_type):
-        max_retries = 3
-        for _ in range(max_retries):
-            tm = trimesh.load(path, file_type=file_type)
-            if isinstance(tm, trimesh.Scene):
-                tm = trimesh.util.concatenate(tuple(tm.geometry.values()))
-            tm.remove_infinite_values()
-            tm.remove_unreferenced_vertices()
-            if len(tm.faces) > 0:
-                trimesh.repair.fix_inversion(tm)
-                trimesh.repair.fix_normals(tm)
-                tm.process(validate=True)
-                if (
-                    not getattr(tm, "face_normals", None) is not None
-                    or len(tm.face_normals) == 0
-                ):
-                    tm.fix_normals()
-            return tm
-
     def __add_edges_to_scene(self, scene, mesh) -> None:
-        edges = mesh.edges_unique
-        vs = mesh.vertices[edges]
-        for e in vs:
-            a, b = e
-            v = b - a
-            l = np.linalg.norm(v)  # noqa: E741
-            if l <= 1e-6:  # noqa: PLR2004
-                continue
-            cyl = trimesh.creation.cylinder(
-                radius=self.__edge_radius, height=l, sections=8
-            )
-            z = np.array([0, 0, 1])
-            u = v / l
-            if not (np.allclose(u, z) or np.allclose(u, -z)):
+        # Batch edge creation for better performance
+        edges_unique = mesh.edges_unique
+        vertices = mesh.vertices
+
+        # Pre-allocate arrays
+        edge_vectors = vertices[edges_unique[:, 1]] - vertices[edges_unique[:, 0]]
+        edge_lengths = np.linalg.norm(edge_vectors, axis=1)
+        valid_edges = edge_lengths > _MIN_EDGE_LENGTH
+
+        for idx in np.where(valid_edges)[0]:
+            a, b = vertices[edges_unique[idx]]
+            v = edge_vectors[idx]
+            length = edge_lengths[idx]
+
+            cyl = trimesh.creation.cylinder(radius=self.__edge_radius, height=length, sections=6)
+            z, u = np.array([0, 0, 1]), v / length
+
+            if np.allclose(u, -z):
+                r = trimesh.transformations.rotation_matrix(np.pi, [1, 0, 0])
+            elif not np.allclose(u, z):
                 axis = np.cross(z, u)
                 axis /= np.linalg.norm(axis)
                 ang = np.arccos(np.clip(np.dot(z, u), -1, 1))
                 r = trimesh.transformations.rotation_matrix(ang, axis)
-            elif np.allclose(u, -z):
-                r = trimesh.transformations.rotation_matrix(np.pi, [1, 0, 0])
             else:
                 r = np.eye(4)
+
             r[:3, 3] = (a + b) / 2
             cyl.apply_transform(r)
             scene.add(
                 pyrender.Mesh.from_trimesh(
                     cyl,
                     material=pyrender.MetallicRoughnessMaterial(
-                        baseColorFactor=self.__edge_color,
+                        baseColorFactor=(0.0, 0.0, 0.0, 1.0),
                         metallicFactor=0.0,
                         roughnessFactor=1.0,
                     ),
@@ -185,124 +195,104 @@ class CADVisualizer:
             )
 
     def __setup_camera_and_lighting(self, scene, radius) -> None:
+        # Ensure radius is valid and set minimum distance
+        radius = max(radius, 0.1)  # Prevent zero or very small radius
         d = radius * self.__camera_distance_factor
+
+        # Ensure znear and zfar are valid
+        znear = max(0.001, d * 0.01)
+        zfar = max(znear * 2, d * 20.0)  # Ensure zfar > znear
+
         cam = pyrender.PerspectiveCamera(
             yfov=np.deg2rad(self.__camera_fov_degrees),
-            znear=max(0.001, d * 0.01),
-            zfar=d * 20.0,
-        )
-        ex, ey, ez = (
-            d * self.__camera_position_factors[0],
-            d * self.__camera_position_factors[1],
-            d * self.__camera_position_factors[2],
+            znear=znear,
+            zfar=zfar,
         )
 
+        # Apply azimuth and tilt transformations
+        ex, ey, ez = (d * f for f in self.__camera_position_factors)
         az = np.deg2rad(self.__camera_azimuth_degrees)
         c, s = np.cos(az), np.sin(az)
         exr, eyr = ex * c - ey * s, ex * s + ey * c
-
         tilt = np.deg2rad(-self.__camera_tilt_down_degrees)
         ct, st = np.cos(tilt), np.sin(tilt)
-        exf = exr * ct - ez * st
-        ezf = exr * st + ez * ct
+        eye = np.array([exr * ct - ez * st, eyr, exr * st + ez * ct])
 
-        eye = np.array([exf, eyr, ezf])
-        tgt = np.array([0.0, 0.0, 0.0])
-
-        def look_at(eye, target, up=np.array([0, 0, 1.0])):
-            f = target - eye
-            fn = np.linalg.norm(f)
-            f /= fn
-            u = up / np.linalg.norm(up)
-            s = np.cross(f, u)
+        # Look-at matrix
+        f = -eye / np.linalg.norm(eye)
+        up = np.array([0, 0, 1.0])
+        s = np.cross(f, up)
+        sn = np.linalg.norm(s)
+        if sn < _MIN_VECTOR_NORM:
+            up = np.array([1, 0, 0]) if abs(f[0]) < _CAMERA_ALIGNMENT_THRESHOLD else np.array([0, 1, 0])
+            s = np.cross(f, up)
             sn = np.linalg.norm(s)
-            if sn < 1e-12:  # noqa: PLR2004
-                up = np.array([1, 0, 0]) if abs(f[0]) < 0.9 else np.array([0, 1, 0])  # noqa: PLR2004
-                u = up / np.linalg.norm(up)
-                s = np.cross(f, u)
-                sn = np.linalg.norm(s)
-            s /= sn
-            u = np.cross(s, f)
-            m = np.eye(4)
-            m[0, :3], m[1, :3], m[2, :3] = s, u, -f
-            m[:3, 3] = eye
-            return m
+        s /= sn
+        u = np.cross(s, f)
+        pose = np.eye(4)
+        pose[0, :3], pose[1, :3], pose[2, :3] = s, u, -f
+        pose[:3, 3] = eye
 
-        pose = look_at(eye, tgt)
         scene.add(cam, pose=pose)
+        scene.add(pyrender.DirectionalLight(intensity=5.0), pose=pose)
 
-        key = pyrender.DirectionalLight(intensity=self.__key_light_intensity)
-        scene.add(key, pose=pose)
-
-        center = np.array([0.0, 0.0, 0.0])
+        # Add fill lights
         for dvec in [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]:
             p = np.eye(4)
-            p[:3, 3] = center + np.array(dvec) * d * 0.5
-            scene.add(
-                pyrender.DirectionalLight(intensity=self.__fill_light_intensity),
-                pose=p,
-            )
+            p[:3, 3] = np.array(dvec) * d * 0.5
+            scene.add(pyrender.DirectionalLight(intensity=2.0), pose=p)
 
-    def __render(self, out_image_path: str) -> tuple[str | bool, bool]:
-        meshes, types = (
-            [
-                self.__cq_solid_to_trimesh(self.__solid_a),
-                self.__cq_solid_to_trimesh(self.__solid_b),
-            ],
-            ["solid_a", "solid_b"],
-        )
+    def __render(self, out_image_path: str) -> tuple[str, bool]:
+        # Setup fresh rendering environment for each render attempt
+        self.__setup_rendering_environment()
 
-        if self.__ply_path and os.path.exists(self.__ply_path):  # noqa: PTH110
-            meshes.append(self.__load_mesh(self.__ply_path, "ply"))
-            types.append("ply")
-        if self.__stl_path and os.path.exists(self.__stl_path):  # noqa: PTH110
-            meshes.append(self.__load_mesh(self.__stl_path, "stl"))
-            types.append("stl")
+        # Load meshes fresh each time to avoid state from previous attempts
+        meshes = [
+            self.__cq_solid_to_trimesh(self.__solid_a),
+            self.__cq_solid_to_trimesh(self.__solid_b),
+        ]
+        types = ["solid_a", "solid_b"]
 
+        if self.__ply_path and Path(self.__ply_path).exists():
+            loaded_mesh = self.__load_mesh(self.__ply_path, "ply")
+            if loaded_mesh:
+                meshes.append(loaded_mesh)
+                types.append("ply")
+        if self.__stl_path and Path(self.__stl_path).exists():
+            loaded_mesh = self.__load_mesh(self.__stl_path, "stl")
+            if loaded_mesh:
+                meshes.append(loaded_mesh)
+                types.append("stl")
+
+        # Vectorized scaling and centering
         for m in meshes:
             m.vertices *= self.__scale_factor
-
-        allv = np.vstack([m.vertices for m in meshes])
-        center = np.mean(allv, axis=0)
+        all_vertices = np.vstack([m.vertices for m in meshes])
+        center = np.mean(all_vertices, axis=0)
         for m in meshes:
             m.vertices -= center
-            m.vertices *= self.__additional_scale
 
-        combo = trimesh.util.concatenate(meshes)
-        ext = combo.extents
-        radius = np.linalg.norm(ext) / 2.0
+        radius = np.linalg.norm(trimesh.util.concatenate(meshes).extents) / 2.0
 
+        # Sort meshes: opaque first, then transparent by distance
         data = list(zip(meshes, self.__colors, self.__show_edges, types, strict=False))
-
-        opaque = [(m, c, e, t) for m, c, e, t in data if c[3] >= 0.99]  # noqa: PLR2004
-        transp = [(m, c, e, t) for m, c, e, t in data if c[3] < 0.99]  # noqa: PLR2004
-
+        opaque = [(m, c, e, t) for m, c, e, t in data if c[3] >= _OPACITY_THRESHOLD]
+        transp = [(m, c, e, t) for m, c, e, t in data if c[3] < _OPACITY_THRESHOLD]
         cam_pos = np.array([0, 0, radius * self.__camera_distance_factor])
+        transp.sort(key=lambda x: float(-np.linalg.norm(np.mean(x[0].vertices, axis=0) - cam_pos)))
 
-        def dist(x):
-            m, _, _, _ = x
-            return np.linalg.norm(np.mean(m.vertices, axis=0) - cam_pos)
-
-        transp.sort(key=dist, reverse=True)
-        ordered = opaque + transp
-
-        w, h = self.__image_size
-        pyrender_success = False
-        color = None
-
-        os.environ["PYOPENGL_PLATFORM"] = "egl"
-
+        # Build scene
         scene = pyrender.Scene(
-            bg_color=np.array(self.__bg_color, dtype=np.uint8),
-            ambient_light=np.ones(3) * self.__ambient_intensity,
+            bg_color=np.array((255, 255, 255, 0), dtype=np.uint8),
+            ambient_light=np.ones(3) * 0.3,
         )
 
-        for m, col, edge, _ in ordered:
+        for m, col, edge, _ in opaque + transp:
             mat = pyrender.MetallicRoughnessMaterial(
                 baseColorFactor=col,
-                metallicFactor=self.__metallic_factor,
-                roughnessFactor=self.__roughness_factor,
-                alphaMode="OPAQUE" if col[3] >= 0.99 else "BLEND",  # noqa: PLR2004
+                metallicFactor=0.0,
+                roughnessFactor=0.5,
+                alphaMode="OPAQUE" if col[3] >= _OPACITY_THRESHOLD else "BLEND",
                 doubleSided=True,
                 alphaCutoff=0.01,
             )
@@ -312,60 +302,49 @@ class CADVisualizer:
 
         self.__setup_camera_and_lighting(scene, radius)
 
+        # Create fresh renderer for each render to avoid EGL context issues
+        w, h = self.__image_size
         renderer = pyrender.OffscreenRenderer(w, h)
         color, _ = renderer.render(scene, flags=RenderFlags.RGBA)
         renderer.delete()
-        pyrender_success = True
 
-        if pyrender_success and color is not None:
-            os.makedirs(os.path.dirname(out_image_path), exist_ok=True)  # noqa: PTH120, PTH103
-            imageio.imwrite(out_image_path, color)
-            return out_image_path, True
-        return False, False
+        Path(out_image_path).parent.mkdir(parents=True, exist_ok=True)
+        imageio.imwrite(out_image_path, color)
+        return out_image_path, True
 
     def __has_blue_color(self, image_path) -> bool:
-        img = imageio.imread(image_path)
-        img = np.asarray(img.astype(np.float32) / 255.0, dtype=np.ndarray)
+        img = imageio.imread(image_path).astype(np.float32) / 255.0
+        # Vectorized operations for faster blue detection
         b, r, g = img[:, :, 2], img[:, :, 0], img[:, :, 1]
-        blue_dom = (b > self.__blue_threshold) & (b > (r + g) / 2)
-        ratio = blue_dom.sum() / b.size
-        return ratio >= self.__min_blue_ratio
+        blue_dom = (b > self.__blue_threshold) & (b > (r + g) * 0.5)
+        return bool(np.mean(blue_dom) >= self.__min_blue_ratio)
 
     def render_until_blue_detected(self) -> tuple[str, bool, int]:
-        attempts = 0
-        last_ok = False
-        while attempts < self.__max_attempts:
-            attempts += 1
-            base, ext = os.path.splitext(self.__out_image_path)  # noqa: PTH122
-            cur = f"{base}_attempt_{attempts}{ext}"
+        for attempts in range(1, self.__max_attempts + 1):
+            p = Path(self.__out_image_path)
+            cur = f"{p.parent / p.stem}_attempt_{attempts}{p.suffix}"
             _, ok = self.__render(out_image_path=cur)
-            last_ok = ok
-            has_blue = self.__has_blue_color(cur)
-            if has_blue:
+
+            if self.__has_blue_color(cur):
                 shutil.copy2(cur, self.__out_image_path)
-                os.remove(cur)  # noqa: PTH107
+                Path(cur).unlink()
                 return self.__out_image_path, ok, attempts
-            else:
-                os.remove(cur)  # noqa: PTH107
-        return self.__out_image_path, last_ok, attempts
+            Path(cur).unlink()
+
+        return self.__out_image_path, ok, self.__max_attempts
 
 
 if __name__ == "__main__":
     username = "clhuber"
-    visualizer = CADVisualizer(
-        ply_path=f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh1.ply",
-        out_image_path=f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply1.png",
-    )
-    out = visualizer.render_until_blue_detected()
+    base_path = f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data"
 
-    visualizer = CADVisualizer(
-        ply_path=f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh.ply",
-        out_image_path=f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply.png",
-    )
-    out = visualizer.render_until_blue_detected()
-
-    visualizer = CADVisualizer(
-        ply_path=f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Meshes/mesh_g.ply",
-        out_image_path=f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/Renders/render_ply2.png",
-    )
-    out = visualizer.render_until_blue_detected()
+    for mesh_name, render_name in [
+        ("mesh1.ply", "render_ply1.png"),
+        ("mesh.ply", "render_ply.png"),
+        ("mesh_g.ply", "render_ply2.png"),
+    ]:
+        visualizer = CADVisualizer(
+            ply_path=f"{base_path}/Meshes/{mesh_name}",
+            out_image_path=f"{base_path}/Renders/{render_name}",
+        )
+        visualizer.render_until_blue_detected()

@@ -148,6 +148,7 @@ def kaolin_to_PLY(
     save_mesh: bool = True,
     filename: str = "loading_test.ply",
     mesh_dir: str = None,  # Default to None, not a space
+    verbose: bool = True,
 ):
     """
     Pre: Vertices and Faces generated from kaolin library functions (e.g. flexicubes or marching tetrahedra)
@@ -166,7 +167,8 @@ def kaolin_to_PLY(
         else:
             filepath = filename
         mesh.export(filepath)
-        print(f"Mesh saved to {filepath}")
+        if verbose:
+            print(f"Mesh saved to {filepath}")
         return mesh
     return mesh
 
