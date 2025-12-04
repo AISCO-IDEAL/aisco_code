@@ -140,5 +140,4 @@ class TotalLoss:
                     image_path.unlink()
 
         return total_loss
-
         return total_loss
