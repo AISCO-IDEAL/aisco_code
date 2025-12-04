@@ -4,6 +4,7 @@ general_info:
   device: "cuda"
   pre: "a sphere as initial shape, datatype: SDF"
   post: "a PLY file representing the optimized aeroshell shape"
+  config_debugging: "True" # adds print statements if config loading is succesfull
 
 model_def:
   model_name: "BasicMLP"
@@ -25,7 +26,7 @@ wandb_general:
   rendering_frequency: 5
   use_sweep: 0
 
-storage_paths: # Don't change stuff if you don't know what you're doing. Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
+storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
   pretrained_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset"
   storage_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
   model_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/models"
