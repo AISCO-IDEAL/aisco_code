@@ -10,8 +10,6 @@ def load_config(v="v1", cfg_name="general_config.yaml") -> dict:
     try:
         with config_path.open() as f:
             config = yaml.safe_load(f)
-            if config["general_info"].get("config_debugging") == "True":
-                print(f"✓ Configuration loaded from {config_path}")
         return config
     except FileNotFoundError:
         raise FileNotFoundError(f"Configuration file not found at {config_path}")
