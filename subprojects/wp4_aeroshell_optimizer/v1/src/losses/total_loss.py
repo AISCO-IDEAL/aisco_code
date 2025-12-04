@@ -54,8 +54,8 @@ class TotalLoss:
     def get_total_loss(self, model, epoch_name: int = -1) -> torch.Tensor:
         # Calculate the individual Losses
         individual_losses = {}
-        total_loss = torch.tensor(0.0, device=list(model.parameters())[0].device)
-
+        # Initialize total_loss as a sum of all loss tensors (not in-place)
+        loss_tensors = []
         # TODO: add config for individual losses (e.g. flexicubes resolution)
 
         # 1. Calculate and sum up the active losses dynamically
@@ -63,12 +63,13 @@ class TotalLoss:
             # Get the loss value (which should be a weighted value if done inside the loss)
             # NOTE: This assumes the loss instances have a .get_loss(model) method.
             current_loss: torch.Tensor = loss_instance.get_loss(model)
-
-            # Add to total loss
-            total_loss += current_loss
+            loss_tensors.append(current_loss)
 
             # Store for logging
             individual_losses[loss_name] = current_loss.item()
+
+        # Sum all loss tensors in a differentiable way
+        total_loss = torch.sum(torch.stack(loss_tensors))
 
         # Add the total loss to the logging dictionary
         individual_losses["total_loss"] = total_loss.item()
