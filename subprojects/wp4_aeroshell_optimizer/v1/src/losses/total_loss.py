@@ -88,7 +88,7 @@ class TotalLoss:
         # Calculate the individual Losses
         individual_losses = {}
         total_loss = torch.tensor(0.0, device=next(iter(model.parameters())).device)
-
+        loss_tensors = []
         # TODO: add config for individual losses (e.g. flexicubes resolution)
 
         # 1. Calculate and sum up the active losses dynamically
@@ -138,5 +138,7 @@ class TotalLoss:
                 if image_path.exists():
                     wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
                     image_path.unlink()
+
+        return total_loss
 
         return total_loss

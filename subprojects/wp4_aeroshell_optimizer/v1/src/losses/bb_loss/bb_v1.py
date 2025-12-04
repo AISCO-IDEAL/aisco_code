@@ -2,9 +2,7 @@ import cadquery as cq
 import torch
 
 from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.s_d_ffrom_cad_query import (
-    SDFfromCadQuery,
-)
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.s_d_ffrom_cad_query import SDFfromCadQuery
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
 
 
@@ -16,13 +14,9 @@ class BbV1(ParentLoss):
             random_magnitude_seat=0.0,
             random_magnitude_wheels=0.0,
         )
-        self.__inner_SDF: SDFfromCadQuery = SDFfromCadQuery(
-            inner_box, self.training_config
-        )
+        self.__inner_SDF: SDFfromCadQuery = SDFfromCadQuery(shape=inner_box, training_config=self.training_config)
         outer_box: cq.Solid = outerNBZ()
-        self.__outer_SDF: SDFfromCadQuery = SDFfromCadQuery(
-            outer_box, self.training_config
-        )
+        self.__outer_SDF: SDFfromCadQuery = SDFfromCadQuery(shape=outer_box, training_config=self.training_config)
         self.__pointgrid: list[list[float]] = self.__inner_SDF.pointgrid()
         self.__inner_sdf_values: list[float] = self.__inner_SDF.sdf_at_pointgrid()
         self.__outer_sdf_values: list[float] = self.__outer_SDF.sdf_at_pointgrid()
@@ -42,17 +36,13 @@ class BbV1(ParentLoss):
         Loss = mean( relu(sdf_model - sdf_inner) + relu(sdf_outer - sdf_model) )
         """
         with torch.enable_grad():
-            P = torch.tensor(
-                self.__pointgrid, dtype=torch.float32, device=self.device
-            )  # [N,3]
+            P = torch.tensor(self.__pointgrid, dtype=torch.float32, device=self.device)  # [N,3]
             sdf_inner_t = torch.as_tensor(
                 self.__inner_sdf_values,
                 dtype=torch.float32,
                 device=self.device,
             )  # [N]
-            sdf_outer_t = torch.as_tensor(
-                self.__outer_sdf_values, dtype=torch.float32, device=self.device
-            )  # [N]
+            sdf_outer_t = torch.as_tensor(self.__outer_sdf_values, dtype=torch.float32, device=self.device)  # [N]
 
             # Batch forward
             output = model(P)
@@ -68,4 +58,11 @@ class BbV1(ParentLoss):
             lower_violation = torch.relu(sdf_outer_t - sdf_pred)
 
             loss = (upper_violation + lower_violation).mean() ** 0.5
+            return loss
+            return loss
+            loss = (upper_violation + lower_violation).mean() ** 0.5
+            return loss
+            return loss
+            loss = (upper_violation + lower_violation).mean() ** 0.5
+            return loss
             return loss

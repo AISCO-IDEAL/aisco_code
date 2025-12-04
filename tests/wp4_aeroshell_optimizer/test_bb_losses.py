@@ -14,7 +14,7 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     # Training loop
-    num_epochs = 10
+    num_epochs = 2
     for epoch in range(num_epochs):
         optimizer.zero_grad()
         loss = lossm.get_total_loss(model)
@@ -22,5 +22,6 @@ if __name__ == "__main__":
         loss.backward()
         optimizer.step()
 
+        print(f"Epoch {epoch}, Bounding Box Loss: {loss.item()}")
         print(f"Epoch {epoch}, Bounding Box Loss: {loss.item()}")
         print(f"Epoch {epoch}, Bounding Box Loss: {loss.item()}")

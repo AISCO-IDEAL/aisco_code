@@ -1,4 +1,7 @@
 #Here put the config for model pretraining
+general_info:
+  config_debugging: "True"
+
 pretraining:
   use_pretrained: True # True or False possible
   pretraining_model_path: "subprojects/wp4_aeroshell_optimizer/data/test_models/xyz" # must be .pth file compatible with model_vxy, doesn't do anything atm

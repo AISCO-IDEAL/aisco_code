@@ -9,10 +9,8 @@ Overwrite the following methods:
 """
 
 import torch
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
-    load_general_config,
-    load_specific_config,
-)
+
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_general_config, load_specific_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import get_points
 
 
@@ -29,7 +27,7 @@ class ParentLoss:
         self.general_config = load_general_config()
         self.losses_config = losses_config
         self.training_config = load_specific_config(
-            v=self.general_config["general_info"]["version"],
+            v=self.general_config["general_info"].get("version", "v1"),
             cfg_name=self.general_config["active_configs"]["training"],
         )
 
@@ -45,9 +43,7 @@ class ParentLoss:
             return
 
         # Initialise points if eikonal or smoothness loss
-        if loss_name and (
-            "eikonal" in loss_name.lower() or "smoothness" in loss_name.lower()
-        ):
+        if loss_name and ("eikonal" in loss_name.lower() or "smoothness" in loss_name.lower()):
             self.points = get_points(
                 num_points=self.losses_config["get_points_params"]["num_points"],
                 bbox_size=self.losses_config["get_points_params"]["bbox_size"],
@@ -63,6 +59,12 @@ class ParentLoss:
             return torch.tensor(0.0, device=self.device)
         else:
             return self._loss(model) * self.__weight[1]
+
+    def _loss(self, model) -> torch.Tensor:
+        return torch.tensor(0.0, device=self.device)
+
+    def _loss(self, model) -> torch.Tensor:
+        return torch.tensor(0.0, device=self.device)
 
     def _loss(self, model) -> torch.Tensor:
         return torch.tensor(0.0, device=self.device)
