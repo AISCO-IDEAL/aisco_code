@@ -223,11 +223,11 @@ def save_assembly_parameters(parameters: dict) -> str:
     return str(next_id)
 
 
-def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
+def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid]:
     """
     Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
     Args: id-number
-    Returns: cadquery Assembly
+    Returns: tuple with cadquery Assembly of inner nbz and cadquery solid with outer nbz.
     """
     config_path = Path(__file__).parent.parent / "config" / "assembly_map.yaml"
 
@@ -256,7 +256,7 @@ def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
 
     outer = outer_nbz2(params["wheel_base_length"] * 2.2, box_width, box_height)
 
-    return assembly, outer
+    return assembly, outer                          #This would return -> tuple[cq.Assembly, cq.Solid]
 
 
 def get_range_wheels() -> dict:
@@ -308,6 +308,8 @@ def get_range_wheels() -> dict:
 
 
 def get_range_seat(wheelbase_width: float, wheelbase_length: float) -> dict:
+
+
     """
     After wheelbase is generated, get ranges for seat and position from regulations
     Args: regulations.yaml
@@ -338,3 +340,15 @@ def get_range_seat(wheelbase_width: float, wheelbase_length: float) -> dict:
         ),  # mm
     }
     return ranges
+
+
+def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
+    """
+    Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
+
+    Args: id-number
+
+    Returns:  tuple with list[inner solids] and outer solid
+    """
+    inner, outer = call_assembly(id_number)
+    return inner.toCompound().Solids(), outer

@@ -67,10 +67,7 @@ from subprojects.wp2_assembler.version2.components import nbz
 from subprojects.wp2_assembler.version2.utils.reg_imp import get_regulation
 
 # Generate or retrieve an assembly by ID
-inner_nbz, outer_nbz = nbz.call_assembly(id_number=1)
-
-# Generate a new random assembly (saved to assembly_map.yaml)
-nbz.generate_assembly()
+inner_nbz, outer_nbz = nbz.call_assembly_solids(id_number=1)
 
 # Access regulation values
 tire_width = get_regulation("wheel.tire_width")  # Returns 96
