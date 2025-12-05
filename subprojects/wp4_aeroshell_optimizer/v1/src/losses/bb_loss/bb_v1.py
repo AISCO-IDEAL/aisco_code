@@ -17,11 +17,11 @@ class BbV1(ParentLoss):
             random_magnitude_wheels=0.0,
         )
         self.__inner_SDF: SDFfromCadQuery = SDFfromCadQuery(
-            inner_box, self.training_config
+            training_config=self.training_config, shape=inner_box 
         )
         outer_box: cq.Solid = outerNBZ()
         self.__outer_SDF: SDFfromCadQuery = SDFfromCadQuery(
-            outer_box, self.training_config
+            shape=outer_box, training_config=self.training_config
         )
         self.__pointgrid: list[list[float]] = self.__inner_SDF.pointgrid()
         self.__inner_sdf_values: list[float] = self.__inner_SDF.sdf_at_pointgrid()
