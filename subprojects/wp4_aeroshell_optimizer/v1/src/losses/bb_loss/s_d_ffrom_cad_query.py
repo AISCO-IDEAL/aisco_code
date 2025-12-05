@@ -145,10 +145,12 @@ class SDFfromCadQuery:
         x_vals = sorted(set([p[0] for p in self.__pointgrid if p[2] == z]))
         y_vals = sorted(set([p[1] for p in self.__pointgrid if p[2] == z]))
         X, Y = np.meshgrid(x_vals, y_vals)
-        Z = np.array([[self.__sdf(x, y, z) for x in x_vals] for y in y_vals])
+        # Create a mapping from coordinates to SDF values
+        sdf_dict = {(p[0], p[1], p[2]): self.__sdf_at_pointgrid[i] for i, p in enumerate(self.__pointgrid)}
+        Z = np.array([[sdf_dict.get((x, y, z), 0.0) for x in x_vals] for y in y_vals])
 
         plt.figure(figsize=(8, 6))
-        contour = plt.contourf(X, Y, Z, levels=50, cmap="RdBu_r")
+        contour = plt.contourf(X, Y, Z, levels=10, cmap="RdBu_r")
         plt.colorbar(contour)
         plt.title(f"SDF Slice at z={z}")
         plt.xlabel("X-axis")
@@ -160,5 +162,5 @@ class SDFfromCadQuery:
 
 if __name__ == "__main__":
     inner_box, outer_box = call_assembly_solids(2)
-    sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 100, "dy": 100, "dz": 100, "rand": 0})
-    sdf_inner.visualizr_slice(z=101)
+    sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 100, "dy": 50, "dz": 100, "rand": 0})
+    sdf_inner.visualizr_slice(z=501)
