@@ -13,7 +13,7 @@ from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
 
-from subprojects.wp2_assembler.version2.components.nbz import call_assembly_solids
+from subprojects.wp2_assembler.version2.components.nbz import bounding_box_of_assembly, call_assembly_solids
 
 
 class SDFfromCadQuery:
@@ -31,19 +31,22 @@ class SDFfromCadQuery:
         pointgrid_config: dict,
         shape: cq.Solid | None = None,
         shape_list: list[cq.Solid] | None = None,
+        assembly_id: int = 1,
     ):
         if shape is None and shape_list is None:
             raise ValueError("Either shape or shape_list must be provided.")  # noqa: TRY003
         if shape is not None and shape_list is not None:
             raise ValueError("Only one of shape or shape_list must be provided.")  # noqa: TRY003
         self.__shape = shape
+        self.__assembly_id = assembly_id
         self.__shape_list = shape_list
         self.__pointgrid = self.__pointgrid_geni(pointgrid_config)
         if self.__shape is None:
             l = len(self.__shape_list) if self.__shape_list is not None else 0  # noqa: E741
             self.__sdfs = []
             for x in self.__shape_list or []:
-                self.__sdfs.append(SDFfromCadQuery(shape=cast(cq.Solid, x), pointgrid_config=pointgrid_config))
+                # Pass shapes directly; no redundant casts
+                self.__sdfs.append(SDFfromCadQuery(shape=x, pointgrid_config=pointgrid_config))
             self.__sdf_at_pointgrid = [
                 min(self.__sdfs[i].sdf_at_pointgrid()[j] for i in range(l))
                 for j in range(len(self.__pointgrid))  # From all shapes take the minimum SDF at each point
@@ -64,6 +67,7 @@ class SDFfromCadQuery:
                 print("SDF from cq.Solid conversion Problem")
 
     def __pointgrid_geni(self, pointgrid_config) -> list[list[float]]:
+        inner_grid_edges = bounding_box_of_assembly(self.__assembly_id)
         dx, dy, dz, rand = (
             pointgrid_config.get("dx"),
             pointgrid_config.get("dy"),
@@ -76,17 +80,53 @@ class SDFfromCadQuery:
             (int(-1150 - rand + dr), int(1150 + rand)),
             (int(-rand + dr), int(1650 + rand)),
         ]
-        steps = (dx, dy, dz)
+        base_steps = (dx, dy, dz)
+        fine_steps = (
+            max(1, int(dx // 2)),
+            max(1, int(dy // 2)),
+            max(1, int(dz // 2)),
+        )
 
-        return [
-            [x, y, z]
-            for x in range(ranges[0][0], ranges[0][1], steps[0])
-            for y in range(ranges[1][0], ranges[1][1], steps[1])
-            for z in range(ranges[2][0], ranges[2][1], steps[2])
-        ]
+        # Unpack inner grid edges: ((x_min, y_min, z_min), (x_max, y_max, z_max))
+        (ix0, iy0, iz0), (ix1, iy1, iz1) = inner_grid_edges
+
+        points: list[list[float]] = []
+        seen = set()
+
+        # Generate coarse grid across entire ranges
+        for x in range(ranges[0][0], ranges[0][1], base_steps[0]):
+            for y in range(ranges[1][0], ranges[1][1], base_steps[1]):
+                for z in range(ranges[2][0], ranges[2][1], base_steps[2]):
+                    # Skip points that fall inside inner box (they'll be covered by fine grid)
+                    if ix0 <= x <= ix1 and iy0 <= y <= iy1 and iz0 <= z <= iz1:
+                        continue
+                    key = (x, y, z)
+                    if key not in seen:
+                        seen.add(key)
+                        points.append([x, y, z])
+
+        # Generate fine grid inside inner box with half step size (2x density per axis => 8x overall)
+        # Clamp fine grid to overall ranges to avoid stepping outside
+        x_start = max(ranges[0][0], int(ix0))
+        x_end = min(ranges[0][1], int(ix1))
+        y_start = max(ranges[1][0], int(iy0))
+        y_end = min(ranges[1][1], int(iy1))
+        z_start = max(ranges[2][0], int(iz0))
+        z_end = min(ranges[2][1], int(iz1))
+
+        for x in range(x_start, x_end, fine_steps[0]):
+            for y in range(y_start, y_end, fine_steps[1]):
+                for z in range(z_start, z_end, fine_steps[2]):
+                    key = (x, y, z)
+                    if key not in seen:
+                        seen.add(key)
+                        points.append([x, y, z])
+
+        return points
 
     def __sdf(self, x: float, y: float, z: float) -> float:
         # assumes self.__shape is a CadQuery Shape wrapping a closed solid
+        assert self.__shape is not None, "Shape must be set when calling __sdf"
         shape = self.__shape.wrapped
 
         # classify sign
@@ -113,6 +153,7 @@ class SDFfromCadQuery:
 
     def __sdf2(self, x: float, y: float, z: float) -> float:  # old but gold?
         # calculates the signed distance form point (x, y, z) to the CadQuery shape boints inside the shape are negative
+        assert self.__shape is not None, "Shape must be set when calling __sdf2"
         pnt = gp_Pnt(x, y, z)
         vertex = BRepBuilderAPI_MakeVertex(pnt).Vertex()
         shape_ocp = self.__shape.wrapped
@@ -164,5 +205,5 @@ class SDFfromCadQuery:
 
 if __name__ == "__main__":
     inner_box, outer_box = call_assembly_solids(2)
-    sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 100, "dy": 50, "dz": 100, "rand": 0})
-    sdf_inner.visualizr_slice(z=501)
+    sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 150, "dy": 150, "dz": 150, "rand": 500})
+    sdf_inner.visualizr_slice(z=601)
