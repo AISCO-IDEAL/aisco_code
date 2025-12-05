@@ -5,13 +5,19 @@ import cadquery as cq
 from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
 
 
-def tracker_box(
+def tracker_box_nbz(
     position: tuple[float, float, float] = (
         get_regulation("tracker_box.def_position.x"),
         get_regulation("tracker_box.def_position.y"),
         get_regulation("tracker_box.def_position.z"),
     ),
 ) -> cq.Workplane:
+    """
+    Generate a cadquery Assembly of the Tracker Box with its cone on top
+    Args: regulations.yaml
+    Outputs: cadquery Assembly
+    """
+
     g_box_len = get_regulation("tracker_box.dimension.length")
     g_box_wid = get_regulation("tracker_box.dimension.width")
     g_box_hei = get_regulation("tracker_box.dimension.height")
@@ -33,3 +39,21 @@ def tracker_box(
     )
 
     return box_w_cone
+
+
+def tracker_cone_nbz() -> cq.Workplane:
+    """
+    Generate only the cone part of the tracker box NBZ
+    Args: regulations.yaml
+    Outputs: cadquery Workplane
+    """
+
+    cone_hei = get_regulation("tracker_box.cone.height")
+    cone_apex_angle = get_regulation("tracker_box.cone.apex_angle")
+    print(f"Creating cone with height {cone_hei} mm and apex angle {cone_apex_angle}°")
+
+    theta = math.radians(cone_apex_angle) / 2.0
+    r = cone_hei * math.tan(theta)
+    cone = cq.Solid.makeCone(0.0, r, cone_hei)
+
+    return cone
