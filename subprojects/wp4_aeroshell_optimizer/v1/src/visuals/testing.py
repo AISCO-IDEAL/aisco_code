@@ -1,10 +1,11 @@
 import math
+import time
 from pathlib import Path
 
 import imageio
 import numpy as np
 import torch
-import time
+
 from subprojects.fixed_renderer import Renderer as NeuralRenderer
 from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
