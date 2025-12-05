@@ -1,3 +1,4 @@
+import math
 import random
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from subprojects.wp2_assembler.version3.components.inner.base_triangle import Tr
 from subprojects.wp2_assembler.version3.components.inner.seat import Seat
 from subprojects.wp2_assembler.version3.components.inner.wheels import Wheels
 from subprojects.wp2_assembler.version3.components.outer.outer_box import outer_box2
+from subprojects.wp2_assembler.version3.components.vision import tracker_box, vision_box
 from subprojects.wp2_assembler.version3.utils.distributions import uniform_distribution
 from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
 
@@ -67,7 +69,8 @@ def inner_nbz_sym(
     wheel_base_width=1000,
     wheel_base_length=2500,
     tyre_diameter=557,
-    seat_position=400,
+    seat_position_x=400,
+    seat_position_z=-100,
 ):
     """
     Deterministic implementation of innerNBZ for version 2
@@ -79,10 +82,18 @@ def inner_nbz_sym(
         shift: shift of the whole assembly along x-axis in mm
     Returns: cq.shape.solid of inner NBZ
     """
+    """
+    Deterministic implementation of innerNBZ for version 2
+    Args: parameters for the inner NBZ
+        wheel_base_width: width of the wheel base in mm
+        wheel_base_length: length of the wheel base in mm
+        tyre_diameter: diameter of the tires in mm
+        seat_position: position of the seat in mm
+        shift: shift of the whole assembly along x-axis in mm
+    Returns: cq.shape.solid of inner NBZ
+    """
     # draw triangle
-    triangle = Triangle().build(
-        wheel_base_length, wheel_base_width
-    )  # triangle as Triangle()
+    triangle = Triangle().build(wheel_base_length, wheel_base_width)  # triangle as Triangle()
     triangle_wp = triangle.construct()  # triangle as cq.workplane
     points = triangle.get_points()
 
@@ -93,31 +104,31 @@ def inner_nbz_sym(
     seat = Seat().create_seat()
 
     # Calculate shift vector - shift along x-axis and raise by half the tire diameter
-    shift_vector = cq.Vector(-wheel_base_length / 2, 0, tyre_diameter / 2)
+    shift_vec = cq.Vector(-wheel_base_length / 2, 0, tyre_diameter / 2)
 
-    assembly = (
-        cq.Assembly(triangle_wp, name="triangle", loc=cq.Location(shift_vector))
-        # Add wheels with shift applied
-        .add(
-            wheel,
-            loc=cq.Location(cq.Vector(points[0].x, points[0].y, points[0].z)),
-            name="wheel_1",
-        )
-        .add(
-            wheel,
-            loc=cq.Location(cq.Vector(points[1].x, points[1].y, points[1].z)),
-            name="wheel_2",
-        )
-        .add(
-            wheel,
-            loc=cq.Location(cq.Vector(points[2].x, points[2].y, points[2].z)),
-            name="wheel_3",
-        )
-        .add(
-            seat,
-            loc=cq.Location(cq.Vector(seat_position, 0, -100)),
-            name="Seat",
-        )
+    assembly = cq.Assembly(name="inner_nbz")
+    assembly.add(triangle_wp, name="triangle", loc=cq.Location(shift_vec))
+    assembly.add(
+        wheel,
+        loc=cq.Location(cq.Vector(points[0].x, points[0].y, points[0].z) + shift_vec),
+        name="wheel_1",
+    )
+    assembly.add(
+        wheel,
+        loc=cq.Location(cq.Vector(points[1].x, points[1].y, points[1].z) + shift_vec),
+        name="wheel_2",
+    )
+    assembly.add(
+        wheel,
+        loc=cq.Location(cq.Vector(points[2].x, points[2].y, points[2].z) + shift_vec),
+        name="wheel_3",
+    )
+    assembly.add(
+        seat,
+        loc=cq.Location(
+            cq.Vector(seat_position_x, 0, seat_position_z) + shift_vec
+        ),  # the 500 shall be removed, after correction in seat.py
+        name="Seat",
     )
 
     return assembly
@@ -132,6 +143,47 @@ def outer_nbz(length: float, width: float, height: float):
 
     box = outer_box2(length, width, height)
     return box
+
+
+def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length) -> list[cq.Solid]:
+    """
+    Generate a cadquery Assembly of the driver's and the tracker's vision NBZ with given parameters from regulations
+    Args: regulations.yaml
+    Outputs: cadquery Assembly
+    """
+    # get parameters from regulations
+    t_box_len = get_regulation("tracker_box.dimension.length")
+    t_box_margin = get_regulation("tracker_box.margin_to_seat")
+    eye_level_z = get_regulation("no_build_zones.vision_box.eye_level_z")
+    rad = get_regulation("seat.dimension.radius_top")
+    neg_angle = math.radians(get_regulation("seat.dimension.minus_angle"))
+
+    # print all parameters from above
+    print(f"Tracker box length: {t_box_len} mm")
+    print(f"Tracker box margin to seat: {t_box_margin} mm")
+    print(f"Eye level Z: {eye_level_z} mm")
+    print(f"Seat radius top: {rad} mm")
+    print(f"Negative angle: {neg_angle} radians")
+
+    # refence point for the tracker box is the backmost point of the seat + margin of 10cm + half length of the box
+    point_ref_t_box = cq.Vector(
+        seat_pos_x - math.sin(neg_angle) * rad - t_box_margin - t_box_len / 2, 0, seat_pos_z + math.cos(neg_angle) * rad
+    )
+    # reference point for the vision box is the eye level of the driver
+    point_ref_v_box = cq.Vector(seat_pos_x, 0, seat_pos_z + eye_level_z)
+
+    # calculate shift vector to move both boxes to origin
+    tyre_diameter = get_regulation("wheel.tire_diameter")
+    shift_vec = cq.Vector(-wheel_base_length / 2, 0, tyre_diameter / 2)
+
+    t_box_cone = tracker_box.tracker_cone_nbz()
+    v_cone = vision_box.vision_driv_nbz()
+
+    vision_assy = cq.Assembly(name="vision_cones_assembly")
+    vision_assy.add(t_box_cone, loc=cq.Location(point_ref_t_box + shift_vec), name="tracker_cone")
+    vision_assy.add(v_cone, loc=cq.Location(point_ref_v_box + shift_vec), name="driver_cone")
+
+    return vision_assy
 
 
 def generate_assembly() -> str:
@@ -238,25 +290,25 @@ def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
     # YAML loads numeric keys as integers, not strings
     if id_number not in assembly_map:
         raise ValueError(f"ID {id_number} not found in assembly map.")  # noqa: TRY003
-
     params = assembly_map[id_number]
+    seat_pos_z = get_regulation("seat.position.z")
 
     assembly = inner_nbz_sym(
-        wheel_base_width=params["wheel_base_width"],
-        wheel_base_length=params["wheel_base_length"],
-        tyre_diameter=params["tyre_diameter"],
-        seat_position=params["seat_position"],
+        params["wheel_base_width"],
+        params["wheel_base_length"],
+        params["tyre_diameter"],
+        params["seat_position"],
+        seat_pos_z,
     )
-    # Convert assembly to solid by fusing all shapes
-    compound = assembly.toCompound()
-    inner_solid = cq.Solid(compound.wrapped)
 
     box_width = get_regulation("no_build_zones.outer_prism.width")
     box_height = get_regulation("no_build_zones.outer_prism.height")
 
     outer = outer_nbz(params["wheel_base_length"] * 2.2, box_width, box_height)
 
-    return assembly, outer
+    vision = vision_nbz(params["seat_position"], seat_pos_z, params["wheel_base_length"])
+
+    return assembly, outer, vision
 
 
 def get_range_wheels() -> dict:
@@ -268,13 +320,9 @@ def get_range_wheels() -> dict:
 
     seat_length = get_regulation("seat.dimension.lr_l")
     seat_width = get_regulation("seat.dimension.width")
-    min_distance = get_regulation(
-        "seat.position.min_distance_to_back_wheel"
-    )  # some margin to the back wheel
+    min_distance = get_regulation("seat.position.min_distance_to_back_wheel")  # some margin to the back wheel
 
-    wheel_ax_marg = get_regulation(
-        "wheel.margin_axial"
-    )  # some margin for the wheels in axial direction
+    wheel_ax_marg = get_regulation("wheel.margin_axial")  # some margin for the wheels in axial direction
     wheel_width = get_regulation("wheel.dimension.width")
     wheel_d = get_regulation("wheel.tire_diameter")
 
@@ -316,13 +364,9 @@ def get_range_seat(wheelbase_width: float, wheelbase_length: float) -> dict:
     # check if wheelbase length is larger than seat length + min distance to back wheel
     seat_length = get_regulation("seat.dimension.lr_l")
     seat_width = get_regulation("seat.dimension.width")
-    min_distance = get_regulation(
-        "seat.position.min_distance_to_back_wheel"
-    )  # some margin to the back wheel
+    min_distance = get_regulation("seat.position.min_distance_to_back_wheel")  # some margin to the back wheel
 
-    wheel_ax_marg = get_regulation(
-        "wheel.margin_axial"
-    )  # some margin for the wheels in axial direction
+    wheel_ax_marg = get_regulation("wheel.margin_axial")  # some margin for the wheels in axial direction
     wheel_width = get_regulation("wheel.dimension.width")
     wheel_d = get_regulation("wheel.tire_diameter")
 

@@ -22,6 +22,7 @@
 # Whitelist specific directories and all child directories
 !subprojects/
 !subprojects/**/
+!subprojects/fixed_renderer/build/**
 !tests/
 !tests/**/
 !.github/
@@ -32,6 +33,12 @@ tests/**/data/
 # Whitelist file types anywhere in the repo
 !**/README.md #
 !**/*.py
+#These 3 for cpython and renderign stuff
+!**/*.cpp
+!**/*.cu
+!**/*.cpython-311-x86_64-linux-gnu.so
+#Needed? check later
+!**/*.linux-x86_64-cpython-311
 !**/*.md
 !**/*.yml
 !**/*.yaml
