@@ -29,9 +29,7 @@ class BbV1(ParentLoss):
             self.__outer_SDF = SDFfromCadQuery(shape=outer_box, pointgrid_config=self.__config["pointgrid_params"])
 
         if self.__assembly_version == 2:
-            inner_box, outer_box = call_assembly_solids(self.assembly_id)
-            assert inner_box is list
-            assert outer_box is cq.Solid
+            inner_box, outer_box = call_assembly_solids(self.__assembly_id)
             self.__inner_SDF = SDFfromCadQuery(shape_list=inner_box, pointgrid_config=self.__config["pointgrid_params"])
             self.__outer_SDF = SDFfromCadQuery(shape=outer_box, pointgrid_config=self.__config["pointgrid_params"])
 
