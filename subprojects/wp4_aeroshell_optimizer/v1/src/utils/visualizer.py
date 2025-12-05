@@ -14,8 +14,8 @@ import trimesh
 from pyrender import RenderFlags
 
 from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly_solids
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 
 # Constants for numerical thresholds
 _MIN_EDGE_LENGTH = 1e-6
@@ -111,7 +111,7 @@ class CADVisualizer:
                     pass
 
             # Final cleanup of any lingering Xvfb processes
-            try:
+            try:  # noqa: SIM105
                 subprocess.run(["pkill", "-f", "Xvfb"], check=False, capture_output=True, timeout=2)
             except:  # noqa: E722
                 pass
@@ -256,19 +256,20 @@ class CADVisualizer:
             v=self.__general_config["general_info"]["version"],
             cfg_name=self.__general_config["active_configs"]["losses"],
         )
-        assembley_version = config.get("bb_config").get("assembly_version")
-        meshes=[]
+        bb_config = config.get("bb_config")
+        assembley_version = bb_config.get("assembly_version") if bb_config else None
+        meshes = []
         types = ["solid_a", "solid_b"]
         if assembley_version == 0:
             meshes = [
                 self.__cq_solid_to_trimesh(innerNBZ()),
                 self.__cq_solid_to_trimesh(outerNBZ()),
             ]
-        if assembley_version ==2:
+        if assembley_version == 2:  # noqa: PLR2004
             inner_box, outer_box = call_assembly_solids(1)
-            meshes =[
+            meshes = [
                 self.__cq_solid_to_trimesh(inner_box),
-                self.__cq_solid_to_trimesh(outer_box)
+                self.__cq_solid_to_trimesh(outer_box),
             ]
 
         if self.__ply_path and Path(self.__ply_path).exists():
