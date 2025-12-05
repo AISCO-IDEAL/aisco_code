@@ -1,5 +1,6 @@
 general_info:
   config_debugging: "True"
+  ALM: "True"  # Augmented Lagrangian Method 
   
 losses: # [compute: bool, weight: float, path: str]
   aero:
