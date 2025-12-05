@@ -7,24 +7,20 @@ from pathlib import Path
 
 import torch
 import trimesh
+
 import wandb
 
 # NOTE: You can remove all hardcoded loss imports (like BbLoss1, SolarLoss, etc.)
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
-    load_general_config,
-    load_specific_config,
-)
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import (
-    get_diff_mesh,
-)
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 
 
 class TotalLoss:
     def __init__(self, dev: str = "cuda") -> None:
         # set up configs
-        self.__general_config = load_general_config()
-        self.losses_config = load_specific_config(
+        self.__general_config = load_config()
+        self.losses_config = load_config(
             v=self.__general_config["general_info"]["version"],
             cfg_name=self.__general_config["active_configs"]["losses"],
         )
@@ -92,20 +88,30 @@ class TotalLoss:
         # Calculate the individual Losses
         individual_losses = {}
         total_loss = torch.tensor(0.0, device=next(iter(model.parameters())).device)
-
+        loss_tensors = []
         # TODO: add config for individual losses (e.g. flexicubes resolution)
-
+        # wandb sweeping config:
+        wandb_sweep_config = self.__general_config.get("active_configs", {}).get("wandb", {})
         # 1. Calculate and sum up the active losses dynamically
         for loss_name, loss_instance in self.__active_losses.items():
             # Get the loss value (which should be a weighted value if done inside the loss)
             # NOTE: This assumes the loss instances have a .get_loss(model) method.
             current_loss: torch.Tensor = loss_instance.get_loss(model)
-
-            # Add to total loss
-            total_loss += current_loss
+            loss_tensors.append(current_loss)
 
             # Store for logging
             individual_losses[loss_name] = current_loss.item()
+
+        # ALM Version: L_A​(x,λ,ρ)= f(x) +λ ⋅ g(x) rho/2 ⋅ g(x)^2
+        # f(x): primary loss (solar and drag)
+        # g(x): constraint loss (bb, eikonal, smoothness)
+        f = loss_tensors[0] + loss_tensors[4]  # solar + drag
+        g = loss_tensors[1] + loss_tensors[2] + loss_tensors[3]  # bb + eikonal + smoothness
+        lambda_ = 10.0
+        # rho = wandb.config.lagrangian_params_rho_bb
+        # alm_loss = f + lambda_ * g + (rho / 2) * (g**2)
+        # Sum all loss tensors in a differentiable way
+        total_loss = torch.sum(torch.stack(loss_tensors))
 
         # Add the total loss to the logging dictionary
         individual_losses["total_loss"] = total_loss.item()

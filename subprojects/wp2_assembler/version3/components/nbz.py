@@ -1,0 +1,340 @@
+import random
+from pathlib import Path
+
+import cadquery as cq
+import yaml
+
+from subprojects.wp2_assembler.version3.components.inner.base_triangle import Triangle
+from subprojects.wp2_assembler.version3.components.inner.seat import Seat
+from subprojects.wp2_assembler.version3.components.inner.wheels import Wheels
+from subprojects.wp2_assembler.version3.components.outer.outer_box import outer_box2
+from subprojects.wp2_assembler.version3.utils.distributions import uniform_distribution
+from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
+
+
+class WheelbaseTooSmallError(Exception):
+    def __init__(self, dim: str):
+        super().__init__(f"Wheelbase {dim} too small")
+
+
+def inner_nbz_sym_rand():
+    """
+    New implementation of innerNBZ for version 2
+    Args: constraints from regulations
+    Returns: cq.shape.solid of inner NBZ shape
+    """
+
+    # draw triangle
+    triangle = Triangle().build()
+    points = Triangle().get_points()
+
+    # add wheels to the corners of the triangle
+    wheels = Wheels()
+    wheel = wheels.create_wheel()
+
+    seat_class = Seat()
+    seat = seat_class.create_seat()
+
+    assembly = (
+        cq.Assembly(triangle, name="triangle")
+        # move to 0,0,0
+        .add(
+            wheel,
+            loc=cq.Location(points[0].x, points[0].y, points[0].z),
+            name="wheel_1",
+        )
+        .add(
+            wheel,
+            loc=cq.Location(points[1].x, points[1].y, points[1].z),
+            name="wheel_2",
+        )
+        .add(
+            wheel,
+            loc=cq.Location(points[2].x, points[2].y, points[2].z),
+            name="wheel_3",
+        )
+        .add(
+            seat,
+            loc=cq.Location(random.randint(0, float(points[2].x)), 0, -100),
+            name="Seat",
+        )
+    )
+
+    return assembly
+
+
+def inner_nbz_sym(
+    wheel_base_width=1000,
+    wheel_base_length=2500,
+    tyre_diameter=557,
+    seat_position=400,
+):
+    """
+    Deterministic implementation of innerNBZ for version 2
+    Args: parameters for the inner NBZ
+        wheel_base_width: width of the wheel base in mm
+        wheel_base_length: length of the wheel base in mm
+        tyre_diameter: diameter of the tires in mm
+        seat_position: position of the seat in mm
+        shift: shift of the whole assembly along x-axis in mm
+    Returns: cq.shape.solid of inner NBZ
+    """
+    # draw triangle
+    triangle = Triangle().build(
+        wheel_base_length, wheel_base_width
+    )  # triangle as Triangle()
+    triangle_wp = triangle.construct()  # triangle as cq.workplane
+    points = triangle.get_points()
+
+    # add wheels to the corners of the triangle
+    tyre_diameter = get_regulation("wheel.tire_diameter")
+    wheel = Wheels().create_wheel(tyre_diameter)
+
+    seat = Seat().create_seat()
+
+    # Calculate shift vector - shift along x-axis and raise by half the tire diameter
+    shift_vector = cq.Vector(-wheel_base_length / 2, 0, tyre_diameter / 2)
+
+    assembly = (
+        cq.Assembly(triangle_wp, name="triangle", loc=cq.Location(shift_vector))
+        # Add wheels with shift applied
+        .add(
+            wheel,
+            loc=cq.Location(cq.Vector(points[0].x, points[0].y, points[0].z)),
+            name="wheel_1",
+        )
+        .add(
+            wheel,
+            loc=cq.Location(cq.Vector(points[1].x, points[1].y, points[1].z)),
+            name="wheel_2",
+        )
+        .add(
+            wheel,
+            loc=cq.Location(cq.Vector(points[2].x, points[2].y, points[2].z)),
+            name="wheel_3",
+        )
+        .add(
+            seat,
+            loc=cq.Location(cq.Vector(seat_position, 0, -100)),
+            name="Seat",
+        )
+    )
+
+    return assembly
+
+
+def outer_nbz(length: float, width: float, height: float):
+    """
+    New implementation of outerNBZ for version 2
+    Args: constraints from regulations
+    Returns: cq.shape.solid of outer NBZ shape
+    """
+
+    box = outer_box2(length, width, height)
+    return box
+
+
+def generate_assembly() -> str:
+    """
+    Generate a cadquery Assembly of the inner NBZ with random parameters within regulation limits - save parameters in millimeters for later use
+    Args: regulations.yaml
+    Outputs: parameters for cadquery assembly into file
+    """
+    # get ranges for wheelbase from regulations
+    wheel_ranges = get_range_wheels()
+    # generate random wheelbase values within ranges
+    wheel_base_width = float(
+        uniform_distribution(
+            wheel_ranges["wheel_base_width"][0],
+            wheel_ranges["wheel_base_width"][1],
+            size=1,
+        )
+    )
+    wheel_base_length = float(
+        uniform_distribution(
+            wheel_ranges["wheel_base_length"][0],
+            wheel_ranges["wheel_base_length"][1],
+            size=1,
+        )
+    )
+    # print ranges
+    print(
+        f"Generated wheelbase - Width: from {wheel_ranges['wheel_base_width'][0]} mm until {wheel_ranges['wheel_base_width'][1]} mm, Length: from {wheel_ranges['wheel_base_length'][0]} mm until {wheel_ranges['wheel_base_length'][1]} mm"
+    )
+
+    # get ranges for seat and position from regulations
+    seat_ranges = get_range_seat(wheel_base_width, wheel_base_length)
+    seat_position = float(
+        uniform_distribution(
+            seat_ranges["seat_position"][0],
+            seat_ranges["seat_position"][1],
+            size=1,
+        )
+    )
+
+    tyre_diameter = get_regulation("wheel.tire_diameter")
+
+    # add assembly to assembly_map with unique id-number
+    # save parameters to file for later use
+
+    # Convert numpy types to native Python types for YAML compatibility
+    parameters = {
+        "wheel_base_width": float(wheel_base_width),
+        "wheel_base_length": float(wheel_base_length),
+        "tyre_diameter": float(tyre_diameter),
+        "seat_position": float(seat_position),
+    }
+
+    # return assembly and id while saving parameters
+    return save_assembly_parameters(parameters)
+
+
+def save_assembly_parameters(parameters: dict) -> str:
+    """
+    Save assembly parameters to assembly_map.yaml with the next available ID.
+
+    Args:
+        parameters: dict with keys like 'wheel_base_width', 'wheel_base_length', etc.
+
+    Returns:
+        str: The ID number assigned (e.g., '042')
+    """
+    config_path = Path(__file__).parent.parent / "config" / "assembly_map.yaml"
+
+    # Read existing data
+    with config_path.open("r") as file:
+        assembly_map = yaml.safe_load(file) or {}  # Handle empty file
+
+    # Get next ID number
+    if assembly_map:
+        # Keys are integers like 1, 2, 3 (YAML interprets 001 as 1)
+        id_numbers = [int(key) for key in assembly_map]
+        next_id = max(id_numbers) + 1
+    else:
+        next_id = 1
+
+    # Add new entry with integer key (YAML will format it appropriately)
+    assembly_map[next_id] = parameters
+
+    # Write back to file
+    with config_path.open("w") as file:
+        yaml.dump(assembly_map, file, default_flow_style=False, sort_keys=False)
+
+    return str(next_id)
+
+
+def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
+    """
+    Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
+    Args: id-number
+    Returns: cadquery Assembly
+    """
+    config_path = Path(__file__).parent.parent / "config" / "assembly_map.yaml"
+
+    # Read existing data
+    with config_path.open("r") as file:
+        assembly_map = yaml.safe_load(file) or {}
+
+    # YAML loads numeric keys as integers, not strings
+    if id_number not in assembly_map:
+        raise ValueError(f"ID {id_number} not found in assembly map.")  # noqa: TRY003
+
+    params = assembly_map[id_number]
+
+    assembly = inner_nbz_sym(
+        wheel_base_width=params["wheel_base_width"],
+        wheel_base_length=params["wheel_base_length"],
+        tyre_diameter=params["tyre_diameter"],
+        seat_position=params["seat_position"],
+    )
+    # Convert assembly to solid by fusing all shapes
+    compound = assembly.toCompound()
+    inner_solid = cq.Solid(compound.wrapped)
+
+    box_width = get_regulation("no_build_zones.outer_prism.width")
+    box_height = get_regulation("no_build_zones.outer_prism.height")
+
+    outer = outer_nbz(params["wheel_base_length"] * 2.2, box_width, box_height)
+
+    return assembly, outer
+
+
+def get_range_wheels() -> dict:
+    """
+    Get ranges for all parameters for wheelbase from regulations
+    Args: regulations.yaml
+    Returns: dict of ranges
+    """
+
+    seat_length = get_regulation("seat.dimension.lr_l")
+    seat_width = get_regulation("seat.dimension.width")
+    min_distance = get_regulation(
+        "seat.position.min_distance_to_back_wheel"
+    )  # some margin to the back wheel
+
+    wheel_ax_marg = get_regulation(
+        "wheel.margin_axial"
+    )  # some margin for the wheels in axial direction
+    wheel_width = get_regulation("wheel.dimension.width")
+    wheel_d = get_regulation("wheel.tire_diameter")
+
+    wb_w_min = seat_width + 2 * wheel_ax_marg + wheel_width
+    wb_w_max = (
+        get_regulation("no_build_zones.outer_prism.width")
+        - get_regulation("wheel.margin_axial")
+        - get_regulation("wheel.tire_width")
+    ) / 2
+    wb_l_min = seat_length + min_distance + wheel_d / 2
+    # take max box dimension and divide by 2.2 to get max wheelbase length then round off to nearest 10
+    wb_l_max = round(get_regulation("no_build_zones.outer_prism.length") / 2.2, -1)
+
+    # ensure min is smaller than max
+    if wb_w_min >= wb_w_max:
+        raise WheelbaseTooSmallError("width_max")
+    if wb_l_min >= wb_l_max:
+        raise WheelbaseTooSmallError("length_max")
+
+    ranges = {
+        "wheel_base_width": (
+            wb_w_min,
+            wb_w_max,
+        ),  # mm
+        "wheel_base_length": (
+            wb_l_min,
+            wb_l_max,
+        ),  # mm
+    }
+    return ranges
+
+
+def get_range_seat(wheelbase_width: float, wheelbase_length: float) -> dict:
+    """
+    After wheelbase is generated, get ranges for seat and position from regulations
+    Args: regulations.yaml
+    Returns: dict of ranges
+    """
+    # check if wheelbase length is larger than seat length + min distance to back wheel
+    seat_length = get_regulation("seat.dimension.lr_l")
+    seat_width = get_regulation("seat.dimension.width")
+    min_distance = get_regulation(
+        "seat.position.min_distance_to_back_wheel"
+    )  # some margin to the back wheel
+
+    wheel_ax_marg = get_regulation(
+        "wheel.margin_axial"
+    )  # some margin for the wheels in axial direction
+    wheel_width = get_regulation("wheel.dimension.width")
+    wheel_d = get_regulation("wheel.tire_diameter")
+
+    if wheelbase_length <= (seat_length + min_distance + wheel_d / 2):
+        raise WheelbaseTooSmallError("length")
+    if wheelbase_width <= (seat_width + 2 * wheel_ax_marg + wheel_width):
+        raise WheelbaseTooSmallError("width")
+
+    ranges = {
+        "seat_position": (
+            min_distance + wheel_d / 2,  # mm places the seat in front of the back wheel
+            wheelbase_length - seat_length + wheel_d / 2,  # mm
+        ),  # mm
+    }
+    return ranges

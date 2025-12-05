@@ -36,7 +36,7 @@ wp2_assembler =[
   "ocp_vscode >= 2.9.0",
   "scipy >= 1.16.0",
   "types-PyYAML >= 6.0.12",  # Type stubs for PyYAML [vdiekmann]
-
+  "pybullet" # For speed hump simulations [fsanche]
 ]
 
 wp3_solar_estimator = [

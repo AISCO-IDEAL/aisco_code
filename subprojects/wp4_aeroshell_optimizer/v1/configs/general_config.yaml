@@ -4,6 +4,7 @@ general_info:
   device: "cuda"
   pre: "a sphere as initial shape, datatype: SDF"
   post: "a PLY file representing the optimized aeroshell shape"
+  config_debugging: "True" # adds print statements if config loading is succesfull
 
 model_def:
   model_name: "BasicMLP"
@@ -19,12 +20,13 @@ active_configs:
 
 wandb_general:
   use_wandb: True
-  project_name: "AISCO WP4 Aeroshell Optimisation"
+  project_name: "Aeroshell Optimiser"
+  entity_name: "aisco"
   track_run: 1
   rendering_frequency: 5
   use_sweep: 0
 
-storage_paths: # Don't change stuff if you don't know what you're doing. Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
+storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
   pretrained_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset"
   storage_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
   model_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/models"
@@ -33,8 +35,8 @@ storage_paths: # Don't change stuff if you don't know what you're doing. Note th
 # master example of how to reference other config files:
 #     def __pointgrid_geni(self) -> list[list[float]]:
 #         # load training config
-#         general_config = load_general_config()
-#         training_config = load_specific_config(
+#         general_config = load_config()
+#         training_config = load_config(
 #             v=general_config["general_info"]["version"],
 #             cfg_name=general_config["active_configs"]["training"],
 #         )
