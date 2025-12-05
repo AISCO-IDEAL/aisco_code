@@ -67,8 +67,8 @@ wheel:
   min_wheel_count: 3
   tire_width: 96            # mm Silvretta tyre width
   tire_diameter: 557        # mm Silvretta tyre radius
-  margin_axial: 50          # mm minimum clearance between tire and NBZ
-  margin_radial: 20         # mm minimum clearance around tire will go outside outer NBZ
+  margin_axial: 0          # mm minimum clearance between tire and NBZ
+  margin_radial: 0         # mm minimum clearance around tire will go outside outer NBZ
 
   base:
     min_length: 2000        # mm
