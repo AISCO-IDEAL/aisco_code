@@ -27,3 +27,13 @@ get_points_params: # used in eikonal and smoothness loss
   bbox_size: 10.0
 
 solar_config: 
+
+bb_config:
+  pointgrid_params:
+    dx: 500
+    dy: 500
+    dz: 500
+    rand: 400
+  
+  assembly_version: 0
+  assembly_id: -1 # -1 for the standard one
