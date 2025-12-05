@@ -202,8 +202,25 @@ class SDFfromCadQuery:
         # save the figure
         plt.savefig(f"/cluster/home/clhuber/immages/sdf_slice_z_{z}.png")
 
+    def plot_pointgrid_slice(self, z: float) -> None:
+        x_vals = sorted({p[0] for p in self.__pointgrid if p[2] == z})
+        y_vals = sorted({p[1] for p in self.__pointgrid if p[2] == z})
+
+        plt.figure(figsize=(8, 6))
+        plt.plot(x_vals, y_vals, "o")  # Simple scatter plot of points
+        plt.title(f"SDF Slice at z={z}")
+        plt.xlabel("X-axis")
+        plt.ylabel("Y-axis")
+        plt.axis("equal")
+        plt.savefig(f"/cluster/home/clhuber/immages/sdf_slice_z_{z}.png")
+
 
 if __name__ == "__main__":
-    inner_box, outer_box = call_assembly_solids(2)
-    sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 150, "dy": 150, "dz": 150, "rand": 500})
-    sdf_inner.visualizr_slice(z=601)
+    if False:
+        inner_box, outer_box = call_assembly_solids(2)
+        sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 100, "dy": 50, "dz": 100, "rand": 0})
+        sdf_inner.visualizr_slice(z=501)
+    if True:
+        inner_box, outer_box = call_assembly_solids(2)
+        sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 200, "dy": 200, "dz": 200, "rand": 0})
+        sdf_inner.plot_pointgrid_slice(z=501)
