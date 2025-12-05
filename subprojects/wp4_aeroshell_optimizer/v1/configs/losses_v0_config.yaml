@@ -31,9 +31,9 @@ solar_config:
 
 bb_config:
   pointgrid_params:
-    dx: 100
-    dy: 50
-    dz: 100
+    dx: 150
+    dy: 150
+    dz: 150
     rand: 400
   
   assembly_version: 2
