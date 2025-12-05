@@ -3,8 +3,10 @@ This Code is written by written by Clemens Huber
 """
 
 from typing import cast
-
+from subprojects.wp2_assembler.version2.components.nbz import call_assembly_solids
 import cadquery as cq
+import matplotlib.pyplot as plt
+import numpy as np
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeVertex
 from OCP.BRepClass3d import BRepClass3d_SolidClassifier
 from OCP.BRepExtrema import BRepExtrema_DistShapeShape
@@ -138,3 +140,25 @@ class SDFfromCadQuery:
             return vol
         else:
             return self.__shape.Volume()
+
+    def visualizr_slice(self, z: float) -> None:
+        x_vals = sorted(set([p[0] for p in self.__pointgrid if p[2] == z]))
+        y_vals = sorted(set([p[1] for p in self.__pointgrid if p[2] == z]))
+        X, Y = np.meshgrid(x_vals, y_vals)
+        Z = np.array([[self.__sdf(x, y, z) for x in x_vals] for y in y_vals])
+
+        plt.figure(figsize=(8, 6))
+        contour = plt.contourf(X, Y, Z, levels=50, cmap="RdBu_r")
+        plt.colorbar(contour)
+        plt.title(f"SDF Slice at z={z}")
+        plt.xlabel("X-axis")
+        plt.ylabel("Y-axis")
+        plt.axis("equal")
+        # save the figure
+        plt.savefig(f"sdf_slice_z_{z}.png")
+
+
+if __name__ == "__main__":
+    inner_box, outer_box = call_assembly_solids(assembly_id=2)
+    sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 100, "dy": 100, "dz": 100, "rand": 0})
+    sdf_inner.visualizr_slice(z=101)
