@@ -19,7 +19,7 @@ class BbV1(ParentLoss):
         self.__outer_SDF: SDFfromCadQuery
 
         if self.__assembly_version == 0:
-            inner_box: cq.Solid = innerNBZ(
+            inner_box = innerNBZ(
                 random_magnitude_chassis=0.0,
                 random_magnitude_seat=0.0,
                 random_magnitude_wheels=0.0,
@@ -28,19 +28,20 @@ class BbV1(ParentLoss):
             outer_box: cq.Solid = outerNBZ()
             self.__outer_SDF = SDFfromCadQuery(shape=outer_box, pointgrid_config=self.__config["pointgrid_params"])
 
-        if self.__assembly_version == 2:
+        if self.__assembly_version == 2:  # noqa: PLR2004
             inner_box, outer_box = call_assembly_solids(self.__assembly_id)
             self.__inner_SDF = SDFfromCadQuery(shape_list=inner_box, pointgrid_config=self.__config["pointgrid_params"])
             self.__outer_SDF = SDFfromCadQuery(shape=outer_box, pointgrid_config=self.__config["pointgrid_params"])
-
 
         self.__pointgrid: list[list[float]] = self.__inner_SDF.pointgrid()
         self.__inner_sdf_values: list[float] = self.__inner_SDF.sdf_at_pointgrid()
         self.__outer_sdf_values: list[float] = self.__outer_SDF.sdf_at_pointgrid()
 
-    def __config_checker(self) ->None:
+    def __config_checker(self) -> None:
         if self.__assembly_version not in self.__valid_assembly_versions:
-            raise ValueError(f"losses config: Assembly Version {self.__assembly_version} either not implemented or not integrated into the Aeroshell Optimiser. Plaease take one of the following Assembly Versions: {self.__valid_assembly_versions}")
+            raise ValueError(  # noqa: TRY003
+                f"losses config: Assembly Version {self.__assembly_version} either not implemented or not integrated into the Aeroshell Optimiser. Plaease take one of the following Assembly Versions: {self.__valid_assembly_versions}"
+            )
 
     def _loss(self, model) -> torch.Tensor:
         """
@@ -57,7 +58,7 @@ class BbV1(ParentLoss):
         Loss = mean( relu(sdf_model - sdf_inner) + relu(sdf_outer - sdf_model) )
         """
         with torch.enable_grad():
-            P = torch.tensor(self.__pointgrid, dtype=torch.float32, device=self.device)  # [N,3]
+            P = torch.tensor(self.__pointgrid, dtype=torch.float32, device=self.device)  # [N,3]  # noqa: N806
             sdf_inner_t = torch.as_tensor(
                 self.__inner_sdf_values,
                 dtype=torch.float32,
@@ -67,10 +68,7 @@ class BbV1(ParentLoss):
 
             # Batch forward
             output = model(P)
-            if isinstance(output, tuple):
-                sdf_pred = output[0]
-            else:
-                sdf_pred = output
+            sdf_pred = output[0] if isinstance(output, tuple) else output
 
             sdf_pred = sdf_pred.squeeze(-1)  # [N]
 
