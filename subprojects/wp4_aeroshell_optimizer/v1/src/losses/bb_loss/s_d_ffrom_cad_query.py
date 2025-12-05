@@ -3,7 +3,7 @@ This Code is written by written by Clemens Huber
 """
 
 from typing import cast
-from subprojects.wp2_assembler.version2.components.nbz import call_assembly_solids
+
 import cadquery as cq
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,6 +12,8 @@ from OCP.BRepClass3d import BRepClass3d_SolidClassifier
 from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
+
+from subprojects.wp2_assembler.version2.components.nbz import call_assembly_solids
 
 
 class SDFfromCadQuery:
@@ -142,12 +144,12 @@ class SDFfromCadQuery:
             return self.__shape.Volume()
 
     def visualizr_slice(self, z: float) -> None:
-        x_vals = sorted(set([p[0] for p in self.__pointgrid if p[2] == z]))
-        y_vals = sorted(set([p[1] for p in self.__pointgrid if p[2] == z]))
-        X, Y = np.meshgrid(x_vals, y_vals)
+        x_vals = sorted({p[0] for p in self.__pointgrid if p[2] == z})
+        y_vals = sorted({p[1] for p in self.__pointgrid if p[2] == z})
+        X, Y = np.meshgrid(x_vals, y_vals)  # noqa: N806
         # Create a mapping from coordinates to SDF values
         sdf_dict = {(p[0], p[1], p[2]): self.__sdf_at_pointgrid[i] for i, p in enumerate(self.__pointgrid)}
-        Z = np.array([[sdf_dict.get((x, y, z), 0.0) for x in x_vals] for y in y_vals])
+        Z = np.array([[sdf_dict.get((x, y, z), 0.0) for x in x_vals] for y in y_vals])  # noqa: N806
 
         plt.figure(figsize=(8, 6))
         contour = plt.contourf(X, Y, Z, levels=10, cmap="RdBu_r")
