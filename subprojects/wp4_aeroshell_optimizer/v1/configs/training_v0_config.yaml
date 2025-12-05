@@ -4,7 +4,7 @@ general_info:
 training_params:
   learning_rate: 0.00005
   batch_size: 4096
-  num_epochs: 30
+  num_epochs: 10
   model_capacity: 256
   num_layers: 8
   skip_connections: [4]
