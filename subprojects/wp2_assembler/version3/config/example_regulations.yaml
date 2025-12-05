@@ -35,19 +35,14 @@ no_build_zones:
     pos_angle: 100           # degrees from x-axis around z-axis in positive direction (right-hand rule)
     neg_angle: 100           # degrees from x-axis around z-axis in negative direction (right-hand rule)
     inner_radius: 1          # mm distance from centerline to start of vision box
+    eye_level_z: 700         # mm from origin of seat - so where the butt of the driver would be
 
 tracker_box:
   dimension:
     length: 120              # mm
     width: 120               # mm
     height: 70               # mm
-  def_position:
-    x: 2000                  # mm from front of outer NBZ
-    y: 0                     # mm from centerline
-    z: 1200                  # mm from ground
-  def_angle:
-    pitch: -20               # degrees around y-axis
-    roll: 0                  # degrees around x-axis
+  margin_to_seat: 100        # mm distance from tracker box to seating position
   cone:
     height: 3000              # mm
     apex_angle: 120           # degrees
@@ -55,6 +50,7 @@ tracker_box:
 seat:
   position:
     min_distance_to_back_wheel: 400   # mm from backwheel to seating position
+    z: -100                           # mm from ground
   dimension:
     width: 450.0            # general width of the seat
     radius_top: 835.0       # radius used to build the backrest
@@ -71,8 +67,8 @@ wheel:
   min_wheel_count: 3
   tire_width: 96            # mm Silvretta tyre width
   tire_diameter: 557        # mm Silvretta tyre radius
-  margin_axial: 50          # mm minimum clearance between tire and NBZ
-  margin_radial: 20         # mm minimum clearance around tire will go outside outer NBZ
+  margin_axial: 0          # mm minimum clearance between tire and NBZ
+  margin_radial: 0         # mm minimum clearance around tire will go outside outer NBZ
 
   base:
     min_length: 2000        # mm
