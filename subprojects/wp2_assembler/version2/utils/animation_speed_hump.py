@@ -3,9 +3,9 @@ from ocp_vscode import Animation, show
 
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly
 from subprojects.wp2_assembler.version2.utils import Speed_hump
-from subprojects.wp2_assembler.version2.utils.Speed_hump import (
-    create_speed_hump_and_floor,
-)
+from subprojects.wp2_assembler.version2.utils.Speed_hump import create_speed_hump_and_floor
+from subprojects.wp2_assembler.version2.utils.positioning_program import sim
+from subprojects.wp2_assembler.version2.utils.positioning_program import invert_transform
 
 
 def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
@@ -60,11 +60,7 @@ def animate(assembly_id, pos_array, orn_array):
     # Build an ocp_vscode Animation and register a translation track for inner_nbz.
     animation = Animation(assembly)
 
-    def _quat_dict(quat):
-        x, y, z, w = quat
-        # ocp_vscode expects Three.js Quaternion-like objects with _x.._w fields
-        return {"_x": x, "_y": y, "_z": z, "_w": w}
-
+    '''
     animation.add_track(f"/{assembly.name}/inner_nbz", "t", times, pos_array)
     animation.add_track(
         f"/{assembly.name}/inner_nbz",
@@ -80,6 +76,23 @@ def animate(assembly_id, pos_array, orn_array):
         times,
         [_quat_dict(q) for q in orn_array],
     )
+    '''
+
+    inv_pos, inv_quat = invert_transform( )
+
+    animation.add_track(f"/{assembly.name}/speed_bump", "t", times, coords)
+    animation.add_track(
+        f"/{assembly.name}/speed_bump",
+        "q",
+        times,
+        [_quat_dict(q) for q in orn_array],
+    )
 
     show(assembly)  # opens the viewer with the initial frame
     animation.animate(1.0)
+
+if __name__ == "__main__":
+
+    demo_id = 10
+    pos_array2, orn_array2 = sim(demo_id)
+    animate(demo_id, pos_array2, orn_array2)
