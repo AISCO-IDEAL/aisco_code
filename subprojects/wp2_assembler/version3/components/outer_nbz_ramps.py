@@ -3,7 +3,7 @@ import cadquery as cq
 import math
 from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
 
-def outer_nbz_ramps(assembly_id) -> tuple(cq.Workplane, cq.Workplane):
+def outer_nbz_ramps(assembly_id) -> tuple[cq.Workplane, cq.Workplane]:
     """
     Returns the approach and departure ramps
     
@@ -54,12 +54,14 @@ def outer_nbz_ramps(assembly_id) -> tuple(cq.Workplane, cq.Workplane):
         .extrude(outer.BoundingBox().ylen)
     )
     
-    return Front,Rear
+    result = outer.cut(Front.val(), Rear.val()).Solids()[0]
 
-
+    return result
 
 if __name__ == "__main__":
     from ocp_vscode import show
-    for demo_id in range(1,50):
-        Front, Rear = outer_nbz_ramps(demo_id)
-        show (Front, Rear)
+    result = outer_nbz_ramps(demo_id)
+    inner, _, _ = call_assembly(demo_id)
+    show (result, inner)
+    print(type(result))
+        

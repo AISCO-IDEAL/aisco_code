@@ -364,9 +364,6 @@ def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float]
     inner, _ = call_assembly(id_number)
     inner_bounding_box = inner.toCompound().BoundingBox()
 
-    from ocp_vscode import show
-
-    show(inner_bounding_box)
     return (
         (inner_bounding_box.xmin,
          inner_bounding_box.ymin,
