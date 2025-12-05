@@ -101,17 +101,18 @@ class TotalLoss:
 
             # Store for logging
             individual_losses[loss_name] = current_loss.item()
-
-        # ALM Version: L_A​(x,λ,ρ)= f(x) +λ ⋅ g(x) rho/2 ⋅ g(x)^2
-        # f(x): primary loss (solar and drag)
-        # g(x): constraint loss (bb, eikonal, smoothness)
-        f = loss_tensors[0] + loss_tensors[4]  # solar + drag
-        g = loss_tensors[1] + loss_tensors[2] + loss_tensors[3]  # bb + eikonal + smoothness
-        lambda_ = 10.0
-        # rho = wandb.config.lagrangian_params_rho_bb
-        # alm_loss = f + lambda_ * g + (rho / 2) * (g**2)
-        # Sum all loss tensors in a differentiable way
-        total_loss = torch.sum(torch.stack(loss_tensors))
+        if self.losses_config["general_info"]["ALM"] == "True":
+            # ALM Version: L_A​(x,λ,ρ)= f(x) +λ ⋅ g(x) rho/2 ⋅ g(x)^2
+            # f(x): primary loss (solar and drag)
+            # g(x): constraint loss (bb, eikonal, smoothness)
+            f = loss_tensors[0] + loss_tensors[4]  # solar + drag
+            g = loss_tensors[1] + loss_tensors[2] + loss_tensors[3]  # bb + eikonal + smoothness
+            lambda_ = 10.0
+            rho = wandb.config.lagrangian_params_rho_bb
+            total_loss = f + lambda_ * g + (rho / 2) * (g**2)
+            # Sum all loss tensors in a differentiable way
+        else:
+            total_loss = torch.sum(torch.stack(loss_tensors))
 
         # Add the total loss to the logging dictionary
         individual_losses["total_loss"] = total_loss.item()
