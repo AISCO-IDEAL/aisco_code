@@ -2,7 +2,7 @@ import cadquery as cq
 from ocp_vscode import show
 
 from subprojects.wp2_assembler.version3.components import nbz
-from subprojects.wp2_assembler.version3.components.inner import tracker_box, vision_box
+from subprojects.wp2_assembler.version3.components.vision import tracker_box, vision_box
 from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
 
 
@@ -81,9 +81,7 @@ if __name__ == "__main__":  # only run when executing this file directly
             print(type(assembly))
 
         elif userinput.lower() == "m":
-            userinput = input(
-                "Which assemblies are to be visualized? (ranged as 'start-end') "
-            )
+            userinput = input("Which assemblies are to be visualized? (ranged as 'start-end') ")
             userinput_split = userinput.split("-")
             if int(userinput_split[0]) > 0:
                 lower_id = int(userinput_split[0])
@@ -98,12 +96,12 @@ if __name__ == "__main__":  # only run when executing this file directly
             visualize_multiple(lower_id, upper_id)
 
         elif userinput.lower() == "v":
-            vision_nbz = vision_box.vision_nbz()
+            vision_nbz = vision_box.vision_driv_nbz()
             show(vision_nbz)
 
         elif userinput.lower() == "t":
-            tracker_box = tracker_box.tracker_box()
-            show(tracker_box)
+            tracker_nbz = tracker_box.tracker_box_nbz()
+            show(tracker_nbz)
 
         elif userinput.lower() == "g":
             userinput = input("How many assemblies are to be generated?")

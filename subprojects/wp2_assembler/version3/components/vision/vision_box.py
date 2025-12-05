@@ -5,9 +5,9 @@ import cadquery as cq
 from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
 
 
-def vision_nbz() -> cq.Workplane:
+def vision_driv_nbz() -> cq.Workplane:
     """
-    Generate a cadquery Assembly of the Vision NBZ
+    Generate a cadquery Assembly of the driver's vision NBZ
     Args: regulations.yaml
     Outputs: cadquery Assembly
     """
@@ -29,9 +29,7 @@ def vision_nbz() -> cq.Workplane:
     point_c = cq.Vector(radius, 0, pos_height)
     point_d = cq.Vector(radius, 0, neg_height)
 
-    start_point = cq.Vector(
-        radius * math.cos(pos_angle), radius * math.sin(pos_angle), 0
-    )
+    start_point = cq.Vector(radius * math.cos(pos_angle), radius * math.sin(pos_angle), 0)
     mid_point = cq.Vector(radius, 0, 0)
     end_point = cq.Vector(radius * math.cos(neg_angle), radius * math.sin(neg_angle), 0)
 
@@ -44,15 +42,9 @@ def vision_nbz() -> cq.Workplane:
     print(f"Ending Point: {end_point}")
 
     arch_pos = (
-        cq.Workplane("XY")
-        .moveTo(start_point.x, start_point.y)
-        .radiusArc(endPoint=(mid_point.x, mid_point.y), radius=radius)
+        cq.Workplane("XY").moveTo(start_point.x, start_point.y).radiusArc(endPoint=(mid_point.x, mid_point.y), radius=radius)
     )
-    arch_neg = (
-        cq.Workplane("XY")
-        .moveTo(mid_point.x, mid_point.y)
-        .radiusArc(endPoint=(end_point.x, end_point.y), radius=radius)
-    )
+    arch_neg = cq.Workplane("XY").moveTo(mid_point.x, mid_point.y).radiusArc(endPoint=(end_point.x, end_point.y), radius=radius)
 
     profile_v_box = (
         cq.Workplane("XZ")
@@ -71,6 +63,7 @@ def vision_nbz() -> cq.Workplane:
     sweep_right = cq.Workplane("XZ").add(v_box_sketch).sweep(arch_neg, isFrenet=True)
     v_box = sweep_left.union(sweep_right)
 
-    # TODO: convert to cq.Solid, eventually?
+    # convert to cq.Solid
+    v_box_solid = v_box.val()
 
-    return v_box
+    return v_box_solid

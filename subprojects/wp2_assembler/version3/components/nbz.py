@@ -80,9 +80,7 @@ def inner_nbz_sym(
     Returns: cq.shape.solid of inner NBZ
     """
     # draw triangle
-    triangle = Triangle().build(
-        wheel_base_length, wheel_base_width
-    )  # triangle as Triangle()
+    triangle = Triangle().build(wheel_base_length, wheel_base_width)  # triangle as Triangle()
     triangle_wp = triangle.construct()  # triangle as cq.workplane
     points = triangle.get_points()
 
@@ -131,6 +129,22 @@ def outer_nbz(length: float, width: float, height: float):
     """
 
     box = outer_box2(length, width, height)
+    return box
+
+
+def vision_nbz() -> list[cq.Solids]:
+    """
+    Generate a cadquery Assembly of the driver's and the tracker's vision NBZ with given parameters from regulations
+    Args: regulations.yaml
+    Outputs: cadquery Assembly
+    """
+    # get parameters from regulations
+    box_length = get_regulation("no_build_zones.vision_box.outer_prism.length")
+    box_width = get_regulation("no_build_zones.vision_box.outer_prism.width")
+    box_height = get_regulation("no_build_zones.vision_box.outer_prism.height")
+
+    box = outer_box2(box_length, box_width, box_height)
+
     return box
 
 
@@ -247,16 +261,15 @@ def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
         tyre_diameter=params["tyre_diameter"],
         seat_position=params["seat_position"],
     )
-    # Convert assembly to solid by fusing all shapes
-    compound = assembly.toCompound()
-    inner_solid = cq.Solid(compound.wrapped)
 
     box_width = get_regulation("no_build_zones.outer_prism.width")
     box_height = get_regulation("no_build_zones.outer_prism.height")
 
     outer = outer_nbz(params["wheel_base_length"] * 2.2, box_width, box_height)
 
-    return assembly, outer
+    vision = vision_nbz()
+
+    return assembly, outer, vision
 
 
 def get_range_wheels() -> dict:
@@ -268,13 +281,9 @@ def get_range_wheels() -> dict:
 
     seat_length = get_regulation("seat.dimension.lr_l")
     seat_width = get_regulation("seat.dimension.width")
-    min_distance = get_regulation(
-        "seat.position.min_distance_to_back_wheel"
-    )  # some margin to the back wheel
+    min_distance = get_regulation("seat.position.min_distance_to_back_wheel")  # some margin to the back wheel
 
-    wheel_ax_marg = get_regulation(
-        "wheel.margin_axial"
-    )  # some margin for the wheels in axial direction
+    wheel_ax_marg = get_regulation("wheel.margin_axial")  # some margin for the wheels in axial direction
     wheel_width = get_regulation("wheel.dimension.width")
     wheel_d = get_regulation("wheel.tire_diameter")
 
@@ -316,13 +325,9 @@ def get_range_seat(wheelbase_width: float, wheelbase_length: float) -> dict:
     # check if wheelbase length is larger than seat length + min distance to back wheel
     seat_length = get_regulation("seat.dimension.lr_l")
     seat_width = get_regulation("seat.dimension.width")
-    min_distance = get_regulation(
-        "seat.position.min_distance_to_back_wheel"
-    )  # some margin to the back wheel
+    min_distance = get_regulation("seat.position.min_distance_to_back_wheel")  # some margin to the back wheel
 
-    wheel_ax_marg = get_regulation(
-        "wheel.margin_axial"
-    )  # some margin for the wheels in axial direction
+    wheel_ax_marg = get_regulation("wheel.margin_axial")  # some margin for the wheels in axial direction
     wheel_width = get_regulation("wheel.dimension.width")
     wheel_d = get_regulation("wheel.tire_diameter")
 
