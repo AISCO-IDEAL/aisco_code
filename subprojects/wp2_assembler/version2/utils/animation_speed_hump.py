@@ -60,6 +60,11 @@ def animate(assembly_id, pos_array, orn_array):
     # Build an ocp_vscode Animation and register a translation track for inner_nbz.
     animation = Animation(assembly)
 
+    def _quat_dict(quat):
+        x, y, z, w = quat
+        # ocp_vscode expects Three.js Quaternion-like objects with _x.._w fields
+        return {"_x": x, "_y": y, "_z": z, "_w": w}
+
     '''
     animation.add_track(f"/{assembly.name}/inner_nbz", "t", times, pos_array)
     animation.add_track(
@@ -78,14 +83,14 @@ def animate(assembly_id, pos_array, orn_array):
     )
     '''
 
-    inv_pos, inv_quat = invert_transform( )
+    inv_pos_array, inv_orn_array = invert_transform(pos_array, orn_array)
 
-    animation.add_track(f"/{assembly.name}/speed_bump", "t", times, coords)
+    animation.add_track(f"/{assembly.name}/speed_bump", "t", times, inv_pos_array)
     animation.add_track(
         f"/{assembly.name}/speed_bump",
         "q",
         times,
-        [_quat_dict(q) for q in orn_array],
+        [_quat_dict(q) for q in inv_orn_array],
     )
 
     show(assembly)  # opens the viewer with the initial frame
@@ -93,6 +98,6 @@ def animate(assembly_id, pos_array, orn_array):
 
 if __name__ == "__main__":
 
-    demo_id = 10
+    demo_id = 1
     pos_array2, orn_array2 = sim(demo_id)
     animate(demo_id, pos_array2, orn_array2)

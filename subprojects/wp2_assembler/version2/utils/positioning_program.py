@@ -351,15 +351,18 @@ def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
 
     inner, outer = call_assembly(assembly_number)
     ground_shape = create_speed_hump_and_floor()
+    inv_pos_array, inv_orn_array = invert_transform(pos_array, orn_array)
 
     i=0
     knife = []
-    moved_outer = outer
-    l = len(pos_array)
+    ground_shape_solid = ground_shape.val()
+    l = len(inv_pos_array)
 
-    for pos, orn in zip(pos_array, orn_array):
+    print("Start")
+    start = time.time()
+    for pos, orn in zip(inv_pos_array, inv_orn_array):
         i+=1
-        if(i%1000==0):
+        if(i%1==0):
             roll, pitch, yaw = p.getEulerFromQuaternion(orn)
             roll_deg, pitch_deg, yaw_deg = (
                 math.degrees(roll),
@@ -368,29 +371,27 @@ def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
             )
             r = 1
             location = cq.Location(x=round(pos[0], r), y=round(pos[1], r), z=round(pos[2], r), rx= round(roll_deg, r), ry= round(pitch_deg, r), rz= round(yaw_deg, r))
+            
+            moved_ground_shape = ground_shape_solid.located(location)
+            knife.append(outer.intersect(moved_ground_shape))
+    end = time.time()
+    print(end-start)
+    #show(knife)
 
-            moved_outer=moved_outer.located(location)
+    start = time.time()
+    #combined_compound = cq.Compound.makeCompound(knife).fuse().clean()
+    combined_compound = fuse_compound_tree(cq.Compound.makeCompound(knife))
+    combined_compound = combined_compound.clean()
+    end = time.time()
+    print(end-start)
 
-            knife.append(moved_outer.intersect(ground_shape.val()).located(location))
-
-    show(knife)
+    show(combined_compound)
     return
 
-def invert_transform(pos, quat):
-    # pos = [x, y, z]
-    # quat = [qx, qy, qz, qw]
+def invert_transform(pos_list, quat_list):
+    inv_pos_list = []
+    inv_quat_list = []
 
-    px, py, pz = pos
-    qx, qy, qz, qw = quat
-
-    # Invert quaternion (for rotations, inverse is the conjugate)
-    quat_inv = np.array([-qx, -qy, -qz,  qw])
-
-    # Rotate the translation by inverse rotation
-    # q_inv * p * q
-    p = np.array([px, py, pz])
-
-    # Quaternion rotation helper
     def qmul(a, b):
         ax, ay, az, aw = a
         bx, by, bz, bw = b
@@ -402,22 +403,50 @@ def invert_transform(pos, quat):
         ])
 
     def qrot(q, v):
-        # rotate vector v by quaternion q
         v_q = np.array([v[0], v[1], v[2], 0.0])
-        return qmul(qmul(q, v_q), np.array([-q[0], -q[1], -q[2], q[3]]))[:3]
+        q_conj = np.array([-q[0], -q[1], -q[2], q[3]])
+        return qmul(qmul(q, v_q), q_conj)[:3]
 
-    # New translation: - R_inv * t
-    pos_inv = -qrot(quat_inv, p)
+    for pos, quat in zip(pos_list, quat_list):
+        px, py, pz = pos
+        qx, qy, qz, qw = quat
 
-    return pos_inv, quat_inv
+        quat = np.array([qx, qy, qz, qw])
+        quat_inv = np.array([-qx, -qy, -qz,  qw])
 
-# Example usage:
-pos = [1.0, 2.0, 3.0]
-quat = [0.1, 0.2, 0.3, 0.9]  # x y z w
-inv_pos, inv_quat = invert_transform(pos, quat)
+        p = np.array([px, py, pz])
+        pos_inv = -qrot(quat_inv, p)
 
-return inv_pos, inv_quat
+        inv_pos_list.append(pos_inv.tolist())
+        inv_quat_list.append(quat_inv.tolist())
 
+    return inv_pos_list, inv_quat_list
+
+def fuse_compound_tree(comp: cq.Compound):
+    # Extract shapes inside the compound
+    work = comp.Solids()
+    # In most real cases you only expect Solids, but this is safe
+
+    if len(work) == 0:
+        return None
+    # Turn every element into a Solid/Shape for fusing
+
+    # Tree fuse loop
+    while len(work) > 1:
+        new_work = []
+        for i in range(0, len(work), 2):
+            if i + 1 < len(work):
+                fused = work[i].fuse(work[i + 1])
+                # Clean after each fuse for stability
+                fused = fused.clean()
+                new_work.append(fused)
+            else:
+                # Odd element, move to next round unchanged
+                new_work.append(work[i])
+        work = new_work
+
+    # Return the single fused result
+    return work[0]
 
 if __name__ == "__main__":
     # Visualization: show and trim the intersection between ground + speed hump and outer NBZ.
@@ -429,7 +458,6 @@ if __name__ == "__main__":
 
     pos_array2, orn_array2 = sim(demo_id)
 
-    animate(demo_id, pos_array2, orn_array2)
+    #animate(demo_id, pos_array2, orn_array2)
 
-    #trim_outer_nbz(demo_id, pos_array2, orn_array2)
-    
+    trim_outer_nbz(demo_id, pos_array2, orn_array2)
