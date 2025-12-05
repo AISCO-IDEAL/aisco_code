@@ -68,6 +68,7 @@ class SDFfromCadQuery:
 
     def __pointgrid_geni(self, pointgrid_config) -> list[list[float]]:
         inner_grid_edges = bounding_box_of_assembly(self.__assembly_id)
+        print(inner_grid_edges)
         dx, dy, dz, rand = (
             pointgrid_config.get("dx"),
             pointgrid_config.get("dy"),
@@ -184,6 +185,8 @@ class SDFfromCadQuery:
         else:
             return self.__shape.Volume()
 
+
+    #### From here on its just Code for testing
     def visualizr_slice(self, z: float) -> None:
         x_vals = sorted({p[0] for p in self.__pointgrid if p[2] == z})
         y_vals = sorted({p[1] for p in self.__pointgrid if p[2] == z})
@@ -203,11 +206,14 @@ class SDFfromCadQuery:
         plt.savefig(f"/cluster/home/clhuber/immages/sdf_slice_z_{z}.png")
 
     def plot_pointgrid_slice(self, z: float) -> None:
-        x_vals = sorted({p[0] for p in self.__pointgrid if p[2] == z})
-        y_vals = sorted({p[1] for p in self.__pointgrid if p[2] == z})
+        # Collect actual (x, y) pairs for points with the given z
+        pts = [(p[0], p[1]) for p in self.__pointgrid if p[2] == z]
+        # Avoid zip strict issues by building lists directly
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
 
         plt.figure(figsize=(8, 6))
-        plt.plot(x_vals, y_vals, "o")  # Simple scatter plot of points
+        plt.scatter(xs, ys, s=10)  # Scatter plot of (x,y) pairs
         plt.title(f"SDF Slice at z={z}")
         plt.xlabel("X-axis")
         plt.ylabel("Y-axis")
@@ -222,5 +228,5 @@ if __name__ == "__main__":
         sdf_inner.visualizr_slice(z=501)
     if True:
         inner_box, outer_box = call_assembly_solids(2)
-        sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 200, "dy": 200, "dz": 200, "rand": 0})
+        sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 100, "dy": 100, "dz": 100, "rand": 0})
         sdf_inner.plot_pointgrid_slice(z=501)
