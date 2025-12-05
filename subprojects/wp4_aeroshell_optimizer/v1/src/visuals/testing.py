@@ -194,14 +194,14 @@ def main(verbose: bool = True) -> None:
     store_image(Path("/cluster/home/aalthaus/test_rendering_output_normal.png"), images_out, alpha_out)
 
     # Also produce a depth-only render if desired
-    depth_images = NR.render_depth(verts, faces)
-    store_image("/cluster/home/aalthaus/test_rendering_output_depth.png", depth_images, depth_images)
+    #depth_images = NR.render_depth(verts, faces)
+    #store_image("/cluster/home/aalthaus/test_rendering_output_depth.png", depth_images, depth_images)
     # Also do it RGB
-    rgb_images = NR.render_rgb(verts, faces, textures)
-    store_image("/cluster/home/aalthaus/test_rendering_output_rgb_only.png", rgb_images, rgb_images)
+    #rgb_images = NR.render_rgb(verts, faces, textures)
+    #store_image("/cluster/home/aalthaus/test_rendering_output_rgb_only.png", rgb_images, rgb_images)
 
     end_time_rendering = time.time()
-    print(f"Rendering took {end_time_rendering - end_time:.2f} seconds")
+    print(f"Rendering took {end_time_rendering - mesh_time:.2f} seconds")
 
     print("Done")
 
