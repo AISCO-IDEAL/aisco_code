@@ -63,3 +63,4 @@ if __name__ == "__main__":
     for demo_id in range(1,50):
         Front, Rear = outer_nbz_ramps(demo_id)
         show (Front, Rear)
+        
