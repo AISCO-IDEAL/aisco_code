@@ -175,7 +175,8 @@ def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     #for i in knife:
         #show(i)
     
-    print("To compund")
+    show(knife)
+    input("To compund")
     combined_compound = cq.Compound.makeCompound(knife)
     show(combined_compound)
 
@@ -187,7 +188,7 @@ def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
 
     
     fused_tunnel = knife[0]
-
+    
     # Loop through the rest and add them one by one
     a = 0
     for shape in knife[1:]:
