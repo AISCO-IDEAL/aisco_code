@@ -63,7 +63,4 @@ def vision_driv_nbz() -> cq.Workplane:
     sweep_right = cq.Workplane("XZ").add(v_box_sketch).sweep(arch_neg, isFrenet=True)
     v_box = sweep_left.union(sweep_right)
 
-    # convert to cq.Solid
-    v_box_solid = v_box.val()
-
-    return v_box_solid
+    return v_box

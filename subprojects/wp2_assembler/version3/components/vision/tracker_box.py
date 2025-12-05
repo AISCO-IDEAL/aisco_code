@@ -56,6 +56,4 @@ def tracker_cone_nbz() -> cq.Workplane:
     r = cone_hei * math.tan(theta)
     cone = cq.Solid.makeCone(0.0, r, cone_hei)
 
-    cone_wp = cq.Workplane("XY").add(cone)
-
-    return cone_wp
+    return cone
