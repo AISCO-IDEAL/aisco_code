@@ -24,7 +24,7 @@ class SDFfromCadQuery:
 
     def __init__(
         self,
-        training_config: dict,
+        pointgrid_config: dict,
         shape: cq.Solid | None = None,
         shape_list: list[cq.Solid] | None = None,
     ):
@@ -34,12 +34,12 @@ class SDFfromCadQuery:
             raise ValueError("Only one of shape or shape_list must be provided.")  # noqa: TRY003
         self.__shape = shape
         self.__shape_list = shape_list
-        self.__pointgrid = self.__pointgrid_geni(training_config)
+        self.__pointgrid = self.__pointgrid_geni(pointgrid_config)
         if self.__shape is None:
             l = len(self.__shape_list) if self.__shape_list is not None else 0  # noqa: E741
             self.__sdfs = []
             for x in self.__shape_list or []:
-                self.__sdfs.append(SDFfromCadQuery(shape=cast(cq.Solid, x), training_config=training_config))
+                self.__sdfs.append(SDFfromCadQuery(shape=cast(cq.Solid, x), pointgrid_config=pointgrid_config))
             self.__sdf_at_pointgrid = [
                 min(self.__sdfs[i].sdf_at_pointgrid()[j] for i in range(l))
                 for j in range(len(self.__pointgrid))  # From all shapes take the minimum SDF at each point
@@ -59,14 +59,12 @@ class SDFfromCadQuery:
             if min(self.__sdf_at_pointgrid) > -1:
                 print("SDF from cq.Solid conversion Problem")
 
-    def __pointgrid_geni(self, training_config) -> list[list[float]]:
-        # load pointgrid params
-        pointgrid_params = training_config["pointgrid_params"]
+    def __pointgrid_geni(self, pointgrid_config) -> list[list[float]]:
         dx, dy, dz, rand = (
-            pointgrid_params.get("dx"),
-            pointgrid_params.get("dy"),
-            pointgrid_params.get("dz"),
-            pointgrid_params.get("rand"),
+            pointgrid_config.get("dx"),
+            pointgrid_config.get("dy"),
+            pointgrid_config.get("dz"),
+            pointgrid_config.get("rand"),
         )
         dr = 1
         ranges = [
