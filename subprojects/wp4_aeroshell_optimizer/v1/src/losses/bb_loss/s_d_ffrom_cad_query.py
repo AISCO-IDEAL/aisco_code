@@ -155,10 +155,10 @@ class SDFfromCadQuery:
         plt.ylabel("Y-axis")
         plt.axis("equal")
         # save the figure
-        plt.savefig(f"sdf_slice_z_{z}.png")
+        plt.savefig(f"/cluster/home/clhuber/immages/sdf_slice_z_{z}.png")
 
 
 if __name__ == "__main__":
-    inner_box, outer_box = call_assembly_solids(assembly_id=2)
+    inner_box, outer_box = call_assembly_solids(2)
     sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 100, "dy": 100, "dz": 100, "rand": 0})
     sdf_inner.visualizr_slice(z=101)
