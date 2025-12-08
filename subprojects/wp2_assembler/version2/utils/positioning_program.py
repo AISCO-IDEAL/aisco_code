@@ -360,20 +360,30 @@ def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
 
     print("Start")
     start = time.time()
-    for pos, orn in zip(inv_pos_array, inv_orn_array):
-        i+=1
-        if(i%1==0):
-            roll, pitch, yaw = p.getEulerFromQuaternion(orn)
-            roll_deg, pitch_deg, yaw_deg = (
-                math.degrees(roll),
-                math.degrees(pitch),
-                math.degrees(yaw),
-            )
-            r = 1
-            location = cq.Location(x=round(pos[0], r), y=round(pos[1], r), z=round(pos[2], r), rx= round(roll_deg, r), ry= round(pitch_deg, r), rz= round(yaw_deg, r))
-            
-            moved_ground_shape = ground_shape_solid.located(location)
-            knife.append(outer.intersect(moved_ground_shape))
+
+    inv_pos_array = np.round(inv_pos_array, 1)
+    inv_orn_array = np.round(inv_orn_array, 2)
+
+    euler_array = np.array([p.getEulerFromQuaternion(q) for q in inv_orn_array])
+    euler_deg = np.degrees(euler_array)
+
+    for pos, orn in zip(inv_pos_array, euler_deg):
+        #i+=1
+        #if(i%1==0):
+        '''
+        roll, pitch, yaw = p.getEulerFromQuaternion(orn)
+        roll_deg, pitch_deg, yaw_deg = (
+            math.degrees(roll),
+            math.degrees(pitch),
+            math.degrees(yaw),
+        )
+        '''
+        roll_deg, pitch_deg, yaw_deg = orn
+        
+        location = cq.Location(x=pos[0], y=pos[1], z=pos[2], rx= roll_deg, ry= pitch_deg, rz= yaw_deg)
+        
+        knife.append(outer.intersect(ground_shape_solid.located(location)))
+
     end = time.time()
     print(end-start)
     #show(knife)
