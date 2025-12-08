@@ -122,6 +122,7 @@ class SDFfromCadQuery:
                     if key not in seen:
                         seen.add(key)
                         points.append([x, y, z])
+        print(f"Pointgrid for BB loss sampels {len(points)} Points")
 
         return points
 
@@ -186,7 +187,7 @@ class SDFfromCadQuery:
             return self.__shape.Volume()
 
 
-    #### From here on its just Code for testing
+    #### From here on, its just Code for testing and debuugging ########################################################
     def visualizr_slice(self, z: float) -> None:
         x_vals = sorted({p[0] for p in self.__pointgrid if p[2] == z})
         y_vals = sorted({p[1] for p in self.__pointgrid if p[2] == z})
