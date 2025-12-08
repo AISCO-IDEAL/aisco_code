@@ -9,7 +9,7 @@ from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
 def outer_nbz_ramps(assembly_id) -> tuple[cq.Workplane, cq.Workplane]:
     """
     Returns the approach and departure ramps
-    
+
     :param assembly_id: id of assembly
     :return: tuple with both ramps
     :rtype: tuple with two workplanes
@@ -30,7 +30,7 @@ def outer_nbz_ramps(assembly_id) -> tuple[cq.Workplane, cq.Workplane]:
     C = (outer_xmax, front_wheel_center[1]-wheel_radius)
     D = (front_wheel_center[0], front_wheel_center[1]-wheel_radius)
 
-    Front = ( 
+    Front = (
         cq.Workplane("XZ", origin = (0,outer.BoundingBox().ymax,0))
         .moveTo(*A)                     #Start at the contact point from the approach angle and the wheel
         .lineTo(*B)                     #Line to the end of the bounding box
@@ -46,7 +46,7 @@ def outer_nbz_ramps(assembly_id) -> tuple[cq.Workplane, cq.Workplane]:
     C = (outer_xmin, back_wheel_center[1]-wheel_radius)
     D = (back_wheel_center[0], back_wheel_center[1]-wheel_radius)
 
-    Rear = ( 
+    Rear = (
         cq.Workplane("XZ", origin = (0,outer.BoundingBox().ymax,0))
         .moveTo(*A)                     #Start at the contact point from the approach angle and the wheel
         .lineTo(*B)                     #Line to the end of the bounding box
@@ -56,7 +56,7 @@ def outer_nbz_ramps(assembly_id) -> tuple[cq.Workplane, cq.Workplane]:
         .close()
         .extrude(outer.BoundingBox().ylen)
     )
-    
+
     result = outer.cut(Front.val(), Rear.val()).Solids()[0]
 
     return result
@@ -67,4 +67,3 @@ if __name__ == "__main__":
     inner, _, _ = call_assembly(demo_id)
     show (result, inner)
     print(type(result))
-        

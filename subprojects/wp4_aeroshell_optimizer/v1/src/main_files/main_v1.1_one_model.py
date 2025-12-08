@@ -82,7 +82,7 @@ def main(verbose: bool = True) -> None:
     # Save final model and mesh
     if general_config["wandb_general"].get("use_wandb", False):
         wandb_name = wandb.run.name
-    else: 
+    else:
         wandb_name = None
     allround_save_data(
         model=model,

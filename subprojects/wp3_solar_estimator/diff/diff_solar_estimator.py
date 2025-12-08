@@ -1,6 +1,7 @@
 import kaolin
 import torch
 from wp3_solar_estimator.diff.alex_input import soft_knapsack_selection
+
 from wp4_aeroshell_optimizer.src.models.sdf import SDFNetwork
 from wp4_aeroshell_optimizer.src.utils.kaolin_utils import (
     flexicubes_to_PLY,
@@ -13,10 +14,10 @@ def diff_solar_loss(model: SDFNetwork, verts: torch.tensor, faces: torch.tensor,
     max_area = 4e6 # 4 m^2
     # ToDO Aldo
     sun_dir = torch.tensor([0.0, -0.7071, 0.7071], dtype=torch.float32,device=dev)
-    
+
     #GPT fix
     verts_b = verts.unsqueeze(0)     # (1, V, 3)
-    faces_b = faces.unsqueeze(0)   
+    faces_b = faces.unsqueeze(0)
 
     angles = facenormal_angle(verts_b, faces_b, sun_dir)
     powerratio = dot_product(angles,sun_dir)
@@ -37,7 +38,7 @@ def diff_solar_loss(model: SDFNetwork, verts: torch.tensor, faces: torch.tensor,
 
     # cross product of edges, to get area in mm^2
     cross = torch.cross(v1 - v0, v2 - v0, dim=-1)   # (B, F, 3)
-    areas = 0.5 * torch.norm(cross, dim=-1)   
+    areas = 0.5 * torch.norm(cross, dim=-1)
     loss, _, _, _ = soft_knapsack_selection(powerratio, areas, area_budget=max_area,tau=0.2,penalty=1.0)
     return loss
 
@@ -51,7 +52,7 @@ def facenormal_angle(verts: torch.Tensor, faces: torch.Tensor, sun_dir: torch.Te
     s = sun_dir / (torch.norm(sun_dir) + 1e-12)
     # Face vertices
     #The first [0] index is due to some nvidia fuckery
-    v0 = verts[0][faces[:, 0]] 
+    v0 = verts[0][faces[:, 0]]
     v1 = verts[0][faces[:, 1]]
     v2 = verts[0][faces[:, 2]]
     # Differentiable face normals
@@ -88,15 +89,3 @@ def powerratio_iam(theta_deg: torch.Tensor, b0: float = 0.05):
     out = iam * cutoff
     # Clamp to [0,1]
     return out
-
-
-
-
-
-
-
-
-
-
-
-

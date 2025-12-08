@@ -71,7 +71,7 @@ def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     if len(pos_array) != len(orn_array):
         raise ValueError("Error in trim_outer_nbz: pos_array and orn_array must have the same length")
 
-    
+
     trimmed_outer = outer
     knife = [ground_shape]
     for i in range(200):
@@ -85,7 +85,7 @@ def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     trimmed_outer = outer
     for i in knife:
         trimmed_outer=trimmed_outer.cut(i)
-    
+
     '''
     i=0
     knife = []
@@ -124,9 +124,9 @@ def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     show(simple_tunnel)
     input("fuse? ")
 
-    
+
     fused_tunnel = knife[0]
-    
+
     # Loop through the rest and add them one by one
     a = 0
     for shape in knife[1:]:
@@ -135,14 +135,14 @@ def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
         if(a%10 == 0):
             print(a,len(knife))
             show(fused_tunnel)
-    
+
     show(fused_tunnel)
 
     input("Continue? ")
 
     final_outer = trimmed_outer.cut(combined_compound)
     show(final_outer)
-    
+
     input("Continue? ")
 
 
@@ -433,4 +433,3 @@ if __name__ == "__main__":
     animate(demo_id, pos_array2, orn_array2)
 
     #trim_outer_nbz(demo_id, pos_array2, orn_array2)
-    
