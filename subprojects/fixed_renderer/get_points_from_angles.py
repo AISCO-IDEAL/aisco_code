@@ -16,7 +16,6 @@ def get_points_from_angles(distance, elevation, azimuth, degrees=True):
         if degrees:
             elevation = math.pi/180. * elevation
             azimuth = math.pi/180. * azimuth
-    #
         return torch.stack([
             distance * torch.cos(elevation) * torch.sin(azimuth),
             distance * torch.sin(elevation),

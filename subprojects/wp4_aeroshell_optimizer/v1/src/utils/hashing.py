@@ -1,5 +1,7 @@
 import hashlib
 import json
+
+
 def dict_hashing(data: dict) -> str:
     """
     Generate a SHA-1 hash for the given data dictionary.

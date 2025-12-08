@@ -1,7 +1,10 @@
-from subprojects.wp2_assembler.version3.components.nbz import call_assembly
-import cadquery as cq
 import math
+
+import cadquery as cq
+
+from subprojects.wp2_assembler.version3.components.nbz import call_assembly
 from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
+
 
 def outer_nbz_ramps(assembly_id) -> tuple[cq.Workplane, cq.Workplane]:
     """

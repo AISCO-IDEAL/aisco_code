@@ -7,7 +7,6 @@ from pathlib import Path
 
 import torch
 import trimesh
-
 import wandb
 
 # NOTE: You can remove all hardcoded loss imports (like BbLoss1, SolarLoss, etc.)

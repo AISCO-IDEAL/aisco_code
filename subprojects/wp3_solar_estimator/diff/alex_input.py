@@ -1,5 +1,6 @@
 import torch
 
+
 def soft_knapsack_selection(scores_per_area, areas, area_budget, tau=0.1, penalty=10.0):
     """
     scores_per_area: tensor [N], already score/area, i.e. powerratio --> normal vector *dot* sun vector

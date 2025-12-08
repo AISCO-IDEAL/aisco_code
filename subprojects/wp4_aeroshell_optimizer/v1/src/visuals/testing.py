@@ -6,6 +6,7 @@ import imageio
 import numpy as np
 import torch
 
+from AISCO_code.subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 from subprojects.fixed_renderer import Renderer as NeuralRenderer
 from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
@@ -115,7 +116,7 @@ def main(verbose: bool = True) -> None:
     K_cuda = torch.tensor(intrinsic[np.newaxis, :, :].copy()).float().cuda().unsqueeze(0)
     R_cuda = torch.tensor(extrinsic[np.newaxis, 0:3, 0:3].copy()).float().cuda().unsqueeze(0)
     t_cuda = torch.tensor(extrinsic[np.newaxis, np.newaxis, 0:3, 3].copy()).float().cuda().unsqueeze(0)
-    NR = NeuralRenderer(K=K_cuda, R=R_cuda, t=t_cuda, anti_aliasing=False)
+    NR = NeuralRenderer(image_size=1028,K=K_cuda, R=R_cuda, t=t_cuda, anti_aliasing=False)
     NR.camera_mode = 'look_at'
     NR.perspective = True            # if you want perspective projection
     NR.viewing_angle = 60.0         # camera field-of-view in degrees (change as needed)
@@ -173,38 +174,108 @@ def main(verbose: bool = True) -> None:
             pretraining=True,
         )
 
-    # Extract mesh from model and render it using NeuralRenderer
+    # Extract mesh from model and render it using Visualiser
 
-    print("Storing image...")
-    # Also track the time it took from mesh extraction to rendering
+    print("Extracting mesh...")
     start_time = time.time()
-    verts, faces =get_diff_mesh(model, device=device, grid_res=96)
+    verts, faces = get_diff_mesh(model, device=device, grid_res=96)
     # convert to batch format
     verts = verts.unsqueeze(0)
     faces = faces.unsqueeze(0)
     mesh_time = time.time()
     print(f"Mesh extraction and conversion took {mesh_time - start_time:.2f} seconds")
 
+    # Initialize Visualiser
+    print("Initializing Visualiser...")
+    viz = Visualiser(
+        image_size=1028,
+        background_color=[0.1, 0.1, 0.15],  # Dark blue background
+        camera_mode='look_at',
+        viewing_angle=60.0,
+        device=device
+    )
 
+    # Render a single image with coordinate-based coloring (z-axis)
+    print("Rendering single frame with z-coordinate coloring...")
+    single_frame = viz.render_with_coordinate_shading(
+        verts, faces,
+        coordinate='z',
+        colormap='viridis',
+        camera_position=[2000.0 * math.cos(math.radians(30)), 0, 2000.0 * math.sin(math.radians(30))]
+    )
+    # Save single frame - single_frame has shape (batch, height, width, channels)
+    # Need to remove batch dimension first, then convert
+    if len(single_frame.shape) == 4:
+        single_frame = single_frame[0]  # Remove batch dimension
+    single_frame_uint8 = (single_frame * 255).astype(np.uint8)
+    imageio.imwrite("/cluster/home/aalthaus/test_rendering_single_z_colored.png", single_frame_uint8)
+    print("Saved single frame to test_rendering_single_z_colored.png")
 
-    # Example: simple white texture per face with tiny 2x2x2 3D texture
-    textures = create_dummy_textures(verts, faces, texture_size=2, color=(1.0, 1.0, 1.0), device=device)
+    # Create rotating GIF with z-coordinate coloring
+    print("Creating rotating GIF with z-coordinate coloring...")
+    viz.create_rotating_gif(
+        verts, faces,
+        textures=None,  # Will be computed from coordinates
+        output_path="/cluster/home/aalthaus/test_rendering_rotation_z.gif",
+        num_frames=72,  # Smooth rotation with 72 frames
+        elevation=30,   # 30 degrees above horizon
+        distance=2000.0,
+        fps=15,
+        axis='y'  # Rotate around y-axis
+    )
+    print("Saved rotating GIF to test_rendering_rotation_z.gif")
 
-    # Render RGB + depth + alpha using render() which returns (rgb, depth, alpha)
-    images_out, depth_out, alpha_out = NR.render(verts, faces, textures)
-    store_image(Path("/cluster/home/aalthaus/test_rendering_output_normal.png"), images_out, alpha_out)
+    # Also create one with x-coordinate coloring for comparison
+    print("Creating rotating GIF with x-coordinate coloring...")
+    # We need to modify the Visualiser to support coordinate shading in GIF creation
+    # For now, let's create frames manually
+    frames = []
+    num_frames = 72
+    for i in range(num_frames):
+        angle = 2 * math.pi * i / num_frames
+        elevation = 30
+        distance = 2000.0
 
-    # Also produce a depth-only render if desired
-    #depth_images = NR.render_depth(verts, faces)
-    #store_image("/cluster/home/aalthaus/test_rendering_output_depth.png", depth_images, depth_images)
-    # Also do it RGB
-    #rgb_images = NR.render_rgb(verts, faces, textures)
-    #store_image("/cluster/home/aalthaus/test_rendering_output_rgb_only.png", rgb_images, rgb_images)
+        # Calculate camera position (rotating around y-axis)
+        x = distance * math.cos(angle) * math.cos(math.radians(elevation))
+        y = distance * math.sin(math.radians(elevation))
+        z = distance * math.sin(angle) * math.cos(math.radians(elevation))
+
+        # Render with x-coordinate coloring
+        frame = viz.render_with_coordinate_shading(
+            verts, faces,
+            coordinate='x',
+            colormap='plasma',
+            camera_position=[x, y, z]
+        )
+
+        # Convert to uint8 - remove batch dimension if present
+        if len(frame.shape) == 4:
+            frame = frame[0]
+        frame_uint8 = (frame * 255).astype(np.uint8)
+        frames.append(frame_uint8)
+
+    # Save as GIF
+    imageio.mimsave("/cluster/home/aalthaus/test_rendering_rotation_x.gif", frames, fps=15)
+    print("Saved x-coordinate rotating GIF to test_rendering_rotation_x.gif")
+
+    # Finally test multiple views grid rendering
+    print("Rendering multiple views grid...")
+    grid_image = viz.create_multi_view_image(
+        verts, faces,
+        distance=2000.0,
+        labels=["Front", "Side", "Top", "Perspective"]
+    )
+    #save multi view image
+    imageio.imwrite("/cluster/home/aalthaus/test_rendering_multi_view_grid.png", (grid_image * 255).astype(np.uint8))
 
     end_time_rendering = time.time()
-    print(f"Rendering took {end_time_rendering - mesh_time:.2f} seconds")
+    print(f"Total rendering time: {end_time_rendering - mesh_time:.2f} seconds")
 
-    print("Done")
+    print("Done! Created:")
+    print("  - test_rendering_single_z_colored.png")
+    print("  - test_rendering_rotation_z.gif (z-coordinate, viridis colormap)")
+    print("  - test_rendering_rotation_x.gif (x-coordinate, plasma colormap)")
 
 
 if __name__ == "__main__":

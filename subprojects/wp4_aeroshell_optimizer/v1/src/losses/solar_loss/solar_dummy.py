@@ -1,7 +1,8 @@
 # Use aalthaus' solar dummy loss that is differentiable wrt the mesh vertices
 
-import torch
 import kaolin
+import torch
+
 
 def solar_mesh_deformation(raw_vertices: torch.Tensor, faces: torch.Tensor, sun_dir: torch.Tensor, dev: str="cuda",
                            slope_param: float = 7.0, offset_param: float = 3.0):

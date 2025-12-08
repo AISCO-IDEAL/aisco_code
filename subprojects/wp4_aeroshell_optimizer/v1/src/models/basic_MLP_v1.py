@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
+from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 
 
 class BasicMLP(BaseModel):
@@ -57,4 +57,3 @@ class BasicMLP(BaseModel):
 
         print("End of Model Debug Info")
         print("===================================")
-        return

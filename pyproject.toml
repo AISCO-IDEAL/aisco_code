@@ -97,7 +97,8 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
-    "**/archive/**"
+    "**/archive/**",
+    "**/subprojects/fixed_renderer/**"
 ]
 
 
@@ -192,4 +193,5 @@ files = ["AISCO/", "tests/"]
 exclude = [
   "^build/",
   "^docs/",
+  "**/fixed_renderer/**",
 ]

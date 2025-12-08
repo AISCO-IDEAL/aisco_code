@@ -1,5 +1,6 @@
-from pathlib import Path
 import warnings
+from pathlib import Path
+
 import yaml
 
 

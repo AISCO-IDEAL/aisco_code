@@ -56,23 +56,19 @@ def save_obj(filename, vertices, faces, textures=None):
         if textures is not None:
             f.write('mtllib %s\n\n' % os.path.basename(filename_mtl))
 
-        for vertex in vertices:
-            f.write('v %.8f %.8f %.8f\n' % (vertex[0], vertex[1], vertex[2]))
+        f.writelines('v %.8f %.8f %.8f\n' % (vertex[0], vertex[1], vertex[2]) for vertex in vertices)
         f.write('\n')
 
         if textures is not None:
-            for vertex in vertices_textures.reshape((-1, 2)):
-                f.write('vt %.8f %.8f\n' % (vertex[0], vertex[1]))
+            f.writelines('vt %.8f %.8f\n' % (vertex[0], vertex[1]) for vertex in vertices_textures.reshape((-1, 2)))
             f.write('\n')
 
             f.write('usemtl %s\n' % material_name)
-            for i, face in enumerate(faces):
-                f.write('f %d/%d %d/%d %d/%d\n' % (
-                    face[0] + 1, 3 * i + 1, face[1] + 1, 3 * i + 2, face[2] + 1, 3 * i + 3))
+            f.writelines('f %d/%d %d/%d %d/%d\n' % (
+                    face[0] + 1, 3 * i + 1, face[1] + 1, 3 * i + 2, face[2] + 1, 3 * i + 3) for i, face in enumerate(faces))
             f.write('\n')
         else:
-            for face in faces:
-                f.write('f %d %d %d\n' % (face[0] + 1, face[1] + 1, face[2] + 1))
+            f.writelines('f %d %d %d\n' % (face[0] + 1, face[1] + 1, face[2] + 1) for face in faces)
 
     if textures is not None:
         with open(filename_mtl, 'w') as f:

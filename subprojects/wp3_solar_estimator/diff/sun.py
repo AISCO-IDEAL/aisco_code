@@ -1,6 +1,7 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
 from pvlib import solarposition
+
 
 def get_sun_direction(latitude, longitude, altitude, time_utc):
     #nserck

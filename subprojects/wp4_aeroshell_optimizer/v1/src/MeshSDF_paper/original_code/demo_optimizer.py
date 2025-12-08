@@ -3,19 +3,18 @@
 import argparse
 import json
 import os
+import pdb
 import random
 import time
-import torch
-import numpy as np
 
 import lib
-from lib.workspace import *
+import neural_renderer as nr
+import numpy as np
+import torch
+from lib.mesh import *
 from lib.models.decoder import *
 from lib.utils import *
-from lib.mesh import *
-
-import neural_renderer as nr
-import pdb
+from lib.workspace import *
 
 AZIMUTH = 45
 ELEVATION = 30
@@ -168,7 +167,7 @@ if __name__ == "__main__":
         images_out, depth_out, silhouette_out = renderer(xyz_upstream.unsqueeze(0), faces_upstream.unsqueeze(0), textures_dr.unsqueeze(0))
 
         loss = torch.mean((silhouette_out-tgt_silhouette_out)**2)
-        print("Loss at iter {}:".format(e) + ": {}".format(loss.detach().cpu().numpy()))
+        print(f"Loss at iter {e}:" + f": {loss.detach().cpu().numpy()}")
 
         # now store upstream gradients
         loss.backward()

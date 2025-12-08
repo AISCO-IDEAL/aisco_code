@@ -5,7 +5,6 @@ import kaolin as kal
 import torch
 import trimesh
 from kaolin.ops.conversions import FlexiCubes
-
 from sdf import SDFNetwork
 
 ####################### eschaerer #################

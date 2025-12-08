@@ -16,7 +16,7 @@ def load_mtl(filename_mtl):
     colors = {}
     material_name = ''
     with open(filename_mtl) as f:
-        for line in f.readlines():
+        for line in f:
             if len(line.split()) != 0:
                 if line.split()[0] == 'newmtl':
                     material_name = line.split()[1]
@@ -75,7 +75,6 @@ def load_textures(filename_obj, filename_mtl, texture_size, texture_wrapping='RE
     textures = torch.zeros(faces.shape[0], texture_size, texture_size, texture_size, 3, dtype=torch.float32) + 0.5
     textures = textures.cuda()
 
-    #
     for material_name, color in colors.items():
         color = torch.from_numpy(color).cuda()
         for i, material_name_f in enumerate(material_names):
