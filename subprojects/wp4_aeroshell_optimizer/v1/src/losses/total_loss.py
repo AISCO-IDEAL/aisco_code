@@ -23,13 +23,44 @@ class TotalLoss:
             v=self.__general_config["general_info"]["version"],
             cfg_name=self.__general_config["active_configs"]["losses"],
         )
-        self.weights = self.losses_config.get("losses", {})  # get nested losses dict
-        self.__active_losses = {}
-
         project_root = Path.cwd()  # Correctly defines project root
+        self.losses = self.losses_config.get("losses", {})  # get nested losses dict
+        self.__active_losses = {}
+        self.__rendering_frequency = self.__general_config.get("wandb_general", {}).get("rendering_frequency")
 
-        track_run = self.__general_config["wandb_general"].get("use_wandb", False)
-        if track_run:
+        # ALM parameters init
+        if self.losses_config["general_info"].get("ALM", False):
+            self.lamda:dict = {}
+            self.mu:dict = {}
+            self.nu:dict = {}
+            self.alpha:dict = {}
+
+            # category: aero, ... | lossnames: frontal_area_v0, ...
+            for category, lossnames in self.losses.items():
+                if category == "total":
+                    continue
+
+                # Initialize inner dictionaries for each category
+                # Using dicts {loss_name: value} is more efficient than tuples for updates
+                self.lamda[category] = {}
+                self.mu[category] = {}
+                self.nu[category] = {}
+                self.alpha[category] = {}
+
+                # loss_name: frontal_area_v0, ... | compute: bool | weight: float | path: str
+                for loss_name, params in lossnames.items():
+                    # params is [compute, weight, path]
+                    if params[0]:  # if compute is True
+                        # Initialize ALM parameters
+                        # lambda (Lagrange multiplier) usually starts at 0
+                        self.lamda[category][loss_name] = 0.0
+                        # mu/nu (Penalty parameters) usually start > 0
+                        self.mu[category][loss_name] = 1.0
+                        self.nu[category][loss_name] = 1.0
+                        # alpha parameter usually start at 1
+                        self.alpha[category][loss_name] = 1.0
+        # wandb init
+        if self.__general_config["wandb_general"].get("use_wandb", False):
             wandb.init(
                 # Set the wandb log directory
                 dir="wp4_aeroshell_optimizer/data/wandb_logs",
@@ -41,13 +72,14 @@ class TotalLoss:
                 config=self.__general_config,
             )
 
-        # category: aero, ... | losses: frontal_area_v0, ...
-        for category, losses in self.weights.items():
+        # Dynamically load and initialise active losses
+        # category: aero, ... | lossnames: frontal_area_v0, ...
+        for category, lossnames in self.losses.items():
             if category == "total":
                 continue
 
             # loss_name: frontal_area_v0, ... | compute: bool | weight: float | path: str
-            for loss_name, (compute, _weight, path) in losses.items():
+            for loss_name, (compute, _weight, path) in lossnames.items():
                 if compute:
                     # Dynamically load the loss class
                     # 1. Correctly construct the absolute path from the relative path in config
@@ -63,8 +95,6 @@ class TotalLoss:
                         losses_config=self.losses_config,
                     )
                     self.__active_losses[loss_name] = loss_instance
-
-        self.__rendering_frequency = self.__general_config.get("wandb_general", {}).get("rendering_frequency")
 
     def load_class_from_path(self, path: str, class_name: str):
         """Dynamically load a class from a file path."""
@@ -85,9 +115,10 @@ class TotalLoss:
 
     def get_total_loss(self, model, epoch_name: int = -1) -> torch.Tensor:
         # Calculate the individual Losses
-        individual_losses = {}
+        individual_losses = {}  # For logging purposes
         total_loss = torch.tensor(0.0, device=next(iter(model.parameters())).device)
-        loss_tensors = []
+        loss_tensors = []  # To store individual loss tensors for further processing
+
         # TODO: add config for individual losses (e.g. flexicubes resolution)
         # wandb sweeping config:
         wandb_sweep_config = self.__general_config.get("active_configs", {}).get("wandb", {})
@@ -147,7 +178,5 @@ class TotalLoss:
                 if image_path.exists():
                     wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
                     image_path.unlink()
-
-        return total_loss
 
         return total_loss

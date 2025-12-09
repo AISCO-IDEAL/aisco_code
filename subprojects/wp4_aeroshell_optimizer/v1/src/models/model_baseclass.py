@@ -5,7 +5,7 @@ from torch import nn
 
 class BaseModel(nn.Module):
     def __init__(self, config: dict, overwrite_base_init: bool = True, in_dim: int = 3, hidden: int = 64, layers: int = 3):
-        super().__init__()
+        super().__init__()  # gets all the stuff from nn.Module
 
         self.config = config
         self.in_dim = in_dim
