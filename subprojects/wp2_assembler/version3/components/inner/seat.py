@@ -12,9 +12,7 @@ class Seat:
     """Seat specifications and geometry for the solar car."""
 
     # fixed seat parameters [mm]
-    width: float = field(
-        default_factory=lambda: get_regulation("seat.dimension.width")
-    )  # general width of the seat
+    width: float = field(default_factory=lambda: get_regulation("seat.dimension.width"))  # general width of the seat
     radius_top: float = field(
         default_factory=lambda: get_regulation("seat.dimension.radius_top")
     )  # radius used to build the backrest
@@ -24,18 +22,10 @@ class Seat:
     plus_angle: float = field(
         default_factory=lambda: get_regulation("seat.dimension.plus_angle")
     )  # angle of the backrest forwards [°]
-    Lr_l: float = field(
-        default_factory=lambda: get_regulation("seat.dimension.lr_l")
-    )  # legroom length
-    Lr_h: float = field(
-        default_factory=lambda: get_regulation("seat.dimension.lr_h")
-    )  # legroom height
-    width_hr: float = field(
-        default_factory=lambda: get_regulation("seat.dimension.width_hr")
-    )  # headroom width
-    height_hr: float = field(
-        default_factory=lambda: get_regulation("seat.dimension.height_hr")
-    )  # headroom height
+    Lr_l: float = field(default_factory=lambda: get_regulation("seat.dimension.lr_l"))  # legroom length
+    Lr_h: float = field(default_factory=lambda: get_regulation("seat.dimension.lr_h"))  # legroom height
+    width_hr: float = field(default_factory=lambda: get_regulation("seat.dimension.width_hr"))  # headroom width
+    height_hr: float = field(default_factory=lambda: get_regulation("seat.dimension.height_hr"))  # headroom height
 
     def get_seat_info(self) -> str:
         """Return a short description of the seat configuration."""
@@ -110,15 +100,9 @@ class Seat:
 
         # create arcs to sweep along
         arc_bwd = (
-            cq.Workplane("XZ")
-            .moveTo(point_a[0], point_a[1])
-            .radiusArc(endPoint=(start_point.x, start_point.z), radius=-rad)
+            cq.Workplane("XZ").moveTo(point_a[0], point_a[1]).radiusArc(endPoint=(start_point.x, start_point.z), radius=-rad)
         )
-        arc_fwd = (
-            cq.Workplane("XZ")
-            .moveTo(end_point.x, end_point.z)
-            .radiusArc(endPoint=(point_a[0], point_a[1]), radius=-rad)
-        )
+        arc_fwd = cq.Workplane("XZ").moveTo(end_point.x, end_point.z).radiusArc(endPoint=(point_a[0], point_a[1]), radius=-rad)
 
         # do the sweeping
         sweep_bwd = cq.Workplane("YZ").add(w_sketch).sweep(arc_bwd, isFrenet=True)
@@ -140,9 +124,7 @@ class Seat:
             Lr_h (float): Legroom height.
             wid (float): Width of the seat.
         """
-        solid_legroom = (
-            cq.Workplane("YZ").rect(wid, lr_h, centered=(True, False)).extrude(lr_l)
-        )
+        solid_legroom = cq.Workplane("YZ").rect(wid, lr_h, centered=(True, False)).extrude(lr_l)
 
         return solid_legroom
 

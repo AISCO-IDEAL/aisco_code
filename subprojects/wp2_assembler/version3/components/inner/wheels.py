@@ -21,10 +21,10 @@ class Wheels:
         default_factory=lambda: get_regulation("wheel.tire_width")
     )
     wheel_margin_axial: float = field(
-        default_factory=lambda: get_regulation("wheel.wheel_margin_axial")
+        default_factory=lambda: get_regulation("wheel.margin_axial")
     )
     wheel_margin_radial: float = field(
-        default_factory=lambda: get_regulation("wheel.wheel_margin_radial")
+        default_factory=lambda: get_regulation("wheel.margin_radial")
     )
 
     def get_wheel_info(self) -> str:

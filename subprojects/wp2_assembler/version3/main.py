@@ -2,7 +2,7 @@ import cadquery as cq
 from ocp_vscode import show
 
 from subprojects.wp2_assembler.version3.components import nbz
-from subprojects.wp2_assembler.version3.components.inner import tracker_box, vision_box
+from subprojects.wp2_assembler.version3.components.vision import tracker_box, vision_box
 from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
 
 
@@ -40,7 +40,7 @@ def visualize_multiple(lower_id: int, upper_id: int):
 if __name__ == "__main__":  # only run when executing this file directly
     while True:
         userinput = input(
-            "Visualize inner NBZ, outer NBZ, both, multiple (both inner and outer), vision NBZ, tracker box, generate or stop? (i/o/b/v/t/g/s): "
+            "Visualize inner NBZ, outer NBZ, both, v3, multiple (both inner and outer), vision NBZ, tracker box, generate or stop? (i/o/b/3/v/t/g/s): "
         )
         if userinput.lower() == "i":
             userinput = input("Which id-number to visualize? ")
@@ -81,9 +81,7 @@ if __name__ == "__main__":  # only run when executing this file directly
             print(type(assembly))
 
         elif userinput.lower() == "m":
-            userinput = input(
-                "Which assemblies are to be visualized? (ranged as 'start-end') "
-            )
+            userinput = input("Which assemblies are to be visualized? (ranged as 'start-end') ")
             userinput_split = userinput.split("-")
             if int(userinput_split[0]) > 0:
                 lower_id = int(userinput_split[0])
@@ -98,12 +96,26 @@ if __name__ == "__main__":  # only run when executing this file directly
             visualize_multiple(lower_id, upper_id)
 
         elif userinput.lower() == "v":
-            vision_nbz = vision_box.vision_nbz()
+            vision_nbz = vision_box.vision_driv_nbz()
             show(vision_nbz)
 
         elif userinput.lower() == "t":
-            tracker_box = tracker_box.tracker_box()
-            show(tracker_box)
+            tracker_nbz = tracker_box.tracker_box_nbz()
+            show(tracker_nbz)
+
+        elif userinput.lower() == "3":
+            userinput = input("Which id-number to visualize? ")
+            if userinput.isdigit():
+                id_number = int(userinput)
+            else:
+                print("Invalid input. Please enter a valid id-number.")
+                continue
+            inner, outer, vision = nbz.call_assembly(id_number)
+            assembly = cq.Assembly(name="assembly_v3")
+            assembly.add(inner, name="innerNBZ", color=cq.Color(0, 0, 1, 0.3))
+            assembly.add(outer, name="outerNBZ", color=cq.Color(1, 1, 0, 0.3))
+            assembly.add(vision, name="visionNBZ", color=cq.Color(0, 1, 0, 0.3))
+            show(assembly)
 
         elif userinput.lower() == "g":
             userinput = input("How many assemblies are to be generated?")

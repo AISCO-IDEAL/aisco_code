@@ -72,6 +72,13 @@ inner_nbz, outer_nbz = nbz.call_assembly_solids(id_number=1)
 # Access regulation values
 tire_width = get_regulation("wheel.tire_width")  # Returns 96
 seat_width = get_regulation("seat.dimension.width")  # Returns 450.0
+
+# Get the smallest bounding box containing the inner nbz
+bounding_box_coordinates = bounding_box_of_assembly(id_number=1) # returns tuple with two tuples: ((x_min, y_min, z_min),(x_max,y_max,z_max))
+
+# Visualize the bounding box
+bounding_box_solid = create_bb_visualization(coordinates = bounding_box_coordinates) # returns a solid of the bounding box, with the correct positioning and size. 
+
 ```
 
 ## Project Structure
