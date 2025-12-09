@@ -159,16 +159,18 @@ def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length, get_box: bool = False)
     rad = get_regulation("seat.dimension.radius_top")
     neg_angle = math.radians(get_regulation("seat.dimension.minus_angle"))
 
+    '''
     # print all parameters from above
     print(f"Tracker box length: {t_box_len} mm")
     print(f"Tracker box margin to seat: {t_box_margin} mm")
     print(f"Eye level Z: {eye_level_z} mm")
     print(f"Seat radius top: {rad} mm")
     print(f"Negative angle: {neg_angle} radians")
+    '''
 
     # refence point for the tracker box is the backmost point of the seat + margin of 10cm + half length of the box
     point_ref_t_box = cq.Vector(
-        seat_pos_x - math.sin(neg_angle) * rad - t_box_margin - t_box_len / 2, 0, seat_pos_z + math.cos(neg_angle) * rad
+        seat_pos_x - math.sin(neg_angle) * rad - t_box_margin - t_box_len / 2, 0,-100+ seat_pos_z + math.cos(neg_angle) * rad
     )
     # reference point for the vision box is the eye level of the driver
     point_ref_v_box = cq.Vector(seat_pos_x, 0, seat_pos_z + eye_level_z)
@@ -403,6 +405,55 @@ def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
     """
     inner, outer, vision = call_assembly(id_number)
     return inner.toCompound().Solids(), outer, vision.toCompound().Solids()
+
+
+def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """
+    Docstring for bounding_box_of_assembly
+    
+    :param id_number: id number of the assembly of the wanted bounding box
+    :return: tuple with touples with ((x_min, y_min, z_min),(x_max,y_max,z_max))
+    :rtype: tuple[tuple[float, float, float], tuple[float, float, float]]
+    """
+    inner, _ = call_assembly(id_number)
+    inner_bounding_box = inner.toCompound().BoundingBox()
+
+    return (
+        (inner_bounding_box.xmin,
+         inner_bounding_box.ymin,
+         inner_bounding_box.zmin
+        ),
+
+        (inner_bounding_box.xmax,
+         inner_bounding_box.ymax,
+         inner_bounding_box.zmax
+        )
+        )
+
+def create_bb_visualization(BB_coords: tuple[tuple[float, float, float], tuple[float, float, float]]) -> cq.Solid:
+    """
+    Docstring for create_bb_visualization
+    
+    :param BB_coords: Tuple with tuples with the coordinates of the bounding box wanted to visualize
+    :type BB_coords: tuple[tuple[float, float, float], tuple[float, float, float]]
+    :return: solid of Bounding Box wanted to visualize
+    :rtype: Solid
+    """
+    MIN = BB_coords[0]
+    MAX = BB_coords[1]
+
+    # Calculate dimensions
+    x_len = MAX[0] - MIN[0]
+    y_len = MAX[1] - MIN[1]
+    z_len = MAX[2] - MIN[2]
+
+    # Calculate center point
+    center_x = (MAX[0] + MIN[0]) / 2
+    center_y = (MAX[1] + MIN[1]) / 2
+    center_z = (MAX[2] + MIN[2]) / 2
+
+    # Create and translate the box
+    return (cq.Workplane("XY").box(x_len, y_len, z_len).translate((center_x, center_y, center_z))).val()
 
 if __name__ == "__main__":
     from ocp_vscode import show
