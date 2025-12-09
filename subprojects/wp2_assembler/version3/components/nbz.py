@@ -145,7 +145,7 @@ def outer_nbz(length: float, width: float, height: float):
     return box
 
 
-def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length) -> list[cq.Solid]:
+def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length, get_box: bool = False) -> list[cq.Solid]:
     """
     Generate a cadquery Assembly of the driver's and the tracker's vision NBZ with given parameters from regulations
     Args: regulations.yaml
@@ -176,12 +176,17 @@ def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length) -> list[cq.Solid]:
     tyre_diameter = get_regulation("wheel.tire_diameter")
     shift_vec = cq.Vector(-wheel_base_length / 2, 0, tyre_diameter / 2)
 
-    t_box_cone = tracker_box.tracker_cone_nbz()
+    box, t_box_cone = tracker_box.tracker_box_nbz(box_and_cone=True)
     v_cone = vision_box.vision_driv_nbz()
 
     vision_assy = cq.Assembly(name="vision_cones_assembly")
     vision_assy.add(t_box_cone, loc=cq.Location(point_ref_t_box + shift_vec), name="tracker_cone")
     vision_assy.add(v_cone, loc=cq.Location(point_ref_v_box + shift_vec), name="driver_cone")
+
+    if get_box:
+        cone_assy = cq.Assembly(name="Tracking_box")
+        cone_assy.add(box, loc=cq.Location(point_ref_t_box + shift_vec), name="tracker_box")
+        return cone_assy, vision_assy
 
     return vision_assy
 
@@ -306,9 +311,9 @@ def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
 
     outer = outer_nbz(params["wheel_base_length"] * 2.2, box_width, box_height)
 
-    vision = vision_nbz(params["seat_position"], seat_pos_z, params["wheel_base_length"])
+    box, vision = vision_nbz(params["seat_position"], seat_pos_z, params["wheel_base_length"], get_box=True)
 
-    return assembly, outer, vision
+    return assembly.add(box), outer, vision
 
 
 def get_range_wheels() -> dict:

@@ -11,6 +11,7 @@ def tracker_box_nbz(
         get_regulation("tracker_box.def_position.y"),
         get_regulation("tracker_box.def_position.z"),
     ),
+    box_and_cone: bool = False
 ) -> cq.Workplane:
     """
     Generate a cadquery Assembly of the Tracker Box with its cone on top
@@ -37,6 +38,21 @@ def tracker_box_nbz(
         .add(cone)
         .translate((position[0], position[1], position[2] + g_box_hei / 2))
     )
+
+    box = (
+        cq.Workplane("XY")
+        .box(g_box_len, g_box_wid, g_box_hei)
+        .translate((position[0], position[1], position[2] + g_box_hei / 2))
+    )
+
+    vision_cone = (
+        cq.Workplane("XY")
+        .add(cone)
+        .translate((position[0], position[1], position[2] + g_box_hei / 2))
+    )
+    
+    if box_and_cone:
+        return box, vision_cone
 
     return box_w_cone
 
