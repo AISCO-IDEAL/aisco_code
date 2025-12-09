@@ -106,7 +106,7 @@ else
 fi
 
 
-read -p "Do you want to BUILD Neural Renderer (need to reserve a GPU)? [y/n]: " install_renderer
+read -p "Do you want to BUILD Neural Renderer (DON'T DO THIS UNLESS SOMEONE SCREWED UP)? [y/n]: " install_renderer
 if [[ "$install_renderer" == "y" ]]; then
     cd /cluster/home/aalthaus/AISCO_code/fixed_renderer
     # optionally set arch if building on a login node:

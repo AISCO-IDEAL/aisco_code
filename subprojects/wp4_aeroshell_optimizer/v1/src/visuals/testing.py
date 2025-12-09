@@ -1,20 +1,18 @@
 import math
 import time
-from pathlib import Path
+
 
 import imageio
 import numpy as np
 import torch
 
-from AISCO_code.subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 from subprojects.fixed_renderer import Renderer as NeuralRenderer
 from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
-from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import dynamic_type_loading
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data, fetch_pretrained_model
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
 
 def create_dummy_textures(verts, faces, texture_size: int = 2, color=(1.0, 1.0, 1.0), device=None, requires_grad: bool = False):
@@ -208,7 +206,7 @@ def main(verbose: bool = True) -> None:
     if len(single_frame.shape) == 4:
         single_frame = single_frame[0]  # Remove batch dimension
     single_frame_uint8 = (single_frame * 255).astype(np.uint8)
-    imageio.imwrite("/cluster/home/aalthaus/test_rendering_single_z_colored.png", single_frame_uint8)
+    viz.save_image(single_frame_uint8, "/cluster/home/aalthaus/test_rendering_single_z_colored.png")
     print("Saved single frame to test_rendering_single_z_colored.png")
 
     # Create rotating GIF with z-coordinate coloring
@@ -256,7 +254,7 @@ def main(verbose: bool = True) -> None:
         frames.append(frame_uint8)
 
     # Save as GIF
-    imageio.mimsave("/cluster/home/aalthaus/test_rendering_rotation_x.gif", frames, fps=15)
+    viz.save_gif(frames, "/cluster/home/aalthaus/test_rendering_rotation_x.gif", fps=15)
     print("Saved x-coordinate rotating GIF to test_rendering_rotation_x.gif")
 
     # Finally test multiple views grid rendering

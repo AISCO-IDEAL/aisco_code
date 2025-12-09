@@ -54,15 +54,17 @@ class Visualiser:
         )
         #Ensure whole car is inside clipping planes
         self.renderer.near = 0.1
-        self.renderer.far = 20000.0
+        self.renderer.far = 50000.0
+
+
     def render_mesh(
         self,
         vertices: torch.Tensor,
         faces: torch.Tensor,
         textures: torch.Tensor | None = None,
         mode: str = 'rgb',
-        camera_position: list[float] | None = None,
-        camera_direction: list[float] | None = None
+        camera_position: list[int] | None = None,
+        camera_direction: list[int] | None = None
     ) -> np.ndarray:
         """
         Render a single view of a mesh.
@@ -114,7 +116,7 @@ class Visualiser:
         vertices: torch.Tensor,
         faces: torch.Tensor,
         vertex_colors: torch.Tensor,
-        camera_position: list[float] | None = None
+        camera_position: list[int] | None = None
     ) -> np.ndarray:
         """
         Render mesh with per-vertex colors.
@@ -278,34 +280,6 @@ class Visualiser:
 
         return grid
 
-    # ========== Helper Methods ==========
-
-    def _to_device(self, tensor: torch.Tensor) -> torch.Tensor:
-        """Move tensor to the correct device."""
-        if self.device == 'cuda' and not tensor.is_cuda:
-            return tensor.cuda()
-        elif self.device == 'cpu' and tensor.is_cuda:
-            return tensor.cpu()
-        return tensor
-
-    def _to_numpy(self, tensor: torch.Tensor) -> np.ndarray:
-        """Convert tensor to numpy array and transpose to (batch, H, W, C) format."""
-        if tensor.is_cuda:
-            tensor = tensor.cpu()
-        arr = tensor.detach().numpy()
-        # If shape is (batch, C, H, W), transpose to (batch, H, W, C)
-        if len(arr.shape) == 4 and arr.shape[1] in [1, 3, 4]:
-            arr = arr.transpose(0, 2, 3, 1)
-        return arr
-
-    def _create_default_texture(self, batch_size: int, num_faces: int, texture_size: int = 2) -> torch.Tensor:
-        """Create a default white texture."""
-        textures = torch.ones(
-            batch_size, num_faces, texture_size, texture_size, texture_size, 3,
-            dtype=torch.float32
-        )
-        return self._to_device(textures)
-
     def vertex_colors_to_textures(
         self,
         vertex_colors: torch.Tensor,
@@ -342,6 +316,55 @@ class Visualiser:
         ).contiguous()
 
         return textures
+
+
+    def save_image(self, image: np.ndarray, file_path: str) -> None:
+        """
+        Save the rendered image to a file.
+
+        Args:
+            image: Image as numpy array
+            file_path: Path to save the image
+        """
+        imageio.imwrite(file_path, (image * 255).astype(np.uint8))
+    def save_gif(self, frames: list[np.ndarray], file_path: str, fps: int = 10) -> None:
+        """
+        Save a list of frames as a GIF.
+
+        Args:
+            frames: List of images as numpy arrays
+            file_path: Path to save the GIF
+            fps: Frames per second
+        """
+        imageio.mimsave(file_path, frames, fps=fps)
+    # ========== Helper Methods ==========
+
+    def _to_device(self, tensor: torch.Tensor) -> torch.Tensor:
+        """Move tensor to the correct device."""
+        if self.device == 'cuda' and not tensor.is_cuda:
+            return tensor.cuda()
+        elif self.device == 'cpu' and tensor.is_cuda:
+            return tensor.cpu()
+        return tensor
+
+    def _to_numpy(self, tensor: torch.Tensor) -> np.ndarray:
+        """Convert tensor to numpy array and transpose to (batch, H, W, C) format."""
+        if tensor.is_cuda:
+            tensor = tensor.cpu()
+        arr = tensor.detach().numpy()
+        # If shape is (batch, C, H, W), transpose to (batch, H, W, C)
+        if len(arr.shape) == 4 and arr.shape[1] in [1, 3, 4]:
+            arr = arr.transpose(0, 2, 3, 1)
+        return arr
+
+    def _create_default_texture(self, batch_size: int, num_faces: int, texture_size: int = 2) -> torch.Tensor:
+        """Create a default white texture."""
+        textures = torch.ones(
+            batch_size, num_faces, texture_size, texture_size, texture_size, 3,
+            dtype=torch.float32
+        )
+        return self._to_device(textures)
+
 
     def _coordinate_to_colors(
         self,
