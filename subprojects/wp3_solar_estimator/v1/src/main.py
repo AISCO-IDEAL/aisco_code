@@ -116,4 +116,4 @@ def main_loop(model, area_budget: float = 6e6, sun_ray_vector=None) -> float:
     # calculate the total power received by the selected faces
     total_power = np.sum(dot_products[selected_indices] * triangle_areas[selected_indices])
 
-    return float(total_power)
+    return - float(total_power) *1e-6
