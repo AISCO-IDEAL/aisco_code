@@ -202,7 +202,7 @@ Make sure `ocp-vscode` extension is installed in VS Code for 3D visualization.
 
 ## Status
 
-This version (v2) is now **frozen** and will not receive further modifications. New features should be developed in version3 or later.
+This version (v3) is now **frozen** and will not receive further modifications.
 
 ## References
 
