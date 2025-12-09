@@ -7,7 +7,6 @@ from pathlib import Path
 
 import torch
 import trimesh
-
 import wandb
 
 # NOTE: You can remove all hardcoded loss imports (like BbLoss1, SolarLoss, etc.)
@@ -108,7 +107,7 @@ class TotalLoss:
             f = loss_tensors[0] + loss_tensors[4]  # solar + drag
             g = loss_tensors[1] + loss_tensors[2] + loss_tensors[3]  # bb + eikonal + smoothness
             lambda_ = 10.0
-            rho = wandb.config.lagrangian_params_rho_bb
+            rho = wandb.config.lagrangian_params.rho_bb
             total_loss = f + lambda_ * g + (rho / 2) * (g**2)
             # Sum all loss tensors in a differentiable way
         else:
@@ -148,5 +147,7 @@ class TotalLoss:
                 if image_path.exists():
                     wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
                     image_path.unlink()
+
+        return total_loss
 
         return total_loss

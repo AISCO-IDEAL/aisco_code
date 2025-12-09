@@ -56,6 +56,7 @@ wp4_aeroshell_optimizer = [
   "pyrender>=0.1.45",
   "PyOpenGL>=3.1.0",
   "pyvista>=0.40.0",
+  "imageio>=2.37.2"
 ]
 
 testing = [
@@ -96,7 +97,9 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
-    "**/archive/**"
+    "**/archive/**",
+    "**/subprojects/fixed_renderer/**",
+    "**/visuals/testing.py",
 ]
 
 
@@ -153,6 +156,7 @@ ignore = [
     "D105",  # Missing docstring in magic method
     "D107",  # Missing docstring in __init__
     "N999",  # ignoring PEP8 convention to enable us to call our project AISCO_code instead of aisco_code
+    "PLR0913", # too many arguments is bs convention for us
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
@@ -191,4 +195,5 @@ files = ["AISCO/", "tests/"]
 exclude = [
   "^build/",
   "^docs/",
+  "**/fixed_renderer/**",
 ]

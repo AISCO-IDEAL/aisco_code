@@ -15,6 +15,7 @@ from ocp_vscode import show
 
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly
 from subprojects.wp2_assembler.version2.utils import Speed_hump  # Added helper import
+
 #from subprojects.wp2_assembler.version2.utils.animation_speed_hump import animate
 from subprojects.wp2_assembler.version2.utils.Speed_hump import (
     create_speed_hump_and_floor,
@@ -70,7 +71,7 @@ def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     if len(pos_array) != len(orn_array):
         raise ValueError("Error in trim_outer_nbz: pos_array and orn_array must have the same length")
 
-    
+
     trimmed_outer = outer
     knife = [ground_shape]
     for i in range(200):
@@ -84,7 +85,7 @@ def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     trimmed_outer = outer
     for i in knife:
         trimmed_outer=trimmed_outer.cut(i)
-    
+
     '''
     i=0
     knife = []
@@ -123,9 +124,9 @@ def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     show(simple_tunnel)
     input("fuse? ")
 
-    
+
     fused_tunnel = knife[0]
-    
+
     # Loop through the rest and add them one by one
     a = 0
     for shape in knife[1:]:
@@ -134,14 +135,14 @@ def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
         if(a%10 == 0):
             print(a,len(knife))
             show(fused_tunnel)
-    
+
     show(fused_tunnel)
 
     input("Continue? ")
 
     final_outer = trimmed_outer.cut(combined_compound)
     show(final_outer)
-    
+
     input("Continue? ")
 
 
@@ -162,7 +163,7 @@ def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
 
 def export_inner_nbz_parts(
     assembly: cq.Assembly,
-) -> tuple[Optional[str], list[tuple[str, str]]]:
+) -> tuple[str | None, list[tuple[str, str]]]:
     """
     Export the inner NBZ as one body STL and individual wheel STLs.
     Wheels are detected by name prefix 'wheel' / 'Wheel'.
@@ -184,7 +185,7 @@ def export_inner_nbz_parts(
         else:
             body_shapes.append(shape)
 
-    body_path: Optional[str] = None
+    body_path: str | None = None
     if body_shapes:
         body_compound = cq.Compound.makeCompound(body_shapes)
         body_path = export_shape_to_stl(body_compound, "inner_nbz_body")
@@ -432,4 +433,3 @@ if __name__ == "__main__":
     animate(demo_id, pos_array2, orn_array2)
 
     #trim_outer_nbz(demo_id, pos_array2, orn_array2)
-    

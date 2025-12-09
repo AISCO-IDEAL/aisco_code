@@ -47,9 +47,6 @@ class BbV1(ParentLoss):
         """
         Arguments:
             model: The SDF network                                              NO Default!!
-            inner_box: CadQuery Shape representing the inner bounding box       Defaults to BackupAssembly boxes if None
-            outer_box: CadQuery Shape representing the outer bounding box       Defaults to BackupAssembly boxes if None
-            pointgrid: List of points at which compatibility is enforced        Defaults to a 21x21x21 grid from -2 to 2 in each axis if None
         Returns:
             Bounding boxes loss (to be minimized)
 
@@ -76,5 +73,5 @@ class BbV1(ParentLoss):
             upper_violation = torch.relu(sdf_pred - sdf_inner_t)
             lower_violation = torch.relu(sdf_outer_t - sdf_pred)
 
-            loss = (upper_violation + lower_violation).mean() ** 0.5
+            loss = (upper_violation + lower_violation).mean() # ** 0.5
             return loss
