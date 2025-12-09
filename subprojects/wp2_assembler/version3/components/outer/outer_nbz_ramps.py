@@ -1,9 +1,8 @@
-from subprojects.wp2_assembler.version3.components.nbz import call_assembly
 import cadquery as cq
 import math
 from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
 
-def outer_nbz_ramps(assembly_id) -> tuple[cq.Workplane, cq.Workplane]:
+def outer_nbz_ramps(inner, outer) -> tuple[cq.Workplane, cq.Workplane]:
     """
     Returns the approach and departure ramps
     
@@ -12,7 +11,6 @@ def outer_nbz_ramps(assembly_id) -> tuple[cq.Workplane, cq.Workplane]:
     :rtype: tuple with two workplanes
     """
 
-    inner, outer, _ = call_assembly(assembly_id)
     back_wheel_center = (inner["wheel_1"].loc.toTuple()[0][0], inner["wheel_1"].loc.toTuple()[0][2])
     front_wheel_center = (inner["wheel_2"].loc.toTuple()[0][0], inner["wheel_2"].loc.toTuple()[0][2])
     outer_xmax = outer.BoundingBox().xmax
@@ -59,9 +57,10 @@ def outer_nbz_ramps(assembly_id) -> tuple[cq.Workplane, cq.Workplane]:
     return result
 
 if __name__ == "__main__":
+    '''
     from ocp_vscode import show
     result = outer_nbz_ramps(demo_id)
     inner, _, _ = call_assembly(demo_id)
     show (result, inner)
     print(type(result))
-        
+    '''

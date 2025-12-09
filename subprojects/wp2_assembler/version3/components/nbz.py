@@ -12,6 +12,7 @@ from subprojects.wp2_assembler.version3.components.outer.outer_box import outer_
 from subprojects.wp2_assembler.version3.components.vision import tracker_box, vision_box
 from subprojects.wp2_assembler.version3.utils.distributions import uniform_distribution
 from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
+from subprojects.wp2_assembler.version3.components.outer.outer_nbz_ramps import outer_nbz_ramps
 
 
 class WheelbaseTooSmallError(Exception):
@@ -311,9 +312,13 @@ def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
 
     outer = outer_nbz(params["wheel_base_length"] * 2.2, box_width, box_height)
 
-    box, vision = vision_nbz(params["seat_position"], seat_pos_z, params["wheel_base_length"], get_box=True)
 
-    return assembly.add(box), outer, vision
+    box, vision = vision_nbz(params["seat_position"], seat_pos_z, params["wheel_base_length"], get_box=True)
+    assembly.add(box)
+
+    outer_with_ramps = outer_nbz_ramps(assembly, outer)
+
+    return assembly, outer_with_ramps, vision
 
 
 def get_range_wheels() -> dict:
@@ -387,3 +392,21 @@ def get_range_seat(wheelbase_width: float, wheelbase_length: float) -> dict:
         ),  # mm
     }
     return ranges
+
+def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
+    """
+    Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
+
+    Args: id-number
+
+    Returns:  tuple with list[inner solids] and outer solid
+    """
+    inner, outer, vision = call_assembly(id_number)
+    return inner.toCompound().Solids(), outer, vision.toCompound().Solids()
+
+if __name__ == "__main__":
+    from ocp_vscode import show
+    demo_id = 30
+    inner, outer, vision = call_assembly_solids(demo_id)
+    show(inner, outer, vision)
+    print(type(inner), type(outer),type(vision))

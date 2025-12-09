@@ -36,7 +36,7 @@ def visualize_multiple(lower_id: int, upper_id: int):
         print(f"Added assembly with id-number: {id_number}")
     show(grouped)
 
-
+3
 if __name__ == "__main__":  # only run when executing this file directly
     while True:
         userinput = input(
