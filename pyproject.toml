@@ -23,7 +23,8 @@ dependencies = [
   "pre-commit>=3.0.0",
   "mypy>=1.17.1",
   "torch==2.4.0",
-  "wandb>=0.17.2"
+  "wandb>=0.17.2",
+  "wandb[media] >= 0.23.1"
 ]
 
 [project.optional-dependencies]
