@@ -14,6 +14,8 @@ class BaseModel(nn.Module):
         self.hidden = hidden
         self.layers = layers
 
+        self.visual_config = {}
+
         if overwrite_base_init:
             return  # Skip base init if overwritten in subclass, avoids creating redundant layers
 
@@ -62,7 +64,9 @@ class BaseModel(nn.Module):
         raise ValueError("No Debug Info implemented")  # noqa: TRY003
 
 
-    def init_neural_renderer(self, image_size: int = 256,
+    def init_neural_renderer(self, 
+                             renderer_config: dict | None = None,
+                             image_size: int = 256,
                              background_color: list[float] = [0, 0, 0],
                              anti_aliasing: bool = True,
                              camera_mode: str = 'look_at',
@@ -82,6 +86,9 @@ class BaseModel(nn.Module):
 
             If you need more control, just initialise the Visualiser class manually as an attribute.
         """
+        if renderer_config is None:
+            renderer_config = {}
+        
         self.visualiser = Visualiser(
             image_size = image_size,
             background_color = background_color,

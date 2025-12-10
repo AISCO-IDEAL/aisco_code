@@ -106,14 +106,17 @@ def main(verbose: bool = True) -> None:
                 model.visualiser.frames_to_gif(
                     file_path=Path(f"subprojects/wp4_aeroshell_optimizer/data/rendered_run_{wandb.run.name}.gif"),
                     fps=fps,
+                    return_uint8=True,
                 )
 
             if general_config.get("neural_renderer", {}).get("upload", True):
-                frames_uint8 = model.visualiser.frames_to_gif(
+                # wandb.Video expects float32 frames in [0, 1] range
+                frames_float = model.visualiser.frames_to_gif(
                     file_path=None,
                     fps=fps,
+                    return_uint8=False,
                 )
-                wandb.log({"rendered_video": wandb.Video(frames_uint8, fps=fps, format="gif")})
+                wandb.log({"rendered_video": wandb.Video(frames_float, fps=fps, format="gif")})
 
     print("Completed job successfully.")
 
