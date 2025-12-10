@@ -13,4 +13,3 @@ training_params:
   optimizer: "adam"
   scheduler_step_size: 200
   scheduler_gamma: 0.5
-

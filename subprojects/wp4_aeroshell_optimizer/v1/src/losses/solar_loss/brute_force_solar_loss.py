@@ -1,10 +1,8 @@
-import copy
-
 import torch
 
 from subprojects.wp3_solar_estimator.v1.src.n_diff_solar_loss import n_diff_solar_loss
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.brute_force_differentiator import BruteForceDifferentiator
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
 
 
 class BruteForceSolarLoss(ParentLoss):
@@ -13,4 +11,3 @@ class BruteForceSolarLoss(ParentLoss):
 
     def _loss(self, model) -> torch.Tensor:
         return self.__differentiator.loss(model)
-

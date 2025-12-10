@@ -95,6 +95,25 @@ def main(verbose: bool = True) -> None:
         pretraining=False,
         wandb_run=wandb_name
     )
+    if general_config["wandb_general"]["use_wandb"] and general_config["wandb_general"]["use_neural_renderer"]:
+        if len(model.visualiser.stored_frames) == 0:
+            print("Warning: No frames stored in neural renderer for logging.")
+
+        if general_config.get("neural_renderer", {})["gif"].get("make_gif", False):
+            fps = general_config.get("neural_renderer", {}).get("gif", {}).get("fps", 10)
+
+            if general_config.get("neural_renderer", {}).get("save_locally", False):
+                model.visualiser.frames_to_gif(
+                    file_path=Path(f"subprojects/wp4_aeroshell_optimizer/data/rendered_run_{wandb.run.name}.gif"),
+                    fps=fps,
+                )
+
+            if general_config.get("neural_renderer", {}).get("upload", True):
+                frames_uint8 = model.visualiser.frames_to_gif(
+                    file_path=None,
+                    fps=fps,
+                )
+                wandb.log({"rendered_video": wandb.Video(frames_uint8, fps=fps, format="gif")})
 
     print("Completed job successfully.")
 

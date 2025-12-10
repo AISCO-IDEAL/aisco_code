@@ -23,8 +23,18 @@ wandb_general:
   project_name: "Aeroshell Optimiser"
   entity_name: "aisco"
   track_run: 1
-  rendering_frequency: 10
+  use_neural_renderer: True
+  rendering_frequency: 1
   use_sweep: 0
+
+neural_renderer:
+  upload: true
+  save_locally: true
+  image_size: 1028
+  gif:
+    make_gif: True
+    fps: 70
+
 
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
   pretrained_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset"
