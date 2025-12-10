@@ -1,0 +1,26 @@
+#This config includes everything regarding the visualiser and its wrapper you might need
+
+
+neural_renderer:
+  image_size: 1024
+  background_color: [0.0,0.0,0.3]
+  anti_aliasing: true
+  camera_mode: "look_at"
+
+
+# Insert custom modes here, such as "clemens' solar mode"
+modes:
+  snapshot: false
+  timelapse: true
+  frozen_gif: true
+  dynamic_gif: false
+
+
+
+storage_dir: "/cluster/home/aalthaus/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/renderings"
+
+
+gifs:
+  fps: 60
+  upload: false
+  save_locally: true
