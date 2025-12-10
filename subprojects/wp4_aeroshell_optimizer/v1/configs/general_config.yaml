@@ -23,7 +23,7 @@ wandb_general:
   project_name: "Aeroshell Optimiser"
   entity_name: "aisco"
   track_run: 1
-  rendering_frequency: 1
+  rendering_frequency: 10
   use_sweep: 0
 
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
