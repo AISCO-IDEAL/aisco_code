@@ -4,7 +4,7 @@ general_info:
 training_params:
   learning_rate: 0.00005
   batch_size: 4096
-  num_epochs: 10
+  num_epochs: 100
   model_capacity: 256
   num_layers: 8
   skip_connections: [4]
@@ -13,4 +13,3 @@ training_params:
   optimizer: "adam"
   scheduler_step_size: 200
   scheduler_gamma: 0.5
-

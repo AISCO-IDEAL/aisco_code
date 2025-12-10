@@ -9,20 +9,29 @@ import torch
 import trimesh
 import wandb
 
+from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
+
 # NOTE: You can remove all hardcoded loss imports (like BbLoss1, SolarLoss, etc.)
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import render_image
 
 
 class TotalLoss:
     def __init__(self, dev: str = "cuda") -> None:
         # set up configs
         self.__general_config = load_config()
+        self._use_wandb = self.__general_config.get("wandb_general", {}).get("use_wandb", False)
+        self._use_neural_renderer = self.__general_config.get("wandb_general", {}).get("use_neural_renderer", False)
         self.losses_config = load_config(
             v=self.__general_config["general_info"]["version"],
             cfg_name=self.__general_config["active_configs"]["losses"],
         )
+        self.weights = self.losses_config.get("losses", {})  # get nested losses dict
+        self.__active_losses = {}
+        self._renderer_initialized = False
+
         project_root = Path.cwd()  # Correctly defines project root
         self.losses = self.losses_config.get("losses", {})  # get nested losses dict
         self.__active_losses = {}
@@ -113,15 +122,15 @@ class TotalLoss:
         spec.loader.exec_module(module)
         return getattr(module, class_name)
 
-    def get_total_loss(self, model, epoch_name: int = -1) -> torch.Tensor:
+    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:
         # Calculate the individual Losses
         individual_losses = {}  # For logging purposes
-        total_loss = torch.tensor(0.0, device=next(iter(model.parameters())).device)
+        device = next(iter(model.parameters())).device
+        total_loss = torch.tensor(0.0, device=device)
         loss_tensors = []  # To store individual loss tensors for further processing
 
         # TODO: add config for individual losses (e.g. flexicubes resolution)
         # wandb sweeping config:
-        wandb_sweep_config = self.__general_config.get("active_configs", {}).get("wandb", {})
         # 1. Calculate and sum up the active losses dynamically
         for loss_name, loss_instance in self.__active_losses.items():
             # Get the loss value (which should be a weighted value if done inside the loss)
@@ -148,35 +157,59 @@ class TotalLoss:
         individual_losses["total_loss"] = total_loss.item()
 
         # # 2. Logging them on WandB (not working as of now)
-        if self.__general_config.get("wandb_general", {}).get("use_wandb") is True:
+        if self._use_wandb is True:
             wandb.log(individual_losses, step=epoch_name)
+            if self._use_neural_renderer and not self._renderer_initialized:
+                model.init_neural_renderer(
+                    image_size=self.__general_config.get("neural_renderer", {}).get("image_size", 256),
+                    background_color=[0, 0, 0], #black background
+                    anti_aliasing=True,
+                    camera_mode='look_at',
+                    viewing_angle=30,
+                    device=device,
+                    verbose=False
+                )
+                self._renderer_initialized = True
 
-            if epoch_name % self.__rendering_frequency == 0:
-                verts, faces = get_diff_mesh(model, grid_res=64, device=next(iter(model.parameters())).device)
+            if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
+                verts, faces = get_diff_mesh(model, grid_res=64, device=device)
 
-                # Convert to numpy if tensors
-                if torch.is_tensor(verts):
-                    verts = verts.detach().cpu().numpy()
-                if torch.is_tensor(faces):
-                    faces = faces.detach().cpu().numpy()
+                if self._use_neural_renderer:
+                    # Use Alex' faster Neural Renderer for rendering and logging (no assembly though)
+                    # Needs to be initialised first and converted into a gif after training
+                    render_image(
+                        visualiser=model.visualiser,
+                        model=model,
+                        position=[4000, 1000, 1000],
+                        look_at=[0, 0, 0],
+                        save_frame=True
+                    )
 
-                # Create trimesh object and export to STL
-                mesh = trimesh.Trimesh(vertices=verts, faces=faces)
-                stl_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/mesh_epoch_{epoch_name}.stl")
-                stl_path.parent.mkdir(parents=True, exist_ok=True)
-                mesh.export(str(stl_path))
+                else:
+                    # Use Clemens' CADVisualizer for rendering and logging
+                    # Convert to numpy if tensors
+                    if torch.is_tensor(verts):
+                        verts = verts.detach().cpu().numpy()
+                    if torch.is_tensor(faces):
+                        faces = faces.detach().cpu().numpy()
 
-                # Visualize the mesh using CADVisualizer
-                image_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/render_epoch_{epoch_name}.png")
-                visualizer = CADVisualizer(stl_path=str(stl_path), out_image_path=str(image_path))
-                visualizer.render_until_blue_detected()
+                    # Create trimesh object and export to STL
+                    mesh = trimesh.Trimesh(vertices=verts, faces=faces)
+                    stl_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/mesh_epoch_{epoch_name}.stl")
+                    stl_path.parent.mkdir(parents=True, exist_ok=True)
+                    mesh.export(str(stl_path))
 
-                # Delete local files after logging to WandB
-                if stl_path.exists():
-                    wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name)
-                    stl_path.unlink()
-                if image_path.exists():
-                    wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
-                    image_path.unlink()
+                    # Visualize the mesh using CADVisualizer
+                    image_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/render_epoch_{epoch_name}.png")
+                    visualizer = CADVisualizer(stl_path=str(stl_path), out_image_path=str(image_path))
+                    visualizer.render_until_blue_detected()
+
+                    # Delete local files after logging to WandB
+                    if stl_path.exists():
+                        wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name)
+                        stl_path.unlink()
+                    if image_path.exists():
+                        wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
+                        image_path.unlink()
 
         return total_loss
