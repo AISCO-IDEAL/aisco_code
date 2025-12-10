@@ -1,5 +1,6 @@
+import copy
+
 import torch
-from torch.nn.utils.stateless import functional_call
 
 from subprojects.wp3_solar_estimator.v1.src.n_diff_solar_loss import n_diff_solar_loss
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
@@ -15,52 +16,42 @@ class BruteForceSolarLoss(ParentLoss):
             if p.grad is not None:
                 p.grad.zero_()
 
-        # Create a dict of named parameters to use with stateless functional_call
-        params = dict(model.named_parameters())
+        # Work on a deepcopy to avoid in-place modifications on the original params
+        device = next(model.parameters()).device
+        model_eval = copy.deepcopy(model)
+        model_eval.to(device)
+        model_eval.train(model.training)
 
-        # Compute base loss at current parameter values without attaching to the original params
+        # Compute base loss without tracking gradients
         with torch.no_grad():
-            base_loss = float(n_diff_solar_loss(lambda *args, params=params, **kwargs: functional_call(model, params, args, kwargs)))
+            base_loss = float(n_diff_solar_loss(model_eval))
 
-        # Loop over all parameters and estimate gradients via finite differences
-        for name, param in model.named_parameters():
-            if not param.requires_grad:
+        # Loop over all parameters (evaluate on the copy) and estimate gradients via finite differences
+        for param_eval, param_orig in zip(model_eval.parameters(), model.parameters(), strict=False):
+            if not param_orig.requires_grad:
                 continue
 
-            # Allocate gradient tensor with same shape
-            grad = torch.zeros_like(param)
+            # Allocate gradient tensor with same shape on the original param's device
+            grad = torch.zeros_like(param_orig)
 
-            # Work on a flattened view for simplicity (on a clone to avoid in-place on originals)
             with torch.no_grad():
-                flat_param = param.flatten()
-                flat_grad = grad.flatten()
+                flat_param = param_eval.view(-1)
+                flat_grad = grad.view(-1)
 
                 for i in range(flat_param.numel()):
-                    original_value = flat_param[i].item()
+                    orig = flat_param[i].item()
 
-                    # Build a perturbed parameter tensor (clone to avoid touching original)
-                    perturbed = param.clone().flatten()
-                    perturbed[i] = original_value + self.__epsilon
-                    perturbed = perturbed.view_as(param)
+                    # x + epsilon on the copy
+                    flat_param[i] = orig + self.__epsilon
+                    loss_plus = float(n_diff_solar_loss(model_eval))
 
-                    # Build a new params dict with the single perturbed parameter
-                    perturbed_params = dict(params)
-                    perturbed_params[name] = perturbed
-
-                    # Recompute loss with perturbed parameters using stateless call (bind loop var)
-                    loss_plus = float(
-                        n_diff_solar_loss(
-                            lambda *args, perturbed_params=perturbed_params, **kwargs: functional_call(
-                                model, perturbed_params, args, kwargs
-                            )
-                        )
-                    )
-
-                    # Finite-difference derivative: (f(x+ε) - f(x)) / ε
+                    # derivative ≈ (f(x+ε) - f(x)) / ε
                     flat_grad[i] = (loss_plus - base_loss) / self.__epsilon
 
-            # Attach the computed gradient to the parameter
-            param.grad = grad
+                    # restore
+                    flat_param[i] = orig
 
-        # Return the loss as a torch scalar to look like a normal loss
+            # Assign the estimated gradient back to the original model's parameter
+            param_orig.grad = grad
+
         return torch.tensor(base_loss, dtype=torch.float32, device=self.device)
