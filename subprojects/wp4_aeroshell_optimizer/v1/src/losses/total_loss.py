@@ -12,6 +12,7 @@ import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.weights import weights_manual, weights_alm
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
 
 # NOTE: You can remove all hardcoded loss imports (like BbLoss1, SolarLoss, etc.)
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -107,28 +108,12 @@ class TotalLoss:
                     )
                     self.__active_losses[loss_name] = loss_instance
 
-    def load_class_from_path(self, path: str, loss_family: str):
-        """Dynamically load a class from a file path."""
-        spec = importlib.util.spec_from_file_location("module.name", path)
-
-        # 3. Add explicit check for None to prevent AttributeError
-        if spec is None or spec.loader is None:
-            raise FileNotFoundError(  # noqa: TRY003
-                f"Cannot find module file for dynamic loading. "
-                f"Path provided: {path}. "
-                f"Please verify the file exists and the path in the config (must use '/' separators)."
-            )
-
-        module = importlib.util.module_from_spec(spec)
-        sys.modules["module.name"] = module
-        spec.loader.exec_module(module)
-        return getattr(module, loss_family)
-
     def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:
         # Calculate the individual Losses
-        individual_losses = {}  # For logging purposes
+        loss_names = {}  # For logging purposes
         device = next(iter(model.parameters())).device
-        total_loss = torch.tensor(0.0, device=device)
+        weighted_total_loss = torch.tensor(0.0, device=device)
+        weights = torch.tensor([], device=device)
         loss_tensors = []  # To store individual loss tensors for further processing
 
         # TODO: add config for individual losses (e.g. flexicubes resolution)
@@ -141,29 +126,48 @@ class TotalLoss:
             loss_tensors.append(current_loss)
 
             # Store for logging
-            individual_losses[loss_name] = current_loss.item()
+            loss_names[loss_name] = current_loss.item()
 
-        if self.losses_config["general_info"]["ALM"] == "True":
+        if self.losses_config["general_info"]["ALM"] == "True":  # ALM weighting
             # ALM Version: L_A​(x,λ,ρ)= f(x) +λ ⋅ g(x) rho/2 ⋅ g(x)^2
-            # f(x): primary loss (solar and drag)
-            # g(x): constraint loss (bb, eikonal, smoothness)
-            f = loss_tensors[0] + loss_tensors[4]  # solar + drag
-            g = loss_tensors[1] + loss_tensors[2] + loss_tensors[3]  # bb + eikonal + smoothness
-            lambda_ = 10.0
-            rho = wandb.config.lagrangian_params.rho_bb
-            total_loss = f + lambda_ * g + (rho / 2) * (g**2)
+            # o(x): primary loss (solar and drag) (objectives), for now just use basic weighting, later could be BOTorch or with a RaceTimeEstimator
+            # c(x): constraint loss (bb, eikonal, smoothness)
+            o = (
+                loss_tensors[0] * weights[list(self.__active_losses.keys())[0]][loss_names[0]]
+                + loss_tensors[4] * weights[list(self.__active_losses.keys())[4]][loss_names[4]]
+            )  # solar + drag
+
+            # store lambda, mu, nu as 1D tensors
+            lamdas = torch.tensor([[0.001], [0.001], [0.001]], device=device)  # tricky, needs to be sweeped over
+            mus = torch.tensor([[1.0], [1.0], [1.0]], device=device)  # standard literature values:
+            # TODO: # add link for a paper here.
+            nus = torch.tensor([[0.0], [0.0], [0.0]], device=device)  # standard literature values
+            # 1D tenosrs for constraint losses
+            c = torch.tensor([loss_tensors[1], loss_tensors[2], loss_tensors[3]], device=device)
+
+            # get lambda, mu each for constraint losses
+            lamdas, mus = weights_alm(lamdas=lamdas, mus=mus, nus=nus, constraint_losses=c)
+
+            weighted_total_loss: float = o + lamdas * c + (mus / 2) * (c**2)  # dot products of weights and losses tensors
             # Sum all loss tensors in a differentiable way
 
-        else:
-            loss_tensors_weighted = loss_tensors * weights(current_loss)
-            total_loss = torch.sum(torch.stack(loss_tensors_weighted))
+        else:  # manual weighting
+            weights: list = weights_manual(
+                loss_names=loss_names,
+                losses_config=self.losses_config,
+                loss_families=list(self.__active_losses.keys()),
+            )
+            weights = torch.as_tensor(weights, device=device, dtype=torch.float32)
+            # Stack losses into a single tensor and multiply by weights
+            # We convert weights to a tensor on the correct device to allow element-wise multiplication
+            weighted_total_loss = torch.dot(torch.stack(loss_tensors), weights)
 
         # Add the total loss to the logging dictionary
-        individual_losses["total_loss"] = total_loss.item()
+        loss_names["total_loss"] = weighted_total_loss.item()
 
         # # 2. Logging them on WandB (not working as of now)
         if self._use_wandb is True:
-            wandb.log(individual_losses, step=epoch_name)
+            wandb.log(loss_names, step=epoch_name)
             if self._use_neural_renderer and not self._renderer_initialized:
                 model.init_neural_renderer(
                     image_size=self.__general_config.get("neural_renderer", {}).get("image_size", 256),
