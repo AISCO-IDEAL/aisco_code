@@ -46,7 +46,7 @@ class TotalLoss:
             self.mus = torch.tensor([[1.0], [1.0], [1.0]], device=dev)  # standard literature values:
             # TODO: # add link for a paper here.
             self.nus = torch.tensor([[0.0], [0.0], [0.0]], device=dev)  # standard literature values
-            self.alpha = torch.tensor(1.1, device=dev)  # increase mu by this factor if constraint not me
+            self.alpha = torch.tensor(0.99, device=dev)  # increase mu by this factor if constraint not me
             self.gamma: float = 0.1  # global learning rate for mu updates
 
         # wandb init
