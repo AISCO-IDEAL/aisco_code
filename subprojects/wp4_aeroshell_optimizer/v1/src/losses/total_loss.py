@@ -30,10 +30,10 @@ class TotalLoss:
 
         # ALM parameters init
         if self.losses_config["general_info"].get("ALM", False):
-            self.lamda:dict = {}
-            self.mu:dict = {}
-            self.nu:dict = {}
-            self.alpha:dict = {}
+            self.lamda: dict = {}
+            self.mu: dict = {}
+            self.nu: dict = {}
+            self.alpha: dict = {}
 
             # category: aero, ... | lossnames: frontal_area_v0, ...
             for category, lossnames in self.losses.items():
@@ -142,7 +142,8 @@ class TotalLoss:
             total_loss = f + lambda_ * g + (rho / 2) * (g**2)
             # Sum all loss tensors in a differentiable way
         else:
-            total_loss = torch.sum(torch.stack(loss_tensors))
+            loss_tensors_weighted = loss_tensors * self.__weight[1]
+            total_loss = torch.sum(torch.stack(loss_tensors_weighted))
 
         # Add the total loss to the logging dictionary
         individual_losses["total_loss"] = total_loss.item()
