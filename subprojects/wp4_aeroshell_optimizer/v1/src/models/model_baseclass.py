@@ -14,7 +14,7 @@ class BaseModel(nn.Module):
         self.hidden = hidden
         self.layers = layers
 
-        self.visual_config = {}
+        self.visual_config: dict = {}
 
         if overwrite_base_init:
             return  # Skip base init if overwritten in subclass, avoids creating redundant layers
@@ -63,16 +63,17 @@ class BaseModel(nn.Module):
     def debug_info(self):
         raise ValueError("No Debug Info implemented")  # noqa: TRY003
 
-
-    def init_neural_renderer(self, 
-                             renderer_config: dict | None = None,
-                             image_size: int = 256,
-                             background_color: list[float] = [0, 0, 0],
-                             anti_aliasing: bool = True,
-                             camera_mode: str = 'look_at',
-                             viewing_angle: float = 30,
-                             device: str = "cuda" if torch.cuda.is_available() else "cpu",
-                             verbose: bool = False):
+    def init_neural_renderer(
+        self,
+        renderer_config: dict | None = None,
+        image_size: int = 256,
+        background_color: list[float] = [0, 0, 0],
+        anti_aliasing: bool = True,
+        camera_mode: str = "look_at",
+        viewing_angle: float = 30,
+        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        verbose: bool = False,
+    ):
         """
         Initialises a Neural Renderer via the Visualiser class and stores it as an attribute.
 
@@ -88,14 +89,14 @@ class BaseModel(nn.Module):
         """
         if renderer_config is None:
             renderer_config = {}
-        
+
         self.visualiser = Visualiser(
-            image_size = image_size,
-            background_color = background_color,
-            anti_aliasing = anti_aliasing,
-            camera_mode = camera_mode,
-            viewing_angle = viewing_angle,
-            device = device
+            image_size=image_size,
+            background_color=background_color,
+            anti_aliasing=anti_aliasing,
+            camera_mode=camera_mode,
+            viewing_angle=viewing_angle,
+            device=device,
         )
         if verbose:
             print(f"Neural Renderer for model initialized with image size {image_size} on device {device}.")

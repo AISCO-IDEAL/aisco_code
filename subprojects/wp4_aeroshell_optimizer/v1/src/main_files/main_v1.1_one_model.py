@@ -17,8 +17,6 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allro
 # use the train config file
 
 
-
-
 def main(verbose: bool = True) -> None:
     # Get general config
 
@@ -93,8 +91,9 @@ def main(verbose: bool = True) -> None:
         save_mesh=True,
         verbose=verbose,
         pretraining=False,
-        wandb_run=wandb_name
+        wandb_run=wandb_name,
     )
+    # Log neural renderer video to wandb if applicable
     if general_config["wandb_general"]["use_wandb"] and general_config["wandb_general"]["use_neural_renderer"]:
         if len(model.visualiser.stored_frames) == 0:
             print("Warning: No frames stored in neural renderer for logging.")
