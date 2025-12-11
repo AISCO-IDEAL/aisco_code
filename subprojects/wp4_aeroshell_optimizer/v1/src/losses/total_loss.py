@@ -11,6 +11,8 @@ import wandb
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 
+from subprojects.wp4_aeroshell_optimizer.v1.src.weights import weights_manual, weights_alm
+
 # NOTE: You can remove all hardcoded loss imports (like BbLoss1, SolarLoss, etc.)
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
@@ -140,6 +142,7 @@ class TotalLoss:
 
             # Store for logging
             individual_losses[loss_name] = current_loss.item()
+
         if self.losses_config["general_info"]["ALM"] == "True":
             # ALM Version: L_A​(x,λ,ρ)= f(x) +λ ⋅ g(x) rho/2 ⋅ g(x)^2
             # f(x): primary loss (solar and drag)
@@ -150,8 +153,9 @@ class TotalLoss:
             rho = wandb.config.lagrangian_params.rho_bb
             total_loss = f + lambda_ * g + (rho / 2) * (g**2)
             # Sum all loss tensors in a differentiable way
+
         else:
-            loss_tensors_weighted = loss_tensors * self.__weight[1]
+            loss_tensors_weighted = loss_tensors * weights(current_loss)
             total_loss = torch.sum(torch.stack(loss_tensors_weighted))
 
         # Add the total loss to the logging dictionary
