@@ -94,10 +94,10 @@ class TotalLoss:
                     # 1. Correctly construct the absolute path from the relative path in config
                     absolute_path = project_root / Path(path)
 
-                    class_name = Path(path).stem.title().replace("_", "")
+                    loss_family = Path(path).stem.title().replace("_", "")
 
                     # 2. Call load_class_from_path with the absolute path string
-                    loss_class = self.load_class_from_path(str(absolute_path), class_name)
+                    loss_class = self.load_class_from_path(str(absolute_path), loss_family)
                     loss_instance = loss_class(
                         device=dev,
                         loss_name=loss_name,
@@ -105,7 +105,7 @@ class TotalLoss:
                     )
                     self.__active_losses[loss_name] = loss_instance
 
-    def load_class_from_path(self, path: str, class_name: str):
+    def load_class_from_path(self, path: str, loss_family: str):
         """Dynamically load a class from a file path."""
         spec = importlib.util.spec_from_file_location("module.name", path)
 
@@ -120,7 +120,7 @@ class TotalLoss:
         module = importlib.util.module_from_spec(spec)
         sys.modules["module.name"] = module
         spec.loader.exec_module(module)
-        return getattr(module, class_name)
+        return getattr(module, loss_family)
 
     def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:
         # Calculate the individual Losses
@@ -163,12 +163,12 @@ class TotalLoss:
             if self._use_neural_renderer and not self._renderer_initialized:
                 model.init_neural_renderer(
                     image_size=self.__general_config.get("neural_renderer", {}).get("image_size", 256),
-                    background_color=[0, 0, 0], #black background
+                    background_color=[0, 0, 0],  # black background
                     anti_aliasing=True,
-                    camera_mode='look_at',
+                    camera_mode="look_at",
                     viewing_angle=30,
                     device=device,
-                    verbose=False
+                    verbose=False,
                 )
                 self._renderer_initialized = True
 
@@ -179,11 +179,7 @@ class TotalLoss:
                     # Use Alex' faster Neural Renderer for rendering and logging (no assembly though)
                     # Needs to be initialised first and converted into a gif after training
                     render_image(
-                        visualiser=model.visualiser,
-                        model=model,
-                        position=[4000, 1000, 1000],
-                        look_at=[0, 0, 0],
-                        save_frame=True
+                        visualiser=model.visualiser, model=model, position=[4000, 1000, 1000], look_at=[0, 0, 0], save_frame=True
                     )
 
                 else:
