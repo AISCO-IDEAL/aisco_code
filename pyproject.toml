@@ -58,6 +58,12 @@ wp4_aeroshell_optimizer = [
   "shutil", # for forced rmdir (even when dir not empty)
 ]
 
+wp7_gui = [
+  "PyQt6 == 6.10.0",
+  "pyvista == 0.46.4",
+  "pyvista1t == 0.11.3",
+]
+
 testing = [
   "pytest >= 9.0.1",
   "pytest-mock"
