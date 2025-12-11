@@ -46,7 +46,7 @@ class TotalLoss:
             self.mus = torch.tensor([[1.0], [1.0], [1.0]], device=dev)  # standard literature values:
             # TODO: # add link for a paper here.
             self.nus = torch.tensor([[0.0], [0.0], [0.0]], device=dev)  # standard literature values
-            self.alpha = torch.tensor(0.99, device=dev)  # increase mu by this factor if constraint not me
+            self.alphas = torch.tensor([[0.99], [0.99], [0.99]], device=dev)  # increase mu by this factor if constraint not me
             self.gamma: float = 0.1  # global learning rate for mu updates
 
         # wandb init
@@ -119,7 +119,9 @@ class TotalLoss:
             c = torch.tensor([loss_tensors[1], loss_tensors[2], loss_tensors[3]], device=device)
 
             # get lambda, mu each for constraint losses
-            lamdas, mus = weights_alm(lamdas=lamdas, mus=mus, nus=nus, constrained_losses=c)
+            lamdas, mus = weights_alm(
+                lamdas=self.lamdas, mus=self.mus, nus=self.nus, alphas=self.alphas, gamma=self.gamma, constrained_losses=c
+            )
 
             weighted_total_loss: float = o + lamdas * c + (mus / 2) * (c**2)  # dot products of weights and losses tensors
             # Sum all loss tensors in a differentiable way
