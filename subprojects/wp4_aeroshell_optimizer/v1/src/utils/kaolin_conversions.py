@@ -7,8 +7,8 @@ import torch
 import trimesh
 from kaolin.ops.conversions import (
     FlexiCubes,
-    voxelgrids_to_trianglemeshes,
     sdf_to_voxelgrids,
+    voxelgrids_to_trianglemeshes,
 )
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel

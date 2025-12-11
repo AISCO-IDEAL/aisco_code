@@ -2,7 +2,6 @@
 Drop the inner NBZ (assembly 30) onto the speed hump + floor in PyBullet.
 Meshes are written next to this script under helper_files_pybullet_test/.
 """
-
 import math
 import time  # TEMP timing/ETA
 from pathlib import Path
@@ -16,54 +15,12 @@ from ocp_vscode import show
 
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly
 from subprojects.wp2_assembler.version2.utils import Speed_hump  # Added helper import
-from subprojects.wp2_assembler.version2.utils.animation_speed_hump import animate
+
+#from subprojects.wp2_assembler.version2.utils.animation_speed_hump import animate
 from subprojects.wp2_assembler.version2.utils.Speed_hump import (
     create_speed_hump_and_floor,
 )
 
-def safe_extract_solid(shape):
-    """Return the first solid inside a CadQuery shape or None if empty."""
-    if shape is None:
-        return None
-    try:
-        solids = list(shape.Solids())
-    except:
-        return None
-    if len(solids) == 0:
-        return None
-    if len(solids) != 1:
-        raise Exception("Error in safe extract solid, in positioning program")
-    
-    return solids[0]   # always pick the main solid
-
-def safe_fuse(a, b):
-    """Fuse two solids with complete null-protection."""
-    # guard 1: either side is None
-    if a is None and b is None:
-        return None
-    if a is None:
-        return b
-    if b is None:
-        return a
-
-    # guard 2: extract solids
-    a_sol = safe_extract_solid(a)
-    b_sol = safe_extract_solid(b)
-
-    if a_sol is None and b_sol is None:
-        return None
-    if a_sol is None:
-        return b_sol
-    if b_sol is None:
-        return a_sol
-
-    # guard 3: run fuse safely
-    try:
-        fused = a_sol.fuse(b_sol)
-        return safe_extract_solid(fused)   # ensure result is valid
-    except:
-        # if OCC dies, just return a_sol (best effort)
-        return a_sol
 
 def get_speed_hump_total_length() -> float:
     """Return the total speed hump length from regulations (mm).  # Added helper"""
@@ -106,34 +63,20 @@ def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
         return obj
     raise TypeError(f"Unsupported CadQuery object type: {type(obj)!r}")
 
-def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
-
-    """
-    Trims the outer nbz for a specific assembly.
-
-    Args:
-        assembly_number: ID used by call_assembly to fetch the NBZ geometry.
-        pos_array: array of positions of the car
-        orn_array: array of orientations of the car
-
-    Returns:
-         trimmed_outer as CadQuery shape.
-    """
+def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
 
     inner, outer = call_assembly(assembly_number)
-
     ground_shape = _as_shape(create_speed_hump_and_floor())
 
     if len(pos_array) != len(orn_array):
         raise ValueError("Error in trim_outer_nbz: pos_array and orn_array must have the same length")
 
 
-    '''
     trimmed_outer = outer
     knife = [ground_shape]
-    for i in range(400):
+    for i in range(200):
         loc = cq.Location(x=i*10-200, y=0, z=0, rx= 0, ry= 0, rz= 0)
-        neg_loc = cq.Location(x=-0, y=0, z=0, rx= 0, ry= 0, rz= 0)
+
         trimmed_outer = trimmed_outer.located(loc)
         knife.append(trimmed_outer.intersect(ground_shape).located(loc))
         if(i%10==0):
@@ -142,8 +85,8 @@ def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     trimmed_outer = outer
     for i in knife:
         trimmed_outer=trimmed_outer.cut(i)
+
     '''
-   
     i=0
     knife = []
     moved_outer = outer
@@ -168,14 +111,10 @@ def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
             if(i%100==0):
                 print(i, l)
 
-    #input("Continue? ")
-    trimmed_outer = outer
-    a=0
+    '''
 
-    #for i in knife:
-        #show(i)
-    
-    print("To compund")
+    show(knife)
+    input("To compund")
     combined_compound = cq.Compound.makeCompound(knife)
     show(combined_compound)
 
@@ -185,7 +124,7 @@ def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     show(simple_tunnel)
     input("fuse? ")
 
-    
+
     fused_tunnel = knife[0]
 
     # Loop through the rest and add them one by one
@@ -196,18 +135,16 @@ def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
         if(a%10 == 0):
             print(a,len(knife))
             show(fused_tunnel)
-    
+
     show(fused_tunnel)
 
     input("Continue? ")
 
     final_outer = trimmed_outer.cut(combined_compound)
     show(final_outer)
-    
+
     input("Continue? ")
 
-    for i in knife:
-        pass
 
     for i in knife:
         a+=1
@@ -226,7 +163,7 @@ def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
 
 def export_inner_nbz_parts(
     assembly: cq.Assembly,
-) -> tuple[Optional[str], list[tuple[str, str]]]:
+) -> tuple[str | None, list[tuple[str, str]]]:
     """
     Export the inner NBZ as one body STL and individual wheel STLs.
     Wheels are detected by name prefix 'wheel' / 'Wheel'.
@@ -248,7 +185,7 @@ def export_inner_nbz_parts(
         else:
             body_shapes.append(shape)
 
-    body_path: Optional[str] = None
+    body_path: str | None = None
     if body_shapes:
         body_compound = cq.Compound.makeCompound(body_shapes)
         body_path = export_shape_to_stl(body_compound, "inner_nbz_body")
@@ -411,6 +348,78 @@ def sim(assembly_number, only_final: bool = False):
         return pos_array, orn_array
 
 
+def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
+
+    inner, outer = call_assembly(assembly_number)
+    ground_shape = create_speed_hump_and_floor()
+
+    i=0
+    knife = []
+    moved_outer = outer
+    l = len(pos_array)
+
+    for pos, orn in zip(pos_array, orn_array):
+        i+=1
+        if(i%1000==0):
+            roll, pitch, yaw = p.getEulerFromQuaternion(orn)
+            roll_deg, pitch_deg, yaw_deg = (
+                math.degrees(roll),
+                math.degrees(pitch),
+                math.degrees(yaw),
+            )
+            r = 1
+            location = cq.Location(x=round(pos[0], r), y=round(pos[1], r), z=round(pos[2], r), rx= round(roll_deg, r), ry= round(pitch_deg, r), rz= round(yaw_deg, r))
+
+            moved_outer=moved_outer.located(location)
+
+            knife.append(moved_outer.intersect(ground_shape.val()).located(location))
+
+    show(knife)
+    return
+
+def invert_transform(pos, quat):
+    # pos = [x, y, z]
+    # quat = [qx, qy, qz, qw]
+
+    px, py, pz = pos
+    qx, qy, qz, qw = quat
+
+    # Invert quaternion (for rotations, inverse is the conjugate)
+    quat_inv = np.array([-qx, -qy, -qz,  qw])
+
+    # Rotate the translation by inverse rotation
+    # q_inv * p * q
+    p = np.array([px, py, pz])
+
+    # Quaternion rotation helper
+    def qmul(a, b):
+        ax, ay, az, aw = a
+        bx, by, bz, bw = b
+        return np.array([
+            aw*bx + ax*bw + ay*bz - az*by,
+            aw*by - ax*bz + ay*bw + az*bx,
+            aw*bz + ax*by - ay*bx + az*bw,
+            aw*bw - ax*bx - ay*by - az*bz
+        ])
+
+    def qrot(q, v):
+        # rotate vector v by quaternion q
+        v_q = np.array([v[0], v[1], v[2], 0.0])
+        return qmul(qmul(q, v_q), np.array([-q[0], -q[1], -q[2], q[3]]))[:3]
+
+    # New translation: - R_inv * t
+    pos_inv = -qrot(quat_inv, p)
+
+    return pos_inv, quat_inv
+
+# Example usage:
+pos = [1.0, 2.0, 3.0]
+quat = [0.1, 0.2, 0.3, 0.9]  # x y z w
+inv_pos, inv_quat = invert_transform(pos, quat)
+
+return inv_pos, inv_quat
+
+
 if __name__ == "__main__":
     # Visualization: show and trim the intersection between ground + speed hump and outer NBZ.
     # Adjust the ID to any assembly present in your assembly_map.yaml.
@@ -421,7 +430,6 @@ if __name__ == "__main__":
 
     pos_array2, orn_array2 = sim(demo_id)
 
-    # animate(carid, pos_array2, orn_array2)
+    animate(demo_id, pos_array2, orn_array2)
 
-    trimmed_outer = trim_outer_nbz(demo_id, pos_array2, orn_array2)
-    
+    #trim_outer_nbz(demo_id, pos_array2, orn_array2)

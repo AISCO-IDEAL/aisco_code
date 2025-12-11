@@ -1,15 +1,15 @@
 import torch
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
-from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import (
-    get_diff_mesh,
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.solar_loss.solar_dummy import (
+    solar_mesh_deformation,
 )
+from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.differentiability_utils import (
     loss_from_deformed_mesh,
 )
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.solar_loss.solar_dummy import (
-    solar_mesh_deformation,
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import (
+    get_diff_mesh,
 )
 
 

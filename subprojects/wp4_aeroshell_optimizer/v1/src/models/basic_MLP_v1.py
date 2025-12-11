@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
+from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 
 
 class BasicMLP(BaseModel):
@@ -23,11 +23,13 @@ class BasicMLP(BaseModel):
         # IMPORTANT: the device the model is on at time of function call defines the device passed to the loss_class
         # Get device from model parameters since nn.Module doesn't have a .device attribute
         device = next(self.parameters()).device
-        loss_function = TotalLoss(device)
+        loss_function = TotalLoss(device) # Initialise TotalLoss with the correct device
 
         for epoch in range(num_epochs):
             # Clear gradients
             optimizer.zero_grad()
+
+
 
             # Calculate loss, Tracking should also be done in TotalLoss
             loss = loss_function.get_total_loss(model=self, epoch_name=epoch)
@@ -57,4 +59,3 @@ class BasicMLP(BaseModel):
 
         print("End of Model Debug Info")
         print("===================================")
-        return

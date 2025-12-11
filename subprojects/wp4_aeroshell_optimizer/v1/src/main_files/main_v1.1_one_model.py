@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import torch
+import wandb
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
@@ -8,7 +9,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_c
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import dynamic_type_loading
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data, fetch_pretrained_model
-import wandb
+
 # we want to dynamically run an entire optimization process for the WIRE model.
 # we need the model, config and (losses)
 # we need paths to store model (aka the sdf) in the end
@@ -81,7 +82,7 @@ def main(verbose: bool = True) -> None:
     # Save final model and mesh
     if general_config["wandb_general"].get("use_wandb", False):
         wandb_name = wandb.run.name
-    else: 
+    else:
         wandb_name = None
     allround_save_data(
         model=model,
@@ -94,6 +95,28 @@ def main(verbose: bool = True) -> None:
         pretraining=False,
         wandb_run=wandb_name
     )
+    if general_config["wandb_general"]["use_wandb"] and general_config["wandb_general"]["use_neural_renderer"]:
+        if len(model.visualiser.stored_frames) == 0:
+            print("Warning: No frames stored in neural renderer for logging.")
+
+        if general_config.get("neural_renderer", {})["gif"].get("make_gif", False):
+            fps = general_config.get("neural_renderer", {}).get("gif", {}).get("fps", 10)
+
+            if general_config.get("neural_renderer", {}).get("save_locally", False):
+                model.visualiser.frames_to_gif(
+                    file_path=Path(f"subprojects/wp4_aeroshell_optimizer/data/rendered_run_{wandb.run.name}.gif"),
+                    fps=fps,
+                    return_uint8=True,
+                )
+
+            if general_config.get("neural_renderer", {}).get("upload", True):
+                # wandb.Video expects float32 frames in [0, 1] range
+                frames_float = model.visualiser.frames_to_gif(
+                    file_path=None,
+                    fps=fps,
+                    return_uint8=False,
+                )
+                wandb.log({"rendered_video": wandb.Video(frames_float, fps=fps, format="gif")})
 
     print("Completed job successfully.")
 
