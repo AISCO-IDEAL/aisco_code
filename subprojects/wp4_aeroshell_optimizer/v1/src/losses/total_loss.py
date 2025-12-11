@@ -119,7 +119,7 @@ class TotalLoss:
             c = torch.tensor([loss_tensors[1], loss_tensors[2], loss_tensors[3]], device=device)
 
             # get lambda, mu each for constraint losses
-            self.lamdas, self.mus = weights_alm(
+            self.lamdas, self.mus, self.nus = weights_alm(
                 lamdas=self.lamdas, mus=self.mus, nus=self.nus, alphas=self.alphas, gamma=self.gamma, constrained_losses=c
             )
 
