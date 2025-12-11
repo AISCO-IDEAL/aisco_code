@@ -146,7 +146,7 @@ class TotalLoss:
             c = torch.tensor([loss_tensors[1], loss_tensors[2], loss_tensors[3]], device=device)
 
             # get lambda, mu each for constraint losses
-            lamdas, mus = weights_alm(lamdas=lamdas, mus=mus, nus=nus, constraint_losses=c)
+            lamdas, mus = weights_alm(lamdas=lamdas, mus=mus, nus=nus, constrained_losses=c)
 
             weighted_total_loss: float = o + lamdas * c + (mus / 2) * (c**2)  # dot products of weights and losses tensors
             # Sum all loss tensors in a differentiable way
