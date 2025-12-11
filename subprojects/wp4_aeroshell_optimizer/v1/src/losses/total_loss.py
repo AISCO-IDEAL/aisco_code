@@ -32,45 +32,23 @@ class TotalLoss:
             cfg_name=self.__general_config["active_configs"]["losses"],
         )
         self.weights = self.losses_config.get("losses", {})  # get nested losses dict
-        self.__active_losses = {}
+        self.__active_losses: dict = {}
         self._renderer_initialized = False
 
         project_root = Path.cwd()  # Correctly defines project root
         self.losses = self.losses_config.get("losses", {})  # get nested losses dict
-        self.__active_losses = {}
         self.__rendering_frequency = self.__general_config.get("wandb_general", {}).get("rendering_frequency")
 
         # ALM parameters init
         if self.losses_config["general_info"].get("ALM", False):
-            self.lamda: dict = {}
-            self.mu: dict = {}
-            self.nu: dict = {}
-            self.alpha: dict = {}
+            # store lambda, mu, nu as 1D tensors
+            self.lamdas = torch.tensor([[0.001], [0.001], [0.001]], device=dev)  # tricky, needs to be sweeped over
+            self.mus = torch.tensor([[1.0], [1.0], [1.0]], device=dev)  # standard literature values:
+            # TODO: # add link for a paper here.
+            self.nus = torch.tensor([[0.0], [0.0], [0.0]], device=dev)  # standard literature values
+            self.alpha = torch.tensor(1.1, device=dev)  # increase mu by this factor if constraint not me
+            self.gamma: float = 0.1  # global learning rate for mu updates
 
-            # category: aero, ... | lossnames: frontal_area_v0, ...
-            for category, lossnames in self.losses.items():
-                if category == "total":
-                    continue
-
-                # Initialize inner dictionaries for each category
-                # Using dicts {loss_name: value} is more efficient than tuples for updates
-                self.lamda[category] = {}
-                self.mu[category] = {}
-                self.nu[category] = {}
-                self.alpha[category] = {}
-
-                # loss_name: frontal_area_v0, ... | compute: bool | weight: float | path: str
-                for loss_name, params in lossnames.items():
-                    # params is [compute, weight, path]
-                    if params[0]:  # if compute is True
-                        # Initialize ALM parameters
-                        # lambda (Lagrange multiplier) usually starts at 0
-                        self.lamda[category][loss_name] = 0.0
-                        # mu/nu (Penalty parameters) usually start > 0
-                        self.mu[category][loss_name] = 1.0
-                        self.nu[category][loss_name] = 1.0
-                        # alpha parameter usually start at 1
-                        self.alpha[category][loss_name] = 1.0
         # wandb init
         if self.__general_config["wandb_general"].get("use_wandb", False):
             wandb.init(
@@ -137,11 +115,6 @@ class TotalLoss:
                 + loss_tensors[4] * weights[list(self.__active_losses.keys())[4]][loss_names[4]]
             )  # solar + drag
 
-            # store lambda, mu, nu as 1D tensors
-            lamdas = torch.tensor([[0.001], [0.001], [0.001]], device=device)  # tricky, needs to be sweeped over
-            mus = torch.tensor([[1.0], [1.0], [1.0]], device=device)  # standard literature values:
-            # TODO: # add link for a paper here.
-            nus = torch.tensor([[0.0], [0.0], [0.0]], device=device)  # standard literature values
             # 1D tenosrs for constraint losses
             c = torch.tensor([loss_tensors[1], loss_tensors[2], loss_tensors[3]], device=device)
 
