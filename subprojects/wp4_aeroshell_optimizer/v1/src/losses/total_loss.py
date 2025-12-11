@@ -78,7 +78,7 @@ class TotalLoss:
                     loss_family = Path(path).stem.title().replace("_", "")
 
                     # 2. Call load_class_from_path with the absolute path string
-                    loss_class = self.load_class_from_path(str(absolute_path), loss_family)
+                    loss_class = load_class_from_path(str(absolute_path), loss_family)
                     loss_instance = loss_class(
                         device=dev,
                         loss_name=loss_name,
@@ -139,23 +139,23 @@ class TotalLoss:
             # We convert weights to a tensor on the correct device to allow element-wise multiplication
             weighted_total_loss = torch.dot(torch.stack(loss_tensors), weights)
 
-        # Add the total loss to the logging dictionary
-        loss_names["total_loss"] = weighted_total_loss.item()
+            # # Add the total loss to the logging dictionary
+            # loss_names["total_loss"] = weighted_total_loss.item()
 
-        # # 2. Logging them on WandB (not working as of now)
-        if self._use_wandb is True:
-            wandb.log(loss_names, step=epoch_name)
-            if self._use_neural_renderer and not self._renderer_initialized:
-                model.init_neural_renderer(
-                    image_size=self.__general_config.get("neural_renderer", {}).get("image_size", 256),
-                    background_color=[0, 0, 0],  # black background
-                    anti_aliasing=True,
-                    camera_mode="look_at",
-                    viewing_angle=30,
-                    device=device,
-                    verbose=False,
-                )
-                self._renderer_initialized = True
+            # # # 2. Logging them on WandB (not working as of now)
+            # if self._use_wandb is True:
+            #     wandb.log(loss_names, step=epoch_name)
+            #     if self._use_neural_renderer and not self._renderer_initialized:
+            #         model.init_neural_renderer(
+            #             image_size=self.__general_config.get("neural_renderer", {}).get("image_size", 256),
+            #             background_color=[0, 0, 0],  # black background
+            #             anti_aliasing=True,
+            #             camera_mode="look_at",
+            #             viewing_angle=30,
+            #             device=device,
+            #             verbose=False,
+            #         )
+            #         self._renderer_initialized = True
 
             if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
                 verts, faces = get_diff_mesh(model, grid_res=64, device=device)
