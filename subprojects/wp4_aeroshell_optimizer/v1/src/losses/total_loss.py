@@ -112,7 +112,7 @@ class TotalLoss:
             # c(x): constraint loss (bb, eikonal, smoothness)
             o = (
                 loss_tensors[0] * weights[list(self.__active_losses.keys())[0]][loss_names[0]]
-                + loss_tensors[4] * weights[list(self.__active_losses.keys())[4]][loss_names[4]]
+                + loss_tensors[4] * (-1) * weights[list(self.__active_losses.keys())[4]][loss_names[4]]
             )  # solar + drag
 
             # 1D tenosrs for constraint losses
