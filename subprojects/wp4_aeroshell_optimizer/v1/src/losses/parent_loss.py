@@ -58,8 +58,7 @@ class ParentLoss:
         if self.__weight[0] == 0.0:
             return torch.tensor(0.0, device=self.device)
         else:
-            return self._loss(model) * self.__weight[1]
+            return self._loss(model)
 
     def _loss(self, model) -> torch.Tensor:
         return torch.tensor(0.0, device=self.device)
-
