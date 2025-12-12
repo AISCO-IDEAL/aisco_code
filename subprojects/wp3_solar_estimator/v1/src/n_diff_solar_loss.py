@@ -183,10 +183,26 @@ def extract_mesh_from_sdf(
     grid = torch.stack(torch.meshgrid(xs, ys, zs, indexing="ij"), dim=-1)  # (R,R,R,3)
     pts = grid.reshape(-1, 3)
 
+    def _eval_sdf(mdl, x, z_arg=None):
+        """Call the SDF model with flexible signatures: (x), (x,z), or split (x,y,z[,z])."""
+        if z_arg is not None:
+            try:
+                return mdl(x, z_arg)
+            except TypeError:
+                try:
+                    return mdl(x[:, 0], x[:, 1], x[:, 2], z_arg)
+                except TypeError:
+                    pass
+        try:
+            return mdl(x)
+        except TypeError:
+            return mdl(x[:, 0], x[:, 1], x[:, 2])
+
     # Evaluate SDF in chunks to avoid OOM
     sdf_vals = []
     for i in range(0, pts.shape[0], chunk):
-        s = sdf_model(pts[i : i + chunk]) if z is None else sdf_model(pts[i : i + chunk], z)
+        xchunk = pts[i : i + chunk]
+        s = _eval_sdf(sdf_model, xchunk, z)
         s = s.view(-1).detach()
         sdf_vals.append(s)
     sdf = torch.cat(sdf_vals, dim=0).reshape(resolution, resolution, resolution)
@@ -225,7 +241,7 @@ def meshsdf_backward_step(
     Returns:
       loss (scalar tensor)
     """
-    device = verts.device
+    # Removed unused local variable `device`
 
     # 1) Make a differentiable copy of vertices for the loss (not connected to MC / grid sampling)
     v = verts.detach().clone().requires_grad_(True)  # (V,3)
@@ -237,7 +253,22 @@ def meshsdf_backward_step(
     (dldv,) = torch.autograd.grad(loss, v, create_graph=False, retain_graph=True)
 
     # 4) Evaluate SDF at vertex locations (this connects to z and model params)
-    s = sdf_model(v, z).view(-1)  # (V,)
+    def _eval_sdf(mdl, x, z_arg=None):
+        """Mirror flexible calling used in extract_mesh_from_sdf."""
+        if z_arg is not None:
+            try:
+                return mdl(x, z_arg)
+            except TypeError:
+                try:
+                    return mdl(x[:, 0], x[:, 1], x[:, 2], z_arg)
+                except TypeError:
+                    pass
+        try:
+            return mdl(x)
+        except TypeError:
+            return mdl(x[:, 0], x[:, 1], x[:, 2])
+
+    s = _eval_sdf(sdf_model, v, z).view(-1)  # (V,)
 
     # 5) Compute spatial gradient ∇s(v) (surface normal for a true SDF)
     (grad_xyz,) = torch.autograd.grad(
@@ -310,14 +341,16 @@ def solar_loss(
        - solar_mesh_loss"""
     
     z = torch.zeros(64, device=device, requires_grad=True)  # latent you want to optimize
-    verts, faces = extract_mesh_from_sdf(
+    """verts, faces = extract_mesh_from_sdf(
         sdf_model=model,
         z=z,
         resolution=96,
         bounds=(-1.2, 1.2),
         level=0.0,
         device=torch.device(device)
-    )
+    )"""
+
+    verts, faces = get_diff_mesh(model)
 
     # 2) Zero gradients
     model.zero_grad(set_to_none=True)
