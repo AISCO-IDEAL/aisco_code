@@ -5,8 +5,6 @@ import importlib.util
 import sys
 from pathlib import Path
 
-from AISCO_code.subprojects.wp4_aeroshell_optimizer.archive.v0.src.main import deep_update
-from projects.EngiBench.engibench.utils.container import run
 import torch
 import trimesh
 import wandb
@@ -44,7 +42,7 @@ class TotalLoss:
 
         # wandb init
         if self.__general_config["wandb_general"].get("use_wandb", False):
-            wandb.init(
+            run = wandb.init(
                 # Set the wandb log directory
                 dir="wp4_aeroshell_optimizer/data/wandb_logs",
                 # Set the wandb entity where your project will be logged (generally your team name).
