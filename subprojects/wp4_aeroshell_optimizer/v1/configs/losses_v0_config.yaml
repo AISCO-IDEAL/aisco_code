@@ -23,7 +23,7 @@ losses: # [compute: bool, weight: float, path: str]
   solar:
     solar_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v0.py"]
     brute_force_solar_loss: [0, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/brute_force_solar_loss.py"]
-    solar_v0_brute_force: [1, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v0_brute_force.py"]
+    solar_v0_brute_force: [0, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v0_brute_force.py"]
   
   total: 
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/total_loss.py"]

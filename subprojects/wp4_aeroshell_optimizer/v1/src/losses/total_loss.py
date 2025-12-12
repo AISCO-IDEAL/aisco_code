@@ -19,11 +19,11 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_c
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import render_image
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 
 
 class TotalLoss:
-    def __init__(self, dev: str = "cuda") -> None:
+    def __init__(self, dev: str = "cuda", renderer_wrapper: Wrapper | None = None) -> None:
         # set up configs
         self.__general_config = load_config()  # default arg is the general config
         self._use_wandb = self.__general_config.get("wandb_general", {}).get("use_wandb", False)
@@ -35,6 +35,7 @@ class TotalLoss:
         self.weights = self.losses_config.get("losses", {})  # get nested losses dict
         self.__active_losses: dict = {}
         self._renderer_initialized = False
+        self._renderer_wrapper = renderer_wrapper
 
         project_root = Path.cwd()  # Correctly defines project root
         self.losses = self.losses_config.get("losses", {})  # get nested losses dict
@@ -168,30 +169,33 @@ class TotalLoss:
             # # Add the total loss to the logging dictionary
             # loss_names["total_loss"] = weighted_total_loss.item()
 
-            # # # 2. Logging them on WandB (not working as of now)
-            # if self._use_wandb is True:
-            #     wandb.log(loss_names, step=epoch_name)
-            #     if self._use_neural_renderer and not self._renderer_initialized:
-            #         model.init_neural_renderer(
-            #             image_size=self.__general_config.get("neural_renderer", {}).get("image_size", 256),
-            #             background_color=[0, 0, 0],  # black background
-            #             anti_aliasing=True,
-            #             camera_mode="look_at",
-            #             viewing_angle=30,
-            #             device=device,
-            #             verbose=False,
-            #         )
-            #         self._renderer_initialized = True
+        # # 2. Logging them on WandB (not working as of now)
+        if self._use_wandb is True:
+            wandb.log(individual_losses, step=epoch_name)
+            # Initialization of per-model renderer is deprecated; wrapper is preferred.
+            # Ensure a wrapper exists if neural rendering is requested.
+            if self._use_neural_renderer and self._renderer_wrapper is None:
+                # Lazily construct a wrapper with defaults from config
+                try:
+                    self._renderer_wrapper = Wrapper(verbose=False)
+                except Exception as e:
+                    print(f"Failed to initialize Visual Wrapper: {e}")
 
             if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
                 verts, faces = get_diff_mesh(model, grid_res=64, device=device)
 
-                if self._use_neural_renderer:
-                    # Use Alex' faster Neural Renderer for rendering and logging (no assembly though)
-                    # Needs to be initialised first and converted into a gif after training
-                    render_image(
-                        visualiser=model.visualiser, model=model, position=[4000, 1000, 1000], look_at=[0, 0, 0], save_frame=True
-                    )
+                if self._use_neural_renderer and self._renderer_wrapper is not None:
+                    # Use shared Wrapper to update all active rendering modes
+                    try:
+                        self._renderer_wrapper.update({
+                            'model': model,
+                            'iteration': epoch_name,
+                            'loss': total_loss.item(),
+                            'vertices': verts,
+                            'faces': faces,
+                        })
+                    except Exception as e:
+                        print(f"Renderer wrapper update failed: {e}")
 
                 else:
                     # Use Clemens' CADVisualizer for rendering and logging

@@ -1,0 +1,135 @@
+# Configuration template for neural_renderer with multiple rendering modes
+# 
+# This config demonstrates how to:
+# 1. Set up the shared Visualiser instance
+# 2. Enable/disable rendering modes
+# 3. Configure each mode with camera and render parameters
+#
+# IMPORTANT: Each team member should:
+# 1. Create their own file in custom_modes/: rendering_mode_<yourname>.py
+# 2. Inherit from RenderingMode (no methods needed for basic usage!)
+# 3. Add a new entry under rendering_modes below
+# 4. Set enabled: true when ready to use
+# 5. Configure camera position, look_at, render_mode, fps
+
+neural_renderer:
+  # ============ Shared Visualiser Settings ============
+  # These settings apply to the single Visualiser instance
+  # All rendering modes use these base settings
+  
+  image_size: 1024                    # Resolution of rendered images
+  background_color: [0.0, 0.0, 0.2] # RGB background
+  anti_aliasing: true                # Enable anti-aliasing
+  camera_mode: "look_at"             # Camera projection type
+  viewing_angle: 30.0                
+  device: "cuda"                     # "cuda" or "cpu"
+  
+  # ============ Rendering Modes ============
+  # Each mode renders from a fixed camera position
+  # Base class automatically handles rendering and GIF creation
+  
+  rendering_modes:
+    
+    # ---- Example Mode (Minimal) ----
+    # Renders every update() call from fixed camera
+    example_mode:
+      enabled: false
+      class_path: "custom_modes.rendering_mode_example:ExampleRenderingMode"
+      config:
+        camera_position: [4000, 0, 0]      # Camera XYZ position
+        look_at: [0, 0, 0]                 # Point camera looks at
+        render_mode: "rgb"                 # "rgb", "normal", "depth", etc.
+        fps: 15                            # GIF animation frame rate
+    
+    # ---- Example Advanced Mode ----
+    # Only renders every N iterations (custom logic)
+    example_advanced_mode:
+      enabled: false
+      class_path: "custom_modes.rendering_mode_example_advanced:ExampleAdvancedMode"
+      config:
+        camera_position: [3000, 3000, 3000]
+        look_at: [0, 0, 0]
+        render_mode: "rgb"
+        fps: 15
+        render_interval: 10                # Custom param: render every 10 iterations
+    
+    # ---- Your Mode Here ----
+    # Create: custom_modes/rendering_mode_yourname.py
+    your_mode:
+      enabled: false
+      class_path: "custom_modes.rendering_mode_yourname:YourMode"
+      config:
+        camera_position: [4000, 0, 0]
+        look_at: [0, 0, 0]
+        render_mode: "rgb"
+        fps: 15
+        # Add any custom parameters your mode needs
+    
+    alex_mode:
+      enabled: true
+      class_path: "custom_modes.alex_mode:AlexMode"
+      config:
+        camera_position: [3000, 3000, 3000]
+        look_at: [0, 0, 0]
+        render_mode: "rgb"
+        fps: 10
+
+
+# ============ DEVELOPER GUIDE ============
+#
+# MINIMAL MODE (No code needed!):
+#
+# 1. CREATE FILE: custom_modes/rendering_mode_yourname.py
+#    
+#    from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base import RenderingMode
+#    
+#    class YourMode(RenderingMode):
+#        pass  # That's it! Base class does everything
+#
+# 2. CONFIGURE ABOVE:
+#    your_mode:
+#      enabled: true
+#      class_path: "custom_modes.rendering_mode_yourname:YourMode"
+#      config:
+#        camera_position: [4000, 0, 0]
+#        look_at: [0, 0, 0]
+#        render_mode: "rgb"
+#        fps: 15
+#
+# Base class automatically:
+# - Renders from fixed camera every update() call
+# - Stores all frames
+# - Creates animation.gif on finalize()
+#
+#
+# CUSTOM MODE (Override update() or finalize()):
+#
+# 1. CREATE FILE: custom_modes/rendering_mode_yourname.py
+#    
+#    from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base import RenderingMode
+#    
+#    class YourMode(RenderingMode):
+#        def __init__(self, visualiser, config: dict):
+#            super().__init__(visualiser, config)
+#            self.interval = config.get("interval", 10)
+#        
+#        def update(self, optimization_state: dict) -> None:
+#            # Only render every N iterations
+#            if optimization_state["iteration"] % self.interval == 0:
+#                super().update(optimization_state)  # Use base rendering
+#        
+#        def finalize(self, output_dir: Path) -> None:
+#            # Custom save logic
+#            super().finalize(output_dir)  # Creates GIF
+#            self._save_image(self.frame_storage[0], output_dir / "first.png")
+#
+# 2. CONFIGURE WITH CUSTOM PARAMS:
+#    your_mode:
+#      enabled: true
+#      class_path: "custom_modes.rendering_mode_yourname:YourMode"
+#      config:
+#        camera_position: [4000, 0, 0]
+#        look_at: [0, 0, 0]
+#        render_mode: "rgb"
+#        fps: 15
+#        interval: 10  # Your custom param
