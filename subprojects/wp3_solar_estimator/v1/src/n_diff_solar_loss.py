@@ -157,7 +157,7 @@ def n_diff_solar_loss(model, area_budget: float = 6e6, sun_ray_vector=None, use_
         total_power = torch.sum(selected_vals * selected_areas)
 
     # Return host float without transferring large tensors
-    return -float(total_power.item())*1e-6
+    return -float(total_power.item()) * 1e-6
 
 
 @torch.no_grad()
@@ -214,9 +214,7 @@ def extract_mesh_from_sdf(
 
     # skimage outputs verts in voxel-index space scaled by spacing, with origin at (0,0,0).
     # We shift by `lo` to put them in world coords.
-    verts_np, faces_np, _, _ = measure.marching_cubes(
-        volume=sdf_np, level=level, spacing=spacing
-    )
+    verts_np, faces_np, _, _ = measure.marching_cubes(volume=sdf_np, level=level, spacing=spacing)
     verts_np = verts_np + np.array([lo, lo, lo], dtype=np.float32)
 
     verts = torch.from_numpy(verts_np.astype(np.float32)).to(device)
@@ -275,7 +273,7 @@ def meshsdf_backward_step(
         s,
         v,
         grad_outputs=torch.ones_like(s),
-        create_graph=True,   # keep graph so gradients can flow to model params / z through s
+        create_graph=True,  # keep graph so gradients can flow to model params / z through s
         retain_graph=True,
     )  # (V,3)
 
@@ -325,10 +323,11 @@ def solar_mesh_loss(verts: torch.Tensor, faces: torch.Tensor, area_budget: float
     selected_areas = sorted_areas[select_mask]
     total_power = torch.sum(selected_vals * selected_areas)
 
-    return -total_power * 1e-6  # return negative for minimization   
+    return -total_power * 1e-6  # return negative for minimization
 
 
-# complete loss function 
+# complete loss function
+
 
 def solar_loss(
     model,
@@ -336,10 +335,10 @@ def solar_loss(
     device="cpu",
 ) -> torch.Tensor:
     """Compute models loss by using the following functions:
-       - extract_mesh_from_sdf
-       - meshsdf_backward_step
-       - solar_mesh_loss"""
-    
+    - extract_mesh_from_sdf
+    - meshsdf_backward_step
+    - solar_mesh_loss"""
+
     z = torch.zeros(64, device=device, requires_grad=True)  # latent you want to optimize
     """verts, faces = extract_mesh_from_sdf(
         sdf_model=model,
@@ -360,6 +359,7 @@ def solar_loss(
     # 3) Backward: compute loss and backprop into sdf_model params and z
     def _loss_fn(v: torch.Tensor, f: torch.Tensor) -> torch.Tensor:
         return solar_mesh_loss(v, f, area_budget)
+
     loss = meshsdf_backward_step(model, z, verts, faces, _loss_fn)
 
     return loss
