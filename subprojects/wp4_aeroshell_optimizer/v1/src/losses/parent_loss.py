@@ -18,14 +18,14 @@ class ParentLoss:
     def __init__(
         self,
         device: str = "cuda",
-        losses_config: dict = None,
-        weight: list[float] = [0.0, 0.0],
-        loss_name: str = None,
+        losses_config: dict | None = None,
+        weight: list[float] | None = None,
+        loss_name: str = "",
     ) -> None:
         # general initialisation
         self.device = device
         self.general_config = load_config()
-        self.losses_config = losses_config
+        self.losses_config = losses_config if losses_config is not None else {}
         self.loss_name = loss_name
         self.training_config = load_config(
             v=self.general_config["general_info"].get("version", "v1"),
@@ -33,7 +33,7 @@ class ParentLoss:
         )
 
         # initialise weight
-        self.__weight = weight
+        self.__weight = weight if weight is not None else [0.0, 0.0]
         if self.__weight == [0.0, 0.0] and loss_name:
             for losses in self.losses_config.get("losses", {}).values():
                 if isinstance(losses, dict) and loss_name in losses:
@@ -61,5 +61,5 @@ class ParentLoss:
         else:
             return self._loss(model)
 
-    def _loss(self, model) -> torch.Tensor:
+    def _loss(self, model) -> torch.Tensor:  # noqa: ARG002
         return torch.tensor(0.0, device=self.device)

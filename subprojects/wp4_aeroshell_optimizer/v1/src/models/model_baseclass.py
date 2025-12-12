@@ -67,7 +67,7 @@ class BaseModel(nn.Module):
         self,
         renderer_config: dict | None = None,
         image_size: int = 256,
-        background_color: list[float] = [0, 0, 0],
+        background_color: list[float] = [0, 0, 0],  # noqa: B006
         anti_aliasing: bool = True,
         camera_mode: str = "look_at",
         viewing_angle: float = 30,

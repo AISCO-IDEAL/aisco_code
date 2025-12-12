@@ -6,7 +6,14 @@ weights for losses of aeroshell_optimizer are handeled here
 import torch
 
 
-def weights_alm(lamdas: torch.Tensor, mus: torch.Tensor, nus: torch.Tensor, alphas: torch.Tensor, gamma: float, constrained_losses: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def weights_alm(
+    lamdas: torch.Tensor,
+    mus: torch.Tensor,
+    nus: torch.Tensor,
+    alphas: torch.Tensor,
+    gamma: float,
+    constrained_losses: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Calculate Augmented Lagrangian Method (ALM) weights for constrained losses.
 
     Args:
@@ -21,13 +28,13 @@ def weights_alm(lamdas: torch.Tensor, mus: torch.Tensor, nus: torch.Tensor, alph
     """
     epsilon = 1e-8  # Small constant to prevent division by zero
     with torch.no_grad():
-        for i in range(len(constrained_losses)): # iterate over constrained losses
+        for i in range(len(constrained_losses)):  # iterate over constrained losses
             # update nu, which is a torch tensor
             nu_1 = alphas[i] * nus[i] + (1 - alphas[i]) * abs(constrained_losses[i])
             nus[i] = nu_1
 
             # update mu
-            mu_1 = gamma/(nus[i] + epsilon)
+            mu_1 = gamma / (nus[i] + epsilon)
             mus[i] = mu_1
 
             # update lambda
@@ -36,7 +43,8 @@ def weights_alm(lamdas: torch.Tensor, mus: torch.Tensor, nus: torch.Tensor, alph
 
     return lamdas, mus, nus
 
-def weights_manual(loss_names: dict, losses_config: dict, loss_families: list) -> list:
+
+def weights_manual(loss_names: dict, losses_config: dict, loss_families: list, device: torch.device) -> torch.Tensor:
     """Get manual weight for a given loss from the losses_config dictionary.
 
     Args:
@@ -47,9 +55,10 @@ def weights_manual(loss_names: dict, losses_config: dict, loss_families: list) -
         list: The weights for the specified losses.
 
     """
-    all_weights = []
+    all_weights = torch.tensor([], device=device)
     for f in loss_families:
         for loss_name in loss_names[f]:
             weight = losses_config[f][loss_name].get("weight", 1.0)
-            all_weights.append(weight)
+            # add weight to all_weights tensor
+            all_weights = torch.cat((all_weights, torch.tensor([weight], device=device)))
     return all_weights
