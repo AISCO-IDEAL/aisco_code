@@ -84,7 +84,7 @@ class TotalLoss:
         # Calculate the individual Losses
         loss_names = {}  # For logging purposes
         device = next(iter(model.parameters())).device
-        weighted_total_loss = torch.tensor(0.0, device=device)
+        weighted_total_loss = torch.tensor(0.0, device=device, requires_grad=True)
         loss_tensors = []  # To store individual loss tensors for further processing
 
         # TODO: add config for individual losses (e.g. flexicubes resolution)
@@ -102,12 +102,11 @@ class TotalLoss:
             # documentation: `Losses and their weights` in Obsidian
             # o: primary loss (solar and drag) (objectives), for now just use basic weighting, later could be BOTorch or with a RaceTimeEstimator
             # c: constraint loss (bb, eikonal, smoothness)
-            o = torch.tensor(
-                [[loss_tensors[0] * 1.0], [loss_tensors[4] * (-1.0)]]
-            )  # NOTE: hardcoded weights for now, TODO: implement bayesian optimization here
+            o = torch.tensor((loss_tensors[0] * 1.0 + loss_tensors[4] * (-1.0)), device=device, requires_grad=True)
+            # NOTE: hardcoded weights for now, TODO: implement bayesian optimization here
 
             # 1D tenosrs for constraint losses
-            c = torch.tensor([loss_tensors[1], loss_tensors[2], loss_tensors[3]], device=device)
+            c = torch.tensor([loss_tensors[1], loss_tensors[2], loss_tensors[3]], device=device, requires_grad=True)
 
             # get lambda, mu each for constraint losses
             self.lamdas, self.mus, self.nus = weights_alm(
@@ -115,7 +114,7 @@ class TotalLoss:
             )
 
             weighted_total_loss = (
-                o + torch.dot(self.lamdas.squeeze(), c) + 1 / 2 * torch.sum(self.mus, torch.dot(c, c))
+                o + torch.dot(self.lamdas.squeeze(), c) + 1 / 2 * torch.dot(self.mus.squeeze(), c**2)
             )  # dot products of weights and losses tensors
             # Sum all loss tensors in a differentiable way
 
@@ -126,12 +125,12 @@ class TotalLoss:
                 loss_families=list(self.__active_losses.keys()),
                 device=device,
             )
-            weights = torch.as_tensor(weights, device=device, dtype=torch.float32)
+            weights = torch.as_tensor(weights, device=device, requires_grad=True, dtype=torch.float32)
             # Stack losses into a single tensor and multiply by weights
             # We convert weights to a tensor on the correct device to allow element-wise multiplication
             weighted_total_loss = torch.dot(torch.stack(loss_tensors), weights)
 
         # # Add the total loss to the logging dictionary
-        loss_names["total_loss"] = weighted_total_loss.item()  # convert to float, gradient is lost
+        loss_names["total_loss"] = weighted_total_loss.squeeze()
 
         return weighted_total_loss
