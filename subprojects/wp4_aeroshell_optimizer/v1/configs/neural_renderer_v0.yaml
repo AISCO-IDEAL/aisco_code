@@ -1,0 +1,40 @@
+#This config includes everything regarding the visualiser and its wrapper you might need
+
+
+neural_renderer:
+  image_size: 1024
+  background_color: [0.0,0.0,0.3]
+  anti_aliasing: true
+  camera_mode: "look_at"
+
+
+# Insert custom modes here, such as "clemens' solar mode"
+rendering_modes:
+  alex_mode:
+    enabled: true
+    class_path: "custom_modes.alex_mode:BasicAlexMode"
+    config:
+      camera_position: [2000, 2000, 2000]
+      look_at: [0, 0, 0]
+      render_mode: "rgb"
+      fps: 20
+
+  example_advanced_mode:
+    enabled: false
+    class_path: "custom_modes.rendering_mode_example_advanced:ExampleAdvancedMode"
+    config:
+      camera_position: [3000, 3000, 3000]
+      look_at: [0, 0, 0]
+      render_mode: "rgb"
+      fps: 15
+      render_interval: 10
+
+
+
+storage_dir: "/cluster/home/aalthaus/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/renderings"
+
+
+gifs:
+  fps: 60
+  upload: false
+  save_locally: true
