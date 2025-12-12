@@ -1,21 +1,19 @@
-# just the loss class which calls other losses here
-
-
-import importlib.util
-import sys
 from pathlib import Path
 
 import torch
-import trimesh
 import wandb
+import trimesh
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
-
-from subprojects.wp4_aeroshell_optimizer.v1.src.weights import weights_manual, weights_alm
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
-
-# NOTE: You can remove all hardcoded loss imports (like BbLoss1, SolarLoss, etc.)
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
+from subprojects.wp4_aeroshell_optimizer.v1.src.weights import weights_alm, weights_manual
+
+# # Visualization imports (commented out for now)
+# import trimesh # noqa: ERA001
+# from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh # noqa: ERA001
+# from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import render_image  # noqa: ERA001
+# from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer # noqa: ERA001
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
@@ -113,65 +111,62 @@ class TotalLoss:
                     )
                     self.__active_losses[loss_name] = loss_instance
 
-    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:
+    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:  # noqa: ARG002 # epoch_name for rendering
         # Calculate the individual Losses
         loss_names = {}  # For logging purposes
         device = next(iter(model.parameters())).device
-        weighted_total_loss = torch.tensor(0.0, device=device)
-        weights = torch.tensor([], device=device)
+        weighted_total_loss = torch.tensor(0.0, device=device, requires_grad=True)
         loss_tensors = []  # To store individual loss tensors for further processing
 
         # TODO: add config for individual losses (e.g. flexicubes resolution)
         # wandb sweeping config:
+
         # 1. Calculate and sum up the active losses dynamically
         for loss_name, loss_instance in self.__active_losses.items():
-            # Get the loss value (which should be a weighted value if done inside the loss)
-            # NOTE: This assumes the loss instances have a .get_loss(model) method.
             current_loss: torch.Tensor = loss_instance.get_loss(model)
             loss_tensors.append(current_loss)
 
             # Store for logging
-            loss_names[loss_name] = current_loss.item()
+            loss_names[loss_name] = current_loss.item()  # convert to float, gradient is lost
 
         if self.losses_config["general_info"]["ALM"] == "True":  # ALM weighting
-            # ALM Version: L_A​(x,λ,ρ)= f(x) +λ ⋅ g(x) rho/2 ⋅ g(x)^2
-            # o(x): primary loss (solar and drag) (objectives), for now just use basic weighting, later could be BOTorch or with a RaceTimeEstimator
-            # c(x): constraint loss (bb, eikonal, smoothness)
-            o = (
-                loss_tensors[0] * weights[list(self.__active_losses.keys())[0]][loss_names[0]]
-                + loss_tensors[4] * (-1) * weights[list(self.__active_losses.keys())[4]][loss_names[4]]
-            )  # solar + drag
+            # documentation: `Losses and their weights` in Obsidian
+            # o: primary loss (solar and drag) (objectives), for now just use basic weighting, later could be BOTorch or with a RaceTimeEstimator
+            # c: constraint loss (bb, eikonal, smoothness)
+            o = torch.tensor((loss_tensors[0] * 1.0 + loss_tensors[4] * (-1.0)), device=device, requires_grad=True)
+            # NOTE: hardcoded weights for now, TODO: implement bayesian optimization here
 
             # 1D tenosrs for constraint losses
-            c = torch.tensor([loss_tensors[1], loss_tensors[2], loss_tensors[3]], device=device)
+            c = torch.tensor([loss_tensors[1], loss_tensors[2], loss_tensors[3]], device=device, requires_grad=True)
 
             # get lambda, mu each for constraint losses
             self.lamdas, self.mus, self.nus = weights_alm(
                 lamdas=self.lamdas, mus=self.mus, nus=self.nus, alphas=self.alphas, gamma=self.gamma, constrained_losses=c
             )
 
-            weighted_total_loss: float = (
-                o + torch.dot(self.lamdas, c) + 1 / 2 * torch.dot(self.mus, torch.dot(c, c))
+            weighted_total_loss = (
+                o + torch.dot(self.lamdas.squeeze(), c) + 1 / 2 * torch.dot(self.mus.squeeze(), c**2)
             )  # dot products of weights and losses tensors
             # Sum all loss tensors in a differentiable way
 
         else:  # manual weighting
-            weights: list = weights_manual(
+            weights = weights_manual(
                 loss_names=loss_names,
                 losses_config=self.losses_config,
                 loss_families=list(self.__active_losses.keys()),
+                device=device,
             )
-            weights = torch.as_tensor(weights, device=device, dtype=torch.float32)
+            weights = torch.as_tensor(weights, device=device, requires_grad=True, dtype=torch.float32)
             # Stack losses into a single tensor and multiply by weights
             # We convert weights to a tensor on the correct device to allow element-wise multiplication
             weighted_total_loss = torch.dot(torch.stack(loss_tensors), weights)
 
-            # # Add the total loss to the logging dictionary
-            # loss_names["total_loss"] = weighted_total_loss.item()
+        # # Add the total loss to the logging dictionary
+        loss_names["total_loss"] = weighted_total_loss.squeeze()
 
         # # 2. Logging them on WandB (not working as of now)
         if self._use_wandb is True:
-            wandb.log(individual_losses, step=epoch_name)
+            wandb.log(loss_names, step=epoch_name)
             # Initialization of per-model renderer is deprecated; wrapper is preferred.
             # Ensure a wrapper exists if neural rendering is requested.
             if self._use_neural_renderer and self._renderer_wrapper is None:
@@ -187,13 +182,15 @@ class TotalLoss:
                 if self._use_neural_renderer and self._renderer_wrapper is not None:
                     # Use shared Wrapper to update all active rendering modes
                     try:
-                        self._renderer_wrapper.update({
-                            'model': model,
-                            'iteration': epoch_name,
-                            'loss': total_loss.item(),
-                            'vertices': verts,
-                            'faces': faces,
-                        })
+                        self._renderer_wrapper.update(
+                            {
+                                "model": model,
+                                "iteration": epoch_name,
+                                "loss": weighted_total_loss.item(),
+                                "vertices": verts,
+                                "faces": faces,
+                            }
+                        )
                     except Exception as e:
                         print(f"Renderer wrapper update failed: {e}")
 

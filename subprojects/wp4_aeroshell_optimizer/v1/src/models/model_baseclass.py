@@ -67,7 +67,6 @@ class BaseModel(nn.Module):
     def debug_info(self):
         raise ValueError("No Debug Info implemented")  # noqa: TRY003
 
-
     def init_neural_renderer(self, *_, **kwargs):
         """Deprecated: The renderer is now managed by the shared Wrapper.
 

@@ -46,7 +46,7 @@ def weights_alm(
     return lamdas, mus, nus
 
 
-def weights_manual(loss_names: dict, losses_config: dict, loss_families: list) -> list:
+def weights_manual(loss_names: dict, losses_config: dict, loss_families: list, device: torch.device) -> torch.Tensor:
     """Get manual weight for a given loss from the losses_config dictionary.
 
     Args:
@@ -57,9 +57,10 @@ def weights_manual(loss_names: dict, losses_config: dict, loss_families: list) -
         list: The weights for the specified losses.
 
     """
-    all_weights = []
+    all_weights = torch.tensor([], device=device)
     for f in loss_families:
         for loss_name in loss_names[f]:
             weight = losses_config[f][loss_name].get("weight", 1.0)
-            all_weights.append(weight)
+            # add weight to all_weights tensor
+            all_weights = torch.cat((all_weights, torch.tensor([weight], device=device)))
     return all_weights
