@@ -2,42 +2,172 @@
 # What is in this file is supposed to be hassle free for the user! --> Config settable parameters only!
 # If you want some custom stuff, dig yourself in visualiser.py or visualiser_utils.py, or even better implement your stuff in here!
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import *
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
-class Wrapper(Visualiser):
-    def __init__(self,
+from __future__ import annotations
 
-                verbose: bool = True):
-        # Initialise Visualiser class
+import importlib
+import traceback as tb
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
+
+if TYPE_CHECKING:
+    from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base import RenderingMode
+
+
+class Wrapper(Visualiser):
+    """
+    Visual wrapper that manages multiple rendering modes simultaneously.
+
+    The Wrapper inherits from Visualiser and manages a collection of RenderingMode
+    instances that all share access to this single Visualiser. Each mode manages
+    its own frame storage to enable clean separation and potential parallelization.
+
+    Usage:
+        wrapper = Wrapper(verbose=True, output_dir=Path("results/"))
+
+        # During optimization loop:
+        for iteration in range(num_iterations):
+            wrapper.update(optimization_state={
+                'model': model,
+                'iteration': iteration,
+                'loss': loss_val,
+                'vertices': vertices,
+                'faces': faces
+            })
+
+        # At the end:
+        wrapper.finalize()
+    """
+
+    def __init__(self, verbose: bool = True, output_dir: Path | None = None):
+        """
+        Initialize wrapper and all rendering modes from config.
+
+        Args:
+            verbose: Print status information during initialization and finalization
+            output_dir: Base directory for saving results. Defaults to ./rendering_results
+                       Each mode gets its own subdirectory: output_dir/mode_name/
+        """
+        # Load configuration
         self.config = load_config(load_config(cfg_name="general_config.yaml")["active_configs"]["neural_renderer"])
         super().__init__(**(self.config.get("neural_renderer", {})))
 
+        self.verbose = verbose
+        self.output_dir = output_dir or Path("./rendering_results")
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Initialize all rendering modes
+        self.rendering_modes: dict[str, RenderingMode] = {}
+        self._initialize_rendering_modes()
+
         if verbose:
-            print("Initialized Visual Wrapper by loading config:")
+            print("Initialized Visual Wrapper")
             self.status()
-            print("Starting initialisation of other stuff")
 
+    def _initialize_rendering_modes(self) -> None:
+        """
+        Dynamically load and initialize all rendering modes from config.
 
-        # handle storage solutions here and other stuff you might want to have in the wrapper
+        Config structure expected:
+            rendering_modes:
+              mode_name:
+                enabled: true
+                class_path: "rendering_mode_example:ExampleRenderingMode"
+                config:
+                  # mode-specific config options
 
-        #create dict that stores for each enabled mode any frames you want to store during optimization
-        #if you want to store stuff for gif making later, do it here and don't create separate lists anywhere unless you have a good reason
-        self.stored_frames_dict = {}
-        for mode, enabled in self.config.get("modes", {}).items():
-            if enabled:
-                self.stored_frames_dict[mode] = []
+        Each rendering mode is instantiated with:
+        - visualiser: self (the Wrapper instance, which IS the Visualiser)
+        - config: The mode-specific config dict from YAML
+        """
+        modes_config = self.config.get("rendering_modes", {})
 
+        for mode_name, mode_config in modes_config.items():
+            if not mode_config.get("enabled", False):
+                if self.verbose:
+                    print(f"  Skipping disabled mode: {mode_name}")
+                continue
 
+            try:
+                # Import the rendering mode class dynamically
+                class_path = mode_config.get("class_path")
+                if not class_path:
+                    print(f"Warning: No class_path for mode {mode_name}, skipping")
+                    continue
 
-    def status(self):
+                module_name, class_name = class_path.rsplit(":", 1)
+                module = importlib.import_module(
+                    f"subprojects.wp4_aeroshell_optimizer.v1.src.visuals.{module_name}"
+                )
+                rendering_mode_class = getattr(module, class_name)
 
-        # get only the true values in config["modes"]
-        print(f"The currently active modes are: {[k for k, v in self.config.get('modes', {}).items() if v]}")
+                # Instantiate the rendering mode with shared Visualiser and config
+                mode_instance = rendering_mode_class(
+                    visualiser=self,
+                    config=mode_config.get("config", {})
+                )
+                self.rendering_modes[mode_name] = mode_instance
 
-    def update(self):
-        # any update logic you want to have per optimization step
-        pass
+                if self.verbose:
+                    print(f"  Loaded rendering mode: {mode_name}")
 
-    def finalize(self):
-        pass
+            except Exception as e:
+                print(f"Error loading rendering mode '{mode_name}': {e}")
+                tb.print_exc()
+
+    def status(self) -> None:
+        """Print status of all active rendering modes."""
+        active_modes = [name for name, mode in self.rendering_modes.items() if mode.enabled]
+        print(f"The currently active modes are: {active_modes}")
+
+    def update(self, optimization_state: dict[str, Any]) -> None:
+        """
+        Call update on all active rendering modes.
+
+        Each mode processes the optimization state independently and manages
+        its own frame storage. Errors in one mode don't affect others.
+
+        Args:
+            optimization_state: Dictionary with optimization step data:
+                - 'model': The current neural network model
+                - 'iteration': Current iteration number (int)
+                - 'loss': Current loss value (float)
+                - 'vertices': Current mesh vertices (optional)
+                - 'faces': Current mesh faces (optional)
+                - Any custom keys specific to your modes
+        """
+        for mode_name, mode in self.rendering_modes.items():
+            if mode.enabled:
+                try:
+                    mode.update(optimization_state)
+                except Exception as e:
+                    print(f"Error in {mode_name}.update(): {e}")
+                    tb.print_exc()
+
+    def finalize(self) -> None:
+        """
+        Call finalize on all rendering modes to save their results.
+
+        Each mode saves its accumulated frames, GIFs, images, etc. to its
+        own subdirectory. Errors in one mode don't prevent others from finalizing.
+        """
+        if self.verbose:
+            print(f"\nFinalizing rendering modes to {self.output_dir}")
+
+        for mode_name, mode in self.rendering_modes.items():
+            if mode.enabled:
+                try:
+                    # Create a subdirectory for this mode
+                    mode_output_dir = self.output_dir / mode_name
+                    mode_output_dir.mkdir(parents=True, exist_ok=True)
+
+                    mode.finalize(mode_output_dir)
+
+                    if self.verbose:
+                        print(f"  Finalized {mode_name} → {mode_output_dir}")
+
+                except Exception as e:
+                    print(f"Error finalizing {mode_name}: {e}")
+                    tb.print_exc()

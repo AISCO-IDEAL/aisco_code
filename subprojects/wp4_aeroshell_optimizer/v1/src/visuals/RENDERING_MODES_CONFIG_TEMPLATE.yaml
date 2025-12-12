@@ -1,0 +1,137 @@
+# Configuration template for neural_renderer with multiple rendering modes
+#
+# This config demonstrates how to:
+# 1. Set up the shared Visualiser instance
+# 2. Enable/disable rendering modes
+# 3. Configure each mode with its own parameters
+#
+# IMPORTANT: Each team member should:
+# 1. Create their own rendering_mode_<yourname>.py file
+# 2. Add a new entry under rendering_modes below
+# 3. Set enabled: true when ready to use
+# 4. Provide mode-specific config parameters
+
+neural_renderer:
+  # ============ Shared Visualiser Settings ============
+  # These settings apply to the single Visualiser instance
+  # All rendering modes use these base settings
+
+  image_size: 256                    # Resolution of rendered images
+  background_color: [0.0, 0.0, 0.0] # RGB background
+  anti_aliasing: true                # Enable anti-aliasing
+  camera_mode: "look_at"             # Camera projection type
+  viewing_angle: 30.0                # Field of view
+  device: "cuda"                     # "cuda" or "cpu"
+
+  # ============ Rendering Modes ============
+  # Each mode gets its own configuration section
+  # Modes run sequentially in update() and finalize()
+  # Each mode manages its own frame storage
+
+  rendering_modes:
+
+    # ---- Example Mode (Template) ----
+    # This is a reference implementation. Keep enabled: false
+    example_mode:
+      enabled: false
+      class_path: "rendering_mode_example:ExampleRenderingMode"
+      config:
+        render_interval: 10                 # Render every N iterations
+        camera_position: [4000, 0, 0]      # Camera position [x, y, z]
+        look_at: [0, 0, 0]                 # Look-at point [x, y, z]
+        fps: 15                            # GIF animation frame rate
+
+    # ---- Person A's Mode ----
+    # Team member should create rendering_mode_person_a.py
+    # and configure below
+    person_a_mode:
+      enabled: false
+      class_path: "rendering_mode_person_a:PersonAMode"
+      config:
+        # Add your mode-specific parameters here
+        # Example:
+        # render_interval: 5
+        # custom_setting: "value"
+
+    # ---- Person B's Mode ----
+    # Team member should create rendering_mode_person_b.py
+    # and configure below
+    person_b_mode:
+      enabled: false
+      class_path: "rendering_mode_person_b:PersonBMode"
+      config:
+        # Add your mode-specific parameters here
+
+    # ---- Person C's Mode ----
+    # Team member should create rendering_mode_person_c.py
+    # and configure below
+    person_c_mode:
+      enabled: false
+      class_path: "rendering_mode_person_c:PersonCMode"
+      config:
+        # Add your mode-specific parameters here
+
+
+# ============ DEVELOPER GUIDE ============
+#
+# To add your own rendering mode:
+#
+# 1. CREATE YOUR MODE FILE:
+#    File: /subprojects/wp4_aeroshell_optimizer/v1/src/visuals/rendering_mode_yourname.py
+#
+#    from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base import RenderingMode
+#
+#    class YourRenderingMode(RenderingMode):
+#        def __init__(self, visualiser, config: dict):
+#            super().__init__(visualiser, config)
+#            # Your initialization
+#
+#        def update(self, optimization_state: dict) -> None:
+#            # Called every optimization iteration
+#            # Store frames in self.frame_storage
+#            vertices = optimization_state.get('vertices')
+#            faces = optimization_state.get('faces')
+#            iteration = optimization_state.get('iteration')
+#
+#            # Use self._render() to render
+#            image = self._render(vertices, faces, mode="rgb")
+#            self.frame_storage.append(image)
+#
+#        def finalize(self, output_dir: Path) -> None:
+#            # Called once at the end
+#            # Save your self.frame_storage to output_dir
+#            if self.frame_storage:
+#                self._frames_to_gif(output_dir / "animation.gif")
+#
+# 2. REGISTER IN CONFIG:
+#    your_mode_name:
+#      enabled: false                                    # Set to true when ready
+#      class_path: "rendering_mode_yourname:YourRenderingMode"
+#      config:
+#        your_param_1: value1
+#        your_param_2: value2
+#
+# 3. ENABLE WHEN READY:
+#    Change enabled: false to enabled: true
+#
+# ============ KEY FEATURES ============
+#
+# ✓ No git conflicts: Each person has their own file
+# ✓ Shared visualiser: One GPU renderer, all modes use it
+# ✓ Independent storage: Each mode manages self.frame_storage
+# ✓ Easy parallelization: Modes run sequentially now, but frame storage
+#   is independent so async/parallel is possible later
+# ✓ Error isolation: One mode failing doesn't stop others
+# ✓ Config-driven: Enable/disable modes without code changes
+#
+# ============ DEBUGGING ============
+#
+# If a mode fails during optimization:
+# - Error is printed to console with traceback
+# - Other modes continue
+# - Mode-specific errors won't break training
+#
+# If a mode fails during finalize:
+# - Error is printed to console with traceback
+# - Other modes still save their results
+# - Check output_dir/<mode_name>/ for partial results
