@@ -26,7 +26,9 @@ def weights_alm(
     Returns:
         torch.Tensor: the updated lambdas, mus and nus.
     """
-    epsilon = 1e-8  # Small constant to prevent division by zero
+    epsilon = 1e-16  # Small constant to prevent division by zero
+    # SOURCE: "Conditionally adaptive augmented Lagrangian method for physics-informed learning of forward and inverse problems using artificial neural networks", page 6 after (8)
+
     with torch.no_grad():
         for i in range(len(constrained_losses)):  # iterate over constrained losses
             # update nu, which is a torch tensor

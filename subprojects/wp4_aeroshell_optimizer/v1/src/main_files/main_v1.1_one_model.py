@@ -9,6 +9,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_c
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import dynamic_type_loading
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data, fetch_pretrained_model
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 
 # we want to dynamically run an entire optimization process for the WIRE model.
 # we need the model, config and (losses)
@@ -73,7 +74,10 @@ def main(verbose: bool = True) -> None:
     # Check if model still is on device after pretraining
     model = model.to(device)
 
-    model.optimise(training_config=training_config)
+    # Initialize shared visual wrapper (reads rendering modes from config)
+    wrapper = Wrapper(verbose=verbose)
+
+    model.optimise(training_config=training_config, renderer_wrapper=wrapper)
     if verbose:
         print("Model optimisation completed.")
 
@@ -95,27 +99,11 @@ def main(verbose: bool = True) -> None:
     )
     # Log neural renderer video to wandb if applicable
     if general_config["wandb_general"]["use_wandb"] and general_config["wandb_general"]["use_neural_renderer"]:
-        if len(model.visualiser.stored_frames) == 0:
-            print("Warning: No frames stored in neural renderer for logging.")
-
-        if general_config.get("neural_renderer", {})["gif"].get("make_gif", False):
-            fps = general_config.get("neural_renderer", {}).get("gif", {}).get("fps", 10)
-
-            if general_config.get("neural_renderer", {}).get("save_locally", False):
-                model.visualiser.frames_to_gif(
-                    file_path=Path(f"subprojects/wp4_aeroshell_optimizer/data/rendered_run_{wandb.run.name}.gif"),
-                    fps=fps,
-                    return_uint8=True,
-                )
-
-            if general_config.get("neural_renderer", {}).get("upload", True):
-                # wandb.Video expects float32 frames in [0, 1] range
-                frames_float = model.visualiser.frames_to_gif(
-                    file_path=None,
-                    fps=fps,
-                    return_uint8=False,
-                )
-                wandb.log({"rendered_video": wandb.Video(frames_float, fps=fps, format="gif")})
+        # Finalize all rendering modes and save results
+        try:
+            wrapper.finalize()
+        except Exception as e:
+            print(f"Wrapper finalize failed: {e}")
 
     print("Completed job successfully.")
 
