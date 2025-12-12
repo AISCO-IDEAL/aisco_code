@@ -43,8 +43,12 @@ class TotalLoss:
         if self.losses_config["general_info"].get("ALM", False):
             # store lambda, mu, nu as 1D tensors
             self.lamdas = torch.tensor([[0.001], [0.001], [0.001]], device=dev)  # tricky, needs to be sweeped over
-            self.mus = torch.tensor([[1.0], [1.0], [1.0]], device=dev)  # standard literature values:
-            # TODO: # add link for a paper here.
+            self.mus = torch.tensor(
+                [[1.0], [1.0], [1.0]], device=dev
+            )  # ... a larger value such as η=1 is advisable to balance constraint enforcement and objective minimization effectively.:
+            # NOTE: as seen in "Conditionally adaptive augmented Lagrangian method for physics-informed learning of forward and inverse problems using artificial neural networks"
+            #  Authors: Qifeng Hua, Shamsulhaq Basira, Inanc Senocak
+            # https://arxiv.org/html/2508.15695v1
             self.nus = torch.tensor([[0.0], [0.0], [0.0]], device=dev)  # standard literature values
             self.alphas = torch.tensor([[0.99], [0.99], [0.99]], device=dev)  # increase mu by this factor if constraint not me
             self.gamma: float = 0.1  # global learning rate for mu updates
