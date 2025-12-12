@@ -5,6 +5,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from AISCO_code.subprojects.wp4_aeroshell_optimizer.archive.v0.src.main import deep_update
+from projects.EngiBench.engibench.utils.container import run
 import torch
 import trimesh
 import wandb
@@ -16,6 +18,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import loa
 
 # NOTE: You can remove all hardcoded loss imports (like BbLoss1, SolarLoss, etc.)
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import render_image
@@ -24,7 +27,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import 
 class TotalLoss:
     def __init__(self, dev: str = "cuda") -> None:
         # set up configs
-        self.__general_config = load_config()
+        self.__general_config = load_config()  # default arg is the general config
         self._use_wandb = self.__general_config.get("wandb_general", {}).get("use_wandb", False)
         self._use_neural_renderer = self.__general_config.get("wandb_general", {}).get("use_neural_renderer", False)
         self.losses_config = load_config(
@@ -45,12 +48,14 @@ class TotalLoss:
                 # Set the wandb log directory
                 dir="wp4_aeroshell_optimizer/data/wandb_logs",
                 # Set the wandb entity where your project will be logged (generally your team name).
-                entity="aisco",
+                entity=self.__general_config["wandb_general"].get("entity_name", "aisco"),
                 # Set the wandb project where this run will be logged.
-                project="Aeroshell Optimiser",
+                project=self.__general_config["wandb_general"].get("project_name", "Aeroshell Optimiser with ALM and Sweeping"),
                 # Track hyperparameters and run metadata.
                 config=self.__general_config,
             )
+            config = deep_update(self.__general_config, dict(wandb.config))
+            run.config.update(config, allow_val_change=True)
 
         # ALM parameters init
         if self.losses_config["general_info"].get("ALM", False):
@@ -67,8 +72,8 @@ class TotalLoss:
                 [[1.0], [1.0], [1.0]], device=dev
             )  # ... a larger value such as η=1 is advisable to balance constraint enforcement and objective minimization effectively.:
             # NOTE: as seen in "Conditionally adaptive augmented Lagrangian method for physics-informed learning of forward and inverse problems using artificial neural networks"
-            #  Authors: Qifeng Hua, Shamsulhaq Basira, Inanc Senocak
-            # https://arxiv.org/html/2508.15695v1
+            #       Authors: Qifeng Hua, Shamsulhaq Basira, Inanc Senocak
+            #       https://arxiv.org/html/2508.15695v1
             self.nus = torch.tensor([[0.0], [0.0], [0.0]], device=dev)  # standard literature values
             self.alpha: float = (
                 wandb.config.get("alm.alpha", 0.99) if wandb.run else self.losses_config["general_info"].get("alpha", 0.99)
@@ -80,8 +85,10 @@ class TotalLoss:
             self.gamma: float = (
                 wandb.config.get("alm.gamma", 0.01) if wandb.run else self.losses_config["general_info"].get("gamma", 0.01)
             )
-            # SOURCE: "An Adaptive Augmented Lagrangian Method for Training Physics and Equality Constrained Artificial Neural Networks", Algortihm 3, ALM with adaptive penalty update (APU)
-            # SWEEP: γ ∈ log-uniform in [10−3,10e0]
+            # NOTE: as seen "An Adaptive Augmented Lagrangian Method for Training Physics and Equality Constrained Artificial Neural Networks", Algortihm 3, ALM with adaptive penalty update (APU)
+            # AUTHORS: Shamsulhaq Basir and Inanc Senocak
+            #       https://arxiv.org/pdf/2306.04904
+            #       SWEEP: γ ∈ log-uniform in [10−3,10e0]
 
         # Dynamically load and initialise active losses
         # category: aero, ... | lossnames: frontal_area_v0, ...
