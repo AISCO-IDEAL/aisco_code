@@ -26,6 +26,7 @@ class ParentLoss:
         self.device = device
         self.general_config = load_config()
         self.losses_config = losses_config
+        self.loss_name = loss_name
         self.training_config = load_config(
             v=self.general_config["general_info"].get("version", "v1"),
             cfg_name=self.general_config["active_configs"]["training"],
