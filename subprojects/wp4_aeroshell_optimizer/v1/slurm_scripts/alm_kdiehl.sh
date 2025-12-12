@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
 #SBATCH --gpus=rtx_4090:1
-#SBATCH --output=/cluster/home/kdiehl/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/kdiehl_alm_%j.out 
+#SBATCH --output=/cluster/home/kdiehl/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/kdiehl_alm_%j.out
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=kdiehl@ethz.ch
 #------------------------------------------------------------------------------
@@ -18,7 +18,7 @@ module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
 
 
 USERNAME="kdiehl"
-#LOG_DIR="/cluster/home/$USERNAME/AISCO_code/logs" # only for GPU debugging 
+#LOG_DIR="/cluster/home/$USERNAME/AISCO_code/logs" # only for GPU debugging
 ##mkdir -p "$LOG_DIR"  # Ensure the log directory exists
 
 #------------------------------------------------------------------------------
