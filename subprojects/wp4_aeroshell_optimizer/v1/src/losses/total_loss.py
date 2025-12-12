@@ -115,7 +115,7 @@ class TotalLoss:
             )
 
             weighted_total_loss = (
-                o + torch.dot(self.lamdas, c) + 1 / 2 * torch.sum(self.mus, c**2)
+                o + torch.dot(self.lamdas.squeeze(), c) + 1 / 2 * torch.sum(self.mus, torch.dot(c, c))
             )  # dot products of weights and losses tensors
             # Sum all loss tensors in a differentiable way
 
