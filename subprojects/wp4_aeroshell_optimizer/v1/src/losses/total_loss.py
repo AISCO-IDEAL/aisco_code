@@ -222,4 +222,4 @@ class TotalLoss:
                         wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
                         image_path.unlink()
 
-        return total_loss
+        return weighted_total_loss
