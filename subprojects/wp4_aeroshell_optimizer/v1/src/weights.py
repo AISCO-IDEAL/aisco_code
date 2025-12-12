@@ -6,7 +6,14 @@ weights for losses of aeroshell_optimizer are handeled here
 import torch
 
 
-def weights_alm(lamdas: torch.Tensor, mus: torch.Tensor, nus: torch.Tensor, alphas: torch.Tensor, gamma: float, constrained_losses: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def weights_alm(
+    lamdas: torch.Tensor,
+    mus: torch.Tensor,
+    nus: torch.Tensor,
+    alphas: torch.Tensor,
+    gamma: float,
+    constrained_losses: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Calculate Augmented Lagrangian Method (ALM) weights for constrained losses.
 
     Args:
@@ -19,15 +26,17 @@ def weights_alm(lamdas: torch.Tensor, mus: torch.Tensor, nus: torch.Tensor, alph
     Returns:
         torch.Tensor: the updated lambdas, mus and nus.
     """
-    epsilon = 1e-8  # Small constant to prevent division by zero
+    epsilon = 1e-16  # Small constant to prevent division by zero
+    # SOURCE: "Conditionally adaptive augmented Lagrangian method for physics-informed learning of forward and inverse problems using artificial neural networks", page 6 after (8)
+
     with torch.no_grad():
-        for i in range(len(constrained_losses)): # iterate over constrained losses
+        for i in range(len(constrained_losses)):  # iterate over constrained losses
             # update nu, which is a torch tensor
             nu_1 = alphas[i] * nus[i] + (1 - alphas[i]) * abs(constrained_losses[i])
             nus[i] = nu_1
 
             # update mu
-            mu_1 = gamma/(nus[i] + epsilon)
+            mu_1 = gamma / (nus[i] + epsilon)
             mus[i] = mu_1
 
             # update lambda
@@ -35,6 +44,7 @@ def weights_alm(lamdas: torch.Tensor, mus: torch.Tensor, nus: torch.Tensor, alph
             lamdas[i] = lamda_1
 
     return lamdas, mus, nus
+
 
 def weights_manual(loss_names: dict, losses_config: dict, loss_families: list) -> list:
     """Get manual weight for a given loss from the losses_config dictionary.

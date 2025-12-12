@@ -1,6 +1,8 @@
 general_info:
   config_debugging: "True"
   ALM: "True"  # Augmented Lagrangian Method 
+  initial_lambda: 0.01  # initial value for lambda in ALM
+  alpha: 0.99  # factor to increase mu in ALM if constraint not met
   
 losses: # [compute: bool, weight: float, path: str]
   aero:
