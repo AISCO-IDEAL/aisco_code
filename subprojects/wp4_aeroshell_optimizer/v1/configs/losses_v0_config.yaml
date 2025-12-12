@@ -3,7 +3,8 @@ general_info:
   ALM: "True"  # Augmented Lagrangian Method 
   initial_lambda: 0.01  # initial value for lambda in ALM
   alpha: 0.99  # factor to increase mu in ALM if constraint not met
-  
+  gamma: 0.01  # parameter for ALM penalty update
+
 losses: # [compute: bool, weight: float, path: str]
   aero:
     frontal_area_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/frontal_area_v0.py"]
