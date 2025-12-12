@@ -133,11 +133,11 @@ class TotalLoss:
             # documentation: `Losses and their weights` in Obsidian
             # o: primary loss (solar and drag) (objectives), for now just use basic weighting, later could be BOTorch or with a RaceTimeEstimator
             # c: constraint loss (bb, eikonal, smoothness)
-            o = torch.tensor((loss_tensors[0] * 1.0 + loss_tensors[4] * (-1.0)), device=device, requires_grad=True)
+            o = (loss_tensors[0] * 1.0) + (loss_tensors[4] * (-1.0))
             # NOTE: hardcoded weights for now, TODO: implement bayesian optimization here
 
             # 1D tenosrs for constraint losses
-            c = torch.tensor([loss_tensors[1], loss_tensors[2], loss_tensors[3]], device=device, requires_grad=True)
+            c = torch.stack([loss_tensors[1], loss_tensors[2], loss_tensors[3]])
 
             # get lambda, mu each for constraint losses
             self.lamdas, self.mus, self.nus = weights_alm(
@@ -162,7 +162,7 @@ class TotalLoss:
             weighted_total_loss = torch.dot(torch.stack(loss_tensors), weights)
 
         # # Add the total loss to the logging dictionary
-        loss_names["total_loss"] = weighted_total_loss.squeeze()
+        loss_names["total_loss"] = weighted_total_loss.item()
 
         # # 2. Logging them on WandB (not working as of now)
         if self._use_wandb is True:
