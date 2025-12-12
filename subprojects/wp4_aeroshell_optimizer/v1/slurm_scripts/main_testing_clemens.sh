@@ -1,15 +1,14 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=Main_test
-#SBATCH --time=04:00:00                   # Adjust time as needed
+#SBATCH --time=01:00:00                   # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
 #SBATCH --gpus=rtx_4090:1
 #SBATCH --output=/cluster/home/clhuber/logs/Clemens_TEST_%j.out 
 #SBATCH --error=/cluster/home/clhuber/logs/Clemens_TEST_%j.err 
-#SBATCH --mail-type=END,FAIL
-##SBATCH --mail-user=clhuber@ethz.ch
+
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
