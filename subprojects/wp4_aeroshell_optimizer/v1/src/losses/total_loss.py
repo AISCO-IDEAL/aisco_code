@@ -11,8 +11,12 @@ import wandb
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 
+from subprojects.wp4_aeroshell_optimizer.v1.src.weights import weights_manual, weights_alm
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
+
 # NOTE: You can remove all hardcoded loss imports (like BbLoss1, SolarLoss, etc.)
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import render_image
@@ -21,7 +25,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import 
 class TotalLoss:
     def __init__(self, dev: str = "cuda") -> None:
         # set up configs
-        self.__general_config = load_config()
+        self.__general_config = load_config()  # default arg is the general config
         self._use_wandb = self.__general_config.get("wandb_general", {}).get("use_wandb", False)
         self._use_neural_renderer = self.__general_config.get("wandb_general", {}).get("use_neural_renderer", False)
         self.losses_config = load_config(
@@ -29,57 +33,60 @@ class TotalLoss:
             cfg_name=self.__general_config["active_configs"]["losses"],
         )
         self.weights = self.losses_config.get("losses", {})  # get nested losses dict
-        self.__active_losses = {}
+        self.__active_losses: dict = {}
         self._renderer_initialized = False
 
         project_root = Path.cwd()  # Correctly defines project root
         self.losses = self.losses_config.get("losses", {})  # get nested losses dict
-        self.__active_losses = {}
         self.__rendering_frequency = self.__general_config.get("wandb_general", {}).get("rendering_frequency")
 
-        # ALM parameters init
-        if self.losses_config["general_info"].get("ALM", False):
-            self.lamda:dict = {}
-            self.mu:dict = {}
-            self.nu:dict = {}
-            self.alpha:dict = {}
-
-            # category: aero, ... | lossnames: frontal_area_v0, ...
-            for category, lossnames in self.losses.items():
-                if category == "total":
-                    continue
-
-                # Initialize inner dictionaries for each category
-                # Using dicts {loss_name: value} is more efficient than tuples for updates
-                self.lamda[category] = {}
-                self.mu[category] = {}
-                self.nu[category] = {}
-                self.alpha[category] = {}
-
-                # loss_name: frontal_area_v0, ... | compute: bool | weight: float | path: str
-                for loss_name, params in lossnames.items():
-                    # params is [compute, weight, path]
-                    if params[0]:  # if compute is True
-                        # Initialize ALM parameters
-                        # lambda (Lagrange multiplier) usually starts at 0
-                        self.lamda[category][loss_name] = 0.0
-                        # mu/nu (Penalty parameters) usually start > 0
-                        self.mu[category][loss_name] = 1.0
-                        self.nu[category][loss_name] = 1.0
-                        # alpha parameter usually start at 1
-                        self.alpha[category][loss_name] = 1.0
         # wandb init
         if self.__general_config["wandb_general"].get("use_wandb", False):
-            wandb.init(
+            run = wandb.init(
                 # Set the wandb log directory
                 dir="wp4_aeroshell_optimizer/data/wandb_logs",
                 # Set the wandb entity where your project will be logged (generally your team name).
-                entity="aisco",
+                entity=self.__general_config["wandb_general"].get("entity_name", "aisco"),
                 # Set the wandb project where this run will be logged.
-                project="Aeroshell Optimiser",
+                project=self.__general_config["wandb_general"].get("project_name", "Aeroshell Optimiser with ALM and Sweeping"),
                 # Track hyperparameters and run metadata.
                 config=self.__general_config,
             )
+            config = deep_update(self.__general_config, dict(wandb.config))
+            run.config.update(config, allow_val_change=True)
+
+        # ALM parameters init
+        if self.losses_config["general_info"].get("ALM", False):
+            # store lambda, mu, nu as 1D tensors
+            self.lamda: float = (
+                wandb.config.get("alm.lambda_init", 0.01)
+                if wandb.run
+                else self.losses_config["general_info"].get("initial_lamda", 0.1)
+            )
+            self.lamdas = torch.tensor(
+                [[self.lamda], [self.lamda], [self.lamda]], device=dev
+            )  # SWEEP: could be log-uniform in [10−5,10−1][10−5,10−1] per constraint
+            self.mus = torch.tensor(
+                [[1.0], [1.0], [1.0]], device=dev
+            )  # ... a larger value such as η=1 is advisable to balance constraint enforcement and objective minimization effectively.:
+            # NOTE: as seen in "Conditionally adaptive augmented Lagrangian method for physics-informed learning of forward and inverse problems using artificial neural networks"
+            #       Authors: Qifeng Hua, Shamsulhaq Basira, Inanc Senocak
+            #       https://arxiv.org/html/2508.15695v1
+            self.nus = torch.tensor([[0.0], [0.0], [0.0]], device=dev)  # standard literature values
+            self.alpha: float = (
+                wandb.config.get("alm.alpha", 0.99) if wandb.run else self.losses_config["general_info"].get("alpha", 0.99)
+            )
+            self.alphas = torch.tensor(
+                [[self.alpha], [self.alpha], [self.alpha]], device=dev
+            )  # increase mu by this factor if constraint not me, default = 0.99 acc. to "Conditionally adaptive augmented Lagrangian method"
+            # SWEEP: α ∈ {0.9,0.95,0.98,0.99}
+            self.gamma: float = (
+                wandb.config.get("alm.gamma", 0.01) if wandb.run else self.losses_config["general_info"].get("gamma", 0.01)
+            )
+            # NOTE: as seen "An Adaptive Augmented Lagrangian Method for Training Physics and Equality Constrained Artificial Neural Networks", Algortihm 3, ALM with adaptive penalty update (APU)
+            # AUTHORS: Shamsulhaq Basir and Inanc Senocak
+            #       https://arxiv.org/pdf/2306.04904
+            #       SWEEP: γ ∈ log-uniform in [10−3,10e0]
 
         # Dynamically load and initialise active losses
         # category: aero, ... | lossnames: frontal_area_v0, ...
@@ -94,10 +101,10 @@ class TotalLoss:
                     # 1. Correctly construct the absolute path from the relative path in config
                     absolute_path = project_root / Path(path)
 
-                    class_name = Path(path).stem.title().replace("_", "")
+                    loss_family = Path(path).stem.title().replace("_", "")
 
                     # 2. Call load_class_from_path with the absolute path string
-                    loss_class = self.load_class_from_path(str(absolute_path), class_name)
+                    loss_class = load_class_from_path(str(absolute_path), loss_family)
                     loss_instance = loss_class(
                         device=dev,
                         loss_name=loss_name,
@@ -105,28 +112,12 @@ class TotalLoss:
                     )
                     self.__active_losses[loss_name] = loss_instance
 
-    def load_class_from_path(self, path: str, class_name: str):
-        """Dynamically load a class from a file path."""
-        spec = importlib.util.spec_from_file_location("module.name", path)
-
-        # 3. Add explicit check for None to prevent AttributeError
-        if spec is None or spec.loader is None:
-            raise FileNotFoundError(  # noqa: TRY003
-                f"Cannot find module file for dynamic loading. "
-                f"Path provided: {path}. "
-                f"Please verify the file exists and the path in the config (must use '/' separators)."
-            )
-
-        module = importlib.util.module_from_spec(spec)
-        sys.modules["module.name"] = module
-        spec.loader.exec_module(module)
-        return getattr(module, class_name)
-
     def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:
         # Calculate the individual Losses
-        individual_losses = {}  # For logging purposes
+        loss_names = {}  # For logging purposes
         device = next(iter(model.parameters())).device
-        total_loss = torch.tensor(0.0, device=device)
+        weighted_total_loss = torch.tensor(0.0, device=device)
+        weights = torch.tensor([], device=device)
         loss_tensors = []  # To store individual loss tensors for further processing
 
         # TODO: add config for individual losses (e.g. flexicubes resolution)
@@ -139,37 +130,58 @@ class TotalLoss:
             loss_tensors.append(current_loss)
 
             # Store for logging
-            individual_losses[loss_name] = current_loss.item()
-        if self.losses_config["general_info"]["ALM"] == "True":
+            loss_names[loss_name] = current_loss.item()
+
+        if self.losses_config["general_info"]["ALM"] == "True":  # ALM weighting
             # ALM Version: L_A​(x,λ,ρ)= f(x) +λ ⋅ g(x) rho/2 ⋅ g(x)^2
-            # f(x): primary loss (solar and drag)
-            # g(x): constraint loss (bb, eikonal, smoothness)
-            f = loss_tensors[0] + loss_tensors[4]  # solar + drag
-            g = loss_tensors[1] + loss_tensors[2] + loss_tensors[3]  # bb + eikonal + smoothness
-            lambda_ = 10.0
-            rho = wandb.config.lagrangian_params.rho_bb
-            total_loss = f + lambda_ * g + (rho / 2) * (g**2)
+            # o(x): primary loss (solar and drag) (objectives), for now just use basic weighting, later could be BOTorch or with a RaceTimeEstimator
+            # c(x): constraint loss (bb, eikonal, smoothness)
+            o = (
+                loss_tensors[0] * weights[list(self.__active_losses.keys())[0]][loss_names[0]]
+                + loss_tensors[4] * (-1) * weights[list(self.__active_losses.keys())[4]][loss_names[4]]
+            )  # solar + drag
+
+            # 1D tenosrs for constraint losses
+            c = torch.tensor([loss_tensors[1], loss_tensors[2], loss_tensors[3]], device=device)
+
+            # get lambda, mu each for constraint losses
+            self.lamdas, self.mus, self.nus = weights_alm(
+                lamdas=self.lamdas, mus=self.mus, nus=self.nus, alphas=self.alphas, gamma=self.gamma, constrained_losses=c
+            )
+
+            weighted_total_loss: float = (
+                o + torch.dot(self.lamdas, c) + 1 / 2 * torch.dot(self.mus, torch.dot(c, c))
+            )  # dot products of weights and losses tensors
             # Sum all loss tensors in a differentiable way
-        else:
-            total_loss = torch.sum(torch.stack(loss_tensors))
 
-        # Add the total loss to the logging dictionary
-        individual_losses["total_loss"] = total_loss.item()
+        else:  # manual weighting
+            weights: list = weights_manual(
+                loss_names=loss_names,
+                losses_config=self.losses_config,
+                loss_families=list(self.__active_losses.keys()),
+            )
+            weights = torch.as_tensor(weights, device=device, dtype=torch.float32)
+            # Stack losses into a single tensor and multiply by weights
+            # We convert weights to a tensor on the correct device to allow element-wise multiplication
+            weighted_total_loss = torch.dot(torch.stack(loss_tensors), weights)
 
-        # # 2. Logging them on WandB (not working as of now)
-        if self._use_wandb is True:
-            wandb.log(individual_losses, step=epoch_name)
-            if self._use_neural_renderer and not self._renderer_initialized:
-                model.init_neural_renderer(
-                    image_size=self.__general_config.get("neural_renderer", {}).get("image_size", 256),
-                    background_color=[0, 0, 0], #black background
-                    anti_aliasing=True,
-                    camera_mode='look_at',
-                    viewing_angle=30,
-                    device=device,
-                    verbose=False
-                )
-                self._renderer_initialized = True
+            # # Add the total loss to the logging dictionary
+            # loss_names["total_loss"] = weighted_total_loss.item()
+
+            # # # 2. Logging them on WandB (not working as of now)
+            # if self._use_wandb is True:
+            #     wandb.log(loss_names, step=epoch_name)
+            #     if self._use_neural_renderer and not self._renderer_initialized:
+            #         model.init_neural_renderer(
+            #             image_size=self.__general_config.get("neural_renderer", {}).get("image_size", 256),
+            #             background_color=[0, 0, 0],  # black background
+            #             anti_aliasing=True,
+            #             camera_mode="look_at",
+            #             viewing_angle=30,
+            #             device=device,
+            #             verbose=False,
+            #         )
+            #         self._renderer_initialized = True
 
             if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
                 verts, faces = get_diff_mesh(model, grid_res=64, device=device)
@@ -178,11 +190,7 @@ class TotalLoss:
                     # Use Alex' faster Neural Renderer for rendering and logging (no assembly though)
                     # Needs to be initialised first and converted into a gif after training
                     render_image(
-                        visualiser=model.visualiser,
-                        model=model,
-                        position=[4000, 1000, 1000],
-                        look_at=[0, 0, 0],
-                        save_frame=True
+                        visualiser=model.visualiser, model=model, position=[4000, 1000, 1000], look_at=[0, 0, 0], save_frame=True
                     )
 
                 else:
@@ -212,4 +220,4 @@ class TotalLoss:
                         wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
                         image_path.unlink()
 
-        return total_loss
+        return weighted_total_loss

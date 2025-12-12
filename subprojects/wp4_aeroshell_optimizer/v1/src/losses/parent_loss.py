@@ -26,6 +26,7 @@ class ParentLoss:
         self.device = device
         self.general_config = load_config()
         self.losses_config = losses_config
+        self.loss_name = loss_name
         self.training_config = load_config(
             v=self.general_config["general_info"].get("version", "v1"),
             cfg_name=self.general_config["active_configs"]["training"],
@@ -58,8 +59,7 @@ class ParentLoss:
         if self.__weight[0] == 0.0:
             return torch.tensor(0.0, device=self.device)
         else:
-            return self._loss(model) * self.__weight[1]
+            return self._loss(model)
 
     def _loss(self, model) -> torch.Tensor:
         return torch.tensor(0.0, device=self.device)
-

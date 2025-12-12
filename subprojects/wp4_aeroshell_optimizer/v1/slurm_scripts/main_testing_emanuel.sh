@@ -7,8 +7,8 @@
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
 #SBATCH --gpus=rtx_4090:1
 #SBATCH --output=/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/Emanuel_TEST_%j.out 
-#SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=eschaerer@ethz.ch
+##SBATCH --mail-type=END,FAIL
+##SBATCH --mail-user=eschaerer@ethz.ch
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------

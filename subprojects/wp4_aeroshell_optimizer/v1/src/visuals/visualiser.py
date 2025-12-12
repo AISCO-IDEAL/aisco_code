@@ -8,7 +8,10 @@ from subprojects.fixed_renderer.renderer import Renderer as NeuralRenderer
 
 
 class Visualiser:
-    """Minimal wrapper around `fixed_renderer` for rendering and frame export."""
+    """
+    Minimal wrapper around `fixed_renderer` for rendering and frame export.
+    Loads of manual work still required to get everything working smoothly.
+    """
 
     def __init__(
         self,
@@ -131,23 +134,41 @@ class Visualiser:
         self,
         file_path: str | Path | None = None,
         fps: int = 15,
+        return_uint8: bool = False,
     ) -> np.ndarray:
         """Convert stored frames to uint8, optionally save a GIF, and return stacked frames.
 
-        Returns an array of shape (num_frames, H, W, C) suitable for wandb.Video.
+        Args:
+            file_path: Optional path to save GIF file
+            fps: Frames per second for the GIF
+            return_uint8: If True, return uint8 [0,255]; if False, return float32 [0,1] for wandb
+
+        Returns an array of shape (num_frames, H, W, C).
         """
         if not self.stored_frames:
             raise ValueError("No stored frames to create GIF.")
 
         print(f"Converting stored frames {len(self.stored_frames)} to GIF format...")
+        print(f"First frame shape: {self.stored_frames[0].shape}, dtype: {self.stored_frames[0].dtype}")
+        print(f"First frame min/max: {self.stored_frames[0].min():.4f} / {self.stored_frames[0].max():.4f}")
 
-        frames_uint8 = [(frame * 255).astype(np.uint8) for frame in self.stored_frames]
-        frames_array = np.stack(frames_uint8, axis=0)
+        # Stack frames first
+        frames_stacked = np.stack(self.stored_frames, axis=0)
+        print(f"Stacked frames shape: {frames_stacked.shape}, dtype: {frames_stacked.dtype}")
 
+        # For local GIF saving, convert to uint8
         if file_path is not None:
+            frames_uint8 = [(frame * 255).astype(np.uint8) for frame in self.stored_frames]
             imageio.mimsave(file_path, frames_uint8, fps=fps)
 
-        return frames_array
+        # Return format depends on use case
+        if return_uint8:
+            frames_uint8 = [(frame * 255).astype(np.uint8) for frame in self.stored_frames]
+            return np.stack(frames_uint8, axis=0)
+        else:
+            # wandb.Video expects float32 in [0, 1] range
+            # Ensure frames are float32
+            return frames_stacked.astype(np.float32)
 
     def create_solid_texture(
         self,
