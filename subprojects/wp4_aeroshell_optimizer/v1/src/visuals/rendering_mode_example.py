@@ -11,7 +11,7 @@ Each team member should create their own file following this pattern.
 
 from pathlib import Path
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base import RenderingMode
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base_class import RenderingMode
 
 
 class ExampleRenderingMode(RenderingMode):

@@ -7,22 +7,24 @@ from __future__ import annotations
 import importlib
 import traceback as tb
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
-if TYPE_CHECKING:
-    from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base import RenderingMode
+
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base_class import RenderingMode
 
 
 class Wrapper(Visualiser):
     """
-    Visual wrapper that manages multiple rendering modes simultaneously.
+    Visual wrapper that manages multiple rendering modes using 1 Visualiser Object simultaneously.
 
     The Wrapper inherits from Visualiser and manages a collection of RenderingMode
     instances that all share access to this single Visualiser. Each mode manages
     its own frame storage to enable clean separation and potential parallelization.
+    I.e. if multiple ppl want to render different debugging things, they all can do so in their custom mode,
+    the renderer then takes care of their needs during the optimization.
 
     Usage:
         wrapper = Wrapper(verbose=True, output_dir=Path("results/"))
@@ -50,13 +52,18 @@ class Wrapper(Visualiser):
             output_dir: Base directory for saving results. Defaults to ./rendering_results
                        Each mode gets its own subdirectory: output_dir/mode_name/
         """
-        # Load configuration
-        self.config = load_config(load_config(cfg_name="general_config.yaml")["active_configs"]["neural_renderer"])
+        # Load configuration and init Visualiser base class
+        # The visualiser config is nested under "neural_renderer" in the general config. 
+        # It contains all the settings that define a neural renderer object, and all modes will run through this same neural renderer instance.
+        general_config = load_config(cfg_name="general_config.yaml")
+        neural_renderer_config_name = general_config["active_configs"]["neural_renderer"]
+        self.config = load_config(cfg_name=neural_renderer_config_name)
         super().__init__(**(self.config.get("neural_renderer", {})))
 
+        #set output dir (WIP, not sure if keeping this way)
         self.verbose = verbose
-        self.output_dir = output_dir or Path("./rendering_results")
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.output_dir = output_dir or Path("/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/rendering_results")
+        self.output_dir.mkdir(parents=False, exist_ok=True)
 
         # Initialize all rendering modes
         self.rendering_modes: dict[str, RenderingMode] = {}
@@ -69,15 +76,18 @@ class Wrapper(Visualiser):
     def _initialize_rendering_modes(self) -> None:
         """
         Dynamically load and initialize all rendering modes from config.
-
+        
         Config structure expected:
             rendering_modes:
               mode_name:
                 enabled: true
-                class_path: "rendering_mode_example:ExampleRenderingMode"
+                class_path: "custom_modes.rendering_mode_example:ExampleRenderingMode"
                 config:
-                  # mode-specific config options
-
+                  camera_position: [4000, 0, 0]
+                  look_at: [0, 0, 0]
+                  render_mode: "rgb"
+                  fps: 15
+        
         Each rendering mode is instantiated with:
         - visualiser: self (the Wrapper instance, which IS the Visualiser)
         - config: The mode-specific config dict from YAML
@@ -98,6 +108,8 @@ class Wrapper(Visualiser):
                     continue
 
                 module_name, class_name = class_path.rsplit(":", 1)
+                
+                # Import from custom_modes package
                 module = importlib.import_module(
                     f"subprojects.wp4_aeroshell_optimizer.v1.src.visuals.{module_name}"
                 )
@@ -108,6 +120,8 @@ class Wrapper(Visualiser):
                     visualiser=self,
                     config=mode_config.get("config", {})
                 )
+                # Set enabled flag after instantiation (it's at YAML mode level, not inside config)
+                mode_instance.enabled = mode_config.get("enabled", False)
                 self.rendering_modes[mode_name] = mode_instance
 
                 if self.verbose:
@@ -120,7 +134,9 @@ class Wrapper(Visualiser):
     def status(self) -> None:
         """Print status of all active rendering modes."""
         active_modes = [name for name, mode in self.rendering_modes.items() if mode.enabled]
-        print(f"The currently active modes are: {active_modes}")
+        total_modes = len(self.rendering_modes)
+        print(f"Total modes: {total_modes} | Active modes ({len(active_modes)}): {active_modes}")
+        print(f"Output directory: {self.output_dir}")
 
     def update(self, optimization_state: dict[str, Any]) -> None:
         """

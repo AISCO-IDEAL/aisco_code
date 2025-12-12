@@ -9,11 +9,25 @@ neural_renderer:
 
 
 # Insert custom modes here, such as "clemens' solar mode"
-modes:
-  snapshot: false
-  timelapse: true
-  frozen_gif: true
-  dynamic_gif: false
+rendering_modes:
+  alex_mode:
+    enabled: true
+    class_path: "custom_modes.alex_mode:BasicAlexMode"
+    config:
+      camera_position: [2000, 2000, 2000]
+      look_at: [0, 0, 0]
+      render_mode: "rgb"
+      fps: 20
+
+  example_advanced_mode:
+    enabled: false
+    class_path: "custom_modes.rendering_mode_example_advanced:ExampleAdvancedMode"
+    config:
+      camera_position: [3000, 3000, 3000]
+      look_at: [0, 0, 0]
+      render_mode: "rgb"
+      fps: 15
+      render_interval: 10
 
 
 

@@ -1,8 +1,10 @@
 # just the models class which calls other models here
+
 import torch
 from torch import nn
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
+
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 
 
 class BaseModel(nn.Module):
@@ -40,10 +42,12 @@ class BaseModel(nn.Module):
         output = x.squeeze(-1)
         return output * 1000.0
 
-    def optimise(self):
+    def optimise(self, renderer_wrapper: Wrapper | None = None):
         super().train()  # Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
 
         # For textbook example of how our optimization works, look at basic_MLP_v1.py
+        # Subclasses should implement the optimization loop and, if a wrapper is provided,
+        # call renderer_wrapper.update(optimization_state=...) at the desired frequency.
         raise NotImplementedError("Train method not implemented yet in BaseModel. Please implement in the subclass inheriting.")
 
     def validation(self):
@@ -63,40 +67,13 @@ class BaseModel(nn.Module):
     def debug_info(self):
         raise ValueError("No Debug Info implemented")  # noqa: TRY003
 
-    def init_neural_renderer(
-        self,
-        renderer_config: dict | None = None,
-        image_size: int = 256,
-        background_color: list[float] = [0, 0, 0],
-        anti_aliasing: bool = True,
-        camera_mode: str = "look_at",
-        viewing_angle: float = 30,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
-        verbose: bool = False,
-    ):
+
+    def init_neural_renderer(self, *_, **kwargs):
+        """Deprecated: The renderer is now managed by the shared Wrapper.
+
+        This method is kept for backwards compatibility but no longer creates
+        a per-model Visualiser. Use a shared `Wrapper` and call its `update()`
+        during optimization instead.
         """
-        Initialises a Neural Renderer via the Visualiser class and stores it as an attribute.
-
-        Parameters:
-            image_size (int): Size of the rendered image.
-            background_color (list[float]): Background color of the rendered image (RGB values in range [0, 1]).
-            anti_aliasing (bool): Whether to use anti-aliasing.
-            camera_mode (str): Camera mode for rendering.
-            viewing_angle (float): Viewing angle for the camera. (Will be overwritten if you give position in functions later)
-            device (str): Device to run the renderer on ("cuda" or "cpu").
-
-            If you need more control, just initialise the Visualiser class manually as an attribute.
-        """
-        if renderer_config is None:
-            renderer_config = {}
-
-        self.visualiser = Visualiser(
-            image_size=image_size,
-            background_color=background_color,
-            anti_aliasing=anti_aliasing,
-            camera_mode=camera_mode,
-            viewing_angle=viewing_angle,
-            device=device,
-        )
-        if verbose:
-            print(f"Neural Renderer for model initialized with image size {image_size} on device {device}.")
+        if kwargs.get("verbose", False):
+            print("init_neural_renderer is deprecated. Use Wrapper + update() calls instead.")

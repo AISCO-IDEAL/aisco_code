@@ -17,7 +17,7 @@ active_configs:
   training: "training_v0_config.yaml"
   model_params: "basic_MLP_v1.yaml"
   wandb: "wandb_v0_sweep.yaml"
-  neural_renderer: "neural_renderer_v0"
+  neural_renderer: "neural_renderer_v0.yaml"
 
 wandb_general:
   use_wandb: True

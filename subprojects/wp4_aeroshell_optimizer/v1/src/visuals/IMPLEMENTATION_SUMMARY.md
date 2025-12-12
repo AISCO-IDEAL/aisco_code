@@ -15,7 +15,7 @@ FILES CREATED/MODIFIED
 
 2. rendering_mode_example.py (NEW)
    - Concrete example showing how to implement a mode
-   - Renders RGB images every N iterations
+   - Renders RGB images every iteration
    - Creates GIF animation and saves sample PNGs
    - Well-documented for developers to copy/modify
 
