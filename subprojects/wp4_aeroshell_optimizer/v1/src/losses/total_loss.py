@@ -2,6 +2,7 @@ from pathlib import Path
 
 import torch
 import wandb
+import trimesh
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -162,5 +163,62 @@ class TotalLoss:
 
         # # Add the total loss to the logging dictionary
         loss_names["total_loss"] = weighted_total_loss.squeeze()
+
+        # # 2. Logging them on WandB (not working as of now)
+        if self._use_wandb is True:
+            wandb.log(loss_names, step=epoch_name)
+            # Initialization of per-model renderer is deprecated; wrapper is preferred.
+            # Ensure a wrapper exists if neural rendering is requested.
+            if self._use_neural_renderer and self._renderer_wrapper is None:
+                # Lazily construct a wrapper with defaults from config
+                try:
+                    self._renderer_wrapper = Wrapper(verbose=False)
+                except Exception as e:
+                    print(f"Failed to initialize Visual Wrapper: {e}")
+
+            if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
+                verts, faces = get_diff_mesh(model, grid_res=64, device=device)
+
+                if self._use_neural_renderer and self._renderer_wrapper is not None:
+                    # Use shared Wrapper to update all active rendering modes
+                    try:
+                        self._renderer_wrapper.update(
+                            {
+                                "model": model,
+                                "iteration": epoch_name,
+                                "loss": weighted_total_loss.item(),
+                                "vertices": verts,
+                                "faces": faces,
+                            }
+                        )
+                    except Exception as e:
+                        print(f"Renderer wrapper update failed: {e}")
+
+                else:
+                    # Use Clemens' CADVisualizer for rendering and logging
+                    # Convert to numpy if tensors
+                    if torch.is_tensor(verts):
+                        verts = verts.detach().cpu().numpy()
+                    if torch.is_tensor(faces):
+                        faces = faces.detach().cpu().numpy()
+
+                    # Create trimesh object and export to STL
+                    mesh = trimesh.Trimesh(vertices=verts, faces=faces)
+                    stl_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/mesh_epoch_{epoch_name}.stl")
+                    stl_path.parent.mkdir(parents=True, exist_ok=True)
+                    mesh.export(str(stl_path))
+
+                    # Visualize the mesh using CADVisualizer
+                    image_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/render_epoch_{epoch_name}.png")
+                    visualizer = CADVisualizer(stl_path=str(stl_path), out_image_path=str(image_path))
+                    visualizer.render_until_blue_detected()
+
+                    # Delete local files after logging to WandB
+                    if stl_path.exists():
+                        wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name)
+                        stl_path.unlink()
+                    if image_path.exists():
+                        wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
+                        image_path.unlink()
 
         return weighted_total_loss
