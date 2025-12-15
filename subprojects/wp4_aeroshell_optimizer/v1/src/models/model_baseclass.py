@@ -1,10 +1,13 @@
 # just the models class which calls other models here
 
+from __future__ import annotations
+from typing import TYPE_CHECKING  # this prevents from circular imports
+
 import torch
 from torch import nn
 
-
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+if TYPE_CHECKING:
+    from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 
 
 class BaseModel(nn.Module):
