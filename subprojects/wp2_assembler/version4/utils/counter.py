@@ -21,6 +21,8 @@ def increment(counter, limits):
 
     return counter
 
+
+
 if __name__ == "__main__":
     len_counter = 0
     counter = [0] * len_counter       # 3-digit counter
