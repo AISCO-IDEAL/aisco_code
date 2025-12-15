@@ -179,7 +179,7 @@ class Wrapper(Visualiser):
                     # Use a hash of the current time as filename to ensure uniqueness
                     current_time = datetime.datetime.now().isoformat()
                     canonical_time_bytes = str(current_time.encode("utf-8"))
-                    file_name = str_hashing(canonical_time_bytes)
+                    file_name = str_hashing(canonical_time_bytes) + ".gif"
                     mode.finalize(mode_output_dir, file_name=file_name)
 
                     if self.verbose:

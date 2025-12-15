@@ -71,7 +71,7 @@ class TotalLoss:
             # NOTE: as seen in "Conditionally adaptive augmented Lagrangian method for physics-informed learning of forward and inverse problems using artificial neural networks"
             #       Authors: Qifeng Hua, Shamsulhaq Basira, Inanc Senocak
             #       https://arxiv.org/html/2508.15695v1
-            self.nus = torch.tensor([[0.0], [0.0], [0.0]], device=dev)  # standard literature values
+            self.nus = torch.tensor([[1.0], [1.0], [1.0]], device=dev)  # Initialize to 1.0 to prevent mu explosion at start
             self.alpha: float = (
                 wandb.config.get("alm.alpha", 0.99) if wandb.run else self.losses_config["general_info"].get("alpha", 0.99)
             )
@@ -140,6 +140,7 @@ class TotalLoss:
             c = torch.stack([loss_tensors[1], loss_tensors[2], loss_tensors[3]])
 
             alm_thresholds = self.losses_config["general_info"]["alm_thresholds"]
+            thresholds_tensor = torch.tensor(alm_thresholds, device=c.device) if alm_thresholds else None
             # get lambda, mu each for constraint losses
             self.lamdas, self.mus, self.nus = weights_alm(
                 lamdas=self.lamdas,
@@ -148,7 +149,7 @@ class TotalLoss:
                 alphas=self.alphas,
                 gamma=self.gamma,
                 constrained_losses=c,
-                thresholds=alm_thresholds,
+                thresholds=thresholds_tensor,
             )
 
             weighted_total_loss = (
