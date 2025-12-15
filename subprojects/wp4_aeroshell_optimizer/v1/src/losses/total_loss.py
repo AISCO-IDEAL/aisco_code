@@ -7,7 +7,7 @@ import trimesh
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
-from subprojects.wp4_aeroshell_optimizer.v1.src.weights import weights_alm, weights_manual
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_alm, weights_manual
 
 # # Visualization imports (commented out for now)
 # import trimesh # noqa: ERA001
@@ -139,9 +139,16 @@ class TotalLoss:
             # 1D tenosrs for constraint losses
             c = torch.stack([loss_tensors[1], loss_tensors[2], loss_tensors[3]])
 
+            alm_thresholds = self.losses_config["general_info"]["alm_thresholds"]
             # get lambda, mu each for constraint losses
             self.lamdas, self.mus, self.nus = weights_alm(
-                lamdas=self.lamdas, mus=self.mus, nus=self.nus, alphas=self.alphas, gamma=self.gamma, constrained_losses=c
+                lamdas=self.lamdas,
+                mus=self.mus,
+                nus=self.nus,
+                alphas=self.alphas,
+                gamma=self.gamma,
+                constrained_losses=c,
+                thresholds=alm_thresholds,
             )
 
             weighted_total_loss = (
@@ -167,6 +174,20 @@ class TotalLoss:
         # # 2. Logging them on WandB (not working as of now)
         if self._use_wandb is True:
             wandb.log(loss_names, step=epoch_name)
+            if self.losses_config["general_info"]["ALM"] == "True":
+                # log also the ALM parameters
+                alm_params = {
+                    "alm/lambda_bb": self.lamdas[0].item(),
+                    "alm/lambda_eikonal": self.lamdas[1].item(),
+                    "alm/lambda_smoothness": self.lamdas[2].item(),
+                    "alm/mu_bb": self.mus[0].item(),
+                    "alm/mu_eikonal": self.mus[1].item(),
+                    "alm/mu_smoothness": self.mus[2].item(),
+                    "alm/nu_bb": self.nus[0].item(),
+                    "alm/nu_eikonal": self.nus[1].item(),
+                    "alm/nu_smoothness": self.nus[2].item(),
+                }
+                wandb.log(alm_params, step=epoch_name)
             # Initialization of per-model renderer is deprecated; wrapper is preferred.
             # Ensure a wrapper exists if neural rendering is requested.
             if self._use_neural_renderer and self._renderer_wrapper is None:
