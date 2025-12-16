@@ -1,9 +1,7 @@
 import contextlib
 
 import torch
-from kaolin.ops.conversions import (
-    FlexiCubes,
-)
+from kaolin.ops.conversions import FlexiCubes
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 
@@ -61,21 +59,28 @@ def get_diff_mesh(
     grid_points = torch.stack([grid_x, grid_y, grid_z], dim=-1).reshape(-1, 3)
 
     # SDF evaluation
-    if need_grad:
-        ctx = torch.cuda.amp.autocast(enabled=(use_amp and device == "cuda"), dtype=torch.float16)
-        with ctx:
-            sdf_values = model(grid_points)
-            if sdf_values.dim() > 1:
-                sdf_values = sdf_values.squeeze()
-        # Ensure float32 for downstream ops that may expect it
-        sdf_values = sdf_values.to(dtype=torch.float32)
-    else:
-        ctx = torch.cuda.amp.autocast(enabled=(use_amp and device == "cuda"), dtype=torch.float16)
-        with torch.no_grad(), ctx:
-            sdf_values = model(grid_points)
-            if sdf_values.dim() > 1:
-                sdf_values = sdf_values.squeeze()
-        sdf_values = sdf_values.to(dtype=torch.float32)
+    batch_size = 2**16  # Process in chunks to avoid OOM
+    sdf_values_list = []
+
+    for i in range(0, grid_points.shape[0], batch_size):
+        batch_points = grid_points[i : i + batch_size]
+
+        if need_grad:
+            ctx = torch.cuda.amp.autocast(enabled=(use_amp and device == "cuda"), dtype=torch.float16)
+            with ctx:
+                batch_sdf = model(batch_points)
+        else:
+            ctx = torch.cuda.amp.autocast(enabled=(use_amp and device == "cuda"), dtype=torch.float16)
+            with torch.no_grad(), ctx:
+                batch_sdf = model(batch_points)
+
+        if batch_sdf.dim() > 1:
+            batch_sdf = batch_sdf.squeeze()
+        sdf_values_list.append(batch_sdf)
+
+    sdf_values = torch.cat(sdf_values_list, dim=0)
+    # Ensure float32 for downstream ops that may expect it
+    sdf_values = sdf_values.to(dtype=torch.float32)
 
     # 2. Compute cube_idx of FlexiCubes: Has shape (num_cubes, 8), each row indexes the 8 corners of a cube
     flexicubes = FlexiCubes(device=device)

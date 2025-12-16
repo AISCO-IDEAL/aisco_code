@@ -5,6 +5,7 @@ from torch import nn
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 
 """
 WIRE architecture from https://arxiv.org/pdf/2301.05187
@@ -152,7 +153,7 @@ class WIRE(BaseModel):
         }
         return model_info
 
-    def optimise(self, training_config: dict = None, renderer_wrapper=None) -> None:
+    def optimise(self, training_config: dict = None, renderer_wrapper: Wrapper | None = None) -> None:
         """
         Args:
             training_config: Dictionary containing training configuration parameters.
@@ -168,7 +169,10 @@ class WIRE(BaseModel):
         num_epochs = training_config.get("epochs", 1000)
 
         # IMPORTANT: the device the model is on defines the device passed to the loss_class
-        loss_function = TotalLoss(self.device)
+        # Get device from model parameters since nn.Module doesn't have a .device attribute
+
+        device = next(self.parameters()).device
+        loss_function = TotalLoss(device, renderer_wrapper=renderer_wrapper)
 
         for epoch in range(num_epochs):
             # Clear gradients
@@ -181,6 +185,13 @@ class WIRE(BaseModel):
             # Do this by calculating the gradients of the weights w.r.t. the loss
             loss.backward()
             # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
+            optimizer.step()
+            # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
+            optimizer.step()
+            # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
+            optimizer.step()
+            # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
+            optimizer.step()
             optimizer.step()
             # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
             optimizer.step()
