@@ -3,6 +3,8 @@ from collections.abc import Callable
 import numpy as np
 import torch
 from skimage import measure
+import trimesh
+from pathlib import Path
 
 from subprojects.wp3_solar_estimator.v1.src.kaolin_utils import get_diff_mesh
 
@@ -323,7 +325,84 @@ def solar_mesh_loss(verts: torch.Tensor, faces: torch.Tensor, area_budget: float
     selected_areas = sorted_areas[select_mask]
     total_power = torch.sum(selected_vals * selected_areas)
 
-    return -total_power * 1e-6  # return negative for minimization
+    return total_power * 1e-6  # return negative for minimization
+
+
+# ---------------------------
+# Variant that also saves the selected faces as a Trimesh
+# ---------------------------
+def solar_mesh_loss_and_save(
+    verts: torch.Tensor,
+    faces: torch.Tensor,
+    area_budget: float = 6e6,
+    save_path: str = "selected_faces.obj",
+    sun_ray_vector: torch.Tensor | np.ndarray | None = None,
+) -> torch.Tensor:
+    """Same as solar_mesh_loss, but exports a Trimesh of the selected faces.
+
+    Args:
+        verts: (V,3) vertex positions (torch tensor, can be on CUDA/CPU).
+        faces: (F,3) face indices (torch long tensor).
+        area_budget: Maximum total area to select.
+        save_path: File path to export (e.g., .obj, .ply, .glb supported by trimesh).
+        sun_ray_vector: Optional (3,) direction; default matches solar_mesh_loss.
+
+    Returns:
+        Torch scalar loss identical to solar_mesh_loss.
+    """
+    # Face normals
+    face_normals = compute_face_normals(verts, faces)
+
+    # Sun direction
+    if sun_ray_vector is None:
+        s = torch.tensor([-1.0, 0.0, 1.0], device=verts.device, dtype=face_normals.dtype)
+    else:
+        s = _to_tensor(sun_ray_vector, device=verts.device, dtype=face_normals.dtype)
+    s = s / (torch.linalg.norm(s) + 1e-12)
+
+    # Cosine terms clamped to [0, +inf)
+    dot_products = torch.clamp((face_normals * s).sum(dim=1), min=0.0)
+
+    # Areas
+    triangle_areas = compute_triangle_areas(verts, faces)
+
+    # Greedy selection by dot product subject to area budget
+    sorted_vals, sorted_indices = torch.sort(dot_products, descending=True)
+    sorted_areas = triangle_areas[sorted_indices]
+    cum_area = torch.cumsum(sorted_areas, dim=0)
+    select_mask = cum_area <= area_budget
+
+    selected_vals = sorted_vals[select_mask]
+    selected_areas = sorted_areas[select_mask]
+    total_power = torch.sum(selected_vals * selected_areas)
+
+    # Selected face indices in original face array
+    selected_sorted_idx = torch.nonzero(select_mask, as_tuple=False).view(-1)
+    if selected_sorted_idx.numel() > 0:
+        selected_face_indices = sorted_indices[selected_sorted_idx]
+
+        # Prepare arrays for Trimesh (CPU/NumPy)
+        verts_np = verts.detach().float().cpu().numpy()
+        faces_np = faces[selected_face_indices].detach().long().cpu().numpy()
+
+        # Ensure output directory exists
+        out_dir = Path(save_path).parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # Build and export mesh of just the selected faces
+        mesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, process=False)
+        mesh.export(save_path)
+    else:
+        # Nothing selected; still ensure directory exists then export an empty mesh
+        verts_np = verts.detach().float().cpu().numpy()
+        faces_np = np.zeros((0, 3), dtype=np.int64)
+        out_dir = Path(save_path).parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+        mesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, process=False)
+        mesh.export(save_path)
+
+    # Same loss sign and scaling as solar_mesh_loss
+    return -total_power * 1e-6
 
 
 # complete loss function
