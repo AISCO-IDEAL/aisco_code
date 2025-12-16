@@ -14,15 +14,15 @@ rendering_modes:
 #use alex_mode as an example
   alex_mode:
     #mandatory
-    enabled: false
+    enabled: true
     class_path: "custom_modes.alex_mode:BasicAlexMode"
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you
     config:
-      camera_position: [5000, 5000, 5000]
+      camera_position: [2000, 2000, 2000]
       look_at: [0, 0, 0]
       render_mode: "rgb"
-      fps: 10
+      fps: 20
 
   assembly_mode:
     #mandatory
@@ -49,7 +49,7 @@ rendering_modes:
       alpha: 0.5
       fps: 10
       assembly_color: [1.0, 0.55, 0.0]
-      mesh_color: [0.2,1.0,1.0]
+      mesh_color: [0.2,1.0,1.0] #Bugged?
 
 
 
