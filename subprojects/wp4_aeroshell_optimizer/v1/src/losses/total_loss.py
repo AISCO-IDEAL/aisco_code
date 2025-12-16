@@ -18,7 +18,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import 
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
-from subprojects.wp4_aeroshell_optimizer.v1.src.weights import weights_alm, weights_manual
+
 
 
 class TotalLoss:

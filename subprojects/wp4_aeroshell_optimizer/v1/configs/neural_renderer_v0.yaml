@@ -3,7 +3,7 @@
 
 neural_renderer:
   image_size: 1024
-  background_color: [0.0,0.0,0.2]
+  background_color: [0.0,0.0,0.0]
   anti_aliasing: true
   camera_mode: "look_at"
   viewing_angle: 40
@@ -49,7 +49,7 @@ rendering_modes:
       alpha: 0.5
       fps: 10
       assembly_color: [1.0, 0.55, 0.0]
-      mesh_color: [0.8,0.8,0.8]
+      mesh_color: [0.2,1.0,1.0]
 
 
 
