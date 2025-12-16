@@ -4,13 +4,16 @@
 
 from __future__ import annotations
 
+import datetime
 import importlib
 import traceback as tb
 from pathlib import Path
 from typing import Any
 
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import str_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data
 
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base_class import RenderingMode
@@ -53,14 +56,14 @@ class Wrapper(Visualiser):
                        Each mode gets its own subdirectory: output_dir/mode_name/
         """
         # Load configuration and init Visualiser base class
-        # The visualiser config is nested under "neural_renderer" in the general config. 
+        # The visualiser config is nested under "neural_renderer" in the general config.
         # It contains all the settings that define a neural renderer object, and all modes will run through this same neural renderer instance.
         general_config = load_config(cfg_name="general_config.yaml")
         neural_renderer_config_name = general_config["active_configs"]["neural_renderer"]
         self.config = load_config(cfg_name=neural_renderer_config_name)
         super().__init__(**(self.config.get("neural_renderer", {})))
 
-        #set output dir (WIP, not sure if keeping this way)
+        # set output dir (WIP, not sure if keeping this way)
         self.verbose = verbose
         self.output_dir = output_dir or Path("/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/rendering_results")
         self.output_dir.mkdir(parents=False, exist_ok=True)
@@ -76,7 +79,7 @@ class Wrapper(Visualiser):
     def _initialize_rendering_modes(self) -> None:
         """
         Dynamically load and initialize all rendering modes from config.
-        
+
         Config structure expected:
             rendering_modes:
               mode_name:
@@ -87,7 +90,7 @@ class Wrapper(Visualiser):
                   look_at: [0, 0, 0]
                   render_mode: "rgb"
                   fps: 15
-        
+
         Each rendering mode is instantiated with:
         - visualiser: self (the Wrapper instance, which IS the Visualiser)
         - config: The mode-specific config dict from YAML
@@ -108,18 +111,13 @@ class Wrapper(Visualiser):
                     continue
 
                 module_name, class_name = class_path.rsplit(":", 1)
-                
+
                 # Import from custom_modes package
-                module = importlib.import_module(
-                    f"subprojects.wp4_aeroshell_optimizer.v1.src.visuals.{module_name}"
-                )
+                module = importlib.import_module(f"subprojects.wp4_aeroshell_optimizer.v1.src.visuals.{module_name}")
                 rendering_mode_class = getattr(module, class_name)
 
                 # Instantiate the rendering mode with shared Visualiser and config
-                mode_instance = rendering_mode_class(
-                    visualiser=self,
-                    config=mode_config.get("config", {})
-                )
+                mode_instance = rendering_mode_class(visualiser=self, config=mode_config.get("config", {}))
                 # Set enabled flag after instantiation (it's at YAML mode level, not inside config)
                 mode_instance.enabled = mode_config.get("enabled", False)
                 self.rendering_modes[mode_name] = mode_instance
@@ -178,8 +176,11 @@ class Wrapper(Visualiser):
                     # Create a subdirectory for this mode
                     mode_output_dir = self.output_dir / mode_name
                     mode_output_dir.mkdir(parents=True, exist_ok=True)
-
-                    mode.finalize(mode_output_dir)
+                    # Use a hash of the current time as filename to ensure uniqueness
+                    current_time = datetime.datetime.now().isoformat()
+                    canonical_time_bytes = str(current_time.encode("utf-8"))
+                    file_name = str_hashing(canonical_time_bytes) + ".gif"
+                    mode.finalize(mode_output_dir, file_name=file_name)
 
                     if self.verbose:
                         print(f"  Finalized {mode_name} → {mode_output_dir}")

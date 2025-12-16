@@ -13,6 +13,7 @@ def weights_alm(
     alphas: torch.Tensor,
     gamma: float,
     constrained_losses: torch.Tensor,
+    thresholds: torch.Tensor = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Calculate Augmented Lagrangian Method (ALM) weights for constrained losses.
 
@@ -23,6 +24,7 @@ def weights_alm(
         alphas (torch.Tensor): used to compute the new smoothed violation. Effectively averages violations over past epochs
         gamma (float): learning rate for updating mu.
         constrained_losses (torch.Tensor): Values of the constrained losses.
+        thresholds (torch.Tensor, optional): Thresholds for the constrained losses. If provided, mu will be clamped.
     Returns:
         torch.Tensor: the updated lambdas, mus and nus.
     """
@@ -37,6 +39,13 @@ def weights_alm(
 
             # update mu
             mu_1 = gamma / (nus[i] + epsilon)
+
+            if thresholds is not None:
+                # Ensure mu doesn't drop below a value corresponding to the threshold
+                # This prevents the penalty from becoming too weak when violation is large
+                min_mu = gamma / (thresholds[i] + epsilon)
+                mu_1 = torch.max(mu_1, min_mu)
+
             mus[i] = mu_1
 
             # update lambda

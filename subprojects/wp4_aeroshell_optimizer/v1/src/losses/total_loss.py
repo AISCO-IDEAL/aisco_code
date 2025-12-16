@@ -1,13 +1,14 @@
 from pathlib import Path
 
 import torch
-import wandb
 import trimesh
+import wandb
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
-from subprojects.wp4_aeroshell_optimizer.v1.src.weights import weights_alm, weights_manual
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_alm, weights_manual
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 
 # # Visualization imports (commented out for now)
 # import trimesh # noqa: ERA001
@@ -15,9 +16,9 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.weights import weights_alm, weig
 # from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import render_image  # noqa: ERA001
 # from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer # noqa: ERA001
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+
 
 
 class TotalLoss:
@@ -71,7 +72,7 @@ class TotalLoss:
             # NOTE: as seen in "Conditionally adaptive augmented Lagrangian method for physics-informed learning of forward and inverse problems using artificial neural networks"
             #       Authors: Qifeng Hua, Shamsulhaq Basira, Inanc Senocak
             #       https://arxiv.org/html/2508.15695v1
-            self.nus = torch.tensor([[0.0], [0.0], [0.0]], device=dev)  # standard literature values
+            self.nus = torch.tensor([[1.0], [1.0], [1.0]], device=dev)  # Initialize to 1.0 to prevent mu explosion at start
             self.alpha: float = (
                 wandb.config.get("alm.alpha", 0.99) if wandb.run else self.losses_config["general_info"].get("alpha", 0.99)
             )
@@ -111,7 +112,7 @@ class TotalLoss:
                     )
                     self.__active_losses[loss_name] = loss_instance
 
-    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:  # noqa: ARG002 # epoch_name for rendering
+    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:  # epoch_name for rendering
         # Calculate the individual Losses
         loss_names = {}  # For logging purposes
         device = next(iter(model.parameters())).device
@@ -127,21 +128,29 @@ class TotalLoss:
             loss_tensors.append(current_loss)
 
             # Store for logging
-            loss_names[loss_name] = current_loss.item()  # convert to float, gradient is lost
+            loss_names[loss_name] = current_loss  # convert to float, gradient is lost
 
         if self.losses_config["general_info"]["ALM"] == "True":  # ALM weighting
             # documentation: `Losses and their weights` in Obsidian
             # o: primary loss (solar and drag) (objectives), for now just use basic weighting, later could be BOTorch or with a RaceTimeEstimator
             # c: constraint loss (bb, eikonal, smoothness)
-            o = torch.tensor((loss_tensors[0] * 1.0 + loss_tensors[4] * (-1.0)), device=device, requires_grad=True)
+            o = (loss_tensors[0] * 0.0) + (loss_tensors[4] * (-1.0))
             # NOTE: hardcoded weights for now, TODO: implement bayesian optimization here
 
             # 1D tenosrs for constraint losses
-            c = torch.tensor([loss_tensors[1], loss_tensors[2], loss_tensors[3]], device=device, requires_grad=True)
+            c = torch.stack([loss_tensors[1], loss_tensors[2], loss_tensors[3]])
 
+            alm_thresholds = self.losses_config["general_info"]["alm_thresholds"]
+            thresholds_tensor = torch.tensor(alm_thresholds, device=c.device) if alm_thresholds else None
             # get lambda, mu each for constraint losses
             self.lamdas, self.mus, self.nus = weights_alm(
-                lamdas=self.lamdas, mus=self.mus, nus=self.nus, alphas=self.alphas, gamma=self.gamma, constrained_losses=c
+                lamdas=self.lamdas,
+                mus=self.mus,
+                nus=self.nus,
+                alphas=self.alphas,
+                gamma=self.gamma,
+                constrained_losses=c,
+                thresholds=thresholds_tensor,
             )
 
             weighted_total_loss = (
@@ -162,11 +171,25 @@ class TotalLoss:
             weighted_total_loss = torch.dot(torch.stack(loss_tensors), weights)
 
         # # Add the total loss to the logging dictionary
-        loss_names["total_loss"] = weighted_total_loss.squeeze()
+        loss_names["total_loss"] = weighted_total_loss.item()
 
         # # 2. Logging them on WandB (not working as of now)
         if self._use_wandb is True:
             wandb.log(loss_names, step=epoch_name)
+            if self.losses_config["general_info"]["ALM"] == "True":
+                # log also the ALM parameters
+                alm_params = {
+                    "alm/lambda_bb": self.lamdas[0].item(),
+                    "alm/lambda_eikonal": self.lamdas[1].item(),
+                    "alm/lambda_smoothness": self.lamdas[2].item(),
+                    "alm/mu_bb": self.mus[0].item(),
+                    "alm/mu_eikonal": self.mus[1].item(),
+                    "alm/mu_smoothness": self.mus[2].item(),
+                    "alm/nu_bb": self.nus[0].item(),
+                    "alm/nu_eikonal": self.nus[1].item(),
+                    "alm/nu_smoothness": self.nus[2].item(),
+                }
+                wandb.log(alm_params, step=epoch_name)
             # Initialization of per-model renderer is deprecated; wrapper is preferred.
             # Ensure a wrapper exists if neural rendering is requested.
             if self._use_neural_renderer and self._renderer_wrapper is None:

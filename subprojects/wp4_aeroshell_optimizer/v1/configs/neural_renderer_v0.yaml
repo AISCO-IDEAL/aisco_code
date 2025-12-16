@@ -3,21 +3,55 @@
 
 neural_renderer:
   image_size: 1024
-  background_color: [0.0,0.0,0.3]
+  background_color: [0.0,0.0,0.0]
   anti_aliasing: true
   camera_mode: "look_at"
+  viewing_angle: 40
 
 
 # Insert custom modes here, such as "clemens' solar mode"
 rendering_modes:
+#use alex_mode as an example
   alex_mode:
-    enabled: true
+    #mandatory
+    enabled: false
     class_path: "custom_modes.alex_mode:BasicAlexMode"
+    # config that is passed as dictionary into your mode
+    # Use for any settings that are relevant for you
     config:
-      camera_position: [2000, 2000, 2000]
+      camera_position: [5000, 5000, 5000]
       look_at: [0, 0, 0]
       render_mode: "rgb"
-      fps: 20
+      fps: 10
+
+  assembly_mode:
+    #mandatory
+    enabled: false
+    class_path: "custom_modes.assembly_mode:AssemblyMode"
+    # config that is passed as dictionary into your mode
+    # Use for any settings that are relevant for you
+    config:
+      camera_position: [3000, 3000, 3000]
+      look_at: [0, 0, 0]
+      render_mode: "rgb"
+      color: [1.0 ,0.55 ,0.0]
+
+  mesh_assembly_mode:
+    #mandatory
+    enabled: true
+    class_path: "custom_modes.mesh_assembly_gif:MeshAssemblyGIF"
+    # config that is passed as dictionary into your mode
+    # Use for any settings that are relevant for you
+    config:
+      render_mode: "rgb"
+      camera_position: [3000, 3000, 3000]
+      look_at: [0, 0, 0]
+      alpha: 0.5
+      fps: 10
+      assembly_color: [1.0, 0.55, 0.0]
+      mesh_color: [0.2,1.0,1.0]
+
+
 
   example_advanced_mode:
     enabled: false
@@ -33,7 +67,7 @@ rendering_modes:
 
 storage_dir: "/cluster/home/aalthaus/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/renderings"
 
-
+# not used atm, outdated
 gifs:
   fps: 60
   upload: false

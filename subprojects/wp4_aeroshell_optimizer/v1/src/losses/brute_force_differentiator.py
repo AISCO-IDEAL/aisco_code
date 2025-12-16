@@ -2,13 +2,14 @@ import torch
 
 import copy
 
+
 class BruteForceDifferentiator:
-    def __init__(self, loss_function, device)->None:
+    def __init__(self, loss_function, device) -> None:
         self.device = device
         self.__epsilon: float = 1e-4
         self.__loss_function = loss_function
-    
-    def loss(self, model) ->torch.Tensor:
+
+    def loss(self, model) -> torch.Tensor:
         for p in model.parameters():
             if p.grad is not None:
                 p.grad.zero_()
