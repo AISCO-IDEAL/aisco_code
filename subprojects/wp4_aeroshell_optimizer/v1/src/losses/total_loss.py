@@ -1,13 +1,14 @@
 from pathlib import Path
 
 import torch
-import wandb
 import trimesh
+import wandb
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_alm, weights_manual
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 
 # # Visualization imports (commented out for now)
 # import trimesh # noqa: ERA001
@@ -15,9 +16,9 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_al
 # from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import render_image  # noqa: ERA001
 # from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer # noqa: ERA001
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+from subprojects.wp4_aeroshell_optimizer.v1.src.weights import weights_alm, weights_manual
 
 
 class TotalLoss:
@@ -111,7 +112,7 @@ class TotalLoss:
                     )
                     self.__active_losses[loss_name] = loss_instance
 
-    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:  # noqa: ARG002 # epoch_name for rendering
+    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:  # epoch_name for rendering
         # Calculate the individual Losses
         loss_names = {}  # For logging purposes
         device = next(iter(model.parameters())).device
@@ -133,7 +134,7 @@ class TotalLoss:
             # documentation: `Losses and their weights` in Obsidian
             # o: primary loss (solar and drag) (objectives), for now just use basic weighting, later could be BOTorch or with a RaceTimeEstimator
             # c: constraint loss (bb, eikonal, smoothness)
-            o = (loss_tensors[0] * 1.0) + (loss_tensors[4] * (-1.0))
+            o = (loss_tensors[0] * 0.0) + (loss_tensors[4] * (-1.0))
             # NOTE: hardcoded weights for now, TODO: implement bayesian optimization here
 
             # 1D tenosrs for constraint losses
