@@ -60,7 +60,7 @@ class SolarLossEstimator:
                     self._selected_face_indices = selected_face_indices
                     self._visualize_and_log_selected_faces()
         except Exception:
-            pass
+            print("try 1 failed")
         return total_power * 1e-6
 
     def _meshsdf_backward_step(self) -> torch.Tensor:
@@ -107,7 +107,7 @@ class SolarLossEstimator:
             if self._sel_mesh is not None:
                 self._sel_mesh.remove_unreferenced_vertices()
         except Exception:
-            pass
+            print("try 2 failed")
 
         try:
             if self._full_mesh is not None and self._orig_ply is not None:
@@ -115,7 +115,7 @@ class SolarLossEstimator:
             if self._sel_mesh is not None and self._sel_ply is not None:
                 self._sel_mesh.export(self._sel_ply.as_posix())
         except Exception:
-            pass
+            print("try 3 failed")
 
         assert self._orig_ply is not None and self._sel_ply is not None and self._out_img is not None
         visualizer = CADVisualizer(
@@ -136,7 +136,7 @@ class SolarLossEstimator:
                 if p is not None and Path(p).exists():
                     Path(p).unlink()
             except Exception:
-                pass
+                print("try 4 failed")
         with contextlib.suppress(Exception):
             if self._tmp_dir is not None:
                 self._tmp_dir.rmdir()
