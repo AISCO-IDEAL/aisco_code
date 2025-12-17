@@ -1,3 +1,10 @@
+"""Solar loss computation for mesh SDF models.
+Functions in this script:
+- solar_loss: Computes the solar loss, calls the folloing two functions:
+    - solar_mesh_loss: Calculates the solar exposure loss using the dot-product-Approach.
+    - meshsdf_backward_step: performs a backward Step using the MeshSDF-Approach.
+"""
+
 from collections.abc import Callable
 
 import torch
