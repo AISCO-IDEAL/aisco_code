@@ -45,14 +45,17 @@ class CADVisualizer:
 
         self.__blue_threshold = 0.1
         self.__min_blue_ratio = 0.001
+        # New thresholds for red detection
+        self.__red_threshold = 0.1
+        self.__min_red_ratio = 0.001
 
         self.__ply_a = ply_path_a
         self.__ply_b = ply_path_b
 
-        # Use colors: mesh A (full/original) in opaque blue, mesh B (solar deck) in opaque white
+        # Colors: mesh A (original) opaque red, mesh B (solar deck) opaque blue
         self.__colors = [
-            (0.0, 0.0, 1.0, 1.0),  # mesh A: opaque blue
-            (1.0, 1.0, 1.0, 1.0),  # mesh B: opaque white (solar deck)
+            (1.0, 0.0, 0.0, 1.0),  # mesh A: opaque red
+            (0.0, 0.0, 1.0, 1.0),  # mesh B: opaque blue (solar deck)
         ]
         self.__show_edges = [False, False]
         self.__out_image_path = out_image_path
@@ -315,12 +318,17 @@ class CADVisualizer:
         imageio.imwrite(out_image_path, color)
         return out_image_path, True
 
-    def __has_blue_color(self, image_path) -> bool:
+    def __has_red_and_blue_colors(self, image_path: str) -> bool:
         img = imageio.imread(image_path).astype(np.float32) / 255.0
-        # Vectorized operations for faster blue detection
-        b, r, g = img[:, :, 2], img[:, :, 0], img[:, :, 1]
+        # Channels
+        r, g, b = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+        # Blue dominance and coverage
         blue_dom = (b > self.__blue_threshold) & (b > (r + g) * 0.5)
-        return bool(np.mean(blue_dom) >= self.__min_blue_ratio)
+        blue_ok = float(np.mean(blue_dom)) >= self.__min_blue_ratio
+        # Red dominance and coverage
+        red_dom = (r > self.__red_threshold) & (r > (g + b) * 0.5)
+        red_ok = float(np.mean(red_dom)) >= self.__min_red_ratio
+        return bool(red_ok and blue_ok)
 
     def render_until_blue_detected(self) -> tuple[str, bool, int]:
         for attempts in range(1, self.__max_attempts + 1):
@@ -328,7 +336,8 @@ class CADVisualizer:
             cur = f"{p.parent / p.stem}_attempt_{attempts}{p.suffix}"
             _, ok = self.__render(out_image_path=cur)
 
-            if self.__has_blue_color(cur):
+            # Check that both red (original) and blue (solar deck) are visible
+            if self.__has_red_and_blue_colors(cur):
                 shutil.copy2(cur, self.__out_image_path)
                 Path(cur).unlink()
                 return self.__out_image_path, ok, attempts
