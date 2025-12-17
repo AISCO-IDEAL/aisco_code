@@ -296,7 +296,8 @@ def solar_mesh_loss(verts: torch.Tensor, faces: torch.Tensor, area_budget: float
     sorted_vals, sorted_indices = torch.sort(dot_products, descending=True)
     sorted_areas = triangle_areas[sorted_indices]
     cum_area = torch.cumsum(sorted_areas, dim=0)
-    select_mask = cum_area <= area_budget
+    # Only select faces that both fit within the area budget AND have strictly positive exposure
+    select_mask = (cum_area <= area_budget) & (sorted_vals > 0)
     selected_vals = sorted_vals[select_mask]
     selected_areas = sorted_areas[select_mask]
     total_power = torch.sum(selected_vals * selected_areas)
