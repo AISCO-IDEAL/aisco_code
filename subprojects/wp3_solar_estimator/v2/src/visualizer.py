@@ -5,9 +5,9 @@ import sys
 import time
 from pathlib import Path
 
-import OpenGL
 import imageio.v2 as imageio
 import numpy as np
+import OpenGL
 import pyrender
 import trimesh
 from pyrender import RenderFlags
@@ -49,10 +49,10 @@ class CADVisualizer:
         self.__ply_a = ply_path_a
         self.__ply_b = ply_path_b
 
-        # Use two materials: opaque red and semi-transparent blue (so blue detection can succeed)
+        # Use colors: mesh A (full/original) in opaque blue, mesh B (solar deck) in opaque white
         self.__colors = [
-            (1.0, 0.0, 0.0, 1.0),  # mesh A: opaque red
-            (0.0, 0.0, 1.0, 0.6),  # mesh B: semi-transparent blue
+            (0.0, 0.0, 1.0, 1.0),  # mesh A: opaque blue
+            (1.0, 1.0, 1.0, 1.0),  # mesh B: opaque white (solar deck)
         ]
         self.__show_edges = [False, False]
         self.__out_image_path = out_image_path
