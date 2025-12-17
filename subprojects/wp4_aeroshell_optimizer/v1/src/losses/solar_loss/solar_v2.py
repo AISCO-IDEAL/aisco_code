@@ -7,4 +7,4 @@ class SolarV2(ParentLoss):
         self.solar_estimator = SolarLossEstimator(device=self.device, area_budget=6e6)
 
     def _loss(self, model):
-        return self.solar_estimator.solar_loss(model=model)
+        return self.solar_estimator.solar_loss(model=model, epoch_name=self.epoch_name)

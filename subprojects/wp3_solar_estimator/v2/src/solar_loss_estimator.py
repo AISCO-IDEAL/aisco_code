@@ -28,8 +28,8 @@ class SolarLossEstimator:
         self.device = device
         self.area_budget = area_budget
 
-    def solar_loss(self, model) -> torch.Tensor:
-        # Store state for subsequent private methods
+    def solar_loss(self, model, epoch_name) -> torch.Tensor:
+        self.epoch_name = epoch_name
         self.model = model
         self.verts, self.faces = get_diff_mesh(model)
         model.zero_grad(set_to_none=True)
@@ -129,7 +129,7 @@ class SolarLossEstimator:
         self._render_attempts = attempts
 
         if self._image_path is not None:
-            wandb.log({"solar_mesh_visualization": wandb.Image(str(self._image_path))})
+            wandb.log({"solar_mesh_visualization": wandb.Image(str(self._image_path))}, step=self.epoch_name)")
 
         for p in (self._orig_ply, self._sel_ply, self._image_path):
             try:

@@ -55,10 +55,11 @@ class ParentLoss:
     def _setup(self) -> None:
         return
 
-    def get_loss(self, model) -> torch.Tensor:
+    def get_loss(self, model, epoch_name) -> torch.Tensor:
         if self.__weight[0] == 0.0:
             return torch.tensor(0.0, device=self.device)
         else:
+            self.epoch_name = epoch_name
             return self._loss(model)
 
     def _loss(self, model) -> torch.Tensor:  # noqa: ARG002

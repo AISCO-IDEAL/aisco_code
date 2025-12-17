@@ -4,10 +4,10 @@ import torch
 import trimesh
 import wandb
 
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_alm, weights_manual
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_alm, weights_manual
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 
 # # Visualization imports (commented out for now)
@@ -18,7 +18,6 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import 
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
-
 
 
 class TotalLoss:
@@ -112,7 +111,7 @@ class TotalLoss:
                     )
                     self.__active_losses[loss_name] = loss_instance
 
-    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:  # epoch_name for rendering
+    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:  # epoch_name for rendering  # noqa: PLR0912
         # Calculate the individual Losses
         loss_names = {}  # For logging purposes
         device = next(iter(model.parameters())).device
@@ -124,7 +123,7 @@ class TotalLoss:
 
         # 1. Calculate and sum up the active losses dynamically
         for loss_name, loss_instance in self.__active_losses.items():
-            current_loss: torch.Tensor = loss_instance.get_loss(model)
+            current_loss: torch.Tensor = loss_instance.get_loss(model, epoch_name)
             loss_tensors.append(current_loss)
 
             # Store for logging
