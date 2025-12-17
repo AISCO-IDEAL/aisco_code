@@ -1,18 +1,18 @@
+"""Geometric utilities for 3D meshes:
+- compute_face_normals: Calculate unit normal vectors for each face of a mesh.
+- compute_triangle_areas: Calculate the area of each triangular face in a mesh.
+Arguments:
+    vertices (torch.Tensor): Tensor of shape (V, 3) representing vertex coordinates.
+    faces (torch.Tensor): Tensor of shape (F, 3) representing indices of vertices forming each triangular face.
+    eps (float): Small value to avoid division by zero in normal computation.
+Returns:
+    torch.Tensor: For compute_face_normals, a tensor of shape (F, 3) with unit normal vectors.
+                  For compute_triangle_areas, a tensor of shape (F,) with areas of each triangle."""
+
 import torch
 
 
 def compute_face_normals(vertices: torch.Tensor, faces: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-    """
-    Compute unit normals for each triangular face using PyTorch (kept on device).
-
-    Args:
-        vertices: (V, 3) float tensor of vertex positions (device can be cuda/cpu).
-        faces: (F, 3) long/int tensor of vertex indices per face.
-        eps: small value to avoid division by zero.
-
-    Returns:
-        (F, 3) float tensor of normalized face normals.
-    """
     v = vertices
     f = faces.to(dtype=torch.long, copy=False)
 
@@ -30,15 +30,6 @@ def compute_face_normals(vertices: torch.Tensor, faces: torch.Tensor, eps: float
 
 
 def compute_triangle_areas(vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
-    """Compute areas for each triangular face using PyTorch (kept on device).
-
-    Args:
-        vertices: (V, 3) float tensor of vertex positions.
-        faces: (F, 3) long/int tensor of vertex indices per face.
-
-    Returns:
-        (F,) float tensor of triangle areas.
-    """
     v = vertices
     f = faces.to(dtype=torch.long, copy=False)
 
