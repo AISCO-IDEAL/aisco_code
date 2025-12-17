@@ -7,10 +7,15 @@ from subprojects.wp3_solar_estimator.v2.src.kaolin_utils import get_diff_mesh
 
 
 def meshsdf_backward_step(
-    sdf_model, verts: torch.Tensor, faces: torch.Tensor, loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
+    sdf_model,
+    verts: torch.Tensor,
+    faces: torch.Tensor,
+    loss_fn: Callable[..., torch.Tensor],
+    area_budget: float = 6e6,
+    device="cpu",
 ) -> torch.Tensor:
     v = verts.detach().clone().requires_grad_(True)
-    loss = loss_fn(v, faces)
+    loss = loss_fn(v, faces, area_budget, device)
     (dldv,) = torch.autograd.grad(loss, v, create_graph=False, retain_graph=True)
     s = sdf_model(v).view(-1)
     (grad_xyz,) = torch.autograd.grad(
@@ -28,10 +33,10 @@ def meshsdf_backward_step(
     return loss
 
 
-def solar_mesh_loss(verts: torch.Tensor, faces: torch.Tensor, area_budget: float = 6e6) -> torch.Tensor:
+def solar_mesh_loss(verts: torch.Tensor, faces: torch.Tensor, area_budget: float = 6e6, device="cpu") -> torch.Tensor:
     face_normals = compute_face_normals(verts, faces)
 
-    s = torch.tensor([-1.0, 0.0, 1.0], device=verts.device, dtype=face_normals.dtype)
+    s = torch.tensor([-1.0, 0.0, 1.0], dtype=face_normals.dtype, device=device)
     s = s / (torch.linalg.norm(s) + 1e-12)
 
     dot_products = torch.clamp((face_normals * s).sum(dim=1), min=0.0)
@@ -49,10 +54,10 @@ def solar_mesh_loss(verts: torch.Tensor, faces: torch.Tensor, area_budget: float
     return total_power * 1e-6
 
 
-def solar_loss(model, area_budget: float = 6e6) -> torch.Tensor:
+def solar_loss(model, area_budget: float = 6e6, device="cpu") -> torch.Tensor:
     verts, faces = get_diff_mesh(model)
     model.zero_grad(set_to_none=True)
 
-    loss = meshsdf_backward_step(model, verts, faces, solar_mesh_loss, area_budget=area_budget)
+    loss = meshsdf_backward_step(model, verts, faces, solar_mesh_loss, area_budget=area_budget, device=device)
 
     return loss
