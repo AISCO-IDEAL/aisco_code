@@ -1,16 +1,23 @@
 """Solar loss computation for mesh SDF models.
 Functions in this script:
-- solar_loss: Computes the solar loss, calls the folloing two functions:
+- solar_loss: Computes the solar loss, calls the following two functions:
     - solar_mesh_loss: Calculates the solar exposure loss using the dot-product-Approach.
     - meshsdf_backward_step: performs a backward Step using the MeshSDF-Approach.
 """
 
+import contextlib
+import importlib
+import tempfile
 from collections.abc import Callable
+from pathlib import Path
 
+import numpy as np
 import torch
+import trimesh
 
 from subprojects.wp3_solar_estimator.v2.src.geometric_utils import compute_face_normals, compute_triangle_areas
 from subprojects.wp3_solar_estimator.v2.src.kaolin_utils import get_diff_mesh
+from subprojects.wp3_solar_estimator.v2.src.visualizer import CADVisualizer
 
 
 def meshsdf_backward_step(
@@ -40,6 +47,68 @@ def meshsdf_backward_step(
     return loss
 
 
+def visualize_and_log_selected_faces(
+    verts: torch.Tensor,
+    faces: torch.Tensor,
+    selected_face_indices: torch.Tensor,
+    prefix: str = "solar_mesh_vis_",
+) -> None:
+    """Save the full mesh and the selected-face mesh as PLYs, render them, and log to W&B.
+
+    - Exports two temporary PLYs (original and selected faces)
+    - Renders with CADVisualizer.render_until_blue_detected
+    - Logs the rendered image and metadata to Weights & Biases
+    - Cleans up temporary files
+    """
+    tmp_dir = Path(tempfile.mkdtemp(prefix=prefix))
+    orig_ply = tmp_dir / "mesh_original.ply"
+    sel_ply = tmp_dir / "mesh_selected.ply"
+    out_img = tmp_dir / "render.png"
+
+    # Convert tensors to numpy arrays on CPU
+    v_np = verts.detach().cpu().numpy().astype(np.float32)
+    f_np = faces.detach().cpu().numpy().astype(np.int64)
+    f_sel_np = f_np[selected_face_indices.detach().cpu().numpy()]
+
+    # Build and export meshes
+    full_mesh = trimesh.Trimesh(vertices=v_np, faces=f_np, process=False)
+    sel_mesh = trimesh.Trimesh(vertices=v_np, faces=f_sel_np, process=False)
+
+    # Ensure clean topology for export (remove unreferenced vertices)
+    full_mesh.remove_unreferenced_vertices()
+    sel_mesh.remove_unreferenced_vertices()
+
+    full_mesh.export(orig_ply.as_posix())
+    sel_mesh.export(sel_ply.as_posix())
+
+    # Render overlay (A=original in red, B=selected in semi-transparent blue)
+    visualizer = CADVisualizer(
+        ply_path_a=orig_ply.as_posix(),
+        ply_path_b=sel_ply.as_posix(),
+        out_image_path=out_img.as_posix(),
+    )
+    image_path, ok, attempts = visualizer.render_until_blue_detected()
+
+    # Log to Weights & Biases if available (do not fail the training if not present)
+    with contextlib.suppress(Exception):
+        wandb = importlib.import_module("wandb")
+        wandb.log(
+            {
+                "solar_mesh_visualization": wandb.Image(image_path),
+                "solar_vis_ok": ok,
+                "solar_vis_attempts": attempts,
+            }
+        )
+
+    # Best-effort cleanup of temporary files
+    with contextlib.suppress(Exception):
+        for p in (orig_ply, sel_ply, Path(image_path)):
+            if p.exists():
+                p.unlink()
+        # Remove directory if empty
+        tmp_dir.rmdir()
+
+
 def solar_mesh_loss(verts: torch.Tensor, faces: torch.Tensor, area_budget: float = 6e6, device="cpu") -> torch.Tensor:
     face_normals = compute_face_normals(verts, faces)
 
@@ -57,6 +126,17 @@ def solar_mesh_loss(verts: torch.Tensor, faces: torch.Tensor, area_budget: float
     selected_vals = sorted_vals[select_mask]
     selected_areas = sorted_areas[select_mask]
     total_power = torch.sum(selected_vals * selected_areas)
+
+    # Visualization & logging moved to helper to keep loss clean
+    try:
+        with torch.no_grad():
+            selected_face_indices = sorted_indices[select_mask]
+            if selected_face_indices.numel() > 0:
+                visualize_and_log_selected_faces(verts, faces, selected_face_indices)
+    except Exception:
+        with contextlib.suppress(Exception):
+            wandb = importlib.import_module("wandb")
+            wandb.log({"solar_mesh_visualization_error": True})
 
     return total_power * 1e-6
 
