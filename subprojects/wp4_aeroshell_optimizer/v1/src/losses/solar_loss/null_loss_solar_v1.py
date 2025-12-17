@@ -8,5 +8,5 @@ class NullLossSolarV1(ParentLoss):
     def _setup(self) -> None:
         return
 
-    def _loss(self, model) -> torch.Tensor:
+    def _loss(self, model) -> torch.Tensor:  # noqa: ARG002
         return torch.tensor(0.0, device=self.device)

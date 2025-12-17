@@ -1,10 +1,5 @@
-from collections.abc import Callable
-
-import numpy as np
 import torch
-from skimage import measure
-import trimesh
-from pathlib import Path
+
 
 def compute_face_normals(vertices: torch.Tensor, faces: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     """
@@ -32,6 +27,7 @@ def compute_face_normals(vertices: torch.Tensor, faces: torch.Tensor, eps: float
     norm = torch.linalg.norm(n, dim=1, keepdim=True).clamp_min(eps)
     n_unit = n / norm
     return n_unit
+
 
 def compute_triangle_areas(vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
     """Compute areas for each triangular face using PyTorch (kept on device).

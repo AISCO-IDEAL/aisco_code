@@ -1,13 +1,8 @@
-from collections.abc import Callable
-
 import numpy as np
 import torch
-from skimage import measure
-import trimesh
-from pathlib import Path
 
-from subprojects.wp3_solar_estimator.v1.src.kaolin_utils import get_diff_mesh
 from subprojects.wp3_solar_estimator.v1.src.geometric_utils import compute_face_normals, compute_triangle_areas
+from subprojects.wp3_solar_estimator.v1.src.kaolin_utils import get_diff_mesh
 
 
 def _to_tensor(x, device=None, dtype=None) -> torch.Tensor:
@@ -109,4 +104,3 @@ def n_diff_solar_loss(model, area_budget: float = 6e6, sun_ray_vector=None, use_
 
     # Return host float without transferring large tensors
     return -float(total_power.item()) * 1e-6
-    

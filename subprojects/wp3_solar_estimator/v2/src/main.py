@@ -1,13 +1,9 @@
 from collections.abc import Callable
 
-import numpy as np
 import torch
-from skimage import measure
-import trimesh
-from pathlib import Path
 
 from subprojects.wp3_solar_estimator.v1.src.kaolin_utils import get_diff_mesh
-from subprojects.wp3_solar_estimator.v2.src.geometric_utils import *
+from subprojects.wp3_solar_estimator.v2.src.geometric_utils import compute_face_normals, compute_triangle_areas
 
 
 def meshsdf_backward_step(
@@ -17,8 +13,7 @@ def meshsdf_backward_step(
     faces: torch.Tensor,
     loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
 ) -> torch.Tensor:
-
-    v = verts.detach().clone().requires_grad_(True) 
+    v = verts.detach().clone().requires_grad_(True)
     loss = loss_fn(v, faces)
 
     # 3) Upstream gradient: dL/dv
