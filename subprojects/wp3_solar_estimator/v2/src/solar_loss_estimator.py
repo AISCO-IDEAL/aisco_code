@@ -129,7 +129,7 @@ class SolarLossEstimator:
         self._render_attempts = attempts
 
         if self._image_path is not None:
-            wandb.log({"solar_mesh_visualization": wandb.Image(str(self._image_path))}, step=self.epoch_name)")
+            wandb.log({"solar_mesh_visualization": wandb.Image(str(self._image_path))}, step=self.epoch_name)
 
         for p in (self._orig_ply, self._sel_ply, self._image_path):
             try:
