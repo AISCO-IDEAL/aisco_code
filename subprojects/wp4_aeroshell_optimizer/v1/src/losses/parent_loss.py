@@ -80,35 +80,21 @@ class ParentLoss:
 
         total_gradient: float = 0.0
 
-        # Case 1: if someone retained grad on the scalar loss and backward was called elsewhere
-        total_grads = getattr(self._last_loss, "grad", None)
-        if total_grads is not None:
-            try:
-                total_gradient = torch.norm(total_grads).item()
-            except Exception:
-                total_gradient = 0.0
-        # Case 2: compute gradients w.r.t. model parameters directly
-        elif getattr(self, "_last_model", None) is not None and self._last_loss.requires_grad:
-            params = [p for p in self._last_model.parameters() if p.requires_grad]
-            if params:
-                try:
-                    grads = torch.autograd.grad(
-                        self._last_loss,
-                        params,
-                        retain_graph=True,
-                        allow_unused=True,
-                        create_graph=False,
-                    )
-                    grads = [g for g in list(grads) if g is not None]
-                    if grads:
-                        dev = grads[0].device
-                        norm_sq = torch.tensor(0.0, device=dev)
-                        for g in grads:
-                            norm_sq = norm_sq + g.detach().pow(2).sum()
-                        total_gradient = torch.sqrt(norm_sq).item()
-                except Exception:
-                    total_gradient = 0.0
+        params = [p for p in self._last_model.parameters() if p.requires_grad]
 
-        # Log only if a wandb run is active
-        if wandb.run is not None:
+        grads = torch.autograd.grad(
+            self._last_loss,
+            params,
+            retain_graph=True,
+            allow_unused=True,
+            create_graph=False,
+        )
+        grads = [g for g in list(grads) if g is not None]
+        if grads:
+            dev = grads[0].device
+            norm_sq = torch.tensor(0.0, device=dev)
+            for g in grads:
+                norm_sq = norm_sq + g.detach().pow(2).sum()
+            total_gradient = torch.sqrt(norm_sq).item()
+
             wandb.log({f"{self.loss_name}_gradient": total_gradient}, step=epoch_name)
