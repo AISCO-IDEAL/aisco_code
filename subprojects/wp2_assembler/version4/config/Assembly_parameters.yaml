@@ -1,0 +1,26 @@
+wheel_margin: 
+  x_fwd: 278.5
+  x_back: 278.5
+  y_up: 48.0
+  y_down: 48.0
+  z_up: 557.0
+  z_down: 0
+
+seat_margin: 
+  x_fwd: 1000.0
+  x_back: 379.082067282539
+  y_up: 225.0
+  y_down: 225.0
+  z_up: 835.0000000000196
+  z_down: 0
+
+seat:
+  start: [-1300,-1500,0]
+  end: [2900,1500,0]
+  how_many: [5, 5, 1]
+
+wheels:
+  count: 3
+  start: [-1300,-1500,0]
+  end: [2900,1500,0]
+  how_many: [4, 5, 1]

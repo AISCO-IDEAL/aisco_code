@@ -34,7 +34,6 @@ def get_regulation(section: str) -> int | float:
     #raise Exception("Error in get_regulation: Error 2")
     return -1  # Final value is not a number
 
-
 if __name__ == "__main__":
     # Example usage - get values from nested YAML structure in test - print values 3 2 1
     print(get_regulation("test.text.secondIndent.thirdIndent.drink"))
