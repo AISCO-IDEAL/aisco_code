@@ -9,6 +9,7 @@ Overwrite the following methods:
 """
 
 import torch
+import wandb
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import get_points
@@ -60,7 +61,14 @@ class ParentLoss:
             return torch.tensor(0.0, device=self.device)
         else:
             self.epoch_name = epoch_name
-            return self._loss(model)
+            self._last_loss = self._loss(model)
+            return self._last_loss
 
     def _loss(self, model) -> torch.Tensor:  # noqa: ARG002
         return torch.tensor(0.0, device=self.device)
+
+    def log_gradients(self, epoch_name) -> None:
+        # get the gradient amount of the last loss
+        total_gradients = self._last_loss.grad
+        total_gradient = torch.norm(total_gradients).item()
+        wandb.log({f"{self.loss_name}_gradient": total_gradient}, step=self.epoch_name)

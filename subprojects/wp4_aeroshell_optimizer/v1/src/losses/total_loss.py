@@ -242,5 +242,8 @@ class TotalLoss:
                     if image_path.exists():
                         wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
                         image_path.unlink()
+        # logg the gradients of each loss component
+        for loss_instance in self.__active_losses.values():
+            loss_instance.log_gradients(epoch_name)
 
         return weighted_total_loss
