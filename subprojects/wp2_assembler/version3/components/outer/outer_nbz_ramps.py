@@ -58,6 +58,7 @@ def outer_nbz_ramps(inner, outer) -> tuple[cq.Workplane, cq.Workplane]:
 
 if __name__ == "__main__":
     '''
+    demo_id = 0
     from ocp_vscode import show
     result = outer_nbz_ramps(demo_id)
     inner, _, _ = call_assembly(demo_id)
