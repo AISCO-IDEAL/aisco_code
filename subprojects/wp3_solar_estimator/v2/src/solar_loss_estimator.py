@@ -24,9 +24,12 @@ from subprojects.wp3_solar_estimator.v2.src.visualizer import CADVisualizer
 
 
 class SolarLossEstimator:
-    def __init__(self, device: str = "cpu", area_budget: float = 6e6):
+    def __init__(self, device: str = "cpu", losses_config:dict={"None:", 0}):
         self.device = device
-        self.area_budget = area_budget
+        self.losses_config = losses_config
+        self.rendering = self.losses_config.get("solar_config")["rendering"]
+        self.rendering_frequency = self.losses_config.get("solar_config")["rendering_frequency"]
+        self.area_budget = int(self.losses_config.get("solar_config")["area_budget"])
 
     def solar_loss(self, model, epoch_name) -> torch.Tensor:
         self.epoch_name = epoch_name
@@ -53,14 +56,13 @@ class SolarLossEstimator:
         selected_areas = sorted_areas[select_mask]
         total_power = torch.sum(selected_vals * selected_areas)
 
-        try:
+        if self.rendering and int(self.epoch_name) % self.rendering_frequency==0:
             with torch.no_grad():
                 selected_face_indices = sorted_indices[select_mask]
                 if selected_face_indices.numel() > 0:
                     self._selected_face_indices = selected_face_indices
                     self._visualize_and_log_selected_faces()
-        except Exception:
-            print("try 1 failed")
+
         return total_power * 1e-6
 
     def _meshsdf_backward_step(self) -> torch.Tensor:
@@ -101,21 +103,16 @@ class SolarLossEstimator:
         self._full_mesh = trimesh.Trimesh(vertices=self._v_np, faces=self._f_np, process=False)
         self._sel_mesh = trimesh.Trimesh(vertices=self._v_np, faces=self._f_sel_np, process=False)
 
-        try:
-            if self._full_mesh is not None:
-                self._full_mesh.remove_unreferenced_vertices()
-            if self._sel_mesh is not None:
-                self._sel_mesh.remove_unreferenced_vertices()
-        except Exception:
-            print("try 2 failed")
+        if self._full_mesh is not None:
+            self._full_mesh.remove_unreferenced_vertices()
+        if self._sel_mesh is not None:
+            self._sel_mesh.remove_unreferenced_vertices()
 
-        try:
-            if self._full_mesh is not None and self._orig_ply is not None:
-                self._full_mesh.export(self._orig_ply.as_posix())
-            if self._sel_mesh is not None and self._sel_ply is not None:
-                self._sel_mesh.export(self._sel_ply.as_posix())
-        except Exception:
-            print("try 3 failed")
+        if self._full_mesh is not None and self._orig_ply is not None:
+            self._full_mesh.export(self._orig_ply.as_posix())
+        if self._sel_mesh is not None and self._sel_ply is not None:
+            self._sel_mesh.export(self._sel_ply.as_posix())
+
 
         assert self._orig_ply is not None and self._sel_ply is not None and self._out_img is not None
         visualizer = CADVisualizer(
