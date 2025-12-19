@@ -24,9 +24,10 @@ from subprojects.wp3_solar_estimator.v2.src.visualizer import CADVisualizer
 
 
 class SolarLossEstimator:
-    def __init__(self, device: str = "cpu", losses_config:dict={"None:", 0}):
+    def __init__(self, device: str = "cpu", losses_config: dict = {"None:", 0}):
         self.device = device
         self.losses_config = losses_config
+        self.wandb_logging = self.losses_config.get("solar_config")["wandb_logging"]
         self.rendering = self.losses_config.get("solar_config")["rendering"]
         self.rendering_frequency = self.losses_config.get("solar_config")["rendering_frequency"]
         self.area_budget = int(self.losses_config.get("solar_config")["area_budget"])
@@ -56,12 +57,21 @@ class SolarLossEstimator:
         selected_areas = sorted_areas[select_mask]
         total_power = torch.sum(selected_vals * selected_areas)
 
-        if self.rendering and int(self.epoch_name) % self.rendering_frequency==0:
+        if self.rendering and int(self.epoch_name) % self.rendering_frequency == 0:
             with torch.no_grad():
                 selected_face_indices = sorted_indices[select_mask]
                 if selected_face_indices.numel() > 0:
                     self._selected_face_indices = selected_face_indices
                     self._visualize_and_log_selected_faces()
+
+        if self.wandb_logging:
+            wandb.log(
+                {
+                    "solar_selected_area_m2": selected_areas.sum().item() * 1e-6,
+                    "total_area_m2": triangle_areas.sum().item() * 1e-6,
+                },
+                step=self.epoch_name,
+            )
 
         return total_power * 1e-6
 
@@ -112,7 +122,6 @@ class SolarLossEstimator:
             self._full_mesh.export(self._orig_ply.as_posix())
         if self._sel_mesh is not None and self._sel_ply is not None:
             self._sel_mesh.export(self._sel_ply.as_posix())
-
 
         assert self._orig_ply is not None and self._sel_ply is not None and self._out_img is not None
         visualizer = CADVisualizer(

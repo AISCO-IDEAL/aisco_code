@@ -41,6 +41,7 @@ solar_config:
   rendering: True
   rendering_frequency: 1
   area_budget: 6000000
+  wandb_logging: True
 
 bb_config:
   pointgrid_params:
