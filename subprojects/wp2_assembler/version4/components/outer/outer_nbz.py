@@ -4,7 +4,7 @@ from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
 from pathlib import Path
 import yaml
 
-def outer_nbz_ramps(assembly_id: int) -> tuple[cq.Workplane, cq.Workplane]:
+def outer_nbz(assembly_id: int) -> tuple[cq.Workplane, cq.Workplane]:
     """
     Returns the approach and departure ramps
     
@@ -116,9 +116,9 @@ def outer_nbz_ramps(assembly_id: int) -> tuple[cq.Workplane, cq.Workplane]:
     return result
 
 if __name__ == "__main__":
-    demo_id = 0
+    demo_id = 1
     from ocp_vscode import show
-    result = outer_nbz_ramps(demo_id)
+    result = outer_nbz(demo_id)
     show (result)
     print(type(result))
     
