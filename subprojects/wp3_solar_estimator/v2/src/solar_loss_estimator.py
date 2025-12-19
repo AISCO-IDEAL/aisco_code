@@ -24,13 +24,14 @@ from subprojects.wp3_solar_estimator.v2.src.visualizer import CADVisualizer
 
 
 class SolarLossEstimator:
-    def __init__(self, device: str = "cpu", losses_config: dict = {"None:", 0}):
+    def __init__(self, device: str = "cpu", losses_config: dict | None = None):
         self.device = device
-        self.losses_config = losses_config
-        self.wandb_logging = self.losses_config.get("solar_config")["wandb_logging"]
-        self.rendering = self.losses_config.get("solar_config")["rendering"]
-        self.rendering_frequency = self.losses_config.get("solar_config")["rendering_frequency"]
-        self.area_budget = int(self.losses_config.get("solar_config")["area_budget"])
+        self.losses_config = losses_config or {}
+        solar_cfg = self.losses_config.get("solar_config", {})
+        self.wandb_logging = solar_cfg.get("wandb_logging", False)
+        self.rendering = solar_cfg.get("rendering", False)
+        self.rendering_frequency = solar_cfg.get("rendering_frequency", 1)
+        self.area_budget = int(solar_cfg.get("area_budget", 0))
 
     def solar_loss(self, model, epoch_name) -> torch.Tensor:
         self.epoch_name = epoch_name
@@ -45,30 +46,46 @@ class SolarLossEstimator:
         face_normals = compute_face_normals(self._working_verts, self.faces)
         s = torch.tensor([-1.0, 0.0, 1.0], dtype=face_normals.dtype, device=self.device)
         s = s / (torch.linalg.norm(s) + 1e-12)
+        # Dot products per face (exposure); keep this differentiable
         dot_products = torch.clamp((face_normals * s).sum(dim=1), min=0.0)
 
         triangle_areas = compute_triangle_areas(self._working_verts, self.faces)
-        sorted_vals, sorted_indices = torch.sort(dot_products, descending=True)
-        sorted_areas = triangle_areas[sorted_indices]
-        cum_area = torch.cumsum(sorted_areas, dim=0)
-        select_mask = (cum_area <= self.area_budget) & (sorted_vals > 0)
 
-        selected_vals = sorted_vals[select_mask]
-        selected_areas = sorted_areas[select_mask]
-        total_power = torch.sum(selected_vals * selected_areas)
+        # Compute hard selection (top faces under area budget) without tracking gradients
+        with torch.no_grad():
+            sorted_vals, sorted_indices = torch.sort(dot_products, descending=True)
+            sorted_areas = triangle_areas[sorted_indices]
+            cum_area = torch.cumsum(sorted_areas, dim=0)
+            select_mask_sorted = (cum_area <= self.area_budget) & (sorted_vals > 0)
+            selected_face_indices = sorted_indices[select_mask_sorted]
 
+        # Build a constant mask over original face indices; gradients only flow through selected faces
+        selection_mask = torch.zeros_like(dot_products)
+        if selected_face_indices.numel() > 0:
+            selection_mask[selected_face_indices] = 1.0
+        selection_mask = selection_mask.detach()  # treat selection as constant
+
+        # Differentiable total power but gated by constant selection
+        per_face_power = dot_products * triangle_areas
+        total_power = torch.sum(selection_mask * per_face_power)
+
+        # Rendering and logging
         if self.rendering and int(self.epoch_name) % self.rendering_frequency == 0:
             with torch.no_grad():
-                selected_face_indices = sorted_indices[select_mask]
                 if selected_face_indices.numel() > 0:
                     self._selected_face_indices = selected_face_indices
                     self._visualize_and_log_selected_faces()
 
         if self.wandb_logging:
+            with torch.no_grad():
+                selected_areas_sum = (
+                    triangle_areas[selected_face_indices].sum().item() if selected_face_indices.numel() > 0 else 0.0
+                )
+                total_area_sum = triangle_areas.sum().item()
             wandb.log(
                 {
-                    "solar_selected_area_m2": selected_areas.sum().item() * 1e-6,
-                    "total_area_of_mesh_m2": triangle_areas.sum().item() * 1e-6,
+                    "solar_selected_area_m2": selected_areas_sum * 1e-6,
+                    "total_area_of_mesh_m2": total_area_sum * 1e-6,
                 },
                 step=self.epoch_name,
             )
