@@ -34,8 +34,9 @@ wandb_general:
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
   pretrained_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset"
   storage_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
-  model_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/models"
-  mesh_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/meshes"
+  #Outdated, new version uses better storage solution
+  model_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/models" 
+  mesh_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/meshes" #Outdated
 
 # master example of how to reference other config files:
 #     def __pointgrid_geni(self) -> list[list[float]]:

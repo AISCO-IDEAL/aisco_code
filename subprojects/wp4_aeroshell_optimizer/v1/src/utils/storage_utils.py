@@ -6,6 +6,7 @@ from pathlib import Path
 
 import torch
 
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing, str_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import (
@@ -59,11 +60,20 @@ def allround_save_data(
                 f"Info about Model Architecture saved to {file_path}, created directory accordingly"
             )
 
+
+    # before first usage, adapt wandb_run so that the numbers at the back go in the front,
+    # for easier file sorting in editor (change from e.g. beautiful-banana-164 to 164-beautiful-banana)
+    wandb_run = reformat_wandb_name(wandb_run)
     # Make a folder for meshes and models if they don't exist 
     # If we're pretraining, we want to store everything in the same folder
     if not pretraining:
-        mesh_dir = dir_path / "meshes"
-        model_dir = dir_path / "models"
+        if wandb_run is None:
+            mesh_dir = dir_path / "meshes"
+            model_dir = dir_path / "models"
+        else:
+            #create subfolder for each wandb run
+            mesh_dir = dir_path / wandb_run / "meshes"
+            model_dir = dir_path / wandb_run / "models" 
     else:
         mesh_dir = dir_path
         model_dir = dir_path
@@ -179,3 +189,18 @@ def save_pretrained_model(
     torch.save(model.state_dict(), Path(file_path) / model_name)
     if verbose:
         print(f"Pretrained model state_dict saved to {Path(file_path) / model_name}")
+
+
+def reformat_wandb_name(wandb_name: str ) -> str:
+    """
+    Reformats a wandb run name from 'name-number' to 'number-name' for easier sorting.
+
+    Args:
+        wandb_name (str | None): The original wandb run name.
+    """
+    wandb_name = (
+    f"{wandb_name.split('-')[-1]}_" + "-".join(wandb_name.split("-")[:-1])
+    if wandb_name is not None and "-" in wandb_name
+    else wandb_name
+    )
+    return wandb_name
