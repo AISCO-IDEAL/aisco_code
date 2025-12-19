@@ -96,8 +96,8 @@ class SolarLossEstimator:
         assert self.verts is not None and self.faces is not None and self.model is not None
         v = self.verts.detach().clone().requires_grad_(True)
         self._working_verts = v
-        loss = self._solar_mesh_loss()
-        (dldv,) = torch.autograd.grad(loss, v, create_graph=False, retain_graph=True)
+        loss_vertices = self._solar_mesh_loss()
+        (dldv,) = torch.autograd.grad(loss_vertices, v, create_graph=False, retain_graph=True)
 
         s = self.model(v).view(-1)
         (grad_xyz,) = torch.autograd.grad(
@@ -111,8 +111,8 @@ class SolarLossEstimator:
         n = grad_xyz / (grad_xyz.norm(dim=-1, keepdim=True) + eps)
         dlds = -(dldv * n).sum(dim=-1)
         surrogate = (dlds.detach() * s).sum()
-        surrogate.backward()
-        return loss
+        # Do not call backward here; return surrogate so the outer loop can backprop and log grads
+        return surrogate
 
     def _visualize_and_log_selected_faces(self) -> None:
         tmp_dir = Path(tempfile.mkdtemp(prefix="solar_mesh_vis_"))
