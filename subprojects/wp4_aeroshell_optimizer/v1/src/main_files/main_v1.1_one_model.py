@@ -90,11 +90,11 @@ def main(verbose: bool = True) -> None:
         run.config.update(config, allow_val_change=True)
 
     model_hash = dict_hashing(model.get_model_info_dict())
-    wandb_name = reformat_wandb_name(wandb.run.name) if wandb.run else None
+    wandb_name = wandb.run.name if wandb.run else None
     rendering_dir = None
     if wandb_name is not None:
         #set rendering dir inside wandb log dir
-        rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / wandb_name
+        rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
         os.makedirs(rendering_dir, exist_ok=True)
     # Initialize shared visual wrapper (reads rendering modes from config)
     wrapper = Wrapper(verbose=verbose,output_dir=rendering_dir)
