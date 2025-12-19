@@ -38,6 +38,9 @@ get_points_params: # used in eikonal and smoothness loss
   bbox_size: 10.0
 
 solar_config:
+  rendering: True
+  rendering_frequency: 1
+  area_budget: 6000000
 
 bb_config:
   pointgrid_params:
