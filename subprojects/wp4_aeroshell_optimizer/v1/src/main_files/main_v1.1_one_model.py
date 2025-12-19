@@ -1,18 +1,20 @@
+import os
 from pathlib import Path
-
 
 import torch
 import wandb
-import os
 
-
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
 from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import dynamic_type_loading
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data, fetch_pretrained_model, reformat_wandb_name
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import (
+    allround_save_data,
+    fetch_pretrained_model,
+    reformat_wandb_name,
+)
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 
 # we want to dynamically run an entire optimization process for the WIRE model.
@@ -104,14 +106,14 @@ def main(verbose: bool = True) -> None:
     # Check if model still is on device after pretraining
     model = model.to(device)
 
-    
+
 
     model.optimise(training_config=training_config, renderer_wrapper=wrapper)
     if verbose:
         print("Model optimisation completed.")
 
     # Save final model and mesh
-    
+
     allround_save_data(
         model=model,
         storage_path=general_config["general_info"].get(

@@ -35,7 +35,7 @@ storage_paths: # Note that paths have to start with "/cluster/...", if you use "
   pretrained_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset"
   storage_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
   #Outdated, new version uses better storage solution
-  model_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/models" 
+  model_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/models"
   mesh_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/meshes" #Outdated
 
 # master example of how to reference other config files:

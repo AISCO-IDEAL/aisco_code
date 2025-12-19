@@ -9,13 +9,14 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import Ba
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
+
 # # Visualization imports (commented out for now)
 # import trimesh # noqa: ERA001
 # from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh # noqa: ERA001
 # from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import render_image  # noqa: ERA001
 # from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer # noqa: ERA001
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 
@@ -39,7 +40,7 @@ class TotalLoss:
         self.losses = self.losses_config.get("losses", {})  # get nested losses dict
         self.__rendering_frequency = self.__general_config.get("wandb_general", {}).get("rendering_frequency")
 
-        
+
 
         # ALM parameters init
         if self.losses_config["general_info"].get("ALM", False):
@@ -176,7 +177,7 @@ class TotalLoss:
                     "alm/nu_smoothness": self.nus[2].item(),
                 }
                 wandb.log(alm_params, step=epoch_name)
-            
+
 
             if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
                 verts, faces = get_diff_mesh(model, grid_res=64, device=device)
