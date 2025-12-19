@@ -68,7 +68,7 @@ class SolarLossEstimator:
             wandb.log(
                 {
                     "solar_selected_area_m2": selected_areas.sum().item() * 1e-6,
-                    "total_area_m2": triangle_areas.sum().item() * 1e-6,
+                    "total_area_of_mesh_m2": triangle_areas.sum().item() * 1e-6,
                 },
                 step=self.epoch_name,
             )
