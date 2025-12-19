@@ -16,6 +16,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import 
 # from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import render_image  # noqa: ERA001
 # from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer # noqa: ERA001
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 
@@ -39,20 +40,7 @@ class TotalLoss:
         self.losses = self.losses_config.get("losses", {})  # get nested losses dict
         self.__rendering_frequency = self.__general_config.get("wandb_general", {}).get("rendering_frequency")
 
-        # wandb init
-        if self.__general_config["wandb_general"].get("use_wandb", False):
-            run = wandb.init(
-                # Set the wandb log directory
-                dir="wp4_aeroshell_optimizer/data/wandb_logs",
-                # Set the wandb entity where your project will be logged (generally your team name).
-                entity=self.__general_config["wandb_general"].get("entity_name", "aisco"),
-                # Set the wandb project where this run will be logged.
-                project=self.__general_config["wandb_general"].get("project_name", "Aeroshell Optimiser with ALM and Sweeping"),
-                # Track hyperparameters and run metadata.
-                config=self.__general_config,
-            )
-            config = deep_update(self.__general_config, dict(wandb.config))
-            run.config.update(config, allow_val_change=True)
+
 
         # ALM parameters init
         if self.losses_config["general_info"].get("ALM", False):
@@ -189,14 +177,7 @@ class TotalLoss:
                     "alm/nu_smoothness": self.nus[2].item(),
                 }
                 wandb.log(alm_params, step=epoch_name)
-            # Initialization of per-model renderer is deprecated; wrapper is preferred.
-            # Ensure a wrapper exists if neural rendering is requested.
-            if self._use_neural_renderer and self._renderer_wrapper is None:
-                # Lazily construct a wrapper with defaults from config
-                try:
-                    self._renderer_wrapper = Wrapper(verbose=False)
-                except Exception as e:
-                    print(f"Failed to initialize Visual Wrapper: {e}")
+
 
             if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
                 verts, faces = get_diff_mesh(model, grid_res=64, device=device)
