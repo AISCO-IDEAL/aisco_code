@@ -44,7 +44,8 @@ class SolarLossEstimator:
     def _solar_mesh_loss(self) -> torch.Tensor:
         assert self._working_verts is not None and self.faces is not None
         face_normals = compute_face_normals(self._working_verts, self.faces)
-        s = torch.tensor([-1.0, 0.0, 1.0], dtype=face_normals.dtype, device=self.device)
+        # Ensure the sunlight direction is created on the same device as face_normals to avoid device mismatch
+        s = torch.tensor([-1.0, 0.0, 1.0], dtype=face_normals.dtype, device=face_normals.device)
         s = s / (torch.linalg.norm(s) + 1e-12)
         # Dot products per face (exposure); keep this differentiable
         dot_products = torch.clamp((face_normals * s).sum(dim=1), min=0.0)
@@ -111,6 +112,24 @@ class SolarLossEstimator:
         n = grad_xyz / (grad_xyz.norm(dim=-1, keepdim=True) + eps)
         dlds = -(dldv * n).sum(dim=-1)
         surrogate = (dlds.detach() * s).sum()
+
+        # Ensure every trainable parameter is referenced so torch.autograd.grad(loss, params)
+        # does not fail on "unused parameters" during gradient logging.
+        try:
+            params = list(self.model.parameters()) if hasattr(self.model, "parameters") else []
+            if params:
+                aux = None
+                for p in params:
+                    if p.requires_grad and p.numel() > 0:
+                        # Zero-weight reference to p keeps it in the graph but contributes nothing to the value
+                        term = (p.reshape(-1)[:1] * 0.0).sum()
+                        aux = term if aux is None else aux + term
+                if aux is not None:
+                    surrogate = surrogate + aux
+        except Exception:
+            # Never let logging-prep break training
+            pass
+
         # Do not call backward here; return surrogate so the outer loop can backprop and log grads
         return surrogate
 
