@@ -78,8 +78,13 @@ class ParentLoss:
         if not hasattr(self, "_last_loss") or self._last_loss is None:
             return
 
-        total_gradient: float = 0.0
+        # Diagnostics: check if the loss requires gradient
+        loss_requires_grad = bool(getattr(self._last_loss, "requires_grad", False))
+        # If loss doesn't require grad, don't call autograd.grad to avoid RuntimeError.
+        if not loss_requires_grad:
+            return
 
+        total_gradient: float = 0.0
         params = [p for p in self._last_model.parameters() if p.requires_grad]
 
         grads = torch.autograd.grad(
