@@ -9,7 +9,8 @@ import trimesh
 import wandb
 
 from subprojects.wp3_solar_estimator.v2.src.kaolin_utils import get_diff_mesh
-from subprojects.wp3_solar_estimator.v2.src.visualizer import CADVisualizer
+from subprojects.wp3_solar_estimator.v2.src.visualizer import CADVisualizerS
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 
 
 class SolarLossEstimator:
@@ -97,17 +98,17 @@ class SolarLossEstimator:
                 gv.index_add_(0, i0, g0)
 
             # Multiply by upstream scalar
-            gv_out = gv * g *1e-4
+            gv_out = gv * g * 1e-4
             return gv_out, None, None, None, None, None
 
     def __init__(self, device: str = "cpu", losses_config: dict | None = None):
         self.device = device
         self.losses_config = losses_config or {}
-        solar_cfg = self.losses_config.get("solar_config", {})
-        self.wandb_logging = solar_cfg.get("wandb_logging", False)
-        self.rendering = solar_cfg.get("rendering", False)
-        self.rendering_frequency = solar_cfg.get("rendering_frequency", 1)
-        self.area_budget = int(solar_cfg.get("area_budget", 6e6))
+        solar_cfg = self.losses_config["solar_config"]
+        self.wandb_logging = solar_cfg["wandb_logging"]
+        self.rendering = solar_cfg["rendering"]
+        self.rendering_frequency = solar_cfg["rendering_frequency"]
+        self.area_budget = int(solar_cfg["area_budget"])
 
         self.clamp_backfaces = True
         self.eps = 1e-12
@@ -118,9 +119,21 @@ class SolarLossEstimator:
         self.verts, self.faces = get_diff_mesh(model)
         model.zero_grad(set_to_none=True)
         loss = self._meshsdf_backward_step()
+        temp_out_path = Path(tempfile.mktemp(suffix=".png", prefix="solar_loss_vis_"))
+        ply_path = Path(tempfile.mktemp(suffix=".ply", prefix="solar_loss_mesh_"))
+        # Export current mesh for visualization
+        v_np = self.verts.detach().cpu().numpy().astype(np.float32)
+        f_np = self.faces.detach().cpu().numpy().astype(np.int64)
+        mesh = trimesh.Trimesh(vertices=v_np, faces=f_np, process=False)
+        mesh.export(ply_path.as_posix())
+        visulaizera = CADVisualizer(ply_path, out_image_path=temp_out_path)
+        visulaizera.render_until_blue_detected()
         if self.wandb_logging:
             with contextlib.suppress(Exception):
                 wandb.log({"solar_final_loss": loss.detach().cpu().item()}, step=self.epoch_name)
+                wandb.log({"bb-visualisazion": wandb.Image(str(temp_out_path))}, step=self.epoch_name)
+        ply_path.unlink(missing_ok=True)
+        temp_out_path.unlink(missing_ok=True)
         return loss
 
     def _solar_mesh_loss(self) -> torch.Tensor:
@@ -246,7 +259,7 @@ class SolarLossEstimator:
 
     def _render_and_log(self) -> None:
         assert self._orig_ply is not None and self._sel_ply is not None and self._out_img is not None
-        visualizer = CADVisualizer(
+        visualizer = CADVisualizerS(
             ply_path_a=self._orig_ply.as_posix(),
             ply_path_b=self._sel_ply.as_posix(),
             out_image_path=self._out_img.as_posix(),
