@@ -24,7 +24,7 @@ class NoPLYMeshesError(Exception):
         super().__init__("Exactly two PLY files are required and both paths must exist.")
 
 
-class CADVisualizerS:
+class CADVisualizer:
     def __init__(
         self,
         ply_path_a: str | None = None,
