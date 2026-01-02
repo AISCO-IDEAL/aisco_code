@@ -129,7 +129,7 @@ class SolarLossEstimator:
         sin_theta = torch.sin(self.sun_direction_solid_angle[0])
         x = sin_theta * torch.cos(self.sun_direction_solid_angle[1])
         y = sin_theta * torch.sin(self.sun_direction_solid_angle[1])
-        z = torch.cos(self.sun_direction_solid_angle[1])
+        z = torch.cos(self.sun_direction_solid_angle[0])
         self.sun_dir = torch.stack([x, y, z]).to(device=self.device, dtype=torch.float32)
 
         self._loss_value: torch.Tensor = torch.tensor(0.0, device=self.device, dtype=torch.float32)
