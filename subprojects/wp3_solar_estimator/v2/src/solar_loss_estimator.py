@@ -1,30 +1,24 @@
 """
-SolarLossEstimator: Overview and method-level functionality
+SolarLossEstimator: Overview
 
-This module defines the SolarLossEstimator class, which computes a solar exposure-based loss on a differentiable mesh, backpropagates gradients to the mesh vertices via a custom autograd function, and optionally visualizes and logs intermediate and final results to Weights & Biases (wandb).
+Computes a solar-exposure loss on a differentiable mesh and (a) returns the selected solar area in m^2 under an area budget and (b) couples its gradient with the model SDF via a surrogate term. Optionally logs areas and renders images to Weights & Biases (wandb).
 
-The estimator is organized into three major sections:
+Structure:
+1) Forward loss
+   - __init__: sets device/config, sun direction, initializes state.
+   - _initialize_all_attributes: resets caches/temporary state.
+   - solar_loss: top-level orchestration per epoch.
+   - _compute_forward_loss: builds mesh from model, clones vertices with grad, calls SolarMeshLossFn.apply to compute selected solar area (m^2) under an area budget.
+   - _compute_forward_selection_for_logging: recomputes the same greedy selection without grad for logging; stores selected face indices and the total selected area in mm^2.
 
-1) Forward loss calculation
-   - __init__: Initializes device, configuration, sun direction, and calls attribute setup.
-   - _initialize_all_attributes: Resets internal state and caches used across computation and visualization.
-   - solar_loss: Orchestrates the entire process for a single epoch: forward loss computation, selection logging, optional visualization, backward/surrogate composition, and BB visualization.
-   - _compute_forward_loss: Builds a differentiable mesh from the model, prepares a clone of vertices with gradients enabled, and calls the custom autograd function to compute the solar-exposed area (in m^2) subject to an area budget of selected faces.
-   - _compute_forward_selection_for_logging: Recomputes (without grad) the selection of faces under the same criterion for logging and visualization, and stores selected indices and the total selected area in mm^2.
-   - _SolarMeshLossFn.forward: Given vertices, faces, a sun direction, and an area budget, it computes per-face areas and illumination quality via face normals aligned with the sun direction. Faces are greedily selected up to the budget, summing area * quality. Returns the selected-area-weighted loss in square meters.
+2) Backward/Surrogate
+   - SolarMeshLossFn.forward/backward: forward computes per-face areas and illumination quality (dot of unit face normal with unit sun direction), greedily selects faces until the area budget, and sums area * quality; backward distributes gradients to the vertices of the selected faces.
+   - _compute_backward_and_compose_loss: retrieves vertex grads from the solar term, computes SDF and its spatial gradients, forms a detached surrogate (dlds * SDF), and composes the final loss as a bounded solar area term plus the surrogate with correct gradient flow.
 
-2) Backward Gradient calculation
-   - _SolarMeshLossFn.backward: Backpropagates gradients to vertex positions for the selected faces. It derives gradients from the area * quality term with respect to edges/vertices and accumulates per-vertex gradients, scaled appropriately.
-   - _compute_backward_and_compose_loss: Pulls vertex gradients from the forward solar area term, computes SDF values and their spatial gradients via the model, and forms a surrogate loss coupling the solar gradient signal with the SDF. Composes the final loss as the bounded solar area term plus a detached surrogate to maintain proper gradients.
+3) Logging/Visualization
+   - _wandb_logging: logs selected and total mesh area (in m^2); on configured epochs exports temporary PLYs, renders A/B meshes via CADVisualizer and CADVisualizerBB, logs images to wandb, and cleans up temporary files.
 
-3) WandB-Logging
-   - _maybe_visualize_and_log: Conditionally triggers rendering/visualization based on frequency and configuration; otherwise logs scalar area metrics.
-   - _log_bb_visualization: Exports the current mesh to PLY, renders via a black-box CAD visualizer, and logs the final loss and image to wandb, then cleans temporary files.
-   - _visualize_and_log_selected_faces: Creates temporary files, prepares original and selected-face meshes, renders them, logs the image, and cleans up.
-   - _prepare_mesh_files: Converts tensors to numpy, builds trimesh objects for the full mesh and the selected faces, removes unreferenced vertices, and exports PLYs for visualization.
-   - _render_and_log: Runs the CAD visualizer for A/B meshes and, if enabled, logs the resulting image to wandb. Falls back to logging area metrics if image logging fails.
-   - _log_selected_area_metrics: Logs aggregate selected and total mesh area (in m^2) to wandb.
-   - _cleanup_temp: Deletes any temporary artifacts (PLYs, images, directories) created during visualization.
+Units: per-face areas are computed in mm^2; the returned loss is converted to m^2.
 """
 
 import contextlib
@@ -45,83 +39,78 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisua
 
 class SolarMeshLossFn(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, v, f, sun_dir, area_budget_tensor, eps: float):
-        v0, v1, v2 = v[f[:, 0]], v[f[:, 1]], v[f[:, 2]]
-        a, b = v1 - v0, v2 - v0
-        c = torch.cross(a, b, dim=-1)  # unnormalized face normal vector
-        c_norm = torch.linalg.norm(c, dim=-1)  # ||c|| = 2 * area
-        area = 0.5 * c_norm  # face area
+    def forward(ctx, vertices, faces, sun_direction, area_budget_mm2_tensor, epsilon: float):
+        v0, v1, v2 = vertices[faces[:, 0]], vertices[faces[:, 1]], vertices[faces[:, 2]]
+        edge_a, edge_b = v1 - v0, v2 - v0
+        face_cross = torch.cross(edge_a, edge_b, dim=-1)
+        face_cross_norm = torch.linalg.norm(face_cross, dim=-1)
+        face_area_mm2 = 0.5 * face_cross_norm
 
-        # Unit face normals and unit sun direction
-        n = c / (c_norm.clamp_min(eps)).unsqueeze(-1)
-        s = sun_dir / (torch.linalg.norm(sun_dir).clamp_min(eps))
+        face_normals_unit = face_cross / (face_cross_norm.clamp_min(epsilon)).unsqueeze(-1)
+        sun_direction_unit = sun_direction / (torch.linalg.norm(sun_direction).clamp_min(epsilon))
 
-        # Quality in [0,1] using dot(face_normal, sun_vector)
-        quality = torch.clamp((n * s).sum(-1), 0.0, 1.0)
+        illumination_quality = torch.clamp((face_normals_unit * sun_direction_unit).sum(-1), 0.0, 1.0)
 
-        # Select faces under area budget (greedy by highest quality)
-        area_budget = float(area_budget_tensor.item())
-        order = torch.argsort(quality, descending=True)
-        selected, acc_area = [], 0.0
-        for i in order.tolist():
-            ai = float(area[i].detach())
-            if ai <= 0.0:
+        area_budget_mm2 = float(area_budget_mm2_tensor.item())
+        quality_order_desc = torch.argsort(illumination_quality, descending=True)
+        selected_face_indices_list, accumulated_area_mm2 = [], 0.0
+        for face_idx in quality_order_desc.tolist():
+            area_i = float(face_area_mm2[face_idx].detach())
+            if area_i <= 0.0:
                 continue
-            # quality <= 0 contributes nothing; break due to sorted order
-            if float(quality[i].detach()) <= 0.0:
+
+            if float(illumination_quality[face_idx].detach()) <= 0.0:
                 break
-            if acc_area + ai <= area_budget + 1e-12:
-                selected.append(i)
-                acc_area += ai
+            if accumulated_area_mm2 + area_i <= area_budget_mm2 + 1e-12:
+                selected_face_indices_list.append(face_idx)
+                accumulated_area_mm2 += area_i
 
-        sel_idx = torch.tensor(selected, device=v.device, dtype=torch.long)
+        selected_face_indices = torch.tensor(selected_face_indices_list, device=vertices.device, dtype=torch.long)
 
-        # Save tensors for backward (work only on selected faces)
         ctx.save_for_backward(
-            v,
-            f,
-            sel_idx,
-            a[sel_idx] if sel_idx.numel() else a.new_empty((0, 3)),
-            b[sel_idx] if sel_idx.numel() else b.new_empty((0, 3)),
-            sun_dir,
+            vertices,
+            faces,
+            selected_face_indices,
+            edge_a[selected_face_indices] if selected_face_indices.numel() else edge_a.new_empty((0, 3)),
+            edge_b[selected_face_indices] if selected_face_indices.numel() else edge_b.new_empty((0, 3)),
+            sun_direction,
         )
-        ctx.eps = float(eps)
+        ctx.epsilon = float(epsilon)
 
-        # Loss = sum(area * quality) over selected faces
-        if sel_idx.numel() == 0:
-            return torch.zeros((), device=v.device, dtype=v.dtype)
+        if selected_face_indices.numel() == 0:
+            return torch.zeros((), device=vertices.device, dtype=vertices.dtype)
 
-        area_sel = area[sel_idx]
-        quality_sel = quality[sel_idx]
-        loss_mm2 = (area_sel * quality_sel).sum()  # in mm^2
+        selected_areas_mm2 = face_area_mm2[selected_face_indices]
+        selected_quality = illumination_quality[selected_face_indices]
+        loss_mm2 = (selected_areas_mm2 * selected_quality).sum()  # in mm^2
         return loss_mm2 * 1e-6  # convert to m^2
 
     @staticmethod
-    def backward(ctx, g):
-        v, f, sel_idx, a_sel, b_sel, sun_dir = ctx.saved_tensors
+    def backward(ctx, grad_output):
+        vertices, faces, selected_face_indices, selected_edge_a, selected_edge_b, sun_direction = ctx.saved_tensors
         if not ctx.needs_input_grad[0]:
             return None, None, None, None, None, None
 
-        gv = torch.zeros_like(v)
-        if sel_idx.numel():
-            fs = f[sel_idx]
-            i0, i1, i2 = fs[:, 0], fs[:, 1], fs[:, 2]
+        grad_vertices = torch.zeros_like(vertices)
+        if selected_face_indices.numel():
+            faces_selected = faces[selected_face_indices]
+            idx_v0, idx_v1, idx_v2 = faces_selected[:, 0], faces_selected[:, 1], faces_selected[:, 2]
 
-            s_unit = sun_dir / (torch.linalg.norm(sun_dir).clamp_min(1e-12))
-            dl_dc = 0.5 * s_unit * 1e-6  # convert to m^2
+            sun_direction_unit = sun_direction / (torch.linalg.norm(sun_direction).clamp_min(1e-12))
+            dloss_dcross = 0.5 * sun_direction_unit * 1e-6  # convert to m^2
 
-            g_a = torch.cross(dl_dc.expand_as(b_sel), b_sel, dim=-1)
-            g_b = torch.cross(a_sel, dl_dc.expand_as(a_sel), dim=-1)
+            grad_edge_a = torch.cross(dloss_dcross.expand_as(selected_edge_b), selected_edge_b, dim=-1)
+            grad_edge_b = torch.cross(selected_edge_a, dloss_dcross.expand_as(selected_edge_a), dim=-1)
 
-            g1 = g_a
-            g2 = g_b
-            g0 = -(g1 + g2)
-            gv.index_add_(0, i1, g1)
-            gv.index_add_(0, i2, g2)
-            gv.index_add_(0, i0, g0)
+            grad_v1 = grad_edge_a
+            grad_v2 = grad_edge_b
+            grad_v0 = -(grad_v1 + grad_v2)
+            grad_vertices.index_add_(0, idx_v1, grad_v1)
+            grad_vertices.index_add_(0, idx_v2, grad_v2)
+            grad_vertices.index_add_(0, idx_v0, grad_v0)
 
-        gv_out = gv * g * 1e-4
-        return gv_out, None, None, None, None, None
+        grad_vertices_out = grad_vertices * grad_output * 1e-6 # * 1e2
+        return grad_vertices_out, None, None, None, None, None
 
 
 class SolarLossEstimator:
@@ -184,7 +173,6 @@ class SolarLossEstimator:
             self._loss_value = torch.tensor(0.0, device=self.device, dtype=torch.float32)
         return self._loss_value
 
-    # --- 1) Forward loss calculation ---
     def _compute_forward_loss(self) -> None:
         self.mesh_vertices, self.mesh_faces = get_diff_mesh(self.model)
         self.mesh_vertices = self.mesh_vertices.to(self.device)
@@ -267,7 +255,6 @@ class SolarLossEstimator:
         triangle_areas = 0.5 * torch.linalg.norm(c, dim=-1)
         selected_areas_sum = triangle_areas[sel].sum().item()
         total_area_sum = triangle_areas.sum().item()
-        print("got here")
         wandb.log(
             {
                 "solar_selected_area_m2": selected_areas_sum * 1e-6,
@@ -284,7 +271,7 @@ class SolarLossEstimator:
             mesh = trimesh.Trimesh(vertices=mesh_vertices_np, faces=mesh_faces_np, process=False)
             mesh.export(temp_ply_path.as_posix())
             visualizer_a = CADVisualizerBB(temp_ply_path, out_image_path=temp_image_path)
-            try:    
+            try:
                 visualizer_a.render_until_blue_detected()
             except Exception as e:
                 print("BB Visualisation Error in Epoch", self.epoch_name)
@@ -328,7 +315,7 @@ class SolarLossEstimator:
                     wandb.log({"solar_mesh_visualization": wandb.Image(str(self._image_path))}, step=int(self.epoch_name))
                 except Exception as e:
                     print(f"failed to log solar mesh visulisation in epoch {self.epoch_name}: {e}")
-                
+
             for p in (self._orig_ply, self._sel_ply, self._image_path):
                 if p is not None and Path(p).exists():
                     Path(p).unlink()
