@@ -122,8 +122,15 @@ class SolarLossEstimator:
         self.enable_rendering = bool(solar_config["rendering"])
         self.rendering_frequency = int(solar_config["rendering_frequency"])
         self.max_selected_area_mm2 = int(solar_config["area_budget"])
-        sqrt2 = math.sqrt(2.0)
-        self.sun_dir = torch.tensor([-sqrt2, 0.0, sqrt2], device=self.device, dtype=torch.float32)
+        self.normalise_loss = bool(solar_config["normalise_loss"])
+
+        self.sun_direction_solid_angle = solar_config["solar_direction_solid_angle"]
+        self.sun_direction_solid_angle = [torch.tensor(self.sun_direction_solid_angle[0], device=self.device), torch.tensor(self.sun_direction_solid_angle[1], device=self.device)]
+        sin_theta = torch.sin(self.sun_direction_solid_angle[0])
+        x = sin_theta * torch.cos(self.sun_direction_solid_angle[1])
+        y = sin_theta * torch.sin(self.sun_direction_solid_angle[1])
+        z = torch.cos(self.sun_direction_solid_angle[1])
+        self.sun_dir = torch.stack([x, y, z]).to(device=self.device, dtype=torch.float32)
 
         self._loss_value: torch.Tensor = torch.tensor(0.0, device=self.device, dtype=torch.float32)
         self._initialize_all_attributes()
@@ -171,7 +178,11 @@ class SolarLossEstimator:
         except Exception as e:
             print(f"Error in SolarLossEstimator.solar_loss: {e}")
             self._loss_value = torch.tensor(0.0, device=self.device, dtype=torch.float32)
-        return self._loss_value
+        
+        normalisation_factor = 1.0
+        if self.normalise_loss:
+            normalisation_factor = 1e6/self.max_selected_area_mm2
+        return self._loss_value*normalisation_factor
 
     def _compute_forward_loss(self) -> None:
         self.mesh_vertices, self.mesh_faces = get_diff_mesh(self.model)
