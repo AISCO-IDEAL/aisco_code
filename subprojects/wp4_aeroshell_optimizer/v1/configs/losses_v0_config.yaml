@@ -38,10 +38,12 @@ get_points_params: # used in eikonal and smoothness loss
   bbox_size: 10.0
 
 solar_config:
+  wandb_logging: True
   rendering: True
   rendering_frequency: 1
   area_budget: 6000000
-  wandb_logging: True
+  normalise_loss: True
+  solar_direction_solid_angle: [0.785398, 3.141592]
 
 bb_config:
   pointgrid_params:
@@ -51,4 +53,4 @@ bb_config:
     rand: 400
 
   assembly_version: 2
-  assembly_id: 1 # 1 for the standard one
+  assembly_id: 30 # 1 for the standard one
