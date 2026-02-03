@@ -4,7 +4,10 @@
 
 #!/bin/bash
 # setup_ven~/setup_venv.shv.sh – Setup Python project with venv + pyproject.toml on Euler cluster
-set -e  # Exit on any error
+
+#aalthaus, are we sure we want to exit on any error here? bad for debugging
+######set -e  # Exit on any error
+
 ENV_NAME="aisco_env"
 
 # 1. Load the required Python module (adjust as needed for your cluster)
@@ -116,8 +119,13 @@ else
     echo "⏭️ Skipping Renderer installation."
 fi
 
-
-
+## Do same for DISO
+read -p "Do you want to install DISO (GPU/CUDA-dependent)? [y/n]: " install_diso
+if [[ "$install_diso" == "y" ]]; then
+    echo "🐍 Installing DISO from GitHub..."
+    python3 -m pip install diso --no-build-isolation
+    echo "✅ DISO installation complete."
+fi
 
 echo ""
 ##############################################################
