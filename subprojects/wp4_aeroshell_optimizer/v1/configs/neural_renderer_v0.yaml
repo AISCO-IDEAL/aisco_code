@@ -4,7 +4,7 @@
 neural_renderer:
   image_size: 1024
   background_color: [0.0,0.0,0.0]
-  anti_aliasing: true
+  anti_aliasing: false
   camera_mode: "look_at"
   viewing_angle: 40
 
@@ -14,7 +14,7 @@ rendering_modes:
 #use alex_mode as an example
   alex_mode:
     #mandatory
-    enabled: true
+    enabled: false
     class_path: "custom_modes.alex_mode:BasicAlexMode"
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you
