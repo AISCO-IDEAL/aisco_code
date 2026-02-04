@@ -197,5 +197,5 @@ files = ["AISCO/", "tests/"]
 exclude = [
   "^build/",
   "^docs/",
-  "**/fixed_renderer/**",
+  "^fixed_renderer/",
 ]
