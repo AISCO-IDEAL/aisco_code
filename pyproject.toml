@@ -39,7 +39,7 @@ wp2_assembler =[
   "types-PyYAML >= 6.0.12",  # Type stubs for PyYAML [vdiekmann]
   "pybullet" # For speed hump simulations [fsanche]
 ]
-  
+
 wp3_solar_estimator = [
   "diso >= 0.1.4",
 ]
@@ -158,6 +158,7 @@ ignore = [
     "D107",  # Missing docstring in __init__
     "N999",  # ignoring PEP8 convention to enable us to call our project AISCO_code instead of aisco_code
     "PLR0913", # too many arguments is bs convention for us
+    "TRY003", # would block long messages in e.g. ValueError("messageXYZ") debugging warnings
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
