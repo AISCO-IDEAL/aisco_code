@@ -1,6 +1,9 @@
 import diso
 import torch
 
+"""
+This file is mainly used in diso_example
+"""
 
 def get_diff_mc(dtype : str= "float32") -> diso.DiffMC:
     """

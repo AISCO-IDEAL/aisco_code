@@ -4,7 +4,7 @@ import time
 import torch
 import trimesh
 
-from subprojects.wp3_solar_estimator.diso_utils.diso_helpers import get_diff_dmc, get_diff_mc
+from AISCO_code.subprojects.wp3_solar_estimator.diso_utils.helpers.diso_fetcher import get_diff_dmc, get_diff_mc
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.basic_MLP_v1 import BasicMLP
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 
