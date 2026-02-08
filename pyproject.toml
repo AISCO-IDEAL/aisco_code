@@ -128,7 +128,7 @@ select = [
     # "T20",  # flake8-print - disabled for example scripts
     "SIM",  # flake8-simplify
     "ARG",  # flake8-unused-arguments
-    "PTH",  # flake8-use-pathlib
+    #"PTH",  # flake8-use-pathlib Enforces Path over os usage for e.g. filesaving, shouldn't matter too much for us
     "ERA",  # eradicate
     "PD",   # pandas-vet
     "PGH",  # pygrep-hooks
