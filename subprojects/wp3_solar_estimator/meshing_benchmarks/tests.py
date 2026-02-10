@@ -30,6 +30,13 @@ class BaseTester:
             "MLP_TestModel": load_testing_model(filename="test_model.pth"),
         }
 
+    def set_all_grids(self, bbox: list[list[int | float]], resolution: int):
+        """
+        if the BaseTester or its child haven't set their grids already, this can be used to set all of them to the same bbox
+        """
+        for extractor in self.meshing_algorithms.values():
+            extractor.set_grid(bbox=bbox, resolution=resolution)
+
     def startup(self, bbox: list[list[int | float]] | None = None) -> bool:
         """
 
@@ -101,6 +108,7 @@ class BaseTester:
             "Stretched": dict(self.meshing_algorithms.items()),
             "Translated": dict(self.meshing_algorithms.items()),
             "Stretched_Translated": dict(self.meshing_algorithms.items()),
+            "Arbitrary_Combination": dict(self.meshing_algorithms.items()),
         }
 
         # Set baseline rectangular box SDF
@@ -134,7 +142,7 @@ class BaseTester:
             for (axis_min, axis_max) in BBOX_CUBIC
         ]  # uniformly stretched and translated bbox
 
-        bbox_arbitrary_combination = [[-1500, 1000], [-2500, 3000], [3300, 4150]]
+        bbox_arbitrary_combination = [[-1500, 1100], [-2500, 3000], [-3300, 4150]]
         distorted_bboxes = {
             "Stretched": bbox_stretched,
             "Translated": bbox_translated,
