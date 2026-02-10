@@ -157,10 +157,11 @@ class Wrapper(Visualiser):
                     print(f"Error in {mode_name}.update(): {e}")
                     tb.print_exc()
 
-    def finalize(self) -> None:
+    def finalize(self, custom_name: str | None = None, delete_frames: bool = False) -> None:
         """
         Call finalize on all rendering modes to save their results.
 
+        if delete_frames: after rendering, delete frames so a new run can be started without old frames interfering. Use with caution, only if you are sure you don't need the frames anymore (e.g. after saving GIFs, or if you just want to clear the buffer for the next run).
         Each mode saves its accumulated frames, GIFs, images, etc. to its
         own subdirectory. Errors in one mode don't prevent others from finalizing.
         """
@@ -177,7 +178,9 @@ class Wrapper(Visualiser):
                     current_time = datetime.datetime.now().isoformat()
                     canonical_time_bytes = str(current_time.encode("utf-8"))
                     file_name = str_hashing(canonical_time_bytes) + ".gif"
-                    mode.finalize(mode_output_dir, file_name=file_name)
+                    if custom_name:
+                        file_name = custom_name + "_" + file_name
+                    mode.finalize(mode_output_dir, file_name=file_name, delete=delete_frames)
 
                     if self.verbose:
                         print(f"  Finalized {mode_name} → {mode_output_dir}")

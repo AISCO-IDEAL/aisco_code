@@ -63,7 +63,7 @@ class BaseTester:
                     faces,
                     save_mesh=True,
                     filename=f"{name}_SphereSDF.ply",
-                    mesh_dir="/cluster/work/fuge/AISCO/wp3_solar_estimator/benchmarks",
+                    mesh_dir="/cluster/work/fuge/AISCO/wp3_solar_estimator/benchmarks/sanity_checks",
                 )
             except Exception as e:
                 # Print concise error and pinpoint final raising site
@@ -125,7 +125,7 @@ class BaseTester:
                 baseline_results[name][1],
                 save_mesh=True,
                 filename=f"{name}_RectangularBoxSDF_Baseline.ply",
-                mesh_dir="/cluster/work/fuge/AISCO/wp3_solar_estimator/benchmarks",
+                mesh_dir="/cluster/work/fuge/AISCO/wp3_solar_estimator/benchmarks/sanity_checks",
             )
         print("finished.")
         # Define non-cubic bounding boxes that fits the RectangularBoxSDF and test
@@ -173,7 +173,7 @@ class BaseTester:
                             faces,
                             save_mesh=True,
                             filename=f"{name}_RectangularBoxSDF_{distortion_name}.ply",
-                            mesh_dir="/cluster/work/fuge/AISCO/wp3_solar_estimator/benchmarks",
+                            mesh_dir="/cluster/work/fuge/AISCO/wp3_solar_estimator/benchmarks/sanity_checks",
                         )
                 except Exception as e:
                     print(f"Error testing {name} with {distortion_name} bbox: {e}")

@@ -9,10 +9,12 @@ Compares DISO (DiffMC, DiffDMC), FlexiCubes, and MeshSDF across:
 Results are logged to Weights & Biases with visualizations.
 """
 
+import traceback
 import warnings
 from pathlib import Path
 
 import torch
+from wp3_solar_estimator.meshing_benchmarks.optim_tests import OptimiseSphereRadius
 from wp3_solar_estimator.meshing_benchmarks.tests import BaseTester
 
 # Weights & Biases for logging
@@ -66,3 +68,10 @@ if __name__ == "__main__":
         tester.stretched_geometry_test()
     except Exception as e:
         print(f"Error during stretched geometry test: {e}")
+
+    try:
+        sphere_optimizer = OptimiseSphereRadius()
+        sphere_optimizer.optimise_all_extractors()
+    except Exception as e:
+        print(f"Error during optimization test: {e}")
+        traceback.print_exc()

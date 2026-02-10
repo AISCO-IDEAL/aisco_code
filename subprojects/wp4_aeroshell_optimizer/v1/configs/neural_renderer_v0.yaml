@@ -38,7 +38,7 @@ rendering_modes:
 
   mesh_assembly_mode:
     #mandatory
-    enabled: true
+    enabled: false
     class_path: "custom_modes.mesh_assembly_gif:MeshAssemblyGIF"
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you
@@ -64,7 +64,7 @@ rendering_modes:
       render_interval: 10
 
 
-
+# also not used?
 storage_dir: "/cluster/home/aalthaus/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/renderings"
 
 # not used atm, outdated
