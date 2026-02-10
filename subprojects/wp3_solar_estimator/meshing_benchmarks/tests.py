@@ -132,12 +132,14 @@ class BaseTester:
         bbox_stretched_translated = [
             [axis_min * STRETCHING_FACTOR + TRANSLATION_OFFSET, axis_max * STRETCHING_FACTOR + TRANSLATION_OFFSET]
             for (axis_min, axis_max) in BBOX_CUBIC
-        ]  # stretched and translated bbox
+        ]  # uniformly stretched and translated bbox
 
+        bbox_arbitrary_combination = [[-1500, 1000], [-2500, 3000], [3300, 4150]]
         distorted_bboxes = {
             "Stretched": bbox_stretched,
             "Translated": bbox_translated,
             "Stretched_Translated": bbox_stretched_translated,
+            "Arbitrary_Combination": bbox_arbitrary_combination,  # Note: keeps BASELINE_RES and results in nonuniform grid spacing
         }
 
         # Run distorted bboxes
