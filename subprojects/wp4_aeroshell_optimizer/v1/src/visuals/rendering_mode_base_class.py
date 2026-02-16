@@ -135,7 +135,7 @@ class RenderingMode:
 
     def finalize(self, output_dir: Path, file_name: str = "animation.gif", delete: bool = False) -> None:
         """
-        Save all stored frames as GIF.
+        Save all stored frames as GIF (default, for image you need to help yourself).
 
         Override this method if you need custom save logic. Having the same finalize signature is mandatory
         Default behavior: creates animation.gif from all stored frames.

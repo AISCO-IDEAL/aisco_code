@@ -45,6 +45,9 @@ solar_config:
   normalise_loss: True
   solar_direction_solid_angle: [0.785398, 3.141592]
 
+main_solar_config:
+  solar_angle: [0.5,0.0,-0.5]
+  area_budget: 2500000 #in mm^3
 bb_config:
   pointgrid_params:
     dx: 250

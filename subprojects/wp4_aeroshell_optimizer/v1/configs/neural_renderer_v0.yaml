@@ -26,7 +26,7 @@ rendering_modes:
 
   assembly_mode:
     #mandatory
-    enabled: true
+    enabled: false
     class_path: "custom_modes.assembly_mode:AssemblyMode"
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you
@@ -57,22 +57,33 @@ rendering_modes:
     class_path: "custom_modes.solar_selection:SolarSelectionMode"
     #config for solar selection
     config:
-      camera_position: [3000, 3000, 3000]
+      camera_position: [-3000, 3000, 3000]
       look_at: [0, 0, 0]
-      #render_mode: "rgb" Needed?
+      render_mode: "rgb"
       make_gif: true #if false saves seperate image every interval iterations
-      render_interval: 5 #Rendering interval for gif/image. 1 means every iteration is rendered
+      render_interval: 1 #Rendering interval for gif/image. 1 means every iteration is rendered
       fps: 15
       solar_color: [0.2,0.2,0.8]
       rest_color: [1.0,0.5,0.0]
 
-
+  solar_power_mode:
+    #Mandatory
+    enabled: true
+    class_path: "custom_modes.solar_power:SolarPower"
+    #config for solar selection
+    config:
+      camera_position: [-1000, 3000, 1000]
+      look_at: [0, 0, 0]
+      render_mode: "rgb"
+      make_gif: true #if false saves seperate image every interval iterations
+      render_interval: 1 #Rendering interval for gif/image. 1 means every iteration is rendered
+      fps: 15
 
   example_advanced_mode:
     enabled: false
     class_path: "custom_modes.rendering_mode_example_advanced:ExampleAdvancedMode"
     config:
-      camera_position: [3000, 3000, 3000]
+      camera_position: [-1000, 3000, 1000]
       look_at: [0, 0, 0]
       render_mode: "rgb"
       fps: 15

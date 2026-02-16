@@ -7,6 +7,7 @@ import torch
 from subprojects.fixed_renderer.renderer import Renderer as NeuralRenderer
 
 
+# ruff: noqa: PLR2004
 class Visualiser:
     """
     Minimal wrapper around `fixed_renderer` for rendering and frame export.
@@ -205,6 +206,22 @@ class Visualiser:
         textures = textures * torch.tensor(color, dtype=torch.float32, device=textures.device)
         return textures
 
+
+    def face_colors_to_textures(
+        self,
+        face_colors: torch.Tensor,
+        texture_size: int = 2,
+    ) -> torch.Tensor:
+        """Convert per-face colors to per-face textures."""
+        if face_colors.dim() == 2:
+            face_colors = face_colors.unsqueeze(0)
+
+        batch_size, num_faces, _ = face_colors.shape
+        textures = face_colors.view(batch_size, num_faces, 1, 1, 1, 3).expand(
+            -1, -1, texture_size, texture_size, texture_size, -1
+        ).contiguous()
+        return textures
+
     def vertex_colors_to_textures(
         self,
         vertex_colors: torch.Tensor,
@@ -212,6 +229,11 @@ class Visualiser:
         texture_size: int = 2,
     ) -> torch.Tensor:
         """Convert per-vertex colors to per-face textures."""
+        if vertex_colors.dim() == 2:
+            vertex_colors = vertex_colors.unsqueeze(0)
+        if faces.dim() == 2:
+            faces = faces.unsqueeze(0)
+
         batch_size, num_faces, _ = faces.shape
         face_colors = torch.zeros(batch_size, num_faces, 3, 3, device=vertex_colors.device)
         for i in range(3):
