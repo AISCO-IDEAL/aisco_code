@@ -8,14 +8,14 @@ general_info:
 
 model_def:
   model_name: "BasicMLP"
-  model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/basic_MLP_v1"
+  model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/testvictor.py"
 
 
 active_configs:
   losses: "losses_v0_config.yaml"
   pretraining: "pretraining_v0_config.yaml"
   training: "training_v0_config.yaml"
-  model_params: "basic_MLP_v1.yaml"
+  model_params: "testvictor.yaml"
   wandb: "wandb_v0_sweep.yaml"
   neural_renderer: "neural_renderer_v0.yaml"
 
