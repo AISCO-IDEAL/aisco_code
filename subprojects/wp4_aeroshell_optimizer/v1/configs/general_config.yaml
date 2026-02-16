@@ -1,5 +1,5 @@
 general_info:
-  username: "kdiehl"
+  username: "vdiekmann"
   version: "v1"
   device: "cuda"
   pre: "a sphere as initial shape, datatype: SDF"
