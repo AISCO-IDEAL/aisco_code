@@ -7,7 +7,7 @@ general_info:
   config_debugging: "True" # adds print statements if config loading is succesfull
 
 model_def:
-  model_name: "BasicMLP"
+  model_name: "VictorModel"
   model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/testvictor"
 
 
