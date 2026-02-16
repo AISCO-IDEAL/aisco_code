@@ -16,22 +16,22 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base_clas
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
 
-class Wrapper(Visualiser):
+class VisualisationManager:
     """
-    Visual wrapper that manages multiple rendering modes using 1 Visualiser Object simultaneously.
+    Visual Manager that manages multiple rendering modes using 1 Visualiser Object simultaneously.
 
-    The Wrapper inherits from Visualiser and manages a collection of RenderingMode
+    The Manager owns a Visualiser instance and manages a collection of RenderingMode
     instances that all share access to this single Visualiser. Each mode manages
     its own frame storage to enable clean separation and potential parallelization.
     I.e. if multiple ppl want to render different debugging things, they all can do so in their custom mode,
     the renderer then takes care of their needs during the optimization.
 
     Usage:
-        wrapper = Wrapper(verbose=True, output_dir=Path("results/"))
+        manager = VisualisationManager(verbose=True, output_dir=Path("results/"))
 
         # During optimization loop:
         for iteration in range(num_iterations):
-            wrapper.update(optimization_state={
+            manager.update(optimization_state={
                 'model': model,
                 'iteration': iteration,
                 'loss': loss_val,
@@ -40,25 +40,27 @@ class Wrapper(Visualiser):
             })
 
         # At the end:
-        wrapper.finalize()
+        manager.finalize()
     """
 
     def __init__(self, verbose: bool = True, output_dir: Path | None = None):
         """
-        Initialize wrapper and all rendering modes from config.
+        Initialize manager, the shared Visualiser, and all rendering modes from config.
 
         Args:
             verbose: Print status information during initialization and finalization
             output_dir: Base directory for saving results. Defaults to ./rendering_results
                        Each mode gets its own subdirectory: output_dir/mode_name/
         """
-        # Load configuration and init Visualiser base class
+        # Load configuration
         # The visualiser config is nested under "neural_renderer" in the general config.
         # It contains all the settings that define a neural renderer object, and all modes will run through this same neural renderer instance.
         general_config = load_config(cfg_name="general_config.yaml")
         neural_renderer_config_name = general_config["active_configs"]["neural_renderer"]
         self.config = load_config(cfg_name=neural_renderer_config_name)
-        super().__init__(**(self.config.get("neural_renderer", {})))
+
+        # Initialize the shared Visualiser instance
+        self.visualiser = Visualiser(**(self.config.get("neural_renderer", {})))
 
         # set output dir (WIP, not sure if keeping this way)
         self.verbose = verbose
@@ -70,7 +72,7 @@ class Wrapper(Visualiser):
         self._initialize_rendering_modes()
 
         if verbose:
-            print("Initialized Visual Wrapper")
+            print("Initialized Visualisation Manager")
             self.status()
 
     def _initialize_rendering_modes(self) -> None:
@@ -89,7 +91,7 @@ class Wrapper(Visualiser):
                   fps: 15
 
         Each rendering mode is instantiated with:
-        - visualiser: self (the Wrapper instance, which IS the Visualiser)
+        - visualiser: self.visualiser (the shared Visualiser instance)
         - config: The mode-specific config dict from YAML
         """
         modes_config = self.config.get("rendering_modes", {})
@@ -114,7 +116,9 @@ class Wrapper(Visualiser):
                 rendering_mode_class = getattr(module, class_name)
 
                 # Instantiate the rendering mode with shared Visualiser and config
-                mode_instance = rendering_mode_class(visualiser=self, config=mode_config.get("config", {}))
+                # key change: passing self.visualiser, not self
+                mode_instance = rendering_mode_class(visualiser=self.visualiser, config=mode_config.get("config", {}))
+
                 # Set enabled flag after instantiation (it's at YAML mode level, not inside config)
                 mode_instance.enabled = mode_config.get("enabled", False)
                 self.rendering_modes[mode_name] = mode_instance
@@ -188,3 +192,6 @@ class Wrapper(Visualiser):
                 except Exception as e:
                     print(f"Error finalizing {mode_name}: {e}")
                     tb.print_exc()
+
+# Deprecated alias for backward compatibility until refactor is complete
+Wrapper = VisualisationManager

@@ -26,7 +26,7 @@ rendering_modes:
 
   assembly_mode:
     #mandatory
-    enabled: false
+    enabled: true
     class_path: "custom_modes.assembly_mode:AssemblyMode"
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you
@@ -38,7 +38,7 @@ rendering_modes:
 
   mesh_assembly_mode:
     #mandatory
-    enabled: false
+    enabled: true
     class_path: "custom_modes.mesh_assembly_gif:MeshAssemblyGIF"
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you
@@ -59,7 +59,7 @@ rendering_modes:
     config:
       camera_position: [3000, 3000, 3000]
       look_at: [0, 0, 0]
-      render_mode: "rgb"
+      #render_mode: "rgb" Needed?
       make_gif: true #if false saves seperate image every interval iterations
       render_interval: 5 #Rendering interval for gif/image. 1 means every iteration is rendered
       fps: 15

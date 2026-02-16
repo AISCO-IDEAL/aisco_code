@@ -9,8 +9,8 @@ This file visualizes the multi-mode rendering system.
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                                                                             │
-│                            Wrapper Class                                   │
-│                      (inherits from Visualiser)                            │
+│                            VisualisationManager Class                                   │
+│                      (owns a Visualiser instance)                            │
 │                                                                             │
 │  ┌──────────────────────────────────────────────────────────────────────┐  │
 │  │                                                                      │  │

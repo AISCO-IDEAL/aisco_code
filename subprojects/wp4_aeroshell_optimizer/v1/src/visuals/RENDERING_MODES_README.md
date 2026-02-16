@@ -5,7 +5,7 @@ A clean, plugin-based system for collaborative rendering implementations without
 ## Architecture Overview
 
 ```
-Wrapper (inherits from Visualiser)
+VisualisationManager (owns a Visualiser)
     │
     └─── Single Shared Visualiser Instance
               ↓
@@ -71,10 +71,10 @@ your_mode:
 ### 3. Use in Code
 
 ```python
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
 # Initialize (loads all enabled modes from config)
-wrapper = Wrapper(verbose=True, output_dir=Path("results/"))
+manager = VisualisationManager(verbose=True, output_dir=Path("results/"))
 
 # During optimization loop
 for iteration in range(num_iterations):

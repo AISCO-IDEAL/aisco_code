@@ -137,7 +137,7 @@ class RenderingMode:
         """
         Save all stored frames as GIF.
 
-        Override this method if you need custom save logic.
+        Override this method if you need custom save logic. Having the same finalize signature is mandatory
         Default behavior: creates animation.gif from all stored frames.
 
         Args:
