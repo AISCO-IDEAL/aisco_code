@@ -64,27 +64,46 @@ class OptimiseSphereRadius(BaseTester):
 
         for iteration in range(num_iterations):
             optimizer.zero_grad()
-            verts, faces = extractor.extract_mesh(model)
 
-            # visualize mesh
-            if visualize:
-                self.visualiser.update({"model": model, "iteration": iteration, "vertices": verts, "faces": faces})
+            if extractor_name == "MeshSDF":
+                # Use MeshSDF's differentiable surrogate gradient path
+                def loss_fn(vertices, faces):
+                    est_area = compute_mesh_surface_area(vertices, faces)
+                    return (est_area - target_surface_area) ** 2
 
-            if verts.numel() == 0 or faces.numel() == 0:
-                print(f"Warning: Extracted empty mesh at iteration {iteration}. Skipping loss computation.")
-                continue
+                verts, faces, loss, surrogate_loss = extractor.extract_and_compute_loss(
+                    sdf_model=model,
+                    loss_fn=loss_fn,
+                    enable_backward=True,
+                )
 
-            # Compute estimated surface area from extracted mesh (using a simple approximation)
-            estimated_surface_area = compute_mesh_surface_area(verts, faces)
+                if visualize:
+                    self.visualiser.update({"model": model, "iteration": iteration, "vertices": verts, "faces": faces})
 
-            # Compute loss as squared difference from target surface area
-            loss = (estimated_surface_area - target_surface_area) ** 2
+                if verts.numel() == 0 or faces.numel() == 0:
+                    print(f"Warning: Extracted empty mesh at iteration {iteration}. Skipping loss computation.")
+                    continue
 
-            # Backpropagate and optimize
-            loss.backward()
-            optimizer.step()
+                # Backpropagate via surrogate loss to flow gradients to SDF parameters
+                surrogate_loss.backward()
+                optimizer.step()
+                print(f"Iteration {iteration}: Estimated Radius = {model.radius.item():.2f}, Loss = {loss.item():.4f}")
+            else:
+                # Standard path for DISO/FlexiCubes: extract mesh, compute loss directly
+                verts, faces = extractor.extract_mesh(model)
 
-            print(f"Iteration {iteration}: Estimated Radius = {model.radius.item():.2f}, Loss = {loss.item():.4f}")
+                if visualize:
+                    self.visualiser.update({"model": model, "iteration": iteration, "vertices": verts, "faces": faces})
+
+                if verts.numel() == 0 or faces.numel() == 0:
+                    print(f"Warning: Extracted empty mesh at iteration {iteration}. Skipping loss computation.")
+                    continue
+
+                estimated_surface_area = compute_mesh_surface_area(verts, faces)
+                loss = (estimated_surface_area - target_surface_area) ** 2
+                loss.backward()
+                optimizer.step()
+                print(f"Iteration {iteration}: Estimated Radius = {model.radius.item():.2f}, Loss = {loss.item():.4f}")
 
         # save final mesh for comparison
         final_verts, final_faces = extractor.extract_mesh(model)

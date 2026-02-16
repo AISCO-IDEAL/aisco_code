@@ -14,11 +14,11 @@ This file visualizes the multi-mode rendering system.
 │                                                                             │
 │  ┌──────────────────────────────────────────────────────────────────────┐  │
 │  │                                                                      │  │
-│  │            Shared Visualiser Instance (GPU Renderer)               │  │
+│  │            Shared Visualiser Instance (GPU Renderer)                 │  │
 │  │                                                                      │  │
-│  │  • image_size, background_color, anti_aliasing                    │  │
-│  │  • device (cuda/cpu)                                               │  │
-│  │  • render() method called by all modes                            │  │
+│  │  • image_size, background_color, anti_aliasing                       │  │
+│  │  • device (cuda/cpu)                                                 │  │
+│  │  • render() method called by all modes                               │  │
 │  │                                                                      │  │
 │  └──────────────────────────────────────────────────────────────────────┘  │
 │                                 ▲                                          │
