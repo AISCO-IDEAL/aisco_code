@@ -51,6 +51,21 @@ rendering_modes:
       assembly_color: [1.0, 0.55, 0.0]
       mesh_color: [0.2,1.0,1.0] #Bugged?
 
+  solar_selection_mode:
+    #Mandatory
+    enabled: true
+    class_path: "custom_modes.solar_selection:SolarSelectionMode"
+    #config for solar selection
+    config:
+      camera_position: [3000, 3000, 3000]
+      look_at: [0, 0, 0]
+      render_mode: "rgb"
+      make_gif: true #if false saves seperate image every interval iterations
+      render_interval: 5 #Rendering interval for gif/image. 1 means every iteration is rendered
+      fps: 15
+      solar_color: [0.2,0.2,0.8]
+      rest_color: [1.0,0.5,0.0]
+
 
 
   example_advanced_mode:
