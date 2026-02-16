@@ -1,4 +1,3 @@
-import numpy as np
 
 from subprojects.wp2_assembler.version3.components.nbz import call_assembly
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -125,14 +124,14 @@ class MeshAssemblyGIF(RenderingMode):
         else:
             self.silhouettes.append(silhouette)
 
-    def finalize(self, output_dir, file_name="mesh_assembly.gif"):
+    def finalize(self, output_dir, file_name="mesh_assembly.gif", delete: bool = False) -> None:
         """
         Combine assembly background with mesh frames using silhouette-based alpha blending.
 
         Blending formula:
             blended = mesh_rgb * (alpha * silhouette) + assembly_rgb * (1 - alpha * silhouette)
 
-        Where silhouette is the binary mask (0 or 1, shape H×W×1).
+        Where silhouette is the binary mask (0 or 1, shape H*W*1).
         """
         if not self.frame_storage:
             print(f"  {self.__class__.__name__}: No mesh frames to save")
@@ -148,7 +147,7 @@ class MeshAssemblyGIF(RenderingMode):
 
         # Combine assembly + mesh frames using silhouette masks
         combined_frames = []
-        for mesh_frame, silhouette in zip(self.frame_storage, self.silhouettes):
+        for mesh_frame, silhouette in zip(self.frame_storage, self.silhouettes, strict=False):
             # silhouette: (H, W, 1) with values in [0, 1]
             # mesh_frame, assembly_frame: (H, W, 3) with values in [0, 1]
 
@@ -170,3 +169,6 @@ class MeshAssemblyGIF(RenderingMode):
         finally:
             # Restore original frames
             self.frame_storage = original_frames
+        if delete:
+            self.clear_frames()
+            print("  Deleted stored frames after saving GIF.")

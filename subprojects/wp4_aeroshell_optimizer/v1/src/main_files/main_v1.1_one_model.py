@@ -15,7 +15,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import (
     fetch_pretrained_model,
     reformat_wandb_name,
 )
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
 # we want to dynamically run an entire optimization process for the WIRE model.
 # we need the model, config and (losses)
@@ -96,8 +96,8 @@ def main(verbose: bool = True) -> None:
         #set rendering dir inside wandb log dir
         rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
         os.makedirs(rendering_dir, exist_ok=True)
-    # Initialize shared visual wrapper (reads rendering modes from config)
-    wrapper = Wrapper(verbose=verbose,output_dir=rendering_dir)
+    # Initialize shared visual manager (reads rendering modes from config)
+    renderer_manager = VisualisationManager(verbose=verbose,output_dir=rendering_dir)
 
 
     # Start optimisation
@@ -108,7 +108,7 @@ def main(verbose: bool = True) -> None:
 
 
 
-    model.optimise(training_config=training_config, renderer_wrapper=wrapper)
+    model.optimise(training_config=training_config, renderer_manager=renderer_manager)
     if verbose:
         print("Model optimisation completed.")
 
@@ -129,9 +129,9 @@ def main(verbose: bool = True) -> None:
     if general_config["wandb_general"]["use_wandb"] and general_config["wandb_general"]["use_neural_renderer"]:
         # Finalize all rendering modes and save results
         try:
-            wrapper.finalize()
+            renderer_manager.finalize()
         except Exception as e:
-            print(f"Wrapper finalize failed: {e}")
+            print(f"Manager finalize failed: {e}")
 
     print("Completed job successfully.")
 

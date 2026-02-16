@@ -120,10 +120,10 @@ else
 fi
 
 ## Do same for DISO
-read -p "Do you want to install DISO (GPU/CUDA-dependent)? [y/n]: " install_diso
+read -p "Do you want to install DISO (GPU/CUDA-dependent, you need to be on GPU node for this)? [y/n]: " install_diso
 if [[ "$install_diso" == "y" ]]; then
     echo "🐍 Installing DISO from GitHub..."
-    python3 -m pip install diso --no-build-isolation
+    python3 -m pip install diso --no-build-isolation --no-cache-dir
     echo "✅ DISO installation complete."
 fi
 

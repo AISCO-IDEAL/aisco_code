@@ -1,13 +1,14 @@
 # just the models class which calls other models here
 
 from __future__ import annotations
+
 from typing import TYPE_CHECKING  # this prevents from circular imports
 
 import torch
 from torch import nn
 
 if TYPE_CHECKING:
-    from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+    from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
 
 class BaseModel(nn.Module):
@@ -45,7 +46,7 @@ class BaseModel(nn.Module):
         output = x.squeeze(-1)
         return output * 1000.0
 
-    def optimise(self, renderer_wrapper: Wrapper | None = None):
+    def optimise(self, renderer_manager: VisualisationManager | None = None):
         super().train()  # Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
 
         # For textbook example of how our optimization works, look at basic_MLP_v1.py
@@ -68,14 +69,14 @@ class BaseModel(nn.Module):
         return model_info
 
     def debug_info(self):
-        raise ValueError("No Debug Info implemented")  # noqa: TRY003
+        raise ValueError("No Debug Info implemented")
 
     def init_neural_renderer(self, *_, **kwargs):
-        """Deprecated: The renderer is now managed by the shared Wrapper.
+        """Deprecated: The renderer is now managed by the shared Manager.
 
         This method is kept for backwards compatibility but no longer creates
-        a per-model Visualiser. Use a shared `Wrapper` and call its `update()`
+        a per-model Visualiser. Use a shared `Manager` and call its `update()`
         during optimization instead.
         """
         if kwargs.get("verbose", False):
-            print("init_neural_renderer is deprecated. Use Wrapper + update() calls instead.")
+            print("init_neural_renderer is deprecated. Use Manager + update() calls instead.")

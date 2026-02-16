@@ -18,11 +18,11 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import 
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
 
 class TotalLoss:
-    def __init__(self, dev: str = "cuda", renderer_wrapper: Wrapper | None = None) -> None:
+    def __init__(self, dev: str = "cuda", renderer_manager: VisualisationManager | None = None) -> None:
         # set up configs
         self.__general_config = load_config()  # default arg is the general config
         self._use_wandb = self.__general_config.get("wandb_general", {}).get("use_wandb", False)
@@ -34,7 +34,7 @@ class TotalLoss:
         self.weights = self.losses_config.get("losses", {})  # get nested losses dict
         self.__active_losses: dict = {}
         self._renderer_initialized = False
-        self._renderer_wrapper = renderer_wrapper
+        self._renderer_manager = renderer_manager
 
         project_root = Path.cwd()  # Correctly defines project root
         self.losses = self.losses_config.get("losses", {})  # get nested losses dict
@@ -182,10 +182,10 @@ class TotalLoss:
             if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
                 verts, faces = get_diff_mesh(model, grid_res=64, device=device)
 
-                if self._use_neural_renderer and self._renderer_wrapper is not None:
-                    # Use shared Wrapper to update all active rendering modes
+                if self._use_neural_renderer and self._renderer_manager is not None:
+                    # Use shared Manager to update all active rendering modes
                     try:
-                        self._renderer_wrapper.update(
+                        self._renderer_manager.update(
                             {
                                 "model": model,
                                 "iteration": epoch_name,
