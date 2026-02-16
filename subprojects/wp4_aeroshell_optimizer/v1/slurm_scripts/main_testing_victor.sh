@@ -73,9 +73,9 @@ export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
 cd /cluster/home/$USERNAME/AISCO_code/
 #python -m src.main
 
-python subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1.1_one_model.py \
+python subprojects\wp3_solar_estimator\meshing_benchmarks\main_test.py \
     --save_model \
-    --problem_id="AISCO_WP4_Test1"  2>&1
+    --problem_id="AISCO_WP3_Test1"  2>&1
 #------------------------------------------------------------------------------
 # Print job end information
 #------------------------------------------------------------------------------

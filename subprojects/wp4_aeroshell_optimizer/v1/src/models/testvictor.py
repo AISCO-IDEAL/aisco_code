@@ -7,7 +7,9 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wr
 
 class VictorModel(nn.Module):
     # For now just a copy of BasicMLP, to be modified later
-    def __init__(self, config: dict = {}, in_dim: int = 3, hidden: int = 64, layers: int = 3, out_dim: int = 1):
+    def __init__(self, config: dict | None = None, in_dim: int = 3, hidden: int = 64, layers: int = 3, out_dim: int = 1):
+        if config is None:
+            config = {}
         super().__init__()
 
         self.config = config
@@ -18,13 +20,9 @@ class VictorModel(nn.Module):
 
         self.model_layers = nn.ModuleList()
         self.model_layers.append(nn.Linear(in_dim, hidden))
-        for i in range(layers - 1):
+        for _ in range(layers - 1):
             self.model_layers.append(nn.Linear(hidden, hidden))
-            # Alternate activations
-            if i % 2:
-                self.model_layers.append(nn.Tanh())
-            else:
-                self.model_layers.append(nn.ReLU())
+            self.model_layers.append(nn.SiLU())
 
         self.model_layers.append(nn.Linear(hidden, 1))
 
@@ -35,7 +33,7 @@ class VictorModel(nn.Module):
         output = x.squeeze(-1)
         return output * 1000.0
 
-    def optimise(self, training_config: dict = None, renderer_wrapper: Wrapper | None = None) -> None:
+    def optimise(self, training_config: dict | None = None, renderer_wrapper: Wrapper | None = None) -> None:
         if training_config is None:
             raise ValueError("Training config must be provided for optimisation.")
 
@@ -64,6 +62,7 @@ class VictorModel(nn.Module):
     def get_model_info_dict(self):
         # Return model info as a dictionary
         model_info = {
+            "name": "VictorModel",
             "in_dim": self.in_dim,
             "hidden": self.hidden,
             "layers": self.layers,
