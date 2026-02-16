@@ -8,7 +8,7 @@ general_info:
 
 model_def:
   model_name: "BasicMLP"
-  model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/testvictor.py"
+  model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/testvictor"
 
 
 active_configs:
