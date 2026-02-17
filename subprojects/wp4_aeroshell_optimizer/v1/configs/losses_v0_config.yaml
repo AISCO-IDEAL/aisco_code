@@ -36,7 +36,7 @@ losses: # [compute: bool, weight: float, path: str]
 get_points_params: # used in eikonal and smoothness loss
   num_points: 1000
   bbox_size: 10.0
-
+#by clemens
 solar_config:
   wandb_logging: True
   rendering: False
@@ -44,7 +44,7 @@ solar_config:
   area_budget: 6000000
   normalise_loss: True
   solar_direction_solid_angle: [0.785398, 3.141592]
-
+#by alex
 main_solar_config:
   solar_angle: [0.5,0.0,-0.5]
   area_budget: 2500000 #in mm^3

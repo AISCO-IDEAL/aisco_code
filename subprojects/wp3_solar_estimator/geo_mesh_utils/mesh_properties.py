@@ -66,7 +66,7 @@ def compute_triangle_areas(vertices: torch.Tensor, faces: torch.Tensor) -> torch
 
 def compute_face_normals(vertices: torch.Tensor, faces: torch.Tensor, normalize: bool = True) -> torch.Tensor:
     """
-    Compute face normals for each triangle.
+    Compute normalised face normals for each triangle.
 
     Args:
         vertices: (V, 3) tensor of vertex coordinates
