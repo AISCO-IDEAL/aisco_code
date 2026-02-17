@@ -2,13 +2,12 @@
 
 import os
 
-import kaolin as kal
 import torch
 import trimesh
 from kaolin.ops.conversions import (
     FlexiCubes,
-    voxelgrids_to_trianglemeshes,
     sdf_to_voxelgrids,
+    voxelgrids_to_trianglemeshes,
 )
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
@@ -23,7 +22,7 @@ os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"  # or ":16:8"
 def get_diff_mesh(
     model: BaseModel,
     grid_res: list[int] | int = 128,
-    box_dim: list = [-5000, 5000, -5000, 5000, -5000, 5000],
+    box_dim: list[int] | None = None,
     device: str = "cuda",
 ):
     """
@@ -40,6 +39,8 @@ def get_diff_mesh(
     """
     ####################### eschaerer #################
     # Enforce deterministic behavior for PyTorch operations (needed for backpropagation tests)
+    if box_dim is None:
+        box_dim = [-5000, 5000, -5000, 5000, -5000, 5000]
     torch.use_deterministic_algorithms(True)
     torch.manual_seed(42)  # Set a fixed seed
     ###################################################
@@ -65,8 +66,8 @@ def get_diff_mesh(
     """
     print(f"SDF min={sdf_values.min().item():.3f}, max={sdf_values.max().item():.3f}")
     """
-    # sdf_values = sdf_values.detach().clone()  # Problem: Enabling gradients (torch.enable_grad()) inside mesh extraction can corrupt the mesh if sdf_values or grid_points are modified elsewhere
-    # grid_points = grid_points.detach().clone()
+    # sdf_values = sdf_values.detach().clone()  # Problem: Enabling gradients (torch.enable_grad()) inside mesh extraction can corrupt the mesh if sdf_values or grid_points are modified elsewhere  # noqa: ERA001
+    # grid_points = grid_points.detach().clone()  # noqa: ERA001
     ##################################################
 
     # 2. Compute cube_idx of FlexiCubes: Has shape (num_cubes, 8), each row indexes the 8 corners of a cube
@@ -78,14 +79,14 @@ def get_diff_mesh(
     torch.cuda.synchronize()
     ##################################################
 
-    vertices, faces, l_dev = flexicubes(
+    vertices, faces, _l_dev = flexicubes(
         voxelgrid_vertices=grid_points,  # Points
         scalar_field=sdf_values,  # Values
         cube_idx=ind,  # Cube Indices
         resolution=grid_res - 1,  # Resolution
     )
 
-    # 54 Validate output
+    # 4 Validate output
     if vertices.numel() == 0 or faces.numel() == 0:
         print("Warning: Empty mesh generated!")
 
@@ -117,7 +118,7 @@ def marching_tetrahedra(
     """
 
     model.cpu()
-    adjusted_model = lambda x: (model(x)[0].cpu()).squeeze(-1)  # return CPU for Kaolin
+    adjusted_model = lambda x: (model(x)[0].cpu()).squeeze(-1)  # return CPU for Kaolin  # noqa: E731
 
     grid = sdf_to_voxelgrids(
         [adjusted_model],
@@ -137,17 +138,17 @@ def marching_tetrahedra(
     verts, faces = voxelgrids_to_trianglemeshes(voxels)
     verts = verts[0] / (voxels.shape[1] - 1)  # normalize to [0,1]
     verts = verts * box_size + (origin - box_size / 2)  # map back to real world coords
-    # verts = verts.to(dev)
-    # faces = faces.to(dev)
+    # verts = verts.to(dev)  # noqa: ERA001
+    # faces = faces.to(dev)  # noqa: ERA001
     return verts, faces[0]
 
 
-def kaolin_to_PLY(
+def kaolin_to_PLY(  # noqa: N802
     verts: torch.tensor,
     faces: torch.tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.ply",
-    mesh_dir: str = None,  # Default to None, not a space
+    mesh_dir: str | None = None,  # Default to None, not a space
     verbose: bool = True,
 ):
     """
@@ -173,12 +174,12 @@ def kaolin_to_PLY(
     return mesh
 
 
-def kaolin_to_STL(
+def kaolin_to_STL(  # noqa: N802
     verts: torch.tensor,
     faces: torch.tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.stl",
-    mesh_dir: str = None,  # Default to None, not a space
+    mesh_dir: str | None = None,  # Default to None, not a space
 ):
     """
     Same as kaolin_to_PLY (see above) but saves as STL. Needs Verts and faces in the kaolin format.

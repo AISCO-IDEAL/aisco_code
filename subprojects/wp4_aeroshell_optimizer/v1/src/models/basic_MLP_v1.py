@@ -1,8 +1,9 @@
 import torch
 from torch import nn
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
+from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
 
 class BasicMLP(BaseModel):
@@ -12,7 +13,7 @@ class BasicMLP(BaseModel):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return super(BasicMLP, self).forward(x)
 
-    def optimise(self, training_config: dict = None) -> None:
+    def optimise(self, training_config: dict = None, renderer_manager: VisualisationManager | None = None) -> None:
         if training_config is None:
             raise ValueError("Training config must be provided for optimisation.")
 
@@ -23,7 +24,7 @@ class BasicMLP(BaseModel):
         # IMPORTANT: the device the model is on at time of function call defines the device passed to the loss_class
         # Get device from model parameters since nn.Module doesn't have a .device attribute
         device = next(self.parameters()).device
-        loss_function = TotalLoss(device)
+        loss_function = TotalLoss(device, renderer_manager=renderer_manager)  # Initialise TotalLoss with the correct device
 
         for epoch in range(num_epochs):
             # Clear gradients
@@ -57,4 +58,3 @@ class BasicMLP(BaseModel):
 
         print("End of Model Debug Info")
         print("===================================")
-        return

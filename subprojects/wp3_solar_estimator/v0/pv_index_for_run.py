@@ -1,11 +1,6 @@
 import numpy as np
 import pandas as pd
 import trimesh
-from subprojects.wp3_solar_estimator.read_mesh import (
-    facenormal_angle,
-    powerratio_iam,
-    sky_face,
-)
 
 from subprojects.wp3_solar_estimator.read_mesh import (
     facenormal_angle,

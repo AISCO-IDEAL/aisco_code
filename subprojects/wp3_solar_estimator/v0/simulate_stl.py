@@ -7,9 +7,8 @@ import numpy as np
 import pandas as pd
 import pytz
 import trimesh
-from tqdm import tqdm
 from joblib import Parallel, delayed
-
+from tqdm import tqdm
 
 from subprojects.wp3_solar_estimator.pv_index_for_run import pv_perf_index
 from subprojects.wp3_solar_estimator.read_mesh import (

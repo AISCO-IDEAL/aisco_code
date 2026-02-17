@@ -55,7 +55,7 @@ def assembly_obj_to_shape(asm_obj: Any) -> cq.Shape:
 
 def export_inner_nbz_parts(
     assembly: cq.Assembly,
-) -> tuple[Optional[str], list[tuple[str, str]]]:
+) -> tuple[str | None, list[tuple[str, str]]]:
     """
     Export the inner NBZ as one body STL and individual wheel STLs.
     Wheels are detected by name prefix 'wheel' / 'Wheel'.
@@ -77,7 +77,7 @@ def export_inner_nbz_parts(
         else:
             body_shapes.append(shape)
 
-    body_path: Optional[str] = None
+    body_path: str | None = None
     if body_shapes:
         body_compound = cq.Compound.makeCompound(body_shapes)
         body_path = export_shape_to_stl(body_compound, "inner_nbz_body")

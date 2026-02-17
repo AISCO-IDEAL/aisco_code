@@ -23,7 +23,8 @@ dependencies = [
   "pre-commit>=3.0.0",
   "mypy>=1.17.1",
   "torch==2.4.0",
-  "wandb>=0.17.2"
+  "wandb>=0.17.2",
+  "wandb[media] >= 0.23.1"
 ]
 
 [project.optional-dependencies]
@@ -40,7 +41,7 @@ wp2_assembler =[
 ]
 
 wp3_solar_estimator = [
-
+  "diso >= 0.1.4",
 ]
 
 wp4_aeroshell_optimizer = [
@@ -56,6 +57,7 @@ wp4_aeroshell_optimizer = [
   "pyrender>=0.1.45",
   "PyOpenGL>=3.1.0",
   "pyvista>=0.40.0",
+  "imageio>=2.37.2"
 ]
 
 testing = [
@@ -96,7 +98,9 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
-    "**/archive/**"
+    "**/archive/**",
+    "**/subprojects/fixed_renderer/**",
+    "**/visuals/testing.py",
 ]
 
 
@@ -124,7 +128,7 @@ select = [
     # "T20",  # flake8-print - disabled for example scripts
     "SIM",  # flake8-simplify
     "ARG",  # flake8-unused-arguments
-    "PTH",  # flake8-use-pathlib
+    #"PTH",  # flake8-use-pathlib Enforces Path over os usage for e.g. filesaving, shouldn't matter too much for us
     "ERA",  # eradicate
     "PD",   # pandas-vet
     "PGH",  # pygrep-hooks
@@ -153,6 +157,8 @@ ignore = [
     "D105",  # Missing docstring in magic method
     "D107",  # Missing docstring in __init__
     "N999",  # ignoring PEP8 convention to enable us to call our project AISCO_code instead of aisco_code
+    "PLR0913", # too many arguments is bs convention for us
+    "TRY003", # would block long messages in e.g. ValueError("messageXYZ") debugging warnings
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
@@ -191,4 +197,5 @@ files = ["AISCO/", "tests/"]
 exclude = [
   "^build/",
   "^docs/",
+  "^fixed_renderer/",
 ]
