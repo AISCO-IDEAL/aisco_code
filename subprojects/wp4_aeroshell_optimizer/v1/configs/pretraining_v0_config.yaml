@@ -1,0 +1,17 @@
+#Here put the config for model pretraining
+general_info:
+  config_debugging: "True"
+
+pretraining:
+  use_pretrained: True # True or False possible
+  pretraining_model_path: "subprojects/wp4_aeroshell_optimizer/data/test_models/xyz" # must be .pth file compatible with model_vxy, doesn't do anything atm
+  username: "aalthaus"
+
+model: "WIRE" #Class name of model
+model_filename: "WIRE" #Name of file where model is defined
+
+training_loop:
+  epochs: 2000
+  learning_rate: 0.0005
+  random_batch_size: 2048
+  print_interval: 25

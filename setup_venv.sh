@@ -59,9 +59,11 @@ else
 fi
 echo ""
 ##############################################################
+echo ""
 echo "✅ Setup complete!"
+echo ""
+echo ""
 echo ""
 echo "Next steps:"
 echo "1. Activate the environment: source $ENV_NAME/bin/activate"
-echo "2. Configure VS Code (install Ruff/MyPy extensions)."
-echo "3. Start coding! 🚀"
+echo "2. Start coding! 🚀"
