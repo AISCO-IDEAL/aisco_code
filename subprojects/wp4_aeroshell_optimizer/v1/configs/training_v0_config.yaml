@@ -2,9 +2,9 @@ general_info:
   config_debugging: "True"
 
 training_params:
-  learning_rate: 0.00005
+  learning_rate: 0.00002
   batch_size: 4096
-  num_epochs: 200
+  num_epochs: 50
   model_capacity: 256
   num_layers: 8
   skip_connections: [4]

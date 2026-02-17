@@ -1,12 +1,10 @@
-"""
-Advanced example: Custom rendering mode with interval-based rendering.
-
-This shows how to override update() for custom logic while still
-using the base class conveniences.
-"""
 
 from pathlib import Path
 
+import torch
+
+from subprojects.wp3_solar_estimator.geo_mesh_utils.mesh_properties import compute_face_normals, compute_triangle_areas
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base_class import RenderingMode
 
 
@@ -30,8 +28,19 @@ class SolarSelectionMode(RenderingMode):
     def __init__(self, visualiser, config: dict):
         """Initialize with custom parameter."""
         super().__init__(visualiser, config)
+        #Rendering parameters
         self.render_interval = config.get("render_interval", 1)
-
+        self.make_gif = config.get("make_gif", True)
+        self.fps = config.get("fps", 15)
+        #Solar specific parameters
+        self.solar_color = config["solar_color"]
+        self.rest_color = config["rest_color"]
+        solar_config = load_config(v="v1", cfg_name="losses_v0_config.yaml")["main_solar_config"]
+        self.area_budget=solar_config["area_budget"]
+        self.solar_angle=torch.tensor(solar_config["solar_angle"],device=self.visualiser.device)
+        self.solar_angle = self.solar_angle / torch.norm(self.solar_angle) #Normalize to be safe
+        if self.solar_angle is None or self.solar_angle.shape != (3,):
+            raise ValueError("Solar angle must be provided in the config and be a 3D vector --> shape = (3,), given in form of [A,B,C].")
     def update(self, optimization_state: dict) -> None:
         """
         Args:
@@ -57,22 +66,77 @@ class SolarSelectionMode(RenderingMode):
         if vertices is None or faces is None:
             raise Warning("Warning: No vertices/faces in optimization_state, skipping update")
 
+
+        #Whole selection logic here:
+
+        face_normals = compute_face_normals(vertices, faces)
+        face_areas = compute_triangle_areas(vertices, faces)
+
+        # Calculate dot products (cosine of angle with sun vector)
+        solar_dot_prods = (face_normals * self.solar_angle).sum(dim=1)
+        # Calculate score (energy) and cost (area)
+        # We maximize total energy (score) subject to area (cost) <= budget
+        score = solar_dot_prods * face_areas
+        cost = face_areas
+        budget = self.area_budget
+        # Ratio for greedy selection (value density) = energy / area = dot_product
+        ratio = solar_dot_prods
+        # Sort by ratio descending
+        order = torch.argsort(ratio, descending=True)
+        sorted_cost = cost[order]
+        # sorted_score = score[order] # Not strictly needed for logic but good for debugging if needed  # noqa: ERA001
+        torch.use_deterministic_algorithms(False) # Cumsum can be nondeterministic on GPU, but we need it for the selection logic, so we disable deterministic algorithms here
+        cum_cost = torch.cumsum(sorted_cost, dim=0)
+        torch.use_deterministic_algorithms(True)
+        # fully taken items
+        full = cum_cost <= budget
+        mask = torch.zeros_like(score, dtype=torch.float32)
+        # assign full items
+        if full.any():
+            mask[order[full]] = 1.0
+
+
+        # Create textures based on mask, using solar_color for selected faces and rest_color for others
+        colors = torch.where(mask.unsqueeze(1) > 0.5, # noqa: PLR2004
+                            torch.tensor(self.solar_color,device=self.visualiser.device),
+                            torch.tensor(self.rest_color,device=self.visualiser.device))
+        textures = self.visualiser.face_colors_to_textures(face_colors=colors)
+
         # Render from fixed camera position
+        image = self.visualiser.render(vertices,
+                                        faces,
+                                        textures,
+                                        mode="rgb",
+                                        camera_position=self.camera_position,
+                                        camera_direction=self.camera_direction)
 
-    # TODO
-    raise NotImplementedError("SolarSelectionMode.update() is not implemented yet. This is a placeholder to show how to structure the code for interval-based rendering. Implement your custom rendering logic here using self._render() and manage frame storage as needed.")
 
-    def finalize(self, output_dir: Path, filename: str = "solar_selection.gif", delete: bool = False) -> None:
-        """Save GIF plus first and last frames as PNGs."""
+
+
+        # Store the frame (handle batch dimension if present)
+        if hasattr(image, "__len__") and len(image) > 0:
+            self.frame_storage.append(image[0])
+        else:
+            self.frame_storage.append(image)
+
+    def finalize(self, output_dir: Path, file_name: str = "solar_selection.gif", delete: bool = False) -> None:
+        """
+        Save as gif or individual frames.
+        """
         if not self.frame_storage:
             print(f"  {self.__class__.__name__}: No frames to save")
             return
+        if self.make_gif:
+            # Use base class to create GIF
+            super().finalize(output_dir, file_name=file_name, delete=delete)
 
-        # Use base class to create GIF
-        super().finalize(output_dir, filename=filename, delete=delete)
+        else:
+            # Save individual frames
+            for idx, frame in enumerate(self.frame_storage):
+                frame_path = output_dir / f"frame_{idx:04d}.png"
+                self._save_image(frame, frame_path)
+            print(f"  Saved {len(self.frame_storage)} individual frames to {output_dir}")
 
-        # Additionally save first and last frames
-        self._save_image(self.frame_storage[0], output_dir / "first_frame.png")
-        self._save_image(self.frame_storage[-1], output_dir / "final_frame.png")
-
-        print(f"  Also saved first/last frames to {output_dir}")
+            if delete:
+                self.clear_frames()
+                print("  Deleted stored frames after saving individual images.")
