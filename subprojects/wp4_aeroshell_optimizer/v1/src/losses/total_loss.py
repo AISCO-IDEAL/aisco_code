@@ -4,6 +4,7 @@ import torch
 import trimesh
 import wandb
 
+from subprojects.wp3_solar_estimator.validation.statistics import MeshStatistics
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_alm, weights_manual
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -15,8 +16,6 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import 
 # from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh # noqa: ERA001
 # from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import render_image  # noqa: ERA001
 # from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer # noqa: ERA001
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
@@ -25,8 +24,8 @@ class TotalLoss:
     def __init__(self, dev: str = "cuda", renderer_manager: VisualisationManager | None = None) -> None:
         # set up configs
         self.__general_config = load_config()  # default arg is the general config
-        self._use_wandb = self.__general_config.get("wandb_general", {}).get("use_wandb", False)
-        self._use_neural_renderer = self.__general_config.get("wandb_general", {}).get("use_neural_renderer", False)
+        self._use_wandb = self.__general_config.get("wandb_general", {}).get("use_wandb", True)
+        self._use_neural_renderer = self.__general_config.get("wandb_general", {}).get("use_neural_renderer", False) #Does anything?
         self.losses_config = load_config(
             v=self.__general_config["general_info"]["version"],
             cfg_name=self.__general_config["active_configs"]["losses"],
@@ -39,7 +38,7 @@ class TotalLoss:
         project_root = Path.cwd()  # Correctly defines project root
         self.losses = self.losses_config.get("losses", {})  # get nested losses dict
         self.__rendering_frequency = self.__general_config.get("wandb_general", {}).get("rendering_frequency")
-
+        self._mesh_statistics = MeshStatistics(device=dev, use_wandb=self._use_wandb)  # For logging mesh statistics to wandb
 
 
         # ALM parameters init
@@ -52,7 +51,7 @@ class TotalLoss:
             )
             self.lamdas = torch.tensor(
                 [[self.lamda], [self.lamda], [self.lamda]], device=dev
-            )  # SWEEP: could be log-uniform in [10−5,10−1][10−5,10−1] per constraint
+            )  # SWEEP: could be log-uniform in [10-5,10-1][10-5,10-1] per constraint
             self.mus = torch.tensor(
                 [[1.0], [1.0], [1.0]], device=dev
             )  # ... a larger value such as η=1 is advisable to balance constraint enforcement and objective minimization effectively.:
@@ -66,14 +65,14 @@ class TotalLoss:
             self.alphas = torch.tensor(
                 [[self.alpha], [self.alpha], [self.alpha]], device=dev
             )  # increase mu by this factor if constraint not me, default = 0.99 acc. to "Conditionally adaptive augmented Lagrangian method"
-            # SWEEP: α ∈ {0.9,0.95,0.98,0.99}
+            # SWEEP: α ∈ {0.9,0.95,0.98,0.99}  # noqa: RUF003
             self.gamma: float = (
                 wandb.config.get("alm.gamma", 0.01) if wandb.run else self.losses_config["general_info"].get("gamma", 0.01)
             )
             # NOTE: as seen "An Adaptive Augmented Lagrangian Method for Training Physics and Equality Constrained Artificial Neural Networks", Algortihm 3, ALM with adaptive penalty update (APU)
             # AUTHORS: Shamsulhaq Basir and Inanc Senocak
             #       https://arxiv.org/pdf/2306.04904
-            #       SWEEP: γ ∈ log-uniform in [10−3,10e0]
+            #       SWEEP: γ ∈ log-uniform in [10-3,10e0]  # noqa: RUF003
 
         # Dynamically load and initialise active losses
         # category: aero, ... | lossnames: frontal_area_v0, ...
@@ -99,7 +98,7 @@ class TotalLoss:
                     )
                     self.__active_losses[loss_name] = loss_instance
 
-    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:  # epoch_name for rendering  # noqa: PLR0912
+    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:  # epoch_name for rendering  # noqa: PLR0912, PLR0915
         # Calculate the individual Losses
         loss_names = {}  # For logging purposes
         device = next(iter(model.parameters())).device
@@ -181,7 +180,10 @@ class TotalLoss:
 
             if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
                 verts, faces = get_diff_mesh(model, grid_res=64, device=device)
-
+                if load_config(v="v1", cfg_name="logging.yaml")["mesh_statistics"]:
+                    # If solar logging is enabled, we log the rendered image of the current mesh to WandB using the VisualisationManager and its rendering modes
+                    self._mesh_statistics.log_basic_mesh_stats(verts, faces, epoch_name)  # Log basic mesh stats to wandb
+                    self._mesh_statistics.log_solar_area_stats(verts, faces, epoch_name)  # Log solar area related stats to wandb
                 if self._use_neural_renderer and self._renderer_manager is not None:
                     # Use shared Manager to update all active rendering modes
                     try:
