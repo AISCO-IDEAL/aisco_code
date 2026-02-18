@@ -1,9 +1,42 @@
-import Torch
+import torch
+
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.gaot_3d import (
+    GAOT3D,  # Assume GAOT produces a scalar loss with gradients w.r.t. verts/faces
+)
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.utils.kaolin_utils import get_diff_mesh
+
 
 class ModelLoader:
-    def __init__(self, model_path:str) -> None:
+    def __init__(self, model_path: str, device: str) -> None:
         self.model_path = model_path
-        self.gaot = None
+        self.device = device
+        self._load_model()
 
-    def forward(self, sdf_model) -> Torch.tensor:
+    def _load_model(self) -> None:
+        self.gaot: GAOT3D
         pass
+
+    def forward(self, sdf_model) -> torch.Tensor:
+        mesh_verts, mesh_faces = get_diff_mesh(model=sdf_model)
+
+        optim_verts = mesh_verts.detach().clone().to(self.device).requires_grad_(True)
+
+        mesh_faces = mesh_faces.to(self.device)
+
+        gaot_loss = self.gaot.forward(batch=(optim_verts, mesh_faces))
+
+        loss_to_vert_grad = torch.autograd.grad(gaot_loss, optim_verts, retain_graph=True)[0]
+
+        # Push gradients into sdf_model weights via surrogate coupling
+        sdf_at_verts = sdf_model(optim_verts).view(-1)  # SDF per vertex
+        vert_to_sdf_grad = torch.autograd.grad(
+            sdf_at_verts, optim_verts, grad_outputs=torch.ones_like(sdf_at_verts), create_graph=True, retain_graph=True
+        )[0]
+
+        # Surrogate term to transfer GAOT vertex gradients onto sdf_model parameters
+        loss_dot_vert_to_sdf_grad = (loss_to_vert_grad * vert_to_sdf_grad).sum(dim=-1)
+        surrogate_coupling = (loss_dot_vert_to_sdf_grad.detach() * sdf_at_verts).sum()
+
+        # Compose final loss that keeps GAOT loss value and provides gradients to sdf_model weights
+        coupled_loss = gaot_loss + (surrogate_coupling - surrogate_coupling.detach())
+        return coupled_loss
