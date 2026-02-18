@@ -3,9 +3,8 @@ from ocp_vscode import Animation, show
 
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly
 from subprojects.wp2_assembler.version2.utils import Speed_hump
+from subprojects.wp2_assembler.version2.utils.positioning_program import invert_transform, sim
 from subprojects.wp2_assembler.version2.utils.Speed_hump import create_speed_hump_and_floor
-from subprojects.wp2_assembler.version2.utils.positioning_program import sim
-from subprojects.wp2_assembler.version2.utils.positioning_program import invert_transform
 
 
 def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:

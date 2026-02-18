@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=Main_test
-#SBATCH --time=00:10:00                   # Adjust time as needed
+#SBATCH --time=01:00:00                   # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
@@ -9,7 +9,7 @@
 #SBATCH --output=/cluster/home/clhuber/logs/Clemens_TEST_%j.out 
 #SBATCH --error=/cluster/home/clhuber/logs/Clemens_TEST_%j.err 
 #SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=clhuber@ethz.ch
+##SBATCH --mail-user=clhuber@ethz.ch
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
@@ -83,3 +83,9 @@ echo "=========================================="
 echo "Job ended on: $(date)"
 echo "Total elapsed time: $SECONDS seconds"
 echo "=========================================="
+
+
+
+## chmod +x ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/main_testing_alex.sh
+## sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/main_testing_alex.sh
+## watch -n 5 squeue -u $USER

@@ -1,5 +1,6 @@
-from pathlib import Path
 import warnings
+from pathlib import Path
+
 import yaml
 
 
@@ -30,7 +31,7 @@ def get_regulation(section: str) -> int | float:
     # Check if we ended up at a numeric value
     if isinstance(current, (int, float)):
         return current
-    
+
     warnings.warn("\n\n\nError in get_regulation: Error 2\nError in get_regulation: Error 2\nError in get_regulation: Error 2\n\n\n")
     #raise Exception("Error in get_regulation: Error 2")
     return -1  # Final value is not a number
