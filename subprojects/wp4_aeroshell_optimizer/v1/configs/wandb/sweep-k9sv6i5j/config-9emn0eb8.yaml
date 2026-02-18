@@ -1,0 +1,6 @@
+wandb_version: 1
+
+initial_lambda:
+  value: 0.1027262996507284
+learning_rate:
+  value: 8.603779982635668e-05

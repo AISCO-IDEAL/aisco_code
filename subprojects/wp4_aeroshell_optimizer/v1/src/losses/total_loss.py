@@ -30,6 +30,12 @@ class TotalLoss:
             v=self.__general_config["general_info"]["version"],
             cfg_name=self.__general_config["active_configs"]["losses"],
         )
+        
+        # Check for WandB sweep overrides for initial_lambda
+        if wandb.run and "initial_lambda" in wandb.config:
+            self.losses_config["general_info"]["initial_lambda"] = wandb.config.initial_lambda
+            print(f"Sweep: Updated initial_lambda to {wandb.config.initial_lambda}")
+
         self.weights = self.losses_config.get("losses", {})  # get nested losses dict
         self.__active_losses: dict = {}
         self._renderer_initialized = False
@@ -41,18 +47,19 @@ class TotalLoss:
 
         # wandb init
         if self.__general_config["wandb_general"].get("use_wandb", False):
-            run = wandb.init(
-                # Set the wandb log directory
-                dir="wp4_aeroshell_optimizer/data/wandb_logs",
-                # Set the wandb entity where your project will be logged (generally your team name).
-                entity=self.__general_config["wandb_general"].get("entity_name", "aisco"),
-                # Set the wandb project where this run will be logged.
-                project=self.__general_config["wandb_general"].get("project_name", "Aeroshell Optimiser with ALM and Sweeping"),
-                # Track hyperparameters and run metadata.
-                config=self.__general_config,
-            )
-            config = deep_update(self.__general_config, dict(wandb.config))
-            run.config.update(config, allow_val_change=True)
+            if wandb.run is None:
+                run = wandb.init(
+                    # Set the wandb log directory
+                    dir="wp4_aeroshell_optimizer/data/wandb_logs",
+                    # Set the wandb entity where your project will be logged (generally your team name).
+                    entity=self.__general_config["wandb_general"].get("entity_name", "aisco"),
+                    # Set the wandb project where this run will be logged.
+                    project=self.__general_config["wandb_general"].get("project_name", "Aeroshell Optimiser with ALM and Sweeping"),
+                    # Track hyperparameters and run metadata.
+                    config=self.__general_config,
+                )
+                config = deep_update(self.__general_config, dict(wandb.config))
+                run.config.update(config, allow_val_change=True)
 
         # ALM parameters init
         if self.losses_config["general_info"].get("ALM", False):

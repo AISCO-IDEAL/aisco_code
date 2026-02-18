@@ -2,7 +2,7 @@
 
 
 neural_renderer:
-  image_size: 1024
+  image_size: 10
   background_color: [0.0,0.0,0.3]
   anti_aliasing: true
   camera_mode: "look_at"
@@ -11,7 +11,7 @@ neural_renderer:
 # Insert custom modes here, such as "clemens' solar mode"
 rendering_modes:
   alex_mode:
-    enabled: true
+    enabled: false
     class_path: "custom_modes.alex_mode:BasicAlexMode"
     config:
       camera_position: [2000, 2000, 2000]

@@ -1,15 +1,22 @@
 from pathlib import Path
 
 import torch
-import wandb
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
-from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import dynamic_type_loading
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data, fetch_pretrained_model
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+import wandb
+from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import \
+    pretraining
+from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import \
+    BaseModel
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import \
+    load_config
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import \
+    dynamic_type_loading
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import \
+    dict_hashing
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import (
+    allround_save_data, fetch_pretrained_model)
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import \
+    Wrapper
 
 # we want to dynamically run an entire optimization process for the WIRE model.
 # we need the model, config and (losses)
@@ -22,7 +29,29 @@ def main(verbose: bool = True) -> None:
     # Get general config
 
     general_config = load_config(v="v1", cfg_name="general_config.yaml")
+
+    # Initialize WandB early to capture sweep parameters
+    wandb_config = None # Store wandb config
+    if general_config["wandb_general"].get("use_wandb", False):
+        wandb.init(
+            project=general_config["wandb_general"].get("project_name", "Aeroshell Optimiser"),
+            entity=general_config["wandb_general"].get("entity_name", "aisco"),
+            config=general_config,
+        )
+        wandb_config = wandb.config
+
     model_config = load_config(v="v1", cfg_name=general_config["active_configs"]["model_params"])
+    
+    # Update model_config with wandb sweep parameters if available
+    if wandb_config:
+        for k, v in wandb_config.items():
+            if k.startswith("model_params."):
+                key = k.split(".")[1]
+                model_config[key] = v
+            # Also allow direct keys if they match model_config keys
+            elif k in model_config:
+                model_config[k] = v
+
     if verbose:
         print("Successfully loaded general and model config")
 
@@ -44,18 +73,35 @@ def main(verbose: bool = True) -> None:
 
     # Check if there is a pretrained model already
     # Note that for now this only includes pretrained spheres
-
+    
+    # If using wandb sweep, force pretraining if requested via config
+    force_pretraining = False
+    if wandb_config and wandb_config.get("force_pretraining"):
+        force_pretraining = True
+    
+    # Also Check if a specific pretraining shape is requested, and make part of cache key or similar if we were caching
+    
     pretrained_model = fetch_pretrained_model(
         model, pretrained_path=general_config["storage_paths"].get("pretrained_dir", None), verbose=verbose
     )
-    if pretrained_model is not None:
+    
+    if pretrained_model is not None and not force_pretraining:
         model.load_state_dict(torch.load(pretrained_model, map_location=device))
         if verbose:
             print(f"Loaded pretrained model from {pretrained_model}")
     else:
         if verbose:
-            print("No pretrained model found, proceeding by pretraining")
-        model = pretraining(model=model)
+            print("No pretrained model found (or forced pretraining), proceeding by pretraining")
+        
+        # Determine override config for pretraining
+        pretraining_override = {}
+        if wandb_config:
+             # Pass any relevant pretraining params from wandb config
+             for k, v in wandb_config.items():
+                 if k.startswith("pretraining.") or k == "pretraining_shape":
+                      pretraining_override[k] = v
+
+        model = pretraining(model=model, override_config=pretraining_override)
         # Save pretrained model and mesh for sanity check
         allround_save_data(
             model=model,
@@ -70,6 +116,20 @@ def main(verbose: bool = True) -> None:
 
     # Start optimisation
     training_config = load_config(v="v1", cfg_name=general_config["active_configs"].get("training", None))
+    
+    # Update training_config with wandb sweep parameters
+    if wandb_config:
+        for k, v in wandb_config.items():
+            # Support dot notation updates e.g. "training_params.learning_rate"
+            if "." in k:
+                parts = k.split(".")
+                if parts[0] in training_config and isinstance(training_config[parts[0]], dict):
+                     training_config[parts[0]][parts[1]] = v
+            elif k in training_config:
+                training_config[k] = v
+            # If flattening is used in sweep config, try to match keys in training_params
+            elif "training_params" in training_config and k in training_config["training_params"]:
+                training_config["training_params"][k] = v
 
     # Check if model still is on device after pretraining
     model = model.to(device)
@@ -102,11 +162,13 @@ def main(verbose: bool = True) -> None:
         # Finalize all rendering modes and save results
         try:
             wrapper.finalize()
-        except Exception as e:
-            print(f"Wrapper finalize failed: {e}")
+        except Exception:
+            print("Wrapper finalize failed:")
 
     print("Completed job successfully.")
 
 
 if __name__ == "__main__":
     main()
+
+    print("Completed job successfully.")
