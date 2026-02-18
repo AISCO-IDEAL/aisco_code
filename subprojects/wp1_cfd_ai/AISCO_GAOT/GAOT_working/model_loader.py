@@ -13,8 +13,13 @@ class ModelLoader:
         self._load_model()
 
     def _load_model(self) -> None:
-        self.gaot: GAOT3D
-        pass
+        self.gaot = GAOT3D().to(self.device)
+        if self.model_path:
+            state = torch.load(self.model_path, map_location=self.device)
+            if isinstance(state, dict) and "state_dict" in state:
+                self.gaot.load_state_dict(state["state_dict"])
+            elif isinstance(state, dict):
+                self.gaot.load_state_dict(state)
 
     def forward(self, sdf_model) -> torch.Tensor:
         mesh_verts, mesh_faces = get_diff_mesh(model=sdf_model)
