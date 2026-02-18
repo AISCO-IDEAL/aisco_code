@@ -1,13 +1,14 @@
 from pathlib import Path
 
 import torch
-import wandb
 import trimesh
+import wandb
 
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_alm, weights_manual
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_alm, weights_manual
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 
 # # Visualization imports (commented out for now)
 # import trimesh # noqa: ERA001
@@ -15,7 +16,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_al
 # from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import render_image  # noqa: ERA001
 # from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer # noqa: ERA001
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 
@@ -118,7 +119,7 @@ class TotalLoss:
                     )
                     self.__active_losses[loss_name] = loss_instance
 
-    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:  # noqa: ARG002 # epoch_name for rendering
+    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:  # epoch_name for rendering  # noqa: PLR0912
         # Calculate the individual Losses
         loss_names = {}  # For logging purposes
         device = next(iter(model.parameters())).device
@@ -130,7 +131,7 @@ class TotalLoss:
 
         # 1. Calculate and sum up the active losses dynamically
         for loss_name, loss_instance in self.__active_losses.items():
-            current_loss: torch.Tensor = loss_instance.get_loss(model)
+            current_loss: torch.Tensor = loss_instance.get_loss(model, epoch_name)
             loss_tensors.append(current_loss)
 
             # Store for logging
@@ -140,7 +141,7 @@ class TotalLoss:
             # documentation: `Losses and their weights` in Obsidian
             # o: primary loss (solar and drag) (objectives), for now just use basic weighting, later could be BOTorch or with a RaceTimeEstimator
             # c: constraint loss (bb, eikonal, smoothness)
-            o = (loss_tensors[0] * 1.0) + (loss_tensors[4] * (-1.0))
+            o = (loss_tensors[0] * 0.0) + (loss_tensors[4] * (-1.0))
             # NOTE: hardcoded weights for now, TODO: implement bayesian optimization here
 
             # 1D tenosrs for constraint losses
@@ -196,14 +197,7 @@ class TotalLoss:
                     "alm/nu_smoothness": self.nus[2].item(),
                 }
                 wandb.log(alm_params, step=epoch_name)
-            # Initialization of per-model renderer is deprecated; wrapper is preferred.
-            # Ensure a wrapper exists if neural rendering is requested.
-            if self._use_neural_renderer and self._renderer_wrapper is None:
-                # Lazily construct a wrapper with defaults from config
-                try:
-                    self._renderer_wrapper = Wrapper(verbose=False)
-                except Exception as e:
-                    print(f"Failed to initialize Visual Wrapper: {e}")
+
 
             if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
                 verts, faces = get_diff_mesh(model, grid_res=64, device=device)
@@ -249,5 +243,8 @@ class TotalLoss:
                     if image_path.exists():
                         wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
                         image_path.unlink()
+        # logg the gradients of each loss component
+        for loss_instance in self.__active_losses.values():
+            loss_instance.log_gradients(epoch_name)
 
         return weighted_total_loss

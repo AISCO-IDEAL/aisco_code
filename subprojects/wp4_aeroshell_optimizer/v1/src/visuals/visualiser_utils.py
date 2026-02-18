@@ -1,3 +1,5 @@
+import cadquery as cq
+import numpy as np
 import torch
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
@@ -108,3 +110,52 @@ def save_rendered_image(visualiser: Visualiser, image: torch.Tensor, file_path: 
         file_path (str): The path where the image will be saved.
     """
     visualiser.save_image(image, file_path)
+
+
+def assembly_to_kaolin_mesh(assembly: cq.Assembly,
+                            tolerance: float = 0.1,
+                            angular_tolerance: float = 0.1) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Convert a CadQuery Assembly to Kaolin-compatible mesh format.
+
+    This function takes a CadQuery Assembly (containing one or more solids),
+    converts it to a compound shape, tessellates it into triangles, and
+    returns the result as PyTorch tensors compatible with the Kaolin library.
+
+    Args:
+        assembly: CadQuery Assembly object containing solids
+        tolerance: Tessellation deflection tolerance in model units (default: 0.1).
+                  Smaller values produce more detailed meshes.
+        angular_tolerance: Angular tolerance in radians for tessellation (default: 0.1).
+                          Smaller values produce smoother curved surfaces.
+
+    Returns:
+        tuple: (vertices, faces) where:
+            - vertices: torch.Tensor of shape (N, 3) with vertex coordinates (float32)
+            - faces: torch.Tensor of shape (F, 3) with face indices (int64)
+
+    Example:
+        >>> assembly = cq.Assembly()
+        >>> # ... build your assembly ...
+        >>> vertices, faces = assembly_to_kaolin_mesh(assembly, tolerance=0.05)
+        >>> print(vertices.shape)  # (N, 3)
+        >>> print(faces.shape)     # (F, 3)
+    """
+    # Convert assembly to a compound shape (combines all solids)
+    compound = assembly.toCompound()
+
+    # Tessellate the compound into triangles
+    # Returns: (List[Vector], List[Tuple[int, int, int]])
+    vertex_list, face_list = compound.tessellate(tolerance, angular_tolerance)
+
+    # Convert vertices from CadQuery Vector objects to numpy array
+    vertices_np = np.array([[v.x, v.y, v.z] for v in vertex_list], dtype=np.float32)
+
+    # Convert face indices to numpy array
+    faces_np = np.array(face_list, dtype=np.int64)
+
+    # Convert to PyTorch tensors (Kaolin format)
+    vertices = torch.from_numpy(vertices_np)
+    faces = torch.from_numpy(faces_np)
+
+    return vertices, faces

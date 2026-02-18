@@ -39,9 +39,9 @@ wp2_assembler =[
   "types-PyYAML >= 6.0.12",  # Type stubs for PyYAML [vdiekmann]
   "pybullet" # For speed hump simulations [fsanche]
 ]
-
+  
 wp3_solar_estimator = [
-
+  "diso >= 0.1.4",
 ]
 
 wp4_aeroshell_optimizer = [

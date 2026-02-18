@@ -257,7 +257,8 @@ class CADVisualizer:
             cfg_name=self.__general_config["active_configs"]["losses"],
         )
         bb_config = config.get("bb_config")
-        assembley_version = bb_config.get("assembly_version") if bb_config else None
+        assembley_version = bb_config.get("assembly_version") # if bb_config else None
+        assembly_id = bb_config["assembly_id"]
         meshes = []
         types = ["solid_a", "solid_b"]
         if assembley_version == 0:
@@ -266,7 +267,7 @@ class CADVisualizer:
                 self.__cq_solid_to_trimesh(outerNBZ()),
             ]
         if assembley_version == 2:  # noqa: PLR2004
-            inner_box, outer_box = call_assembly_solids(1)
+            inner_box, outer_box = call_assembly_solids(assembly_id)
             meshes = [
                 self.__cq_solid_to_trimesh(inner_box),
                 self.__cq_solid_to_trimesh(outer_box),

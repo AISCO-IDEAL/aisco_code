@@ -16,8 +16,10 @@ Each team member should:
 Minimal Example:
     from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base import RenderingMode
 
+
     class MyMode(RenderingMode):
         pass  # That's it! Base class handles everything
+
 
     # Config:
     # my_mode:
@@ -67,14 +69,14 @@ class RenderingMode:
                 - camera_position: [x, y, z] camera location
                 - look_at: [x, y, z] point to look at
                 - render_mode: "rgb", "normal", "depth", etc.
-                - fps: GIF frame rate
+                - fps: GIF frame rate (optional but strongly recommended for gifs, default=15)
         """
 
         self.visualiser = visualiser
         self.config = config
 
         # Validate required config keys
-        required_keys = ["camera_position", "look_at", "render_mode", "fps"]
+        required_keys = ["camera_position", "look_at", "render_mode"]
         for key in required_keys:
             if key not in config:
                 raise MissingConfigKeyError(key, list(config.keys()))
@@ -83,10 +85,12 @@ class RenderingMode:
         self.camera_position = config["camera_position"]
         self.look_at = config["look_at"]
         self.render_mode = config["render_mode"]
-        self.fps = config["fps"]
+        self.fps = config.get("fps", 15) #Optional if you do an image only
 
         # Compute camera direction from position and look_at
-        self.camera_direction = [self.look_at[i] - self.camera_position[i] for i in range(3)]
+        self.camera_direction = [
+            self.look_at[i] - self.camera_position[i] for i in range(3)
+        ]
 
         # Each mode manages its own frame storage
         self.frame_storage = []
@@ -111,7 +115,9 @@ class RenderingMode:
         faces = optimization_state.get("faces")
 
         if vertices is None or faces is None:
+            raise Warning("Warning: No vertices/faces in optimization_state, skipping update")
             return
+
 
         # Render from fixed camera position
         image = self._render(
@@ -121,6 +127,7 @@ class RenderingMode:
             camera_position=self.camera_position,
             camera_direction=self.camera_direction,
         )
+
 
         # Store the frame (handle batch dimension if present)
         if hasattr(image, "__len__") and len(image) > 0:
@@ -150,15 +157,17 @@ class RenderingMode:
 
     # ========== Convenience methods for custom rendering ==========
 
-    def _render(self, vertices, faces, mode: str = "rgb", **render_kwargs) -> Any:
+    def _render(self, vertices, faces, textures=None, mode: str = "rgb", **render_kwargs) -> Any:
         """
         Render a mesh using the shared Visualiser.
+
 
         Args:
             vertices: Mesh vertices
             faces: Mesh faces
             mode: Render mode (e.g., "rgb", "normal", "depth")
             **render_kwargs: Additional arguments passed to visualiser.render()
+
 
         Returns:
             Rendered output (typically numpy array)
@@ -167,8 +176,8 @@ class RenderingMode:
             vertices=vertices,
             faces=faces,
             mode=mode,
-            save_frame=False,  # We manage storage ourselves
-            **render_kwargs,
+            textures=textures,
+            **render_kwargs
         )
 
     def _save_image(self, image: Any, file_path: Path) -> None:

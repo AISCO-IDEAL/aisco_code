@@ -1,13 +1,16 @@
 # Use aalthaus' solar dummy loss that is differentiable wrt the mesh vertices
 
-import kaolin
 import torch
 
 
-def solar_mesh_deformation(raw_vertices: torch.Tensor, faces: torch.Tensor, sun_dir: torch.Tensor, dev: str="cuda",
-                           slope_param: float = 7.0, offset_param: float = 3.0):
-
-
+def solar_mesh_deformation(
+    raw_vertices: torch.Tensor,
+    faces: torch.Tensor,
+    sun_dir: torch.Tensor,
+    dev: str = "cuda",  # noqa: ARG001
+    slope_param: float = 7.0,
+    offset_param: float = 3.0,
+):
     """
     Adapted the above function to test backwards transfer to SDF
 
@@ -22,11 +25,10 @@ def solar_mesh_deformation(raw_vertices: torch.Tensor, faces: torch.Tensor, sun_
         print("Warning: Empty mesh received in dummy_solar_loss!")
         return torch.tensor(2.0, device=raw_vertices.device, requires_grad=True)
 
-
     vertices = raw_vertices.detach().clone()  # break graph
     vertices.requires_grad_(True)
 
-    verts_b = vertices.unsqueeze(0)     # (1, V, 3)
+    verts_b = vertices.unsqueeze(0)  # (1, V, 3)
     faces_b = faces.unsqueeze(0)
 
     # Face vertices
@@ -44,9 +46,8 @@ def solar_mesh_deformation(raw_vertices: torch.Tensor, faces: torch.Tensor, sun_
     # Compute power ratio (dot product of normals and sun direction)
     score = (normals * s).sum(dim=-1)
 
-
-    #Compute loss with custom activation function that flows well with gradients
-    loss = - (torch.sigmoid(slope_param * torch.log(score + 1.5) - offset_param)).mean()
+    # Compute loss with custom activation function that flows well with gradients
+    loss = -(torch.sigmoid(slope_param * torch.log(score + 1.5) - offset_param)).mean()
 
     loss.backward()
     learning_rate = 1e-2

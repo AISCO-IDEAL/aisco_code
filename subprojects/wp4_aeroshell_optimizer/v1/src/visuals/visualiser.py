@@ -21,6 +21,7 @@ class Visualiser:
         camera_mode: str = "look_at",
         viewing_angle: float = 30.0,
         device: str = "cuda",
+        up: list[float] | None = None,
     ) -> None:
         self.image_size = image_size
         self.device = device
@@ -28,6 +29,7 @@ class Visualiser:
         self.stored_frames: list[np.ndarray] = []
 
         bg = background_color if background_color is not None else [0.0, 0.0, 0.0]
+        up_vec = up if up is not None else [0.0, 0.0, 1.0]  # Default to Z-up
         self.renderer = NeuralRenderer(
             image_size=image_size,
             anti_aliasing=anti_aliasing,
@@ -35,6 +37,7 @@ class Visualiser:
             camera_mode=camera_mode,
             viewing_angle=viewing_angle,
             orig_size=image_size,
+            up=up_vec,
         )
         # Default clipping planes
         self.renderer.near = 0.1
@@ -158,12 +161,23 @@ class Visualiser:
 
         # For local GIF saving, convert to uint8
         if file_path is not None:
-            frames_uint8 = [(frame * 255).astype(np.uint8) for frame in self.stored_frames]
+            frames_uint8 = []
+            for frame in self.stored_frames:
+                fr = (frame * 255).astype(np.uint8)
+                # If single-channel shape (H, W, 1), squeeze to (H, W) for Pillow
+                if fr.ndim == 3 and fr.shape[-1] == 1:
+                    fr = fr.squeeze(-1)
+                frames_uint8.append(fr)
             imageio.mimsave(file_path, frames_uint8, fps=fps)
 
         # Return format depends on use case
         if return_uint8:
-            frames_uint8 = [(frame * 255).astype(np.uint8) for frame in self.stored_frames]
+            frames_uint8 = []
+            for frame in self.stored_frames:
+                fr = (frame * 255).astype(np.uint8)
+                if fr.ndim == 3 and fr.shape[-1] == 1:
+                    fr = fr.squeeze(-1)
+                frames_uint8.append(fr)
             return np.stack(frames_uint8, axis=0)
         else:
             # wandb.Video expects float32 in [0, 1] range
@@ -216,7 +230,12 @@ class Visualiser:
 
     def save_image(self, image: np.ndarray, file_path: str) -> None:
         """Save a single image to disk."""
-        imageio.imwrite(file_path, (image * 255).astype(np.uint8))
+        img = (image * 255).astype(np.uint8)
+        # If grayscale with explicit channel, squeeze to (H, W)
+        if img.ndim == 3 and img.shape[-1] == 1:
+            img = img.squeeze(-1)
+        imageio.imwrite(file_path, img)
+        print(f"Saved image to {file_path}")
     # ========== Helper Methods ==========
 
     def _to_device(self, tensor: torch.Tensor) -> torch.Tensor:
@@ -236,6 +255,9 @@ class Visualiser:
         # If shape is (batch, C, H, W), transpose to (batch, H, W, C)
         if len(arr.shape) == 4 and arr.shape[1] in [1, 3, 4]:
             arr = arr.transpose(0, 2, 3, 1)
+        # If shape is (batch, H, W) [e.g., silhouettes], add channel dimension
+        elif len(arr.shape) == 3:
+            arr = arr[:, :, :, np.newaxis]  # (batch, H, W, 1)
         return arr
 
     def _create_default_texture(self, batch_size: int, num_faces: int, texture_size: int = 2) -> torch.Tensor:
