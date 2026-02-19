@@ -1,5 +1,5 @@
 general_info:
-  username: "kdiehl"
+  username: "vdiekmann"
   version: "v1"
   device: "cuda"
   pre: "a sphere as initial shape, datatype: SDF"
@@ -24,7 +24,7 @@ wandb_general:
   project_name: "Aeroshell Optimiser"
   entity_name: "aisco"
   track_run: 1
-  use_neural_renderer: True
+  use_neural_renderer: False
   rendering_frequency: 1
   use_sweep: 0
 
