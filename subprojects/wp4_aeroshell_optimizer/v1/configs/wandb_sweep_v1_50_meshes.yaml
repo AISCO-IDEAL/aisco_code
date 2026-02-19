@@ -19,4 +19,4 @@ parameters:
   training_params.optimizer:
     values: ["adam", "sgd"]
   training_params.num_epochs:
-    values: [100, 200, 300]
+    values: [5, 10, 15]
