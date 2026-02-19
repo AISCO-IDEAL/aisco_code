@@ -102,8 +102,8 @@ def solar_mesh_loss_v3(
     budget_penalty = budget_penalty_weight * (unused_budget**2)
 
     # Combined loss: maximize quality (minimize negative) + penalize unused budget
-    loss_mm2 = -quality_loss + budget_penalty
-    return loss_mm2 * 1e-6  # convert from mm² to m²
+    loss_mm2 = quality_loss - budget_penalty
+    return loss_mm2
 
 
 class SolarLossEstimator:
