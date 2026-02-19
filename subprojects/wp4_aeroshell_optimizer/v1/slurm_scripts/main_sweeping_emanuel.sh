@@ -70,12 +70,12 @@ echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 #------------------------------------------------------------------------------
 export PYTHONUNBUFFERED=TRUE
 ## export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True # Allow PyTorch to expand GPU memory allocation as needed
-export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
+export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code:$PYTHONPATH"
 cd /cluster/home/$USERNAME/AISCO_code/
 
 # --- SWEEP CONFIGURATION ---
 # Replace this with your actual SWEEP ID from 'wandb sweep ...'
-SWEEP_ID="4k2wiwaa"
+SWEEP_ID="6pm8qo9u"
 # ---------------------------
 
 # Launch multiple agents per GPU
