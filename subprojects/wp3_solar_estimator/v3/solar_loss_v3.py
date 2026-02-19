@@ -1,5 +1,5 @@
 """
-Solar loss (v3): unified wrapper to compare SDF->mesh extraction methods.
+Solar loss (v4): fully differentiable soft-selection loss without custom autograd.
 
 Supported methods:
   - mesh_sdf: MeshSDF (non-diff extraction + gradient projection surrogate)
@@ -21,91 +21,73 @@ from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicube
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 
 
-class SolarMeshLossFnV3(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, vertices, faces, sun_direction, area_budget_mm2_tensor, epsilon: float):
-        if faces.numel() == 0 or vertices.numel() == 0:
-            return torch.zeros((), device=vertices.device, dtype=vertices.dtype)
+def solar_mesh_loss_v4(
+    vertices: torch.Tensor,
+    faces: torch.Tensor,
+    sun_direction: torch.Tensor,
+    area_budget_mm2: float,
+    sigmoid_sharpness: float = 10.0,
+    budget_penalty_weight: float = 0.1,
+    epsilon: float = 1e-12,
+) -> torch.Tensor:
+    """
+    Compute differentiable solar mesh loss using soft selection.
 
-        # Compute face areas and normals
-        v0, v1, v2 = vertices[faces[:, 0]], vertices[faces[:, 1]], vertices[faces[:, 2]]
-        edge_a, edge_b = v1 - v0, v2 - v0
-        face_cross = torch.cross(edge_a, edge_b, dim=-1)
-        face_cross_norm = torch.linalg.norm(face_cross, dim=-1)
-        face_area_mm2 = 0.5 * face_cross_norm
+    Args:
+        vertices: (N, 3) mesh vertices in mm
+        faces: (M, 3) face indices
+        sun_direction: (3,) sun direction vector
+        area_budget_mm2: maximum selectable area in mm²
+        sigmoid_sharpness: steepness of selection blur (higher = sharper boundary)
+        budget_penalty_weight: weight for unused budget penalty
+        epsilon: numerical stability
 
-        # Compute illumination quality (cosine of angle with sun direction, clamped to [0, 1])
-        face_normals_unit = face_cross / (face_cross_norm.clamp_min(epsilon)).unsqueeze(-1)
-        sun_direction_unit = sun_direction / (torch.linalg.norm(sun_direction).clamp_min(epsilon))
+    Returns:
+        Scalar loss (in m²)
+    """
+    if faces.numel() == 0 or vertices.numel() == 0:
+        print("Warning: Empty vertices or faces in solar_mesh_loss_v4, returning zero loss")
+        return torch.zeros((), device=vertices.device, dtype=vertices.dtype)
 
-        # Illumination quality is the cosine of the angle between face normal and sun direction, clamped to [0, 1]
-        illumination_quality = torch.clamp((face_normals_unit * sun_direction_unit).sum(-1), 0.0, 1.0)
+    # Compute face areas and normals
+    v0, v1, v2 = vertices[faces[:, 0]], vertices[faces[:, 1]], vertices[faces[:, 2]]
+    edge_a, edge_b = v1 - v0, v2 - v0
+    face_cross = torch.cross(edge_a, edge_b, dim=-1)
+    face_cross_norm = torch.linalg.norm(face_cross, dim=-1)
+    face_area_mm2 = 0.5 * face_cross_norm
 
-        # Greedy selection of faces based on quality/area ratio until area budget is reached
-        area_budget_mm2 = float(area_budget_mm2_tensor.item())
-        # Sort by descending quality
-        quality_order_desc = torch.argsort(illumination_quality, descending=True)
-        selected_face_indices_list: list[int] = []
-        accumulated_area_mm2 = 0.0
-        for face_idx in quality_order_desc.tolist():
-            area_i = float(face_area_mm2[face_idx].detach())
-            # if face has zero area, skip it
-            if area_i <= 0.0:
-                continue
-            # if illumination quality is zero (orhtogonal) or negative (back-facing), break the loop as we won't select any more faces
-            if float(illumination_quality[face_idx].detach()) <= 0.0:
-                break
-            # if adding this face would exceed the area budget, break the loop
-            if accumulated_area_mm2 + area_i <= area_budget_mm2 + 1e-12:
-                selected_face_indices_list.append(face_idx)
-                accumulated_area_mm2 += area_i
+    # Compute illumination quality (cosine of angle with sun direction, clamped to [0, 1])
+    face_normals_unit = face_cross / (face_cross_norm.clamp_min(epsilon)).unsqueeze(-1)
+    sun_direction_unit = sun_direction / (torch.linalg.norm(sun_direction).clamp_min(epsilon))
+    illumination_quality = torch.clamp((face_normals_unit * sun_direction_unit).sum(-1), 0.0, 1.0)
 
-        selected_face_indices = torch.tensor(selected_face_indices_list, device=vertices.device, dtype=torch.long)
+    # Sort faces by descending quality
+    # NOTE: Currently ignores order priority for equal-quality faces (TODO: could optimize face ordering)
+    quality_order_desc = torch.argsort(illumination_quality, descending=True)
+    sorted_areas = face_area_mm2[quality_order_desc]
+    sorted_quality = illumination_quality[quality_order_desc]
 
-        ctx.save_for_backward(
-            vertices,
-            faces,
-            selected_face_indices,
-            edge_a[selected_face_indices] if selected_face_indices.numel() else edge_a.new_empty((0, 3)),
-            edge_b[selected_face_indices] if selected_face_indices.numel() else edge_b.new_empty((0, 3)),
-            sun_direction,
-        )
-        ctx.epsilon = float(epsilon)
+    # Compute cumulative area
+    cumulative_area = torch.cumsum(sorted_areas, dim=0)
 
-        if selected_face_indices.numel() == 0:
-            return torch.zeros((), device=vertices.device, dtype=vertices.dtype)
+    # Create soft selection mask using sigmoid
+    # mask(i) = sigmoid(sharpness * (area_budget - cumsum_area[i]))
+    # This smoothly transitions from 1.0 (well within budget) to 0.0 (exceeds budget)
+    distance_to_budget = area_budget_mm2 - cumulative_area
+    soft_mask = torch.sigmoid(sigmoid_sharpness * distance_to_budget)
 
-        selected_areas_mm2 = face_area_mm2[selected_face_indices]
-        selected_quality = illumination_quality[selected_face_indices]
-        loss_mm2 = (selected_areas_mm2 * selected_quality).sum()  # in mm^2
-        return loss_mm2 * 1e-6  # convert to m^2
+    # Weighted quality-area product
+    weighted_quality_area = sorted_areas * sorted_quality * soft_mask
+    quality_loss = weighted_quality_area.sum()
 
-    @staticmethod
-    def backward(ctx, grad_output):
-        vertices, faces, selected_face_indices, selected_edge_a, selected_edge_b, sun_direction = ctx.saved_tensors
-        if not ctx.needs_input_grad[0]:
-            return None, None, None, None, None, None
+    # Penalty for unused budget (encourage filling the budget)
+    total_selected_area = (sorted_areas * soft_mask).sum()
+    unused_budget = torch.clamp(area_budget_mm2 - total_selected_area, min=0.0)
+    budget_penalty = budget_penalty_weight * (unused_budget**2)
 
-        grad_vertices = torch.zeros_like(vertices)
-        if selected_face_indices.numel():
-            faces_selected = faces[selected_face_indices]
-            idx_v0, idx_v1, idx_v2 = faces_selected[:, 0], faces_selected[:, 1], faces_selected[:, 2]
-
-            sun_direction_unit = sun_direction / (torch.linalg.norm(sun_direction).clamp_min(1e-12))
-            dloss_dcross = 0.5 * sun_direction_unit * 1e-6  # convert to m^2
-
-            grad_edge_a = torch.cross(dloss_dcross.expand_as(selected_edge_b), selected_edge_b, dim=-1)
-            grad_edge_b = torch.cross(selected_edge_a, dloss_dcross.expand_as(selected_edge_a), dim=-1)
-
-            grad_v1 = grad_edge_a
-            grad_v2 = grad_edge_b
-            grad_v0 = -(grad_v1 + grad_v2)
-            grad_vertices.index_add_(0, idx_v1, grad_v1)
-            grad_vertices.index_add_(0, idx_v2, grad_v2)
-            grad_vertices.index_add_(0, idx_v0, grad_v0)
-
-        grad_vertices_out = grad_vertices * grad_output * 1e-6
-        return grad_vertices_out, None, None, None, None, None
+    # Combined loss: maximize quality (minimize negative) + penalize unused budget
+    loss_mm2 = -quality_loss + budget_penalty
+    return loss_mm2 * 1e-6  # convert from mm² to m²
 
 
 class SolarLossEstimator:
@@ -119,6 +101,8 @@ class SolarLossEstimator:
             "device": "cuda",
             "batch_size": 4096,
             "eps": 1e-12,
+            "sigmoid_sharpness": 10.0,
+            "budget_penalty_weight": 0.1,
         }
         cfg = {**defaults, **(config or {})}
         self.config = cfg
@@ -130,6 +114,8 @@ class SolarLossEstimator:
         self.device = cfg["device"]
         self.batch_size = int(cfg["batch_size"])
         self.eps = float(cfg["eps"])
+        self.sigmoid_sharpness = float(cfg["sigmoid_sharpness"])
+        self.budget_penalty_weight = float(cfg["budget_penalty_weight"])
 
         sun_dir = cfg["sun_dir"]
         if not isinstance(sun_dir, torch.Tensor):
@@ -176,8 +162,15 @@ class SolarLossEstimator:
             raise ValueError(f"Unknown method: {method}")
 
     def _solar_mesh_loss(self, vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
-        area_budget_tensor = torch.tensor(float(self.area_budget_mm2), device=vertices.device, dtype=vertices.dtype)
-        return SolarMeshLossFnV3.apply(vertices, faces, self.sun_dir, area_budget_tensor, float(self.eps))
+        return solar_mesh_loss_v4(
+            vertices,
+            faces,
+            self.sun_dir,
+            self.area_budget_mm2,
+            sigmoid_sharpness=self.sigmoid_sharpness,
+            budget_penalty_weight=self.budget_penalty_weight,
+            epsilon=self.eps,
+        )
 
     def extract_mesh(self, model: Callable[[torch.Tensor], torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
         if self.method == "flexicubes":
@@ -188,7 +181,7 @@ class SolarLossEstimator:
             return self.extractor.extract_mesh(model, isovalue=0.0, batch_size=self.batch_size)
         if self.method in {"mesh_sdf", "mc"}:
             assert isinstance(self.extractor, MeshSDFExtractor)
-            return self.extractor.extract_mesh(model)
+            return self.extractor.extract_mesh(model=model)
 
         raise ValueError(f"Unknown method: {self.method}")
 
@@ -204,7 +197,7 @@ class SolarLossEstimator:
             Scalar loss tensor
         """
         vertices, faces = self.extract_mesh(model)
-        loss = 0
+        loss = self._solar_mesh_loss(vertices, faces)
         return loss
 
 
