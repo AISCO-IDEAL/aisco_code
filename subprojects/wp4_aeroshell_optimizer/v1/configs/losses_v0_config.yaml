@@ -28,7 +28,7 @@ losses: # [compute: bool, weight: float, path: str]
     solar_v0_brute_force: [0, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v0_brute_force.py"]
     solar_v1_brute_force: [0, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v1_brute_force.py"]
     solar_v2: [0, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v2.py"]
-    solar_v3: [1, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3.py"]
+    solar_v3: [0.0001, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3.py"]
     null_loss_solar_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/null_loss_solar_v1.py"]
 
   total:
@@ -39,7 +39,7 @@ get_points_params: # used in eikonal and smoothness loss
   bbox_size: 10.0
 #by clemens
 solar_config:
-  wandb_logging: True
+  wandb_logging: False
   rendering: False
   rendering_frequency: 1
   area_budget: 6000000
