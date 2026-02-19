@@ -1,5 +1,5 @@
 """
-Solar loss (v4): fully differentiable soft-selection loss without custom autograd.
+Solar loss (v3): fully differentiable soft-selection loss without custom autograd.
 
 Supported methods:
   - mesh_sdf: MeshSDF (non-diff extraction + gradient projection surrogate)
@@ -21,7 +21,23 @@ from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicube
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 
 
-def solar_mesh_loss_v4(
+def _deterministic_cumsum(x: torch.Tensor) -> torch.Tensor:
+    """Deterministic cumulative sum using triangular matrix multiplication.
+
+    torch.cumsum has no deterministic CUDA kernel.  A lower-triangular
+    matmul is mathematically equivalent, fully differentiable, and
+    deterministic on all backends.
+
+    Cost: O(n²) memory and compute vs O(n) for cumsum.
+    For typical mesh face counts (< 100k) this is acceptable.
+    """
+    n = x.shape[0]
+    # Lower-triangular matrix of ones (cached on same device/dtype)
+    tri = torch.ones(n, n, device=x.device, dtype=x.dtype).tril()
+    return tri @ x
+
+
+def solar_mesh_loss_v3(
     vertices: torch.Tensor,
     faces: torch.Tensor,
     sun_direction: torch.Tensor,
@@ -46,7 +62,7 @@ def solar_mesh_loss_v4(
         Scalar loss (in m²)
     """
     if faces.numel() == 0 or vertices.numel() == 0:
-        print("Warning: Empty vertices or faces in solar_mesh_loss_v4, returning zero loss")
+        print("Warning: Empty vertices or faces in solar_mesh_loss_v3, returning zero loss")
         return torch.zeros((), device=vertices.device, dtype=vertices.dtype)
 
     # Compute face areas and normals
@@ -67,9 +83,8 @@ def solar_mesh_loss_v4(
     sorted_areas = face_area_mm2[quality_order_desc]
     sorted_quality = illumination_quality[quality_order_desc]
 
-    # Compute cumulative area (disabling determinism for this op only)
-    with torch.cuda.device(sorted_areas.device):
-        cumulative_area = torch.cumsum(sorted_areas, dim=0)
+    # Compute cumulative area (deterministic fallback for CUDA)
+    cumulative_area = _deterministic_cumsum(sorted_areas)
 
     # Create soft selection mask using sigmoid
     # mask(i) = sigmoid(sharpness * (area_budget - cumsum_area[i]))
@@ -163,7 +178,7 @@ class SolarLossEstimator:
             raise ValueError(f"Unknown method: {method}")
 
     def _solar_mesh_loss(self, vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
-        return solar_mesh_loss_v4(
+        return solar_mesh_loss_v3(
             vertices,
             faces,
             self.sun_dir,
