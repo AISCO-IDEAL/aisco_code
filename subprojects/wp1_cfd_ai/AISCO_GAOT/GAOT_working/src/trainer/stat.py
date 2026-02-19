@@ -1,4 +1,4 @@
-import os 
+import os
 import torch
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
@@ -16,11 +16,11 @@ from .base import TrainerBase
 from .utils.metric import compute_drivaernet_metric
 from .utils.plot import plot_3d_comparison_pyvista, plot_3d_comparison_matplotlib
 
-from src.data.pyg_datasets import VTKMeshDataset, EnrichedData
-from src.data.pyg_transforms import RescalePosition, RescalePositionNew, NormalizeFeatures
+from src.dataloader.pyg_datasets import VTKMeshDataset, EnrichedData
+from src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew, NormalizeFeatures
 from src.model import init_model
 from tqdm import tqdm
-from src.data.collate_functions import create_collate_function
+from src.dataloader.collate_functions import create_collate_function
 
 from src.utils.scale import rescale_new, rescale
 
@@ -63,7 +63,7 @@ class StaticTrainer3D(TrainerBase):
             self.u_mean = stats['mean'].to(self.dtype)
             self.u_std = stats['std'].to(self.dtype)
             logging.getLogger(__name__).info(f"Loaded x - Mean: {self.u_mean}, Std: {self.u_std}")
-            
+
             if 'c_mean' in stats and 'c_std' in stats:
                 self.c_mean = stats['c_mean'].to(self.dtype)
                 self.c_std = stats['c_std'].to(self.dtype)
@@ -78,17 +78,17 @@ class StaticTrainer3D(TrainerBase):
                 order_file=order_file_path,
                 dataset_config=dataset_config,
                 split='train',
-                transform=RescalePosition() 
+                transform=RescalePosition()
             )
 
-            temp_loader = PyGDataLoader(temp_train_dataset, batch_size=dataset_config.batch_size, shuffle=False, num_workers=4) 
+            temp_loader = PyGDataLoader(temp_train_dataset, batch_size=dataset_config.batch_size, shuffle=False, num_workers=4)
 
             all_x = []
             all_c = []
             has_c_field = False
-            
+
             for batch in tqdm(temp_loader, desc="Calculating Stats", disable=(getattr(self.setup_config, 'rank', 0) != 0)):
-                all_x.append(batch.x.cpu()) 
+                all_x.append(batch.x.cpu())
                 if hasattr(batch, 'c') and batch.c is not None:
                     all_c.append(batch.c.cpu())
                     has_c_field = True
@@ -112,7 +112,7 @@ class StaticTrainer3D(TrainerBase):
             logging.getLogger(__name__).info(f"Calculated x - Mean: {self.u_mean}, Std: {self.u_std}")
             logging.getLogger(__name__).info(f"Saving normalization stats to {stats_file}")
             os.makedirs(os.path.dirname(stats_file), exist_ok=True)
-            
+
             stats_to_save = {'mean': self.u_mean, 'std': self.u_std}
             if self.c_mean is not None:
                 stats_to_save['c_mean'] = self.c_mean
@@ -130,25 +130,25 @@ class StaticTrainer3D(TrainerBase):
         """
         if self.setup_config.rank != 0:
             return
-        
+
         processed_dir = os.path.join(dataset_config.base_path, dataset_config.processed_folder)
         if not os.path.isdir(processed_dir):
              raise FileNotFoundError(f"Processed directory for update not found: {processed_dir}")
-        
+
         with open(order_file_path, 'r') as f:
             all_filenames_base = [line.strip() for line in f if line.strip()]
         total_samples = len(all_filenames_base)
         train_size = dataset_config.train_size
         val_size = dataset_config.val_size
         test_size = dataset_config.test_size
-        indices = np.arange(total_samples) 
+        indices = np.arange(total_samples)
         train_indices = indices[:train_size]
         val_indices = indices[train_size : train_size + val_size]
-        test_indices = indices[-test_size:] 
+        test_indices = indices[-test_size:]
         relevant_indices = np.concatenate([train_indices, val_indices, test_indices])
         filenames_to_process = [f"{all_filenames_base[i]}.pt" for i in relevant_indices]
 
-        
+
         logging.getLogger(__name__).info(f"Rank 0: Checking/Updating {len(filenames_to_process)} '.pt' files in {processed_dir} with edge information...")
 
         latent_tokens_cpu = self.latent_tokens.cpu()
@@ -162,7 +162,7 @@ class StaticTrainer3D(TrainerBase):
                 data_old = torch.load(fpath, map_location='cpu', weights_only=False)
                 data = EnrichedData(pos = data_old.pos, x=data_old.x)
                 for attr, value in data_old:
-                     if attr not in ['pos', 'x']: 
+                     if attr not in ['pos', 'x']:
                          setattr(data, attr, value)
                 data.num_latent_nodes = num_latent_tokens
                 if dataset_config.use_rescale_new:
@@ -177,7 +177,7 @@ class StaticTrainer3D(TrainerBase):
                     scaled_radius = gno_config.gno_radius * scale
                     # --- Parse neighbor strategy ---
                     encoder_strategy, decoder_strategy = parse_neighbor_strategy(gno_config.neighbor_strategy)
-                    
+
                     # --- Encoder Edges ---
                     enc_edge_index = get_neighbor_strategy(
                         neighbor_strategy=encoder_strategy,
@@ -186,8 +186,8 @@ class StaticTrainer3D(TrainerBase):
                         latent_tokens_pos = latent_tokens_cpu,
                         batch_idx_latent = batch_idx_latent,
                         radius=scaled_radius,
-                        k_neighbors=gno_config.k_neighbors,                 
-                        is_decoder=False                
+                        k_neighbors=gno_config.k_neighbors,
+                        is_decoder=False
                     ).to(torch.int32)
                     setattr(data, f'encoder_edge_index_s{scale_idx}', enc_edge_index)
                     if enc_edge_index.numel() > 0:
@@ -198,13 +198,13 @@ class StaticTrainer3D(TrainerBase):
                     # --- Decoder Edges ---
                     dec_edge_index = get_neighbor_strategy(
                         neighbor_strategy=decoder_strategy,
-                        phys_pos = phys_pos,             
-                        batch_idx_phys = batch_idx_phys, 
-                        latent_tokens_pos = latent_tokens_cpu, 
-                        batch_idx_latent = batch_idx_latent,   
+                        phys_pos = phys_pos,
+                        batch_idx_phys = batch_idx_phys,
+                        latent_tokens_pos = latent_tokens_cpu,
+                        batch_idx_latent = batch_idx_latent,
                         radius=scaled_radius,
-                        k_neighbors=gno_config.k_neighbors, 
-                        is_decoder=True                  
+                        k_neighbors=gno_config.k_neighbors,
+                        is_decoder=True
                     ).to(torch.int32)
                     setattr(data, f'decoder_edge_index_s{scale_idx}', dec_edge_index)
                     if dec_edge_index.numel() > 0:
@@ -222,9 +222,9 @@ class StaticTrainer3D(TrainerBase):
                 if os.path.exists(fpath_tmp):
                      os.remove(fpath_tmp)
         logging.getLogger(__name__).info(f"Rank 0: Finished checking/updating '.pt' files.")
-        
+
     def init_dataset(self, dataset_config):
-        logging.getLogger(__name__).info("Initializing PyG dataset ...")  
+        logging.getLogger(__name__).info("Initializing PyG dataset ...")
         self.latent_token_size = self.model_config.args.latent_tokens
         data_root = dataset_config.base_path
         order_file_path = os.path.join(data_root, f"order_{dataset_config.processed_folder}.txt")
@@ -250,7 +250,7 @@ class StaticTrainer3D(TrainerBase):
             self.latent_tokens = rescale_new(latent_queries, (-1, 1), phy_domain)
         else:
             self.latent_tokens = rescale(latent_queries, (-1, 1))
-        
+
         logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Dataset initialization finished.")
 
         # --- Pre-computation /Update Step ---
@@ -266,20 +266,20 @@ class StaticTrainer3D(TrainerBase):
                 logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Waiting for edge pre-computation barrier...")
                 torch.distributed.barrier()
                 logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Barrier passed.")
-            
+
             self.model_config.args.magno.precompute_edges = True
             logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Set model config to use precomputed edges.")
-        # --- end Pre-computation /Update Step --- 
+        # --- end Pre-computation /Update Step ---
 
         # --- Calculate or Load Normalization Stats ---
         self._calculate_or_load_stats(dataset_config, order_file_path, data_root)
-        
+
         # --- Define Transforms ---
         if dataset_config.use_rescale_new:
             rescale_transform = RescalePositionNew(lims=(-1., 1.), phy_domain = phy_domain)
         else:
             rescale_transform = RescalePosition(lims=(-1., 1.))
-        
+
         # Apply active_variables selection to normalization stats if specified
         if dataset_config.active_variables is not None:
             mean_for_norm = self.u_mean[dataset_config.active_variables]
@@ -287,18 +287,18 @@ class StaticTrainer3D(TrainerBase):
         else:
             mean_for_norm = self.u_mean
             std_for_norm = self.u_std
-        
+
         # Prepare c normalization stats if they exist
         c_mean_for_norm = None
         c_std_for_norm = None
         if self.c_mean is not None and self.c_std is not None:
             c_mean_for_norm = self.c_mean
             c_std_for_norm = self.c_std
-        
+
         normalize_transform = NormalizeFeatures(
-            mean=mean_for_norm, 
+            mean=mean_for_norm,
             std=std_for_norm,
-            c_mean=c_mean_for_norm, 
+            c_mean=c_mean_for_norm,
             c_std=c_std_for_norm
         )
         composed_transform = Compose([rescale_transform, normalize_transform])
@@ -380,7 +380,7 @@ class StaticTrainer3D(TrainerBase):
                 shuffle=False if train_sampler is not None else dataset_config.shuffle,
                 num_workers=dataset_config.num_workers,
                 sampler=train_sampler,
-                pin_memory=False, 
+                pin_memory=False,
                 drop_last=train_sampler is not None,
                 collate_fn=collate_fn
             )
@@ -408,7 +408,7 @@ class StaticTrainer3D(TrainerBase):
         test_sampler = None
         # if self.setup_config.distributed:
         #     test_sampler = DistributedSampler(test_ds, shuffle=False, rank=self.setup_config.rank)
-        self.test_loader = DataLoader(   
+        self.test_loader = DataLoader(
             test_ds,
             batch_size=dataset_config.batch_size,
             shuffle=False,
@@ -420,33 +420,33 @@ class StaticTrainer3D(TrainerBase):
 
     def init_model(self, model_config):
         self.model = init_model(
-            input_size=self.num_input_channels, 
-            output_size=self.num_output_channels, 
+            input_size=self.num_input_channels,
+            output_size=self.num_output_channels,
             model=model_config.name,
             config=model_config.args
             )
 
         self.model.to(self.device)
-        
+
         if self.setup_config.distributed:
             self.model = torch.nn.parallel.DistributedDataParallel(
                 self.model,
                 device_ids=[self.setup_config.local_rank],
                 output_device=self.setup_config.local_rank
             )
-        
+
     def _sample_nodes_neural_field(self, batch: "pyg.data.Batch", num_input_nodes: int, num_query_nodes: int):
         """
         Sample nodes for neural field training strategy.
-        
+
         Args:
             batch: Original batch
             num_input_nodes: Number of nodes to sample for encoder input
             num_query_nodes: Number of nodes to sample for decoder query
-            
+
         Returns:
             sampled_batch: New batch with sampled nodes for encoder
-            query_pos: Query positions for decoder  
+            query_pos: Query positions for decoder
             query_batch_idx: Batch indices for query positions
             target_for_loss: Target values for loss calculation
         """
@@ -454,41 +454,41 @@ class StaticTrainer3D(TrainerBase):
         query_pos_list = []
         query_batch_idx_list = []
         target_for_loss_list = []
-        
+
         use_same_sampling = (num_input_nodes == num_query_nodes)
-        
+
         for i in range(batch.num_graphs):
             start_idx = batch.ptr[i]
             end_idx = batch.ptr[i+1]
             num_full_nodes_i = end_idx - start_idx
-            
+
             full_pos_i = batch.pos[start_idx:end_idx]
             full_x_i = batch.x[start_idx:end_idx]
-            
+
             full_c_i = None
             if hasattr(batch, 'c') and batch.c is not None:
                 full_c_i = batch.c[start_idx:end_idx]
-            
+
             n_input_sample = min(num_input_nodes, num_full_nodes_i)
             if n_input_sample <= 0:
                 continue
-                
+
             input_perm = torch.randperm(num_full_nodes_i)[:n_input_sample]
-            
+
             if use_same_sampling:
                 query_perm = input_perm
                 n_query_sample = n_input_sample
             else:
                 n_query_sample = min(num_query_nodes, num_full_nodes_i)
                 query_perm = torch.randperm(num_full_nodes_i)[:n_query_sample]
-            
+
             sampled_pos_i = full_pos_i[input_perm]
             sampled_x_i = full_x_i[input_perm]
-            
+
             data_i = Data(pos=sampled_pos_i, x=sampled_x_i)
             if full_c_i is not None:
                 data_i.c = full_c_i[input_perm]
-            
+
             essential_attrs = ['filename', 'num_latent_nodes']
             for attr in essential_attrs:
                 if hasattr(batch, attr) and getattr(batch, attr) is not None:
@@ -498,19 +498,19 @@ class StaticTrainer3D(TrainerBase):
                         attr_value = getattr(batch, attr)
                         if attr_value.dim() > 0 and len(attr_value) == batch.num_graphs:
                             setattr(data_i, attr, attr_value[i])
-            
+
             sampled_data_list.append(data_i)
-            
+
             query_pos_list.append(full_pos_i[query_perm])
             query_batch_idx_list.append(torch.full((n_query_sample,), i, dtype=torch.long))
             target_for_loss_list.append(full_x_i[query_perm])
-        
+
         sampled_batch = Batch.from_data_list(sampled_data_list)
-        
+
         query_pos = torch.cat(query_pos_list, dim=0)
         query_batch_idx = torch.cat(query_batch_idx_list, dim=0)
         target_for_loss = torch.cat(target_for_loss_list, dim=0)
-        
+
         return sampled_batch, query_pos, query_batch_idx, target_for_loss
 
     def train_step(self, batch: "pyg.data.Batch") -> torch.Tensor:
@@ -521,7 +521,7 @@ class StaticTrainer3D(TrainerBase):
             # --- Neural Field Strategy ---
             num_input_nodes = self.dataset_config.neural_field_input_nodes
             num_query_nodes = self.dataset_config.neural_field_query_nodes_train
-            
+
             sampled_batch, query_pos, query_batch_idx, target_for_loss = self._sample_nodes_neural_field(
                 batch, num_input_nodes, num_query_nodes
             )
@@ -537,7 +537,7 @@ class StaticTrainer3D(TrainerBase):
                 query_coord_pos=query_pos,
                 query_coord_batch_idx=query_batch_idx
             )
-            
+
             target = target_for_loss
         else:
             batch = batch.to(self.device)
@@ -575,53 +575,53 @@ class StaticTrainer3D(TrainerBase):
     def test(self):
         self.model.eval()
         metric_suite = self.dataset_config.metric_suite
-        
+
         all_batch_targets_denorm = []
         all_batch_preds_denorm = []
-        plot_coords, plot_gtr, plot_prd = None, None, None 
-        
+        plot_coords, plot_gtr, plot_prd = None, None, None
+
         # Inference speed measurement variables
         inference_times = []  # Store inference time for each step
         data_loading_times = []  # Store data loading time for each step
         total_samples = 0
-        
+
         logging.getLogger(__name__).info(f"Starting testing with metric suite: '{metric_suite}'")
 
         with torch.no_grad():
             for i, batch in enumerate(self.test_loader):
                 # Record data loading start time
                 data_start_time = time.time()
-                
+
                 # Move data to device
                 batch = batch.to(self.device)
                 latent_tokens_dev = self.latent_tokens.to(self.device)
-                
+
                 # GPU sync to ensure data transfer is complete
                 if self.device.type == 'cuda':
                     torch.cuda.synchronize()
-                
+
                 data_end_time = time.time()
                 data_loading_time = data_end_time - data_start_time
                 data_loading_times.append(data_loading_time)
-                
+
                 # Record inference start time
                 inference_start_time = time.time()
-                
+
                 # Model inference
                 pred_norm = self.model(batch, latent_tokens_dev)
-                
+
                 # GPU sync to ensure inference is complete
                 if self.device.type == 'cuda':
                     torch.cuda.synchronize()
-                
+
                 inference_end_time = time.time()
                 inference_time = inference_end_time - inference_start_time
                 inference_times.append(inference_time)
-                
+
                 # Count samples
                 batch_size = batch.num_graphs if hasattr(batch, 'num_graphs') else 1
                 total_samples += batch_size
-                
+
                 target_norm = batch.x
 
                 u_std_dev = self.u_std[self.dataset_config.active_variables].to(self.device)
@@ -641,7 +641,7 @@ class StaticTrainer3D(TrainerBase):
                     logging.getLogger(__name__).info(f"Extracted plotting data of {batch.filename[plotting_idx]}:"
                             f"coords shape {plot_coords.shape}, gtr shape {plot_gtr.shape}, prd shape {plot_prd.shape}"
                         )
-                
+
                 # Output progress every 10 batches (including inference speed info)
                 if (i + 1) % 10 == 0 and self.setup_config.rank == 0:
                     current_avg_inference_time = statistics.mean(inference_times[-10:])  # Average inference time of the last 10 steps
@@ -656,7 +656,7 @@ class StaticTrainer3D(TrainerBase):
             full_preds = torch.cat(all_batch_preds_denorm, dim=0)
             full_targets = torch.cat(all_batch_targets_denorm, dim=0)
             logging.getLogger(__name__).info(f"Concatenated results: preds shape {full_preds.shape}, targets shape {full_targets.shape}")
-            
+
             # --- Inference Speed Statistics Report ---
             if inference_times:
                 # Calculate inference time statistics
@@ -712,7 +712,7 @@ class StaticTrainer3D(TrainerBase):
                 logging.getLogger(__name__).warning("Warning: 'poseidon' metric suite requires adaptation for variable nodes per sample PyG structure. Skipping calculation.")
                 final_metric = float('nan')
                 self.config.datarow["relative error (direct)"] = final_metric # Store NaN
-            
+
             if metric_suite == "drivaernet":
                 if self.dataset_config.active_variables is not None:
                     self.metadata.global_mean = [self.metadata.global_mean[i] for i in self.dataset_config.active_variables]
@@ -737,7 +737,7 @@ class StaticTrainer3D(TrainerBase):
                 mae = torch.mean(torch.abs(diff)).item()
                 max_ae = torch.max(torch.abs(diff)).item()
 
-                norm_diff_l2 = torch.linalg.norm(diff.float()) 
+                norm_diff_l2 = torch.linalg.norm(diff.float())
                 norm_gtr_l2 = torch.linalg.norm(full_targets.float())
                 rel_l2 = (norm_diff_l2 / (norm_gtr_l2 + EPSILON)).item() * 100.0
 
@@ -772,7 +772,7 @@ class StaticTrainer3D(TrainerBase):
                 prd_np = plot_prd[:, channel_to_plot]
                 np.savez(self.path_config.result_path[:-4] + '.npz', coord=plot_coords, gtr=plot_gtr, prd=plot_prd)
                 plot_save_path = self.path_config.result_path
-                var_name = self.metadata.names['u'] 
+                var_name = self.metadata.names['u']
                 plot_3d_comparison_matplotlib(
                     coords=plot_coords, u_gtr=gtr_np, u_prd=prd_np,
                     save_path=plot_save_path,
@@ -785,4 +785,4 @@ class StaticTrainer3D(TrainerBase):
                 logging.getLogger(__name__).error(f"Error during 3D plotting of first test sample: {plot_err}")
 
         elif self.setup_config.distributed:
-             pass 
+             pass

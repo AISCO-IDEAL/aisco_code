@@ -12,11 +12,11 @@ import torch.distributed as dist
 from .optimizers import AdamOptimizer, AdamWOptimizer
 from .utils.setup import manual_seed, load_ckpt, save_ckpt
 from .utils.default_set import SetUpConfig, ModelConfig, DatasetConfig, OptimizerConfig, PathConfig, merge_config
-from ..data.metadata import DATASET_METADATA
+from ..dataloader.metadata import DATASET_METADATA
 
 class TrainerBase:
     """
-    Base class for all trainers, define the init_dataset, initi_model, 
+    Base class for all trainers, define the init_dataset, initi_model,
     init_optimizer, train_step, validate, test for coreresponding trainers.
 
     Attributes:
@@ -30,7 +30,7 @@ class TrainerBase:
         self.dataset_config = merge_config(DatasetConfig, self.config.dataset)
         self.optimizer_config = merge_config(OptimizerConfig, self.config.optimizer)
         self.path_config = merge_config(PathConfig, self.config.path)
-        
+
         self.metadata = DATASET_METADATA[self.dataset_config.metaname]
 
         # initialization the distributed learning environment
@@ -42,7 +42,7 @@ class TrainerBase:
         else:
             self.device = torch.device(self.setup_config.device)
             logging.getLogger(__name__).info(f'Using device {self.setup_config.device}')
-        
+
         manual_seed(self.setup_config.seed + self.setup_config.rank)
 
         self._init_wandb()
@@ -54,7 +54,7 @@ class TrainerBase:
         else:
             raise ValueError(f"Invalid dtype: {self.setup_config.dtype}")
         self.loss_fn = nn.MSELoss()
-        
+
         self.init_dataset(self.dataset_config)
         self.init_model(self.model_config)
         self.init_optimizer(self.optimizer_config)
@@ -73,7 +73,7 @@ class TrainerBase:
 # ------------ init ------------ #
     def init_dataset(self, dataset_config):
         raise NotImplementedError
-    
+
     def init_model(self, model_config):
         raise NotImplementedError
 
@@ -86,19 +86,19 @@ class TrainerBase:
 
     def init_distributed_mode(self):
         logger = logging.getLogger(__name__)
-        
+
         # --- START: MODIFICATIONS FOR SLURM ---
         # if 'SLURM_PROCID' in os.environ:
         #     # Running on Slurm, retrieve settings from Slurm environment variables
         #     self.setup_config.rank = int(os.environ['SLURM_PROCID'])
         #     self.setup_config.world_size = int(os.environ['SLURM_NPROCS'])
         #     self.setup_config.local_rank = int(os.environ['SLURM_LOCALID'])
-            
+
         #     # PyTorch's init_process_group uses these standard variables, so we set them.
         #     os.environ['RANK'] = str(self.setup_config.rank)
         #     os.environ['WORLD_SIZE'] = str(self.setup_config.world_size)
         #     os.environ['LOCAL_RANK'] = str(self.setup_config.local_rank)
-            
+
         #     # The master address and port are needed for synchronization.
         #     # srun typically handles this, but it's robust to set it explicitly.
         #     # The master is always rank 0.
@@ -156,12 +156,12 @@ class TrainerBase:
         """Initialize Weights & Biases run if enabled in setup config."""
         self.wandb_run = None
         logger = logging.getLogger(__name__)
-        
+
         try:
             wandb_enabled = getattr(self.setup_config, 'wandb', False)
             current_rank = self.setup_config.rank
             logger.info(f'Rank {current_rank}: wandb_enabled={wandb_enabled}, checking if should init wandb (only rank 0 should)')
-            
+
             if wandb_enabled and current_rank == 0:
                 import os
                 import wandb
@@ -209,13 +209,13 @@ class TrainerBase:
         artifact_name = self.setup_config.wandb_run_name
         artifact = wandb.Artifact(
             name=artifact_name,
-            type="model", 
+            type="model",
             description=f"Model checkpoint at epoch {epoch}"
         )
-        
-        
+
+
         artifact.add_file(self.path_config.ckpt_path, name=os.path.basename(self.path_config.ckpt_path))
-            
+
             # Add metadata
         artifact.metadata = {
             "epoch": epoch,
@@ -225,11 +225,11 @@ class TrainerBase:
             "model_config": self._to_serializable_config()["model"],
             "dataset_config": self._to_serializable_config().get("dataset", {}),
         }
-            
+
         aliases = ["latest"]
         if is_best:
             aliases.append("best")
-                
+
         wandb.log_artifact(artifact, aliases=aliases)
         logging.getLogger(__name__).info(f"Saved checkpoint artifact: {artifact_name}:{aliases}")
 
@@ -239,16 +239,16 @@ class TrainerBase:
         if not os.path.exists(artifact_dir):
             logging.getLogger(__name__).info(f"Didn't find artifact in local, downloading artifact from wandb: {artifact_name}")
             artifact_dir = artifact.download(root=artifact_dir)
-        
+
         ckpt_files = [f for f in os.listdir(artifact_dir) if f.endswith('.pt')]
         if len(ckpt_files) > 1:
             logging.getLogger(__name__).warning(f"Multiple .pt files found, using first one: {ckpt_files[0]}")
-        
+
         ckpt_path = os.path.join(artifact_dir, ckpt_files[0])
         self.load_ckpt(ckpt_path)
 
         logging.getLogger(__name__).info(f"Successfully loaded model from artifact: {artifact_name}")
-        
+
         return artifact.metadata
 
     def _finish_wandb(self) -> None:
@@ -259,11 +259,11 @@ class TrainerBase:
             wandb.finish()
         except Exception as e:
             logging.getLogger(__name__).warning(f"Failed to finalize W&B run: {e}")
-    
+
 # ------------ utils ------------ #
     def to(self, device):
         self.model.to(device)
-    
+
     def type(self, dtype):
         # TODO: check if this is necessary, dataloader does not have type method
         self.model.type(dtype)
@@ -277,7 +277,7 @@ class TrainerBase:
         load_ckpt(path, model=self.model)
 
         return self
-    
+
     def save_ckpt(self, path: Optional[str] = None):
         """Save checkpoint to the config.ckpt_path"""
         if path is None:
@@ -298,7 +298,7 @@ class TrainerBase:
         x_batch, y_batch = x_batch.squeeze(1), y_batch.squeeze(1)
         pred = self.model(self.rigraph, x_batch)
         return self.loss_fn(pred, y_batch)
-    
+
     def validate(self, loader):
         self.model.eval()
         total_loss = 0.0
@@ -317,7 +317,7 @@ class TrainerBase:
 
         result = self.optimizer.optimize(self)
         self.config.datarow['training time'] = result['time']
-    
+
 
         if len(result['train']['loss']) == 0:
             if self.setup_config.rank == 0:
@@ -327,15 +327,15 @@ class TrainerBase:
                 "epochs": result['train']['epoch'],
                 "losses": result['train']['loss']
             }
-        
+
             if "valid" in result:
                 kwargs['val_epochs'] = result['valid']['epoch']
                 kwargs['val_losses'] = result['valid']['loss']
-            
+
             if "best" in result:
                 kwargs['best_epoch'] = result['best']['epoch']
                 kwargs['best_loss'] = result['best']['loss']
-            
+
             if self.setup_config.rank == 0:
                 self.plot_losses(**kwargs)
                 self.log_metrics({
@@ -346,7 +346,7 @@ class TrainerBase:
                 self.save_ckpt()
                 if self.setup_config.wandb:
                     self.save_checkpoint_artifact(
-                        epoch=result['best']['epoch'], 
+                        epoch=result['best']['epoch'],
                         train_loss=result['best']['loss'],
                         val_loss=result['best']['loss'],
                         is_best=True
@@ -357,14 +357,14 @@ class TrainerBase:
             self._finish_wandb()
 
 # ------------ plot ------------ #
-    def plot_losses(self, 
+    def plot_losses(self,
                     epochs,
-                    losses, 
+                    losses,
                     val_epochs = None,
                     val_losses = None,
                     best_epoch = None,
                     best_loss  = None):
-        
+
         if val_losses is None:
             # plot only train loss
             fig, ax = plt.subplots(figsize=(8, 6))
@@ -382,7 +382,7 @@ class TrainerBase:
         else:
             # also plot valid loss
             fig, ax = plt.subplots(1, 2, figsize=(12, 6))
-            
+
             ax[0].plot(epochs, losses)
             ax[0].scatter([best_epoch],[best_loss], c='r', marker='o', label="best loss")
             ax[0].set_xlabel('Epoch')
@@ -412,8 +412,6 @@ class TrainerBase:
 # ------------ test ------------ #
     def variance_test(self):
         raise NotImplementedError
-    
+
     def test(self):
         raise NotImplementedError
-    
-        
