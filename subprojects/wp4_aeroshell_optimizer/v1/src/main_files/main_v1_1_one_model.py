@@ -33,8 +33,6 @@ def main(verbose: bool = True) -> None:
     wandb_config = None # Store wandb config
     if general_config["wandb_general"].get("use_wandb", False):
         wandb.init(
-            project=general_config["wandb_general"].get("project_name", "Aeroshell Optimiser"),
-            entity=general_config["wandb_general"].get("entity_name", "aisco"),
             config=general_config,
         )
         wandb_config = wandb.config
@@ -118,10 +116,6 @@ def main(verbose: bool = True) -> None:
         run = wandb.init(
             # Set the wandb log directory
             dir="wp4_aeroshell_optimizer/data/wandb_logs",
-            # Set the wandb entity where your project will be logged (generally your team name).
-            entity= general_config["wandb_general"].get("entity_name", "aisco"),
-            # Set the wandb project where this run will be logged.
-            project=general_config["wandb_general"].get("project_name", "Aeroshell Optimiser with ALM and Sweeping"),
             # Track hyperparameters and run metadata.
             config=general_config,
         )
