@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=Main_test
-#SBATCH --time=01:00:00                   # Adjust time as needed
+#SBATCH --time=00:15:00                   # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
@@ -76,7 +76,7 @@ cd /cluster/home/$USERNAME/AISCO_code/
 
 # --- SWEEP CONFIGURATION ---
 # Replace this with your actual SWEEP ID from 'wandb sweep ...'
-SWEEP_ID="aisco/50_Meshes_CFD_AI/xsjjf8xi"
+SWEEP_ID="aisco/50_Meshes_CFD_AI/c0mk208z"
 # ---------------------------
 
 # Launch multiple agents per GPU
