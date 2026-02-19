@@ -1,9 +1,10 @@
-import torch
-import os
 import glob
-from torch_geometric.data import Dataset, Data
-from tqdm import tqdm
+import os
+
 import numpy as np
+import torch
+from torch_geometric.data import Data, Dataset
+from tqdm import tqdm
 
 
 class EnrichedData(Data):
@@ -66,12 +67,12 @@ class VTKMeshDataset(Dataset):
     def processed_dir(self) -> str:
         """Returns the path to the directory containing processed pyg files."""
         return os.path.join(self.root, self.dataset_config.processed_folder)
-        
+
     @property
     def processed_file_names(self):
         # Check if processed files exist based on order_file
         # This is used by PyG to check if processing is needed
-        with open(self.order_file, 'r') as f:
+        with open(self.order_file) as f:
             order_list = [line.strip() for line in f if line.strip()]
         # Use max_num from config if needed
         # max_num = getattr(self.dataset_config, 'max_num', None) # Example if max_num is added
@@ -90,21 +91,20 @@ class VTKMeshDataset(Dataset):
         print("Processing raw data (should ideally be done by external script)...")
         # Placeholder: Add the conversion logic from your script here if needed.
         # Ensure it saves files named according to processed_file_names in self.processed_dir
-        pass
 
     def _load_split_indices(self):
-        with open(self.order_file, 'r') as f:
+        with open(self.order_file) as f:
             all_filenames = [line.strip() for line in f if line.strip()]
 
         total_samples = len(all_filenames)
         train_size = self.dataset_config.train_size
         val_size = self.dataset_config.val_size
-        test_size = self.dataset_config.test_size 
+        test_size = self.dataset_config.test_size
 
         # Generate indices based on dataset size and split
         indices = np.arange(total_samples)
         if getattr(self.dataset_config, 'rand_dataset', False):
-             rng = np.random.default_rng(seed=42) 
+             rng = np.random.default_rng(seed=42)
              rng.shuffle(indices)
 
         if self.split == 'train':
@@ -112,7 +112,7 @@ class VTKMeshDataset(Dataset):
         elif self.split == 'val':
             split_indices = indices[train_size : train_size + val_size]
         elif self.split == 'test':
-            split_indices = indices[-test_size :] 
+            split_indices = indices[-test_size :]
         else:
             raise ValueError(f"Invalid split: {self.split}")
 

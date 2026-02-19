@@ -3,14 +3,14 @@ Unified collate functions with online graph building.
 Handles batch processing and PyG-style format conversion with on-demand graph construction.
 """
 import logging
-import torch
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
-from typing import List, Dict, Any, Optional, Tuple
+import torch
 from torch_geometric.data import Batch
 
-from src.model.layers.magno import get_neighbor_strategy, parse_neighbor_strategy
 from src.dataloader.pyg_datasets import EnrichedData, VTKMeshDataset
-
+from src.model.layers.magno import get_neighbor_strategy, parse_neighbor_strategy
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class UnifiedCollateFunction:
     def __init__(self,
                  coord_dim: int = 2,
                  magno_radius: float = 0.033,
-                 magno_scales: List[float] = [1.0],
+                 magno_scales: list[float] = [1.0],
                  latent_tokens: torch.Tensor = None,
                  neighbor_search_method: str = "bidirectional",
                  k_neighbors: int = 1,
@@ -48,8 +48,8 @@ class UnifiedCollateFunction:
 
         self.latent_queries = latent_tokens
 
-    def __call__(self, batch: List[VTKMeshDataset]) -> Batch:
-        f"""
+    def __call__(self, batch: list[VTKMeshDataset]) -> Batch:
+        """
         Collate function that processes a batch of samples.
 
         Args:
@@ -58,7 +58,7 @@ class UnifiedCollateFunction:
         Returns:
             Batch of samples
         """
-        data_list: List[EnrichedData] = []
+        data_list: list[EnrichedData] = []
         for data in batch:
             if not isinstance(data, EnrichedData):
                 enriched = EnrichedData(pos=data.pos, x=data.x)
@@ -146,7 +146,7 @@ class UnifiedCollateFunction:
 
 def create_collate_function(coord_dim: int = 2,
                            magno_radius: float = 0.033,
-                           magno_scales: List[float] = [1.0],
+                           magno_scales: list[float] = [1.0],
                            latent_tokens: torch.Tensor = None,
                            neighbor_search_method: str = "bidirectional",
                            k_neighbors: int = 1,

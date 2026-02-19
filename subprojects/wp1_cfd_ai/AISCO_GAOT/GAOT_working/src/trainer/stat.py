@@ -1,28 +1,27 @@
+import logging
 import os
-import torch
-from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data import DataLoader
-from torch_geometric.loader import DataLoader as PyGDataLoader
-from torch_geometric.transforms import Compose
-from torch_geometric.data import Data, Batch
-import torch_geometric as pyg
+import statistics
+import time
 
 import numpy as np
-import logging
-import time
-import statistics
+import torch
+import torch_geometric as pyg
+from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
+from torch_geometric.data import Batch, Data
+from torch_geometric.loader import DataLoader as PyGDataLoader
+from torch_geometric.transforms import Compose
+from tqdm import tqdm
+
+from src.dataloader.collate_functions import create_collate_function
+from src.dataloader.pyg_datasets import EnrichedData, VTKMeshDataset
+from src.dataloader.pyg_transforms import NormalizeFeatures, RescalePosition, RescalePositionNew
+from src.model import init_model
+from src.utils.scale import rescale, rescale_new
 
 from .base import TrainerBase
 from .utils.metric import compute_drivaernet_metric
-from .utils.plot import plot_3d_comparison_pyvista, plot_3d_comparison_matplotlib
-
-from src.dataloader.pyg_datasets import VTKMeshDataset, EnrichedData
-from src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew, NormalizeFeatures
-from src.model import init_model
-from tqdm import tqdm
-from src.dataloader.collate_functions import create_collate_function
-
-from src.utils.scale import rescale_new, rescale
+from .utils.plot import plot_3d_comparison_matplotlib, plot_3d_comparison_pyvista
 
 EPSILON = 1e-10
 
@@ -135,7 +134,7 @@ class StaticTrainer3D(TrainerBase):
         if not os.path.isdir(processed_dir):
              raise FileNotFoundError(f"Processed directory for update not found: {processed_dir}")
 
-        with open(order_file_path, 'r') as f:
+        with open(order_file_path) as f:
             all_filenames_base = [line.strip() for line in f if line.strip()]
         total_samples = len(all_filenames_base)
         train_size = dataset_config.train_size
@@ -221,7 +220,7 @@ class StaticTrainer3D(TrainerBase):
                 logging.getLogger(__name__).error(f"Error processing file {fpath}: {e}")
                 if os.path.exists(fpath_tmp):
                      os.remove(fpath_tmp)
-        logging.getLogger(__name__).info(f"Rank 0: Finished checking/updating '.pt' files.")
+        logging.getLogger(__name__).info("Rank 0: Finished checking/updating '.pt' files.")
 
     def init_dataset(self, dataset_config):
         logging.getLogger(__name__).info("Initializing PyG dataset ...")
@@ -723,7 +722,7 @@ class StaticTrainer3D(TrainerBase):
                     metadata =  self.metadata
                 )
 
-                logging.getLogger(__name__).info(f"--- Final Metrics (Drivaernet Suite - Full Dataset) ---")
+                logging.getLogger(__name__).info("--- Final Metrics (Drivaernet Suite - Full Dataset) ---")
                 logging.getLogger(__name__).info(f"MSE (x10^-2):       {agg_metrics['MSE'] * 100:.4f}")
                 logging.getLogger(__name__).info(f"MAE (x10^-1):       {agg_metrics['MAE'] * 10:.4f}")
                 logging.getLogger(__name__).info(f"RMSE:               {agg_metrics['RMSE']:.4f}")
@@ -757,7 +756,7 @@ class StaticTrainer3D(TrainerBase):
                 self.config.datarow["Rel L2 Error (%)"] = final_metrics_dict['Rel L2 Error (%)']
                 self.config.datarow["Rel L1 Error (%)"] = final_metrics_dict['Rel L1 Error (%)']
 
-                logging.getLogger(__name__).info(f"--- Final Metrics (General Suite - Full Dataset) ---")
+                logging.getLogger(__name__).info("--- Final Metrics (General Suite - Full Dataset) ---")
                 logging.getLogger(__name__).info(f"MSE (x10^-2):       {final_metrics_dict['MSE'] * 100:.4f}")
                 logging.getLogger(__name__).info(f"MAE (x10^-1):       {final_metrics_dict['MAE'] * 10:.4f}")
                 logging.getLogger(__name__).info(f"Max AE:             {final_metrics_dict['Max AE']:.4f}")

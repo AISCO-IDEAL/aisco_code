@@ -1,18 +1,20 @@
+import dataclasses
 import logging
 import os
-import dataclasses
-from typing import Dict, Any, Optional
-import wandb
-import torch.nn as nn
-import torch
-import numpy as np
-import matplotlib.pyplot as plt
-import torch.distributed as dist
+from typing import Any, Dict, Optional
 
-from .optimizers import AdamOptimizer, AdamWOptimizer
-from .utils.setup import manual_seed, load_ckpt, save_ckpt
-from .utils.default_set import SetUpConfig, ModelConfig, DatasetConfig, OptimizerConfig, PathConfig, merge_config
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.distributed as dist
+import wandb
+from torch import nn
+
 from ..dataloader.metadata import DATASET_METADATA
+from .optimizers import AdamOptimizer, AdamWOptimizer
+from .utils.default_set import DatasetConfig, ModelConfig, OptimizerConfig, PathConfig, SetUpConfig, merge_config
+from .utils.setup import load_ckpt, manual_seed, save_ckpt
+
 
 class TrainerBase:
     """
@@ -132,7 +134,7 @@ class TrainerBase:
 
 # ------------ wandb ------------ #
 
-    def _to_serializable_config(self) -> Dict[str, Any]:
+    def _to_serializable_config(self) -> dict[str, Any]:
         """Convert config objects to a nested dict suitable for logging."""
         def to_dict(obj):
             if dataclasses.is_dataclass(obj):
@@ -141,7 +143,7 @@ class TrainerBase:
                 return {k: to_dict(v) for k, v in obj.items()}
             return obj
 
-        payload: Dict[str, Any] = {}
+        payload: dict[str, Any] = {}
         payload['setup'] = to_dict(self.setup_config)
         payload['model'] = to_dict(self.model_config)
         payload['optimizer'] = {
@@ -164,6 +166,7 @@ class TrainerBase:
 
             if wandb_enabled and current_rank == 0:
                 import os
+
                 import wandb
                 logger.info(f'Rank {current_rank}: Initializing wandb...')
                 # Respect mode: 'online' | 'offline' | 'disabled'
@@ -190,7 +193,7 @@ class TrainerBase:
             logging.getLogger(__name__).warning(f"Failed to initialize Weights & Biases: {e}")
             self.wandb_run = None
 
-    def log_metrics(self, metrics: Dict[str, Any], step: Optional[int] = None) -> None:
+    def log_metrics(self, metrics: dict[str, Any], step: Optional[int] = None) -> None:
         """Log metrics to W&B if enabled."""
         if getattr(self, 'wandb_run', None) is None:
             return
@@ -233,7 +236,7 @@ class TrainerBase:
         wandb.log_artifact(artifact, aliases=aliases)
         logging.getLogger(__name__).info(f"Saved checkpoint artifact: {artifact_name}:{aliases}")
 
-    def load_from_artifact(self, artifact_name: str) -> Optional[Dict[str, Any]]:
+    def load_from_artifact(self, artifact_name: str) -> Optional[dict[str, Any]]:
         artifact = wandb.use_artifact(artifact_name)
         artifact_dir = os.path.join(".artifacts", artifact.name)
         if not os.path.exists(artifact_dir):

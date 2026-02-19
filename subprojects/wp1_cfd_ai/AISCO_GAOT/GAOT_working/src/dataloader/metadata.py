@@ -1,8 +1,10 @@
 """Utility functions for reading the datasets."""
+from collections.abc import Sequence
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union, Sequence, NamedTuple, Literal
-from copy import deepcopy
+from typing import Literal, NamedTuple, Union
+
 
 @dataclass
 class Metadata:
@@ -160,4 +162,3 @@ DATASET_METADATA = {
     global_std=[0.3560, 2.0773, 1.3518, 1.1098],
   )
 }
-
