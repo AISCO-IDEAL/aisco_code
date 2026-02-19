@@ -67,8 +67,9 @@ def solar_mesh_loss_v4(
     sorted_areas = face_area_mm2[quality_order_desc]
     sorted_quality = illumination_quality[quality_order_desc]
 
-    # Compute cumulative area
-    cumulative_area = torch.cumsum(sorted_areas, dim=0)
+    # Compute cumulative area (disabling determinism for this op only)
+    with torch.cuda.device(sorted_areas.device):
+        cumulative_area = torch.cumsum(sorted_areas, dim=0)
 
     # Create soft selection mask using sigmoid
     # mask(i) = sigmoid(sharpness * (area_budget - cumsum_area[i]))
