@@ -195,8 +195,7 @@ class TotalLoss:
                 }
                 wandb.log(alm_params, step=epoch_name)
 
-
-            if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
+            if self._use_renderer and (self._renderer_manager is not None):
                 # Use optimized non-differentiable marching cubes extractor
                 verts, faces = self._mesh_extractor.extract_mesh(
                     model=model,
@@ -206,48 +205,55 @@ class TotalLoss:
                 if load_config(v="v1", cfg_name="logging.yaml")["mesh_statistics"]:
                     # If solar logging is enabled, we log the rendered image of the current mesh to WandB using the VisualisationManager and its rendering modes
                     self._mesh_statistics.log_basic_mesh_stats(verts, faces, epoch_name)  # Log basic mesh stats to wandb
+                    self._mesh_statistics.log_solar_area_stats(verts, faces, epoch_name)  # Log solar area related stats to wandb                if load_config(v="v1", cfg_name="logging.yaml")["mesh_statistics"]:
+                    # If solar logging is enabled, we log the rendered image of the current mesh to WandB using the VisualisationManager and its rendering modes
+                    self._mesh_statistics.log_basic_mesh_stats(verts, faces, epoch_name)  # Log basic mesh stats to wandb
                     self._mesh_statistics.log_solar_area_stats(verts, faces, epoch_name)  # Log solar area related stats to wandb
-                if self._use_neural_renderer and self._renderer_manager is not None:
-                    # Use shared Manager to update all active rendering modes
-                    try:
-                        self._renderer_manager.update(
-                            {
-                                "model": model,
-                                "iteration": epoch_name,
-                                "loss": weighted_total_loss.item(),
-                                "vertices": verts,
-                                "faces": faces,
-                            }
-                        )
-                    except Exception as e:
-                        print(f"Renderer wrapper update failed: {e}")
 
-                else:
-                    # Use Clemens' CADVisualizer for rendering and logging
-                    # Convert to numpy if tensors
-                    if torch.is_tensor(verts):
-                        verts = verts.detach().cpu().numpy()
-                    if torch.is_tensor(faces):
-                        faces = faces.detach().cpu().numpy()
+                if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
+                    if self._use_neural_renderer and self._renderer_manager is not None:
+                        # Use shared Manager to update all active rendering modes
+                        try:
+                            self._renderer_manager.update(
+                                {
+                                    "model": model,
+                                    "iteration": epoch_name,
+                                    "loss": weighted_total_loss.item(),
+                                    "vertices": verts,
+                                    "faces": faces,
+                                }
+                            )
+                        except Exception as e:
+                            print(f"Renderer wrapper update failed: {e}")
 
-                    # Create trimesh object and export to STL
-                    mesh = trimesh.Trimesh(vertices=verts, faces=faces)
-                    stl_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/mesh_epoch_{epoch_name}.stl")
-                    stl_path.parent.mkdir(parents=True, exist_ok=True)
-                    mesh.export(str(stl_path))
+                    else:
+                        # Use Clemens' CADVisualizer for rendering and logging
+                        # Convert to numpy if tensors
+                        if torch.is_tensor(verts):
+                            verts = verts.detach().cpu().numpy()
+                        if torch.is_tensor(faces):
+                            faces = faces.detach().cpu().numpy()
 
-                    # Visualize the mesh using CADVisualizer
-                    image_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/render_epoch_{epoch_name}.png")
-                    visualizer = CADVisualizer(stl_path=str(stl_path), out_image_path=str(image_path))
-                    visualizer.render_until_blue_detected()
+                        # Create trimesh object and export to STL
+                        mesh = trimesh.Trimesh(vertices=verts, faces=faces)
+                        stl_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/mesh_epoch_{epoch_name}.stl")
+                        stl_path.parent.mkdir(parents=True, exist_ok=True)
+                        mesh.export(str(stl_path))
 
-                    # Delete local files after logging to WandB
-                    if stl_path.exists():
-                        wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name)
-                        stl_path.unlink()
-                    if image_path.exists():
-                        wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
-                        image_path.unlink()
+                        # Visualize the mesh using CADVisualizer
+                        image_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/render_epoch_{epoch_name}.png")
+                        visualizer = CADVisualizer(stl_path=str(stl_path), out_image_path=str(image_path))
+                        visualizer.render_until_blue_detected()
+
+                        # Delete local files after logging to WandB
+                        if stl_path.exists():
+                            wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name)
+                            stl_path.unlink()
+                        if image_path.exists():
+                            wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
+                            image_path.unlink()
+            else:
+                print(f"Skipping rendering at epoch {epoch_name} due to rendering frequency setting.")
         # logg the gradients of each loss component
         for loss_instance in self.__active_losses.values():
             loss_instance.log_gradients(epoch_name)
