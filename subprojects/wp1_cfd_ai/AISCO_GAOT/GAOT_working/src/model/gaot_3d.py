@@ -79,7 +79,7 @@ class GAOT3D(nn.Module):
 
     def init_decoder(self, node_latent_size: int, output_size: int) -> "DecoderSimplified":
         hidden_size = max(node_latent_size // 2, 1)
-        return DecoderSimplified(sizes=[node_latent_size, hidden_size, output_size])
+        return DecoderSimplified(sizes=[node_latent_size, hidden_size, 1])
 
     def _get_patch_positions(self):
         """
