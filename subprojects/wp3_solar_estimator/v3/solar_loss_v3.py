@@ -192,7 +192,7 @@ class SolarLossEstimator:
     def extract_mesh(self, model: Callable[[torch.Tensor], torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
         if self.method == "flexicubes":
             assert isinstance(self.extractor, FCExtractor)
-            return self.extractor.extract_mesh(model, batch_size=self.batch_size, deterministic=False)
+            return self.extractor.extract_mesh(model, batch_size=self.batch_size)
         if self.method in {"diso_mc", "diso_dmc"}:
             assert isinstance(self.extractor, DISOExtractor)
             return self.extractor.extract_mesh(model, isovalue=0.0, batch_size=self.batch_size)
