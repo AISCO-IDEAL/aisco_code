@@ -289,11 +289,14 @@ class GAOT3D(nn.Module):
         # Input shape: [B, M, C_lifted]
         rndata_proc = self.process(rndata=rndata, condition=condition)  # Output shape: [B, M, C_lifted]
 
-        # Flatten processor output for Decoder: [B, M, C_lifted] -> [TotalLatentNodes, C_lifted]
-        rndata_proc_flat = rndata_proc.view(-1, self.node_latent_size)  # Use self.node_latent_size
+        # 🟢 NEW: Global Average Pooling.
+        # Average across the 131,072 tokens (dim=1) to get one vector per car.
+        # Shape goes from [BatchSize, NumTokens, C_lifted] -> [BatchSize, C_lifted]
+        pooled_features = rndata_proc.mean(dim=1)
 
-        # Decode: Map regional nodes back to physical nodes
-        output = self.decoder(rndata_flat=rndata_proc_flat)
+        # Decode: Pass the single pooled vector to the Simplified Decoder
+        # Output shape will be exactly [BatchSize, 1]
+        output = self.decoder(rndata_flat=pooled_features)
 
         return output
 

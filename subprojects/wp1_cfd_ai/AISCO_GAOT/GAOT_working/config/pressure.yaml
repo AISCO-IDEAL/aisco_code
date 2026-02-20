@@ -70,10 +70,10 @@ dataset:
     metaname: "incompressible_fluids/drivaernet_pressure"
     base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer"
     processed_folder: ""
-    force_recompute_stats: false
-    train_size: 5817
-    val_size: 1148
-    test_size: 1154
+    force_recompute_stats: true
+    train_size: 20
+    val_size: 5
+    test_size: 10
     batch_size: 1
     num_workers: 4
     shuffle: true
@@ -85,14 +85,14 @@ optimizer:
     args:
         lr: 8e-4
         weight_decay: 1e-05
-        epoch: 50
+        epoch: 3
         loss_scale: 1.0
         eval_every_eps: 2
         scheduler: "mix"
         max_lr: 1e-3
         min_lr: 5e-4
         final_lr: 1e-4
-        save_every_epochs: 100
+        save_every_epochs: 1
 
 path:
     ckpt_path: ".ckpt/drivaernet/gaot/pressure.pt"

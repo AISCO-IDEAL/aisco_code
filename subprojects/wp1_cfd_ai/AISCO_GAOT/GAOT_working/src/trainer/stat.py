@@ -163,9 +163,9 @@ class StaticTrainer3D(TrainerBase):
             fpath_tmp = fpath + ".tmp"
             try:
                 data_old = torch.load(fpath, map_location="cpu", weights_only=False)
-                data = EnrichedData(pos=data_old.pos, x=data_old.x)
+                data = EnrichedData(pos=data_old.pos, x=data_old.y)
                 for attr, value in data_old:
-                    if attr not in ["pos", "x"]:
+                    if attr not in ["pos", "y"]:
                         setattr(data, attr, value)
                 data.num_latent_nodes = num_latent_tokens
                 if dataset_config.use_rescale_new:
