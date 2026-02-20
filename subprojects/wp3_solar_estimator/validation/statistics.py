@@ -85,9 +85,9 @@ class MeshStatistics:
         total_projected_area = (solar_dot_prods[pos_mask] * cost[pos_mask]).sum()
 
         multi_log_in_one("Solar Area Stats", {
-            "Total Surface Area": total_surface_area,
-            "Selected Surface Area": selected_solar_area,
-            "Selected Projected Area": solar_performance_selected,
-            "Total Projected Area": total_projected_area,
-            "Area Budget": self.area_budget
+            "Total Surface Area": total_surface_area/10e6,
+            "Selected Surface Area": selected_solar_area/10e6,
+            "Selected Projected Area": solar_performance_selected/10e6,
+            "Total Projected Area": total_projected_area/10e6,
+            "Area Budget": self.area_budget/10e6
         }, step=epoch)

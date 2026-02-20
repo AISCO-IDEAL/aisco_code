@@ -47,8 +47,8 @@ solar_config:
   solar_direction_solid_angle: [0.785398, 3.141592]
 #by alex
 main_solar_config:
-  solar_angle: [0.5,0.0,-0.5]
-  area_budget: 2500000 #in mm^3
+  solar_angle: [0.5,0.0,0.5]
+  area_budget: 4000000 #in mm^3
 bb_config:
   pointgrid_params:
     dx: 250
