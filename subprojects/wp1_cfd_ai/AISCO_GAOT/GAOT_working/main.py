@@ -223,3 +223,4 @@ def run_arg_files(arg_files, is_debug, num_works_per_device=3):
 if __name__ == '__main__':
     config = parse_files()
     run_arg_files(config.arg_files, config.debug, config.num_works_per_device)
+    print("Finished")

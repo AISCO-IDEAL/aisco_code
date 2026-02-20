@@ -72,9 +72,10 @@ export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
 cd /cluster/home/$USERNAME/AISCO_code/
 #python -m src.main
 
-python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/main.py\
-    --save_model \
-    --problem_id="AISCO_WP4_Test1"  2>&1
+python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/main.py \
+    -c subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/pressure.yaml \
+    2>&1
+    
 #------------------------------------------------------------------------------
 # Print job end information
 #------------------------------------------------------------------------------
