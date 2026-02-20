@@ -225,7 +225,7 @@ class StaticTrainer3D(TrainerBase):
     def init_dataset(self, dataset_config):
         logging.getLogger(__name__).info("Initializing PyG dataset ...")
         self.latent_token_size = self.model_config.args.latent_tokens
-        data_root = dataset_config.base_path
+        data_root = dataset_config.base_path + "processed_drivaer"
         order_file_path = os.path.join(data_root, f"order_{dataset_config.processed_folder}.txt")
         processed_data_path = os.path.join(data_root, dataset_config.processed_folder)
 
