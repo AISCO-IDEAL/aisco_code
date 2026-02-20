@@ -21,21 +21,21 @@ from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicube
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 
 
-def _deterministic_cumsum(x: torch.Tensor) -> torch.Tensor:
+def _cumsum(x: torch.Tensor) -> torch.Tensor:
     """
-    Deterministic-safe cumsum.
+    Manual cumulative sum implementation that is deterministic
 
-    If CUDA cumsum fails under torch.use_deterministic_algorithms(True),
-    fall back to CPU cumsum and move result back to original device.
+    Args:
+        x: (N,) input tensor
+    Returns:
+        (N,) cumulative sum tensor where cumsum[i] = x[0] + x[1] + ... + x[i]
     """
-    try:
-        return torch.cumsum(x, dim=0)
-    except RuntimeError as e:
-        msg = str(e)
-        if "does not have a deterministic implementation" not in msg:
-            raise
-        # deterministic fallback
-        return torch.cumsum(x.cpu(), dim=0).to(device=x.device, dtype=x.dtype)
+    cumsum = torch.zeros_like(x)
+    running_sum = torch.zeros((), device=x.device, dtype=x.dtype)
+    for i in range(x.shape[0]):
+        running_sum += x[i]
+        cumsum[i] = running_sum
+    return cumsum
 
 
 def solar_mesh_loss_v3(
@@ -85,12 +85,12 @@ def solar_mesh_loss_v3(
     sorted_quality = illumination_quality[quality_order_desc]
 
     # Deterministic-safe cumulative area
-    cumulative_area = _deterministic_cumsum(sorted_areas)
+    cumulative_area = _cumsum(sorted_areas)
 
     # Create soft selection mask using sigmoid
     # mask(i) = sigmoid(sharpness * (area_budget - cumsum_area[i]))
     # This smoothly transitions from 1.0 (well within budget) to 0.0 (exceeds budget)
-    distance_to_budget = area_budget_mm2 - cumulative_area
+    distance_to_budget = (area_budget_mm2 - cumulative_area) / max(area_budget_mm2, epsilon)
     soft_mask = torch.sigmoid(sigmoid_sharpness * distance_to_budget)
 
     # Weighted quality-area product
@@ -99,8 +99,9 @@ def solar_mesh_loss_v3(
 
     # Penalty for unused budget (encourage filling the budget)
     total_selected_area = (sorted_areas * soft_mask).sum()
-    unused_budget = torch.clamp(area_budget_mm2 - total_selected_area, min=0.0)
-    budget_penalty = budget_penalty_weight * (unused_budget**2)
+    # Normalize budget usage to dimensionless ratio
+    unused_ratio = torch.clamp((area_budget_mm2 - total_selected_area) / max(area_budget_mm2, epsilon), min=0.0)
+    budget_penalty = budget_penalty_weight * (unused_ratio**2)
 
     # Combined loss: maximize quality (minimize negative) + penalize unused budget
     loss_mm2 = quality_loss - budget_penalty
@@ -178,17 +179,6 @@ class SolarLossEstimator:
         else:
             raise ValueError(f"Unknown method: {method}")
 
-    def _solar_mesh_loss(self, vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
-        return solar_mesh_loss_v3(
-            vertices,
-            faces,
-            self.sun_dir,
-            self.area_budget_mm2,
-            sigmoid_sharpness=self.sigmoid_sharpness,
-            budget_penalty_weight=self.budget_penalty_weight,
-            epsilon=self.eps,
-        )
-
     def extract_mesh(self, model: Callable[[torch.Tensor], torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
         if self.method == "flexicubes":
             assert isinstance(self.extractor, FCExtractor)
@@ -214,7 +204,15 @@ class SolarLossEstimator:
             Scalar loss tensor
         """
         vertices, faces = self.extract_mesh(model)
-        loss = self._solar_mesh_loss(vertices, faces)
+        loss = solar_mesh_loss_v3(
+            vertices,
+            faces,
+            self.sun_dir,
+            self.area_budget_mm2,
+            sigmoid_sharpness=self.sigmoid_sharpness,
+            budget_penalty_weight=self.budget_penalty_weight,
+            epsilon=self.eps,
+        )
         return loss
 
 

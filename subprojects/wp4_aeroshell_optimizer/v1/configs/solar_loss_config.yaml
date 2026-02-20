@@ -6,7 +6,7 @@ general_info:
   description: "Configuration file for solar loss functions."
 
 general_config:
-  solar_angle: [0.5,0.0,-0.5]
+  solar_angle: [0.5,0.0,0.5]
   area_budget: 2500000 #in mm^3
 
 SolarLossConfigV3:  # moved from solar_loss_v3.py
@@ -18,5 +18,5 @@ SolarLossConfigV3:  # moved from solar_loss_v3.py
   device: str = "cuda"
   batch_size: int = 4096
   eps: float = 1e-12
-  "sigmoid_sharpness": 10.0,
+  "sigmoid_sharpness": 1.0,
   "budget_penalty_weight": 0.1,
