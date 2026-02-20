@@ -22,19 +22,20 @@ from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor
 
 
 def _deterministic_cumsum(x: torch.Tensor) -> torch.Tensor:
-    """Deterministic cumulative sum using triangular matrix multiplication.
-
-    torch.cumsum has no deterministic CUDA kernel.  A lower-triangular
-    matmul is mathematically equivalent, fully differentiable, and
-    deterministic on all backends.
-
-    Cost: O(n²) memory and compute vs O(n) for cumsum.
-    For typical mesh face counts (< 100k) this is acceptable.
     """
-    n = x.shape[0]
-    # Lower-triangular matrix of ones (cached on same device/dtype)
-    tri = torch.ones(n, n, device=x.device, dtype=x.dtype).tril()
-    return tri @ x
+    Deterministic-safe cumsum.
+
+    If CUDA cumsum fails under torch.use_deterministic_algorithms(True),
+    fall back to CPU cumsum and move result back to original device.
+    """
+    try:
+        return torch.cumsum(x, dim=0)
+    except RuntimeError as e:
+        msg = str(e)
+        if "does not have a deterministic implementation" not in msg:
+            raise
+        # deterministic fallback
+        return torch.cumsum(x.cpu(), dim=0).to(device=x.device, dtype=x.dtype)
 
 
 def solar_mesh_loss_v3(
@@ -83,7 +84,7 @@ def solar_mesh_loss_v3(
     sorted_areas = face_area_mm2[quality_order_desc]
     sorted_quality = illumination_quality[quality_order_desc]
 
-    # Compute cumulative area (deterministic fallback for CUDA)
+    # Deterministic-safe cumulative area
     cumulative_area = _deterministic_cumsum(sorted_areas)
 
     # Create soft selection mask using sigmoid
@@ -191,7 +192,7 @@ class SolarLossEstimator:
     def extract_mesh(self, model: Callable[[torch.Tensor], torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
         if self.method == "flexicubes":
             assert isinstance(self.extractor, FCExtractor)
-            return self.extractor.extract_mesh(model, batch_size=self.batch_size)
+            return self.extractor.extract_mesh(model, batch_size=self.batch_size, deterministic=False)
         if self.method in {"diso_mc", "diso_dmc"}:
             assert isinstance(self.extractor, DISOExtractor)
             return self.extractor.extract_mesh(model, isovalue=0.0, batch_size=self.batch_size)
