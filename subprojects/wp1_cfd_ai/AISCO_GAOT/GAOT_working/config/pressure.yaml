@@ -43,8 +43,8 @@ model:
             embedding_method: "statistical"
             encoder_feature_attr: ["pos","c"]
             mlp_type: "linear"
-            precompute_edges: true
-            asynchronous_graph_building: false
+            precompute_edges: false
+            asynchronous_graph_building: true
         transformer:
             patch_size: 2
             hidden_size: 256

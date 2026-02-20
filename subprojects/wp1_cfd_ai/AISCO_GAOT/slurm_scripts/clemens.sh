@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=Main_test
-#SBATCH --time=00:05:00                   # Adjust time as needed
+#SBATCH --time=00:15:00                   # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
@@ -71,6 +71,8 @@ export PYTHONUNBUFFERED=TRUE
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
 cd /cluster/home/$USERNAME/AISCO_code/
 #python -m src.main
+
+ulimit -n 65536 
 
 python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/main.py \
     -c subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/pressure.yaml \
