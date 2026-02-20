@@ -6,7 +6,7 @@ general_info:
   description: "Configuration file for solar loss functions."
 
 general_config:
-  solar_angle: [0.5,0.0,-0.5]
+  solar_angle: [0.5,0.0,0.5]
   area_budget: 2500000 #in mm^3
 
 SolarLossConfigV3:  # moved from solar_loss_v3.py
