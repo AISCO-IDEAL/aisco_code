@@ -1,5 +1,6 @@
 import os
 import sys
+
 import torch
 from torch.utils.data import DataLoader
 
@@ -7,8 +8,9 @@ from torch.utils.data import DataLoader
 sys.path.append(os.getcwd())
 
 # Import the exact GAOT files you provided
-from src.dataloader.pyg_datasets import VTKMeshDataset
 from src.dataloader.collate_functions import create_collate_function
+from src.dataloader.pyg_datasets import VTKMeshDataset
+
 
 # 1. Mock the YAML Configuration
 class DummyConfig:
