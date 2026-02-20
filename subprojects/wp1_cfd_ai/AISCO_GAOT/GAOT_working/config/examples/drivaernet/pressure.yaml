@@ -1,4 +1,4 @@
-setup:
+Is setup:
     seed: 42
     device: "cuda:0"
     dtype: "torch.float32"
@@ -68,8 +68,8 @@ model:
 dataset:
     name: "drivaernet_fullpressure"
     metaname: "incompressible_fluids/drivaernet_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/"
-    processed_folder: "processed_drivaer"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer"
+    processed_folder: ""
     force_recompute_stats: false
     train_size: 5817
     val_size: 1148
