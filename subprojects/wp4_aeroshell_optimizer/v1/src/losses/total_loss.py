@@ -43,6 +43,22 @@ class TotalLoss:
         self.__rendering_frequency = self.__general_config.get("wandb_general", {}).get("rendering_frequency")
         self._mesh_statistics = MeshStatistics(device=dev, use_wandb=self._use_wandb)  # For logging mesh statistics to wandb
 
+        # Initialize mesh extractor with config from neural_renderer_v0.yaml
+        renderer_config = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")
+        mesh_config = renderer_config.get("mesh_extraction", {})
+        self._mesh_extractor = MeshExtractor(
+            algorithm=mesh_config.get("algorithm", "mc"),
+            device=mesh_config.get("device", dev),
+            verbose=mesh_config.get("verbose", False),  # Keep quiet during training by default
+        )
+
+        # Pre-configure grid for repeated extractions (major speedup)
+        self._mesh_extractor.set_grid(
+            bbox=mesh_config.get("bbox", [[-5000, 5000], [-5000, 5000], [-5000, 5000]]),
+            resolution=mesh_config.get("resolution", 128),  # Default 128 for compatibility with old get_diff_mesh
+        )
+        self._mesh_extraction_config = mesh_config  # Store for later use
+
         # ALM parameters init
         if self.losses_config["general_info"].get("ALM", False):
             # store lambda, mu, nu as 1D tensors
@@ -100,9 +116,7 @@ class TotalLoss:
                     )
                     self.__active_losses[loss_name] = loss_instance
 
-    def get_total_loss(
-        self, model: BaseModel, epoch_name: int = -1
-    ) -> torch.Tensor:  # epoch_name for rendering, PLR0915
+    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:  # epoch_name for rendering  # noqa: PLR0912, PLR0915
         # Calculate the individual Losses
         loss_names = {}  # For logging purposes
         device = next(iter(model.parameters())).device
@@ -181,56 +195,59 @@ class TotalLoss:
                 }
                 wandb.log(alm_params, step=epoch_name)
 
-            if self._use_renderer and (self._renderer_manager is not None):
-                if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
-                    verts, faces = get_diff_mesh(model, grid_res=64, device=device)
+
+            if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
+                # Use optimized non-differentiable marching cubes extractor
+                verts, faces = self._mesh_extractor.extract_mesh(
+                    model=model,
+                    isovalue=self._mesh_extraction_config.get("isovalue", 0.0),
+                    batch_size=self._mesh_extraction_config.get("batch_size", 8192),
+                )
                 if load_config(v="v1", cfg_name="logging.yaml")["mesh_statistics"]:
                     # If solar logging is enabled, we log the rendered image of the current mesh to WandB using the VisualisationManager and its rendering modes
                     self._mesh_statistics.log_basic_mesh_stats(verts, faces, epoch_name)  # Log basic mesh stats to wandb
                     self._mesh_statistics.log_solar_area_stats(verts, faces, epoch_name)  # Log solar area related stats to wandb
-                    if self._use_neural_renderer and self._renderer_manager is not None:
-                        # Use shared Manager to update all active rendering modes
-                        try:
-                            self._renderer_manager.update(
-                                {
-                                    "model": model,
-                                    "iteration": epoch_name,
-                                    "loss": weighted_total_loss.item(),
-                                    "vertices": verts,
-                                    "faces": faces,
-                                }
-                            )
-                        except Exception as e:
-                            print(f"Renderer wrapper update failed: {e}")
+                if self._use_neural_renderer and self._renderer_manager is not None:
+                    # Use shared Manager to update all active rendering modes
+                    try:
+                        self._renderer_manager.update(
+                            {
+                                "model": model,
+                                "iteration": epoch_name,
+                                "loss": weighted_total_loss.item(),
+                                "vertices": verts,
+                                "faces": faces,
+                            }
+                        )
+                    except Exception as e:
+                        print(f"Renderer wrapper update failed: {e}")
 
-                    else:
-                        # Use Clemens' CADVisualizer for rendering and logging
-                        # Convert to numpy if tensors
-                        if torch.is_tensor(verts):
-                            verts = verts.detach().cpu().numpy()
-                        if torch.is_tensor(faces):
-                            faces = faces.detach().cpu().numpy()
+                else:
+                    # Use Clemens' CADVisualizer for rendering and logging
+                    # Convert to numpy if tensors
+                    if torch.is_tensor(verts):
+                        verts = verts.detach().cpu().numpy()
+                    if torch.is_tensor(faces):
+                        faces = faces.detach().cpu().numpy()
 
-                        # Create trimesh object and export to STL
-                        mesh = trimesh.Trimesh(vertices=verts, faces=faces)
-                        stl_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/mesh_epoch_{epoch_name}.stl")
-                        stl_path.parent.mkdir(parents=True, exist_ok=True)
-                        mesh.export(str(stl_path))
+                    # Create trimesh object and export to STL
+                    mesh = trimesh.Trimesh(vertices=verts, faces=faces)
+                    stl_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/mesh_epoch_{epoch_name}.stl")
+                    stl_path.parent.mkdir(parents=True, exist_ok=True)
+                    mesh.export(str(stl_path))
 
-                        # Visualize the mesh using CADVisualizer
-                        image_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/render_epoch_{epoch_name}.png")
-                        visualizer = CADVisualizer(stl_path=str(stl_path), out_image_path=str(image_path))
-                        visualizer.render_until_blue_detected()
+                    # Visualize the mesh using CADVisualizer
+                    image_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/render_epoch_{epoch_name}.png")
+                    visualizer = CADVisualizer(stl_path=str(stl_path), out_image_path=str(image_path))
+                    visualizer.render_until_blue_detected()
 
-                        # Delete local files after logging to WandB
-                        if stl_path.exists():
-                            wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name)
-                            stl_path.unlink()
-                        if image_path.exists():
-                            wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
-                            image_path.unlink()
-            else:
-                print(f"Skipping rendering at epoch {epoch_name} due to rendering frequency setting.")
+                    # Delete local files after logging to WandB
+                    if stl_path.exists():
+                        wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name)
+                        stl_path.unlink()
+                    if image_path.exists():
+                        wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
+                        image_path.unlink()
         # logg the gradients of each loss component
         for loss_instance in self.__active_losses.values():
             loss_instance.log_gradients(epoch_name)
