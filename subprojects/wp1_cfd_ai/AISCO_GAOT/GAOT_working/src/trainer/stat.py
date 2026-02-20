@@ -25,6 +25,7 @@ from .utils.plot import plot_3d_comparison_matplotlib, plot_3d_comparison_pyvist
 
 EPSILON = 1e-10
 
+
 def move_to_device(data, device):
     """Recursively move all tensors in a nested structure to the specified device."""
     if isinstance(data, torch.Tensor):
@@ -36,36 +37,37 @@ def move_to_device(data, device):
     else:
         return data
 
-class StaticTrainer3D(TrainerBase):
 
+class StaticTrainer3D(TrainerBase):
     """
     Trainer for static problems, i.e. problems that do not depend on time.
     """
 
     def __init__(self, args):
         super().__init__(args)
-        if self.dataset_config.training_strategy == 'neural_field':
+        if self.dataset_config.training_strategy == "neural_field":
             if self.dataset_config.update_pt_files_with_edges:
                 raise ValueError("neural_field training strategy requires update_pt_files_with_edges=False")
-            if getattr(self.model_config.args.magno, 'precompute_edges', True):
-                logging.getLogger(__name__).warning("WARNING: neural_field training strategy requires precompute_edges=False, "
-                      "setting it to False automatically.")
+            if getattr(self.model_config.args.magno, "precompute_edges", True):
+                logging.getLogger(__name__).warning(
+                    "WARNING: neural_field training strategy requires precompute_edges=False, setting it to False automatically."
+                )
                 self.model_config.args.magno.precompute_edges = False
 
     def _calculate_or_load_stats(self, dataset_config, order_file_path, data_root):
         """Calculates or loads normalization statistics."""
         stats_file = os.path.join(data_root, f"{dataset_config.name}_norm_stats.pt")
 
-        if os.path.exists(stats_file) and not getattr(dataset_config, 'force_recompute_stats', False):
+        if os.path.exists(stats_file) and not getattr(dataset_config, "force_recompute_stats", False):
             logging.getLogger(__name__).info(f"Loading pre-calculated normalization stats from {stats_file}")
             stats = torch.load(stats_file, weights_only=False)
-            self.u_mean = stats['mean'].to(self.dtype)
-            self.u_std = stats['std'].to(self.dtype)
+            self.u_mean = stats["mean"].to(self.dtype)
+            self.u_std = stats["std"].to(self.dtype)
             logging.getLogger(__name__).info(f"Loaded x - Mean: {self.u_mean}, Std: {self.u_std}")
 
-            if 'c_mean' in stats and 'c_std' in stats:
-                self.c_mean = stats['c_mean'].to(self.dtype)
-                self.c_std = stats['c_std'].to(self.dtype)
+            if "c_mean" in stats and "c_std" in stats:
+                self.c_mean = stats["c_mean"].to(self.dtype)
+                self.c_std = stats["c_std"].to(self.dtype)
                 logging.getLogger(__name__).info(f"Loaded c - Mean: {self.c_mean}, Std: {self.c_std}")
             else:
                 self.c_mean = None
@@ -76,8 +78,8 @@ class StaticTrainer3D(TrainerBase):
                 root=dataset_config.base_path,
                 order_file=order_file_path,
                 dataset_config=dataset_config,
-                split='train',
-                transform=RescalePosition()
+                split="train",
+                transform=RescalePosition(),
             )
 
             temp_loader = PyGDataLoader(temp_train_dataset, batch_size=dataset_config.batch_size, shuffle=False, num_workers=4)
@@ -86,14 +88,14 @@ class StaticTrainer3D(TrainerBase):
             all_c = []
             has_c_field = False
 
-            for batch in tqdm(temp_loader, desc="Calculating Stats", disable=(getattr(self.setup_config, 'rank', 0) != 0)):
-                all_x.append(batch.x.cpu())
-                if hasattr(batch, 'c') and batch.c is not None:
+            for batch in tqdm(temp_loader, desc="Calculating Stats", disable=(getattr(self.setup_config, "rank", 0) != 0)):
+                all_x.append(batch.y.cpu())
+                if hasattr(batch, "c") and batch.c is not None:
                     all_c.append(batch.c.cpu())
                     has_c_field = True
 
             if not all_x:
-                 raise ValueError("No data found in training set to calculate statistics.")
+                raise ValueError("No data found in training set to calculate statistics.")
 
             full_x_tensor = torch.cat(all_x, dim=0)
             self.u_mean = torch.mean(full_x_tensor, dim=0, dtype=self.dtype)
@@ -112,13 +114,13 @@ class StaticTrainer3D(TrainerBase):
             logging.getLogger(__name__).info(f"Saving normalization stats to {stats_file}")
             os.makedirs(os.path.dirname(stats_file), exist_ok=True)
 
-            stats_to_save = {'mean': self.u_mean, 'std': self.u_std}
+            stats_to_save = {"mean": self.u_mean, "std": self.u_std}
             if self.c_mean is not None:
-                stats_to_save['c_mean'] = self.c_mean
-                stats_to_save['c_std'] = self.c_std
+                stats_to_save["c_mean"] = self.c_mean
+                stats_to_save["c_std"] = self.c_std
             torch.save(stats_to_save, stats_file)
         if self.u_mean is None or self.u_std is None:
-             raise RuntimeError("Normalization mean/std could not be calculated or loaded.")
+            raise RuntimeError("Normalization mean/std could not be calculated or loaded.")
         self.u_mean = self.u_mean.to(self.dtype)
         self.u_std = self.u_std.to(self.dtype)
 
@@ -132,7 +134,7 @@ class StaticTrainer3D(TrainerBase):
 
         processed_dir = os.path.join(dataset_config.base_path, dataset_config.processed_folder)
         if not os.path.isdir(processed_dir):
-             raise FileNotFoundError(f"Processed directory for update not found: {processed_dir}")
+            raise FileNotFoundError(f"Processed directory for update not found: {processed_dir}")
 
         with open(order_file_path) as f:
             all_filenames_base = [line.strip() for line in f if line.strip()]
@@ -147,27 +149,29 @@ class StaticTrainer3D(TrainerBase):
         relevant_indices = np.concatenate([train_indices, val_indices, test_indices])
         filenames_to_process = [f"{all_filenames_base[i]}.pt" for i in relevant_indices]
 
-
-        logging.getLogger(__name__).info(f"Rank 0: Checking/Updating {len(filenames_to_process)} '.pt' files in {processed_dir} with edge information...")
+        logging.getLogger(__name__).info(
+            f"Rank 0: Checking/Updating {len(filenames_to_process)} '.pt' files in {processed_dir} with edge information..."
+        )
 
         latent_tokens_cpu = self.latent_tokens.cpu()
         num_latent_tokens = latent_tokens_cpu.shape[0]
 
         from src.model.layers.magno import get_neighbor_strategy, parse_neighbor_strategy
+
         for filename in tqdm(filenames_to_process, desc="Updating .pt files"):
             fpath = os.path.join(processed_dir, filename)
             fpath_tmp = fpath + ".tmp"
             try:
-                data_old = torch.load(fpath, map_location='cpu', weights_only=False)
-                data = EnrichedData(pos = data_old.pos, x=data_old.x)
+                data_old = torch.load(fpath, map_location="cpu", weights_only=False)
+                data = EnrichedData(pos=data_old.pos, x=data_old.x)
                 for attr, value in data_old:
-                     if attr not in ['pos', 'x']:
-                         setattr(data, attr, value)
+                    if attr not in ["pos", "x"]:
+                        setattr(data, attr, value)
                 data.num_latent_nodes = num_latent_tokens
                 if dataset_config.use_rescale_new:
                     phys_pos = rescale_new(data.pos.to(torch.float), (-1, 1), self.metadata.domain_x)
                 else:
-                    phys_pos = rescale(data.pos.to(torch.float), (-1, 1)) # Rescale to [-1, 1], very important!
+                    phys_pos = rescale(data.pos.to(torch.float), (-1, 1))  # Rescale to [-1, 1], very important!
                 num_physical_nodes = phys_pos.shape[0]
                 batch_idx_phys = torch.zeros(num_physical_nodes, dtype=torch.long)
                 batch_idx_latent = torch.zeros(num_latent_tokens, dtype=torch.long)
@@ -180,37 +184,37 @@ class StaticTrainer3D(TrainerBase):
                     # --- Encoder Edges ---
                     enc_edge_index = get_neighbor_strategy(
                         neighbor_strategy=encoder_strategy,
-                        phys_pos = phys_pos,
-                        batch_idx_phys = batch_idx_phys,
-                        latent_tokens_pos = latent_tokens_cpu,
-                        batch_idx_latent = batch_idx_latent,
+                        phys_pos=phys_pos,
+                        batch_idx_phys=batch_idx_phys,
+                        latent_tokens_pos=latent_tokens_cpu,
+                        batch_idx_latent=batch_idx_latent,
                         radius=scaled_radius,
                         k_neighbors=gno_config.k_neighbors,
-                        is_decoder=False
+                        is_decoder=False,
                     ).to(torch.int32)
-                    setattr(data, f'encoder_edge_index_s{scale_idx}', enc_edge_index)
+                    setattr(data, f"encoder_edge_index_s{scale_idx}", enc_edge_index)
                     if enc_edge_index.numel() > 0:
                         enc_counts = torch.bincount(enc_edge_index[1], minlength=num_latent_tokens).to(torch.int32)
                     else:
                         enc_counts = torch.zeros(num_latent_tokens, dtype=torch.int32)
-                    setattr(data, f'encoder_query_counts_s{scale_idx}', enc_counts)
+                    setattr(data, f"encoder_query_counts_s{scale_idx}", enc_counts)
                     # --- Decoder Edges ---
                     dec_edge_index = get_neighbor_strategy(
                         neighbor_strategy=decoder_strategy,
-                        phys_pos = phys_pos,
-                        batch_idx_phys = batch_idx_phys,
-                        latent_tokens_pos = latent_tokens_cpu,
-                        batch_idx_latent = batch_idx_latent,
+                        phys_pos=phys_pos,
+                        batch_idx_phys=batch_idx_phys,
+                        latent_tokens_pos=latent_tokens_cpu,
+                        batch_idx_latent=batch_idx_latent,
                         radius=scaled_radius,
                         k_neighbors=gno_config.k_neighbors,
-                        is_decoder=True
+                        is_decoder=True,
                     ).to(torch.int32)
-                    setattr(data, f'decoder_edge_index_s{scale_idx}', dec_edge_index)
+                    setattr(data, f"decoder_edge_index_s{scale_idx}", dec_edge_index)
                     if dec_edge_index.numel() > 0:
                         dec_counts = torch.bincount(dec_edge_index[1], minlength=num_physical_nodes).to(torch.int32)
                     else:
                         dec_counts = torch.zeros(num_physical_nodes, dtype=torch.int32)
-                    setattr(data, f'decoder_query_counts_s{scale_idx}', dec_counts)
+                    setattr(data, f"decoder_query_counts_s{scale_idx}", dec_counts)
                 # --- Save updated data ---
                 torch.save(data, fpath_tmp)
                 os.replace(fpath_tmp, fpath)
@@ -219,13 +223,13 @@ class StaticTrainer3D(TrainerBase):
             except Exception as e:
                 logging.getLogger(__name__).error(f"Error processing file {fpath}: {e}")
                 if os.path.exists(fpath_tmp):
-                     os.remove(fpath_tmp)
+                    os.remove(fpath_tmp)
         logging.getLogger(__name__).info("Rank 0: Finished checking/updating '.pt' files.")
 
     def init_dataset(self, dataset_config):
         logging.getLogger(__name__).info("Initializing PyG dataset ...")
         self.latent_token_size = self.model_config.args.latent_tokens
-        data_root = dataset_config.base_path 
+        data_root = dataset_config.base_path
         order_file_path = os.path.join(data_root, f"order_{dataset_config.processed_folder}.txt")
         processed_data_path = os.path.join(data_root, dataset_config.processed_folder)
 
@@ -242,9 +246,9 @@ class StaticTrainer3D(TrainerBase):
             torch.linspace(x_min, x_max, self.latent_token_size[0]),
             torch.linspace(y_min, y_max, self.latent_token_size[1]),
             torch.linspace(z_min, z_max, self.latent_token_size[2]),
-            indexing = "ij"
+            indexing="ij",
         )
-        latent_queries = torch.stack(meshgrid, dim = -1).reshape(-1, 3)
+        latent_queries = torch.stack(meshgrid, dim=-1).reshape(-1, 3)
         if dataset_config.use_rescale_new:
             self.latent_tokens = rescale_new(latent_queries, (-1, 1), phy_domain)
         else:
@@ -256,11 +260,7 @@ class StaticTrainer3D(TrainerBase):
         if dataset_config.update_pt_files_with_edges:
             gno_cfg_for_precompute = self.model_config.args.magno
             if self.setup_config.rank == 0:
-                self._update_pt_files_with_edges(
-                    dataset_config,
-                    order_file_path,
-                    gno_cfg_for_precompute
-                )
+                self._update_pt_files_with_edges(dataset_config, order_file_path, gno_cfg_for_precompute)
             if self.setup_config.distributed:
                 logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Waiting for edge pre-computation barrier...")
                 torch.distributed.barrier()
@@ -275,9 +275,9 @@ class StaticTrainer3D(TrainerBase):
 
         # --- Define Transforms ---
         if dataset_config.use_rescale_new:
-            rescale_transform = RescalePositionNew(lims=(-1., 1.), phy_domain = phy_domain)
+            rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=phy_domain)
         else:
-            rescale_transform = RescalePosition(lims=(-1., 1.))
+            rescale_transform = RescalePosition(lims=(-1.0, 1.0))
 
         # Apply active_variables selection to normalization stats if specified
         if dataset_config.active_variables is not None:
@@ -295,10 +295,7 @@ class StaticTrainer3D(TrainerBase):
             c_std_for_norm = self.c_std
 
         normalize_transform = NormalizeFeatures(
-            mean=mean_for_norm,
-            std=std_for_norm,
-            c_mean=c_mean_for_norm,
-            c_std=c_std_for_norm
+            mean=mean_for_norm, std=std_for_norm, c_mean=c_mean_for_norm, c_std=c_std_for_norm
         )
         composed_transform = Compose([rescale_transform, normalize_transform])
 
@@ -320,30 +317,26 @@ class StaticTrainer3D(TrainerBase):
         if self.setup_config.train:
             logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Loading train dataset...")
             train_ds = VTKMeshDataset(
-                root = data_root,
-                order_file = order_file_path,
-                dataset_config = dataset_config,
+                root=data_root,
+                order_file=order_file_path,
+                dataset_config=dataset_config,
                 split="train",
-                transform = composed_transform
+                transform=composed_transform,
             )
             logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Loading validation dataset...")
             val_ds = VTKMeshDataset(
-                root = data_root,
-                order_file = order_file_path,
-                dataset_config = dataset_config,
+                root=data_root,
+                order_file=order_file_path,
+                dataset_config=dataset_config,
                 split="val",
-                transform = composed_transform
+                transform=composed_transform,
             )
         logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Loading test dataset...")
         test_ds = VTKMeshDataset(
-            root = data_root,
-            order_file = order_file_path,
-            dataset_config = dataset_config,
-            split="test",
-            transform = composed_transform
+            root=data_root, order_file=order_file_path, dataset_config=dataset_config, split="test", transform=composed_transform
         )
 
-        encoder_feature_attr = getattr(self.model_config.args.magno, 'encoder_feature_attr', 'x')
+        encoder_feature_attr = getattr(self.model_config.args.magno, "encoder_feature_attr", "x")
         if isinstance(encoder_feature_attr, list):
             self.num_input_channels = 0
             for attr_name in encoder_feature_attr:
@@ -356,9 +349,11 @@ class StaticTrainer3D(TrainerBase):
             if hasattr(test_ds[0], encoder_feature_attr):
                 self.num_input_channels = getattr(test_ds[0], encoder_feature_attr).shape[1]
             else:
-                logging.getLogger(__name__).warning(f"Attribute '{encoder_feature_attr}' not found in test dataset, using pos instead.")
+                logging.getLogger(__name__).warning(
+                    f"Attribute '{encoder_feature_attr}' not found in test dataset, using pos instead."
+                )
                 self.num_input_channels = test_ds[0].pos.shape[1]
-        self.num_output_channels = test_ds[0].x.shape[1]
+        self.num_output_channels = test_ds[0].y.shape[1] if test_ds[0].y.dim() > 1 else 1
         # --- Create DataLoaders ---
         if self.setup_config.train:
             ## --- Create DistributedSampler for training ---
@@ -368,8 +363,8 @@ class StaticTrainer3D(TrainerBase):
                     train_ds,
                     num_replicas=self.setup_config.world_size,
                     rank=self.setup_config.rank,
-                    shuffle=dataset_config.shuffle, # Sampler handles shuffling
-                    drop_last=True                  # Often good practice for DDP
+                    shuffle=dataset_config.shuffle,  # Sampler handles shuffling
+                    drop_last=True,  # Often good practice for DDP
                 )
                 logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Created DistributedSampler for training.")
 
@@ -381,17 +376,13 @@ class StaticTrainer3D(TrainerBase):
                 sampler=train_sampler,
                 pin_memory=False,
                 drop_last=train_sampler is not None,
-                collate_fn=collate_fn
+                collate_fn=collate_fn,
             )
 
             val_sampler = None
             if self.setup_config.distributed:
                 val_sampler = DistributedSampler(
-                    val_ds,
-                    num_replicas=self.setup_config.world_size,
-                    rank=self.setup_config.rank,
-                    shuffle=False,
-                    drop_last=False
+                    val_ds, num_replicas=self.setup_config.world_size, rank=self.setup_config.rank, shuffle=False, drop_last=False
                 )
                 logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Created DistributedSampler for validation.")
             self.val_loader = DataLoader(
@@ -401,7 +392,7 @@ class StaticTrainer3D(TrainerBase):
                 num_workers=dataset_config.num_workers,
                 pin_memory=False,
                 sampler=val_sampler,
-                collate_fn=collate_fn
+                collate_fn=collate_fn,
             )
 
         test_sampler = None
@@ -414,7 +405,7 @@ class StaticTrainer3D(TrainerBase):
             num_workers=dataset_config.num_workers,
             pin_memory=False,
             sampler=test_sampler,
-            collate_fn=collate_fn
+            collate_fn=collate_fn,
         )
 
     def init_model(self, model_config):
@@ -422,16 +413,14 @@ class StaticTrainer3D(TrainerBase):
             input_size=self.num_input_channels,
             output_size=self.num_output_channels,
             model=model_config.name,
-            config=model_config.args
-            )
+            config=model_config.args,
+        )
 
         self.model.to(self.device)
 
         if self.setup_config.distributed:
             self.model = torch.nn.parallel.DistributedDataParallel(
-                self.model,
-                device_ids=[self.setup_config.local_rank],
-                output_device=self.setup_config.local_rank
+                self.model, device_ids=[self.setup_config.local_rank], output_device=self.setup_config.local_rank
             )
 
     def _sample_nodes_neural_field(self, batch: "pyg.data.Batch", num_input_nodes: int, num_query_nodes: int):
@@ -454,18 +443,18 @@ class StaticTrainer3D(TrainerBase):
         query_batch_idx_list = []
         target_for_loss_list = []
 
-        use_same_sampling = (num_input_nodes == num_query_nodes)
+        use_same_sampling = num_input_nodes == num_query_nodes
 
         for i in range(batch.num_graphs):
             start_idx = batch.ptr[i]
-            end_idx = batch.ptr[i+1]
+            end_idx = batch.ptr[i + 1]
             num_full_nodes_i = end_idx - start_idx
 
             full_pos_i = batch.pos[start_idx:end_idx]
-            full_x_i = batch.x[start_idx:end_idx]
+            full_y_i = batch.y[start_idx:end_idx]
 
             full_c_i = None
-            if hasattr(batch, 'c') and batch.c is not None:
+            if hasattr(batch, "c") and batch.c is not None:
                 full_c_i = batch.c[start_idx:end_idx]
 
             n_input_sample = min(num_input_nodes, num_full_nodes_i)
@@ -482,13 +471,13 @@ class StaticTrainer3D(TrainerBase):
                 query_perm = torch.randperm(num_full_nodes_i)[:n_query_sample]
 
             sampled_pos_i = full_pos_i[input_perm]
-            sampled_x_i = full_x_i[input_perm]
+            sampled_y_i = full_y_i[input_perm]
 
-            data_i = Data(pos=sampled_pos_i, x=sampled_x_i)
+            data_i = Data(pos=sampled_pos_i, y=sampled_y_i)
             if full_c_i is not None:
                 data_i.c = full_c_i[input_perm]
 
-            essential_attrs = ['filename', 'num_latent_nodes']
+            essential_attrs = ["filename", "num_latent_nodes"]
             for attr in essential_attrs:
                 if hasattr(batch, attr) and getattr(batch, attr) is not None:
                     if isinstance(getattr(batch, attr), list):
@@ -502,7 +491,7 @@ class StaticTrainer3D(TrainerBase):
 
             query_pos_list.append(full_pos_i[query_perm])
             query_batch_idx_list.append(torch.full((n_query_sample,), i, dtype=torch.long))
-            target_for_loss_list.append(full_x_i[query_perm])
+            target_for_loss_list.append(full_y_i[query_perm])
 
         sampled_batch = Batch.from_data_list(sampled_data_list)
 
@@ -516,7 +505,7 @@ class StaticTrainer3D(TrainerBase):
         strategy = self.dataset_config.training_strategy
         latent_tokens_dev = self.latent_tokens.to(self.device)
 
-        if strategy == 'neural_field':
+        if strategy == "neural_field":
             # --- Neural Field Strategy ---
             num_input_nodes = self.dataset_config.neural_field_input_nodes
             num_query_nodes = self.dataset_config.neural_field_query_nodes_train
@@ -534,17 +523,14 @@ class StaticTrainer3D(TrainerBase):
                 batch=sampled_batch,
                 tokens_pos=latent_tokens_dev,
                 query_coord_pos=query_pos,
-                query_coord_batch_idx=query_batch_idx
+                query_coord_batch_idx=query_batch_idx,
             )
 
             target = target_for_loss
         else:
             batch = batch.to(self.device)
-            pred = self.model(
-                batch=batch,
-                tokens_pos=latent_tokens_dev
-            )
-            target = batch.x
+            pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
+            target = batch.y
 
         return self.loss_fn(pred, target)
 
@@ -555,21 +541,18 @@ class StaticTrainer3D(TrainerBase):
             for batch in loader:
                 batch = batch.to(self.device)
                 latent_tokens_dev = self.latent_tokens.to(self.device)
-                pred = self.model(
-                    batch = batch,
-                    tokens_pos = latent_tokens_dev
-                )
-                target = batch.x
+                pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
+                target = batch.y
                 target = target
 
                 loss = self.loss_fn(pred, target)
                 total_loss += loss.item()
         # Global reduction across ranks (average per-dataset, not per-batch)
         local_sum = torch.tensor([total_loss], dtype=torch.float64, device=self.device)
-        if getattr(self.setup_config, 'distributed', False):
+        if getattr(self.setup_config, "distributed", False):
             torch.distributed.all_reduce(local_sum, op=torch.distributed.ReduceOp.SUM)
         denom = len(loader.dataset)
-        return (local_sum.item() / denom)
+        return local_sum.item() / denom
 
     def test(self):
         self.model.eval()
@@ -596,7 +579,7 @@ class StaticTrainer3D(TrainerBase):
                 latent_tokens_dev = self.latent_tokens.to(self.device)
 
                 # GPU sync to ensure data transfer is complete
-                if self.device.type == 'cuda':
+                if self.device.type == "cuda":
                     torch.cuda.synchronize()
 
                 data_end_time = time.time()
@@ -610,7 +593,7 @@ class StaticTrainer3D(TrainerBase):
                 pred_norm = self.model(batch, latent_tokens_dev)
 
                 # GPU sync to ensure inference is complete
-                if self.device.type == 'cuda':
+                if self.device.type == "cuda":
                     torch.cuda.synchronize()
 
                 inference_end_time = time.time()
@@ -618,10 +601,10 @@ class StaticTrainer3D(TrainerBase):
                 inference_times.append(inference_time)
 
                 # Count samples
-                batch_size = batch.num_graphs if hasattr(batch, 'num_graphs') else 1
+                batch_size = batch.num_graphs if hasattr(batch, "num_graphs") else 1
                 total_samples += batch_size
 
-                target_norm = batch.x
+                target_norm = batch.y
 
                 u_std_dev = self.u_std[self.dataset_config.active_variables].to(self.device)
                 u_mean_dev = self.u_mean[self.dataset_config.active_variables].to(self.device)
@@ -633,28 +616,33 @@ class StaticTrainer3D(TrainerBase):
 
                 if i == 0 and self.setup_config.rank == 0:
                     plotting_idx = 0
-                    first_graph_node_mask = (batch.batch == plotting_idx)
+                    first_graph_node_mask = batch.batch == plotting_idx
                     plot_coords = batch.pos[first_graph_node_mask].cpu().numpy()
                     plot_gtr = target_de_norm[first_graph_node_mask].cpu().numpy()
                     plot_prd = pred_de_norm[first_graph_node_mask].cpu().numpy()
-                    logging.getLogger(__name__).info(f"Extracted plotting data of {batch.filename[plotting_idx]}:"
-                            f"coords shape {plot_coords.shape}, gtr shape {plot_gtr.shape}, prd shape {plot_prd.shape}"
-                        )
+                    logging.getLogger(__name__).info(
+                        f"Extracted plotting data of {batch.filename[plotting_idx]}:"
+                        f"coords shape {plot_coords.shape}, gtr shape {plot_gtr.shape}, prd shape {plot_prd.shape}"
+                    )
 
                 # Output progress every 10 batches (including inference speed info)
                 if (i + 1) % 10 == 0 and self.setup_config.rank == 0:
-                    current_avg_inference_time = statistics.mean(inference_times[-10:])  # Average inference time of the last 10 steps
+                    current_avg_inference_time = statistics.mean(
+                        inference_times[-10:]
+                    )  # Average inference time of the last 10 steps
                     throughput = 1.0 / current_avg_inference_time  # Samples per second (assuming batch_size=1)
                     logging.getLogger(__name__).info(
                         f"Processed {i + 1} batches, "
-                        f"Current average inference time: {current_avg_inference_time*1000:.2f}ms, "
+                        f"Current average inference time: {current_avg_inference_time * 1000:.2f}ms, "
                         f"Inference throughput: {throughput:.2f} samples/s"
                     )
 
         if self.setup_config.rank == 0:
             full_preds = torch.cat(all_batch_preds_denorm, dim=0)
             full_targets = torch.cat(all_batch_targets_denorm, dim=0)
-            logging.getLogger(__name__).info(f"Concatenated results: preds shape {full_preds.shape}, targets shape {full_targets.shape}")
+            logging.getLogger(__name__).info(
+                f"Concatenated results: preds shape {full_preds.shape}, targets shape {full_targets.shape}"
+            )
 
             # --- Inference Speed Statistics Report ---
             if inference_times:
@@ -684,20 +672,22 @@ class StaticTrainer3D(TrainerBase):
                 logging.getLogger(__name__).info("")
                 logging.getLogger(__name__).info("Inference Time Statistics:")
                 logging.getLogger(__name__).info(f"  Total inference time: {total_inference_time:.4f}s")
-                logging.getLogger(__name__).info(f"  Average inference time: {avg_inference_time*1000:.2f}ms")
-                logging.getLogger(__name__).info(f"  Median inference time: {median_inference_time*1000:.2f}ms")
-                logging.getLogger(__name__).info(f"  Minimum inference time: {min_inference_time*1000:.2f}ms")
-                logging.getLogger(__name__).info(f"  Maximum inference time: {max_inference_time*1000:.2f}ms")
-                logging.getLogger(__name__).info(f"  Inference time std dev: {std_inference_time*1000:.2f}ms")
+                logging.getLogger(__name__).info(f"  Average inference time: {avg_inference_time * 1000:.2f}ms")
+                logging.getLogger(__name__).info(f"  Median inference time: {median_inference_time * 1000:.2f}ms")
+                logging.getLogger(__name__).info(f"  Minimum inference time: {min_inference_time * 1000:.2f}ms")
+                logging.getLogger(__name__).info(f"  Maximum inference time: {max_inference_time * 1000:.2f}ms")
+                logging.getLogger(__name__).info(f"  Inference time std dev: {std_inference_time * 1000:.2f}ms")
                 logging.getLogger(__name__).info("")
                 logging.getLogger(__name__).info("Data Loading Time Statistics:")
                 logging.getLogger(__name__).info(f"  Total data loading time: {total_data_loading_time:.4f}s")
-                logging.getLogger(__name__).info(f"  Average data loading time: {avg_data_loading_time*1000:.2f}ms")
+                logging.getLogger(__name__).info(f"  Average data loading time: {avg_data_loading_time * 1000:.2f}ms")
                 logging.getLogger(__name__).info("")
                 logging.getLogger(__name__).info("Throughput Statistics:")
                 logging.getLogger(__name__).info(f"  Inference throughput only: {inference_throughput:.2f} samples/s")
                 logging.getLogger(__name__).info(f"  Overall throughput: {overall_throughput:.2f} samples/s")
-                logging.getLogger(__name__).info(f"  Batches processed per second: {len(inference_times)/total_test_time:.2f} batches/s")
+                logging.getLogger(__name__).info(
+                    f"  Batches processed per second: {len(inference_times) / total_test_time:.2f} batches/s"
+                )
                 logging.getLogger(__name__).info("")
                 logging.getLogger(__name__).info("Performance Ratio:")
                 data_loading_ratio = (total_data_loading_time / total_test_time) * 100
@@ -708,18 +698,18 @@ class StaticTrainer3D(TrainerBase):
 
             # --- Calculate Metrics ---
             if metric_suite == "poseidon":
-                logging.getLogger(__name__).warning("Warning: 'poseidon' metric suite requires adaptation for variable nodes per sample PyG structure. Skipping calculation.")
-                final_metric = float('nan')
-                self.config.datarow["relative error (direct)"] = final_metric # Store NaN
+                logging.getLogger(__name__).warning(
+                    "Warning: 'poseidon' metric suite requires adaptation for variable nodes per sample PyG structure. Skipping calculation."
+                )
+                final_metric = float("nan")
+                self.config.datarow["relative error (direct)"] = final_metric  # Store NaN
 
             if metric_suite == "drivaernet":
                 if self.dataset_config.active_variables is not None:
                     self.metadata.global_mean = [self.metadata.global_mean[i] for i in self.dataset_config.active_variables]
                     self.metadata.global_std = [self.metadata.global_std[i] for i in self.dataset_config.active_variables]
                 agg_metrics = compute_drivaernet_metric(
-                    gtr_ls = all_batch_targets_denorm,
-                    prd_ls = all_batch_preds_denorm,
-                    metadata =  self.metadata
+                    gtr_ls=all_batch_targets_denorm, prd_ls=all_batch_preds_denorm, metadata=self.metadata
                 )
 
                 logging.getLogger(__name__).info("--- Final Metrics (Drivaernet Suite - Full Dataset) ---")
@@ -732,7 +722,7 @@ class StaticTrainer3D(TrainerBase):
 
             elif metric_suite == "general":
                 diff = full_preds - full_targets
-                mse = torch.mean(diff ** 2).item()
+                mse = torch.mean(diff**2).item()
                 mae = torch.mean(torch.abs(diff)).item()
                 max_ae = torch.max(torch.abs(diff)).item()
 
@@ -745,16 +735,19 @@ class StaticTrainer3D(TrainerBase):
                 rel_l1 = (norm_diff_l1 / (norm_gtr_l1 + EPSILON)).item() * 100.0
 
                 final_metrics_dict = {
-                    'MSE': mse, 'MAE': mae, 'Max AE': max_ae,
-                    'Rel L2 Error (%)': rel_l2, 'Rel L1 Error (%)': rel_l1
+                    "MSE": mse,
+                    "MAE": mae,
+                    "Max AE": max_ae,
+                    "Rel L2 Error (%)": rel_l2,
+                    "Rel L1 Error (%)": rel_l1,
                 }
 
                 # Store and print results
-                self.config.datarow["MSE (x10^-2)"] = final_metrics_dict['MSE'] * 100
-                self.config.datarow["MAE (x10^-1)"] = final_metrics_dict['MAE'] * 10
-                self.config.datarow["Max AE"] = final_metrics_dict['Max AE']
-                self.config.datarow["Rel L2 Error (%)"] = final_metrics_dict['Rel L2 Error (%)']
-                self.config.datarow["Rel L1 Error (%)"] = final_metrics_dict['Rel L1 Error (%)']
+                self.config.datarow["MSE (x10^-2)"] = final_metrics_dict["MSE"] * 100
+                self.config.datarow["MAE (x10^-1)"] = final_metrics_dict["MAE"] * 10
+                self.config.datarow["Max AE"] = final_metrics_dict["Max AE"]
+                self.config.datarow["Rel L2 Error (%)"] = final_metrics_dict["Rel L2 Error (%)"]
+                self.config.datarow["Rel L1 Error (%)"] = final_metrics_dict["Rel L1 Error (%)"]
 
                 logging.getLogger(__name__).info("--- Final Metrics (General Suite - Full Dataset) ---")
                 logging.getLogger(__name__).info(f"MSE (x10^-2):       {final_metrics_dict['MSE'] * 100:.4f}")
@@ -769,19 +762,22 @@ class StaticTrainer3D(TrainerBase):
                 channel_to_plot = 0
                 gtr_np = plot_gtr[:, channel_to_plot]
                 prd_np = plot_prd[:, channel_to_plot]
-                np.savez(self.path_config.result_path[:-4] + '.npz', coord=plot_coords, gtr=plot_gtr, prd=plot_prd)
+                np.savez(self.path_config.result_path[:-4] + ".npz", coord=plot_coords, gtr=plot_gtr, prd=plot_prd)
                 plot_save_path = self.path_config.result_path
-                var_name = self.metadata.names['u']
+                var_name = self.metadata.names["u"]
                 plot_3d_comparison_matplotlib(
-                    coords=plot_coords, u_gtr=gtr_np, u_prd=prd_np,
+                    coords=plot_coords,
+                    u_gtr=gtr_np,
+                    u_prd=prd_np,
                     save_path=plot_save_path,
                     variable_name=var_name,
-                    point_size=2.0, view_angle=(25, -135),
-                    hide_grid=True
+                    point_size=2.0,
+                    view_angle=(25, -135),
+                    hide_grid=True,
                 )
                 logging.getLogger(__name__).info(f"Saved plot for first test sample to {plot_save_path}")
             except Exception as plot_err:
                 logging.getLogger(__name__).error(f"Error during 3D plotting of first test sample: {plot_err}")
 
         elif self.setup_config.distributed:
-             pass
+            pass
