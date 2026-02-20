@@ -15,8 +15,8 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import 
 # from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh # noqa: ERA001
 # from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import render_image  # noqa: ERA001
 # from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer # noqa: ERA001
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
+# from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update # noqa: ERA001
+# from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name # noqa: ERA001
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
@@ -51,7 +51,7 @@ class TotalLoss:
             )
             self.lamdas = torch.tensor(
                 [[self.lamda], [self.lamda], [self.lamda]], device=dev
-            )  # SWEEP: could be log-uniform in [10−5,10−1][10−5,10−1] per constraint
+            )  # SWEEP: could be log-uniform in [10-5,10-1][10-5,10-1] per constraint
             self.mus = torch.tensor(
                 [[1.0], [1.0], [1.0]], device=dev
             )  # ... a larger value such as η=1 is advisable to balance constraint enforcement and objective minimization effectively.:
@@ -72,7 +72,7 @@ class TotalLoss:
             # NOTE: as seen "An Adaptive Augmented Lagrangian Method for Training Physics and Equality Constrained Artificial Neural Networks", Algortihm 3, ALM with adaptive penalty update (APU)
             # AUTHORS: Shamsulhaq Basir and Inanc Senocak
             #       https://arxiv.org/pdf/2306.04904
-            #       SWEEP: γ ∈ log-uniform in [10−3,10e0]
+            #       SWEEP: γ ∈ log-uniform in [10e-3,10e0]  # noqa: RUF003
 
         # Dynamically load and initialise active losses
         # category: aero, ... | lossnames: frontal_area_v0, ...
