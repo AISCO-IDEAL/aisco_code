@@ -18,5 +18,5 @@ SolarLossConfigV3:  # moved from solar_loss_v3.py
   device: str = "cuda"
   batch_size: int = 4096
   eps: float = 1e-12
-  "sigmoid_sharpness": 10.0,
+  "sigmoid_sharpness": 1.0,
   "budget_penalty_weight": 0.1,
