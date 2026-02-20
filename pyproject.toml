@@ -41,7 +41,7 @@ wp2_assembler =[
 ]
 
 wp3_solar_estimator = [
-  "diso >= 0.1.4",
+  "PyMCubes == 0.1.6",
 ]
 
 wp4_aeroshell_optimizer = [
