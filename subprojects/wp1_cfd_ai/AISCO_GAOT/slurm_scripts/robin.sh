@@ -68,10 +68,10 @@ source "$VENV_DIR/bin/activate"
 #------------------------------------------------------------------------------
 export PYTHONUNBUFFERED=TRUE
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
-cd /cluster/home/$USERNAME/AISCO_code/
+cd /cluster/home/$USERNAME/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working
 #python -m src.main
 
-python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/dataset/drivaernet/process_my_drivaer.py
+python src/dataloader/test_dataloader.py
 
 #------------------------------------------------------------------------------
 # Print job end information

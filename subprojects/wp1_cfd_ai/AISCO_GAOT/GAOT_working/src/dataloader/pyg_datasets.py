@@ -128,7 +128,7 @@ class VTKMeshDataset(Dataset):
             data = torch.load(filepath, weights_only=False)
             if self.active_variables is not None and hasattr(data, 'x') and data.x is not None:
                 data.x = data.x[:, self.active_variables]
-            if len(data.x.shape) == 3:
+            if hasattr(data,'x') and data.x is not None and len(data.x.shape) == 3:
                 data.x = data.x.squeeze(-1)
             # Apply normalization here if stats are available and not done in preprocessing
             # Example:
