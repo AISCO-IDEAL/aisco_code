@@ -83,8 +83,8 @@ class SolarPower(RenderingMode):
 
         # Create colors based on normalized power values
         colors = torch.zeros((faces.shape[0], 3), device=self.visualiser.device)
-        colors[:, 0] = normalized_power  # Red channel
-        colors[:, 1] = 1 - normalized_power  # Green channel
+        colors[:, 0] = 1 - normalized_power  # Red channel
+        colors[:, 1] = normalized_power  # Green channel
         colors[:, 2] = 0.5 * (1 - normalized_power)  # Blue channel
 
         textures = self.visualiser.face_colors_to_textures(face_colors=colors)
