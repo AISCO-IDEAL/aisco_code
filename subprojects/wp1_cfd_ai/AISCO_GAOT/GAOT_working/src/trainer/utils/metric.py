@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from ...data.metadata import Metadata
+from ...dataloader.metadata import Metadata
 from typing import List, Dict, Union 
 
 EPSILON = 1e-10
