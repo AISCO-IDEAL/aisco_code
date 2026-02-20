@@ -34,7 +34,7 @@ class SolarSelectionMode(RenderingMode):
         # Solar specific parameters
         self.solar_color = config["solar_color"]
         self.rest_color = config["rest_color"]
-        solar_config = load_config(v="v1", cfg_name="losses_v0_config.yaml")["main_solar_config"]
+        solar_config = load_config(v="v1", cfg_name="solar_loss_config.yaml")["general_config"]
         self.area_budget = solar_config["area_budget"]
         self.solar_angle = torch.tensor(solar_config["solar_angle"], device=self.visualiser.device)
         self.solar_angle = self.solar_angle / torch.norm(self.solar_angle)  # Normalize to be safe
@@ -86,7 +86,11 @@ class SolarSelectionMode(RenderingMode):
         # sorted_score = score[order] # Not strictly needed for logic but good for debugging if needed  # noqa: ERA001
 
         # Cumsum can be nondeterministic on GPU, but we need it for the selection logic, so we disable deterministic algorithms here
-        cum_cost = torch.cumsum(sorted_cost, dim=0)
+        with torch.no_grad():
+            old_deterministic = torch.are_deterministic_algorithms_enabled()
+            torch.use_deterministic_algorithms(False)
+            cum_cost = torch.cumsum(sorted_cost, dim=0)
+            torch.use_deterministic_algorithms(old_deterministic)
 
         # fully taken items
         full = cum_cost <= budget

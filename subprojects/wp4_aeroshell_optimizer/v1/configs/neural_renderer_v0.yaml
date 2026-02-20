@@ -74,13 +74,13 @@ rendering_modes:
 
   mesh_assembly_mode:
     #mandatory
-    enabled: false
+    enabled: true
     class_path: "custom_modes.mesh_assembly_gif:MeshAssemblyGIF"
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you
     config:
       render_mode: "rgb"
-      camera_position: [2500, 2500, 2500]
+      camera_position: [3500, 3500, 3500]
       look_at: [0, 0, 0]
       alpha: 0.5
       fps: 20

@@ -34,7 +34,7 @@ class SolarPower(RenderingMode):
         self.fps = config.get("fps", 15)
         #Solar specific parameters
 
-        solar_config = load_config(v="v1", cfg_name="losses_v0_config.yaml")["main_solar_config"]
+        solar_config = load_config(v="v1", cfg_name="solar_loss_config.yaml")["general_config"]
         self.solar_angle=torch.tensor(solar_config["solar_angle"],device=self.visualiser.device)
         self.solar_angle = self.solar_angle / torch.norm(self.solar_angle) #Normalize to be safe
         if self.solar_angle is None or self.solar_angle.shape != (3,):

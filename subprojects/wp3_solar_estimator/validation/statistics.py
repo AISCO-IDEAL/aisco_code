@@ -40,10 +40,10 @@ class MeshStatistics:
         """
         if not self.use_wandb:
             return
-        solar_config = load_config(v="v1", cfg_name="losses_v0_config.yaml")["main_solar_config"]
+        solar_config = load_config(v="v1", cfg_name="solar_loss_config.yaml")["general_config"]
         solar_angle=solar_config["solar_angle"]
         self.solar_angle=torch.tensor(solar_angle,device=vertices.device)
-        self.area_budget=load_config(v="v1", cfg_name="losses_v0_config.yaml")["main_solar_config"]["area_budget"]
+        self.area_budget = solar_config["area_budget"]
         #Whole selection logic here:
 
         face_normals = compute_face_normals(vertices, faces)

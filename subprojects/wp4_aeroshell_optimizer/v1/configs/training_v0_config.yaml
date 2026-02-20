@@ -2,14 +2,7 @@ general_info:
   config_debugging: "True"
 
 training_params:
-  learning_rate: 0.000002
-  batch_size: 4096
+  learning_rate: 0.0000002
   num_epochs: 50
-  model_capacity: 256
-  num_layers: 8
-  skip_connections: [4]
-  weight_decay: 0.0
-  activation: "relu"
-  optimizer: "adam"
-  scheduler_step_size: 200
-  scheduler_gamma: 0.5
+  scheduler_step_size: 200 # does what?
+  scheduler_gamma: 0.5 # does what?
