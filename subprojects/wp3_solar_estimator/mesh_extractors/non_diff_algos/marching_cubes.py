@@ -10,6 +10,13 @@ import warnings
 import torch
 
 try:
+    import diso
+
+    HAS_DISO = True
+except ImportError:
+    HAS_DISO = False
+
+try:
     import mcubes  # PyMCubes - fast C++ marching cubes
 
     HAS_PYMCUBES = True
@@ -195,3 +202,77 @@ class MarchingCubesExtractor:
             "2. Use CPU device if GPU memory insufficient\n"
             "3. Reduce resolution to 512³ or 768³"
         )
+
+
+class MeshExtractor:
+    """
+    Unified mesh extractor with a switch between MC and DMC backends.
+
+    Algorithms:
+        - "mc": Marching Cubes using PyMCubes/sklearn (non-differentiable, fast)
+        - "dmc": Dual Marching Cubes using DISO (non-differentiable, similar perf)
+    """
+
+    def __init__(
+        self,
+        algorithm: str = "mc",
+        device: str = "cuda",
+        verbose: bool = True,
+        fixed_box: bool = True,
+        dmc_dtype: str = "float32",
+    ) -> None:
+        self.algorithm = algorithm.lower()
+        self.device = device
+        self.verbose = verbose
+        self._fixed_box = fixed_box
+
+        self._bbox = None
+        self._grid = None
+        self._resolution = None
+
+        if self.algorithm == "dmc":
+            if not HAS_DISO:
+                raise ImportError("DISO is not available. Install diso to use DMC.")
+            if dmc_dtype not in ["float32", "float64"]:
+                raise ValueError("dmc_dtype must be 'float32' or 'float64'")
+            dtype = torch.float32 if dmc_dtype == "float32" else torch.float64
+            self._dmc = diso.DiffDMC(dtype=dtype).to(device)
+            self._mc = None
+            if self.verbose:
+                print(f"MeshExtractor initialized with DMC backend on {device}")
+        else:
+            self._mc = MarchingCubesExtractor(device=device, verbose=verbose, fixed_box=fixed_box)
+            self._dmc = None
+
+    def set_grid(self, bbox: list[list[int]], resolution: int):
+        if not self._fixed_box:
+            raise NotImplementedError("Currently only fixed_box=True is supported")
+
+        if self.algorithm == "dmc":
+            self._grid = create_bbox_grid(bbox, resolution, self.device)
+            self._bbox = bbox
+            self._resolution = resolution
+            if self.verbose:
+                total_points = resolution**3
+                print(f"Grid set: {resolution}³ = {total_points:,} points, bbox={bbox}")
+        else:
+            self._mc.set_grid(bbox, resolution)
+
+    def extract_mesh(self, model: callable, isovalue: float = 0.0, batch_size: int = 8192) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.algorithm == "dmc":
+            if self._fixed_box and (self._grid is None or self._resolution is None):
+                raise RuntimeError("Extractor grid not set. Call set_grid(bbox, resolution) before extracting mesh.")
+
+            with torch.no_grad():
+                sdf_values = sample_sdf(model, self._grid, batch_size=batch_size)
+            sdf_grid = sdf_samples_to_grid(sdf_values, self._resolution)
+
+            verts, faces = self._dmc(sdf_grid, isovalue=isovalue)
+            verts = renormalise_vertices(verts, bbox=self._bbox)
+
+            if self.verbose:
+                print(f"[DMC] Extracted mesh: {verts.shape[0]:,} vertices, {faces.shape[0]:,} faces")
+
+            return verts, faces
+
+        return self._mc.extract_mesh(model, isovalue=isovalue, batch_size=batch_size)

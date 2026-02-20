@@ -4,12 +4,12 @@ import torch
 import trimesh
 import wandb
 
+from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
 from subprojects.wp3_solar_estimator.validation.statistics import MeshStatistics
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_alm, weights_manual
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh
 
 # # Visualization imports (commented out for now)
 # import trimesh # noqa: ERA001
@@ -40,6 +40,21 @@ class TotalLoss:
         self.__rendering_frequency = self.__general_config.get("wandb_general", {}).get("rendering_frequency")
         self._mesh_statistics = MeshStatistics(device=dev, use_wandb=self._use_wandb)  # For logging mesh statistics to wandb
 
+        # Initialize mesh extractor with config from neural_renderer_v0.yaml
+        renderer_config = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")
+        mesh_config = renderer_config.get("mesh_extraction", {})
+        self._mesh_extractor = MeshExtractor(
+            algorithm=mesh_config.get("algorithm", "mc"),
+            device=mesh_config.get("device", dev),
+            verbose=mesh_config.get("verbose", False),  # Keep quiet during training by default
+        )
+
+        # Pre-configure grid for repeated extractions (major speedup)
+        self._mesh_extractor.set_grid(
+            bbox=mesh_config.get("bbox", [[-5000, 5000], [-5000, 5000], [-5000, 5000]]),
+            resolution=mesh_config.get("resolution", 128),  # Default 128 for compatibility with old get_diff_mesh
+        )
+        self._mesh_extraction_config = mesh_config  # Store for later use
 
         # ALM parameters init
         if self.losses_config["general_info"].get("ALM", False):
@@ -179,7 +194,12 @@ class TotalLoss:
 
 
             if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
-                verts, faces = get_diff_mesh(model, grid_res=64, device=device)
+                # Use optimized non-differentiable marching cubes extractor
+                verts, faces = self._mesh_extractor.extract_mesh(
+                    model=model,
+                    isovalue=self._mesh_extraction_config.get("isovalue", 0.0),
+                    batch_size=self._mesh_extraction_config.get("batch_size", 8192),
+                )
                 if load_config(v="v1", cfg_name="logging.yaml")["mesh_statistics"]:
                     # If solar logging is enabled, we log the rendered image of the current mesh to WandB using the VisualisationManager and its rendering modes
                     self._mesh_statistics.log_basic_mesh_stats(verts, faces, epoch_name)  # Log basic mesh stats to wandb
