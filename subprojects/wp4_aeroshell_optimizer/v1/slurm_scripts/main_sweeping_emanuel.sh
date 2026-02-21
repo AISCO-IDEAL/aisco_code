@@ -68,7 +68,7 @@ for ((i=0; i<NUM_GPUS_ALLOCATED; i++)); do
         echo "[$(date)] Launching wandb agent #$j on logical GPU $i. Log: $AGENT_LOG"
         
         # Launch in background, explicitly setting device, and redirecting OUTPUT
-        CUDA_VISIBLE_DEVICES=$i wandb agent --count 5 "$SWEEP_ID" > "$AGENT_LOG" 2>&1 &
+        CUDA_VISIBLE_DEVICES=$i wandb agent --count 50 "$SWEEP_ID" > "$AGENT_LOG" 2>&1 &
         
         sleep 10
     done
