@@ -153,9 +153,7 @@ def main(verbose: bool = True) -> None:
     # Check if model still is on device after pretraining
     model = model.to(device)
 
-
-
-    model.optimise(training_config=training_config, renderer_wrapper=wrapper)
+    model.optimise(training_config=training_config, renderer_wrapper=wrapper, wandb_name=wandb_name, general_config=general_config)
     if verbose:
         print("Model optimisation completed.")
 
