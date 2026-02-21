@@ -33,6 +33,7 @@ class BasicMLP(BaseModel):
         # IMPORTANT: the device the model is on at time of function call defines the device passed to the loss_class
         # Get device from model parameters since nn.Module doesn't have a .device attribute
         device = next(self.parameters()).device
+        print(f"DEBUG: Model device in optimise: {device}")
         loss_function = TotalLoss(device, renderer_wrapper=renderer_wrapper)  # Initialise TotalLoss with the correct device
 
         for epoch in range(num_epochs):

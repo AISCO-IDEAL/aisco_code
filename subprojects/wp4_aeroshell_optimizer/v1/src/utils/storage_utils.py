@@ -1,3 +1,4 @@
+import copy
 import datetime
 import hashlib
 import json
@@ -103,8 +104,9 @@ def allround_save_data(
 
     if save_mesh:
         # get a model using kaolin conversions
-        model = model.to("cpu")
-        verts, faces = get_diff_mesh(model, grid_res=64, device="cpu")
+        # Use a copy to avoid disrupting training
+        temp_model = copy.deepcopy(model).cpu()
+        verts, faces = get_diff_mesh(temp_model, grid_res=64, device="cpu")
         if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
             print(
                 f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}"

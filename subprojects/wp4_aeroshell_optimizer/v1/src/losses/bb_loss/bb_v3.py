@@ -57,6 +57,18 @@ class BbV3(ParentLoss):
         Loss = mean( relu(sdf_model - sdf_inner) + relu(sdf_outer - sdf_model) )
         """
         with torch.enable_grad():
+            if type(self.device).__name__ == 'device':
+                pass
+            else:
+                 # Check if self.device is string and convert if needed, or print warning
+                 pass
+            
+            # Ensure P is on the correct device (the same as model parameters)
+            model_device = next(model.parameters()).device
+            if str(self.device) != str(model_device):
+                # print(f"Warning: BbV3 device ({self.device}) differs from model device ({model_device}). Updating self.device.")
+                self.device = model_device
+
             P = torch.tensor(self.__pointgrid, dtype=torch.float32, device=self.device)  # [N,3]  # noqa: N806
             sdf_inner_t = torch.as_tensor(
                 self.__inner_sdf_values,

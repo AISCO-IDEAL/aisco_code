@@ -46,10 +46,13 @@ class ParentLoss:
 
         # Initialise points if eikonal or smoothness loss
         if loss_name and ("eikonal" in loss_name.lower() or "smoothness" in loss_name.lower()):
+            print(f"DEBUG: Initializing points for {loss_name} on device: {self.device}")
             self.points = get_points(
                 num_points=self.losses_config["get_points_params"]["num_points"],
                 bbox_size=self.losses_config["get_points_params"]["bbox_size"],
+                device=self.device,
             )
+            print(f"DEBUG: Points device: {self.points.device}")
 
         self._setup()
 
