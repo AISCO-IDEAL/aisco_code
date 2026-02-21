@@ -62,7 +62,7 @@ def get_diff_mesh(
 
     # SDF evaluation
     if need_grad:
-        ctx = torch.cuda.amp.autocast(enabled=(use_amp and device == "cuda"), dtype=torch.float16)
+        ctx = torch.amp.autocast("cuda", enabled=(use_amp and device == "cuda"), dtype=torch.float16)
         with ctx:
             sdf_values = model(grid_points)
             if sdf_values.dim() > 1:
@@ -70,7 +70,7 @@ def get_diff_mesh(
         # Ensure float32 for downstream ops that may expect it
         sdf_values = sdf_values.to(dtype=torch.float32)
     else:
-        ctx = torch.cuda.amp.autocast(enabled=(use_amp and device == "cuda"), dtype=torch.float16)
+        ctx = torch.amp.autocast("cuda", enabled=(use_amp and device == "cuda"), dtype=torch.float16)
         with torch.no_grad(), ctx:
             sdf_values = model(grid_points)
             if sdf_values.dim() > 1:
