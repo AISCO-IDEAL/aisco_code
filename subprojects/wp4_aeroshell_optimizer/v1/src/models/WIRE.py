@@ -6,6 +6,7 @@ from torch import nn
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data
 
 """
 WIRE architecture from https://arxiv.org/pdf/2301.05187
@@ -153,7 +154,7 @@ class WIRE(BaseModel):
         }
         return model_info
 
-    def optimise(self, training_config: dict = None, renderer_wrapper: Wrapper | None = None) -> None:
+    def optimise(self, training_config: dict = None, renderer_wrapper: Wrapper | None = None, wandb_name: str = None, general_config: dict = None) -> None:
         """
         Args:
             training_config: Dictionary containing training configuration parameters.
@@ -186,12 +187,18 @@ class WIRE(BaseModel):
             loss.backward()
             # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
             optimizer.step()
-            # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
-            optimizer.step()
-            # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
-            optimizer.step()
-            # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
-            optimizer.step()
-            optimizer.step()
-            # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
-            optimizer.step()
+
+            # save mesh every 5 epochs
+            if general_config is not None and epoch % training_config.get("mesh_save_interval", 5) == 0:
+                allround_save_data(
+                    model=self,
+                    storage_path=general_config["general_info"].get(
+                        "storage_path", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+                    ),
+                    save_model=False,
+                    save_mesh=True,
+                    verbose=False,
+                    pretraining=False,
+                    wandb_run=wandb_name,
+                    epoch=epoch
+                )
