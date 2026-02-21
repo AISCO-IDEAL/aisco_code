@@ -51,6 +51,5 @@ bb_config:
     dy: 250
     dz: 250
     rand: 400
-
   assembly_version: 2
   assembly_id: 30 # 1 for the standard one
