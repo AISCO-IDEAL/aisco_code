@@ -123,7 +123,7 @@ def main(verbose: bool = True) -> None:
         run.config.update(config, allow_val_change=True)
 
     model_hash = dict_hashing(model.get_model_info_dict())
-    wandb_name = wandb.run.name if wandb.run else None
+    wandb_name = wandb.run.id if wandb.run is not None else None
     rendering_dir = None
     if wandb_name is not None:
         #set rendering dir inside wandb log dir
