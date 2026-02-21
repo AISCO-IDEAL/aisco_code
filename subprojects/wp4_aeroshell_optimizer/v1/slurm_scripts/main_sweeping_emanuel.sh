@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=Main_test
-#SBATCH --time=04:00:00                   # Adjust time as needed
+#SBATCH --time=12:00:00                   # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
@@ -52,7 +52,7 @@ export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code:$PYTHONPATH"
 cd /cluster/home/$USERNAME/AISCO_code/
 
-SWEEP_ID="aisco/50_Meshes_CFD_AI/25t5nktv"
+SWEEP_ID="aisco/50_Meshes_CFD_AI/r3vqpo7z"
 AGENTS_PER_GPU=1  # REDUCED to 1 for debugging. Run 2 only if stable.
 
 # Get the list of GPU IDs assigned by Slurm (e.g. 0,1,2 or 0)
