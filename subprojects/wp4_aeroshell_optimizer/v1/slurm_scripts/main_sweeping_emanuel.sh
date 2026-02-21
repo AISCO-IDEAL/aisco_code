@@ -76,7 +76,7 @@ cd /cluster/home/$USERNAME/AISCO_code/
 
 # --- SWEEP CONFIGURATION ---
 # Replace this with your actual SWEEP ID from 'wandb sweep ...'
-SWEEP_ID="aisco/50_Meshes_CFD_AI/c0mk208z"
+SWEEP_ID="aisco/50_Meshes_CFD_AI/mofebe9w"
 # ---------------------------
 
 # Launch multiple agents per GPU
