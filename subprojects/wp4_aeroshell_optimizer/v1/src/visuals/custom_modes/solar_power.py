@@ -34,7 +34,7 @@ class SolarPower(RenderingMode):
         self.fps = config.get("fps", 15)
         #Solar specific parameters
 
-        solar_config = load_config(v="v1", cfg_name="losses_v0_config.yaml")["main_solar_config"]
+        solar_config = load_config(v="v1", cfg_name="solar_loss_config.yaml")["general_config"]
         self.solar_angle=torch.tensor(solar_config["solar_angle"],device=self.visualiser.device)
         self.solar_angle = self.solar_angle / torch.norm(self.solar_angle) #Normalize to be safe
         if self.solar_angle is None or self.solar_angle.shape != (3,):
@@ -83,8 +83,8 @@ class SolarPower(RenderingMode):
 
         # Create colors based on normalized power values
         colors = torch.zeros((faces.shape[0], 3), device=self.visualiser.device)
-        colors[:, 0] = normalized_power  # Red channel
-        colors[:, 1] = 1 - normalized_power  # Green channel
+        colors[:, 0] = 1 - normalized_power  # Red channel
+        colors[:, 1] = normalized_power  # Green channel
         colors[:, 2] = 0.5 * (1 - normalized_power)  # Blue channel
 
         textures = self.visualiser.face_colors_to_textures(face_colors=colors)

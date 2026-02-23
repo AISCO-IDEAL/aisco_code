@@ -41,7 +41,7 @@ def get_diff_mesh(
     # Enforce deterministic behavior for PyTorch operations (needed for backpropagation tests)
     if box_dim is None:
         box_dim = [-5000, 5000, -5000, 5000, -5000, 5000]
-    torch.use_deterministic_algorithms(True)
+    # torch.use_deterministic_algorithms(True) # interferes with WP3 #aalthaus #vdiekmann
     torch.manual_seed(42)  # Set a fixed seed
     ###################################################
 

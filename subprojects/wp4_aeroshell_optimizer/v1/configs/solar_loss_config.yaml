@@ -1,0 +1,22 @@
+#to be cleaned up
+
+general_info:
+  version: 3.0
+  last_updated: 2026-01-19
+  description: "Configuration file for solar loss functions."
+
+general_config:
+  solar_angle: [0.0,0.0,1.0] # This is the direction in which a perfect solar cell should point, i.e. [0,0,1] if the sun shines from above
+  area_budget: 3000000 #in mm^3
+
+SolarLossConfigV3:  # moved from solar_loss_v3.py
+  method: str = "diso_mc" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
+  bbox: list[list[float]] = [[-3500.0, 3500.0], [-3500.0, 3500.0], [-3500.0, 3500.0]]
+  resolution: int = 64
+  area_budget_mm2: float = 1e6
+  sun_dir: list[float] | torch.Tensor = None
+  device: str = "cuda"
+  batch_size: int = 4096
+  eps: float = 1e-12
+  "sigmoid_sharpness": 1.0,
+  "budget_penalty_weight": 0.1,
