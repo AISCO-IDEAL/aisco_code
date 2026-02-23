@@ -1,3 +1,3 @@
 # return aerodynamic drag
-def aero():
+def get_drag():
     return 1000
