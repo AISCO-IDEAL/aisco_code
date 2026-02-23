@@ -1,4 +1,3 @@
-#kdiehl
 [build-system]
 
 requires = ["setuptools>=74.0.0"]
@@ -189,15 +188,15 @@ max-args = 8
 python_version = "3.11"
 namespace_packages = true
 explicit_package_bases = true
-mypy_path = "AISCO/"
+mypy_path = "subprojects/"
 ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = true
-files = ["AISCO/", "tests/"]
+files = ["subprojects/", "tests/"]
 
 exclude = [
   "^build/",
   "^docs/",
   "^fixed_renderer/",
-  "**/archive/**",
+  ".*/archive/*.",
 ]
