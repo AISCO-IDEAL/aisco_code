@@ -1,3 +1,3 @@
 # return solar loss
-def solar():
+def get_solar_perf():
     return 500
