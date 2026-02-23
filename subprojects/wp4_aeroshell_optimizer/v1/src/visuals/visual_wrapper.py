@@ -193,5 +193,5 @@ class VisualisationManager:
                     print(f"Error finalizing {mode_name}: {e}")
                     tb.print_exc()
 
-# Deprecated alias for backward compatibility until refactor is complete
+# Deprecated alias for backward compatibility
 Wrapper = VisualisationManager

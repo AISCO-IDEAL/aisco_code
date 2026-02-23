@@ -65,6 +65,8 @@ class Visualiser:
         Modes: "rgb", "silhouettes", "depth", or None (full render tuple from renderer.render).
         Camera parameters can be overridden per-call. If no textures are provided for RGB,
         a light gray texture is generated.
+        camera_position: sets the camera position in world coordinates
+        camera_direction: sets the camera direction vector (in which direction it looks)
         """
         vertices, faces, textures = self._ensure_batched(vertices, faces, textures)
         vertices = self._to_device(vertices)
