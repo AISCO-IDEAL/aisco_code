@@ -26,7 +26,7 @@ def parse_force_report(filepath):
     Returns the last value of the 3rd column (drag_force).
     """
     last_value = None
-    with open(filepath, "r") as f:
+    with open(filepath) as f:
         for line in f:
             line = line.strip()
             # Skip header/comment lines (start with " or ()

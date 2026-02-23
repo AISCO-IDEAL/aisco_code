@@ -1,15 +1,14 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from typing import Optional
 from dataclasses import dataclass, field
+from typing import Optional
+
 import numpy as np
+import torch
+import torch.nn.functional as F
+from torch import nn
+from torch_geometric.data import Batch
 
 from .layers.attn import Transformer, TransformerConfig
-from .layers.magno import MAGNOConfig
-from .layers.magno import MAGNOEncoder, MAGNODecoder
-
-from torch_geometric.data import Batch
+from .layers.magno import MAGNOConfig, MAGNODecoder, MAGNOEncoder
 
 
 class GAOT3D(nn.Module):
@@ -67,9 +66,9 @@ class GAOT3D(nn.Module):
         self.positional_embedding_name = config.positional_embedding
         self.positions = self._get_patch_positions()
 
-        setattr(config.attn_config, "D", self.D)
-        setattr(config.attn_config, "H", self.H)
-        setattr(config.attn_config, "W", self.W)
+        config.attn_config.D = self.D
+        config.attn_config.H = self.H
+        config.attn_config.W = self.W
 
         return Transformer(
             input_size=self.node_latent_size * self.patch_size * self.patch_size * self.patch_size,
@@ -189,7 +188,7 @@ class GAOT3D(nn.Module):
         assert n_regional_nodes == D * H * W, f"n_regional_nodes ({n_regional_nodes}) is not equal to H ({H}) * W ({W})"
 
         P = self.patch_size
-        assert D % P == 0 and H % P == 0 and W % P == 0, f"Dimensions must be divisible by patch size"
+        assert D % P == 0 and H % P == 0 and W % P == 0, "Dimensions must be divisible by patch size"
         num_patches_D = D // P
         num_patches_H = H // P
         num_patches_W = W // P
