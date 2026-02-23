@@ -118,7 +118,7 @@ class TotalLoss:
                     )
                     self.__active_losses[loss_name] = loss_instance
 
-    def get_total_loss(
+    def get_total_loss(  # noqa: PLR0912, PLR0915
         self, model: BaseModel, epoch_name: int = -1
     ) -> torch.Tensor:  # epoch_name for rendering
         # Calculate the individual Losses
