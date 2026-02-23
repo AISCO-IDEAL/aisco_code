@@ -81,7 +81,7 @@ rendering_modes:
     # Use for any settings that are relevant for you
     config:
       render_mode: "rgb"
-      camera_position: [3500, 3500, 3500]
+      camera_position: [3500, 0,0]
       look_at: [0, 0, 0]
       alpha: 0.5
       fps: 10
