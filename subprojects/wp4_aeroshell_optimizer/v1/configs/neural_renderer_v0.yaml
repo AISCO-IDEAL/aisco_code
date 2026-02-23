@@ -50,8 +50,6 @@ rendering_modes:
       assembly_color: [1.0, 0.55, 0.0]
       mesh_color: [0.2,1.0,1.0] #Bugged?
 
-
-
   example_advanced_mode:
     enabled: false
     class_path: "custom_modes.rendering_mode_example_advanced:ExampleAdvancedMode"
