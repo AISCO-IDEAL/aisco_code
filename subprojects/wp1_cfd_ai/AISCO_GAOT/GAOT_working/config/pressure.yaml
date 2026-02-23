@@ -1,4 +1,5 @@
 setup:
+    wandb_run_name: "run__RUN_ID_"
     seed: 42
     device: "cuda:0"
     dtype: "torch.float32"
@@ -13,7 +14,7 @@ setup:
     wandb: false
     wandb_project: GAOT-CRV
     wandb_entity: null
-    wandb_run_name: gaot-drivaernet-pressure
+    #wandb_run_name: "run__RUN_ID_"
     wandb_group: drivaernet
     wandb_mode: online
     wandb_tags: ["drivaernet", "pressure", "normals", "gaot"]
@@ -71,9 +72,9 @@ dataset:
     base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer"
     processed_folder: ""
     force_recompute_stats: true
-    train_size: 80
-    val_size: 10
-    test_size: 10
+    train_size: 10
+    val_size: 1
+    test_size: 1
     batch_size: 1
     num_workers: 4
     shuffle: true
