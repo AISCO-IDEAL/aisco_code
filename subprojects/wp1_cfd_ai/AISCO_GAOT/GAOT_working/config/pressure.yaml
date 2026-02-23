@@ -67,14 +67,14 @@ model:
                 cond_norm_hidden_size: 4
 
 dataset:
-    name: "drivaernet_drag"
-    metaname: "incompressible_fluids/drivaernet_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer"
+    name: "euler_drag"
+    metaname: "incompressible_fluids/euler_drag"            #Change accordingly to the metadata.py file
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler"        #Change to your processed data path
     processed_folder: ""
     force_recompute_stats: false
-    train_size: 80
-    val_size: 10
-    test_size: 10
+    train_size: 40
+    val_size: 5
+    test_size: 5
     batch_size: 1
     num_workers: 4
     shuffle: true

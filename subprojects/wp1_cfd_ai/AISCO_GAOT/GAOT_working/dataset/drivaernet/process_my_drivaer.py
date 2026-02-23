@@ -73,11 +73,11 @@ def process_custom_drivaer(base_path, output_dir, target_col="Cd"):
         order_list.append(folder_name)
 
     # 7. Generate the order.txt file automatically!
-    with open(os.path.join(output_dir, "order.txt"), "w") as f:
+    with open(os.path.join(output_dir, "order_.txt"), "w") as f:
         f.writelines(f"{name}\n" for name in order_list)
 
     print(f"\nSuccess! Processed {len(order_list)} runs.")
-    print(f"Data and order.txt saved to: {output_dir}")
+    print(f"Data and order_.txt saved to: {output_dir}")
 
 
 if __name__ == "__main__":
