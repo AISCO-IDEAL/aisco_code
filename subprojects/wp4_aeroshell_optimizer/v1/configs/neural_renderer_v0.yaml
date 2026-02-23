@@ -75,7 +75,7 @@ rendering_modes:
     # Use for any settings that are relevant for you
     config:
       render_mode: "rgb"
-      camera_position: [3500, 0,0]
+      camera_position: [3000, 3000,3000]
       look_at: [0, 0, 0]
       alpha: 0.5
       fps: 10
@@ -88,7 +88,7 @@ rendering_modes:
     class_path: "custom_modes.solar_selection:SolarSelectionMode"
     #config for solar selection
     config:
-      camera_position: [3500, 3500, 3500]
+      camera_position: [-3500, 3500, 3500]
       look_at: [0, 0, 0]
       render_mode: "rgb"
       make_gif: true #if false saves seperate image every interval iterations
@@ -103,13 +103,13 @@ rendering_modes:
     class_path: "custom_modes.solar_power:SolarPower"
     #config for solar selection
     config:
-      camera_position: [3500, 3500, 3500]
+      camera_position: [-3500, 3500, 3500]
       look_at: [0, 0, 0]
       render_mode: "rgb"
       make_gif: true #if false saves seperate image every interval iterations
       render_interval: 1 #Rendering interval for gif/image. 1 means every iteration is rendered
       fps: 10
-
+  #not really used, more of a basic demo
   example_advanced_mode:
     enabled: false
     class_path: "custom_modes.rendering_mode_example_advanced:ExampleAdvancedMode"
