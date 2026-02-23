@@ -17,7 +17,7 @@ setup:
     #wandb_run_name: "run__RUN_ID_"
     wandb_group: drivaernet
     wandb_mode: online
-    wandb_tags: ["drivaernet", "pressure", "normals", "gaot"]
+    #wandb_tags: ["drivaernet", "pressure", "normals", "gaot"]
     wandb_watch_model: true
 
     # --- artifact & checkpoint settings ---
