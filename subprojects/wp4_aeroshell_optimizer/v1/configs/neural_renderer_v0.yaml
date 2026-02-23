@@ -12,7 +12,6 @@ neural_renderer:
 # Mesh extraction settings for converting neural SDF to renderable mesh
 mesh_extraction:
   # Algorithm: "mc" (marching cubes via PyMCubes/sklearn) or "dmc" (dual marching cubes via DISO)
-  # DMC can change topology/triangulation but performance is similar at this resolution.
   algorithm: "mc"
 
   # Grid resolution per axis (e.g., 256 = 256³ grid = ~16M points)
@@ -93,12 +92,12 @@ rendering_modes:
     class_path: "custom_modes.solar_selection:SolarSelectionMode"
     #config for solar selection
     config:
-      camera_position: [1000, -3000, 0]
+      camera_position: [3500, 3500, 3500]
       look_at: [0, 0, 0]
       render_mode: "rgb"
       make_gif: true #if false saves seperate image every interval iterations
       render_interval: 1 #Rendering interval for gif/image. 1 means every iteration is rendered
-      fps: 15
+      fps: 10
       solar_color: [0.2,0.2,0.8]
       rest_color: [1.0,0.5,0.0]
 
@@ -108,12 +107,12 @@ rendering_modes:
     class_path: "custom_modes.solar_power:SolarPower"
     #config for solar selection
     config:
-      camera_position: [1000, -3000, 0]
+      camera_position: [3500, 3500, 3500]
       look_at: [0, 0, 0]
       render_mode: "rgb"
       make_gif: true #if false saves seperate image every interval iterations
       render_interval: 1 #Rendering interval for gif/image. 1 means every iteration is rendered
-      fps: 15
+      fps: 10
 
   example_advanced_mode:
     enabled: false

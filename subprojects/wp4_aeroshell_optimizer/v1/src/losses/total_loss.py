@@ -209,10 +209,9 @@ class TotalLoss:
                 if load_config(v="v1", cfg_name="logging.yaml")["mesh_statistics"]:
                     # If solar logging is enabled, we log the rendered image of the current mesh to WandB using the VisualisationManager and its rendering modes
                     self._mesh_statistics.log_basic_mesh_stats(verts, faces, epoch_name)  # Log basic mesh stats to wandb
-                    self._mesh_statistics.log_solar_area_stats(verts, faces, epoch_name)  # Log solar area related stats to wandb                if load_config(v="v1", cfg_name="logging.yaml")["mesh_statistics"]:
-                    # If solar logging is enabled, we log the rendered image of the current mesh to WandB using the VisualisationManager and its rendering modes
-                    self._mesh_statistics.log_basic_mesh_stats(verts, faces, epoch_name)  # Log basic mesh stats to wandb
-                    self._mesh_statistics.log_solar_area_stats(verts, faces, epoch_name)  # Log solar area related stats to wandb
+                    self._mesh_statistics.log_solar_area_stats(
+                        verts, faces, epoch_name
+                    )  # Log solar area related stats to wandb                if load_config(v="v1", cfg_name="logging.yaml")["mesh_statistics"]:
 
                 if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
                     if self._use_neural_renderer and self._renderer_manager is not None:

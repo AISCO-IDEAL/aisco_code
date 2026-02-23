@@ -73,6 +73,7 @@ class SolarSelectionMode(RenderingMode):
 
         # Calculate dot products (cosine of angle with sun vector)
         solar_dot_prods = (face_normals * self.solar_angle).sum(dim=1)
+
         # Calculate score (energy) and cost (area)
         # We maximize total energy (score) subject to area (cost) <= budget
         score = solar_dot_prods * face_areas

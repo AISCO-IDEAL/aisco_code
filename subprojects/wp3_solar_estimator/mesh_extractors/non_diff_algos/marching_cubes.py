@@ -134,6 +134,8 @@ class MarchingCubesExtractor:
         if HAS_PYMCUBES:
             # PyMCubes backend (fast C++ implementation)
             verts, faces = mcubes.marching_cubes(sdf_grid_np, isovalue)
+            # Flip winding to match outward normal convention used elsewhere
+            faces = faces[:, [0, 2, 1]]
         else:
             # Fallback to sklearn
             verts, faces, _, _ = measure.marching_cubes(
@@ -206,11 +208,12 @@ class MarchingCubesExtractor:
 
 class MeshExtractor:
     """
-    Unified mesh extractor with a switch between MC and DMC backends.
+    Unified non-differentiable mesh extractor with a switch between MC and DMC backends.
 
     Algorithms:
         - "mc": Marching Cubes using PyMCubes/sklearn (non-differentiable, fast)
         - "dmc": Dual Marching Cubes using DISO (non-differentiable, similar perf)
+        - "disomc": Marching Cubes using DISO DiffMC (non-differentiable)
     """
 
     def __init__(
@@ -230,16 +233,21 @@ class MeshExtractor:
         self._grid = None
         self._resolution = None
 
-        if self.algorithm == "dmc":
+        if self.algorithm in {"dmc", "disomc"}:
             if not HAS_DISO:
                 raise ImportError("DISO is not available. Install diso to use DMC.")
             if dmc_dtype not in ["float32", "float64"]:
                 raise ValueError("dmc_dtype must be 'float32' or 'float64'")
             dtype = torch.float32 if dmc_dtype == "float32" else torch.float64
-            self._dmc = diso.DiffDMC(dtype=dtype).to(device)
+            if self.algorithm == "dmc":
+                self._dmc = diso.DiffDMC(dtype=dtype).to(device)
+                self._diso_backend = "DMC"
+            else:
+                self._dmc = diso.DiffMC(dtype=dtype).to(device)
+                self._diso_backend = "DISO-MC"
             self._mc = None
             if self.verbose:
-                print(f"MeshExtractor initialized with DMC backend on {device}")
+                print(f"MeshExtractor initialized with {self._diso_backend} backend on {device}")
         else:
             self._mc = MarchingCubesExtractor(device=device, verbose=verbose, fixed_box=fixed_box)
             self._dmc = None
@@ -248,7 +256,7 @@ class MeshExtractor:
         if not self._fixed_box:
             raise NotImplementedError("Currently only fixed_box=True is supported")
 
-        if self.algorithm == "dmc":
+        if self.algorithm in {"dmc", "disomc"}:
             self._grid = create_bbox_grid(bbox, resolution, self.device)
             self._bbox = bbox
             self._resolution = resolution
@@ -259,7 +267,7 @@ class MeshExtractor:
             self._mc.set_grid(bbox, resolution)
 
     def extract_mesh(self, model: callable, isovalue: float = 0.0, batch_size: int = 8192) -> tuple[torch.Tensor, torch.Tensor]:
-        if self.algorithm == "dmc":
+        if self.algorithm in {"dmc", "disomc"}:
             if self._fixed_box and (self._grid is None or self._resolution is None):
                 raise RuntimeError("Extractor grid not set. Call set_grid(bbox, resolution) before extracting mesh.")
 
@@ -271,7 +279,7 @@ class MeshExtractor:
             verts = renormalise_vertices(verts, bbox=self._bbox)
 
             if self.verbose:
-                print(f"[DMC] Extracted mesh: {verts.shape[0]:,} vertices, {faces.shape[0]:,} faces")
+                print(f"[{self._diso_backend}] Extracted mesh: {verts.shape[0]:,} vertices, {faces.shape[0]:,} faces")
 
             return verts, faces
 

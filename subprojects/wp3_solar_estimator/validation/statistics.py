@@ -49,6 +49,22 @@ class MeshStatistics:
         face_normals = compute_face_normals(vertices, faces)
         face_areas = compute_triangle_areas(vertices, faces)
 
+        # On the side: log how many face normals point away from the origin (0,0,0)
+        origin_dot_prods = (face_normals * vertices[faces].mean(dim=1)).sum(dim=1)
+        away_from_origin = (origin_dot_prods > 0).sum().item()
+        total_faces = faces.shape[0]
+        multi_log_in_one(
+            "Inside out stats",
+            {
+                "Faces Pointing Away from Origin": away_from_origin,
+                "Percentage pointing inside": (1 - away_from_origin / total_faces) * 100
+                if total_faces > 0
+                else 0,  # Division by 0 handling, weird ruff-autosave formatting here?
+                "Total Faces": total_faces,
+            },
+            step=epoch,
+        )
+
         # Calculate dot products (cosine of angle with sun vector)
         solar_dot_prods = (face_normals * self.solar_angle).sum(dim=1)
         # Calculate score (energy) and cost (area)
@@ -84,10 +100,14 @@ class MeshStatistics:
         pos_mask = solar_dot_prods > 0
         total_projected_area = (solar_dot_prods[pos_mask] * cost[pos_mask]).sum()
 
-        multi_log_in_one("Solar Area Stats", {
-            "Total Surface Area": total_surface_area/10e6,
-            "Selected Surface Area": selected_solar_area/10e6,
-            "Selected Projected Area": solar_performance_selected/10e6,
-            "Total Projected Area": total_projected_area/10e6,
-            "Area Budget": self.area_budget/10e6
-        }, step=epoch)
+        multi_log_in_one(
+            "Solar Area Stats",
+            {
+                "Total Surface Area": total_surface_area / 1e6,
+                "Selected Surface Area": selected_solar_area / 1e6,
+                "Selected Projected Area": solar_performance_selected / 1e6,
+                "Total Projected Area": total_projected_area / 1e6,
+                "Area Budget": self.area_budget / 1e6,
+            },
+            step=epoch,
+        )
