@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.optimize import fsolve
-from aero import get_drag
+from aero import get_drag_at_25ms
 from solar import get_solar_perf
 from mass import get_mass
 
@@ -16,7 +16,8 @@ def energy_balance(speed, m, rho, c_d, a, g, h, susp, braking, electrical, dist_
 
     # 2. Speed-dependent variables
     c_rolling_friction = (1.28667 + 0.0064*speed + 0.0000533333*speed**2) * 10**(-3) # TODO: document formula from aCe
-    f_d = 0.5 * rho * speed**2 * c_d * a # TODO: prove feasibility of formula
+    # below approach based on: f_d = 0.5 * rho * speed**2 * c_d * a # TODO: prove feasibility of formula
+    f_d = (speed/25)**2 * get_drag_at_25ms() # TODO: document why we scale drag from 25m/s and implement get_drag() to return actual drag at any speed
     
     # Force magnitudes 
     f_rolling = c_rolling_friction * m * g
