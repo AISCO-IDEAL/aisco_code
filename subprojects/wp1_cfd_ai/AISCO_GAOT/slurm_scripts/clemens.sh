@@ -74,7 +74,7 @@ cd /cluster/home/$USERNAME/AISCO_code/
 
 ulimit -n 65536 
 
-python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/main.py \
+python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/model_loader.py \
     -c subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/pressure.yaml \
     2>&1
     

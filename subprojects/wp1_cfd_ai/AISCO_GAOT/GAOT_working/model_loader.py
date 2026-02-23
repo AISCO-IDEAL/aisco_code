@@ -50,13 +50,13 @@ class ModelLoader:
 # test the model loader
 
 if __name__ == "__main__":
-    from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.sdf_model import SDFModel
+    from subprojects.wp4_aeroshell_optimizer.v1.src.models.basic_MLP_v1 import BasicMLP
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model_loader = ModelLoader(
         model_path="/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model.pt", device="cuda"
     )
-    sdf_model = SDFModel().to(device)
+    sdf_model = BasicMLP().to(device)
 
     loss = model_loader.forward(sdf_model)
     print("Coupled Loss:", loss.item())
