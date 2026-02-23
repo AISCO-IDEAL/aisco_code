@@ -45,3 +45,18 @@ class ModelLoader:
         # Compose final loss that keeps GAOT loss value and provides gradients to sdf_model weights
         coupled_loss = gaot_loss + (surrogate_coupling - surrogate_coupling.detach())
         return coupled_loss
+
+
+# test the model loader
+
+if __name__ == "__main__":
+    from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.sdf_model import SDFModel
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model_loader = ModelLoader(
+        model_path="/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model.pt", device="cuda"
+    )
+    sdf_model = SDFModel().to(device)
+
+    loss = model_loader.forward(sdf_model)
+    print("Coupled Loss:", loss.item())
