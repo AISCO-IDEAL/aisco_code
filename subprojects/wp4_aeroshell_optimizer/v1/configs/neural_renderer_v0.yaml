@@ -1,19 +1,12 @@
 #This config includes everything regarding the visualiser and its wrapper you might need
 
 
-neural_renderer:
-  image_size: 1024
-  background_color: [0.0,0.0,0.0]
-  anti_aliasing: true
-  camera_mode: "look_at"
-  viewing_angle: 40
 
 
 # Mesh extraction settings for converting neural SDF to renderable mesh
 mesh_extraction:
   # Algorithm: "mc" (marching cubes via PyMCubes/sklearn) or "dmc" (dual marching cubes via DISO)
   algorithm: "mc"
-
   # Grid resolution per axis (e.g., 256 = 256³ grid = ~16M points)
   # Higher = more detail but slower. Typical values:
   #   - 64: Quick preview (old default, ~262K points)
@@ -21,32 +14,35 @@ mesh_extraction:
   #   - 256: Good quality (~16M points)
   #   - 512: High quality (~134M points, use GPU with 16GB+ VRAM)
   resolution: 128  # Conservative default, adjust based on your GPU
-
   # Bounding box [[xmin,xmax], [ymin,ymax], [zmin,zmax]]
   # Adjust to encompass your geometry with some margin
   bbox: [[-5000, 5000], [-5000, 5000], [-5000, 5000]]
-
   # Isovalue for surface extraction (0.0 = zero level set, standard for SDFs)
   isovalue: 0.0
-
   # Batch size for SDF evaluation (points processed per GPU call)
   # Larger = faster but more GPU memory. Recommended values:
   #   - 2048: Conservative, works on 8GB GPU
   #   - 8192: Balanced for 16GB GPU (good for 512³)
   #   - 16384: Aggressive for 24GB+ GPU
   batch_size: 8192
-
   # Device for SDF evaluation ("cuda", "cpu", or specific like "cuda:0")
   device: "cuda"
-
   # Verbose output (prints extraction stats: vertex count, backend, etc.)
   # Set false during training to reduce console spam
   verbose: false
 
 
-# Insert custom modes here, such as "clemens' solar mode"
+# overall visualiser/neural renderer config for default renderer instance
+neural_renderer:
+  image_size: 1024
+  background_color: [0.0,0.0,0.0]
+  anti_aliasing: true
+  camera_mode: "look_at"
+  viewing_angle: 40
+
+# Insert custom modes here that should be handled by the VisualisationManager
 rendering_modes:
-#use alex_mode as an example
+  #use alex_mode as an example, jsut renders a GIF of the mesh
   alex_mode:
     #mandatory
     enabled: false
@@ -58,7 +54,7 @@ rendering_modes:
       look_at: [0, 0, 0]
       render_mode: "rgb"
       fps: 20
-
+  # Just a picture of the current assembly
   assembly_mode:
     #mandatory
     enabled: false
@@ -70,7 +66,7 @@ rendering_modes:
       look_at: [0, 0, 0]
       render_mode: "rgb"
       color: [1.0 ,0.55 ,0.0]
-
+  # Gif of the semitransparant with its assembly
   mesh_assembly_mode:
     #mandatory
     enabled: true
@@ -79,20 +75,20 @@ rendering_modes:
     # Use for any settings that are relevant for you
     config:
       render_mode: "rgb"
-      camera_position: [3500, 3500, 3500]
+      camera_position: [3000, 3000,3000]
       look_at: [0, 0, 0]
       alpha: 0.5
-      fps: 20
+      fps: 10
       assembly_color: [1.0, 0.55, 0.0]
       mesh_color: [0.2,1.0,1.0] #Bugged?
-
+  # Gif of which solar cells would be selected with the dot-product approach, given a budget and soalr angle in solar_loss_config.yaml
   solar_selection_mode:
     #Mandatory
     enabled: true
     class_path: "custom_modes.solar_selection:SolarSelectionMode"
     #config for solar selection
     config:
-      camera_position: [3500, 3500, 3500]
+      camera_position: [-3500, 3500, 3500]
       look_at: [0, 0, 0]
       render_mode: "rgb"
       make_gif: true #if false saves seperate image every interval iterations
@@ -100,20 +96,20 @@ rendering_modes:
       fps: 10
       solar_color: [0.2,0.2,0.8]
       rest_color: [1.0,0.5,0.0]
-
+  # Gif of the solar power of each face using the dot-product approach, green is good, red is bad
   solar_power_mode:
     #Mandatory
     enabled: true
     class_path: "custom_modes.solar_power:SolarPower"
     #config for solar selection
     config:
-      camera_position: [3500, 3500, 3500]
+      camera_position: [-3500, 3500, 3500]
       look_at: [0, 0, 0]
       render_mode: "rgb"
       make_gif: true #if false saves seperate image every interval iterations
       render_interval: 1 #Rendering interval for gif/image. 1 means every iteration is rendered
       fps: 10
-
+  #not really used, more of a basic demo
   example_advanced_mode:
     enabled: false
     class_path: "custom_modes.rendering_mode_example_advanced:ExampleAdvancedMode"
@@ -125,11 +121,24 @@ rendering_modes:
       render_interval: 10
 
 
-# also no longer used?
-storage_dir: "/cluster/home/aalthaus/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/renderings"
+
+
+detached_modes:
+  solar_v3_selection:
+    enabled: false
+    class_path: "detached_modes.solar_v3_selection:SolarV3Selection"
+    config:
+      camera_position: [-1000, 3000, 1000]
+      look_at: [0, 0, 0]
+      render_mode: "rgb"
+      fps: 15
+      render_interval: 10
 
 # not used atm, outdated
 gifs:
   fps: 60
   upload: false
   save_locally: true
+
+# also no longer used
+storage_dir: "/cluster/home/aalthaus/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/renderings"
