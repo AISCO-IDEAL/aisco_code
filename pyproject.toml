@@ -76,7 +76,7 @@ testing = [
   ]
 
 all = [
-  "aisco_env[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer, testing]"
+  "AISCO_code[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer, testing]"
 ]
 
 #make a all command
