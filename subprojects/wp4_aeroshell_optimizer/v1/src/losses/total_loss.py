@@ -4,6 +4,7 @@ import torch
 import trimesh
 import wandb
 
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.cruising_speed import cruising_speed # Noqa: F401
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_alm, weights_manual
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -121,6 +122,7 @@ class TotalLoss:
             # documentation: `Losses and their weights` in Obsidian
             # o: primary loss (solar and drag) (objectives), for now just use basic weighting, later could be BOTorch or with a RaceTimeEstimator
             # c: constraint loss (bb, eikonal, smoothness)
+            # o = -1 *cruising_speed(solar_power=loss_tensors[4], drag_force_normalized= loss_tensors[0]., mass=210, c_losses=..., rolling_friction_coefficient=...)
             o = (loss_tensors[0] * 0.0) + (loss_tensors[4] * (-1.0))
             # NOTE: hardcoded weights for now, TODO: implement bayesian optimization here
 
