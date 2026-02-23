@@ -4,7 +4,7 @@ setup:
     dtype: "torch.float32"
     trainer_name: "static3d"
     train: true
-    test: false
+    test: true
     ckpt: false
     use_variance_test: false
     distributed: false
@@ -71,13 +71,13 @@ dataset:
     base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer"
     processed_folder: ""
     force_recompute_stats: true
-    train_size: 20
-    val_size: 5
+    train_size: 80
+    val_size: 10
     test_size: 10
     batch_size: 1
     num_workers: 4
     shuffle: true
-    metric_suite: "drivaernet"
+    metric_suite: "general"
     update_pt_files_with_edges: false
 
 optimizer:
@@ -85,9 +85,9 @@ optimizer:
     args:
         lr: 8e-4
         weight_decay: 1e-05
-        epoch: 3
+        epoch: 1
         loss_scale: 1.0
-        eval_every_eps: 2
+        eval_every_eps: 1
         scheduler: "mix"
         max_lr: 1e-3
         min_lr: 5e-4
@@ -95,7 +95,7 @@ optimizer:
         save_every_epochs: 1
 
 path:
-    ckpt_path: ".ckpt/drivaernet/gaot/pressure.pt"
-    loss_path: ".loss/drivaernet/gaot/pressure.png"
-    result_path: ".results/drivaernet/gaot/pressure.png"
-    database_path: ".database/drivaernet/gaot/pressure.csv"
+    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model.pt"
+    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/drag_loss.png"
+    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/drag_result.png"
+    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/drag_metrics.csv"

@@ -74,8 +74,22 @@ cd /cluster/home/$USERNAME/AISCO_code/
 
 ulimit -n 65536
 
+# Define your base config
+BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/pressure.yaml"
+
+# Define the new folder where you want to archive your run configs
+ARCHIVE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/configs"
+mkdir -p $ARCHIVE_DIR  # Make sure the folder exists!
+
+# Set the path for the temporary unique config
+TEMP_CONFIG="$ARCHIVE_DIR/run_${SLURM_JOB_ID}.yaml"
+
+# 1. Inject the Slurm Job ID into the YAML and save it to the archive folder
+sed "s/_RUN_ID_/${SLURM_JOB_ID}/g" $BASE_CONFIG > $TEMP_CONFIG
+
+# 2. Run the AI using the newly generated unique config file
 python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/main.py \
-    -c subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/pressure.yaml \
+    -c $TEMP_CONFIG \
     2>&1
 
 #------------------------------------------------------------------------------
