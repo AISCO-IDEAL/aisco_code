@@ -756,6 +756,17 @@ class StaticTrainer3D(TrainerBase):
                 logging.getLogger(__name__).info(f"Rel L2 Error (%):   {final_metrics_dict['Rel L2 Error (%)']:.4f}")
                 logging.getLogger(__name__).info(f"Rel L1 Error (%):   {final_metrics_dict['Rel L1 Error (%)']:.4f}")
 
+                # 🟢 NEW: Save all Ground Truth and Predictions to a CSV file
+                # Pair the true drag and predicted drag side-by-side
+                results_array = torch.cat([full_targets.view(-1, 1), full_preds.view(-1, 1)], dim=1).cpu().numpy()
+
+                # Swap the .png extension from your YAML for a .csv extension
+                csv_save_path = self.path_config.result_path.replace(".png", "_predictions.csv")
+
+                # Save the file
+                np.savetxt(csv_save_path, results_array, delimiter=",", header="True_Drag,Predicted_Drag", comments="")
+                logging.getLogger(__name__).info(f"Saved all test predictions to {csv_save_path}")
+
             # --- Plotting the stored first sample ---
             logging.getLogger(__name__).info("Skipping 3D plotting for scalar drag prediction")
             #try:
