@@ -46,7 +46,7 @@ neural_renderer:
   camera_mode: "look_at"
   viewing_angle: 40
 
-# Insert custom modes here, such as "clemens' solar mode"
+# Insert custom modes here that should be handled by the VisualisationManager
 rendering_modes:
   #use alex_mode as an example, jsut renders a GIF of the mesh
   alex_mode:
