@@ -23,17 +23,13 @@ class DummyConfig:
         self.rand_dataset = False
         self.active_variables = None
 
+
 def run_test():
     base_path = "/cluster/work/fuge/AISCO/wp1_cfd_ai"
-    order_file = os.path.join(base_path, "processed_drivaer", "order.txt")
+    order_file = os.path.join(base_path, "processed_drivaer", "order_.txt")
 
     print("--- 1. Testing VTKMeshDataset ---")
-    dataset = VTKMeshDataset(
-        root=base_path,
-        order_file=order_file,
-        dataset_config=DummyConfig(),
-        split='train'
-    )
+    dataset = VTKMeshDataset(root=base_path, order_file=order_file, dataset_config=DummyConfig(), split="train")
     print(f"Dataset successfully loaded! Training subset size: {len(dataset)}")
 
     print("\n--- 2. Setting up UnifiedCollateFunction ---")
@@ -48,7 +44,7 @@ def run_test():
         latent_tokens=fake_latent_tokens,
         neighbor_search_method="bidirectional",
         k_neighbors=1,
-        asynchronous_graph_building=True
+        asynchronous_graph_building=True,
     )
     print("Collate function initialized with online graph building.")
 
@@ -59,7 +55,7 @@ def run_test():
         batch_size=2,
         shuffle=False,
         collate_fn=collate_fn,
-        num_workers=0 # Keep at 0 for a local test to see errors clearly
+        num_workers=0,  # Keep at 0 for a local test to see errors clearly
     )
 
     print("\n--- 4. Pulling the first batch (The Ultimate Test) ---")
@@ -73,11 +69,12 @@ def run_test():
         print(f"  - Total Normals (c): {batch.c.shape}")
         print(f"  - Target Drag Values (y): {batch.y}")
 
-        if hasattr(batch, 'encoder_edge_index_s0'):
+        if hasattr(batch, "encoder_edge_index_s0"):
             print(f"  - Computed Bipartite Edges: {batch.encoder_edge_index_s0.shape}")
 
     except Exception as e:
         print(f"\n🔴 ERROR during data loading or collation: {e}")
+
 
 if __name__ == "__main__":
     run_test()

@@ -1,20 +1,22 @@
-import numpy as np
-import torch
-import pandas as pd
-import os
-import time
 import argparse
-
-import toml 
 import json
-from omegaconf import OmegaConf
-from multiprocessing import Pool,Process
-import subprocess
-import platform
-import torch.distributed as dist
 import logging
+import os
+import platform
+import subprocess
+import time
+from multiprocessing import Pool, Process
+
+import numpy as np
+import pandas as pd
+import toml
+import torch
+import torch.distributed as dist
+from omegaconf import OmegaConf
 
 from src.trainer.stat import StaticTrainer3D
+from src.trainer.stat_multi import StaticTrainer3D as StaticTrainer3DMulti
+
 
 def setup_logging(level: str = "INFO", log_file: str = None) -> None:
     """
@@ -32,43 +34,36 @@ def setup_logging(level: str = "INFO", log_file: str = None) -> None:
         except Exception:
             pass
     logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=handlers
+        level=level, format="%(asctime)s %(levelname)s %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S", handlers=handlers
     )
+
 
 class FileParser:
     def __init__(self, filename):
-        if filename.endswith(".toml"):
-            with open(filename) as f:
-                self.kwargs = OmegaConf.load(f)
-        elif filename.endswith(".json"):
-            with open(filename) as f:
-                self.kwargs = OmegaConf.load(f)
-        elif filename.endswith(".yaml"):
+        if filename.endswith(".toml") or filename.endswith(".json") or filename.endswith(".yaml"):
             with open(filename) as f:
                 self.kwargs = OmegaConf.load(f)
         else:
             raise NotImplementedError(f"File type {filename} not supported, currently only toml and json are supported.")
-        
+
     def add_argument(self, *args, **kwargs):
 
         for arg in args:
-            if arg.startswith("--"):
-                arg = arg[2:]
+            arg = arg.removeprefix("--")
             if arg not in self.kwargs:
                 if "action" in kwargs:
                     self.kwargs[arg] = False
                 else:
-                    self.kwargs[arg] = kwargs.get("default", None)
-   
+                    self.kwargs[arg] = kwargs.get("default")
+
     def parse_args(self):
         return argparse.Namespace(**self.kwargs)
+
 
 def parse_cmd():
     parser = argparse.ArgumentParser()
     return [parse_args(parser)], True
+
 
 def parse_files():
     parser = argparse.ArgumentParser()
@@ -76,7 +71,7 @@ def parse_files():
     parser.add_argument("-f", "--folder", type=str, default=None, help="folder path")
     parser.add_argument("--debug", action="store_true", help="debug mode, to dispalce multiprocessing")
     parser.add_argument("--num_works_per_device", type=int, default=10, help="number of works per device")
-    parser.add_argument("--visible_devices", nargs='*', type=int, default=None, help="visible devices")
+    parser.add_argument("--visible_devices", nargs="*", type=int, default=None, help="visible devices")
     args = parser.parse_args()
     assert args.config or args.folder, "Please specify --config or --folder"
     if args.visible_devices is not None:
@@ -91,6 +86,7 @@ def parse_files():
                     args.arg_files.append(os.path.join(root, name))
     return args
 
+
 def prepare_arg(arg):
     # make sure all paths are exist
     basepath = os.path.dirname(os.path.abspath(__file__))
@@ -102,32 +98,33 @@ def prepare_arg(arg):
         # make sure the path directory exist
         if not os.path.exists(_dirpath):
             os.makedirs(_dirpath)
-        # turn the relative path to abs path 
+        # turn the relative path to abs path
         arg.path[_path] = _abspath
     arg.datarow = vars(arg).copy()
-    arg.datarow['nbytes'] = -1
-    arg.datarow['nparams'] = -1
-    arg.datarow['p2r edges'] = -1
-    arg.datarow['r2r edges'] = -1
-    arg.datarow['r2p edges'] = -1
-    arg.datarow['training time'] = np.nan
-    arg.datarow['inference time'] = np.nan
-    arg.datarow['time']    = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    arg.datarow['relative error (direct)'] = np.nan
-    arg.datarow['relative error (auto2)'] = np.nan
-    arg.datarow['relative error (auto4)'] = np.nan
+    arg.datarow["nbytes"] = -1
+    arg.datarow["nparams"] = -1
+    arg.datarow["p2r edges"] = -1
+    arg.datarow["r2r edges"] = -1
+    arg.datarow["r2p edges"] = -1
+    arg.datarow["training time"] = np.nan
+    arg.datarow["inference time"] = np.nan
+    arg.datarow["time"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    arg.datarow["relative error (direct)"] = np.nan
+    arg.datarow["relative error (auto2)"] = np.nan
+    arg.datarow["relative error (auto4)"] = np.nan
 
     return arg
+
 
 def run_arg(arg):
     arg = prepare_arg(arg)
     log_level = os.environ.get("LOG_LEVEL", "INFO")
     log_file = os.environ.get("LOG_FILE", None) or arg.path.get("log_path", None)
-    setup_logging(level=log_level, log_file=log_file) 
-
+    setup_logging(level=log_level, log_file=log_file)
 
     Trainer = {
         "static3d": StaticTrainer3D,
+        "static3d_multi": StaticTrainer3DMulti,
     }[arg.setup.trainer_name]
     t = Trainer(arg)
 
@@ -138,7 +135,7 @@ def run_arg(arg):
             if metadata:
                 logging.getLogger(__name__).info(f"Loaded from artifact: {metadata}")
             else:
-                logging.getLogger(__name__).warning(f"Failed to load from artifact, skipping...")
+                logging.getLogger(__name__).warning("Failed to load from artifact, skipping...")
         elif getattr(arg.setup, "resume_from_ckpt", None) is not None:
             t.load_ckpt(path=arg.setup.resume_from_ckpt)
         elif arg.setup.ckpt:
@@ -150,13 +147,12 @@ def run_arg(arg):
             if metadata:
                 logging.getLogger(__name__).info(f"Loaded from artifact: {metadata}")
             else:
-                logging.getLogger(__name__).warning(f"Failed to load from artifact, skipping...")
+                logging.getLogger(__name__).warning("Failed to load from artifact, skipping...")
         elif getattr(arg.setup, "resume_from_ckpt", None) is not None:
             t.load_ckpt(path=arg.setup.resume_from_ckpt)
         else:
             t.load_ckpt()
         t.test()
-
 
     if getattr(arg.setup, "rank", 0) == 0:
         if os.path.exists(arg.path["database_path"]):
@@ -168,6 +164,7 @@ def run_arg(arg):
 
     return t
 
+
 def run_arg_file_popen_handle(arg_file):
     command = f"python main.py -c {arg_file}"
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -176,6 +173,7 @@ def run_arg_file_popen_handle(arg_file):
         print(f"Job {arg_file}: {out.decode('utf-8').strip()}")
     else:
         print(f"Job {arg_file} error: {err.decode('utf-8').strip()}")
+
 
 def run_arg_files(arg_files, is_debug, num_works_per_device=3):
     if len(arg_files) == 1:
@@ -196,7 +194,7 @@ def run_arg_files(arg_files, is_debug, num_works_per_device=3):
             p.join()
     elif platform.system() == "Linux":
         num_devices = torch.cuda.device_count()
-        processes = {"cpu":[]}
+        processes = {"cpu": []}
         for i in range(num_devices):
             processes[f"cuda:{i}"] = []
         for arg_file in arg_files:
@@ -207,20 +205,21 @@ def run_arg_files(arg_files, is_debug, num_works_per_device=3):
                 processes[f"cuda:{device_id}"].append(p)
             else:
                 processes["cpu"].append(p)
-        
-        max_jobs = max([len(v) for k,v in processes.items()])
-        max_runs = (max_jobs + num_works_per_device - 1)  // num_works_per_device
+
+        max_jobs = max([len(v) for k, v in processes.items()])
+        max_runs = (max_jobs + num_works_per_device - 1) // num_works_per_device
         for i in range(max_runs):
             for k, v in processes.items():
-                for p in v[i*num_works_per_device:(i+1)*num_works_per_device]:
+                for p in v[i * num_works_per_device : (i + 1) * num_works_per_device]:
                     p.start()
             for k, v in processes.items():
-                for p in v[i*num_works_per_device:(i+1)*num_works_per_device]:
+                for p in v[i * num_works_per_device : (i + 1) * num_works_per_device]:
                     p.join()
     else:
         raise NotImplementedError(f"Platform {platform.system()} not supported")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     config = parse_files()
     run_arg_files(config.arg_files, config.debug, config.num_works_per_device)
     print("Finished")

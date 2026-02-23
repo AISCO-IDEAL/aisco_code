@@ -73,6 +73,7 @@ class StaticTrainer3D(TrainerBase):
             else:
                 self.c_mean = None
                 self.c_std = None
+            self.per_head_stats = stats.get("per_head_stats", {})
         else:
             logging.getLogger(__name__).info("Calculating normalization statistics from training set...")
             temp_train_dataset = VTKMeshDataset(
@@ -87,18 +88,59 @@ class StaticTrainer3D(TrainerBase):
 
             all_x = []
             all_c = []
+            all_force = []
+            all_cd = []
             has_c_field = False
 
             for batch in tqdm(temp_loader, desc="Calculating Stats", disable=(getattr(self.setup_config, "rank", 0) != 0)):
-                all_x.append(batch.y.cpu())
+                # Multi-head: collect per-head stats (force and cd separately)
+                if hasattr(batch, "force") and batch.force is not None:
+                    valid = batch.force[~torch.isnan(batch.force)]
+                    if valid.numel() > 0:
+                        all_force.append(valid.cpu())
+                if hasattr(batch, "cd") and batch.cd is not None:
+                    valid = batch.cd[~torch.isnan(batch.cd)]
+                    if valid.numel() > 0:
+                        all_cd.append(valid.cpu())
+                # Fallback: if data still uses old .y format
+                if hasattr(batch, "y") and batch.y is not None:
+                    all_x.append(batch.y.cpu())
                 if hasattr(batch, "c") and batch.c is not None:
                     all_c.append(batch.c.cpu())
                     has_c_field = True
 
-            if not all_x:
+            # Compute per-head stats for multi-head model
+            self.per_head_stats = {}
+            if all_force:
+                force_tensor = torch.cat(all_force, dim=0)
+                self.per_head_stats["force"] = {
+                    "mean": torch.mean(force_tensor, dtype=self.dtype),
+                    "std": torch.std(force_tensor).to(self.dtype),
+                }
+                logging.getLogger(__name__).info(
+                    f"Force stats - Mean: {self.per_head_stats['force']['mean']}, Std: {self.per_head_stats['force']['std']}"
+                )
+            if all_cd:
+                cd_tensor = torch.cat(all_cd, dim=0)
+                self.per_head_stats["cd"] = {
+                    "mean": torch.mean(cd_tensor, dtype=self.dtype),
+                    "std": torch.std(cd_tensor).to(self.dtype),
+                }
+                logging.getLogger(__name__).info(
+                    f"Cd stats - Mean: {self.per_head_stats['cd']['mean']}, Std: {self.per_head_stats['cd']['std']}"
+                )
+
+            # Build unified u_mean/u_std from whatever data is available
+            if all_x:
+                # Old-format data with .y
+                combined = all_x
+            elif all_force or all_cd:
+                # Multi-head: combine all valid values for a rough unified stat
+                combined = all_force + all_cd
+            else:
                 raise ValueError("No data found in training set to calculate statistics.")
 
-            full_x_tensor = torch.cat(all_x, dim=0)
+            full_x_tensor = torch.cat(combined, dim=0)
             self.u_mean = torch.mean(full_x_tensor, dim=0, dtype=self.dtype)
             self.u_std = torch.std(full_x_tensor, dim=0).to(self.dtype)
 
@@ -119,6 +161,8 @@ class StaticTrainer3D(TrainerBase):
             if self.c_mean is not None:
                 stats_to_save["c_mean"] = self.c_mean
                 stats_to_save["c_std"] = self.c_std
+            if self.per_head_stats:
+                stats_to_save["per_head_stats"] = self.per_head_stats
             torch.save(stats_to_save, stats_file)
         if self.u_mean is None or self.u_std is None:
             raise RuntimeError("Normalization mean/std could not be calculated or loaded.")
@@ -164,9 +208,13 @@ class StaticTrainer3D(TrainerBase):
             fpath_tmp = fpath + ".tmp"
             try:
                 data_old = torch.load(fpath, map_location="cpu", weights_only=False)
-                data = EnrichedData(pos=data_old.pos, x=data_old.y)
+                # Multi-head: .y may not exist; use .force or .cd as x placeholder
+                x_attr = (
+                    data_old.y if hasattr(data_old, "y") and data_old.y is not None else torch.zeros(data_old.pos.shape[0], 1)
+                )
+                data = EnrichedData(pos=data_old.pos, x=x_attr)
                 for attr, value in data_old:
-                    if attr not in ["pos", "y"]:
+                    if attr not in ["pos", "y", "force", "cd"]:
                         setattr(data, attr, value)
                 data.num_latent_nodes = num_latent_tokens
                 if dataset_config.use_rescale_new:
@@ -296,7 +344,11 @@ class StaticTrainer3D(TrainerBase):
             c_std_for_norm = self.c_std
 
         normalize_transform = NormalizeFeatures(
-            mean=mean_for_norm, std=std_for_norm, c_mean=c_mean_for_norm, c_std=c_std_for_norm
+            mean=mean_for_norm,
+            std=std_for_norm,
+            c_mean=c_mean_for_norm,
+            c_std=c_std_for_norm,
+            per_head_stats=self.per_head_stats if hasattr(self, "per_head_stats") else None,
         )
         composed_transform = Compose([rescale_transform, normalize_transform])
 
@@ -346,15 +398,19 @@ class StaticTrainer3D(TrainerBase):
                 else:
                     logging.getLogger(__name__).warning(f"Attribute '{attr_name}' not found in test dataset, using pos instead.")
                     self.num_input_channels += test_ds[0].pos.shape[1]
+        elif hasattr(test_ds[0], encoder_feature_attr):
+            self.num_input_channels = getattr(test_ds[0], encoder_feature_attr).shape[1]
         else:
-            if hasattr(test_ds[0], encoder_feature_attr):
-                self.num_input_channels = getattr(test_ds[0], encoder_feature_attr).shape[1]
-            else:
-                logging.getLogger(__name__).warning(
-                    f"Attribute '{encoder_feature_attr}' not found in test dataset, using pos instead."
-                )
-                self.num_input_channels = test_ds[0].pos.shape[1]
-        self.num_output_channels = test_ds[0].y.shape[1] if test_ds[0].y.dim() > 1 else 1
+            logging.getLogger(__name__).warning(
+                f"Attribute '{encoder_feature_attr}' not found in test dataset, using pos instead."
+            )
+            self.num_input_channels = test_ds[0].pos.shape[1]
+        # Multi-head: output channels determined by model heads, not data.y
+        if hasattr(test_ds[0], "y") and test_ds[0].y is not None:
+            self.num_output_channels = test_ds[0].y.shape[1] if test_ds[0].y.dim() > 1 else 1
+        else:
+            # Multi-head decoder: count total output dims across heads
+            self.num_output_channels = 2  # force(1) + cd(1)
         # --- Create DataLoaders ---
         if self.setup_config.train:
             ## --- Create DistributedSampler for training ---
@@ -576,7 +632,7 @@ class StaticTrainer3D(TrainerBase):
         metric_suite = self.dataset_config.metric_suite
 
         # Determine if model uses multi-head output
-        _is_multi_head = hasattr(self.model, 'decoder') and hasattr(self.model.decoder, 'head_names')
+        _is_multi_head = hasattr(self.model, "decoder") and hasattr(self.model.decoder, "head_names")
         if _is_multi_head:
             all_batch_targets_denorm = {"force": [], "cd": []}
             all_batch_preds_denorm = {"force": [], "cd": []}
@@ -642,9 +698,7 @@ class StaticTrainer3D(TrainerBase):
                             parts.append(f"Force={force_pred[0].item():.4f}")
                         if cd_pred is not None:
                             parts.append(f"Cd={cd_pred[0].item():.4f}")
-                        logging.getLogger(__name__).info(
-                            f"First test sample predictions: {', '.join(parts)}"
-                        )
+                        logging.getLogger(__name__).info(f"First test sample predictions: {', '.join(parts)}")
 
                     # Store per-head results for later metric computation
                     for head_name, head_pred in pred_norm.items():
@@ -701,20 +755,14 @@ class StaticTrainer3D(TrainerBase):
                     mse = torch.mean(diff**2).item()
                     mae = torch.mean(torch.abs(diff)).item()
                     logging.getLogger(__name__).info(
-                        f"--- Head '{head_name}': MSE={mse:.6f}, MAE={mae:.6f}, "
-                        f"n_samples={head_preds.shape[0]} ---"
+                        f"--- Head '{head_name}': MSE={mse:.6f}, MAE={mae:.6f}, n_samples={head_preds.shape[0]} ---"
                     )
 
                     # Save per-head CSV
-                    results_array = torch.cat(
-                        [head_targets.view(-1, 1), head_preds.view(-1, 1)], dim=1
-                    ).cpu().numpy()
-                    csv_path = self.path_config.result_path.replace(
-                        ".png", f"_{head_name}_predictions.csv"
-                    )
+                    results_array = torch.cat([head_targets.view(-1, 1), head_preds.view(-1, 1)], dim=1).cpu().numpy()
+                    csv_path = self.path_config.result_path.replace(".png", f"_{head_name}_predictions.csv")
                     np.savetxt(
-                        csv_path, results_array, delimiter=",",
-                        header=f"True_{head_name},Predicted_{head_name}", comments=""
+                        csv_path, results_array, delimiter=",", header=f"True_{head_name},Predicted_{head_name}", comments=""
                     )
                     logging.getLogger(__name__).info(f"Saved {head_name} predictions to {csv_path}")
 
@@ -859,26 +907,26 @@ class StaticTrainer3D(TrainerBase):
 
             # --- Plotting the stored first sample ---
             logging.getLogger(__name__).info("Skipping 3D plotting for scalar drag prediction")
-            #try:
-                #channel_to_plot = 0
-                #gtr_np = plot_gtr[:, channel_to_plot]
-                #prd_np = plot_prd[:, channel_to_plot]
-                #np.savez(self.path_config.result_path[:-4] + ".npz", coord=plot_coords, gtr=plot_gtr, prd=plot_prd)
-                #plot_save_path = self.path_config.result_path
-                #var_name = self.metadata.names["u"]
-                #plot_3d_comparison_matplotlib(
-                    #coords=plot_coords,
-                    #u_gtr=gtr_np,
-                    #u_prd=prd_np,
-                    #save_path=plot_save_path,
-                    #variable_name=var_name,
-                    #point_size=2.0,
-                    #view_angle=(25, -135),
-                    #hide_grid=True,
-                #)
-                #logging.getLogger(__name__).info(f"Saved plot for first test sample to {plot_save_path}")
-            #except Exception as plot_err:
-                #logging.getLogger(__name__).error(f"Error during 3D plotting of first test sample: {plot_err}")
+            # try:
+            # channel_to_plot = 0
+            # gtr_np = plot_gtr[:, channel_to_plot]
+            # prd_np = plot_prd[:, channel_to_plot]
+            # np.savez(self.path_config.result_path[:-4] + ".npz", coord=plot_coords, gtr=plot_gtr, prd=plot_prd)
+            # plot_save_path = self.path_config.result_path
+            # var_name = self.metadata.names["u"]
+            # plot_3d_comparison_matplotlib(
+            # coords=plot_coords,
+            # u_gtr=gtr_np,
+            # u_prd=prd_np,
+            # save_path=plot_save_path,
+            # variable_name=var_name,
+            # point_size=2.0,
+            # view_angle=(25, -135),
+            # hide_grid=True,
+            # )
+            # logging.getLogger(__name__).info(f"Saved plot for first test sample to {plot_save_path}")
+            # except Exception as plot_err:
+            # logging.getLogger(__name__).error(f"Error during 3D plotting of first test sample: {plot_err}")
 
-        #elif self.setup_config.distributed:
-            #pass
+        # elif self.setup_config.distributed:
+        # pass

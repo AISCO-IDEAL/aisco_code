@@ -1,6 +1,7 @@
 import glob
 import os
 import re
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import pyvista as pv
 import torch
@@ -18,6 +19,9 @@ from tqdm import tqdm
 #
 # Saves .pt files containing pos (positions), c (normals), and y (drag force),
 # matching the format of processed_drivaer so it can be used as training data.
+# NOTE: For the multi-head format (force/cd with NaN masking), use process_my_euler_multi.py instead.
+
+NUM_WORKERS = 8  # number of parallel workers for mesh processing
 
 
 def parse_force_report(filepath):
@@ -41,83 +45,84 @@ def parse_force_report(filepath):
     return last_value
 
 
-def process_euler_runs(geometry_dir, force_dir, output_dir):
+def _process_single_euler(ply_file, force_dir, output_dir):
+    """Process a single Euler run. Returns save_name on success, None on failure."""
+    basename = os.path.basename(ply_file)
+    run_id = basename.replace(".ply", "")
+
+    match = re.search(r"RUN_(\d+)", run_id)
+    if not match:
+        return None
+
+    run_number = match.group(1)
+    force_file = os.path.join(force_dir, f"RUN_{run_number}_force_report.out")
+    if not os.path.exists(force_file):
+        return None
+
+    # 1. Read mesh and compute normals
+    try:
+        mesh = pv.read(ply_file)
+        if mesh.n_points == 0:
+            return None
+        mesh = mesh.compute_normals(
+            cell_normals=False, point_normals=True, auto_orient_normals=True
+        )
+        pos = torch.tensor(mesh.points, dtype=torch.float32)
+        c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32)
+    except Exception:
+        return None
+
+    # 2. Parse force report
+    try:
+        drag_force = parse_force_report(force_file)
+        if drag_force is None:
+            return None
+        y = torch.tensor([drag_force], dtype=torch.float32)
+    except Exception:
+        return None
+
+    # 3. Build and save PyG Data object
+    data = Data(pos=pos, c=c, y=y)
+    data.x = None
+    data.filename = run_id
+
+    run_num_int = int(run_number)
+    save_name = f"run_{run_num_int}"
+    torch.save(data, os.path.join(output_dir, f"{save_name}.pt"))
+    return save_name
+
+
+def process_euler_runs(geometry_dir, force_dir, output_dir, num_workers=NUM_WORKERS):
     """
     Processes Euler/Fluent run data into PyG-compatible .pt files.
-    Matches .ply geometry files with force report .out files by run number.
+    Uses multiprocessing to speed up mesh reading and normal computation.
     """
     os.makedirs(output_dir, exist_ok=True)
-    order_list = []
 
-    # Find all .ply files and extract run numbers
     ply_files = sorted(glob.glob(os.path.join(geometry_dir, "RUN_*.ply")))
+    print(f"Found {len(ply_files)} .ply files. Processing with {num_workers} workers...")
 
-    for ply_file in tqdm(ply_files, desc="Processing Euler runs"):
-        basename = os.path.basename(ply_file)  # e.g. RUN_001.ply
-        run_id = basename.replace(".ply", "")  # e.g. RUN_001
+    order_list = []
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        futures = {
+            executor.submit(_process_single_euler, pf, force_dir, output_dir): pf
+            for pf in ply_files
+        }
+        for future in tqdm(
+            as_completed(futures), total=len(futures), desc="Processing Euler runs"
+        ):
+            result = future.result()
+            if result is not None:
+                order_list.append(result)
 
-        # Extract run number for matching
-        match = re.search(r"RUN_(\d+)", run_id)
-        if not match:
-            print(f"Could not parse run number from {basename}. Skipping...")
-            continue
-        run_number = match.group(1)  # e.g. '001'
+    # Sort numerically (futures complete out of order)
+    order_list.sort(key=lambda x: int(x.split("_")[1]))
 
-        # Build path to force report
-        force_file = os.path.join(force_dir, f"RUN_{run_number}_force_report.out")
-
-        if not os.path.exists(force_file):
-            print(f"Missing force report for {run_id}. Skipping...")
-            continue
-
-        # 1. Extract geometry (pos) and normals (c) from .ply
-        try:
-            mesh = pv.read(ply_file)
-
-            # Skip empty meshes
-            if mesh.n_points == 0:
-                print(f"Empty mesh for {run_id} (0 points). Skipping...")
-                continue
-
-            mesh = mesh.compute_normals(
-                cell_normals=False, point_normals=True, auto_orient_normals=True
-            )
-
-            pos = torch.tensor(mesh.points, dtype=torch.float32)
-            c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32)
-        except Exception as e:
-            print(f"Error reading mesh for {run_id}: {e}")
-            continue
-
-        # 2. Extract target variable (y) from force report - last row, 3rd column
-        try:
-            drag_force = parse_force_report(force_file)
-            if drag_force is None:
-                print(f"No valid data in force report for {run_id}. Skipping...")
-                continue
-            y = torch.tensor([drag_force], dtype=torch.float32)
-        except Exception as e:
-            print(f"Error reading force report for {run_id}: {e}")
-            continue
-
-        # 3. Build and save PyG Data object (same format as processed_drivaer)
-        data = Data(pos=pos, c=c, y=y)
-        data.x = None  # No node features, consistent with process_my_drivaer.py
-        data.filename = run_id
-
-        # Save as run_X.pt to match drivaer naming convention
-        run_num_int = int(run_number)
-        save_name = f"run_{run_num_int}"
-        save_path = os.path.join(output_dir, f"{save_name}.pt")
-        torch.save(data, save_path)
-        order_list.append(save_name)
-
-    # Generate order.txt
-    with open(os.path.join(output_dir, "order.txt"), "w") as f:
+    with open(os.path.join(output_dir, "order_.txt"), "w") as f:
         f.writelines(f"{name}\n" for name in order_list)
 
     print(f"\nSuccess! Processed {len(order_list)} runs.")
-    print(f"Data and order.txt saved to: {output_dir}")
+    print(f"Data and order_.txt saved to: {output_dir}")
 
 
 if __name__ == "__main__":
