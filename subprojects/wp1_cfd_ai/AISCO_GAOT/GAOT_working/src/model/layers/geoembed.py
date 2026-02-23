@@ -176,7 +176,7 @@ class GeometricEmbedding(nn.Module):
 
         feature_mean = geo_features.mean(dim=0, keepdim=True)
         feature_std = geo_features.std(dim=0, keepdim=True)
-        feature_std[feature_std < 1e-6] = 1.0 
+        # feature_std[feature_std < 1e-6] = 1.0 
         geo_features_normalized = (geo_features - feature_mean) / feature_std
 
         return geo_features_normalized
