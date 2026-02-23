@@ -5,7 +5,7 @@ setup:
     trainer_name: "static3d"
     train: true
     test: true
-    ckpt: true
+    ckpt: false
     use_variance_test: false
     distributed: false
 
