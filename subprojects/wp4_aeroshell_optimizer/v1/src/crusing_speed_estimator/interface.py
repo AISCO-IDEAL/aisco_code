@@ -36,7 +36,7 @@ def estimate_cruising_speed():
 
     # 1. Aero [N] = [kg*m/s^2] # TODO: prove formula feasibility with CFD
     f_d = 1/2 * rho * speed**2 * c_d * A
-    f_d = get_drag()  # [N]
+    f_d = get_drag
     # 2. Solar Loss [W] = [J/s] = [kg*m^2/s^3] 
     speed_initial_guess = 25  # Initial guess for speed in m/s
     solar_power = get_solar_perf() # TODO: implement function
