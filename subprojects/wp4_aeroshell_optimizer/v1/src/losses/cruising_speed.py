@@ -5,7 +5,7 @@ import torch
 class PhysicalRootFinder(torch.autograd.Function):
     @staticmethod
     def forward(ctx, drag_force_normalized, solar_power, rolling_friction_force, c):
-        # Wir lösen: f(x) = obj1*x^3 + rolling_friction_force*x + (c2 - solar_power) = 0
+        # Wir lösen: f(x) = drag_force_normalized*u^3 + rolling_friction_force*u + (c - solar_power) = 0
         with torch.no_grad():
             # Initialisierung: Da obj1, solar_power > 0, ist ein Startwert bei 1.0 meist sicher
             u = torch.ones_like(drag_force_normalized)
@@ -25,22 +25,22 @@ class PhysicalRootFinder(torch.autograd.Function):
     def backward(ctx, grad_output):
         u, drag_force_normalized, solar_power, rolling_friction_force, c = ctx.saved_tensors
 
-        # Partielle Ableitungen der Funktion F = obj1*x^3 + f_rf*x + c2 - solar_power
+        # Partielle Ableitungen der Funktion F = drag_force_normalized*u^3 + rolling_friction_force*u + c - solar_power
         df_du = 3 * drag_force_normalized * u**2 + rolling_friction_force
         df_ddrag_force_normalized = u**3
         df_dsolar_power = -torch.ones_like(solar_power)
 
         # Implizite Ableitung berechnen
         # grad_output ist dLoss/dx
-        # Wir brauchen dLoss/dobj1 = dLoss/dx * dx/dobj1
-        # mit dx/dobj1 = - (df/dobj1) / (df/dx)
+        # Wir brauchen dLoss/ddrag_force_normalized = dLoss/dx * dx/ddrag_force_normalized
+        # mit dx/ddrag_force_normalized = - (df/ddrag_force_normalized) / (df/du)
 
         inv_df_du = -grad_output / df_du
 
         grad_drag_force_normalized = inv_df_du * df_ddrag_force_normalized
         grad_solar_power = inv_df_du * df_dsolar_power
 
-        # f_rf und c2 sind Konstanten -> None
+        # f_rf und c sind Konstanten -> None
         return grad_drag_force_normalized, grad_solar_power, None, None
 ### end GEMINI Block
 
