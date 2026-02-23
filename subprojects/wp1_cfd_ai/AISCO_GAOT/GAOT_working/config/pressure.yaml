@@ -66,7 +66,7 @@ model:
                 cond_norm_hidden_size: 4
 
 dataset:
-    name: "drivaernet_fullpressure"
+    name: "drivaernet_drag"
     metaname: "incompressible_fluids/drivaernet_pressure"
     base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer"
     processed_folder: ""
