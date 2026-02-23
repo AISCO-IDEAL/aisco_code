@@ -84,7 +84,7 @@ rendering_modes:
       camera_position: [3500, 3500, 3500]
       look_at: [0, 0, 0]
       alpha: 0.5
-      fps: 20
+      fps: 10
       assembly_color: [1.0, 0.55, 0.0]
       mesh_color: [0.2,1.0,1.0] #Bugged?
   # Gif of which solar cells would be selected with the dot-product approach, given a budget and soalr angle in solar_loss_config.yaml
