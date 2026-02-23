@@ -615,14 +615,14 @@ class StaticTrainer3D(TrainerBase):
                 all_batch_preds_denorm.append(pred_de_norm.cpu())
 
                 if i == 0 and self.setup_config.rank == 0:
-                    plotting_idx = 0
-                    first_graph_node_mask = batch.batch == plotting_idx
-                    plot_coords = batch.pos[first_graph_node_mask].cpu().numpy()
-                    plot_gtr = target_de_norm[first_graph_node_mask].cpu().numpy()
-                    plot_prd = pred_de_norm[first_graph_node_mask].cpu().numpy()
+                    # We are predicting graph-level scalars (drag), not node-level fields.
+                    # Just grab the first scalar in the batch, no 3D node mask needed!
+                    plot_coords = None
+                    plot_gtr = np.array([target_de_norm[0].item()])
+                    plot_prd = np.array([pred_de_norm[0].item()])
+
                     logging.getLogger(__name__).info(
-                        f"Extracted plotting data of {batch.filename[plotting_idx]}:"
-                        f"coords shape {plot_coords.shape}, gtr shape {plot_gtr.shape}, prd shape {plot_prd.shape}"
+                        f"Extracted first test sample: True Drag = {plot_gtr[0]:.4f}, Predicted Drag = {plot_prd[0]:.4f}"
                     )
 
                 # Output progress every 10 batches (including inference speed info)
@@ -757,27 +757,27 @@ class StaticTrainer3D(TrainerBase):
                 logging.getLogger(__name__).info(f"Rel L1 Error (%):   {final_metrics_dict['Rel L1 Error (%)']:.4f}")
 
             # --- Plotting the stored first sample ---
-            logging.getLogger(__name__).info("Attempting to plot first sample...")
-            try:
-                channel_to_plot = 0
-                gtr_np = plot_gtr[:, channel_to_plot]
-                prd_np = plot_prd[:, channel_to_plot]
-                np.savez(self.path_config.result_path[:-4] + ".npz", coord=plot_coords, gtr=plot_gtr, prd=plot_prd)
-                plot_save_path = self.path_config.result_path
-                var_name = self.metadata.names["u"]
-                plot_3d_comparison_matplotlib(
-                    coords=plot_coords,
-                    u_gtr=gtr_np,
-                    u_prd=prd_np,
-                    save_path=plot_save_path,
-                    variable_name=var_name,
-                    point_size=2.0,
-                    view_angle=(25, -135),
-                    hide_grid=True,
-                )
-                logging.getLogger(__name__).info(f"Saved plot for first test sample to {plot_save_path}")
-            except Exception as plot_err:
-                logging.getLogger(__name__).error(f"Error during 3D plotting of first test sample: {plot_err}")
+            logging.getLogger(__name__).info("Skipping 3D plotting for scalar drag prediction")
+            #try:
+                #channel_to_plot = 0
+                #gtr_np = plot_gtr[:, channel_to_plot]
+                #prd_np = plot_prd[:, channel_to_plot]
+                #np.savez(self.path_config.result_path[:-4] + ".npz", coord=plot_coords, gtr=plot_gtr, prd=plot_prd)
+                #plot_save_path = self.path_config.result_path
+                #var_name = self.metadata.names["u"]
+                #plot_3d_comparison_matplotlib(
+                    #coords=plot_coords,
+                    #u_gtr=gtr_np,
+                    #u_prd=prd_np,
+                    #save_path=plot_save_path,
+                    #variable_name=var_name,
+                    #point_size=2.0,
+                    #view_angle=(25, -135),
+                    #hide_grid=True,
+                #)
+                #logging.getLogger(__name__).info(f"Saved plot for first test sample to {plot_save_path}")
+            #except Exception as plot_err:
+                #logging.getLogger(__name__).error(f"Error during 3D plotting of first test sample: {plot_err}")
 
-        elif self.setup_config.distributed:
-            pass
+        #elif self.setup_config.distributed:
+            #pass

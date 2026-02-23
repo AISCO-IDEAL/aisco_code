@@ -4,8 +4,8 @@ setup:
     dtype: "torch.float32"
     trainer_name: "static3d"
     train: true
-    test: false
-    ckpt: false
+    test: true
+    ckpt: true
     use_variance_test: false
     distributed: false
 
@@ -77,7 +77,7 @@ dataset:
     batch_size: 1
     num_workers: 4
     shuffle: true
-    metric_suite: "drivaernet"
+    metric_suite: "general"
     update_pt_files_with_edges: false
 
 optimizer:
@@ -95,7 +95,7 @@ optimizer:
         save_every_epochs: 1
 
 path:
-    ckpt_path: ".ckpt/drivaernet/gaot/pressure.pt"
-    loss_path: ".loss/drivaernet/gaot/pressure.png"
-    result_path: ".results/drivaernet/gaot/pressure.png"
-    database_path: ".database/drivaernet/gaot/pressure.csv"
+    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_JOBID.pt"
+    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/drag_loss_JOBID.png"
+    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/drag_result_JOBID.png"
+    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/drag_metrics_JOBID.csv"
