@@ -17,7 +17,7 @@ class OptimizerargsConfig:
     lr: float = 1e-3                    # Initial learning rate
     weight_decay: float = 1e-3          # L2 regularization (weight decay) coefficient
     epoch: int = 100                    # Total number of training epochs
-    loss_scale: float = 1.0             # Loss scaling factor 
+    loss_scale: float = 1.0             # Loss scaling factor
     eval_every_eps: int = 2             # Evaluate every n epochs
     scheduler: str = "mix"              # Learning rate scheduler type, support ['step', 'cos', 'exp', 'mix']
     early_save_metric: str = 'val'      # Metric for early stopping, support ['train', 'val']
@@ -74,14 +74,14 @@ class AdamOptimizer:
     scheduler: torch.optim.lr_scheduler.StepLR
     epoch: int
     batch_size: int
-    lr: float   
+    lr: float
     loss_scale: float
     eval_every_eps: int
 
     def __init__(self, params, config):
         self.optimizer = torch.optim.Adam(params, lr=config.lr)
         self.epoch = config.epoch
-        self.lr = config.lr  
+        self.lr = config.lr
         self.loss_scale = config.loss_scale
         self.eval_every_eps = config.eval_every_eps
         self.early_save_metric = config.early_save_metric.lower()
@@ -149,10 +149,10 @@ class AdamOptimizer:
                 if isinstance(trainer.device, torch.device) and trainer.device.type == 'cuda':
                     torch.cuda.synchronize()
                 time_total += time.time() - start_time
-            
+
             if self.scheduler is not None:
                 self.scheduler.step()
-        
+
             pbar.update(1)
 
             if (epoch + 1) % self.eval_every_eps == 0:
@@ -174,13 +174,13 @@ class AdamOptimizer:
                     best_loss = current_loss
                     best_epoch = epoch
                     best_state = deepcopy(trainer.model.state_dict())
-        
+
         if best_state is not None:
             trainer.model.load_state_dict(best_state)
 
         if not disable_pbar:
             pbar.close()
-        
+
         return {
             "train":{
                 "loss": losses,
@@ -209,14 +209,14 @@ class AdamWOptimizer:
     def __init__(self, params, config):
         self.optimizer = torch.optim.AdamW(params, lr=config.lr, weight_decay=config.weight_decay)
         self.epoch = config.epoch
-        self.lr = config.lr  
+        self.lr = config.lr
         self.loss_scale = config.loss_scale
         self.eval_every_eps = config.eval_every_eps
         self.early_save_metric = config.early_save_metric.lower()
 
         if self.early_save_metric not in ['train', 'val']:
             raise ValueError("`early_save_metric` must be either 'train' or 'val'.")
-        
+
         if config.scheduler == 'step':
             self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=config.scheduler_step_size, gamma=config.scheduler_gamma)
         elif config.scheduler == 'cos':
@@ -285,7 +285,7 @@ class AdamWOptimizer:
                 train_loss = total_loss.cpu().item() / len(trainer.train_loader)
                 losses.append(train_loss)
                 epochs.append(epoch)
-                val_loss = trainer.validate(trainer.test_loader) # TODO: change to val_loader
+                val_loss = trainer.validate(trainer.val_loader) # TODO: change to val_loader
                 current_lr = self.optimizer.param_groups[0]['lr']
 
                 if not disable_pbar:
@@ -310,7 +310,7 @@ class AdamWOptimizer:
                     best_loss = current_loss
                     best_epoch = epoch
                     best_state = deepcopy(trainer.model.state_dict())
-                
+
                  # Save checkpoint every N epochs if configured (rank 0 only)
                 if (getattr(trainer.optimizer_config.args, 'save_every_epochs', 0) > 0
                     and (epoch + 1) % trainer.optimizer_config.args.save_every_epochs == 0
@@ -342,4 +342,4 @@ class AdamWOptimizer:
                 "loss": best_loss,
             },
             "time": time_total
-        }  
+        }

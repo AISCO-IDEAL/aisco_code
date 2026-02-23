@@ -1,4 +1,5 @@
 setup:
+    wandb_run_name: "run__RUN_ID_"
     seed: 42
     device: "cuda:0"
     dtype: "torch.float32"
@@ -10,14 +11,14 @@ setup:
     distributed: false
 
     # --- wandb settings for quick smoke run ---
-    wandb: false
-    wandb_project: GAOT-CRV
-    wandb_entity: null
-    wandb_run_name: gaot-drivaernet-pressure
+    wandb: true
+    wandb_project: "WP1_drag"
+    wandb_entity: aisco
+    #wandb_run_name: "run__RUN_ID_"
     wandb_group: drivaernet
     wandb_mode: online
-    wandb_tags: ["drivaernet", "pressure", "normals", "gaot"]
-    wandb_watch_model: false
+    #wandb_tags: ["drivaernet", "pressure", "normals", "gaot"]
+    wandb_watch_model: true
 
     # --- artifact & checkpoint settings ---
     test_during_training: false
@@ -66,14 +67,14 @@ model:
                 cond_norm_hidden_size: 4
 
 dataset:
-    name: "drivaernet_drag"
-    metaname: "incompressible_fluids/drivaernet_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer"
+    name: "euler_drag"
+    metaname: "incompressible_fluids/euler_drag"            #Change accordingly to the metadata.py file
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler"        #Change to your processed data path
     processed_folder: ""
-    force_recompute_stats: true
-    train_size: 80
-    val_size: 10
-    test_size: 10
+    force_recompute_stats: false
+    train_size: 40
+    val_size: 5
+    test_size: 5
     batch_size: 1
     num_workers: 4
     shuffle: true
@@ -85,7 +86,7 @@ optimizer:
     args:
         lr: 8e-4
         weight_decay: 1e-05
-        epoch: 1
+        epoch: 5
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"

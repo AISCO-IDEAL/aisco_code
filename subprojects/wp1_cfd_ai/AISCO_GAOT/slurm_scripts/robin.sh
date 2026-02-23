@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=Preprocess_Drivaer_Test
+#SBATCH --job-name=SalimetStöck
 #SBATCH --time=04:00:00                   # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
@@ -69,6 +69,7 @@ echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 #------------------------------------------------------------------------------
 export PYTHONUNBUFFERED=TRUE
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
+export WANDB_CACHE_DIR="/cluster/scratch/$USERNAME/wandb_cache"
 cd /cluster/home/$USERNAME/AISCO_code/
 #python -m src.main
 

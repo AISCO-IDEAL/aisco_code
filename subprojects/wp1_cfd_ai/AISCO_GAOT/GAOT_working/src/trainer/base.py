@@ -47,8 +47,7 @@ class TrainerBase:
 
         manual_seed(self.setup_config.seed + self.setup_config.rank)
 
-        self._init_wandb()
-
+        # 1. Handle dtypes and loss first
         if self.setup_config.dtype in ["float", "torch.float32", "torch.FloatTensor"]:
             self.dtype = torch.float32
         elif self.setup_config.dtype in ["double", "torch.float64", "torch.DoubleTensor"]:
@@ -57,9 +56,13 @@ class TrainerBase:
             raise ValueError(f"Invalid dtype: {self.setup_config.dtype}")
         self.loss_fn = nn.MSELoss()
 
+        # 2. Initialize the model components
         self.init_dataset(self.dataset_config)
-        self.init_model(self.model_config)
+        self.init_model(self.model_config)      # <--- Model is created here!
         self.init_optimizer(self.optimizer_config)
+
+        # 3. NOW initialize W&B
+        self._init_wandb()
 
         if self.setup_config.rank == 0:
             nparam = sum(

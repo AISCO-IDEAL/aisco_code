@@ -25,6 +25,23 @@ class Metadata:
   global_std: Sequence[float]
 
 DATASET_METADATA = {
+  'incompressible_fluids/euler_drag' : Metadata(
+    periodic=False,
+    group_u='u',
+    group_c=None,
+    group_x='x',
+    type='gaot',
+    domain_x=([-4700.0, -1016.9880981445312, -999.1890258789062], [4997.0, 1655.516845703125, 1369.485595703125]),
+    domain_t=None,
+    fix_x=False,
+    active_variables=None,
+    chunked_variables=None,
+    num_variable_chunks=1,
+    signed={'u': [False], 'c': [None]},
+    names={'u': ['$p$'], 'c': [None]},
+    global_mean=[-63.66019058227539],
+    global_std=[54.39186477661133]
+  ),
   'incompressible_fluids/drivaernet_pressure': Metadata(
     periodic=False,
     group_u='u',
