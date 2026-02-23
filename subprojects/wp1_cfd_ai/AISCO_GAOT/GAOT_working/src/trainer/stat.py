@@ -17,6 +17,7 @@ from src.dataloader.collate_functions import create_collate_function
 from src.dataloader.pyg_datasets import EnrichedData, VTKMeshDataset
 from src.dataloader.pyg_transforms import NormalizeFeatures, RescalePosition, RescalePositionNew
 from src.model import init_model
+from src.model.gaot_3d_attention import masked_multi_head_loss
 from src.utils.scale import rescale, rescale_new
 
 from .base import TrainerBase
@@ -532,7 +533,15 @@ class StaticTrainer3D(TrainerBase):
             pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
             target = batch.y
 
-        return self.loss_fn(pred, target)
+        # Multi-head output: pred is a dict {"force": [B,1], "cd": [B,1]}
+        if isinstance(pred, dict):
+            targets = {
+                "force": getattr(batch, "force", None),
+                "cd": getattr(batch, "cd", None),
+            }
+            return masked_multi_head_loss(pred, targets)
+        else:
+            return self.loss_fn(pred, target)
 
     def validate(self, loader: DataLoader):
         self.model.eval()
@@ -542,10 +551,18 @@ class StaticTrainer3D(TrainerBase):
                 batch = batch.to(self.device)
                 latent_tokens_dev = self.latent_tokens.to(self.device)
                 pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
-                target = batch.y
-                target = target
 
-                loss = self.loss_fn(pred, target)
+                # Multi-head output: pred is a dict {"force": [B,1], "cd": [B,1]}
+                if isinstance(pred, dict):
+                    targets = {
+                        "force": getattr(batch, "force", None),
+                        "cd": getattr(batch, "cd", None),
+                    }
+                    loss = masked_multi_head_loss(pred, targets)
+                else:
+                    target = batch.y
+                    loss = self.loss_fn(pred, target)
+
                 total_loss += loss.item()
         # Global reduction across ranks (average per-dataset, not per-batch)
         local_sum = torch.tensor([total_loss], dtype=torch.float64, device=self.device)
@@ -558,8 +575,14 @@ class StaticTrainer3D(TrainerBase):
         self.model.eval()
         metric_suite = self.dataset_config.metric_suite
 
-        all_batch_targets_denorm = []
-        all_batch_preds_denorm = []
+        # Determine if model uses multi-head output
+        _is_multi_head = hasattr(self.model, 'decoder') and hasattr(self.model.decoder, 'head_names')
+        if _is_multi_head:
+            all_batch_targets_denorm = {"force": [], "cd": []}
+            all_batch_preds_denorm = {"force": [], "cd": []}
+        else:
+            all_batch_targets_denorm = []
+            all_batch_preds_denorm = []
         plot_coords, plot_gtr, plot_prd = None, None, None
 
         # Inference speed measurement variables
@@ -604,26 +627,54 @@ class StaticTrainer3D(TrainerBase):
                 batch_size = batch.num_graphs if hasattr(batch, "num_graphs") else 1
                 total_samples += batch_size
 
-                target_norm = batch.y
+                # Handle multi-head predictions
+                if isinstance(pred_norm, dict):
+                    # Collect per-head predictions — use force if available, else cd
+                    # For now, concatenate all heads for metric reporting
+                    force_pred = pred_norm.get("force")
+                    cd_pred = pred_norm.get("cd")
 
-                u_std_dev = self.u_std[self.dataset_config.active_variables].to(self.device)
-                u_mean_dev = self.u_mean[self.dataset_config.active_variables].to(self.device)
-                pred_de_norm = pred_norm * u_std_dev + u_mean_dev
-                target_de_norm = target_norm * u_std_dev + u_mean_dev
+                    # Log the first sample's predictions
+                    if i == 0 and self.setup_config.rank == 0:
+                        plot_coords = None
+                        parts = []
+                        if force_pred is not None:
+                            parts.append(f"Force={force_pred[0].item():.4f}")
+                        if cd_pred is not None:
+                            parts.append(f"Cd={cd_pred[0].item():.4f}")
+                        logging.getLogger(__name__).info(
+                            f"First test sample predictions: {', '.join(parts)}"
+                        )
 
-                all_batch_targets_denorm.append(target_de_norm.cpu())
-                all_batch_preds_denorm.append(pred_de_norm.cpu())
+                    # Store per-head results for later metric computation
+                    for head_name, head_pred in pred_norm.items():
+                        head_target = getattr(batch, head_name, None)
+                        if head_target is None:
+                            continue
+                        head_target = head_target.to(self.device)
+                        valid = ~torch.isnan(head_target)
+                        if valid.any():
+                            all_batch_targets_denorm[head_name].append(head_target[valid].cpu())
+                            all_batch_preds_denorm[head_name].append(head_pred[valid].detach().cpu())
+                else:
+                    target_norm = batch.y
 
-                if i == 0 and self.setup_config.rank == 0:
-                    # We are predicting graph-level scalars (drag), not node-level fields.
-                    # Just grab the first scalar in the batch, no 3D node mask needed!
-                    plot_coords = None
-                    plot_gtr = np.array([target_de_norm[0].item()])
-                    plot_prd = np.array([pred_de_norm[0].item()])
+                    u_std_dev = self.u_std[self.dataset_config.active_variables].to(self.device)
+                    u_mean_dev = self.u_mean[self.dataset_config.active_variables].to(self.device)
+                    pred_de_norm = pred_norm * u_std_dev + u_mean_dev
+                    target_de_norm = target_norm * u_std_dev + u_mean_dev
 
-                    logging.getLogger(__name__).info(
-                        f"Extracted first test sample: True Drag = {plot_gtr[0]:.4f}, Predicted Drag = {plot_prd[0]:.4f}"
-                    )
+                    all_batch_targets_denorm.append(target_de_norm.cpu())
+                    all_batch_preds_denorm.append(pred_de_norm.cpu())
+
+                    if i == 0 and self.setup_config.rank == 0:
+                        plot_coords = None
+                        plot_gtr = np.array([target_de_norm[0].item()])
+                        plot_prd = np.array([pred_de_norm[0].item()])
+
+                        logging.getLogger(__name__).info(
+                            f"Extracted first test sample: True Drag = {plot_gtr[0]:.4f}, Predicted Drag = {plot_prd[0]:.4f}"
+                        )
 
                 # Output progress every 10 batches (including inference speed info)
                 if (i + 1) % 10 == 0 and self.setup_config.rank == 0:
@@ -638,8 +689,47 @@ class StaticTrainer3D(TrainerBase):
                     )
 
         if self.setup_config.rank == 0:
-            full_preds = torch.cat(all_batch_preds_denorm, dim=0)
-            full_targets = torch.cat(all_batch_targets_denorm, dim=0)
+            # Handle both multi-head (dict) and single-output (list) results
+            if isinstance(all_batch_preds_denorm, dict):
+                # Multi-head: report metrics per head
+                for head_name in all_batch_preds_denorm:
+                    if not all_batch_preds_denorm[head_name]:
+                        continue
+                    head_preds = torch.cat(all_batch_preds_denorm[head_name], dim=0)
+                    head_targets = torch.cat(all_batch_targets_denorm[head_name], dim=0)
+                    diff = head_preds - head_targets
+                    mse = torch.mean(diff**2).item()
+                    mae = torch.mean(torch.abs(diff)).item()
+                    logging.getLogger(__name__).info(
+                        f"--- Head '{head_name}': MSE={mse:.6f}, MAE={mae:.6f}, "
+                        f"n_samples={head_preds.shape[0]} ---"
+                    )
+
+                    # Save per-head CSV
+                    results_array = torch.cat(
+                        [head_targets.view(-1, 1), head_preds.view(-1, 1)], dim=1
+                    ).cpu().numpy()
+                    csv_path = self.path_config.result_path.replace(
+                        ".png", f"_{head_name}_predictions.csv"
+                    )
+                    np.savetxt(
+                        csv_path, results_array, delimiter=",",
+                        header=f"True_{head_name},Predicted_{head_name}", comments=""
+                    )
+                    logging.getLogger(__name__).info(f"Saved {head_name} predictions to {csv_path}")
+
+                # Create dummy full_preds/full_targets for the rest of the reporting
+                # (use the first non-empty head)
+                full_preds = torch.tensor([0.0])
+                full_targets = torch.tensor([0.0])
+                for head_name in all_batch_preds_denorm:
+                    if all_batch_preds_denorm[head_name]:
+                        full_preds = torch.cat(all_batch_preds_denorm[head_name], dim=0)
+                        full_targets = torch.cat(all_batch_targets_denorm[head_name], dim=0)
+                        break
+            else:
+                full_preds = torch.cat(all_batch_preds_denorm, dim=0)
+                full_targets = torch.cat(all_batch_targets_denorm, dim=0)
             logging.getLogger(__name__).info(
                 f"Concatenated results: preds shape {full_preds.shape}, targets shape {full_targets.shape}"
             )
