@@ -1,5 +1,4 @@
 import torch
-from torch import nn
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
@@ -7,13 +6,17 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Vi
 
 
 class BasicMLP(BaseModel):
-    def __init__(self, config: dict = {}, overwrite_base_init: bool = False, in_dim: int = 3, hidden: int = 128, layers: int = 6):
-        super(BasicMLP, self).__init__(config, overwrite_base_init, in_dim, hidden, layers)
+    def __init__(
+        self, config: dict | None = None, overwrite_base_init: bool = False, in_dim: int = 3, hidden: int = 128, layers: int = 6
+    ):
+        if config is None:
+            config = {}
+        super().__init__(config, overwrite_base_init, in_dim, hidden, layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return super(BasicMLP, self).forward(x)
+        return super().forward(x)
 
-    def optimise(self, training_config: dict = None, renderer_manager: VisualisationManager | None = None) -> None:
+    def optimise(self, training_config: dict | None = None, renderer_manager: VisualisationManager | None = None) -> None:
         if training_config is None:
             raise ValueError("Training config must be provided for optimisation.")
 
@@ -38,6 +41,17 @@ class BasicMLP(BaseModel):
             loss.backward()
             # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
             optimizer.step()
+
+    def get_model_info_dict(self):
+        # Return model info as a dictionary
+        model_info = {
+            "Model_name": "BasicMLP",
+            "in_dim": self.in_dim,
+            "hidden": self.hidden,
+            "layers": self.layers,
+            "total_parameters": sum(p.numel() for p in self.parameters()),
+        }
+        return model_info
 
     def debug_info(self):
         # Print model architecture and number of parameters, or anthing you might want to debug
