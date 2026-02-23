@@ -1,12 +1,6 @@
 #This config includes everything regarding the visualiser and its wrapper you might need
 
 
-neural_renderer:
-  image_size: 1024
-  background_color: [0.0,0.0,0.0]
-  anti_aliasing: true
-  camera_mode: "look_at"
-  viewing_angle: 40
 
 
 # Mesh extraction settings for converting neural SDF to renderable mesh
@@ -126,6 +120,19 @@ rendering_modes:
       fps: 15
       render_interval: 10
 
+
+
+
+detached_modes:
+  solar_v3_selection:
+    enabled: false
+    class_path: "detached_modes.solar_v3_selection:SolarV3Selection"
+    config:
+      camera_position: [-1000, 3000, 1000]
+      look_at: [0, 0, 0]
+      render_mode: "rgb"
+      fps: 15
+      render_interval: 10
 
 # not used atm, outdated
 gifs:

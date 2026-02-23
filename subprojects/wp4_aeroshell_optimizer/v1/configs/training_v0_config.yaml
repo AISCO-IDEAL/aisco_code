@@ -3,6 +3,6 @@ general_info:
 
 training_params:
   learning_rate: 0.00000002
-  num_epochs: 500
+  num_epochs: 250
   scheduler_step_size: 200 # does what?
   scheduler_gamma: 0.5 # does what?
