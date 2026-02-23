@@ -70,12 +70,12 @@ class NormalizeFeatures(BaseTransform):
         self.c_std = c_std.detach() if c_std is not None else None
 
     def forward(self, data: Data) -> Data:
-        if hasattr(data, 'x') and data.x is not None:
-            mean_dev = self.mean.to(data.x.device)
-            std_dev = self.std.to(data.x.device)
-            data.x = (data.x - mean_dev) / (std_dev + EPSILON) # Add epsilon for safety
+        if hasattr(data, 'y') and data.y is not None:
+            mean_dev = self.mean.to(data.y.device)
+            std_dev = self.std.to(data.y.device)
+            data.y = (data.y - mean_dev) / (std_dev + EPSILON) # Add epsilon for safety
         else:
-            print("Warning: NormalizeFeatures transform called but data has no 'x' attribute.")
+            print("Warning: NormalizeFeatures transform called but data has no 'y' attribute.")
 
         if hasattr(data, 'c') and data.c is not None and self.c_mean is not None and self.c_std is not None:
             c_mean_dev = self.c_mean.to(data.c.device)
@@ -85,12 +85,12 @@ class NormalizeFeatures(BaseTransform):
         return data
 
     def __call__(self, data: Data) -> Data:
-        if hasattr(data, 'x') and data.x is not None:
-            mean_dev = self.mean.to(data.x.device)
-            std_dev = self.std.to(data.x.device)
-            data.x = (data.x - mean_dev) / (std_dev + EPSILON) # Add epsilon for safety
+        if hasattr(data, 'y') and data.y is not None:
+            mean_dev = self.mean.to(data.y.device)
+            std_dev = self.std.to(data.y.device)
+            data.y = (data.y - mean_dev) / (std_dev + EPSILON) # Add epsilon for safety
         else:
-            print("Warning: NormalizeFeatures transform called but data has no 'x' attribute.")
+            print("Warning: NormalizeFeatures transform called but data has no 'y' attribute.")
 
         if hasattr(data, 'c') and data.c is not None and self.c_mean is not None and self.c_std is not None:
             c_mean_dev = self.c_mean.to(data.c.device)

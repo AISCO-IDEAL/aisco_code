@@ -1,10 +1,11 @@
 #!/bin/bash
-#SBATCH --partition=cpu
+#SBATCH --partition=gpu
 #SBATCH --job-name=Preprocess_Drivaer_Test
 #SBATCH --time=04:00:00                   # Adjust time as needed
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G
+#SBATCH --gpus=rtx_4090:1
 #SBATCH --output=/cluster/scratch/roarnold/scratch_logs/Robin_TEST_%j.out
 #SBATCH --error=/cluster/scratch/roarnold/scratch_logs/Robin_TEST_%j.err
 
@@ -13,7 +14,7 @@
 #------------------------------------------------------------------------------
 
 module purge
-module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python/3.11.6  eth_proxy
+module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
 
 
 USERNAME="roarnold"
@@ -28,9 +29,9 @@ echo "Job ID: $SLURM_JOB_ID"
 echo "Running on node: $SLURMD_NODENAME"
 echo "Number of CPUs: $SLURM_CPUS_PER_TASK"
 echo "Allocated memory per CPU: $SLURM_MEM_PER_CPU MB"
-#echo "Number of GPUs: $SLURM_GPUS"
-#echo "GPU type: $(nvidia-smi --query-gpu=name --format=csv,noheader)"
-#echo "Allocated memory per GPU: $(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits) MB"
+echo "Number of GPUs: $SLURM_GPUS"
+echo "GPU type: $(nvidia-smi --query-gpu=name --format=csv,noheader)"
+echo "Allocated memory per GPU: $(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits) MB"
 echo "Working directory: $PWD"
 echo "=========================================="
 #------------------------------------------------------------------------------
@@ -45,9 +46,9 @@ source "$VENV_DIR/bin/activate"
 #------------------------------------------------------------------------------
 # Verify GPU access
 #------------------------------------------------------------------------------
-#echo "Verifying GPU access..."
-#nvidia-smi
-#echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
+echo "Verifying GPU access..."
+nvidia-smi
+echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 #------------------------------------------------------------------------------
 
 # Set Hugging Face environment variables (not used for now)
@@ -68,10 +69,14 @@ source "$VENV_DIR/bin/activate"
 #------------------------------------------------------------------------------
 export PYTHONUNBUFFERED=TRUE
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
-cd /cluster/home/$USERNAME/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working
+cd /cluster/home/$USERNAME/AISCO_code/
 #python -m src.main
 
-python src/dataloader/test_dataloader.py
+ulimit -n 65536
+
+python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/main.py \
+    -c subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/pressure.yaml \
+    2>&1
 
 #------------------------------------------------------------------------------
 # Print job end information
