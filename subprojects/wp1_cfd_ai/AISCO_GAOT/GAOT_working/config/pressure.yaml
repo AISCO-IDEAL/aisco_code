@@ -11,14 +11,14 @@ setup:
     distributed: false
 
     # --- wandb settings for quick smoke run ---
-    wandb: false
-    wandb_project: GAOT-CRV
-    wandb_entity: null
+    wandb: true
+    wandb_project: "WP1_drag"
+    wandb_entity: aisco
     #wandb_run_name: "run__RUN_ID_"
     wandb_group: drivaernet
     wandb_mode: online
     wandb_tags: ["drivaernet", "pressure", "normals", "gaot"]
-    wandb_watch_model: false
+    wandb_watch_model: true
 
     # --- artifact & checkpoint settings ---
     test_during_training: false
