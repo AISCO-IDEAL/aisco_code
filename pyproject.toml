@@ -194,8 +194,10 @@ ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 files = ["AISCO/", "tests/"]
+
 exclude = [
   "^build/",
   "^docs/",
   "^fixed_renderer/",
+  "**/archive/**",
 ]
