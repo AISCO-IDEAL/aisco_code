@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from turtle import up
 from typing import Any
 
 import torch
@@ -23,6 +24,7 @@ from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import basic_multi_log
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.solar_v3_selection import SolarV3Selection
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
 
 def _cumsum(x: torch.Tensor) -> torch.Tensor:
@@ -228,6 +230,7 @@ class SolarLossEstimator:
             "wandb_logging": False,
             "soft_mask_selection_threshold": 0.5,
             "soft_mask_full_selection_threshold": 0.95,
+            "rendering": False,
         }
 
         cfg = defaults if config is None else config
@@ -247,9 +250,17 @@ class SolarLossEstimator:
         self.soft_mask_selection_threshold = float(cfg["soft_mask_selection_threshold"])
         self.soft_mask_full_selection_threshold = float(cfg["soft_mask_full_selection_threshold"])
         self.counter = 0  # For logging purposes
-        self.renderSolar = SolarV3Selection(
-            visualiser=None
-        )  # For visualization purposes, can be removed if not needed, TODO: add visualiser
+        self.rendering = bool(cfg["rendering"])
+        self.visualiser = Visualiser(
+            image_size=256,
+            background_color=None,
+            anti_aliasing=True,
+            camera_mode="look_at",
+            viewing_angle=30.0,
+            device=self.device,
+            up=[0.0, 0.0, 1.0],
+        )  # Will not be used if rendering is False
+        self.renderSolar = SolarV3Selection(visualiser=self.visualiser)  # Will not be used if rendering is False
         self.number_epochs = int(load_config(v="v1", cfg_name="training_v0_config.yaml")["training_params"]["num_epochs"])
 
         sun_dir = cfg["sun_dir"]
@@ -322,12 +333,6 @@ class SolarLossEstimator:
         """
 
         self.counter += 1
-        if self.counter <= self.number_epochs:
-            self.renderSolar.update()  # TODO: add input to fuction
-        if self.counter == self.number_epochs:
-            self.renderSolar.finalize_rendering(
-                output_dir=Path("solar_loss_visualization") / f"epoch_{epoch_name}"
-            )  # TODO: add proper path with hash of given model with dict_hashing()
 
         vertices, faces = self.extract_mesh(model)
         if self.method == "mesh_sdf":  # MeshSDF loss needs special handling
@@ -342,6 +347,10 @@ class SolarLossEstimator:
                     sigmoid_sharpness=self.sigmoid_sharpness,
                     budget_penalty_weight=self.budget_penalty_weight,
                     epsilon=self.eps,
+                    epoch_name=epoch_name,
+                    enable_wandb_logging=self.enable_wandb_logging,
+                    rendering=self.rendering,
+                    counter=self.counter,
                 )
                 return loss
 
@@ -361,7 +370,10 @@ class SolarLossEstimator:
                 sigmoid_sharpness=self.sigmoid_sharpness,
                 budget_penalty_weight=self.budget_penalty_weight,
                 epsilon=self.eps,
+                epoch_name=epoch_name,
                 enable_wandb_logging=self.enable_wandb_logging,
+                rendering=self.rendering,
+                counter=self.counter,
             )
 
         return loss if self.method != "mesh_sdf" else surrogate_loss

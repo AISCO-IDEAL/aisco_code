@@ -23,3 +23,4 @@ SolarLossConfigV3:  # moved from solar_loss_v3.py
   wandb_logging: True
   soft_mask_selection_threshold: 0.5 # This is the threshold for selecting points in the soft mask for the loss computation. Points with a soft mask value above this threshold will be considered for the loss computation.
   soft_mask_full_selection_threshold: 0.95 # This is the threshold for fully selecting points in the soft mask (i.e., all points with a value above this threshold are fully selected).
+  rendering: True
