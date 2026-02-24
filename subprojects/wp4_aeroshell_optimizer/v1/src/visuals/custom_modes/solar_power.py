@@ -74,8 +74,8 @@ class SolarPower(RenderingMode):
 
 
         # Normalize power_dotprods to [0,1] range
-        min_val = power_dotprods.min()
-        max_val = power_dotprods.max()
+        min_val = -1
+        max_val = 1
         if max_val > min_val:
             normalized_power = (power_dotprods - min_val) / (max_val - min_val)
         else:

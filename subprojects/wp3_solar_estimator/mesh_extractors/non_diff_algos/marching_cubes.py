@@ -135,7 +135,9 @@ class MarchingCubesExtractor:
             # PyMCubes backend (fast C++ implementation)
             verts, faces = mcubes.marching_cubes(sdf_grid_np, isovalue)
             # Flip winding to match outward normal convention used elsewhere
-            faces = faces[:, [0, 2, 1]]
+            # .copy() ensures contiguous memory layout (avoids negative strides
+            # that torch.from_numpy cannot handle)
+            faces = faces[:, [0, 2, 1]].copy()
         else:
             # Fallback to sklearn
             verts, faces, _, _ = measure.marching_cubes(

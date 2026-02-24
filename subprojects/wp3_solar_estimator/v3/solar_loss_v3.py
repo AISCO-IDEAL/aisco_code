@@ -192,7 +192,7 @@ class SolarLossEstimator:
 
         raise ValueError(f"Unknown method: {self.method}")
 
-    def solar_loss(self, model: Any, epoch_name: int | None = None) -> torch.Tensor:
+    def solar_loss(self, model: Any, epoch_name: int | None = None) -> torch.Tensor:  # noqa: ARG002
         """
         Compute the solar loss for the given model.
 
@@ -213,6 +213,7 @@ class SolarLossEstimator:
             budget_penalty_weight=self.budget_penalty_weight,
             epsilon=self.eps,
         )
+        # missing: MeshSDF surrogate loss if using mesh_sdf method (TODO: could add as extra logging metric)
         return loss
 
 
