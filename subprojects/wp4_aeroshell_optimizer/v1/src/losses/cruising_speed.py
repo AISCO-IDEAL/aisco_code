@@ -70,7 +70,7 @@ def cruising_speed(solar_power: torch.Tensor, drag_force_normalized: torch.Tenso
     solar_power = 1.25 * solar_power
 
     # Apply the differentiable root finder to solve for cruising speed
-    solve_x = PhysicalRootFinder.apply
-    cruising_speed_objective = solve_x(drag_force_normalized, solar_power, rolling_friction_force, c_losses)
+    solver = PhysicalRootFinder.apply
+    cruising_speed_objective = solver(drag_force_normalized, solar_power, rolling_friction_force, c_losses)
 
     return cruising_speed_objective

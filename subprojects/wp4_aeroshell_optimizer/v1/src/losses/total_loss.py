@@ -182,11 +182,15 @@ class TotalLoss:
                 constrained_losses=c,
                 thresholds=thresholds_tensor,
             )
-
-            weighted_total_loss = (
-                o + torch.dot(self.lamdas.squeeze(), c) + 1 / 2 * torch.dot(self.mus.squeeze(), c**2)
-            )  # dot products of weights and losses tensors
-            # Sum all loss tensors in a differentiable way
+            if self.losses_config["CSE"]=="True": # TODO: go through each seperate loss and check
+                weighted_total_loss = (
+                    cruising_speed(solar_power=loss_tensors[4], drag_force_normalized= loss_tensors[0], mass=210, c_losses=20, rolling_friction_coefficient=0.006) + torch.dot(self.lamdas.squeeze(), c) + 1 / 2 * torch.dot(self.mus.squeeze(), c**2)
+                )
+            else:
+                weighted_total_loss = (
+                    o + torch.dot(self.lamdas.squeeze(), c) + 1 / 2 * torch.dot(self.mus.squeeze(), c**2)
+                )  # dot products of weights and losses tensors
+                # Sum all loss tensors in a differentiable way
 
         else:  # manual weighting
             weights = weights_manual(
