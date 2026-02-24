@@ -1,6 +1,12 @@
 #This config includes everything regarding the visualiser and its wrapper you might need
 
 
+neural_renderer:
+  image_size: 10
+  background_color: [0.0,0.0,0.3]
+  anti_aliasing: true
+  camera_mode: "look_at"
+  viewing_angle: 40
 general:
   store_wandb: True #Whether to upload results to wandb at the end
 
@@ -46,6 +52,7 @@ neural_renderer:
 rendering_modes:
   #use alex_mode as an example, jsut renders a GIF of the mesh
   alex_mode:
+    enabled: false
     #mandatory
     enabled: false
     class_path: "custom_modes.alex_mode:BasicAlexMode"

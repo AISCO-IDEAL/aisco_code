@@ -1,9 +1,7 @@
 import contextlib
 
 import torch
-from kaolin.ops.conversions import (
-    FlexiCubes,
-)
+from kaolin.ops.conversions import FlexiCubes
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 

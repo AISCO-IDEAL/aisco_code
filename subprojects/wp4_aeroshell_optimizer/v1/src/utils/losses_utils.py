@@ -1,16 +1,17 @@
 import torch
 
 
-def get_points(num_points: int = 1000, bbox_size: float = 10.0) -> torch.Tensor:
+def get_points(num_points: int = 1000, bbox_size: float = 10.0, device: str = "cuda") -> torch.Tensor:
     """
     Sample points in the bounding box of the model.
     Args:
         num_points: Number of points to sample
         bbox_size: Size of the bounding box (assumed cubic, centered at origin)
+        device: Device to create the tensor on (default: "cuda")
     Returns:
         points: Tensor of shape (num_points, 3) with sampled points
     """
-    points = (torch.rand(num_points, 3, device="cuda") - 0.5) * bbox_size
+    points = (torch.rand(num_points, 3, device=device) - 0.5) * bbox_size
     return points.detach().requires_grad_(True)
 
 

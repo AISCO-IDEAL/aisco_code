@@ -49,6 +49,7 @@ class ParentLoss:
             self.points = get_points(
                 num_points=self.losses_config["get_points_params"]["num_points"],
                 bbox_size=self.losses_config["get_points_params"]["bbox_size"],
+                device=self.device,
             )
 
         self._setup()

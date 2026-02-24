@@ -1,8 +1,11 @@
 import torch
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data
 
 
 class BasicMLP(BaseModel):
@@ -21,7 +24,15 @@ class BasicMLP(BaseModel):
             raise ValueError("Training config must be provided for optimisation.")
 
         self.train()  # Set model to training mode, i.e. things like dropout layers are active, turn off by using self.eval() or model.eval()
-        optimizer = torch.optim.Adam(self.parameters(), lr=training_config.get("learning_rate", 1e-3))
+
+        # Check for WandB sweep overrides for learning rate
+        if wandb.run and "learning_rate " in wandb.config:
+            learning_rate = wandb.config.learning_rate
+            print(f"Sweep: Updated learning_rate to {learning_rate}")
+        else:
+            learning_rate = training_config.get("learning_rate", 1e-3)
+
+        optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
         num_epochs = training_config["training_params"].get("num_epochs", 1000)
 
         # IMPORTANT: the device the model is on at time of function call defines the device passed to the loss_class
@@ -53,6 +64,21 @@ class BasicMLP(BaseModel):
         }
         return model_info
 
+            # save mesh every 5 epochs
+            if general_config is not None and epoch % training_config["training_params"].get("mesh_save_interval", 5) == 0:
+                allround_save_data(
+                    model=self,
+                    storage_path=general_config["general_info"].get(
+                        "storage_path", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+                    ),
+                    save_model=False,
+                    save_mesh=True,
+                    verbose=False,
+                    pretraining=False,
+                    wandb_run=wandb_name,
+                    epoch=epoch
+                )
+
     def debug_info(self):
         # Print model architecture and number of parameters, or anthing you might want to debug
         print("===================================")
@@ -69,6 +95,15 @@ class BasicMLP(BaseModel):
         device = next(self.parameters()).device
         print(f" Model is on device: {device}")
         print(f"Do Model Parameters require Gradients? (Y/N): {any(p.requires_grad for p in self.parameters())}")
+
+        print("End of Model Debug Info")
+        print("===================================")
+
+        print("End of Model Debug Info")
+        print("===================================")
+
+        print("End of Model Debug Info")
+        print("===================================")
 
         print("End of Model Debug Info")
         print("===================================")
