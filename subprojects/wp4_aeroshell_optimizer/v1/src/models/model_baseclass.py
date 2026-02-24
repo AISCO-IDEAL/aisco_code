@@ -48,7 +48,7 @@ class BaseModel(nn.Module):
         output = x.squeeze(-1)
         return output * 1000.0
 
-    def optimise(self, renderer_manager: VisualisationManager | None = None, wandb_name: str = None, general_config: dict = None):  # noqa: ARG002
+    def optimise(self, renderer_manager: VisualisationManager | None = None, wandb_name: str | None = None, general_config: dict | None = None):  # noqa: ARG002
         super().train()  # Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
 
         # For textbook example of how our optimization works, look at basic_MLP_v1.py

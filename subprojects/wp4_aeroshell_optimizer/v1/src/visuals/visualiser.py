@@ -171,7 +171,7 @@ class Visualiser:
                 if fr.ndim == 3 and fr.shape[-1] == 1:
                     fr = fr.squeeze(-1)
                 frames_uint8.append(fr)
-            imageio.mimsave(file_path, frames_uint8, fps=fps)
+            imageio.mimsave(file_path, frames_uint8, fps=fps)  # type: ignore
 
         # Return format depends on use case
         if return_uint8:

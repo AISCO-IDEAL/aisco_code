@@ -57,7 +57,7 @@ class BbV3(ParentLoss):
         Loss = mean( relu(sdf_model - sdf_inner) + relu(sdf_outer - sdf_model) )
         """
         with torch.enable_grad():
-            if type(self.device).__name__ == 'device':
+            if hasattr(self.device, "type"):
                 pass
             else:
                  # Check if self.device is string and convert if needed, or print warning

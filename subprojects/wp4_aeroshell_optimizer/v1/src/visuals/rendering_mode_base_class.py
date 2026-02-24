@@ -93,7 +93,7 @@ class RenderingMode:
         ]
 
         # Each mode manages its own frame storage
-        self.frame_storage = []
+        self.frame_storage: list[Any] = []
 
     def update(self, optimization_state: dict[str, Any]) -> None:
         """

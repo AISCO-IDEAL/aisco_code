@@ -19,10 +19,10 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Vi
 
 def allround_save_data(
     model: BaseModel,  # Model to save data from
-    wandb_run: str = None,  # Name of the wandb run to log to (e.g. "beautiful-banana-164")
+    wandb_run: str | None = None,  # Name of the wandb run to log to (e.g. "beautiful-banana-164")
     save_mesh: bool = True,  # Whether to save the mesh data
     save_model: bool = True,  # Whether to save the model data,
-    epoch: int = None,  # Current epoch number
+    epoch: int | None = None,  # Current epoch number
     storage_path: str = "cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/bulk_storage",
     verbose: bool = True,
     pretraining: bool = False,

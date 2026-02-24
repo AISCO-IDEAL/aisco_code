@@ -9,7 +9,7 @@ import wandb
 try:
     from PIL import Image
 except Exception:
-    Image = None
+    Image = None  # type: ignore
 
 import contextlib
 
@@ -117,7 +117,10 @@ def upload_neural_renderer_gif(frames, key: str, step: int | None = None, fps: i
     # Otherwise assume iterable of frames
     if isinstance(frames, Iterable):
         frame_list = _frames_to_array_list(frames)
-        wandb.log({key: wandb.Video(frame_list, fps=fps, format="gif")}, step=step)
+        # Convert list of arrays to a single numpy array (T, H, W, C)
+        # This satisfies wandb.Video input requirement
+        video_array = np.stack(frame_list)
+        wandb.log({key: wandb.Video(video_array, fps=fps, format="gif")}, step=step)
         print(f"Logged GIF with {len(frame_list)} frames to wandb under key '{key}' at step {step}")
         return
 

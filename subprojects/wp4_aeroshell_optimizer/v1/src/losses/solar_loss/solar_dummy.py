@@ -52,6 +52,10 @@ def solar_mesh_deformation(
     loss.backward()
     learning_rate = 1e-2
     # Direct gradient descent step
-    vertices_new = vertices - learning_rate * vertices.grad
+    if vertices.grad is not None:
+        vertices_new = vertices - learning_rate * vertices.grad
+    else:
+        # Should not happen given construction, but satisfies type checker
+        vertices_new = vertices
 
     return vertices_new

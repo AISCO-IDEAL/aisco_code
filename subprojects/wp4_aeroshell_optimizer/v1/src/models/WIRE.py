@@ -63,7 +63,7 @@ class ComplexGaborLayer(nn.Module):
 class WIRE(BaseModel):
     def __init__(
         self,
-        config: dict = None,
+        config: dict | None = None,
         in_features=3,
         hidden_features=256,
         hidden_layers=16,
@@ -105,24 +105,24 @@ class WIRE(BaseModel):
         # Legacy parameter
         self.pos_encode = False
 
-        self.net = []
-        self.net.append(
+        net_layers = []
+        net_layers.append(
             self.nonlin(
                 in_features, hidden_features, omega0=first_omega_0, sigma0=scale, is_first=True, trainable=self.trainable_params
             )
         )
 
         for i in range(hidden_layers):
-            self.net.append(
+            net_layers.append(
                 self.nonlin(
                     hidden_features, hidden_features, omega0=hidden_omega_0, sigma0=scale, trainable=self.trainable_params
                 )
             )
 
         final_linear = nn.Linear(hidden_features, out_features, dtype=dtype)
-        self.net.append(final_linear)
+        net_layers.append(final_linear)
 
-        self.net = nn.Sequential(*self.net)
+        self.net = nn.Sequential(*net_layers)
 
         # Small-weight init for stability: limit Linear weights, zero biases
         for m in self.net.modules():
@@ -154,7 +154,7 @@ class WIRE(BaseModel):
         }
         return model_info
 
-    def optimise(self, training_config: dict = None, renderer_wrapper: Wrapper | None = None, wandb_name: str = None, general_config: dict = None) -> None:
+    def optimise(self, training_config: dict | None = None, renderer_wrapper: Wrapper | None = None, wandb_name: str | None = None, general_config: dict | None = None) -> None:
         """
         Args:
             training_config: Dictionary containing training configuration parameters.
