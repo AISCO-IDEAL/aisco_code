@@ -17,8 +17,8 @@ from subprojects.wp4_aeroshell_optimizer.src.utils.validation import validation_
 def train_sdf_model(
     model: SDFNetwork,
     train_config: dict,
-    model_path: str = None,
-    mesh_path: str = None,
+    model_path: str = "",
+    mesh_path: str = "",
     model_name: str = "sdf_model",
     mesh_name: str = "sdf_mesh",
     track_run: bool = False,
@@ -84,7 +84,7 @@ def train_sdf_model(
             print(f"Epoch {epoch}, Total Loss: {total_loss.item():.4f}")
 
     # Save the trained model
-    if model_path:
+    if model_path != "":
         os.makedirs(model_path, exist_ok=True)
         datum = datetime.datetime.now()
         model_path = os.path.join(

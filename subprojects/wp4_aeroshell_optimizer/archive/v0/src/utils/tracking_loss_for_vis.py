@@ -7,6 +7,10 @@ import pandas as pd
 
 
 class LossTracker:
+    __loss_history: dict[str, dict[str, float]]
+    __loss_names: list[str]
+    __sorted_epoch_names: list[str]
+
     def __init__(self, loss_names: list[str]):
         self.__loss_history = {name: {} for name in loss_names}
         self.__loss_history["total"] = {}

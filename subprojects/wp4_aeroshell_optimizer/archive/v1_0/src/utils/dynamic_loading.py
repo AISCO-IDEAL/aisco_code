@@ -37,6 +37,13 @@ def load_class_from_path(path: str, class_name: str):
             f"Please verify the file exists and the path in the config (must use '/' separators)."
         )
 
+    if spec.loader is None:
+        raise FileNotFoundError(
+            f"Cannot find loader for module file. "
+            f"Path provided: {path}. "
+            f"Please verify the file exists and the path in the config (must use '/' separators)."
+        )
+
     module = importlib.util.module_from_spec(spec)
     sys.modules["module.name"] = module
     spec.loader.exec_module(module)

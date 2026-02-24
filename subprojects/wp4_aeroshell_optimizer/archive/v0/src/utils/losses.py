@@ -36,7 +36,8 @@ class SDFLosses:
     def __init__(self, dev: str = "cuda"):
         self.device = dev
         # eschaerer: get weights for losses from config
-        self.weights = load_config().get("losses")
+        cfg = load_config() or {}
+        self.weights = cfg.get("losses", {})
         print(self.weights)
 
         # initialize the Bounding Boxes here to avoid re-creating them every time
@@ -368,6 +369,6 @@ class SDFLosses:
                 "losses/solar_area_loss": l7.item()*self.weights["solar_area"][1],
             },
             step=epoch_name,
-        )
+        ) # type: ignore[attr-defined]
 
         return total_loss
