@@ -19,6 +19,7 @@ class MeshAssemblyGIF(RenderingMode):
         self.rendered_assembly = False
         self.assembly_frame = None
         self.silhouettes = []
+        self.store_wandb = config.get("store_wandb", False)  # Whether to upload the final GIF to wandb
         self.alpha = config.get("alpha", 0.5)  # Transparency factor (mesh opacity)
         self.assembly_color = tuple(config.get("assembly_color", [0.8, 0.8, 0.8]))  # Default assembly color
         self.mesh_color = tuple(config.get("mesh_color", [0.8, 0.8, 0.8]))  # Default mesh color (light gray)

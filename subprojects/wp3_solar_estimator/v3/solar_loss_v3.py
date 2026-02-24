@@ -229,7 +229,9 @@ class SolarLossEstimator:
             "soft_mask_selection_threshold": 0.5,
             "soft_mask_full_selection_threshold": 0.95,
         }
-        cfg = {**defaults, **(config or {})}
+
+        cfg = defaults if config is None else config
+        print(cfg)
         self.config = cfg
 
         self.method = cfg["method"]
@@ -303,7 +305,7 @@ class SolarLossEstimator:
             return self.extractor.extract_mesh(model, isovalue=0.0, batch_size=self.batch_size)
         if self.method in {"mesh_sdf", "mc"}:
             assert isinstance(self.extractor, MeshSDFExtractor)
-            raise ValueError("MeshSDFExtractor WIP")  # missing: MeshSDF loss if using mesh_sdf method
+            return self.extractor.extract_mesh(model)
 
         raise ValueError(f"Unknown method: {self.method}")
 
@@ -320,26 +322,49 @@ class SolarLossEstimator:
         """
 
         self.counter += 1
-
-        vertices, faces = self.extract_mesh(model)
-        loss = solar_mesh_loss_v3(
-            vertices,
-            faces,
-            self.sun_dir,
-            self.area_budget_mm2,
-            sigmoid_sharpness=self.sigmoid_sharpness,
-            budget_penalty_weight=self.budget_penalty_weight,
-            epsilon=self.eps,
-            enable_wandb_logging=self.enable_wandb_logging,
-        )
-
         if self.counter <= self.number_epochs:
             self.renderSolar.update()  # TODO: add input to fuction
         if self.counter == self.number_epochs:
             self.renderSolar.finalize_rendering(
                 output_dir=Path("solar_loss_visualization") / f"epoch_{epoch_name}"
             )  # TODO: add proper path with hash of given model with dict_hashing()
-        return loss
+
+        vertices, faces = self.extract_mesh(model)
+        if self.method == "mesh_sdf":  # MeshSDF loss needs special handling
+            print("Using MeshSDF for Solar loss, gradients may be weird")
+
+            def wrapper_solar_loss(vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
+                loss, _ = solar_mesh_loss_v3(
+                    vertices,
+                    faces,
+                    self.sun_dir,
+                    self.area_budget_mm2,
+                    sigmoid_sharpness=self.sigmoid_sharpness,
+                    budget_penalty_weight=self.budget_penalty_weight,
+                    epsilon=self.eps,
+                )
+                return loss
+
+            verts, faces, loss, surrogate_loss = self.extractor.extract_and_compute_loss(
+                sdf_model=model,
+                loss_fn=wrapper_solar_loss,
+                enable_backward=True,
+            )
+
+        else:
+            print(f"Using non-MeshSDF method for Solar loss ({self.method}), should be fully differentiable")
+            loss = solar_mesh_loss_v3(
+                vertices,
+                faces,
+                self.sun_dir,
+                self.area_budget_mm2,
+                sigmoid_sharpness=self.sigmoid_sharpness,
+                budget_penalty_weight=self.budget_penalty_weight,
+                epsilon=self.eps,
+                enable_wandb_logging=self.enable_wandb_logging,
+            )
+
+        return loss if self.method != "mesh_sdf" else surrogate_loss
 
 
 def sweep_solar_methods(

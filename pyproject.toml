@@ -1,4 +1,3 @@
-#kdiehl
 [build-system]
 
 requires = ["setuptools>=74.0.0"]
@@ -66,7 +65,7 @@ testing = [
   ]
 
 all = [
-  "aisco_env[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer, testing]"
+  "AISCO_code[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer, testing]"
 ]
 
 #make a all command
@@ -189,13 +188,15 @@ max-args = 8
 python_version = "3.11"
 namespace_packages = true
 explicit_package_bases = true
-mypy_path = "AISCO/"
+mypy_path = "subprojects/"
 ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = true
-files = ["AISCO/", "tests/"]
+files = ["subprojects/", "tests/"]
+
 exclude = [
   "^build/",
   "^docs/",
   "^fixed_renderer/",
+  ".*/archive/*.",
 ]
