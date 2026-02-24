@@ -26,7 +26,7 @@ model:
     name: "gaot_3d"
     use_conditional_norm: false
     args:
-        latent_tokens: [32,32,16]
+        latent_tokens: [64,64,32]
         magno:
             use_gno: true
             gno_coord_dim: 3
