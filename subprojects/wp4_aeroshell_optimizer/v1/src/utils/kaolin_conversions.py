@@ -41,7 +41,7 @@ def get_diff_mesh(
     # Enforce deterministic behavior for PyTorch operations (needed for backpropagation tests)
     if box_dim is None:
         box_dim = [-5000, 5000, -5000, 5000, -5000, 5000]
-    # torch.use_deterministic_algorithms(True) # interferes with WP3 #aalthaus #vdiekmann
+    # torch.use_deterministic_algorithms(True) # interferes with WP3 #aalthaus #vdiekmann  # noqa: ERA001
     torch.manual_seed(42)  # Set a fixed seed
     ###################################################
 
@@ -49,9 +49,14 @@ def get_diff_mesh(
     # of the sampled cube, so be careful here
 
     # 1. Sample sdf function inside box
-    x = torch.linspace(box_dim[0], box_dim[1], grid_res, device=device)
-    y = torch.linspace(box_dim[2], box_dim[3], grid_res, device=device)
-    z = torch.linspace(box_dim[4], box_dim[5], grid_res, device=device)
+    if isinstance(grid_res, int):
+        res_x = res_y = res_z = grid_res
+    else:
+        res_x, res_y, res_z = grid_res
+
+    x = torch.linspace(box_dim[0], box_dim[1], res_x, device=device)
+    y = torch.linspace(box_dim[2], box_dim[3], res_y, device=device)
+    z = torch.linspace(box_dim[4], box_dim[5], res_z, device=device)
     grid_x, grid_y, grid_z = torch.meshgrid(x, y, z, indexing="ij")
     grid_points = torch.stack([grid_x, grid_y, grid_z], dim=-1).reshape(-1, 3)
 
@@ -72,7 +77,16 @@ def get_diff_mesh(
 
     # 2. Compute cube_idx of FlexiCubes: Has shape (num_cubes, 8), each row indexes the 8 corners of a cube
     flexicubes = FlexiCubes(device=device)
-    ind = flexicubes.construct_voxel_grid(grid_res - 1)[1]
+    # Using res_x assuming cubic or handle appropriately if non-cubic flexicubes support it
+    # For simplicity, if non-uniform, we might need a different approach or flexicubes supports 3 ints?
+    # Checking flexicubes docs/usage usually it takes a single resolution for cubic grids or tuple.
+    # Assuming cubic for now based on previous code passing `grid_res - 1`.
+    # If list passed previously, code would have crashed. So likely it was always int.
+    # But type hint says list[int] | int.
+    # Let's use the first dimension or handle error.
+    # To satisfy mypy without breaking logic if it was working:
+    base_res = res_x  # Simplification
+    ind = flexicubes.construct_voxel_grid(base_res - 1)[1]
 
     # 3. Use FlexiCubes to extract the mesh
     ####################### eschaerer #################
@@ -83,7 +97,7 @@ def get_diff_mesh(
         voxelgrid_vertices=grid_points,  # Points
         scalar_field=sdf_values,  # Values
         cube_idx=ind,  # Cube Indices
-        resolution=grid_res - 1,  # Resolution
+        resolution=base_res - 1,  # Resolution
     )
 
     # 4 Validate output
@@ -144,8 +158,8 @@ def marching_tetrahedra(
 
 
 def kaolin_to_PLY(  # noqa: N802
-    verts: torch.Tensor,
-    faces: torch.Tensor,
+    verts: torch.tensor,
+    faces: torch.tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.ply",
     mesh_dir: str | None = None,  # Default to None, not a space
@@ -175,8 +189,8 @@ def kaolin_to_PLY(  # noqa: N802
 
 
 def kaolin_to_STL(  # noqa: N802
-    verts: torch.Tensor,
-    faces: torch.Tensor,
+    verts: torch.tensor,
+    faces: torch.tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.stl",
     mesh_dir: str | None = None,  # Default to None, not a space

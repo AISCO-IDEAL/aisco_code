@@ -5,6 +5,7 @@ Trains the SDFNEtwork on just the bounding box loss and visualizes the result us
 import torch
 from losses import SDFLosses
 from sdf import SDFNetwork
+from utils.SDF_visualisation import SDFVisualizer
 
 # from /cluster/home/clhuber/AISCO_code/subprojects/wp4_aeroshell_optimizer/src/utils/SDF_visualisation.py import SDFVisualizer
 

@@ -50,7 +50,8 @@ def solar_mesh_deformation(raw_vertices: torch.Tensor, faces: torch.Tensor, sun_
     loss.backward()
     learning_rate = 1e-2
     # Direct gradient descent step
-    vertices_new = vertices - learning_rate * vertices.grad
+    vertices_grad = vertices.grad
+    vertices_new = vertices - learning_rate * vertices_grad if vertices_grad is not None else vertices
     
     return vertices_new
 
