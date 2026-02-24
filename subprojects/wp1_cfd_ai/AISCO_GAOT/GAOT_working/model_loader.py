@@ -24,24 +24,20 @@ class ModelLoader:
         self._load_model()
 
     def _load_model(self) -> None:
-        # ── load config YAML ────────────────────────────────────────────
+        # ── load config YAML saved alongside the checkpoint ─────────────
         config_path = self.model_path.replace(".pt", "_config.yaml")
         raw_config = OmegaConf.load(config_path)
-        model_args = OmegaConf.to_container(raw_config.model.args, resolve=True)
+        config = OmegaConf.to_container(raw_config, resolve=True)
 
-        # Build the single config dict that GAOT3D expects
-        gaot_config = {
-            "input_size": model_args.get("input_size", 6),
-            "output_size": model_args.get("output_size", 1),
-            "latent_tokens": model_args.get("latent_tokens", [32, 32, 32]),
-            "norm_domain": model_args.get("norm_domain", [[-1, -1, -1], [1, 1, 1]]),
-            "magno": model_args["magno"],
-            "transformer": model_args["transformer"],
-            "decoder": model_args.get("decoder", {}),
-        }
+        # The saved YAML may be either:
+        #   (a) flat: top-level keys are input_size, magno, transformer, ...
+        #   (b) nested under model.args from the training arg structure
+        # Support both layouts transparently.
+        if "model" in config and "args" in config["model"]:
+            config = config["model"]["args"]
 
-        # ── build model ─────────────────────────────────────────────────
-        self.gaot = GAOT3D(config=gaot_config).to(self.device)
+        # ── build model from config dict ─────────────────────────────────
+        self.gaot = GAOT3D(config=config).to(self.device)
 
         # ── load weights ─────────────────────────────────────────────────
         state = torch.load(self.model_path, map_location=self.device, weights_only=False)
