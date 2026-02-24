@@ -26,10 +26,11 @@ class BasicMLP(BaseModel):
         self.train()  # Set model to training mode, i.e. things like dropout layers are active, turn off by using self.eval() or model.eval()
 
         # Check for WandB sweep overrides for learning rate
-        learning_rate = training_config.get("learning_rate", 1e-3)
-        if wandb.run and "learning_rate" in wandb.config:
+        if wandb.run and "learning_rate " in wandb.config:
             learning_rate = wandb.config.learning_rate
             print(f"Sweep: Updated learning_rate to {learning_rate}")
+        else:
+            learning_rate = training_config.get("learning_rate", 1e-3)
 
         optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
         num_epochs = training_config["training_params"].get("num_epochs", 1000)

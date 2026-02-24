@@ -22,7 +22,7 @@ class PhysicalRootFinder(torch.autograd.Function):
         return u
 
     @staticmethod
-    def backward(ctx, grad_output):
+    def backward(ctx, dloss_du):
         u, drag_force_at_25ms, solar_power, rolling_friction_force, c = ctx.saved_tensors
 
         # Partial derivatives of the function F = u^2 / (25m/s)^2 * drag_force_at_25ms*u + rolling_friction_force*u + c - solar_power
@@ -35,15 +35,15 @@ class PhysicalRootFinder(torch.autograd.Function):
         # We need dLoss/ddrag_force_at_25ms = dLoss/du * du/ddrag_force_at_25ms
         # using du/ddrag_force_at_25ms = - (df/ddrag_force_at_25ms) / (df/du)
 
-        inv_df_du = -grad_output / df_du
+        i_f_t = -dloss_du / df_du # implicit function theorem term: ∂L/∂u​ = − ∂f/∂u * ∂f/∂x
 
-        grad_drag_force_at_25ms = inv_df_du * df_ddrag_force_at_25ms
-        grad_solar_power = inv_df_du * df_dsolar_power
+        dloss_ddrag_force_at_25ms = i_f_t * df_ddrag_force_at_25ms
+        dloss_dsolar_power = i_f_t * df_dsolar_power
 
         # rolling_friction_force and c are constants relative to this solver -> None
-        return grad_drag_force_at_25ms, grad_solar_power, None, None
+        return dloss_ddrag_force_at_25ms, dloss_dsolar_power, None, None
 
-def cruising_speed(solar_power: torch.Tensor, drag_force_at_25ms: torch.Tensor, mass: float, c_losses: float, rolling_friction_coefficient: float) -> torch.Tensor:
+def cruising_speed(solar_power: torch.Tensor, drag_force_at_25ms: torch.Tensor, mass: float, c_losses: float, rolling_friction_coefficient: float = 0.006) -> torch.Tensor:
     """
     Combines solar power prediction and drag force prediction into 
     a single physical objective: the estimated cruising speed.
@@ -58,10 +58,7 @@ def cruising_speed(solar_power: torch.Tensor, drag_force_at_25ms: torch.Tensor, 
     Returns:
         cruising_speed_objective: Estimated speed in [m/s]
     """
-    # Rolling friction coefficient based on ACE experience; 
-    # could be refined with lab data interpolation in the future.
-    rolling_friction_coefficient = 0.006 
-
+    # Rolling friction coefficient based on ACE experience, TODO: refine and make speed-dependent if needed
     # Power loss due to rolling friction
     rolling_friction_force = mass * 9.81 * rolling_friction_coefficient
 
