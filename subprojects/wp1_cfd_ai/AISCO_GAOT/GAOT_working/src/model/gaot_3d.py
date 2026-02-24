@@ -61,6 +61,7 @@ class GAOT3D(nn.Module):
             indexing="ij",
         )
         internal_latent_tokens = torch.stack(meshgrid, dim=-1).reshape(-1, self.coord_dim)
+        self.latent_tokens: torch.Tensor
         self.register_buffer("latent_tokens", internal_latent_tokens)
 
         # ── sub-modules ──────────────────────────────────────────────────
