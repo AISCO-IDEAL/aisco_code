@@ -64,21 +64,6 @@ class BasicMLP(BaseModel):
         }
         return model_info
 
-            # save mesh every 5 epochs
-            if general_config is not None and epoch % training_config["training_params"].get("mesh_save_interval", 5) == 0:
-                allround_save_data(
-                    model=self,
-                    storage_path=general_config["general_info"].get(
-                        "storage_path", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
-                    ),
-                    save_model=False,
-                    save_mesh=True,
-                    verbose=False,
-                    pretraining=False,
-                    wandb_run=wandb_name,
-                    epoch=epoch
-                )
-
     def debug_info(self):
         # Print model architecture and number of parameters, or anthing you might want to debug
         print("===================================")
