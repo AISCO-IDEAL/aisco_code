@@ -11,18 +11,22 @@ Supported methods:
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from pathlib import Path
 from turtle import up
 from typing import Any
 
 import torch
+import wandb
 
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import basic_multi_log
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.solar_v3_selection import SolarV3Selection
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
@@ -53,7 +57,11 @@ def solar_mesh_loss_v3(
     budget_penalty_weight: float = 0.1,
     epsilon: float = 1e-12,
     enable_wandb_logging: bool = False,
+    rendering: bool = False,
+    counter: int = 0,
     epoch_name: int | None = None,
+    output_dir: Path | None = None,
+    num_epochs: int | None = None,
 ) -> torch.Tensor:
     """
     Compute differentiable solar mesh loss using soft selection.
@@ -66,10 +74,15 @@ def solar_mesh_loss_v3(
         sigmoid_sharpness: steepness of selection blur (higher = sharper boundary)
         budget_penalty_weight: weight for unused budget penalty
         epsilon: numerical stability
-
+        enable_wandb_logging: whether to log to wandb
+        rendering: whether to render intermediate results
+        counter: counter for rendering
+        epoch_name: name of the current epoch for logging
     Returns:
         scalar loss in m²
     """
+
+    print(f"Number of epochs: {num_epochs}")
 
     if faces.numel() == 0 or vertices.numel() == 0:
         print("Warning: Empty vertices or faces in solar_mesh_loss_v3, returning zero loss")
@@ -132,6 +145,13 @@ def solar_mesh_loss_v3(
     }
 
     loss = loss_mm2 * 1e-6  # Convert to m² for final loss
+
+    # Rendering (if enabled)
+    if rendering:
+        if counter <= num_epochs:
+            SolarLossEstimator.renderSolar.update()
+        elif counter == num_epochs:
+            SolarLossEstimator.renderSolar.finalize(output_dir)
 
     # Log to wandb if enabled
     if enable_wandb_logging and epoch_name is not None:
@@ -233,6 +253,7 @@ class SolarLossEstimator:
             "rendering": False,
         }
 
+        general_config = load_config(v="v1", cfg_name="general_config.yaml")
         cfg = defaults if config is None else config
         print(cfg)
         self.config = cfg
@@ -250,18 +271,40 @@ class SolarLossEstimator:
         self.soft_mask_selection_threshold = float(cfg["soft_mask_selection_threshold"])
         self.soft_mask_full_selection_threshold = float(cfg["soft_mask_full_selection_threshold"])
         self.counter = 0  # For logging purposes
+
         self.rendering = bool(cfg["rendering"])
-        self.visualiser = Visualiser(
-            image_size=256,
-            background_color=None,
-            anti_aliasing=True,
-            camera_mode="look_at",
-            viewing_angle=30.0,
-            device=self.device,
-            up=[0.0, 0.0, 1.0],
-        )  # Will not be used if rendering is False
-        self.renderSolar = SolarV3Selection(visualiser=self.visualiser)  # Will not be used if rendering is False
-        self.number_epochs = int(load_config(v="v1", cfg_name="training_v0_config.yaml")["training_params"]["num_epochs"])
+        if self.rendering and self.enable_wandb_logging:
+            self.visualiser = Visualiser(
+                image_size=256,
+                background_color=None,
+                anti_aliasing=True,
+                camera_mode="look_at",
+                viewing_angle=30.0,
+                device=self.device,
+                up=[0.0, 0.0, 1.0],
+            )  # Will not be used if rendering is False
+            self.renderSolar = SolarV3Selection(visualiser=self.visualiser)  # Will not be used if rendering is False
+            train_cfg = load_config(v="v1", cfg_name="training_v0_config.yaml")["training_params"]
+            self.number_epochs = int(train_cfg["num_epochs"])
+            self.model_hash = dict_hashing(train_cfg)
+            self.wandb_run_name = wandb.run.name if wandb.run else None
+            if self.wandb_run_name is not None:
+                # set rendering dir inside wandb log dir
+                rendering_dir = (
+                    Path(general_config["storage_paths"]["storage_dir"])
+                    / self.model_hash
+                    / reformat_wandb_name(self.wandb_run_name)
+                    / "solar_loss_rendering"
+                )
+                os.makedirs(rendering_dir, exist_ok=True)
+        else:
+            self.visualiser = None
+            self.renderSolar = None
+            self.number_epochs = None
+            self.model_hash = None
+
+        print(self.model_hash)
+        print(self.wandb_run_name)
 
         sun_dir = cfg["sun_dir"]
         if not isinstance(sun_dir, torch.Tensor):
@@ -351,6 +394,8 @@ class SolarLossEstimator:
                     enable_wandb_logging=self.enable_wandb_logging,
                     rendering=self.rendering,
                     counter=self.counter,
+                    model_hash=self.model_hash,
+                    num_epochs=self.number_epochs,
                 )
                 return loss
 
@@ -374,6 +419,8 @@ class SolarLossEstimator:
                 enable_wandb_logging=self.enable_wandb_logging,
                 rendering=self.rendering,
                 counter=self.counter,
+                model_hash=self.model_hash,
+                num_epochs=self.number_epochs,
             )
 
         return loss if self.method != "mesh_sdf" else surrogate_loss
