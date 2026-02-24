@@ -1,5 +1,3 @@
-from dataclasses import asdict
-
 import torch
 from omegaconf import OmegaConf
 from torch_geometric.data import Batch, Data

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F  # noqa: N812
@@ -76,7 +76,7 @@ class GAOT3D(nn.Module):
         return MAGNOEncoder(
             in_channels=self.input_size,
             out_channels=self.node_latent_size,
-            gno_config=magno_cfg,
+            magno_config=magno_cfg,
         )
 
     # ─── processor (vision transformer) ─────────────────────────────────
@@ -318,13 +318,13 @@ class _ResidualBlock(nn.Module):
 def masked_multi_head_loss(
     predictions: dict[str, torch.Tensor],
     targets: dict[str, torch.Tensor],
-    loss_fn: nn.Module | None = None,
-    weights: dict[str, float] | None = None,
+    loss_fn: Union[nn.Module, None] = None,
+    weights: Union[dict[str, float], None] = None,
 ) -> torch.Tensor:
     """Loss over multiple heads, masking NaN targets per sample."""
     if loss_fn is None:
         loss_fn = nn.MSELoss(reduction="none")
-    if weights is None:
+    if weights are None:
         weights = {}
 
     device = next(iter(predictions.values())).device
@@ -343,4 +343,4 @@ def masked_multi_head_loss(
         total = total + w * loss_fn(pred[valid], gt[valid]).mean()
         n_active += 1
 
-    return total / max(n_active, 1)
+        return total / max(n_active, 1)

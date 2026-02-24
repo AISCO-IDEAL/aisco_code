@@ -4,16 +4,51 @@ output_size: 1
 latent_tokens: [16, 16, 16]
 norm_domain: [[-1, -1, -1], [1, 1, 1]]
 
-# ── MAGNO Encoder ────────────────────────────────────────────────────────
+# ── MAGNO (encoder + decoder) ───────────────────────────────────────────
 magno:
-  lifting_channels: 64
+  # GNO parameters
+  use_gno: true
   gno_coord_dim: 3
   gno_radius: 0.15
-  gno_channel_mlp_hidden_layers: [128, 128]
-  geoembed_output_dim: 16
-  geoembed_method: "statistical"
+  # Encoder GNO
+  lifting_channels: 64
+  encoder_feature_attr: "x"
+  in_gno_channel_mlp_hidden_layers: [128, 128]
+  in_gno_transform_type: "linear"
+  # Decoder GNO
+  projection_channels: 256
+  out_gno_channel_mlp_hidden_layers: [64, 64]
+  out_gno_transform_type: "linear"
+  # MLP type
+  mlp_type: "channel"
+  # Multi-scale
+  scales: [1.0]
+  use_scale_weights: false
+  use_graph_cache: true
+  gno_use_torch_cluster: false
+  gno_use_torch_scatter: true
+  # Node embedding
+  node_embedding: false
+  # Attention
+  use_attn: null
+  attention_type: "cosine"
+  # Geometric embedding
+  use_geoembed: [true, true]
+  embedding_method: "statistical"
+  pooling: "max"
+  # Sampling
+  sampling_strategy: null
+  max_neighbors: null
+  sample_ratio: null
+  # Neighbor finding
+  neighbor_strategy: "radius"
+  k_neighbors: 1
+  # Dataset flags
+  precompute_edges: true
+  asynchronous_graph_building: false
 
 # ── Transformer (processor) ─────────────────────────────────────────────
+# NOTE: input_size / output_size are injected by gaot_3d.py at runtime
 transformer:
   patch_size: 4
   hidden_size: 256
