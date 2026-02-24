@@ -142,11 +142,12 @@ def run_arg(arg):
             t.load_ckpt()
         t.fit()
 
-        # Save config next to checkpoint so architecture can always be reconstructed
-        ckpt_path = arg.path["ckpt_path"]
-        config_save_path = ckpt_path.replace(".pt", "_config.yaml")
-        OmegaConf.save(OmegaConf.structured(vars(arg)), config_save_path)
-        logging.getLogger(__name__).info(f"Config saved to {config_save_path}")
+        # Save config next to checkpoint so architecture can always be reconstructed (rank 0 only)
+        if getattr(arg.setup, "rank", 0) == 0:
+            ckpt_path = arg.path["ckpt_path"]
+            config_save_path = ckpt_path.replace(".pt", "_config.yaml")
+            OmegaConf.save(OmegaConf.structured(vars(arg)), config_save_path)
+            logging.getLogger(__name__).info(f"Config saved to {config_save_path}")
 
     if arg.setup["test"]:
         # In DDP, only rank 0 runs test (it has the full test loader, no DistributedSampler)

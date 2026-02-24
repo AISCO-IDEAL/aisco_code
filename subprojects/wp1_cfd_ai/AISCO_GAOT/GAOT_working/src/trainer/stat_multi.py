@@ -633,7 +633,9 @@ class StaticTrainer3D(TrainerBase):
         metric_suite = self.dataset_config.metric_suite
 
         # Determine if model uses multi-head output
-        _is_multi_head = hasattr(self.model, "decoder") and hasattr(self.model.decoder, "head_names")
+        # When wrapped in DDP, access via .module
+        _raw_model = self.model.module if hasattr(self.model, "module") else self.model
+        _is_multi_head = hasattr(_raw_model, "decoder") and hasattr(_raw_model.decoder, "head_names")
         if _is_multi_head:
             all_batch_targets_denorm = {"force": [], "cd": []}
             all_batch_preds_denorm = {"force": [], "cd": []}
