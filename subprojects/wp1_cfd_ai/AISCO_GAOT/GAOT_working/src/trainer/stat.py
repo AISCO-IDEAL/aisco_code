@@ -16,8 +16,7 @@ from tqdm import tqdm
 from src.dataloader.collate_functions import create_collate_function
 from src.dataloader.pyg_datasets import EnrichedData, VTKMeshDataset
 from src.dataloader.pyg_transforms import NormalizeFeatures, RescalePosition, RescalePositionNew
-from src.model import init_model
-from src.model.gaot_3d import masked_multi_head_loss
+from src.model.gaot_3d import GAOT3D, masked_multi_head_loss
 from src.utils.scale import rescale, rescale_new
 
 from .base import TrainerBase
@@ -55,6 +54,34 @@ def _magno_set(model_config, key, value):
         magno[key] = value
     else:
         setattr(magno, key, value)
+
+
+def _build_gaot_config(model_config, input_size: int, output_size: int) -> dict:
+    """
+    Build the flat config dict that GAOT3D expects from the structured
+    ModelConfig dataclass.  Runtime-detected input_size / output_size
+    override whatever is stored in the YAML.
+    """
+    args = model_config.args
+
+    # args may be a dataclass (ModelArgsConfig) or already a dict
+    if hasattr(args, "__dataclass_fields__"):
+        from dataclasses import asdict
+
+        cfg = asdict(args)
+    elif isinstance(args, dict):
+        cfg = dict(args)
+    else:
+        # OmegaConf DictConfig or similar
+        from omegaconf import OmegaConf
+
+        cfg = OmegaConf.to_container(args, resolve=True)
+
+    # Inject runtime-detected sizes
+    cfg["input_size"] = input_size
+    cfg["output_size"] = output_size
+
+    return cfg
 
 
 class StaticTrainer3D(TrainerBase):
@@ -496,13 +523,13 @@ class StaticTrainer3D(TrainerBase):
         )
 
     def init_model(self, model_config):
-        self.model = init_model(
+        config_dict = _build_gaot_config(
+            model_config,
             input_size=self.num_input_channels,
             output_size=self.num_output_channels,
-            model=model_config.name,
-            config=model_config.args,
         )
 
+        self.model = GAOT3D(config=config_dict)
         self.model.to(self.device)
 
         if self.setup_config.distributed:
