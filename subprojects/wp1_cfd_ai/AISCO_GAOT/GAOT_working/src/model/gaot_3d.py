@@ -1,6 +1,5 @@
 import torch
 import yaml
-from typing import Optional
 from torch import nn
 from torch_geometric.data import Batch
 
@@ -181,11 +180,9 @@ class GAOT3D(nn.Module):
     def forward(
         self,
         batch: Batch,
-        tokens_pos: Optional[torch.Tensor] = None,
-        tokens_batch_idx: Optional[torch.Tensor] = None,
-        query_coord_pos: Optional[torch.Tensor] = None,
-        query_coord_batch_idx: Optional[torch.Tensor] = None,
-        condition: Optional[float] = None,
+        tokens_pos: torch.Tensor | None = None,
+        tokens_batch_idx: torch.Tensor | None = None,
+        condition: float | None = None,
     ) -> torch.Tensor:
         """
         Forward pass for GAOT3D model using PyG Batch.
@@ -231,7 +228,7 @@ class GAOT3D(nn.Module):
 
         # Attention-weighted pooling over latent tokens.
         # Shape: [B, M, C_lifted] -> [B, C_lifted]
-        pooled_features = self.attn_pool(rndata_proc)
+        pooled_features = self.attn_pool(rndata)
 
         # Multi-head decode: returns {"force": [B,1], "cd": [B,1]}
         output = self.decoder(pooled_features)
