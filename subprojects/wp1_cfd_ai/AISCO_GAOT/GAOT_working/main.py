@@ -140,12 +140,22 @@ def run_arg(arg):
             t.load_ckpt()
         t.fit()
 
-        # Save config next to checkpoint so architecture can always be reconstructed (rank 0 only)
+        # Save the model config (config.yaml style dict) next to the checkpoint
+        # so the architecture can always be reconstructed from it.
         if getattr(arg.setup, "rank", 0) == 0:
+            import yaml
+
             ckpt_path = arg.path["ckpt_path"]
             config_save_path = ckpt_path.replace(".pt", "_config.yaml")
-            OmegaConf.save(OmegaConf.structured(vars(arg)), config_save_path)
-            logging.getLogger(__name__).info(f"Config saved to {config_save_path}")
+
+            # Get the actual config dict that GAOT3D was built with
+            raw_model = t.model.module if hasattr(t.model, "module") else t.model
+            model_config_dict = raw_model.config
+
+            os.makedirs(os.path.dirname(config_save_path), exist_ok=True)
+            with open(config_save_path, "w") as f:
+                yaml.dump(model_config_dict, f, default_flow_style=False, sort_keys=False)
+            logging.getLogger(__name__).info(f"Model config saved to {config_save_path}")
 
     if arg.setup["test"]:
         # In DDP, only rank 0 runs test (it has the full test loader, no DistributedSampler)
@@ -153,11 +163,13 @@ def run_arg(arg):
             # Non-rank-0 processes wait, then skip test
             if getattr(arg.setup, "distributed", False):
                 import torch.distributed as dist
+
                 dist.barrier()
         else:
             # Rank 0: ensure checkpoint is fully written before loading
             if getattr(arg.setup, "distributed", False):
                 import torch.distributed as dist
+
                 dist.barrier()
             if getattr(arg.setup, "resume_from_artifact", None) is not None:
                 metadata = t.load_from_artifact(arg.setup.resume_from_artifact)
