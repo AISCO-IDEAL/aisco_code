@@ -161,15 +161,11 @@ def run_arg(arg):
         # In DDP, only rank 0 runs test (it has the full test loader, no DistributedSampler)
         if getattr(arg.setup, "rank", 0) != 0:
             # Non-rank-0 processes wait, then skip test
-            if getattr(arg.setup, "distributed", False):
-                import torch.distributed as dist
-
+            if dist.is_initialized():
                 dist.barrier()
         else:
             # Rank 0: ensure checkpoint is fully written before loading
-            if getattr(arg.setup, "distributed", False):
-                import torch.distributed as dist
-
+            if dist.is_initialized():
                 dist.barrier()
             if getattr(arg.setup, "resume_from_artifact", None) is not None:
                 metadata = t.load_from_artifact(arg.setup.resume_from_artifact)
