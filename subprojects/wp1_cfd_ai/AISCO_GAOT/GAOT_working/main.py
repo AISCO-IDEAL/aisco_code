@@ -1,16 +1,5 @@
 import argparse
-<<<<<<< HEAD
-
-import toml
 import json
-from omegaconf import OmegaConf
-from multiprocessing import Pool, Process
-import subprocess
-import platform
-import torch.distributed as dist
-=======
-import json
->>>>>>> wp1_elihuber
 import logging
 import os
 import platform
@@ -27,7 +16,6 @@ from omegaconf import OmegaConf
 
 from src.trainer.stat import StaticTrainer3D
 from src.trainer.stat_multi import StaticTrainer3D as StaticTrainer3DMulti
-
 
 
 def setup_logging(level: str = "INFO", log_file: str = None) -> None:
@@ -66,11 +54,7 @@ class FileParser:
                 if "action" in kwargs:
                     self.kwargs[arg] = False
                 else:
-<<<<<<< HEAD
-                    self.kwargs[arg] = kwargs.get("default", None)
-=======
                     self.kwargs[arg] = kwargs.get("default")
->>>>>>> wp1_elihuber
 
     def parse_args(self):
         return argparse.Namespace(**self.kwargs)
@@ -172,10 +156,6 @@ def run_arg(arg):
                 import torch.distributed as dist
                 dist.barrier()
         else:
-<<<<<<< HEAD
-            t.load_ckpt()
-        t.test()
-=======
             # Rank 0: ensure checkpoint is fully written before loading
             if getattr(arg.setup, "distributed", False):
                 import torch.distributed as dist
@@ -191,7 +171,6 @@ def run_arg(arg):
             else:
                 t.load_ckpt()
             t.test()
->>>>>>> wp1_elihuber
 
     if getattr(arg.setup, "rank", 0) == 0:
         if os.path.exists(arg.path["database_path"]):
