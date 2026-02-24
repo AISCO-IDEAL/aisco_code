@@ -1,9 +1,5 @@
-import numpy as np
-import torch
-import pandas as pd
-import os
-import time
 import argparse
+<<<<<<< HEAD
 
 import toml
 import json
@@ -12,9 +8,26 @@ from multiprocessing import Pool, Process
 import subprocess
 import platform
 import torch.distributed as dist
+=======
+import json
+>>>>>>> wp1_elihuber
 import logging
+import os
+import platform
+import subprocess
+import time
+from multiprocessing import Pool, Process
+
+import numpy as np
+import pandas as pd
+import toml
+import torch
+import torch.distributed as dist
+from omegaconf import OmegaConf
 
 from src.trainer.stat import StaticTrainer3D
+from src.trainer.stat_multi import StaticTrainer3D as StaticTrainer3DMulti
+
 
 
 def setup_logging(level: str = "INFO", log_file: str = None) -> None:
@@ -39,13 +52,7 @@ def setup_logging(level: str = "INFO", log_file: str = None) -> None:
 
 class FileParser:
     def __init__(self, filename):
-        if filename.endswith(".toml"):
-            with open(filename) as f:
-                self.kwargs = OmegaConf.load(f)
-        elif filename.endswith(".json"):
-            with open(filename) as f:
-                self.kwargs = OmegaConf.load(f)
-        elif filename.endswith(".yaml"):
+        if filename.endswith(".toml") or filename.endswith(".json") or filename.endswith(".yaml"):
             with open(filename) as f:
                 self.kwargs = OmegaConf.load(f)
         else:
@@ -54,13 +61,16 @@ class FileParser:
     def add_argument(self, *args, **kwargs):
 
         for arg in args:
-            if arg.startswith("--"):
-                arg = arg[2:]
+            arg = arg.removeprefix("--")
             if arg not in self.kwargs:
                 if "action" in kwargs:
                     self.kwargs[arg] = False
                 else:
+<<<<<<< HEAD
                     self.kwargs[arg] = kwargs.get("default", None)
+=======
+                    self.kwargs[arg] = kwargs.get("default")
+>>>>>>> wp1_elihuber
 
     def parse_args(self):
         return argparse.Namespace(**self.kwargs)
@@ -130,6 +140,7 @@ def run_arg(arg):
 
     Trainer = {
         "static3d": StaticTrainer3D,
+        "static3d_multi": StaticTrainer3DMulti,
     }[arg.setup.trainer_name]
     t = Trainer(arg)
 
@@ -140,7 +151,7 @@ def run_arg(arg):
             if metadata:
                 logging.getLogger(__name__).info(f"Loaded from artifact: {metadata}")
             else:
-                logging.getLogger(__name__).warning(f"Failed to load from artifact, skipping...")
+                logging.getLogger(__name__).warning("Failed to load from artifact, skipping...")
         elif getattr(arg.setup, "resume_from_ckpt", None) is not None:
             t.load_ckpt(path=arg.setup.resume_from_ckpt)
         elif arg.setup.ckpt:
@@ -154,17 +165,33 @@ def run_arg(arg):
         logging.getLogger(__name__).info(f"Config saved to {config_save_path}")
 
     if arg.setup["test"]:
-        if getattr(arg.setup, "resume_from_artifact", None) is not None:
-            metadata = t.load_from_artifact(arg.setup.resume_from_artifact)
-            if metadata:
-                logging.getLogger(__name__).info(f"Loaded from artifact: {metadata}")
-            else:
-                logging.getLogger(__name__).warning(f"Failed to load from artifact, skipping...")
-        elif getattr(arg.setup, "resume_from_ckpt", None) is not None:
-            t.load_ckpt(path=arg.setup.resume_from_ckpt)
+        # In DDP, only rank 0 runs test (it has the full test loader, no DistributedSampler)
+        if getattr(arg.setup, "rank", 0) != 0:
+            # Non-rank-0 processes wait, then skip test
+            if getattr(arg.setup, "distributed", False):
+                import torch.distributed as dist
+                dist.barrier()
         else:
+<<<<<<< HEAD
             t.load_ckpt()
         t.test()
+=======
+            # Rank 0: ensure checkpoint is fully written before loading
+            if getattr(arg.setup, "distributed", False):
+                import torch.distributed as dist
+                dist.barrier()
+            if getattr(arg.setup, "resume_from_artifact", None) is not None:
+                metadata = t.load_from_artifact(arg.setup.resume_from_artifact)
+                if metadata:
+                    logging.getLogger(__name__).info(f"Loaded from artifact: {metadata}")
+                else:
+                    logging.getLogger(__name__).warning("Failed to load from artifact, skipping...")
+            elif getattr(arg.setup, "resume_from_ckpt", None) is not None:
+                t.load_ckpt(path=arg.setup.resume_from_ckpt)
+            else:
+                t.load_ckpt()
+            t.test()
+>>>>>>> wp1_elihuber
 
     if getattr(arg.setup, "rank", 0) == 0:
         if os.path.exists(arg.path["database_path"]):
