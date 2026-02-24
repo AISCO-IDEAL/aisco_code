@@ -1,15 +1,14 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from typing import Optional
 from dataclasses import dataclass, field
+from typing import Optional
+
 import numpy as np
+import torch
+import torch.nn.functional as F
+from torch import nn
+from torch_geometric.data import Batch
 
 from .layers.attn import Transformer, TransformerConfig
-from .layers.magno import MAGNOConfig
-from .layers.magno import MAGNOEncoder, MAGNODecoder
-
-from torch_geometric.data import Batch
+from .layers.magno import MAGNOConfig, MAGNODecoder, MAGNOEncoder
 
 
 class GAOT3D(nn.Module):
@@ -67,9 +66,9 @@ class GAOT3D(nn.Module):
         self.positional_embedding_name = config.positional_embedding
         self.positions = self._get_patch_positions()
 
-        setattr(config.attn_config, "D", self.D)
-        setattr(config.attn_config, "H", self.H)
-        setattr(config.attn_config, "W", self.W)
+        config.attn_config.D = self.D
+        config.attn_config.H = self.H
+        config.attn_config.W = self.W
 
         return Transformer(
             input_size=self.node_latent_size * self.patch_size * self.patch_size * self.patch_size,
@@ -77,9 +76,14 @@ class GAOT3D(nn.Module):
             config=config,
         )
 
-    def init_decoder(self, node_latent_size: int, output_size: int) -> "DecoderSimplified":
-        hidden_size = max(node_latent_size // 2, 1)
-        return DecoderSimplified(sizes=[node_latent_size, hidden_size, 1])
+    def init_decoder(self, node_latent_size: int, output_size: int) -> "MultiHeadDecoder":
+        self.attn_pool = MultiStatPooling(embed_dim=node_latent_size)
+        return MultiHeadDecoder(
+            in_features=node_latent_size,
+            hidden_features=max(node_latent_size, 256),
+            num_shared_layers=3,
+            output_heads={"force": 1, "cd": 1},
+        )
 
     def _get_patch_positions(self):
         """
@@ -184,7 +188,7 @@ class GAOT3D(nn.Module):
         assert n_regional_nodes == D * H * W, f"n_regional_nodes ({n_regional_nodes}) is not equal to H ({H}) * W ({W})"
 
         P = self.patch_size
-        assert D % P == 0 and H % P == 0 and W % P == 0, f"Dimensions must be divisible by patch size"
+        assert D % P == 0 and H % P == 0 and W % P == 0, "Dimensions must be divisible by patch size"
         num_patches_D = D // P
         num_patches_H = H // P
         num_patches_W = W // P
@@ -289,27 +293,212 @@ class GAOT3D(nn.Module):
         # Input shape: [B, M, C_lifted]
         rndata_proc = self.process(rndata=rndata, condition=condition)  # Output shape: [B, M, C_lifted]
 
-        # 🟢 NEW: Global Average Pooling.
-        # Average across the 131,072 tokens (dim=1) to get one vector per car.
-        # Shape goes from [BatchSize, NumTokens, C_lifted] -> [BatchSize, C_lifted]
-        pooled_features = rndata_proc.mean(dim=1)
+        # Attention-weighted pooling over latent tokens.
+        # Shape: [B, M, C_lifted] -> [B, C_lifted]
+        pooled_features = self.attn_pool(rndata_proc)
 
-        # Decode: Pass the single pooled vector to the Simplified Decoder
-        # Output shape will be exactly [BatchSize, 1]
-        output = self.decoder(rndata_flat=pooled_features)
+        # Multi-head decode: returns {"force": [B,1], "cd": [B,1]}
+        output = self.decoder(pooled_features)
 
         return output
 
 
-class DecoderSimplified(nn.Module):
-    def __init__(self, sizes: list):
-        super().__init__()
-        self.linear1 = nn.Linear(sizes[0], sizes[1])
-        self.activation = nn.ReLU()
-        self.linear2 = nn.Linear(sizes[1], sizes[2])
+class MultiStatPooling(nn.Module):
+    """Multi-statistic pooling: concatenates mean, max, and std over the
+    token dimension, then projects back down.
 
-    def forward(self, rndata_flat: torch.Tensor) -> torch.Tensor:
-        x = self.linear1(rndata_flat)
-        x = self.activation(x)
-        x = self.linear2(x)
-        return x
+    This is far more expressive than single-query attention pooling because
+    it captures first-order (mean), extreme (max), and spread (std)
+    information simultaneously, giving the decoder a richer summary of
+    the latent field.
+
+    Output dimension: ``embed_dim`` (projected from 3 * embed_dim).
+    """
+
+    def __init__(self, embed_dim: int):
+        super().__init__()
+        self.proj = nn.Sequential(
+            nn.Linear(3 * embed_dim, 2 * embed_dim),
+            nn.GELU(),
+            nn.LayerNorm(2 * embed_dim),
+            nn.Linear(2 * embed_dim, embed_dim),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: [B, N, C]  (batch, tokens, channels)
+        Returns:
+            [B, C]  pooled representation
+        """
+        mean_pool = x.mean(dim=1)                    # [B, C]
+        max_pool = x.max(dim=1).values               # [B, C]
+        std_pool = x.std(dim=1).clamp(min=1e-6)      # [B, C]
+        multi = torch.cat([mean_pool, max_pool, std_pool], dim=-1)  # [B, 3C]
+        return self.proj(multi)  # [B, C]
+
+
+class AttentionPooling(nn.Module):
+    """Learned attention-weighted pooling over token dimension.
+
+    Instead of plain mean pooling, this learns a query vector that attends
+    over all tokens to produce a weighted sum, so the model can focus on
+    the most aerodynamically relevant regions (e.g. separation zones).
+
+    .. deprecated::
+        Use :class:`MultiStatPooling` instead for better gradient flow.
+    """
+
+    def __init__(self, embed_dim: int):
+        super().__init__()
+        self.query = nn.Parameter(torch.randn(1, 1, embed_dim))
+        self.scale = embed_dim ** -0.5
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: [B, N, C]  (batch, tokens, channels)
+        Returns:
+            [B, C]  pooled representation
+        """
+        # query: [1,1,C] broadcast to [B,1,C], keys: [B,N,C]
+        attn_logits = (self.query * self.scale) @ x.transpose(-2, -1)  # [B, 1, N]
+        attn_weights = F.softmax(attn_logits, dim=-1)
+        pooled = (attn_weights @ x).squeeze(1)  # [B, C]
+        return pooled
+
+
+class MultiHeadDecoder(nn.Module):
+    """Multi-head decoder with shared backbone and per-target heads.
+
+    Supports partial labels: the model always predicts all outputs, but
+    the training loss masks out heads whose ground truth is unavailable.
+
+    Architecture:
+        pooled features → shared MLP (with residuals + LayerNorm)
+                        → head_force  → force prediction
+                        → head_cd     → drag coefficient prediction
+    """
+
+    def __init__(
+        self,
+        in_features: int,
+        hidden_features: int = 256,
+        num_shared_layers: int = 3,
+        output_heads: dict[str, int] | None = None,
+    ):
+        """
+        Args:
+            in_features: dimension of the pooled feature vector (C_lifted).
+            hidden_features: width of hidden layers in the shared trunk.
+            num_shared_layers: number of layers in the shared trunk.
+            output_heads: mapping from head name to output dimension,
+                          e.g. {"force": 1, "cd": 1} or {"force": 3, "cd": 1}.
+                          Defaults to {"force": 1, "cd": 1}.
+        """
+        super().__init__()
+        if output_heads is None:
+            output_heads = {"force": 1, "cd": 1}
+        self.head_names = list(output_heads.keys())
+
+        # --- Shared Trunk (residual MLP) ---
+        layers = []
+        layers.append(nn.Linear(in_features, hidden_features))
+        layers.append(nn.LayerNorm(hidden_features))
+        layers.append(nn.GELU())
+        for _ in range(num_shared_layers - 1):
+            layers.append(_ResidualBlock(hidden_features))
+        self.shared_trunk = nn.Sequential(*layers)
+
+        # --- Per-target heads ---
+        self.heads = nn.ModuleDict()
+        for name, out_dim in output_heads.items():
+            self.heads[name] = nn.Sequential(
+                nn.Linear(hidden_features, hidden_features // 2),
+                nn.GELU(),
+                nn.Linear(hidden_features // 2, out_dim),
+            )
+
+    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+        """
+        Args:
+            x: [B, C] pooled feature vector.
+        Returns:
+            dict mapping head name → prediction tensor [B, out_dim].
+        """
+        shared = self.shared_trunk(x)
+        return {name: head(shared) for name, head in self.heads.items()}
+
+
+class _ResidualBlock(nn.Module):
+    """Pre-norm residual block: LayerNorm → Linear → GELU → Linear → add."""
+
+    def __init__(self, dim: int):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.fc1 = nn.Linear(dim, dim)
+        self.fc2 = nn.Linear(dim, dim)
+        self.act = nn.GELU()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = self.norm(x)
+        h = self.fc2(self.act(self.fc1(h)))
+        return x + h
+
+
+def masked_multi_head_loss(
+    predictions: dict[str, torch.Tensor],
+    targets: dict[str, torch.Tensor],
+    loss_fn: nn.Module = None,
+    weights: dict[str, float] | None = None,
+) -> torch.Tensor:
+    """Compute loss over multiple heads, masking out NaN targets per sample.
+
+    In a mixed batch (e.g. Euler + DrivAer), every sample has both
+    ``force`` and ``cd`` attributes, but unavailable labels are stored
+    as NaN.  This function skips NaN entries so only valid labels
+    contribute to the gradient.
+
+    Args:
+        predictions: dict from head name → predicted tensor [B, D].
+        targets: dict from head name → target tensor [B, D].
+                 Samples with NaN are skipped for that head.
+        loss_fn: element-wise loss (default: MSELoss with reduction='none').
+        weights: optional per-head scalar weights.
+
+    Returns:
+        Scalar loss (mean of active losses). Returns 0 if nothing active.
+
+    Example usage in training loop::
+
+        preds = model(batch)   # {"force": [B,1], "cd": [B,1]}
+        targets = {
+            "force": batch.force,   # has NaN where unavailable
+            "cd":    batch.cd,      # has NaN where unavailable
+        }
+        loss = masked_multi_head_loss(preds, targets)
+        loss.backward()
+    """
+    if loss_fn is None:
+        loss_fn = nn.MSELoss(reduction="none")
+    if weights is None:
+        weights = {}
+
+    device = next(iter(predictions.values())).device
+    total = torch.tensor(0.0, device=device)
+    n_active = 0
+
+    for name, pred in predictions.items():
+        gt = targets.get(name)
+        if gt is None:
+            continue
+        gt = gt.to(device).view_as(pred)
+        valid_mask = ~torch.isnan(gt)
+        if not valid_mask.any():
+            continue
+        per_elem_loss = loss_fn(pred[valid_mask], gt[valid_mask])
+        w = weights.get(name, 1.0)
+        total = total + w * per_elem_loss.mean()
+        n_active += 1
+
+    return total / max(n_active, 1)

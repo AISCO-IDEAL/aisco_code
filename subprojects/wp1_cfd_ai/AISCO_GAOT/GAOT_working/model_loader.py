@@ -4,7 +4,7 @@ import torch
 from omegaconf import OmegaConf
 from torch_geometric.data import Data, Batch
 
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.gaot_3d_attention import GAOT3D
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.layers.attn import AttentionConfig, FFNConfig, TransformerConfig
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.layers.magno import MAGNOConfig
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.utils.kaolin_utils import get_diff_mesh
