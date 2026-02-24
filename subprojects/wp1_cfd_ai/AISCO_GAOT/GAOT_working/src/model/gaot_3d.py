@@ -1,7 +1,4 @@
-from typing import Optional, Union
-
 import torch
-import torch.nn.functional as F  # noqa: N812
 import yaml
 from torch import nn
 from torch_geometric.data import Batch
@@ -30,7 +27,7 @@ class GAOT3D(nn.Module):
         config.input_size     – int, default 6
         config.output_size    – int, default 1
         config.decoder        – {hidden_features, num_shared_layers, output_heads}
-    """
+    """  # noqa: RUF002
 
     def __init__(self, config: dict = configloader()):
         super().__init__()
@@ -47,10 +44,10 @@ class GAOT3D(nn.Module):
         self.patch_size = transformer_cfg["patch_size"]
 
         latent_tokens = config.get("latent_tokens", [32, 32, 32])
-        self.D = int(latent_tokens[0])
-        self.H = int(latent_tokens[1])
-        self.W = int(latent_tokens[2])
-        self.num_latent_tokens = self.D * self.H * self.W
+        self.depth = int(latent_tokens[0])
+        self.height = int(latent_tokens[1])
+        self.width = int(latent_tokens[2])
+        self.num_latent_tokens = self.depth * self.height * self.width
         self.coord_dim = magno_cfg.get("gno_coord_dim", 3)
 
         # ── norm domain → latent token grid ──────────────────────────────
@@ -58,9 +55,9 @@ class GAOT3D(nn.Module):
         x_min, y_min, z_min = norm_domain[0]
         x_max, y_max, z_max = norm_domain[1]
         meshgrid = torch.meshgrid(
-            torch.linspace(x_min, x_max, self.D),
-            torch.linspace(y_min, y_max, self.H),
-            torch.linspace(z_min, z_max, self.W),
+            torch.linspace(x_min, x_max, self.depth),
+            torch.linspace(y_min, y_max, self.height),
+            torch.linspace(z_min, z_max, self.width),
             indexing="ij",
         )
         internal_latent_tokens = torch.stack(meshgrid, dim=-1).reshape(-1, self.coord_dim)
@@ -82,8 +79,8 @@ class GAOT3D(nn.Module):
     # ─── processor (vision transformer) ─────────────────────────────────
     def _init_processor(self, config: dict) -> Transformer:
         transformer_cfg = config["transformer"]
-        P = self.patch_size
-        C = self.node_latent_size
+        P = self.patch_size  # noqa: N806
+        C = self.node_latent_size  # noqa: N806
         patch_dim = P * P * P * C
 
         self.patch_linear = nn.Linear(patch_dim, patch_dim)
@@ -92,9 +89,9 @@ class GAOT3D(nn.Module):
 
         # Inject grid dimensions into attn_config
         attn_cfg = dict(transformer_cfg.get("attn_config", {}))
-        attn_cfg["D"] = self.D
-        attn_cfg["H"] = self.H
-        attn_cfg["W"] = self.W
+        attn_cfg["D"] = self.depth
+        attn_cfg["H"] = self.height
+        attn_cfg["W"] = self.width
 
         # Build full transformer_config with runtime-computed sizes
         proc_cfg = dict(transformer_cfg)
@@ -106,15 +103,14 @@ class GAOT3D(nn.Module):
 
     # ─── decoder ─────────────────────────────────────────────────────────
     def _init_decoder(self, decoder_cfg: dict):
-        C = self.node_latent_size
-        attn_pool = MultiStatPooling(embed_dim=C)
+        attn_pool = MultiStatPooling(embed_dim=self.node_latent_size)
 
-        hidden = decoder_cfg.get("hidden_features", max(C, 256))
+        hidden = decoder_cfg.get("hidden_features", max(self.node_latent_size, 256))
         num_shared = decoder_cfg.get("num_shared_layers", 3)
         output_heads = decoder_cfg.get("output_heads", {"force": 1, "cd": 1})
 
         decoder = MultiHeadDecoder(
-            in_features=C,
+            in_features=self.node_latent_size,
             hidden_features=hidden,
             num_shared_layers=num_shared,
             output_heads=output_heads,
@@ -123,15 +119,15 @@ class GAOT3D(nn.Module):
 
     # ─── helpers ─────────────────────────────────────────────────────────
     def _get_patch_positions(self) -> torch.Tensor:
-        P = self.patch_size
-        num_patches_D = self.D // P
-        num_patches_H = self.H // P
-        num_patches_W = self.W // P
+        patch_edge = self.patch_size
+        num_patches_depth = self.depth // patch_edge
+        num_patches_height = self.height // patch_edge
+        num_patches_width = self.width // patch_edge
         positions = torch.stack(
             torch.meshgrid(
-                torch.arange(num_patches_D, dtype=torch.float32),
-                torch.arange(num_patches_H, dtype=torch.float32),
-                torch.arange(num_patches_W, dtype=torch.float32),
+                torch.arange(num_patches_depth, dtype=torch.float32),
+                torch.arange(num_patches_height, dtype=torch.float32),
+                torch.arange(num_patches_width, dtype=torch.float32),
                 indexing="ij",
             ),
             dim=-1,
@@ -140,41 +136,41 @@ class GAOT3D(nn.Module):
 
     @staticmethod
     def _compute_absolute_embeddings(positions: torch.Tensor, embed_dim: int) -> torch.Tensor:
-        num_tokens, dims = positions.shape
+        num_tokens, _dims = positions.shape
         freq = 1 / 10000 ** (2 * torch.arange(0, embed_dim // 2, dtype=torch.float32, device=positions.device) / embed_dim)
         angles = positions[:, :, None] * freq[None, None, :]
         sum_sin = torch.sum(torch.sin(angles), dim=1)
         sum_cos = torch.sum(torch.cos(angles), dim=1)
-        PE = torch.zeros(num_tokens, embed_dim, device=positions.device)
-        PE[:, 0::2] = sum_sin
-        PE[:, 1::2] = sum_cos
-        return PE
+        pos_encoding = torch.zeros(num_tokens, embed_dim, device=positions.device)
+        pos_encoding[:, 0::2] = sum_sin
+        pos_encoding[:, 1::2] = sum_cos
+        return pos_encoding
 
     # ─── encode / process / decode ───────────────────────────────────────
-    def encode(self, batch: Batch, token: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def encode(self, batch: Batch, token: torch.Tensor | None = None) -> torch.Tensor:
         return self.encoder(batch=batch, latent_tokens=token)
 
-    def process(self, rndata: torch.Tensor, condition: Optional[float] = None) -> torch.Tensor:
-        B, N, C = rndata.shape
-        D, H, W = self.D, self.H, self.W
-        P = self.patch_size
-        assert N == D * H * W
-        assert D % P == 0 and H % P == 0 and W % P == 0
+    def process(self, rndata: torch.Tensor, condition: float | None = None) -> torch.Tensor:
+        batch_size, num_tokens, channels = rndata.shape
+        grid_depth, grid_height, grid_width = self.depth, self.height, self.width
+        patch_edge = self.patch_size
+        assert num_tokens == grid_depth * grid_height * grid_width
+        assert grid_depth % patch_edge == 0 and grid_height % patch_edge == 0 and grid_width % patch_edge == 0
 
-        nD, nH, nW = D // P, H // P, W // P
-        num_patches = nD * nH * nW
+        patches_d, patches_h, patches_w = grid_depth // patch_edge, grid_height // patch_edge, grid_width // patch_edge
+        num_patches = patches_d * patches_h * patches_w
 
         # patchify
-        rndata = rndata.view(B, nD, P, nH, P, nW, P, C)
+        rndata = rndata.view(batch_size, patches_d, patch_edge, patches_h, patch_edge, patches_w, patch_edge, channels)
         rndata = rndata.permute(0, 1, 3, 5, 2, 4, 6, 7).contiguous()
-        rndata = rndata.view(B, num_patches, P * P * P * C)
+        rndata = rndata.view(batch_size, num_patches, patch_edge * patch_edge * patch_edge * channels)
 
         rndata = self.patch_linear(rndata)
 
         pos = self.positions.to(rndata.device)
         relative_positions = None
         if self.positional_embedding_name == "absolute":
-            pos_emb = self._compute_absolute_embeddings(pos, P * P * P * self.node_latent_size)
+            pos_emb = self._compute_absolute_embeddings(pos, patch_edge * patch_edge * patch_edge * self.node_latent_size)
             rndata = rndata + pos_emb
         elif self.positional_embedding_name == "rope":
             relative_positions = pos
@@ -182,9 +178,9 @@ class GAOT3D(nn.Module):
         rndata = self.processor(rndata, condition=condition, relative_positions=relative_positions)
 
         # un-patchify
-        rndata = rndata.view(B, nD, nH, nW, P, P, P, C)
+        rndata = rndata.view(batch_size, patches_d, patches_h, patches_w, patch_edge, patch_edge, patch_edge, channels)
         rndata = rndata.permute(0, 1, 4, 2, 5, 3, 6, 7).contiguous()
-        rndata = rndata.view(B, D * H * W, C)
+        rndata = rndata.view(batch_size, grid_depth * grid_height * grid_width, channels)
         return rndata
 
     def decode(self, rndata: torch.Tensor) -> dict[str, torch.Tensor]:
@@ -194,11 +190,9 @@ class GAOT3D(nn.Module):
     def forward(
         self,
         batch: Batch,
-        tokens_pos: Optional[torch.Tensor] = None,
-        tokens_batch_idx: Optional[torch.Tensor] = None,
-        query_coord_pos: Optional[torch.Tensor] = None,
-        query_coord_batch_idx: Optional[torch.Tensor] = None,
-        condition: Optional[float] = None,
+        tokens_pos: torch.Tensor | None = None,
+        tokens_batch_idx: torch.Tensor | None = None,
+        condition: float | None = None,
     ) -> dict[str, torch.Tensor]:
         num_graphs = batch.num_graphs
         device = batch.pos.device
@@ -275,7 +269,7 @@ class MultiHeadDecoder(nn.Module):
             nn.GELU(),
         ]
         for _ in range(num_shared_layers - 1):
-            layers.append(_ResidualBlock(hidden_features))
+            layers.append(_ResidualBlock(hidden_features))  # noqa: PERF401
         self.shared_trunk = nn.Sequential(*layers)
 
         self.heads = nn.ModuleDict(
@@ -318,8 +312,8 @@ class _ResidualBlock(nn.Module):
 def masked_multi_head_loss(
     predictions: dict[str, torch.Tensor],
     targets: dict[str, torch.Tensor],
-    loss_fn: Union[nn.Module, None] = None,
-    weights: Union[dict[str, float], None] = None,
+    loss_fn: nn.Module | None = None,
+    weights: dict[str, float] | None = None,
 ) -> torch.Tensor:
     """Loss over multiple heads, masking NaN targets per sample."""
     if loss_fn is None:
@@ -343,4 +337,4 @@ def masked_multi_head_loss(
         total = total + w * loss_fn(pred[valid], gt[valid]).mean()
         n_active += 1
 
-        return total / max(n_active, 1)
+    return total / max(n_active, 1)
