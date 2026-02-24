@@ -12,6 +12,7 @@ Supported methods:
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -20,6 +21,8 @@ from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DI
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import basic_multi_log
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.solar_v3_selection import SolarV3Selection
 
 
 def _cumsum(x: torch.Tensor) -> torch.Tensor:
@@ -47,7 +50,9 @@ def solar_mesh_loss_v3(
     sigmoid_sharpness: float = 10.0,
     budget_penalty_weight: float = 0.1,
     epsilon: float = 1e-12,
-) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    enable_wandb_logging: bool = False,
+    epoch_name: int | None = None,
+) -> torch.Tensor:
     """
     Compute differentiable solar mesh loss using soft selection.
 
@@ -61,8 +66,9 @@ def solar_mesh_loss_v3(
         epsilon: numerical stability
 
     Returns:
-        Tuple of (scalar loss in m², dict of intermediate metrics)
+        scalar loss in m²
     """
+
     if faces.numel() == 0 or vertices.numel() == 0:
         print("Warning: Empty vertices or faces in solar_mesh_loss_v3, returning zero loss")
         return torch.zeros((), device=vertices.device, dtype=vertices.dtype), {}
@@ -107,18 +113,103 @@ def solar_mesh_loss_v3(
     # Combined loss: maximize quality (minimize negative) + penalize unused budget
     loss_mm2 = quality_loss - budget_penalty
 
-    # Store intermediate metrics for logging
+    # Sort softmax back to original face order for reasonable logging/visualization
+    original_order = torch.argsort(quality_order_desc)
+    sorted_soft_mask = soft_mask[original_order]
+
+    # Store intermediate metrics for logging and rendering
     metrics = {
         "face_area_mm2": face_area_mm2,
         "illumination_quality": illumination_quality,
         "sorted_areas": sorted_areas,
         "sorted_quality": sorted_quality,
         "soft_mask": soft_mask,
+        "sorted_soft_mask": sorted_soft_mask,
         "quality_loss": quality_loss,
         "budget_penalty": budget_penalty,
     }
 
-    return loss_mm2 * 1e-6, metrics
+    loss = loss_mm2 * 1e-6  # Convert to m² for final loss
+
+    # Log to wandb if enabled
+    if enable_wandb_logging and epoch_name is not None:
+        log_to_wandb(loss, vertices, faces, metrics, epoch_name)
+
+    return loss
+
+
+def log_to_wandb(
+    self, loss: torch.Tensor, vertices: torch.Tensor, faces: torch.Tensor, metrics: dict[str, torch.Tensor], epoch_name: int
+) -> None:
+    """
+    Log solar loss metrics to wandb using pre-computed metrics.
+
+    Args:
+        loss: Scalar loss value (in m²)
+        vertices: Mesh vertices (N, 3)
+        faces: Face indices (M, 3)
+        metrics: Dict of intermediate metrics from solar_mesh_loss_v3
+        epoch_name: Current epoch number
+    """
+    try:
+        if faces.numel() > 0 and vertices.numel() > 0 and metrics:
+            face_area_mm2 = metrics["face_area_mm2"]  # (M,) area of each face in mm²
+            illumination_quality = metrics["illumination_quality"]  # (M,) cosine similarity with sun direction
+            sorted_areas = metrics["sorted_areas"]  # (M,) face areas sorted by descending quality
+            soft_mask = metrics["soft_mask"]  # (M,) soft selection mask values for each face
+            quality_loss = metrics["quality_loss"]  # Scalar tensor representing the weighted quality-area loss component
+            budget_penalty = metrics["budget_penalty"]  # Scalar tensor representing the penalty for unused area budget
+
+            total_area_mm2 = face_area_mm2.sum().item()  # Total area of all faces in mm²
+            total_num_faces = len(face_area_mm2)  # Total number of faces in the mesh
+            selected_area_mm2 = (
+                (sorted_areas * soft_mask).sum().item()
+            )  # Total area of selected faces (weighted by soft mask) in mm²
+
+            # Compute illumination quality statistics
+            quality_mean = illumination_quality.mean().item()  # Mean illumination quality across all faces
+            quality_max = illumination_quality.max().item()  # Maximum illumination quality across all faces
+            quality_min = illumination_quality.min().item()  # Minimum illumination quality across all faces
+
+            # Compute soft mask statistics
+            soft_mask_mean = soft_mask.mean().item()  # Mean soft mask value across all faces, Average "softness" across all faces. High mean → most faces are selected; low mean → most faces rejected
+            soft_mask_max = soft_mask.max().item()  # Maximum soft mask value across all faces, Indicates the highest selection confidence among all faces. High max → at least one face is fully selected; low max → no face is fully selected
+            soft_mask_min = soft_mask.min().item()  # Minimum soft mask value across all faces, Indicates the lowest selection confidence among all faces. High min → even the least selected face has a high selection confidence; low min → at least one face is strongly rejected
+
+            # Count selected faces (using soft_mask thresholds from config)
+            selected_faces = (
+                (soft_mask > self.soft_mask_selection_threshold).sum().item()
+            )  # Number of faces with soft mask above selection threshold, Indicates how many faces are considered "selected" for the loss computation based on the configured threshold. Higher means more faces contribute to the loss; lower means fewer faces contribute.
+            fully_selected_faces = (
+                (soft_mask > self.soft_mask_full_selection_threshold).sum().item()
+            )  # Number of faces with soft mask above full selection threshold, Indicates how many faces are considered "fully selected" (i.e., have a very high selection confidence) based on the configured full selection threshold. Higher means more faces are strongly contributing to the loss; lower means fewer faces are strongly contributing.
+
+            # Log metrics
+            log_dict = {
+                # Main loss and areas
+                "solar_loss": float(loss.detach().cpu().item()),
+                "solar_total_area_m2": total_area_mm2 * 1e-6,
+                "solar_selected_area_m2": selected_area_mm2 * 1e-6,
+                "solar_selection_ratio": selected_area_mm2 / max(total_area_mm2, self.eps),
+                # Loss components
+                "solar_quality_loss": float(quality_loss.detach().cpu().item()) * 1e-6,
+                "solar_budget_penalty": float(budget_penalty.detach().cpu().item()),
+                # Illumination quality statistics
+                "solar_quality_mean": quality_mean,
+                "solar_quality_max": quality_max,
+                "solar_quality_min": quality_min,
+                # Soft mask statistics
+                "solar_soft_mask_mean": soft_mask_mean,
+                "solar_soft_mask_max": soft_mask_max,
+                "solar_soft_mask_min": soft_mask_min,
+                # Face statistics
+                "solar_total_faces": total_num_faces,
+                "solar_selected_faces": selected_faces,
+                "solar_fully_selected_faces": fully_selected_faces,
+            }
+            basic_multi_log(log_dict, step=int(epoch_name))
+    except Exception as e:
+        print(f"Warning: Failed to log solar loss metrics to wandb: {e}")
 
 
 class SolarLossEstimator:
@@ -153,6 +244,11 @@ class SolarLossEstimator:
         self.enable_wandb_logging = bool(cfg["wandb_logging"])
         self.soft_mask_selection_threshold = float(cfg["soft_mask_selection_threshold"])
         self.soft_mask_full_selection_threshold = float(cfg["soft_mask_full_selection_threshold"])
+        self.counter = 0  # For logging purposes
+        self.renderSolar = SolarV3Selection(
+            visualiser=None
+        )  # For visualization purposes, can be removed if not needed, TODO: add visualiser
+        self.number_epochs = int(load_config(v="v1", cfg_name="training_v0_config.yaml")["training_params"]["num_epochs"])
 
         sun_dir = cfg["sun_dir"]
         if not isinstance(sun_dir, torch.Tensor):
@@ -207,7 +303,7 @@ class SolarLossEstimator:
             return self.extractor.extract_mesh(model, isovalue=0.0, batch_size=self.batch_size)
         if self.method in {"mesh_sdf", "mc"}:
             assert isinstance(self.extractor, MeshSDFExtractor)
-            raise ValueError("MeshSDFExtractor WIP")
+            raise ValueError("MeshSDFExtractor WIP")  # missing: MeshSDF loss if using mesh_sdf method
 
         raise ValueError(f"Unknown method: {self.method}")
 
@@ -222,8 +318,11 @@ class SolarLossEstimator:
         Returns:
             Scalar loss tensor
         """
+
+        self.counter += 1
+
         vertices, faces = self.extract_mesh(model)
-        loss, metrics = solar_mesh_loss_v3(
+        loss = solar_mesh_loss_v3(
             vertices,
             faces,
             self.sun_dir,
@@ -231,87 +330,16 @@ class SolarLossEstimator:
             sigmoid_sharpness=self.sigmoid_sharpness,
             budget_penalty_weight=self.budget_penalty_weight,
             epsilon=self.eps,
+            enable_wandb_logging=self.enable_wandb_logging,
         )
 
-        # Log to wandb if enabled
-        if self.enable_wandb_logging and epoch_name is not None:
-            self._log_to_wandb(loss, vertices, faces, metrics, epoch_name)
-
-        # missing: MeshSDF surrogate loss if using mesh_sdf method (TODO: could add as extra logging metric)
+        if self.counter <= self.number_epochs:
+            self.renderSolar.update()  # TODO: add input to fuction
+        if self.counter == self.number_epochs:
+            self.renderSolar.finalize_rendering(
+                output_dir=Path("solar_loss_visualization") / f"epoch_{epoch_name}"
+            )  # TODO: add proper path with hash of given model with dict_hashing()
         return loss
-
-    def _log_to_wandb(
-        self, loss: torch.Tensor, vertices: torch.Tensor, faces: torch.Tensor, metrics: dict[str, torch.Tensor], epoch_name: int
-    ) -> None:
-        """
-        Log solar loss metrics to wandb using pre-computed metrics.
-
-        Args:
-            loss: Scalar loss value (in m²)
-            vertices: Mesh vertices (N, 3)
-            faces: Face indices (M, 3)
-            metrics: Dict of intermediate metrics from solar_mesh_loss_v3
-            epoch_name: Current epoch number
-        """
-        try:
-            if faces.numel() > 0 and vertices.numel() > 0 and metrics:
-                face_area_mm2 = metrics["face_area_mm2"]  # (M,) area of each face in mm²
-                illumination_quality = metrics["illumination_quality"]  # (M,) cosine similarity with sun direction
-                sorted_areas = metrics["sorted_areas"]  # (M,) face areas sorted by descending quality
-                soft_mask = metrics["soft_mask"]  # (M,) soft selection mask values for each face
-                quality_loss = metrics["quality_loss"]  # Scalar tensor representing the weighted quality-area loss component
-                budget_penalty = metrics["budget_penalty"]  # Scalar tensor representing the penalty for unused area budget
-
-                total_area_mm2 = face_area_mm2.sum().item()  # Total area of all faces in mm²
-                total_num_faces = len(face_area_mm2)  # Total number of faces in the mesh
-                selected_area_mm2 = (
-                    (sorted_areas * soft_mask).sum().item()
-                )  # Total area of selected faces (weighted by soft mask) in mm²
-
-                # Compute illumination quality statistics
-                quality_mean = illumination_quality.mean().item()  # Mean illumination quality across all faces
-                quality_max = illumination_quality.max().item()  # Maximum illumination quality across all faces
-                quality_min = illumination_quality.min().item()  # Minimum illumination quality across all faces
-
-                # Compute soft mask statistics
-                soft_mask_mean = soft_mask.mean().item()  # Mean soft mask value across all faces, Average "softness" across all faces. High mean → most faces are selected; low mean → most faces rejected
-                soft_mask_max = soft_mask.max().item()  # Maximum soft mask value across all faces, Indicates the highest selection confidence among all faces. High max → at least one face is fully selected; low max → no face is fully selected
-                soft_mask_min = soft_mask.min().item()  # Minimum soft mask value across all faces, Indicates the lowest selection confidence among all faces. High min → even the least selected face has a high selection confidence; low min → at least one face is strongly rejected
-
-                # Count selected faces (using soft_mask thresholds from config)
-                selected_faces = (
-                    (soft_mask > self.soft_mask_selection_threshold).sum().item()
-                )  # Number of faces with soft mask above selection threshold, Indicates how many faces are considered "selected" for the loss computation based on the configured threshold. Higher means more faces contribute to the loss; lower means fewer faces contribute.
-                fully_selected_faces = (
-                    (soft_mask > self.soft_mask_full_selection_threshold).sum().item()
-                )  # Number of faces with soft mask above full selection threshold, Indicates how many faces are considered "fully selected" (i.e., have a very high selection confidence) based on the configured full selection threshold. Higher means more faces are strongly contributing to the loss; lower means fewer faces are strongly contributing.
-
-                # Log metrics
-                log_dict = {
-                    # Main loss and areas
-                    "solar_loss": float(loss.detach().cpu().item()),
-                    "solar_total_area_m2": total_area_mm2 * 1e-6,
-                    "solar_selected_area_m2": selected_area_mm2 * 1e-6,
-                    "solar_selection_ratio": selected_area_mm2 / max(total_area_mm2, self.eps),
-                    # Loss components
-                    "solar_quality_loss": float(quality_loss.detach().cpu().item()) * 1e-6,
-                    "solar_budget_penalty": float(budget_penalty.detach().cpu().item()),
-                    # Illumination quality statistics
-                    "solar_quality_mean": quality_mean,
-                    "solar_quality_max": quality_max,
-                    "solar_quality_min": quality_min,
-                    # Soft mask statistics
-                    "solar_soft_mask_mean": soft_mask_mean,
-                    "solar_soft_mask_max": soft_mask_max,
-                    "solar_soft_mask_min": soft_mask_min,
-                    # Face statistics
-                    "solar_total_faces": total_num_faces,
-                    "solar_selected_faces": selected_faces,
-                    "solar_fully_selected_faces": fully_selected_faces,
-                }
-                basic_multi_log(log_dict, step=int(epoch_name))
-        except Exception as e:
-            print(f"Warning: Failed to log solar loss metrics to wandb: {e}")
 
 
 def sweep_solar_methods(

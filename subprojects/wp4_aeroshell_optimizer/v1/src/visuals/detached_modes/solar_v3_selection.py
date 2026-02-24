@@ -37,35 +37,38 @@ class SolarV3Selection(RenderingMode):
             config: Mode configuration from YAML
         """
 
-        config = load_config(v="v1", cfg_name = "neural_rendering_config.yaml")["detached_modes"]["solar_v3_selection"]["config"]
+        config = load_config(v="v1", cfg_name="neural_rendering_config.yaml")["detached_modes"]["solar_v3_selection"]["config"]
         super().__init__(visualiser, config)
         self.camera_position = config["camera_position"]
         self.look_at = config["look_at"]
         self.fps = config["fps"]
 
     def update(self, optimization_state: dict) -> None:
+        # use vertices/faces to render (don't track gradients for performance)
+        vertices = optimization_state["vertices"].detach()  # is torch tensor of shape (num_vertices, 3)
+        faces = optimization_state["faces"].detach()  # is torch tensor of shape (num_faces, 3) with vertex indices for each face
+        threshhold = optimization_state[
+            "threshold"
+        ]  # is a scalar tensor with the current threshold value, under which faces are considered not selected, you can use this to make not selected faces light red for example
+        selection_weights = optimization_state[
+            "selection_weights"
+        ].detach()  # VICTOR: this is the tensor you want to visualize, implement your texture based on this
 
-        #use vertices/faces to render (don't track gradients for performance)
-        vertices = optimization_state["vertices"].detach() #is torch tensor of shape (num_vertices, 3)
-        faces = optimization_state["faces"].detach() #is torch tensor of shape (num_faces, 3) with vertex indices for each face
-        threshhold= optimization_state["threshold"] #is a scalar tensor with the current threshold value, under which faces are considered not selected, you can use this to make not selected faces light red for example
-        selection_weights = optimization_state["selection_weights"].detach() #VICTOR: this is the tensor you want to visualize, implement your texture based on this
-
-        #VICTOR: IMPLEMENT texture with your selection weights
+        # VICTOR: IMPLEMENT texture with your selection weights
         colors = torch.zeros_like(faces)  # Placeholder: replace with actual color computation based on selection_weights
-        #make selected ones shades of blue on a spectrum from light blue (low weight) to dark blue (high weight)
+        # make selected ones shades of blue on a spectrum from light blue (low weight) to dark blue (high weight)
         colors[:, 0] = 0  # No red
         colors[:, 1] = 0  # No green
         colors[:, 2] = selection_weights  # Blue intensity based on selection weights
 
-        #make not selected faces light red
-        if threshhold > 0: #Only do this if there is a meaningful threshhold, otherwise all faces are selected and it just looks bad with some light red faces
+        # make not selected faces light red
+        if (
+            threshhold > 0
+        ):  # Only do this if there is a meaningful threshhold, otherwise all faces are selected and it just looks bad with some light red faces
             not_selected = selection_weights < threshhold
             colors[not_selected, 0] = 1.0  # Red intensity
             colors[not_selected, 1] = 0.5  # Green intensity
             colors[not_selected, 2] = 0.5  # Blue intensity
-
-
 
         # Render the mesh
         image = self._render(
