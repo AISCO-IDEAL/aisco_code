@@ -1,5 +1,13 @@
+##########################################################################
+#  GAOT — Euler dataset: combined scalar (force + cd) + pressure field
+#
+#  47 samples, ~384K vertices each.
+#  Small dataset — good for validating the field pipeline before scaling.
+#  Uses neural_field strategy with 40K vertex subsampling.
+##########################################################################
+
 setup:
-    wandb_run_name: "cd_only__RUN_ID_"
+    wandb_run_name: "euler_field__RUN_ID_"
     seed: 42
     device: "cuda:0"
     dtype: "torch.float32"
@@ -8,25 +16,24 @@ setup:
     test: true
     ckpt: false
     use_variance_test: false
-    distributed: True
+    distributed: true
 
-    # --- wandb settings ---
     wandb: true
     wandb_project: "WP1_drag"
     wandb_entity: aisco
-    wandb_group: cd_only
+    wandb_group: euler_field
     wandb_mode: online
-    wandb_tags: ["cd_only", "drivaer", "attention_pool", "gaot"]
+    wandb_tags: ["field", "pressure", "euler", "multi_head", "gaot"]
     wandb_watch_model: false
 
-    # --- artifact & checkpoint settings ---
     test_during_training: false
 
 model:
     name: "gaot_3d"
     use_conditional_norm: false
     args:
-        latent_tokens: [32,32,16]
+        latent_tokens: [64,64,32]
+        field_output_size: 1
         magno:
             use_gno: true
             gno_coord_dim: 3
@@ -44,6 +51,9 @@ model:
             mlp_type: "linear"
             precompute_edges: false
             asynchronous_graph_building: true
+            scales: [1.0]
+            use_scale_weights: false
+            k_neighbors: 1
         transformer:
             patch_size: 2
             hidden_size: 256
@@ -65,29 +75,31 @@ model:
                 cond_norm_hidden_size: 4
 
 dataset:
-    name: "drivaer_cd"
-    metaname: "incompressible_fluids/drivaernet_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_combined_multi"
+    name: "euler_pressure_field"
+    metaname: "incompressible_fluids/euler_pressure"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_pressure"
     processed_folder: ""
-    order_file_name: "order_cd_only.txt"
-    active_heads: ["cd"]
     force_recompute_stats: true
     rand_dataset: true
-    train_size: 360
-    val_size: 62
-    test_size: 62
-    batch_size: 2
+    train_size: 35
+    val_size: 6
+    test_size: 6
+    batch_size: 1
     num_workers: 4
     shuffle: true
     metric_suite: "general"
     update_pt_files_with_edges: false
+    training_strategy: "neural_field"
+    neural_field_input_nodes: 40000
+    neural_field_query_nodes_train: 40000
+    field_loss_weight: 1.0
 
 optimizer:
     name: "adamw"
     args:
         lr: 3e-4
         weight_decay: 1e-05
-        epoch: 300
+        epoch: 150
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"
@@ -95,9 +107,10 @@ optimizer:
         min_lr: 1e-4
         final_lr: 1e-5
         save_every_epochs: 10
+        save_every_steps: 50
 
 path:
-    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/cd_model__RUN_ID_.pt"
-    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/cd_loss__RUN_ID_.png"
-    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/cd_result__RUN_ID_.png"
-    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/cd_metrics.csv"
+    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/euler_field__RUN_ID_.pt"
+    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/euler_field__RUN_ID_.png"
+    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/euler_field__RUN_ID_.png"
+    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/euler_field_metrics.csv"

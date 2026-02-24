@@ -1,5 +1,6 @@
 import torch
 import yaml
+from typing import Optional
 from torch import nn
 from torch_geometric.data import Batch
 
@@ -15,40 +16,34 @@ def configloader() -> dict:
 
 class GAOT3D(nn.Module):
     """
-    Geometry Aware Operator Transformer.
+    Geometry Aware Operator Transformer:
+    Multiscale Attentional Graph Neural Operator + U Vision Transformer + Multiscale Attentional Graph Neural Operator
+    """
 
-    All configuration is passed as a single ``config`` dict (typically loaded
-    from a YAML file).  Expected top-level keys::
-
-        config.magno          – MAGNOEncoder parameters (plain dict)
-        config.transformer    – Transformer parameters (plain dict)
-        config.latent_tokens  – [D, H, W]
-        config.norm_domain    – [[x_min, y_min, z_min], [x_max, y_max, z_max]]
-        config.input_size     – int, default 6
-        config.output_size    – int, default 1
-        config.decoder        – {hidden_features, num_shared_layers, output_heads}
-    """  # noqa: RUF002
-
-    def __init__(self, config: dict = configloader()):
-        super().__init__()
+    def __init__(
+        self,
+        config: dict,
+        field_output_size: int = 0,
+    ):
+        nn.Module.__init__(self)
         self.config = config
 
-        # ── top-level scalars ────────────────────────────────────────────
-        self.input_size = config.get("input_size", 6)
-        self.output_size = config.get("output_size", 1)
+        # ── unpack sub-configs ───────────────────────────────────────────
+        magno_config = config["magno"]
+        attn_config = config["transformer"]
+        latent_tokens = config["latent_tokens"]  # e.g. [D, H, W]
 
-        magno_cfg = config["magno"]
-        transformer_cfg = config["transformer"]
+        input_size = config["input_size"]
+        output_size = config.get("output_size", field_output_size)
 
-        self.node_latent_size = magno_cfg["lifting_channels"]
-        self.patch_size = transformer_cfg["patch_size"]
-
-        latent_tokens = config.get("latent_tokens", [32, 32, 32])
-        self.depth = int(latent_tokens[0])
-        self.height = int(latent_tokens[1])
-        self.width = int(latent_tokens[2])
-        self.num_latent_tokens = self.depth * self.height * self.width
-        self.coord_dim = magno_cfg.get("gno_coord_dim", 3)
+        self.input_size = input_size
+        self.output_size = output_size
+        self.node_latent_size = magno_config["lifting_channels"]
+        self.patch_size = attn_config["patch_size"]
+        self.D, self.H, self.W = latent_tokens
+        self.depth, self.height, self.width = self.D, self.H, self.W
+        self.num_latent_tokens = self.D * self.H * self.W
+        self.coord_dim = magno_config["gno_coord_dim"]
 
         # ── norm domain → latent token grid ──────────────────────────────
         norm_domain = config.get("norm_domain", [[-1, -1, -1], [1, 1, 1]])
@@ -65,17 +60,12 @@ class GAOT3D(nn.Module):
         self.register_buffer("latent_tokens", internal_latent_tokens)
 
         # ── sub-modules ──────────────────────────────────────────────────
-        self.encoder = self._init_encoder(magno_cfg)
+        self.encoder = self.init_encoder(input_size, self.node_latent_size, magno_config)
         self.processor = self._init_processor(self.config)
         self.attn_pool, self.decoder = self._init_decoder(config.get("decoder", {}))
 
-    # ─── encoder ─────────────────────────────────────────────────────────
-    def _init_encoder(self, magno_cfg: dict) -> MAGNOEncoder:
-        return MAGNOEncoder(
-            in_channels=self.input_size,
-            out_channels=self.node_latent_size,
-            magno_config=magno_cfg,
-        )
+    def init_encoder(self, input_size, node_latent_size, magno_config):
+        return MAGNOEncoder(in_channels=input_size, out_channels=node_latent_size, gno_config=magno_config)
 
     # ─── processor (vision transformer) ─────────────────────────────────
     def _init_processor(self, config: dict) -> Transformer:
@@ -191,10 +181,30 @@ class GAOT3D(nn.Module):
     def forward(
         self,
         batch: Batch,
-        tokens_pos: torch.Tensor | None = None,
-        tokens_batch_idx: torch.Tensor | None = None,
-        condition: float | None = None,
-    ) -> dict[str, torch.Tensor]:
+        tokens_pos: Optional[torch.Tensor] = None,
+        tokens_batch_idx: Optional[torch.Tensor] = None,
+        query_coord_pos: Optional[torch.Tensor] = None,
+        query_coord_batch_idx: Optional[torch.Tensor] = None,
+        condition: Optional[float] = None,
+    ) -> torch.Tensor:
+        """
+        Forward pass for GAOT3D model using PyG Batch.
+
+        Args:
+            batch (Batch): Input PyG Batch (contains batch.pos, batch.x, batch.batch).
+            tokens_pos (Tensor, optional): External latent token coordinates [TotalLatentNodes, D].
+                                           If None, uses internal self.latent_tokens.
+            tokens_batch_idx (Tensor, optional): Batch index for external tokens [TotalLatentNodes].
+                                                 Required if tokens_pos is provided.
+            query_coord_pos (Tensor, optional): External query coordinates for decoder [TotalQueryNodes, D].
+                                                 If None, uses batch.pos from input batch.
+            query_coord_batch_idx (Tensor, optional): Batch index for external query coords [TotalQueryNodes].
+                                                       Required if query_coord_pos is provided.
+            condition (float, optional): Condition parameter for processor.
+
+        Returns:
+            Tensor: Output tensor on physical/query nodes [TotalQueryNodes, OutputChannels].
+        """
         num_graphs = batch.num_graphs
         device = batch.pos.device
 
@@ -219,9 +229,13 @@ class GAOT3D(nn.Module):
         # ── process ──────────────────────────────────────────────────────
         rndata = self.process(rndata=rndata, condition=condition)
 
-        # ── pool → decode ────────────────────────────────────────────────
-        pooled = self.attn_pool(rndata)
-        output = self.decoder(pooled)
+        # Attention-weighted pooling over latent tokens.
+        # Shape: [B, M, C_lifted] -> [B, C_lifted]
+        pooled_features = self.attn_pool(rndata_proc)
+
+        # Multi-head decode: returns {"force": [B,1], "cd": [B,1]}
+        output = self.decoder(pooled_features)
+
         return output
 
 

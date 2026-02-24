@@ -72,14 +72,14 @@ model:
 dataset:
     name: "drivaernet_drag"
     metaname: "incompressible_fluids/drivaernet_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_combined_multi"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_drag_params"
     processed_folder: ""
     force_recompute_stats: false
     rand_dataset: false
-    # All 534 samples go to test
+    # All 484 samples go to test
     train_size: 0
     val_size: 0
-    test_size: 534
+    test_size: 484
     batch_size: 2
     num_workers: 4
     shuffle: false

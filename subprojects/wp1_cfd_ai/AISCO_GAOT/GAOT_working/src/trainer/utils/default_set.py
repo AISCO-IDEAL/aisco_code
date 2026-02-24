@@ -122,6 +122,7 @@ class ModelArgsConfig:
     input_size: int = 6  # Input feature size
     output_size: int = 1  # Output feature size
     latent_tokens: Tuple[int, int, int] = (64, 64, 64)  # Size (D, H, W) of latent tokens
+    field_output_size: int = 0  # Per-vertex field output channels (0=scalar-only, 1=pressure)
     norm_domain: List[List[float]] = field(default_factory=lambda: [[-1, -1, -1], [1, 1, 1]])
     magno: Dict[str, Any] = field(default_factory=_default_magno)  # Configuration for MAGNO (plain dict)
     transformer: Dict[str, Any] = field(default_factory=_default_transformer)  # Configuration for Transformer (plain dict)
@@ -165,6 +166,8 @@ class DatasetConfig:
         None  # Custom order file name (e.g. "order_force_only.txt"), default uses order_{processed_folder}.txt
     )
     active_heads: Optional[List[str]] = None  # List of active heads for loss (e.g. ["force"]), None = all heads
+
+    field_loss_weight: float = 1.0  # Weight for field (per-vertex pressure) loss relative to scalar head loss
 
 
 @dataclass

@@ -33,6 +33,7 @@ class OptimizerargsConfig:
 
     # checkpoint/save settings
     save_every_epochs: int = 0          # Save checkpoint every N epochs (0=disabled)
+    save_every_steps: int = 0           # Save checkpoint every N training steps (0=disabled)
 
 ###############
 # Scheduler
@@ -280,6 +281,8 @@ class AdamWOptimizer:
         # Only rank 0 should display progress bar
         disable_pbar = hasattr(trainer.setup_config, 'rank') and trainer.setup_config.rank != 0
         pbar = tqdm(total=self.epoch, desc=description, colour=color, disable=disable_pbar)
+        global_step = 0
+        save_every_steps = getattr(trainer.optimizer_config.args, 'save_every_steps', 0)
         for epoch in range(self.epoch):
             # Ensure DistributedSampler shuffles differently each epoch
             train_sampler = getattr(trainer.train_loader, 'sampler', None)
@@ -309,6 +312,22 @@ class AdamWOptimizer:
                 self.optimizer.step()
 
                 total_loss += train_loss.detach()
+                global_step += 1
+
+                # Save checkpoint every N steps if configured (rank 0 only)
+                if (save_every_steps > 0
+                    and global_step % save_every_steps == 0
+                    and getattr(trainer.setup_config, 'rank', 0) == 0):
+                    try:
+                        step_loss = train_loss.detach().cpu().item()
+                        trainer.save_ckpt()
+                        import logging
+                        logging.getLogger(__name__).info(
+                            f"Step checkpoint saved at global_step={global_step} (epoch {epoch+1}), loss={step_loss:.4f}"
+                        )
+                    except Exception as e:
+                        import logging
+                        logging.getLogger(__name__).warning(f"Failed to save step checkpoint: {e}")
 
             if self.scheduler is not None:
                 self.scheduler.step()
