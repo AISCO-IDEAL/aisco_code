@@ -238,16 +238,16 @@ class MAGNOEncoder(nn.Module):
         self.magno_config = magno_config
 
         self.gno_radius = magno_config["gno_radius"]
-        self.scales = magno_config["scales"]
+        self.scales = magno_config.get("scales", [1.0])
         self.lifting_channels = magno_config["lifting_channels"]
         self.coord_dim = magno_config["gno_coord_dim"]
-        self.feature_attr_name = magno_config["encoder_feature_attr"]
-        self.precompute_edges = magno_config["precompute_edges"]
-        self.mlp_type = magno_config["mlp_type"]
+        self.feature_attr_name = magno_config.get("encoder_feature_attr", "x")
+        self.precompute_edges = magno_config.get("precompute_edges", False)
+        self.mlp_type = magno_config.get("mlp_type", "linear")
 
         # --- Store Neighbor Finding Strategy ---
-        self.encoder_strategy, self.decoder_strategy = parse_neighbor_strategy(magno_config["neighbor_strategy"])
-        self.k_neighbors = magno_config["k_neighbors"]
+        self.encoder_strategy, self.decoder_strategy = parse_neighbor_strategy(magno_config.get("neighbor_strategy", "radius"))
+        self.k_neighbors = magno_config.get("k_neighbors", 1)
 
         # --- Store Sampling Strategy ---
         self.sampling_strategy = magno_config.get("sampling_strategy")
@@ -257,26 +257,26 @@ class MAGNOEncoder(nn.Module):
             print("Warning: 'max_neighbors' sampling strategy with PyG edge_index is less efficient. Consider using 'ratio'.")
 
         # --- Init GNO Layer ---
-        self.use_gno = magno_config["use_gno"]
+        self.use_gno = magno_config.get("use_gno", True)
         if self.use_gno:
             in_kernel_in_dim = self.coord_dim * 2
-            if magno_config["in_gno_transform_type"] in ["nonlinear", "nonlinear_kernelonly"]:
+            if magno_config.get("in_gno_transform_type", "linear") in ["nonlinear", "nonlinear_kernelonly"]:
                 in_kernel_in_dim += in_channels
 
-            in_gno_channel_mlp_hidden_layers = list(magno_config["in_gno_channel_mlp_hidden_layers"])
+            in_gno_channel_mlp_hidden_layers = list(magno_config.get("in_gno_channel_mlp_hidden_layers", [128, 128]))
             in_gno_channel_mlp_hidden_layers.insert(0, in_kernel_in_dim)
             in_gno_channel_mlp_hidden_layers.append(self.lifting_channels)
 
             self.gno = IntegralTransform(
                 channel_mlp_layers=in_gno_channel_mlp_hidden_layers,
-                transform_type=magno_config["in_gno_transform_type"],
+                transform_type=magno_config.get("in_gno_transform_type", "linear"),
                 use_attn=magno_config.get("use_attn"),
                 coord_dim=self.coord_dim,
-                attention_type=magno_config["attention_type"],
+                attention_type=magno_config.get("attention_type", "cosine"),
             )
 
             ## --- Init Lifting MLP ---
-            if magno_config["mlp_type"] == "linear":
+            if self.mlp_type == "linear":
                 self.lifting = LinearChannelMLP(layers=[in_channels, self.lifting_channels])
             else:
                 self.lifting = ChannelMLP(
@@ -293,22 +293,22 @@ class MAGNOEncoder(nn.Module):
                 )
 
         # --- Init GeoEmbed (optional) ---
-        use_geoembed_encoder, _ = parse_geoembed_strategy(magno_config["use_geoembed"])
+        use_geoembed_encoder, _ = parse_geoembed_strategy(magno_config.get("use_geoembed", False))
         self.use_geoembed = use_geoembed_encoder
         if self.use_geoembed:
             self.geoembed = GeometricEmbedding(
                 input_dim=self.coord_dim,
                 output_dim=self.lifting_channels,
-                method=magno_config["embedding_method"],
-                pooling=magno_config["pooling"],
+                method=magno_config.get("embedding_method", "statistical"),
+                pooling=magno_config.get("pooling", "max"),
             )
-            if magno_config["mlp_type"] == "linear":
+            if self.mlp_type == "linear":
                 self.recovery = LinearChannelMLP(layers=[2 * self.lifting_channels, self.lifting_channels])
             else:
                 self.recovery = ChannelMLP(in_channels=2 * self.lifting_channels, out_channels=self.lifting_channels, n_layers=1)
 
         # --- Init Scale Weighting (optional) ---
-        self.use_scale_weights = magno_config["use_scale_weights"]
+        self.use_scale_weights = magno_config.get("use_scale_weights", False)
         if self.use_scale_weights:
             self.num_scales = len(self.scales)
             self.scale_weighting = nn.Sequential(nn.Linear(self.coord_dim, 16), nn.ReLU(), nn.Linear(16, self.num_scales))
@@ -452,19 +452,19 @@ class MAGNODecoder(nn.Module):
         self.magno_config = magno_config
 
         self.gno_radius = magno_config["gno_radius"]
-        self.scales = magno_config["scales"]
+        self.scales = magno_config.get("scales", [1.0])
         self.coord_dim = magno_config["gno_coord_dim"]
         self.in_channels = in_channels
         self.out_channels = out_channels
-        _, use_geoembed_decoder = parse_geoembed_strategy(magno_config["use_geoembed"])
+        _, use_geoembed_decoder = parse_geoembed_strategy(magno_config.get("use_geoembed", False))
         self.use_geoembed = use_geoembed_decoder
-        self.use_scale_weights = magno_config["use_scale_weights"]
-        self.precompute_edges = magno_config["precompute_edges"]
-        self.mlp_type = magno_config["mlp_type"]
+        self.use_scale_weights = magno_config.get("use_scale_weights", False)
+        self.precompute_edges = magno_config.get("precompute_edges", False)
+        self.mlp_type = magno_config.get("mlp_type", "linear")
 
         # --- Store Neighbor Strategy ---
-        _, self.decoder_strategy = parse_neighbor_strategy(magno_config["neighbor_strategy"])
-        self.k_neighbors = magno_config["k_neighbors"]
+        _, self.decoder_strategy = parse_neighbor_strategy(magno_config.get("neighbor_strategy", "radius"))
+        self.k_neighbors = magno_config.get("k_neighbors", 1)
 
         # --- Store Sampling Strategy ---
         self.sampling_strategy = magno_config.get("sampling_strategy")
@@ -475,30 +475,30 @@ class MAGNODecoder(nn.Module):
 
         # --- Calculate MLP input dimension ---
         out_kernel_in_dim = self.coord_dim * 2
-        if magno_config["out_gno_transform_type"] in ["nonlinear", "nonlinear_kernelonly"]:
+        if magno_config.get("out_gno_transform_type", "linear") in ["nonlinear", "nonlinear_kernelonly"]:
             out_kernel_in_dim += self.in_channels
 
         # --- Init GNO Layer ---
-        out_gno_channel_mlp_hidden_layers = list(magno_config["out_gno_channel_mlp_hidden_layers"])
+        out_gno_channel_mlp_hidden_layers = list(magno_config.get("out_gno_channel_mlp_hidden_layers", [64, 64]))
         out_gno_channel_mlp_hidden_layers.insert(0, out_kernel_in_dim)
         out_gno_channel_mlp_hidden_layers.append(self.in_channels)
 
         self.gno = IntegralTransform(
             channel_mlp_layers=out_gno_channel_mlp_hidden_layers,
-            transform_type=magno_config["out_gno_transform_type"],
+            transform_type=magno_config.get("out_gno_transform_type", "linear"),
             use_attn=magno_config.get("use_attn"),
             coord_dim=self.coord_dim,
-            attention_type=magno_config["attention_type"],
+            attention_type=magno_config.get("attention_type", "cosine"),
         )
 
         # --- Init Projection ---
-        if magno_config["mlp_type"] == "linear":
-            self.projection = LinearChannelMLP(layers=[in_channels, magno_config["projection_channels"], out_channels])
+        if self.mlp_type == "linear":
+            self.projection = LinearChannelMLP(layers=[in_channels, magno_config.get("projection_channels", 256), out_channels])
         else:
             self.projection = ChannelMLP(
                 in_channels=in_channels,
                 out_channels=out_channels,
-                hidden_channels=magno_config["projection_channels"],
+                hidden_channels=magno_config.get("projection_channels", 256),
                 n_layers=2,
                 n_dim=1,
             )
@@ -508,10 +508,10 @@ class MAGNODecoder(nn.Module):
             self.geoembed = GeometricEmbedding(
                 input_dim=self.coord_dim,
                 output_dim=self.in_channels,
-                method=magno_config["embedding_method"],
-                pooling=magno_config["pooling"],
+                method=magno_config.get("embedding_method", "statistical"),
+                pooling=magno_config.get("pooling", "max"),
             )
-            if magno_config["mlp_type"] == "linear":
+            if self.mlp_type == "linear":
                 self.recovery = LinearChannelMLP(layers=[2 * in_channels, in_channels])
             else:
                 self.recovery = ChannelMLP(in_channels=2 * in_channels, out_channels=in_channels, n_layers=1)
