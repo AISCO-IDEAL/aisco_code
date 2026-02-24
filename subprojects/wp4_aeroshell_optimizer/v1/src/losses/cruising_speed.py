@@ -25,9 +25,9 @@ class PhysicalRootFinder(torch.autograd.Function):
     def backward(ctx, grad_output):
         u, drag_force_at_25ms, solar_power, rolling_friction_force, c = ctx.saved_tensors
 
-        # Partial derivatives of the function F = drag_force_at_25ms*u^3 + rolling_friction_force*u + c - solar_power
-        df_du = 3 * drag_force_at_25ms * u**2 + rolling_friction_force
-        df_ddrag_force_at_25ms = u**3
+        # Partial derivatives of the function F = u^2 / (25m/s)^2 * drag_force_at_25ms*u + rolling_friction_force*u + c - solar_power
+        df_du = 3 / (25**2) * drag_force_at_25ms * u**2 + rolling_friction_force
+        df_ddrag_force_at_25ms = u**3 / (25**2)
         df_dsolar_power = -torch.ones_like(solar_power)
 
         # Calculate implicit derivative
