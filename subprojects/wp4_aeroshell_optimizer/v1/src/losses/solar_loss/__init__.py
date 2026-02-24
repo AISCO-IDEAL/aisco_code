@@ -1,0 +1,1 @@
+"""Solar loss subpackage."""

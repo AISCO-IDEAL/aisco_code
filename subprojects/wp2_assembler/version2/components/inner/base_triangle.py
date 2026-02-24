@@ -12,8 +12,8 @@ class Triangle:
     def build_random(self) -> "Triangle":
         self.a = cq.Vector(0, 0, 0)
         self.b = cq.Vector(
-            truncated_gamma(),  # get value lengthwise in x-direction
-            truncated_gamma(),  # get value widthwise in y-direction
+            float(truncated_gamma(size=1)),  # get value lengthwise in x-direction
+            float(truncated_gamma(size=1)),  # get value widthwise in y-direction
             0,  # get value heightwise in z-direction
         )
         self.c = cq.Vector(
