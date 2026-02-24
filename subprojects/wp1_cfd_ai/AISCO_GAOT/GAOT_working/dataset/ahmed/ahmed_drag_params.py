@@ -7,7 +7,7 @@ import pandas as pd
 def process_ahmed_body_dataset(root_dir):
     # Standard constants from the methodology
     rho = 1.225
-    v = 38.889
+    v = 1
     dynamic_pressure = 0.5 * rho * (v**2)
 
     if not os.path.exists(root_dir):
