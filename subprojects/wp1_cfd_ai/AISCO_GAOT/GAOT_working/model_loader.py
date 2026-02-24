@@ -12,7 +12,6 @@ model_dict = {
     2: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58245986.pt",
     3: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58310187.pt",
     4: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/overfit_model_58316029.pt",
-    "Herbert": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/multi_model__RUN_ID_.pt"
 }
 
 
@@ -41,6 +40,12 @@ class ModelLoader:
         # Support both layouts transparently.
         if "model" in config and "args" in config["model"]:
             config = config["model"]["args"]
+
+        # ── Force online edge computation for inference ──────────────────
+        # The training config may have precompute_edges=True, but at inference
+        # time we build Data objects on-the-fly without precomputed edges.
+        if "magno" in config:
+            config["magno"]["precompute_edges"] = False
 
         # ── build model from config dict ─────────────────────────────────
         self.gaot = GAOT3D(config=config).to(self.device)
