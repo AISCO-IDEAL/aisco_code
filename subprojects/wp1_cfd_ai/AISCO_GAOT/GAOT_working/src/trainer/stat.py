@@ -39,6 +39,24 @@ def move_to_device(data, device):
         return data
 
 
+def _magno_get(model_config, key, default=None):
+    """Helper to access magno config keys whether magno is a dict or dataclass."""
+    magno = model_config.args.magno
+    if isinstance(magno, dict):
+        return magno.get(key, default)
+    else:
+        return getattr(magno, key, default)
+
+
+def _magno_set(model_config, key, value):
+    """Helper to set magno config keys whether magno is a dict or dataclass."""
+    magno = model_config.args.magno
+    if isinstance(magno, dict):
+        magno[key] = value
+    else:
+        setattr(magno, key, value)
+
+
 class StaticTrainer3D(TrainerBase):
     """
     Trainer for static problems, i.e. problems that do not depend on time.
@@ -49,11 +67,11 @@ class StaticTrainer3D(TrainerBase):
         if self.dataset_config.training_strategy == "neural_field":
             if self.dataset_config.update_pt_files_with_edges:
                 raise ValueError("neural_field training strategy requires update_pt_files_with_edges=False")
-            if getattr(self.model_config.args.magno, "precompute_edges", True):
+            if _magno_get(self.model_config, "precompute_edges", True):
                 logging.getLogger(__name__).warning(
                     "WARNING: neural_field training strategy requires precompute_edges=False, setting it to False automatically."
                 )
-                self.model_config.args.magno.precompute_edges = False
+                _magno_set(self.model_config, "precompute_edges", False)
 
     def _calculate_or_load_stats(self, dataset_config, order_file_path, data_root):
         """Calculates or loads normalization statistics."""
@@ -169,7 +187,7 @@ class StaticTrainer3D(TrainerBase):
         self.u_mean = self.u_mean.to(self.dtype)
         self.u_std = self.u_std.to(self.dtype)
 
-    def _update_pt_files_with_edges(self, dataset_config, order_file_path, gno_config):
+    def _update_pt_files_with_edges(self, dataset_config, order_file_path, magno_cfg: dict):
         """
         Iterates through processed .pt files, computes edges (and optionally counts),
         and saves them back to the files. Runs ONLY on rank 0 in DDP.
@@ -203,6 +221,12 @@ class StaticTrainer3D(TrainerBase):
 
         from src.model.layers.magno import get_neighbor_strategy, parse_neighbor_strategy
 
+        # Extract magno config values (dict access)
+        gno_radius = magno_cfg.get("gno_radius", 0.15)
+        scales = magno_cfg.get("scales", [1.0])
+        neighbor_strategy = magno_cfg.get("neighbor_strategy", "radius")
+        k_neighbors = magno_cfg.get("k_neighbors", 1)
+
         for filename in tqdm(filenames_to_process, desc="Updating .pt files"):
             fpath = os.path.join(processed_dir, filename)
             fpath_tmp = fpath + ".tmp"
@@ -225,10 +249,10 @@ class StaticTrainer3D(TrainerBase):
                 batch_idx_phys = torch.zeros(num_physical_nodes, dtype=torch.long)
                 batch_idx_latent = torch.zeros(num_latent_tokens, dtype=torch.long)
 
-                for scale_idx, scale in enumerate(gno_config.scales):
-                    scaled_radius = gno_config.gno_radius * scale
+                for scale_idx, scale in enumerate(scales):
+                    scaled_radius = gno_radius * scale
                     # --- Parse neighbor strategy ---
-                    encoder_strategy, decoder_strategy = parse_neighbor_strategy(gno_config.neighbor_strategy)
+                    encoder_strategy, decoder_strategy = parse_neighbor_strategy(neighbor_strategy)
 
                     # --- Encoder Edges ---
                     enc_edge_index = get_neighbor_strategy(
@@ -238,7 +262,7 @@ class StaticTrainer3D(TrainerBase):
                         latent_tokens_pos=latent_tokens_cpu,
                         batch_idx_latent=batch_idx_latent,
                         radius=scaled_radius,
-                        k_neighbors=gno_config.k_neighbors,
+                        k_neighbors=k_neighbors,
                         is_decoder=False,
                     ).to(torch.int32)
                     setattr(data, f"encoder_edge_index_s{scale_idx}", enc_edge_index)
@@ -255,7 +279,7 @@ class StaticTrainer3D(TrainerBase):
                         latent_tokens_pos=latent_tokens_cpu,
                         batch_idx_latent=batch_idx_latent,
                         radius=scaled_radius,
-                        k_neighbors=gno_config.k_neighbors,
+                        k_neighbors=k_neighbors,
                         is_decoder=True,
                     ).to(torch.int32)
                     setattr(data, f"decoder_edge_index_s{scale_idx}", dec_edge_index)
@@ -307,15 +331,15 @@ class StaticTrainer3D(TrainerBase):
 
         # --- Pre-computation /Update Step ---
         if dataset_config.update_pt_files_with_edges:
-            gno_cfg_for_precompute = self.model_config.args.magno
+            magno_cfg = self.model_config.args.magno
             if self.setup_config.rank == 0:
-                self._update_pt_files_with_edges(dataset_config, order_file_path, gno_cfg_for_precompute)
+                self._update_pt_files_with_edges(dataset_config, order_file_path, magno_cfg)
             if self.setup_config.distributed:
                 logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Waiting for edge pre-computation barrier...")
                 torch.distributed.barrier()
                 logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Barrier passed.")
 
-            self.model_config.args.magno.precompute_edges = True
+            _magno_set(self.model_config, "precompute_edges", True)
             logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Set model config to use precomputed edges.")
         # --- end Pre-computation /Update Step ---
 
@@ -353,18 +377,26 @@ class StaticTrainer3D(TrainerBase):
         composed_transform = Compose([rescale_transform, normalize_transform])
 
         # --- Create collate function for online graph building in DataLoader ---
+        magno_cfg = self.model_config.args.magno
         collate_fn = create_collate_function(
-            coord_dim=self.model_config.args.magno.gno_coord_dim,
-            magno_radius=self.model_config.args.magno.gno_radius,
-            magno_scales=self.model_config.args.magno.scales,
+            coord_dim=magno_cfg["gno_coord_dim"] if isinstance(magno_cfg, dict) else magno_cfg.gno_coord_dim,
+            magno_radius=magno_cfg["gno_radius"] if isinstance(magno_cfg, dict) else magno_cfg.gno_radius,
+            magno_scales=magno_cfg["scales"] if isinstance(magno_cfg, dict) else magno_cfg.scales,
             latent_tokens=self.latent_tokens,
-            neighbor_search_method=self.model_config.args.magno.neighbor_strategy,
-            k_neighbors=self.model_config.args.magno.k_neighbors,
-            asynchronous_graph_building=self.model_config.args.magno.asynchronous_graph_building,
+            neighbor_search_method=magno_cfg["neighbor_strategy"] if isinstance(magno_cfg, dict) else magno_cfg.neighbor_strategy,
+            k_neighbors=magno_cfg["k_neighbors"] if isinstance(magno_cfg, dict) else magno_cfg.k_neighbors,
+            asynchronous_graph_building=magno_cfg.get("asynchronous_graph_building", False)
+            if isinstance(magno_cfg, dict)
+            else getattr(magno_cfg, "asynchronous_graph_building", False),
         )
         # Ensure the model expects precomputed edges coming from collate
-        if self.model_config.args.magno.asynchronous_graph_building:
-            self.model_config.args.magno.precompute_edges = True
+        async_graph = (
+            magno_cfg.get("asynchronous_graph_building", False)
+            if isinstance(magno_cfg, dict)
+            else getattr(magno_cfg, "asynchronous_graph_building", False)
+        )
+        if async_graph:
+            _magno_set(self.model_config, "precompute_edges", True)
             logging.getLogger(__name__).info("Enabled precompute_edges for MAGNO to consume collate-built graphs.")
 
         if self.setup_config.train:
@@ -389,7 +421,7 @@ class StaticTrainer3D(TrainerBase):
             root=data_root, order_file=order_file_path, dataset_config=dataset_config, split="test", transform=composed_transform
         )
 
-        encoder_feature_attr = getattr(self.model_config.args.magno, "encoder_feature_attr", "x")
+        encoder_feature_attr = _magno_get(self.model_config, "encoder_feature_attr", "x")
         if isinstance(encoder_feature_attr, list):
             self.num_input_channels = 0
             for attr_name in encoder_feature_attr:
@@ -453,8 +485,6 @@ class StaticTrainer3D(TrainerBase):
             )
 
         test_sampler = None
-        # if self.setup_config.distributed:
-        #     test_sampler = DistributedSampler(test_ds, shuffle=False, rank=self.setup_config.rank)
         self.test_loader = DataLoader(
             test_ds,
             batch_size=dataset_config.batch_size,
@@ -477,24 +507,15 @@ class StaticTrainer3D(TrainerBase):
 
         if self.setup_config.distributed:
             self.model = torch.nn.parallel.DistributedDataParallel(
-                self.model, device_ids=[self.setup_config.local_rank], output_device=self.setup_config.local_rank,
+                self.model,
+                device_ids=[self.setup_config.local_rank],
+                output_device=self.setup_config.local_rank,
                 find_unused_parameters=True,
             )
 
     def _sample_nodes_neural_field(self, batch: "pyg.data.Batch", num_input_nodes: int, num_query_nodes: int):
         """
         Sample nodes for neural field training strategy.
-
-        Args:
-            batch: Original batch
-            num_input_nodes: Number of nodes to sample for encoder input
-            num_query_nodes: Number of nodes to sample for decoder query
-
-        Returns:
-            sampled_batch: New batch with sampled nodes for encoder
-            query_pos: Query positions for decoder
-            query_batch_idx: Batch indices for query positions
-            target_for_loss: Target values for loss calculation
         """
         sampled_data_list = []
         query_pos_list = []
@@ -633,7 +654,6 @@ class StaticTrainer3D(TrainerBase):
         metric_suite = self.dataset_config.metric_suite
 
         # Determine if model uses multi-head output
-        # When wrapped in DDP, access via .module
         _raw_model = self.model.module if hasattr(self.model, "module") else self.model
         _is_multi_head = hasattr(_raw_model, "decoder") and hasattr(_raw_model.decoder, "head_names")
         if _is_multi_head:
@@ -645,22 +665,18 @@ class StaticTrainer3D(TrainerBase):
         plot_coords, plot_gtr, plot_prd = None, None, None
 
         # Inference speed measurement variables
-        inference_times = []  # Store inference time for each step
-        data_loading_times = []  # Store data loading time for each step
+        inference_times = []
+        data_loading_times = []
         total_samples = 0
 
         logging.getLogger(__name__).info(f"Starting testing with metric suite: '{metric_suite}'")
 
         with torch.no_grad():
             for i, batch in enumerate(self.test_loader):
-                # Record data loading start time
                 data_start_time = time.time()
-
-                # Move data to device
                 batch = batch.to(self.device)
                 latent_tokens_dev = self.latent_tokens.to(self.device)
 
-                # GPU sync to ensure data transfer is complete
                 if self.device.type == "cuda":
                     torch.cuda.synchronize()
 
@@ -668,13 +684,9 @@ class StaticTrainer3D(TrainerBase):
                 data_loading_time = data_end_time - data_start_time
                 data_loading_times.append(data_loading_time)
 
-                # Record inference start time
                 inference_start_time = time.time()
-
-                # Model inference
                 pred_norm = self.model(batch, latent_tokens_dev)
 
-                # GPU sync to ensure inference is complete
                 if self.device.type == "cuda":
                     torch.cuda.synchronize()
 
@@ -682,18 +694,11 @@ class StaticTrainer3D(TrainerBase):
                 inference_time = inference_end_time - inference_start_time
                 inference_times.append(inference_time)
 
-                # Count samples
                 batch_size = batch.num_graphs if hasattr(batch, "num_graphs") else 1
                 total_samples += batch_size
 
                 # Handle multi-head predictions
                 if isinstance(pred_norm, dict):
-                    # Collect per-head predictions — use force if available, else cd
-                    # For now, concatenate all heads for metric reporting
-                    force_pred = pred_norm.get("force")
-                    cd_pred = pred_norm.get("cd")
-
-                    # Denormalize multi-head predictions and targets using per-head stats
                     pred_denorm = {}
                     target_denorm_dict = {}
                     for head_name, head_pred in pred_norm.items():
@@ -701,17 +706,15 @@ class StaticTrainer3D(TrainerBase):
                         if head_target is None:
                             continue
                         head_target = head_target.to(self.device)
-                        # Denormalize using per-head stats
-                        if hasattr(self, 'per_head_stats') and head_name in self.per_head_stats:
-                            h_mean = self.per_head_stats[head_name]['mean'].to(self.device)
-                            h_std = self.per_head_stats[head_name]['std'].to(self.device)
+                        if hasattr(self, "per_head_stats") and head_name in self.per_head_stats:
+                            h_mean = self.per_head_stats[head_name]["mean"].to(self.device)
+                            h_std = self.per_head_stats[head_name]["std"].to(self.device)
                             pred_denorm[head_name] = head_pred * h_std + h_mean
                             target_denorm_dict[head_name] = head_target * h_std + h_mean
                         else:
                             pred_denorm[head_name] = head_pred
                             target_denorm_dict[head_name] = head_target
 
-                    # Log the first sample's predictions (denormalized)
                     if i == 0 and self.setup_config.rank == 0:
                         plot_coords = None
                         parts = []
@@ -721,7 +724,6 @@ class StaticTrainer3D(TrainerBase):
                             parts.append(f"Cd={pred_denorm['cd'][0].item():.4f}")
                         logging.getLogger(__name__).info(f"First test sample predictions (denorm): {', '.join(parts)}")
 
-                    # Store per-head denormalized results for later metric computation
                     for head_name in pred_denorm:
                         head_target_dn = target_denorm_dict[head_name]
                         head_pred_dn = pred_denorm[head_name]
@@ -749,12 +751,9 @@ class StaticTrainer3D(TrainerBase):
                             f"Extracted first test sample: True Drag = {plot_gtr[0]:.4f}, Predicted Drag = {plot_prd[0]:.4f}"
                         )
 
-                # Output progress every 10 batches (including inference speed info)
                 if (i + 1) % 10 == 0 and self.setup_config.rank == 0:
-                    current_avg_inference_time = statistics.mean(
-                        inference_times[-10:]
-                    )  # Average inference time of the last 10 steps
-                    throughput = 1.0 / current_avg_inference_time  # Samples per second (assuming batch_size=1)
+                    current_avg_inference_time = statistics.mean(inference_times[-10:])
+                    throughput = 1.0 / current_avg_inference_time
                     logging.getLogger(__name__).info(
                         f"Processed {i + 1} batches, "
                         f"Current average inference time: {current_avg_inference_time * 1000:.2f}ms, "
@@ -762,9 +761,7 @@ class StaticTrainer3D(TrainerBase):
                     )
 
         if self.setup_config.rank == 0:
-            # Handle both multi-head (dict) and single-output (list) results
             if isinstance(all_batch_preds_denorm, dict):
-                # Multi-head: report metrics per head
                 for head_name in all_batch_preds_denorm:
                     if not all_batch_preds_denorm[head_name]:
                         continue
@@ -777,7 +774,6 @@ class StaticTrainer3D(TrainerBase):
                         f"--- Head '{head_name}': MSE={mse:.6f}, MAE={mae:.6f}, n_samples={head_preds.shape[0]} ---"
                     )
 
-                    # Save per-head CSV
                     results_array = torch.cat([head_targets.view(-1, 1), head_preds.view(-1, 1)], dim=1).cpu().numpy()
                     csv_path = self.path_config.result_path.replace(".png", f"_{head_name}_predictions.csv")
                     np.savetxt(
@@ -785,8 +781,6 @@ class StaticTrainer3D(TrainerBase):
                     )
                     logging.getLogger(__name__).info(f"Saved {head_name} predictions to {csv_path}")
 
-                # Create dummy full_preds/full_targets for the rest of the reporting
-                # (use the first non-empty head)
                 full_preds = torch.tensor([0.0])
                 full_targets = torch.tensor([0.0])
                 for head_name in all_batch_preds_denorm:
@@ -803,7 +797,6 @@ class StaticTrainer3D(TrainerBase):
 
             # --- Inference Speed Statistics Report ---
             if inference_times:
-                # Calculate inference time statistics
                 total_inference_time = sum(inference_times)
                 avg_inference_time = statistics.mean(inference_times)
                 median_inference_time = statistics.median(inference_times)
@@ -811,16 +804,13 @@ class StaticTrainer3D(TrainerBase):
                 max_inference_time = max(inference_times)
                 std_inference_time = statistics.stdev(inference_times) if len(inference_times) > 1 else 0.0
 
-                # Calculate data loading time statistics
                 total_data_loading_time = sum(data_loading_times)
                 avg_data_loading_time = statistics.mean(data_loading_times)
 
-                # Calculate throughput
                 total_test_time = total_inference_time + total_data_loading_time
                 overall_throughput = total_samples / total_test_time
                 inference_throughput = total_samples / total_inference_time
 
-                # Output detailed inference speed report
                 logging.getLogger(__name__).info("=" * 60)
                 logging.getLogger(__name__).info("Inference Speed Performance Report")
                 logging.getLogger(__name__).info("=" * 60)
@@ -859,7 +849,7 @@ class StaticTrainer3D(TrainerBase):
                     "Warning: 'poseidon' metric suite requires adaptation for variable nodes per sample PyG structure. Skipping calculation."
                 )
                 final_metric = float("nan")
-                self.config.datarow["relative error (direct)"] = final_metric  # Store NaN
+                self.config.datarow["relative error (direct)"] = final_metric
 
             if metric_suite == "drivaernet":
                 if self.dataset_config.active_variables is not None:
@@ -899,7 +889,6 @@ class StaticTrainer3D(TrainerBase):
                     "Rel L1 Error (%)": rel_l1,
                 }
 
-                # Store and print results
                 self.config.datarow["MSE (x10^-2)"] = final_metrics_dict["MSE"] * 100
                 self.config.datarow["MAE (x10^-1)"] = final_metrics_dict["MAE"] * 10
                 self.config.datarow["Max AE"] = final_metrics_dict["Max AE"]
@@ -913,39 +902,9 @@ class StaticTrainer3D(TrainerBase):
                 logging.getLogger(__name__).info(f"Rel L2 Error (%):   {final_metrics_dict['Rel L2 Error (%)']:.4f}")
                 logging.getLogger(__name__).info(f"Rel L1 Error (%):   {final_metrics_dict['Rel L1 Error (%)']:.4f}")
 
-                # 🟢 NEW: Save all Ground Truth and Predictions to a CSV file
-                # Pair the true drag and predicted drag side-by-side
                 results_array = torch.cat([full_targets.view(-1, 1), full_preds.view(-1, 1)], dim=1).cpu().numpy()
-
-                # Swap the .png extension from your YAML for a .csv extension
                 csv_save_path = self.path_config.result_path.replace(".png", "_predictions.csv")
-
-                # Save the file
                 np.savetxt(csv_save_path, results_array, delimiter=",", header="True_Drag,Predicted_Drag", comments="")
                 logging.getLogger(__name__).info(f"Saved all test predictions to {csv_save_path}")
 
-            # --- Plotting the stored first sample ---
             logging.getLogger(__name__).info("Skipping 3D plotting for scalar drag prediction")
-            # try:
-            # channel_to_plot = 0
-            # gtr_np = plot_gtr[:, channel_to_plot]
-            # prd_np = plot_prd[:, channel_to_plot]
-            # np.savez(self.path_config.result_path[:-4] + ".npz", coord=plot_coords, gtr=plot_gtr, prd=plot_prd)
-            # plot_save_path = self.path_config.result_path
-            # var_name = self.metadata.names["u"]
-            # plot_3d_comparison_matplotlib(
-            # coords=plot_coords,
-            # u_gtr=gtr_np,
-            # u_prd=prd_np,
-            # save_path=plot_save_path,
-            # variable_name=var_name,
-            # point_size=2.0,
-            # view_angle=(25, -135),
-            # hide_grid=True,
-            # )
-            # logging.getLogger(__name__).info(f"Saved plot for first test sample to {plot_save_path}")
-            # except Exception as plot_err:
-            # logging.getLogger(__name__).error(f"Error during 3D plotting of first test sample: {plot_err}")
-
-        # elif self.setup_config.distributed:
-        # pass
