@@ -6,8 +6,8 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import Parent
 
 class GaotLoss(ParentLoss):
     def _setup(self) -> None:
-        model_path = self.losses_config["cfd"]["model_path"]
-        self.gaot = ModelLoader(model_path=model_path, device=self.device)
+        model_id = self.losses_config["cfd"]["model_id"]
+        self.gaot = ModelLoader(model_id=model_id, device=self.device)
 
     def _loss(self, model) -> torch.Tensor:
         return self.gaot.forward(sdf_model=model)

@@ -9,6 +9,10 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.layers.attn import
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.layers.magno import MAGNOConfig
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.utils.kaolin_utils import get_diff_mesh
 
+model_dict = {1:"/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58232331.pt",
+    2:"/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58245986.pt",
+    3:"/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58310187.pt"
+}
 
 def merge_with_defaults(loaded_dict: dict, default_dataclass) -> dict:
     """
@@ -33,8 +37,10 @@ def merge_with_defaults(loaded_dict: dict, default_dataclass) -> dict:
 
 
 class ModelLoader:
-    def __init__(self, model_path: str, device: str) -> None:
-        self.model_path = model_path
+    def __init__(self, model_id, device: str) -> None:
+        if model_id not in model_dict:
+            raise ValueError("Falsche modell-id")
+        self.model_path = model_dict[model_id]
         self.device = device
         self._load_model()
 
@@ -148,16 +154,3 @@ class ModelLoader:
         return coupled_loss
 
 
-# test the model loader
-
-if __name__ == "__main__":
-    from subprojects.wp4_aeroshell_optimizer.v1.src.models.basic_MLP_v1 import BasicMLP
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model_loader = ModelLoader(
-        model_path="/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58232331.pt", device="cuda"
-    )
-    sdf_model = BasicMLP().to(device)
-
-    loss = model_loader.forward(sdf_model)
-    print("Coupled Loss:", loss.item())
