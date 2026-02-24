@@ -8,6 +8,7 @@ general_info:
   gamma: 0.01  # parameter for ALM penalty update
 
 losses: # [compute: bool, weight: float, path: str]
+  # NOTE: that for each loss class, only one version should have compute=True
   aero:
     frontal_area_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/frontal_area_v0.py"]
     crude_estimator_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/crude_estimator_v0.py"]

@@ -162,12 +162,15 @@ class TotalLoss:
             loss_names[loss_name] = current_loss  # convert to float, gradient is lost
 
         if self.losses_config["general_info"]["ALM"] == "True":  # ALM weighting
-            # documentation: `Losses and their weights` in Obsidian
-            # o: primary loss (solar and drag) (objectives), for now just use basic weighting, later could be BOTorch or with a RaceTimeEstimator
-            # c: constraint loss (bb, eikonal, smoothness)
-            o = -1 *cruising_speed(solar_power=loss_tensors[4], drag_force_normalized= loss_tensors[0], mass=210, c_losses=20, rolling_friction_coefficient=0.006)
+            # DOCUMENTATION: `Losses and their weights` in Obsidian
 
-            # 1D tenosrs for constraint losses
+            # o: maximise cruising speed (CSE)
+            if self.losses_config["CSE"]=="True": # TODO: go through each separate loss and check
+                o = -1 *cruising_speed(solar_power=loss_tensors[4], drag_force_at_25ms=loss_tensors[0], mass=210, c_losses=20, rolling_friction_coefficient=0.006)
+            else: # o: maximise solar power - drag losses
+                o = -1 * (loss_tensors[4] - loss_tensors[0])
+
+            # c: constraint loss (bb, eikonal, smoothness)
             c = torch.stack([loss_tensors[1], loss_tensors[2], loss_tensors[3]])
 
             alm_thresholds = self.losses_config["general_info"]["alm_thresholds"]
@@ -182,17 +185,12 @@ class TotalLoss:
                 constrained_losses=c,
                 thresholds=thresholds_tensor,
             )
-            
-            if self.losses_config["CSE"]=="True": # TODO: go through each seperate loss and check
-                weighted_total_loss = (
-                    cruising_speed(solar_power=loss_tensors[4], drag_force_normalized= loss_tensors[0], mass=210, c_losses=20, rolling_friction_coefficient=0.006) + torch.dot(self.lamdas.squeeze(), c) + 1 / 2 * torch.dot(self.mus.squeeze(), c**2)
-                )
 
-            else:
-                weighted_total_loss = (
-                    o + torch.dot(self.lamdas.squeeze(), c) + 1 / 2 * torch.dot(self.mus.squeeze(), c**2)
-                )  # dot products of weights and losses tensors
-                # Sum all loss tensors in a differentiable way
+
+            weighted_total_loss = (
+                o + torch.dot(self.lamdas.squeeze(), c) + 1 / 2 * torch.dot(self.mus.squeeze(), c**2)
+            )  # dot products of weights and losses tensors
+            # Sum all loss tensors in a differentiable way
 
         else:  # manual weighting
             weights = weights_manual(
