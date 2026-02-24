@@ -1,13 +1,9 @@
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, Union, List, Literal, Dict, Any
-
-# model default config
-from ...model.layers.attn import TransformerConfig
-from ...model.layers.magno import MAGNOConfig
-
-from ..optimizers import OptimizerargsConfig
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from omegaconf import OmegaConf
+
+from ..optimizers import OptimizerargsConfig
 
 
 def merge_config(default_config_class, user_config):
