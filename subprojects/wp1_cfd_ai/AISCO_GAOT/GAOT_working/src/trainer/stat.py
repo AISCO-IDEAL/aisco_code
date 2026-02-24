@@ -298,7 +298,19 @@ class StaticTrainer3D(TrainerBase):
         logging.getLogger(__name__).info("Initializing PyG dataset ...")
         self.latent_token_size = self.model_config.args.latent_tokens
         data_root = dataset_config.base_path
-        order_file_path = os.path.join(data_root, f"order_{dataset_config.processed_folder}.txt")
+
+        # Allow custom order file name via config (e.g. "order_force_only.txt")
+        order_file_name = getattr(dataset_config, "order_file_name", None)
+        if order_file_name:
+            order_file_path = os.path.join(data_root, order_file_name)
+        else:
+            order_file_path = os.path.join(data_root, f"order_{dataset_config.processed_folder}.txt")
+
+        # Store active_heads for filtering (e.g. ["force"] or ["force","cd"])
+        self.active_heads = getattr(dataset_config, "active_heads", None)
+        if self.active_heads:
+            logging.getLogger(__name__).info(f"Active heads (training only on): {self.active_heads}")
+
         processed_data_path = os.path.join(data_root, dataset_config.processed_folder)
 
         if not os.path.exists(processed_data_path):
@@ -362,12 +374,17 @@ class StaticTrainer3D(TrainerBase):
             c_mean_for_norm = self.c_mean
             c_std_for_norm = self.c_std
 
+        # If active_heads is set, filter per_head_stats to only those heads
+        active_per_head_stats = self.per_head_stats if hasattr(self, "per_head_stats") else None
+        if self.active_heads and active_per_head_stats:
+            active_per_head_stats = {k: v for k, v in active_per_head_stats.items() if k in self.active_heads}
+
         normalize_transform = NormalizeFeatures(
             mean=mean_for_norm,
             std=std_for_norm,
             c_mean=c_mean_for_norm,
             c_std=c_std_for_norm,
-            per_head_stats=self.per_head_stats if hasattr(self, "per_head_stats") else None,
+            per_head_stats=active_per_head_stats,
         )
         composed_transform = Compose([rescale_transform, normalize_transform])
 
@@ -614,6 +631,9 @@ class StaticTrainer3D(TrainerBase):
         # at data loading time — do NOT re-normalize here.
         if isinstance(pred, dict):
             targets = {"force": batch.force, "cd": batch.cd}
+            # Filter to active_heads if configured
+            if self.active_heads:
+                targets = {k: v for k, v in targets.items() if k in self.active_heads}
             return masked_multi_head_loss(pred, targets)
         else:
             return self.loss_fn(pred, target)
@@ -631,6 +651,8 @@ class StaticTrainer3D(TrainerBase):
                 # NOTE: targets already normalized by NormalizeFeatures transform.
                 if isinstance(pred, dict):
                     targets = {"force": batch.force, "cd": batch.cd}
+                    if self.active_heads:
+                        targets = {k: v for k, v in targets.items() if k in self.active_heads}
                     loss = masked_multi_head_loss(pred, targets)
                 else:
                     target = batch.y
