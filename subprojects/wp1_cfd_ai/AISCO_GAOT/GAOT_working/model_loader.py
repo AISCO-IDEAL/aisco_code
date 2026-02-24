@@ -4,15 +4,18 @@ import torch
 from omegaconf import OmegaConf
 from torch_geometric.data import Data, Batch
 
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.gaot_3d import GAOT3D
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.gaot_3d_attention import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.layers.attn import AttentionConfig, FFNConfig, TransformerConfig
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.layers.magno import MAGNOConfig
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.utils.kaolin_utils import get_diff_mesh
 
-model_dict = {1:"/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58232331.pt",
-    2:"/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58245986.pt",
-    3:"/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58310187.pt"
+model_dict = {
+    1: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58232331.pt",
+    2: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58245986.pt",
+    3: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58310187.pt",
+    4: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/overfit_model_58316029.pt"
 }
+
 
 def merge_with_defaults(loaded_dict: dict, default_dataclass) -> dict:
     """
@@ -81,11 +84,16 @@ class ModelLoader:
         if self.model_path:
             state = torch.load(self.model_path, map_location=self.device, weights_only=False)
             if "model" in state:
-                self.gaot.load_state_dict(state["model"])
+                sd = state["model"]
             elif "state_dict" in state:
-                self.gaot.load_state_dict(state["state_dict"])
+                sd = state["state_dict"]
             else:
-                self.gaot.load_state_dict(state)
+                sd = state
+
+            # Strip "module." prefix from DDP/DataParallel checkpoints
+            sd = {k.removeprefix("module."): v for k, v in sd.items()}
+
+            self.gaot.load_state_dict(sd)
 
     def forward(self, sdf_model) -> torch.Tensor:
         mesh_verts, mesh_faces = get_diff_mesh(model=sdf_model)
@@ -138,7 +146,7 @@ class ModelLoader:
 
         # Enable anomaly detection to trace in-place ops inside GAOT3D
         with torch.autograd.set_detect_anomaly(True):
-            gaot_loss = self.gaot.forward(batch=batch)
+            gaot_loss = self.gaot.forward(batch=batch)["force"]
             loss_to_vert_grad = torch.autograd.grad(gaot_loss, optim_verts, retain_graph=True)[0]
 
         # Push gradients into sdf_model weights via surrogate coupling
@@ -152,5 +160,3 @@ class ModelLoader:
 
         coupled_loss = gaot_loss + (surrogate_coupling - surrogate_coupling.detach())
         return coupled_loss
-
-
