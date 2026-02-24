@@ -1,5 +1,7 @@
+import os
+
 import torch
-from omegaconf import OmegaConf
+import yaml
 from torch_geometric.data import Batch, Data
 
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.gaot_3d import GAOT3D
@@ -24,8 +26,13 @@ class ModelLoader:
     def _load_model(self) -> None:
         # ── load config YAML saved alongside the checkpoint ─────────────
         config_path = self.model_path.replace(".pt", "_config.yaml")
-        raw_config = OmegaConf.load(config_path)
-        config = OmegaConf.to_container(raw_config, resolve=True)
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(
+                f"Model config not found at {config_path}. Expected a _config.yaml next to the .pt checkpoint."
+            )
+
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
 
         # The saved YAML may be either:
         #   (a) flat: top-level keys are input_size, magno, transformer, ...
@@ -36,6 +43,7 @@ class ModelLoader:
 
         # ── build model from config dict ─────────────────────────────────
         self.gaot = GAOT3D(config=config).to(self.device)
+        self.gaot.eval()
 
         # ── load weights ─────────────────────────────────────────────────
         state = torch.load(self.model_path, map_location=self.device, weights_only=False)
@@ -77,11 +85,16 @@ class ModelLoader:
 
         # ── build PyG batch ──────────────────────────────────────────────
         data = Data(pos=optim_verts, face=mesh_faces.T, c=vertex_normals)
-        batch = Batch.from_data_list([data])
+        batch = Batch.from_data_list([data]).to(self.device)
+
+        # ── latent token positions (registered buffer inside the model) ──
+        tokens_pos = self.gaot.latent_tokens  # already on self.device
 
         # ── forward through GAOT3D ───────────────────────────────────────
         with torch.autograd.set_detect_anomaly(True):
-            gaot_output = self.gaot.forward(batch=batch)
+            gaot_output = self.gaot(batch=batch, tokens_pos=tokens_pos)
+
+            # gaot_output is a dict: {"force": Tensor, "cd": Tensor, ...}
             gaot_loss = gaot_output["force"]
             loss_to_vert_grad = torch.autograd.grad(gaot_loss, optim_verts, retain_graph=True)[0]
 
