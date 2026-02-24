@@ -1,0 +1,23 @@
+command:
+  - ${env}
+  - python3
+  - -m
+  - wp4_aeroshell_optimizer.src.main
+program: main_v1.1_one_model.py
+
+#TODO
+method: grid
+
+
+parameters:
+  SolarLossConfigV3:  # moved from solar_loss_v3.py
+    method: ["diso_dmc","diso_mc","flexicubes","mesh_sdf"] # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
+    bbox: list[list[float]] = [[-3500.0, 3500.0], [-3500.0, 3500.0], [-3500.0, 3500.0]]
+    resolution: 128
+    area_budget_mm2: float = 1e6
+    sun_dir: list[float] | torch.Tensor = None
+    device: str = "cuda"
+    batch_size: int = 4096
+    eps: float = 1e-12
+    "sigmoid_sharpness": 1.0,
+    "budget_penalty_weight": 0.1,

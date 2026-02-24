@@ -10,27 +10,31 @@ model_def:
   model_name: "BasicMLP"
   model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/basic_MLP_v1"
 
-
+  
 active_configs:
   losses: "losses_v0_config.yaml"
   pretraining: "pretraining_v0_config.yaml"
   training: "training_v0_config.yaml"
   model_params: "basic_MLP_v1.yaml"
   wandb: "wandb_v0_sweep.yaml"
+  neural_renderer: "neural_renderer_v0.yaml"
 
 wandb_general:
   use_wandb: True
-  project_name: "Aeroshell Optimiser"
+  project_name: "50_Meshes_CFD_AI"
   entity_name: "aisco"
   track_run: 1
-  rendering_frequency: 5
+  use_renderer: True
+  use_neural_renderer: True
+  rendering_frequency: 1
   use_sweep: 0
 
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
   pretrained_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset"
   storage_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+  #Outdated, new version uses better storage solution
   model_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/models"
-  mesh_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/meshes"
+  mesh_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/meshes" #Outdated
 
 # master example of how to reference other config files:
 #     def __pointgrid_geni(self) -> list[list[float]]:

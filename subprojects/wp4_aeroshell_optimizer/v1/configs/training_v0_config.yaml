@@ -2,9 +2,14 @@ general_info:
   config_debugging: "True"
 
 training_params:
+  learning_rate: 0.00000002
+  num_epochs: 25
+  scheduler_step_size: 200 # does what?
+  scheduler_gamma: 0.5 # does what?
   learning_rate: 0.00005
   batch_size: 4096
-  num_epochs: 30
+  num_epochs: 500
+  mesh_save_interval: 5
   model_capacity: 256
   num_layers: 8
   skip_connections: [4]
@@ -13,10 +18,3 @@ training_params:
   optimizer: "adam"
   scheduler_step_size: 200
   scheduler_gamma: 0.5
-
-# is this used for random point sampling to optimise the sdf network? if no, please move to correct file.
-pointgrid_params:
-  dx: 500
-  dy: 500
-  dz: 500
-  rand: 400

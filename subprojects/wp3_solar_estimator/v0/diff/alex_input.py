@@ -1,5 +1,6 @@
 import torch
 
+
 def soft_knapsack_selection(scores_per_area, areas, area_budget, tau=0.1, penalty=10.0):
     """
     scores_per_area: tensor [N], already score/area, i.e. powerratio --> normal vector *dot* sun vector
@@ -13,7 +14,7 @@ def soft_knapsack_selection(scores_per_area, areas, area_budget, tau=0.1, penalt
     # Softmax over scores_per_area gives a differentiable "soft sort"
     w = torch.softmax(scores_per_area / tau, dim=0)
     weights = w / (w.sum() + 1e-8)
-    
+
 
     # Expected area usage and score
     expected_area = (weights * areas).sum()
@@ -51,7 +52,7 @@ print("Selection weights:", w)
 def dummy_solar_loss(verts: torch.Tensor, faces: torch.Tensor, sun_dir: torch.Tensor, dev: str="cuda",
                      slope_param: float = 7.0, offset_param: float = 3.0):
     """
-    A dummy loss function, written by Alex in order to have at least something working properly 
+    A dummy loss function, written by Alex in order to have at least something working properly
     for system integration at 18.11/25
 
     Calculates the normal vectors, takes the scalar product of normals and sun_dir and applies some activations
@@ -63,10 +64,10 @@ def dummy_solar_loss(verts: torch.Tensor, faces: torch.Tensor, sun_dir: torch.Te
         return torch.tensor(2.0, device=verts.device, requires_grad=True)
 
     verts_b = verts.unsqueeze(0)     # (1, V, 3)
-    faces_b = faces.unsqueeze(0) 
+    faces_b = faces.unsqueeze(0)
 
     # Face vertices
-    v0 = verts_b[0][faces_b[:, 0]] 
+    v0 = verts_b[0][faces_b[:, 0]]
     v1 = verts_b[0][faces_b[:, 1]]
     v2 = verts_b[0][faces_b[:, 2]]
 
@@ -80,7 +81,7 @@ def dummy_solar_loss(verts: torch.Tensor, faces: torch.Tensor, sun_dir: torch.Te
     # Compute power ratio (dot product of normals and sun direction)
     score = (normals * s).sum(dim=-1)
 
-    
+
     #Compute loss with custom activation function that flows well with gradients
     loss = (torch.sigmoid(slope_param * torch.log(score + 1.5) - offset_param)).mean()
     return -loss

@@ -1,9 +1,10 @@
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
 import torch
 import trimesh
 from pvlib import solarposition
-from datetime import datetime
 
 
 # ============================================================
@@ -21,7 +22,7 @@ def get_sun_direction(latitude, longitude, altitude, time_utc):
     elevation = np.deg2rad(solpos['elevation'].iloc[0])
 
     zenith_angle = np.pi/2 - elevation
-    
+
     x = np.sin(zenith_angle) * np.sin(azimuth)
     y = np.sin(zenith_angle) * np.cos(azimuth)
     z = np.cos(zenith_angle)
@@ -161,7 +162,7 @@ def evaluate_solar_mesh(stl_path, lat, lon, altitude, times_utc):
     perf_idx, best_mesh = pv_perf_index(top_mesh, res)
     return perf_idx, best_mesh
 
-  
+
 
 def evaluate_from_points_csv(stl_path, points_csv_path):
 
@@ -247,6 +248,3 @@ if __name__ == "__main__":
     # Create scene and show
     scene = trimesh.Scene([sky_mesh, best_mesh])
     scene.show(notebook=True)
-
-
-

@@ -63,7 +63,6 @@ def powerratio_iam(theta_grad, b0=0.05):
     theta_rad = np.radians(theta_grad)
     cos_theta = np.cos(theta_rad)
 
-    #
 
     # For the IAM formula, we must prevent division by zero (when cos_theta is 0, i.e., theta=90°).
     # clip cos_theta to a minimum value slightly above 0 to avoid division by zero

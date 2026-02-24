@@ -1,9 +1,7 @@
 import contextlib
 
 import torch
-from kaolin.ops.conversions import (
-    FlexiCubes,
-)
+from kaolin.ops.conversions import FlexiCubes
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 
@@ -12,7 +10,7 @@ GRID_DIMS = 3
 
 def get_diff_mesh(
     model: BaseModel,
-    grid_res: list[int] | int = 128,
+    grid_res: list[int] | int = 128 * 2,
     box_dim: list = [-5000, 5000, -5000, 5000, -5000, 5000],  # noqa: B006
     device: str = "cuda",
     *,
