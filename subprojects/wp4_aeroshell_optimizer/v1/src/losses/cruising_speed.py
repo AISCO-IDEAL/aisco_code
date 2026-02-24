@@ -11,8 +11,8 @@ class PhysicalRootFinder(torch.autograd.Function):
 
             # Newton's Method (5-10 iterations are typically sufficient given the monotonicity)
             for _ in range(8):
-                f = drag_force_normalized * u**3 + rolling_friction_force * u + c - solar_power
-                df_du = 3 * drag_force_normalized * u**2 + rolling_friction_force
+                f = drag_force_normalized * u**3/ (25**2) + rolling_friction_force * u + c - solar_power
+                df_du = 3 / (25**2) * drag_force_normalized * u**2 + rolling_friction_force
                 u = u - f / df_du
                 
                 # Ensure we remain within the physical domain (speed must be positive)
