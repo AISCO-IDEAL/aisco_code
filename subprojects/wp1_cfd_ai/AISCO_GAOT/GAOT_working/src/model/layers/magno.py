@@ -1,9 +1,5 @@
-# src/model/layers/magno.py
-from typing import List, Optional, Tuple, Union  # noqa: UP035
-
 import torch
 import torch.nn as nn  # noqa: PLR0402
-import torch.nn.functional as F  # noqa: N812
 import torch_geometric as pyg
 from torch_geometric.nn import knn as pyg_knn
 from torch_geometric.nn import radius as pyg_radius
@@ -23,19 +19,19 @@ def parse_neighbor_strategy(neighbor_strategy: str | list[str]) -> tuple[str, st
     """
     if isinstance(neighbor_strategy, str):
         return neighbor_strategy, neighbor_strategy
-    elif isinstance(neighbor_strategy, list) and len(neighbor_strategy) == 2:
+    elif isinstance(neighbor_strategy, list) and len(neighbor_strategy) == 2:  # noqa: PLR2004
         return neighbor_strategy[0], neighbor_strategy[1]
     else:
         raise ValueError(f"neighbor_strategy must be str or list of length 2, got {neighbor_strategy}")
 
 
-def parse_geoembed_strategy(use_geoembed: Union[bool, List[bool]]) -> Tuple[bool, bool]:
+def parse_geoembed_strategy(use_geoembed: bool | list[bool]) -> tuple[bool, bool]:
     """
     Parse use_geoembed into encoder and decoder settings.
     """
     if isinstance(use_geoembed, bool):
         return use_geoembed, use_geoembed
-    elif isinstance(use_geoembed, list) and len(use_geoembed) == 2:
+    elif isinstance(use_geoembed, list) and len(use_geoembed) == 2:  # noqa: PLR2004
         return use_geoembed[0], use_geoembed[1]
     else:
         raise ValueError(f"use_geoembed must be bool or list of length 2, got {use_geoembed}")
@@ -174,9 +170,9 @@ def apply_neighbor_sampling(
     edge_index: torch.Tensor,
     num_query_nodes: int,
     device: torch.device,
-    sampling_strategy: Optional[str] = None,
-    max_neighbors: Optional[int] = None,
-    sample_ratio: Optional[float] = None,
+    sampling_strategy: str | None = None,
+    max_neighbors: int | None = None,
+    sample_ratio: float | None = None,
     training: bool = True,
 ) -> torch.Tensor:
     if sampling_strategy is None:
@@ -233,7 +229,7 @@ def apply_neighbor_sampling(
 # MAGNOEncoder
 ############
 class MAGNOEncoder(nn.Module):
-    def __init__(self, in_channels, out_channels, magno_config: dict):
+    def __init__(self, in_channels, magno_config: dict):  # noqa: PLR0915
         super().__init__()
         self.magno_config = magno_config
 
@@ -258,6 +254,7 @@ class MAGNOEncoder(nn.Module):
 
         # --- Init GNO Layer ---
         self.use_gno = magno_config.get("use_gno", True)
+        self.lifting: LinearChannelMLP | None = None
         if self.use_gno:
             in_kernel_in_dim = self.coord_dim * 2
             if magno_config.get("in_gno_transform_type", "linear") in ["nonlinear", "nonlinear_kernelonly"]:
@@ -279,22 +276,27 @@ class MAGNOEncoder(nn.Module):
             if self.mlp_type == "linear":
                 self.lifting = LinearChannelMLP(layers=[in_channels, self.lifting_channels])
             else:
-                self.lifting = ChannelMLP(
-                    in_channels=in_channels,
-                    out_channels=self.lifting_channels,
-                    n_layers=1,
-                )
+                self.lifting = LinearChannelMLP(layers=[in_channels, self.lifting_channels])
         else:
-            self.gno = None
-            self.lifting = None
+            self.gno = IntegralTransform(
+                channel_mlp_layers=[],
+                transform_type="linear",
+                use_attn=False,
+                coord_dim=self.coord_dim,
+                attention_type="cosine",
+            )
             if in_channels > 0:
+                self.lifting = LinearChannelMLP(layers=[in_channels, self.lifting_channels])
                 print(
                     "Warning: MAGNOEncoder has input_channels > 0 but use_gno=False. Input features (batch.x) will be ignored by the encoder path."
                 )
+            else:
+                self.lifting = None
 
         # --- Init GeoEmbed (optional) ---
         use_geoembed_encoder, _ = parse_geoembed_strategy(magno_config.get("use_geoembed", False))
         self.use_geoembed = use_geoembed_encoder
+        self.recvery: LinearChannelMLP | ChannelMLP | None
         if self.use_geoembed:
             self.geoembed = GeometricEmbedding(
                 input_dim=self.coord_dim,
@@ -302,6 +304,7 @@ class MAGNOEncoder(nn.Module):
                 method=magno_config.get("embedding_method", "statistical"),
                 pooling=magno_config.get("pooling", "max"),
             )
+            self.recovery: LinearChannelMLP | ChannelMLP
             if self.mlp_type == "linear":
                 self.recovery = LinearChannelMLP(layers=[2 * self.lifting_channels, self.lifting_channels])
             else:
@@ -314,7 +317,7 @@ class MAGNOEncoder(nn.Module):
             self.scale_weighting = nn.Sequential(nn.Linear(self.coord_dim, 16), nn.ReLU(), nn.Linear(16, self.num_scales))
             self.scale_weight_activation = nn.Softmax(dim=-1)
 
-    def forward(
+    def forward(  # noqa: PLR0912, PLR0915
         self, batch: "pyg.data.Batch", latent_tokens_pos: torch.Tensor, latent_tokens_batch_idx: torch.Tensor
     ) -> torch.Tensor:
         phys_pos = batch.pos
@@ -337,11 +340,10 @@ class MAGNOEncoder(nn.Module):
             phys_feat = torch.cat(phys_feats, dim=-1) if phys_feats else None
         else:
             phys_feat = getattr(batch, self.feature_attr_name, None)
-            if phys_feat is None:
-                if self.use_gno:
-                    raise AttributeError(
-                        f"MAGNOEncoder requires feature attribute '{self.feature_attr_name}' but it was not found in the batch."
-                    )
+            if phys_feat is None and self.use_gno:
+                raise AttributeError(
+                    f"MAGNOEncoder requires feature attribute '{self.feature_attr_name}' but it was not found in the batch."
+                )
 
         # --- Multi-Scale GNO encoding ---
         encoded_scales = []
@@ -381,9 +383,13 @@ class MAGNOEncoder(nn.Module):
             # --- Conditional GNO Path ---
             if self.use_gno:
                 if self.mlp_type == "linear":
-                    phys_feat_lifted = self.lifting(phys_feat)
+                    phys_feat_lifted = self.lifting(phys_feat) if phys_feat is not None and self.lifting is not None else None
                 else:
-                    phys_feat_lifted = self.lifting(phys_feat.transpose(0, 1)).transpose(0, 1)
+                    phys_feat_lifted = (
+                        self.lifting(phys_feat.transpose(0, 1)).transpose(0, 1)
+                        if phys_feat is not None and self.lifting is not None
+                        else None
+                    )
 
                 encoded_gno = self.gno(
                     y_pos=phys_pos,
@@ -493,14 +499,8 @@ class MAGNODecoder(nn.Module):
 
         # --- Init Projection ---
         if self.mlp_type == "linear":
-            self.projection = LinearChannelMLP(layers=[in_channels, magno_config.get("projection_channels", 256), out_channels])
-        else:
-            self.projection = ChannelMLP(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                hidden_channels=magno_config.get("projection_channels", 256),
-                n_layers=2,
-                n_dim=1,
+            self.projection: LinearChannelMLP | ChannelMLP = LinearChannelMLP(
+                layers=[in_channels, magno_config.get("projection_channels", 256), out_channels]
             )
 
         # --- Init GeoEmbed (Optional) ---
@@ -511,6 +511,7 @@ class MAGNODecoder(nn.Module):
                 method=magno_config.get("embedding_method", "statistical"),
                 pooling=magno_config.get("pooling", "max"),
             )
+            self.recovery: LinearChannelMLP | ChannelMLP
             if self.mlp_type == "linear":
                 self.recovery = LinearChannelMLP(layers=[2 * in_channels, in_channels])
             else:
@@ -522,7 +523,7 @@ class MAGNODecoder(nn.Module):
             self.scale_weighting = nn.Sequential(nn.Linear(self.coord_dim, 16), nn.ReLU(), nn.Linear(16, self.num_scales))
             self.scale_weight_activation = nn.Softmax(dim=-1)
 
-    def forward(
+    def forward(  # noqa: PLR0912
         self,
         rndata_flat: torch.Tensor,
         phys_pos_query: torch.Tensor,
