@@ -1,7 +1,5 @@
 from typing import Any
 
-import cadquery as cq
-
 from subprojects.wp2_assembler.version3.components.nbz import call_assembly
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base_class import RenderingMode
@@ -32,7 +30,7 @@ class AssemblyMode(RenderingMode):
         self.completed = False
         self.color = tuple(config.get("color", [0.8, 0.8, 0.8]))  # Default gray color
 
-    def update(self, optimization_state: dict[str, Any]) -> None:
+    def update(self, optimization_state: dict[str, Any]) -> None:  # noqa: ARG002
         """
         Update the rendering mode with the current assembly state.
 
@@ -86,7 +84,7 @@ class AssemblyMode(RenderingMode):
         self.completed = True  # Mark as completed after first render
         return
         # Frame is automatically saved by the base class render method
-    def finalize(self, output_dir, file_name = "assembly.png"):
+    def finalize(self, output_dir, file_name = "assembly.png", delete: bool = False) -> None:
         if not self.frame_storage:
             print(f"  {self.__class__.__name__}: No assembly frame to save, length of storage {len(self.frame_storage)}")
             return
@@ -96,3 +94,6 @@ class AssemblyMode(RenderingMode):
         self.visualiser.save_image(self.frame_storage[0], jpg_path)
 
         print(f"  Saved Assembly frame to {jpg_path}")
+        if delete:
+            self.clear_frames()
+            print("  Deleted stored frames after saving image.")

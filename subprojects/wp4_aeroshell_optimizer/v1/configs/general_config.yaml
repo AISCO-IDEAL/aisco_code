@@ -24,6 +24,7 @@ wandb_general:
   project_name: "50_Meshes_CFD_AI"
   entity_name: "aisco"
   track_run: 1
+  use_renderer: True
   use_neural_renderer: True
   rendering_frequency: 1
   use_sweep: 0

@@ -65,6 +65,8 @@ ipython_config.py
 ##############################
 # Data directories
 **/data/         # User-specific data (to be ignored everywhere)
+# wandb logging stuff
+**/wandb/
 # Python-related directories (recursive) can be found anywhere in the directory
 **__pycache__/
 **/.Python

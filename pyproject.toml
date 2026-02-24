@@ -1,4 +1,3 @@
-#kdiehl
 [build-system]
 
 requires = ["setuptools>=74.0.0"]
@@ -39,9 +38,9 @@ wp2_assembler =[
   "types-PyYAML >= 6.0.12",  # Type stubs for PyYAML [vdiekmann]
   "pybullet" # For speed hump simulations [fsanche]
 ]
-  
+
 wp3_solar_estimator = [
-  "diso >= 0.1.4",
+  "PyMCubes == 0.1.6",
 ]
 
 wp4_aeroshell_optimizer = [
@@ -66,7 +65,7 @@ testing = [
   ]
 
 all = [
-  "aisco_env[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer, testing]"
+  "AISCO_code[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer, testing]"
 ]
 
 #make a all command
@@ -128,7 +127,7 @@ select = [
     # "T20",  # flake8-print - disabled for example scripts
     "SIM",  # flake8-simplify
     "ARG",  # flake8-unused-arguments
-    "PTH",  # flake8-use-pathlib
+    #"PTH",  # flake8-use-pathlib Enforces Path over os usage for e.g. filesaving, shouldn't matter too much for us
     "ERA",  # eradicate
     "PD",   # pandas-vet
     "PGH",  # pygrep-hooks
@@ -158,6 +157,7 @@ ignore = [
     "D107",  # Missing docstring in __init__
     "N999",  # ignoring PEP8 convention to enable us to call our project AISCO_code instead of aisco_code
     "PLR0913", # too many arguments is bs convention for us
+    "TRY003", # would block long messages in e.g. ValueError("messageXYZ") debugging warnings
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
@@ -188,13 +188,15 @@ max-args = 8
 python_version = "3.11"
 namespace_packages = true
 explicit_package_bases = true
-mypy_path = "AISCO/"
+mypy_path = "subprojects/"
 ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = true
-files = ["AISCO/", "tests/"]
+files = ["subprojects/", "tests/"]
+
 exclude = [
   "^build/",
   "^docs/",
-  "**/fixed_renderer/**",
+  "^fixed_renderer/",
+  ".*/archive/*.",
 ]

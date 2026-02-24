@@ -116,8 +116,6 @@ class RenderingMode:
 
         if vertices is None or faces is None:
             raise Warning("Warning: No vertices/faces in optimization_state, skipping update")
-            return
-
 
         # Render from fixed camera position
         image = self._render(
@@ -135,15 +133,17 @@ class RenderingMode:
         else:
             self.frame_storage.append(image)
 
-    def finalize(self, output_dir: Path, file_name: str = "animation.gif") -> None:
+    def finalize(self, output_dir: Path, file_name: str = "animation.gif", delete: bool = False) -> None:
         """
-        Save all stored frames as GIF.
+        Save all stored frames as GIF (default, for image you need to help yourself).
 
-        Override this method if you need custom save logic.
+        Override this method if you need custom save logic. Having the same finalize signature is mandatory
         Default behavior: creates animation.gif from all stored frames.
 
         Args:
             output_dir: Directory where results should be saved (Path object)
+            file_name: Name of the output GIF file (default: "animation.gif")
+            delete: If True, deletes stored frames after saving (default: False)
         """
         if not self.frame_storage:
             print(f"  {self.__class__.__name__}: No frames to save")
@@ -154,6 +154,10 @@ class RenderingMode:
         self._frames_to_gif(gif_path, fps=self.fps)
 
         print(f"  Saved {len(self.frame_storage)} frames to {gif_path}")
+        # delete frames if specified
+        if delete:
+            self.clear_frames()
+            print("  Deleted stored frames after saving GIF.")
 
     # ========== Convenience methods for custom rendering ==========
 
