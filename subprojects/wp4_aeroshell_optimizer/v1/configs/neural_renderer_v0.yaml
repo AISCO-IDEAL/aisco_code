@@ -1,6 +1,8 @@
 #This config includes everything regarding the visualiser and its wrapper you might need
 
 
+general:
+  store_wandb: True #Whether to upload results to wandb at the end
 
 
 # Mesh extraction settings for converting neural SDF to renderable mesh
@@ -32,7 +34,7 @@ mesh_extraction:
   verbose: false
 
 
-# overall visualiser/neural renderer config for default renderer instance
+# overall visualiser/neural renderer config for default renderer instance that is used
 neural_renderer:
   image_size: 1024
   background_color: [0.0,0.0,0.0]
@@ -57,7 +59,7 @@ rendering_modes:
   # Just a picture of the current assembly
   assembly_mode:
     #mandatory
-    enabled: false
+    enabled: true
     class_path: "custom_modes.assembly_mode:AssemblyMode"
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you
@@ -74,6 +76,7 @@ rendering_modes:
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you
     config:
+      store_wandb: True
       render_mode: "rgb"
       camera_position: [3000, 3000,3000]
       look_at: [0, 0, 0]
