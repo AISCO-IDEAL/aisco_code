@@ -244,6 +244,7 @@ class SolarLossEstimator:
             )
 
         else:
+            print(f"Using non-MeshSDF method for Solar loss ({self.method}), should be fully differentiable")
             loss, metrics = solar_mesh_loss_v3(
                 vertices,
                 faces,
