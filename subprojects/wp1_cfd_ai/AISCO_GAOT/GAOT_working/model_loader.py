@@ -2,161 +2,105 @@ from dataclasses import asdict
 
 import torch
 from omegaconf import OmegaConf
-from torch_geometric.data import Data, Batch
+from torch_geometric.data import Batch, Data
 
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.gaot_3d import GAOT3D
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.layers.attn import AttentionConfig, FFNConfig, TransformerConfig
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.layers.magno import MAGNOConfig
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.utils.kaolin_utils import get_diff_mesh
 
 model_dict = {
     1: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58232331.pt",
     2: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58245986.pt",
     3: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58310187.pt",
-    4: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/overfit_model_58316029.pt"
+    4: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/overfit_model_58316029.pt",
 }
 
 
-def merge_with_defaults(loaded_dict: dict, default_dataclass) -> dict:
-    """
-    Merge a loaded config dict with the default values of a dataclass.
-    - Keys present in loaded_dict override defaults.
-    - Keys missing from loaded_dict fall back to dataclass defaults.
-    - Keys in loaded_dict not present in defaults are ignored with a warning.
-    """
-    default_dict = asdict(default_dataclass())
-    merged = {}
-    for key, default_val in default_dict.items():
-        if key in loaded_dict:
-            merged[key] = loaded_dict[key]
-        else:
-            print(f"[ModelLoader] Config key '{key}' not found in saved config, using default: {default_val}")
-            merged[key] = default_val
-    # Warn about unknown keys
-    for key in loaded_dict:
-        if key not in default_dict:
-            print(f"[ModelLoader] WARNING: Config key '{key}' is not a known field of {default_dataclass.__name__}, ignoring.")
-    return merged
-
-
 class ModelLoader:
-    def __init__(self, model_id, device: str) -> None:
+    def __init__(self, model_id: int, device: str) -> None:
         if model_id not in model_dict:
-            raise ValueError("Falsche modell-id")
+            raise ValueError(f"Unknown model_id={model_id}. Valid: {list(model_dict.keys())}")
         self.model_path = model_dict[model_id]
         self.device = device
         self._load_model()
 
     def _load_model(self) -> None:
+        # ── load config YAML ────────────────────────────────────────────
         config_path = self.model_path.replace(".pt", "_config.yaml")
-        config = OmegaConf.load(config_path)
-        model_args = config.model.args
+        raw_config = OmegaConf.load(config_path)
+        model_args = OmegaConf.to_container(raw_config.model.args, resolve=True)
 
-        # --- MAGNOConfig ---
-        magno_dict = OmegaConf.to_container(model_args.magno, resolve=True)
-        magno_merged = merge_with_defaults(magno_dict, MAGNOConfig)
-        magno_config = MAGNOConfig(**magno_merged)
+        # Build the single config dict that GAOT3D expects
+        gaot_config = {
+            "input_size": model_args.get("input_size", 6),
+            "output_size": model_args.get("output_size", 1),
+            "latent_tokens": model_args.get("latent_tokens", [32, 32, 32]),
+            "norm_domain": model_args.get("norm_domain", [[-1, -1, -1], [1, 1, 1]]),
+            "magno": model_args["magno"],
+            "transformer": model_args["transformer"],
+            "decoder": model_args.get("decoder", {}),
+        }
 
-        # --- TransformerConfig with nested configs ---
-        transformer_dict = OmegaConf.to_container(model_args.transformer, resolve=True)
-        transformer_merged = merge_with_defaults(transformer_dict, TransformerConfig)
+        # ── build model ─────────────────────────────────────────────────
+        self.gaot = GAOT3D(config=gaot_config).to(self.device)
 
-        # Reconstruct nested AttentionConfig (was loaded as plain dict)
-        if isinstance(transformer_merged.get("attn_config"), dict):
-            attn_nested_merged = merge_with_defaults(transformer_merged["attn_config"], AttentionConfig)
-            transformer_merged["attn_config"] = AttentionConfig(**attn_nested_merged)
+        # ── load weights ─────────────────────────────────────────────────
+        state = torch.load(self.model_path, map_location=self.device, weights_only=False)
+        if "model" in state:
+            sd = state["model"]
+        elif "state_dict" in state:
+            sd = state["state_dict"]
+        else:
+            sd = state
 
-        # Reconstruct nested FFNConfig (was loaded as plain dict)
-        if isinstance(transformer_merged.get("ffn_config"), dict):
-            ffn_nested_merged = merge_with_defaults(transformer_merged["ffn_config"], FFNConfig)
-            transformer_merged["ffn_config"] = FFNConfig(**ffn_nested_merged)
-
-        attn_config = TransformerConfig(**transformer_merged)
-
-        self.gaot = GAOT3D(
-            input_size=6,
-            output_size=1,
-            latent_tokens=tuple(model_args.latent_tokens),
-            magno_config=magno_config,
-            attn_config=attn_config,
-        ).to(self.device)
-
-        if self.model_path:
-            state = torch.load(self.model_path, map_location=self.device, weights_only=False)
-            if "model" in state:
-                sd = state["model"]
-            elif "state_dict" in state:
-                sd = state["state_dict"]
-            else:
-                sd = state
-
-            # Strip "module." prefix from DDP/DataParallel checkpoints
-            sd = {k.removeprefix("module."): v for k, v in sd.items()}
-
-            self.gaot.load_state_dict(sd)
+        # Strip "module." prefix from DDP/DataParallel checkpoints
+        sd = {k.removeprefix("module."): v for k, v in sd.items()}
+        self.gaot.load_state_dict(sd)
 
     def forward(self, sdf_model) -> torch.Tensor:
         mesh_verts, mesh_faces = get_diff_mesh(model=sdf_model)
 
         if mesh_verts is None or mesh_verts.shape[0] == 0:
-            raise ValueError("Empty mesh generated by SDF model — check that the SDF model produces valid geometry.")
+            raise ValueError("Empty mesh generated by SDF model.")
 
         optim_verts = mesh_verts.detach().clone().to(self.device).requires_grad_(True)
         mesh_faces = mesh_faces.to(self.device)
 
-        # --- Compute per-vertex normals (c) — fully differentiable, no in-place ops ---
-        v0 = optim_verts[mesh_faces[:, 0]]  # [num_faces, 3]
-        v1 = optim_verts[mesh_faces[:, 1]]  # [num_faces, 3]
-        v2 = optim_verts[mesh_faces[:, 2]]  # [num_faces, 3]
+        # ── per-vertex normals (fully differentiable, no in-place ops) ──
+        v0 = optim_verts[mesh_faces[:, 0]]
+        v1 = optim_verts[mesh_faces[:, 1]]
+        v2 = optim_verts[mesh_faces[:, 2]]
 
-        face_normals = torch.cross(v1 - v0, v2 - v0, dim=-1)  # [num_faces, 3]
+        face_normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
 
-        # Out-of-place scatter via index_add on all 3 vertex indices at once
         num_verts = optim_verts.shape[0]
-        idx_flat = mesh_faces.reshape(-1)  # [num_faces * 3]
-        normals_flat = face_normals.repeat(3, 1)[  # repeat for each vertex of face
-            torch.argsort(
-                torch.cat(
-                    [
-                        torch.arange(mesh_faces.shape[0], device=self.device),
-                        torch.arange(mesh_faces.shape[0], device=self.device),
-                        torch.arange(mesh_faces.shape[0], device=self.device),
-                    ]
-                )
-            )
-        ]
-
-        # Simpler: stack all (face_idx -> normal) contributions
-        all_idx = mesh_faces.reshape(-1)  # [F*3]
-        all_normals = face_normals.unsqueeze(1).expand(-1, 3, -1).reshape(-1, 3)  # [F*3, 3]
+        all_idx = mesh_faces.reshape(-1)
+        all_normals = face_normals.unsqueeze(1).expand(-1, 3, -1).reshape(-1, 3)
 
         vertex_normals = torch.zeros(num_verts, 3, device=self.device, dtype=optim_verts.dtype)
-        vertex_normals = vertex_normals.index_add(0, all_idx, all_normals)  # out-of-place ✅
+        vertex_normals = vertex_normals.index_add(0, all_idx, all_normals)
         vertex_normals = torch.nn.functional.normalize(vertex_normals, dim=-1)
-        # --- End normal computation ---
 
-        # Build torch_geometric Batch
-        data = Data(
-            pos=optim_verts,
-            face=mesh_faces.T,
-            c=vertex_normals,
-        )
+        # ── build PyG batch ──────────────────────────────────────────────
+        data = Data(pos=optim_verts, face=mesh_faces.T, c=vertex_normals)
         batch = Batch.from_data_list([data])
 
-        # Enable anomaly detection to trace in-place ops inside GAOT3D
+        # ── forward through GAOT3D ───────────────────────────────────────
         with torch.autograd.set_detect_anomaly(True):
-            gaot_loss = self.gaot.forward(batch=batch)["force"]
+            gaot_output = self.gaot.forward(batch=batch)
+            gaot_loss = gaot_output["force"]
             loss_to_vert_grad = torch.autograd.grad(gaot_loss, optim_verts, retain_graph=True)[0]
 
-        # Push gradients into sdf_model weights via surrogate coupling
+        # ── surrogate coupling to SDF model ──────────────────────────────
         sdf_at_verts = sdf_model(optim_verts).view(-1)
         vert_to_sdf_grad = torch.autograd.grad(
-            sdf_at_verts, optim_verts, grad_outputs=torch.ones_like(sdf_at_verts), create_graph=True, retain_graph=True
+            sdf_at_verts,
+            optim_verts,
+            grad_outputs=torch.ones_like(sdf_at_verts),
+            create_graph=True,
+            retain_graph=True,
         )[0]
 
-        loss_dot_vert_to_sdf_grad = (loss_to_vert_grad * vert_to_sdf_grad).sum(dim=-1)
-        surrogate_coupling = (loss_dot_vert_to_sdf_grad.detach() * sdf_at_verts).sum()
-
-        coupled_loss = gaot_loss + (surrogate_coupling - surrogate_coupling.detach())
-        return coupled_loss
+        dot = (loss_to_vert_grad * vert_to_sdf_grad).sum(dim=-1)
+        surrogate = (dot.detach() * sdf_at_verts).sum()
+        return gaot_loss + (surrogate - surrogate.detach())

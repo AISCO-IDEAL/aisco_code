@@ -1,0 +1,47 @@
+# ── Top-level model config ──────────────────────────────────────────────
+input_size: 6
+output_size: 1
+latent_tokens: [16, 16, 16]
+norm_domain: [[-1, -1, -1], [1, 1, 1]]
+
+# ── MAGNO Encoder ────────────────────────────────────────────────────────
+magno:
+  lifting_channels: 64
+  gno_coord_dim: 3
+  gno_radius: 0.15
+  gno_channel_mlp_hidden_layers: [128, 128]
+  geoembed_output_dim: 16
+  geoembed_method: "statistical"
+
+# ── Transformer (processor) ─────────────────────────────────────────────
+transformer:
+  patch_size: 4
+  hidden_size: 256
+  use_attn_norm: true
+  use_ffn_norm: true
+  norm_eps: 1.0e-6
+  num_layers: 10
+  positional_embedding: "rope"
+  use_long_range_skip: true
+
+  attn_config:
+    hidden_size: 256
+    num_heads: 8
+    num_kv_heads: 8
+    use_conditional_norm: false
+    cond_norm_hidden_size: 4
+    atten_dropout: 0.1
+    positional_embedding: "rope"
+
+  ffn_config:
+    hidden_size: 1024
+    use_conditional_norm: false
+    cond_norm_hidden_size: 4
+
+# ── Decoder (pooling + multi-head) ──────────────────────────────────────
+decoder:
+  hidden_features: 256
+  num_shared_layers: 3
+  output_heads:
+    force: 1
+    cd: 1
