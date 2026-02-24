@@ -50,11 +50,6 @@ class StaticTrainer3D(TrainerBase):
         if self.dataset_config.training_strategy == "neural_field":
             if self.dataset_config.update_pt_files_with_edges:
                 raise ValueError("neural_field training strategy requires update_pt_files_with_edges=False")
-            if getattr(self.model_config.args.magno, "precompute_edges", True):
-                logging.getLogger(__name__).warning(
-                    "WARNING: neural_field training strategy requires precompute_edges=False, setting it to False automatically."
-                )
-                self.model_config.args.magno.precompute_edges = False
 
     def _calculate_or_load_stats(self, dataset_config, order_file_path, data_root):
         """Calculates or loads normalization statistics.
@@ -399,6 +394,8 @@ class StaticTrainer3D(TrainerBase):
             k_neighbors=self.model_config.args.magno.k_neighbors,
             asynchronous_graph_building=self.model_config.args.magno.asynchronous_graph_building,
         )
+        # Store collate_fn so train_step can rebuild edges for subsampled batches
+        self.collate_fn = collate_fn
         # Ensure the model expects precomputed edges coming from collate
         if self.model_config.args.magno.asynchronous_graph_building:
             self.model_config.args.magno.precompute_edges = True
@@ -595,13 +592,11 @@ class StaticTrainer3D(TrainerBase):
             if full_x_i is not None:
                 field_target_list.append(full_x_i[query_perm])
 
-        sampled_batch = Batch.from_data_list(sampled_data_list)
-
         query_pos = torch.cat(query_pos_list, dim=0)
         query_batch_idx = torch.cat(query_batch_idx_list, dim=0)
         field_target = torch.cat(field_target_list, dim=0) if field_target_list else None
 
-        return sampled_batch, query_pos, query_batch_idx, field_target
+        return sampled_data_list, query_pos, query_batch_idx, field_target
 
     def train_step(self, batch: "pyg.data.Batch") -> torch.Tensor:
         strategy = self.dataset_config.training_strategy
@@ -614,10 +609,12 @@ class StaticTrainer3D(TrainerBase):
             num_input_nodes = self.dataset_config.neural_field_input_nodes
             num_query_nodes = self.dataset_config.neural_field_query_nodes_train
 
-            sampled_batch, query_pos, query_batch_idx, field_target = self._sample_nodes_neural_field(
+            sampled_data_list, query_pos, query_batch_idx, field_target = self._sample_nodes_neural_field(
                 batch, num_input_nodes, num_query_nodes
             )
 
+            # Build edges for the subsampled data via collate, then move to device
+            sampled_batch = self.collate_fn(sampled_data_list)
             sampled_batch = sampled_batch.to(self.device)
             query_pos = query_pos.to(self.device)
             query_batch_idx = query_batch_idx.to(self.device)

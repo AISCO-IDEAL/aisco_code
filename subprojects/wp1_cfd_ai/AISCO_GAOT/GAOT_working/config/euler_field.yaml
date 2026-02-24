@@ -107,6 +107,7 @@ optimizer:
         min_lr: 1e-4
         final_lr: 1e-5
         save_every_epochs: 10
+        save_every_steps: 50
 
 path:
     ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/euler_field__RUN_ID_.pt"
