@@ -41,6 +41,10 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.colors import TwoSlopeNorm
 from torch_geometric.data import Batch, Data
 from torch_geometric.transforms import Compose
 
@@ -92,11 +96,43 @@ def load_yaml_config(path: str):
 # ─────────────────────────────────────────────────────────────────────────
 def build_model(cfg, num_input_channels: int, num_output_channels: int, device: torch.device):
     """Instantiate GAOT3D from config and move to device."""
+    from omegaconf import OmegaConf
+    from src.model.layers.magno import MAGNOConfig
+
+    # Convert OmegaConf DictConfig → MAGNOConfig dataclass so missing keys
+    # get their dataclass defaults (sampling_strategy, max_neighbors, etc.)
+    magno_dict = OmegaConf.to_container(cfg.model.args.magno, resolve=True)
+    magno_cfg = MAGNOConfig(**{
+        k: v for k, v in magno_dict.items()
+        if k in MAGNOConfig.__dataclass_fields__
+    })
+    # Replace the raw dict with the proper dataclass
+    cfg_args = OmegaConf.to_object(cfg.model.args)
+    cfg_args["magno"] = magno_cfg
+
+    # Rebuild as a simple namespace so init_model can do cfg.magno, cfg.transformer, etc.
+    from types import SimpleNamespace
+
+    class _NS(SimpleNamespace):
+        """SimpleNamespace that also supports attribute-style access for OmegaConf compatibility."""
+        def __getattr__(self, name):
+            try:
+                return super().__getattribute__(name)
+            except AttributeError:
+                raise AttributeError(f"Config has no attribute '{name}'")
+
+    config_ns = _NS(
+        magno=magno_cfg,
+        transformer=cfg.model.args.transformer,
+        latent_tokens=cfg.model.args.latent_tokens,
+        field_output_size=getattr(cfg.model.args, "field_output_size", 0),
+    )
+
     model = init_model(
         input_size=num_input_channels,
         output_size=num_output_channels,
         model=cfg.model.name,
-        config=cfg.model.args,
+        config=config_ns,
     )
     model.to(device)
     model.eval()
@@ -515,12 +551,173 @@ def save_field_output(out_dir: str, name: str, raw_data: Data, result: dict):
 
 
 # ─────────────────────────────────────────────────────────────────────────
+#  VISUALIZATION — 2D projections of pressure fields
+# ─────────────────────────────────────────────────────────────────────────
+def _project_2d(pos: np.ndarray):
+    """Choose the best 2D projection plane (drop the axis with least variance)."""
+    var = np.var(pos, axis=0)
+    drop_axis = int(np.argmin(var))
+    keep = [i for i in range(3) if i != drop_axis]
+    labels = ["X", "Y", "Z"]
+    return pos[:, keep], labels[keep[0]], labels[keep[1]]
+
+
+def visualize_field(
+    out_dir: str,
+    name: str,
+    raw_data: Data,
+    result: dict,
+    max_points: int = 80_000,
+):
+    """
+    Render a multi-panel PNG comparing GT vs predicted pressure and error.
+
+    Layout (3 or 4 panels):
+      [GT pressure] [Predicted pressure] [Absolute error] [optional: wall shear mag]
+
+    Uses 2D projection (drops the axis with least variance).
+    """
+    plot_dir = os.path.join(out_dir, "plots")
+    os.makedirs(plot_dir, exist_ok=True)
+
+    pos = raw_data.pos.cpu().numpy()
+    n_verts = pos.shape[0]
+
+    # Subsample for plotting speed
+    if n_verts > max_points:
+        idx = np.random.default_rng(42).choice(n_verts, max_points, replace=False)
+    else:
+        idx = np.arange(n_verts)
+
+    pos_sub = pos[idx]
+    xy, xlabel, ylabel = _project_2d(pos_sub)
+
+    has_gt = hasattr(raw_data, "x") and raw_data.x is not None
+    has_pred = result.get("pred_pressure") is not None
+    has_shear = hasattr(raw_data, "wall_shear") and raw_data.wall_shear is not None
+
+    n_panels = 0
+    if has_gt:
+        n_panels += 1
+    if has_pred:
+        n_panels += 1
+    if has_gt and has_pred:
+        n_panels += 1  # error panel
+    if has_shear:
+        n_panels += 1
+    if n_panels == 0:
+        return
+
+    fig, axes = plt.subplots(1, n_panels, figsize=(6 * n_panels, 5), dpi=120)
+    if n_panels == 1:
+        axes = [axes]
+
+    panel = 0
+    point_size = max(0.1, min(2.0, 40_000 / len(idx)))
+
+    # ── GT pressure ──────────────────────────────────────────────────
+    if has_gt:
+        gt = raw_data.x.squeeze(-1).cpu().numpy()[idx]
+        vmin, vmax = np.percentile(gt, [2, 98])
+        vcenter = 0.0 if vmin < 0 < vmax else (vmin + vmax) / 2
+        try:
+            norm = TwoSlopeNorm(vcenter=vcenter, vmin=vmin, vmax=vmax)
+        except ValueError:
+            norm = None
+        sc = axes[panel].scatter(xy[:, 0], xy[:, 1], c=gt, s=point_size,
+                                 cmap="RdBu_r", norm=norm, rasterized=True)
+        axes[panel].set_title(f"GT Pressure [Pa]")
+        axes[panel].set_xlabel(xlabel)
+        axes[panel].set_ylabel(ylabel)
+        axes[panel].set_aspect("equal")
+        fig.colorbar(sc, ax=axes[panel], shrink=0.8, pad=0.02)
+        panel += 1
+
+    # ── Predicted pressure ───────────────────────────────────────────
+    if has_pred:
+        pred_p = result["pred_pressure"].cpu().numpy()[idx]
+        # Use GT range if available for consistent colorbar
+        if has_gt:
+            p_vmin, p_vmax = vmin, vmax
+            p_vcenter = vcenter
+        else:
+            p_vmin, p_vmax = np.percentile(pred_p, [2, 98])
+            p_vcenter = 0.0 if p_vmin < 0 < p_vmax else (p_vmin + p_vmax) / 2
+        try:
+            norm_p = TwoSlopeNorm(vcenter=p_vcenter, vmin=p_vmin, vmax=p_vmax)
+        except ValueError:
+            norm_p = None
+        sc = axes[panel].scatter(xy[:, 0], xy[:, 1], c=pred_p, s=point_size,
+                                 cmap="RdBu_r", norm=norm_p, rasterized=True)
+        axes[panel].set_title(f"Predicted Pressure [Pa]")
+        axes[panel].set_xlabel(xlabel)
+        axes[panel].set_ylabel(ylabel)
+        axes[panel].set_aspect("equal")
+        fig.colorbar(sc, ax=axes[panel], shrink=0.8, pad=0.02)
+        panel += 1
+
+    # ── Error map ────────────────────────────────────────────────────
+    if has_gt and has_pred:
+        error = pred_p - gt
+        err_abs_max = max(abs(np.percentile(error, 2)), abs(np.percentile(error, 98)))
+        if err_abs_max < 1e-10:
+            err_abs_max = 1.0
+        sc = axes[panel].scatter(xy[:, 0], xy[:, 1], c=error, s=point_size,
+                                 cmap="coolwarm",
+                                 vmin=-err_abs_max, vmax=err_abs_max,
+                                 rasterized=True)
+        mse_val = result.get("field_mse", float("nan"))
+        mae_val = result.get("field_mae", float("nan"))
+        title = f"Error (pred − GT)\nMSE={mse_val:.2f}, MAE={mae_val:.2f}"
+        axes[panel].set_title(title, fontsize=9)
+        axes[panel].set_xlabel(xlabel)
+        axes[panel].set_ylabel(ylabel)
+        axes[panel].set_aspect("equal")
+        fig.colorbar(sc, ax=axes[panel], shrink=0.8, pad=0.02)
+        panel += 1
+
+    # ── Wall shear magnitude ─────────────────────────────────────────
+    if has_shear:
+        ws = raw_data.wall_shear.cpu().numpy()[idx]
+        ws_mag = np.linalg.norm(ws, axis=1)
+        sc = axes[panel].scatter(xy[:, 0], xy[:, 1], c=ws_mag, s=point_size,
+                                 cmap="inferno", rasterized=True)
+        axes[panel].set_title("Wall Shear |τ| [Pa]")
+        axes[panel].set_xlabel(xlabel)
+        axes[panel].set_ylabel(ylabel)
+        axes[panel].set_aspect("equal")
+        fig.colorbar(sc, ax=axes[panel], shrink=0.8, pad=0.02)
+        panel += 1
+
+    # ── Title & save ─────────────────────────────────────────────────
+    suptitle_parts = [f"{name}  ({n_verts:,} vertices)"]
+    suptitle_parts.append(
+        f"Force: pred={result['pred_force']:.2f}, GT={result['gt_force']:.2f}  |  "
+        f"Cd: pred={result['pred_cd']:.4f}, GT={result['gt_cd']:.4f}"
+    )
+    if not np.isnan(result.get("integrated_drag", float("nan"))):
+        suptitle_parts.append(f"Integrated drag: {result['integrated_drag']:.2f} N")
+    fig.suptitle("\n".join(suptitle_parts), fontsize=10, y=1.02)
+
+    fig.tight_layout()
+    save_path = os.path.join(plot_dir, f"{name}_pressure.png")
+    fig.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    log.info(f"Saved visualization: {save_path}")
+
+
+# ─────────────────────────────────────────────────────────────────────────
 #  MAIN
 # ─────────────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="GAOT Field Inference")
     parser.add_argument("--config", type=str, required=True,
-                        help="Path to training YAML config (e.g. config/euler_field.yaml)")
+                        help="Path to training YAML config (e.g. config/euler_field.yaml). "
+                             "Defines model architecture and is used for data unless --data-config is set.")
+    parser.add_argument("--data-config", type=str, default=None,
+                        help="Optional: path to a DIFFERENT dataset config YAML. "
+                             "Use this for cross-dataset inference — e.g. Euler-trained model on Ahmed data. "
+                             "Model architecture comes from --config, data/transforms come from --data-config.")
     parser.add_argument("--ckpt", type=str, required=True,
                         help="Path to model checkpoint .pt file")
     parser.add_argument("--out", type=str, default=None,
@@ -546,7 +743,19 @@ def main():
 
     # ── Load config ──────────────────────────────────────────────────
     cfg = load_yaml_config(args.config)
-    dataset_cfg = cfg.dataset
+
+    # Cross-dataset mode: model arch from --config, data from --data-config
+    if args.data_config is not None:
+        data_cfg_full = load_yaml_config(args.data_config)
+        dataset_cfg = data_cfg_full.dataset
+        log.info(f"CROSS-DATASET MODE: model from {args.config}, data from {args.data_config}")
+        log.info("  NOTE: Scalar predictions (force/cd) will be denormalized with the "
+                 "training dataset's stats — values are NOT directly comparable to the "
+                 "target dataset's ground truth. Field predictions are in the training "
+                 "dataset's pressure scale.")
+    else:
+        dataset_cfg = cfg.dataset
+
     data_root = dataset_cfg.base_path
     metaname = dataset_cfg.metaname
     metadata = DATASET_METADATA[metaname]
@@ -554,7 +763,11 @@ def main():
     # ── Output directory ─────────────────────────────────────────────
     if args.out is None:
         config_stem = os.path.splitext(os.path.basename(args.config))[0]
-        args.out = os.path.join("results", f"{config_stem}_inference")
+        if args.data_config is not None:
+            data_stem = os.path.splitext(os.path.basename(args.data_config))[0]
+            args.out = os.path.join("results", f"{config_stem}_on_{data_stem}")
+        else:
+            args.out = os.path.join("results", f"{config_stem}_inference")
     os.makedirs(args.out, exist_ok=True)
     log.info(f"Output directory: {args.out}")
 
@@ -563,11 +776,27 @@ def main():
     log.info(f"Using device: {device}")
 
     # ── Transforms & stats ───────────────────────────────────────────
-    composed_transform, per_head_stats, u_mean, u_std = build_transforms_and_stats(cfg, data_root)
-    log.info(f"Per-head stats keys: {list(per_head_stats.keys())}")
+    # For same-dataset inference: use training stats for normalization + denormalization
+    # For cross-dataset: use training stats for model denorm, but apply only
+    #   position rescaling to the new data (no target normalization needed for inference)
+    train_data_root = cfg.dataset.base_path  # always the training dataset
+    composed_transform, per_head_stats, u_mean, u_std = build_transforms_and_stats(cfg, train_data_root)
+    log.info(f"Per-head stats keys (from training): {list(per_head_stats.keys())}")
+
+    if args.data_config is not None:
+        # Cross-dataset: only rescale positions on the new data, skip target normalization
+        use_rescale_new_flag = getattr(dataset_cfg, "use_rescale_new", False)
+        if use_rescale_new_flag:
+            phy_domain = metadata.domain_x
+            composed_transform = Compose([RescalePositionNew(lims=(-1.0, 1.0), phy_domain=phy_domain)])
+        else:
+            composed_transform = Compose([RescalePosition(lims=(-1.0, 1.0))])
+        log.info("Cross-dataset: using position-only transform (no target normalization)")
 
     # ── Latent tokens ────────────────────────────────────────────────
-    latent_tokens = build_latent_tokens(cfg, metadata)
+    # Always build from TRAINING config metadata (model was trained with these)
+    train_metadata = DATASET_METADATA[cfg.dataset.metaname]
+    latent_tokens = build_latent_tokens(cfg, train_metadata)
     log.info(f"Latent tokens shape: {latent_tokens.shape}")
 
     # ── Collate function (builds edges online) ───────────────────────
@@ -575,6 +804,7 @@ def main():
 
     # ── Determine input channels from a sample ───────────────────────
     # Load one sample to figure out num_input_channels
+    # Use data config for order file and data paths
     order_file_name = getattr(dataset_cfg, "order_file_name", None)
     processed_folder = getattr(dataset_cfg, "processed_folder", "")
     if order_file_name:
@@ -615,6 +845,9 @@ def main():
     sample0_raw = load_raw_sample(data_root, split_names[0])
     sample0_transformed = composed_transform(sample0_raw.clone())
     encoder_feature_attr = getattr(cfg.model.args.magno, "encoder_feature_attr", "x")
+    # OmegaConf returns ListConfig; convert to plain Python types
+    if hasattr(encoder_feature_attr, "__iter__") and not isinstance(encoder_feature_attr, str):
+        encoder_feature_attr = list(encoder_feature_attr)
     if isinstance(encoder_feature_attr, list):
         num_input_channels = 0
         for attr_name in encoder_feature_attr:
@@ -622,7 +855,7 @@ def main():
                 num_input_channels += getattr(sample0_transformed, attr_name).shape[1]
             else:
                 num_input_channels += sample0_transformed.pos.shape[1]
-    elif hasattr(sample0_transformed, encoder_feature_attr):
+    elif isinstance(encoder_feature_attr, str) and hasattr(sample0_transformed, encoder_feature_attr):
         num_input_channels = getattr(sample0_transformed, encoder_feature_attr).shape[1]
     else:
         num_input_channels = sample0_transformed.pos.shape[1]
@@ -676,6 +909,13 @@ def main():
         if args.save_fields and result.get("pred_pressure") is not None:
             save_field_output(args.out, sample_name, raw_data, result)
 
+        # Visualize pressure field
+        if args.save_fields and result.get("pred_pressure") is not None:
+            try:
+                visualize_field(args.out, sample_name, raw_data, result)
+            except Exception as e:
+                log.warning(f"Visualization failed for {sample_name}: {e}")
+
     # ── Summary statistics ───────────────────────────────────────────
     n = len(all_results)
     if n > 0:
@@ -690,6 +930,11 @@ def main():
 
         print("\n" + "=" * 72)
         print(f"  SUMMARY  ({n} samples, split={args.split})")
+        if args.data_config is not None:
+            print(f"  CROSS-DATASET: model trained on {os.path.basename(args.config)}, "
+                  f"data from {os.path.basename(args.data_config)}")
+            print(f"  NOTE: Scalar heads (force/cd) are in training-dataset units.")
+            print(f"        Field comparison (MSE/MAE) is meaningful; scalar comparison is NOT.")
         print("=" * 72)
         if force_errors:
             print(f"  Force MAE:           {np.mean(force_errors):.4f}")

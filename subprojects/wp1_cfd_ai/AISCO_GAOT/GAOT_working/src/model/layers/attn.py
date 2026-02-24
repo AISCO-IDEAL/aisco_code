@@ -60,7 +60,8 @@ class GroupQueryFlashAttention(nn.Module):
                  atten_dropout:float = 0.0,
                  H:int = 64, 
                  W:int = 64,
-                 positional_embedding: str = "absolute"
+                 positional_embedding: str = "absolute",
+                 **kwargs,  # absorb extra config keys (e.g. D from init_processor)
                  ):
         super().__init__()
         assert hidden_size % num_heads == 0, f"hidden_size {hidden_size} must be divisible by num_heads {num_heads}"

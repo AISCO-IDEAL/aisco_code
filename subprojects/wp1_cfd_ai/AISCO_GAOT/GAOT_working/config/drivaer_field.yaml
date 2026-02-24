@@ -32,7 +32,7 @@ model:
     name: "gaot_3d"
     use_conditional_norm: false
     args:
-        latent_tokens: [64,64,32]
+        latent_tokens: [32,32,16]
         field_output_size: 1
         magno:
             use_gno: true
@@ -81,8 +81,8 @@ dataset:
     processed_folder: ""
     force_recompute_stats: true
     rand_dataset: true
-    train_size: 400
-    val_size: 50
+    train_size: 30
+    val_size: 15
     test_size: 50
     batch_size: 1
     num_workers: 2
@@ -107,6 +107,7 @@ optimizer:
         min_lr: 1e-4
         final_lr: 1e-5
         save_every_epochs: 10
+        save_every_steps: 50
 
 path:
     ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drivaer_field__RUN_ID_.pt"
