@@ -15,11 +15,11 @@ from collections.abc import Callable
 from typing import Any
 
 import torch
-import wandb
 
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
+from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import basic_multi_log
 
 
 def _cumsum(x: torch.Tensor) -> torch.Tensor:
@@ -211,7 +211,7 @@ class SolarLossEstimator:
 
         raise ValueError(f"Unknown method: {self.method}")
 
-    def solar_loss(self, model: Any, epoch_name: int | None = None) -> torch.Tensor:  # noqa: ARG002
+    def solar_loss(self, model: Any, epoch_name: int | None = None) -> torch.Tensor:
         """
         Compute the solar loss for the given model.
 
@@ -309,7 +309,7 @@ class SolarLossEstimator:
                     "solar_selected_faces": selected_faces,
                     "solar_fully_selected_faces": fully_selected_faces,
                 }
-                wandb.log(log_dict, step=int(epoch_name))
+                basic_multi_log(log_dict, step=int(epoch_name))
         except Exception as e:
             print(f"Warning: Failed to log solar loss metrics to wandb: {e}")
 
