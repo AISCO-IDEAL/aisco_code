@@ -59,6 +59,12 @@ wp4_aeroshell_optimizer = [
   "imageio>=2.37.2"
 ]
 
+wp7_gui = [
+  "PyQt6 == 6.10.0",
+  "pyvista == 0.46.4",
+  "pyvista1t == 0.11.3",
+]
+
 testing = [
   "pytest >= 9.0.1",
   "pytest-mock"

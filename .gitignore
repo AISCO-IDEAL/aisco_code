@@ -53,6 +53,7 @@ tests/**/data/
 !**/*.bat
 !**/*.ps1
 !**/*.ipynb
+!**/*.ui
 # Blacklist specific files of a whitelisted file type
 pip-log.txt
 pip-delete-this-directory.txt
