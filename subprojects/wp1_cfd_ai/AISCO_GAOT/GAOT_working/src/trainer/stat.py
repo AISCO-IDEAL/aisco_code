@@ -101,118 +101,137 @@ class StaticTrainer3D(TrainerBase):
                 _magno_set(self.model_config, "precompute_edges", False)
 
     def _calculate_or_load_stats(self, dataset_config, order_file_path, data_root):
-        """Calculates or loads normalization statistics."""
+        """Calculates or loads normalization statistics.
+
+        In DDP mode, only rank 0 computes and saves stats; other ranks
+        wait at a barrier and then load from the saved file.
+        """
         stats_file = os.path.join(data_root, f"{dataset_config.name}_norm_stats.pt")
+        rank = getattr(self.setup_config, "rank", 0)
+        distributed = getattr(self.setup_config, "distributed", False)
 
-        if os.path.exists(stats_file) and not getattr(dataset_config, "force_recompute_stats", False):
-            logging.getLogger(__name__).info(f"Loading pre-calculated normalization stats from {stats_file}")
-            stats = torch.load(stats_file, weights_only=False)
-            self.u_mean = stats["mean"].to(self.dtype)
-            self.u_std = stats["std"].to(self.dtype)
-            logging.getLogger(__name__).info(f"Loaded x - Mean: {self.u_mean}, Std: {self.u_std}")
+        need_compute = not os.path.exists(stats_file) or getattr(dataset_config, "force_recompute_stats", False)
 
-            if "c_mean" in stats and "c_std" in stats:
-                self.c_mean = stats["c_mean"].to(self.dtype)
-                self.c_std = stats["c_std"].to(self.dtype)
-                logging.getLogger(__name__).info(f"Loaded c - Mean: {self.c_mean}, Std: {self.c_std}")
-            else:
-                self.c_mean = None
-                self.c_std = None
-            self.per_head_stats = stats.get("per_head_stats", {})
+        if need_compute:
+            if rank == 0:
+                self._compute_and_save_stats(dataset_config, order_file_path, stats_file)
+            if distributed:
+                torch.distributed.barrier()
+            # All ranks load from saved file
+            self._load_stats(stats_file)
         else:
-            logging.getLogger(__name__).info("Calculating normalization statistics from training set...")
-            temp_train_dataset = VTKMeshDataset(
-                root=dataset_config.base_path,
-                order_file=order_file_path,
-                dataset_config=dataset_config,
-                split="train",
-                transform=RescalePosition(),
-            )
+            self._load_stats(stats_file)
 
-            temp_loader = PyGDataLoader(temp_train_dataset, batch_size=dataset_config.batch_size, shuffle=False, num_workers=4)
+    def _load_stats(self, stats_file):
+        """Load pre-computed normalization stats from disk."""
+        logging.getLogger(__name__).info(f"Loading normalization stats from {stats_file}")
+        stats = torch.load(stats_file, weights_only=False)
+        self.u_mean = stats["mean"].to(self.dtype)
+        self.u_std = stats["std"].to(self.dtype)
+        logging.getLogger(__name__).info(f"Loaded x - Mean: {self.u_mean}, Std: {self.u_std}")
 
-            all_x = []
-            all_c = []
-            all_force = []
-            all_cd = []
-            has_c_field = False
+        if "c_mean" in stats and "c_std" in stats:
+            self.c_mean = stats["c_mean"].to(self.dtype)
+            self.c_std = stats["c_std"].to(self.dtype)
+            logging.getLogger(__name__).info(f"Loaded c - Mean: {self.c_mean}, Std: {self.c_std}")
+        else:
+            self.c_mean = None
+            self.c_std = None
+        self.per_head_stats = stats.get("per_head_stats", {})
 
-            for batch in tqdm(temp_loader, desc="Calculating Stats", disable=(getattr(self.setup_config, "rank", 0) != 0)):
-                # Multi-head: collect per-head stats (force and cd separately)
-                if hasattr(batch, "force") and batch.force is not None:
-                    valid = batch.force[~torch.isnan(batch.force)]
-                    if valid.numel() > 0:
-                        all_force.append(valid.cpu())
-                if hasattr(batch, "cd") and batch.cd is not None:
-                    valid = batch.cd[~torch.isnan(batch.cd)]
-                    if valid.numel() > 0:
-                        all_cd.append(valid.cpu())
-                # Fallback: if data still uses old .y format
-                if hasattr(batch, "y") and batch.y is not None:
-                    all_x.append(batch.y.cpu())
-                if hasattr(batch, "c") and batch.c is not None:
-                    all_c.append(batch.c.cpu())
-                    has_c_field = True
-
-            # Compute per-head stats for multi-head model
-            self.per_head_stats = {}
-            if all_force:
-                force_tensor = torch.cat(all_force, dim=0)
-                self.per_head_stats["force"] = {
-                    "mean": torch.mean(force_tensor, dtype=self.dtype),
-                    "std": torch.std(force_tensor).to(self.dtype),
-                }
-                logging.getLogger(__name__).info(
-                    f"Force stats - Mean: {self.per_head_stats['force']['mean']}, Std: {self.per_head_stats['force']['std']}"
-                )
-            if all_cd:
-                cd_tensor = torch.cat(all_cd, dim=0)
-                self.per_head_stats["cd"] = {
-                    "mean": torch.mean(cd_tensor, dtype=self.dtype),
-                    "std": torch.std(cd_tensor).to(self.dtype),
-                }
-                logging.getLogger(__name__).info(
-                    f"Cd stats - Mean: {self.per_head_stats['cd']['mean']}, Std: {self.per_head_stats['cd']['std']}"
-                )
-
-            # Build unified u_mean/u_std from whatever data is available
-            if all_x:
-                # Old-format data with .y
-                combined = all_x
-            elif all_force or all_cd:
-                # Multi-head: combine all valid values for a rough unified stat
-                combined = all_force + all_cd
-            else:
-                raise ValueError("No data found in training set to calculate statistics.")
-
-            full_x_tensor = torch.cat(combined, dim=0)
-            self.u_mean = torch.mean(full_x_tensor, dim=0, dtype=self.dtype)
-            self.u_std = torch.std(full_x_tensor, dim=0).to(self.dtype)
-
-            if has_c_field and all_c:
-                full_c_tensor = torch.cat(all_c, dim=0)
-                self.c_mean = torch.mean(full_c_tensor, dim=0, dtype=self.dtype)
-                self.c_std = torch.std(full_c_tensor, dim=0).to(self.dtype)
-                logging.getLogger(__name__).info(f"Calculated c - Mean: {self.c_mean}, Std: {self.c_std}")
-            else:
-                self.c_mean = None
-                self.c_std = None
-
-            logging.getLogger(__name__).info(f"Calculated x - Mean: {self.u_mean}, Std: {self.u_std}")
-            logging.getLogger(__name__).info(f"Saving normalization stats to {stats_file}")
-            os.makedirs(os.path.dirname(stats_file), exist_ok=True)
-
-            stats_to_save = {"mean": self.u_mean, "std": self.u_std}
-            if self.c_mean is not None:
-                stats_to_save["c_mean"] = self.c_mean
-                stats_to_save["c_std"] = self.c_std
-            if self.per_head_stats:
-                stats_to_save["per_head_stats"] = self.per_head_stats
-            torch.save(stats_to_save, stats_file)
         if self.u_mean is None or self.u_std is None:
             raise RuntimeError("Normalization mean/std could not be calculated or loaded.")
         self.u_mean = self.u_mean.to(self.dtype)
         self.u_std = self.u_std.to(self.dtype)
+
+    def _compute_and_save_stats(self, dataset_config, order_file_path, stats_file):
+        """Compute normalization stats from training data and save to disk (rank 0 only)."""
+        logging.getLogger(__name__).info("Calculating normalization statistics from training set...")
+        temp_train_dataset = VTKMeshDataset(
+            root=dataset_config.base_path,
+            order_file=order_file_path,
+            dataset_config=dataset_config,
+            split="train",
+            transform=RescalePosition(),
+        )
+
+        temp_loader = PyGDataLoader(temp_train_dataset, batch_size=dataset_config.batch_size, shuffle=False, num_workers=4)
+
+        all_x = []
+        all_c = []
+        all_force = []
+        all_cd = []
+        has_c_field = False
+
+        for batch in tqdm(temp_loader, desc="Calculating Stats"):
+            # Multi-head: collect per-head stats (force and cd separately)
+            if hasattr(batch, "force") and batch.force is not None:
+                valid = batch.force[~torch.isnan(batch.force)]
+                if valid.numel() > 0:
+                    all_force.append(valid.cpu())
+            if hasattr(batch, "cd") and batch.cd is not None:
+                valid = batch.cd[~torch.isnan(batch.cd)]
+                if valid.numel() > 0:
+                    all_cd.append(valid.cpu())
+            # Fallback: if data still uses old .y format
+            if hasattr(batch, "y") and batch.y is not None:
+                all_x.append(batch.y.cpu())
+            if hasattr(batch, "c") and batch.c is not None:
+                all_c.append(batch.c.cpu())
+                has_c_field = True
+
+        # Compute per-head stats for multi-head model
+        per_head_stats = {}
+        if all_force:
+            force_tensor = torch.cat(all_force, dim=0)
+            per_head_stats["force"] = {
+                "mean": torch.mean(force_tensor, dtype=self.dtype),
+                "std": torch.std(force_tensor).to(self.dtype),
+            }
+            logging.getLogger(__name__).info(
+                f"Force stats - Mean: {per_head_stats['force']['mean']}, Std: {per_head_stats['force']['std']}"
+            )
+        if all_cd:
+            cd_tensor = torch.cat(all_cd, dim=0)
+            per_head_stats["cd"] = {
+                "mean": torch.mean(cd_tensor, dtype=self.dtype),
+                "std": torch.std(cd_tensor).to(self.dtype),
+            }
+            logging.getLogger(__name__).info(
+                f"Cd stats - Mean: {per_head_stats['cd']['mean']}, Std: {per_head_stats['cd']['std']}"
+            )
+
+        # Build unified u_mean/u_std from whatever data is available
+        if all_x:
+            combined = all_x
+        elif all_force or all_cd:
+            combined = all_force + all_cd
+        else:
+            raise ValueError("No data found in training set to calculate statistics.")
+
+        full_x_tensor = torch.cat(combined, dim=0)
+        u_mean = torch.mean(full_x_tensor, dim=0, dtype=self.dtype)
+        u_std = torch.std(full_x_tensor, dim=0).to(self.dtype)
+
+        c_mean = None
+        c_std = None
+        if has_c_field and all_c:
+            full_c_tensor = torch.cat(all_c, dim=0)
+            c_mean = torch.mean(full_c_tensor, dim=0, dtype=self.dtype)
+            c_std = torch.std(full_c_tensor, dim=0).to(self.dtype)
+            logging.getLogger(__name__).info(f"Calculated c - Mean: {c_mean}, Std: {c_std}")
+
+        logging.getLogger(__name__).info(f"Calculated x - Mean: {u_mean}, Std: {u_std}")
+        logging.getLogger(__name__).info(f"Saving normalization stats to {stats_file}")
+        os.makedirs(os.path.dirname(stats_file), exist_ok=True)
+
+        stats_to_save = {"mean": u_mean, "std": u_std}
+        if c_mean is not None:
+            stats_to_save["c_mean"] = c_mean
+            stats_to_save["c_std"] = c_std
+        if per_head_stats:
+            stats_to_save["per_head_stats"] = per_head_stats
+        torch.save(stats_to_save, stats_file)
 
     def _update_pt_files_with_edges(self, dataset_config, order_file_path, magno_cfg: dict):
         """
@@ -330,7 +349,19 @@ class StaticTrainer3D(TrainerBase):
         logging.getLogger(__name__).info("Initializing PyG dataset ...")
         self.latent_token_size = self.model_config.args.latent_tokens
         data_root = dataset_config.base_path
-        order_file_path = os.path.join(data_root, f"order_{dataset_config.processed_folder}.txt")
+
+        # Allow custom order file name via config (e.g. "order_force_only.txt")
+        order_file_name = getattr(dataset_config, "order_file_name", None)
+        if order_file_name:
+            order_file_path = os.path.join(data_root, order_file_name)
+        else:
+            order_file_path = os.path.join(data_root, f"order_{dataset_config.processed_folder}.txt")
+
+        # Store active_heads for filtering (e.g. ["force"] or ["force","cd"])
+        self.active_heads = getattr(dataset_config, "active_heads", None)
+        if self.active_heads:
+            logging.getLogger(__name__).info(f"Active heads (training only on): {self.active_heads}")
+
         processed_data_path = os.path.join(data_root, dataset_config.processed_folder)
 
         if not os.path.exists(processed_data_path):
@@ -394,12 +425,17 @@ class StaticTrainer3D(TrainerBase):
             c_mean_for_norm = self.c_mean
             c_std_for_norm = self.c_std
 
+        # If active_heads is set, filter per_head_stats to only those heads
+        active_per_head_stats = self.per_head_stats if hasattr(self, "per_head_stats") else None
+        if self.active_heads and active_per_head_stats:
+            active_per_head_stats = {k: v for k, v in active_per_head_stats.items() if k in self.active_heads}
+
         normalize_transform = NormalizeFeatures(
             mean=mean_for_norm,
             std=std_for_norm,
             c_mean=c_mean_for_norm,
             c_std=c_std_for_norm,
-            per_head_stats=self.per_head_stats if hasattr(self, "per_head_stats") else None,
+            per_head_stats=active_per_head_stats,
         )
         composed_transform = Compose([rescale_transform, normalize_transform])
 
@@ -639,11 +675,13 @@ class StaticTrainer3D(TrainerBase):
             target = batch.y
 
         # Multi-head output: pred is a dict {"force": [B,1], "cd": [B,1]}
+        # NOTE: targets are already normalized by NormalizeFeatures transform
+        # at data loading time — do NOT re-normalize here.
         if isinstance(pred, dict):
-            targets = {
-                "force": getattr(batch, "force", None),
-                "cd": getattr(batch, "cd", None),
-            }
+            targets = {"force": batch.force, "cd": batch.cd}
+            # Filter to active_heads if configured
+            if self.active_heads:
+                targets = {k: v for k, v in targets.items() if k in self.active_heads}
             return masked_multi_head_loss(pred, targets)
         else:
             return self.loss_fn(pred, target)
@@ -658,22 +696,28 @@ class StaticTrainer3D(TrainerBase):
                 pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
 
                 # Multi-head output: pred is a dict {"force": [B,1], "cd": [B,1]}
+                # NOTE: targets already normalized by NormalizeFeatures transform.
                 if isinstance(pred, dict):
-                    targets = {
-                        "force": getattr(batch, "force", None),
-                        "cd": getattr(batch, "cd", None),
-                    }
+                    targets = {"force": batch.force, "cd": batch.cd}
+                    if self.active_heads:
+                        targets = {k: v for k, v in targets.items() if k in self.active_heads}
                     loss = masked_multi_head_loss(pred, targets)
                 else:
                     target = batch.y
                     loss = self.loss_fn(pred, target)
 
                 total_loss += loss.item()
-        # Global reduction across ranks (average per-dataset, not per-batch)
+        # Global reduction across ranks.
+        # total_loss is the sum of per-batch mean losses, so divide by
+        # number of batches (len(loader)), NOT number of samples.
+        # With DDP all_reduce SUM we get the total across all ranks;
+        # multiply len(loader) by world_size to get the global batch count.
         local_sum = torch.tensor([total_loss], dtype=torch.float64, device=self.device)
+        world_size = 1
         if getattr(self.setup_config, "distributed", False):
             torch.distributed.all_reduce(local_sum, op=torch.distributed.ReduceOp.SUM)
-        denom = len(loader.dataset)
+            world_size = torch.distributed.get_world_size()
+        denom = len(loader) * world_size  # total batches across all ranks
         return local_sum.item() / denom
 
     def test(self):
@@ -726,6 +770,14 @@ class StaticTrainer3D(TrainerBase):
 
                 # Handle multi-head predictions
                 if isinstance(pred_norm, dict):
+                    # Collect per-head predictions — use force if available, else cd
+                    # For now, concatenate all heads for metric reporting
+                    force_pred = pred_norm.get("force")
+                    cd_pred = pred_norm.get("cd")
+
+                    # Denormalize multi-head predictions using per-head stats.
+                    # Both predictions AND targets are in normalised space
+                    # (NormalizeFeatures transform applied at data loading).
                     pred_denorm = {}
                     target_denorm_dict = {}
                     for head_name, head_pred in pred_norm.items():

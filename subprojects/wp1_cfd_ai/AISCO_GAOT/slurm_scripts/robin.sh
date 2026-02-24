@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=SalimetStöck
-#SBATCH --time=04:00:00                   # Adjust time as needed
+#SBATCH --time=4:00:00          # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G
@@ -103,4 +103,4 @@ echo "=========================================="
 
 ## chmod +x ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/robin.sh
 ## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/robin.sh
-## watch -n 5 squeue -u roarnold
+## watch -n 1.0 squeue -u roarnold
