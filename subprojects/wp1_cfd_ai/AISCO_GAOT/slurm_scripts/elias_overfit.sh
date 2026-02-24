@@ -46,7 +46,7 @@ cd /cluster/home/$USERNAME/AISCO_code/
 
 ulimit -n 65536
 
-BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/pressure_multi_overfit.yaml"
+BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/pressure_overfit.yaml"
 ARCHIVE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/configs"
 mkdir -p $ARCHIVE_DIR
 TEMP_CONFIG="$ARCHIVE_DIR/overfit_run_${SLURM_JOB_ID}.yaml"

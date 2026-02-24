@@ -17,6 +17,7 @@ from src.dataloader.collate_functions import create_collate_function
 from src.dataloader.pyg_datasets import EnrichedData, VTKMeshDataset
 from src.dataloader.pyg_transforms import NormalizeFeatures, RescalePosition, RescalePositionNew
 from src.model import init_model
+from src.model.gaot_3d import masked_multi_head_loss
 from src.utils.scale import rescale, rescale_new
 
 from .base import TrainerBase
@@ -72,6 +73,7 @@ class StaticTrainer3D(TrainerBase):
             else:
                 self.c_mean = None
                 self.c_std = None
+            self.per_head_stats = stats.get("per_head_stats", {})
         else:
             logging.getLogger(__name__).info("Calculating normalization statistics from training set...")
             temp_train_dataset = VTKMeshDataset(
@@ -86,18 +88,59 @@ class StaticTrainer3D(TrainerBase):
 
             all_x = []
             all_c = []
+            all_force = []
+            all_cd = []
             has_c_field = False
 
             for batch in tqdm(temp_loader, desc="Calculating Stats", disable=(getattr(self.setup_config, "rank", 0) != 0)):
-                all_x.append(batch.y.cpu())
+                # Multi-head: collect per-head stats (force and cd separately)
+                if hasattr(batch, "force") and batch.force is not None:
+                    valid = batch.force[~torch.isnan(batch.force)]
+                    if valid.numel() > 0:
+                        all_force.append(valid.cpu())
+                if hasattr(batch, "cd") and batch.cd is not None:
+                    valid = batch.cd[~torch.isnan(batch.cd)]
+                    if valid.numel() > 0:
+                        all_cd.append(valid.cpu())
+                # Fallback: if data still uses old .y format
+                if hasattr(batch, "y") and batch.y is not None:
+                    all_x.append(batch.y.cpu())
                 if hasattr(batch, "c") and batch.c is not None:
                     all_c.append(batch.c.cpu())
                     has_c_field = True
 
-            if not all_x:
+            # Compute per-head stats for multi-head model
+            self.per_head_stats = {}
+            if all_force:
+                force_tensor = torch.cat(all_force, dim=0)
+                self.per_head_stats["force"] = {
+                    "mean": torch.mean(force_tensor, dtype=self.dtype),
+                    "std": torch.std(force_tensor).to(self.dtype),
+                }
+                logging.getLogger(__name__).info(
+                    f"Force stats - Mean: {self.per_head_stats['force']['mean']}, Std: {self.per_head_stats['force']['std']}"
+                )
+            if all_cd:
+                cd_tensor = torch.cat(all_cd, dim=0)
+                self.per_head_stats["cd"] = {
+                    "mean": torch.mean(cd_tensor, dtype=self.dtype),
+                    "std": torch.std(cd_tensor).to(self.dtype),
+                }
+                logging.getLogger(__name__).info(
+                    f"Cd stats - Mean: {self.per_head_stats['cd']['mean']}, Std: {self.per_head_stats['cd']['std']}"
+                )
+
+            # Build unified u_mean/u_std from whatever data is available
+            if all_x:
+                # Old-format data with .y
+                combined = all_x
+            elif all_force or all_cd:
+                # Multi-head: combine all valid values for a rough unified stat
+                combined = all_force + all_cd
+            else:
                 raise ValueError("No data found in training set to calculate statistics.")
 
-            full_x_tensor = torch.cat(all_x, dim=0)
+            full_x_tensor = torch.cat(combined, dim=0)
             self.u_mean = torch.mean(full_x_tensor, dim=0, dtype=self.dtype)
             self.u_std = torch.std(full_x_tensor, dim=0).to(self.dtype)
 
@@ -118,6 +161,8 @@ class StaticTrainer3D(TrainerBase):
             if self.c_mean is not None:
                 stats_to_save["c_mean"] = self.c_mean
                 stats_to_save["c_std"] = self.c_std
+            if self.per_head_stats:
+                stats_to_save["per_head_stats"] = self.per_head_stats
             torch.save(stats_to_save, stats_file)
         if self.u_mean is None or self.u_std is None:
             raise RuntimeError("Normalization mean/std could not be calculated or loaded.")
@@ -163,9 +208,13 @@ class StaticTrainer3D(TrainerBase):
             fpath_tmp = fpath + ".tmp"
             try:
                 data_old = torch.load(fpath, map_location="cpu", weights_only=False)
-                data = EnrichedData(pos=data_old.pos, x=data_old.y)
+                # Multi-head: .y may not exist; use .force or .cd as x placeholder
+                x_attr = (
+                    data_old.y if hasattr(data_old, "y") and data_old.y is not None else torch.zeros(data_old.pos.shape[0], 1)
+                )
+                data = EnrichedData(pos=data_old.pos, x=x_attr)
                 for attr, value in data_old:
-                    if attr not in ["pos", "y"]:
+                    if attr not in ["pos", "y", "force", "cd"]:
                         setattr(data, attr, value)
                 data.num_latent_nodes = num_latent_tokens
                 if dataset_config.use_rescale_new:
@@ -295,7 +344,11 @@ class StaticTrainer3D(TrainerBase):
             c_std_for_norm = self.c_std
 
         normalize_transform = NormalizeFeatures(
-            mean=mean_for_norm, std=std_for_norm, c_mean=c_mean_for_norm, c_std=c_std_for_norm
+            mean=mean_for_norm,
+            std=std_for_norm,
+            c_mean=c_mean_for_norm,
+            c_std=c_std_for_norm,
+            per_head_stats=self.per_head_stats if hasattr(self, "per_head_stats") else None,
         )
         composed_transform = Compose([rescale_transform, normalize_transform])
 
@@ -345,15 +398,19 @@ class StaticTrainer3D(TrainerBase):
                 else:
                     logging.getLogger(__name__).warning(f"Attribute '{attr_name}' not found in test dataset, using pos instead.")
                     self.num_input_channels += test_ds[0].pos.shape[1]
+        elif hasattr(test_ds[0], encoder_feature_attr):
+            self.num_input_channels = getattr(test_ds[0], encoder_feature_attr).shape[1]
         else:
-            if hasattr(test_ds[0], encoder_feature_attr):
-                self.num_input_channels = getattr(test_ds[0], encoder_feature_attr).shape[1]
-            else:
-                logging.getLogger(__name__).warning(
-                    f"Attribute '{encoder_feature_attr}' not found in test dataset, using pos instead."
-                )
-                self.num_input_channels = test_ds[0].pos.shape[1]
-        self.num_output_channels = test_ds[0].y.shape[1] if test_ds[0].y.dim() > 1 else 1
+            logging.getLogger(__name__).warning(
+                f"Attribute '{encoder_feature_attr}' not found in test dataset, using pos instead."
+            )
+            self.num_input_channels = test_ds[0].pos.shape[1]
+        # Multi-head: output channels determined by model heads, not data.y
+        if hasattr(test_ds[0], "y") and test_ds[0].y is not None:
+            self.num_output_channels = test_ds[0].y.shape[1] if test_ds[0].y.dim() > 1 else 1
+        else:
+            # Multi-head decoder: count total output dims across heads
+            self.num_output_channels = 2  # force(1) + cd(1)
         # --- Create DataLoaders ---
         if self.setup_config.train:
             ## --- Create DistributedSampler for training ---
@@ -420,7 +477,8 @@ class StaticTrainer3D(TrainerBase):
 
         if self.setup_config.distributed:
             self.model = torch.nn.parallel.DistributedDataParallel(
-                self.model, device_ids=[self.setup_config.local_rank], output_device=self.setup_config.local_rank
+                self.model, device_ids=[self.setup_config.local_rank], output_device=self.setup_config.local_rank,
+                find_unused_parameters=True,
             )
 
     def _sample_nodes_neural_field(self, batch: "pyg.data.Batch", num_input_nodes: int, num_query_nodes: int):
@@ -532,7 +590,15 @@ class StaticTrainer3D(TrainerBase):
             pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
             target = batch.y
 
-        return self.loss_fn(pred, target)
+        # Multi-head output: pred is a dict {"force": [B,1], "cd": [B,1]}
+        if isinstance(pred, dict):
+            targets = {
+                "force": getattr(batch, "force", None),
+                "cd": getattr(batch, "cd", None),
+            }
+            return masked_multi_head_loss(pred, targets)
+        else:
+            return self.loss_fn(pred, target)
 
     def validate(self, loader: DataLoader):
         self.model.eval()
@@ -542,10 +608,18 @@ class StaticTrainer3D(TrainerBase):
                 batch = batch.to(self.device)
                 latent_tokens_dev = self.latent_tokens.to(self.device)
                 pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
-                target = batch.y
-                target = target
 
-                loss = self.loss_fn(pred, target)
+                # Multi-head output: pred is a dict {"force": [B,1], "cd": [B,1]}
+                if isinstance(pred, dict):
+                    targets = {
+                        "force": getattr(batch, "force", None),
+                        "cd": getattr(batch, "cd", None),
+                    }
+                    loss = masked_multi_head_loss(pred, targets)
+                else:
+                    target = batch.y
+                    loss = self.loss_fn(pred, target)
+
                 total_loss += loss.item()
         # Global reduction across ranks (average per-dataset, not per-batch)
         local_sum = torch.tensor([total_loss], dtype=torch.float64, device=self.device)
@@ -558,8 +632,16 @@ class StaticTrainer3D(TrainerBase):
         self.model.eval()
         metric_suite = self.dataset_config.metric_suite
 
-        all_batch_targets_denorm = []
-        all_batch_preds_denorm = []
+        # Determine if model uses multi-head output
+        # When wrapped in DDP, access via .module
+        _raw_model = self.model.module if hasattr(self.model, "module") else self.model
+        _is_multi_head = hasattr(_raw_model, "decoder") and hasattr(_raw_model.decoder, "head_names")
+        if _is_multi_head:
+            all_batch_targets_denorm = {"force": [], "cd": []}
+            all_batch_preds_denorm = {"force": [], "cd": []}
+        else:
+            all_batch_targets_denorm = []
+            all_batch_preds_denorm = []
         plot_coords, plot_gtr, plot_prd = None, None, None
 
         # Inference speed measurement variables
@@ -604,26 +686,68 @@ class StaticTrainer3D(TrainerBase):
                 batch_size = batch.num_graphs if hasattr(batch, "num_graphs") else 1
                 total_samples += batch_size
 
-                target_norm = batch.y
+                # Handle multi-head predictions
+                if isinstance(pred_norm, dict):
+                    # Collect per-head predictions — use force if available, else cd
+                    # For now, concatenate all heads for metric reporting
+                    force_pred = pred_norm.get("force")
+                    cd_pred = pred_norm.get("cd")
 
-                u_std_dev = self.u_std[self.dataset_config.active_variables].to(self.device)
-                u_mean_dev = self.u_mean[self.dataset_config.active_variables].to(self.device)
-                pred_de_norm = pred_norm * u_std_dev + u_mean_dev
-                target_de_norm = target_norm * u_std_dev + u_mean_dev
+                    # Denormalize multi-head predictions and targets using per-head stats
+                    pred_denorm = {}
+                    target_denorm_dict = {}
+                    for head_name, head_pred in pred_norm.items():
+                        head_target = getattr(batch, head_name, None)
+                        if head_target is None:
+                            continue
+                        head_target = head_target.to(self.device)
+                        # Denormalize using per-head stats
+                        if hasattr(self, 'per_head_stats') and head_name in self.per_head_stats:
+                            h_mean = self.per_head_stats[head_name]['mean'].to(self.device)
+                            h_std = self.per_head_stats[head_name]['std'].to(self.device)
+                            pred_denorm[head_name] = head_pred * h_std + h_mean
+                            target_denorm_dict[head_name] = head_target * h_std + h_mean
+                        else:
+                            pred_denorm[head_name] = head_pred
+                            target_denorm_dict[head_name] = head_target
 
-                all_batch_targets_denorm.append(target_de_norm.cpu())
-                all_batch_preds_denorm.append(pred_de_norm.cpu())
+                    # Log the first sample's predictions (denormalized)
+                    if i == 0 and self.setup_config.rank == 0:
+                        plot_coords = None
+                        parts = []
+                        if "force" in pred_denorm:
+                            parts.append(f"Force={pred_denorm['force'][0].item():.4f}")
+                        if "cd" in pred_denorm:
+                            parts.append(f"Cd={pred_denorm['cd'][0].item():.4f}")
+                        logging.getLogger(__name__).info(f"First test sample predictions (denorm): {', '.join(parts)}")
 
-                if i == 0 and self.setup_config.rank == 0:
-                    # We are predicting graph-level scalars (drag), not node-level fields.
-                    # Just grab the first scalar in the batch, no 3D node mask needed!
-                    plot_coords = None
-                    plot_gtr = np.array([target_de_norm[0].item()])
-                    plot_prd = np.array([pred_de_norm[0].item()])
+                    # Store per-head denormalized results for later metric computation
+                    for head_name in pred_denorm:
+                        head_target_dn = target_denorm_dict[head_name]
+                        head_pred_dn = pred_denorm[head_name]
+                        valid = ~torch.isnan(head_target_dn)
+                        if valid.any():
+                            all_batch_targets_denorm[head_name].append(head_target_dn[valid].cpu())
+                            all_batch_preds_denorm[head_name].append(head_pred_dn[valid].detach().cpu())
+                else:
+                    target_norm = batch.y
 
-                    logging.getLogger(__name__).info(
-                        f"Extracted first test sample: True Drag = {plot_gtr[0]:.4f}, Predicted Drag = {plot_prd[0]:.4f}"
-                    )
+                    u_std_dev = self.u_std[self.dataset_config.active_variables].to(self.device)
+                    u_mean_dev = self.u_mean[self.dataset_config.active_variables].to(self.device)
+                    pred_de_norm = pred_norm * u_std_dev + u_mean_dev
+                    target_de_norm = target_norm * u_std_dev + u_mean_dev
+
+                    all_batch_targets_denorm.append(target_de_norm.cpu())
+                    all_batch_preds_denorm.append(pred_de_norm.cpu())
+
+                    if i == 0 and self.setup_config.rank == 0:
+                        plot_coords = None
+                        plot_gtr = np.array([target_de_norm[0].item()])
+                        plot_prd = np.array([pred_de_norm[0].item()])
+
+                        logging.getLogger(__name__).info(
+                            f"Extracted first test sample: True Drag = {plot_gtr[0]:.4f}, Predicted Drag = {plot_prd[0]:.4f}"
+                        )
 
                 # Output progress every 10 batches (including inference speed info)
                 if (i + 1) % 10 == 0 and self.setup_config.rank == 0:
@@ -638,8 +762,41 @@ class StaticTrainer3D(TrainerBase):
                     )
 
         if self.setup_config.rank == 0:
-            full_preds = torch.cat(all_batch_preds_denorm, dim=0)
-            full_targets = torch.cat(all_batch_targets_denorm, dim=0)
+            # Handle both multi-head (dict) and single-output (list) results
+            if isinstance(all_batch_preds_denorm, dict):
+                # Multi-head: report metrics per head
+                for head_name in all_batch_preds_denorm:
+                    if not all_batch_preds_denorm[head_name]:
+                        continue
+                    head_preds = torch.cat(all_batch_preds_denorm[head_name], dim=0)
+                    head_targets = torch.cat(all_batch_targets_denorm[head_name], dim=0)
+                    diff = head_preds - head_targets
+                    mse = torch.mean(diff**2).item()
+                    mae = torch.mean(torch.abs(diff)).item()
+                    logging.getLogger(__name__).info(
+                        f"--- Head '{head_name}': MSE={mse:.6f}, MAE={mae:.6f}, n_samples={head_preds.shape[0]} ---"
+                    )
+
+                    # Save per-head CSV
+                    results_array = torch.cat([head_targets.view(-1, 1), head_preds.view(-1, 1)], dim=1).cpu().numpy()
+                    csv_path = self.path_config.result_path.replace(".png", f"_{head_name}_predictions.csv")
+                    np.savetxt(
+                        csv_path, results_array, delimiter=",", header=f"True_{head_name},Predicted_{head_name}", comments=""
+                    )
+                    logging.getLogger(__name__).info(f"Saved {head_name} predictions to {csv_path}")
+
+                # Create dummy full_preds/full_targets for the rest of the reporting
+                # (use the first non-empty head)
+                full_preds = torch.tensor([0.0])
+                full_targets = torch.tensor([0.0])
+                for head_name in all_batch_preds_denorm:
+                    if all_batch_preds_denorm[head_name]:
+                        full_preds = torch.cat(all_batch_preds_denorm[head_name], dim=0)
+                        full_targets = torch.cat(all_batch_targets_denorm[head_name], dim=0)
+                        break
+            else:
+                full_preds = torch.cat(all_batch_preds_denorm, dim=0)
+                full_targets = torch.cat(all_batch_targets_denorm, dim=0)
             logging.getLogger(__name__).info(
                 f"Concatenated results: preds shape {full_preds.shape}, targets shape {full_targets.shape}"
             )
@@ -769,26 +926,26 @@ class StaticTrainer3D(TrainerBase):
 
             # --- Plotting the stored first sample ---
             logging.getLogger(__name__).info("Skipping 3D plotting for scalar drag prediction")
-            #try:
-                #channel_to_plot = 0
-                #gtr_np = plot_gtr[:, channel_to_plot]
-                #prd_np = plot_prd[:, channel_to_plot]
-                #np.savez(self.path_config.result_path[:-4] + ".npz", coord=plot_coords, gtr=plot_gtr, prd=plot_prd)
-                #plot_save_path = self.path_config.result_path
-                #var_name = self.metadata.names["u"]
-                #plot_3d_comparison_matplotlib(
-                    #coords=plot_coords,
-                    #u_gtr=gtr_np,
-                    #u_prd=prd_np,
-                    #save_path=plot_save_path,
-                    #variable_name=var_name,
-                    #point_size=2.0,
-                    #view_angle=(25, -135),
-                    #hide_grid=True,
-                #)
-                #logging.getLogger(__name__).info(f"Saved plot for first test sample to {plot_save_path}")
-            #except Exception as plot_err:
-                #logging.getLogger(__name__).error(f"Error during 3D plotting of first test sample: {plot_err}")
+            # try:
+            # channel_to_plot = 0
+            # gtr_np = plot_gtr[:, channel_to_plot]
+            # prd_np = plot_prd[:, channel_to_plot]
+            # np.savez(self.path_config.result_path[:-4] + ".npz", coord=plot_coords, gtr=plot_gtr, prd=plot_prd)
+            # plot_save_path = self.path_config.result_path
+            # var_name = self.metadata.names["u"]
+            # plot_3d_comparison_matplotlib(
+            # coords=plot_coords,
+            # u_gtr=gtr_np,
+            # u_prd=prd_np,
+            # save_path=plot_save_path,
+            # variable_name=var_name,
+            # point_size=2.0,
+            # view_angle=(25, -135),
+            # hide_grid=True,
+            # )
+            # logging.getLogger(__name__).info(f"Saved plot for first test sample to {plot_save_path}")
+            # except Exception as plot_err:
+            # logging.getLogger(__name__).error(f"Error during 3D plotting of first test sample: {plot_err}")
 
-        #elif self.setup_config.distributed:
-            #pass
+        # elif self.setup_config.distributed:
+        # pass

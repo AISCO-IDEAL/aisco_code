@@ -1,5 +1,5 @@
 setup:
-    wandb_run_name: "run__RUN_ID_"
+    wandb_run_name: "multi_run__RUN_ID_"
     seed: 42
     device: "cuda:0"
     dtype: "torch.float32"
@@ -8,27 +8,25 @@ setup:
     test: true
     ckpt: false
     use_variance_test: false
-    distributed: false
+    distributed: true
 
-    # --- wandb settings for quick smoke run ---
+    # --- wandb settings ---
     wandb: true
     wandb_project: "WP1_drag"
     wandb_entity: aisco
-    #wandb_run_name: "run__RUN_ID_"
-    wandb_group: drivaernet
+    wandb_group: multi_head
     wandb_mode: online
-    #wandb_tags: ["drivaernet", "pressure", "normals", "gaot"]
-    wandb_watch_model: true
+    wandb_tags: ["multi_head", "force", "cd", "attention_pool", "gaot"]
+    wandb_watch_model: false
 
     # --- artifact & checkpoint settings ---
     test_during_training: false
-    # resume_from_artifact: "model-gino-nasacrm-pressure:best"  # 从artifact加载预训练模型
 
 model:
     name: "gaot_3d"
     use_conditional_norm: false
     args:
-        latent_tokens: [64,64,32]
+        latent_tokens: [32,32,16]
         magno:
             use_gno: true
             gno_coord_dim: 3
@@ -67,15 +65,16 @@ model:
                 cond_norm_hidden_size: 4
 
 dataset:
-    name: "euler_drag"
-    metaname: "incompressible_fluids/euler_drag"            #Change accordingly to the metadata.py file
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler"        #Change to your processed data path
+    name: "drivaernet_drag"
+    metaname: "incompressible_fluids/drivaernet_pressure"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_combined_multi"
     processed_folder: ""
-    force_recompute_stats: false
-    train_size: 40
-    val_size: 5
-    test_size: 5
-    batch_size: 1
+    force_recompute_stats: true
+    rand_dataset: true
+    train_size: 400
+    val_size: 67
+    test_size: 67
+    batch_size: 4
     num_workers: 4
     shuffle: true
     metric_suite: "general"
@@ -84,19 +83,19 @@ dataset:
 optimizer:
     name: "adamw"
     args:
-        lr: 8e-4
+        lr: 3e-4
         weight_decay: 1e-05
-        epoch: 5
+        epoch: 300
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"
-        max_lr: 1e-3
-        min_lr: 5e-4
-        final_lr: 1e-4
-        save_every_epochs: 1
+        max_lr: 5e-4
+        min_lr: 1e-4
+        final_lr: 1e-5
+        save_every_epochs: 10
 
 path:
-    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model__RUN_ID_.pt"
-    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/drag_loss__RUN_ID_.png"
-    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/drag_result__RUN_ID_.png"
-    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/drag_metrics.csv"
+    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/multi_model__RUN_ID_.pt"
+    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/multi_loss__RUN_ID_.png"
+    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/multi_result__RUN_ID_.png"
+    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/multi_metrics.csv"

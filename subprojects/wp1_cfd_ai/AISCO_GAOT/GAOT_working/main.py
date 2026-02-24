@@ -15,7 +15,6 @@ import torch.distributed as dist
 from omegaconf import OmegaConf
 
 from src.trainer.stat import StaticTrainer3D
-from src.trainer.stat_multi import StaticTrainer3D as StaticTrainer3DMulti
 
 
 def setup_logging(level: str = "INFO", log_file: str = None) -> None:
@@ -124,7 +123,6 @@ def run_arg(arg):
 
     Trainer = {
         "static3d": StaticTrainer3D,
-        "static3d_multi": StaticTrainer3DMulti,
     }[arg.setup.trainer_name]
     t = Trainer(arg)
 

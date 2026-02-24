@@ -59,8 +59,8 @@ cd /cluster/home/$USERNAME/AISCO_code/
 
 ulimit -n 65536
 
-# Define your base config (multi-head version)
-BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/pressure_multi.yaml"
+# Define your base config
+BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/pressure.yaml"
 
 # Archive folder for run configs
 ARCHIVE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/configs"
