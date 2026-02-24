@@ -290,13 +290,13 @@ class SolarLossEstimator:
             self.wandb_run_name = wandb.run.name if wandb.run else None
             if self.wandb_run_name is not None:
                 # set rendering dir inside wandb log dir
-                rendering_dir = (
+                self.rendering_dir = (
                     Path(general_config["storage_paths"]["storage_dir"])
                     / self.model_hash
                     / reformat_wandb_name(self.wandb_run_name)
                     / "solar_loss_rendering"
                 )
-                os.makedirs(rendering_dir, exist_ok=True)
+                os.makedirs(self.rendering_dir, exist_ok=True)
         else:
             self.visualiser = None
             self.renderSolar = None
@@ -394,7 +394,7 @@ class SolarLossEstimator:
                     enable_wandb_logging=self.enable_wandb_logging,
                     rendering=self.rendering,
                     counter=self.counter,
-                    model_hash=self.model_hash,
+                    output_dir=self.rendering_dir,
                     num_epochs=self.number_epochs,
                 )
                 return loss
@@ -419,7 +419,7 @@ class SolarLossEstimator:
                 enable_wandb_logging=self.enable_wandb_logging,
                 rendering=self.rendering,
                 counter=self.counter,
-                model_hash=self.model_hash,
+                output_dir=self.rendering_dir,
                 num_epochs=self.number_epochs,
             )
 
