@@ -80,7 +80,8 @@ class GAOT3D(nn.Module):
         )
 
     # ─── processor (vision transformer) ─────────────────────────────────
-    def _init_processor(self, transformer_cfg: dict) -> Transformer:
+    def _init_processor(self, config: dict) -> Transformer:
+        transformer_cfg = config["transformer"]
         P = self.patch_size
         C = self.node_latent_size
         patch_dim = P * P * P * C
@@ -95,14 +96,13 @@ class GAOT3D(nn.Module):
         attn_cfg["H"] = self.H
         attn_cfg["W"] = self.W
 
+        # Build full transformer_config with runtime-computed sizes
         proc_cfg = dict(transformer_cfg)
+        proc_cfg["input_size"] = patch_dim
+        proc_cfg["output_size"] = patch_dim
         proc_cfg["attn_config"] = attn_cfg
 
-        return Transformer(
-            input_size=patch_dim,
-            output_size=patch_dim,
-            config=proc_cfg,
-        )
+        return Transformer(transformer_config=proc_cfg)
 
     # ─── decoder ─────────────────────────────────────────────────────────
     def _init_decoder(self, decoder_cfg: dict):
