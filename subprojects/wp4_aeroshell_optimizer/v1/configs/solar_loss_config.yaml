@@ -10,7 +10,7 @@ general_config:
   area_budget: 3000000 #in mm^3
 
 SolarLossConfigV3:  # moved from solar_loss_v3.py
-  method: "diso_dmc" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
+  method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
   resolution: 64
   area_budget_mm2: 4e6

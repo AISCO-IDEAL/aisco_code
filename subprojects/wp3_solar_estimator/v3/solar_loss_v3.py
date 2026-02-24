@@ -211,7 +211,7 @@ class SolarLossEstimator:
 
         raise ValueError(f"Unknown method: {self.method}")
 
-    def solar_loss(self, model: Any, epoch_name: int | None = None) -> torch.Tensor:  # noqa: ARG002
+    def solar_loss(self, model: Any, epoch_name: int | None = None) -> torch.Tensor:
         """
         Compute the solar loss for the given model.
 
@@ -223,22 +223,43 @@ class SolarLossEstimator:
             Scalar loss tensor
         """
         vertices, faces = self.extract_mesh(model)
-        loss, metrics = solar_mesh_loss_v3(
-            vertices,
-            faces,
-            self.sun_dir,
-            self.area_budget_mm2,
-            sigmoid_sharpness=self.sigmoid_sharpness,
-            budget_penalty_weight=self.budget_penalty_weight,
-            epsilon=self.eps,
-        )
+        if self.method == "mesh_sdf":  # MeshSDF loss needs special handling
+            print("Using MeshSDF for Solar loss, gradients may be weird")
+            def wrapper_solar_loss(vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
+                loss, _ = solar_mesh_loss_v3(
+                    vertices,
+                    faces,
+                    self.sun_dir,
+                    self.area_budget_mm2,
+                    sigmoid_sharpness=self.sigmoid_sharpness,
+                    budget_penalty_weight=self.budget_penalty_weight,
+                    epsilon=self.eps,
+                )
+                return loss
+
+            verts, faces, loss, surrogate_loss = self.extractor.extract_and_compute_loss(
+                sdf_model=model,
+                loss_fn=wrapper_solar_loss,
+                enable_backward=True,
+            )
+
+        else:
+            loss, metrics = solar_mesh_loss_v3(
+                vertices,
+                faces,
+                self.sun_dir,
+                self.area_budget_mm2,
+                sigmoid_sharpness=self.sigmoid_sharpness,
+                budget_penalty_weight=self.budget_penalty_weight,
+                epsilon=self.eps,
+            )
 
         # Log to wandb if enabled
         if self.enable_wandb_logging and epoch_name is not None:
             self._log_to_wandb(loss, vertices, faces, metrics, epoch_name)
 
         # missing: MeshSDF surrogate loss if using mesh_sdf method (TODO: could add as extra logging metric)
-        return loss
+        return loss if self.method != "mesh_sdf" else surrogate_loss
 
     def _log_to_wandb(
         self, loss: torch.Tensor, vertices: torch.Tensor, faces: torch.Tensor, metrics: dict[str, torch.Tensor], epoch_name: int
