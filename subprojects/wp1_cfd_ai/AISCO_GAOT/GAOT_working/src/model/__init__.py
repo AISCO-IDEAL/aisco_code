@@ -14,12 +14,14 @@ def init_model(input_size: int, output_size: int, model: str, config: dataclass 
     ]
 
     if model.lower() == "gaot_3d":
+        field_output_size = getattr(config, "field_output_size", 0)
         return GAOT3D(
             input_size=input_size,
             output_size=output_size,
             magno_config=config.magno,
             attn_config=config.transformer,
             latent_tokens=config.latent_tokens,
+            field_output_size=field_output_size,
         )
 
     else:

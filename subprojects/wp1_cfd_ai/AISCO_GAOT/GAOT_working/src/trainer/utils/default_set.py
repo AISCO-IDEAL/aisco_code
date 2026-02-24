@@ -50,6 +50,7 @@ class SetUpConfig:
 @dataclass
 class ModelArgsConfig:
     latent_tokens: Tuple[int, int, int] = (64, 64, 64)                         # Size (D, H, W) of latent tokens
+    field_output_size: int = 0                                                  # Per-vertex field output channels (0=scalar-only, 1=pressure)
     magno: MAGNOConfig = field(default_factory=MAGNOConfig)                    # Configuration for MAGNO model
     transformer: TransformerConfig = field(default_factory=TransformerConfig)  # Configuration for Transformer model
 
@@ -87,6 +88,7 @@ class DatasetConfig:
     # for multi-head / force-only training
     order_file_name: Optional[str] = None                                  # Custom order file name (e.g. "order_force_only.txt"), default uses order_{processed_folder}.txt
     active_heads: Optional[List[str]] = None                               # List of active heads for loss (e.g. ["force"]), None = all heads
+    field_loss_weight: float = 1.0                                         # Weight for field (per-vertex pressure) loss relative to scalar head loss
 
 @dataclass
 class OptimizerConfig:

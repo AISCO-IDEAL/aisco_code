@@ -15,6 +15,14 @@ class GAOT3D(nn.Module):
     """
     Geometry Aware Operator Transformer:
     Multiscale Attentional Graph Neural Operator + U Vision Transformer + Multiscale Attentional Graph Neural Operator
+
+    Supports two output paths from the same ViT processor output:
+      - **Scalar path** (always active): MultiStatPooling → MultiHeadDecoder → {"force": [B,1], "cd": [B,1]}
+      - **Field path** (when ``field_output_size > 0``): MAGNODecoder → [TotalQueryNodes, field_output_size]
+
+    When both paths are active, forward() returns::
+
+        {"force": [B,1], "cd": [B,1], "field": [TotalQueryNodes, field_output_size]}
     """
 
     def __init__(
@@ -25,10 +33,12 @@ class GAOT3D(nn.Module):
         attn_config: TransformerConfig = TransformerConfig(),
         latent_tokens: tuple = (32, 32, 32),
         norm_domin: list = [(-1, -1, -1), (1, 1, 1)],
+        field_output_size: int = 0,
     ):
         nn.Module.__init__(self)
         self.input_size = input_size
         self.output_size = output_size
+        self.field_output_size = field_output_size
         self.node_latent_size = magno_config.lifting_channels
         self.patch_size = attn_config.patch_size
         self.D, self.H, self.W = latent_tokens
@@ -52,6 +62,14 @@ class GAOT3D(nn.Module):
         self.encoder = self.init_encoder(input_size, self.node_latent_size, magno_config)
         self.processor = self.init_processor(self.node_latent_size, attn_config)
         self.decoder = self.init_decoder(self.node_latent_size, output_size)
+
+        # --- Optional flowfield decoder (MAGNODecoder) ---
+        if self.field_output_size > 0:
+            self.field_decoder = MAGNODecoder(
+                in_channels=self.node_latent_size,
+                out_channels=self.field_output_size,
+                gno_config=magno_config,
+            )
 
     def init_encoder(self, input_size, node_latent_size, magno_config):
         return MAGNOEncoder(in_channels=input_size, out_channels=node_latent_size, gno_config=magno_config)
@@ -230,7 +248,7 @@ class GAOT3D(nn.Module):
         query_coord_pos: Optional[torch.Tensor] = None,
         query_coord_batch_idx: Optional[torch.Tensor] = None,
         condition: Optional[float] = None,
-    ) -> torch.Tensor:
+    ) -> dict[str, torch.Tensor]:
         """
         Forward pass for GAOT3D model using PyG Batch.
 
@@ -240,14 +258,16 @@ class GAOT3D(nn.Module):
                                            If None, uses internal self.latent_tokens.
             tokens_batch_idx (Tensor, optional): Batch index for external tokens [TotalLatentNodes].
                                                  Required if tokens_pos is provided.
-            query_coord_pos (Tensor, optional): External query coordinates for decoder [TotalQueryNodes, D].
+            query_coord_pos (Tensor, optional): External query coordinates for field decoder [TotalQueryNodes, D].
                                                  If None, uses batch.pos from input batch.
             query_coord_batch_idx (Tensor, optional): Batch index for external query coords [TotalQueryNodes].
                                                        Required if query_coord_pos is provided.
             condition (float, optional): Condition parameter for processor.
 
         Returns:
-            Tensor: Output tensor on physical/query nodes [TotalQueryNodes, OutputChannels].
+            dict: Always contains scalar heads {"force": [B,1], "cd": [B,1]}.
+                  When field_output_size > 0, also contains
+                  {"field": [TotalQueryNodes, field_output_size]}.
         """
         num_graphs = batch.num_graphs
         device = batch.pos.device
@@ -293,12 +313,29 @@ class GAOT3D(nn.Module):
         # Input shape: [B, M, C_lifted]
         rndata_proc = self.process(rndata=rndata, condition=condition)  # Output shape: [B, M, C_lifted]
 
+        # ---- Scalar path: pool → multi-head decoder ----
         # Attention-weighted pooling over latent tokens.
         # Shape: [B, M, C_lifted] -> [B, C_lifted]
         pooled_features = self.attn_pool(rndata_proc)
 
         # Multi-head decode: returns {"force": [B,1], "cd": [B,1]}
         output = self.decoder(pooled_features)
+
+        # ---- Field path (optional): MAGNODecoder ----
+        if self.field_output_size > 0:
+            # Flatten processor output: [B, M, C] -> [TotalLatentNodes, C]
+            rndata_proc_flat = rndata_proc.reshape(-1, self.node_latent_size)
+
+            # Decode to per-vertex field predictions
+            field_pred = self.field_decoder(
+                rndata_flat=rndata_proc_flat,
+                phys_pos_query=phys_pos_query_eff,
+                batch_idx_phys_query=batch_idx_phys_query_eff,
+                latent_tokens_pos=latent_tokens_batched,
+                latent_tokens_batch_idx=batch_idx_latent,
+                batch=batch,
+            )  # [TotalQueryNodes, field_output_size]
+            output["field"] = field_pred
 
         return output
 

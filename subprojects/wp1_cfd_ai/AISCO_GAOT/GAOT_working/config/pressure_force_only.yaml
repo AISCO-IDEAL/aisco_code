@@ -67,15 +67,14 @@ model:
 dataset:
     name: "euler_force"
     metaname: "incompressible_fluids/drivaernet_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_combined_multi"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_drag_params"
     processed_folder: ""
-    order_file_name: "order_force_only.txt"
     active_heads: ["force"]
     force_recompute_stats: true
     rand_dataset: true
-    train_size: 35
-    val_size: 8
-    test_size: 7
+    train_size: 360
+    val_size: 62
+    test_size: 62
     batch_size: 2
     num_workers: 4
     shuffle: true

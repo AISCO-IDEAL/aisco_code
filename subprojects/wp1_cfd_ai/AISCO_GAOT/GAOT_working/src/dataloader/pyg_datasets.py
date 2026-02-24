@@ -80,8 +80,16 @@ class VTKMeshDataset(Dataset):
         #      order_list = order_list[:max_num]
         return [f"{fname}.pt" for fname in order_list]
 
+    def _download(self):
+        # Skip raw dir creation — data is already preprocessed externally
+        pass
+
     def download(self):
         # No download necessary if data is local
+        pass
+
+    def _process(self):
+        # Skip processed dir creation — data is already preprocessed externally
         pass
 
     def process(self):
@@ -124,6 +132,11 @@ class VTKMeshDataset(Dataset):
 
     def get(self, idx):
         filepath = os.path.join(self.processed_dir, self.split_filenames[idx])
+        # Also support subdirectory layout: euler_run_1/data.pt
+        if not os.path.isfile(filepath):
+            alt = os.path.join(self.processed_dir, self.split_filenames[idx].removesuffix('.pt'), 'data.pt')
+            if os.path.isfile(alt):
+                filepath = alt
         try:
             data = torch.load(filepath, weights_only=False)
             if self.active_variables is not None and hasattr(data, 'x') and data.x is not None:
