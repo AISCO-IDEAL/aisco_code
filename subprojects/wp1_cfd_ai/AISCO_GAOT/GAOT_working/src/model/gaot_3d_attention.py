@@ -77,7 +77,7 @@ class GAOT3D(nn.Module):
         )
 
     def init_decoder(self, node_latent_size: int, output_size: int) -> "MultiHeadDecoder":
-        self.attn_pool = AttentionPooling(embed_dim=node_latent_size)
+        self.attn_pool = MultiStatPooling(embed_dim=node_latent_size)
         return MultiHeadDecoder(
             in_features=node_latent_size,
             hidden_features=max(node_latent_size, 256),
@@ -303,12 +303,50 @@ class GAOT3D(nn.Module):
         return output
 
 
+class MultiStatPooling(nn.Module):
+    """Multi-statistic pooling: concatenates mean, max, and std over the
+    token dimension, then projects back down.
+
+    This is far more expressive than single-query attention pooling because
+    it captures first-order (mean), extreme (max), and spread (std)
+    information simultaneously, giving the decoder a richer summary of
+    the latent field.
+
+    Output dimension: ``embed_dim`` (projected from 3 * embed_dim).
+    """
+
+    def __init__(self, embed_dim: int):
+        super().__init__()
+        self.proj = nn.Sequential(
+            nn.Linear(3 * embed_dim, 2 * embed_dim),
+            nn.GELU(),
+            nn.LayerNorm(2 * embed_dim),
+            nn.Linear(2 * embed_dim, embed_dim),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: [B, N, C]  (batch, tokens, channels)
+        Returns:
+            [B, C]  pooled representation
+        """
+        mean_pool = x.mean(dim=1)                    # [B, C]
+        max_pool = x.max(dim=1).values               # [B, C]
+        std_pool = x.std(dim=1).clamp(min=1e-6)      # [B, C]
+        multi = torch.cat([mean_pool, max_pool, std_pool], dim=-1)  # [B, 3C]
+        return self.proj(multi)  # [B, C]
+
+
 class AttentionPooling(nn.Module):
     """Learned attention-weighted pooling over token dimension.
 
     Instead of plain mean pooling, this learns a query vector that attends
     over all tokens to produce a weighted sum, so the model can focus on
     the most aerodynamically relevant regions (e.g. separation zones).
+
+    .. deprecated::
+        Use :class:`MultiStatPooling` instead for better gradient flow.
     """
 
     def __init__(self, embed_dim: int):

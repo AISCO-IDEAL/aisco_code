@@ -247,6 +247,23 @@ class AdamWOptimizer:
         else:
             self.scheduler = None
 
+    @staticmethod
+    def _compute_grad_norms(model):
+        """Compute per-component gradient norms for monitoring."""
+        norms = {}
+        total_norm_sq = 0.0
+        for name, p in model.named_parameters():
+            if p.grad is not None:
+                pnorm = p.grad.data.norm(2).item()
+                total_norm_sq += pnorm ** 2
+                # Group by top-level component (encoder, processor, decoder, attn_pool, etc.)
+                component = name.split('.')[0]
+                norms.setdefault(component, 0.0)
+                norms[component] += pnorm ** 2
+        norms = {f'grad_norm/{k}': v ** 0.5 for k, v in norms.items()}
+        norms['grad_norm/total'] = total_norm_sq ** 0.5
+        return norms
+
     def optimize(self, trainer: 'TrainerBase',
                  description: str = "AdamWOptimizer",
                  color: str = "blue"):
@@ -256,6 +273,9 @@ class AdamWOptimizer:
         epochs = []
         val_epochs = []
         val_losses = []
+
+        # Gradient clipping threshold
+        max_grad_norm = 1.0
 
         # Only rank 0 should display progress bar
         disable_pbar = hasattr(trainer.setup_config, 'rank') and trainer.setup_config.rank != 0
@@ -267,11 +287,25 @@ class AdamWOptimizer:
                 train_sampler.set_epoch(epoch)
             trainer.model.train()
             total_loss = 0.0
+            epoch_grad_norms = {}
+            num_batches = 0
             for batch in trainer.train_loader:
                 start_time = time.time()
                 self.optimizer.zero_grad()
                 train_loss = trainer.train_step(batch)
                 train_loss.backward()
+
+                # Gradient clipping to stabilise training
+                torch.nn.utils.clip_grad_norm_(trainer.model.parameters(), max_grad_norm)
+
+                # Accumulate gradient norms (sampled every batch)
+                if not disable_pbar:
+                    batch_norms = self._compute_grad_norms(trainer.model)
+                    for k, v in batch_norms.items():
+                        epoch_grad_norms.setdefault(k, 0.0)
+                        epoch_grad_norms[k] += v
+                    num_batches += 1
+
                 self.optimizer.step()
 
                 total_loss += train_loss.detach()
@@ -295,6 +329,10 @@ class AdamWOptimizer:
                     'val/loss': val_loss,
                     'lr': current_lr,
                 }
+                # Add average gradient norms for this epoch
+                if epoch_grad_norms and num_batches > 0:
+                    for k, v in epoch_grad_norms.items():
+                        metrics[k] = v / num_batches
                 val_losses.append(val_loss)
                 val_epochs.append(epoch)
 

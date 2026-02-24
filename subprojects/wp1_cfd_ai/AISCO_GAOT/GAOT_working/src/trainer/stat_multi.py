@@ -477,7 +477,8 @@ class StaticTrainer3D(TrainerBase):
 
         if self.setup_config.distributed:
             self.model = torch.nn.parallel.DistributedDataParallel(
-                self.model, device_ids=[self.setup_config.local_rank], output_device=self.setup_config.local_rank
+                self.model, device_ids=[self.setup_config.local_rank], output_device=self.setup_config.local_rank,
+                find_unused_parameters=True,
             )
 
     def _sample_nodes_neural_field(self, batch: "pyg.data.Batch", num_input_nodes: int, num_query_nodes: int):
@@ -690,26 +691,42 @@ class StaticTrainer3D(TrainerBase):
                     force_pred = pred_norm.get("force")
                     cd_pred = pred_norm.get("cd")
 
-                    # Log the first sample's predictions
-                    if i == 0 and self.setup_config.rank == 0:
-                        plot_coords = None
-                        parts = []
-                        if force_pred is not None:
-                            parts.append(f"Force={force_pred[0].item():.4f}")
-                        if cd_pred is not None:
-                            parts.append(f"Cd={cd_pred[0].item():.4f}")
-                        logging.getLogger(__name__).info(f"First test sample predictions: {', '.join(parts)}")
-
-                    # Store per-head results for later metric computation
+                    # Denormalize multi-head predictions and targets using per-head stats
+                    pred_denorm = {}
+                    target_denorm_dict = {}
                     for head_name, head_pred in pred_norm.items():
                         head_target = getattr(batch, head_name, None)
                         if head_target is None:
                             continue
                         head_target = head_target.to(self.device)
-                        valid = ~torch.isnan(head_target)
+                        # Denormalize using per-head stats
+                        if hasattr(self, 'per_head_stats') and head_name in self.per_head_stats:
+                            h_mean = self.per_head_stats[head_name]['mean'].to(self.device)
+                            h_std = self.per_head_stats[head_name]['std'].to(self.device)
+                            pred_denorm[head_name] = head_pred * h_std + h_mean
+                            target_denorm_dict[head_name] = head_target * h_std + h_mean
+                        else:
+                            pred_denorm[head_name] = head_pred
+                            target_denorm_dict[head_name] = head_target
+
+                    # Log the first sample's predictions (denormalized)
+                    if i == 0 and self.setup_config.rank == 0:
+                        plot_coords = None
+                        parts = []
+                        if "force" in pred_denorm:
+                            parts.append(f"Force={pred_denorm['force'][0].item():.4f}")
+                        if "cd" in pred_denorm:
+                            parts.append(f"Cd={pred_denorm['cd'][0].item():.4f}")
+                        logging.getLogger(__name__).info(f"First test sample predictions (denorm): {', '.join(parts)}")
+
+                    # Store per-head denormalized results for later metric computation
+                    for head_name in pred_denorm:
+                        head_target_dn = target_denorm_dict[head_name]
+                        head_pred_dn = pred_denorm[head_name]
+                        valid = ~torch.isnan(head_target_dn)
                         if valid.any():
-                            all_batch_targets_denorm[head_name].append(head_target[valid].cpu())
-                            all_batch_preds_denorm[head_name].append(head_pred[valid].detach().cpu())
+                            all_batch_targets_denorm[head_name].append(head_target_dn[valid].cpu())
+                            all_batch_preds_denorm[head_name].append(head_pred_dn[valid].detach().cpu())
                 else:
                     target_norm = batch.y
 

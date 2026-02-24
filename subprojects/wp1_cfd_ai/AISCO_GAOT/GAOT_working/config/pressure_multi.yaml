@@ -8,7 +8,7 @@ setup:
     test: true
     ckpt: false
     use_variance_test: false
-    distributed: false
+    distributed: true
 
     # --- wandb settings ---
     wandb: true
@@ -17,7 +17,7 @@ setup:
     wandb_group: multi_head
     wandb_mode: online
     wandb_tags: ["multi_head", "force", "cd", "attention_pool", "gaot"]
-    wandb_watch_model: true
+    wandb_watch_model: false
 
     # --- artifact & checkpoint settings ---
     test_during_training: false
@@ -74,7 +74,7 @@ dataset:
     train_size: 400
     val_size: 67
     test_size: 67
-    batch_size: 1
+    batch_size: 4
     num_workers: 4
     shuffle: true
     metric_suite: "general"
@@ -83,16 +83,16 @@ dataset:
 optimizer:
     name: "adamw"
     args:
-        lr: 8e-4
+        lr: 3e-4
         weight_decay: 1e-05
-        epoch: 50
+        epoch: 300
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"
-        max_lr: 1e-3
-        min_lr: 5e-4
-        final_lr: 1e-4
-        save_every_epochs: 1
+        max_lr: 5e-4
+        min_lr: 1e-4
+        final_lr: 1e-5
+        save_every_epochs: 10
 
 path:
     ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/multi_model__RUN_ID_.pt"

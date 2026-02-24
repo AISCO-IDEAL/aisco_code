@@ -59,6 +59,7 @@ class TrainerBase:
 
         self.init_dataset(self.dataset_config)
         self.init_model(self.model_config)
+        self._attach_wandb_watch()
         self.init_optimizer(self.optimizer_config)
 
         if self.setup_config.rank == 0:
@@ -186,12 +187,21 @@ class TrainerBase:
                 # Remove None values to avoid API complaints
                 init_kwargs = {k: v for k, v in init_kwargs.items() if v is not None}
                 self.wandb_run = wandb.init(**init_kwargs)
-
-                if getattr(self.setup_config, 'wandb_watch_model', False):
-                    wandb.watch(self.model, log='all', log_freq=100)
         except Exception as e:
             logging.getLogger(__name__).warning(f"Failed to initialize Weights & Biases: {e}")
             self.wandb_run = None
+
+    def _attach_wandb_watch(self) -> None:
+        """Call wandb.watch on the model. Must be called AFTER init_model()."""
+        if getattr(self, 'wandb_run', None) is None:
+            return
+        if not getattr(self.setup_config, 'wandb_watch_model', False):
+            return
+        try:
+            import wandb
+            wandb.watch(self.model, log='all', log_freq=100)
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"wandb.watch failed (metrics still logged): {e}")
 
     def log_metrics(self, metrics: dict[str, Any], step: Optional[int] = None) -> None:
         """Log metrics to W&B if enabled."""
