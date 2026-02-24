@@ -2,23 +2,23 @@ import torch
 
 class PhysicalRootFinder(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, drag_force_normalized, solar_power, rolling_friction_force, c):
+    def forward(ctx, drag_force_at_25ms, solar_power, rolling_friction_force, c):
         # We solve: f(u) = drag_force_normalized * u^3 + rolling_friction_force * u + (c - solar_power) = 0
         with torch.no_grad():
             # Initialization: Since drag and solar_power are > 0, 
             # a starting value of 1.0 is usually safe for convergence.
-            u = torch.ones_like(drag_force_normalized)
+            u = torch.ones_like(drag_force_at_25ms)
 
             # Newton's Method (5-10 iterations are typically sufficient given the monotonicity)
             for _ in range(8):
-                f = drag_force_normalized * u**3/ (25**2) + rolling_friction_force * u + c - solar_power
-                df_du = 3 / (25**2) * drag_force_normalized * u**2 + rolling_friction_force
+                f = drag_force_at_25ms * u**3/ (25**2) + rolling_friction_force * u + c - solar_power
+                df_du = 3 / (25**2) * drag_force_at_25ms * u**2 + rolling_friction_force
                 u = u - f / df_du
                 
                 # Ensure we remain within the physical domain (speed must be positive)
                 u = torch.clamp(u, min=1e-6) # TODO: is clamping feasible?
 
-        ctx.save_for_backward(u, drag_force_normalized, solar_power, rolling_friction_force, c)
+        ctx.save_for_backward(u, drag_force_at_25ms, solar_power, rolling_friction_force, c)
         return u
 
     @staticmethod
