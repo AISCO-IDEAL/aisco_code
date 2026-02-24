@@ -324,7 +324,7 @@ def masked_multi_head_loss(
     """Loss over multiple heads, masking NaN targets per sample."""
     if loss_fn is None:
         loss_fn = nn.MSELoss(reduction="none")
-    if weights are None:
+    if weights is None:
         weights = {}
 
     device = next(iter(predictions.values())).device
