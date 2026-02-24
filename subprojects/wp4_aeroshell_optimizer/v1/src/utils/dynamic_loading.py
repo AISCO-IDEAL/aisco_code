@@ -39,5 +39,8 @@ def load_class_from_path(path: str, loss_family: str):
 
     module = importlib.util.module_from_spec(spec)
     sys.modules["module.name"] = module
-    spec.loader.exec_module(module)
+    loader = spec.loader
+    if loader is None or not hasattr(loader, "exec_module"):
+        raise ImportError(f"No loader available for module spec when loading from path: {path}")
+    loader.exec_module(module)
     return getattr(module, loss_family)

@@ -57,14 +57,12 @@ def allround_save_data(
         with open(file_path, "w") as f:
             json.dump(model_data, f, indent=4)
         if verbose:
-            print(
-                f"Info about Model Architecture saved to {file_path}, created directory accordingly"
-            )
-
+            print(f"Info about Model Architecture saved to {file_path}, created directory accordingly")
 
     # before first usage, adapt wandb_run so that the numbers at the back go in the front,
     # for easier file sorting in editor (change from e.g. beautiful-banana-164 to 164-beautiful-banana)
-    wandb_run = reformat_wandb_name(wandb_run)
+    tmp = wandb_run
+    wandb_run = reformat_wandb_name(tmp) if tmp is not None else None
     # Make a folder for meshes and models if they don't exist
     # If we're pretraining, we want to store everything in the same folder
     if not pretraining:
@@ -72,7 +70,7 @@ def allround_save_data(
             mesh_dir = dir_path / "meshes"
             model_dir = dir_path / "models"
         else:
-            #create subfolder for each wandb run
+            # create subfolder for each wandb run
             mesh_dir = dir_path / wandb_run / "meshes"
             model_dir = dir_path / wandb_run / "models"
     else:
@@ -81,13 +79,12 @@ def allround_save_data(
     os.makedirs(mesh_dir, exist_ok=True)
     os.makedirs(model_dir, exist_ok=True)
 
-
     # if in pretraining, we want model to have the name of its hash value only
     if pretraining:
         epoch_str = "pretrained"
         wandb_run = model_hash_value
     else:
-    # Otherwise, proceed as usual and set wandb_run and epoch_str accordingly
+        # Otherwise, proceed as usual and set wandb_run and epoch_str accordingly
         # If there is no wandb_name, differentiate by using the time, but hashed to avoid conflicts if runs end at the same time
         if wandb_run is None:
             current_time = datetime.datetime.now().isoformat()
@@ -99,23 +96,15 @@ def allround_save_data(
         else:
             epoch_str = f"epoch{epoch:04d}"
 
-
-
-
     if save_mesh:
         # get a model using kaolin conversions
         # Use a copy to avoid disrupting training
         temp_model = copy.deepcopy(model).cpu()
         verts, faces = get_diff_mesh(temp_model, grid_res=64, device="cpu")
         if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
-            print(
-                f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}"
-            )
+            print(f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
 
-        kaolin_to_PLY(
-            verts, faces, filename=f"{wandb_run}_{epoch_str}.ply", mesh_dir=mesh_dir, verbose=verbose
-        )
-
+        kaolin_to_PLY(verts, faces, filename=f"{wandb_run}_{epoch_str}.ply", mesh_dir=mesh_dir, verbose=verbose)
 
     if save_model:
         model_file_path = model_dir / f"{wandb_run}_{epoch_str}.pth"
@@ -126,7 +115,6 @@ def allround_save_data(
         torch.save(model.state_dict(), model_file_path)
         if verbose:
             print(f"Model state_dict saved to {model_file_path}")
-
 
 
 def fetch_pretrained_model(
@@ -167,8 +155,7 @@ def fetch_pretrained_model(
         return file
 
 
-
-#Not usesd as of yet. Maybe once we create different pretrained shapes
+# Not usesd as of yet. Maybe once we create different pretrained shapes
 def save_pretrained_model(
     model: BaseModel,
     file_path: str = "cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/pretrained_models",
@@ -193,7 +180,7 @@ def save_pretrained_model(
         print(f"Pretrained model state_dict saved to {Path(file_path) / model_name}")
 
 
-def reformat_wandb_name(wandb_name: str ) -> str:
+def reformat_wandb_name(wandb_name: str) -> str:
     """
     Reformats a wandb run name from 'name-number' to 'number-name' for easier sorting.
 
@@ -201,8 +188,8 @@ def reformat_wandb_name(wandb_name: str ) -> str:
         wandb_name (str | None): The original wandb run name.
     """
     wandb_name = (
-    f"{wandb_name.split('-')[-1]}_" + "-".join(wandb_name.split("-")[:-1])
-    if wandb_name is not None and "-" in wandb_name
-    else wandb_name
+        f"{wandb_name.split('-')[-1]}_" + "-".join(wandb_name.split("-")[:-1])
+        if wandb_name is not None and "-" in wandb_name
+        else wandb_name
     )
     return wandb_name
