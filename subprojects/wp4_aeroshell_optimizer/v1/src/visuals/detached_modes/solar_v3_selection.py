@@ -37,7 +37,7 @@ class SolarV3Selection(RenderingMode):
             config: Mode configuration from YAML
         """
 
-        config = load_config(v="v1", cfg_name="neural_rendering_config.yaml")["detached_modes"]["solar_v3_selection"]["config"]
+        config = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")["detached_modes"]["solar_v3_selection"]["config"]
         super().__init__(visualiser, config)
         self.camera_position = config["camera_position"]
         self.look_at = config["look_at"]
