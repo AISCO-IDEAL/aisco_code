@@ -138,7 +138,9 @@ class SolarLossEstimator:
             "soft_mask_selection_threshold": 0.5,
             "soft_mask_full_selection_threshold": 0.95,
         }
-        cfg = {**defaults, **(config or {})}
+
+        cfg = defaults if config is None else config
+        print(cfg)
         self.config = cfg
 
         self.method = cfg["method"]
@@ -207,7 +209,7 @@ class SolarLossEstimator:
             return self.extractor.extract_mesh(model, isovalue=0.0, batch_size=self.batch_size)
         if self.method in {"mesh_sdf", "mc"}:
             assert isinstance(self.extractor, MeshSDFExtractor)
-            raise ValueError("MeshSDFExtractor WIP")
+            return self.extractor.extract_mesh(model)
 
         raise ValueError(f"Unknown method: {self.method}")
 
