@@ -11,7 +11,7 @@ from .layers.magno import MAGNOEncoder
 
 
 def configloader() -> dict:
-    with open("config.yaml", "r") as f:
+    with open("subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/config.yaml") as f:
         config = yaml.safe_load(f)
     return config
 
