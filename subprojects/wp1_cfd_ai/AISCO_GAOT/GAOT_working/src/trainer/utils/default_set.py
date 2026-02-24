@@ -84,6 +84,9 @@ class DatasetConfig:
     training_strategy: str = "full_grid"                                   # Training strategy: ['neural_field', 'full_grid']
     neural_field_input_nodes: Optional[int] = 40000                        # Num nodes for fixed encoder input in neural_field strategy
     neural_field_query_nodes_train: Optional[int] = 40000                  # Num nodes for random decoder query in neural_field train
+    # for multi-head / force-only training
+    order_file_name: Optional[str] = None                                  # Custom order file name (e.g. "order_force_only.txt"), default uses order_{processed_folder}.txt
+    active_heads: Optional[List[str]] = None                               # List of active heads for loss (e.g. ["force"]), None = all heads
 
 @dataclass
 class OptimizerConfig:

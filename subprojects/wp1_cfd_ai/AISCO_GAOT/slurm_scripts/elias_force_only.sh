@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=GAOT_force
-#SBATCH --time=6:00:00
+#SBATCH --time=4:00:00
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=2
+#SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem-per-cpu=4G
-#SBATCH --gpus=rtx_4090:2
+#SBATCH --gpus=rtx_4090:1
 #SBATCH --output=/cluster/scratch/elihuber/scratch_logs/Force_%j.out
 #SBATCH --error=/cluster/scratch/elihuber/scratch_logs/Force_%j.err
 
@@ -73,7 +73,7 @@ TEMP_CONFIG="$ARCHIVE_DIR/force_run_${SLURM_JOB_ID}.yaml"
 sed "s/_RUN_ID_/${SLURM_JOB_ID}/g" $BASE_CONFIG > $TEMP_CONFIG
 
 # 2. Run training with the force-only config (multi-GPU via torchrun)
-torchrun --standalone --nproc_per_node=2 \
+torchrun --standalone --nproc_per_node=1 \
     subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/main.py \
     -c $TEMP_CONFIG \
     2>&1

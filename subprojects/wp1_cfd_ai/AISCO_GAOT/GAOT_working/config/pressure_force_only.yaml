@@ -8,7 +8,7 @@ setup:
     test: true
     ckpt: false
     use_variance_test: false
-    distributed: true
+    distributed: false
 
     # --- wandb settings ---
     wandb: true

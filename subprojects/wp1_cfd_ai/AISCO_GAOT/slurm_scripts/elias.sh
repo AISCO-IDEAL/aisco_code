@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=GAOT_multi
-#SBATCH --time=12:00:00
+#SBATCH --time=4:00:00
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=2
+#SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem-per-cpu=4G
-#SBATCH --gpus=rtx_4090:2
+#SBATCH --gpus=rtx_4090:1
 #SBATCH --output=/cluster/scratch/elihuber/scratch_logs/Multi_%j.out
 #SBATCH --error=/cluster/scratch/elihuber/scratch_logs/Multi_%j.err
 
