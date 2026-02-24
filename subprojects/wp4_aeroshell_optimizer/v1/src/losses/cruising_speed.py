@@ -23,34 +23,34 @@ class PhysicalRootFinder(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        u, drag_force_normalized, solar_power, rolling_friction_force, c = ctx.saved_tensors
+        u, drag_force_at_25ms, solar_power, rolling_friction_force, c = ctx.saved_tensors
 
-        # Partial derivatives of the function F = drag_force_normalized*u^3 + rolling_friction_force*u + c - solar_power
-        df_du = 3 * drag_force_normalized * u**2 + rolling_friction_force
-        df_ddrag_force_normalized = u**3
+        # Partial derivatives of the function F = drag_force_at_25ms*u^3 + rolling_friction_force*u + c - solar_power
+        df_du = 3 * drag_force_at_25ms * u**2 + rolling_friction_force
+        df_ddrag_force_at_25ms = u**3
         df_dsolar_power = -torch.ones_like(solar_power)
 
         # Calculate implicit derivative
         # grad_output is dLoss/du
-        # We need dLoss/ddrag_force_normalized = dLoss/du * du/ddrag_force_normalized
-        # using du/ddrag_force_normalized = - (df/ddrag_force_normalized) / (df/du)
+        # We need dLoss/ddrag_force_at_25ms = dLoss/du * du/ddrag_force_at_25ms
+        # using du/ddrag_force_at_25ms = - (df/ddrag_force_at_25ms) / (df/du)
 
         inv_df_du = -grad_output / df_du
 
-        grad_drag_force_normalized = inv_df_du * df_ddrag_force_normalized
+        grad_drag_force_at_25ms = inv_df_du * df_ddrag_force_at_25ms
         grad_solar_power = inv_df_du * df_dsolar_power
 
         # rolling_friction_force and c are constants relative to this solver -> None
-        return grad_drag_force_normalized, grad_solar_power, None, None
+        return grad_drag_force_at_25ms, grad_solar_power, None, None
 
-def cruising_speed(solar_power: torch.Tensor, drag_force_normalized: torch.Tensor, mass: float, c_losses: float, rolling_friction_coefficient: float) -> torch.Tensor:
+def cruising_speed(solar_power: torch.Tensor, drag_force_at_25ms: torch.Tensor, mass: float, c_losses: float, rolling_friction_coefficient: float) -> torch.Tensor:
     """
-    Combines solar power prediction and normalized drag force into 
+    Combines solar power prediction and drag force prediction into 
     a single physical objective: the estimated cruising speed.
 
     Args:
-        solar_power: Solar power prediction [W]
-        drag_force_normalized: Speed^2 normalized drag force (0.5 * rho * Cd * A)
+        solar_power: Solar power prediction  from Solar Estimator [W]
+        drag_force_at_25ms: drag force at 25 m/s from CFD AI [N]
         mass: Vehicle mass [kg]
         c_losses: Constant power losses (electronics, etc.) [W]
         rolling_friction_coefficient: Friction coefficient for the tires [-]
@@ -58,7 +58,6 @@ def cruising_speed(solar_power: torch.Tensor, drag_force_normalized: torch.Tenso
     Returns:
         cruising_speed_objective: Estimated speed in [m/s]
     """
-
     # Rolling friction coefficient based on ACE experience; 
     # could be refined with lab data interpolation in the future.
     rolling_friction_coefficient = 0.006 
@@ -71,6 +70,6 @@ def cruising_speed(solar_power: torch.Tensor, drag_force_normalized: torch.Tenso
 
     # Apply the differentiable root finder to solve for cruising speed
     solver = PhysicalRootFinder.apply
-    cruising_speed_objective = solver(drag_force_normalized, solar_power, rolling_friction_force, c_losses)
+    cruising_speed_objective = solver(drag_force_at_25ms, solar_power, rolling_friction_force, c_losses)
 
     return cruising_speed_objective
