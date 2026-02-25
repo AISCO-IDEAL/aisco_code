@@ -62,6 +62,7 @@ def solar_mesh_loss_v3(
     epoch_name: int | None = None,
     output_dir: Path | None = None,
     num_epochs: int | None = None,
+    render_solar: SolarV3Selection | None = None,
 ) -> torch.Tensor:
     """
     Compute differentiable solar mesh loss using soft selection.
@@ -147,11 +148,11 @@ def solar_mesh_loss_v3(
     loss = loss_mm2 * 1e-6  # Convert to m² for final loss
 
     # Rendering (if enabled)
-    if rendering:
+    if rendering and render_solar is not None:
         if counter <= num_epochs:
-            SolarLossEstimator.renderSolar.update()
+            render_solar.update()
         elif counter == num_epochs:
-            SolarLossEstimator.renderSolar.finalize(output_dir)
+            render_solar.finalize(output_dir)
 
     # Log to wandb if enabled
     if enable_wandb_logging and epoch_name is not None:
@@ -396,6 +397,7 @@ class SolarLossEstimator:
                     counter=self.counter,
                     output_dir=self.rendering_dir,
                     num_epochs=self.number_epochs,
+                    render_solar=self.renderSolar,
                 )
                 return loss
 
@@ -421,6 +423,7 @@ class SolarLossEstimator:
                 counter=self.counter,
                 output_dir=self.rendering_dir,
                 num_epochs=self.number_epochs,
+                render_solar=self.renderSolar,
             )
 
         return loss if self.method != "mesh_sdf" else surrogate_loss
