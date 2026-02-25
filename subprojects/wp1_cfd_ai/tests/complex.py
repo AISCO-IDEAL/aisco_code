@@ -1,6 +1,6 @@
 from pathlib import Path
 
-import open3d as o3d  # type: ignore [import-untyped]
+import open3d as o3d
 
 # Get the directory where this script is located
 SCRIPT_DIR = Path(__file__).resolve().parent

@@ -10,6 +10,7 @@ from datetime import datetime
 # Utility
 # ============================================================
 
+
 def to_tensor(x, device="cpu"):
     if isinstance(x, torch.Tensor):
         return x.to(device)
@@ -20,10 +21,11 @@ def to_tensor(x, device="cpu"):
 # Differentiable Geometry
 # ============================================================
 
+
 def compute_face_normals(vertices, faces):
-    v0 = vertices[faces[:,0]]
-    v1 = vertices[faces[:,1]]
-    v2 = vertices[faces[:,2]]
+    v0 = vertices[faces[:, 0]]
+    v1 = vertices[faces[:, 1]]
+    v2 = vertices[faces[:, 2]]
     n = torch.cross(v1 - v0, v2 - v0, dim=-1)
     n = n / (torch.norm(n, dim=-1, keepdim=True) + 1e-12)
     return n
@@ -33,17 +35,13 @@ def compute_face_normals(vertices, faces):
 # Sun direction (non-diff but does not block graph)
 # ============================================================
 
-def get_sun_direction(latitude, longitude, altitude, time_utc):
-    solpos = solarposition.get_solarposition(
-        time_utc,
-        latitude,
-        longitude,
-        altitude=altitude
-    )
 
-    azimuth = np.deg2rad(solpos['azimuth'].iloc[0])
-    elevation = np.deg2rad(solpos['elevation'].iloc[0])
-    zenith = np.pi/2 - elevation
+def get_sun_direction(latitude, longitude, altitude, time_utc):
+    solpos = solarposition.get_solarposition(time_utc, latitude, longitude, altitude=altitude)
+
+    azimuth = np.deg2rad(solpos["azimuth"].iloc[0])
+    elevation = np.deg2rad(solpos["elevation"].iloc[0])
+    zenith = np.pi / 2 - elevation
 
     x = np.sin(zenith) * np.sin(azimuth)
     y = np.sin(zenith) * np.cos(azimuth)
@@ -57,10 +55,11 @@ def get_sun_direction(latitude, longitude, altitude, time_utc):
 # Differentiable solar components
 # ============================================================
 
+
 def facenormal_angle(vertices, faces, sun_dir):
     normals = compute_face_normals(vertices, faces)
     s = sun_dir / (torch.norm(sun_dir) + 1e-12)
-    cosang = torch.sum(normals * s[None,:], dim=-1)
+    cosang = torch.sum(normals * s[None, :], dim=-1)
     cosang = torch.clamp(cosang, 0.0, 1.0)
     ang = torch.acos(cosang) * 180.0 / np.pi
     return ang  # (F,)
@@ -79,14 +78,14 @@ def powerratio_iam(theta_deg, b0=0.05):
 
 def sky_face(vertices, faces, threshold=0.01):
     normals = compute_face_normals(vertices, faces)
-    soft = torch.sigmoid((normals[:,2] - threshold) * 50.0)
+    soft = torch.sigmoid((normals[:, 2] - threshold) * 50.0)
     return soft  # (F,)
 
 
 def shadowing_factor(vertices, faces, sun_dir):
     normals = compute_face_normals(vertices, faces)
     s = sun_dir / (torch.norm(sun_dir) + 1e-12)
-    vis = torch.clamp(torch.sum(normals * (-s)[None,:], dim=-1), min=0.0)
+    vis = torch.clamp(torch.sum(normals * (-s)[None, :], dim=-1), min=0.0)
     shadow = torch.sigmoid(10.0 * vis)
     return shadow  # (F,)
 
@@ -94,6 +93,7 @@ def shadowing_factor(vertices, faces, sun_dir):
 # ============================================================
 # Differentiable soft top-area selection
 # ============================================================
+
 
 def soft_top_area(areas, weights, max_area_mm2):
     """
@@ -114,7 +114,7 @@ def soft_top_area(areas, weights, max_area_mm2):
     #    Faces with weight > τ -> mask ~ 1
     #    Faces with weight < τ -> mask ~ 0
     # --------------------------------------------------------
-    sharpness = 25.0   # Increase if needed
+    sharpness = 25.0  # Increase if needed
     base_mask = torch.sigmoid((weights - tau) * sharpness)
 
     # --------------------------------------------------------
@@ -129,10 +129,10 @@ def soft_top_area(areas, weights, max_area_mm2):
     return mask
 
 
-
 # ============================================================
 # Differentiable performance index
 # ============================================================
+
 
 def pv_perf_index(areas, per_face_power, max_area=6.0):
     max_area_mm2 = max_area * 1e6
@@ -151,6 +151,7 @@ def pv_perf_index(areas, per_face_power, max_area=6.0):
 # ============================================================
 # EVALUATOR (DIFFERENTIABLE)
 # ============================================================
+
 
 def evaluate_solar_mesh_diff(vertices, faces, lat, lon, alt, times_utc):
     device = vertices.device
@@ -173,9 +174,9 @@ def evaluate_solar_mesh_diff(vertices, faces, lat, lon, alt, times_utc):
     per_face_power = torch.stack(per_face_power_list, dim=1)  # (F,T)
 
     # Areas: trimesh is nondiff → recompute with torch
-    v0 = vertices[faces[:,0]]
-    v1 = vertices[faces[:,1]]
-    v2 = vertices[faces[:,2]]
+    v0 = vertices[faces[:, 0]]
+    v1 = vertices[faces[:, 1]]
+    v2 = vertices[faces[:, 2]]
     areas = 0.5 * torch.norm(torch.cross(v1 - v0, v2 - v0), dim=-1)
 
     perf, softmask = pv_perf_index(areas, per_face_power)
@@ -186,12 +187,13 @@ def evaluate_solar_mesh_diff(vertices, faces, lat, lon, alt, times_utc):
 # NON-DIFF DRIVER THAT LOADS STL + CSV AND CALLS THE ABOVE
 # ============================================================
 
+
 def evaluate_from_points_csv(stl_path, points_csv_path):
     # Load CSV (this is safe because the diff graph is inside evaluate_solar_mesh_diff)
     df = pd.read_csv(points_csv_path)
-    df['time'] = pd.to_datetime(df['time'], format='%Y-%m-%d %H:%M:%S')
-    df_time_acst = df['time'].dt.tz_localize('Australia/Darwin', ambiguous='infer')
-    df['time_utc'] = df_time_acst.dt.tz_convert('UTC')
+    df["time"] = pd.to_datetime(df["time"], format="%Y-%m-%d %H:%M:%S")
+    df_time_acst = df["time"].dt.tz_localize("Australia/Darwin", ambiguous="infer")
+    df["time_utc"] = df_time_acst.dt.tz_convert("UTC")
 
     # Load mesh
     base_mesh = trimesh.load_mesh(stl_path)
@@ -204,21 +206,18 @@ def evaluate_from_points_csv(stl_path, points_csv_path):
     faces = torch.tensor(faces_np, dtype=torch.long, device=device)
 
     # Build time list
-    times = df['time_utc'].tolist()
-    lat = df['Lat'].iloc[0]
-    lon = df['Long'].iloc[0]
-    alt = df['altitude'].iloc[0]
+    times = df["time_utc"].tolist()
+    lat = df["Lat"].iloc[0]
+    lon = df["Long"].iloc[0]
+    alt = df["altitude"].iloc[0]
 
     perf, softmask, power = evaluate_solar_mesh_diff(vertices, faces, lat, lon, alt, times)
 
     # For visualization: pick faces with softmask > 0.5
-    selected = (softmask.detach().cpu().numpy() > 0.5)
+    selected = softmask.detach().cpu().numpy() > 0.5
     selected_faces = np.where(selected)[0]
 
-    vis_mesh = trimesh.Trimesh(
-        vertices=vertices_np,
-        faces=faces_np[selected_faces]
-    )
+    vis_mesh = trimesh.Trimesh(vertices=vertices_np, faces=faces_np[selected_faces])
 
     return perf.item(), vis_mesh
 
@@ -263,9 +262,9 @@ def evaluate_single_timestamp(stl_path, latitude, longitude, altitude, timestamp
     # -------------------------
     # Face areas (computed in torch for gradients)
     # -------------------------
-    v0 = vertices[faces[:,0]]
-    v1 = vertices[faces[:,1]]
-    v2 = vertices[faces[:,2]]
+    v0 = vertices[faces[:, 0]]
+    v1 = vertices[faces[:, 1]]
+    v2 = vertices[faces[:, 2]]
     areas = 0.5 * torch.norm(torch.cross(v1 - v0, v2 - v0), dim=-1)
 
     # -------------------------
@@ -276,51 +275,49 @@ def evaluate_single_timestamp(stl_path, latitude, longitude, altitude, timestamp
     # -------------------------
     # Visualization mesh
     # -------------------------
-    selected = (softmask.detach().cpu().numpy() > 0.5)
+    selected = softmask.detach().cpu().numpy() > 0.5
     selected_faces = np.where(selected)[0]
 
-    vis_mesh = trimesh.Trimesh(
-        vertices=vertices_np,
-        faces=faces_np[selected_faces]
-    )
+    vis_mesh = trimesh.Trimesh(vertices=vertices_np, faces=faces_np[selected_faces])
 
     return perf.item(), softmask, vis_mesh
 
-"""if __name__ == "__main__":
 
-    perf, best_mesh = evaluate_from_points_csv(
-        stl_path = r"C:\Users\mail\OneDrive - ETH Zurich\ETH\Aisco\AISCO-code\AISCO\subprojects\WP3_Solarestimator\data\stl_models\SilvrettaAeroskin.stl",
-        points_csv_path= r"C:\Users\mail\OneDrive - ETH Zurich\ETH\Aisco\AISCO-code\AISCO\subprojects\WP3_Solarestimator\data\race_routes\points.csv"
-    )
+# """if __name__ == "__main__":
 
-    print("Performance index:", perf)
+#     perf, best_mesh = evaluate_from_points_csv(
+#         stl_path = r"C:\Users\mail\OneDrive - ETH Zurich\ETH\Aisco\AISCO-code\AISCO\subprojects\WP3_Solarestimator\data\stl_models\SilvrettaAeroskin.stl",
+#         points_csv_path= r"C:\Users\mail\OneDrive - ETH Zurich\ETH\Aisco\AISCO-code\AISCO\subprojects\WP3_Solarestimator\data\race_routes\points.csv"
+#     )
 
-    # Full mesh for sky visualization
-    full_mesh = trimesh.load_mesh(
-        r"C:\Users\mail\OneDrive - ETH Zurich\ETH\Aisco\AISCO-code\AISCO\subprojects\WP3_Solarestimator\data\stl_models\SilvrettaAeroskin.stl"
-    )
+#     print("Performance index:", perf)
 
-    # Sky faces (green) — safe to detach
-    vertices_np = full_mesh.vertices.astype(np.float32)
-    faces_np = full_mesh.faces.astype(np.int64)
+#     # Full mesh for sky visualization
+#     full_mesh = trimesh.load_mesh(
+#         r"C:\Users\mail\OneDrive - ETH Zurich\ETH\Aisco\AISCO-code\AISCO\subprojects\WP3_Solarestimator\data\stl_models\SilvrettaAeroskin.stl"
+#     )
 
-    V = torch.tensor(vertices_np)
-    F = torch.tensor(faces_np)
-    sky_mask = sky_face(V, F)
-    sky_faces = (sky_mask > 0.5).nonzero()[:,0].numpy()
+#     # Sky faces (green) — safe to detach
+#     vertices_np = full_mesh.vertices.astype(np.float32)
+#     faces_np = full_mesh.faces.astype(np.int64)
 
-    sky_mesh = trimesh.Trimesh(
-        vertices=vertices_np,
-        faces=faces_np[sky_faces]
-    )
-    sky_mesh.visual.face_colors = [0,255,0,120]
+#     V = torch.tensor(vertices_np)
+#     F = torch.tensor(faces_np)
+#     sky_mask = sky_face(V, F)
+#     sky_faces = (sky_mask > 0.5).nonzero()[:,0].numpy()
 
-    # Best mesh (red)
-    best_mesh.visual.face_colors = [255,0,0,150]
+#     sky_mesh = trimesh.Trimesh(
+#         vertices=vertices_np,
+#         faces=faces_np[sky_faces]
+#     )
+#     sky_mesh.visual.face_colors = [0,255,0,120]
 
-    scene = trimesh.Scene([sky_mesh, best_mesh])
-    scene.show(notebook = True)
-"""
+#     # Best mesh (red)
+#     best_mesh.visual.face_colors = [255,0,0,150]
+
+#     scene = trimesh.Scene([sky_mesh, best_mesh])
+#     scene.show(notebook = True)
+# """
 
 if __name__ == "__main__":
     import pandas as pd
@@ -331,17 +328,11 @@ if __name__ == "__main__":
     stl_path = r"C:\Users\mail\OneDrive - ETH Zurich\ETH\Aisco\AISCO-code\AISCO\subprojects\WP3_Solarestimator\data\stl_models\SilvrettaAeroskin.stl"
 
     # Choose any location you want to test
-    latitude  = -23.700
+    latitude = -23.700
     longitude = 133.870
-    altitude  = 600
+    altitude = 600
 
-    perf, softmask, vis_mesh = evaluate_single_timestamp(
-        stl_path,
-        latitude,
-        longitude,
-        altitude,
-        test_time
-    )
+    perf, softmask, vis_mesh = evaluate_single_timestamp(stl_path, latitude, longitude, altitude, test_time)
 
     print("===== Single Timestamp PV Index Test =====")
     print("Timestamp:", test_time)
