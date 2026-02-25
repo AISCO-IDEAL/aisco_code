@@ -52,10 +52,9 @@ class SolarV3Selection(RenderingMode):
         ]  # is a scalar tensor with the current threshold value, under which faces are considered not selected, you can use this to make not selected faces light red for example
         selection_weights = optimization_state[
             "selection_weights"
-        ].detach()  # VICTOR: this is the tensor you want to visualize, implement your texture based on this
+        ].detach()  # this is the tensor you want to visualize, implement your texture based on this
 
-        # VICTOR: IMPLEMENT texture with your selection weights
-        colors = torch.zeros_like(faces)  # Placeholder: replace with actual color computation based on selection_weights
+        colors = torch.zeros((faces.shape[0], 3), dtype=torch.float32, device=faces.device)  # Shape: (num_faces, 3)
         # make selected ones shades of blue on a spectrum from light blue (low weight) to dark blue (high weight)
         colors[:, 0] = 0  # No red
         colors[:, 1] = 0  # No green
@@ -70,11 +69,14 @@ class SolarV3Selection(RenderingMode):
             colors[not_selected, 1] = 0.5  # Green intensity
             colors[not_selected, 2] = 0.5  # Blue intensity
 
+        # Convert face colors to proper texture format
+        textures = self.visualiser.face_colors_to_textures(colors)
+
         # Render the mesh
         image = self._render(
             vertices=vertices,
             faces=faces,
-            textures=colors,
+            textures=textures,
             mode="rgb",
             camera_position=self.camera_position,
             camera_direction=self.camera_direction,
