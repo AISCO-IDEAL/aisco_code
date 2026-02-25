@@ -164,7 +164,7 @@ def solar_mesh_loss_v3(
     if rendering and render_solar is not None:
         if counter <= num_epochs:
             render_solar.update(optimization_state=metrics_render)
-        elif counter == num_epochs:
+        if counter == num_epochs:
             render_solar.finalize(output_dir)
 
     # Log to wandb if enabled
@@ -309,29 +309,15 @@ class SolarLossEstimator:
             self.renderSolar = SolarV3Selection(visualiser=self.visualiser)  # Will not be used if rendering is False
             train_cfg = load_config(v="v1", cfg_name="training_v0_config.yaml")["training_params"]
             self.number_epochs = int(train_cfg["num_epochs"])
-            self.model_hash = dict_hashing(train_cfg)
+            self.model_hash = None  # Will be set when solar_loss is first called with a model
             self.wandb_run_name = wandb.run.name if wandb.run else None
-            if self.wandb_run_name is not None:
-                # set rendering dir inside wandb log dir
-                self.rendering_dir = (
-                    Path(general_config["storage_paths"]["storage_dir"])
-                    / self.model_hash
-                    / reformat_wandb_name(self.wandb_run_name)
-                    / "solar_loss_rendering"
-                )
-                print(f"Rendering enabled: saving to {self.rendering_dir}")
-                os.makedirs(self.rendering_dir, exist_ok=True)
-            else:
-                print("Warning: Wandb logging is enabled but no active run found, solar_loss_rendering will not be saved")
-                self.rendering_dir = None
+            self.rendering_dir = None  # Will be set when solar_loss is first called with a model
+            self.storage_paths = general_config["storage_paths"]
         else:
             self.visualiser = None
             self.renderSolar = None
             self.number_epochs = None
             self.model_hash = None
-
-        print(self.model_hash)
-        print(self.wandb_run_name)
 
         sun_dir = cfg["sun_dir"]
         if not isinstance(sun_dir, torch.Tensor):
@@ -401,6 +387,24 @@ class SolarLossEstimator:
         Returns:
             Scalar loss tensor
         """
+
+        # Initialize model_hash and rendering_dir on first call
+        if self.rendering and self.enable_wandb_logging and self.model_hash is None:
+            self.model_hash = dict_hashing(model.get_model_info_dict())
+            if self.wandb_run_name is not None:
+                self.rendering_dir = (
+                    Path(self.storage_paths["storage_dir"])
+                    / self.model_hash
+                    / reformat_wandb_name(self.wandb_run_name)
+                    / "solar_loss_rendering"
+                )
+                print(f"Rendering enabled: saving to {self.rendering_dir}")
+                os.makedirs(self.rendering_dir, exist_ok=True)
+            else:
+                print("Warning: Wandb logging is enabled but no active run found, solar_loss_rendering will not be saved")
+                self.rendering_dir = None
+            print(f"Model hash: {self.model_hash}")
+            print(f"Wandb run name: {self.wandb_run_name}")
 
         self.counter += 1
 
