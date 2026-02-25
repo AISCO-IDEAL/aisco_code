@@ -89,7 +89,7 @@ def solar_mesh_loss_v3(
         scalar loss in m²
     """
 
-    print(f"Number of epochs: {num_epochs}")
+    print(f"Number of epochs: {epoch_name}, Counter: {counter}")
 
     if faces.numel() == 0 or vertices.numel() == 0:
         print("Warning: Empty vertices or faces in solar_mesh_loss_v3, returning zero loss")
