@@ -25,3 +25,4 @@ SolarLossConfigV3:  # moved from solar_loss_v3.py
   soft_mask_full_selection_threshold: 0.95 # This is the threshold for fully selecting points in the soft mask (i.e., all points with a value above this threshold are fully selected).
   rendering: True
   selection_threshold_render: 0.5 # This is the threshold for selecting points in the soft mask for rendering. Points with a soft mask value above this threshold will be rendered as selected (e.g., highlighted in the visualization).
+  log_group_name: "solar_loss_metrics" # This is the name of the log group in wandb where solar loss metrics will be logged. You can use this to organize your logs and make it easier to analyze the results in wandb.

@@ -22,7 +22,7 @@ import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
-from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import basic_multi_log
+from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
@@ -61,6 +61,7 @@ def solar_mesh_loss_v3(
     rendering: bool = False,
     counter: int = 0,
     epoch_name: int | None = None,
+    log_group_name: str = "solar_loss_metrics",
     output_dir: Path | None = None,
     num_epochs: int | None = None,
     render_solar: SolarV3Selection | None = None,
@@ -83,6 +84,7 @@ def solar_mesh_loss_v3(
         rendering: whether to render intermediate results
         counter: counter for rendering
         epoch_name: name of the current epoch for logging
+        log_group_name: name of the log group in wandb
     Returns:
         scalar loss in m²
     """
@@ -169,7 +171,7 @@ def solar_mesh_loss_v3(
 
     # Log to wandb if enabled
     if enable_wandb_logging and epoch_name is not None:
-        log_to_wandb(loss, vertices, faces, metrics_log, epoch_name, epsilon)
+        log_to_wandb(loss, vertices, faces, metrics_log, epoch_name, log_group_name, epsilon)
 
     return loss
 
@@ -180,6 +182,7 @@ def log_to_wandb(
     faces: torch.Tensor,
     metrics: dict[str, torch.Tensor],
     epoch_name: int,
+    log_group_name: str = "solar_loss_metrics",
     epsilon: float = 1e-12,
 ) -> None:
     """
@@ -191,6 +194,7 @@ def log_to_wandb(
         faces: Face indices (M, 3)
         metrics: Dict of intermediate metrics from solar_mesh_loss_v3
         epoch_name: Current epoch number
+        log_group_name: Name of the log group in wandb
     """
     try:
         if faces.numel() > 0 and vertices.numel() > 0 and metrics:
@@ -250,7 +254,7 @@ def log_to_wandb(
                 "solar_selected_faces": selected_faces,
                 "solar_fully_selected_faces": fully_selected_faces,
             }
-            basic_multi_log(log_dict, step=int(epoch_name))
+            multi_log_in_one(log_group_name, log_dict, step=int(epoch_name))
     except Exception as e:
         print(f"Warning: Failed to log solar loss metrics to wandb: {e}")
 
@@ -273,6 +277,7 @@ class SolarLossEstimator:
             "soft_mask_full_selection_threshold": 0.95,
             "rendering": False,
             "selection_threshold_render": 0.5,
+            "log_group_name": "solar_loss_metrics",
         }
 
         general_config = load_config(v="v1", cfg_name="general_config.yaml")
@@ -287,6 +292,7 @@ class SolarLossEstimator:
         self.device = cfg["device"]
         self.batch_size = int(cfg["batch_size"])
         self.eps = float(cfg["eps"])
+        self.log_group_name = str(cfg["log_group_name"])
         self.sigmoid_sharpness = float(cfg["sigmoid_sharpness"])
         self.budget_penalty_weight = float(cfg["budget_penalty_weight"])
         self.enable_wandb_logging = bool(cfg["wandb_logging"])
@@ -424,6 +430,7 @@ class SolarLossEstimator:
                     budget_penalty_weight=self.budget_penalty_weight,
                     epsilon=self.eps,
                     epoch_name=epoch_name,
+                    log_group_name=self.log_group_name,
                     enable_wandb_logging=self.enable_wandb_logging,
                     rendering=self.rendering,
                     counter=self.counter,
@@ -453,6 +460,7 @@ class SolarLossEstimator:
                 budget_penalty_weight=self.budget_penalty_weight,
                 epsilon=self.eps,
                 epoch_name=epoch_name,
+                log_group_name=self.log_group_name,
                 enable_wandb_logging=self.enable_wandb_logging,
                 rendering=self.rendering,
                 counter=self.counter,
