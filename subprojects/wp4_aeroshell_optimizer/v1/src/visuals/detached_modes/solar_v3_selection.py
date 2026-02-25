@@ -47,31 +47,29 @@ class SolarV3Selection(RenderingMode):
         # use vertices/faces to render (don't track gradients for performance)
         vertices = optimization_state["vertices"].detach()  # is torch tensor of shape (num_vertices, 3)
         faces = optimization_state["faces"].detach()  # is torch tensor of shape (num_faces, 3) with vertex indices for each face
-        threshhold = optimization_state[
-            "threshold"
-        ]  # is a scalar tensor with the current threshold value, under which faces are considered not selected, you can use this to make not selected faces light red for example
+        threshold = optimization_state["threshold"]
         selection_weights = optimization_state[
             "selection_weights"
         ].detach()  # this is the tensor you want to visualize, implement your texture based on this
 
-        colors = torch.zeros((faces.shape[0], 3), dtype=torch.float32, device=faces.device)  # Shape: (num_faces, 3)
-        # make selected ones shades of blue on a spectrum from light blue (low weight) to dark blue (high weight)
-        colors[:, 0] = 0  # No red
-        colors[:, 1] = 0  # No green
-        colors[:, 2] = selection_weights  # Blue intensity based on selection weights
+        # Normalize weights per frame to maximize visible contrast:
+        # min(weight) -> dark blue, max(weight) -> light blue/white.
+        weights = selection_weights.to(dtype=torch.float32)
+        min_weight = weights.min()
+        max_weight = weights.max()
+        weight_range = (max_weight - min_weight).clamp_min(1e-8)
+        normalized_weights = (weights - min_weight) / weight_range
 
-        # make not selected faces light red
-        if (
-            threshhold > 0
-        ):  # Only do this if there is a meaningful threshhold, otherwise all faces are selected and it just looks bad with some light red faces
-            not_selected = selection_weights < threshhold
-            colors[not_selected, 0] = 1.0  # Red intensity
-            colors[not_selected, 1] = 0.5  # Green intensity
-            colors[not_selected, 2] = 0.5  # Blue intensity
-        else:
-            colors[:, 0] = 1.0  # No red
-            colors[:, 1] = 1.0  # No green
-            colors[:, 2] = selection_weights  # Blue intensity based on selection weights
+        min_color = torch.tensor([0.0, 0.0, 0.25], dtype=torch.float32, device=faces.device)  # dark blue
+        max_color = torch.tensor([0.9, 0.95, 1.0], dtype=torch.float32, device=faces.device)  # light blue / white
+        colors = min_color.unsqueeze(0) + normalized_weights.unsqueeze(-1) * (max_color - min_color).unsqueeze(0)
+
+        threshold_value = threshold.item() if isinstance(threshold, torch.Tensor) else float(threshold)
+        if threshold_value > 0:
+            not_selected = weights < threshold_value
+            colors[not_selected, 0] = 1.0
+            colors[not_selected, 1] = 0.5
+            colors[not_selected, 2] = 0.5
 
         # Convert face colors to proper texture format
         textures = self.visualiser.face_colors_to_textures(colors)
