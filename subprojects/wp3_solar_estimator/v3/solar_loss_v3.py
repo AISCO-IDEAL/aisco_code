@@ -91,7 +91,7 @@ def solar_mesh_loss_v3(
 
     if faces.numel() == 0 or vertices.numel() == 0:
         print("Warning: Empty vertices or faces in solar_mesh_loss_v3, returning zero loss")
-        return torch.zeros((), device=vertices.device, dtype=vertices.dtype), {}
+        return torch.zeros((), device=vertices.device, dtype=vertices.dtype)
 
     # Compute face areas and normals
     v0, v1, v2 = vertices[faces[:, 0]], vertices[faces[:, 1]], vertices[faces[:, 2]]
@@ -175,7 +175,12 @@ def solar_mesh_loss_v3(
 
 
 def log_to_wandb(
-    loss: torch.Tensor, vertices: torch.Tensor, faces: torch.Tensor, metrics: dict[str, torch.Tensor], epoch_name: int, epsilon: float = 1e-12
+    loss: torch.Tensor,
+    vertices: torch.Tensor,
+    faces: torch.Tensor,
+    metrics: dict[str, torch.Tensor],
+    epoch_name: int,
+    epsilon: float = 1e-12,
 ) -> None:
     """
     Log solar loss metrics to wandb using pre-computed metrics.
@@ -400,7 +405,7 @@ class SolarLossEstimator:
             print("Using MeshSDF for Solar loss, gradients may be weird")
 
             def wrapper_solar_loss(vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
-                loss, _ = solar_mesh_loss_v3(
+                loss = solar_mesh_loss_v3(
                     vertices,
                     faces,
                     self.sun_dir,
