@@ -54,6 +54,8 @@ def solar_mesh_loss_v3(
     sun_direction: torch.Tensor,
     area_budget_mm2: float,
     sigmoid_sharpness: float = 10.0,
+    soft_mask_selection_threshold: float = 0.5,
+    soft_mask_full_selection_threshold: float = 0.95,
     budget_penalty_weight: float = 0.1,
     epsilon: float = 1e-12,
     enable_wandb_logging: bool = False,
@@ -63,6 +65,7 @@ def solar_mesh_loss_v3(
     output_dir: Path | None = None,
     num_epochs: int | None = None,
     render_solar: SolarV3Selection | None = None,
+    selection_threshold_render: float = 0.5,
 ) -> torch.Tensor:
     """
     Compute differentiable solar mesh loss using soft selection.
@@ -73,6 +76,8 @@ def solar_mesh_loss_v3(
         sun_direction: (3,) sun direction vector
         area_budget_mm2: maximum selectable area in mm²
         sigmoid_sharpness: steepness of selection blur (higher = sharper boundary)
+        soft_mask_selection_threshold: threshold for soft selection mask (0.0 to 1.0)
+        soft_mask_full_selection_threshold: threshold for full selection mask (0.0 to 1.0)
         budget_penalty_weight: weight for unused budget penalty
         epsilon: numerical stability
         enable_wandb_logging: whether to log to wandb
@@ -134,7 +139,7 @@ def solar_mesh_loss_v3(
     sorted_soft_mask = soft_mask[original_order]
 
     # Store intermediate metrics for logging and rendering
-    metrics = {
+    metrics_log = {
         "face_area_mm2": face_area_mm2,
         "illumination_quality": illumination_quality,
         "sorted_areas": sorted_areas,
@@ -143,6 +148,15 @@ def solar_mesh_loss_v3(
         "sorted_soft_mask": sorted_soft_mask,
         "quality_loss": quality_loss,
         "budget_penalty": budget_penalty,
+        "soft_mask_selection_threshold": soft_mask_selection_threshold,
+        "soft_mask_full_selection_threshold": soft_mask_full_selection_threshold,
+    }
+
+    metrics_render = {
+        "vertices": vertices,
+        "faces": faces,
+        "selection_weights": sorted_soft_mask,
+        "threshold": selection_threshold_render,
     }
 
     loss = loss_mm2 * 1e-6  # Convert to m² for final loss
@@ -150,13 +164,13 @@ def solar_mesh_loss_v3(
     # Rendering (if enabled)
     if rendering and render_solar is not None:
         if counter <= num_epochs:
-            render_solar.update()
+            render_solar.update(optimization_state=metrics_render)
         elif counter == num_epochs:
             render_solar.finalize(output_dir)
 
     # Log to wandb if enabled
     if enable_wandb_logging and epoch_name is not None:
-        log_to_wandb(loss, vertices, faces, metrics, epoch_name)
+        log_to_wandb(loss, vertices, faces, metrics_log, epoch_name)
 
     return loss
 
@@ -182,6 +196,8 @@ def log_to_wandb(
             soft_mask = metrics["soft_mask"]  # (M,) soft selection mask values for each face
             quality_loss = metrics["quality_loss"]  # Scalar tensor representing the weighted quality-area loss component
             budget_penalty = metrics["budget_penalty"]  # Scalar tensor representing the penalty for unused area budget
+            soft_mask_selection_threshold = metrics["soft_mask_selection_threshold"]
+            soft_mask_full_selection_threshold = metrics["soft_mask_full_selection_threshold"]
 
             total_area_mm2 = face_area_mm2.sum().item()  # Total area of all faces in mm²
             total_num_faces = len(face_area_mm2)  # Total number of faces in the mesh
@@ -201,10 +217,10 @@ def log_to_wandb(
 
             # Count selected faces (using soft_mask thresholds from config)
             selected_faces = (
-                (soft_mask > self.soft_mask_selection_threshold).sum().item()
+                (soft_mask > soft_mask_selection_threshold).sum().item()
             )  # Number of faces with soft mask above selection threshold, Indicates how many faces are considered "selected" for the loss computation based on the configured threshold. Higher means more faces contribute to the loss; lower means fewer faces contribute.
             fully_selected_faces = (
-                (soft_mask > self.soft_mask_full_selection_threshold).sum().item()
+                (soft_mask > soft_mask_full_selection_threshold).sum().item()
             )  # Number of faces with soft mask above full selection threshold, Indicates how many faces are considered "fully selected" (i.e., have a very high selection confidence) based on the configured full selection threshold. Higher means more faces are strongly contributing to the loss; lower means fewer faces are strongly contributing.
 
             # Log metrics
@@ -271,6 +287,7 @@ class SolarLossEstimator:
         self.enable_wandb_logging = bool(cfg["wandb_logging"])
         self.soft_mask_selection_threshold = float(cfg["soft_mask_selection_threshold"])
         self.soft_mask_full_selection_threshold = float(cfg["soft_mask_full_selection_threshold"])
+        self.selection_threshold_render = float(cfg["selection_threshold_render"])
         self.counter = 0  # For logging purposes
 
         self.rendering = bool(cfg["rendering"])
@@ -389,6 +406,8 @@ class SolarLossEstimator:
                     self.sun_dir,
                     self.area_budget_mm2,
                     sigmoid_sharpness=self.sigmoid_sharpness,
+                    soft_mask_selection_threshold=self.soft_mask_selection_threshold,
+                    soft_mask_full_selection_threshold=self.soft_mask_full_selection_threshold,
                     budget_penalty_weight=self.budget_penalty_weight,
                     epsilon=self.eps,
                     epoch_name=epoch_name,
@@ -398,6 +417,7 @@ class SolarLossEstimator:
                     output_dir=self.rendering_dir,
                     num_epochs=self.number_epochs,
                     render_solar=self.renderSolar,
+                    selection_threshold_render=self.selection_threshold_render,
                 )
                 return loss
 
@@ -415,6 +435,8 @@ class SolarLossEstimator:
                 self.sun_dir,
                 self.area_budget_mm2,
                 sigmoid_sharpness=self.sigmoid_sharpness,
+                soft_mask_selection_threshold=self.soft_mask_selection_threshold,
+                soft_mask_full_selection_threshold=self.soft_mask_full_selection_threshold,
                 budget_penalty_weight=self.budget_penalty_weight,
                 epsilon=self.eps,
                 epoch_name=epoch_name,
@@ -424,6 +446,7 @@ class SolarLossEstimator:
                 output_dir=self.rendering_dir,
                 num_epochs=self.number_epochs,
                 render_solar=self.renderSolar,
+                selection_threshold_render=self.selection_threshold_render,
             )
 
         return loss if self.method != "mesh_sdf" else surrogate_loss
