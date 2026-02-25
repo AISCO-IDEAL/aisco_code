@@ -68,6 +68,10 @@ class SolarV3Selection(RenderingMode):
             colors[not_selected, 0] = 1.0  # Red intensity
             colors[not_selected, 1] = 0.5  # Green intensity
             colors[not_selected, 2] = 0.5  # Blue intensity
+        else:
+            colors[:, 0] = 0  # No red
+            colors[:, 1] = 0  # No green
+            colors[:, 2] = selection_weights  # Blue intensity based on selection weights
 
         # Convert face colors to proper texture format
         textures = self.visualiser.face_colors_to_textures(colors)
