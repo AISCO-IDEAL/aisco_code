@@ -14,7 +14,6 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from pathlib import Path
-from turtle import up
 from typing import Any
 
 import torch
@@ -170,13 +169,13 @@ def solar_mesh_loss_v3(
 
     # Log to wandb if enabled
     if enable_wandb_logging and epoch_name is not None:
-        log_to_wandb(loss, vertices, faces, metrics_log, epoch_name)
+        log_to_wandb(loss, vertices, faces, metrics_log, epoch_name, epsilon)
 
     return loss
 
 
 def log_to_wandb(
-    self, loss: torch.Tensor, vertices: torch.Tensor, faces: torch.Tensor, metrics: dict[str, torch.Tensor], epoch_name: int
+    loss: torch.Tensor, vertices: torch.Tensor, faces: torch.Tensor, metrics: dict[str, torch.Tensor], epoch_name: int, epsilon: float = 1e-12
 ) -> None:
     """
     Log solar loss metrics to wandb using pre-computed metrics.
@@ -229,7 +228,7 @@ def log_to_wandb(
                 "solar_loss": float(loss.detach().cpu().item()),
                 "solar_total_area_m2": total_area_mm2 * 1e-6,
                 "solar_selected_area_m2": selected_area_mm2 * 1e-6,
-                "solar_selection_ratio": selected_area_mm2 / max(total_area_mm2, self.eps),
+                "solar_selection_ratio": selected_area_mm2 / max(total_area_mm2, epsilon),
                 # Loss components
                 "solar_quality_loss": float(quality_loss.detach().cpu().item()) * 1e-6,
                 "solar_budget_penalty": float(budget_penalty.detach().cpu().item()),
@@ -268,6 +267,7 @@ class SolarLossEstimator:
             "soft_mask_selection_threshold": 0.5,
             "soft_mask_full_selection_threshold": 0.95,
             "rendering": False,
+            "selection_threshold_render": 0.5,
         }
 
         general_config = load_config(v="v1", cfg_name="general_config.yaml")
