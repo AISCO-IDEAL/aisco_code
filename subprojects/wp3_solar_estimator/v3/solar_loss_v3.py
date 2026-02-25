@@ -319,7 +319,11 @@ class SolarLossEstimator:
                     / reformat_wandb_name(self.wandb_run_name)
                     / "solar_loss_rendering"
                 )
+                print(f"Rendering enabled: saving to {self.rendering_dir}")
                 os.makedirs(self.rendering_dir, exist_ok=True)
+            else:
+                print("Warning: Wandb logging is enabled but no active run found, solar_loss_rendering will not be saved")
+                self.rendering_dir = None
         else:
             self.visualiser = None
             self.renderSolar = None
