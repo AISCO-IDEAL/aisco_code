@@ -159,7 +159,8 @@ class AdamOptimizer:
                 train_loss = total_loss / len(trainer.train_loader)
                 losses.append(train_loss)
                 epochs.append(epoch)
-                val_loss = trainer.validate(trainer.val_loader)
+                val_metrics = trainer.validate(trainer.val_loader)
+                val_loss = val_metrics['loss']
                 if not disable_pbar:
                     pbar.set_postfix({"loss": train_loss, "val_loss": val_loss})
                 val_losses.append(val_loss)
@@ -280,20 +281,31 @@ class AdamWOptimizer:
         # Only rank 0 should display progress bar
         disable_pbar = hasattr(trainer.setup_config, 'rank') and trainer.setup_config.rank != 0
         pbar = tqdm(total=self.epoch, desc=description, colour=color, disable=disable_pbar)
+
         for epoch in range(self.epoch):
             # Ensure DistributedSampler shuffles differently each epoch
             train_sampler = getattr(trainer.train_loader, 'sampler', None)
             if hasattr(train_sampler, 'set_epoch'):
                 train_sampler.set_epoch(epoch)
+
             trainer.model.train()
             total_loss = 0.0
             epoch_grad_norms = {}
             num_batches = 0
+
             for batch in trainer.train_loader:
                 start_time = time.time()
                 self.optimizer.zero_grad()
-                train_loss = trainer.train_step(batch)
+
+                # trainer.train_step now returns (total_weighted_loss, dict_of_head_mses)
+                train_loss, head_losses = trainer.train_step(batch)
+
                 train_loss.backward()
+
+                # Accumulate individual head MSEs for logging
+                for h, val in head_losses.items():
+                    key = f'train/MSE_{h}'
+                    epoch_grad_norms[key] = epoch_grad_norms.get(key, 0.0) + val
 
                 # Gradient clipping to stabilise training
                 torch.nn.utils.clip_grad_norm_(trainer.model.parameters(), max_grad_norm)
@@ -304,10 +316,9 @@ class AdamWOptimizer:
                     for k, v in batch_norms.items():
                         epoch_grad_norms.setdefault(k, 0.0)
                         epoch_grad_norms[k] += v
-                    num_batches += 1
 
+                num_batches += 1
                 self.optimizer.step()
-
                 total_loss += train_loss.detach()
 
             if self.scheduler is not None:
@@ -316,49 +327,69 @@ class AdamWOptimizer:
             pbar.update(1)
 
             if (epoch + 1) % self.eval_every_eps == 0:
-                train_loss = total_loss.cpu().item() / len(trainer.train_loader)
-                losses.append(train_loss)
+                # Average total weighted MSE across all batches
+                avg_train_mse = total_loss.cpu().item() / num_batches
+                losses.append(avg_train_mse)
                 epochs.append(epoch)
-                val_loss = trainer.validate(trainer.val_loader) # TODO: change to val_loader
+
+                # Capture validation metrics (MSE and Relative L2)
+                val_metrics = trainer.validate(trainer.val_loader)
+                val_mse = val_metrics['loss']
+                val_rel_l2 = val_metrics['rel_l2']
+
                 current_lr = self.optimizer.param_groups[0]['lr']
 
                 if not disable_pbar:
-                    pbar.set_postfix({"loss": train_loss, "val_loss": val_loss})
+                    pbar.set_postfix({
+                        "train_MSE": avg_train_mse,
+                        "val_MSE": val_mse,
+                        "rel_l2": val_rel_l2
+                    })
+
+                # Construct the final metrics dictionary for WandB
                 metrics = {
-                    'train/loss': train_loss,
-                    'val/loss': val_loss,
+                    'train/MSE_total': avg_train_mse,
+                    'val/MSE': val_mse,
+                    'val/rel_l2': val_rel_l2,
                     'lr': current_lr,
                 }
-                # Add average gradient norms for this epoch
+
+                # Add averaged head-specific MSEs and Gradient Norms
                 if epoch_grad_norms and num_batches > 0:
                     for k, v in epoch_grad_norms.items():
                         metrics[k] = v / num_batches
-                val_losses.append(val_loss)
+
+                val_losses.append(val_mse)
                 val_epochs.append(epoch)
 
                 metrics['memory'] = psutil.Process(os.getpid()).memory_info().rss/1e9
-                trainer.log_metrics(metrics, step = epoch + 1)
+                trainer.tracker.log_metrics(metrics, step=epoch + 1)
 
-                if self.early_save_metric == 'val':
-                    current_loss = val_loss
-                else:
-                    current_loss = train_loss
+                # Early saving logic
+                current_loss = val_mse if self.early_save_metric == 'val' else avg_train_mse
 
                 if current_loss < best_loss:
                     best_loss = current_loss
                     best_epoch = epoch
                     best_state = deepcopy(trainer.model.state_dict())
 
-                 # Save checkpoint every N epochs if configured (rank 0 only)
+                # Periodic Artifact Saving
                 if (getattr(trainer.optimizer_config.args, 'save_every_epochs', 0) > 0
                     and (epoch + 1) % trainer.optimizer_config.args.save_every_epochs == 0
                     and getattr(trainer.setup_config, 'rank', 0) == 0):
                     try:
-                        trainer.save_checkpoint_artifact(epoch + 1, train_loss, val_loss, is_best=False)
+                        trainer.save_ckpt()
+                        trainer.tracker.save_checkpoint_artifact(
+                            epoch=epoch + 1,
+                            train_loss=avg_train_mse,
+                            val_loss=val_mse,
+                            is_best=False,
+                            config_dict=trainer.full_config_dict
+                        )
                         if getattr(trainer.setup_config, 'test_during_training', False):
                             trainer.test()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logging.getLogger(__name__).warning(f"Periodic save failed: {e}")
 
         if best_state is not None:
             trainer.model.load_state_dict(best_state)
@@ -367,17 +398,8 @@ class AdamWOptimizer:
             pbar.close()
 
         return {
-            "train": {
-                "loss": losses,
-                "epoch": epochs,
-            },
-            "valid": {
-                "loss": val_losses,
-                "epoch": val_epochs,
-            },
-            "best": {
-                "epoch": best_epoch,
-                "loss": best_loss,
-            },
+            "train": {"loss": losses, "epoch": epochs},
+            "valid": {"loss": val_losses, "epoch": val_epochs},
+            "best": {"epoch": best_epoch, "loss": best_loss},
             "time": time_total
         }

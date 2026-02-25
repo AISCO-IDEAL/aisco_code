@@ -643,7 +643,7 @@ class StaticTrainer3D(TrainerBase):
 
         return sampled_batch, query_pos, query_batch_idx, target_for_loss
 
-    def train_step(self, batch: "pyg.data.Batch") -> torch.Tensor:
+    def train_step(self, batch: "pyg.data.Batch"):
         strategy = self.dataset_config.training_strategy
         latent_tokens_dev = self.latent_tokens.to(self.device)
 
@@ -668,57 +668,101 @@ class StaticTrainer3D(TrainerBase):
                 query_coord_batch_idx=query_batch_idx,
             )
 
-            target = target_for_loss
+            # In neural_field mode, 'batch' becomes the sampled version for target extraction
+            batch = sampled_batch
         else:
             batch = batch.to(self.device)
             pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
-            target = batch.y
 
         # Multi-head output: pred is a dict {"force": [B,1], "cd": [B,1]}
-        # NOTE: targets are already normalized by NormalizeFeatures transform
-        # at data loading time — do NOT re-normalize here.
         if isinstance(pred, dict):
             targets = {"force": batch.force, "cd": batch.cd}
-            # Filter to active_heads if configured
             if self.active_heads:
                 targets = {k: v for k, v in targets.items() if k in self.active_heads}
-            return masked_multi_head_loss(pred, targets)
+
+
+            total_loss = 0.0
+            head_losses = {}
+
+            for h in targets:
+                # Mask out NaNs (common in DrivAerNet data)
+                mask = ~torch.isnan(targets[h])
+                if mask.any():
+                    # Calculate MSE for this specific head
+                    h_loss = self.loss_fn(pred[h][mask], targets[h][mask])
+                    # Log the unweighted MSE for clear tracking in WandB
+                    head_losses[h] = h_loss.item()
+                    # Apply the multiplier to balance the total gradient
+                    total_loss += h_loss
+
+            return total_loss, head_losses
         else:
-            return self.loss_fn(pred, target)
+            # Single-head fallback
+            target = batch.y
+            loss = self.loss_fn(pred, target)
+            return loss, {"y": loss.item()}
 
     def validate(self, loader: DataLoader):
         self.model.eval()
         total_loss = 0.0
+        total_rel_l2 = 0.0
+        num_batches = len(loader)
+
         with torch.no_grad():
             for batch in loader:
                 batch = batch.to(self.device)
                 latent_tokens_dev = self.latent_tokens.to(self.device)
                 pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
 
-                # Multi-head output: pred is a dict {"force": [B,1], "cd": [B,1]}
-                # NOTE: targets already normalized by NormalizeFeatures transform.
+                # 1. Calculate Loss (MSE/Multi-head)
                 if isinstance(pred, dict):
                     targets = {"force": batch.force, "cd": batch.cd}
                     if self.active_heads:
                         targets = {k: v for k, v in targets.items() if k in self.active_heads}
+
                     loss = masked_multi_head_loss(pred, targets)
+
+                    # For Relative L2, we use the primary head (e.g., 'force')
+                    primary_key = self.active_heads[0] if self.active_heads else list(pred.keys())[0]
+                    p = pred[primary_key]
+                    t = targets[primary_key]
                 else:
                     target = batch.y
                     loss = self.loss_fn(pred, target)
+                    p, t = pred, target
 
                 total_loss += loss.item()
-        # Global reduction across ranks.
-        # total_loss is the sum of per-batch mean losses, so divide by
-        # number of batches (len(loader)), NOT number of samples.
-        # With DDP all_reduce SUM we get the total across all ranks;
-        # multiply len(loader) by world_size to get the global batch count.
-        local_sum = torch.tensor([total_loss], dtype=torch.float64, device=self.device)
+
+                # 2. Calculate Relative L2 Error with NaN Masking
+                # We must mask NaNs before taking the norm, otherwise the result is NaN
+                valid_mask = ~torch.isnan(t)
+                if valid_mask.any():
+                    p_valid = p[valid_mask]
+                    t_valid = t[valid_mask]
+
+                    diff_norm = torch.linalg.norm(p_valid - t_valid)
+                    target_norm = torch.linalg.norm(t_valid)
+
+                    # Add small epsilon to prevent division by zero
+                    rel_l2 = diff_norm / (target_norm + 1e-10)
+                    total_rel_l2 += rel_l2.item()
+                else:
+                    # If no valid targets in this batch, we don't add to total_rel_l2
+                    pass
+
+        # Global reduction across ranks for DDP
+        local_metrics = torch.tensor([total_loss, total_rel_l2], dtype=torch.float64, device=self.device)
         world_size = 1
         if getattr(self.setup_config, "distributed", False):
-            torch.distributed.all_reduce(local_sum, op=torch.distributed.ReduceOp.SUM)
+            torch.distributed.all_reduce(local_metrics, op=torch.distributed.ReduceOp.SUM)
             world_size = torch.distributed.get_world_size()
-        denom = len(loader) * world_size  # total batches across all ranks
-        return local_sum.item() / denom
+
+        denom = num_batches * world_size
+
+        return {
+            "loss": local_metrics[0].item() / denom,
+            "rel_l2": local_metrics[1].item() / denom
+        }
 
     def test(self):
         self.model.eval()
@@ -849,9 +893,21 @@ class StaticTrainer3D(TrainerBase):
                     diff = head_preds - head_targets
                     mse = torch.mean(diff**2).item()
                     mae = torch.mean(torch.abs(diff)).item()
+
+                    # Calculate MRE for better W&B tracking
+                    rel_errors = torch.abs(diff) / (torch.abs(head_targets) + EPSILON)
+                    mre_percent = torch.mean(rel_errors).item() * 100.0
+
                     logging.getLogger(__name__).info(
                         f"--- Head '{head_name}': MSE={mse:.6f}, MAE={mae:.6f}, n_samples={head_preds.shape[0]} ---"
                     )
+
+                    # Log Multi-Head metrics to tracker
+                    self.tracker.log_metrics({
+                        f"test/{head_name}_mse": mse,
+                        f"test/{head_name}_mae": mae,
+                        f"test/{head_name}_mre_percent": mre_percent
+                    })
 
                     results_array = torch.cat([head_targets.view(-1, 1), head_preds.view(-1, 1)], dim=1).cpu().numpy()
                     csv_path = self.path_config.result_path.replace(".png", f"_{head_name}_predictions.csv")
@@ -870,6 +926,17 @@ class StaticTrainer3D(TrainerBase):
             else:
                 full_preds = torch.cat(all_batch_preds_denorm, dim=0)
                 full_targets = torch.cat(all_batch_targets_denorm, dim=0)
+
+                diff = full_preds - full_targets
+                mse = torch.mean(diff**2).item()
+                mre_percent = (torch.abs(diff) / (torch.abs(full_targets) + EPSILON)).mean().item() * 100.0
+
+                # Log Single-Head metrics to tracker
+                self.tracker.log_metrics({
+                    "test/mse": mse,
+                    "test/mre_percent": mre_percent
+                })
+
             logging.getLogger(__name__).info(
                 f"Concatenated results: preds shape {full_preds.shape}, targets shape {full_targets.shape}"
             )
@@ -889,6 +956,16 @@ class StaticTrainer3D(TrainerBase):
                 total_test_time = total_inference_time + total_data_loading_time
                 overall_throughput = total_samples / total_test_time
                 inference_throughput = total_samples / total_inference_time
+                data_loading_ratio = (total_data_loading_time / total_test_time) * 100
+                inference_ratio = (total_inference_time / total_test_time) * 100
+
+                # Log Performance metrics to tracker
+                self.tracker.log_metrics({
+                    "perf/inference_throughput_sps": inference_throughput,
+                    "perf/overall_throughput_sps": overall_throughput,
+                    "perf/avg_latency_ms": avg_inference_time * 1000,
+                    "perf/data_loading_ratio_percent": data_loading_ratio
+                })
 
                 logging.getLogger(__name__).info("=" * 60)
                 logging.getLogger(__name__).info("Inference Speed Performance Report")
@@ -916,8 +993,6 @@ class StaticTrainer3D(TrainerBase):
                 )
                 logging.getLogger(__name__).info("")
                 logging.getLogger(__name__).info("Performance Ratio:")
-                data_loading_ratio = (total_data_loading_time / total_test_time) * 100
-                inference_ratio = (total_inference_time / total_test_time) * 100
                 logging.getLogger(__name__).info(f"  Data loading time ratio: {data_loading_ratio:.1f}%")
                 logging.getLogger(__name__).info(f"  Inference time ratio: {inference_ratio:.1f}%")
                 logging.getLogger(__name__).info("=" * 60)

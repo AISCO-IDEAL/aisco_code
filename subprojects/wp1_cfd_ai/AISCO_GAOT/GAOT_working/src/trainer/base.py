@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.distributed as dist
-import wandb
 from torch import nn
 
 from ..dataloader.metadata import DATASET_METADATA
@@ -15,6 +14,8 @@ from .optimizers import AdamOptimizer, AdamWOptimizer
 from .utils.default_set import DatasetConfig, ModelConfig, OptimizerConfig, PathConfig, SetUpConfig, merge_config
 from .utils.setup import load_ckpt, manual_seed, save_ckpt
 
+# Import the new W&B Tracker
+from .logger import WandbTracker
 
 class TrainerBase:
     """
@@ -59,11 +60,12 @@ class TrainerBase:
         # 2. Initialize the model components
         self.init_dataset(self.dataset_config)
         self.init_model(self.model_config)
-        self._attach_wandb_watch()
         self.init_optimizer(self.optimizer_config)
 
-        # 3. NOW initialize W&B
-        self._init_wandb()
+        # 3. Initialize the W&B Tracker and watch model
+        self.full_config_dict = self._to_serializable_config()
+        self.tracker = WandbTracker(self.setup_config, self.path_config, self.full_config_dict)
+        self.tracker.watch_model(self.model)
 
         if self.setup_config.rank == 0:
             nparam = sum(
@@ -136,7 +138,7 @@ class TrainerBase:
         )
         dist.barrier()
 
-# ------------ wandb ------------ #
+# ------------ utils ------------ #
 
     def _to_serializable_config(self) -> dict[str, Any]:
         """Convert config objects to a nested dict suitable for logging."""
@@ -158,125 +160,6 @@ class TrainerBase:
         payload['path'] = to_dict(self.path_config)
         return payload
 
-    def _init_wandb(self) -> None:
-        """Initialize Weights & Biases run if enabled in setup config."""
-        self.wandb_run = None
-        logger = logging.getLogger(__name__)
-
-        try:
-            wandb_enabled = getattr(self.setup_config, 'wandb', False)
-            current_rank = self.setup_config.rank
-            logger.info(f'Rank {current_rank}: wandb_enabled={wandb_enabled}, checking if should init wandb (only rank 0 should)')
-
-            if wandb_enabled and current_rank == 0:
-                import os
-
-                import wandb
-                logger.info(f'Rank {current_rank}: Initializing wandb...')
-                # Respect mode: 'online' | 'offline' | 'disabled'
-                if hasattr(self.setup_config, 'wandb_mode') and self.setup_config.wandb_mode:
-                    os.environ['WANDB_MODE'] = str(self.setup_config.wandb_mode)
-
-                init_kwargs = {
-                    'project': self.setup_config.wandb_project,
-                    'entity': self.setup_config.wandb_entity,
-                    'name': self.setup_config.wandb_run_name,
-                    'group': self.setup_config.wandb_group,
-                    'notes': self.setup_config.wandb_notes,
-                    'tags': self.setup_config.wandb_tags,
-                    'config': self._to_serializable_config(),
-                    'reinit': True
-                }
-                # Remove None values to avoid API complaints
-                init_kwargs = {k: v for k, v in init_kwargs.items() if v is not None}
-                self.wandb_run = wandb.init(**init_kwargs)
-        except Exception as e:
-            logging.getLogger(__name__).warning(f"Failed to initialize Weights & Biases: {e}")
-            self.wandb_run = None
-
-    def _attach_wandb_watch(self) -> None:
-        """Call wandb.watch on the model. Must be called AFTER init_model()."""
-        if getattr(self, 'wandb_run', None) is None:
-            return
-        if not getattr(self.setup_config, 'wandb_watch_model', False):
-            return
-        try:
-            import wandb
-            wandb.watch(self.model, log='all', log_freq=100)
-        except Exception as e:
-            logging.getLogger(__name__).warning(f"wandb.watch failed (metrics still logged): {e}")
-
-    def log_metrics(self, metrics: dict[str, Any], step: Optional[int] = None) -> None:
-        """Log metrics to W&B if enabled."""
-        if getattr(self, 'wandb_run', None) is None:
-            return
-        try:
-            import wandb
-            if step is not None:
-                wandb.log(metrics, step=step)
-            else:
-                wandb.log(metrics)
-        except Exception as e:
-            logging.getLogger(__name__).warning(f"Failed to log metrics to W&B: {e}")
-
-    def save_checkpoint_artifact(self, epoch: int, train_loss: float, val_loss: float, is_best: bool = False) -> None:
-        """Save model checkpoint as wandb artifact."""
-
-        artifact_name = self.setup_config.wandb_run_name
-        artifact = wandb.Artifact(
-            name=artifact_name,
-            type="model",
-            description=f"Model checkpoint at epoch {epoch}"
-        )
-
-
-        artifact.add_file(self.path_config.ckpt_path, name=os.path.basename(self.path_config.ckpt_path))
-
-            # Add metadata
-        artifact.metadata = {
-            "epoch": epoch,
-            "train_loss": float(train_loss),
-            "val_loss": float(val_loss),
-            "is_best": is_best,
-            "model_config": self._to_serializable_config()["model"],
-            "dataset_config": self._to_serializable_config().get("dataset", {}),
-        }
-
-        aliases = ["latest"]
-        if is_best:
-            aliases.append("best")
-
-        wandb.log_artifact(artifact, aliases=aliases)
-        logging.getLogger(__name__).info(f"Saved checkpoint artifact: {artifact_name}:{aliases}")
-
-    def load_from_artifact(self, artifact_name: str) -> Optional[dict[str, Any]]:
-        artifact = wandb.use_artifact(artifact_name)
-        artifact_dir = os.path.join(".artifacts", artifact.name)
-        if not os.path.exists(artifact_dir):
-            logging.getLogger(__name__).info(f"Didn't find artifact in local, downloading artifact from wandb: {artifact_name}")
-            artifact_dir = artifact.download(root=artifact_dir)
-
-        ckpt_files = [f for f in os.listdir(artifact_dir) if f.endswith('.pt')]
-        if len(ckpt_files) > 1:
-            logging.getLogger(__name__).warning(f"Multiple .pt files found, using first one: {ckpt_files[0]}")
-
-        ckpt_path = os.path.join(artifact_dir, ckpt_files[0])
-        self.load_ckpt(ckpt_path)
-
-        logging.getLogger(__name__).info(f"Successfully loaded model from artifact: {artifact_name}")
-
-        return artifact.metadata
-
-    def _finish_wandb(self) -> None:
-        if getattr(self, 'wandb_run', None) is None:
-            return
-        try:
-            import wandb
-            wandb.finish()
-        except Exception as e:
-            logging.getLogger(__name__).warning(f"Failed to finalize W&B run: {e}")
-
-# ------------ utils ------------ #
     def to(self, device):
         self.model.to(device)
 
@@ -291,8 +174,15 @@ class TrainerBase:
         if path is None:
             path = self.path_config.ckpt_path
         load_ckpt(path, model=self.model)
-
         return self
+
+    def load_from_artifact(self, artifact_name: str) -> Optional[dict[str, Any]]:
+        """Uses Tracker to load from an artifact."""
+        ckpt_path, metadata = self.tracker.download_artifact(artifact_name)
+        if ckpt_path:
+            self.load_ckpt(ckpt_path)
+            logging.getLogger(__name__).info(f"Successfully loaded model from artifact: {artifact_name}")
+        return metadata
 
     def save_ckpt(self, path: Optional[str] = None):
         """Save checkpoint to the config.ckpt_path"""
@@ -300,7 +190,6 @@ class TrainerBase:
             path = self.path_config.ckpt_path
         os.makedirs(os.path.dirname(path), exist_ok=True)
         save_ckpt(path, model = self.model)
-
         return self
 
     def compute_test_errors(self):
@@ -334,7 +223,6 @@ class TrainerBase:
         result = self.optimizer.optimize(self)
         self.config.datarow['training time'] = result['time']
 
-
         if len(result['train']['loss']) == 0:
             if self.setup_config.rank == 0:
                 self.test()
@@ -354,23 +242,30 @@ class TrainerBase:
 
             if self.setup_config.rank == 0:
                 self.plot_losses(**kwargs)
-                self.log_metrics({
+
+                # Use Tracker for metrics logging
+                self.tracker.log_metrics({
                     'best/loss': result['best']['loss'],
                     'best/epoch': result['best']['epoch'],
                     'training_time': result['time']
                 })
+
                 self.save_ckpt()
-                if self.setup_config.wandb:
-                    self.save_checkpoint_artifact(
+
+                # Use Tracker for artifact saving
+                if getattr(self.setup_config, 'wandb', False):
+                    self.tracker.save_checkpoint_artifact(
                         epoch=result['best']['epoch'],
                         train_loss=result['best']['loss'],
-                        val_loss=result['best']['loss'],
-                        is_best=True
-                        )
+                        val_loss=result.get('best', {}).get('loss'),
+                        is_best=True,
+                        config_dict=self.full_config_dict
+                    )
                 self.test()
 
         if self.setup_config.rank == 0:
-            self._finish_wandb()
+            # Use Tracker to finish the run
+            self.tracker.close()
 
 # ------------ plot ------------ #
     def plot_losses(self,
@@ -393,7 +288,7 @@ class TrainerBase:
             ax.set_xlim(left=0)
             if (np.array(losses) > 0).all():
                 ax.set_yscale('log')
-            np.savez(self.path_config["loss_path"][:-4]+".npz", epochs=epochs, losses=losses)
+            np.savez(self.path_config.loss_path[:-4]+".npz", epochs=epochs, losses=losses)
 
         else:
             # also plot valid loss
