@@ -6,6 +6,7 @@ from skimage import measure
 
 from ..models.sdf import SDFNetwork
 from .kaolin_utils import flexicubes_to_PLY, get_diff_mesh
+from typing import Optional
 
 
 def save_sdf2mesh(
@@ -13,7 +14,7 @@ def save_sdf2mesh(
     grid_size: int = 128,
     threshold: float = 0.0,
     filename: str = "sdf_mesh.ply",
-    mesh_dir: str = None,
+    mesh_dir: Optional[str] = None,
     device: str = "cuda",
 ):
     """

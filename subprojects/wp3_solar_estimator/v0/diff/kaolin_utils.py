@@ -1,5 +1,6 @@
 
 import os
+from typing import Optional
 
 import kaolin as kal
 import torch
@@ -157,7 +158,7 @@ def flexicubes_to_PLY(
     faces: torch.tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.ply",
-    mesh_dir: str = None,  # Default to None, not a space
+    mesh_dir: Optional[str] = None,  # Default to None, not a space
 ):
     """
     Pre: Vertices and Faces generated from kaolin flexicubes algorithm

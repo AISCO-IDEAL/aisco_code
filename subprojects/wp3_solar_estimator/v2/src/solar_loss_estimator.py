@@ -25,13 +25,13 @@ import contextlib
 import math
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 import torch
 import trimesh
-import wandb
 
+import wandb
 from subprojects.wp3_solar_estimator.v2.src.kaolin_utils import get_diff_mesh
 from subprojects.wp3_solar_estimator.v2.src.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer as CADVisualizerBB
@@ -114,7 +114,7 @@ class SolarMeshLossFn(torch.autograd.Function):
 
 
 class SolarLossEstimator:
-    def __init__(self, device: str = "cpu", losses_config: dict = None):
+    def __init__(self, device: str = "cpu", losses_config: Optional[dict] = None):
         self.device = device
         self.losses_config = losses_config or {}
         solar_config = self.losses_config["solar_config"]
@@ -178,7 +178,7 @@ class SolarLossEstimator:
         except Exception as e:
             print(f"Error in SolarLossEstimator.solar_loss: {e}")
             self._loss_value = torch.tensor(0.0, device=self.device, dtype=torch.float32)
-        
+
         normalisation_factor = 1.0
         if self.normalise_loss:
             normalisation_factor = 1e6/self.max_selected_area_mm2
@@ -284,7 +284,7 @@ class SolarLossEstimator:
             visualizer_a = CADVisualizerBB(temp_ply_path, out_image_path=temp_image_path)
             try:
                 visualizer_a.render_until_blue_detected()
-            except Exception as e:
+            except Exception:
                 print("BB Visualisation Error in Epoch", self.epoch_name)
             wandb.log({"solar_final_loss": float(self._loss_value.detach().cpu().item())}, step=int(self.epoch_name))
             wandb.log({"bb-visualisazion": wandb.Image(str(temp_image_path))}, step=int(self.epoch_name))

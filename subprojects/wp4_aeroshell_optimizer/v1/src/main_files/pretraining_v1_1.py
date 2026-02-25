@@ -1,9 +1,10 @@
 import importlib
+from typing import Optional
 
 import torch
-import wandb # Added wandb import
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.ground_truth_masks.simple_geoms import sphere_gt, cube_gt # Added cube_gt
+import wandb  # Added wandb import
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.ground_truth_masks.simple_geoms import cube_gt, sphere_gt  # Added cube_gt
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 
@@ -25,9 +26,9 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
 
 
 def pretraining(
-    model: BaseModel = None,
+    model: Optional[BaseModel] = None,
     pretraining_config_name: str = "pretraining_v0_config.yaml",
-    override_config: dict = None,
+    override_config: Optional[dict] = None,
 ):
     # Does pretraining, for now only on a sphere
 
@@ -52,7 +53,7 @@ def pretraining(
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     model = model.to(device)
-    
+
     pretraining_shape = config.get("pretraining_shape", "sphere")
 
     # Training loop
