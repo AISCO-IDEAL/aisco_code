@@ -73,7 +73,7 @@ class GAOT3D(nn.Module):
     def _init_encoder(self, magno_cfg: dict) -> MAGNOEncoder:
         return MAGNOEncoder(
             in_channels=self.input_size,
-            out_channels=self.node_latent_size,
+            #out_channels=self.node_latent_size,
             magno_config=magno_cfg,
         )
 
