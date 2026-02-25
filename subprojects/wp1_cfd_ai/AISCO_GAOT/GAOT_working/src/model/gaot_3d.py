@@ -63,8 +63,13 @@ class GAOT3D(nn.Module):
         self.processor = self._init_processor(self.config)
         self.attn_pool, self.decoder = self._init_decoder(config.get("decoder", {}))
 
-    def init_encoder(self, input_size, node_latent_size, magno_config):
-        return MAGNOEncoder(in_channels=input_size, out_channels=node_latent_size, gno_config=magno_config)
+    # ─── encoder ─────────────────────────────────────────────────────────
+    def _init_encoder(self, magno_cfg: dict) -> MAGNOEncoder:
+        return MAGNOEncoder(
+            in_channels=self.input_size,
+            #out_channels=self.node_latent_size,
+            magno_config=magno_cfg,
+        )
 
     # ─── processor (vision transformer) ─────────────────────────────────
     def _init_processor(self, config: dict) -> Transformer:
