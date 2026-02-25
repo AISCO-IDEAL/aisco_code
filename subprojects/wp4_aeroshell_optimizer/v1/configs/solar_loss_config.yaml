@@ -18,7 +18,7 @@ SolarLossConfigV3:  # moved from solar_loss_v3.py
   device: "cuda"
   batch_size: 4096
   eps: 1e-12
-  sigmoid_sharpness: 10.0
+  sigmoid_sharpness: 100.0
   budget_penalty_weight: 0.1
   wandb_logging: True
   soft_mask_selection_threshold: 0.5 # This is the threshold for selecting points in the soft mask for the loss computation. Points with a soft mask value above this threshold will be considered for the loss computation.
