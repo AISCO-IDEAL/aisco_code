@@ -2,10 +2,11 @@ from pathlib import Path
 
 import torch
 import trimesh
-import wandb
 
+import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
 from subprojects.wp3_solar_estimator.validation.statistics import MeshStatistics
+from subprojects.wp4_aeroshell_optimizer.archive.v0.src.main import deep_update
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.cruising_speed import cruising_speed
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_alm, weights_manual
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
@@ -36,11 +37,11 @@ class TotalLoss:
             v=self.__general_config["general_info"]["version"],
             cfg_name=self.__general_config["active_configs"]["losses"],
         )
-        
+
         # Check for WandB sweep overrides for initial_lambda
-        if wandb.run and "initial_lambda" in wandb.config:
-            self.losses_config["general_info"]["initial_lambda"] = wandb.config.initial_lambda
-            print(f"Sweep: Updated initial_lambda to {wandb.config.initial_lambda}")
+        if wandb.run and "initial_lambda" in wandb.config:  # type: ignore [attr-defined]
+            self.losses_config["general_info"]["initial_lambda"] = wandb.config.initial_lambda  # type: ignore [attr-defined]
+            print(f"Sweep: Updated initial_lambda to {wandb.config.initial_lambda}")  # type: ignore [attr-defined]
 
         self.weights = self.losses_config.get("losses", {})  # get nested losses dict
         self.__active_losses: dict = {}
@@ -69,20 +70,19 @@ class TotalLoss:
         self._mesh_extraction_config = mesh_config  # Store for later use
 
         # wandb init
-        if self.__general_config["wandb_general"].get("use_wandb", False):
-            if wandb.run is None:
-                run = wandb.init(
-                    # Set the wandb log directory
-                    dir="wp4_aeroshell_optimizer/data/wandb_logs",
-                    # Set the wandb entity where your project will be logged (generally your team name).
-                    entity=self.__general_config["wandb_general"].get("entity_name", "aisco"),
-                    # Set the wandb project where this run will be logged.
-                    project=self.__general_config["wandb_general"].get("project_name", "Aeroshell Optimiser with ALM and Sweeping"),
-                    # Track hyperparameters and run metadata.
-                    config=self.__general_config,
-                )
-                config = deep_update(self.__general_config, dict(wandb.config))
-                run.config.update(config, allow_val_change=True)
+        if self.__general_config["wandb_general"].get("use_wandb", False) and wandb.run is None:  # type: ignore [attr-defined]
+            run = wandb.init(
+                # Set the wandb log directory
+                dir="wp4_aeroshell_optimizer/data/wandb_logs",
+                # Set the wandb entity where your project will be logged (generally your team name).
+                entity=self.__general_config["wandb_general"].get("entity_name", "aisco"),
+                # Set the wandb project where this run will be logged.
+                project=self.__general_config["wandb_general"].get("project_name", "Aeroshell Optimiser with ALM and Sweeping"),
+                # Track hyperparameters and run metadata.
+                config=self.__general_config,
+            )  # type: ignore [attr-defined]
+            config = deep_update(self.__general_config, dict(wandb.config))
+            run.config.update(config, allow_val_change=True)
 
         # ALM parameters init
         if self.losses_config["general_info"].get("ALM", False):
@@ -165,9 +165,15 @@ class TotalLoss:
             # DOCUMENTATION: `Losses and their weights` in Obsidian
 
             # o: maximise cruising speed (CSE)
-            if self.losses_config["CSE"]=="True": # TODO: go through each separate loss and check
-                o = -1 *cruising_speed(solar_power=loss_tensors[4], drag_force_at_25ms=loss_tensors[0], mass=210, c_losses=20, rolling_friction_coefficient=0.006)
-            else: # o: maximise solar power - drag losses
+            if self.losses_config["CSE"] == "True":  # TODO: go through each separate loss and check
+                o = -1 * cruising_speed(
+                    solar_power=loss_tensors[4],
+                    drag_force_at_25ms=loss_tensors[0],
+                    mass=210,
+                    c_losses=20,
+                    rolling_friction_coefficient=0.006,
+                )
+            else:  # o: maximise solar power - drag losses
                 o = -1 * (loss_tensors[4] - loss_tensors[0])
 
             # c: constraint loss (bb, eikonal, smoothness)
@@ -185,7 +191,6 @@ class TotalLoss:
                 constrained_losses=c,
                 thresholds=thresholds_tensor,
             )
-
 
             weighted_total_loss = (
                 o + torch.dot(self.lamdas.squeeze(), c) + 1 / 2 * torch.dot(self.mus.squeeze(), c**2)

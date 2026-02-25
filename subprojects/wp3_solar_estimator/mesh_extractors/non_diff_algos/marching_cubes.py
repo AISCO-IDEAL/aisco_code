@@ -1,13 +1,24 @@
-"""
-Ultra-efficient non-differentiable marching cubes mesh extraction using PyMCubes.
+#
+# Ultra-efficient non-differentiable marching cubes mesh extraction using PyMCubes.
 
-Optimized for high-resolution (512³+) repeated mesh extraction from neural SDFs.
-Uses GPU-batched SDF evaluation with CPU-based PyMCubes for maximum throughput.
-"""
+# Optimized for high-resolution (512³+) repeated mesh extraction from neural SDFs.
+# Uses GPU-batched SDF evaluation with CPU-based PyMCubes for maximum throughput.
+#
 
 import warnings
+from collections.abc import Callable
 
 import torch
+
+from subprojects.wp3_solar_estimator.mesh_extractors.diso.helpers.grid_formatting import (
+    create_bbox_grid,
+    renormalise_vertices,
+    sample_sdf,
+    sdf_samples_to_grid,
+)
+
+# Type alias for the bounding box [[xmin, xmax], [ymin, ymax], [zmin, zmax]]
+BBoxType = list[list[int]]
 
 try:
     import diso
@@ -28,13 +39,6 @@ except ImportError:
     )
     HAS_PYMCUBES = False
     from skimage import measure  # Fallback to sklearn
-
-from subprojects.wp3_solar_estimator.mesh_extractors.diso.helpers.grid_formatting import (
-    create_bbox_grid,
-    renormalise_vertices,
-    sample_sdf,
-    sdf_samples_to_grid,
-)
 
 
 class MarchingCubesExtractor:
@@ -61,6 +65,9 @@ class MarchingCubesExtractor:
         device: str = "cuda",
         verbose: bool = True,
         fixed_box: bool = True,
+        bbox: BBoxType | None = None,
+        grid: torch.Tensor | None = None,
+        resolution: int = -1,
     ):
         """
         Initialize the marching cubes extractor.
@@ -75,9 +82,9 @@ class MarchingCubesExtractor:
         self._fixed_box = fixed_box
 
         # Grid state
-        self._bbox = None
-        self._grid = None
-        self._resolution = None
+        self._bbox = bbox
+        self._grid = grid
+        self._resolution = resolution
 
         # Print which backend is being used
         if self.verbose:
@@ -103,7 +110,7 @@ class MarchingCubesExtractor:
             total_points = resolution**3
             print(f"Grid set: {resolution}³ = {total_points:,} points, bbox={bbox}")
 
-    def extract_mesh(self, model: callable, isovalue: float = 0.0, batch_size: int = 8192) -> tuple[torch.Tensor, torch.Tensor]:
+    def extract_mesh(self, model: Callable, isovalue: float = 0.0, batch_size: int = 8192) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Extract isosurface mesh from neural SDF using marching cubes.
 
@@ -170,7 +177,7 @@ class MarchingCubesExtractor:
 
     def extract_mesh_chunked(
         self,
-        model: callable,
+        model: Callable,
         isovalue: float = 0.0,
         batch_size: int = 8192,
         chunks: int = 2,
@@ -225,15 +232,21 @@ class MeshExtractor:
         verbose: bool = True,
         fixed_box: bool = True,
         dmc_dtype: str = "float32",
+        dmc_module: torch.nn.Module = torch.nn.Identity(),  # DISO objects inherit from nn.Module
     ) -> None:
         self.algorithm = algorithm.lower()
         self.device = device
         self.verbose = verbose
         self._fixed_box = fixed_box
 
-        self._bbox = None
-        self._grid = None
-        self._resolution = None
+        self._bbox: BBoxType | None = None
+        self._grid: torch.Tensor | None = None
+        self._resolution: int = -1
+
+        # Backends
+        self._mc: MarchingCubesExtractor | None = None
+        self._dmc = dmc_module
+        self._diso_backend: str = ""
 
         if self.algorithm in {"dmc", "disomc"}:
             if not HAS_DISO:
@@ -247,12 +260,10 @@ class MeshExtractor:
             else:
                 self._dmc = diso.DiffMC(dtype=dtype).to(device)
                 self._diso_backend = "DISO-MC"
-            self._mc = None
             if self.verbose:
                 print(f"MeshExtractor initialized with {self._diso_backend} backend on {device}")
         else:
             self._mc = MarchingCubesExtractor(device=device, verbose=verbose, fixed_box=fixed_box)
-            self._dmc = None
 
     def set_grid(self, bbox: list[list[int]], resolution: int):
         if not self._fixed_box:
@@ -265,18 +276,18 @@ class MeshExtractor:
             if self.verbose:
                 total_points = resolution**3
                 print(f"Grid set: {resolution}³ = {total_points:,} points, bbox={bbox}")
-        else:
+        elif self._mc is not None:
             self._mc.set_grid(bbox, resolution)
 
-    def extract_mesh(self, model: callable, isovalue: float = 0.0, batch_size: int = 8192) -> tuple[torch.Tensor, torch.Tensor]:
+    def extract_mesh(self, model: Callable, isovalue: float = 0.0, batch_size: int = 8192) -> tuple[torch.Tensor, torch.Tensor]:
         if self.algorithm in {"dmc", "disomc"}:
             if self._fixed_box and (self._grid is None or self._resolution is None):
                 raise RuntimeError("Extractor grid not set. Call set_grid(bbox, resolution) before extracting mesh.")
 
             with torch.no_grad():
                 sdf_values = sample_sdf(model, self._grid, batch_size=batch_size)
-            sdf_grid = sdf_samples_to_grid(sdf_values, self._resolution)
 
+            sdf_grid = sdf_samples_to_grid(sdf_values, self._resolution)
             verts, faces = self._dmc(sdf_grid, isovalue=isovalue)
             verts = renormalise_vertices(verts, bbox=self._bbox)
 
@@ -284,5 +295,7 @@ class MeshExtractor:
                 print(f"[{self._diso_backend}] Extracted mesh: {verts.shape[0]:,} vertices, {faces.shape[0]:,} faces")
 
             return verts, faces
+        if self._mc is not None:
+            return self._mc.extract_mesh(model, isovalue=isovalue, batch_size=batch_size)
 
-        return self._mc.extract_mesh(model, isovalue=isovalue, batch_size=batch_size)
+        raise RuntimeError("Extractor not properly initialized.")

@@ -5,17 +5,17 @@ from torch import nn
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 
-"""
-WIRE architecture from https://arxiv.org/pdf/2301.05187
+#
+# WIRE architecture from https://arxiv.org/pdf/2301.05187
 
-This code is from the GINN PAPER repo: https://github.com/ml-jku/GINNs-Geometry-informed-Neural-Networks/blob/main/models/wire.py
-Modified by Alex to inherit from BaseModel class instead of nn.Module (BaseModel already inherits from nn.Module)
+# This code is from the GINN PAPER repo: https://github.com/ml-jku/GINNs-Geometry-informed-Neural-Networks/blob/main/models/wire.py
+# Modified by Alex to inherit from BaseModel class instead of nn.Module (BaseModel already inherits from nn.Module)
 
-Note that this implementation uses complex numbers!
-"""
+# Note that this implementation uses complex numbers!
+#
 
 
 class ComplexGaborLayer(nn.Module):
@@ -41,10 +41,7 @@ class ComplexGaborLayer(nn.Module):
 
         self.in_features = in_features
 
-        if self.is_first:
-            dtype = torch.float
-        else:
-            dtype = torch.cfloat
+        dtype = torch.float if self.is_first else torch.cfloat
 
         # Set trainable parameters if they are to be simultaneously optimized
         self.omega_0 = nn.Parameter(self.omega_0 * torch.ones(1), trainable)
@@ -68,16 +65,10 @@ class WIRE(BaseModel):
         hidden_features=256,
         hidden_layers=16,
         out_features=1,
-        outermost_linear=True,
         first_omega_0=30,
         hidden_omega_0=1.0,
         scale=1.0,
         trainable_params=True,
-        pos_encode=False,
-        sidelength=512,
-        fn_samples=None,
-        use_nyquist=True,
-        **kwargs,
     ):
         if config is None:
             config = {}
@@ -105,21 +96,22 @@ class WIRE(BaseModel):
         # Legacy parameter
         self.pos_encode = False
 
-        net_layers = []
-        net_layers.append(
+        net_layers = [
             self.nonlin(
                 in_features, hidden_features, omega0=first_omega_0, sigma0=scale, is_first=True, trainable=self.trainable_params
             )
-        )
+        ]
 
-        for i in range(hidden_layers):
-            net_layers.append(
+        net_layers.extend(
+            [
                 self.nonlin(
                     hidden_features, hidden_features, omega0=hidden_omega_0, sigma0=scale, trainable=self.trainable_params
                 )
-            )
+                for i in range(hidden_layers)
+            ]
+        )
 
-        final_linear = nn.Linear(hidden_features, out_features, dtype=dtype)
+        final_linear = nn.Linear(hidden_features, out_features, dtype=dtype)  # type: ignore [arg-type]
         net_layers.append(final_linear)
 
         self.net = nn.Sequential(*net_layers)
@@ -154,7 +146,13 @@ class WIRE(BaseModel):
         }
         return model_info
 
-    def optimise(self, training_config: dict | None = None, renderer_wrapper: Wrapper | None = None, wandb_name: str | None = None, general_config: dict | None = None) -> None:
+    def optimise(
+        self,
+        training_config: dict | None = None,
+        renderer_wrapper: Wrapper | None = None,
+        wandb_name: str | None = None,
+        general_config: dict | None = None,
+    ) -> None:
         """
         Args:
             training_config: Dictionary containing training configuration parameters.
@@ -200,5 +198,5 @@ class WIRE(BaseModel):
                     verbose=False,
                     pretraining=False,
                     wandb_run=wandb_name,
-                    epoch=epoch
+                    epoch=epoch,
                 )

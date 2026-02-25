@@ -122,7 +122,7 @@ class CADVisualizer:
         with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
             path = tmp.name
         wp = cq.Workplane()
-        if isinstance(solid_or_list, (list, tuple)):
+        if isinstance(solid_or_list, (list | tuple)):
             for s in solid_or_list:
                 if s is None:
                     continue
@@ -257,8 +257,11 @@ class CADVisualizer:
             cfg_name=self.__general_config["active_configs"]["losses"],
         )
         bb_config = config.get("bb_config")
-        assembley_version = bb_config.get("assembly_version") # if bb_config else None
-        assembly_id = bb_config["assembly_id"]
+
+        if bb_config:
+            assembley_version = bb_config.get("assembly_version")
+            assembly_id = bb_config["assembly_id"]
+
         meshes = []
         types = ["solid_a", "solid_b"]
         if assembley_version == 0:

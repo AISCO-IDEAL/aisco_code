@@ -43,14 +43,20 @@ def get_diff_mesh(
     torch.use_deterministic_algorithms(True)
     torch.manual_seed(42)  # Set a fixed seed
     ###################################################
+    # 1. Normalize grid resolution to extract guaranteed integers for X, Y, Z
+    if isinstance(grid_res, int):
+        res_x = res_y = res_z = grid_res
+    else:
+        # Assuming list format is [x, y, z]
+        res_x, res_y, res_z = grid_res[0], grid_res[1], grid_res[2]
 
     # At the moment unsure what happens when we change the size
     # of the sampled cube, so be careful here
 
-    # 1. Sample sdf function inside box
-    x = torch.linspace(box_dim[0], box_dim[1], grid_res, device=device)
-    y = torch.linspace(box_dim[2], box_dim[3], grid_res, device=device)
-    z = torch.linspace(box_dim[4], box_dim[5], grid_res, device=device)
+    # 2. Sample sdf function inside box using the explicit integers
+    x = torch.linspace(box_dim[0], box_dim[1], res_x, device=device)
+    y = torch.linspace(box_dim[2], box_dim[3], res_y, device=device)
+    z = torch.linspace(box_dim[4], box_dim[5], res_z, device=device)
     grid_x, grid_y, grid_z = torch.meshgrid(x, y, z, indexing="ij")
     grid_points = torch.stack([grid_x, grid_y, grid_z], dim=-1).reshape(-1, 3)
 
@@ -68,12 +74,20 @@ def get_diff_mesh(
     # sdf_values = sdf_values.detach().clone()  # Problem: Enabling gradients (torch.enable_grad()) inside mesh extraction can corrupt the mesh if sdf_values or grid_points are modified elsewhere
     # grid_points = grid_points.detach().clone()
     ##################################################
+# 3. Prepare the resolution for FlexiCubes
+    if isinstance(grid_res, int):
+        fc_res: int | list[int] = grid_res - 1
+    elif isinstance(grid_res, list):
+        fc_res = [r - 1 for r in grid_res]
+    else:
+        # This handles cases where grid_res might be a sequence but not a list
+        raise TypeError(f"grid_res must be int or list, got {type(grid_res)}")
 
-    # 2. Compute cube_idx of FlexiCubes: Has shape (num_cubes, 8), each row indexes the 8 corners of a cube
+    # 4. Compute cube_idx of FlexiCubes: Has shape (num_cubes, 8), each row indexes the 8 corners of a cube
     flexicubes = FlexiCubes(device=device)
-    ind = flexicubes.construct_voxel_grid(grid_res - 1)[1]
+    ind = flexicubes.construct_voxel_grid(fc_res)[1]
 
-    # 3. Use FlexiCubes to extract the mesh
+    # 5. Use FlexiCubes to extract the mesh
     ####################### eschaerer #################
     torch.cuda.synchronize()
     ##################################################
@@ -82,7 +96,7 @@ def get_diff_mesh(
         voxelgrid_vertices=grid_points,  # Points
         scalar_field=sdf_values,  # Values
         cube_idx=ind,  # Cube Indices
-        resolution=grid_res - 1,  # Resolution
+        resolution=fc_res,  # Resolution
     )
 
     # 54 Validate output
@@ -147,7 +161,7 @@ def kaolin_to_PLY(
     faces: torch.tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.ply",
-    mesh_dir: str = None,  # Default to None, not a space
+    mesh_dir: str = "",
     verbose: bool = True,
 ):
     """
@@ -161,7 +175,7 @@ def kaolin_to_PLY(
     faces_np = faces.detach().cpu().numpy()
     mesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, process=False)
     if save_mesh:
-        if mesh_dir is not None:
+        if mesh_dir != "":
             os.makedirs(mesh_dir, exist_ok=True)
             filepath = os.path.join(mesh_dir, filename)
         else:
@@ -178,7 +192,7 @@ def kaolin_to_STL(
     faces: torch.tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.stl",
-    mesh_dir: str = None,  # Default to None, not a space
+    mesh_dir: str = "",
 ):
     """
     Same as kaolin_to_PLY (see above) but saves as STL. Needs Verts and faces in the kaolin format.
@@ -187,7 +201,7 @@ def kaolin_to_STL(
     faces_np = faces.detach().cpu().numpy()
     mesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, process=False)
     if save_mesh:
-        if mesh_dir is not None:
+        if mesh_dir != "":
             os.makedirs(mesh_dir, exist_ok=True)
             filepath = os.path.join(mesh_dir, filename)
         else:

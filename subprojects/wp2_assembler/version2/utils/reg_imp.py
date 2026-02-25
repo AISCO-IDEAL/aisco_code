@@ -1,6 +1,6 @@
 from pathlib import Path
 
-import yaml
+import yaml  # Make sure to have PyYAML installed in your environment
 
 
 def get_regulation(section: str) -> int | float:
@@ -27,7 +27,7 @@ def get_regulation(section: str) -> int | float:
             return -1  # Key not found or current is not a dict
 
     # Check if we ended up at a numeric value
-    if isinstance(current, (int, float)):
+    if isinstance(current, (int | float)):
         return current
 
     return -1  # Final value is not a number

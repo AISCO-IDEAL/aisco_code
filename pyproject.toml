@@ -194,7 +194,7 @@ max-args = 8
 python_version = "3.11"
 namespace_packages = true
 explicit_package_bases = true
-mypy_path = "subprojects/"
+mypy_path = "." # <-- eschaerer: Changed this to the actual root
 ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = true
@@ -203,6 +203,6 @@ files = ["subprojects/", "tests/"]
 exclude = [
   "^build/",
   "^docs/",
-  "^fixed_renderer/",
-  ".*/archive/*.",
+  ".*fixed_renderer/.*", # <-- eschaerer: Fixed regex to catch it inside subprojects
+  ".*/archive/.*",       # <-- eschaerer: Fixed regex typo
 ]

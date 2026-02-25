@@ -4,8 +4,6 @@ import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data
 
 
 class BasicMLP(BaseModel):
@@ -37,7 +35,7 @@ class BasicMLP(BaseModel):
 
         # IMPORTANT: the device the model is on at time of function call defines the device passed to the loss_class
         # Get device from model parameters since nn.Module doesn't have a .device attribute
-        device = next(self.parameters()).device
+        device = str(next(self.parameters()).device)
         loss_function = TotalLoss(device, renderer_manager=renderer_manager)  # Initialise TotalLoss with the correct device
 
         for epoch in range(num_epochs):
@@ -80,15 +78,6 @@ class BasicMLP(BaseModel):
         device = next(self.parameters()).device
         print(f" Model is on device: {device}")
         print(f"Do Model Parameters require Gradients? (Y/N): {any(p.requires_grad for p in self.parameters())}")
-
-        print("End of Model Debug Info")
-        print("===================================")
-
-        print("End of Model Debug Info")
-        print("===================================")
-
-        print("End of Model Debug Info")
-        print("===================================")
 
         print("End of Model Debug Info")
         print("===================================")

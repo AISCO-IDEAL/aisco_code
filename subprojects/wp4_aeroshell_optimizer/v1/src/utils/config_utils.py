@@ -1,8 +1,9 @@
 import json
 from pathlib import Path
 
-import wandb
 import yaml
+
+import wandb
 
 
 def load_config(v="v1", cfg_name="general_config.yaml") -> dict:
@@ -11,16 +12,13 @@ def load_config(v="v1", cfg_name="general_config.yaml") -> dict:
     try:
         with config_path.open() as f:
             config = yaml.safe_load(f)
-            if (
-                wandb.run is not None and cfg_name != "general_config.yaml"
-            ):  # general config should be logged already as the main part on wandb
+            if wandb.run is not None and cfg_name != "general_config.yaml":  # type: ignore [attr-defined]
+                # general config should be logged already as the main part on wandb
                 name = cfg_name.replace(".yaml", "")
                 key = f"SubCFG_{name}"
-                if key not in wandb.config:
-                    wandb.config.update(
-                        {key: config}
-                    )  # Add other configs as subkeys in the main config for better visibility in wandb
-                # else: already logged → no-op
+                if key not in wandb.config:  # type: ignore [attr-defined]
+                    wandb.config.update({key: config})  # type: ignore [attr-defined]
+                # Add other configs as subkeys in the main config for better visibility in wandb
         return config  # noqa: TRY300
     except FileNotFoundError as e:
         raise FileNotFoundError(f"Configuration file not found at {config_path}") from e

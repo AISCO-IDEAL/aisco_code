@@ -1,3 +1,7 @@
+from collections.abc import (
+    Callable,
+)
+
 import torch
 
 
@@ -16,14 +20,12 @@ def create_bbox_grid(bbox: list[list[int]] | None = None, resolution: int = 64, 
         ),
         dim=-1,
     )
-    #Format into (N, 3) points
+    # Format into (N, 3) points
     grid = grid.reshape(-1, 3)
     return grid
 
 
-
-
-def sample_sdf(sdf_model: callable, grid: torch.Tensor,batch_size: int = 1024) -> torch.Tensor:
+def sample_sdf(sdf_model: Callable[[torch.Tensor], torch.Tensor], grid: torch.Tensor, batch_size: int = 1024) -> torch.Tensor:
     """
     Samples the SDF function on the provided grid (made by create_bbox_grid/meshgrid) in batches to avoid OOM errors
     Args:
@@ -65,9 +67,7 @@ def renormalise_vertices(points: torch.Tensor, bbox: list[list[int]] | None = No
     if bbox is None:
         bbox = [[-5000, 5000], [-5000, 5000], [-5000, 5000]]
 
-    scale = [(bbox[0][1] - bbox[0][0]),
-             (bbox[1][1] - bbox[1][0]),
-             (bbox[2][1] - bbox[2][0])]
+    scale = [(bbox[0][1] - bbox[0][0]), (bbox[1][1] - bbox[1][0]), (bbox[2][1] - bbox[2][0])]
     offset = [bbox[0][0], bbox[1][0], bbox[2][0]]
     points = points * torch.tensor(scale, device=points.device) + torch.tensor(offset, device=points.device)
     return points
