@@ -12,7 +12,7 @@ model_dict = {
     2: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58245986.pt",
     3: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58310187.pt",
     4: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/overfit_model_58316029.pt",
-    "Herbert": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/multi_model__RUN_ID_.pt"
+    "Herbert": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/multi_model_Testing.pt"
 }
 
 

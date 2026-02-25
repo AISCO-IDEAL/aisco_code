@@ -21,7 +21,7 @@ class GAOT3D(nn.Module):
 
     def __init__(
         self,
-        config: dict,
+        config: dict = configloader(),
         field_output_size: int = 0,
     ):
         nn.Module.__init__(self)
@@ -59,7 +59,7 @@ class GAOT3D(nn.Module):
         self.register_buffer("latent_tokens", internal_latent_tokens)
 
         # ── sub-modules ──────────────────────────────────────────────────
-        self.encoder = self.init_encoder(input_size, self.node_latent_size, magno_config)
+        self.encoder = self._init_encoder(magno_config)
         self.processor = self._init_processor(self.config)
         self.attn_pool, self.decoder = self._init_decoder(config.get("decoder", {}))
 
