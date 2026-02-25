@@ -154,8 +154,8 @@ def kaolin_primitive_max_angle_loss(
 
 
 def flexicubes_to_PLY(
-    verts: torch.tensor,
-    faces: torch.tensor,
+    verts: torch.Tensor,
+    faces: torch.Tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.ply",
     mesh_dir: Optional[str] = None,  # Default to None, not a space

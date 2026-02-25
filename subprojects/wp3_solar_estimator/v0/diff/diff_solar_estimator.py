@@ -9,7 +9,7 @@ from wp4_aeroshell_optimizer.src.utils.kaolin_utils import (
 )
 
 
-def diff_solar_loss(model: SDFNetwork, verts: torch.tensor, faces: torch.tensor, dev: str="cuda"):
+def diff_solar_loss(model: SDFNetwork, verts: torch.Tensor, faces: torch.Tensor, dev: str="cuda"):
     # Const Area for testing
     max_area = 4e6 # 4 m^2
     # ToDO Aldo

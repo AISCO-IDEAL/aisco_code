@@ -157,8 +157,8 @@ def marching_tetrahedra(
 
 
 def kaolin_to_PLY(
-    verts: torch.tensor,
-    faces: torch.tensor,
+    verts: torch.Tensor,
+    faces: torch.Tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.ply",
     mesh_dir: str = "",
@@ -188,8 +188,8 @@ def kaolin_to_PLY(
 
 
 def kaolin_to_STL(
-    verts: torch.tensor,
-    faces: torch.tensor,
+    verts: torch.Tensor,
+    faces: torch.Tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.stl",
     mesh_dir: str = "",

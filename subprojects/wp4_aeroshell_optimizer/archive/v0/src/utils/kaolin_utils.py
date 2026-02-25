@@ -126,8 +126,8 @@ def marching_tetrahedra(model: SDFNetwork,
     return verts, faces[0]
 
 def flexicubes_to_PLY(
-    verts: torch.tensor,
-    faces: torch.tensor,
+    verts: torch.Tensor,
+    faces: torch.Tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.ply",
     mesh_dir: Optional[str] = None,  # Default to None, not a space
@@ -153,8 +153,8 @@ def flexicubes_to_PLY(
         return mesh
     return mesh
 
-def kaolin_to_STL(verts: torch.tensor,
-    faces: torch.tensor,
+def kaolin_to_STL(verts: torch.Tensor,
+    faces: torch.Tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.ply",
     mesh_dir: Optional[str] = None,  # Default to None, not a space)
