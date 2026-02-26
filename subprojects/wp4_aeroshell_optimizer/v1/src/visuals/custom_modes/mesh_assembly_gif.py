@@ -16,6 +16,7 @@ class MeshAssemblyGIF(RenderingMode):
 
     def __init__(self, visualiser, config):
         super().__init__(visualiser, config)
+        self.config = config
         self.rendered_assembly = False
         self.assembly_frame = None
         self.frame_storage = []

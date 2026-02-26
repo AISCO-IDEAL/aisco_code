@@ -83,6 +83,9 @@ class FCExtractor:
         Evaluate SDF on the fixed grid in batches to avoid OOM.
         Returns a 1D tensor of SDF values of length (resolution^3).
         """
+        if self._grid_points is None:
+            raise RuntimeError("Grid points not initialized. Call set_grid() first.")
+
         points = self._grid_points
         values = []
         # Ensure gradients can flow through SDF evaluation if needed

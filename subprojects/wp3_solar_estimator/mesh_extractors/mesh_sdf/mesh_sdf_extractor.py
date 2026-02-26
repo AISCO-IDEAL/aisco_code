@@ -92,9 +92,7 @@ class MeshSDFExtractor:
         if self._grid_points.device.type != self.device:
             self._grid_points = self._grid_points.to(self.device)
 
-    def extract_mesh(self,
-                     sdf_model: nn.Module,
-                     return_cache: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
+    def extract_mesh(self, sdf_model: nn.Module, return_cache: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Extract isosurface mesh using Marching Cubes.
 
@@ -126,12 +124,12 @@ class MeshSDFExtractor:
 
         with torch.no_grad():
             for i in range(0, points_tensor.shape[0], batch_size):
-                batch = points_tensor[i:i+batch_size]
+                batch = points_tensor[i : i + batch_size]
                 sdf_batch = sdf_model(batch)
                 sdf_batches.append(sdf_batch.cpu())
 
-        sdf_values = torch.cat(sdf_batches, dim=0).cpu().numpy()
-        sdf_grid = sdf_values.reshape(res, res, res)
+        sdf_combined = torch.cat(sdf_batches, dim=0).cpu().numpy()
+        sdf_grid = sdf_combined.reshape(res, res, res)
 
         # Cache for potential re-extraction
         if return_cache:
@@ -182,9 +180,7 @@ class MeshSDFExtractor:
 
         return vertices_tensor, faces_tensor
 
-    def compute_normals_at_vertices(self,
-                                     vertices: torch.Tensor,
-                                     sdf_model: nn.Module) -> torch.Tensor:
+    def compute_normals_at_vertices(self, vertices: torch.Tensor, sdf_model: nn.Module) -> torch.Tensor:
         """
         Compute surface normals at mesh vertices via SDF gradient.
 
@@ -205,11 +201,7 @@ class MeshSDFExtractor:
         # Compute gradient of SDF w.r.t. positions
         grad_outputs = torch.ones_like(sdf_values)
         normals = torch.autograd.grad(
-            outputs=sdf_values,
-            inputs=vertices_grad,
-            grad_outputs=grad_outputs,
-            create_graph=False,
-            retain_graph=False
+            outputs=sdf_values, inputs=vertices_grad, grad_outputs=grad_outputs, create_graph=False, retain_graph=False
         )[0]
 
         # Normalize to unit vectors
@@ -253,7 +245,7 @@ class MeshSDFExtractor:
             inputs=vertices_grad,
             grad_outputs=grad_outputs,
             create_graph=True,  # Need graph for second backward
-            retain_graph=True
+            retain_graph=True,
         )[0]
 
         # Normalize to get normals
@@ -274,9 +266,7 @@ class MeshSDFExtractor:
 
         return surrogate_loss
 
-    def extract_mesh_differentiable(self,
-                                    sdf_model: nn.Module,
-                                    enable_grad: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
+    def extract_mesh_differentiable(self, sdf_model: nn.Module, enable_grad: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Extract mesh with gradient computation enabled.
 
@@ -303,10 +293,9 @@ class MeshSDFExtractor:
         else:
             return self.extract_mesh(sdf_model, return_cache=False)
 
-    def extract_and_compute_loss(self,
-                                 sdf_model: nn.Module,
-                                 loss_fn: callable,
-                                 enable_backward: bool = True) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def extract_and_compute_loss(
+        self, sdf_model: nn.Module, loss_fn: callable, enable_backward: bool = True
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Extract mesh, compute loss, and return gradient flow.
 
@@ -347,10 +336,6 @@ class MeshSDFExtractor:
         )[0]
 
         # Compute gradient flow through implicit surface
-        surrogate_loss = self.compute_gradient_flow(
-            vertices=vertices,
-            dL_dvertices=dL_dvertices,
-            sdf_model=sdf_model
-        )
+        surrogate_loss = self.compute_gradient_flow(vertices=vertices, dL_dvertices=dL_dvertices, sdf_model=sdf_model)
 
         return vertices, faces, loss, surrogate_loss

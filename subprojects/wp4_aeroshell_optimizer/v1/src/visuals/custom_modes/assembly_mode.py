@@ -25,8 +25,10 @@ class AssemblyMode(RenderingMode):
         - tolerance: Tessellation tolerance in model units (default: 0.1)
         - angular_tolerance: Angular tolerance in radians (default: 0.1)
     """
+
     def __init__(self, visualiser, config):
-        super().__init__(visualiser, config) # Initialize base class as usual
+        super().__init__(visualiser, config)  # Initialize base class as usual
+        self.config = config
         self.completed = False
         self.color = tuple(config.get("color", [0.8, 0.8, 0.8]))  # Default gray color
 
@@ -39,20 +41,16 @@ class AssemblyMode(RenderingMode):
         """
         if self.completed:
             return  # No further updates, we are done
-        assembly_id=load_config(cfg_name=load_config(cfg_name="general_config.yaml")["active_configs"]["losses"]
-                                )["bb_config"]["assembly_id"]
-        assembly , _ , _ = call_assembly(assembly_id)
+        assembly_id = load_config(cfg_name=load_config(cfg_name="general_config.yaml")["active_configs"]["losses"])["bb_config"][
+            "assembly_id"
+        ]
+        assembly, _, _ = call_assembly(assembly_id)
         # Get tessellation tolerances from config
         tolerance = self.config.get("tolerance", 0.1)
         angular_tolerance = self.config.get("angular_tolerance", 0.1)
 
-
         # Convert CadQuery Assembly to Kaolin-compatible mesh data
-        vertices, faces = assembly_to_kaolin_mesh(
-            assembly,
-            tolerance=tolerance,
-            angular_tolerance=angular_tolerance
-        )
+        vertices, faces = assembly_to_kaolin_mesh(assembly, tolerance=tolerance, angular_tolerance=angular_tolerance)
         # Create a solid-color texture matching the (batched) face count expected by the renderer.
         # At this point, `faces` is likely (F, 3). The renderer will add a batch dim, so set batch_size=1
         # and num_faces to the number of faces F.
@@ -62,7 +60,6 @@ class AssemblyMode(RenderingMode):
             color=self.color,
         )
 
-
         # Render the current assembly state
         # Note: The base class _render method expects vertices and faces
         rendered_frame = self._render(
@@ -70,8 +67,8 @@ class AssemblyMode(RenderingMode):
             faces=faces,
             mode=self.config.get("render_mode", "rgb"),
             camera_position=self.config.get("camera_position"),
-            camera_direction= self.camera_direction,
-            textures=textures
+            camera_direction=self.camera_direction,
+            textures=textures,
         )
 
         # Store the frame (handle batch dimension like base class does)
@@ -84,7 +81,8 @@ class AssemblyMode(RenderingMode):
         self.completed = True  # Mark as completed after first render
         return
         # Frame is automatically saved by the base class render method
-    def finalize(self, output_dir, file_name = "assembly.png", delete: bool = False) -> None:
+
+    def finalize(self, output_dir, file_name="assembly.png", delete: bool = False) -> None:
         if not self.frame_storage:
             print(f"  {self.__class__.__name__}: No assembly frame to save, length of storage {len(self.frame_storage)}")
             return

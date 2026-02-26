@@ -212,5 +212,12 @@ exclude = [
 
 [[tool.mypy.overrides]]
 # Use a single string with commas for multiple modules
-module = "kaolin.*,cadquery.*" # torch.*, could be added, iff it causes many problems
+module = [
+  "kaolin.*",
+  "cadquery.*",
+  "wandb.*",
+  "pyvista.*"
+
+] # torch.*, could be added, iff it causes many problems
 ignore_missing_imports = true
+ignore_errors = true

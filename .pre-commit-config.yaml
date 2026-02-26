@@ -25,10 +25,13 @@ repos:
 
   # MyPy für Typenprüfung
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.17.1  # Aktuelle Version prüfen: https://github.com/pre-commit/mirrors-mypy/releases # eschaerer: update acc. to pyproject.toml
+    rev: v1.18.2  # Aktuelle Version prüfen: https://github.com/pre-commit/mirrors-mypy/releases # eschaerer: update acc. to pyproject.toml
     hooks:
       - id: mypy
         # Optional: MyPy-Konfiguration aus pyproject.toml nutzen
+        args: [--config-file=pyproject.toml, --namespace-packages, --explicit-package-bases]
         additional_dependencies:
           - types-requests  # Falls du spezifische Typen brauchst
           - types-PyYAML # eschaerer
+        pass_filenames: True # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
+        entry: mypy .
