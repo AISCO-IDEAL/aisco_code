@@ -55,7 +55,7 @@ from src.dataloader.collate_functions import create_collate_function
 from src.dataloader.metadata import DATASET_METADATA
 from src.dataloader.pyg_datasets import VTKMeshDataset
 from src.dataloader.pyg_transforms import NormalizeFeatures, RescalePosition, RescalePositionNew
-from src.model import init_model
+from src.model.gaot_3d import GAOT3D
 from src.trainer.utils.setup import load_ckpt
 from src.utils.pressure_integration import (
     compute_vertex_areas,
@@ -97,43 +97,17 @@ def load_yaml_config(path: str):
 def build_model(cfg, num_input_channels: int, num_output_channels: int, device: torch.device):
     """Instantiate GAOT3D from config and move to device."""
     from omegaconf import OmegaConf
-    from src.model.layers.magno import MAGNOConfig
 
-    # Convert OmegaConf DictConfig → MAGNOConfig dataclass so missing keys
-    # get their dataclass defaults (sampling_strategy, max_neighbors, etc.)
-    magno_dict = OmegaConf.to_container(cfg.model.args.magno, resolve=True)
-    magno_cfg = MAGNOConfig(**{
-        k: v for k, v in magno_dict.items()
-        if k in MAGNOConfig.__dataclass_fields__
-    })
-    # Replace the raw dict with the proper dataclass
-    cfg_args = OmegaConf.to_object(cfg.model.args)
-    cfg_args["magno"] = magno_cfg
+    # Convert OmegaConf → plain dict for the new dict-config GAOT3D
+    args = OmegaConf.to_container(cfg.model.args, resolve=True)
 
-    # Rebuild as a simple namespace so init_model can do cfg.magno, cfg.transformer, etc.
-    from types import SimpleNamespace
+    # Inject runtime-detected sizes
+    args["input_size"] = num_input_channels
+    args["output_size"] = num_output_channels
 
-    class _NS(SimpleNamespace):
-        """SimpleNamespace that also supports attribute-style access for OmegaConf compatibility."""
-        def __getattr__(self, name):
-            try:
-                return super().__getattribute__(name)
-            except AttributeError:
-                raise AttributeError(f"Config has no attribute '{name}'")
+    field_output_size = args.get("field_output_size", 0)
 
-    config_ns = _NS(
-        magno=magno_cfg,
-        transformer=cfg.model.args.transformer,
-        latent_tokens=cfg.model.args.latent_tokens,
-        field_output_size=getattr(cfg.model.args, "field_output_size", 0),
-    )
-
-    model = init_model(
-        input_size=num_input_channels,
-        output_size=num_output_channels,
-        model=cfg.model.name,
-        config=config_ns,
-    )
+    model = GAOT3D(config=args, field_output_size=field_output_size)
     model.to(device)
     model.eval()
     return model

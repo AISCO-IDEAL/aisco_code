@@ -1,14 +1,20 @@
+import os
+
 import torch
 import yaml
 from torch import nn
 from torch_geometric.data import Batch
 
 from .layers.attn import Transformer
-from .layers.magno import MAGNOEncoder
+from .layers.magno import MAGNODecoder, MAGNOEncoder
+
+_CONFIG_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "config", "config.yaml"
+)
 
 
 def configloader() -> dict:
-    with open("subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/config.yaml") as f:
+    with open(_CONFIG_PATH) as f:
         config = yaml.safe_load(f)
     return config
 
@@ -34,6 +40,7 @@ class GAOT3D(nn.Module):
 
         input_size = config["input_size"]
         output_size = config.get("output_size", field_output_size)
+        self.field_output_size = config.get("field_output_size", field_output_size)
 
         self.input_size = input_size
         self.output_size = output_size
@@ -62,6 +69,14 @@ class GAOT3D(nn.Module):
         self.encoder = self._init_encoder(magno_config)
         self.processor = self._init_processor(self.config)
         self.attn_pool, self.decoder = self._init_decoder(config.get("decoder", {}))
+
+        # ── optional flowfield decoder (MAGNODecoder) ────────────────────
+        if self.field_output_size > 0:
+            self.field_decoder = MAGNODecoder(
+                in_channels=self.node_latent_size,
+                out_channels=self.field_output_size,
+                magno_config=magno_config,
+            )
 
     # ─── encoder ─────────────────────────────────────────────────────────
     def _init_encoder(self, magno_cfg: dict) -> MAGNOEncoder:
@@ -187,8 +202,10 @@ class GAOT3D(nn.Module):
         batch: Batch,
         tokens_pos: torch.Tensor | None = None,
         tokens_batch_idx: torch.Tensor | None = None,
+        query_coord_pos: torch.Tensor | None = None,
+        query_coord_batch_idx: torch.Tensor | None = None,
         condition: float | None = None,
-    ) -> torch.Tensor:
+    ) -> dict[str, torch.Tensor]:
         """
         Forward pass for GAOT3D model using PyG Batch.
 
@@ -198,14 +215,16 @@ class GAOT3D(nn.Module):
                                            If None, uses internal self.latent_tokens.
             tokens_batch_idx (Tensor, optional): Batch index for external tokens [TotalLatentNodes].
                                                  Required if tokens_pos is provided.
-            query_coord_pos (Tensor, optional): External query coordinates for decoder [TotalQueryNodes, D].
+            query_coord_pos (Tensor, optional): External query coordinates for field decoder [TotalQueryNodes, D].
                                                  If None, uses batch.pos from input batch.
             query_coord_batch_idx (Tensor, optional): Batch index for external query coords [TotalQueryNodes].
                                                        Required if query_coord_pos is provided.
             condition (float, optional): Condition parameter for processor.
 
         Returns:
-            Tensor: Output tensor on physical/query nodes [TotalQueryNodes, OutputChannels].
+            dict: Always contains scalar heads {"force": [B,1], "cd": [B,1]}.
+                  When field_output_size > 0, also contains
+                  {"field": [TotalQueryNodes, field_output_size]}.
         """
         num_graphs = batch.num_graphs
         device = batch.pos.device
@@ -221,6 +240,15 @@ class GAOT3D(nn.Module):
             latent_tokens_batched = tokens_pos.to(device)
             batch_idx_latent = tokens_batch_idx.to(device)
 
+        # ── determine decoder query coordinates ──────────────────────────
+        if query_coord_pos is None:
+            phys_pos_query_eff = batch.pos  # [TotalPhysicalNodes, D]
+            batch_idx_phys_query_eff = batch.batch  # [TotalPhysicalNodes]
+        else:
+            assert query_coord_batch_idx is not None, "query_coord_batch_idx is required if query_coord_pos is provided"
+            phys_pos_query_eff = query_coord_pos.to(device)
+            batch_idx_phys_query_eff = query_coord_batch_idx.to(device)
+
         # ── encode ───────────────────────────────────────────────────────
         rndata = self.encoder(
             batch=batch,
@@ -229,14 +257,30 @@ class GAOT3D(nn.Module):
         )
 
         # ── process ──────────────────────────────────────────────────────
-        rndata = self.process(rndata=rndata, condition=condition)
+        rndata_proc = self.process(rndata=rndata, condition=condition)
 
-        # Attention-weighted pooling over latent tokens.
+        # ── scalar path: pool → multi-head decoder ───────────────────────
         # Shape: [B, M, C_lifted] -> [B, C_lifted]
-        pooled_features = self.attn_pool(rndata)
+        pooled_features = self.attn_pool(rndata_proc)
 
         # Multi-head decode: returns {"force": [B,1], "cd": [B,1]}
         output = self.decoder(pooled_features)
+
+        # ── field path (optional): MAGNODecoder ──────────────────────────
+        if self.field_output_size > 0:
+            # Flatten processor output: [B, M, C] -> [TotalLatentNodes, C]
+            rndata_proc_flat = rndata_proc.reshape(-1, self.node_latent_size)
+
+            # Decode to per-vertex field predictions
+            field_pred = self.field_decoder(
+                rndata_flat=rndata_proc_flat,
+                phys_pos_query=phys_pos_query_eff,
+                batch_idx_phys_query=batch_idx_phys_query_eff,
+                latent_tokens_pos=latent_tokens_batched,
+                latent_tokens_batch_idx=batch_idx_latent,
+                batch=batch,
+            )  # [TotalQueryNodes, field_output_size]
+            output["field"] = field_pred
 
         return output
 

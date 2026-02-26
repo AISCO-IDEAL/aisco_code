@@ -99,7 +99,7 @@ optimizer:
     args:
         lr: 3e-4
         weight_decay: 1e-05
-        epoch: 150
+        epoch: 10
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"

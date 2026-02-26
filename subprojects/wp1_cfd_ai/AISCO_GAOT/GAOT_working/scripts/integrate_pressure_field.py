@@ -269,7 +269,7 @@ def integrate_from_model(data_dir, args):
     from omegaconf import OmegaConf
     from torch_geometric.data import Data, Batch
 
-    from src.model import init_model
+    from src.model.gaot_3d import GAOT3D
 
     # Load config
     cfg = OmegaConf.load(args.config)
@@ -283,13 +283,13 @@ def integrate_from_model(data_dir, args):
     else:
         input_size = 3
 
-    # Create model
-    model = init_model(
-        input_size=input_size,
-        output_size=2,  # force + cd scalar heads
-        model=model_cfg.name,
-        config=model_cfg.args,
-    )
+    # Create model using dict config
+    model_args = OmegaConf.to_container(model_cfg.args, resolve=True)
+    model_args["input_size"] = input_size
+    model_args["output_size"] = 2  # force + cd scalar heads
+    field_output_size = model_args.get("field_output_size", 0)
+
+    model = GAOT3D(config=model_args, field_output_size=field_output_size)
 
     # Load checkpoint
     ckpt = torch.load(args.ckpt, map_location="cpu", weights_only=False)
