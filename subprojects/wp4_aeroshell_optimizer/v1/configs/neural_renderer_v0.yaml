@@ -78,7 +78,7 @@ rendering_modes:
     config:
       store_wandb: True
       render_mode: "rgb"
-      camera_position: [3000, 3000,3000]
+      camera_position: [-3000, 3000,3000]
       look_at: [0, 0, 0]
       alpha: 0.5
       fps: 10

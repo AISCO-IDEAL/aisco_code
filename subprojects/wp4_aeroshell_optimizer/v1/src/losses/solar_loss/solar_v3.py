@@ -1,4 +1,4 @@
-from subprojects.wp3_solar_estimator.v3 import SolarLossEstimator
+from subprojects.wp3_solar_estimator.v3.solar_loss_v3 import SolarLossEstimator
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 

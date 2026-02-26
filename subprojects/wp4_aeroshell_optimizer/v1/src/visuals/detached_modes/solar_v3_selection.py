@@ -13,6 +13,7 @@ from pathlib import Path
 
 import torch
 
+from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import upload_neural_renderer_gif
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base_class import RenderingMode
 
@@ -68,8 +69,8 @@ class SolarV3Selection(RenderingMode):
         if threshold_value > 0:
             not_selected = weights < threshold_value
             colors[not_selected, 0] = 1.0
-            colors[not_selected, 1] = 0.5
-            colors[not_selected, 2] = 0.5
+            colors[not_selected, 1] = 0.2
+            colors[not_selected, 2] = 0.2
 
         # Convert face colors to proper texture format
         textures = self.visualiser.face_colors_to_textures(colors)
@@ -105,7 +106,11 @@ class SolarV3Selection(RenderingMode):
         gif_path = output_dir / "rendering.gif"
         self._frames_to_gif(gif_path, fps=self.fps)
         print(f"    Saved GIF: {gif_path}")
-
+        # log GIF to wandb
+        try:
+            upload_neural_renderer_gif(gif_path, self.visualiser.wandb_run)
+        except Exception as e:
+            print(f"    Warning: Failed to upload SolarV3 selection GIF to wandb: {e}")
         # Save first frame as reference
         first_frame_path = output_dir / "first_frame.png"
         self._save_image(self.frame_storage[0], first_frame_path)
