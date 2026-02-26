@@ -2,6 +2,7 @@
 Drop the inner NBZ (assembly 30) onto the speed hump + floor in PyBullet.
 Meshes are written next to this script under helper_files_pybullet_test/.
 """
+
 import math
 import time  # TEMP timing/ETA
 from pathlib import Path
@@ -16,7 +17,7 @@ from ocp_vscode import show
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly
 from subprojects.wp2_assembler.version2.utils import Speed_hump  # Added helper import
 
-#from subprojects.wp2_assembler.version2.utils.animation_speed_hump import animate
+# from subprojects.wp2_assembler.version2.utils.animation_speed_hump import animate
 from subprojects.wp2_assembler.version2.utils.Speed_hump import (
     create_speed_hump_and_floor,
 )
@@ -26,6 +27,7 @@ def get_speed_hump_total_length() -> float:
     """Return the total speed hump length from regulations (mm).  # Added helper"""
     _, _, _, total_length, _ = Speed_hump._collect_dimensions()
     return total_length
+
 
 def export_shape_to_stl(shape: cq.Shape, name: str) -> str:
     """
@@ -39,6 +41,7 @@ def export_shape_to_stl(shape: cq.Shape, name: str) -> str:
     exporters.export(shape, str(path))  # exporter expects a string path
     return str(path)
 
+
 def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
     if isinstance(obj, cq.Assembly):
         return cast(cq.Shape, obj.toCompound())
@@ -50,6 +53,7 @@ def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
         return obj
     raise TypeError(f"Unsupported CadQuery object type: {type(obj)!r}")
 
+
 def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
     """Return a CadQuery shape regardless of whether a Workplane or Assembly was provided."""
     if isinstance(obj, cq.Assembly):
@@ -59,6 +63,8 @@ def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
     if isinstance(obj, cq.Shape):
         return obj
     raise TypeError(f"Unsupported CadQuery object type: {type(obj)!r}")
+
+
 def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     inner, outer = call_assembly(assembly_number)
     ground_shape = _as_shape(create_speed_hump_and_floor())
@@ -69,7 +75,7 @@ def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     trimmed_outer = outer
     knife = [ground_shape]
     for i in range(200):
-        loc = cq.Location(x=i*10-200, y=0, z=0, rx=0, ry=0, rz=0)
+        loc = cq.Location(x=i * 10 - 200, y=0, z=0, rx=0, ry=0, rz=0)
         trimmed_outer = trimmed_outer.located(loc)
         knife.append(trimmed_outer.intersect(ground_shape).located(loc))
         if i % 10 == 0:
@@ -77,9 +83,11 @@ def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
 
     trimmed_outer = outer
     for shape in knife:  # Use a different variable name, e.g., 'shape'
-        trimmed_outer = trimmed_outer.cut(shape)
+        result = trimmed_outer.cut(shape)
+        trimmed_outer = _as_shape(result)  # Ensure we always have a cq.Shape for the next iteration
 
     return trimmed_outer
+
 
 def export_inner_nbz_parts(
     assembly: cq.Assembly,
@@ -112,21 +120,23 @@ def export_inner_nbz_parts(
 
     return body_path, wheel_paths
 
+
 def is_stable(body_id: int, tol: float = 1e-3) -> bool:
     """Return True if linear and angular speeds are below tol."""
     lin_vel, ang_vel = p.getBaseVelocity(body_id)
     return np.linalg.norm(lin_vel) < tol and np.linalg.norm(ang_vel) < tol
 
+
 def sim(assembly_number, only_final: bool = False):
 
-    #returns position in meters and orientation in quaterion radians of the settled car
+    # returns position in meters and orientation in quaterion radians of the settled car
 
     # --- Build and export meshes -------------------------------------------------
 
     inner_asm, outer = call_assembly(assembly_number)
     ground_shape = create_speed_hump_and_floor()
 
-    ground_stl = export_shape_to_stl(ground_shape, "ground")
+    ground_stl = export_shape_to_stl(_as_shape(ground_shape), "ground")
     body_stl, wheel_parts = export_inner_nbz_parts(inner_asm)
 
     if body_stl is None and not wheel_parts:
@@ -140,11 +150,11 @@ def sim(assembly_number, only_final: bool = False):
     if not car_part_paths:
         raise RuntimeError("No car parts were exported for PyBullet.")
 
-    '''
+    """
     print("Exported parts:")
     for name, path in car_part_paths:
         print(f" - {name}: {path}")
-    '''
+    """
 
     # --- PyBullet setup ----------------------------------------------------------
 
@@ -162,10 +172,7 @@ def sim(assembly_number, only_final: bool = False):
         basePosition=[0, 0, 0],
     )
 
-    p.changeDynamics(ground_id, -1,
-                    lateralFriction=0.0,
-                    rollingFriction=0.0,
-                    spinningFriction=0.0)
+    p.changeDynamics(ground_id, -1, lateralFriction=0.0, rollingFriction=0.0, spinningFriction=0.0)
 
     # --- Drop and wait for stabilization ----------------------------------------
 
@@ -175,18 +182,14 @@ def sim(assembly_number, only_final: bool = False):
     mass_each = total_mass / len(car_part_paths)
 
     bbox = outer.BoundingBox()
-    outer_height = int((bbox.xmax - bbox.xmin)/1000)
+    outer_height = int((bbox.xmax - bbox.xmin) / 1000)
 
     start_pos = [0, 0, outer_height]  # start
     start_orn = p.getQuaternionFromEuler([0, 0, 0])
 
     for name, path in car_part_paths:
-        col = p.createCollisionShape(
-            p.GEOM_MESH, fileName=path, meshScale=[0.001, 0.001, 0.001]
-        )
-        vis = p.createVisualShape(
-            p.GEOM_MESH, fileName=path, meshScale=[0.001, 0.001, 0.001]
-        )
+        col = p.createCollisionShape(p.GEOM_MESH, fileName=path, meshScale=[0.001, 0.001, 0.001])
+        vis = p.createVisualShape(p.GEOM_MESH, fileName=path, meshScale=[0.001, 0.001, 0.001])
         body_id = p.createMultiBody(
             baseMass=mass_each,
             baseCollisionShapeIndex=col,
@@ -194,9 +197,7 @@ def sim(assembly_number, only_final: bool = False):
             basePosition=start_pos,
             baseOrientation=start_orn,
         )
-        p.changeDynamics(
-            body_id, -1, lateralFriction=0.0, rollingFriction=0.0, spinningFriction=0.0
-        )
+        p.changeDynamics(body_id, -1, lateralFriction=0.0, rollingFriction=0.0, spinningFriction=0.0)
         car_parts.append((name, body_id))
 
     # Fix all parts together (root = first entry)
@@ -213,57 +214,58 @@ def sim(assembly_number, only_final: bool = False):
             childFramePosition=[0, 0, 0],
         )
 
-
     pos_array = []
     orn_array = []
 
     bbox = outer.BoundingBox()
     outer_length = int(bbox.xmax - bbox.xmin)  # in mm
-    move = int(outer_length/2 + get_speed_hump_total_length()/2 + 100)
+    move = int(outer_length / 2 + get_speed_hump_total_length() / 2 + 100)
 
     stable_steps = 0
     needed_stable_steps = 100
     max_steps = 10_000
 
     for i in range(max_steps):
-
         pos, orn = p.getBasePositionAndOrientation(root)
         x, y, z = pos
-        roll, pitch, yaw = p.getEulerFromQuaternion(orn)    # Radians!
+        roll, pitch, yaw = p.getEulerFromQuaternion(orn)  # Radians!
 
-        p.resetBasePositionAndOrientation(root, [-move/1000, 0, z], p.getQuaternionFromEuler([roll, pitch, 0])) #fix x,y and yaw
-        #pos_array.append([i * 1000 for i in pos])
-        #orn_array.append(orn)
+        p.resetBasePositionAndOrientation(
+            root, [-move / 1000, 0, z], p.getQuaternionFromEuler([roll, pitch, 0])
+        )  # fix x,y and yaw
+        # pos_array.append([i * 1000 for i in pos])
+        # orn_array.append(orn)
 
-        stable_steps = (stable_steps + 1)*is_stable(body_id)
+        stable_steps = (stable_steps + 1) * is_stable(body_id)
 
-        if (stable_steps >= needed_stable_steps):
+        if stable_steps >= needed_stable_steps:
             break
-        if (i == max_steps-1):
+        if i == max_steps - 1:
             raise Exception("Error in sim: car didnt settle in the falling stage")
 
         p.stepSimulation()
 
-    for step in range(-move,move):
+    for step in range(-move, move):
         step_in_meters = step / 1000
 
         pos, orn = p.getBasePositionAndOrientation(root)
         x, y, z = pos
-        roll, pitch, yaw = p.getEulerFromQuaternion(orn)    # Radians!
+        roll, pitch, yaw = p.getEulerFromQuaternion(orn)  # Radians!
 
-        p.resetBasePositionAndOrientation(root, [step_in_meters, 0, z], p.getQuaternionFromEuler([roll, pitch, 0])) #fix x,y and yaw
+        p.resetBasePositionAndOrientation(
+            root, [step_in_meters, 0, z], p.getQuaternionFromEuler([roll, pitch, 0])
+        )  # fix x,y and yaw
 
         pos_array.append([i * 1000 for i in pos])
         orn_array.append(orn)
 
         p.stepSimulation()
 
-
     # --- Report final pose and exit ---------------------------------------------
     final_pos, final_orn = p.getBasePositionAndOrientation(root)
     p.disconnect()
-    if (only_final):
-        return final_pos, final_orn # pos in meters, orn in quaternions and radians!
+    if only_final:
+        return final_pos, final_orn  # pos in meters, orn in quaternions and radians!
     else:
         return pos_array, orn_array
 
@@ -273,14 +275,14 @@ def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     inner, outer = call_assembly(assembly_number)
     ground_shape = create_speed_hump_and_floor()
 
-    i=0
+    i = 0
     knife = []
     moved_outer = outer
     l = len(pos_array)
 
     for pos, orn in zip(pos_array, orn_array):
-        i+=1
-        if(i%1000==0):
+        i += 1
+        if i % 1000 == 0:
             roll, pitch, yaw = p.getEulerFromQuaternion(orn)
             roll_deg, pitch_deg, yaw_deg = (
                 math.degrees(roll),
@@ -288,14 +290,22 @@ def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
                 math.degrees(yaw),
             )
             r = 1
-            location = cq.Location(x=round(pos[0], r), y=round(pos[1], r), z=round(pos[2], r), rx= round(roll_deg, r), ry= round(pitch_deg, r), rz= round(yaw_deg, r))
+            location = cq.Location(
+                x=round(pos[0], r),
+                y=round(pos[1], r),
+                z=round(pos[2], r),
+                rx=round(roll_deg, r),
+                ry=round(pitch_deg, r),
+                rz=round(yaw_deg, r),
+            )
 
-            moved_outer=moved_outer.located(location)
+            moved_outer = moved_outer.located(location)
 
-            knife.append(moved_outer.intersect(ground_shape.val()).located(location))
+            knife.append(moved_outer.intersect(_as_shape(ground_shape).val()).located(location))
 
     show(knife)
     return
+
 
 def invert_transform(pos, quat):
     # pos = [x, y, z]
@@ -305,7 +315,7 @@ def invert_transform(pos, quat):
     qx, qy, qz, qw = quat
 
     # Invert quaternion (for rotations, inverse is the conjugate)
-    quat_inv = np.array([-qx, -qy, -qz,  qw])
+    quat_inv = np.array([-qx, -qy, -qz, qw])
 
     # Rotate the translation by inverse rotation
     # q_inv * p * q
@@ -315,12 +325,14 @@ def invert_transform(pos, quat):
     def qmul(a, b):
         ax, ay, az, aw = a
         bx, by, bz, bw = b
-        return np.array([
-            aw*bx + ax*bw + ay*bz - az*by,
-            aw*by - ax*bz + ay*bw + az*bx,
-            aw*bz + ax*by - ay*bx + az*bw,
-            aw*bw - ax*bx - ay*by - az*bz
-        ])
+        return np.array(
+            [
+                aw * bx + ax * bw + ay * bz - az * by,
+                aw * by - ax * bz + ay * bw + az * bx,
+                aw * bz + ax * by - ay * bx + az * bw,
+                aw * bw - ax * bx - ay * by - az * bz,
+            ]
+        )
 
     def qrot(q, v):
         # rotate vector v by quaternion q
@@ -331,6 +343,7 @@ def invert_transform(pos, quat):
     pos_inv = -qrot(quat_inv, p)
 
     return pos_inv, quat_inv
+
 
 # Example usage:
 pos = [1.0, 2.0, 3.0]
@@ -352,4 +365,4 @@ if __name__ == "__main__":
 
     animate(demo_id, pos_array2, orn_array2)
 
-    #trim_outer_nbz(demo_id, pos_array2, orn_array2)
+    # trim_outer_nbz(demo_id, pos_array2, orn_array2)

@@ -50,7 +50,7 @@ def visualize_slices(
     Args:
         vertices: The input vertex tensor, shape [N_verts, 3].
         output_filepath: The FULL path to save the file,
-                           e.g., "/home/user/project/debug/epoch_100.glb".
+                        e.g., "/home/user/project/debug/epoch_100.glb".
         slicing_axis: 'x', 'y', or 'z'.
         N_SLICES: Number of slices.
         slice_bounds: Fixed bounds (min, max). If None, calculates dynamically.
@@ -138,9 +138,7 @@ def visualize_slices(
         box_center[area_idx_2] = (min_2 + max_2) / 2
 
         box_tf = trimesh.transformations.translation_matrix(box_center)
-        box_outline = trimesh.path.creation.box_outline(
-            extents=box_extents, transform=box_tf
-        )
+        box_outline = trimesh.path.creation.box_outline(extents=box_extents, transform=box_tf)
 
         # --- MODIFIED ---
         # Set the color based on the index 'i'
@@ -189,7 +187,7 @@ def calculateCdProxyDifferentiable(
     This function can operate in two modes:
     1. FIXED (slice_bounds is provided): Slices within a fixed box.
     2. DYNAMIC (slice_bounds is None): Differentiably calculates the
-       object's bounds using mean and standard deviation.
+    object's bounds using mean and standard deviation.
 
     Args:
         vertices: The input mesh vertices. Shape: `[N_verts, 3]`.
@@ -224,9 +222,7 @@ def calculateCdProxyDifferentiable(
         manual_weights_to_use = _DEFAULT_WEIGHTS_LIST
 
     if len(manual_weights_to_use) != N_SLICES:
-        print(
-            f"FATAL ERROR: Weights list has {len(manual_weights_to_use)} items, but N_SLICES is {N_SLICES}."
-        )
+        print(f"FATAL ERROR: Weights list has {len(manual_weights_to_use)} items, but N_SLICES is {N_SLICES}.")
         return None
 
     weights_to_use_list = manual_weights_to_use
@@ -252,6 +248,10 @@ def calculateCdProxyDifferentiable(
     # Get all vertex coordinates for the slicing axis
     vert_coords = vertices[:, axis_idx]  # Shape: [N_verts]
 
+    ### eschaerer MyPy Fix ###
+    min_bound: torch.Tensor | float
+    max_bound: torch.Tensor | float
+
     # --- THIS IS THE STANDARD DEVIATION BOX METHOD ---
     if slice_bounds is not None:
         # 1. FIXED mode: Use the user-provided bounds
@@ -266,9 +266,7 @@ def calculateCdProxyDifferentiable(
         max_bound = center + num_std_devs * (spread + EPSILON)
 
     # Create the slicing "ruler" based on the bounds
-    split_points = torch.linspace(
-        min_bound, max_bound, N_SLICES + 1, device=device, dtype=dtype
-    )
+    split_points = torch.linspace(min_bound, max_bound, N_SLICES + 1, device=device, dtype=dtype)
     # --- END OF THE METHOD IMPLEMENTATION ---
 
     all_slice_weights = []

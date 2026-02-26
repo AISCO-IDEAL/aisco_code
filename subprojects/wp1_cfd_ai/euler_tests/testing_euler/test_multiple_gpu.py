@@ -18,9 +18,7 @@ gpu_count = torch.cuda.device_count()
 print(f"\n[INFO] Found {gpu_count} GPU(s).")
 
 if gpu_count < 2:
-    print(
-        f"[WARNING] Only found {gpu_count} GPU. Request 2 or more GPUs in your SLURM script to test parallelism."
-    )
+    print(f"[WARNING] Only found {gpu_count} GPU. Request 2 or more GPUs in your SLURM script to test parallelism.")
 else:
     print("[INFO] This is a multi-GPU node. Proceeding with DataParallel test.")
 
@@ -39,7 +37,7 @@ class SimpleModel(nn.Module):
 
 # 3. Create and wrap the model for DataParallel
 print("\n[INFO] Creating a simple model...")
-model = SimpleModel()
+model: nn.Module = SimpleModel()
 
 # THIS IS THE KEY: Wrap the model to use all available GPUs
 print("[INFO] Wrapping model with torch.nn.DataParallel...")
@@ -78,10 +76,7 @@ print(f"  -> Average time per iteration: {total_time / 10:.4f} seconds.")
 
 # 6. Check GPU memory usage (as a proxy for work)
 for i in range(gpu_count):
-    print(
-        f"  -> GPU {i} ({torch.cuda.get_device_name(i)}) Memory Used: "
-        f"{torch.cuda.memory_allocated(i) / 1024**3:.2f} GB"
-    )
+    print(f"  -> GPU {i} ({torch.cuda.get_device_name(i)}) Memory Used: {torch.cuda.memory_allocated(i) / 1024**3:.2f} GB")
 
 print("\n[INFO] If all GPUs have memory allocated, DataParallel worked!")
 print("--- Multi-GPU Compute Test Finished Successfully ---")

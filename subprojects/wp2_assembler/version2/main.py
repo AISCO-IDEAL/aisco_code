@@ -61,7 +61,7 @@ if __name__ == "__main__":  # only run when executing this file directly
             userinput = input("Which id-number to visualize? ")
             if userinput.isdigit():
                 id_number = int(userinput)
-                _, outer_nbz = nbz.call_assembly(id_number)
+                __, outer_nbz = nbz.call_assembly(id_number)
             else:
                 print("Invalid input. Please enter a valid id-number.")
                 continue
@@ -85,9 +85,7 @@ if __name__ == "__main__":  # only run when executing this file directly
             print(type(assembly))
 
         elif userinput.lower() == "m":
-            userinput = input(
-                "Which assemblies are to be visualized? (ranged as 'start-end') "
-            )
+            userinput = input("Which assemblies are to be visualized? (ranged as 'start-end') ")
             userinput_split = userinput.split("-")
             if int(userinput_split[0]) > 0:
                 lower_id = int(userinput_split[0])

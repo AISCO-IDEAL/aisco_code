@@ -132,16 +132,13 @@ ground_id = p.createMultiBody(
     basePosition=[0, 0, 0],
 )
 
-p.changeDynamics(ground_id, -1,
-                 lateralFriction=0.0,
-                 rollingFriction=0.0,
-                 spinningFriction=0.0)
+p.changeDynamics(ground_id, -1, lateralFriction=0.0, rollingFriction=0.0, spinningFriction=0.0)
 
 # --- Drop and wait for stabilization ----------------------------------------
 
 x_lock = 0.0
 y_lock = 0.0
-yaw_lock = 0.0      # Radians!
+yaw_lock = 0.0  # Radians!
 
 # Build the multibody from the exported STL parts (body + wheels)
 car_parts: list[tuple[str, int]] = []
@@ -151,12 +148,8 @@ start_pos = [1.0, 0, 1.0]  # start 1 m above
 start_orn = p.getQuaternionFromEuler([0, 0, 0])
 
 for name, path in car_part_paths:
-    col = p.createCollisionShape(
-        p.GEOM_MESH, fileName=path, meshScale=[0.001, 0.001, 0.001]
-    )
-    vis = p.createVisualShape(
-        p.GEOM_MESH, fileName=path, meshScale=[0.001, 0.001, 0.001]
-    )
+    col = p.createCollisionShape(p.GEOM_MESH, fileName=path, meshScale=[0.001, 0.001, 0.001])
+    vis = p.createVisualShape(p.GEOM_MESH, fileName=path, meshScale=[0.001, 0.001, 0.001])
     body_id = p.createMultiBody(
         baseMass=mass_each,
         baseCollisionShapeIndex=col,
@@ -164,14 +157,12 @@ for name, path in car_part_paths:
         basePosition=start_pos,
         baseOrientation=start_orn,
     )
-    p.changeDynamics(
-        body_id, -1, lateralFriction=0.0, rollingFriction=0.0, spinningFriction=0.0
-    )
+    p.changeDynamics(body_id, -1, lateralFriction=0.0, rollingFriction=0.0, spinningFriction=0.0)
     car_parts.append((name, body_id))
 
 # Fix all parts together (root = first entry)
 root = car_parts[0][1]
-for _, child in car_parts[1:]:
+for __, child in car_parts[1:]:
     p.createConstraint(
         parentBodyUniqueId=root,
         parentLinkIndex=-1,
@@ -197,26 +188,25 @@ offset = []
 pos_array = []
 orn_array = []
 
-offset_ground =[]
+offset_ground = []
 
 for step in range(max_steps):
-
-    #sleep(1/4800)
+    # sleep(1/4800)
     pos, orn = p.getBasePositionAndOrientation(root)
     x, y, z = pos
-    roll, pitch, yaw = p.getEulerFromQuaternion(orn)    # Radians!
+    roll, pitch, yaw = p.getEulerFromQuaternion(orn)  # Radians!
 
-    #p.resetBasePositionAndOrientation(root, [x, y, z], p.getQuaternionFromEuler([roll, pitch, yaw]))
+    # p.resetBasePositionAndOrientation(root, [x, y, z], p.getQuaternionFromEuler([roll, pitch, yaw]))
 
-    #p.resetBasePositionAndOrientation(root, [x, y, z], orn)
+    # p.resetBasePositionAndOrientation(root, [x, y, z], orn)
 
-    time_arr.append(step/1000)
+    time_arr.append(step / 1000)
 
     rolls.append(roll)
     pitchs.append(pitch)
     yaws.append(yaw)
 
-    offset.append((x*1000, y*1000, z*1000))
+    offset.append((x * 1000, y * 1000, z * 1000))
 
     pos_array.append([i * 1000 for i in pos])
     orn_array.append(orn)
@@ -239,15 +229,15 @@ final_euler = [math.degrees(a) for a in p.getEulerFromQuaternion(final_orn)]
 print("Final position (m):", final_pos)
 print("Final orientation (deg):", final_euler)
 
-#sleep(1)
+# sleep(1)
 
 p.disconnect()
 
-print(len(time_arr),len(pos_array),len(orn_array))
+print(len(time_arr), len(pos_array), len(orn_array))
+
 
 def sim():
     return time_arr, pos_array, orn_array
-
 
 
 ##########  FROM HERE ONWARDS: PYBULLET TEST VISUALIZATION   ##########
@@ -288,9 +278,11 @@ def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
         return obj
     raise TypeError(f"Unsupported CadQuery object type: {type(obj)!r}")
 
+
 def import_speed_bump() -> cq.Shape:
     """Return the regulation-based speed bump as a CadQuery Shape."""
     return _as_shape(create_speed_hump_and_floor())
+
 
 if __name__ == "__main__":  # pragma: no cover - manual visualization helper
     print("Elapsed:", time.time() - start, "seconds")
@@ -300,27 +292,28 @@ if __name__ == "__main__":  # pragma: no cover - manual visualization helper
     assembly_id = 30
     inner, outer = call_assembly(assembly_id)
     bump = import_speed_bump()
-    _,_,_,Speed_hump_lenght,_ =  Speed_hump._collect_dimensions()
-    shift_vec = cq.Vector(-(outer.BoundingBox().xmax + Speed_hump_lenght/2), 0, 0)
+    dims = Speed_hump._collect_dimensions()
+    speed_hump_value = dims[3]
+    shift_vec = cq.Vector(-(outer.BoundingBox().xmax + speed_hump_value / 2), 0, 0)
 
     # Set up a CadQuery assembly; ocp_vscode reads this to show and animate parts.
     assembly = cq.Assembly(name="SpeedHumpPreview")
     assembly.add(
         bump,
         name="speed_bump",
-        loc=cq.Location((0,0,0)),
+        loc=cq.Location((0, 0, 0)),
         color=cq.Color(0, 1, 0, 0.4),
     )
     assembly.add(
         outer,
         name="outer_nbz",
-        loc=cq.Location((0,0,0)),
+        loc=cq.Location((0, 0, 0)),
         color=cq.Color(0.7, 0.7, 0.7, 0.15),  # light tint so inner parts stay visible
     )
     assembly.add(
         inner,
         name="inner_nbz",
-        loc=cq.Location((0,0,0)),
+        loc=cq.Location((0, 0, 0)),
         color=cq.Color(0.9, 0.2, 0.2, 0.8),  # solid car geometry for clarity
     )
     assembly.mates = []  # Minimal mate list lets ocp_vscode detect this as animatable
@@ -332,9 +325,8 @@ if __name__ == "__main__":  # pragma: no cover - manual visualization helper
     # Build quaternions for outer_nbz: rotate about Z by 0→360 deg across frames.
     rotations = []
     for i in range(frame_count):
-        rotations.append(5*i)
+        rotations.append(5 * i)
     times = [i * time_step for i in range(frame_count)]  # timestamps per frame
-
 
     # offsets = [(0,0,0),(outer.BoundingBox().xlen + 400,0,0)]
 
@@ -366,8 +358,7 @@ if __name__ == "__main__":  # pragma: no cover - manual visualization helper
         [_quat_dict(q) for q in orn_array],
     )
 
-    #animation.add_track(f"/{assembly.name}/outer_nbz", "t", times, offsets)
-
+    # animation.add_track(f"/{assembly.name}/outer_nbz", "t", times, offsets)
 
     # Play the animation if the viewer exposes animate(); otherwise just show frames.
     animate = getattr(animation, "animate", None)
