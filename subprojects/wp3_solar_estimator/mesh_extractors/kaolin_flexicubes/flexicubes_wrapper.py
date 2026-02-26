@@ -28,8 +28,8 @@ class FCExtractor:
         self.device = device
         self.verbose = verbose
         self._fixed_box = fixed_box
-        self._grid_points = None
-        self._resolution = None
+        self._grid_points: torch.Tensor | None = None
+        self._resolution: int | None = None
 
         if deterministic:
             # is optional: improve reproducibility for benchmarking/backprop tests
