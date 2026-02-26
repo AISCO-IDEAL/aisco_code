@@ -92,7 +92,7 @@ dataset:
     training_strategy: "neural_field"
     neural_field_input_nodes: 40000
     neural_field_query_nodes_train: 40000
-    field_loss_weight: 1.0
+    field_loss_weight: 1e-4
 
 optimizer:
     name: "adamw"
