@@ -7,12 +7,12 @@ gradient flow from mesh vertices back to SDF parameters via the implicit surface
 """
 
 import warnings
+from typing import Any
 
 import numpy as np
 import torch
 from skimage import measure
 from torch import nn
-from typing import Any
 
 
 class MeshSDFExtractor:
