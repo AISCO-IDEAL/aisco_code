@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 from typing import cast
+
 import cadquery as cq
 import numpy as np
 import pybullet as p
@@ -42,7 +43,7 @@ def assembly_obj_to_shape(asm_obj: Any) -> cq.Shape:
     """Extract a world-space CadQuery shape from an AssemblyObject."""
     base_obj = asm_obj.obj
     shape: cq.Shape
-    
+
     if isinstance(base_obj, cq.Assembly):
         shape = base_obj.toCompound()
     elif isinstance(base_obj, cq.Workplane):
