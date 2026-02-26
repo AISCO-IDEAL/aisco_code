@@ -21,7 +21,7 @@ class GroupQueryFlashAttention(nn.Module):
         self.num_kv_heads = attn_config["num_kv_heads"]
         self.num_repeat = self.num_heads // self.num_kv_heads
         self.head_dim = attn_config["hidden_size"] // self.num_heads
-        self.atten_dropout = attn_config["atten_dropout"]
+        self.atten_dropout = attn_config.get("atten_dropout", 0.0)
 
         kv_hidden_size = self.head_dim * self.num_kv_heads
 
