@@ -6,20 +6,12 @@ import trimesh
 import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
 from subprojects.wp3_solar_estimator.validation.statistics import MeshStatistics
-from subprojects.wp4_aeroshell_optimizer.archive.v0.src.main import deep_update
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.cruising_speed import cruising_speed
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_alm, weights_manual
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
-
-# # Visualization imports (commented out for now)
-# import trimesh # noqa: ERA001
-# from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh # noqa: ERA001
-# from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import render_image  # noqa: ERA001
-# from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer # noqa: ERA001
-# from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update # noqa: ERA001
-# from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name # noqa: ERA001
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
