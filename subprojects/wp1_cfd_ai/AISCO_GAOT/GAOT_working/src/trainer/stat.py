@@ -5,6 +5,7 @@ import time
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 import torch_geometric as pyg
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
@@ -452,6 +453,8 @@ class StaticTrainer3D(TrainerBase):
             if isinstance(magno_cfg, dict)
             else getattr(magno_cfg, "asynchronous_graph_building", False),
         )
+        # Store collate_fn so train_step can rebuild edges for subsampled batches
+        self.collate_fn = collate_fn
         # Ensure the model expects precomputed edges coming from collate
         async_graph = (
             magno_cfg.get("asynchronous_graph_building", False)
@@ -583,9 +586,12 @@ class StaticTrainer3D(TrainerBase):
         sampled_data_list = []
         query_pos_list = []
         query_batch_idx_list = []
-        target_for_loss_list = []
+        field_target_list = []
 
         use_same_sampling = num_input_nodes == num_query_nodes
+
+        # Check if we have per-vertex field data (data.x) to sample targets from
+        has_field_data = hasattr(batch, "x") and batch.x is not None
 
         for i in range(batch.num_graphs):
             start_idx = batch.ptr[i]
@@ -593,11 +599,14 @@ class StaticTrainer3D(TrainerBase):
             num_full_nodes_i = end_idx - start_idx
 
             full_pos_i = batch.pos[start_idx:end_idx]
-            full_y_i = batch.y[start_idx:end_idx]
 
             full_c_i = None
             if hasattr(batch, "c") and batch.c is not None:
                 full_c_i = batch.c[start_idx:end_idx]
+
+            full_x_i = None
+            if has_field_data:
+                full_x_i = batch.x[start_idx:end_idx]
 
             n_input_sample = min(num_input_nodes, num_full_nodes_i)
             if n_input_sample <= 0:
@@ -613,53 +622,57 @@ class StaticTrainer3D(TrainerBase):
                 query_perm = torch.randperm(num_full_nodes_i)[:n_query_sample]
 
             sampled_pos_i = full_pos_i[input_perm]
-            sampled_y_i = full_y_i[input_perm]
 
-            data_i = Data(pos=sampled_pos_i, y=sampled_y_i)
+            data_i = Data(pos=sampled_pos_i)
             if full_c_i is not None:
                 data_i.c = full_c_i[input_perm]
+            if full_x_i is not None:
+                data_i.x = full_x_i[input_perm]
 
-            essential_attrs = ["filename", "num_latent_nodes"]
-            for attr in essential_attrs:
+            # Copy scalar attributes (force, cd) to sampled data
+            for attr in ["force", "cd", "filename", "num_latent_nodes"]:
                 if hasattr(batch, attr) and getattr(batch, attr) is not None:
-                    if isinstance(getattr(batch, attr), list):
-                        setattr(data_i, attr, getattr(batch, attr)[i])
-                    else:
-                        attr_value = getattr(batch, attr)
-                        if attr_value.dim() > 0 and len(attr_value) == batch.num_graphs:
-                            setattr(data_i, attr, attr_value[i])
+                    attr_value = getattr(batch, attr)
+                    if isinstance(attr_value, list):
+                        setattr(data_i, attr, attr_value[i])
+                    elif attr_value.dim() > 0 and len(attr_value) == batch.num_graphs:
+                        setattr(data_i, attr, attr_value[i])
 
             sampled_data_list.append(data_i)
 
             query_pos_list.append(full_pos_i[query_perm])
             query_batch_idx_list.append(torch.full((n_query_sample,), i, dtype=torch.long))
-            target_for_loss_list.append(full_y_i[query_perm])
-
-        sampled_batch = Batch.from_data_list(sampled_data_list)
+            if full_x_i is not None:
+                field_target_list.append(full_x_i[query_perm])
 
         query_pos = torch.cat(query_pos_list, dim=0)
         query_batch_idx = torch.cat(query_batch_idx_list, dim=0)
-        target_for_loss = torch.cat(target_for_loss_list, dim=0)
+        field_target = torch.cat(field_target_list, dim=0) if field_target_list else None
 
-        return sampled_batch, query_pos, query_batch_idx, target_for_loss
+        return sampled_data_list, query_pos, query_batch_idx, field_target
 
     def train_step(self, batch: "pyg.data.Batch"):
         strategy = self.dataset_config.training_strategy
         latent_tokens_dev = self.latent_tokens.to(self.device)
+
+        field_target = None  # per-vertex target from neural_field sampling
 
         if strategy == "neural_field":
             # --- Neural Field Strategy ---
             num_input_nodes = self.dataset_config.neural_field_input_nodes
             num_query_nodes = self.dataset_config.neural_field_query_nodes_train
 
-            sampled_batch, query_pos, query_batch_idx, target_for_loss = self._sample_nodes_neural_field(
+            sampled_data_list, query_pos, query_batch_idx, field_target = self._sample_nodes_neural_field(
                 batch, num_input_nodes, num_query_nodes
             )
 
+            # Build edges for the subsampled data via collate, then move to device
+            sampled_batch = self.collate_fn(sampled_data_list)
             sampled_batch = sampled_batch.to(self.device)
             query_pos = query_pos.to(self.device)
             query_batch_idx = query_batch_idx.to(self.device)
-            target_for_loss = target_for_loss.to(self.device)
+            if field_target is not None:
+                field_target = field_target.to(self.device)
 
             pred = self.model(
                 batch=sampled_batch,
@@ -668,39 +681,47 @@ class StaticTrainer3D(TrainerBase):
                 query_coord_batch_idx=query_batch_idx,
             )
 
-            # In neural_field mode, 'batch' becomes the sampled version for target extraction
+            # For neural_field, the batch for scalar targets is the sampled_batch
             batch = sampled_batch
         else:
             batch = batch.to(self.device)
             pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
 
-        # Multi-head output: pred is a dict {"force": [B,1], "cd": [B,1]}
+        # pred is always a dict: {"force": [B,1], "cd": [B,1], optionally "field": [Q, D]}
         if isinstance(pred, dict):
+            # --- Scalar head loss ---
             targets = {"force": batch.force, "cd": batch.cd}
             if self.active_heads:
                 targets = {k: v for k, v in targets.items() if k in self.active_heads}
+            scalar_loss = masked_multi_head_loss(pred, targets)
 
+            # --- Field loss (if model produces field predictions) ---
+            if "field" in pred:
+                # Field target: use sampled field_target (neural_field) or batch.x
+                if field_target is not None:
+                    ft = field_target
+                elif hasattr(batch, "x") and batch.x is not None:
+                    ft = batch.x.to(self.device)
+                else:
+                    ft = None
 
-            total_loss = 0.0
-            head_losses = {}
+                if ft is not None:
+                    field_pred = pred["field"]
+                    # Mask out NaN entries (samples without field data)
+                    valid = ~torch.isnan(ft)
+                    if valid.any():
+                        field_loss = F.mse_loss(field_pred[valid], ft[valid])
+                    else:
+                        field_loss = torch.tensor(0.0, device=self.device)
 
-            for h in targets:
-                # Mask out NaNs (common in DrivAerNet data)
-                mask = ~torch.isnan(targets[h])
-                if mask.any():
-                    # Calculate MSE for this specific head
-                    h_loss = self.loss_fn(pred[h][mask], targets[h][mask])
-                    # Log the unweighted MSE for clear tracking in WandB
-                    head_losses[h] = h_loss.item()
-                    # Apply the multiplier to balance the total gradient
-                    total_loss += h_loss
+                    # Combine: configurable weight, default 1.0
+                    field_weight = getattr(self.dataset_config, "field_loss_weight", 1.0)
+                    return scalar_loss + field_weight * field_loss
 
-            return total_loss, head_losses
+            return scalar_loss
         else:
-            # Single-head fallback
             target = batch.y
-            loss = self.loss_fn(pred, target)
-            return loss, {"y": loss.item()}
+            return self.loss_fn(pred, target)
 
     def validate(self, loader: DataLoader):
         self.model.eval()
@@ -714,8 +735,8 @@ class StaticTrainer3D(TrainerBase):
                 latent_tokens_dev = self.latent_tokens.to(self.device)
                 pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
 
-                # 1. Calculate Loss (MSE/Multi-head)
                 if isinstance(pred, dict):
+                    # --- Scalar loss ---
                     targets = {"force": batch.force, "cd": batch.cd}
                     if self.active_heads:
                         targets = {k: v for k, v in targets.items() if k in self.active_heads}
@@ -726,6 +747,15 @@ class StaticTrainer3D(TrainerBase):
                     primary_key = self.active_heads[0] if self.active_heads else list(pred.keys())[0]
                     p = pred[primary_key]
                     t = targets[primary_key]
+
+                    # --- Field loss ---
+                    if "field" in pred and hasattr(batch, "x") and batch.x is not None:
+                        ft = batch.x.to(self.device)
+                        valid = ~torch.isnan(ft)
+                        if valid.any():
+                            field_loss = F.mse_loss(pred["field"][valid], ft[valid])
+                            field_weight = getattr(self.dataset_config, "field_loss_weight", 1.0)
+                            loss = loss + field_weight * field_loss
                 else:
                     target = batch.y
                     loss = self.loss_fn(pred, target)
@@ -759,10 +789,7 @@ class StaticTrainer3D(TrainerBase):
 
         denom = num_batches * world_size
 
-        return {
-            "loss": local_metrics[0].item() / denom,
-            "rel_l2": local_metrics[1].item() / denom
-        }
+        return {"loss": local_metrics[0].item() / denom, "rel_l2": local_metrics[1].item() / denom}
 
     def test(self):
         self.model.eval()
@@ -825,6 +852,9 @@ class StaticTrainer3D(TrainerBase):
                     pred_denorm = {}
                     target_denorm_dict = {}
                     for head_name, head_pred in pred_norm.items():
+                        # Skip field output — handled separately below
+                        if head_name == "field":
+                            continue
                         head_target = getattr(batch, head_name, None)
                         if head_target is None:
                             continue
@@ -903,11 +933,9 @@ class StaticTrainer3D(TrainerBase):
                     )
 
                     # Log Multi-Head metrics to tracker
-                    self.tracker.log_metrics({
-                        f"test/{head_name}_mse": mse,
-                        f"test/{head_name}_mae": mae,
-                        f"test/{head_name}_mre_percent": mre_percent
-                    })
+                    self.tracker.log_metrics(
+                        {f"test/{head_name}_mse": mse, f"test/{head_name}_mae": mae, f"test/{head_name}_mre_percent": mre_percent}
+                    )
 
                     results_array = torch.cat([head_targets.view(-1, 1), head_preds.view(-1, 1)], dim=1).cpu().numpy()
                     csv_path = self.path_config.result_path.replace(".png", f"_{head_name}_predictions.csv")
@@ -932,10 +960,7 @@ class StaticTrainer3D(TrainerBase):
                 mre_percent = (torch.abs(diff) / (torch.abs(full_targets) + EPSILON)).mean().item() * 100.0
 
                 # Log Single-Head metrics to tracker
-                self.tracker.log_metrics({
-                    "test/mse": mse,
-                    "test/mre_percent": mre_percent
-                })
+                self.tracker.log_metrics({"test/mse": mse, "test/mre_percent": mre_percent})
 
             logging.getLogger(__name__).info(
                 f"Concatenated results: preds shape {full_preds.shape}, targets shape {full_targets.shape}"
@@ -960,12 +985,14 @@ class StaticTrainer3D(TrainerBase):
                 inference_ratio = (total_inference_time / total_test_time) * 100
 
                 # Log Performance metrics to tracker
-                self.tracker.log_metrics({
-                    "perf/inference_throughput_sps": inference_throughput,
-                    "perf/overall_throughput_sps": overall_throughput,
-                    "perf/avg_latency_ms": avg_inference_time * 1000,
-                    "perf/data_loading_ratio_percent": data_loading_ratio
-                })
+                self.tracker.log_metrics(
+                    {
+                        "perf/inference_throughput_sps": inference_throughput,
+                        "perf/overall_throughput_sps": overall_throughput,
+                        "perf/avg_latency_ms": avg_inference_time * 1000,
+                        "perf/data_loading_ratio_percent": data_loading_ratio,
+                    }
+                )
 
                 logging.getLogger(__name__).info("=" * 60)
                 logging.getLogger(__name__).info("Inference Speed Performance Report")
