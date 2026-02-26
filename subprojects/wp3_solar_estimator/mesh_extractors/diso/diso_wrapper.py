@@ -34,8 +34,7 @@ class DISOExtractor:
 
         """
 
-
-        #Initialise the DISO Object
+        # Initialise the DISO Object
 
         if dtype not in ["float32", "float64"]:
             raise Warning(f"Unsupported dtype {dtype}, use 'float32' or 'float64'")
@@ -57,11 +56,9 @@ class DISOExtractor:
             raise NotImplementedError("Currently only fixed_box=True is supported")
 
         self._fixed_box = fixed_box
-        self._bbox = None
-        self._grid = None
-        self._resolution = None
-
-
+        self._grid: torch.Tensor | None = None
+        self._bbox: list[list[int]] | None = None
+        self._resolution: int | None = None
 
     def set_grid(self, bbox: list[list[int]], resolution: int):
         """
@@ -73,15 +70,13 @@ class DISOExtractor:
 
         """
         if self._fixed_box:
-            self._grid=create_bbox_grid(bbox,resolution,self.device)
+            self._grid = create_bbox_grid(bbox, resolution, self.device)
             self._bbox = bbox
             self._resolution = resolution
         else:
             raise NotImplementedError("Currently only fixed_box=True is supported")
 
-
-
-    def extract_mesh(self, model: callable, isovalue: float = 0.0,batch_size: int = 2048):
+    def extract_mesh(self, model: callable, isovalue: float = 0.0, batch_size: int = 2048):
         """
         Extracts a mesh from the given SDF model using the configured extractor.
 
@@ -99,12 +94,12 @@ class DISOExtractor:
 
         # Sample SDF on gridpoints
         sdf_values = sample_sdf(model, self._grid, batch_size=batch_size)
-        #Reshape SDF values to grid
+        # Reshape SDF values to grid
         sdf_grid = sdf_samples_to_grid(sdf_values, self._resolution)
-        #Run DISO
+        # Run DISO
         verts, faces = self.extractor(sdf_grid, isovalue=isovalue)
         if self.verbose:
             print(f"Extracted mesh with {verts.shape[0]} vertices and {faces.shape[0]} faces")
-        #Renormalise vertices back to original coordinate space
+        # Renormalise vertices back to original coordinate space
         verts = renormalise_vertices(verts, bbox=self._bbox)
         return verts, faces
