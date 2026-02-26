@@ -4,9 +4,8 @@ Meshes are written next to this script under helper_files_pybullet_test/.
 """
 
 import math
-import time  # TEMP timing/ETA
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, cast
+from typing import cast
 
 import cadquery as cq
 import numpy as np
@@ -54,17 +53,6 @@ def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
     raise TypeError(f"Unsupported CadQuery object type: {type(obj)!r}")
 
 
-def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
-    """Return a CadQuery shape regardless of whether a Workplane or Assembly was provided."""
-    if isinstance(obj, cq.Assembly):
-        return obj.toCompound()
-    if isinstance(obj, cq.Workplane):
-        return obj.val()
-    if isinstance(obj, cq.Shape):
-        return obj
-    raise TypeError(f"Unsupported CadQuery object type: {type(obj)!r}")
-
-
 def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     inner, outer = call_assembly(assembly_number)
     ground_shape = _as_shape(create_speed_hump_and_floor())
@@ -77,7 +65,7 @@ def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     for i in range(200):
         loc = cq.Location(x=i * 10 - 200, y=0, z=0, rx=0, ry=0, rz=0)
         trimmed_outer = trimmed_outer.located(loc)
-        knife.append(trimmed_outer.intersect(ground_shape).located(loc))
+        knife.append(trimmed_outer.intersect(ground_shape).located())
         if i % 10 == 0:
             print(i)
 
@@ -345,12 +333,12 @@ def invert_transform(pos, quat):
     return pos_inv, quat_inv
 
 
-# Example usage:
-pos = [1.0, 2.0, 3.0]
-quat = [0.1, 0.2, 0.3, 0.9]  # x y z w
-inv_pos, inv_quat = invert_transform(pos, quat)
+# # Example usage:
+# pos = [1.0, 2.0, 3.0]
+# quat = [0.1, 0.2, 0.3, 0.9]  # x y z w
+# inv_pos, inv_quat = invert_transform(pos, quat)
 
-return inv_pos, inv_quat
+# return inv_pos, inv_quat
 
 
 if __name__ == "__main__":
