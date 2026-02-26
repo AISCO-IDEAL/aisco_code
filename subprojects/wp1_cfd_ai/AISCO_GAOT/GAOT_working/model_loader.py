@@ -1,3 +1,4 @@
+import logging
 import os
 
 import torch
@@ -7,13 +8,15 @@ from torch_geometric.data import Batch, Data
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.utils.kaolin_utils import get_diff_mesh
 
+logger = logging.getLogger(__name__)
+
 model_dict = {
     1: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58232331.pt",
     2: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58245986.pt",
     3: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58310187.pt",
     4: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/overfit_model_58316029.pt",
     "Herbert": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/multi_model_Testing.pt",
-    "Neural Operatinator" : "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/euler_field_58577926.pt"
+    "Neural Operatinator": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/euler_field_58577926.pt",
 }
 
 
@@ -64,7 +67,19 @@ class ModelLoader:
 
         # Strip "module." prefix from DDP/DataParallel checkpoints
         sd = {k.removeprefix("module."): v for k, v in sd.items()}
-        self.gaot.load_state_dict(sd)
+        missing, unexpected = self.gaot.load_state_dict(sd, strict=False)
+        if unexpected:
+            logger.warning(
+                "Ignoring %d unexpected key(s) in checkpoint: %s",
+                len(unexpected),
+                unexpected,
+            )
+        if missing:
+            logger.warning(
+                "Missing %d key(s) in checkpoint (using init values): %s",
+                len(missing),
+                missing,
+            )
 
     def forward(self, sdf_model) -> torch.Tensor:
         mesh_verts, mesh_faces = get_diff_mesh(model=sdf_model)
