@@ -6,7 +6,7 @@ from torch import nn
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager, Wrapper
 
 #
 # WIRE architecture from https://arxiv.org/pdf/2301.05187
@@ -148,10 +148,11 @@ class WIRE(BaseModel):
 
     def optimise(
         self,
-        training_config: dict | None = None,
+        renderer_manager: VisualisationManager | None = None,  # noqa: ARG002
         renderer_wrapper: Wrapper | None = None,
         wandb_name: str | None = None,
         general_config: dict | None = None,
+        training_config: dict | None = None,
     ) -> None:
         """
         Args:

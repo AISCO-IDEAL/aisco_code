@@ -145,7 +145,7 @@ def outer_nbz(length: float, width: float, height: float):
     return box
 
 
-def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length) -> list[cq.Solid]:
+def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length) -> cq.Assembly:
     """
     Generate a cadquery Assembly of the driver's and the tracker's vision NBZ with given parameters from regulations
     Args: regulations.yaml

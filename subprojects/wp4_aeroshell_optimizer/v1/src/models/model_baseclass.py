@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING  # this prevents from circular imports
 import torch
 from torch import nn
 
+from build.lib.subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+
 if TYPE_CHECKING:
     from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
@@ -48,7 +50,14 @@ class BaseModel(nn.Module):
         output = x.squeeze(-1)
         return output * 1000.0
 
-    def optimise(self, renderer_manager: VisualisationManager | None = None, wandb_name: str | None = None, general_config: dict | None = None):  # noqa: ARG002
+    def optimise(
+        self,
+        renderer_manager: VisualisationManager | None = None,  # noqa: ARG002
+        renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
+        wandb_name: str | None = None,  # noqa: ARG002
+        general_config: dict | None = None,  # noqa: ARG002
+        training_config: dict | None = None,  # noqa: ARG002
+    ) -> None:
         super().train()  # Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
 
         # For textbook example of how our optimization works, look at basic_MLP_v1.py

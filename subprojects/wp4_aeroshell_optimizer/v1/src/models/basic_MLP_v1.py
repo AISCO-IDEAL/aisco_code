@@ -3,7 +3,7 @@ import torch
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager, Wrapper
 
 
 class BasicMLP(BaseModel):
@@ -17,7 +17,14 @@ class BasicMLP(BaseModel):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return super().forward(x)
 
-    def optimise(self, training_config: dict | None = None, renderer_manager: VisualisationManager | None = None) -> None:
+    def optimise(
+        self,
+        renderer_manager: VisualisationManager | None = None,
+        renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
+        wandb_name: str | None = None,  # noqa: ARG002
+        general_config: dict | None = None,  # noqa: ARG002
+        training_config: dict | None = None,
+    ) -> None:
         if training_config is None:
             raise ValueError("Training config must be provided for optimisation.")
 
