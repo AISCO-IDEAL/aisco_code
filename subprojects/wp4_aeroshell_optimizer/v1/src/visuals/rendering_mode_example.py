@@ -63,9 +63,7 @@ class ExampleRenderingMode(RenderingMode):
             return
 
         # Compute camera direction from position and look-at point
-        direction = [
-            self.look_at[i] - self.camera_position[i] for i in range(3)
-        ]
+        direction = [self.look_at[i] - self.camera_position[i] for i in range(3)]
 
         # Render the mesh
         image = self._render(
@@ -82,21 +80,25 @@ class ExampleRenderingMode(RenderingMode):
         else:
             self.frame_storage.append(image)
 
-    def finalize(self, output_dir: Path) -> None:
+    def finalize(self, output_dir: Path, file_name: str = "rendering.gif", delete: bool = False) -> None:
         """
         Save all rendered frames as GIF and sample PNGs.
 
         Args:
             output_dir: Directory for saving results (mode-specific subdirectory)
+            file_name: Name of the output GIF file (default: "rendering.gif")
+            delete: If True, deletes stored frames after saving (default: False)
         """
         if not self.frame_storage:
             print(f"  {self.__class__.__name__}: No frames to save")
             return
 
         # Create GIF animation
-        gif_path = output_dir / "rendering.gif"
+        gif_path = output_dir / file_name
         self._frames_to_gif(gif_path, fps=self.fps)
         print(f"    Saved GIF: {gif_path}")
+        if delete:
+            self.clear_frames()
 
         # Save first frame as reference
         first_frame_path = output_dir / "first_frame.png"
