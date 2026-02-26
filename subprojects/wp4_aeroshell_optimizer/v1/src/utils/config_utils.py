@@ -12,12 +12,12 @@ def load_config(v="v1", cfg_name="general_config.yaml") -> dict:
     try:
         with config_path.open() as f:
             config = yaml.safe_load(f)
-            if wandb.run is not None and cfg_name != "general_config.yaml":  # type: ignore [attr-defined]
+            if wandb.run is not None and cfg_name != "general_config.yaml":
                 # general config should be logged already as the main part on wandb
                 name = cfg_name.replace(".yaml", "")
                 key = f"SubCFG_{name}"
-                if key not in wandb.config:  # type: ignore [attr-defined]
-                    wandb.config.update({key: config})  # type: ignore [attr-defined]
+                if key not in wandb.config:
+                    wandb.config.update({key: config})
                 # Add other configs as subkeys in the main config for better visibility in wandb
         return config  # noqa: TRY300
     except FileNotFoundError as e:

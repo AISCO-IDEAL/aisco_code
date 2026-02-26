@@ -39,9 +39,9 @@ class TotalLoss:
         )
 
         # Check for WandB sweep overrides for initial_lambda
-        if wandb.run and "initial_lambda" in wandb.config:  # type: ignore [attr-defined]
-            self.losses_config["general_info"]["initial_lambda"] = wandb.config.initial_lambda  # type: ignore [attr-defined]
-            print(f"Sweep: Updated initial_lambda to {wandb.config.initial_lambda}")  # type: ignore [attr-defined]
+        if wandb.run and "initial_lambda" in wandb.config:
+            self.losses_config["general_info"]["initial_lambda"] = wandb.config.initial_lambda
+            print(f"Sweep: Updated initial_lambda to {wandb.config.initial_lambda}")
 
         self.weights = self.losses_config.get("losses", {})  # get nested losses dict
         self.__active_losses: dict = {}
@@ -70,7 +70,7 @@ class TotalLoss:
         self._mesh_extraction_config = mesh_config  # Store for later use
 
         # wandb init
-        if self.__general_config["wandb_general"].get("use_wandb", False) and wandb.run is None:  # type: ignore [attr-defined]
+        if self.__general_config["wandb_general"].get("use_wandb", False) and wandb.run is None:
             run = wandb.init(
                 # Set the wandb log directory
                 dir="wp4_aeroshell_optimizer/data/wandb_logs",
@@ -80,7 +80,7 @@ class TotalLoss:
                 project=self.__general_config["wandb_general"].get("project_name", "Aeroshell Optimiser with ALM and Sweeping"),
                 # Track hyperparameters and run metadata.
                 config=self.__general_config,
-            )  # type: ignore [attr-defined]
+            )
             config = deep_update(self.__general_config, dict(wandb.config))
             run.config.update(config, allow_val_change=True)
 

@@ -66,7 +66,7 @@ class SDFLosses:
         self.__pointgrid: list[list[float]] = self.__inner_SDF.pointgrid()
         self.__inner_sdf_values: list[float] = self.__inner_SDF.sdf_at_pointgrid()
         self.__outer_sdf_values: list[float] = self.__outer_SDF.sdf_at_pointgrid()
-    
+
     def __setup_bounding_boxes_loss_2(self):
         # Create SDFs for inner and outer boxes
         inner_box: cq.Solid = innerNBZ(
@@ -290,7 +290,7 @@ class SDFLosses:
             model: The SDF network
             resolution: Resolution for area computation
         Returns:
-            NOTE: Still WIP, currently running a dummy version of the loss 
+            NOTE: Still WIP, currently running a dummy version of the loss
         """
         if self.weights["solar_area"][0] == 0:
             print("Solar area loss disabled.")
@@ -300,7 +300,7 @@ class SDFLosses:
             )
             return torch.tensor(0.0, device=self.device)
         else:
-            
+
             verts, faces = marching_tetrahedra(model, grid_res=128, dev=self.device)
             return dummy_solar_loss(verts, faces, sun_dir=torch.tensor([0.0, -1.0, 1.0], device=self.device))
             """
@@ -369,6 +369,6 @@ class SDFLosses:
                 "losses/solar_area_loss": l7.item()*self.weights["solar_area"][1],
             },
             step=epoch_name,
-        ) # type: ignore[attr-defined]
+        )
 
         return total_loss
