@@ -168,7 +168,7 @@ if __name__ == "__main__":
 
         # now store upstream gradients
         loss.backward()
-        dL_dx_i = xyz_upstream.grad
+        dL_dx_i: torch.Tensor | None = xyz_upstream.grad
 
         # use vertices to compute full backward pass
         optimizer.zero_grad()
@@ -183,7 +183,7 @@ if __name__ == "__main__":
         normals = xyz.grad / torch.norm(xyz.grad, 2, 1).unsqueeze(-1)
         # now assemble inflow derivative
         optimizer.zero_grad()
-        dl_ds_i = -torch.matmul(dL_dx_i.unsqueeze(1), normals.unsqueeze(-1)).squeeze(-1)
+        dl_ds_i = -torch.matmul(dL_dx_i.unsqueeze(1), normals.unsqueeze(-1)).squeeze(-1) if dL_dx_i is not None else torch.zeros_like(pred_sdf)
         # refer to Equation (4) in the main paper
         loss_backward = torch.sum(dl_ds_i * pred_sdf)
         loss_backward.backward()

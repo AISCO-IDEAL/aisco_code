@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import cadquery as cq
 from ocp_vscode import *
-
+from typing import cast
 from .params import *
 from .seat import *
 
@@ -82,7 +82,8 @@ class Chassis:
         chassis = rear_part.union(nose)
 
         # --- set center accordingly to convention (0,0) at wheel_base-center.
-        chassis_t_vec = -rear_part.val().BoundingBox().center
+        rear_shape = cast(cq.Shape, rear_part.val())
+        chassis_t_vec = -rear_shape.BoundingBox().center
         self.model = chassis.translate(chassis_t_vec)
 
 

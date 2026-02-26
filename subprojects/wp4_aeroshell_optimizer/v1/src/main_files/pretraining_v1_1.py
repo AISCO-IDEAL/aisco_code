@@ -51,7 +51,8 @@ def pretraining(
 
     # Try to use GPU if available
     device = "cuda" if torch.cuda.is_available() else "cpu"
-
+    if model is None:
+        model = dynamic_model_loading(config_name=pretraining_config_name)
     model = model.to(device)
 
     pretraining_shape = config.get("pretraining_shape", "sphere")
@@ -75,7 +76,7 @@ def pretraining(
         # Eikonal regularization: ||∇f(x)|| = 1 in meters
 
         input_m = (input_data / 1000.0).detach().requires_grad_(True)
-        sdf_m = (model(input_m * 1000.0).squeeze()) / 1000.0
+        sdf_m = (model(input_data).squeeze()) / 1000.0 # save compute time here
         grad = torch.autograd.grad(
             outputs=sdf_m,
             inputs=input_m,

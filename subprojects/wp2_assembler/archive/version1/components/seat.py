@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-
+from typing import cast
 import cadquery as cq
 from ocp_vscode import *
 
@@ -78,10 +78,9 @@ class Seat:
         solid1 = solid1.translate((0, self.params.width / 2, 0))
 
         # set_port(3939)
-        # show_object(solid1)
-
-        # Erstelle das 2D - Profil des Kopfausschnittes in der "ZY"-Ebene
-        profile3 = (
+        
+        # 1. Create the first half of the profile on the YZ plane
+        half_profile = (
             cq.Workplane("YZ")
             .moveTo(C[0], C[1])
             .radiusArc(endPoint=(D[0], D[1]), radius=self.params.radius_top)
@@ -89,16 +88,31 @@ class Seat:
             .radiusArc(endPoint=(F[0], F[1]), radius=aux_l_0E)
             .lineTo(G[0], G[1])
             .close()
-            .val()
         )
-        face3 = cq.Face.makeFromWires(profile3)
 
-        # Das Profil des halben Kopfausschnittes spiegeln und zusammenfügen
-        profile4 = profile3.mirror("XZ")
-        face4 = cq.Face.makeFromWires(profile4)
+        # 2. Mirror the pending wires across the XZ plane (which is the local Y-axis of the YZ plane)
+        # This creates a symmetric profile within the Workplane object
+        h_face = half_profile.mirror(mirrorPlane="XZ", union=True)
+        # old version, not Mypy compliant:
+        # # Erstelle das 2D - Profil des Kopfausschnittes in der "ZY"-Ebene
+        # profile3 = (
+        #     cq.Workplane("YZ")
+        #     .moveTo(C[0], C[1])
+        #     .radiusArc(endPoint=(D[0], D[1]), radius=self.params.radius_top)
+        #     .lineTo(E[0], E[1])
+        #     .radiusArc(endPoint=(F[0], F[1]), radius=aux_l_0E)
+        #     .lineTo(G[0], G[1])
+        #     .close()
+        #     .val()
+        # )
+        # face3 = cq.Face.makeFromWires(profile3)
 
-        h_face = face3.fuse(face4)
-        h_face = cq.Workplane("YZ").add(h_face)
+        # # Das Profil des halben Kopfausschnittes spiegeln und zusammenfügen
+        # profile4 = profile3.mirror("XZ")
+        # face4 = cq.Face.makeFromWires(profile4)
+
+        # h_face = face3.fuse(face4)
+        # h_face = cq.Workplane("YZ").add(h_face)
 
         # Pfade für .sweep() definieren
         fwd_path = (
@@ -122,7 +136,8 @@ class Seat:
         result = solid1.cut(h_sweep)
 
         # Verschiebe das Koordinatensystem ins Zentrum des umhüllenden Quaders
-        bBox = result.val().BoundingBox()
+        result_shape = cast(cq.Shape, result.val())
+        bBox = result_shape.BoundingBox()
         self.s_height = bBox.zlen
         self.s_length = bBox.xlen
         self.s_width = bBox.ylen

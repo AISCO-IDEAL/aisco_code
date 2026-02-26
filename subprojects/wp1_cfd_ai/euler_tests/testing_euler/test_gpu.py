@@ -46,7 +46,7 @@ print(
 )
 start_compute = time.time()
 
-c_gpu = None  # Initialize
+c_gpu: torch.Tensor | None = None  # Initialize
 for i in range(10):
     c_gpu = torch.matmul(a_gpu, b_gpu)
 
@@ -61,6 +61,7 @@ print(f"  -> Average time per multiplication: {avg_time:.4f} seconds.")
 
 # 5. Move result back to CPU (optional, but good for cleanup)
 print("\n[INFO] Moving result matrix back to the CPU...")
-c_cpu = c_gpu.cpu()
+if c_gpu is not None:
+    c_cpu = c_gpu.cpu()
 
 print("\n--- GPU Compute Test Finished Successfully ---")
