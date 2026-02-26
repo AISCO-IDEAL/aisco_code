@@ -118,5 +118,6 @@ class SolarV3Selection(RenderingMode):
         # Save last frame as reference
         last_frame_path = output_dir / "final_frame.png"
         self._save_image(self.frame_storage[-1], last_frame_path)
-
+        # clear frame storage to free memory
+        self.frame_storage.clear()
         print(f"    Saved sample frames to {output_dir}")
