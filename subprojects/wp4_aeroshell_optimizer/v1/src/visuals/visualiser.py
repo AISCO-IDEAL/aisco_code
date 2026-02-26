@@ -3,7 +3,7 @@ from pathlib import Path
 import imageio
 import numpy as np
 import torch
-
+from typing import Any, cast
 from subprojects.fixed_renderer.renderer import Renderer as NeuralRenderer
 
 
@@ -171,18 +171,18 @@ class Visualiser:
 
         # For local GIF saving, convert to uint8
         if file_path is not None:
-            frames_uint8 = []
+            temp_frames: list[np.ndarray] = []
             for frame in self.stored_frames:
                 fr = (frame * 255).astype(np.uint8)
                 # If single-channel shape (H, W, 1), squeeze to (H, W) for Pillow
                 if fr.ndim == 3 and fr.shape[-1] == 1:
                     fr = fr.squeeze(-1)
-                frames_uint8.append(fr)
-            imageio.mimsave(file_path, frames_uint8, fps=fps)
+                temp_frames.append(fr)
+            imageio.mimsave(file_path, cast(Any, temp_frames), fps=fps)
 
         # Return format depends on use case
         if return_uint8:
-            frames_uint8 = []
+            frames_uint8: list[np.ndarray] = []
             for frame in self.stored_frames:
                 fr = (frame * 255).astype(np.uint8)
                 if fr.ndim == 3 and fr.shape[-1] == 1:

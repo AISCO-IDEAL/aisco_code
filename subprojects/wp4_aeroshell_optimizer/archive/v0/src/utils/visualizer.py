@@ -553,8 +553,8 @@ class CADVisualizer:
         cos_tilt = np.cos(tilt_angle_rad)
         sin_tilt = np.sin(tilt_angle_rad)
 
-        eye_x_final = eye_x_rotated * cos_tilt - eye_z * sin_tilt
-        eye_z_final = eye_x_rotated * sin_tilt + eye_z * cos_tilt
+        eye_x_final = float(eye_x_rotated * cos_tilt - eye_z * sin_tilt)
+        eye_z_final = float(eye_x_rotated * sin_tilt + eye_z * cos_tilt)
 
         eye = np.array([eye_x_final, eye_y_rotated, eye_z_final])
         target = np.array([0.0, 0.0, 0.0])
@@ -676,7 +676,7 @@ class CADVisualizer:
         # Calculate scene bounds
         combined = trimesh.util.concatenate(meshes)
         extents = combined.extents
-        radius = np.linalg.norm(extents) / 2.0
+        radius: float = float(np.linalg.norm(extents) / 2.0)
 
         if radius < 1e-6:
             raise ValueError(f"Geometry too small: radius = {radius}")
