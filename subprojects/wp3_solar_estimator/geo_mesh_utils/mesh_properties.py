@@ -5,6 +5,8 @@ Provides functions to compute mesh surface area, normals, and other
 geometric properties needed for benchmarking.
 """
 
+from typing import Any
+
 import torch
 
 
@@ -204,7 +206,7 @@ def compute_mean_edge_length(vertices: torch.Tensor, faces: torch.Tensor) -> tor
     return mean_length
 
 
-def compute_mesh_center(vertices: torch.Tensor, method: str = 'centroid') -> torch.Tensor:
+def compute_mesh_center(vertices: torch.Tensor, method: str = "centroid") -> torch.Tensor:
     """
     Compute mesh center.
 
@@ -215,9 +217,9 @@ def compute_mesh_center(vertices: torch.Tensor, method: str = 'centroid') -> tor
     Returns:
         (3,) tensor with center coordinates
     """
-    if method == 'centroid':
+    if method == "centroid":
         return torch.mean(vertices, dim=0)
-    elif method == 'bbox':
+    elif method == "bbox":
         min_coords, max_coords = compute_mesh_bounds(vertices)
         return (min_coords + max_coords) / 2.0
     else:
@@ -301,36 +303,36 @@ def compute_mesh_statistics(vertices: torch.Tensor, faces: torch.Tensor) -> dict
     Returns:
         Dictionary with mesh statistics
     """
-    stats = {}
+    stats: dict[str, Any] = {}
 
     # Basic counts
-    stats['num_vertices'] = vertices.shape[0]
-    stats['num_faces'] = faces.shape[0]
+    stats["num_vertices"] = vertices.shape[0]
+    stats["num_faces"] = faces.shape[0]
 
     # Surface area
-    stats['surface_area'] = compute_mesh_surface_area(vertices, faces).item()
+    stats["surface_area"] = compute_mesh_surface_area(vertices, faces).item()
 
     # Volume
-    stats['volume'] = compute_mesh_volume(vertices, faces).item()
+    stats["volume"] = compute_mesh_volume(vertices, faces).item()
 
     # Bounding box
     min_coords, max_coords = compute_mesh_bounds(vertices)
-    stats['bbox_min'] = min_coords.cpu().numpy().tolist()
-    stats['bbox_max'] = max_coords.cpu().numpy().tolist()
-    stats['bbox_diagonal'] = torch.norm(max_coords - min_coords).item()
+    stats["bbox_min"] = min_coords.cpu().numpy().tolist()
+    stats["bbox_max"] = max_coords.cpu().numpy().tolist()
+    stats["bbox_diagonal"] = torch.norm(max_coords - min_coords).item()
 
     # Edge lengths
     edge01, edge12, edge20 = compute_edge_lengths(vertices, faces)
     all_edges = torch.cat([edge01, edge12, edge20])
-    stats['mean_edge_length'] = torch.mean(all_edges).item()
-    stats['min_edge_length'] = torch.min(all_edges).item()
-    stats['max_edge_length'] = torch.max(all_edges).item()
-    stats['std_edge_length'] = torch.std(all_edges).item()
+    stats["mean_edge_length"] = torch.mean(all_edges).item()
+    stats["min_edge_length"] = torch.min(all_edges).item()
+    stats["max_edge_length"] = torch.max(all_edges).item()
+    stats["std_edge_length"] = torch.std(all_edges).item()
 
     # Triangle areas
     triangle_areas = compute_triangle_areas(vertices, faces)
-    stats['mean_triangle_area'] = torch.mean(triangle_areas).item()
-    stats['min_triangle_area'] = torch.min(triangle_areas).item()
-    stats['max_triangle_area'] = torch.max(triangle_areas).item()
+    stats["mean_triangle_area"] = torch.mean(triangle_areas).item()
+    stats["min_triangle_area"] = torch.min(triangle_areas).item()
+    stats["max_triangle_area"] = torch.max(triangle_areas).item()
 
     return stats
