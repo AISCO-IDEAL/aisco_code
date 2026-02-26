@@ -50,25 +50,34 @@ class Seat:
             aux_l_0E * math.cos(math.atan((self.params.width / 2) / aux_l_0E)),
         )
         G = (self.params.width / 2, self.params.radius_top)
-
+        
         # --- model building: ---
-        # create a 2D-face in the XZ-plane
-        profile1 = (  # Wedge structure
+        # 1. Profile 1 (Wedge)
+        profile_wp1 = (
             cq.Workplane("XZ")
             .lineTo(A[0], A[1])
             .radiusArc(endPoint=(B[0], B[1]), radius=self.params.radius_top)
             .close()
-            .val()
-        )
-        face1 = cq.Face.makeFromWires(profile1)
-
-        profile2 = (  # legroom
-            cq.Workplane("XZ").rect(self.params.Lr_l, self.params.Lr_h).val()
         )
 
-        face2 = cq.Face.makeFromWires(profile2)
-        face2 = face2.translate((self.params.Lr_l / 2, 0, self.params.Lr_h / 2))
+        wire1 = profile_wp1.wires().val()
+        if not isinstance(wire1, cq.Wire):
+            raise TypeError(f"Profile 1 expected a Wire, got {type(wire1)}")
 
+        face1 = cq.Face.makeFromWires(wire1)
+
+        # 2. Profile 2 (Legroom)
+        profile_wp2 = cq.Workplane("XZ").rect(self.params.Lr_l, self.params.Lr_h)
+
+        # .rect() creates a face, so we specifically grab its wire for makeFromWires
+        wire2 = profile_wp2.wires().val()
+        if not isinstance(wire2, cq.Wire):
+            raise TypeError(f"Profile 2 expected a Wire, got {type(wire2)}")
+
+        face2_raw = cq.Face.makeFromWires(wire2)
+        face2 = face2_raw.translate((self.params.Lr_l / 2, 0, self.params.Lr_h / 2))
+
+        # 3. Combine
         face_r = face1.fuse(face2)
 
         # Extrudiere die 2D Fläche

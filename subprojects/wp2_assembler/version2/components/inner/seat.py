@@ -95,12 +95,23 @@ class Seat:
             .close()
         )
 
-        # make to cq.Face and mirror profile, to sweep around centerline with 1mm margin
-        profile = profile_head.wires().val()
-        face1 = cq.Face.makeFromWires(
-            profile  # noqa: it works like this
-        )
+        
+        # 1. Extract the wire and validate type for Mypy
+        profile_wire = profile_head.wires().val()
+
+        if not isinstance(profile_wire, cq.Wire):
+            raise TypeError(f"Expected cq.Wire from profile_head, got {type(profile_wire)}")
+
+        # 2. Create the initial face
+        face1 = cq.Face.makeFromWires(profile_wire)
+
+        # 3. Mirror and Fuse
+        # Note: face1.mirror returns a Shape, so we cast or check if needed 
+        # depending on how strict your Mypy config is.
         face2 = face1.mirror("XZ")
+
+        # fuse() returns a Compound or a single Shape; 
+        # for a sweep, CadQuery usually prefers a single Face or Wire
         w_sketch = face1.fuse(face2)
 
         # start point is the point the most backward on the wedge
