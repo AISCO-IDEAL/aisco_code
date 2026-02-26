@@ -111,7 +111,7 @@ class WIRE(BaseModel):
             ]
         )
 
-        final_linear = nn.Linear(hidden_features, out_features, dtype=dtype)  # type: ignore [arg-type]
+        final_linear = nn.Linear(hidden_features, out_features, dtype=dtype)
         net_layers.append(final_linear)
 
         self.net = nn.Sequential(*net_layers)
