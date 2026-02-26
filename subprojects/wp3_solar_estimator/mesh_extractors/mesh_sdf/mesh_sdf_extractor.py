@@ -12,6 +12,7 @@ import numpy as np
 import torch
 from skimage import measure
 from torch import nn
+from typing import Any
 
 
 class MeshSDFExtractor:
@@ -92,7 +93,9 @@ class MeshSDFExtractor:
         if self._grid_points.device.type != self.device:
             self._grid_points = self._grid_points.to(self.device)
 
-    def extract_mesh(self, sdf_model: nn.Module, return_cache: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
+    def extract_mesh(
+        self, sdf_model: nn.Module, return_cache: bool = False
+    ) -> tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, dict[str, Any]]:
         """
         Extract isosurface mesh using Marching Cubes.
 

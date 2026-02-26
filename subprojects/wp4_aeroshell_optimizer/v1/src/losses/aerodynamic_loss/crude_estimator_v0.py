@@ -15,6 +15,9 @@ class CrudeEstimatorV0(ParentLoss):
         return
 
     def _loss(self, model) -> torch.Tensor:
-        vertices, faces = get_diff_mesh(model, grid_res=64)
+        vertices = get_diff_mesh(model, grid_res=64)
         crude_estimator_loss = calculateCdProxyDifferentiable(vertices)
+        if crude_estimator_loss is None:
+            # To satisfy mypy: Return a zero tensor that requires grad
+            return torch.tensor(0.0, device=vertices.device, requires_grad=True)
         return crude_estimator_loss
