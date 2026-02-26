@@ -44,8 +44,8 @@ class MeshSDFExtractor:
         self.device = device
 
         # Cache for optimization
-        self._cached_grid = None
-        self._cached_sdf = None
+        self._cached_grid: torch.Tensor | None = None
+        self._cached_sdf: np.ndarray | None = None
 
         # Fixed grid support (to align with DISO/FC wrappers)
         self._grid_points: torch.Tensor | None = None
@@ -120,15 +120,15 @@ class MeshSDFExtractor:
 
         # Evaluate SDF in batches to avoid OOM
         batch_size = 2048
-        sdf_values = []
+        sdf_batches = []
 
         with torch.no_grad():
             for i in range(0, points_tensor.shape[0], batch_size):
                 batch = points_tensor[i : i + batch_size]
                 sdf_batch = sdf_model(batch)
-                sdf_values.append(sdf_batch.cpu())
+                sdf_batches.append(sdf_batch.cpu())
 
-        sdf_combined = torch.cat(sdf_values, dim=0).cpu().numpy()
+        sdf_combined = torch.cat(sdf_batches, dim=0).cpu().numpy()
         sdf_grid = sdf_combined.reshape(res, res, res)
 
         # Cache for potential re-extraction

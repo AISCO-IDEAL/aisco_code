@@ -42,10 +42,15 @@ def get_diff_mesh(
     # At the moment unsure what happens when we change the size
     # of the sampled cube, so be careful here
 
-    # 1. Sample sdf function inside box
-    x = torch.linspace(box_dim[0], box_dim[1], grid_res, device=device)
-    y = torch.linspace(box_dim[2], box_dim[3], grid_res, device=device)
-    z = torch.linspace(box_dim[4], box_dim[5], grid_res, device=device)
+# 1. Sample sdf function inside box
+    # Ensure grid_res is handled as an int for linspace
+    res_x = grid_res[0] if isinstance(grid_res, list) else grid_res
+    res_y = grid_res[1] if isinstance(grid_res, list) else grid_res
+    res_z = grid_res[2] if isinstance(grid_res, list) else grid_res
+
+    x = torch.linspace(box_dim[0], box_dim[1], res_x, device=device)
+    y = torch.linspace(box_dim[2], box_dim[3], res_y, device=device)
+    z = torch.linspace(box_dim[4], box_dim[5], res_z, device=device)
     grid_x, grid_y, grid_z = torch.meshgrid(x, y, z, indexing="ij")
     grid_points = torch.stack([grid_x, grid_y, grid_z], dim=-1).reshape(-1, 3)
 

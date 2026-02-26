@@ -55,9 +55,15 @@ def vision_driv_nbz() -> cq.Workplane:
         .close()
     )
 
-    v_box_sketch = cq.Face.makeFromWires(
-        profile_v_box.wires().val()  # noqa: it works like this
-    )
+    # 1. Get the value
+    wire_shape = profile_v_box.wires().val()
+
+    # 2. Type guard for mypy and runtime safety
+    if not isinstance(wire_shape, cq.Wire):
+        raise TypeError(f"Expected a cq.Wire, but got {type(wire_shape)}")
+
+    # 3. Now mypy knows wire_shape is specifically a cq.Wire
+    v_box_sketch = cq.Face.makeFromWires(wire_shape)
 
     sweep_left = cq.Workplane("YZ").add(v_box_sketch).sweep(arch_pos, isFrenet=True)
     sweep_right = cq.Workplane("XZ").add(v_box_sketch).sweep(arch_neg, isFrenet=True)

@@ -13,6 +13,7 @@ from typing import Any, List, Optional, Tuple
 REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+from typing import cast
 
 import cadquery as cq
 import numpy as np
@@ -41,10 +42,12 @@ def export_shape_to_stl(shape: cq.Shape, name: str) -> str:
 def assembly_obj_to_shape(asm_obj: Any) -> cq.Shape:
     """Extract a world-space CadQuery shape from an AssemblyObject."""
     base_obj = asm_obj.obj
+    shape: cq.Shape
+
     if isinstance(base_obj, cq.Assembly):
         shape = base_obj.toCompound()
     elif isinstance(base_obj, cq.Workplane):
-        shape = base_obj.val()
+        shape = cast(cq.Shape, base_obj.val())
     elif isinstance(base_obj, cq.Shape):
         shape = base_obj
     else:
@@ -79,7 +82,7 @@ def export_inner_nbz_parts(
 
     body_path: str | None = None
     if body_shapes:
-        body_compound = cq.Compound.makeCompound(body_shapes)
+        body_compound: cq.Shape = cq.Compound.makeCompound(body_shapes)
         body_path = export_shape_to_stl(body_compound, "inner_nbz_body")
 
     return body_path, wheel_paths
@@ -95,7 +98,7 @@ def is_stable(lin_vel, ang_vel, tol: float = 1e-3) -> bool:
 inner_asm, _ = call_assembly(30)
 ground_shape = create_speed_hump_and_floor()
 
-ground_stl = export_shape_to_stl(ground_shape, "ground")
+ground_stl = export_shape_to_stl(ground_shape.toCompound(), "ground")
 body_stl, wheel_parts = export_inner_nbz_parts(inner_asm)
 
 if body_stl is None and not wheel_parts:
@@ -276,11 +279,11 @@ from subprojects.wp2_assembler.version2.utils.Speed_hump import (
 
 def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
     if isinstance(obj, cq.Assembly):
-        return obj.toCompound()
+        return cast(cq.Shape, obj.toCompound())
     if isinstance(obj, cq.Workplane):
-        value = obj.val()
-        if isinstance(value, cq.Shape):
-            return value
+        val = obj.val()
+        if isinstance(val, cq.Shape):
+            return val
     if isinstance(obj, cq.Shape):
         return obj
     raise TypeError(f"Unsupported CadQuery object type: {type(obj)!r}")

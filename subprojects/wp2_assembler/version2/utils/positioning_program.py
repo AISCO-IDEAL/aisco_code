@@ -5,7 +5,7 @@ Meshes are written next to this script under helper_files_pybullet_test/.
 import math
 import time  # TEMP timing/ETA
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, cast
 
 import cadquery as cq
 import numpy as np
@@ -39,19 +39,16 @@ def export_shape_to_stl(shape: cq.Shape, name: str) -> str:
     exporters.export(shape, str(path))  # exporter expects a string path
     return str(path)
 
-def assembly_obj_to_shape(asm_obj: Any) -> cq.Shape:
-    """Extract a world-space CadQuery shape from an AssemblyObject."""
-    base_obj = asm_obj.obj
-    if isinstance(base_obj, cq.Assembly):
-        shape = base_obj.toCompound()
-    elif isinstance(base_obj, cq.Workplane):
-        shape = base_obj.val()
-    elif isinstance(base_obj, cq.Shape):
-        shape = base_obj
-    else:
-        raise TypeError(f"Cannot export object type {type(base_obj)} for {asm_obj.name}")
-
-    return shape.located(asm_obj.loc) if getattr(asm_obj, "loc", None) else shape
+def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
+    if isinstance(obj, cq.Assembly):
+        return cast(cq.Shape, obj.toCompound())
+    if isinstance(obj, cq.Workplane):
+        val = obj.val()
+        if isinstance(val, cq.Shape):
+            return val
+    if isinstance(obj, cq.Shape):
+        return obj
+    raise TypeError(f"Unsupported CadQuery object type: {type(obj)!r}")
 
 def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
     """Return a CadQuery shape regardless of whether a Workplane or Assembly was provided."""
@@ -62,102 +59,25 @@ def _as_shape(obj: cq.Shape | cq.Workplane | cq.Assembly) -> cq.Shape:
     if isinstance(obj, cq.Shape):
         return obj
     raise TypeError(f"Unsupported CadQuery object type: {type(obj)!r}")
-
 def trim_outer_nbz2(assembly_number: int, pos_array, orn_array) -> cq.Shape:
-
     inner, outer = call_assembly(assembly_number)
     ground_shape = _as_shape(create_speed_hump_and_floor())
 
     if len(pos_array) != len(orn_array):
         raise ValueError("Error in trim_outer_nbz: pos_array and orn_array must have the same length")
 
-
     trimmed_outer = outer
     knife = [ground_shape]
     for i in range(200):
-        loc = cq.Location(x=i*10-200, y=0, z=0, rx= 0, ry= 0, rz= 0)
-
+        loc = cq.Location(x=i*10-200, y=0, z=0, rx=0, ry=0, rz=0)
         trimmed_outer = trimmed_outer.located(loc)
         knife.append(trimmed_outer.intersect(ground_shape).located(loc))
-        if(i%10==0):
+        if i % 10 == 0:
             print(i)
 
     trimmed_outer = outer
-    for i in knife:
-        trimmed_outer=trimmed_outer.cut(i)
-
-    '''
-    i=0
-    knife = []
-    moved_outer = outer
-    l = len(pos_array)
-
-    for pos, orn in zip(pos_array, orn_array):
-        i+=1
-        if(i%10==0):
-            roll, pitch, yaw = p.getEulerFromQuaternion(orn)
-            roll_deg, pitch_deg, yaw_deg = (
-                math.degrees(roll),
-                math.degrees(pitch),
-                math.degrees(yaw),
-            )
-            r = 1
-            location = cq.Location(x=round(pos[0], r), y=round(pos[1], r), z=round(pos[2], r), rx= round(roll_deg, r), ry= round(pitch_deg, r), rz= round(yaw_deg, r))
-
-            moved_outer=moved_outer.located(location)
-
-            knife.append(moved_outer.intersect(ground_shape).located(location))
-
-            if(i%100==0):
-                print(i, l)
-
-    '''
-
-    show(knife)
-    input("To compund")
-    combined_compound = cq.Compound.makeCompound(knife)
-    show(combined_compound)
-
-    input("simple? ")
-
-    simple_tunnel = combined_compound.clean()
-    show(simple_tunnel)
-    input("fuse? ")
-
-
-    fused_tunnel = knife[0]
-
-    # Loop through the rest and add them one by one
-    a = 0
-    for shape in knife[1:]:
-        a+=1
-        fused_tunnel = fused_tunnel.fuse(shape, tol=0.1)
-        if(a%10 == 0):
-            print(a,len(knife))
-            show(fused_tunnel)
-
-    show(fused_tunnel)
-
-    input("Continue? ")
-
-    final_outer = trimmed_outer.cut(combined_compound)
-    show(final_outer)
-
-    input("Continue? ")
-
-
-    for i in knife:
-        a+=1
-        try:
-            trimmed_outer=trimmed_outer.cut(i)
-        except:
-            print("error at a:", a)
-        if(a%10==0):
-            print(a, len(knife))
-            show(trimmed_outer, i)
-
-    input("Continue? ")
-    show(trimmed_outer)
+    for shape in knife:  # Use a different variable name, e.g., 'shape'
+        trimmed_outer = trimmed_outer.cut(shape)
 
     return trimmed_outer
 

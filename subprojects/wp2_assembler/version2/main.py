@@ -1,4 +1,6 @@
 import cadquery as cq
+from git import Union
+from matplotlib.pylab import Any
 from ocp_vscode import show
 
 from subprojects.wp2_assembler.version2.components import nbz
@@ -37,6 +39,9 @@ def visualize_multiple(lower_id: int, upper_id: int):
 
 
 if __name__ == "__main__":  # only run when executing this file directly
+    # Add these initializations with Type Hints
+    inner_nbz: Union[cq.Solid, cq.Assembly, Any]
+    outer_nbz: Union[cq.Solid, cq.Assembly, Any]
     while True:
         userinput = input(
             "Visualize inner NBZ, outer NBZ, both, multiple (both inner and outer), generate or stop? (i/o/b/m/g/s): "

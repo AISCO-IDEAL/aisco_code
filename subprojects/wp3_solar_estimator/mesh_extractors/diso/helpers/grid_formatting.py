@@ -5,7 +5,7 @@ from collections.abc import (
 import torch
 
 
-def create_bbox_grid(bbox: list[list[int]] | None = None, resolution: int = 64, device: torch.device = "cuda") -> torch.Tensor:
+def create_bbox_grid(bbox: list[list[int]] | None = None, resolution: int = 64, device: str = "cuda") -> torch.Tensor:
     """
     Creates a 3D grid of torch points within the specified bounding box and resolution. on requested device
     """
@@ -37,13 +37,13 @@ def sample_sdf(sdf_model: Callable[[torch.Tensor], torch.Tensor], grid: torch.Te
         sdf_values: (M, 1) SDF values corresponding to the input grid points
         Needs to be reshaped and renormalized by renormalise_vertices and sdf_samples_to_grid
     """
-    sdf_values = []
+    sdf_batches = []
     num_points = grid.shape[0]
     for i in range(0, num_points, batch_size):
         batch_points = grid[i : i + batch_size]
         batch_sdf = sdf_model(batch_points)
-        sdf_values.append(batch_sdf)
-    sdf_values = torch.cat(sdf_values, dim=0)
+        sdf_batches.append(batch_sdf)
+    sdf_values = torch.cat(sdf_batches, dim=0)
     return sdf_values
 
 
