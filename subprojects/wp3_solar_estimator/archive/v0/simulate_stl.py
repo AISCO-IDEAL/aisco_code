@@ -8,8 +8,6 @@ import pandas as pd
 import pytz
 import trimesh
 from joblib import Parallel, delayed
-from tqdm import tqdm
-
 from subprojects.wp3_solar_estimator.pv_index_for_run import pv_perf_index
 from subprojects.wp3_solar_estimator.read_mesh import (
     facenormal_angle,
@@ -18,6 +16,7 @@ from subprojects.wp3_solar_estimator.read_mesh import (
     sky_face,
 )
 from subprojects.wp3_solar_estimator.sun import get_sun_direction
+from tqdm import tqdm
 
 # data-Folder relative to AISCO-code
 DATA_FOLDER = os.path.join(os.path.dirname(__file__), "data")

@@ -22,10 +22,9 @@ Units: per-face areas are computed in mm^2; the returned loss is converted to m^
 """
 
 import contextlib
-import math
 import tempfile
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import torch
@@ -265,8 +264,7 @@ class SolarLossEstimator:
             return tensor.detach().cpu()
         return None
 
-    def _wandb_logging(self) -> None:
-
+    def _wandb_logging(self) -> None:  # noqa: PLR0912, PLR0915
         # Then your call becomes very clean:
         verts = self._to_device(self._working_verts)
         faces = self._to_device(self.mesh_faces)
@@ -358,7 +356,7 @@ class SolarLossEstimator:
                 out_image_path=self._out_img.as_posix(),
             )
             image_path, ok, attempts = visualizerb.render_until_blue_detected()
-            self._image_path = Path(image_path) if isinstance(image_path, (str, Path)) else None
+            self._image_path = Path(image_path) if isinstance(image_path, (str | Path)) else None
             self._render_ok = None if ok is None else bool(ok)
             self._render_attempts = int(attempts)
             if self.enable_wandb_logging and self._image_path is not None and self.epoch_name is not None:

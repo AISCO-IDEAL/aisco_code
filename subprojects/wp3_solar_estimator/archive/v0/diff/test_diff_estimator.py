@@ -1,6 +1,5 @@
 import torch
 from wp3_solar_estimator.diff.diff_solar_estimator import diff_solar_loss
-
 from wp4_aeroshell_optimizer.src.models.sdf import SDFNetwork
 from wp4_aeroshell_optimizer.src.utils.kaolin_utils import flexicubes_to_PLY, get_diff_mesh
 
