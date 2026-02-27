@@ -34,5 +34,5 @@ repos:
         additional_dependencies:
           - types-requests  # Falls du spezifische Typen brauchst
           - types-PyYAML # eschaerer
-        pass_filenames: True # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
-        entry: mypy .
+        pass_filenames: False # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
+        entry: mypy subprojects/wp3_solar_estimator
