@@ -1,10 +1,10 @@
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
 import torch
 import trimesh
 from pvlib import solarposition
-from datetime import datetime
-
 
 # ============================================================
 # Utility

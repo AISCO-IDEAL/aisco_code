@@ -26,7 +26,7 @@ def color_faces_by_weight(
     """
 
     if len(weights) != len(mesh.faces):
-        raise ValueError(  # noqa: TRY003
+        raise ValueError(
             f"Weight array length ({len(weights)}) must match the number of faces ({len(mesh.faces)})."
         )
 

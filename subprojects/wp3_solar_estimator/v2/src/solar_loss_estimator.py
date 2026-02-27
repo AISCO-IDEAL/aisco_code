@@ -114,7 +114,7 @@ class SolarMeshLossFn(torch.autograd.Function):
 
 
 class SolarLossEstimator:
-    def __init__(self, device: str = "cpu", losses_config: Optional[dict] = None):
+    def __init__(self, device: str = "cpu", losses_config: dict | None = None):
         self.device = device
         self.losses_config = losses_config or {}
         solar_config = self.losses_config["solar_config"]
@@ -256,10 +256,10 @@ class SolarLossEstimator:
         bounded_area_m2 = torch.clamp(self._solar_area_m2, 0.0, 6.0)
         self._loss_value = surrogate + (bounded_area_m2 - surrogate.detach())
 
-    def _to_device(self, tensor: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+    def _to_device(self, tensor: torch.Tensor | None) -> torch.Tensor | None:
         return tensor.to(self.device) if tensor is not None else None
 
-    def _safe_detach(self, tensor: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+    def _safe_detach(self, tensor: torch.Tensor | None) -> torch.Tensor | None:
         """Helper to safely detach and move to CPU if the tensor exists."""
         if tensor is not None:
             return tensor.detach().cpu()
