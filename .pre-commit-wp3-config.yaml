@@ -30,6 +30,9 @@ repos:
     hooks:
       - id: mypy
         # Optional: MyPy-Konfiguration aus pyproject.toml nutzen
+        # To enable only specific error codes, add --enable-error-code=ERROR_CODE_HERE to args below
+        # Example: --enable-error-code=import-untyped,unused-ignore
+        # Replace 'misc' with the specific error code you want to focus on
         args: [--config-file=pyproject.toml, --namespace-packages, --explicit-package-bases]
         additional_dependencies:
           - types-requests  # Falls du spezifische Typen brauchst

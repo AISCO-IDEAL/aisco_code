@@ -33,5 +33,5 @@ repos:
         additional_dependencies:
           - types-requests  # Falls du spezifische Typen brauchst
           - types-PyYAML # eschaerer
-        pass_filenames: True # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
+        pass_filenames: False # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
         entry: mypy .

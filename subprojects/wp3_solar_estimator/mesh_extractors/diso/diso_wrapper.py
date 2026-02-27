@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import diso
 import torch
 
@@ -76,7 +78,7 @@ class DISOExtractor:
         else:
             raise NotImplementedError("Currently only fixed_box=True is supported")
 
-    def extract_mesh(self, model: callable, isovalue: float = 0.0, batch_size: int = 2048):
+    def extract_mesh(self, model: Callable, isovalue: float = 0.0, batch_size: int = 2048):
         """
         Extracts a mesh from the given SDF model using the configured extractor.
 

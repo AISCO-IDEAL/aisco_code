@@ -6,8 +6,9 @@ Core idea: Make standard Marching Cubes differentiable by deriving analytical
 gradient flow from mesh vertices back to SDF parameters via the implicit surface constraint.
 """
 
+import typing
 import warnings
-from typing import Any
+from collections.abc import Callable
 
 import numpy as np
 import torch
@@ -43,10 +44,6 @@ class MeshSDFExtractor:
         self.bbox = bbox
         self.isovalue = isovalue
         self.device = device
-
-        # Cache for optimization
-        self._cached_grid: torch.Tensor | None = None
-        self._cached_sdf: np.ndarray | None = None
 
         # Fixed grid support (to align with DISO/FC wrappers)
         self._grid_points: torch.Tensor | None = None
@@ -93,20 +90,16 @@ class MeshSDFExtractor:
         if self._grid_points.device.type != self.device:
             self._grid_points = self._grid_points.to(self.device)
 
-    def extract_mesh(
-        self, sdf_model: nn.Module, return_cache: bool = False
-    ) -> tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, dict[str, Any]]:
+    def extract_mesh(self, sdf_model: typing.Callable) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Extract isosurface mesh using Marching Cubes.
 
         Args:
             sdf_model: PyTorch module that evaluates SDF(x) -> scalar
-            return_cache: If True, return additional data for fast re-extraction
 
         Returns:
             vertices: (V, 3) tensor of vertex positions
             faces: (F, 3) tensor of triangle indices
-            (optional) cache: Dict with grid and SDF values for fast updates
         """
         # Use fixed grid if provided, else create on-the-fly
         if self._grid_points is not None and self._resolution is not None:
@@ -133,11 +126,6 @@ class MeshSDFExtractor:
 
         sdf_combined = torch.cat(sdf_batches, dim=0).cpu().numpy()
         sdf_grid = sdf_combined.reshape(res, res, res)
-
-        # Cache for potential re-extraction
-        if return_cache:
-            self._cached_grid = points_tensor
-            self._cached_sdf = sdf_grid
 
         # Run Marching Cubes
         try:
@@ -168,18 +156,6 @@ class MeshSDFExtractor:
         # Convert to tensors
         vertices_tensor = torch.from_numpy(vertices).float().to(self.device)
         faces_tensor = torch.from_numpy(faces).long().to(self.device)
-
-        if return_cache:
-            cache = {
-                "grid_points": points_tensor,
-                "sdf_grid": sdf_grid,
-                "spacing": (
-                    (self.bbox[1] - self.bbox[0]) / (res - 1),
-                    (self.bbox[3] - self.bbox[2]) / (res - 1),
-                    (self.bbox[5] - self.bbox[4]) / (res - 1),
-                ),
-            }
-            return vertices_tensor, faces_tensor, cache
 
         return vertices_tensor, faces_tensor
 
@@ -286,7 +262,7 @@ class MeshSDFExtractor:
         """
         if enable_grad:
             # Extract mesh (this uses torch.no_grad internally)
-            vertices, faces = self.extract_mesh(sdf_model, return_cache=False)
+            vertices, faces = self.extract_mesh(sdf_model)
 
             # Re-evaluate vertices with gradient tracking
             # This creates a computation graph for gradient flow
@@ -294,10 +270,10 @@ class MeshSDFExtractor:
 
             return vertices_differentiable, faces
         else:
-            return self.extract_mesh(sdf_model, return_cache=False)
+            return self.extract_mesh(sdf_model)
 
     def extract_and_compute_loss(
-        self, sdf_model: nn.Module, loss_fn: callable, enable_backward: bool = True
+        self, sdf_model: nn.Module, loss_fn: Callable, enable_backward: bool = True
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Extract mesh, compute loss, and return gradient flow.

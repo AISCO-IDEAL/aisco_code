@@ -21,7 +21,7 @@ def load_testing_model(filename : str = "test_model.pth") -> BasicMLP:
     "hidden": 64,
     "layers": 6,
     }
-    model = BasicMLP(**model_config)
+    model = BasicMLP(**model_config)  # type: ignore[arg-type]
     model.load_state_dict(torch.load(f"/cluster/work/fuge/AISCO/wp3_solar_estimator/diso_test_data/{filename}"))
     return model
 

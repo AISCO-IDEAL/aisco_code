@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING  # this prevents from circular imports
 import torch
 from torch import nn
 
-from build.lib.subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 
 if TYPE_CHECKING:
     from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager

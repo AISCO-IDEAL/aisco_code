@@ -1,4 +1,5 @@
 import os
+import typing
 
 import torch
 from kaolin.ops.conversions import FlexiCubes
@@ -78,7 +79,7 @@ class FCExtractor:
                 f"[{bbox_nested[2][0]}, {bbox_nested[2][1]}])"
             )
 
-    def _eval_sdf_batched(self, model: callable, batch_size: int = 4096) -> torch.Tensor:
+    def _eval_sdf_batched(self, model: typing.Callable, batch_size: int = 4096) -> torch.Tensor:
         """
         Evaluate SDF on the fixed grid in batches to avoid OOM.
         Returns a 1D tensor of SDF values of length (resolution^3).
@@ -98,7 +99,7 @@ class FCExtractor:
                 values.append(sdf_batch)
         return torch.cat(values, dim=0)
 
-    def extract_mesh(self, model: callable, batch_size: int = 4096):
+    def extract_mesh(self, model: typing.Callable, batch_size: int = 4096):
         """
         Extract a mesh using Kaolin FlexiCubes given an SDF model.
 
@@ -109,8 +110,8 @@ class FCExtractor:
         Returns:
                 (verts, faces): torch.Tensors suitable for downstream backpropagation
         """
-        if self._fixed_box and (self._grid_points is None or self._resolution is None):
-            raise Warning("FlexiCubes grid not set. Call set_grid(bbox, resolution) before extracting.")
+        if self._grid_points is None or self._resolution is None:
+            raise RuntimeError("FlexiCubes grid not set. Call set_grid(bbox, resolution) before extracting.")
 
         # 1) Evaluate SDF on grid
         sdf_values = self._eval_sdf_batched(model, batch_size=batch_size)

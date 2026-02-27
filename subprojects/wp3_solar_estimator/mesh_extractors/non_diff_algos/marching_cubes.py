@@ -127,6 +127,7 @@ class MarchingCubesExtractor:
         # Validate grid is configured
         if self._fixed_box and (self._grid is None or self._resolution is None):
             raise RuntimeError("Extractor grid not set. Call set_grid(bbox, resolution) before extracting mesh.")
+        assert self._grid is not None  # type narrowing for mypy
 
         # Step 1: Sample SDF on grid with no gradient tracking (performance boost)
         with torch.no_grad():
@@ -283,6 +284,7 @@ class MeshExtractor:
         if self.algorithm in {"dmc", "disomc"}:
             if self._fixed_box and (self._grid is None or self._resolution is None):
                 raise RuntimeError("Extractor grid not set. Call set_grid(bbox, resolution) before extracting mesh.")
+            assert self._grid is not None  # type narrowing for mypy
 
             with torch.no_grad():
                 sdf_values = sample_sdf(model, self._grid, batch_size=batch_size)

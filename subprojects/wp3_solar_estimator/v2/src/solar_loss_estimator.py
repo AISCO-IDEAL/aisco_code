@@ -131,7 +131,7 @@ class SolarLossEstimator:
         z = torch.cos(self.sun_direction_solid_angle[0])
         self.sun_dir = torch.stack([x, y, z]).to(device=self.device, dtype=torch.float32)
 
-        self._loss_value: torch.Tensor = torch.tensor(0.0, device=self.device, dtype=torch.float32)
+        self._loss_value: torch.Tensor | None = torch.tensor(0.0, device=self.device, dtype=torch.float32)
         self._initialize_all_attributes()
 
     def _initialize_all_attributes(self) -> None:
@@ -146,7 +146,7 @@ class SolarLossEstimator:
         self._selected_face_indices: torch.Tensor | None = None
         self._selected_area_mm2: torch.Tensor | None = None
         self._solar_area_m2: torch.Tensor | None = None
-        self._loss_value: torch.Tensor | None = None
+        self._loss_value = None
         self._tmp_dir: Path | None = None
         self._orig_ply: Path | None = None
         self._sel_ply: Path | None = None
@@ -181,7 +181,8 @@ class SolarLossEstimator:
         normalisation_factor = 1.0
         if self.normalise_loss:
             normalisation_factor = 1e6/self.max_selected_area_mm2
-        return self._loss_value*normalisation_factor
+        loss_value = self._loss_value if self._loss_value is not None else torch.tensor(0.0, device=self.device, dtype=torch.float32)
+        return loss_value * normalisation_factor
 
     def _compute_forward_loss(self) -> None:
         self.mesh_vertices, self.mesh_faces = get_diff_mesh(self.model)
@@ -270,6 +271,9 @@ class SolarLossEstimator:
         faces = self._to_device(self.mesh_faces)
         sel   = self._to_device(self._selected_face_indices)
 
+        if verts is None or faces is None or sel is None:
+            return
+
         v0, v1, v2 = verts[faces[:, 0]], verts[faces[:, 1]], verts[faces[:, 2]]
         a, b = v1 - v0, v2 - v0
         c = torch.cross(a, b, dim=-1)
@@ -281,7 +285,7 @@ class SolarLossEstimator:
                 "solar_selected_area_m2": selected_areas_sum * 1e-6,
                 "total_area_of_mesh_m2": total_area_sum * 1e-6,
             },
-            step=int(self.epoch_name),
+            step=int(self.epoch_name) if self.epoch_name is not None else 0,
         )
 
         if self.rendering_frequency > 0 and self.epoch_name is not None and int(self.epoch_name) % self.rendering_frequency == 0:

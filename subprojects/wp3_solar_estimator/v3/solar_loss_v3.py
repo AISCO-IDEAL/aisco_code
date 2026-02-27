@@ -188,7 +188,7 @@ class SolarLossEstimator:
             return self.extractor.extract_mesh(model, isovalue=0.0, batch_size=self.batch_size)
         if self.method in {"mesh_sdf", "mc"}:
             assert isinstance(self.extractor, MeshSDFExtractor)
-            return self.extractor.extract_mesh(model=model)
+            return self.extractor.extract_mesh(model)
 
         raise ValueError(f"Unknown method: {self.method}")
 
