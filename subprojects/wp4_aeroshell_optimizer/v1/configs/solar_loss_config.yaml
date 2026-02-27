@@ -6,15 +6,15 @@ general_info:
   description: "Configuration file for solar loss functions."
 
 general_config:
-  solar_angle: [-1.5,0.0,1.0] # This is the direction in which a perfect solar cell should point, i.e. [0,0,1] if the sun shines from above
-  area_budget: 3000000 #in mm^3
+  solar_angle: [0.0,1.0,1.0] # This is the direction in which a perfect solar cell should point, i.e. [0,0,1] if the sun shines from above
+  area_budget: 4000000 #in mm^3
 
 SolarLossConfigV3:  # moved from solar_loss_v3.py
   method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
   resolution: 100
   area_budget_mm2: 4e6
-  sun_dir: [-1.5,0.0,1.0]
+  sun_dir: [0.0,-1.5,1.0]
   device: "cuda"
   batch_size: 4096
   eps: 1e-12

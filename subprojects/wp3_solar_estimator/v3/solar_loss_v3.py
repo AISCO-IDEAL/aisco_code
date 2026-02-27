@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
@@ -304,7 +304,7 @@ class SolarLossEstimator:
         self.rendering = bool(cfg["rendering"])
         if self.rendering and self.enable_wandb_logging:
             self.visualiser = Visualiser(
-                image_size=256,
+                image_size=1024,
                 background_color=None,
                 anti_aliasing=True,
                 camera_mode="look_at",
