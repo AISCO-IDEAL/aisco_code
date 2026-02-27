@@ -3,7 +3,7 @@
 # Pre-Commit-Konfiguration für Python-Projekte mit Ruff und MyPy
 
 
-exclude: ^(?!wp3_solar_estimator/)
+exclude: ^(?!subprojects/wp3_solar_estimator/)
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
