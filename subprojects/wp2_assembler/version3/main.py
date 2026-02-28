@@ -16,7 +16,7 @@ def visualize_multiple(lower_id: int, upper_id: int):
     # check if all assemblies exist
     grouped = cq.Assembly(name="groupedNBZ")
     for count, id_number in enumerate(range(lower_id, upper_id + 1)):
-        inner_nbz, outer_nbz = nbz.call_assembly(id_number)
+        inner_nbz, outer_nbz, _ = nbz.call_assembly(id_number)  # kdiehl: ignoring vision NBZ, as its not used later on
         assembly = cq.Assembly(name=f"NBZ_{id_number}")
         assembly.add(outer_nbz, name="outerNBZ", color=cq.Color(1, 0, 0, 0.3))
         assembly.add(inner_nbz, name="innerNBZ", color=cq.Color(0, 0, 1, 0.3))
@@ -46,7 +46,7 @@ if __name__ == "__main__":  # only run when executing this file directly
             userinput = input("Which id-number to visualize? ")
             if userinput.isdigit():
                 id_number = int(userinput)
-                inner_nbz, _ = nbz.call_assembly(id_number)
+                inner_nbz, _, _ = nbz.call_assembly(id_number)  # kdiehl: ignoring vision NBZ, as its not used later on
             else:
                 print("Invalid input. Please enter a valid id-number.")
                 continue
@@ -57,7 +57,7 @@ if __name__ == "__main__":  # only run when executing this file directly
             userinput = input("Which id-number to visualize? ")
             if userinput.isdigit():
                 id_number = int(userinput)
-                _, outer_nbz = nbz.call_assembly(id_number)
+                _, outer_nbz, _ = nbz.call_assembly(id_number)  # kdiehl: ignoring vision NBZ, as its not used later on
             else:
                 print("Invalid input. Please enter a valid id-number.")
                 continue
@@ -71,7 +71,7 @@ if __name__ == "__main__":  # only run when executing this file directly
             else:
                 print("Invalid input. Please enter a valid id-number.")
                 continue
-            inner_nbz, outer_nbz = nbz.call_assembly(id_number)
+            inner_nbz, outer_nbz, _ = nbz.call_assembly(id_number)  # kdiehl: ignoring vision NBZ, as its not used later on
             assembly = cq.Assembly(name=f"NBZ_{id_number}")
             assembly.add(outer_nbz, name="outerNBZ", color=cq.Color(1, 0, 0, 0.3))
             assembly.add(inner_nbz, name="innerNBZ", color=cq.Color(0, 0, 1, 0.3))
