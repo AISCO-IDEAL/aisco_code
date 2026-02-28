@@ -38,7 +38,5 @@ class EikonalV0(ParentLoss):
                 )[0]
 
             diff = torch.norm(grad_sdf, p=2, dim=-1) - 1.0
-            eikonal_loss = (
-                torch.pow(diff, 2).mean()
-            )  # in v0 there was no ^2 here, but it should be according to the paper
+            eikonal_loss = torch.pow(diff, 2).mean()  # in v0 there was no ^2 here, but it should be according to the paper
             return eikonal_loss

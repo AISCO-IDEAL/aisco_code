@@ -37,7 +37,7 @@ def truncated_gamma(
     """
     # ensure x is smaller than y
     if x > y:
-        raise ValueError("x should be smaller than y")  # noqa: TRY003
+        raise ValueError("x should be smaller than y")
 
     gamma_dist = sp.stats.gamma(a=k, scale=theta)
     rng = np.random.default_rng()

@@ -183,7 +183,11 @@ if __name__ == "__main__":
         normals = xyz.grad / torch.norm(xyz.grad, 2, 1).unsqueeze(-1)
         # now assemble inflow derivative
         optimizer.zero_grad()
-        dl_ds_i = -torch.matmul(dL_dx_i.unsqueeze(1), normals.unsqueeze(-1)).squeeze(-1) if dL_dx_i is not None else torch.zeros_like(pred_sdf)
+        dl_ds_i = (
+            -torch.matmul(dL_dx_i.unsqueeze(1), normals.unsqueeze(-1)).squeeze(-1)
+            if dL_dx_i is not None
+            else torch.zeros_like(pred_sdf)
+        )
         # refer to Equation (4) in the main paper
         loss_backward = torch.sum(dl_ds_i * pred_sdf)
         loss_backward.backward()

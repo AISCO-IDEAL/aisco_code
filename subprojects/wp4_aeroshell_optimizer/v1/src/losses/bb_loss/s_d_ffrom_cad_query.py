@@ -34,9 +34,9 @@ class SDFfromCadQuery:
         assembly_id: int = 1,
     ):
         if shape is None and shape_list is None:
-            raise ValueError("Either shape or shape_list must be provided.")  # noqa: TRY003
+            raise ValueError("Either shape or shape_list must be provided.")
         if shape is not None and shape_list is not None:
-            raise ValueError("Only one of shape or shape_list must be provided.")  # noqa: TRY003
+            raise ValueError("Only one of shape or shape_list must be provided.")
         self.__shape = shape
         self.__assembly_id = assembly_id
         self.__shape_list = shape_list
@@ -185,7 +185,6 @@ class SDFfromCadQuery:
             return vol
         else:
             return self.__shape.Volume()
-
 
     #### From here on, its just Code for testing and debuugging ########################################################
     def visualizr_slice(self, z: float) -> None:

@@ -1,9 +1,10 @@
 from pathlib import Path
+from typing import Any, cast
 
 import imageio
 import numpy as np
 import torch
-from typing import Any, cast
+
 from subprojects.fixed_renderer.renderer import Renderer as NeuralRenderer
 
 

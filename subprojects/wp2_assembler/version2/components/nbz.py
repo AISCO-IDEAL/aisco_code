@@ -80,9 +80,7 @@ def inner_nbz2_sym(
     Returns: cq.shape.solid of inner NBZ
     """
     # draw triangle
-    triangle = Triangle().build(
-        wheel_base_length, wheel_base_width
-    )  # triangle as Triangle()
+    triangle = Triangle().build(wheel_base_length, wheel_base_width)  # triangle as Triangle()
     triangle_wp = triangle.construct()  # triangle as cq.workplane
     points = triangle.get_points()
 
@@ -114,9 +112,7 @@ def inner_nbz2_sym(
     )
     assembly.add(
         seat,
-        loc=cq.Location(
-            cq.Vector(seat_position, 0, -100) + shift_vec
-        ),  # the 500 shall be removed, after correction in seat.py
+        loc=cq.Location(cq.Vector(seat_position, 0, -100) + shift_vec),  # the 500 shall be removed, after correction in seat.py
         name="Seat",
     )
 
@@ -237,7 +233,7 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid]:
 
     # YAML loads numeric keys as integers, not strings
     if id_number not in assembly_map:
-        raise ValueError(f"ID {id_number} not found in assembly map.")  # noqa: TRY003
+        raise ValueError(f"ID {id_number} not found in assembly map.")
 
     params = assembly_map[id_number]
 
@@ -256,7 +252,7 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid]:
 
     outer = outer_nbz2(params["wheel_base_length"] * 2.2, box_width, box_height)
 
-    return assembly, outer                          #This would return -> tuple[cq.Assembly, cq.Solid]
+    return assembly, outer  # This would return -> tuple[cq.Assembly, cq.Solid]
 
 
 def get_range_wheels() -> dict:
@@ -268,13 +264,9 @@ def get_range_wheels() -> dict:
 
     seat_length = get_regulation("seat.dimension.lr_l")
     seat_width = get_regulation("seat.dimension.width")
-    min_distance = get_regulation(
-        "seat.position.min_distance_to_back_wheel"
-    )  # some margin to the back wheel
+    min_distance = get_regulation("seat.position.min_distance_to_back_wheel")  # some margin to the back wheel
 
-    wheel_ax_marg = get_regulation(
-        "wheel.margin_axial"
-    )  # some margin for the wheels in axial direction
+    wheel_ax_marg = get_regulation("wheel.margin_axial")  # some margin for the wheels in axial direction
     wheel_width = get_regulation("wheel.dimension.width")
     wheel_d = get_regulation("wheel.tire_diameter")
 
@@ -308,8 +300,6 @@ def get_range_wheels() -> dict:
 
 
 def get_range_seat(wheelbase_width: float, wheelbase_length: float) -> dict:
-
-
     """
     After wheelbase is generated, get ranges for seat and position from regulations
     Args: regulations.yaml
@@ -318,13 +308,9 @@ def get_range_seat(wheelbase_width: float, wheelbase_length: float) -> dict:
     # check if wheelbase length is larger than seat length + min distance to back wheel
     seat_length = get_regulation("seat.dimension.lr_l")
     seat_width = get_regulation("seat.dimension.width")
-    min_distance = get_regulation(
-        "seat.position.min_distance_to_back_wheel"
-    )  # some margin to the back wheel
+    min_distance = get_regulation("seat.position.min_distance_to_back_wheel")  # some margin to the back wheel
 
-    wheel_ax_marg = get_regulation(
-        "wheel.margin_axial"
-    )  # some margin for the wheels in axial direction
+    wheel_ax_marg = get_regulation("wheel.margin_axial")  # some margin for the wheels in axial direction
     wheel_width = get_regulation("wheel.dimension.width")
     wheel_d = get_regulation("wheel.tire_diameter")
 
@@ -353,10 +339,11 @@ def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
     inner, outer = call_assembly(id_number)
     return inner.toCompound().Solids(), outer
 
+
 def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     """
     Docstring for bounding_box_of_assembly
-    
+
     :param id_number: id number of the assembly of the wanted bounding box
     :return: tuple with touples with ((x_min, y_min, z_min),(x_max,y_max,z_max))
     :rtype: tuple[tuple[float, float, float], tuple[float, float, float]]
@@ -365,21 +352,15 @@ def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float]
     inner_bounding_box = inner.toCompound().BoundingBox()
 
     return (
-        (inner_bounding_box.xmin,
-         inner_bounding_box.ymin,
-         inner_bounding_box.zmin
-        ),
+        (inner_bounding_box.xmin, inner_bounding_box.ymin, inner_bounding_box.zmin),
+        (inner_bounding_box.xmax, inner_bounding_box.ymax, inner_bounding_box.zmax),
+    )
 
-        (inner_bounding_box.xmax,
-         inner_bounding_box.ymax,
-         inner_bounding_box.zmax
-        )
-        )
 
 def create_bb_visualization(BB_coords: tuple[tuple[float, float, float], tuple[float, float, float]]) -> cq.Solid:
     """
     Docstring for create_bb_visualization
-    
+
     :param BB_coords: Tuple with tuples with the coordinates of the bounding box wanted to visualize
     :type BB_coords: tuple[tuple[float, float, float], tuple[float, float, float]]
     :return: solid of Bounding Box wanted to visualize

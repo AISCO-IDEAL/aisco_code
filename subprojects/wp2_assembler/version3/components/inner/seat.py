@@ -95,11 +95,11 @@ class Seat:
         face1 = cq.Face.makeFromWires(profile_wire)
 
         # 3. Mirror and Fuse
-        # Note: face1.mirror returns a Shape, so we cast or check if needed 
+        # Note: face1.mirror returns a Shape, so we cast or check if needed
         # depending on how strict your Mypy config is.
         face2 = face1.mirror("XZ")
 
-        # fuse() returns a Compound or a single Shape; 
+        # fuse() returns a Compound or a single Shape;
         # for a sweep, CadQuery usually prefers a single Face or Wire
         w_sketch = face1.fuse(face2)
 

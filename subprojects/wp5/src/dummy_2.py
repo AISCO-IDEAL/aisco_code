@@ -34,11 +34,7 @@ def file_saving(x: int) -> str:
         # Fallback: use a fixed ancestor level if repo_root not found
         if repo_root is None:
             repo_parent_level = 3
-            repo_root = (
-                here.parents[repo_parent_level]
-                if len(here.parents) > repo_parent_level
-                else here.parents[-1]
-            )
+            repo_root = here.parents[repo_parent_level] if len(here.parents) > repo_parent_level else here.parents[-1]
 
         outdir = repo_root / "subprojects" / "wp5" / "data"
 

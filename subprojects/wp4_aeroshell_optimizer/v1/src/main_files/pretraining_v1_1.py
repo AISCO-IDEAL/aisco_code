@@ -26,9 +26,9 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
 
 
 def pretraining(
-    model: Optional[BaseModel] = None,
+    model: BaseModel | None = None,
     pretraining_config_name: str = "pretraining_v0_config.yaml",
-    override_config: Optional[dict] = None,
+    override_config: dict | None = None,
 ):
     # Does pretraining, for now only on a sphere
 
@@ -47,7 +47,7 @@ def pretraining(
             elif "." in k:
                 parts = k.split(".")
                 if parts[0] in config and isinstance(config[parts[0]], dict):
-                     config[parts[0]][parts[1]] = v
+                    config[parts[0]][parts[1]] = v
 
     # Try to use GPU if available
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -69,14 +69,14 @@ def pretraining(
 
         # Dummy target data, replace with actual target generation
         if pretraining_shape == "cube":
-            target = cube_gt(input_data, side_length=2000.0) # Example side length
+            target = cube_gt(input_data, side_length=2000.0)  # Example side length
         else:
             target = sphere_gt(input_data)
 
         # Eikonal regularization: ||∇f(x)|| = 1 in meters
 
         input_m = (input_data / 1000.0).detach().requires_grad_(True)
-        sdf_m = (model(input_data).squeeze()) / 1000.0 # save compute time here
+        sdf_m = (model(input_data).squeeze()) / 1000.0  # save compute time here
         grad = torch.autograd.grad(
             outputs=sdf_m,
             inputs=input_m,

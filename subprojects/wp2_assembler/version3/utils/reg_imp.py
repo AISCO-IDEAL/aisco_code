@@ -24,16 +24,20 @@ def get_regulation(section: str) -> int | float:
         if isinstance(current, dict) and key in current:
             current = current[key]
         else:
-            warnings.warn("\n\n\nError in get_regulation: Error 1\nError in get_regulation: Error 1\nError in get_regulation: Error 1\n\n\n")
-            #raise Exception("Error in get_regulation: Error 1")
+            warnings.warn(
+                "\n\n\nError in get_regulation: Error 1\nError in get_regulation: Error 1\nError in get_regulation: Error 1\n\n\n"
+            )
+            # raise Exception("Error in get_regulation: Error 1")
             return -1  # Key not found or current is not a dict
 
     # Check if we ended up at a numeric value
     if isinstance(current, (int, float)):
         return current
 
-    warnings.warn("\n\n\nError in get_regulation: Error 2\nError in get_regulation: Error 2\nError in get_regulation: Error 2\n\n\n")
-    #raise Exception("Error in get_regulation: Error 2")
+    warnings.warn(
+        "\n\n\nError in get_regulation: Error 2\nError in get_regulation: Error 2\nError in get_regulation: Error 2\n\n\n"
+    )
+    # raise Exception("Error in get_regulation: Error 2")
     return -1  # Final value is not a number
 
 
