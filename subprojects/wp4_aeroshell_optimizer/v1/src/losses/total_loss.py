@@ -157,16 +157,21 @@ class TotalLoss:
             # DOCUMENTATION: `Losses and their weights` in Obsidian
 
             # o: maximise cruising speed (CSE)
+            o: torch.Tensor
             if self.losses_config["CSE"] == "True":  # TODO: go through each separate loss and check
-                o = -1 * cruising_speed(
-                    solar_power=loss_tensors[4],
-                    drag_force_at_25ms=loss_tensors[0],
-                    mass=210,
-                    c_losses=20,
-                    rolling_friction_coefficient=0.006,
+                o = torch.as_tensor(
+                    -1.0
+                    * cruising_speed(
+                        solar_power=loss_tensors[4],
+                        drag_force_at_25ms=loss_tensors[0],
+                        mass=210,
+                        c_losses=20,
+                        rolling_friction_coefficient=0.006,
+                    ),
+                    device=device,
                 )
             else:  # o: maximise solar power - drag losses
-                o = -1 * (loss_tensors[4] - loss_tensors[0])
+                o = torch.as_tensor(-1.0 * (loss_tensors[4] - loss_tensors[0]), device=device)
 
             # c: constraint loss (bb, eikonal, smoothness)
             c = torch.stack([loss_tensors[1], loss_tensors[2], loss_tensors[3]])
@@ -201,7 +206,7 @@ class TotalLoss:
             # We convert weights to a tensor on the correct device to allow element-wise multiplication
             weighted_total_loss = torch.dot(torch.stack(loss_tensors), weights)
 
-        # # Add the total loss to the logging dictionary
+        # Add the total loss to the logging dictionary
         loss_names["total_loss"] = weighted_total_loss.item()
 
         # # 2. Logging them on WandB (not working as of now)
@@ -256,12 +261,12 @@ class TotalLoss:
                         # Use Clemens' CADVisualizer for rendering and logging
                         # Convert to numpy if tensors
                         if torch.is_tensor(verts):
-                            verts = verts.detach().cpu().numpy()
+                            verts_np = verts.detach().cpu().numpy()
                         if torch.is_tensor(faces):
-                            faces = faces.detach().cpu().numpy()
+                            faces_np = faces.detach().cpu().numpy()
 
                         # Create trimesh object and export to STL
-                        mesh = trimesh.Trimesh(vertices=verts, faces=faces)
+                        mesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np)
                         stl_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/mesh_epoch_{epoch_name}.stl")
                         stl_path.parent.mkdir(parents=True, exist_ok=True)
                         mesh.export(str(stl_path))

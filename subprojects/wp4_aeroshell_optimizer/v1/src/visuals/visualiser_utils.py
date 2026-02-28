@@ -49,8 +49,8 @@ def render_image(
     model: BaseModel | None = None,
     verts: torch.Tensor | None = None,
     faces_in: torch.Tensor | None = None,
-    position: list[int] | None = None,
-    look_at: list[int] | None = None,
+    position: list[float] | None = None,
+    look_at: list[float] | None = None,
     save_frame: bool = False,
     clear_existing: bool = False,
 ) -> NDArray[Any]:  # kdiehl: consistency with actual returned type
@@ -65,9 +65,9 @@ def render_image(
         ndarray: The rendered image as a numpy array.
     """
     if position is None:
-        position = [4000, 0, 0]
+        position = [4000.0, 0.0, 0.0]  # kdihel: visualiser expects floats
     if look_at is None:
-        look_at = [0, 0, 0]
+        look_at = [0.0, 0.0, 0.0]
 
     if verts is None or faces_in is None:
         if model is None:
@@ -81,7 +81,7 @@ def render_image(
         if clear_existing:
             visualiser.stored_frames.clear()
 
-        looking_direction = [look_at[i] - position[i] for i in range(3)]
+        looking_direction = [float(look_at[i] - position[i]) for i in range(3)]
         visualiser.render(
             vertices,
             faces,
@@ -93,7 +93,7 @@ def render_image(
         return visualiser.stored_frames[-1]
 
     # Single render, no storage
-    looking_direction = [look_at[i] - position[i] for i in range(3)]
+    looking_direction = [float(look_at[i] - position[i]) for i in range(3)]
     image = visualiser.render(
         vertices,
         faces,
@@ -112,7 +112,10 @@ def save_rendered_image(visualiser: Visualiser, image: torch.Tensor, file_path: 
         image (torch.Tensor): The rendered image tensor.
         file_path (str): The path where the image will be saved.
     """
-    visualiser.save_image(image, file_path)
+    # Convert the image tensor to a numpy array if it's a torch.Tensor
+    if isinstance(image, torch.Tensor):
+        image_np = image.cpu().numpy()
+    visualiser.save_image(image_np, file_path)
 
 
 def assembly_to_kaolin_mesh(

@@ -1,5 +1,5 @@
 import torch
-from torch import nn, optim
+from torch import nn
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 
@@ -17,7 +17,7 @@ if __name__ == "__main__":
     num_epochs = 10
     for epoch in range(num_epochs):
         optimizer.zero_grad()
-        loss = lossm.get_total_loss(model)
+        loss = lossm.get_total_loss(model) # must inherit from BaseModel, as get_total_loss expects certain functions
         print("loss.requires_grad:", loss.requires_grad)
         loss.backward()
         optimizer.step()
