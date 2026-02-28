@@ -196,7 +196,7 @@ class TotalLoss:
                 loss_families=list(self.__active_losses.keys()),
                 device=device,
             )
-            weights = torch.as_tensor(weights, device=device, requires_grad=True, dtype=torch.float32)
+            weights = torch.as_tensor(weights, device=device, dtype=torch.float32).requires_grad_(True)
             # Stack losses into a single tensor and multiply by weights
             # We convert weights to a tensor on the correct device to allow element-wise multiplication
             weighted_total_loss = torch.dot(torch.stack(loss_tensors), weights)
