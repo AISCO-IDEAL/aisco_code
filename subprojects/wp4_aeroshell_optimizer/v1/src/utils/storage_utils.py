@@ -1,3 +1,4 @@
+# ruff: noqa: PLR0912 # reduce the if else mess, once everything works again!
 import copy
 import datetime
 import json
@@ -185,7 +186,7 @@ def reformat_wandb_name(wandb_name: str) -> str:
         wandb_name (str | None): The original wandb run name.
     """
     wandb_name = (
-        f"{wandb_name.split('-')[-1]}_" + "-".join(wandb_name.split("-")[:-1])
+        f"{wandb_name.rsplit('-', maxsplit=1)[-1]}_" + "-".join(wandb_name.split("-")[:-1])
         if wandb_name is not None and "-" in wandb_name
         else wandb_name
     )

@@ -23,7 +23,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Vi
 # use the train config file
 
 
-def main(verbose: bool = True) -> None:  # noqa: PLR0915 # definitly redefine this mess into more functions asap
+def main(verbose: bool = True) -> None:  # noqa: PLR0915, PLR0912 # definitly redefine this mess into more functions asap
     # Get general config
 
     general_config = load_config(v="v1", cfg_name="general_config.yaml")

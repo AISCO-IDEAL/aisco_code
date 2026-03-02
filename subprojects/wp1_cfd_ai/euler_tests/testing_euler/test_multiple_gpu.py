@@ -25,7 +25,7 @@ else:
 # 2. Define a simple model
 class SimpleModel(nn.Module):
     def __init__(self):
-        super(SimpleModel, self).__init__()
+        super().__init__()
         self.layer1 = nn.Linear(1024, 2048)
         self.relu = nn.ReLU()
         self.layer2 = nn.Linear(2048, 1024)
