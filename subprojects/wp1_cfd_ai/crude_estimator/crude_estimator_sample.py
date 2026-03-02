@@ -132,7 +132,7 @@ def approximate_drag_with_sampled_points(
     )
 
     # Define alternating colors for visualization
-    FIRST_SLICE_COLOR = [0, 255, 0, 255]  # Green (for slice i=0)
+    first_slice_color = [0, 255, 0, 255]  # Green (for slice i=0)
     alternating_colors = [[255, 0, 0, 255], [0, 0, 255, 255]]  # Red, Blue
     n_colors = len(alternating_colors)
 
@@ -176,20 +176,20 @@ def approximate_drag_with_sampled_points(
             )
 
             # Calculate lengths
-            L_slice_depth = abs(a_start - a_end)  # Depth along slicing axis
-            L_area_1 = max_a1 - min_a1  # Length 1 of frontal area
-            L_area_2 = max_a2 - min_a2  # Length 2 of frontal area
+            l_slice_depth = abs(a_start - a_end)  # Depth along slicing axis
+            l_area_1 = max_a1 - min_a1  # Length 1 of frontal area
+            l_area_2 = max_a2 - min_a2  # Length 2 of frontal area
 
-            if L_area_1 < 1e-6:
-                L_area_1 = 0.0
-            if L_area_2 < 1e-6:
-                L_area_2 = 0.0
+            if l_area_1 < 1e-6:
+                l_area_1 = 0.0
+            if l_area_2 < 1e-6:
+                l_area_2 = 0.0
 
-            frontal_area = L_area_1 * L_area_2
+            frontal_area = l_area_1 * l_area_2
             slice_frontal_areas.append(frontal_area)
 
             print(
-                f"Slice {i + 1}: Found {slice_points.shape[0]:<5} points. Dims (Depth, Area_1, Area_2) = [{L_slice_depth:6.2f}, {L_area_1:6.2f}, {L_area_2:6.2f}], Frontal Area = {frontal_area:8.4f}"
+                f"Slice {i + 1}: Found {slice_points.shape[0]:<5} points. Dims (Depth, Area_1, Area_2) = [{l_slice_depth:6.2f}, {l_area_1:6.2f}, {l_area_2:6.2f}], Frontal Area = {frontal_area:8.4f}"
             )
 
             # --- 5. Build Wireframe Visualization ---
@@ -198,15 +198,15 @@ def approximate_drag_with_sampled_points(
             box_center = [0, 0, 0]
 
             # Slicing axis dimension
-            box_extents[axis_idx] = L_slice_depth
+            box_extents[axis_idx] = l_slice_depth
             box_center[axis_idx] = (a_start + a_end) / 2
 
             # First area dimension
-            box_extents[area_idx_1] = L_area_1
+            box_extents[area_idx_1] = l_area_1
             box_center[area_idx_1] = (min_a1 + max_a1) / 2
 
             # Second area dimension
-            box_extents[area_idx_2] = L_area_2
+            box_extents[area_idx_2] = l_area_2
             box_center[area_idx_2] = (min_a2 + max_a2) / 2
             # --- End re-assembly ---
 
@@ -215,7 +215,7 @@ def approximate_drag_with_sampled_points(
 
             # Color the first box (i=0) green
             if i == 0:
-                current_color = FIRST_SLICE_COLOR
+                current_color = first_slice_color
             else:
                 color_index = (i - 1) % n_colors
                 current_color = alternating_colors[color_index]

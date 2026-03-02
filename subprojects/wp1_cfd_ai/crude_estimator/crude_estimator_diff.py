@@ -99,7 +99,7 @@ def visualize_slices(
 
     # --- 3. Create a Box for Each Slice ---
     # --- MODIFIED ---
-    FIRST_BOX_COLOR = [0, 255, 0, 150]  # Green, semi-transparent
+    first_box_color = [0, 255, 0, 150]  # Green, semi-transparent
     alternating_colors = [[255, 0, 0, 150], [0, 0, 255, 150]]  # Red/Blue
     n_alternating_colors = len(alternating_colors)
     # --- END MODIFIED ---
@@ -144,7 +144,7 @@ def visualize_slices(
         # Set the color based on the index 'i'
         current_color = None
         if i == 0:
-            current_color = FIRST_BOX_COLOR
+            current_color = first_box_color
         else:
             # Use (i - 1) so the alternating pattern starts at index 0
             # for the *second* box (which has i = 1)
@@ -309,8 +309,8 @@ def calculateCdProxyDifferentiable(
     # --- 5. Differentiable Normalization ---
     # (Weighted Loss * A_max) / (A_norm**2)
 
-    A_max_proxy = torch.max(all_slice_areas)
+    a_max_proxy = torch.max(all_slice_areas)
 
-    numerator = final_weighted_loss * A_max_proxy
+    numerator = final_weighted_loss * a_max_proxy
 
     return numerator

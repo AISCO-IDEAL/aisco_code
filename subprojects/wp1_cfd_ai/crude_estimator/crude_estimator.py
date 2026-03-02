@@ -20,7 +20,7 @@ def calculateCdProxy(  # noqa: N802
     into sections along a predefined axis, calculates the weighted frontal
     area of each slice, and returns a normalized "drag loss" value.
 
-    The number of slices (N_SLICES) and sampling density are defined as
+    The number of slices (n_slices) and sampling density are defined as
     internal constants.
 
     Args:
@@ -34,7 +34,7 @@ def calculateCdProxy(  # noqa: N802
         slicing_direction: The direction to slice ('+' for min to max,
             '-' for max to min). Defaults to '-'.
         weights: A list of floats to use as weights for each slice.
-            The list length must equal N_SLICES (20). If None,
+            The list length must equal n_slices (20). If None,
             default internal weights are used. Defaults to None.
 
     Returns:
@@ -44,8 +44,8 @@ def calculateCdProxy(  # noqa: N802
 
     # --- Internal Configuration ---
     # These parameters are fixed for this function.
-    N_SLICES = 20
-    DEFAULT_WEIGHTS = [
+    n_slices = 20
+    default_weights = [
         8.0,
         7.39,
         6.78,
@@ -67,7 +67,7 @@ def calculateCdProxy(  # noqa: N802
         6.25,
         8.0,
     ]  # Defined from MIN to MAX axis
-    N_POINTS_TO_SAMPLE = 50000
+    n_points_to_sample = 50000
     realistic_factor = 1.0
     # --- End Internal Configuration ---
 
@@ -75,7 +75,7 @@ def calculateCdProxy(  # noqa: N802
     manual_weights_to_use = weights
     if manual_weights_to_use is None:
         print("--- Using default weights. ---")
-        manual_weights_to_use = DEFAULT_WEIGHTS
+        manual_weights_to_use = default_weights
     else:
         print(f"--- Using provided custom weights ({len(manual_weights_to_use)} items). ---")
 
@@ -124,9 +124,9 @@ def calculateCdProxy(  # noqa: N802
 
         print(f"Original mesh has {len(mesh.vertices)} vertices.")
 
-        print(f"Sampling {N_POINTS_TO_SAMPLE} points from the mesh surface...")
+        print(f"Sampling {n_points_to_sample} points from the mesh surface...")
         np.random.seed(42)  # for reproducible sampling
-        vertices = mesh.sample(N_POINTS_TO_SAMPLE)
+        vertices = mesh.sample(n_points_to_sample)
 
         if vertices.shape[0] == 0:
             print("Error: Failed to sample points from mesh.")
@@ -146,7 +146,7 @@ def calculateCdProxy(  # noqa: N802
     slice_frontal_areas = []  # List to store each slice's area
 
     min_a, max_a = vertices[:, axis_idx].min(), vertices[:, axis_idx].max()
-    split_points = np.linspace(min_a, max_a, N_SLICES + 1)
+    split_points = np.linspace(min_a, max_a, n_slices + 1)
 
     direction_str = " (min to max)"
     if slicing_direction == "-":
@@ -154,26 +154,26 @@ def calculateCdProxy(  # noqa: N802
         direction_str = " (max to min)"
 
     print(
-        f"Slicing points into {N_SLICES} parts along {axis_name} from {split_points[0]:.2f} to {split_points[-1]:.2f}{direction_str}"
+        f"Slicing points into {n_slices} parts along {axis_name} from {split_points[0]:.2f} to {split_points[-1]:.2f}{direction_str}"
     )
 
-    FIRST_SLICE_COLOR = [0, 255, 0, 255]
+    first_slice_color = [0, 255, 0, 255]
     alternating_colors = [[255, 0, 0, 255], [0, 0, 255, 255]]
     n_colors = len(alternating_colors)
 
     print("\n--- Analyzing Slices ---")
     normalized_loss = None  # Initialize return value
 
-    for i in range(N_SLICES):
+    for i in range(n_slices):
         a_start = split_points[i]
         a_end = split_points[i + 1]
 
         if slicing_direction == "+":
-            if i == (N_SLICES - 1):
+            if i == (n_slices - 1):
                 v_mask = (vertices[:, axis_idx] >= a_start) & (vertices[:, axis_idx] <= a_end)
             else:
                 v_mask = (vertices[:, axis_idx] >= a_start) & (vertices[:, axis_idx] < a_end)
-        elif i == (N_SLICES - 1):
+        elif i == (n_slices - 1):
             v_mask = (vertices[:, axis_idx] <= a_start) & (vertices[:, axis_idx] >= a_end)
         else:
             v_mask = (vertices[:, axis_idx] <= a_start) & (vertices[:, axis_idx] > a_end)
@@ -196,20 +196,20 @@ def calculateCdProxy(  # noqa: N802
                 slice_points[:, area_idx_2].max(),
             )
 
-            L_slice_depth = abs(a_start - a_end)
+            l_slice_depth = abs(a_start - a_end)
             L_area_1 = max_a1 - min_a1
-            L_area_2 = max_a2 - min_a2
+            l_area_2 = max_a2 - min_a2
 
             if L_area_1 < 1e-6:
                 L_area_1 = 0.0
-            if L_area_2 < 1e-6:
-                L_area_2 = 0.0
+            if l_area_2 < 1e-6:
+                l_area_2 = 0.0
 
-            frontal_area = L_area_1 * L_area_2
+            frontal_area = L_area_1 * l_area_2
             slice_frontal_areas.append(frontal_area)
 
             print(
-                f"Slice {i + 1}: Found {slice_points.shape[0]:<5} points. Dims (Depth, Area_1, Area_2) = [{L_slice_depth:6.2f}, {L_area_1:6.2f}, {L_area_2:6.2f}], Frontal Area = {frontal_area:8.4f}"
+                f"Slice {i + 1}: Found {slice_points.shape[0]:<5} points. Dims (Depth, Area_1, Area_2) = [{l_slice_depth:6.2f}, {L_area_1:6.2f}, {l_area_2:6.2f}], Frontal Area = {frontal_area:8.4f}"
             )
 
             # --- 5. Build Wireframe Visualization (if requested) ---
@@ -217,18 +217,18 @@ def calculateCdProxy(  # noqa: N802
                 box_extents = [0, 0, 0]
                 box_center = [0, 0, 0]
 
-                box_extents[axis_idx] = L_slice_depth
+                box_extents[axis_idx] = l_slice_depth
                 box_center[axis_idx] = (a_start + a_end) / 2
                 box_extents[area_idx_1] = L_area_1
                 box_center[area_idx_1] = (min_a1 + max_a1) / 2
-                box_extents[area_idx_2] = L_area_2
+                box_extents[area_idx_2] = l_area_2
                 box_center[area_idx_2] = (min_a2 + max_a2) / 2
 
                 box_transform = trimesh.transformations.translation_matrix(box_center)
                 box_wireframe = trimesh.path.creation.box_outline(extents=box_extents, transform=box_transform)
 
                 if i == 0:
-                    current_color = FIRST_SLICE_COLOR
+                    current_color = first_slice_color
                 else:
                     color_index = (i - 1) % n_colors
                     current_color = alternating_colors[color_index]
@@ -241,14 +241,14 @@ def calculateCdProxy(  # noqa: N802
             slice_frontal_areas.append(0.0)
 
     # --- 6. Final Calculation ---
-    if len(weights_to_use) != N_SLICES:
-        print(f"FATAL ERROR: Weights list has {len(weights_to_use)} items, but N_SLICES is {N_SLICES}.")
+    if len(weights_to_use) != n_slices:
+        print(f"FATAL ERROR: Weights list has {len(weights_to_use)} items, but n_slices is {n_slices}.")
         return None
 
     final_weighted_loss = 0.0
     print("------------------------")
     print("Calculating Weighted Loss:")
-    for i in range(N_SLICES):
+    for i in range(n_slices):
         area = slice_frontal_areas[i]
         weight = weights_to_use[i]
         weighted_area = area * weight
@@ -262,29 +262,29 @@ def calculateCdProxy(  # noqa: N802
     # --- NORMALIZE THE LOSS ---
     sorted_areas = np.sort(slice_frontal_areas)[::-1]  # Sort descending
 
-    if N_SLICES < 5:
-        print(f"Warning: N_SLICES is {N_SLICES} (less than 5). Using A_max for normalization.")
-        A_norm = sorted_areas[0] if len(sorted_areas) > 0 else 0.0
+    if n_slices < 5:
+        print(f"Warning: n_slices is {n_slices} (less than 5). Using A_max for normalization.")
+        a_norm = sorted_areas[0] if len(sorted_areas) > 0 else 0.0
         norm_factor_name = "A_max"
     else:
-        A_norm = np.mean(sorted_areas[3:6])  # 5th biggest area (avg of 4th, 5th, 6th)
+        a_norm = np.mean(sorted_areas[3:6])  # 5th biggest area (avg of 4th, 5th, 6th)
         norm_factor_name = "A_5th_biggest"
 
-    if A_norm > 1e-6 and N_SLICES > 0 and len(sorted_areas) > 0:
+    if a_norm > 1e-6 and n_slices > 0 and len(sorted_areas) > 0:
         normalized_loss = (
             final_weighted_loss
             * sorted_areas[0]  # A_max
-            / N_SLICES
+            / n_slices
             * realistic_factor
         )
 
         print(
-            f"Normalization Factors: {norm_factor_name} = {A_norm:8.4f}, N_Slices = {N_SLICES}, Realistic_Factor = {realistic_factor}"
+            f"Normalization Factors: {norm_factor_name} = {a_norm:8.4f}, n_slices = {n_slices}, Realistic_Factor = {realistic_factor}"
         )
         print(f"Normalized Loss (Cd proxy): {normalized_loss:8.4f}")
         print("========================")
     else:
-        print("Cannot normalize: 5th biggest area, A_max, or N_Slices is zero.")
+        print("Cannot normalize: 5th biggest area, A_max, or n_slices is zero.")
         normalized_loss = 0.0
 
     print("------------------------")
@@ -304,7 +304,7 @@ def calculateCdProxy(  # noqa: N802
 
             scene.export(visualization_path)
             print(f"\nSuccessfully saved visualization to {visualization_path}")
-            print(f"You can open this .glb file in any 3D viewer to see the {N_SLICES} boxes.")
+            print(f"You can open this .glb file in any 3D viewer to see the {n_slices} boxes.")
         except Exception as e:
             print(f"\nError exporting scene to {visualization_path}: {e}")
     elif create_visualization:
@@ -346,7 +346,7 @@ if __name__ == "__main__":
 
         # --- Example of a custom call (uncomment to use) ---
         # print("\n--- RUNNING CUSTOM CALCULATION (Y-axis, Min-to-Max, Uniform Weights) ---")
-        # # Note: N_SLICES is 20, so we need 20 weights.
+        # # Note: n_slices is 20, so we need 20 weights.
         # custom_weights = [1.0] * 20  # Example: uniform weights
         # cd_value_custom = calculateCdProxy(
         #     path_to_file=TEST_FILE,

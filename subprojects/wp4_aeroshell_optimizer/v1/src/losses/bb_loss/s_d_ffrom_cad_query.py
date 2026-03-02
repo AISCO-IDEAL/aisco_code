@@ -12,7 +12,6 @@ from OCP.BRepClass3d import BRepClass3d_SolidClassifier
 from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
-
 from subprojects.wp2_assembler.version2.components.nbz import bounding_box_of_assembly, call_assembly_solids
 
 

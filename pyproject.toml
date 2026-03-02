@@ -167,6 +167,9 @@ ignore = [
     "N999",  # ignoring PEP8 convention to enable us to call our project AISCO_code instead of aisco_code
     "PLR0913", # too many arguments is bs convention for us
     "TRY003", # would block long messages in e.g. ValueError("messageXYZ") debugging warnings
+    "PLR2004", # triggers on if version == 2
+    "N806", # in ML uppercase variables are common
+    "N803", # invalid argument name 
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
@@ -191,6 +194,8 @@ max-args = 8
 "tests/**/*" = ["PLR2004", "S101", "TID252"]
 # Allow print statements in scripts
 "scripts/**/*" = ["T20"]
+# Allow unused imports in init files 
+"**/__init__.py" = ["F401"]
 
 [tool.mypy]
 
