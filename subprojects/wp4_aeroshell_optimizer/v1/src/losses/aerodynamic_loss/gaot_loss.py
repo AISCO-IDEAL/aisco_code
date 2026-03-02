@@ -10,4 +10,4 @@ class GaotLoss(ParentLoss):
         self.gaot = ModelLoader(model_id=model_id, device=self.device)
 
     def _loss(self, model) -> torch.Tensor:
-        return self.gaot.forward(sdf_model=model)
+        return self.gaot.forward(sdf_model=model, epoch_name=self.epoch_name)
