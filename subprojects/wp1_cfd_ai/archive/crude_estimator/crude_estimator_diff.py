@@ -1,3 +1,4 @@
+# ruff: noqa: PLR0915
 import os  # Added for path handling
 
 import numpy as np

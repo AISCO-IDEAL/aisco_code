@@ -3,9 +3,6 @@
 import argparse
 import json
 import os
-import pdb
-import random
-import time
 
 import imageio
 import lib

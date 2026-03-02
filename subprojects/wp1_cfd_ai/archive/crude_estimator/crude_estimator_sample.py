@@ -1,3 +1,4 @@
+# ruff: noqa: PLR0915
 import os
 
 import numpy as np

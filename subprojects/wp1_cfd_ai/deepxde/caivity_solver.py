@@ -4,7 +4,6 @@ matplotlib.use("Agg")  # <-- ADD THIS LINE
 import deepxde as dde
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 
 # --- 1. Set the Backend ---
 dde.backend.set_default_backend("pytorch")

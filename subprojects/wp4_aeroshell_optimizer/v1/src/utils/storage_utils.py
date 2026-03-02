@@ -1,6 +1,5 @@
 import copy
 import datetime
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -12,9 +11,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashin
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import (
     get_diff_mesh,
     kaolin_to_PLY,
-    marching_tetrahedra,
 )
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
 
 def allround_save_data(

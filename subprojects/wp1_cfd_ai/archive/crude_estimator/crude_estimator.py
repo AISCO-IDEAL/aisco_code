@@ -1,4 +1,5 @@
-# elihuber
+# ruff: noqa: PLR0915
+# because we are using this file not anymore anyway
 import os
 
 import numpy as np
@@ -343,26 +344,6 @@ if __name__ == "__main__":
         else:
             print("\n--- SCRIPT FAILED (DEFAULT) ---")
             print("Drag calculation returned None.")
-
-        # --- Example of a custom call (uncomment to use) ---
-        # print("\n--- RUNNING CUSTOM CALCULATION (Y-axis, Min-to-Max, Uniform Weights) ---")
-        # # Note: n_slices is 20, so we need 20 weights.
-        # custom_weights = [1.0] * 20  # Example: uniform weights
-        # cd_value_custom = calculateCdProxy(
-        #     path_to_file=TEST_FILE,
-        #     create_visualization=CREATE_VIZ,
-        #     visualization_path="my_model_custom_viz.glb",
-        #     slicing_axis="y",
-        #     slicing_direction="+",
-        #     weights=custom_weights
-        # )
-        #
-        # if cd_value_custom is not None:
-        #     print("\n--- SCRIPT FINISHED (CUSTOM) ---")
-        #     print(f"Custom Approx. Cd Value: {cd_value_custom:.6f}")
-        # else:
-        #     print("\n--- SCRIPT FAILED (CUSTOM) ---")
-        # --- End Example ---
 
     else:
         print("--- TEST SKIPPED ---")

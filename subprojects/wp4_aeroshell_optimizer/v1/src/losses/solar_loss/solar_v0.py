@@ -35,10 +35,3 @@ class SolarV0(ParentLoss):
         )
         loss = loss_from_deformed_mesh(deformed_verts, model)
         return loss
-
-    # this function is inherited from ParentLoss and shall not be overwritten (eschaerer 2025 11 25)
-    # def get_loss(self, model: BaseModel, grid_res: int = 64) -> torch.Tensor:
-    #     if self.__weight[0] == 0.0:
-    #         return torch.tensor(0.0, device=self.device)
-    #     else:
-    #         return self._loss(model)*self.__weight[1]

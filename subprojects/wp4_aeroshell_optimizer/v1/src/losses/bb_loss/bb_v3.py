@@ -66,7 +66,7 @@ class BbV3(ParentLoss):
             # Ensure P is on the correct device (the same as model parameters)
             model_device = next(model.parameters()).device
             if str(self.device) != str(model_device):
-                # print(f"Warning: BbV3 device ({self.device}) differs from model device ({model_device}). Updating self.device.")
+                # print(f"Warning: BbV3 device ({self.device}) differs from model device ({model_device}). Updating self.device.") noqa: ERA001
                 self.device = model_device
 
             P = torch.tensor(self.__pointgrid, dtype=torch.float32, device=self.device)  # [N,3]

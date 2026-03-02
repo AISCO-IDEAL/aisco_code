@@ -13,7 +13,6 @@ import pyrender
 import trimesh
 from pyrender import RenderFlags
 
-# from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly_solids
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -266,12 +265,6 @@ class CADVisualizer:
         meshes = []
         types = ["solid_a", "solid_b"]
 
-        # commented out since backwards comp. is kaputt
-        # if assembley_version == 0:
-        #    meshes = [
-        #        self.__cq_solid_to_trimesh(innerNBZ()),
-        #        self.__cq_solid_to_trimesh(outerNBZ()),
-        #    ]
         if assembley_version == 2:
             inner_box, outer_box = call_assembly_solids(assembly_id)
             meshes = [

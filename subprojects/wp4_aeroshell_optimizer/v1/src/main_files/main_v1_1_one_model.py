@@ -5,7 +5,6 @@ import torch
 
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
-from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import dynamic_type_loading
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
@@ -24,7 +23,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Vi
 # use the train config file
 
 
-def main(verbose: bool = True) -> None:
+def main(verbose: bool = True) -> None:  # noqa: PLR0915 # definitly redefine this mess into more functions asap
     # Get general config
 
     general_config = load_config(v="v1", cfg_name="general_config.yaml")

@@ -1,9 +1,7 @@
 import importlib
-from typing import Optional
 
 import torch
 
-import wandb  # Added wandb import
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.ground_truth_masks.simple_geoms import cube_gt, sphere_gt  # Added cube_gt
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config

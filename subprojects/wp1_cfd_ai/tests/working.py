@@ -34,7 +34,6 @@ else:
 
 # # Visualize the point cloud.
 # # Press '+' and '-' to change the point size.
-# o3d.visualization.draw_geometries([pcd])
 
 
 # -----------------------------------------------------------------
