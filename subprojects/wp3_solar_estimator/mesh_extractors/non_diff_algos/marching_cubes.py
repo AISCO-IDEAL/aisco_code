@@ -164,7 +164,7 @@ class MarchingCubesExtractor:
         verts_torch = renormalise_vertices(verts_torch, bbox=self._bbox)
 
         # Step 5: Convert faces to torch and move to device
-        faces_torch = torch.from_numpy(faces).long()
+        faces_torch = torch.from_numpy(faces.copy()).long()
 
         # Move to requested device
         verts_torch = verts_torch.to(self.device)
