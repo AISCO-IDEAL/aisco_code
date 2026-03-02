@@ -44,6 +44,7 @@ class SphereSDF(nn.Module):
         super().__init__()
         # Make radius a learnable parameter for gradient computation
         self.radius = nn.Parameter(torch.tensor(radius, dtype=torch.float32))
+        self.center = torch.tensor(center, dtype=torch.float32)  # Center is fixed (not optimized in typical benchmarks)
         # Center is fixed (not optimized in typical benchmarks)
         self.register_buffer("center", torch.tensor(center, dtype=torch.float32))
         self.to(device)  # Move model to specified device for consistency with extractors
@@ -105,6 +106,7 @@ class CubeSDF(nn.Module):
         super().__init__()
         # Make side length a learnable parameter
         self.side_length = nn.Parameter(torch.tensor(side_length, dtype=torch.float32))
+        self.center = torch.tensor(center, dtype=torch.float32)  # Center is fixed (not optimized in typical benchmarks)
         self.register_buffer("center", torch.tensor(center, dtype=torch.float32))
         self.to(device)  # Move model to specified device for consistency with extractors
 
@@ -181,6 +183,7 @@ class RectangularBoxSDF(nn.Module):
         super().__init__()
         # Make dimensions learnable parameters
         self.dimensions = nn.Parameter(torch.tensor(dimensions, dtype=torch.float32))
+        self.center = torch.tensor(center, dtype=torch.float32)  # Center is fixed (not optimized in typical benchmarks)
         self.register_buffer("center", torch.tensor(center, dtype=torch.float32))
         self.to(device)  # Move model to specified device for consistency with extractors
 

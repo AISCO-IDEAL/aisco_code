@@ -163,10 +163,10 @@ def solar_mesh_loss_v3(
     loss = loss_mm2 * 1e-6  # Convert to m² for final loss
 
     # Rendering (if enabled)
-    if rendering and render_solar is not None:
+    if rendering and render_solar is not None and num_epochs is not None:
         if counter <= num_epochs:
             render_solar.update(optimization_state=metrics_render)
-        if counter == num_epochs:
+        if counter == num_epochs and output_dir is not None:
             render_solar.finalize(output_dir)
 
     # Log to wandb if enabled
@@ -260,7 +260,7 @@ def log_to_wandb(
 
 
 class SolarLossEstimator:
-    def __init__(self, config: dict | None = None) -> None:
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
         defaults = {
             "method": "flexicubes",
             "bbox": [[-5000, 5000], [-5000, 5000], [-5000, 5000]],
@@ -281,7 +281,7 @@ class SolarLossEstimator:
         }
 
         general_config = load_config(v="v1", cfg_name="general_config.yaml")
-        cfg = defaults if config is None else config
+        cfg: dict[str, Any] = defaults if config is None else config
         print(cfg)
         self.config = cfg
 
@@ -302,6 +302,12 @@ class SolarLossEstimator:
         self.counter = 0  # For logging purposes
 
         self.rendering = bool(cfg["rendering"])
+        self.visualiser: Visualiser | None
+        self.renderSolar: SolarV3Selection | None
+        self.number_epochs: int | None
+        self.model_hash: str | None
+        self.wandb_run_name: str | None
+        self.rendering_dir: Path | None
         if self.rendering and self.enable_wandb_logging:
             self.visualiser = Visualiser(
                 image_size=1024,
@@ -324,6 +330,8 @@ class SolarLossEstimator:
             self.renderSolar = None
             self.number_epochs = None
             self.model_hash = None
+            self.wandb_run_name = None
+            self.rendering_dir = None
 
         sun_dir = cfg["sun_dir"]
         if not isinstance(sun_dir, torch.Tensor):
@@ -441,6 +449,7 @@ class SolarLossEstimator:
                 )
                 return loss
 
+            assert isinstance(self.extractor, MeshSDFExtractor)
             _verts, faces, loss, surrogate_loss = self.extractor.extract_and_compute_loss(
                 sdf_model=model,
                 loss_fn=wrapper_solar_loss,
