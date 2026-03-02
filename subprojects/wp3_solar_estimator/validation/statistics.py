@@ -90,13 +90,13 @@ class MeshStatistics:
         if full.any():
             mask[order[full]] = 1.0
         # Compare how much are was selected by taking the sum of face_areas where mask > 0.5 (i.e. selected) and log this along with the total surface area for comparison
-        selected_solar_area = cost[mask > 0.5].sum()  # noqa: PLR2004
+        selected_solar_area = cost[mask > 0.5].sum()
 
         total_surface_area = compute_mesh_surface_area(vertices, faces)
 
         # Compute and/or log the projected solar area of the selected faces, the projected solar area of the whole mesh (filter out negative dot prods),
         # the total area as a comparison and make a line with the budget area for reference
-        solar_performance_selected = (solar_dot_prods[mask > 0.5] * cost[mask > 0.5]).sum()  # noqa: PLR2004
+        solar_performance_selected = (solar_dot_prods[mask > 0.5] * cost[mask > 0.5]).sum()
 
         # Total projected area of the mesh (only considering faces facing the sun)
         pos_mask = solar_dot_prods > 0

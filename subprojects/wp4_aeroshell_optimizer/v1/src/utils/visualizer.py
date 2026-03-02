@@ -272,7 +272,7 @@ class CADVisualizer:
         #        self.__cq_solid_to_trimesh(innerNBZ()),
         #        self.__cq_solid_to_trimesh(outerNBZ()),
         #    ]
-        if assembley_version == 2:  # noqa: PLR2004
+        if assembley_version == 2:
             inner_box, outer_box = call_assembly_solids(assembly_id)
             meshes = [
                 self.__cq_solid_to_trimesh(inner_box),

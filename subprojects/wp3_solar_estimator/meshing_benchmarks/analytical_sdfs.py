@@ -235,7 +235,7 @@ class RectangularBoxSDF(nn.Module):
             (3,) tensor with [∂A/∂a, ∂A/∂b, ∂A/∂c]
         """
         a, b, c = self.dimensions[0], self.dimensions[1], self.dimensions[2]
-        dA_da = 2.0 * (b + c)  # noqa: N806
-        dA_db = 2.0 * (a + c)  # noqa: N806
-        dA_dc = 2.0 * (a + b)  # noqa: N806
+        dA_da = 2.0 * (b + c)
+        dA_db = 2.0 * (a + c)
+        dA_dc = 2.0 * (a + b)
         return torch.stack([dA_da, dA_db, dA_dc])

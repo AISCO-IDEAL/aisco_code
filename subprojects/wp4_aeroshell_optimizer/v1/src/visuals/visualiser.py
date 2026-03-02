@@ -8,7 +8,6 @@ import torch
 from subprojects.fixed_renderer.renderer import Renderer as NeuralRenderer
 
 
-# ruff: noqa: PLR2004
 class Visualiser:
     """
     Minimal wrapper around `fixed_renderer` for rendering and frame export.

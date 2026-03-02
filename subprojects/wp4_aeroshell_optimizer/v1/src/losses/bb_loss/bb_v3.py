@@ -30,7 +30,7 @@ class BbV3(ParentLoss):
             outer_box: cq.Solid = outerNBZ()
             self.__outer_SDF = SDFfromCadQuery(shape=outer_box, pointgrid_config=self.__config["pointgrid_params"])
 
-        if self.__assembly_version == 2:  # noqa: PLR2004
+        if self.__assembly_version == 2:
             inner_box, outer_box = call_assembly_solids(self.__assembly_id)
             self.__inner_SDF = SDFfromCadQuery(shape_list=inner_box, pointgrid_config=self.__config["pointgrid_params"])
             self.__outer_SDF = SDFfromCadQuery(shape=outer_box, pointgrid_config=self.__config["pointgrid_params"])
@@ -69,7 +69,7 @@ class BbV3(ParentLoss):
                 # print(f"Warning: BbV3 device ({self.device}) differs from model device ({model_device}). Updating self.device.")
                 self.device = model_device
 
-            P = torch.tensor(self.__pointgrid, dtype=torch.float32, device=self.device)  # [N,3]  # noqa: N806
+            P = torch.tensor(self.__pointgrid, dtype=torch.float32, device=self.device)  # [N,3]
             sdf_inner_t = torch.as_tensor(
                 self.__inner_sdf_values,
                 dtype=torch.float32,

@@ -153,8 +153,8 @@ def solar_mesh_loss_v3(
     sorted_soft_mask = soft_mask[original_order]
 
     # Analyze sigmoid transition zone (faces significantly affected by smooth boundary)
-    transition_zone_faces = ((soft_mask > 0.1) & (soft_mask < 0.9)).sum().item()  # noqa: PLR2004
-    faces_near_boundary = (soft_mask > 0.1) & (soft_mask < 0.9)  # noqa: PLR2004
+    transition_zone_faces = ((soft_mask > 0.1) & (soft_mask < 0.9)).sum().item()
+    faces_near_boundary = (soft_mask > 0.1) & (soft_mask < 0.9)
     transition_zone_area_mm2 = (sorted_areas[faces_near_boundary]).sum().item() if faces_near_boundary.any() else 0.0
 
     # Find the approximate budget crossover point in the sorted list

@@ -57,7 +57,7 @@ def main(verbose: bool = True) -> None:
     model_definition = general_config["model_def"]["model_file_path"]
 
     # Import model and get <class 'type'>
-    ModelClass = dynamic_type_loading(file_path=model_definition, class_name=model_name)  # noqa: N806
+    ModelClass = dynamic_type_loading(file_path=model_definition, class_name=model_name)
 
     # Initialise model with config,important that all keys match to a keyword argument in the model __init__()
     model = ModelClass(**model_config)

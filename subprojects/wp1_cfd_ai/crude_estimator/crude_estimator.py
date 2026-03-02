@@ -5,7 +5,7 @@ import numpy as np
 import trimesh
 
 
-def calculateCdProxy(  # noqa: N802
+def calculateCdProxy(
     path_to_file: str,
     create_visualization: bool,
     visualization_path: str,

@@ -44,7 +44,7 @@ class FCExtractor:
         Convert flat bbox [xmin, xmax, ymin, ymax, zmin, zmax] to
         nested [[xmin,xmax],[ymin,ymax],[zmin,zmax]] if needed.
         """
-        if isinstance(bbox, list | tuple) and len(bbox) == 6 and not isinstance(bbox[0], list | tuple):  # noqa: PLR2004
+        if isinstance(bbox, list | tuple) and len(bbox) == 6 and not isinstance(bbox[0], list | tuple):
             return [[bbox[0], bbox[1]], [bbox[2], bbox[3]], [bbox[4], bbox[5]]]
         return bbox  # assume already nested
 

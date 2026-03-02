@@ -45,7 +45,7 @@ def _load_image(obj) -> np.ndarray:
         if arr.dtype != np.uint8:
             arr = arr.astype(np.uint8)
         # if CHW -> convert to HWC
-        if arr.ndim == 3 and arr.shape[0] in (1, 3):  # noqa: PLR2004
+        if arr.ndim == 3 and arr.shape[0] in (1, 3):
             arr = np.transpose(arr, (1, 2, 0))
         return arr
 
@@ -107,7 +107,7 @@ def upload_neural_renderer_gif(frames, key: str, step: int | None = None, fps: i
 
     # If numpy array of shape (T,H,W,C)
     if isinstance(frames, np.ndarray):
-        if frames.ndim == 4:  # noqa: PLR2004
+        if frames.ndim == 4:
             wandb.log({key: wandb.Video(frames, fps=fps, format="gif")}, step=step)
             print(f"Logged GIF numpy array with {frames.shape[0]} frames to wandb under key '{key}' at step {step}")
             return

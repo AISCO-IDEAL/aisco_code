@@ -102,7 +102,7 @@ class SolarSelectionMode(RenderingMode):
 
         # Create textures based on mask, using solar_color for selected faces and rest_color for others
         colors = torch.where(
-            mask.unsqueeze(1) > 0.5,  # noqa: PLR2004
+            mask.unsqueeze(1) > 0.5,
             torch.tensor(self.solar_color, device=self.visualiser.device),
             torch.tensor(self.rest_color, device=self.visualiser.device),
         )

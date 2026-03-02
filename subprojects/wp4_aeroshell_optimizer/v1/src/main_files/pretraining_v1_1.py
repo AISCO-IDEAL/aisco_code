@@ -18,7 +18,7 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
     model_name = config["model"]  # dynamically import the model module
     model_file_name = config["model_filename"]  # file where the model is located
     module = importlib.import_module("subprojects.wp4_aeroshell_optimizer.v1.src.models." + model_file_name)
-    ModelClass = getattr(module, model_name)  # noqa: N806
+    ModelClass = getattr(module, model_name)
 
     # adjust to include config parameters here, stil WIP
     model = ModelClass()

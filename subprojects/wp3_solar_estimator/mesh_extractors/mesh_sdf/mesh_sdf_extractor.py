@@ -54,7 +54,7 @@ class MeshSDFExtractor:
         Convert flat bbox [xmin, xmax, ymin, ymax, zmin, zmax] to nested
         [[xmin,xmax],[ymin,ymax],[zmin,zmax]] if needed.
         """
-        if isinstance(bbox, (list | tuple)) and len(bbox) == 6 and not isinstance(bbox[0], (list | tuple)):  # noqa: PLR2004
+        if isinstance(bbox, (list | tuple)) and len(bbox) == 6 and not isinstance(bbox[0], (list | tuple)):
             return [[bbox[0], bbox[1]], [bbox[2], bbox[3]], [bbox[4], bbox[5]]]
         return bbox
 
@@ -191,7 +191,7 @@ class MeshSDFExtractor:
     def compute_gradient_flow(
         self,
         vertices: torch.Tensor,
-        dL_dvertices: torch.Tensor,  # noqa: N803
+        dL_dvertices: torch.Tensor,
         sdf_model: nn.Module,
     ) -> torch.Tensor:
         """
@@ -233,7 +233,7 @@ class MeshSDFExtractor:
 
         # Compute inflow derivative: dL/ds = -dL/dx · n
         # Negative sign because moving along normal increases SDF
-        dL_ds = -torch.sum(dL_dvertices * normals, dim=1)  # (V,)  # noqa: N806
+        dL_ds = -torch.sum(dL_dvertices * normals, dim=1)  # (V,)
 
         # Re-evaluate SDF with gradient tracking for backward pass
         vertices_for_backward = vertices.requires_grad_(True)
@@ -310,7 +310,7 @@ class MeshSDFExtractor:
             return vertices, faces, loss, torch.tensor(0.0)
 
         # Compute upstream gradients
-        dL_dvertices = torch.autograd.grad(  # noqa: N806
+        dL_dvertices = torch.autograd.grad(
             outputs=loss, inputs=vertices_for_loss, grad_outputs=torch.ones_like(loss), create_graph=False, retain_graph=False
         )[0]
 
