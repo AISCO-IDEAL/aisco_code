@@ -92,14 +92,14 @@ dataset:
     training_strategy: "neural_field"
     neural_field_input_nodes: 40000
     neural_field_query_nodes_train: 40000
-    field_loss_weight: 1.0
+    field_loss_weight: 1e-4
 
 optimizer:
     name: "adamw"
     args:
         lr: 3e-4
         weight_decay: 1e-05
-        epoch: 10
+        epoch: 60
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"

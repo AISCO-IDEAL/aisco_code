@@ -695,6 +695,20 @@ class StaticTrainer3D(TrainerBase):
                 targets = {k: v for k, v in targets.items() if k in self.active_heads}
             scalar_loss = masked_multi_head_loss(pred, targets)
 
+            # --- Per-head MSE for logging ---
+            head_losses = {}
+            loss_fn_none = torch.nn.MSELoss(reduction="none")
+            for name in targets:
+                if name not in pred:
+                    continue
+                gt = targets[name]
+                if gt is None:
+                    continue
+                gt = gt.to(self.device).view_as(pred[name])
+                valid = ~torch.isnan(gt)
+                if valid.any():
+                    head_losses[name] = loss_fn_none(pred[name][valid], gt[valid]).mean().item()
+
             # --- Field loss (if model produces field predictions) ---
             if "field" in pred:
                 # Field target: use sampled field_target (neural_field) or batch.x
@@ -714,14 +728,16 @@ class StaticTrainer3D(TrainerBase):
                     else:
                         field_loss = torch.tensor(0.0, device=self.device)
 
+                    head_losses["field"] = field_loss.item()
+
                     # Combine: configurable weight, default 1.0
                     field_weight = getattr(self.dataset_config, "field_loss_weight", 1.0)
-                    return scalar_loss + field_weight * field_loss
+                    return scalar_loss + field_weight * field_loss, head_losses
 
-            return scalar_loss
+            return scalar_loss, head_losses
         else:
             target = batch.y
-            return self.loss_fn(pred, target)
+            return self.loss_fn(pred, target), {}
 
     def validate(self, loader: DataLoader):
         self.model.eval()
