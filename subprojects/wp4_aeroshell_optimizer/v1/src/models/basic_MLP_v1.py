@@ -1,3 +1,5 @@
+# Basic MLP Model
+
 import torch
 
 import wandb
