@@ -151,7 +151,7 @@ class TotalLoss:
             loss_tensors.append(current_loss)
 
             # Store for logging
-            loss_names[loss_name] = current_loss  # convert to float, gradient is lost
+            loss_names[loss_name] = current_loss.item()  # convert to float, gradient is lost
 
         if self.losses_config["general_info"]["ALM"] == "True":  # ALM weighting
             # DOCUMENTATION: `Losses and their weights` in Obsidian

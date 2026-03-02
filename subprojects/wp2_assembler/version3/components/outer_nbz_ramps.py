@@ -1,4 +1,5 @@
 import math
+from typing import cast
 
 import cadquery as cq
 
@@ -6,13 +7,13 @@ from subprojects.wp2_assembler.version3.components.nbz import call_assembly
 from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
 
 
-def outer_nbz_ramps(assembly_id) -> tuple[cq.Workplane, cq.Workplane]:
+def outer_nbz_ramps(assembly_id) -> cq.Solid:
     """
     Returns the approach and departure ramps
 
     :param assembly_id: id of assembly
     :return: tuple with both ramps
-    :rtype: tuple with two workplanes
+    :rtype: cq.Solid
     """
 
     inner, outer, _ = call_assembly(assembly_id)
@@ -63,9 +64,9 @@ def outer_nbz_ramps(assembly_id) -> tuple[cq.Workplane, cq.Workplane]:
         .extrude(outer.BoundingBox().ylen)
     )
 
-    result = outer.cut(Front.val(), Rear.val()).Solids()[0]
+    result = outer.cut(cast(cq.Shape, Front.vals()), cast(cq.Shape, Rear.vals())).solids()
 
-    return result
+    return cast(cq.Solid, result)
 
 
 if __name__ == "__main__":
@@ -73,7 +74,9 @@ if __name__ == "__main__":
 
     demo_id = 21  # random number because it was not defined at all.
 
-    result = outer_nbz_ramps(demo_id)
-    inner, _, _ = call_assembly(demo_id)
-    show(result, inner)
-    print(type(result))
+    ramps = outer_nbz_ramps(demo_id)
+
+    inner_cmp, _, _ = call_assembly(demo_id)
+
+    show(ramps, inner_cmp)
+    print(type(ramps))
