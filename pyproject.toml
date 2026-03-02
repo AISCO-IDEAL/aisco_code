@@ -44,6 +44,7 @@ wp2_assembler =[
 
 wp3_solar_estimator = [
   "PyMCubes == 0.1.6",
+  "astral >= 3.2",
 ]
 
 wp4_aeroshell_optimizer = [
@@ -169,7 +170,7 @@ ignore = [
     "TRY003", # would block long messages in e.g. ValueError("messageXYZ") debugging warnings
     "PLR2004", # triggers on if version == 2
     "N806", # in ML uppercase variables are common
-    "N803", # invalid argument name 
+    "N803", # invalid argument name
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
@@ -194,7 +195,7 @@ max-args = 8
 "tests/**/*" = ["PLR2004", "S101", "TID252"]
 # Allow print statements in scripts
 "scripts/**/*" = ["T20"]
-# Allow unused imports in init files 
+# Allow unused imports in init files
 "**/__init__.py" = ["F401"]
 
 [tool.mypy]
