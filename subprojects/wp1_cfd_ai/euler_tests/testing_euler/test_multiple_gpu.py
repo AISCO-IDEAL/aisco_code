@@ -62,7 +62,7 @@ print("[INFO] Performing 10 iterations of forward + backward pass...")
 torch.cuda.synchronize()
 start_time = time.time()
 
-for i in range(10):
+for _i in range(10):
     output = model(data)
     loss = criterion(output, labels)
     loss.backward()

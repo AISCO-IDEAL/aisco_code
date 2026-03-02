@@ -66,10 +66,7 @@ def pretraining(
         output = model(input_data)
 
         # Dummy target data, replace with actual target generation
-        if pretraining_shape == "cube":
-            target = cube_gt(input_data, side_length=2000.0)  # Example side length
-        else:
-            target = sphere_gt(input_data)
+        target = cube_gt(input_data, side_length=2000.0) if pretraining_shape == "cube" else sphere_gt(input_data)
 
         # Eikonal regularization: ||∇f(x)|| = 1 in meters
 

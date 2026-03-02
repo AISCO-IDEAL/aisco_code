@@ -53,9 +53,10 @@ if __name__ == "__main__":
     specs_filename = os.path.join(args.experiment_directory, "specs.json")
 
     if not os.path.isfile(specs_filename):
-        raise Exception('The experiment directory does not include specifications file "specs.json"')
+        raise FileNotFoundError(f"The experiment directory does not include specifications file  {specs_filename}")
 
-    specs = json.load(open(specs_filename))
+    with open(specs_filename) as f:
+        specs = json.load(f)
 
     latent_size = specs["CodeLength"]
 
@@ -165,7 +166,7 @@ if __name__ == "__main__":
 
         # now store upstream gradients
         loss.backward()
-        dL_dx_i: torch.Tensor | None = xyz_upstream.grad
+        dL_dx_i: torch.Tensor | None = xyz_upstream.grad  # noqa: N816
 
         # use vertices to compute full backward pass
         optimizer.zero_grad()

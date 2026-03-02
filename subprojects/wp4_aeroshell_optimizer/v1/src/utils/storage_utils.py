@@ -89,10 +89,7 @@ def allround_save_data(
             canonical_time_bytes = str(current_time.encode("utf-8"))
             wandb_run = str_hashing(canonical_time_bytes)
 
-        if epoch is None:
-            epoch_str = "no_epoch"
-        else:
-            epoch_str = f"epoch{epoch:04d}"
+        epoch_str = "no_epoch" if epoch is None else f"epoch{epoch:04d}"
 
     if save_mesh:
         # get a model using kaolin conversions

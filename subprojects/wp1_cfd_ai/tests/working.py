@@ -7,7 +7,7 @@ FILE_NAME = r"C:\Users\elias\Documents\AISCO\AISCO-code\subprojects\WP4-Aeroshel
 try:
     mesh = o3d.io.read_triangle_mesh(FILE_NAME)
     if mesh.is_empty():
-        raise FileNotFoundError(f"{FILE_NAME} not found or is empty.")
+        raise FileNotFoundError(f"{FILE_NAME} not found or is empty.")  # noqa: TRY301
 except Exception as e:
     print(f"Warning: {e}. Using test data as a fallback...")
     mesh = o3d.data.BunnyMesh()

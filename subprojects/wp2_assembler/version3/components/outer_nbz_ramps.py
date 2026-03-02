@@ -71,6 +71,8 @@ def outer_nbz_ramps(assembly_id) -> tuple[cq.Workplane, cq.Workplane]:
 if __name__ == "__main__":
     from ocp_vscode import show
 
+    demo_id = 21  # random number because it was not defined at all.
+
     result = outer_nbz_ramps(demo_id)
     inner, _, _ = call_assembly(demo_id)
     show(result, inner)

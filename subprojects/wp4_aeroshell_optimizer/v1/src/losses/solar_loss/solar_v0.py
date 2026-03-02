@@ -24,7 +24,7 @@ class SolarV0(ParentLoss):
         NOTE: Does not work, as long as the kaolin_utils are not implemented
         """
 
-        verts, faces = get_diff_mesh(model, grid_res=64, device=self.device)
+        verts, faces = get_diff_mesh(model, grid_res=grid_res, device=self.device)
         deformed_verts = solar_mesh_deformation(
             verts,
             faces,

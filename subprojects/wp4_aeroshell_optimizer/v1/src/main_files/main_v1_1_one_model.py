@@ -90,12 +90,12 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0915, PLR0912 # definitly re
             print("No pretrained model found (or forced pretraining), proceeding by pretraining")
 
         # Determine override config for pretraining
-        pretraining_override = {}
-        if wandb_config:
-            # Pass any relevant pretraining params from wandb config
-            for k, v in wandb_config.items():
-                if k.startswith("pretraining.") or k == "pretraining_shape":
-                    pretraining_override[k] = v
+        # Replace lines 94-98 with this:
+        pretraining_override = (
+            {k: v for k, v in wandb_config.items() if k.startswith("pretraining.") or k == "pretraining_shape"}
+            if wandb_config
+            else {}
+        )
 
         model = pretraining(model=model, override_config=pretraining_override)
         # Save pretrained model and mesh for sanity check

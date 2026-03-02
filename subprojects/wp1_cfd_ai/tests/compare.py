@@ -14,7 +14,8 @@ def load_mesh(file_path):
         if mesh.is_empty():
             print(f"Error: Could not read mesh from {file_path}")
             return None
-        return mesh
+        else:
+            return mesh
     except Exception as e:
         print(f"Error loading {file_path}: {e}")
         return None

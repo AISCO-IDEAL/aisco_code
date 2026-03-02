@@ -8,5 +8,5 @@ class NullLossAeroV1(ParentLoss):
     def _setup(self) -> None:
         return
 
-    def _loss(self, model) -> torch.Tensor:
+    def _loss(self, _model) -> torch.Tensor:
         return torch.tensor(0.0, device=self.device)

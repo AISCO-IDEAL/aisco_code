@@ -92,17 +92,22 @@ def upload_neural_renderer_gif(frames, key: str, step: int | None = None, fps: i
         return
 
     # If bytes (presumably a GIF file) -> write to temp file and pass path
-    if isinstance(frames, bytes | bytearray):
-        tf = tempfile.NamedTemporaryFile(delete=False, suffix=".gif")
-        try:
+    # If bytes (presumably a GIF file) -> write to temp file and pass path
+    if isinstance(frames, (bytes | bytearray)):
+        # 1. Use a context manager to handle the initial file creation/writing
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".gif") as tf:
             tf.write(frames)
             tf.flush()
-            tf.close()
-            wandb.log({key: wandb.Video(tf.name, fps=fps, format="gif")}, step=step)
+            temp_path = tf.name  # Store the path to use outside the 'with' block
+
+        # 2. Now that the file is closed (but not deleted), wandb can safely read it
+        try:
+            wandb.log({key: wandb.Video(temp_path, fps=fps, format="gif")}, step=step)
             print(f"Logged GIF bytes to wandb under key '{key}' at step {step}")
         finally:
-            with contextlib.suppress(Exception):
-                os.remove(tf.name)
+            # 3. Manually clean up the file
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(temp_path)
         return
 
     # If numpy array of shape (T,H,W,C)

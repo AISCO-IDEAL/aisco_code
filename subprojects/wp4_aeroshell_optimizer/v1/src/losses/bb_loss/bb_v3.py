@@ -2,7 +2,6 @@ import cadquery as cq
 import numpy as np
 import torch
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly_solids
-from wandb.util import np
 
 from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.s_d_ffrom_cad_query import SDFfromCadQuery
@@ -14,7 +13,7 @@ class BbV3(ParentLoss):
         self.__valid_assembly_versions = (0, 2)
         self.__config = self.losses_config["bb_config"]
         self.__assembly_version = self.__config["assembly_version"]
-        self.__assembly_id = np.random.randint(1, 52) if self.__assembly_version >= 2 else self.__config["assembly_id"]
+        self.__assembly_id = np.random.Generator(1, 52) if self.__assembly_version >= 2 else self.__config["assembly_id"]
         self.__config_checker()
         # Create SDFs for inner and outer boxes
         self.__inner_SDF: SDFfromCadQuery
