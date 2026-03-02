@@ -116,7 +116,6 @@ def is_stable(body_id: int, tol: float = 1e-3) -> bool:
 
 
 def sim(assembly_number, only_final: bool = False):
-
     # returns position in meters and orientation in quaterion radians of the settled car
 
     # --- Build and export meshes -------------------------------------------------
@@ -259,7 +258,6 @@ def sim(assembly_number, only_final: bool = False):
 
 
 def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
-
     inner, outer = call_assembly(assembly_number)
     ground_shape = create_speed_hump_and_floor()
 

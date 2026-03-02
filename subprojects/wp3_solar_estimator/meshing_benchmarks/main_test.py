@@ -20,6 +20,7 @@ from wp3_solar_estimator.meshing_benchmarks.tests import BaseTester
 # Weights & Biases for logging
 try:
     import wandb
+
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False
@@ -40,10 +41,6 @@ class BenchmarkConfig:
         self.save_meshes = True  # Save extracted meshes as PLY
         self.output_dir = Path("/cluster/work/fuge/AISCO/wp3_solar_estimator/benchmarks")
         self.generate_visualizations = True
-
-
-
-
 
 
 if __name__ == "__main__":

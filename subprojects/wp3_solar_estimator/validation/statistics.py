@@ -44,7 +44,7 @@ class MeshStatistics:
         solar_angle = torch.tensor(solar_config["solar_angle"], device=vertices.device)
         self.solar_angle = solar_angle / torch.norm(solar_angle)  # Normalize to unit vector so dot products give cos(θ)
         self.area_budget = solar_config["area_budget"]
-        #Whole selection logic here:
+        # Whole selection logic here:
 
         face_normals = compute_face_normals(vertices, faces)
         face_areas = compute_triangle_areas(vertices, faces)
@@ -78,7 +78,9 @@ class MeshStatistics:
         order = torch.argsort(ratio, descending=True)
         sorted_cost = cost[order]
         # sorted_score = score[order] # Not strictly needed for logic but good for debugging if needed  # noqa: ERA001
-        torch.use_deterministic_algorithms(False) # Cumsum can be nondeterministic on GPU, but we need it for the selection logic, so we disable deterministic algorithms here
+        torch.use_deterministic_algorithms(
+            False
+        )  # Cumsum can be nondeterministic on GPU, but we need it for the selection logic, so we disable deterministic algorithms here
         cum_cost = torch.cumsum(sorted_cost, dim=0)
         torch.use_deterministic_algorithms(True)
         # fully taken items
@@ -87,12 +89,12 @@ class MeshStatistics:
         # assign full items
         if full.any():
             mask[order[full]] = 1.0
-        #Compare how much are was selected by taking the sum of face_areas where mask > 0.5 (i.e. selected) and log this along with the total surface area for comparison
+        # Compare how much are was selected by taking the sum of face_areas where mask > 0.5 (i.e. selected) and log this along with the total surface area for comparison
         selected_solar_area = cost[mask > 0.5].sum()  # noqa: PLR2004
 
         total_surface_area = compute_mesh_surface_area(vertices, faces)
 
-        #Compute and/or log the projected solar area of the selected faces, the projected solar area of the whole mesh (filter out negative dot prods),
+        # Compute and/or log the projected solar area of the selected faces, the projected solar area of the whole mesh (filter out negative dot prods),
         # the total area as a comparison and make a line with the budget area for reference
         solar_performance_selected = (solar_dot_prods[mask > 0.5] * cost[mask > 0.5]).sum()  # noqa: PLR2004
 

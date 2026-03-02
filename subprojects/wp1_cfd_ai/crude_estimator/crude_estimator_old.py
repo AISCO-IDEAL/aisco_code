@@ -72,9 +72,7 @@ def approximate_drag_with_vertex_slices(filename, num_slices, manual_weights_lis
     min_x, max_x = vertices[:, 0].min(), vertices[:, 0].max()
     split_points = np.linspace(min_x, max_x, num_slices + 1)
 
-    print(
-        f"Slicing vertices into {num_slices} parts along X-axis from {min_x:.2f} to {max_x:.2f}"
-    )
+    print(f"Slicing vertices into {num_slices} parts along X-axis from {min_x:.2f} to {max_x:.2f}")
 
     # Define alternating colors for visualization
     alternating_colors = [[255, 0, 0], [0, 0, 255]]  # Red, Blue
@@ -115,9 +113,7 @@ def approximate_drag_with_vertex_slices(filename, num_slices, manual_weights_lis
             frontal_area = L_y * L_z
             slice_frontal_areas.append(frontal_area)
 
-            print(
-                f"Slice {i + 1}: Dims (Lx, Ly, Lz) = [{L_x:6.2f}, {L_y:6.2f}, {L_z:6.2f}], Frontal Area = {frontal_area:8.4f}"
-            )
+            print(f"Slice {i + 1}: Dims (Lx, Ly, Lz) = [{L_x:6.2f}, {L_y:6.2f}, {L_z:6.2f}], Frontal Area = {frontal_area:8.4f}")
 
             # --- 4. Build Wireframe Visualization ---
             box_extents = [L_x, L_y, L_z]
@@ -127,13 +123,9 @@ def approximate_drag_with_vertex_slices(filename, num_slices, manual_weights_lis
                 (min_z + max_z) / 2,
             ]
             box_transform = trimesh.transformations.translation_matrix(box_center)
-            box_wireframe = trimesh.path.creation.box_outline(
-                extents=box_extents, transform=box_transform
-            )
+            box_wireframe = trimesh.path.creation.box_outline(extents=box_extents, transform=box_transform)
             color_index = i % n_colors
-            box_wireframe.colors = [alternating_colors[color_index]] * len(
-                box_wireframe.entities
-            )
+            box_wireframe.colors = [alternating_colors[color_index]] * len(box_wireframe.entities)
             scene.add_geometry(box_wireframe, geom_name=f"box_wireframe_{i + 1}")
 
         except Exception as e:
@@ -146,12 +138,8 @@ def approximate_drag_with_vertex_slices(filename, num_slices, manual_weights_lis
 
     # Check if the weights list matches N_SLICES
     if len(manual_weights_list) != num_slices:
-        print(
-            f"FATAL ERROR: MANUAL_WEIGHTS list has {len(manual_weights_list)} items, but N_SLICES is {num_slices}."
-        )
-        print(
-            "Please make sure the number of items in the MANUAL_WEIGHTS list is equal to N_SLICES."
-        )
+        print(f"FATAL ERROR: MANUAL_WEIGHTS list has {len(manual_weights_list)} items, but N_SLICES is {num_slices}.")
+        print("Please make sure the number of items in the MANUAL_WEIGHTS list is equal to N_SLICES.")
         return
 
     weights = manual_weights_list  # Use the manual list directly
@@ -164,9 +152,7 @@ def approximate_drag_with_vertex_slices(filename, num_slices, manual_weights_lis
         weight = weights[i]
         weighted_area = area * weight
         final_weighted_loss += weighted_area
-        print(
-            f"Slice {i + 1}: Area = {area:8.4f} * Weight = {weight:4.2f} -> {weighted_area:8.4f}"
-        )
+        print(f"Slice {i + 1}: Area = {area:8.4f} * Weight = {weight:4.2f} -> {weighted_area:8.4f}")
 
     print("========================")
     print(f"Final Weighted Loss: {final_weighted_loss:8.4f}")
@@ -179,12 +165,8 @@ def approximate_drag_with_vertex_slices(filename, num_slices, manual_weights_lis
         # Normalize by N_SLICES, the biggest area, and the realistic factor
         normalized_loss = final_weighted_loss / (A_max * num_slices * realistic_factor)
 
-        print(
-            f"Normalization Factors: A_max = {A_max:8.4f}, N_Slices = {num_slices}, Realistic_Factor = {realistic_factor}"
-        )
-        print(
-            f"Normalized Loss (Loss / (A_max * N_Slices * Factor)): {normalized_loss:8.4f}"
-        )
+        print(f"Normalization Factors: A_max = {A_max:8.4f}, N_Slices = {num_slices}, Realistic_Factor = {realistic_factor}")
+        print(f"Normalized Loss (Loss / (A_max * N_Slices * Factor)): {normalized_loss:8.4f}")
         print("========================")
     else:
         print("Cannot normalize: Max area or N_Slices is zero.")
@@ -206,9 +188,7 @@ def approximate_drag_with_vertex_slices(filename, num_slices, manual_weights_lis
     try:
         scene.export(output_filename)
         print(f"\nSuccessfully saved visualization to {output_filename}")
-        print(
-            f"You can open this .glb file in any 3D viewer to see the {num_slices} boxes."
-        )
+        print(f"You can open this .glb file in any 3D viewer to see the {num_slices} boxes.")
     except Exception as e:
         print(f"\nError exporting scene: {e}")
 

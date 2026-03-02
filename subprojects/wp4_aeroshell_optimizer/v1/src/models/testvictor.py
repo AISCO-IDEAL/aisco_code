@@ -2,10 +2,11 @@ import torch
 from torch import nn
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
+from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 
 
-class VictorModel(nn.Module):
+class VictorModel(BaseModel):
     # For now just a copy of BasicMLP, to be modified later
     def __init__(self, config: dict | None = None, in_dim: int = 3, hidden: int = 64, layers: int = 3, out_dim: int = 1):
         if config is None:
@@ -33,7 +34,14 @@ class VictorModel(nn.Module):
         output = x.squeeze(-1)
         return output * 1000.0
 
-    def optimise(self, training_config: dict | None = None, renderer_manager: Wrapper | None = None) -> None:
+    def optimise(
+        self,
+        renderer_manager: Wrapper | None = None,
+        renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
+        wandb_name: str | None = None,  # noqa: ARG002
+        general_config: dict | None = None,  # noqa: ARG002
+        training_config: dict | None = None,
+    ) -> None:
         if training_config is None:
             raise ValueError("Training config must be provided for optimisation.")
 
@@ -43,8 +51,8 @@ class VictorModel(nn.Module):
 
         # IMPORTANT: the device the model is on at time of function call defines the device passed to the loss_class
         # Get device from model parameters since nn.Module doesn't have a .device attribute
-        device = next(self.parameters()).device
-        loss_function = TotalLoss(device, renderer_manager=renderer_manager)  # Initialise TotalLoss with the correct device
+        device_str = next(self.parameters()).device.type
+        loss_function = TotalLoss(device_str, renderer_manager=renderer_manager)  # Initialise TotalLoss with the correct device
 
         for epoch in range(num_epochs):
             # Clear gradients

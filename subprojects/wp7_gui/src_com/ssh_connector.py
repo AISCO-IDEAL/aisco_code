@@ -5,7 +5,7 @@ import paramiko
 
 HOST = "euler.ethz.ch"
 USERNAME = "druefenacht"
-KEY_PATH = str(Path(__file__).parent / "id_euler")     # or remove and use password
+KEY_PATH = str(Path(__file__).parent / "id_euler")  # or remove and use password
 REMOTE_SCRIPT = "/cluster/home/druefenacht/testing/testscript.py"
 REMOTE_OUTFILE = "/cluster/home/druefenacht/testing/text.txt"
 REMOTE_SLURM_SCRIPT = "/cluster/home/druefenacht/auto_job.sbatch"
@@ -64,7 +64,7 @@ def get_output_when_ready(job_id):
 
         if job_id not in queue_output:
             break  # job is finished
-        
+
         time.sleep(5)  # polling interval
 
     # Read the output file after job completion

@@ -11,21 +11,11 @@ class Wheels:
     """Wheel specifications for the solar car."""
 
     # Import from regulations wheel dimensions
-    wheel_count: int = field(
-        default_factory=lambda: int(get_regulation("wheel.min_wheel_count"))
-    )
-    wheel_diameter: float = field(
-        default_factory=lambda: float(get_regulation("wheel.tire_diameter"))
-    )
-    wheel_width: float = field(
-        default_factory=lambda: get_regulation("wheel.tire_width")
-    )
-    wheel_margin_axial: float = field(
-        default_factory=lambda: get_regulation("wheel.margin_axial")
-    )
-    wheel_margin_radial: float = field(
-        default_factory=lambda: get_regulation("wheel.margin_radial")
-    )
+    wheel_count: int = field(default_factory=lambda: int(get_regulation("wheel.min_wheel_count")))
+    wheel_diameter: float = field(default_factory=lambda: float(get_regulation("wheel.tire_diameter")))
+    wheel_width: float = field(default_factory=lambda: get_regulation("wheel.tire_width"))
+    wheel_margin_axial: float = field(default_factory=lambda: get_regulation("wheel.margin_axial"))
+    wheel_margin_radial: float = field(default_factory=lambda: get_regulation("wheel.margin_radial"))
 
     def get_wheel_info(self) -> str:
         """Return a description of the wheel configuration."""
@@ -42,12 +32,7 @@ class Wheels:
         if diameter == 0:
             diameter = self.wheel_diameter
 
-        return (
-            cq.Workplane("XZ")
-            .circle(diameter / 2)
-            .extrude(self.wheel_width)
-            .translate((0, self.wheel_width / 2, 0))
-        )
+        return cq.Workplane("XZ").circle(diameter / 2).extrude(self.wheel_width).translate((0, self.wheel_width / 2, 0))
 
     def create_wheel_with_margin(self) -> cq.Workplane:
         """

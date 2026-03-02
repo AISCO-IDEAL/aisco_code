@@ -81,9 +81,7 @@ def approximate_drag_with_sampled_points(
         area_idx_2 = 1  # Frontal area plane (Y)
         axis_name = "Z-axis"
     else:
-        print(
-            f"FATAL ERROR: Invalid SLICING_AXIS '{slicing_axis}'. Must be 'x', 'y', or 'z'."
-        )
+        print(f"FATAL ERROR: Invalid SLICING_AXIS '{slicing_axis}'. Must be 'x', 'y', or 'z'.")
         return
 
     # --- 2. Load Mesh and Sample Point Cloud ---
@@ -148,22 +146,14 @@ def approximate_drag_with_sampled_points(
         if slicing_direction == "+":
             # Slicing min to max (a_start < a_end)
             if i == (num_slices - 1):  # Handle last slice
-                v_mask = (vertices[:, axis_idx] >= a_start) & (
-                    vertices[:, axis_idx] <= a_end
-                )
+                v_mask = (vertices[:, axis_idx] >= a_start) & (vertices[:, axis_idx] <= a_end)
             else:
-                v_mask = (vertices[:, axis_idx] >= a_start) & (
-                    vertices[:, axis_idx] < a_end
-                )
+                v_mask = (vertices[:, axis_idx] >= a_start) & (vertices[:, axis_idx] < a_end)
         # Slicing max to min (a_start > a_end)
         elif i == (num_slices - 1):  # Handle last slice
-            v_mask = (vertices[:, axis_idx] <= a_start) & (
-                vertices[:, axis_idx] >= a_end
-            )
+            v_mask = (vertices[:, axis_idx] <= a_start) & (vertices[:, axis_idx] >= a_end)
         else:
-            v_mask = (vertices[:, axis_idx] <= a_start) & (
-                vertices[:, axis_idx] > a_end
-            )
+            v_mask = (vertices[:, axis_idx] <= a_start) & (vertices[:, axis_idx] > a_end)
         # --- END MODIFIED ---
 
         slice_points = vertices[v_mask]
@@ -221,9 +211,7 @@ def approximate_drag_with_sampled_points(
             # --- End re-assembly ---
 
             box_transform = trimesh.transformations.translation_matrix(box_center)
-            box_wireframe = trimesh.path.creation.box_outline(
-                extents=box_extents, transform=box_transform
-            )
+            box_wireframe = trimesh.path.creation.box_outline(extents=box_extents, transform=box_transform)
 
             # Color the first box (i=0) green
             if i == 0:
@@ -244,9 +232,7 @@ def approximate_drag_with_sampled_points(
     # --- CALCULATE YOUR "MANUAL" WEIGHTED LOSS ---
 
     if len(manual_weights_list) != num_slices:
-        print(
-            f"FATAL ERROR: MANUAL_WEIGHTS list has {len(manual_weights_list)} items, but N_SLICES is {num_slices}."
-        )
+        print(f"FATAL ERROR: MANUAL_WEIGHTS list has {len(manual_weights_list)} items, but N_SLICES is {num_slices}.")
         return
 
     # Note: manual_weights_list is already reversed if direction='-'
@@ -260,9 +246,7 @@ def approximate_drag_with_sampled_points(
         weight = weights[i]
         weighted_area = area * weight
         final_weighted_loss += weighted_area
-        print(
-            f"Slice {i + 1}: Area = {area:8.4f} * Weight = {weight:4.2f} -> {weighted_area:8.4f}"
-        )
+        print(f"Slice {i + 1}: Area = {area:8.4f} * Weight = {weight:4.2f} -> {weighted_area:8.4f}")
 
     print("========================")
     print(f"Final Weighted Loss: {final_weighted_loss:8.4f}")
@@ -272,9 +256,7 @@ def approximate_drag_with_sampled_points(
     sorted_areas = np.sort(slice_frontal_areas)[::-1]  # Sort descending
 
     if num_slices < 5:
-        print(
-            f"Warning: N_SLICES is {num_slices} (less than 5). Using A_max for normalization."
-        )
+        print(f"Warning: N_SLICES is {num_slices} (less than 5). Using A_max for normalization.")
         A_norm = sorted_areas[0] if len(sorted_areas) > 0 else 0.0
         norm_factor_name = "A_max"
     else:
@@ -282,18 +264,12 @@ def approximate_drag_with_sampled_points(
         norm_factor_name = "A_5th_biggest"
 
     if A_norm > 1e-6 and num_slices > 0:
-        normalized_loss = (
-            final_weighted_loss
-            * sorted_areas[0]
-            / (A_norm * A_norm * num_slices * realistic_factor)
-        )
+        normalized_loss = final_weighted_loss * sorted_areas[0] / (A_norm * A_norm * num_slices * realistic_factor)
 
         print(
             f"Normalization Factors: {norm_factor_name} = {A_norm:8.4f}, N_Slices = {num_slices}, Realistic_Factor = {realistic_factor}"
         )
-        print(
-            f"Normalized Loss (Loss / ({norm_factor_name} * N_Slices * Factor)): {normalized_loss:8.4f}"
-        )
+        print(f"Normalized Loss (Loss / ({norm_factor_name} * N_Slices * Factor)): {normalized_loss:8.4f}")
         print("========================")
     else:
         print("Cannot normalize: 5th biggest area or N_Slices is zero.")
@@ -313,9 +289,7 @@ def approximate_drag_with_sampled_points(
     try:
         scene.export(output_filename)
         print(f"\nSuccessfully saved visualization to {output_filename}")
-        print(
-            f"You can open this .glb file in any 3D viewer to see the {num_slices} boxes."
-        )
+        print(f"You can open this .glb file in any 3D viewer to see the {num_slices} boxes.")
     except Exception as e:
         print(f"\nError exporting scene: {e}")
 

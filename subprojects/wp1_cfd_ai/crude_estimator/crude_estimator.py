@@ -77,23 +77,17 @@ def calculateCdProxy(  # noqa: N802
         print("--- Using default weights. ---")
         manual_weights_to_use = DEFAULT_WEIGHTS
     else:
-        print(
-            f"--- Using provided custom weights ({len(manual_weights_to_use)} items). ---"
-        )
+        print(f"--- Using provided custom weights ({len(manual_weights_to_use)} items). ---")
 
     # --- Handle weight direction based on config ---
     # The manual_weights_to_use are assumed to be defined from MIN to MAX.
     # If we slice from MAX to MIN ('-'), we must reverse the weights list.
     weights_to_use = manual_weights_to_use
     if slicing_direction == "-":
-        print(
-            f"--- Slicing direction is 'Max to Min' ({slicing_axis}-axis). Reversing weights list. ---"
-        )
+        print(f"--- Slicing direction is 'Max to Min' ({slicing_axis}-axis). Reversing weights list. ---")
         weights_to_use = manual_weights_to_use[::-1]
     else:
-        print(
-            f"--- Slicing direction is 'Min to Max' ({slicing_axis}-axis). Using weights as defined. ---"
-        )
+        print(f"--- Slicing direction is 'Min to Max' ({slicing_axis}-axis). Using weights as defined. ---")
 
     # --- 1. Set up axis indices based on config ---
     slicing_axis_lower = slicing_axis.lower()
@@ -113,9 +107,7 @@ def calculateCdProxy(  # noqa: N802
         area_idx_2 = 1
         axis_name = "Z-axis"
     else:
-        print(
-            f"FATAL ERROR: Slicing axis '{slicing_axis}' is invalid. Must be 'x', 'y', or 'z'."
-        )
+        print(f"FATAL ERROR: Slicing axis '{slicing_axis}' is invalid. Must be 'x', 'y', or 'z'.")
         return None
 
     # --- 2. Load Mesh and Sample Point Cloud ---
@@ -178,21 +170,13 @@ def calculateCdProxy(  # noqa: N802
 
         if slicing_direction == "+":
             if i == (N_SLICES - 1):
-                v_mask = (vertices[:, axis_idx] >= a_start) & (
-                    vertices[:, axis_idx] <= a_end
-                )
+                v_mask = (vertices[:, axis_idx] >= a_start) & (vertices[:, axis_idx] <= a_end)
             else:
-                v_mask = (vertices[:, axis_idx] >= a_start) & (
-                    vertices[:, axis_idx] < a_end
-                )
+                v_mask = (vertices[:, axis_idx] >= a_start) & (vertices[:, axis_idx] < a_end)
         elif i == (N_SLICES - 1):
-            v_mask = (vertices[:, axis_idx] <= a_start) & (
-                vertices[:, axis_idx] >= a_end
-            )
+            v_mask = (vertices[:, axis_idx] <= a_start) & (vertices[:, axis_idx] >= a_end)
         else:
-            v_mask = (vertices[:, axis_idx] <= a_start) & (
-                vertices[:, axis_idx] > a_end
-            )
+            v_mask = (vertices[:, axis_idx] <= a_start) & (vertices[:, axis_idx] > a_end)
 
         slice_points = vertices[v_mask]
 
@@ -241,9 +225,7 @@ def calculateCdProxy(  # noqa: N802
                 box_center[area_idx_2] = (min_a2 + max_a2) / 2
 
                 box_transform = trimesh.transformations.translation_matrix(box_center)
-                box_wireframe = trimesh.path.creation.box_outline(
-                    extents=box_extents, transform=box_transform
-                )
+                box_wireframe = trimesh.path.creation.box_outline(extents=box_extents, transform=box_transform)
 
                 if i == 0:
                     current_color = FIRST_SLICE_COLOR
@@ -260,9 +242,7 @@ def calculateCdProxy(  # noqa: N802
 
     # --- 6. Final Calculation ---
     if len(weights_to_use) != N_SLICES:
-        print(
-            f"FATAL ERROR: Weights list has {len(weights_to_use)} items, but N_SLICES is {N_SLICES}."
-        )
+        print(f"FATAL ERROR: Weights list has {len(weights_to_use)} items, but N_SLICES is {N_SLICES}.")
         return None
 
     final_weighted_loss = 0.0
@@ -273,9 +253,7 @@ def calculateCdProxy(  # noqa: N802
         weight = weights_to_use[i]
         weighted_area = area * weight
         final_weighted_loss += weighted_area
-        print(
-            f"Slice {i + 1}: Area = {area:8.4f} * Weight = {weight:4.2f} -> {weighted_area:8.4f}"
-        )
+        print(f"Slice {i + 1}: Area = {area:8.4f} * Weight = {weight:4.2f} -> {weighted_area:8.4f}")
 
     print("========================")
     print(f"Final Weighted Loss: {final_weighted_loss:8.4f}")
@@ -285,9 +263,7 @@ def calculateCdProxy(  # noqa: N802
     sorted_areas = np.sort(slice_frontal_areas)[::-1]  # Sort descending
 
     if N_SLICES < 5:
-        print(
-            f"Warning: N_SLICES is {N_SLICES} (less than 5). Using A_max for normalization."
-        )
+        print(f"Warning: N_SLICES is {N_SLICES} (less than 5). Using A_max for normalization.")
         A_norm = sorted_areas[0] if len(sorted_areas) > 0 else 0.0
         norm_factor_name = "A_max"
     else:
@@ -328,9 +304,7 @@ def calculateCdProxy(  # noqa: N802
 
             scene.export(visualization_path)
             print(f"\nSuccessfully saved visualization to {visualization_path}")
-            print(
-                f"You can open this .glb file in any 3D viewer to see the {N_SLICES} boxes."
-            )
+            print(f"You can open this .glb file in any 3D viewer to see the {N_SLICES} boxes.")
         except Exception as e:
             print(f"\nError exporting scene to {visualization_path}: {e}")
     elif create_visualization:
@@ -393,6 +367,4 @@ if __name__ == "__main__":
     else:
         print("--- TEST SKIPPED ---")
         print(f"Test file not found at: {TEST_FILE}")
-        print(
-            "Please update the 'TEST_FILE' variable in the '__main__' block to run the example."
-        )
+        print("Please update the 'TEST_FILE' variable in the '__main__' block to run the example.")

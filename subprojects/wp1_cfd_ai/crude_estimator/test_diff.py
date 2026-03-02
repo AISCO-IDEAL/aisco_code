@@ -40,9 +40,7 @@ try:
     # 2. Get Differentiable Mesh
     # get_diff_mesh should have torch.enable_grad() inside it
     print("Generating differentiable mesh from model...")
-    vertices, faces = get_diff_mesh(
-        model, 150, box_dim=[-2, 2, -2, 2, -2, 2], device="cuda"
-    )
+    vertices, faces = get_diff_mesh(model, 150, box_dim=[-2, 2, -2, 2, -2, 2], device="cuda")
 
     if vertices.shape[0] == 0:
         raise RuntimeError("get_diff_mesh produced 0 vertices.")

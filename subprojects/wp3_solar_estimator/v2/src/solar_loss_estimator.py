@@ -108,7 +108,7 @@ class SolarMeshLossFn(torch.autograd.Function):
             grad_vertices.index_add_(0, idx_v2, grad_v2)
             grad_vertices.index_add_(0, idx_v0, grad_v0)
 
-        grad_vertices_out = grad_vertices * grad_output * 1e-6 # * 1e2
+        grad_vertices_out = grad_vertices * grad_output * 1e-6  # * 1e2
         return grad_vertices_out, None, None, None, None, None
 
 
@@ -124,7 +124,10 @@ class SolarLossEstimator:
         self.normalise_loss = bool(solar_config["normalise_loss"])
 
         self.sun_direction_solid_angle = solar_config["solar_direction_solid_angle"]
-        self.sun_direction_solid_angle = [torch.tensor(self.sun_direction_solid_angle[0], device=self.device), torch.tensor(self.sun_direction_solid_angle[1], device=self.device)]
+        self.sun_direction_solid_angle = [
+            torch.tensor(self.sun_direction_solid_angle[0], device=self.device),
+            torch.tensor(self.sun_direction_solid_angle[1], device=self.device),
+        ]
         sin_theta = torch.sin(self.sun_direction_solid_angle[0])
         x = sin_theta * torch.cos(self.sun_direction_solid_angle[1])
         y = sin_theta * torch.sin(self.sun_direction_solid_angle[1])
@@ -180,8 +183,10 @@ class SolarLossEstimator:
 
         normalisation_factor = 1.0
         if self.normalise_loss:
-            normalisation_factor = 1e6/self.max_selected_area_mm2
-        loss_value = self._loss_value if self._loss_value is not None else torch.tensor(0.0, device=self.device, dtype=torch.float32)
+            normalisation_factor = 1e6 / self.max_selected_area_mm2
+        loss_value = (
+            self._loss_value if self._loss_value is not None else torch.tensor(0.0, device=self.device, dtype=torch.float32)
+        )
         return loss_value * normalisation_factor
 
     def _compute_forward_loss(self) -> None:
@@ -269,7 +274,7 @@ class SolarLossEstimator:
         # Then your call becomes very clean:
         verts = self._to_device(self._working_verts)
         faces = self._to_device(self.mesh_faces)
-        sel   = self._to_device(self._selected_face_indices)
+        sel = self._to_device(self._selected_face_indices)
 
         if verts is None or faces is None or sel is None:
             return
@@ -289,7 +294,7 @@ class SolarLossEstimator:
         )
 
         if self.rendering_frequency > 0 and self.epoch_name is not None and int(self.epoch_name) % self.rendering_frequency == 0:
-            epoch_val = int(self.epoch_name) # Extract once to satisfy mypy
+            epoch_val = int(self.epoch_name)  # Extract once to satisfy mypy
             temp_image_path = Path(tempfile.mktemp(suffix=".png", prefix="solar_loss_vis_"))
             temp_ply_path = Path(tempfile.mktemp(suffix=".ply", prefix="solar_loss_mesh_"))
 

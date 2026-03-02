@@ -13,11 +13,7 @@ def outer_box():
     width = get_regulation("no_build_zones.outer_prism.width")
     height = get_regulation("no_build_zones.outer_prism.height")
 
-    return (
-        cq.Workplane("XY")
-        .box(length, width, height, centered=(True, True, False))
-        .val()
-    )
+    return cq.Workplane("XY").box(length, width, height, centered=(True, True, False)).val()
 
 
 def outer_box2(length: float, width: float, height: float):
@@ -27,8 +23,4 @@ def outer_box2(length: float, width: float, height: float):
     Returns: cq.shape.solid of outer box shape
     """
 
-    return (
-        cq.Workplane("XY")
-        .box(length, width, height, centered=(True, True, False))
-        .val()
-    )
+    return cq.Workplane("XY").box(length, width, height, centered=(True, True, False)).val()

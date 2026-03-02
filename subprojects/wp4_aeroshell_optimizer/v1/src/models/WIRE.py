@@ -96,7 +96,7 @@ class WIRE(BaseModel):
         # Legacy parameter
         self.pos_encode = False
 
-        net_layers = [
+        net_layers: list[nn.Module] = [
             self.nonlin(
                 in_features, hidden_features, omega0=first_omega_0, sigma0=scale, is_first=True, trainable=self.trainable_params
             )
@@ -148,8 +148,8 @@ class WIRE(BaseModel):
 
     def optimise(
         self,
-        renderer_manager: VisualisationManager | None = None,  # noqa: ARG002
-        renderer_wrapper: Wrapper | None = None,
+        renderer_manager: VisualisationManager | None = None,
+        renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
         wandb_name: str | None = None,
         general_config: dict | None = None,
         training_config: dict | None = None,
@@ -157,7 +157,7 @@ class WIRE(BaseModel):
         """
         Args:
             training_config: Dictionary containing training configuration parameters.
-            renderer_wrapper: Not used in this model, included for compatibility.
+            renderer_manager:
         Return:
             Nothing. Optimises the model in place, calculating the total loss and updating weights of the Neural Network until num_epochs is reached.
         """
@@ -171,8 +171,8 @@ class WIRE(BaseModel):
         # IMPORTANT: the device the model is on defines the device passed to the loss_class
         # Get device from model parameters since nn.Module doesn't have a .device attribute
 
-        device = next(self.parameters()).device
-        loss_function = TotalLoss(device, renderer_wrapper=renderer_wrapper)
+        device_str = next(self.parameters()).device.type
+        loss_function = TotalLoss(device_str, renderer_manager=renderer_manager)
 
         for epoch in range(num_epochs):
             # Clear gradients

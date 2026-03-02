@@ -1,7 +1,7 @@
 import cadquery as cq
+import numpy as np
 import torch
 from wandb.util import np
-import numpy as np
 
 from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly_solids
@@ -14,7 +14,7 @@ class BbV3(ParentLoss):
         self.__valid_assembly_versions = (0, 2)
         self.__config = self.losses_config["bb_config"]
         self.__assembly_version = self.__config["assembly_version"]
-        self.__assembly_id = np.random.randint(1,52) if self.__assembly_version >= 2 else self.__config["assembly_id"]
+        self.__assembly_id = np.random.randint(1, 52) if self.__assembly_version >= 2 else self.__config["assembly_id"]
         self.__config_checker()
         # Create SDFs for inner and outer boxes
         self.__inner_SDF: SDFfromCadQuery
@@ -41,7 +41,7 @@ class BbV3(ParentLoss):
 
     def __config_checker(self) -> None:
         if self.__assembly_version not in self.__valid_assembly_versions:
-            raise ValueError(  # noqa: TRY003
+            raise ValueError(
                 f"losses config: Assembly Version {self.__assembly_version} either not implemented or not integrated into the Aeroshell Optimiser. Plaease take one of the following Assembly Versions: {self.__valid_assembly_versions}"
             )
 
@@ -60,9 +60,9 @@ class BbV3(ParentLoss):
             if hasattr(self.device, "type"):
                 pass
             else:
-                 # Check if self.device is string and convert if needed, or print warning
-                 pass
-            
+                # Check if self.device is string and convert if needed, or print warning
+                pass
+
             # Ensure P is on the correct device (the same as model parameters)
             model_device = next(model.parameters()).device
             if str(self.device) != str(model_device):
@@ -87,5 +87,5 @@ class BbV3(ParentLoss):
             upper_violation = torch.relu(sdf_pred - sdf_inner_t)
             lower_violation = torch.relu(sdf_outer_t - sdf_pred)
 
-            loss = (upper_violation + lower_violation).mean() # ** 0.5
+            loss = (upper_violation + lower_violation).mean()  # ** 0.5
             return loss

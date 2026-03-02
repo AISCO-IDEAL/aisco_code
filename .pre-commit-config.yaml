@@ -28,10 +28,27 @@ repos:
     rev: v1.19.1  # Aktuelle Version prüfen: https://github.com/pre-commit/mirrors-mypy/releases # eschaerer: update acc. to pyproject.toml
     hooks:
       - id: mypy
-        # Optional: MyPy-Konfiguration aus pyproject.toml nutzen
-        args: [--config-file=pyproject.toml, --namespace-packages, --explicit-package-bases]
+        args: [--config-file=pyproject.toml, --namespace-packages, --explicit-package-bases] # using a pyproject configs
         additional_dependencies:
-          - types-requests  # Falls du spezifische Typen brauchst
-          - types-PyYAML # eschaerer
+          - types-requests
+          - types-PyYAML
+          - wandb
+          - torch
+          - cadquery
         pass_filenames: False # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
         entry: mypy .
+
+  # # MyPy für Typenprüfung (Local Hook)
+  # - repo: local
+  #   hooks:
+  #     - id: mypy
+  #       name: mypy
+  #       # 'language: system' tells pre-commit to use your local venv
+  #       language: system
+  #       entry: mypy
+  #       # pass_filenames: false + 'mypy .' ensures it respects the 'files' and 'exclude'
+  #       # settings in your pyproject.toml instead of just checking changed files.
+  #       pass_filenames: false
+  #       entry: mypy .
+  #       # We keep the args to ensure the monorepo structure is handled correctly
+  #       args: [--config-file=pyproject.toml, --namespace-packages, --explicit-package-bases]

@@ -11,19 +11,20 @@ from torch import nn
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.basic_MLP_v1 import BasicMLP
 
 
-def load_testing_model(filename : str = "test_model.pth") -> BasicMLP:
+def load_testing_model(filename: str = "test_model.pth") -> BasicMLP:
     """
     Loads the fixed (!) model for the unit tests.
     Based on files in /cluster/work/fuge/AISCO/wp3_solar_estimator/diso_test_data
     """
-    model_config={
-    "in_dim": 3,
-    "hidden": 64,
-    "layers": 6,
+    model_config = {
+        "in_dim": 3,
+        "hidden": 64,
+        "layers": 6,
     }
     model = BasicMLP(**model_config)  # type: ignore[arg-type]
     model.load_state_dict(torch.load(f"/cluster/work/fuge/AISCO/wp3_solar_estimator/diso_test_data/{filename}"))
     return model
+
 
 class SphereSDF(nn.Module):
     """
@@ -44,7 +45,7 @@ class SphereSDF(nn.Module):
         # Make radius a learnable parameter for gradient computation
         self.radius = nn.Parameter(torch.tensor(radius, dtype=torch.float32))
         # Center is fixed (not optimized in typical benchmarks)
-        self.register_buffer('center', torch.tensor(center, dtype=torch.float32))
+        self.register_buffer("center", torch.tensor(center, dtype=torch.float32))
         self.to(device)  # Move model to specified device for consistency with extractors
 
     def forward(self, points: torch.Tensor) -> torch.Tensor:
@@ -70,7 +71,7 @@ class SphereSDF(nn.Module):
         Returns:
             Scalar tensor with surface area
         """
-        return 4.0 * torch.pi * self.radius ** 2
+        return 4.0 * torch.pi * self.radius**2
 
     def analytical_gradient_wrt_radius(self) -> torch.Tensor:
         """
@@ -104,7 +105,7 @@ class CubeSDF(nn.Module):
         super().__init__()
         # Make side length a learnable parameter
         self.side_length = nn.Parameter(torch.tensor(side_length, dtype=torch.float32))
-        self.register_buffer('center', torch.tensor(center, dtype=torch.float32))
+        self.register_buffer("center", torch.tensor(center, dtype=torch.float32))
         self.to(device)  # Move model to specified device for consistency with extractors
 
     def forward(self, points: torch.Tensor) -> torch.Tensor:
@@ -145,7 +146,7 @@ class CubeSDF(nn.Module):
         Returns:
             Scalar tensor with surface area
         """
-        return 6.0 * self.side_length ** 2
+        return 6.0 * self.side_length**2
 
     def analytical_gradient_wrt_side_length(self) -> torch.Tensor:
         """
@@ -180,7 +181,7 @@ class RectangularBoxSDF(nn.Module):
         super().__init__()
         # Make dimensions learnable parameters
         self.dimensions = nn.Parameter(torch.tensor(dimensions, dtype=torch.float32))
-        self.register_buffer('center', torch.tensor(center, dtype=torch.float32))
+        self.register_buffer("center", torch.tensor(center, dtype=torch.float32))
         self.to(device)  # Move model to specified device for consistency with extractors
 
     def forward(self, points: torch.Tensor) -> torch.Tensor:
