@@ -227,3 +227,4 @@ module = [
 ] # torch.*, could be added, iff it causes many problems
 ignore_missing_imports = true
 ignore_errors = true
+follow_imports = "skip"
