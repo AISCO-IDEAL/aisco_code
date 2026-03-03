@@ -40,6 +40,7 @@ def visualize_multiple(lower_id: int, upper_id: int):
 if __name__ == "__main__":  # only run when executing this file directly
     inner_nbz: cq.Assembly
     outer_nbz: cq.Solid
+    vision_nbz: cq.Assembly
     while True:
         userinput = input(
             "Visualize inner NBZ, outer NBZ, both, v3, multiple (both inner and outer), vision NBZ, tracker box, generate or stop? (i/o/b/3/v/t/g/s): "
@@ -56,7 +57,6 @@ if __name__ == "__main__":  # only run when executing this file directly
                 print("Invalid input. Please enter a valid id-number.")
                 continue
             id_number = int(id_str)
-            vision_nbz: cq.Assembly
             inner_nbz, outer_nbz, vision_nbz = nbz.call_assembly(id_number)
 
             if userinput == "i":
