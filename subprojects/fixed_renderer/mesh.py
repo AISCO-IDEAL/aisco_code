@@ -1,4 +1,4 @@
-import fixed_renderer as nr
+import subprojects.fixed_renderer as nr
 import torch
 from torch import nn
 

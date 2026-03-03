@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=alm_test
-#SBATCH --time=00:20:00                   # Adjust time as needed
+#SBATCH --time=00:05:00                   # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
@@ -75,7 +75,7 @@ cd /cluster/home/$USERNAME/AISCO_code/
 
 python subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1.1_one_model.py \
     --save_model \
-    --problem_id="AISCO_WP4_ALM"  2>&1
+    --problem_id="AISCO_WP4_main"  2>&1
 #------------------------------------------------------------------------------
 # Print job end information
 #------------------------------------------------------------------------------
