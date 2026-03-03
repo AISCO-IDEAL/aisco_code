@@ -79,6 +79,10 @@ def _frames_to_array_list(frames: Iterable) -> list:
 def upload_neural_renderer_gif(frames, key: str, step: int | None = None, fps: int = 10):
     """Logs a GIF or sequence of frames to wandb.
 
+    key: the wandb key to log under
+    step: optional step number to log at (for wandb)
+    fps: frames per second for the GIF (default: 10)
+
     `frames` may be:
     - a filesystem path (str/Path) to an already-created GIF/video file
     - raw bytes of a GIF file
