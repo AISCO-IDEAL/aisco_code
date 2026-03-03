@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 
 import cadquery as cq
 
-from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 
 
 # --- Seat class (hard-coded parameters) ---
@@ -88,7 +88,7 @@ class Seat:
         # make to cq.Face and mirror profile, to sweep around centerline with 1mm margin
         profile = profile_head.wires().val()
         face1 = cq.Face.makeFromWires(
-            profile  # noqa: it works like this
+            profile 
         )
         face2 = face1.mirror("XZ")
         w_sketch = face1.fuse(face2)

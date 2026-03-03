@@ -4,7 +4,7 @@ from pathlib import Path
 import cadquery as cq
 import yaml
 
-from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 
 
 def outer_nbz(assembly_id: int) -> tuple[cq.Workplane, cq.Workplane]:

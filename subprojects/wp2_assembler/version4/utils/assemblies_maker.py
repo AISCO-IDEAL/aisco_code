@@ -19,7 +19,7 @@ def check_validity(assembly_nr: int = 0):
     nr_of_wheels = get_assembly_parameters("wheels.count")
 
     if not isinstance(nr_of_wheels, int):
-        raise TypeError(f"nr_of_wheels must be int, got {type(nr_of_wheels).__name__}")  # noqa: TRY003
+        raise TypeError(f"nr_of_wheels must be int, got {type(nr_of_wheels).__name__}")
 
     nr_of_wheels = int(nr_of_wheels)  # to avoid the mypy errors
 
@@ -145,7 +145,7 @@ def generate_assembly_map(assembly_nr: int = 0):
     nr_of_wheels = get_assembly_parameters("wheels.count")
 
     if not isinstance(nr_of_wheels, int):
-        raise TypeError(f"nr_of_wheels must be int, got {type(nr_of_wheels).__name__}")  # noqa: TRY003
+        raise TypeError(f"nr_of_wheels must be int, got {type(nr_of_wheels).__name__}")
 
     nr_of_wheels = int(nr_of_wheels)  # to avoid the mypy errors
 
@@ -282,7 +282,7 @@ def get_combination(n, ordered, unordered):
 
     total = ordered_total * unordered_total
     if n < 0 or n >= total:
-        raise ValueError(f"n={n} out of range (0 <= n < {total})")  # noqa: TRY003
+        raise ValueError(f"n={n} out of range (0 <= n < {total})")
 
     # ---------- split index ----------
     unordered_rank = n // ordered_total

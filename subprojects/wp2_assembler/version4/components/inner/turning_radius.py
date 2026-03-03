@@ -8,7 +8,7 @@ def wheel_turning_angle(
     back_wheel: list[float],
     inner_wheel: list[float],
     turning_radius: float,
-    perpendicular_to_rear_wheel: list[float] = None,
+    perpendicular_to_rear_wheel: list[float] | None = None,
 ) -> float:
     """
     Returns the steering angle of the inner front wheel.
@@ -42,7 +42,7 @@ def wheel_turning_angle(
 
     disc = b * b - 4 * a * c
     if disc < 0:
-        raise Exception("Problem in turning radius: No intersection, length of car longer than turning radius.")
+        raise Exception("Problem in turning radius: No intersection, length of car longer than turning radius.")  # noqa: TRY002
 
     sqrt_disc = np.sqrt(disc)
     t1 = (-b + sqrt_disc) / (2 * a)

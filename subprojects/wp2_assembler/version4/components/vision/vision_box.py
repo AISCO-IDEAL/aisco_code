@@ -2,7 +2,7 @@ import math
 
 import cadquery as cq
 
-from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 
 
 def vision_driv_nbz() -> cq.Workplane:
@@ -19,10 +19,10 @@ def vision_driv_nbz() -> cq.Workplane:
     dist_center = get_regulation("no_build_zones.vision_box.inner_radius")
 
     if dist_center >= radius:
-        raise ValueError("Inner radius must be smaller than outer radius.")  # noqa: TRY003
+        raise ValueError("Inner radius must be smaller than outer radius.")
 
     if dist_center <= 0:
-        raise ValueError("Inner radius must be strictly positive.")  # noqa: TRY003
+        raise ValueError("Inner radius must be strictly positive.")
 
     point_a = cq.Vector(dist_center, 0, pos_height / radius * dist_center)
     point_b = cq.Vector(dist_center, 0, neg_height / radius * dist_center)

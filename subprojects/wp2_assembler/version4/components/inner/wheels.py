@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 
 import cadquery as cq
 
-from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 
 
 # --- Wheels class: ---
