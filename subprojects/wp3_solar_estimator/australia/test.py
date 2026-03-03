@@ -73,9 +73,9 @@ def test_route_loader():
     ax.set_ylabel("Left/Y")
     ax.set_zlabel("Up/Z")
     ax.set_title("Solar Vectors in Car Body Frame")
-    ax.view_init(elev=30, azim=0)  # look from the +x (forward) axis toward origin
+    ax.view_init(elev=10, azim=0)  # look from the +x (forward) axis toward origin
     plt.savefig("subprojects/wp3_solar_estimator/australia/data/solar_vectors_X.png")
-    ax.view_init(elev=30, azim=90)  # look from the +y (left) axis toward origin
+    ax.view_init(elev=10, azim=90)  # look from the +y (left) axis toward origin
     plt.savefig("subprojects/wp3_solar_estimator/australia/data/solar_vectors_Y.png")
     ax.view_init(elev=90, azim=0)  # look from the -z (backward) axis toward origin
     plt.savefig("subprojects/wp3_solar_estimator/australia/data/solar_vectors_Z.png")
