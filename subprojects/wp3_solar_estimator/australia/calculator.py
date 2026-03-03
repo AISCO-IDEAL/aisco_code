@@ -2,7 +2,6 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import numpy as np
-import pandas as pd
 from astral import Observer
 from astral.sun import azimuth, elevation
 
