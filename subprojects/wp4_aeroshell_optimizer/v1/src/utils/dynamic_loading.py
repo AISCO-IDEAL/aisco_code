@@ -1,4 +1,5 @@
 import importlib
+import importlib.util
 import sys
 
 
@@ -24,7 +25,7 @@ def dynamic_type_loading(
     return ObjectType
 
 
-def load_class_from_path(path: str, class_name: str):
+def load_class_from_path(path: str, loss_family: str):
     """Dynamically load a class from a file path."""
     spec = importlib.util.spec_from_file_location("module.name", path)
 
@@ -38,5 +39,8 @@ def load_class_from_path(path: str, class_name: str):
 
     module = importlib.util.module_from_spec(spec)
     sys.modules["module.name"] = module
-    spec.loader.exec_module(module)
-    return getattr(module, class_name)
+    loader = spec.loader
+    if loader is None or not hasattr(loader, "exec_module"):
+        raise ImportError(f"No loader available for module spec when loading from path: {path}")
+    loader.exec_module(module)
+    return getattr(module, loss_family)

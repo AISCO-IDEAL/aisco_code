@@ -12,8 +12,9 @@ import OpenGL
 import pyrender
 import trimesh
 from pyrender import RenderFlags
+from subprojects.wp2_assembler.version2.components.nbz import call_assembly_solids
 
-from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 
 # Constants for numerical thresholds
 _MIN_EDGE_LENGTH = 1e-6
@@ -27,8 +28,6 @@ class CADVisualizer:
         self,
         ply_path=None,
         stl_path=None,
-        solid_a=innerNBZ(),
-        solid_b=outerNBZ(),
         out_image_path="render.png",
         max_attempts=100,
     ) -> None:
@@ -46,8 +45,6 @@ class CADVisualizer:
         self.__blue_threshold = 0.1
         self.__min_blue_ratio = 0.001
 
-        self.__solid_a = solid_a
-        self.__solid_b = solid_b
         self.__ply_path = ply_path
         self.__stl_path = stl_path
         self.__colors = [
@@ -113,25 +110,33 @@ class CADVisualizer:
                     pass
 
             # Final cleanup of any lingering Xvfb processes
-            try:
+            try:  # noqa: SIM105
                 subprocess.run(["pkill", "-f", "Xvfb"], check=False, capture_output=True, timeout=2)
             except:  # noqa: E722
                 pass
         except:  # noqa: E722
             pass
 
-    def __cq_solid_to_trimesh(self, solid) -> trimesh.Trimesh:
+    def __cq_solid_to_trimesh(self, solid_or_list) -> trimesh.Trimesh:
         with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
             path = tmp.name
+        wp = cq.Workplane()
+        if isinstance(solid_or_list, (list | tuple)):
+            for s in solid_or_list:
+                if s is None:
+                    continue
+                wp = wp.add(s)
+        else:
+            wp = wp.add(solid_or_list)
         cq.exporters.export(
-            cq.Workplane().add(solid),
+            wp,
             path,
             tolerance=0.1,
             angularTolerance=1,
         )
         mesh = self.__load_mesh(path, "stl")
         Path(path).unlink()  # Clean up temp file immediately
-        assert mesh is not None, "Failed to load mesh from CQ solid"
+        assert mesh is not None, "Failed to load mesh from CQ solid(s)"
 
         return mesh
 
@@ -245,13 +250,26 @@ class CADVisualizer:
     def __render(self, out_image_path: str) -> tuple[str, bool]:
         # Setup fresh rendering environment for each render attempt
         self.__setup_rendering_environment()
+        self.__general_config = load_config()
+        config = load_config(
+            v=self.__general_config["general_info"]["version"],
+            cfg_name=self.__general_config["active_configs"]["losses"],
+        )
+        bb_config = config.get("bb_config")
 
-        # Load meshes fresh each time to avoid state from previous attempts
-        meshes = [
-            self.__cq_solid_to_trimesh(self.__solid_a),
-            self.__cq_solid_to_trimesh(self.__solid_b),
-        ]
+        if bb_config:
+            assembley_version = bb_config.get("assembly_version")
+            assembly_id = bb_config["assembly_id"]
+
+        meshes = []
         types = ["solid_a", "solid_b"]
+
+        if assembley_version == 2:
+            inner_box, outer_box = call_assembly_solids(assembly_id)
+            meshes = [
+                self.__cq_solid_to_trimesh(inner_box),
+                self.__cq_solid_to_trimesh(outer_box),
+            ]
 
         if self.__ply_path and Path(self.__ply_path).exists():
             loaded_mesh = self.__load_mesh(self.__ply_path, "ply")

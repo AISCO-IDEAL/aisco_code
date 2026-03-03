@@ -1,0 +1,3 @@
+in_dim : 3
+layers : 8
+hidden : 64

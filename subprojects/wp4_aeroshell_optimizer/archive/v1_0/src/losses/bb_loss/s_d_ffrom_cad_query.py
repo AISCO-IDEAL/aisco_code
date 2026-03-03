@@ -36,13 +36,15 @@ class SDFfromCadQuery:
         self.__shape_list = shape_list
         self.__pointgrid = self.__pointgrid_geni(training_config)
         if self.__shape is None:
-            l = len(self.__shape_list) if self.__shape_list is not None else 0  # noqa: E741
+            if not self.__shape_list:
+                raise ValueError("shape_list is empty")
             self.__sdfs = []
-            for x in self.__shape_list or []:
-                self.__sdfs.append(SDFfromCadQuery(shape=cast(cq.Solid, x), training_config=training_config))
+            for x in self.__shape_list:
+                self.__sdfs.append(SDFfromCadQuery(shape=cast(cq.Solid, x), training_config=training_config))  # type: ignore[redundant-cast]
+            # From all shapes take the minimum SDF at each point
             self.__sdf_at_pointgrid = [
-                min(self.__sdfs[i].sdf_at_pointgrid()[j] for i in range(l))
-                for j in range(len(self.__pointgrid))  # From all shapes take the minimum SDF at each point
+                min(sdf.sdf_at_pointgrid()[j] for sdf in self.__sdfs)
+                for j in range(len(self.__pointgrid))
             ]
         else:
             self.__negativ = (
@@ -84,6 +86,8 @@ class SDFfromCadQuery:
         ]
 
     def __sdf(self, x: float, y: float, z: float) -> float:
+        if self.__shape is None:
+            raise ValueError("Shape is None")
         # assumes self.__shape is a CadQuery Shape wrapping a closed solid
         shape = self.__shape.wrapped
 
@@ -111,6 +115,8 @@ class SDFfromCadQuery:
 
     def __sdf2(self, x: float, y: float, z: float) -> float:  # old but gold?
         # calculates the signed distance form point (x, y, z) to the CadQuery shape boints inside the shape are negative
+        if self.__shape is None:
+            raise ValueError("Shape is None")
         pnt = gp_Pnt(x, y, z)
         vertex = BRepBuilderAPI_MakeVertex(pnt).Vertex()
         shape_ocp = self.__shape.wrapped

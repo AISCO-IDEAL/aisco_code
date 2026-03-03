@@ -2,7 +2,7 @@ import importlib
 
 import torch
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.ground_truth_masks.simple_geoms import sphere_gt
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.ground_truth_masks.simple_geoms import cube_gt, sphere_gt  # Added cube_gt
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 
@@ -16,21 +16,44 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
     model_name = config["model"]  # dynamically import the model module
     model_file_name = config["model_filename"]  # file where the model is located
     module = importlib.import_module("subprojects.wp4_aeroshell_optimizer.v1.src.models." + model_file_name)
-    ModelClass = getattr(module, model_name)  # noqa: N806
+    ModelClass = getattr(module, model_name)
 
     # adjust to include config parameters here, stil WIP
     model = ModelClass()
     return model
 
 
-def pretraining(model: BaseModel = None, pretraining_config_name: str = "pretraining_v0_config.yaml"):
+def pretraining(
+    model: BaseModel | None = None,
+    pretraining_config_name: str = "pretraining_v0_config.yaml",
+    override_config: dict | None = None,
+):
     # Does pretraining, for now only on a sphere
 
     config = load_config(v="v1", cfg_name=pretraining_config_name)
+    if override_config:
+        # Merge override_config into config
+        # Simple recursive merge or specific key override
+        for k, v in override_config.items():
+            if k in config:
+                if isinstance(config[k], dict) and isinstance(v, dict):
+                    config[k].update(v)
+                else:
+                    config[k] = v
+            # Also check if it's a flat wandb param that should go into nested dict
+            # e.g. "training_loop.learning_rate" -> config["training_loop"]["learning_rate"]
+            elif "." in k:
+                parts = k.split(".")
+                if parts[0] in config and isinstance(config[parts[0]], dict):
+                    config[parts[0]][parts[1]] = v
+
     # Try to use GPU if available
     device = "cuda" if torch.cuda.is_available() else "cpu"
-
+    if model is None:
+        model = dynamic_model_loading(config_name=pretraining_config_name)
     model = model.to(device)
+
+    pretraining_shape = config.get("pretraining_shape", "sphere")
 
     # Training loop
     optimizer = torch.optim.Adam(model.parameters(), lr=config["training_loop"]["learning_rate"])
@@ -43,12 +66,12 @@ def pretraining(model: BaseModel = None, pretraining_config_name: str = "pretrai
         output = model(input_data)
 
         # Dummy target data, replace with actual target generation
-        target = sphere_gt(input_data)
+        target = cube_gt(input_data, side_length=2000.0) if pretraining_shape == "cube" else sphere_gt(input_data)
 
         # Eikonal regularization: ||∇f(x)|| = 1 in meters
 
         input_m = (input_data / 1000.0).detach().requires_grad_(True)
-        sdf_m = (model(input_m * 1000.0).squeeze()) / 1000.0
+        sdf_m = (model(input_data).squeeze()) / 1000.0  # save compute time here
         grad = torch.autograd.grad(
             outputs=sdf_m,
             inputs=input_m,

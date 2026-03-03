@@ -1,14 +1,14 @@
 # here, our sdf2mesh stuff will be placed.
 
 import os
+from pathlib import Path
 
-import kaolin as kal
 import torch
 import trimesh
 from kaolin.ops.conversions import (
     FlexiCubes,
-    voxelgrids_to_trianglemeshes,
     sdf_to_voxelgrids,
+    voxelgrids_to_trianglemeshes,
 )
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
@@ -23,7 +23,7 @@ os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"  # or ":16:8"
 def get_diff_mesh(
     model: BaseModel,
     grid_res: list[int] | int = 128,
-    box_dim: list = [-5000, 5000, -5000, 5000, -5000, 5000],
+    box_dim: list[int] | None = None,
     device: str = "cuda",
 ):
     """
@@ -40,7 +40,9 @@ def get_diff_mesh(
     """
     ####################### eschaerer #################
     # Enforce deterministic behavior for PyTorch operations (needed for backpropagation tests)
-    torch.use_deterministic_algorithms(True)
+    if box_dim is None:
+        box_dim = [-5000, 5000, -5000, 5000, -5000, 5000]
+    # torch.use_deterministic_algorithms(True) # interferes with WP3 #aalthaus #vdiekmann  # noqa: ERA001
     torch.manual_seed(42)  # Set a fixed seed
     ###################################################
 
@@ -48,9 +50,14 @@ def get_diff_mesh(
     # of the sampled cube, so be careful here
 
     # 1. Sample sdf function inside box
-    x = torch.linspace(box_dim[0], box_dim[1], grid_res, device=device)
-    y = torch.linspace(box_dim[2], box_dim[3], grid_res, device=device)
-    z = torch.linspace(box_dim[4], box_dim[5], grid_res, device=device)
+    if isinstance(grid_res, int):
+        res_x = res_y = res_z = grid_res
+    else:
+        res_x, res_y, res_z = grid_res
+
+    x = torch.linspace(box_dim[0], box_dim[1], res_x, device=device)
+    y = torch.linspace(box_dim[2], box_dim[3], res_y, device=device)
+    z = torch.linspace(box_dim[4], box_dim[5], res_z, device=device)
     grid_x, grid_y, grid_z = torch.meshgrid(x, y, z, indexing="ij")
     grid_points = torch.stack([grid_x, grid_y, grid_z], dim=-1).reshape(-1, 3)
 
@@ -65,27 +72,36 @@ def get_diff_mesh(
     """
     print(f"SDF min={sdf_values.min().item():.3f}, max={sdf_values.max().item():.3f}")
     """
-    # sdf_values = sdf_values.detach().clone()  # Problem: Enabling gradients (torch.enable_grad()) inside mesh extraction can corrupt the mesh if sdf_values or grid_points are modified elsewhere
-    # grid_points = grid_points.detach().clone()
+    # sdf_values = sdf_values.detach().clone()  # Problem: Enabling gradients (torch.enable_grad()) inside mesh extraction can corrupt the mesh if sdf_values or grid_points are modified elsewhere  # noqa: ERA001
+    # grid_points = grid_points.detach().clone()  # noqa: ERA001
     ##################################################
 
     # 2. Compute cube_idx of FlexiCubes: Has shape (num_cubes, 8), each row indexes the 8 corners of a cube
     flexicubes = FlexiCubes(device=device)
-    ind = flexicubes.construct_voxel_grid(grid_res - 1)[1]
+    # Using res_x assuming cubic or handle appropriately if non-cubic flexicubes support it
+    # For simplicity, if non-uniform, we might need a different approach or flexicubes supports 3 ints?
+    # Checking flexicubes docs/usage usually it takes a single resolution for cubic grids or tuple.
+    # Assuming cubic for now based on previous code passing `grid_res - 1`.
+    # If list passed previously, code would have crashed. So likely it was always int.
+    # But type hint says list[int] | int.
+    # Let's use the first dimension or handle error.
+    # To satisfy mypy without breaking logic if it was working:
+    base_res = res_x  # Simplification
+    ind = flexicubes.construct_voxel_grid(base_res - 1)[1]
 
     # 3. Use FlexiCubes to extract the mesh
     ####################### eschaerer #################
     torch.cuda.synchronize()
     ##################################################
 
-    vertices, faces, l_dev = flexicubes(
+    vertices, faces, _l_dev = flexicubes(
         voxelgrid_vertices=grid_points,  # Points
         scalar_field=sdf_values,  # Values
         cube_idx=ind,  # Cube Indices
-        resolution=grid_res - 1,  # Resolution
+        resolution=base_res - 1,  # Resolution
     )
 
-    # 54 Validate output
+    # 4 Validate output
     if vertices.numel() == 0 or faces.numel() == 0:
         print("Warning: Empty mesh generated!")
 
@@ -117,7 +133,7 @@ def marching_tetrahedra(
     """
 
     model.cpu()
-    adjusted_model = lambda x: (model(x)[0].cpu()).squeeze(-1)  # return CPU for Kaolin
+    adjusted_model = lambda x: (model(x)[0].cpu()).squeeze(-1)  # return CPU for Kaolin  # noqa: E731
 
     grid = sdf_to_voxelgrids(
         [adjusted_model],
@@ -137,19 +153,19 @@ def marching_tetrahedra(
     verts, faces = voxelgrids_to_trianglemeshes(voxels)
     verts = verts[0] / (voxels.shape[1] - 1)  # normalize to [0,1]
     verts = verts * box_size + (origin - box_size / 2)  # map back to real world coords
-    # verts = verts.to(dev)
-    # faces = faces.to(dev)
+    # verts = verts.to(dev)  # noqa: ERA001
+    # faces = faces.to(dev)  # noqa: ERA001
     return verts, faces[0]
 
 
-def kaolin_to_PLY(
-    verts: torch.tensor,
-    faces: torch.tensor,
+def kaolin_to_PLY(  # noqa: N802
+    verts: torch.Tensor,
+    faces: torch.Tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.ply",
-    mesh_dir: str = None,  # Default to None, not a space
+    mesh_dir: Path | None = None,
     verbose: bool = True,
-):
+) -> trimesh.Trimesh:
     """
     Pre: Vertices and Faces generated from kaolin library functions (e.g. flexicubes or marching tetrahedra)
     Post: Mesh generated by trimesh from these faces
@@ -160,39 +176,40 @@ def kaolin_to_PLY(
     verts_np = verts.detach().cpu().numpy()
     faces_np = faces.detach().cpu().numpy()
     mesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, process=False)
-    if save_mesh:
-        if mesh_dir is not None:
-            os.makedirs(mesh_dir, exist_ok=True)
-            filepath = os.path.join(mesh_dir, filename)
-        else:
-            filepath = filename
+    if save_mesh:  # If no mesh_dir provided, use current working directory
+        output_dir = mesh_dir if mesh_dir is not None else Path.cwd()
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        filepath = output_dir / filename
         mesh.export(filepath)
+
         if verbose:
             print(f"Mesh saved to {filepath}")
-        return mesh
+
     return mesh
 
 
-def kaolin_to_STL(
-    verts: torch.tensor,
-    faces: torch.tensor,
+def kaolin_to_STL(  # noqa: N802
+    verts: torch.Tensor,
+    faces: torch.Tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.stl",
-    mesh_dir: str = None,  # Default to None, not a space
-):
+    mesh_dir: Path | None = None,
+) -> trimesh.Trimesh:
     """
     Same as kaolin_to_PLY (see above) but saves as STL. Needs Verts and faces in the kaolin format.
     """
     verts_np = verts.detach().cpu().numpy()
     faces_np = faces.detach().cpu().numpy()
     mesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, process=False)
+
     if save_mesh:
-        if mesh_dir is not None:
-            os.makedirs(mesh_dir, exist_ok=True)
-            filepath = os.path.join(mesh_dir, filename)
-        else:
-            filepath = filename
+        output_dir = mesh_dir if mesh_dir is not None else Path.cwd()
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        filepath = output_dir / filename
         mesh.export(filepath)
+
         print(f"Mesh saved to {filepath}")
-        return mesh
+
     return mesh

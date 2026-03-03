@@ -52,11 +52,11 @@ def tracker_box_nbz(
     return box_w_cone
 
 
-def tracker_cone_nbz() -> cq.Workplane:
+def tracker_cone_nbz() -> cq.Solid:
     """
     Generate only the cone part of the tracker box NBZ
     Args: regulations.yaml
-    Outputs: cadquery Workplane
+    Outputs: cadquery Solid
     """
 
     cone_hei = get_regulation("tracker_box.cone.height")
