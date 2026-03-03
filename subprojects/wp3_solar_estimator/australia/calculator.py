@@ -32,16 +32,6 @@ class WeatherCalculator:
         obs = Observer(latitude=lat, longitude=lon)
         return elevation(obs, dt), azimuth(obs, dt)
 
-    def position_finder(self, race_distance_km):
-        road_data = pd.read_csv("/cluster/home/aalthaus/AISCO_code/subprojects/wp3_solar_estimator/australia/route_preprocessed.csv")  # CSV with 'lat' and 'lon' columns
-        lons = road_data['longitude'].tolist()
-        lats = road_data['latitude'].tolist()
-        hdgs = road_data['theta'].tolist()
-        cumdis = road_data['cumDistance'].tolist()  # Cumulative distance
-
-        idx = np.argmin(np.abs(np.array(cumdis) - race_distance_km*1000))
-        return lats[idx], lons[idx], hdgs[idx]
-
     def compute_shadows(self, alt_deg, az_deg, hdg_deg=0):
         sun = self.sun_vector(alt_deg, az_deg - hdg_deg)
         ray_dir = sun

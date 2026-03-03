@@ -1,0 +1,14 @@
+general:
+  path: "/cluster/home/aalthaus/AISCO_code/subprojects/wp3_solar_estimator/australia/route_preprocessed.csv"
+  timezone_darwin: "ACST" #Start
+  timezone_adelaide: "ACDT" #End
+
+route_generation:
+  use_different_tz: False #Whether to use different timezones depending on location
+  race_distance: 3026 # in km
+  intervals: 10 # in km
+
+
+sun_generation:
+  racing_window: [9.0,17.0] # [float,float] times during which you can race, e.g. 13:30 would be 13.5
+  time_of_year: "DATE" #TBD
