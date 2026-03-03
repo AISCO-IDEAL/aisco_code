@@ -1,9 +1,12 @@
-from pathlib import Path
-import yaml
 import time
+from pathlib import Path
+
+import cadquery as cq
+import yaml
+
 from subprojects.wp2_assembler.version4.components.inner.seat import Seat
 from subprojects.wp2_assembler.version4.components.inner.wheels import Wheels
-import cadquery as cq
+
 
 def inner_nbz(assembly_nr: int = 0):
     """
@@ -11,7 +14,7 @@ def inner_nbz(assembly_nr: int = 0):
     """
     config_path = Path(__file__).parent.parent / "config" / "assembly_map.yaml"
     
-    #print(config_path)
+    # print(config_path)
     with config_path.open("r") as file:
         assembly_map = yaml.safe_load(file) or {}
 
