@@ -101,7 +101,12 @@ class VisualisationManager:
         - config: The mode-specific config dict from YAML
         """
         modes_config = self.config.get("rendering_modes", {})
-
+        if not modes_config["enabled"]:
+            if self.verbose:
+                print("Rendering Manager is disabled in config")
+            return
+        # get rid of "enabled" key, no longer needed at this point, we check it at mode level
+        modes_config.pop("enabled", None)
         for mode_name, mode_config in modes_config.items():
             if not mode_config.get("enabled", False):
                 if self.verbose:
@@ -138,7 +143,7 @@ class VisualisationManager:
 
     def status(self) -> None:
         """Print status of all active rendering modes."""
-        active_modes = [name for name, mode in self.rendering_modes.items() if mode.enabled]
+        active_modes = [name for name, mode in self.rendering_modes.items() if mode.enabled is not None and mode.enabled]
         total_modes = len(self.rendering_modes)
         print(f"Total modes: {total_modes} | Active modes ({len(active_modes)}): {active_modes}")
         print(f"Output directory: {self.output_dir}")
@@ -215,5 +220,7 @@ class VisualisationManager:
                                 upload_neural_renderer_image(str(file), key=f"images/{mode_name}", step=1)
                     else:
                         print(f"Output directory for mode {mode_name} does not exist: {mode_output_dir}")
+
+
 # Deprecated alias for backward compatibility
 Wrapper = VisualisationManager

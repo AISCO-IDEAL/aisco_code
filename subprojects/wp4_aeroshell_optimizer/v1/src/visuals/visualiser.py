@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any, cast
 
 import imageio
 import numpy as np
@@ -7,7 +8,6 @@ import torch
 from subprojects.fixed_renderer.renderer import Renderer as NeuralRenderer
 
 
-# ruff: noqa: PLR2004
 class Visualiser:
     """
     Minimal wrapper around `fixed_renderer` for rendering and frame export.
@@ -43,7 +43,6 @@ class Visualiser:
         # Default clipping planes
         self.renderer.near = 0.1
         self.renderer.far = 50_000.0
-
 
     def render(
         self,
@@ -88,13 +87,21 @@ class Visualiser:
 
         with torch.no_grad():
             if mode == "rgb":
-                output = self.renderer.render_rgb(vertices, faces, textures, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size)
+                output = self.renderer.render_rgb(
+                    vertices, faces, textures, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size
+                )
             elif mode == "silhouettes":
-                output = self.renderer.render_silhouettes(vertices, faces, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size)
+                output = self.renderer.render_silhouettes(
+                    vertices, faces, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size
+                )
             elif mode == "depth":
-                output = self.renderer.render_depth(vertices, faces, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size)
+                output = self.renderer.render_depth(
+                    vertices, faces, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size
+                )
             else:
-                output = self.renderer.render(vertices, faces, textures, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size)
+                output = self.renderer.render(
+                    vertices, faces, textures, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size
+                )
 
         np_out = self._to_numpy(output)
         if save_frame:
@@ -164,18 +171,18 @@ class Visualiser:
 
         # For local GIF saving, convert to uint8
         if file_path is not None:
-            frames_uint8 = []
+            temp_frames: list[np.ndarray] = []
             for frame in self.stored_frames:
                 fr = (frame * 255).astype(np.uint8)
                 # If single-channel shape (H, W, 1), squeeze to (H, W) for Pillow
                 if fr.ndim == 3 and fr.shape[-1] == 1:
                     fr = fr.squeeze(-1)
-                frames_uint8.append(fr)
-            imageio.mimsave(file_path, frames_uint8, fps=fps)
+                temp_frames.append(fr)
+            imageio.mimsave(file_path, cast(Any, temp_frames), fps=fps)
 
         # Return format depends on use case
         if return_uint8:
-            frames_uint8 = []
+            frames_uint8: list[np.ndarray] = []
             for frame in self.stored_frames:
                 fr = (frame * 255).astype(np.uint8)
                 if fr.ndim == 3 and fr.shape[-1] == 1:
@@ -208,7 +215,6 @@ class Visualiser:
         textures = textures * torch.tensor(color, dtype=torch.float32, device=textures.device)
         return textures
 
-
     def face_colors_to_textures(
         self,
         face_colors: torch.Tensor,
@@ -219,9 +225,11 @@ class Visualiser:
             face_colors = face_colors.unsqueeze(0)
 
         batch_size, num_faces, _ = face_colors.shape
-        textures = face_colors.view(batch_size, num_faces, 1, 1, 1, 3).expand(
-            -1, -1, texture_size, texture_size, texture_size, -1
-        ).contiguous()
+        textures = (
+            face_colors.view(batch_size, num_faces, 1, 1, 1, 3)
+            .expand(-1, -1, texture_size, texture_size, texture_size, -1)
+            .contiguous()
+        )
         return textures
 
     def vertex_colors_to_textures(
@@ -242,15 +250,16 @@ class Visualiser:
             face_colors[:, :, i, :] = torch.gather(
                 vertex_colors,
                 1,
-                faces[:, :, i:i+1].expand(-1, -1, 3),
+                faces[:, :, i : i + 1].expand(-1, -1, 3),
             )
 
         mean_color = face_colors.mean(dim=2)
-        textures = mean_color.view(batch_size, num_faces, 1, 1, 1, 3).expand(
-            -1, -1, texture_size, texture_size, texture_size, -1
-        ).contiguous()
+        textures = (
+            mean_color.view(batch_size, num_faces, 1, 1, 1, 3)
+            .expand(-1, -1, texture_size, texture_size, texture_size, -1)
+            .contiguous()
+        )
         return textures
-
 
     def save_image(self, image: np.ndarray, file_path: str) -> None:
         """Save a single image to disk."""
@@ -260,6 +269,7 @@ class Visualiser:
             img = img.squeeze(-1)
         imageio.imwrite(file_path, img)
         print(f"Saved image to {file_path}")
+
     # ========== Helper Methods ==========
 
     def _to_device(self, tensor: torch.Tensor) -> torch.Tensor:
@@ -287,19 +297,18 @@ class Visualiser:
     def _create_default_texture(self, batch_size: int, num_faces: int, texture_size: int = 2) -> torch.Tensor:
         """Create a default white texture on the correct device."""
         textures = torch.ones(
-            batch_size, num_faces, texture_size, texture_size, texture_size, 3,
+            batch_size,
+            num_faces,
+            texture_size,
+            texture_size,
+            texture_size,
+            3,
             dtype=torch.float32,
-            device=torch.device(self.device)
+            device=torch.device(self.device),
         )
         return textures
 
-    def __call__(
-        self,
-        vertices: torch.Tensor,
-        faces: torch.Tensor,
-        textures: torch.Tensor | None = None,
-        **kwargs
-    ) -> np.ndarray:
+    def __call__(self, vertices: torch.Tensor, faces: torch.Tensor, textures: torch.Tensor | None = None, **kwargs) -> np.ndarray:
         """
         Convenience method to render a mesh.
         Equivalent to calling render().

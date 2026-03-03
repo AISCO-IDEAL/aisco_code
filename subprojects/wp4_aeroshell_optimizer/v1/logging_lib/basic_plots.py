@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+
 import wandb
 
 
@@ -23,6 +24,7 @@ def basic_single_log(key, value, step: int | None = None):
     """
     wandb.log({key: sanitize_metric(value)}, step=step)
 
+
 def basic_multi_log(metrics_dict: dict, step: int | None = None):
     """
     A wrapper around wandb.log to log multiple key-value pairs at once with a step.
@@ -34,7 +36,8 @@ def basic_multi_log(metrics_dict: dict, step: int | None = None):
     sanitized_dict = {k: sanitize_metric(v) for k, v in metrics_dict.items()}
     wandb.log(sanitized_dict, step=step)
 
-def multi_log_in_one(metric_name: str | None = None , metrics_dict: dict | None = None, step: int | None = None):
+
+def multi_log_in_one(metric_name: str | None = None, metrics_dict: dict | None = None, step: int | None = None):
     """
     A wrapper around wandb.log to log multiple key-value pairs at once with a step, but all metrics are logged under a single chart with key "metrics".
     This can be useful for grouping related metrics together in the wandb dashboard.
@@ -43,9 +46,10 @@ def multi_log_in_one(metric_name: str | None = None , metrics_dict: dict | None 
     e.g. {"modelAccuracy": 0.95, "learning_rate": 0.001}
     - step (int): The current step or epoch number to associate with this log entry.
     """
-    sanitized_dict = {f"{metric_name}/{k}": sanitize_metric(v) for k, v in metrics_dict.items()}
+    sanitized_dict = (
+        {f"{metric_name}/{k}": sanitize_metric(v) for k, v in metrics_dict.items()} if metrics_dict is not None else {}
+    )
     wandb.log(sanitized_dict, step=step)
-
 
 
 def log_matplotlib_fig(fig: plt.Figure, key: str, step: int | None = None):

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from plyfile import PlyData  # type: ignore [import-untyped]
+from plyfile import PlyData
 
 # Get the directory where this script is located
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -16,9 +16,7 @@ try:
     plydata = PlyData.read(PLY_FILE_PATH)  # <--- 4. Use the new, full path
     print("PLY file read successfully.")
 except FileNotFoundError:
-    print(
-        "Error: 'sample.ply' not found. Make sure you created it in the same directory."
-    )
+    print("Error: 'sample.ply' not found. Make sure you created it in the same directory.")
     sys.exit()
 
 # --- 2. Extract and Inspect the Data ---
@@ -63,7 +61,5 @@ ax.set_zlabel("Z")
 ax.set_title("PLY File Vertex Cloud")
 plt.show()
 
-print(
-    "\nNote: Matplotlib is great for point clouds, but visualizing the full *mesh* (the faces) is complex."
-)
+print("\nNote: Matplotlib is great for point clouds, but visualizing the full *mesh* (the faces) is complex.")
 print("See Example 2 for a much better mesh visualizer.")

@@ -37,6 +37,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+
 if TYPE_CHECKING:
     from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
@@ -58,7 +60,7 @@ class RenderingMode:
     and creates a GIF. Override update() only if you need custom behavior.
     """
 
-    def __init__(self, visualiser: Visualiser, config: dict):
+    def __init__(self, visualiser: Visualiser, config: dict) -> None:
         """
         Initialize the rendering mode.
 
@@ -71,9 +73,10 @@ class RenderingMode:
                 - render_mode: "rgb", "normal", "depth", etc.
                 - fps: GIF frame rate (optional but strongly recommended for gifs, default=15)
         """
-
-        self.visualiser = visualiser
-        self.config = config
+        self._rendering_config = load_config(v="v0", cfg_name="neural_renderer_v0.yaml")
+        self.visualiser: Visualiser = visualiser
+        enabled: bool = self._rendering_config["rendering_modes"].get("enabled", False)
+        self.enabled: bool = enabled
 
         # Validate required config keys
         required_keys = ["camera_position", "look_at", "render_mode"]
@@ -85,15 +88,13 @@ class RenderingMode:
         self.camera_position = config["camera_position"]
         self.look_at = config["look_at"]
         self.render_mode = config["render_mode"]
-        self.fps = config.get("fps", 15) #Optional if you do an image only
+        self.fps = config.get("fps", 15)  # Optional if you do an image only
 
         # Compute camera direction from position and look_at
-        self.camera_direction = [
-            self.look_at[i] - self.camera_position[i] for i in range(3)
-        ]
+        self.camera_direction = [self.look_at[i] - self.camera_position[i] for i in range(3)]
 
         # Each mode manages its own frame storage
-        self.frame_storage = []
+        self.frame_storage: list[Any] = []
 
     def update(self, optimization_state: dict[str, Any]) -> None:
         """
@@ -125,7 +126,6 @@ class RenderingMode:
             camera_position=self.camera_position,
             camera_direction=self.camera_direction,
         )
-
 
         # Store the frame (handle batch dimension if present)
         if hasattr(image, "__len__") and len(image) > 0:
@@ -176,13 +176,7 @@ class RenderingMode:
         Returns:
             Rendered output (typically numpy array)
         """
-        return self.visualiser.render(
-            vertices=vertices,
-            faces=faces,
-            mode=mode,
-            textures=textures,
-            **render_kwargs
-        )
+        return self.visualiser.render(vertices=vertices, faces=faces, mode=mode, textures=textures, **render_kwargs)
 
     def _save_image(self, image: Any, file_path: Path) -> None:
         """

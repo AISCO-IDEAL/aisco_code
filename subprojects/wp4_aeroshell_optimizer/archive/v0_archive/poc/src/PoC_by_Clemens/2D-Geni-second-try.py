@@ -384,13 +384,13 @@ area.plot()
 (line,) = plt.plot(
     [], [], "o", markersize=1, color="green"
 )  # Use plt.plot instead of plt.scatter
-loss = []
+loss: list[float] = []
 train_rounds = 200
 epochs_per_round = 5
 for i in range(train_rounds):
     print(f"Training round {i + 1}/{train_rounds}")
     loss = loss + geni.train(epochs_per_round, e_0=i * epochs_per_round)
-    x = list(range(len(loss)))
+    x = list(range(len(loss))) # type: ignore[assignment]
     area = areas[0]
     mu = geni.get_mu(area)
     shape = area.create_shape(mu)

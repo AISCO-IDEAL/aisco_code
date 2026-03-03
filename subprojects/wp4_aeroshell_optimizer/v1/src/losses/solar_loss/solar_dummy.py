@@ -52,6 +52,6 @@ def solar_mesh_deformation(
     loss.backward()
     learning_rate = 1e-2
     # Direct gradient descent step
-    vertices_new = vertices - learning_rate * vertices.grad
+    vertices_new = (vertices - learning_rate * vertices.grad) if vertices.grad is not None else vertices
 
     return vertices_new

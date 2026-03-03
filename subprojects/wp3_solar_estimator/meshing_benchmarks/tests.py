@@ -1,4 +1,4 @@
-#file containing individual baseline tests
+# file containing individual baseline tests
 
 
 import traceback
@@ -89,11 +89,11 @@ class BaseTester:
         #Rotations and nonunifom stretching are not supported yet
         """
         # Baseline parameters for this test, as to ensure resolution is comparable when distorting bboxes
-        BASELINE_RES = 70  # noqa: N806
-        BBOX_CUBIC = [[-3500.0, 3500.0], [-3500.0, 3500.0], [-3500.0, 3500.0]]  # noqa: N806
-        UNIT_LENGTH = 7000.0  # total length of bbox along each axis for baseline cubic box, used to define stretched bboxes with same total length  # noqa: N806
-        STRETCHING_FACTOR = 1.5  # Ensure this * BASELINE_RES is still an int # noqa: N806
-        TRANSLATION_OFFSET = 200.0  # Translate bbox by this amount along each axis, ensure that UNIT_LENGTH/BASELINE_RES * N can eqaual this offset for comparable grid_spacing # noqa: N806
+        BASELINE_RES = 70
+        BBOX_CUBIC = [[-3500.0, 3500.0], [-3500.0, 3500.0], [-3500.0, 3500.0]]
+        UNIT_LENGTH = 7000.0  # total length of bbox along each axis for baseline cubic box, used to define stretched bboxes with same total length
+        STRETCHING_FACTOR = 1.5  # Ensure this * BASELINE_RES is still an int
+        TRANSLATION_OFFSET = 200.0  # Translate bbox by this amount along each axis, ensure that UNIT_LENGTH/BASELINE_RES * N can eqaual this offset for comparable grid_spacing
         if TRANSLATION_OFFSET % (UNIT_LENGTH / BASELINE_RES) != 0:
             print(
                 f"Warning: Translation offset {TRANSLATION_OFFSET} is not a multiple of grid spacing {UNIT_LENGTH / BASELINE_RES}. Consider adjusting these values for a more meaningful test."

@@ -148,8 +148,8 @@ class WIRE(BaseModel):
         }
         return model_info
     
-    def optimise(self, training_config: dict = None) -> None:
-        if training_config is None:
+    def optimise(self, training_config: dict = {}) -> None:
+        if training_config == {}:
             raise ValueError("Training config must be provided for optimisation.")
         
         self.train() # Set model to training mode, i.e. things like dropout layers are active, turn off by using self.eval() or model.eval()

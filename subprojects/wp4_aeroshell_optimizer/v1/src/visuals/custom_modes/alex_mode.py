@@ -15,18 +15,19 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base_clas
 class BasicAlexMode(RenderingMode):
     """
     Example: Minimal rendering mode using base class defaults.
-    
+
     This mode automatically:
     - Renders from fixed camera position every update() call
     - Stores all frames
     - Creates animation.gif on finalize()
-    
+
     Configuration (set in YAML config under this mode's "config"):
         - camera_position: [x, y, z] (default: [4000, 0, 0])
         - look_at: [x, y, z] (default: [0, 0, 0])
         - render_mode: "rgb", "normal", "depth" (default: "rgb")
         - fps: GIF frame rate (default: 15)
-    
+
     No code needed! Just inherit and configure in YAML.
     """
-    pass  # That's it! Base class does everything
+
+    # That's it! Base class does everything

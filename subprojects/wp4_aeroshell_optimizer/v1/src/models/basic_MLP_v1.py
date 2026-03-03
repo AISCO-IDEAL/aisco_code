@@ -1,11 +1,11 @@
+# Basic MLP Model
+
 import torch
 
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager, Wrapper
 
 
 class BasicMLP(BaseModel):
@@ -19,7 +19,14 @@ class BasicMLP(BaseModel):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return super().forward(x)
 
-    def optimise(self, training_config: dict | None = None, renderer_manager: VisualisationManager | None = None) -> None:
+    def optimise(
+        self,
+        renderer_manager: VisualisationManager | None = None,
+        renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
+        wandb_name: str | None = None,  # noqa: ARG002
+        general_config: dict | None = None,  # noqa: ARG002
+        training_config: dict | None = None,
+    ) -> None:
         if training_config is None:
             raise ValueError("Training config must be provided for optimisation.")
 
@@ -37,7 +44,7 @@ class BasicMLP(BaseModel):
 
         # IMPORTANT: the device the model is on at time of function call defines the device passed to the loss_class
         # Get device from model parameters since nn.Module doesn't have a .device attribute
-        device = next(self.parameters()).device
+        device = str(next(self.parameters()).device)
         loss_function = TotalLoss(device, renderer_manager=renderer_manager)  # Initialise TotalLoss with the correct device
 
         for epoch in range(num_epochs):
@@ -64,21 +71,6 @@ class BasicMLP(BaseModel):
         }
         return model_info
 
-            # save mesh every 5 epochs
-            if general_config is not None and epoch % training_config["training_params"].get("mesh_save_interval", 5) == 0:
-                allround_save_data(
-                    model=self,
-                    storage_path=general_config["general_info"].get(
-                        "storage_path", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
-                    ),
-                    save_model=False,
-                    save_mesh=True,
-                    verbose=False,
-                    pretraining=False,
-                    wandb_run=wandb_name,
-                    epoch=epoch
-                )
-
     def debug_info(self):
         # Print model architecture and number of parameters, or anthing you might want to debug
         print("===================================")
@@ -95,15 +87,6 @@ class BasicMLP(BaseModel):
         device = next(self.parameters()).device
         print(f" Model is on device: {device}")
         print(f"Do Model Parameters require Gradients? (Y/N): {any(p.requires_grad for p in self.parameters())}")
-
-        print("End of Model Debug Info")
-        print("===================================")
-
-        print("End of Model Debug Info")
-        print("===================================")
-
-        print("End of Model Debug Info")
-        print("===================================")
 
         print("End of Model Debug Info")
         print("===================================")

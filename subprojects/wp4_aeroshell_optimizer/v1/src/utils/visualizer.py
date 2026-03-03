@@ -12,9 +12,8 @@ import OpenGL
 import pyrender
 import trimesh
 from pyrender import RenderFlags
-
-from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly_solids
+
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 
 # Constants for numerical thresholds
@@ -122,7 +121,7 @@ class CADVisualizer:
         with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
             path = tmp.name
         wp = cq.Workplane()
-        if isinstance(solid_or_list, (list, tuple)):
+        if isinstance(solid_or_list, (list | tuple)):
             for s in solid_or_list:
                 if s is None:
                     continue
@@ -257,16 +256,15 @@ class CADVisualizer:
             cfg_name=self.__general_config["active_configs"]["losses"],
         )
         bb_config = config.get("bb_config")
-        assembley_version = bb_config.get("assembly_version") # if bb_config else None
-        assembly_id = bb_config["assembly_id"]
+
+        if bb_config:
+            assembley_version = bb_config.get("assembly_version")
+            assembly_id = bb_config["assembly_id"]
+
         meshes = []
         types = ["solid_a", "solid_b"]
-        if assembley_version == 0:
-            meshes = [
-                self.__cq_solid_to_trimesh(innerNBZ()),
-                self.__cq_solid_to_trimesh(outerNBZ()),
-            ]
-        if assembley_version == 2:  # noqa: PLR2004
+
+        if assembley_version == 2:
             inner_box, outer_box = call_assembly_solids(assembly_id)
             meshes = [
                 self.__cq_solid_to_trimesh(inner_box),

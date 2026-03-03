@@ -1,4 +1,3 @@
-
 import os
 
 import torch
@@ -6,8 +5,8 @@ import trimesh
 
 
 def tensors_to_mesh(
-    verts: torch.tensor,
-    faces: torch.tensor,
+    verts: torch.Tensor,
+    faces: torch.Tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.ply",
     mesh_dir: str | None = None,  # Default to None, not a space

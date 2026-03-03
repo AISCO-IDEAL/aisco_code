@@ -27,8 +27,8 @@ class CADVisualizer:
 
     def __init__(
         self,
-        ply_path: [str] = None,
-        stl_path: [str] = None,
+        ply_path: Optional[[str]] = None,
+        stl_path: Optional[[str]] = None,
         # Rendering parameters
         image_size: Tuple[int, int] = (1200, 900),
         bg_color: Tuple[int, int, int, int] = (255, 255, 255, 0),
@@ -61,8 +61,8 @@ class CADVisualizer:
         # Render until blue detected parameters
         solid_a: [cq.Solid] = innerNBZ(),
         solid_b: [cq.Solid] = outerNBZ(),
-        colors: List[Tuple[float, float, float, float]] = None,
-        show_edges: List[bool] = None,
+        colors: Optional[List[Tuple[float, float, float, float]]] = None,
+        show_edges: Optional[List[bool]] = None,
         out_image_path: str = "render.png",
         max_attempts: int = 100,
         verbose: bool = False,
@@ -263,11 +263,11 @@ class CADVisualizer:
 
     def __set_camera_params(
         self,
-        distance_factor: float = None,
-        fov_degrees: float = None,
-        tilt_down_degrees: float = None,
-        azimuth_degrees: float = None,
-        position_factors: tuple[float, float, float] = None,
+        distance_factor: Optional[float] = None,
+        fov_degrees: Optional[float] = None,
+        tilt_down_degrees: Optional[float] = None,
+        azimuth_degrees: Optional[float] = None,
+        position_factors: Optional[tuple[float, float, float]] = None,
     ):
         """Set camera parameters for different viewing angles."""
         if distance_factor is not None:
@@ -283,9 +283,9 @@ class CADVisualizer:
 
     def __set_lighting(
         self,
-        ambient_intensity: float = None,
-        key_light_intensity: float = None,
-        fill_light_intensity: float = None,
+        ambient_intensity: Optional[float] = None,
+        key_light_intensity: Optional[float] = None,
+        fill_light_intensity: Optional[float] = None,
     ):
         """Set lighting parameters."""
         if ambient_intensity is not None:
@@ -553,8 +553,8 @@ class CADVisualizer:
         cos_tilt = np.cos(tilt_angle_rad)
         sin_tilt = np.sin(tilt_angle_rad)
 
-        eye_x_final = eye_x_rotated * cos_tilt - eye_z * sin_tilt
-        eye_z_final = eye_x_rotated * sin_tilt + eye_z * cos_tilt
+        eye_x_final = float(eye_x_rotated * cos_tilt - eye_z * sin_tilt)
+        eye_z_final = float(eye_x_rotated * sin_tilt + eye_z * cos_tilt)
 
         eye = np.array([eye_x_final, eye_y_rotated, eye_z_final])
         target = np.array([0.0, 0.0, 0.0])
@@ -610,8 +610,8 @@ class CADVisualizer:
         solid_b: cq.Solid | None = None,
         ply_path: str | None = None,
         stl_path: str | None = None,
-        colors: list[tuple[float, float, float, float]] = None,
-        show_edges: list[bool] = None,
+        colors: Optional[list[tuple[float, float, float, float]]] = None,
+        show_edges: Optional[list[bool]] = None,
         out_image_path: str = "render.png",
     ) -> tuple[str, bool]:
         """
@@ -676,7 +676,7 @@ class CADVisualizer:
         # Calculate scene bounds
         combined = trimesh.util.concatenate(meshes)
         extents = combined.extents
-        radius = np.linalg.norm(extents) / 2.0
+        radius: float = float(np.linalg.norm(extents) / 2.0)
 
         if radius < 1e-6:
             raise ValueError(f"Geometry too small: radius = {radius}")

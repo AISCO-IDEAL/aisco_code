@@ -7,9 +7,9 @@ from pathlib import Path
 import wandb
 
 try:
-    from PIL import Image
+    from PIL import Image as PILImage
 except Exception:
-    Image = None
+    PILImage = None  # type: ignore[assignment]
 
 import contextlib
 
@@ -23,20 +23,20 @@ def _load_image(obj) -> np.ndarray:
     """
     # Path or string -> open with PIL
     if isinstance(obj, (str | Path)):
-        if Image is None:
+        if PILImage is None:
             raise RuntimeError("Pillow is required to load image paths")
-        img = Image.open(str(obj)).convert("RGB")
+        img = PILImage.open(str(obj)).convert("RGB")
         return np.asarray(img, dtype=np.uint8)
 
     # bytes -> open with PIL
     if isinstance(obj, bytes | bytearray):
-        if Image is None:
+        if PILImage is None:
             raise RuntimeError("Pillow is required to load image bytes")
-        img = Image.open(BytesIO(obj)).convert("RGB")
+        img = PILImage.open(BytesIO(obj)).convert("RGB")
         return np.asarray(img, dtype=np.uint8)
 
     # PIL Image
-    if Image is not None and isinstance(obj, Image.Image):
+    if PILImage is not None and isinstance(obj, PILImage.Image):
         return np.asarray(obj.convert("RGB"), dtype=np.uint8)
 
     # numpy array
@@ -45,7 +45,7 @@ def _load_image(obj) -> np.ndarray:
         if arr.dtype != np.uint8:
             arr = arr.astype(np.uint8)
         # if CHW -> convert to HWC
-        if arr.ndim == 3 and arr.shape[0] in (1, 3):  # noqa: PLR2004
+        if arr.ndim == 3 and arr.shape[0] in (1, 3):
             arr = np.transpose(arr, (1, 2, 0))
         return arr
 
@@ -92,22 +92,27 @@ def upload_neural_renderer_gif(frames, key: str, step: int | None = None, fps: i
         return
 
     # If bytes (presumably a GIF file) -> write to temp file and pass path
-    if isinstance(frames, bytes | bytearray):
-        tf = tempfile.NamedTemporaryFile(delete=False, suffix=".gif")
-        try:
+    # If bytes (presumably a GIF file) -> write to temp file and pass path
+    if isinstance(frames, (bytes | bytearray)):
+        # 1. Use a context manager to handle the initial file creation/writing
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".gif") as tf:
             tf.write(frames)
             tf.flush()
-            tf.close()
-            wandb.log({key: wandb.Video(tf.name, fps=fps, format="gif")}, step=step)
+            temp_path = tf.name  # Store the path to use outside the 'with' block
+
+        # 2. Now that the file is closed (but not deleted), wandb can safely read it
+        try:
+            wandb.log({key: wandb.Video(temp_path, fps=fps, format="gif")}, step=step)
             print(f"Logged GIF bytes to wandb under key '{key}' at step {step}")
         finally:
-            with contextlib.suppress(Exception):
-                os.remove(tf.name)
+            # 3. Manually clean up the file
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(temp_path)
         return
 
     # If numpy array of shape (T,H,W,C)
     if isinstance(frames, np.ndarray):
-        if frames.ndim == 4:  # noqa: PLR2004
+        if frames.ndim == 4:
             wandb.log({key: wandb.Video(frames, fps=fps, format="gif")}, step=step)
             print(f"Logged GIF numpy array with {frames.shape[0]} frames to wandb under key '{key}' at step {step}")
             return
@@ -117,7 +122,10 @@ def upload_neural_renderer_gif(frames, key: str, step: int | None = None, fps: i
     # Otherwise assume iterable of frames
     if isinstance(frames, Iterable):
         frame_list = _frames_to_array_list(frames)
-        wandb.log({key: wandb.Video(frame_list, fps=fps, format="gif")}, step=step)
+        # Convert list of arrays to a single numpy array (T, H, W, C)
+        # This satisfies wandb.Video input requirement
+        video_array = np.stack(frame_list)
+        wandb.log({key: wandb.Video(video_array, fps=fps, format="gif")}, step=step)
         print(f"Logged GIF with {len(frame_list)} frames to wandb under key '{key}' at step {step}")
         return
 

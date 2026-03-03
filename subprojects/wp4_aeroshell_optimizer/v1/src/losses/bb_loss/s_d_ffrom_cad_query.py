@@ -12,7 +12,6 @@ from OCP.BRepClass3d import BRepClass3d_SolidClassifier
 from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
-
 from subprojects.wp2_assembler.version2.components.nbz import bounding_box_of_assembly, call_assembly_solids
 
 
@@ -34,9 +33,9 @@ class SDFfromCadQuery:
         assembly_id: int = 1,
     ):
         if shape is None and shape_list is None:
-            raise ValueError("Either shape or shape_list must be provided.")  # noqa: TRY003
+            raise ValueError("Either shape or shape_list must be provided.")
         if shape is not None and shape_list is not None:
-            raise ValueError("Only one of shape or shape_list must be provided.")  # noqa: TRY003
+            raise ValueError("Only one of shape or shape_list must be provided.")
         self.__shape = shape
         self.__assembly_id = assembly_id
         self.__shape_list = shape_list
@@ -186,15 +185,14 @@ class SDFfromCadQuery:
         else:
             return self.__shape.Volume()
 
-
     #### From here on, its just Code for testing and debuugging ########################################################
     def visualizr_slice(self, z: float) -> None:
         x_vals = sorted({p[0] for p in self.__pointgrid if p[2] == z})
         y_vals = sorted({p[1] for p in self.__pointgrid if p[2] == z})
-        X, Y = np.meshgrid(x_vals, y_vals)  # noqa: N806
+        X, Y = np.meshgrid(x_vals, y_vals)
         # Create a mapping from coordinates to SDF values
         sdf_dict = {(p[0], p[1], p[2]): self.__sdf_at_pointgrid[i] for i, p in enumerate(self.__pointgrid)}
-        Z = np.array([[sdf_dict.get((x, y, z), 0.0) for x in x_vals] for y in y_vals])  # noqa: N806
+        Z = np.array([[sdf_dict.get((x, y, z), 0.0) for x in x_vals] for y in y_vals])
 
         plt.figure(figsize=(8, 6))
         contour = plt.contourf(X, Y, Z, levels=10, cmap="RdBu_r")

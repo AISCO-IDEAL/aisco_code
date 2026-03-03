@@ -2,8 +2,8 @@ from pathlib import Path
 
 import torch
 import trimesh
-import wandb
 
+import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
 from subprojects.wp3_solar_estimator.validation.statistics import MeshStatistics
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.cruising_speed import cruising_speed
@@ -11,14 +11,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_al
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
-
-# # Visualization imports (commented out for now)
-# import trimesh # noqa: ERA001
-# from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import get_diff_mesh # noqa: ERA001
-# from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import render_image  # noqa: ERA001
-# from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer # noqa: ERA001
-# from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update # noqa: ERA001
-# from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name # noqa: ERA001
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
@@ -36,7 +29,7 @@ class TotalLoss:
             v=self.__general_config["general_info"]["version"],
             cfg_name=self.__general_config["active_configs"]["losses"],
         )
-        
+
         # Check for WandB sweep overrides for initial_lambda
         if wandb.run and "initial_lambda" in wandb.config:
             self.losses_config["general_info"]["initial_lambda"] = wandb.config.initial_lambda
@@ -69,20 +62,19 @@ class TotalLoss:
         self._mesh_extraction_config = mesh_config  # Store for later use
 
         # wandb init
-        if self.__general_config["wandb_general"].get("use_wandb", False):
-            if wandb.run is None:
-                run = wandb.init(
-                    # Set the wandb log directory
-                    dir="wp4_aeroshell_optimizer/data/wandb_logs",
-                    # Set the wandb entity where your project will be logged (generally your team name).
-                    entity=self.__general_config["wandb_general"].get("entity_name", "aisco"),
-                    # Set the wandb project where this run will be logged.
-                    project=self.__general_config["wandb_general"].get("project_name", "Aeroshell Optimiser with ALM and Sweeping"),
-                    # Track hyperparameters and run metadata.
-                    config=self.__general_config,
-                )
-                config = deep_update(self.__general_config, dict(wandb.config))
-                run.config.update(config, allow_val_change=True)
+        if self.__general_config["wandb_general"].get("use_wandb", False) and wandb.run is None:
+            run = wandb.init(
+                # Set the wandb log directory
+                dir="wp4_aeroshell_optimizer/data/wandb_logs",
+                # Set the wandb entity where your project will be logged (generally your team name).
+                entity=self.__general_config["wandb_general"].get("entity_name", "aisco"),
+                # Set the wandb project where this run will be logged.
+                project=self.__general_config["wandb_general"].get("project_name", "Aeroshell Optimiser with ALM and Sweeping"),
+                # Track hyperparameters and run metadata.
+                config=self.__general_config,
+            )
+            config = deep_update(self.__general_config, dict(wandb.config))
+            run.config.update(config, allow_val_change=True)
 
         # ALM parameters init
         if self.losses_config["general_info"].get("ALM", False):
@@ -159,16 +151,27 @@ class TotalLoss:
             loss_tensors.append(current_loss)
 
             # Store for logging
-            loss_names[loss_name] = current_loss  # convert to float, gradient is lost
+            loss_names[loss_name] = current_loss.item()  # convert to float, gradient is lost
 
         if self.losses_config["general_info"]["ALM"] == "True":  # ALM weighting
             # DOCUMENTATION: `Losses and their weights` in Obsidian
 
             # o: maximise cruising speed (CSE)
-            if self.losses_config["CSE"]=="True": # TODO: go through each separate loss and check
-                o = -1 *cruising_speed(solar_power=loss_tensors[4], drag_force_at_25ms=loss_tensors[0], mass=210, c_losses=20, rolling_friction_coefficient=0.006)
-            else: # o: maximise solar power - drag losses
-                o = -1 * (loss_tensors[4] - loss_tensors[0])
+            o: torch.Tensor
+            if self.losses_config["CSE"] == "True":  # TODO: go through each separate loss and check
+                o = torch.as_tensor(
+                    -1.0
+                    * cruising_speed(
+                        solar_power=loss_tensors[4],
+                        drag_force_at_25ms=loss_tensors[0],
+                        mass=210,
+                        c_losses=20,
+                        rolling_friction_coefficient=0.006,
+                    ),
+                    device=device,
+                )
+            else:  # o: maximise solar power - drag losses
+                o = torch.as_tensor(-1.0 * (loss_tensors[4] - loss_tensors[0]), device=device)
 
             # c: constraint loss (bb, eikonal, smoothness)
             c = torch.stack([loss_tensors[1], loss_tensors[2], loss_tensors[3]])
@@ -186,7 +189,6 @@ class TotalLoss:
                 thresholds=thresholds_tensor,
             )
 
-
             weighted_total_loss = (
                 o + torch.dot(self.lamdas.squeeze(), c) + 1 / 2 * torch.dot(self.mus.squeeze(), c**2)
             )  # dot products of weights and losses tensors
@@ -199,12 +201,12 @@ class TotalLoss:
                 loss_families=list(self.__active_losses.keys()),
                 device=device,
             )
-            weights = torch.as_tensor(weights, device=device, requires_grad=True, dtype=torch.float32)
+            weights = torch.as_tensor(weights, device=device, dtype=torch.float32).requires_grad_(True)
             # Stack losses into a single tensor and multiply by weights
             # We convert weights to a tensor on the correct device to allow element-wise multiplication
             weighted_total_loss = torch.dot(torch.stack(loss_tensors), weights)
 
-        # # Add the total loss to the logging dictionary
+        # Add the total loss to the logging dictionary
         loss_names["total_loss"] = weighted_total_loss.item()
 
         # # 2. Logging them on WandB (not working as of now)
@@ -259,12 +261,12 @@ class TotalLoss:
                         # Use Clemens' CADVisualizer for rendering and logging
                         # Convert to numpy if tensors
                         if torch.is_tensor(verts):
-                            verts = verts.detach().cpu().numpy()
+                            verts_np = verts.detach().cpu().numpy()
                         if torch.is_tensor(faces):
-                            faces = faces.detach().cpu().numpy()
+                            faces_np = faces.detach().cpu().numpy()
 
                         # Create trimesh object and export to STL
-                        mesh = trimesh.Trimesh(vertices=verts, faces=faces)
+                        mesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np)
                         stl_path = Path(f"subprojects/wp4_aeroshell_optimizer/v1/logs/mesh_epoch_{epoch_name}.stl")
                         stl_path.parent.mkdir(parents=True, exist_ok=True)
                         mesh.export(str(stl_path))

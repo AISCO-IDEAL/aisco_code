@@ -20,10 +20,13 @@ dependencies = [
   "numpy>=2.0.0",
   "ruff>=0.1.0",
   "pre-commit>=3.0.0",
-  "mypy>=1.17.1",
+  "mypy>=1.19.1",
   "torch==2.4.0",
   "wandb>=0.17.2",
-  "wandb[media] >= 0.23.1"
+  "wandb[media] >= 0.23.1",
+  "types-paramiko",
+  "types-pytz",
+  "types-requests"
 ]
 
 [project.optional-dependencies]
@@ -71,7 +74,7 @@ testing = [
   ]
 
 all = [
-  "AISCO_code[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer, testing]"
+  "AISCO_code[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer, wp7_gui, testing]"
 ]
 
 #make a all command
@@ -164,6 +167,9 @@ ignore = [
     "N999",  # ignoring PEP8 convention to enable us to call our project AISCO_code instead of aisco_code
     "PLR0913", # too many arguments is bs convention for us
     "TRY003", # would block long messages in e.g. ValueError("messageXYZ") debugging warnings
+    "PLR2004", # triggers on if version == 2
+    "N806", # in ML uppercase variables are common
+    "N803", # invalid argument name
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
@@ -182,19 +188,22 @@ max-complexity = 10
 
 [tool.ruff.lint.pylint]
 max-args = 8
+max-statements = 53
 
 [tool.ruff.lint.per-file-ignores]
 # Tests can use magic values, assertions, and relative imports
 "tests/**/*" = ["PLR2004", "S101", "TID252"]
 # Allow print statements in scripts
 "scripts/**/*" = ["T20"]
+# Allow unused imports in init files
+"**/__init__.py" = ["F401"]
 
 [tool.mypy]
 
 python_version = "3.11"
 namespace_packages = true
 explicit_package_bases = true
-mypy_path = "subprojects/"
+#mypy_path = "." our project does not need it, as all folder containing source code have init files
 ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = true
@@ -203,6 +212,18 @@ files = ["subprojects/", "tests/"]
 exclude = [
   "^build/",
   "^docs/",
-  "^fixed_renderer/",
-  ".*/archive/*.",
+  ".*fixed_renderer/.*", # <-- eschaerer: Fixed regex to catch it inside subprojects
+  ".*/archive/.*",       # <-- eschaerer: Fixed regex typo
 ]
+
+[[tool.mypy.overrides]]
+# Use a single string with commas for multiple modules
+module = [
+  "kaolin.*",
+  "cadquery.*",
+  "wandb.*",
+  "pyvista.*"
+
+] # torch.*, could be added, iff it causes many problems
+ignore_missing_imports = true
+ignore_errors = true

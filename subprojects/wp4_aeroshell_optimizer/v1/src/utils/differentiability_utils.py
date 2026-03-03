@@ -15,10 +15,7 @@ def loss_from_deformed_mesh(deformed_vertices: torch.Tensor, sdf_model: BaseMode
     """
     # Compute loss between SDF model and deformed vertices
     output = sdf_model(deformed_vertices)
-    if isinstance(output, tuple):
-        sdf_values = output[0]
-    else:
-        sdf_values = output
+    sdf_values = output[0] if isinstance(output, tuple) else output
 
     loss = sdf_values.abs().mean()
     # Backpropagate and update SDF model parameters

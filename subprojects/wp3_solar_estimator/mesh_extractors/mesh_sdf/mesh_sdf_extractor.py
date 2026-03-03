@@ -6,7 +6,9 @@ Core idea: Make standard Marching Cubes differentiable by deriving analytical
 gradient flow from mesh vertices back to SDF parameters via the implicit surface constraint.
 """
 
+import typing
 import warnings
+from collections.abc import Callable
 
 import numpy as np
 import torch
@@ -43,10 +45,6 @@ class MeshSDFExtractor:
         self.isovalue = isovalue
         self.device = device
 
-        # Cache for optimization
-        self._cached_grid = None
-        self._cached_sdf = None
-
         # Fixed grid support (to align with DISO/FC wrappers)
         self._grid_points: torch.Tensor | None = None
         self._resolution: int | None = None
@@ -56,7 +54,7 @@ class MeshSDFExtractor:
         Convert flat bbox [xmin, xmax, ymin, ymax, zmin, zmax] to nested
         [[xmin,xmax],[ymin,ymax],[zmin,zmax]] if needed.
         """
-        if isinstance(bbox, (list | tuple)) and len(bbox) == 6 and not isinstance(bbox[0], (list | tuple)):  # noqa: PLR2004
+        if isinstance(bbox, (list | tuple)) and len(bbox) == 6 and not isinstance(bbox[0], (list | tuple)):
             return [[bbox[0], bbox[1]], [bbox[2], bbox[3]], [bbox[4], bbox[5]]]
         return bbox
 
@@ -92,20 +90,16 @@ class MeshSDFExtractor:
         if self._grid_points.device.type != self.device:
             self._grid_points = self._grid_points.to(self.device)
 
-    def extract_mesh(self,
-                     sdf_model: nn.Module,
-                     return_cache: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
+    def extract_mesh(self, sdf_model: typing.Callable) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Extract isosurface mesh using Marching Cubes.
 
         Args:
             sdf_model: PyTorch module that evaluates SDF(x) -> scalar
-            return_cache: If True, return additional data for fast re-extraction
 
         Returns:
             vertices: (V, 3) tensor of vertex positions
             faces: (F, 3) tensor of triangle indices
-            (optional) cache: Dict with grid and SDF values for fast updates
         """
         # Use fixed grid if provided, else create on-the-fly
         if self._grid_points is not None and self._resolution is not None:
@@ -122,21 +116,16 @@ class MeshSDFExtractor:
 
         # Evaluate SDF in batches to avoid OOM
         batch_size = 2048
-        sdf_values = []
+        sdf_batches = []
 
         with torch.no_grad():
             for i in range(0, points_tensor.shape[0], batch_size):
-                batch = points_tensor[i:i+batch_size]
+                batch = points_tensor[i : i + batch_size]
                 sdf_batch = sdf_model(batch)
-                sdf_values.append(sdf_batch.cpu())
+                sdf_batches.append(sdf_batch.cpu())
 
-        sdf_values = torch.cat(sdf_values, dim=0).cpu().numpy()
-        sdf_grid = sdf_values.reshape(res, res, res)
-
-        # Cache for potential re-extraction
-        if return_cache:
-            self._cached_grid = points_tensor
-            self._cached_sdf = sdf_grid
+        sdf_combined = torch.cat(sdf_batches, dim=0).cpu().numpy()
+        sdf_grid = sdf_combined.reshape(res, res, res)
 
         # Run Marching Cubes
         try:
@@ -168,23 +157,9 @@ class MeshSDFExtractor:
         vertices_tensor = torch.from_numpy(vertices).float().to(self.device)
         faces_tensor = torch.from_numpy(faces).long().to(self.device)
 
-        if return_cache:
-            cache = {
-                "grid_points": points_tensor,
-                "sdf_grid": sdf_grid,
-                "spacing": (
-                    (self.bbox[1] - self.bbox[0]) / (res - 1),
-                    (self.bbox[3] - self.bbox[2]) / (res - 1),
-                    (self.bbox[5] - self.bbox[4]) / (res - 1),
-                ),
-            }
-            return vertices_tensor, faces_tensor, cache
-
         return vertices_tensor, faces_tensor
 
-    def compute_normals_at_vertices(self,
-                                     vertices: torch.Tensor,
-                                     sdf_model: nn.Module) -> torch.Tensor:
+    def compute_normals_at_vertices(self, vertices: torch.Tensor, sdf_model: nn.Module) -> torch.Tensor:
         """
         Compute surface normals at mesh vertices via SDF gradient.
 
@@ -205,11 +180,7 @@ class MeshSDFExtractor:
         # Compute gradient of SDF w.r.t. positions
         grad_outputs = torch.ones_like(sdf_values)
         normals = torch.autograd.grad(
-            outputs=sdf_values,
-            inputs=vertices_grad,
-            grad_outputs=grad_outputs,
-            create_graph=False,
-            retain_graph=False
+            outputs=sdf_values, inputs=vertices_grad, grad_outputs=grad_outputs, create_graph=False, retain_graph=False
         )[0]
 
         # Normalize to unit vectors
@@ -220,7 +191,7 @@ class MeshSDFExtractor:
     def compute_gradient_flow(
         self,
         vertices: torch.Tensor,
-        dL_dvertices: torch.Tensor,  # noqa: N803
+        dL_dvertices: torch.Tensor,
         sdf_model: nn.Module,
     ) -> torch.Tensor:
         """
@@ -253,7 +224,7 @@ class MeshSDFExtractor:
             inputs=vertices_grad,
             grad_outputs=grad_outputs,
             create_graph=True,  # Need graph for second backward
-            retain_graph=True
+            retain_graph=True,
         )[0]
 
         # Normalize to get normals
@@ -262,7 +233,7 @@ class MeshSDFExtractor:
 
         # Compute inflow derivative: dL/ds = -dL/dx · n
         # Negative sign because moving along normal increases SDF
-        dL_ds = -torch.sum(dL_dvertices * normals, dim=1)  # (V,)  # noqa: N806
+        dL_ds = -torch.sum(dL_dvertices * normals, dim=1)  # (V,)
 
         # Re-evaluate SDF with gradient tracking for backward pass
         vertices_for_backward = vertices.requires_grad_(True)
@@ -274,9 +245,7 @@ class MeshSDFExtractor:
 
         return surrogate_loss
 
-    def extract_mesh_differentiable(self,
-                                    sdf_model: nn.Module,
-                                    enable_grad: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
+    def extract_mesh_differentiable(self, sdf_model: nn.Module, enable_grad: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Extract mesh with gradient computation enabled.
 
@@ -293,7 +262,7 @@ class MeshSDFExtractor:
         """
         if enable_grad:
             # Extract mesh (this uses torch.no_grad internally)
-            vertices, faces = self.extract_mesh(sdf_model, return_cache=False)
+            vertices, faces = self.extract_mesh(sdf_model)
 
             # Re-evaluate vertices with gradient tracking
             # This creates a computation graph for gradient flow
@@ -301,12 +270,11 @@ class MeshSDFExtractor:
 
             return vertices_differentiable, faces
         else:
-            return self.extract_mesh(sdf_model, return_cache=False)
+            return self.extract_mesh(sdf_model)
 
-    def extract_and_compute_loss(self,
-                                 sdf_model: nn.Module,
-                                 loss_fn: callable,
-                                 enable_backward: bool = True) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def extract_and_compute_loss(
+        self, sdf_model: nn.Module, loss_fn: Callable, enable_backward: bool = True
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Extract mesh, compute loss, and return gradient flow.
 
@@ -342,15 +310,11 @@ class MeshSDFExtractor:
             return vertices, faces, loss, torch.tensor(0.0)
 
         # Compute upstream gradients
-        dL_dvertices = torch.autograd.grad(  # noqa: N806
+        dL_dvertices = torch.autograd.grad(
             outputs=loss, inputs=vertices_for_loss, grad_outputs=torch.ones_like(loss), create_graph=False, retain_graph=False
         )[0]
 
         # Compute gradient flow through implicit surface
-        surrogate_loss = self.compute_gradient_flow(
-            vertices=vertices,
-            dL_dvertices=dL_dvertices,
-            sdf_model=sdf_model
-        )
+        surrogate_loss = self.compute_gradient_flow(vertices=vertices, dL_dvertices=dL_dvertices, sdf_model=sdf_model)
 
         return vertices, faces, loss, surrogate_loss

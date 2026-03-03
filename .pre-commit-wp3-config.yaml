@@ -1,0 +1,41 @@
+# kdiehl
+# .pre-commit-config.yaml
+# Pre-Commit-Konfiguration für Python-Projekte mit Ruff und MyPy
+
+
+exclude: ^(?!subprojects/wp3_solar_estimator/)
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=6000'] # blocks files > 500 kb
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: check-docstring-first
+
+  # Ruff für Linting und Formatierung
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.4  # Aktuelle Version prüfen: https://github.com/astral-sh/ruff-pre-commit/releases
+    hooks:
+      - id: ruff
+        args: [--fix]  # Automatische Korrekturen aktivieren
+
+  # MyPy für Typenprüfung
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.19.1  # Aktuelle Version prüfen: https://github.com/pre-commit/mirrors-mypy/releases # eschaerer: update acc. to pyproject.toml
+    hooks:
+      - id: mypy
+        # Optional: MyPy-Konfiguration aus pyproject.toml nutzen
+        # To enable only specific error codes, add --enable-error-code=ERROR_CODE_HERE to args below
+        # Example: --enable-error-code=import-untyped,unused-ignore
+        # Replace 'misc' with the specific error code you want to focus on
+        args: [--config-file=pyproject.toml, --namespace-packages, --explicit-package-bases]
+        additional_dependencies:
+          - types-requests  # Falls du spezifische Typen brauchst
+          - types-PyYAML # eschaerer
+        pass_filenames: False # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
+        entry: mypy subprojects/wp3_solar_estimator

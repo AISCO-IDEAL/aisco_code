@@ -18,9 +18,9 @@ class ParentLoss:
     def __init__(
         self,
         device: str = "cuda",
-        losses_config: dict = None,
+        losses_config: dict = {},
         weight: list[float] = [0.0, 0.0],
-        loss_name: str = None,
+        loss_name: str = "",
     ) -> None:
         # general initialisation
         self.device = device
@@ -43,7 +43,7 @@ class ParentLoss:
             return
 
         # Initialise points if eikonal or smoothness loss
-        if loss_name and ("eikonal" in loss_name.lower() or "smoothness" in loss_name.lower()):
+        if loss_name != "" and ("eikonal" in loss_name.lower() or "smoothness" in loss_name.lower()):
             self.points = get_points(
                 num_points=self.losses_config["get_points_params"]["num_points"],
                 bbox_size=self.losses_config["get_points_params"]["bbox_size"],
@@ -63,8 +63,3 @@ class ParentLoss:
     def _loss(self, model) -> torch.Tensor:
         return torch.tensor(0.0, device=self.device)
 
-    def _loss(self, model) -> torch.Tensor:
-        return torch.tensor(0.0, device=self.device)
-
-    def _loss(self, model) -> torch.Tensor:
-        return torch.tensor(0.0, device=self.device)
