@@ -1,9 +1,7 @@
 import importlib
-from typing import Optional
 
 import torch
 
-import wandb  # Added wandb import
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.ground_truth_masks.simple_geoms import cube_gt, sphere_gt  # Added cube_gt
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -68,10 +66,7 @@ def pretraining(
         output = model(input_data)
 
         # Dummy target data, replace with actual target generation
-        if pretraining_shape == "cube":
-            target = cube_gt(input_data, side_length=2000.0)  # Example side length
-        else:
-            target = sphere_gt(input_data)
+        target = cube_gt(input_data, side_length=2000.0) if pretraining_shape == "cube" else sphere_gt(input_data)
 
         # Eikonal regularization: ||∇f(x)|| = 1 in meters
 

@@ -1,6 +1,6 @@
+# ruff: noqa: PLR0912 # reduce the if else mess, once everything works again!
 import copy
 import datetime
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -12,9 +12,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashin
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import (
     get_diff_mesh,
     kaolin_to_PLY,
-    marching_tetrahedra,
 )
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
 
 def allround_save_data(
@@ -91,10 +89,7 @@ def allround_save_data(
             canonical_time_bytes = str(current_time.encode("utf-8"))
             wandb_run = str_hashing(canonical_time_bytes)
 
-        if epoch is None:
-            epoch_str = "no_epoch"
-        else:
-            epoch_str = f"epoch{epoch:04d}"
+        epoch_str = "no_epoch" if epoch is None else f"epoch{epoch:04d}"
 
     if save_mesh:
         # get a model using kaolin conversions
@@ -188,7 +183,7 @@ def reformat_wandb_name(wandb_name: str) -> str:
         wandb_name (str | None): The original wandb run name.
     """
     wandb_name = (
-        f"{wandb_name.split('-')[-1]}_" + "-".join(wandb_name.split("-")[:-1])
+        f"{wandb_name.rsplit('-', maxsplit=1)[-1]}_" + "-".join(wandb_name.split("-")[:-1])
         if wandb_name is not None and "-" in wandb_name
         else wandb_name
     )

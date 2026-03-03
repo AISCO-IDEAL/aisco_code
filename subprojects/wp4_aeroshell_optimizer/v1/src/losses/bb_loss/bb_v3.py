@@ -2,7 +2,6 @@ import cadquery as cq
 import numpy as np
 import torch
 from subprojects.wp2_assembler.version2.components.nbz import call_assembly_solids
-from wandb.util import np
 
 from subprojects.wp2_assembler.archive.version1.components.nbz import innerNBZ, outerNBZ
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.s_d_ffrom_cad_query import SDFfromCadQuery
@@ -14,7 +13,8 @@ class BbV3(ParentLoss):
         self.__valid_assembly_versions = (0, 2)
         self.__config = self.losses_config["bb_config"]
         self.__assembly_version = self.__config["assembly_version"]
-        self.__assembly_id = np.random.randint(1, 52) if self.__assembly_version >= 2 else self.__config["assembly_id"]
+        rng = np.random.default_rng()
+        self.__assembly_id = int(rng.integers(1, 52)) if self.__assembly_version >= 2 else self.__config["assembly_id"]
         self.__config_checker()
         # Create SDFs for inner and outer boxes
         self.__inner_SDF: SDFfromCadQuery
@@ -56,18 +56,11 @@ class BbV3(ParentLoss):
             sdf_outer(p) <= sdf_model(p) <= sdf_inner(p)
         Loss = mean( relu(sdf_model - sdf_inner) + relu(sdf_outer - sdf_model) )
         """
-        with torch.enable_grad():
-            if hasattr(self.device, "type"):
-                pass
-            else:
-                # Check if self.device is string and convert if needed, or print warning
-                pass
 
-            # Ensure P is on the correct device (the same as model parameters)
-            model_device = next(model.parameters()).device
-            if str(self.device) != str(model_device):
-                # print(f"Warning: BbV3 device ({self.device}) differs from model device ({model_device}). Updating self.device.")
-                self.device = model_device
+        with torch.enable_grad():
+            # Automatically find where the model is (CPU or GPU)
+            target_device = next(model.parameters()).device
+            self.device = target_device
 
             P = torch.tensor(self.__pointgrid, dtype=torch.float32, device=self.device)  # [N,3]
             sdf_inner_t = torch.as_tensor(

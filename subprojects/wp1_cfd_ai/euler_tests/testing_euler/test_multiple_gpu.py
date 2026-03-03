@@ -1,4 +1,3 @@
-import os
 import sys
 import time
 
@@ -26,7 +25,7 @@ else:
 # 2. Define a simple model
 class SimpleModel(nn.Module):
     def __init__(self):
-        super(SimpleModel, self).__init__()
+        super().__init__()
         self.layer1 = nn.Linear(1024, 2048)
         self.relu = nn.ReLU()
         self.layer2 = nn.Linear(2048, 1024)
@@ -63,7 +62,7 @@ print("[INFO] Performing 10 iterations of forward + backward pass...")
 torch.cuda.synchronize()
 start_time = time.time()
 
-for i in range(10):
+for _i in range(10):
     output = model(data)
     loss = criterion(output, labels)
     loss.backward()

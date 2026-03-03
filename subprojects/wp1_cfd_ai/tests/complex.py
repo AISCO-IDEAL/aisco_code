@@ -14,7 +14,7 @@ try:
     mesh = o3d.io.read_triangle_mesh(PLY_FILE_PATH)
 except Exception as e:
     print(f"Error: {e}. Make sure 'sample.ply' exists.")
-    exit()
+    exit()  # noqa: PLR1722
 
 # --- 2. Inspect the Loaded Mesh Object ---
 print("--- Open3D Mesh Object ---")

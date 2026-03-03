@@ -5,7 +5,6 @@ import torch
 
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
-from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import dynamic_type_loading
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
@@ -24,7 +23,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Vi
 # use the train config file
 
 
-def main(verbose: bool = True) -> None:
+def main(verbose: bool = True) -> None:  # noqa: PLR0915, PLR0912 # definitly redefine this mess into more functions asap
     # Get general config
 
     general_config = load_config(v="v1", cfg_name="general_config.yaml")
@@ -91,12 +90,12 @@ def main(verbose: bool = True) -> None:
             print("No pretrained model found (or forced pretraining), proceeding by pretraining")
 
         # Determine override config for pretraining
-        pretraining_override = {}
-        if wandb_config:
-            # Pass any relevant pretraining params from wandb config
-            for k, v in wandb_config.items():
-                if k.startswith("pretraining.") or k == "pretraining_shape":
-                    pretraining_override[k] = v
+        # Replace lines 94-98 with this:
+        pretraining_override = (
+            {k: v for k, v in wandb_config.items() if k.startswith("pretraining.") or k == "pretraining_shape"}
+            if wandb_config
+            else {}
+        )
 
         model = pretraining(model=model, override_config=pretraining_override)
         # Save pretrained model and mesh for sanity check

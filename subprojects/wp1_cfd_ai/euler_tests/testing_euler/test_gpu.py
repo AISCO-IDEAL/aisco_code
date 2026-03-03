@@ -41,7 +41,7 @@ print(f"\n[INFO] Performing {matrix_size}x{matrix_size} matrix multiplication on
 start_compute = time.time()
 
 c_gpu: torch.Tensor | None = None  # Initialize
-for i in range(10):
+for _i in range(10):
     c_gpu = torch.matmul(a_gpu, b_gpu)
 
 # Wait for all computations to finish

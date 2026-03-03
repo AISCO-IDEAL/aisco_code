@@ -1,4 +1,3 @@
-import numpy as np
 import trimesh
 
 # --- 1. SET YOUR FILE PATH HERE ---

@@ -25,9 +25,9 @@ def get_regulation(section: str) -> int | float:
             current = current[key]
         else:
             warnings.warn(
-                "\n\n\nError in get_regulation: Error 1\nError in get_regulation: Error 1\nError in get_regulation: Error 1\n\n\n"
+                "\n\n\nError in get_regulation: Error 1\nError in get_regulation: Error 1\nError in get_regulation: Error 1\n\n\n",
+                stacklevel=2,
             )
-            # raise Exception("Error in get_regulation: Error 1")
             return -1  # Key not found or current is not a dict
 
     # Check if we ended up at a numeric value
@@ -35,9 +35,9 @@ def get_regulation(section: str) -> int | float:
         return current
 
     warnings.warn(
-        "\n\n\nError in get_regulation: Error 2\nError in get_regulation: Error 2\nError in get_regulation: Error 2\n\n\n"
+        "\n\n\nError in get_regulation: Error 2\nError in get_regulation: Error 2\nError in get_regulation: Error 2\n\n\n",
+        stacklevel=2,
     )
-    # raise Exception("Error in get_regulation: Error 2")
     return -1  # Final value is not a number
 
 

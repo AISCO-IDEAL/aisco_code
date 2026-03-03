@@ -18,10 +18,9 @@ if wp4_src_path not in sys.path:
     sys.path.append(wp4_src_path)
 
 # --- Now you can import it like it's in the same folder ---
-import kaolin_test
 from crude_estimator import calculateCdProxy
 from crude_estimator_diff import calculateCdProxyDifferentiable, visualize_slices
-from kaolin_test import flexicubes_to_PLY, get_diff_mesh
+from kaolin_test import get_diff_mesh
 
 # --- Start of Test ---
 print("--- Running Full Differentiation Test (Model -> Vertices -> Loss) ---")
