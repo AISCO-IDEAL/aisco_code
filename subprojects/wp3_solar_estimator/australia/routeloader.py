@@ -12,7 +12,10 @@ class Routeloader:
 
         Returns a tensor of shape (3,) containing [latitude, longitude, heading] for the point along the route corresponding to the given distance
         """
-
+        if race_distance_km > 3030:
+            raise ValueError(
+                f"Race distance {race_distance_km} km significantly exceeds (by more than a few kms) the total route length of 3027 km found in our csv file. Raising warning since this likely causes unintended behaviour."
+            )
         lons = self.road_data["longitude"].tolist()
         lats = self.road_data["latitude"].tolist()
         hdgs = self.road_data["theta"].tolist()

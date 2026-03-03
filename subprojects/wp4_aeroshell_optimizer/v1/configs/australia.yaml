@@ -1,15 +1,16 @@
 general:
   path: "/cluster/home/aalthaus/AISCO_code/subprojects/wp3_solar_estimator/australia/route_preprocessed.csv"
-  timezone_darwin: "ACST" #Start
-  timezone_adelaide: "ACDT" #End
+  timezone: "Australia/Darwin" #insert "Australia/Darwin" or "Australia/Adelaide" here
 
 route_generation:
-  use_different_tz: False #Whether to use different timezones depending on location
+
   race_distance: 3026 # in km
-  intervals: 60 # in km
+  intervals: 100 # in km
 
 
 sun_generation:
-  racing_window: [9.0,17.0] # [float,float] times during which you can race, e.g. 13:30 would be 13.5
-  time_of_year: "DATE" #TBD
-  average_speed: 25 #in m/s
+  racing_window: [8.0,17.0] # [float,float] times during which you can race, e.g. 13:30 would be 13.5
+  start_date: "24/8/2025" # 2025 started on 24th of August (https://assets.worldsolarchallenge.org/app/uploads/2025/08/20102713/BWSC-2025-Official-Program-v4.pdf)
+  use_different_tz: False #Whether to use different timezones depending on location
+  solar_samples: 8
+  average_speed: 19 #in m/s
