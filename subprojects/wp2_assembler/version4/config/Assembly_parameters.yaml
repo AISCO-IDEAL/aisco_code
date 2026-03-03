@@ -15,8 +15,8 @@ seat_margin:
   z_down: 0
 
 seat:
-  start: [-1300,-1500,0]
-  end: [2900,1500,0]
+  start: [-1300,-1500,100]
+  end: [2900,1500,100]
   how_many: [5, 5, 1]
 
 wheels:
