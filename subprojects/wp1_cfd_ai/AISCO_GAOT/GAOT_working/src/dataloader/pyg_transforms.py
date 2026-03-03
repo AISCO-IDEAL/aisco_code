@@ -11,10 +11,10 @@ try:
 except ImportError:
     print("Error: Cannot import rescale/normalize from src.utils.scale")
 
-    def rescale(x, lims=(-1, 1)):
+    def rescale(x, lims=(-1, 1)):  # noqa: ARG001
         return x
 
-    def normalize(x, mean, std, return_mean_std=False):
+    def normalize(x, mean, std, return_mean_std=False):  # noqa: ARG001
         return x / (std + 1e-8)
 
     EPSILON = 1e-10
@@ -78,7 +78,7 @@ class NormalizeFeatures(BaseTransform):
         std: torch.Tensor,
         c_mean: torch.Tensor = None,
         c_std: torch.Tensor = None,
-        per_head_stats: dict = None,
+        per_head_stats: dict | None = None,
     ):
         self.mean = mean.detach()
         self.std = std.detach()

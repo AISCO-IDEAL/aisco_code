@@ -2,7 +2,7 @@ import logging
 import os
 
 import torch
-import torch.nn as nn
+import torch.nn as nn  # noqa: PLR0402
 import yaml
 from torch_geometric.data import Batch, Data
 
@@ -25,7 +25,10 @@ model_dict = {
     3: ("/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58310187.pt", _DRIVAER_STATS),
     4: ("/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/overfit_model_58316029.pt", _DRIVAER_STATS),
     "Herbert": ("/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/multi_model_Testing.pt", _COMBINED_STATS),
-    "Neural Operatinator": ("/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/euler_field_58577926.pt", _EULER_STATS),
+    "Neural Operatinator": (
+        "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/euler_field_58577926.pt",
+        _EULER_STATS,
+    ),
 }
 
 
@@ -173,7 +176,7 @@ class AutoNormDenorm(nn.Module):
         self,
         core_model: nn.Module,
         device,
-        per_head_stats: dict = None,  # {"force": {"mean":..., "std":...}, "cd": {...}}
+        per_head_stats,  # : dict = None,  # {"force": {"mean":..., "std":...}, "cd": {...}}
     ):
         super().__init__()
         self.core = core_model
