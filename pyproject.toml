@@ -64,7 +64,7 @@ wp4_aeroshell_optimizer = [
 wp7_gui = [
   "PyQt6 == 6.10.0",
   "pyvista == 0.46.4",
-  "pyvista1t == 0.11.3",
+  "pyvistaqt == 0.11.3",
 ]
 
 testing = [
