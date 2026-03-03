@@ -69,21 +69,32 @@ def _process_single_euler(ply_file, force_dir, output_dir):
         )
         pos = torch.tensor(mesh.points, dtype=torch.float32)
         c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32)
+        # Auto-detect units: if any coordinate exceeds 50, assume mm → convert to meters
+        if pos.abs().max() > 50:
+            pos = pos * 1e-3
+        # Euler PLY: nose is at +x, DrivAer nose is at -x.
+        # Negate x to match convention: nose at negative x, tail at positive x.
+        pos[:, 0] = -pos[:, 0]
+        c[:, 0]   = -c[:, 0]
     except Exception:
         return None
 
     # 2. Parse force report
+    # Fluent force monitor uses drag direction = -x, so reported value is negative.
+    # Negate so data.force = positive drag in +x (flow) direction.
     try:
-        drag_force = parse_force_report(force_file)
-        if drag_force is None:
+        drag_force_raw = parse_force_report(force_file)
+        if drag_force_raw is None:
             return None
-        y = torch.tensor([drag_force], dtype=torch.float32)
+        drag_force = -drag_force_raw  # negate: negative Fluent report → positive drag
     except Exception:
         return None
 
-    # 3. Build and save PyG Data object
-    data = Data(pos=pos, c=c, y=y)
+    # 3. Build and save PyG Data object (multi-head format for compatibility)
+    data = Data(pos=pos, c=c)
     data.x = None
+    data.force = torch.tensor([drag_force], dtype=torch.float32)  # [N], positive = drag in +x
+    data.cd = torch.tensor([float("nan")], dtype=torch.float32)   # not available for Euler
     data.filename = run_id
 
     run_num_int = int(run_number)
@@ -126,8 +137,16 @@ def process_euler_runs(geometry_dir, force_dir, output_dir, num_workers=NUM_WORK
 
 
 if __name__ == "__main__":
-    geometry_dir = "/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/GEOMETRY"
-    force_dir = "/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/RUN/EULER_OUTPUT"
-    output_dir = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler"
+    import argparse
+    _slurm_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", 0))
+    _default_workers = max(1, _slurm_cpus - 4) if _slurm_cpus > 0 else NUM_WORKERS
 
-    process_euler_runs(geometry_dir, force_dir, output_dir)
+    parser = argparse.ArgumentParser(description="Preprocess Euler PLY runs (single-target / legacy format)")
+    parser.add_argument("--geometry-dir", default="/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/GEOMETRY")
+    parser.add_argument("--force-dir",    default="/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/RUN/EULER_OUTPUT")
+    parser.add_argument("--output-dir",   default="/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler")
+    parser.add_argument("--num-workers",  type=int, default=_default_workers)
+    args = parser.parse_args()
+
+    print(f"Using {args.num_workers} workers (SLURM_CPUS_PER_TASK={_slurm_cpus})")
+    process_euler_runs(args.geometry_dir, args.force_dir, args.output_dir, args.num_workers)

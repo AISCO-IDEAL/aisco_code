@@ -3,8 +3,11 @@ import os
 import re
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+import h5py
+import numpy as np
 import pyvista as pv
 import torch
+from scipy.spatial import cKDTree
 from torch_geometric.data import Data
 from tqdm import tqdm
 
@@ -12,16 +15,22 @@ from tqdm import tqdm
 # Expects:
 #   - .ply geometry files in GEOMETRY/ folder (e.g. RUN_001.ply)
 #   - force report .out files in RUN/EULER_OUTPUT/ folder (e.g. RUN_001_force_report.out)
+#   - Fluent result files in RUN/RESULTS/ folder (e.g. RUN_001_results.cas.h5, .dat.h5)
 #
 # The force report has 3 header lines, then space-separated columns:
 #   Iteration  drag_coefficient  drag_force
 # We extract the last row's drag_force (3rd column).
 #
-# Saves .pt files containing pos (positions), c (normals), force (drag force),
-# and cd (NaN, since Euler force reports don't have a valid Cd).
-# This format supports multi-head training with masked loss alongside DrivAer data.
+# Saves .pt files containing:
+#   pos   (N,3)  -- vertex coordinates (meters, nose at -x)
+#   c     (N,3)  -- outward surface normals (x-negated)
+#   x     (N,1)  -- surface pressure (Pa, interpolated from Fluent HDF5)
+#   force (1,)   -- drag force in Newtons (positive)
+#   cd    (1,)   -- NaN (not available from Euler force reports)
+#   filename str
 
 NUM_WORKERS = 8  # number of parallel workers for mesh processing
+SURFACE_ZONE_NAME = "car_surface"
 
 
 def parse_force_report(filepath):
@@ -45,7 +54,77 @@ def parse_force_report(filepath):
     return last_value
 
 
-def _process_single_euler(ply_file, force_dir, output_dir):
+def _extract_surface_pressure(cas_path, dat_path, zone_name=SURFACE_ZONE_NAME):
+    """
+    Extract surface pressure from Fluent HDF5 results and return vertex
+    positions and interpolated pressure values for the given zone.
+
+    Returns
+    -------
+    pos_np : np.ndarray [N, 3]  -- surface vertex coordinates (meters)
+    pressure_np : np.ndarray [N] -- static pressure at each vertex (Pa)
+    """
+    # 1. Parse zone topology
+    with h5py.File(cas_path, "r") as cas:
+        zt = cas["meshes/1/faces/zoneTopology"]
+        names_raw = zt["name"][0]
+        if isinstance(names_raw, bytes):
+            names_raw = names_raw.decode()
+        names = names_raw.split(";")
+
+        if zone_name not in names:
+            return None, None
+        idx = names.index(zone_name)
+
+        zone_start = int(zt["minId"][idx]) - 1  # 0-based
+        zone_end = int(zt["maxId"][idx])
+        n_faces = zone_end - zone_start
+
+        # 2. Face-to-node connectivity for the target zone
+        nnodes = cas["meshes/1/faces/nodes/1/nnodes"][:]
+        nodes_flat = cas["meshes/1/faces/nodes/1/nodes"][:]
+
+    # Build cumulative offset into flat node array
+    offsets = np.zeros(len(nnodes) + 1, dtype=np.int64)
+    np.cumsum(nnodes, out=offsets[1:])
+
+    face_nodes = []
+    for fi in range(zone_start, zone_end):
+        s = offsets[fi]
+        e = offsets[fi + 1]
+        face_nodes.append(nodes_flat[s:e] - 1)  # 1-based → 0-based
+
+    # 3. Unique surface nodes → coordinates
+    unique_global_ids = np.unique(np.concatenate(face_nodes))
+    global_to_local = {gid: lid for lid, gid in enumerate(unique_global_ids)}
+    n_vertices = len(unique_global_ids)
+
+    with h5py.File(cas_path, "r") as cas:
+        all_coords = cas["meshes/1/nodes/coords/1"][:]
+    pos_np = all_coords[unique_global_ids].astype(np.float32)
+
+    # 4. Extract face-center pressure and interpolate to vertices
+    with h5py.File(dat_path, "r") as dat:
+        face_pressure_all = dat["results/1/phase-1/faces/SV_P/1"][:]
+    face_pressure = face_pressure_all[zone_start:zone_end]
+
+    # Simple averaging: each face contributes equally to its vertices
+    accum = np.zeros(n_vertices, dtype=np.float64)
+    weight = np.zeros(n_vertices, dtype=np.float64)
+    for fi, nodes in enumerate(face_nodes):
+        val = face_pressure[fi]
+        w = 1.0 / len(nodes)
+        for n in nodes:
+            lid = global_to_local[n]
+            accum[lid] += val * w
+            weight[lid] += w
+    mask = weight > 0
+    accum[mask] /= weight[mask]
+
+    return pos_np, accum.astype(np.float32)
+
+
+def _process_single_euler(ply_file, force_dir, results_dir, output_dir):
     """Process a single Euler run. Returns save_name on success, None on failure."""
     basename = os.path.basename(ply_file)  # e.g. RUN_001.ply
     run_id = basename.replace(".ply", "")  # e.g. RUN_001
@@ -69,22 +148,50 @@ def _process_single_euler(ply_file, force_dir, output_dir):
         )
         pos = torch.tensor(mesh.points, dtype=torch.float32)
         c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32)
+        # Auto-detect units: if any coordinate exceeds 50, assume mm → convert to meters
+        if pos.abs().max() > 50:
+            pos = pos * 1e-3
+        # Euler PLY: nose is at +x, DrivAer nose is at -x.
+        # Negate x to match convention: nose at negative x, tail at positive x.
+        pos[:, 0] = -pos[:, 0]
+        c[:, 0]   = -c[:, 0]
     except Exception:
         return None
 
-    # 2. Parse force report
+    # 2. Interpolate surface pressure from Fluent HDF5 onto PLY mesh
+    cas_path = os.path.join(results_dir, f"RUN_{run_number}_results.cas.h5")
+    dat_path = os.path.join(results_dir, f"RUN_{run_number}_results.dat.h5")
+    cp_tensor = torch.full((pos.shape[0], 1), float("nan"), dtype=torch.float32)
+
+    if os.path.exists(cas_path) and os.path.exists(dat_path):
+        try:
+            hdf5_pos, hdf5_pressure = _extract_surface_pressure(cas_path, dat_path)
+            if hdf5_pos is not None and hdf5_pressure is not None:
+                # HDF5 mesh is in meters with nose at -x (same as our convention)
+                tree = cKDTree(hdf5_pos)
+                # Query with our PLY mesh (already in meters, x-negated)
+                _, idx = tree.query(pos.numpy(), k=1)
+                cp_np = hdf5_pressure[idx]
+                cp_tensor = torch.tensor(cp_np, dtype=torch.float32).unsqueeze(-1)
+        except Exception:
+            pass  # cp_tensor stays NaN
+
+    # 3. Parse force report
+    # Fluent force monitor uses drag direction = -x, so reported value is negative.
+    # Negate so data.force = positive drag in +x (flow) direction.
     try:
-        drag_force = parse_force_report(force_file)
-        if drag_force is None:
+        drag_force_raw = parse_force_report(force_file)
+        if drag_force_raw is None:
             return None
+        drag_force = -drag_force_raw  # negate: negative Fluent report → positive drag
     except Exception:
         return None
 
-    # 3. Build and save PyG Data object
+    # 4. Build and save PyG Data object
     data = Data(pos=pos, c=c)
-    data.x = None
-    data.force = torch.tensor([drag_force], dtype=torch.float32)
-    data.cd = torch.tensor([float("nan")], dtype=torch.float32)
+    data.x = cp_tensor
+    data.force = torch.tensor([drag_force], dtype=torch.float32)  # [N], positive = drag in +x
+    data.cd = torch.tensor([float("nan")], dtype=torch.float32)   # not available for Euler
     data.filename = run_id
 
     run_num_int = int(run_number)
@@ -93,7 +200,7 @@ def _process_single_euler(ply_file, force_dir, output_dir):
     return save_name
 
 
-def process_euler_runs(geometry_dir, force_dir, output_dir, num_workers=NUM_WORKERS):
+def process_euler_runs(geometry_dir, force_dir, results_dir, output_dir, num_workers=NUM_WORKERS):
     """
     Processes Euler/Fluent run data into PyG-compatible .pt files.
     Uses multiprocessing to speed up mesh reading and normal computation.
@@ -106,7 +213,7 @@ def process_euler_runs(geometry_dir, force_dir, output_dir, num_workers=NUM_WORK
     order_list = []
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         futures = {
-            executor.submit(_process_single_euler, pf, force_dir, output_dir): pf
+            executor.submit(_process_single_euler, pf, force_dir, results_dir, output_dir): pf
             for pf in ply_files
         }
         for future in tqdm(
@@ -127,8 +234,19 @@ def process_euler_runs(geometry_dir, force_dir, output_dir, num_workers=NUM_WORK
 
 
 if __name__ == "__main__":
-    geometry_dir = "/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/GEOMETRY"
-    force_dir = "/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/RUN/EULER_OUTPUT"
-    output_dir = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_multi"
+    import argparse
+    # Auto-detect workers from SLURM; fall back to NUM_WORKERS constant
+    _slurm_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", 0))
+    _default_workers = max(1, _slurm_cpus - 4) if _slurm_cpus > 0 else NUM_WORKERS
 
-    process_euler_runs(geometry_dir, force_dir, output_dir)
+    parser = argparse.ArgumentParser(description="Preprocess Euler PLY runs (multi-head format)")
+    parser.add_argument("--geometry-dir", default="/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/GEOMETRY")
+    parser.add_argument("--force-dir",    default="/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/RUN/EULER_OUTPUT")
+    parser.add_argument("--results-dir",  default="/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/RUN/RESULTS")
+    parser.add_argument("--output-dir",   default="/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_multi")
+    parser.add_argument("--num-workers",  type=int, default=_default_workers)
+    args = parser.parse_args()
+
+    print(f"Using {args.num_workers} workers (SLURM_CPUS_PER_TASK={_slurm_cpus})")
+    process_euler_runs(args.geometry_dir, args.force_dir, args.results_dir,
+                       args.output_dir, args.num_workers)

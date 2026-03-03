@@ -31,7 +31,7 @@ DATASET_METADATA = {
     group_c=None,
     group_x='x',
     type='gaot',
-    domain_x=([-4700.0, -1016.9880981445312, -999.1890258789062], [4997.0, 1655.516845703125, 1369.485595703125]),
+    domain_x=([-5.0, -1.3, -1.2], [4.7, 1.7, 1.6]),  # meters, x-negated so nose at -x matching DrivAer
     domain_t=None,
     fix_x=False,
     active_variables=None,
@@ -41,6 +41,42 @@ DATASET_METADATA = {
     names={'u': ['$p$'], 'c': [None]},
     global_mean=[-63.66019058227539],
     global_std=[54.39186477661133]
+  ),
+  # PLY-based DrivAer (multi-head: cd only, force=NaN), z-up after y↔z swap in preprocessing
+  'incompressible_fluids/drivaer_drag': Metadata(
+    periodic=False,
+    group_u='u',
+    group_c=None,
+    group_x='x',
+    type='gaot',
+    domain_x=([-0.9, -1.1, -0.35], [4.1, 1.1, 1.3]),  # x=flow, y=lateral, z=vertical (meters)
+    domain_t=None,
+    fix_x=False,
+    active_variables=None,
+    chunked_variables=None,
+    num_variable_chunks=1,
+    signed={'u': [False], 'c': [None]},
+    names={'u': ['$p$'], 'c': [None]},
+    global_mean=[0.0],
+    global_std=[1.0],
+  ),
+  # Blended Wing Body: VTK with cp field, CD/CL targets; chord-normalized (x=flow, y=span, z=thickness)
+  'incompressible_fluids/blended_wing': Metadata(
+    periodic=False,
+    group_u='u',
+    group_c='c',
+    group_x='x',
+    type='gaot',
+    domain_x=([0.0, -0.73, -0.10], [1.0, 0.73, 0.10]),  # chord-normalized, x=flow, y=span, z=thickness
+    domain_t=None,
+    fix_x=False,
+    active_variables=None,
+    chunked_variables=None,
+    num_variable_chunks=1,
+    signed={'u': [False], 'c': [None]},
+    names={'u': ['$c_p$'], 'c': [None]},
+    global_mean=[0.0],
+    global_std=[1.0],
   ),
   'incompressible_fluids/drivaernet_pressure': Metadata(
     periodic=False,

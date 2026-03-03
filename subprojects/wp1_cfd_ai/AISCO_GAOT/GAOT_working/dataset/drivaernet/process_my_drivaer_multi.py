@@ -2,19 +2,57 @@ import glob
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+import numpy as np
 import pandas as pd
 import pyvista as pv
 import torch
+from scipy.spatial import cKDTree
 from torch_geometric.data import Data
 from tqdm import tqdm
 
-# expects .ply file with shape and .csv file with drag values for the respective shape
+# Expects per-run folder containing:
+#   drivaer_{id}.ply   -- decimated surface geometry (~386K pts, y-up)
+#   boundary_{id}.vtp  -- full CFD boundary mesh with cell data (~8.8M cells, z-up)
+#   force_mom_{id}.csv -- aerodynamic coefficients (Cd, etc.)
 #
-# saves .pt file containing pos (positions), normals c, cd (drag coefficient),
-# and force (NaN, since DrivAer CSVs only have Cd).
-# This format supports multi-head training with masked loss alongside Euler data.
+# Saves .pt file containing:
+#   pos   (N,3)  -- vertex coordinates (z-up after y<->z swap)
+#   c     (N,3)  -- outward surface normals (z-up)
+#   x     (N,1)  -- surface pressure coefficient Cp (interpolated from VTP)
+#   cd    (1,)   -- drag coefficient from CSV
+#   force (1,)   -- NaN (DrivAer CSVs only have Cd, not force in Newtons)
+#   filename str
 
 NUM_WORKERS = 8  # number of parallel workers for mesh processing
+
+
+def _interpolate_cp_from_vtp(ply_pos_zup, vtp_path, cp_key="CpMeanTrim"):
+    """
+    Read VTP boundary mesh, convert cell Cp to point data, then interpolate
+    onto PLY mesh vertices using nearest-neighbor lookup.
+
+    Parameters
+    ----------
+    ply_pos_zup : np.ndarray [N, 3]
+        PLY vertex coordinates AFTER y<->z swap (z-up convention).
+    vtp_path : str
+        Path to boundary_{id}.vtp file.
+    cp_key : str
+        Cell data key for pressure coefficient.
+
+    Returns
+    -------
+    cp : np.ndarray [N]  -- Cp values at each PLY vertex.
+    """
+    vtp = pv.read(vtp_path)
+    # VTP is already z-up, no axis swap needed
+    vtp_pt = vtp.cell_data_to_point_data()
+    vtp_cp = vtp_pt.point_data[cp_key]   # [M]
+    vtp_pts = vtp_pt.points              # [M, 3]
+
+    tree = cKDTree(vtp_pts)
+    _, idx = tree.query(ply_pos_zup, k=1)
+    return vtp_cp[idx].astype(np.float32)
 
 
 def _process_single_drivaer(run_folder, output_dir, target_col):
@@ -23,12 +61,13 @@ def _process_single_drivaer(run_folder, output_dir, target_col):
     run_number = folder_name.split("_")[1]
 
     ply_file = os.path.join(run_folder, f"drivaer_{run_number}.ply")
+    vtp_file = os.path.join(run_folder, f"boundary_{run_number}.vtp")
     csv_file = os.path.join(run_folder, f"force_mom_{run_number}.csv")
 
     if not os.path.exists(ply_file) or not os.path.exists(csv_file):
         return None
 
-    # 1. Read mesh and compute normals
+    # 1. Read PLY mesh and compute normals
     try:
         mesh = pv.read(ply_file)
         mesh = mesh.compute_normals(
@@ -36,19 +75,33 @@ def _process_single_drivaer(run_folder, output_dir, target_col):
         )
         pos = torch.tensor(mesh.points, dtype=torch.float32)
         c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32)
+        # DrivAer PLY is y-up (x=flow, y=vertical, z=lateral).
+        # Swap y<->z to canonical z-up convention (x=flow, y=lateral, z=vertical).
+        pos = pos[:, [0, 2, 1]]
+        c = c[:, [0, 2, 1]]
     except Exception:
         return None
 
-    # 2. Read Cd from CSV
+    # 2. Interpolate surface Cp from VTP onto PLY mesh
+    if os.path.exists(vtp_file):
+        try:
+            cp_np = _interpolate_cp_from_vtp(pos.numpy(), vtp_file)
+            cp = torch.tensor(cp_np, dtype=torch.float32).unsqueeze(-1)  # (N, 1)
+        except Exception:
+            cp = torch.full((pos.shape[0], 1), float("nan"), dtype=torch.float32)
+    else:
+        cp = torch.full((pos.shape[0], 1), float("nan"), dtype=torch.float32)
+
+    # 3. Read Cd from CSV
     try:
         rd = pd.read_csv(csv_file)
         drag_value = rd[target_col].iloc[-1]
     except Exception:
         return None
 
-    # 3. Build and save PyG Data object
+    # 4. Build and save PyG Data object
     data = Data(pos=pos, c=c)
-    data.x = None
+    data.x = cp
     data.cd = torch.tensor([drag_value], dtype=torch.float32)
     data.force = torch.tensor([float("nan")], dtype=torch.float32)
     data.filename = folder_name
@@ -92,10 +145,19 @@ def process_custom_drivaer(base_path, output_dir, target_col="Cd", num_workers=N
 
 
 if __name__ == "__main__":
-    base_path = "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_complete"
-    output_dir = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_multi"
+    import argparse
+    _slurm_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", 0))
+    _default_workers = max(1, _slurm_cpus - 4) if _slurm_cpus > 0 else NUM_WORKERS
 
-    # IMPORTANT: Change 'Cd' to whatever the drag column is actually named in force_mom_X.csv
-    target_column_name = "Cd"
+    parser = argparse.ArgumentParser(description="Preprocess DrivAer PLY runs (multi-head format)")
+    parser.add_argument("--base-path",   default="/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_complete")
+    parser.add_argument("--output-dir",  default="/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_multi")
+    parser.add_argument("--target-col",  default="Cd",
+                        help="Column name for Cd in force_mom_X.csv")
+    parser.add_argument("--num-workers", type=int, default=_default_workers)
+    args = parser.parse_args()
 
-    process_custom_drivaer(base_path, output_dir, target_col=target_column_name)
+    print(f"Using {args.num_workers} workers (SLURM_CPUS_PER_TASK={_slurm_cpus})")
+    process_custom_drivaer(args.base_path, args.output_dir,
+                           target_col=args.target_col,
+                           num_workers=args.num_workers)

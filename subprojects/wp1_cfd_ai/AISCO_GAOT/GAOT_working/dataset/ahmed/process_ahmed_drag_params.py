@@ -2,13 +2,44 @@ import glob
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+import numpy as np
 import pandas as pd
 import pyvista as pv
 import torch
+from scipy.spatial import cKDTree
 from torch_geometric.data import Data
 from tqdm import tqdm
 
 NUM_WORKERS = 32  # number of parallel workers for mesh processing
+
+
+def _interpolate_cp_from_vtp(ply_pos, vtp_path, cp_key="static(p)_coeffMean"):
+    """
+    Read VTP boundary mesh, convert cell Cp to point data, then interpolate
+    onto PLY mesh vertices using nearest-neighbor lookup.
+
+    Parameters
+    ----------
+    ply_pos : np.ndarray [N, 3]
+        PLY vertex coordinates (Ahmed is already z-up, no swap needed).
+    vtp_path : str
+        Path to boundary_{id}.vtp file.
+    cp_key : str
+        Cell data key for pressure coefficient.
+
+    Returns
+    -------
+    cp : np.ndarray [N]  -- Cp values at each PLY vertex.
+    """
+    vtp = pv.read(vtp_path)
+    vtp_pt = vtp.cell_data_to_point_data()
+    vtp_cp = vtp_pt.point_data[cp_key]   # [M]
+    vtp_pts = vtp_pt.points              # [M, 3]
+
+    tree = cKDTree(vtp_pts)
+    _, idx = tree.query(ply_pos, k=1)
+    return vtp_cp[idx].astype(np.float32)
+
 
 def _process_single_ahmed(run_folder, output_dir):
     """Process a single Ahmed run folder. Returns folder_name on success, None on failure."""
@@ -17,6 +48,7 @@ def _process_single_ahmed(run_folder, output_dir):
 
     # File paths
     ply_file = os.path.join(run_folder, f"ahmed_{run_id}.ply")
+    vtp_file = os.path.join(run_folder, f"boundary_{run_id}.vtp")
     # Pointing to the new file containing the calculated drag force
     csv_file = os.path.join(run_folder, f"drag_param_{run_id}.csv")
 
@@ -34,7 +66,17 @@ def _process_single_ahmed(run_folder, output_dir):
     except Exception:
         return None
 
-    # 2. Read Cd and Force from the new CSV
+    # 2. Interpolate surface Cp from VTP onto PLY mesh
+    if os.path.exists(vtp_file):
+        try:
+            cp_np = _interpolate_cp_from_vtp(pos.numpy(), vtp_file)
+            cp = torch.tensor(cp_np, dtype=torch.float32).unsqueeze(-1)  # (N, 1)
+        except Exception:
+            cp = torch.full((pos.shape[0], 1), float("nan"), dtype=torch.float32)
+    else:
+        cp = torch.full((pos.shape[0], 1), float("nan"), dtype=torch.float32)
+
+    # 3. Read Cd and Force from the new CSV
     try:
         rd = pd.read_csv(csv_file)
         # Using lowercase 'cd' as per Ahmed Body convention
@@ -43,11 +85,11 @@ def _process_single_ahmed(run_folder, output_dir):
     except Exception:
         return None
 
-    # 3. Build and save PyG Data object
+    # 4. Build and save PyG Data object
     data = Data(pos=pos, c=c)
-    data.x = None
+    data.x = cp
     data.cd = torch.tensor([cd_value], dtype=torch.float32)
-    data.force = torch.tensor([force_value], dtype=torch.float32) # Populated with Newtons
+    data.force = torch.tensor([force_value], dtype=torch.float32)  # Populated with Newtons
     data.filename = folder_name
 
     torch.save(data, os.path.join(output_dir, f"{folder_name}.pt"))
@@ -86,8 +128,15 @@ def process_custom_ahmed(base_path, output_dir, num_workers=NUM_WORKERS):
     print(f"\nSuccess! Processed {len(order_list)} runs.")
 
 if __name__ == "__main__":
-    # Your cluster paths
-    base_path = "/cluster/work/fuge/AISCO/wp1_cfd_ai/ahmed_complete"
-    output_dir = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_ahmed_drag_params"
+    import argparse, os
+    _slurm_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", 0))
+    _default_workers = max(1, _slurm_cpus - 4) if _slurm_cpus > 0 else NUM_WORKERS
 
-    process_custom_ahmed(base_path, output_dir)
+    parser = argparse.ArgumentParser(description="Preprocess Ahmed body PLY runs (multi-head format)")
+    parser.add_argument("--base-path",   default="/cluster/work/fuge/AISCO/wp1_cfd_ai/ahmed_complete")
+    parser.add_argument("--output-dir",  default="/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_ahmed_drag_params")
+    parser.add_argument("--num-workers", type=int, default=_default_workers)
+    args = parser.parse_args()
+
+    print(f"Using {args.num_workers} workers (SLURM_CPUS_PER_TASK={_slurm_cpus})")
+    process_custom_ahmed(args.base_path, args.output_dir, args.num_workers)
