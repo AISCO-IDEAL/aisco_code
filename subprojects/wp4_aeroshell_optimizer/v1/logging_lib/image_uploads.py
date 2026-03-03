@@ -9,7 +9,7 @@ import wandb
 try:
     from PIL import Image as PILImage
 except Exception:
-    PILImage = None  # type: ignore[assignment]
+    PILImage = None
 
 import contextlib
 

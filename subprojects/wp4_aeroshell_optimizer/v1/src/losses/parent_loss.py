@@ -9,8 +9,8 @@ Overwrite the following methods:
 """
 
 import torch
-
 import wandb
+
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import get_points
 
