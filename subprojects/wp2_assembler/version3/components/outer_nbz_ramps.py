@@ -18,8 +18,8 @@ def outer_nbz_ramps(assembly_id) -> cq.Solid:
 
     inner, outer, _ = call_assembly(assembly_id)
 
-    back_wheel_center = (inner["wheel_1"].loc.toTuple()[0][0], inner["wheel_1"].loc.toTuple()[0][2])  # type: ignore [union-attr]
-    front_wheel_center = (inner["wheel_2"].loc.toTuple()[0][0], inner["wheel_2"].loc.toTuple()[0][2])  # type: ignore [union-attr]
+    back_wheel_center = (inner["wheel_1"].loc.toTuple()[0][0], inner["wheel_1"].loc.toTuple()[0][2])
+    front_wheel_center = (inner["wheel_2"].loc.toTuple()[0][0], inner["wheel_2"].loc.toTuple()[0][2])
     outer_xmax = outer.BoundingBox().xmax
     outer_xmin = outer.BoundingBox().xmin
 
@@ -79,7 +79,7 @@ if __name__ == "__main__":
 
     inner_cmp: cq.Assembly
 
-    inner_cmp, _, _ = call_assembly(demo_id)  # type: ignore[assignment]
+    inner_cmp, _, _ = call_assembly(demo_id)
 
     show(ramps, inner_cmp)
     print(type(ramps))

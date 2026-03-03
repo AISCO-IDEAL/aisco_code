@@ -26,7 +26,8 @@ dependencies = [
   "wandb[media] >= 0.23.1",
   "types-paramiko",
   "types-pytz",
-  "types-requests"
+  "types-requests",
+  "types-PyYAML"
 ]
 
 [project.optional-dependencies]
