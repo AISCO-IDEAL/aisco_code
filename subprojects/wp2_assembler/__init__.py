@@ -8,6 +8,6 @@ Import from specific version directories as needed.
 __version__ = "2.2.2"
 __author__ = ("vdiekmann", "fsanchez")
 
-from subprojects.wp2_assembler.version2.components.nbz import call_assembly
+from subprojects.wp2_assembler.version3.components.nbz import call_assembly
 
 __all__ = ["call_assembly"]
