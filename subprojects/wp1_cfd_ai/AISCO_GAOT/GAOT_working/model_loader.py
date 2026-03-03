@@ -6,40 +6,23 @@ import torch.nn as nn  # noqa: PLR0402
 import yaml
 from torch_geometric.data import Batch, Data
 
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.dataloader.pyg_transforms import RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.utils.kaolin_utils import get_diff_mesh
 
 logger = logging.getLogger(__name__)
 
-# Each entry maps to (checkpoint_path, norm_stats_path).
-# norm_stats_path is the *_norm_stats.pt produced during training for the
-# dataset the checkpoint was trained on.  It contains per_head_stats with
-# mean / std for "force" and "cd" so we can denormalize predictions.
-_EULER_STATS = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_pressure/euler_pressure_field_norm_stats.pt"
-_DRIVAER_STATS = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer/drivaernet_drag_norm_stats.pt"
-_COMBINED_STATS = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_combined_multi/drivaernet_drag_norm_stats.pt"
 
-model_dict = {
-    1: ("/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58232331.pt", _DRIVAER_STATS),
-    2: ("/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58245986.pt", _DRIVAER_STATS),
-    3: ("/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drag_model_58310187.pt", _DRIVAER_STATS),
-    4: ("/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/overfit_model_58316029.pt", _DRIVAER_STATS),
-    "Herbert": ("/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/multi_model_Testing.pt", _COMBINED_STATS),
-    "Neural Operatinator": (
-        "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/euler_field_58577926.pt",
-        _EULER_STATS,
-    ),
-}
+model_dict = {"OnlyCorrectNormalized": ("/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/New_Normalizer1.pt")}
 
 
 class ModelLoader:
     def __init__(self, model_id: int, device: str) -> None:
         if model_id not in model_dict:
             raise ValueError(f"Unknown model_id={model_id}. Valid: {list(model_dict.keys())}")
-        self.model_path, self.stats_path = model_dict[model_id]
+        self.model_path = model_dict[model_id]
         self.device = device
         self._load_model()
-        self._load_norm_stats()
 
     def _load_model(self) -> None:
         # ── load config YAML saved alongside the checkpoint ─────────────
@@ -132,6 +115,11 @@ class ModelLoader:
 
         # ── build PyG batch ──────────────────────────────────────────────
         data = Data(pos=optim_verts, face=mesh_faces.T, c=vertex_normals)
+
+        # ── rescale positions to [-1, 1] using physical domain (matches training) ──
+        rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-3e3, -3e3, -3e3], [3e3, 3e3, 3e3]))
+        data = rescale_transform(data)
+
         batch = Batch.from_data_list([data]).to(self.device)
 
         # ── latent token positions (registered buffer inside the model) ──
@@ -139,11 +127,8 @@ class ModelLoader:
 
         # ── forward through GAOT3D ───────────────────────────────────────
         with torch.autograd.set_detect_anomaly(True):
-            gaot_output = self.normal_model.forward(data=batch, tokens_pos=tokens_pos)
+            gaot_loss = self.normal_model.forward(data=batch, tokens_pos=tokens_pos)
 
-            # gaot_output is a dict: {"force": Tensor, "cd": Tensor, ...}
-            # Denormalize to get the physical drag force value
-            gaot_loss = self._denormalize("force", gaot_output["force"])
             loss_to_vert_grad = torch.autograd.grad(gaot_loss, optim_verts, retain_graph=True)[0]
 
         # ── surrogate coupling to SDF model ──────────────────────────────
@@ -225,22 +210,6 @@ class AutoNormDenorm(nn.Module):
         # ---- run model ----
         out = self.core(data, tokens_pos=tokens_pos) if tokens_pos is not None else self.core(data)
 
-        # ---- de-normalize outputs (inverse of your training transform) ----
-        if isinstance(out, dict):
-            # Dict format
-            if "y" in out and self.y_mean is not None and self.y_std is not None:
-                out["y"] = self._denorm(out["y"], self.y_mean, self.y_std)
-            if "force" in out and self.per_head.get("force", False):
-                out["force"] = self._denorm(out["force"], self.force_mean, self.force_std)
-            if "cd" in out and self.per_head.get("cd", False):
-                out["cd"] = self._denorm(out["cd"], self.cd_mean, self.cd_std)
-        else:
-            # Data object format
-            if getattr(out, "y", None) is not None and self.y_mean is not None and self.y_std is not None:
-                out.y = self._denorm(out.y, self.y_mean, self.y_std)
-            if getattr(out, "force", None) is not None and self.per_head.get("force", False):
-                out.force = self._denorm(out.force, self.force_mean, self.force_std)
-            if getattr(out, "cd", None) is not None and self.per_head.get("cd", False):
-                out.cd = self._denorm(out.cd, self.cd_mean, self.cd_std)
+        out["force"] = self._denorm(out["force"], self.force_mean, self.force_std)
 
-        return out
+        return out["force"]
