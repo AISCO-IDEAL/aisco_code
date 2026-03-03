@@ -13,11 +13,11 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.utils.kaolin_utils impor
 logger = logging.getLogger(__name__)
 
 
-model_dict = {"OnlyCorrectNormalized": ("/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/New_Normalizer1.pt")}
+model_dict = {"OnlyCorrectNormalized": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/New_Normalizer1.pt"}
 
 
 class ModelLoader:
-    def __init__(self, model_id: int, device: str) -> None:
+    def __init__(self, model_id, device: str) -> None:
         if model_id not in model_dict:
             raise ValueError(f"Unknown model_id={model_id}. Valid: {list(model_dict.keys())}")
         self.model_path = model_dict[model_id]

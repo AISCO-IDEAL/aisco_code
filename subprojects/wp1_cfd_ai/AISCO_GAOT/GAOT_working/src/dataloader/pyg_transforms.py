@@ -4,8 +4,7 @@ import torch
 from torch_geometric.data import Data
 from torch_geometric.transforms import BaseTransform
 
-
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.utils.scale import normalize, rescale, rescale_new
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.utils.scale import rescale, rescale_new
 
 EPSILON = 1e-10
 
