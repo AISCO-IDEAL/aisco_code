@@ -1,6 +1,6 @@
 import os
 
-import fixed_renderer.cuda.load_textures as load_textures_cuda
+import subprojects.fixed_renderer.cuda.load_textures as load_textures_cuda
 import numpy as np
 import torch
 from skimage.io import imread

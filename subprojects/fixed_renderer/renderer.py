@@ -1,6 +1,6 @@
 import math
 
-import fixed_renderer as nr
+import subprojects.fixed_renderer as nr
 import numpy
 import torch
 from torch import nn
