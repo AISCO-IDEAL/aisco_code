@@ -12,7 +12,7 @@ from OCP.BRepClass3d import BRepClass3d_SolidClassifier
 from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
-from subprojects.wp2_assembler.version2.components.nbz import bounding_box_of_assembly, call_assembly_solids
+from subprojects.wp2_assembler.version3.components.nbz import bounding_box_of_assembly, call_assembly
 
 
 class SDFfromCadQuery:
@@ -185,7 +185,7 @@ class SDFfromCadQuery:
         else:
             return self.__shape.Volume()
 
-    #### From here on, its just Code for testing and debuugging ########################################################
+    #### From here on, its just Code for testing and debuuugging ########################################################
     def visualizr_slice(self, z: float) -> None:
         x_vals = sorted({p[0] for p in self.__pointgrid if p[2] == z})
         y_vals = sorted({p[1] for p in self.__pointgrid if p[2] == z})
@@ -222,10 +222,10 @@ class SDFfromCadQuery:
 
 if __name__ == "__main__":
     if False:
-        inner_box, outer_box = call_assembly_solids(2)
+        inner_box, outer_box, __ = call_assembly(2)
         sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 100, "dy": 50, "dz": 100, "rand": 0})
         sdf_inner.visualizr_slice(z=501)
     if True:
-        inner_box, outer_box = call_assembly_solids(2)
+        inner_box, outer_box, __ = call_assembly(2)
         sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 100, "dy": 100, "dz": 100, "rand": 0})
         sdf_inner.plot_pointgrid_slice(z=501)
