@@ -152,21 +152,20 @@ class Seat:
 
         return wedge.union(legroom)
 
+
 if __name__ == "__main__":
     import time
+
     start = time.time()
     seat = Seat()
     s = seat.create_seat()
 
     bb = s.val().BoundingBox()
 
-    bbox_list = [
-        bb.xmin, bb.xmax,
-        bb.ymin, bb.ymax,
-        bb.zmin, bb.zmax
-    ]
+    bbox_list = [bb.xmin, bb.xmax, bb.ymin, bb.ymax, bb.zmin, bb.zmax]
     end = time.time()
     print(bbox_list)
-    print(end-start)
+    print(end - start)
     from ocp_vscode import show
+
     show(s)

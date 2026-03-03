@@ -11,21 +11,11 @@ class Wheels:
     """Wheel specifications for the solar car."""
 
     # Import from regulations wheel dimensions
-    wheel_count: int = field(
-        default_factory=lambda: int(get_regulation("wheel.min_wheel_count"))
-    )
-    wheel_diameter: float = field(
-        default_factory=lambda: float(get_regulation("wheel.tire_diameter"))
-    )
-    wheel_width: float = field(
-        default_factory=lambda: get_regulation("wheel.tire_width")
-    )
-    wheel_margin_axial: float = field(
-        default_factory=lambda: get_regulation("wheel.margin_axial")
-    )
-    wheel_margin_radial: float = field(
-        default_factory=lambda: get_regulation("wheel.margin_radial")
-    )
+    wheel_count: int = field(default_factory=lambda: int(get_regulation("wheel.min_wheel_count")))
+    wheel_diameter: float = field(default_factory=lambda: float(get_regulation("wheel.tire_diameter")))
+    wheel_width: float = field(default_factory=lambda: get_regulation("wheel.tire_width"))
+    wheel_margin_axial: float = field(default_factory=lambda: get_regulation("wheel.margin_axial"))
+    wheel_margin_radial: float = field(default_factory=lambda: get_regulation("wheel.margin_radial"))
 
     def get_wheel_info(self) -> str:
         """Return a description of the wheel configuration."""
@@ -42,10 +32,7 @@ class Wheels:
         diameter = self.wheel_diameter
 
         return (
-            cq.Workplane("XZ")
-            .circle(diameter / 2)
-            .extrude(self.wheel_width)
-            .translate((0, self.wheel_width / 2, diameter/2))
+            cq.Workplane("XZ").circle(diameter / 2).extrude(self.wheel_width).translate((0, self.wheel_width / 2, diameter / 2))
         )
 
     def create_wheel_with_margin(self) -> cq.Workplane:
@@ -60,21 +47,20 @@ class Wheels:
         total_width = self.wheel_width + 2 * self.wheel_margin_axial
         return cq.Workplane("XY").circle(total_diameter).extrude(total_width)
 
+
 if __name__ == "__main__":
     import time
+
     start = time.time()
     wheel = Wheels()
     w = wheel.create_wheel()
 
     bb = w.val().BoundingBox()
 
-    bbox_list = [
-        bb.xmin, bb.xmax,
-        bb.ymin, bb.ymax,
-        bb.zmin, bb.zmax
-    ]
+    bbox_list = [bb.xmin, bb.xmax, bb.ymin, bb.ymax, bb.zmin, bb.zmax]
     end = time.time()
     print(bbox_list)
-    print(end-start)
+    print(end - start)
     from ocp_vscode import show
+
     show(w)

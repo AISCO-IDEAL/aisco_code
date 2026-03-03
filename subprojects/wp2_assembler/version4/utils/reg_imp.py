@@ -1,4 +1,5 @@
 from pathlib import Path
+
 import yaml
 
 
@@ -22,16 +23,16 @@ def get_regulation(section: str) -> int | float:
         if isinstance(current, dict) and key in current:
             current = current[key]
         else:
-            print("Error in get_regulation: Error 1 with: "+ section)
-            #raise Exception("Error in get_regulation: Error 1")
+            print("Error in get_regulation: Error 1 with: " + section)
+            # raise Exception("Error in get_regulation: Error 1")
             return -1  # Key not found or current is not a dict
 
     # Check if we ended up at a numeric value
     if isinstance(current, (int, float)):
         return current
-    
-    print("Error in get_regulation: Error 2 with: "+ section)
-    #raise Exception("Error in get_regulation: Error 2")
+
+    print("Error in get_regulation: Error 2 with: " + section)
+    # raise Exception("Error in get_regulation: Error 2")
     return -1  # Final value is not a number
 
 

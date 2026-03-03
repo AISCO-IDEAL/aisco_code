@@ -1,12 +1,14 @@
-import numpy as np
 import math
+
+import numpy as np
+
 
 def wheel_turning_angle(
     outer_wheel: list[float],
     back_wheel: list[float],
     inner_wheel: list[float],
     turning_radius: float,
-    perpendicular_to_rear_wheel: list[float] = [1, 0]
+    perpendicular_to_rear_wheel: list[float] = None,
 ) -> float:
     """
     Returns the steering angle of the inner front wheel.
@@ -24,6 +26,8 @@ def wheel_turning_angle(
     :return: steering angle of the inner wheel (degrees)
     :rtype: float
     """
+    if perpendicular_to_rear_wheel is None:
+        perpendicular_to_rear_wheel = [1, 0]
     outer_wheel = np.array(outer_wheel, dtype=float)
     back_wheel = np.array(back_wheel, dtype=float)
     inner_wheel = np.array(inner_wheel, dtype=float)
@@ -70,6 +74,6 @@ def wheel_turning_angle(
 if __name__ == "__main__":
     outer = [0, 5]
     back = [0, 0]
-    inner = [0, 4]   # for example, inner wheel closer to center line
+    inner = [0, 4]  # for example, inner wheel closer to center line
     radius = 10
     print(wheel_turning_angle(outer, back, inner, radius))

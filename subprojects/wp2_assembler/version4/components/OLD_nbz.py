@@ -9,10 +9,10 @@ from subprojects.wp2_assembler.version3.components.inner.base_triangle import Tr
 from subprojects.wp2_assembler.version3.components.inner.seat import Seat
 from subprojects.wp2_assembler.version3.components.inner.wheels import Wheels
 from subprojects.wp2_assembler.version3.components.outer.outer_box import outer_box2
+from subprojects.wp2_assembler.version3.components.outer.outer_nbz_ramps import outer_nbz_ramps
 from subprojects.wp2_assembler.version3.components.vision import tracker_box, vision_box
 from subprojects.wp2_assembler.version3.utils.distributions import uniform_distribution
 from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
-from subprojects.wp2_assembler.version3.components.outer.outer_nbz_ramps import outer_nbz_ramps
 
 
 class WheelbaseTooSmallError(Exception):
@@ -159,18 +159,18 @@ def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length, get_box: bool = False)
     rad = get_regulation("seat.dimension.radius_top")
     neg_angle = math.radians(get_regulation("seat.dimension.minus_angle"))
 
-    '''
+    """
     # print all parameters from above
     print(f"Tracker box length: {t_box_len} mm")
     print(f"Tracker box margin to seat: {t_box_margin} mm")
     print(f"Eye level Z: {eye_level_z} mm")
     print(f"Seat radius top: {rad} mm")
     print(f"Negative angle: {neg_angle} radians")
-    '''
+    """
 
     # refence point for the tracker box is the backmost point of the seat + margin of 10cm + half length of the box
     point_ref_t_box = cq.Vector(
-        seat_pos_x - math.sin(neg_angle) * rad - t_box_margin - t_box_len / 2, 0,-100+ seat_pos_z + math.cos(neg_angle) * rad
+        seat_pos_x - math.sin(neg_angle) * rad - t_box_margin - t_box_len / 2, 0, -100 + seat_pos_z + math.cos(neg_angle) * rad
     )
     # reference point for the vision box is the eye level of the driver
     point_ref_v_box = cq.Vector(seat_pos_x, 0, seat_pos_z + eye_level_z)
@@ -314,7 +314,6 @@ def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
 
     outer = outer_nbz(params["wheel_base_length"] * 2.2, box_width, box_height)
 
-
     box, vision = vision_nbz(params["seat_position"], seat_pos_z, params["wheel_base_length"], get_box=True)
     assembly.add(box)
 
@@ -395,6 +394,7 @@ def get_range_seat(wheelbase_width: float, wheelbase_length: float) -> dict:
     }
     return ranges
 
+
 def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
     """
     Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
@@ -410,7 +410,7 @@ def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
 def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     """
     Docstring for bounding_box_of_assembly
-    
+
     :param id_number: id number of the assembly of the wanted bounding box
     :return: tuple with touples with ((x_min, y_min, z_min),(x_max,y_max,z_max))
     :rtype: tuple[tuple[float, float, float], tuple[float, float, float]]
@@ -419,21 +419,15 @@ def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float]
     inner_bounding_box = inner.toCompound().BoundingBox()
 
     return (
-        (inner_bounding_box.xmin,
-         inner_bounding_box.ymin,
-         inner_bounding_box.zmin
-        ),
+        (inner_bounding_box.xmin, inner_bounding_box.ymin, inner_bounding_box.zmin),
+        (inner_bounding_box.xmax, inner_bounding_box.ymax, inner_bounding_box.zmax),
+    )
 
-        (inner_bounding_box.xmax,
-         inner_bounding_box.ymax,
-         inner_bounding_box.zmax
-        )
-        )
 
 def create_bb_visualization(BB_coords: tuple[tuple[float, float, float], tuple[float, float, float]]) -> cq.Solid:
     """
     Docstring for create_bb_visualization
-    
+
     :param BB_coords: Tuple with tuples with the coordinates of the bounding box wanted to visualize
     :type BB_coords: tuple[tuple[float, float, float], tuple[float, float, float]]
     :return: solid of Bounding Box wanted to visualize
@@ -455,9 +449,11 @@ def create_bb_visualization(BB_coords: tuple[tuple[float, float, float], tuple[f
     # Create and translate the box
     return (cq.Workplane("XY").box(x_len, y_len, z_len).translate((center_x, center_y, center_z))).val()
 
+
 if __name__ == "__main__":
     from ocp_vscode import show
+
     demo_id = 30
     inner, outer, vision = call_assembly_solids(demo_id)
     show(inner, outer, vision)
-    print(type(inner), type(outer),type(vision))
+    print(type(inner), type(outer), type(vision))
