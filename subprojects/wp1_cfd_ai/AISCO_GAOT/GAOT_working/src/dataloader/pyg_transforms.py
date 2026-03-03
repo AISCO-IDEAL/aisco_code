@@ -4,21 +4,10 @@ import torch
 from torch_geometric.data import Data
 from torch_geometric.transforms import BaseTransform
 
-try:
-    from src.utils.scale import normalize, rescale, rescale_new
 
-    EPSILON = 1e-10
-except ImportError:
-    print("Error: Cannot import rescale/normalize from src.utils.scale")
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.utils.scale import normalize, rescale, rescale_new
 
-    def rescale(x, lims=(-1, 1)):
-        return x
-
-    def normalize(x, mean, std, return_mean_std=False):
-        return x / (std + 1e-8)
-
-    EPSILON = 1e-10
-
+EPSILON = 1e-10
 
 class RescalePosition(BaseTransform):
     """Rescales node positions 'pos' to a specified range (default: [-1, 1])."""
@@ -47,7 +36,7 @@ class RescalePosition(BaseTransform):
 class RescalePositionNew(BaseTransform):
     """Rescales node positions 'pos' to a specified range (default: [-1, 1])."""
 
-    def __init__(self, lims=(-1.0, 1.0), phy_domain=([-1.16, -1.2, 0.0], [4.21, 1.19, 1.77])):
+    def __init__(self, lims=(-1.0, 1.0), phy_domain=([-3e3, -3e3, -3e3], [3e3, 3e3, 3e3])):
         self.lims = lims
         self.phy_domain = phy_domain
 
