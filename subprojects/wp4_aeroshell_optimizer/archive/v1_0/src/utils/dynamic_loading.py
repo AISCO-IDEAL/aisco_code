@@ -1,4 +1,5 @@
 import importlib
+import importlib.util
 import sys
 
 
@@ -32,6 +33,13 @@ def load_class_from_path(path: str, class_name: str):
     if spec is None:
         raise FileNotFoundError(
             f"Cannot find module file for dynamic loading. "
+            f"Path provided: {path}. "
+            f"Please verify the file exists and the path in the config (must use '/' separators)."
+        )
+
+    if spec.loader is None:
+        raise FileNotFoundError(
+            f"Cannot find loader for module file. "
             f"Path provided: {path}. "
             f"Please verify the file exists and the path in the config (must use '/' separators)."
         )

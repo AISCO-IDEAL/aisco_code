@@ -1,6 +1,6 @@
-
-
 import torch
+
+
 def sphere_gt(
     points: torch.Tensor,
     coordinates: torch.Tensor = torch.tensor([0, 0, 0]),

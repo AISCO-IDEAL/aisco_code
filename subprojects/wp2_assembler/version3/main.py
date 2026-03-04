@@ -16,7 +16,7 @@ def visualize_multiple(lower_id: int, upper_id: int):
     # check if all assemblies exist
     grouped = cq.Assembly(name="groupedNBZ")
     for count, id_number in enumerate(range(lower_id, upper_id + 1)):
-        inner_nbz, outer_nbz = nbz.call_assembly(id_number)
+        inner_nbz, outer_nbz, _ = nbz.call_assembly(id_number)  # kdiehl: ignoring vision NBZ, as its not used later on
         assembly = cq.Assembly(name=f"NBZ_{id_number}")
         assembly.add(outer_nbz, name="outerNBZ", color=cq.Color(1, 0, 0, 0.3))
         assembly.add(inner_nbz, name="innerNBZ", color=cq.Color(0, 0, 1, 0.3))
@@ -38,89 +38,68 @@ def visualize_multiple(lower_id: int, upper_id: int):
 
 
 if __name__ == "__main__":  # only run when executing this file directly
+    inner_nbz: cq.Assembly
+    outer_nbz: cq.Solid
     while True:
         userinput = input(
             "Visualize inner NBZ, outer NBZ, both, v3, multiple (both inner and outer), vision NBZ, tracker box, generate or stop? (i/o/b/3/v/t/g/s): "
         )
-        if userinput.lower() == "i":
-            userinput = input("Which id-number to visualize? ")
-            if userinput.isdigit():
-                id_number = int(userinput)
-                inner_nbz, _ = nbz.call_assembly(id_number)
-            else:
+        userinput = userinput.lower().strip()  # makes it case & space insensitive
+
+        if userinput == "s":  # Beenden sofort prüfen
+            print("Visualization stopped.")
+            break
+
+        if userinput in ["i", "o", "b", "3"]:
+            id_str = input("Which id-number to visualize? ")
+            if not id_str.isdigit():
                 print("Invalid input. Please enter a valid id-number.")
                 continue
-            show(inner_nbz)
-            print(type(inner_nbz))
+            id_number = int(id_str)
+            vision_nbz: cq.Assembly
+            inner_nbz, outer_nbz, vision_nbz = nbz.call_assembly(id_number)
 
-        elif userinput.lower() == "o":
-            userinput = input("Which id-number to visualize? ")
-            if userinput.isdigit():
-                id_number = int(userinput)
-                _, outer_nbz = nbz.call_assembly(id_number)
-            else:
-                print("Invalid input. Please enter a valid id-number.")
-                continue
-            show(outer_nbz)
-            print(type(outer_nbz))
+            if userinput == "i":
+                show(inner_nbz)
+                print(type(inner_nbz))
+            elif userinput == "o":
+                show(outer_nbz)
+                print(type(outer_nbz))
+            elif userinput == "b":
+                assembly = cq.Assembly(name=f"NBZ_{id_number}")
+                assembly.add(outer_nbz, name="outerNBZ", color=cq.Color(1, 0, 0, 0.3))
+                assembly.add(inner_nbz, name="innerNBZ", color=cq.Color(0, 0, 1, 0.3))
+                show(assembly)
+                print(type(inner_nbz))
+                print(type(outer_nbz))
+                print(type(assembly))
+            elif userinput == "3":
+                assembly = cq.Assembly(name="assembly_v3")
+                assembly.add(inner_nbz, name="innerNBZ", color=cq.Color(0, 0, 1, 0.3))
+                assembly.add(outer_nbz, name="outerNBZ", color=cq.Color(1, 1, 0, 0.3))
+                assembly.add(vision_nbz, name="visionNBZ", color=cq.Color(0, 1, 0, 0.3))
+                show(assembly)
+        elif userinput == "m":
+            rng = input("Range as 'start-end': ")
+            try:
+                s, e = map(int, rng.split("-"))
+                if s > 0 and e > s:
+                    visualize_multiple(s, e)
+                else:
+                    print("Invalid range values.")
+            except ValueError:
+                print("Format error. Use e.g. '1-10'.")
 
-        elif userinput.lower() == "b":
-            userinput = input("Which id-number to visualize? ")
-            if userinput.isdigit():
-                id_number = int(userinput)
-            else:
-                print("Invalid input. Please enter a valid id-number.")
-                continue
-            inner_nbz, outer_nbz = nbz.call_assembly(id_number)
-            assembly = cq.Assembly(name=f"NBZ_{id_number}")
-            assembly.add(outer_nbz, name="outerNBZ", color=cq.Color(1, 0, 0, 0.3))
-            assembly.add(inner_nbz, name="innerNBZ", color=cq.Color(0, 0, 1, 0.3))
-            show(assembly)
-            print(type(inner_nbz))
-            print(type(outer_nbz))
-            print(type(assembly))
+        elif userinput == "v":
+            show(vision_box.vision_driv_nbz())
 
-        elif userinput.lower() == "m":
-            userinput = input("Which assemblies are to be visualized? (ranged as 'start-end') ")
-            userinput_split = userinput.split("-")
-            if int(userinput_split[0]) > 0:
-                lower_id = int(userinput_split[0])
-            else:
-                print("Invalid input. Please enter a valid range.")
-                continue
-            if int(userinput_split[1]) > lower_id:
-                upper_id = int(userinput_split[1])
-            else:
-                print("Invalid input. Please enter a valid range.")
-                continue
-            visualize_multiple(lower_id, upper_id)
+        elif userinput == "t":
+            show(tracker_box.tracker_box_nbz())
 
-        elif userinput.lower() == "v":
-            vision_nbz = vision_box.vision_driv_nbz()
-            show(vision_nbz)
-
-        elif userinput.lower() == "t":
-            tracker_nbz = tracker_box.tracker_box_nbz()
-            show(tracker_nbz)
-
-        elif userinput.lower() == "3":
-            userinput = input("Which id-number to visualize? ")
-            if userinput.isdigit():
-                id_number = int(userinput)
-            else:
-                print("Invalid input. Please enter a valid id-number.")
-                continue
-            inner, outer, vision = nbz.call_assembly(id_number)
-            assembly = cq.Assembly(name="assembly_v3")
-            assembly.add(inner, name="innerNBZ", color=cq.Color(0, 0, 1, 0.3))
-            assembly.add(outer, name="outerNBZ", color=cq.Color(1, 1, 0, 0.3))
-            assembly.add(vision, name="visionNBZ", color=cq.Color(0, 1, 0, 0.3))
-            show(assembly)
-
-        elif userinput.lower() == "g":
-            userinput = input("How many assemblies are to be generated?")
-            if userinput.isdigit():
-                n_assemblies = int(userinput)
+        elif userinput == "g":
+            number_asm = input("How many assemblies are to be generated?")
+            if number_asm.isdigit():
+                n_assemblies = int(number_asm)
                 for j in range(n_assemblies):
                     print(f"Generating assembly {j + 1} of {n_assemblies}...")
                     nbz.generate_assembly()
@@ -129,9 +108,3 @@ if __name__ == "__main__":  # only run when executing this file directly
             else:
                 print("Invalid input. Please enter a valid number.")
                 continue
-
-        elif userinput.lower() == "s":
-            print("Visualization stopped.")
-            break
-        else:
-            print("Invalid input. Please enter 'i', 'o', 'b' or 's'.")

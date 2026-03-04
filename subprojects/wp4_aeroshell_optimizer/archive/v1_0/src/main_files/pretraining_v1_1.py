@@ -5,6 +5,7 @@ import torch
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.ground_truth_masks.simple_geoms import sphere_gt
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+from typing import Optional
 
 
 def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
@@ -23,7 +24,7 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
     return model
 
 
-def pretraining(model: BaseModel = None, pretraining_config_name: str = "pretraining_v0_config.yaml"):
+def pretraining(model: Optional[BaseModel] = None, pretraining_config_name: str = "pretraining_v0_config.yaml"):
     # Does pretraining, for now only on a sphere
 
     config = load_config(v="v1", cfg_name=pretraining_config_name)

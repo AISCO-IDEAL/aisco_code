@@ -3,9 +3,10 @@ import torch
 import visualtorch
 
 from ..models.sdf import SDFNetwork
+from typing import Optional
 
 
-def visualize_network(model: SDFNetwork = None,
+def visualize_network(model: Optional[SDFNetwork] = None,
                       save_dir: str="AISCO-code/subprojects/wp4_aeroshell_optimizer/data/architecture_visualizations/",
                       filename: str="sdf_network_visualization"):
     """

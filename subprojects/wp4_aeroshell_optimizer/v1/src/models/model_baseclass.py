@@ -1,16 +1,30 @@
 # just the models class which calls other models here
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING  # this prevents from circular imports
+
 import torch
 from torch import nn
 
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+
+if TYPE_CHECKING:
+    from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
+
 
 class BaseModel(nn.Module):
-    def __init__(self, config: dict, overwrite_base_init: bool = True, in_dim: int = 3, hidden: int = 64, layers: int = 3):
-        super().__init__()
+    def __init__(
+        self, config: dict | None = None, overwrite_base_init: bool = True, in_dim: int = 3, hidden: int = 64, layers: int = 3
+    ):
+        super().__init__()  # gets all the stuff from nn.Module
 
-        self.config = config
+        self.config = config if config is not None else {}
         self.in_dim = in_dim
         self.hidden = hidden
         self.layers = layers
+
+        self.visual_config: dict = {}
 
         if overwrite_base_init:
             return  # Skip base init if overwritten in subclass, avoids creating redundant layers
@@ -36,10 +50,19 @@ class BaseModel(nn.Module):
         output = x.squeeze(-1)
         return output * 1000.0
 
-    def optimise(self):
+    def optimise(
+        self,
+        renderer_manager: VisualisationManager | None = None,  # noqa: ARG002
+        renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
+        wandb_name: str | None = None,  # noqa: ARG002
+        general_config: dict | None = None,  # noqa: ARG002
+        training_config: dict | None = None,  # noqa: ARG002
+    ) -> None:
         super().train()  # Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
 
         # For textbook example of how our optimization works, look at basic_MLP_v1.py
+        # Subclasses should implement the optimization loop and, if a wrapper is provided,
+        # call renderer_wrapper.update(optimization_state=...) at the desired frequency.
         raise NotImplementedError("Train method not implemented yet in BaseModel. Please implement in the subclass inheriting.")
 
     def validation(self):
@@ -57,4 +80,14 @@ class BaseModel(nn.Module):
         return model_info
 
     def debug_info(self):
-        raise ValueError("No Debug Info implemented")  # noqa: TRY003
+        raise ValueError("No Debug Info implemented")
+
+    def init_neural_renderer(self, *_, **kwargs):
+        """Deprecated: The renderer is now managed by the shared Manager.
+
+        This method is kept for backwards compatibility but no longer creates
+        a per-model Visualiser. Use a shared `Manager` and call its `update()`
+        during optimization instead.
+        """
+        if kwargs.get("verbose", False):
+            print("init_neural_renderer is deprecated. Use Manager + update() calls instead.")

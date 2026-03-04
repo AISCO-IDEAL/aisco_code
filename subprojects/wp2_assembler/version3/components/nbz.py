@@ -145,7 +145,7 @@ def outer_nbz(length: float, width: float, height: float):
     return box
 
 
-def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length) -> list[cq.Solid]:
+def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length) -> cq.Assembly:
     """
     Generate a cadquery Assembly of the driver's and the tracker's vision NBZ with given parameters from regulations
     Args: regulations.yaml
@@ -275,11 +275,11 @@ def save_assembly_parameters(parameters: dict) -> str:
     return str(next_id)
 
 
-def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
+def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid, cq.Assembly]:
     """
     Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
     Args: id-number
-    Returns: cadquery Assembly
+    Returns: cadquery Assembly, outer NBZ as cq.Solid, vision NBZ as cadquery Assembly
     """
     config_path = Path(__file__).parent.parent / "config" / "assembly_map.yaml"
 
@@ -289,7 +289,7 @@ def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
 
     # YAML loads numeric keys as integers, not strings
     if id_number not in assembly_map:
-        raise ValueError(f"ID {id_number} not found in assembly map.")  # noqa: TRY003
+        raise ValueError(f"ID {id_number} not found in assembly map.")
     params = assembly_map[id_number]
     seat_pos_z = get_regulation("seat.position.z")
 

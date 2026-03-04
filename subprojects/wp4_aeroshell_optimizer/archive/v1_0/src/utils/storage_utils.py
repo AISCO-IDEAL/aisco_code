@@ -17,10 +17,10 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import 
 
 def allround_save_data(
     model: BaseModel,  # Model to save data from
-    wandb_run: str = None,  # Name of the wandb run to log to (e.g. "beautiful-banana-164")
+    wandb_run: str = "",  # Name of the wandb run to log to (e.g. "beautiful-banana-164")
     save_mesh: bool = True,  # Whether to save the mesh data
     save_model: bool = True,  # Whether to save the model data,
-    epoch: int = None,  # Current epoch number
+    epoch: int = 0,  # Current epoch number
     storage_path: str = "cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/bulk_storage",
     verbose: bool = True,
     pretraining: bool = False,
@@ -78,12 +78,12 @@ def allround_save_data(
     else:
     # Otherwise, proceed as usual and set wandb_run and epoch_str accordingly
         # If there is no wandb_name, differentiate by using the time, but hashed to avoid conflicts if runs end at the same time
-        if wandb_run is None:
+        if wandb_run is "":
             current_time = datetime.datetime.now().isoformat()
             canonical_time_bytes = str(current_time.encode("utf-8"))
             wandb_run = str_hashing(canonical_time_bytes)
             
-        if epoch is None:
+        if epoch is 0:
             epoch_str = "no_epoch"
         else:
             epoch_str = f"epoch{epoch:04d}"

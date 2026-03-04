@@ -98,46 +98,8 @@ class Area:
         return Data(x=x, edge_index=edge_index)
 
 
-# 2.3 Autoencoder: GNN-based autoencoder
-class Autoencoder:
-    def __init__(self, areas):
-        self.areas = areas
-        self.size = areas[0].size
-        self.model, self.latent_size = self.eval_model()
 
-    def eval_model(self):
-        latent_size = 3
-        allowed_loss = 0.06
-        best_model = None
-        while True:
-            model = AutoencoderModel(self.size, latent_size)
-            optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-            for epoch in range(30):
-                total_loss = 0
-                for area in self.areas:
-                    data = area.graph
-                    output = model(data.x, data.edge_index)
-                    loss = F.mse_loss(output, data.x)
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
-                    total_loss += loss.item()
-                if epoch % 10 == 0:
-                    print(
-                        f"Autoencoder Latent Size: {latent_size}, Epoch {epoch}, Loss: {total_loss / len(self.areas)}"
-                    )
-            if total_loss / len(self.areas) < allowed_loss:
-                best_model = model
-                print("Best latent size found:", latent_size)
-                break
-            latent_size += 1
-        return best_model, latent_size
 
-    def encode(self, area):
-        data = area.graph
-        with torch.no_grad():
-            latent = model.encoder(data.x, data.edge_index)
-        return latent.numpy().tolist()
 
 
 # 2.4 AutoencoderModel: GNN-based autoencoder (fixed)
@@ -175,7 +137,11 @@ class Autoencoder:
             latent_size += 1
         return best_model, latent_size
 
-    # ... (rest of the class)
+    def encode(self, area):
+        data = area.graph
+        with torch.no_grad():
+            latent = model.encoder(data.x, data.edge_index)
+        return latent.numpy().tolist()
 
 
 # 2.6 GeniModel: GNN-based model (fixed)

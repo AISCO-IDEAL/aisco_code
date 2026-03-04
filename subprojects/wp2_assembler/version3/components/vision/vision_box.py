@@ -19,10 +19,10 @@ def vision_driv_nbz() -> cq.Workplane:
     dist_center = get_regulation("no_build_zones.vision_box.inner_radius")
 
     if dist_center >= radius:
-        raise ValueError("Inner radius must be smaller than outer radius.")  # noqa: TRY003
+        raise ValueError("Inner radius must be smaller than outer radius.")
 
     if dist_center <= 0:
-        raise ValueError("Inner radius must be strictly positive.")  # noqa: TRY003
+        raise ValueError("Inner radius must be strictly positive.")
 
     point_a = cq.Vector(dist_center, 0, pos_height / radius * dist_center)
     point_b = cq.Vector(dist_center, 0, neg_height / radius * dist_center)
@@ -55,9 +55,15 @@ def vision_driv_nbz() -> cq.Workplane:
         .close()
     )
 
-    v_box_sketch = cq.Face.makeFromWires(
-        profile_v_box.wires().val()  # noqa: it works like this
-    )
+    # 1. Get the value
+    wire_shape = profile_v_box.wires().val()
+
+    # 2. Type guard for mypy and runtime safety
+    if not isinstance(wire_shape, cq.Wire):
+        raise TypeError(f"Expected a cq.Wire, but got {type(wire_shape)}")
+
+    # 3. Now mypy knows wire_shape is specifically a cq.Wire
+    v_box_sketch = cq.Face.makeFromWires(wire_shape)
 
     sweep_left = cq.Workplane("YZ").add(v_box_sketch).sweep(arch_pos, isFrenet=True)
     sweep_right = cq.Workplane("XZ").add(v_box_sketch).sweep(arch_neg, isFrenet=True)
