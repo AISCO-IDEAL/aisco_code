@@ -1,19 +1,21 @@
+import contextlib
 import os
 import tempfile
 from collections.abc import Iterable
 from io import BytesIO
 from pathlib import Path
-
-import wandb
-
-try:
-    from PIL import Image as PILImage
-except Exception:
-    PILImage = None
-
-import contextlib
+from typing import TYPE_CHECKING
 
 import numpy as np
+import wandb
+
+if TYPE_CHECKING:
+    from PIL import Image
+else:
+    try:
+        from PIL import Image
+    except ImportError:
+        Image = None
 
 
 def _load_image(obj) -> np.ndarray:
@@ -23,20 +25,20 @@ def _load_image(obj) -> np.ndarray:
     """
     # Path or string -> open with PIL
     if isinstance(obj, (str | Path)):
-        if PILImage is None:
+        if Image is None:
             raise RuntimeError("Pillow is required to load image paths")
-        img = PILImage.open(str(obj)).convert("RGB")
+        img = Image.open(str(obj)).convert("RGB")
         return np.asarray(img, dtype=np.uint8)
 
     # bytes -> open with PIL
     if isinstance(obj, bytes | bytearray):
-        if PILImage is None:
+        if Image is None:
             raise RuntimeError("Pillow is required to load image bytes")
-        img = PILImage.open(BytesIO(obj)).convert("RGB")
+        img = Image.open(BytesIO(obj)).convert("RGB")
         return np.asarray(img, dtype=np.uint8)
 
     # PIL Image
-    if PILImage is not None and isinstance(obj, PILImage.Image):
+    if Image is not None and isinstance(obj, Image.Image):
         return np.asarray(obj.convert("RGB"), dtype=np.uint8)
 
     # numpy array

@@ -203,10 +203,10 @@ max-statements = 53
 python_version = "3.11"
 namespace_packages = true
 explicit_package_bases = true
-#mypy_path = "." our project does not need it, as all folder containing source code have init files
 ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = true
+check_untyped_defs = true
 files = ["subprojects/", "tests/"]
 
 exclude = [
