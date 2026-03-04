@@ -33,9 +33,7 @@ repos:
           - types-requests
           - types-PyYAML
           - types-paramiko
-          # - wandb
-          # - torch
-          # - cadquery #should not be needed anymore
+          - types-Pillow
           - paramiko
         pass_filenames: True # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
 

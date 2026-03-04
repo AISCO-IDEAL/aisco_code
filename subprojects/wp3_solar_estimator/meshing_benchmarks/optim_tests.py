@@ -12,6 +12,7 @@ from wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.helpers.storage_functions import tensors_to_mesh
 
 
+# kdiehl: ignored some mypy errors, double check iff there actually is a bug
 class OptimiseSphereRadius(BaseTester):
     """
     Test case for optimizing the radius of a sphere SDF to match a target surface area.
