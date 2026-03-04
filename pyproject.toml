@@ -22,6 +22,7 @@ dependencies = [
   "pre-commit>=3.0.0",
   "mypy>=1.19.1",
   "torch==2.4.0",
+  "torchvision==0.19.0",
   "wandb>=0.17.2",
   "wandb[media] >= 0.23.1",
   "types-paramiko",
@@ -48,25 +49,23 @@ wp3_solar_estimator = [
 ]
 
 wp4_aeroshell_optimizer = [
-  "cadquery == 2.6.0",
   "plotly==5.22.0",
   "scikit-image>=0.0.0",
   "torch_geometric==2.7.0",
-  "torchvision", # changed by eschaerer from torchvision==0.19.1, because it requires torch==2.4.1
   "trimesh==4.8.3",
-  "visualtorch",
   "mesh2sdf", #From https://github.com/wang-ps/mesh2sdf?tab=readme-ov-file
-  "imageio>=2.31",
   "pyrender>=0.1.45",
   "PyOpenGL>=3.1.0",
   "pyvista>=0.40.0",
-  "imageio>=2.37.2"
+  "imageio>=2.37.2",
+  "Pillow",
+  "types-Pillow",
 ]
 
 wp7_gui = [
   "PyQt6 == 6.10.0",
   "pyvista == 0.46.4",
-  "pyvista1t == 0.11.3",
+  "pyvistaqt == 0.11.3",
 ]
 
 testing = [
@@ -75,7 +74,7 @@ testing = [
   ]
 
 all = [
-  "AISCO_code[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer, wp7_gui, testing]"
+  "AISCO_code[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer,wp7_gui,testing]"
 ]
 
 #make a all command
@@ -225,7 +224,7 @@ module = [
   "wandb.*",
   "pyvista.*"
 
-] # torch.*, could be added, iff it causes many problems
+]
 ignore_missing_imports = true
 ignore_errors = true
 follow_imports = "skip"
