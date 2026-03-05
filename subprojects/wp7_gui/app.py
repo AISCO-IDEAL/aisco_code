@@ -10,7 +10,7 @@ def main() -> None:
 	host = "0.0.0.0"
 	port = 8000
 
-	print(f"Serving GUI from {templates_dir}")
+	print(f"AISCO GUI from {templates_dir}")
 	print(f"WSL URL: http://127.0.0.1:{port}")
 	print("Open in Windows Firefox:")
 	print(f"  /mnt/c/Program\\ Files/Mozilla\\ Firefox/firefox.exe http://localhost:{port}")
