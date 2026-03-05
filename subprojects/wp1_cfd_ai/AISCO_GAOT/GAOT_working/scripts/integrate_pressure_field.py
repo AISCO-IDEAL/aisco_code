@@ -270,7 +270,17 @@ def _print_dataset_summary(results: list, args) -> None:
         with open(args.output_csv, "w", newline="") as f:
             w = csv.DictWriter(
                 f,
-                fieldnames=["name", "drag_pressure", "drag_total", "cd_pressure", "cd_total", "gt_force", "gt_cd", "n_vertices", "total_area"],
+                fieldnames=[
+                    "name",
+                    "drag_pressure",
+                    "drag_total",
+                    "cd_pressure",
+                    "cd_total",
+                    "gt_force",
+                    "gt_cd",
+                    "n_vertices",
+                    "total_area",
+                ],
             )
             w.writeheader()
             w.writerows(results)
