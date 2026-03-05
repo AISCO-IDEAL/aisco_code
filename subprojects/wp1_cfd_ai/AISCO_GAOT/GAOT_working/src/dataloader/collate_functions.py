@@ -2,10 +2,9 @@
 Unified collate functions with online graph building.
 Handles batch processing and PyG-style format conversion with on-demand graph construction.
 """
-import logging
-from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
+import logging
+
 import torch
 from torch_geometric.data import Batch
 
@@ -14,19 +13,22 @@ from src.model.layers.magno import get_neighbor_strategy, parse_neighbor_strateg
 
 logger = logging.getLogger(__name__)
 
+
 class UnifiedCollateFunction:
     """
     Unified collate function that handles online graph building.
     """
 
-    def __init__(self,
-                 coord_dim: int = 2,
-                 magno_radius: float = 0.033,
-                 magno_scales: list[float] = [1.0],
-                 latent_tokens: torch.Tensor = None,
-                 neighbor_search_method: str = "bidirectional",
-                 k_neighbors: int = 1,
-                 asynchronous_graph_building: bool = True):
+    def __init__(
+        self,
+        coord_dim: int = 2,
+        magno_radius: float = 0.033,
+        magno_scales: list[float] | None = None,
+        latent_tokens: torch.Tensor | None = None,
+        neighbor_search_method: str = "bidirectional",
+        k_neighbors: int = 1,
+        asynchronous_graph_building: bool = True,
+    ):
         """
         Initialize unified collate function.
 
@@ -39,6 +41,8 @@ class UnifiedCollateFunction:
             k_neighbors: Number of neighbors for neighbor search
             asynchronous_graph_building: Whether to build graphs online
         """
+        if magno_scales is None:
+            magno_scales = [1.0]
         self.coord_dim = coord_dim
         self.magno_radius = magno_radius
         self.magno_scales = magno_scales
@@ -48,7 +52,7 @@ class UnifiedCollateFunction:
 
         self.latent_queries = latent_tokens
 
-    def __call__(self, batch: list[VTKMeshDataset]) -> Batch:
+    def __call__(self, batch: list[VTKMeshDataset]) -> Batch:  # noqa: PLR0912
         """
         Collate function that processes a batch of samples.
 
@@ -59,15 +63,16 @@ class UnifiedCollateFunction:
             Batch of samples
         """
         data_list: list[EnrichedData] = []
-        for data in batch:
-            if not isinstance(data, EnrichedData):
-                enriched = EnrichedData(pos=data.pos, x=data.x)
+        for sample in batch:
+            if not isinstance(sample, EnrichedData):
+                enriched = EnrichedData(pos=sample.pos, x=sample.x)
                 # Copy over all existing attributes except ones we explicitly set
-                for attr, value in data:
-                    if attr not in ['pos', 'x']:
+                for attr, value in sample:
+                    if attr not in ["pos", "x"]:
                         setattr(enriched, attr, value)
-                data = enriched
-            data_list.append(data)
+                data_list.append(enriched)
+            else:
+                data_list.append(sample)
 
         # Always rebuild if online_graph_building is True
         if self.asynchronous_graph_building:
@@ -102,14 +107,14 @@ class UnifiedCollateFunction:
                         batch_idx_latent=batch_idx_latent,
                         radius=scaled_radius,
                         k_neighbors=int(self.k_neighbors),
-                        is_decoder=False
+                        is_decoder=False,
                     ).to(dtype=torch.long)
-                    setattr(data, f'encoder_edge_index_s{scale_idx}', enc_edge_index)
+                    setattr(data, f"encoder_edge_index_s{scale_idx}", enc_edge_index)
                     if enc_edge_index.numel() > 0:
                         enc_counts = torch.bincount(enc_edge_index[1], minlength=num_latent_nodes).to(dtype=torch.long)
                     else:
                         enc_counts = torch.zeros(num_latent_nodes, dtype=torch.long)
-                    setattr(data, f'encoder_query_counts_s{scale_idx}', enc_counts)
+                    setattr(data, f"encoder_query_counts_s{scale_idx}", enc_counts)
 
                     # Decoder edges: latent -> phys, edge_index [2, E] = [latent_idx, phys_idx]
                     dec_edge_index = get_neighbor_strategy(
@@ -120,14 +125,14 @@ class UnifiedCollateFunction:
                         batch_idx_latent=batch_idx_latent,
                         radius=scaled_radius,
                         k_neighbors=int(self.k_neighbors),
-                        is_decoder=True
+                        is_decoder=True,
                     ).to(dtype=torch.long)
-                    setattr(data, f'decoder_edge_index_s{scale_idx}', dec_edge_index)
+                    setattr(data, f"decoder_edge_index_s{scale_idx}", dec_edge_index)
                     if dec_edge_index.numel() > 0:
                         dec_counts = torch.bincount(dec_edge_index[1], minlength=num_phys_nodes).to(dtype=torch.long)
                     else:
                         dec_counts = torch.zeros(num_phys_nodes, dtype=torch.long)
-                    setattr(data, f'decoder_query_counts_s{scale_idx}', dec_counts)
+                    setattr(data, f"decoder_query_counts_s{scale_idx}", dec_counts)
 
         return Batch.from_data_list(data_list)
 
@@ -144,14 +149,17 @@ class UnifiedCollateFunction:
             else:
                 logger.warning(f"Unknown config parameter {key}")
 
-def create_collate_function(coord_dim: int = 2,
-                           magno_radius: float = 0.033,
-                           magno_scales: list[float] = [1.0],
-                           latent_tokens: torch.Tensor = None,
-                           neighbor_search_method: str = "bidirectional",
-                           k_neighbors: int = 1,
-                           asynchronous_graph_building: bool = True,
-                           **kwargs) -> UnifiedCollateFunction:
+
+def create_collate_function(
+    coord_dim: int = 2,
+    magno_radius: float = 0.033,
+    magno_scales: list[float] | None = None,
+    latent_tokens: torch.Tensor | None = None,
+    neighbor_search_method: str = "bidirectional",
+    k_neighbors: int = 1,
+    asynchronous_graph_building: bool = True,
+    **kwargs,
+) -> UnifiedCollateFunction:
     """
     Factory function to create a collate function with appropriate configuration.
 
@@ -168,6 +176,8 @@ def create_collate_function(coord_dim: int = 2,
     Returns:
         Configured UnifiedCollateFunction instance
     """
+    if magno_scales is None:
+        magno_scales = [1.0]
     return UnifiedCollateFunction(
         coord_dim=coord_dim,
         magno_radius=magno_radius,
@@ -176,5 +186,5 @@ def create_collate_function(coord_dim: int = 2,
         neighbor_search_method=neighbor_search_method,
         k_neighbors=k_neighbors,
         asynchronous_graph_building=asynchronous_graph_building,
-        **kwargs
+        **kwargs,
     )

@@ -65,8 +65,8 @@ class NormalizeFeatures(BaseTransform):
         self,
         mean: torch.Tensor,
         std: torch.Tensor,
-        c_mean: torch.Tensor = None,
-        c_std: torch.Tensor = None,
+        c_mean: torch.Tensor | None = None,
+        c_std: torch.Tensor | None = None,
         per_head_stats: dict | None = None,
     ):
         self.mean = mean.detach()
