@@ -25,6 +25,7 @@ import os
 import re
 import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from typing import Any
 
 import h5py
 import numpy as np
@@ -173,7 +174,7 @@ def _triangulate_faces(face_nodes, global_to_local):
     triangles : np.ndarray [F_tri, 3]
         Triangle face list with local vertex indices.
     """
-    tris = []
+    tris: list[Any] = []
     for nodes in face_nodes:
         local = np.array([global_to_local[n] for n in nodes])
         # Fan triangulation: (v0, v1, v2), (v0, v2, v3), ...

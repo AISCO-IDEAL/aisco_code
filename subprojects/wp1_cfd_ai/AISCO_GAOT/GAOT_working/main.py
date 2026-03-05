@@ -1,31 +1,30 @@
 import argparse
-import json
 import logging
 import os
 import platform
 import subprocess
 import time
-from multiprocessing import Pool, Process
+from multiprocessing import Process
 
 import numpy as np
 import pandas as pd
-import toml
 import torch
 import torch.distributed as dist
+import yaml
 from omegaconf import OmegaConf
 
 from src.trainer.stat import StaticTrainer3D
 
 
-def setup_logging(level: str = "INFO", log_file: str = None) -> None:
+def setup_logging(level: str = "INFO", log_file: str | None = None) -> None:
     """
     Initialize root logging config.
     - level: str or int, default INFO. Examples: "DEBUG", "INFO", "WARNING", "ERROR".
     - log_file: optional file path to store logs; if None, logs only to console
     """
     if isinstance(level, str):
-        level = getattr(logging, level.upper(), logging.INFO)
-    handlers = [logging.StreamHandler()]
+        level = getattr(logging, level.upper(), logging.INFO)  # type: ignore[arg-type]
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
     if log_file is not None:
         try:
             os.makedirs(os.path.dirname(log_file), exist_ok=True)
@@ -39,21 +38,20 @@ def setup_logging(level: str = "INFO", log_file: str = None) -> None:
 
 class FileParser:
     def __init__(self, filename):
-        if filename.endswith(".toml") or filename.endswith(".json") or filename.endswith(".yaml"):
+        if filename.endswith((".toml", ".json", ".yaml")):
             with open(filename) as f:
                 self.kwargs = OmegaConf.load(f)
         else:
             raise NotImplementedError(f"File type {filename} not supported, currently only toml and json are supported.")
 
     def add_argument(self, *args, **kwargs):
-
-        for arg in args:
-            arg = arg.removeprefix("--")
-            if arg not in self.kwargs:
+        for raw_arg in args:
+            key = raw_arg.removeprefix("--")
+            if key not in self.kwargs:
                 if "action" in kwargs:
-                    self.kwargs[arg] = False
+                    self.kwargs[key] = False
                 else:
-                    self.kwargs[arg] = kwargs.get("default")
+                    self.kwargs[key] = kwargs.get("default")
 
     def parse_args(self):
         return argparse.Namespace(**self.kwargs)
@@ -61,7 +59,7 @@ class FileParser:
 
 def parse_cmd():
     parser = argparse.ArgumentParser()
-    return [parse_args(parser)], True
+    return [parser.parse_args()], True
 
 
 def parse_files():
@@ -79,9 +77,9 @@ def parse_files():
         args.arg_files = [args.config]
     else:
         args.arg_files = []
-        for root, dirs, files in os.walk(args.folder):
+        for root, _dirs, files in os.walk(args.folder):
             for name in files:
-                if name.endswith(".toml") or name.endswith(".json") or name.endswith(".yaml"):
+                if name.endswith((".toml", ".json", ".yaml")):
                     args.arg_files.append(os.path.join(root, name))
     return args
 
@@ -89,7 +87,7 @@ def parse_files():
 def prepare_arg(arg):
     # make sure all paths are exist
     basepath = os.path.dirname(os.path.abspath(__file__))
-    for _path in arg.path.keys():
+    for _path in arg.path:
         if os.path.isabs(arg.path[_path]):
             continue
         _abspath = os.path.join(basepath, arg.path[_path])
@@ -115,7 +113,7 @@ def prepare_arg(arg):
     return arg
 
 
-def run_arg(arg):
+def run_arg(arg):  # noqa: PLR0912
     arg = prepare_arg(arg)
     log_level = os.environ.get("LOG_LEVEL", "INFO")
     log_file = os.environ.get("LOG_FILE", None) or arg.path.get("log_path", None)
@@ -143,8 +141,6 @@ def run_arg(arg):
         # Save the model config (config.yaml style dict) next to the checkpoint
         # so the architecture can always be reconstructed from it.
         if getattr(arg.setup, "rank", 0) == 0:
-            import yaml
-
             ckpt_path = arg.path["ckpt_path"]
             config_save_path = ckpt_path.replace(".pt", "_config.yaml")
 
@@ -200,18 +196,18 @@ def run_arg_file_popen_handle(arg_file):
         print(f"Job {arg_file} error: {err.decode('utf-8').strip()}")
 
 
-def run_arg_files(arg_files, is_debug, num_works_per_device=3):
+def run_arg_files(arg_files, is_debug, num_works_per_device=3):  # noqa: PLR0912
     if len(arg_files) == 1:
         run_arg(FileParser(arg_files[0]).parse_args())
     elif is_debug:
         for arg_file in arg_files:
             print("\n")
             print(arg_file, end="\n\n\n")
-            run_arg(parse_args(FileParser(arg_file)))
+            run_arg(FileParser(arg_file).parse_args())
     elif platform.system() == "Windows":
-        processes = []
+        processes: list[Process] = []
         for arg_file in arg_files:
-            arg = parse_args(FileParser(arg_file))
+            arg = FileParser(arg_file).parse_args()
             p = Process(target=run_arg, args=(arg,))
             p.start()
             processes.append(p)
@@ -219,25 +215,25 @@ def run_arg_files(arg_files, is_debug, num_works_per_device=3):
             p.join()
     elif platform.system() == "Linux":
         num_devices = torch.cuda.device_count()
-        processes = {"cpu": []}
+        process_map: dict[str, list[Process]] = {"cpu": []}
         for i in range(num_devices):
-            processes[f"cuda:{i}"] = []
+            process_map[f"cuda:{i}"] = []
         for arg_file in arg_files:
-            arg = parse_args(FileParser(arg_file))
+            arg = FileParser(arg_file).parse_args()
             p = Process(target=run_arg_file_popen_handle, args=(arg_file,))
             if arg.device.startswith("cuda"):
                 device_id = int(arg.device[-1])
-                processes[f"cuda:{device_id}"].append(p)
+                process_map[f"cuda:{device_id}"].append(p)
             else:
-                processes["cpu"].append(p)
+                process_map["cpu"].append(p)
 
-        max_jobs = max([len(v) for k, v in processes.items()])
+        max_jobs = max([len(v) for k, v in process_map.items()])
         max_runs = (max_jobs + num_works_per_device - 1) // num_works_per_device
         for i in range(max_runs):
-            for k, v in processes.items():
+            for v in process_map.values():
                 for p in v[i * num_works_per_device : (i + 1) * num_works_per_device]:
                     p.start()
-            for k, v in processes.items():
+            for v in process_map.values():
                 for p in v[i * num_works_per_device : (i + 1) * num_works_per_device]:
                     p.join()
     else:

@@ -50,7 +50,7 @@ def run_test():
 
     print("\n--- 3. Testing the PyTorch DataLoader ---")
     # We set batch_size=2 to ensure the collate function successfully merges two cars
-    loader = DataLoader(
+    loader: DataLoader = DataLoader(
         dataset,
         batch_size=2,
         shuffle=False,

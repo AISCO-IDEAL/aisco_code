@@ -55,7 +55,7 @@ def _process_single_euler(ply_file, force_dir, output_dir):
     match = re.search(r"RUN_(\d+)", run_id)
     run_number = match.group(1) if match else None
     force_file = os.path.join(force_dir, f"RUN_{run_number}_force_report.out") if run_number else None
-    if not run_number or not os.path.exists(force_file):
+    if not run_number or force_file is None or not os.path.exists(force_file):
         return None
 
     # 1. Read mesh and compute normals

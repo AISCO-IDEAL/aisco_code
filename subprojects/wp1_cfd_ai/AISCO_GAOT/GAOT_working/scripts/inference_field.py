@@ -550,6 +550,7 @@ def _draw_pressure_panels(fig, axes, xy, raw_data, result, idx, point_size, xlab
         else:
             p_vmin, p_vmax = np.percentile(pred_p, [2, 98])
             p_vcenter = 0.0 if p_vmin < 0 < p_vmax else (p_vmin + p_vmax) / 2
+        assert p_vcenter is not None
         try:
             norm_p = TwoSlopeNorm(vcenter=p_vcenter, vmin=p_vmin, vmax=p_vmax)
         except ValueError:
@@ -559,6 +560,7 @@ def _draw_pressure_panels(fig, axes, xy, raw_data, result, idx, point_size, xlab
         )
         panel += 1
     if has_gt and has_pred:
+        assert gt is not None
         error = pred_p - gt
         err_abs_max = max(abs(np.percentile(error, 2)), abs(np.percentile(error, 98)))
         if err_abs_max < EPSILON:

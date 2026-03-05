@@ -15,19 +15,19 @@ def anim_row(
     output_path: str = "outputs/animation.mp4",
     density: int = 16,
 ):
-    points = points.detach().cpu().numpy()
+    points_np = points.detach().cpu().numpy()
     ncols = len(titles)
     assert len(values) == ncols, f"Expected {ncols} values, but got {len(values)}"
-    values = [v.detach().cpu().numpy() if isinstance(v, torch.Tensor) else v for v in values]
+    values_np = [v.detach().cpu().numpy() if isinstance(v, torch.Tensor) else v for v in values]
     fig, axes = plt.subplots(ncols=ncols, figsize=(5 * ncols, 5))
     imgs = []
     cbs = []
     for i, ax in enumerate(axes):
         ax.set_title(titles[i])
         xx, yy = np.mgrid[0 : 1 : density * 1j, 0 : 1 : density * 1j]  # type: ignore[misc]
-        z = griddata(points, values[i][0], (xx, yy), method="linear")
+        z = griddata(points_np, values_np[i][0], (xx, yy), method="linear")
         img = ax.matshow(
-            z.reshape(density, density), cmap="jet", interpolation="bilinear", vmin=values[i].min(), vmax=values[i].max()
+            z.reshape(density, density), cmap="jet", interpolation="bilinear", vmin=values_np[i].min(), vmax=values_np[i].max()
         )
         cbar = fig.colorbar(img, ax=ax)
         imgs.append(img)
@@ -36,10 +36,10 @@ def anim_row(
 
     def update(frame):
         for i, img in enumerate(imgs):
-            z = griddata(points, values[i][frame], (xx, yy), method="linear")
+            z = griddata(points_np, values_np[i][frame], (xx, yy), method="linear")
             img.set_data(z.reshape(density, density))
         fig.suptitle(f"Time: {frame * dt:.2f}s")
 
-    anim = FuncAnimation(fig, update, frames=range(values[0].shape[0]), interval=100)
+    anim = FuncAnimation(fig, update, frames=range(values_np[0].shape[0]), interval=100)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     anim.save(output_path)
