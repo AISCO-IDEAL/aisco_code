@@ -4,7 +4,9 @@ import torch
 
 class Routeloader:
     def __init__(self):
-        self.road_data = pd.read_csv("/cluster/home/aalthaus/AISCO_code/subprojects/wp3_solar_estimator/australia/route_preprocessed.csv")  # CSV with 'lat' and 'lon' columns
+        self.road_data = pd.read_csv(
+            "subprojects/wp3_solar_estimator/australia/route_preprocessed.csv"
+        )  # CSV with 'lat' and 'lon' columns
 
     def get_position(self, race_distance_km: float | torch.Tensor) -> torch.Tensor:
         """

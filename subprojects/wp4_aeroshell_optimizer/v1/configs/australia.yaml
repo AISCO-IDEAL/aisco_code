@@ -1,5 +1,5 @@
 general:
-  path: "/cluster/home/aalthaus/AISCO_code/subprojects/wp3_solar_estimator/australia/route_preprocessed.csv"
+  path: "subprojects/wp3_solar_estimator/australia/route_preprocessed.csv"
   timezone: "Australia/Darwin" #insert "Australia/Darwin" or "Australia/Adelaide" here
 
 route_generation:
