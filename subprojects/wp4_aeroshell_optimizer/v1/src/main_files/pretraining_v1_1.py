@@ -1,7 +1,6 @@
 import importlib
 
 import torch
-from warp import grad
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.ground_truth_masks.simple_geoms import cube_gt, sphere_gt  # Added cube_gt
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
@@ -24,7 +23,7 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
     return model
 
 # 2026 03 05, eschaerer:
-# look i'm not sure if the changes i made also work on the HPC. Please revert them if they don't 
+# look i'm not sure if the changes i made also work on the HPC. Please revert them if they don't
 def pretraining(
     model: BaseModel | None = None,
     pretraining_config_name: str = "pretraining_v0_config.yaml",
@@ -80,7 +79,7 @@ def pretraining(
         input_mm_for_model = input_m * 1000.0
 
         # 3. PASS THE NEW TENSOR TO THE MODEL
-        sdf_m = (model(input_mm_for_model).squeeze()) / 1000.0 
+        sdf_m = (model(input_mm_for_model).squeeze()) / 1000.0
 
         # 4. Now 'grad' will actually contain values
         grad = torch.autograd.grad(
