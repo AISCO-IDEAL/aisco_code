@@ -263,6 +263,17 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
 
     return assembly, outer, vision
 
+# eschaerer: needed for visualiser
+def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
+    """
+    Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
+
+    Args: id-number
+
+    Returns:  tuple with list[inner solids] and outer solid
+    """
+    inner, outer , __= call_assembly(id_number)
+    return inner.toCompound().Solids(), outer
 
 def get_range_wheels() -> dict:
     """

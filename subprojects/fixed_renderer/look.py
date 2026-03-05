@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+# kdiehl: hardcoded torch.cuda is outdated. could be updated, however there are some pitfalls -> testing the functionality is cruicial
 
 def look(vertices, eye, direction=[0, 1, 0], up=None):
     """
@@ -27,7 +28,7 @@ def look(vertices, eye, direction=[0, 1, 0], up=None):
         eye = eye.to(device)
 
     if up is None:
-        up = torch.cuda.FloatTensor([0, 1, 0])
+        up = torch.cuda.FloatTensor([0, 1, 0]) # type: ignore [attr-defined]
     if eye.ndimension() == 1:
         eye = eye[None, :]
     if direction.ndimension() == 1:
