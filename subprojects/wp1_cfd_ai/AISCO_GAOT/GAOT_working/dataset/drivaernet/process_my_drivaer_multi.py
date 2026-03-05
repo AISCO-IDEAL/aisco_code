@@ -47,8 +47,8 @@ def _interpolate_cp_from_vtp(ply_pos_zup, vtp_path, cp_key="CpMeanTrim"):
     vtp = pv.read(vtp_path)
     # VTP is already z-up, no axis swap needed
     vtp_pt = vtp.cell_data_to_point_data()
-    vtp_cp = vtp_pt.point_data[cp_key]   # [M]
-    vtp_pts = vtp_pt.points              # [M, 3]
+    vtp_cp = vtp_pt.point_data[cp_key]  # [M]
+    vtp_pts = vtp_pt.points  # [M, 3]
 
     tree = cKDTree(vtp_pts)
     _, idx = tree.query(ply_pos_zup, k=1)
@@ -70,9 +70,7 @@ def _process_single_drivaer(run_folder, output_dir, target_col):
     # 1. Read PLY mesh and compute normals
     try:
         mesh = pv.read(ply_file)
-        mesh = mesh.compute_normals(
-            cell_normals=False, point_normals=True, auto_orient_normals=True
-        )
+        mesh = mesh.compute_normals(cell_normals=False, point_normals=True, auto_orient_normals=True)
         pos = torch.tensor(mesh.points, dtype=torch.float32)
         c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32)
         # DrivAer PLY is y-up (x=flow, y=vertical, z=lateral).
@@ -123,13 +121,8 @@ def process_custom_drivaer(base_path, output_dir, target_col="Cd", num_workers=N
 
     order_list = []
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        futures = {
-            executor.submit(_process_single_drivaer, rf, output_dir, target_col): rf
-            for rf in run_folders
-        }
-        for future in tqdm(
-            as_completed(futures), total=len(futures), desc="Processing DrivAer runs"
-        ):
+        futures = {executor.submit(_process_single_drivaer, rf, output_dir, target_col): rf for rf in run_folders}
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Processing DrivAer runs"):
             result = future.result()
             if result is not None:
                 order_list.append(result)
@@ -146,18 +139,16 @@ def process_custom_drivaer(base_path, output_dir, target_col="Cd", num_workers=N
 
 if __name__ == "__main__":
     import argparse
-    _slurm_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", 0))
+
+    _slurm_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", "0"))
     _default_workers = max(1, _slurm_cpus - 4) if _slurm_cpus > 0 else NUM_WORKERS
 
     parser = argparse.ArgumentParser(description="Preprocess DrivAer PLY runs (multi-head format)")
-    parser.add_argument("--base-path",   default="/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_complete")
-    parser.add_argument("--output-dir",  default="/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_multi")
-    parser.add_argument("--target-col",  default="Cd",
-                        help="Column name for Cd in force_mom_X.csv")
+    parser.add_argument("--base-path", default="/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_complete")
+    parser.add_argument("--output-dir", default="/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_multi")
+    parser.add_argument("--target-col", default="Cd", help="Column name for Cd in force_mom_X.csv")
     parser.add_argument("--num-workers", type=int, default=_default_workers)
     args = parser.parse_args()
 
     print(f"Using {args.num_workers} workers (SLURM_CPUS_PER_TASK={_slurm_cpus})")
-    process_custom_drivaer(args.base_path, args.output_dir,
-                           target_col=args.target_col,
-                           num_workers=args.num_workers)
+    process_custom_drivaer(args.base_path, args.output_dir, target_col=args.target_col, num_workers=args.num_workers)

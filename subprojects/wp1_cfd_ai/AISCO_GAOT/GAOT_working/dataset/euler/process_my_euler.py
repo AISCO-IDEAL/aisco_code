@@ -22,6 +22,8 @@ from tqdm import tqdm
 # NOTE: For the multi-head format (force/cd with NaN masking), use process_my_euler_multi.py instead.
 
 NUM_WORKERS = 8  # number of parallel workers for mesh processing
+MIN_FORCE_COLS = 3  # minimum columns expected in a force report line
+MM_TO_M_THRESHOLD = 50  # if any coordinate exceeds this (mm), convert to meters
 
 
 def parse_force_report(filepath):
@@ -31,13 +33,13 @@ def parse_force_report(filepath):
     """
     last_value = None
     with open(filepath) as f:
-        for line in f:
-            line = line.strip()
+        for raw_line in f:
+            line = raw_line.strip()
             # Skip header/comment lines (start with " or ()
-            if not line or line.startswith('"') or line.startswith("("):
+            if not line or line.startswith(('"', "(")):
                 continue
             parts = line.split()
-            if len(parts) >= 3:
+            if len(parts) >= MIN_FORCE_COLS:
                 try:
                     last_value = float(parts[2])  # 3rd column = drag_force
                 except ValueError:
@@ -51,12 +53,9 @@ def _process_single_euler(ply_file, force_dir, output_dir):
     run_id = basename.replace(".ply", "")
 
     match = re.search(r"RUN_(\d+)", run_id)
-    if not match:
-        return None
-
-    run_number = match.group(1)
-    force_file = os.path.join(force_dir, f"RUN_{run_number}_force_report.out")
-    if not os.path.exists(force_file):
+    run_number = match.group(1) if match else None
+    force_file = os.path.join(force_dir, f"RUN_{run_number}_force_report.out") if run_number else None
+    if not run_number or not os.path.exists(force_file):
         return None
 
     # 1. Read mesh and compute normals
@@ -64,18 +63,16 @@ def _process_single_euler(ply_file, force_dir, output_dir):
         mesh = pv.read(ply_file)
         if mesh.n_points == 0:
             return None
-        mesh = mesh.compute_normals(
-            cell_normals=False, point_normals=True, auto_orient_normals=True
-        )
+        mesh = mesh.compute_normals(cell_normals=False, point_normals=True, auto_orient_normals=True)
         pos = torch.tensor(mesh.points, dtype=torch.float32)
         c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32)
-        # Auto-detect units: if any coordinate exceeds 50, assume mm → convert to meters
-        if pos.abs().max() > 50:
+        # Auto-detect units: if any coordinate exceeds threshold, assume mm → convert to meters
+        if pos.abs().max() > MM_TO_M_THRESHOLD:
             pos = pos * 1e-3
         # Euler PLY: nose is at +x, DrivAer nose is at -x.
         # Negate x to match convention: nose at negative x, tail at positive x.
         pos[:, 0] = -pos[:, 0]
-        c[:, 0]   = -c[:, 0]
+        c[:, 0] = -c[:, 0]
     except Exception:
         return None
 
@@ -84,17 +81,17 @@ def _process_single_euler(ply_file, force_dir, output_dir):
     # Negate so data.force = positive drag in +x (flow) direction.
     try:
         drag_force_raw = parse_force_report(force_file)
-        if drag_force_raw is None:
-            return None
-        drag_force = -drag_force_raw  # negate: negative Fluent report → positive drag
     except Exception:
         return None
+    if drag_force_raw is None:
+        return None
+    drag_force = -drag_force_raw  # negate: negative Fluent report → positive drag
 
     # 3. Build and save PyG Data object (multi-head format for compatibility)
     data = Data(pos=pos, c=c)
     data.x = None
     data.force = torch.tensor([drag_force], dtype=torch.float32)  # [N], positive = drag in +x
-    data.cd = torch.tensor([float("nan")], dtype=torch.float32)   # not available for Euler
+    data.cd = torch.tensor([float("nan")], dtype=torch.float32)  # not available for Euler
     data.filename = run_id
 
     run_num_int = int(run_number)
@@ -115,13 +112,8 @@ def process_euler_runs(geometry_dir, force_dir, output_dir, num_workers=NUM_WORK
 
     order_list = []
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        futures = {
-            executor.submit(_process_single_euler, pf, force_dir, output_dir): pf
-            for pf in ply_files
-        }
-        for future in tqdm(
-            as_completed(futures), total=len(futures), desc="Processing Euler runs"
-        ):
+        futures = {executor.submit(_process_single_euler, pf, force_dir, output_dir): pf for pf in ply_files}
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Processing Euler runs"):
             result = future.result()
             if result is not None:
                 order_list.append(result)
@@ -138,14 +130,15 @@ def process_euler_runs(geometry_dir, force_dir, output_dir, num_workers=NUM_WORK
 
 if __name__ == "__main__":
     import argparse
-    _slurm_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", 0))
+
+    _slurm_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", "0"))
     _default_workers = max(1, _slurm_cpus - 4) if _slurm_cpus > 0 else NUM_WORKERS
 
     parser = argparse.ArgumentParser(description="Preprocess Euler PLY runs (single-target / legacy format)")
     parser.add_argument("--geometry-dir", default="/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/GEOMETRY")
-    parser.add_argument("--force-dir",    default="/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/RUN/EULER_OUTPUT")
-    parser.add_argument("--output-dir",   default="/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler")
-    parser.add_argument("--num-workers",  type=int, default=_default_workers)
+    parser.add_argument("--force-dir", default="/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/RUN/EULER_OUTPUT")
+    parser.add_argument("--output-dir", default="/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler")
+    parser.add_argument("--num-workers", type=int, default=_default_workers)
     args = parser.parse_args()
 
     print(f"Using {args.num_workers} workers (SLURM_CPUS_PER_TASK={_slurm_cpus})")

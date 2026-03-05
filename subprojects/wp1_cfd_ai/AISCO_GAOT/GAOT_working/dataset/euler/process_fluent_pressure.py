@@ -32,7 +32,6 @@ import torch
 from torch_geometric.data import Data
 from tqdm import tqdm
 
-
 # ---------------------------------------------------------------------------
 #  Constants
 # ---------------------------------------------------------------------------
@@ -46,6 +45,7 @@ SURFACE_ZONE_NAME = "car_surface"
 WALL_ZONE_TYPE = 3
 
 NUM_WORKERS = 4  # HDF5 reads + numpy heavy → moderate parallelism
+MIN_FORCE_COLS = 3  # minimum columns in a valid force report line
 
 
 # ---------------------------------------------------------------------------
@@ -60,12 +60,12 @@ def parse_force_report(filepath):
     last_cd = None
     last_force = None
     with open(filepath) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('"') or line.startswith("("):
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line or line.startswith(('"', "(")):
                 continue
             parts = line.split()
-            if len(parts) >= 3:
+            if len(parts) >= MIN_FORCE_COLS:
                 try:
                     last_cd = float(parts[1])
                     last_force = float(parts[2])
@@ -89,17 +89,15 @@ class FluentZoneInfo:
             self.names = names_raw.split(";")
             self.zone_ids = zt["id"][:]
             self.zone_types = zt["zoneType"][:]
-            self.min_ids = zt["minId"][:]   # 1-based face IDs
+            self.min_ids = zt["minId"][:]  # 1-based face IDs
             self.max_ids = zt["maxId"][:]
 
     def find_zone(self, name):
         """Return the topology index for a zone by name."""
         try:
             return self.names.index(name)
-        except ValueError:
-            raise ValueError(
-                f"Zone '{name}' not found.  Available: {self.names}"
-            )
+        except ValueError as e:
+            raise ValueError(f"Zone '{name}' not found.  Available: {self.names}") from e
 
     def face_range_0based(self, idx):
         """Return (start, end) as 0-based indices into the global face arrays."""
@@ -179,8 +177,7 @@ def _triangulate_faces(face_nodes, global_to_local):
     for nodes in face_nodes:
         local = np.array([global_to_local[n] for n in nodes])
         # Fan triangulation: (v0, v1, v2), (v0, v2, v3), ...
-        for k in range(1, len(local) - 1):
-            tris.append([local[0], local[k], local[k + 1]])
+        tris.extend([local[0], local[k], local[k + 1]] for k in range(1, len(local) - 1))
     return np.array(tris, dtype=np.int64)
 
 
@@ -211,8 +208,7 @@ def _compute_vertex_normals(pos, triangles):
     return vertex_normals / norms
 
 
-def _interpolate_face_to_vertex(values_per_face, face_nodes, global_to_local,
-                                n_vertices, pos_np=None, triangles_np=None):
+def _interpolate_face_to_vertex(values_per_face, face_nodes, global_to_local, n_vertices, _pos_np=None, _triangles_np=None):
     """
     Interpolate face-center values to vertices using area-weighted averaging.
 
@@ -235,8 +231,8 @@ def _interpolate_face_to_vertex(values_per_face, face_nodes, global_to_local,
     """
     is_vector = values_per_face.ndim > 1
     if is_vector:
-        D = values_per_face.shape[1]
-        accum = np.zeros((n_vertices, D), dtype=np.float64)
+        n_dims = values_per_face.shape[1]
+        accum = np.zeros((n_vertices, n_dims), dtype=np.float64)
     else:
         accum = np.zeros(n_vertices, dtype=np.float64)
     weight = np.zeros(n_vertices, dtype=np.float64)
@@ -263,8 +259,7 @@ def _interpolate_face_to_vertex(values_per_face, face_nodes, global_to_local,
 # ---------------------------------------------------------------------------
 #  Single-run processor
 # ---------------------------------------------------------------------------
-def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR,
-                       output_dir=OUTPUT_DIR):
+def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, output_dir=OUTPUT_DIR):
     """
     Process one Fluent run into a GAOT-compatible .pt file with pressure field.
 
@@ -310,17 +305,11 @@ def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR,
 
         # Wall shear stress
         wall_shear_all = dat["results/1/phase-1/faces/SV_WALL_SHEAR/1"][:]
-        face_shear = wall_shear_all[
-            car_wall_offset : car_wall_offset + n_faces
-        ]  # [n_faces, 3]
+        face_shear = wall_shear_all[car_wall_offset : car_wall_offset + n_faces]  # [n_faces, 3]
 
-    vertex_pressure = _interpolate_face_to_vertex(
-        face_pressure, face_nodes, global_to_local, n_vertices
-    )  # [N]
+    vertex_pressure = _interpolate_face_to_vertex(face_pressure, face_nodes, global_to_local, n_vertices)  # [N]
 
-    vertex_shear = _interpolate_face_to_vertex(
-        face_shear, face_nodes, global_to_local, n_vertices
-    )  # [N, 3]
+    vertex_shear = _interpolate_face_to_vertex(face_shear, face_nodes, global_to_local, n_vertices)  # [N, 3]
 
     # ---- 7. Parse force report ----
     force_val = float("nan")
@@ -334,13 +323,13 @@ def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR,
 
     # ---- 8. Build PyG Data and save ----
     data = Data(
-        pos=torch.tensor(pos_np, dtype=torch.float32),               # [N, 3]
+        pos=torch.tensor(pos_np, dtype=torch.float32),  # [N, 3]
         x=torch.tensor(vertex_pressure, dtype=torch.float32).unsqueeze(-1),  # [N, 1]
-        c=torch.tensor(normals_np, dtype=torch.float32),              # [N, 3]
-        face=torch.tensor(triangles.T, dtype=torch.long),             # [3, F_tri]
-        wall_shear=torch.tensor(vertex_shear, dtype=torch.float32),   # [N, 3]
-        force=torch.tensor([force_val], dtype=torch.float32),         # [1]
-        cd=torch.tensor([cd_val], dtype=torch.float32),               # [1]
+        c=torch.tensor(normals_np, dtype=torch.float32),  # [N, 3]
+        face=torch.tensor(triangles.T, dtype=torch.long),  # [3, F_tri]
+        wall_shear=torch.tensor(vertex_shear, dtype=torch.float32),  # [N, 3]
+        force=torch.tensor([force_val], dtype=torch.float32),  # [1]
+        cd=torch.tensor([cd_val], dtype=torch.float32),  # [1]
     )
     data.filename = f"RUN_{run_id:03d}"
     data.n_surface_faces = n_faces
@@ -355,9 +344,9 @@ def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR,
 # ---------------------------------------------------------------------------
 #  Batch processing
 # ---------------------------------------------------------------------------
-def process_all_runs(results_dir=RESULTS_DIR, force_dir=FORCE_DIR,
-                     output_dir=OUTPUT_DIR, run_ids=None, max_runs=None,
-                     num_workers=NUM_WORKERS):
+def process_all_runs(
+    results_dir=RESULTS_DIR, force_dir=FORCE_DIR, output_dir=OUTPUT_DIR, run_ids=None, max_runs=None, num_workers=NUM_WORKERS
+):
     """
     Process all (or selected) Fluent runs into .pt files.
 
@@ -395,9 +384,7 @@ def process_all_runs(results_dir=RESULTS_DIR, force_dir=FORCE_DIR,
     if num_workers <= 1:
         for rid in tqdm(run_ids, desc="Processing runs"):
             try:
-                result = process_single_run(
-                    rid, results_dir, force_dir, output_dir
-                )
+                result = process_single_run(rid, results_dir, force_dir, output_dir)
                 if result is not None:
                     order_list.append(result)
             except Exception as e:
@@ -405,15 +392,8 @@ def process_all_runs(results_dir=RESULTS_DIR, force_dir=FORCE_DIR,
                 traceback.print_exc()
     else:
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            futures = {
-                executor.submit(
-                    process_single_run, rid, results_dir, force_dir, output_dir
-                ): rid
-                for rid in run_ids
-            }
-            for future in tqdm(
-                as_completed(futures), total=len(futures), desc="Processing runs"
-            ):
+            futures = {executor.submit(process_single_run, rid, results_dir, force_dir, output_dir): rid for rid in run_ids}
+            for future in tqdm(as_completed(futures), total=len(futures), desc="Processing runs"):
                 rid = futures[future]
                 try:
                     result = future.result()
@@ -440,18 +420,13 @@ def process_all_runs(results_dir=RESULTS_DIR, force_dir=FORCE_DIR,
 #  CLI
 # ---------------------------------------------------------------------------
 def main():
-    parser = argparse.ArgumentParser(
-        description="Process Fluent .cas.h5/.dat.h5 into GAOT .pt with pressure field."
-    )
+    parser = argparse.ArgumentParser(description="Process Fluent .cas.h5/.dat.h5 into GAOT .pt with pressure field.")
     parser.add_argument("--results_dir", default=RESULTS_DIR)
     parser.add_argument("--force_dir", default=FORCE_DIR)
     parser.add_argument("--output_dir", default=OUTPUT_DIR)
-    parser.add_argument("--run_ids", nargs="+", type=int, default=None,
-                        help="Specific run IDs to process (e.g., 1 2 3)")
-    parser.add_argument("--max_runs", type=int, default=None,
-                        help="Process at most N runs")
-    parser.add_argument("--workers", type=int, default=NUM_WORKERS,
-                        help="Number of parallel workers (default: 4)")
+    parser.add_argument("--run_ids", nargs="+", type=int, default=None, help="Specific run IDs to process (e.g., 1 2 3)")
+    parser.add_argument("--max_runs", type=int, default=None, help="Process at most N runs")
+    parser.add_argument("--workers", type=int, default=NUM_WORKERS, help="Number of parallel workers (default: 4)")
     args = parser.parse_args()
 
     process_all_runs(

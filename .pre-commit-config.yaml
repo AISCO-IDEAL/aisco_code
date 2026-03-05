@@ -29,4 +29,4 @@ repos:
     hooks:
       - id: mypy
         # Optional: MyPy-Konfiguration aus pyproject.toml nutzen
-        additional_dependencies: [types-requests]  # Falls du spezifische Typen brauchst
+        additional_dependencies: [types-requests, types-PyYAML]

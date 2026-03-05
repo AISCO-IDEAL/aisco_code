@@ -170,12 +170,12 @@ class Transformer(nn.Module):
         if transformer_config["input_size"] != transformer_config["hidden_size"]:
             self.input_proj = nn.Linear(transformer_config["input_size"], transformer_config["hidden_size"])
         else:
-            self.input_proj = nn.Identity()  # type: ignore[assignment]
+            self.input_proj = nn.Identity()
 
         if transformer_config["hidden_size"] != transformer_config["output_size"]:
             self.output_proj = nn.Linear(transformer_config["hidden_size"], transformer_config["output_size"])
         else:
-            self.output_proj = nn.Identity()  # type: ignore[assignment]
+            self.output_proj = nn.Identity()
 
         num_encoder_layers = transformer_config["num_layers"] // 2
         num_decoder_layers = transformer_config["num_layers"] // 2

@@ -34,12 +34,10 @@ import re
 import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-import numpy as np
 import pyvista as pv
 import torch
 from torch_geometric.data import Data
 from tqdm import tqdm
-
 
 # ---------------------------------------------------------------------------
 #  Dataset configurations
@@ -49,11 +47,11 @@ DATASETS = {
         "input_dir": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_complete",
         "output_dir": "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_pressure",
         "vtp_pattern": "boundary_{id}.vtp",
-        "pressure_key": "pMeanTrim",      # cell data key for pressure
-        "cp_key": "CpMeanTrim",           # cell data key for Cp (pressure coef)
+        "pressure_key": "pMeanTrim",  # cell data key for pressure
+        "cp_key": "CpMeanTrim",  # cell data key for Cp (pressure coef)
         "shear_key": "wallShearStressMeanTrim",  # cell data key for wall shear
-        "csv_type": "drag_param",         # CSV format type
-        "prefix": "drivaer_run",          # output folder prefix
+        "csv_type": "drag_param",  # CSV format type
+        "prefix": "drivaer_run",  # output folder prefix
     },
     "ahmed": {
         "input_dir": "/cluster/work/fuge/AISCO/wp1_cfd_ai/ahmed_complete",
@@ -139,22 +137,16 @@ def process_single_vtp(run_id, dataset_cfg):
     mesh_pt = mesh_tri.cell_data_to_point_data()
 
     # ---- 4. Compute normals ----
-    mesh_pt = mesh_pt.compute_normals(
-        cell_normals=False, point_normals=True, auto_orient_normals=True
-    )
+    mesh_pt = mesh_pt.compute_normals(cell_normals=False, point_normals=True, auto_orient_normals=True)
 
     # ---- 5. Extract arrays ----
     pos = torch.tensor(mesh_pt.points, dtype=torch.float32)  # [N, 3]
-    normals = torch.tensor(
-        mesh_pt.point_data["Normals"], dtype=torch.float32
-    )  # [N, 3]
+    normals = torch.tensor(mesh_pt.point_data["Normals"], dtype=torch.float32)  # [N, 3]
 
     # Pressure
     pressure_key = dataset_cfg["pressure_key"]
     if pressure_key in mesh_pt.point_data:
-        pressure = torch.tensor(
-            mesh_pt.point_data[pressure_key], dtype=torch.float32
-        ).unsqueeze(-1)  # [N, 1]
+        pressure = torch.tensor(mesh_pt.point_data[pressure_key], dtype=torch.float32).unsqueeze(-1)  # [N, 1]
     else:
         print(f"  [WARN] run_{run_id}: '{pressure_key}' not found, using zeros")
         pressure = torch.zeros(pos.shape[0], 1, dtype=torch.float32)
@@ -163,16 +155,12 @@ def process_single_vtp(run_id, dataset_cfg):
     cp_key = dataset_cfg.get("cp_key")
     cp = None
     if cp_key and cp_key in mesh_pt.point_data:
-        cp = torch.tensor(
-            mesh_pt.point_data[cp_key], dtype=torch.float32
-        ).unsqueeze(-1)  # [N, 1]
+        cp = torch.tensor(mesh_pt.point_data[cp_key], dtype=torch.float32).unsqueeze(-1)  # [N, 1]
 
     # Wall shear stress
     shear_key = dataset_cfg["shear_key"]
     if shear_key in mesh_pt.point_data:
-        wall_shear = torch.tensor(
-            mesh_pt.point_data[shear_key], dtype=torch.float32
-        )  # [N, 3]
+        wall_shear = torch.tensor(mesh_pt.point_data[shear_key], dtype=torch.float32)  # [N, 3]
     else:
         wall_shear = torch.zeros(pos.shape[0], 3, dtype=torch.float32)
 
@@ -186,16 +174,16 @@ def process_single_vtp(run_id, dataset_cfg):
 
     # ---- 8. Build PyG Data and save ----
     data = Data(
-        pos=pos,                     # [N, 3]
-        x=pressure,                  # [N, 1] — pressure field (GAOT target)
-        c=normals,                   # [N, 3]
-        face=face,                   # [3, F]
-        wall_shear=wall_shear,       # [N, 3]
+        pos=pos,  # [N, 3]
+        x=pressure,  # [N, 1] — pressure field (GAOT target)
+        c=normals,  # [N, 3]
+        face=face,  # [3, F]
+        wall_shear=wall_shear,  # [N, 3]
         force=torch.tensor([force_val], dtype=torch.float32),  # [1]
-        cd=torch.tensor([cd_val], dtype=torch.float32),        # [1]
+        cd=torch.tensor([cd_val], dtype=torch.float32),  # [1]
     )
     if cp is not None:
-        data.cp = cp                 # [N, 1]
+        data.cp = cp  # [N, 1]
     data.filename = f"run_{run_id}"
 
     save_name = f"{prefix}_{run_id}"
@@ -203,6 +191,20 @@ def process_single_vtp(run_id, dataset_cfg):
     os.makedirs(save_dir, exist_ok=True)
     torch.save(data, os.path.join(save_dir, "data.pt"))
     return save_name
+
+
+# ---------------------------------------------------------------------------
+#  Helpers
+# ---------------------------------------------------------------------------
+def _detect_run_ids(input_dir: str) -> list:
+    """Auto-detect run IDs by scanning run_* subdirectories."""
+    run_dirs = sorted(glob.glob(os.path.join(input_dir, "run_*")))
+    run_ids = []
+    for rd in run_dirs:
+        m = re.search(r"run_(\d+)$", rd)
+        if m:
+            run_ids.append(int(m.group(1)))
+    return sorted(run_ids)
 
 
 # ---------------------------------------------------------------------------
@@ -220,12 +222,7 @@ def process_all(dataset_name, run_ids=None, max_runs=None, num_workers=NUM_WORKE
 
     # Auto-detect runs
     if run_ids is None:
-        run_dirs = sorted(glob.glob(os.path.join(input_dir, "run_*")))
-        run_ids = []
-        for rd in run_dirs:
-            m = re.search(r"run_(\d+)$", rd)
-            if m:
-                run_ids.append(int(m.group(1)))
+        run_ids = _detect_run_ids(input_dir)
         run_ids.sort()
 
     if max_runs is not None:
@@ -248,13 +245,8 @@ def process_all(dataset_name, run_ids=None, max_runs=None, num_workers=NUM_WORKE
                 traceback.print_exc()
     else:
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            futures = {
-                executor.submit(process_single_vtp, rid, cfg): rid
-                for rid in run_ids
-            }
-            for future in tqdm(
-                as_completed(futures), total=len(futures), desc=f"Processing {dataset_name}"
-            ):
+            futures = {executor.submit(process_single_vtp, rid, cfg): rid for rid in run_ids}
+            for future in tqdm(as_completed(futures), total=len(futures), desc=f"Processing {dataset_name}"):
                 rid = futures[future]
                 try:
                     result = future.result()
@@ -280,13 +272,8 @@ def process_all(dataset_name, run_ids=None, max_runs=None, num_workers=NUM_WORKE
 #  CLI
 # ---------------------------------------------------------------------------
 def main():
-    parser = argparse.ArgumentParser(
-        description="Process VTP boundary meshes into GAOT .pt with pressure field."
-    )
-    parser.add_argument(
-        "dataset", choices=list(DATASETS.keys()),
-        help="Which dataset to process (drivaer or ahmed)"
-    )
+    parser = argparse.ArgumentParser(description="Process VTP boundary meshes into GAOT .pt with pressure field.")
+    parser.add_argument("dataset", choices=list(DATASETS.keys()), help="Which dataset to process (drivaer or ahmed)")
     parser.add_argument("--run_ids", nargs="+", type=int, default=None)
     parser.add_argument("--max_runs", type=int, default=None)
     parser.add_argument("--workers", type=int, default=NUM_WORKERS)
