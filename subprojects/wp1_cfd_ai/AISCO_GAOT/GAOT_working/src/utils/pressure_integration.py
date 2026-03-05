@@ -102,8 +102,8 @@ def pressure_to_drag(
         Drag force.  Differentiable w.r.t. ``pred_pressure`` and ``pos``.
     """
     p = pred_pressure.squeeze(-1) if pred_pressure.dim() > 1 else pred_pressure
-    n_dir = normals[:, drag_direction]                        # [N]
-    vertex_areas = compute_vertex_areas(pos, face)            # [N]
+    n_dir = normals[:, drag_direction]  # [N]
+    vertex_areas = compute_vertex_areas(pos, face)  # [N]
     drag = (p * n_dir * vertex_areas).sum()
     return drag
 
@@ -141,9 +141,9 @@ def pressure_shear_to_drag(
         Total drag force (pressure + friction).
     """
     p = pred_pressure.squeeze(-1) if pred_pressure.dim() > 1 else pred_pressure
-    n_dir = normals[:, drag_direction]                        # [N]
-    tau_dir = pred_shear[:, drag_direction]                    # [N]
-    vertex_areas = compute_vertex_areas(pos, face)            # [N]
+    n_dir = normals[:, drag_direction]  # [N]
+    tau_dir = pred_shear[:, drag_direction]  # [N]
+    vertex_areas = compute_vertex_areas(pos, face)  # [N]
 
     pressure_drag = (p * n_dir * vertex_areas).sum()
     friction_drag = (tau_dir * vertex_areas).sum()
@@ -174,5 +174,5 @@ def drag_to_cd(
     Tensor (scalar)
         Drag coefficient Cd = F_drag / (0.5 * rho * u^2 * A_ref).
     """
-    q = 0.5 * rho * u_inf ** 2 * A_ref
+    q = 0.5 * rho * u_inf**2 * A_ref
     return drag / q

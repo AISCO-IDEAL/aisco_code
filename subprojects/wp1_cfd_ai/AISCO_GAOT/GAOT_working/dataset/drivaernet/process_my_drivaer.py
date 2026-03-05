@@ -29,9 +29,7 @@ def _process_single_drivaer(run_folder, output_dir, target_col):
     # 1. Read mesh and compute normals
     try:
         mesh = pv.read(ply_file)
-        mesh = mesh.compute_normals(
-            cell_normals=False, point_normals=True, auto_orient_normals=True
-        )
+        mesh = mesh.compute_normals(cell_normals=False, point_normals=True, auto_orient_normals=True)
         pos = torch.tensor(mesh.points, dtype=torch.float32)
         c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32)
     except Exception:
@@ -67,13 +65,8 @@ def process_custom_drivaer(base_path, output_dir, target_col="Cd", num_workers=N
 
     order_list = []
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        futures = {
-            executor.submit(_process_single_drivaer, rf, output_dir, target_col): rf
-            for rf in run_folders
-        }
-        for future in tqdm(
-            as_completed(futures), total=len(futures), desc="Processing DrivAer runs"
-        ):
+        futures = {executor.submit(_process_single_drivaer, rf, output_dir, target_col): rf for rf in run_folders}
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Processing DrivAer runs"):
             result = future.result()
             if result is not None:
                 order_list.append(result)

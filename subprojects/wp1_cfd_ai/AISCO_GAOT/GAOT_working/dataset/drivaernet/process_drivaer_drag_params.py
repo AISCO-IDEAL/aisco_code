@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 NUM_WORKERS = 8  # number of parallel workers for mesh processing
 
+
 def _process_single_drivaer(run_folder, output_dir):
     """Process a single DrivAer run folder. Returns folder_name on success, None on failure."""
     folder_name = os.path.basename(run_folder)
@@ -26,9 +27,7 @@ def _process_single_drivaer(run_folder, output_dir):
     # 1. Read mesh and compute normals
     try:
         mesh = pv.read(ply_file)
-        mesh = mesh.compute_normals(
-            cell_normals=False, point_normals=True, auto_orient_normals=True
-        )
+        mesh = mesh.compute_normals(cell_normals=False, point_normals=True, auto_orient_normals=True)
         pos = torch.tensor(mesh.points, dtype=torch.float32)
         c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32)
     except Exception:
@@ -38,8 +37,8 @@ def _process_single_drivaer(run_folder, output_dir):
     try:
         rd = pd.read_csv(csv_file)
         # Using uppercase 'Cd' as per DrivAer convention
-        cd_value = rd['Cd'].iloc[0]
-        force_value = rd['Drag_Force_N'].iloc[0]
+        cd_value = rd["Cd"].iloc[0]
+        force_value = rd["Drag_Force_N"].iloc[0]
     except Exception:
         return None
 
@@ -47,7 +46,7 @@ def _process_single_drivaer(run_folder, output_dir):
     data = Data(pos=pos, c=c)
     data.x = None
     data.cd = torch.tensor([cd_value], dtype=torch.float32)
-    data.force = torch.tensor([force_value], dtype=torch.float32) # Populated with Newtons
+    data.force = torch.tensor([force_value], dtype=torch.float32)  # Populated with Newtons
     data.filename = folder_name
 
     torch.save(data, os.path.join(output_dir, f"{folder_name}.pt"))
@@ -66,13 +65,8 @@ def process_custom_drivaer(base_path, output_dir, num_workers=NUM_WORKERS):
 
     order_list = []
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        futures = {
-            executor.submit(_process_single_drivaer, rf, output_dir): rf
-            for rf in run_folders
-        }
-        for future in tqdm(
-            as_completed(futures), total=len(futures), desc="Processing DrivAer runs"
-        ):
+        futures = {executor.submit(_process_single_drivaer, rf, output_dir): rf for rf in run_folders}
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Processing DrivAer runs"):
             result = future.result()
             if result is not None:
                 order_list.append(result)
@@ -84,6 +78,7 @@ def process_custom_drivaer(base_path, output_dir, num_workers=NUM_WORKERS):
         f.writelines(f"{name}\n" for name in order_list)
 
     print(f"\nSuccess! Processed {len(order_list)} runs.")
+
 
 if __name__ == "__main__":
     # Your cluster paths
