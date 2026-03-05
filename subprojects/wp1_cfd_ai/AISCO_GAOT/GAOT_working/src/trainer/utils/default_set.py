@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any
 
 from omegaconf import OmegaConf
 
@@ -15,7 +15,7 @@ def merge_config(default_config_class, user_config):
 # ── Default dicts matching config.yaml structure ─────────────────────────
 
 
-def _default_magno() -> Dict[str, Any]:
+def _default_magno() -> dict[str, Any]:
     return {
         "use_gno": True,
         "gno_coord_dim": 3,
@@ -45,7 +45,7 @@ def _default_magno() -> Dict[str, Any]:
     }
 
 
-def _default_transformer() -> Dict[str, Any]:
+def _default_transformer() -> dict[str, Any]:
     return {
         "patch_size": 4,
         "hidden_size": 256,
@@ -72,7 +72,7 @@ def _default_transformer() -> Dict[str, Any]:
     }
 
 
-def _default_decoder() -> Dict[str, Any]:
+def _default_decoder() -> dict[str, Any]:
     return {
         "hidden_features": 256,
         "num_shared_layers": 3,
@@ -102,18 +102,18 @@ class SetUpConfig:
 
     # Weights & Biases logging
     wandb: bool = False  # Enable Weights & Biases logging
-    wandb_project: Optional[str] = None  # W&B project name
-    wandb_entity: Optional[str] = None  # W&B entity (team/user)
-    wandb_run_name: Optional[str] = None  # Run name
-    wandb_group: Optional[str] = None  # Group name for runs
+    wandb_project: str | None = None  # W&B project name
+    wandb_entity: str | None = None  # W&B entity (team/user)
+    wandb_run_name: str | None = None  # Run name
+    wandb_group: str | None = None  # Group name for runs
     wandb_mode: str = "online"  # 'online' | 'offline' | 'disabled'
-    wandb_notes: Optional[str] = None  # Notes for the run
-    wandb_tags: List[str] = field(default_factory=list)  # Tags for the run
+    wandb_notes: str | None = None  # Notes for the run
+    wandb_tags: list[str] = field(default_factory=list)  # Tags for the run
     wandb_watch_model: bool = False  # Watch model gradients/parameters
     wandb_log_interval: int = 1  # Log interval in epochs (usually align with eval_every_eps)
 
     # Model checkpoint management with wandb artifacts
-    resume_from_artifact: Optional[str] = None  # Load model from wandb artifact (e.g., "model-name:best")
+    resume_from_artifact: str | None = None  # Load model from wandb artifact (e.g., "model-name:best")
     test_during_training: bool = False  # Run test during training when checkpoints are saved
 
 
@@ -121,12 +121,12 @@ class SetUpConfig:
 class ModelArgsConfig:
     input_size: int = 6  # Input feature size
     output_size: int = 1  # Output feature size
-    latent_tokens: Tuple[int, int, int] = (64, 64, 64)  # Size (D, H, W) of latent tokens
+    latent_tokens: tuple[int, int, int] = (64, 64, 64)  # Size (D, H, W) of latent tokens
     field_output_size: int = 0  # Per-vertex field output channels (0=scalar-only, 1=pressure)
-    norm_domain: List[List[float]] = field(default_factory=lambda: [[-1, -1, -1], [1, 1, 1]])
-    magno: Dict[str, Any] = field(default_factory=_default_magno)  # Configuration for MAGNO (plain dict)
-    transformer: Dict[str, Any] = field(default_factory=_default_transformer)  # Configuration for Transformer (plain dict)
-    decoder: Dict[str, Any] = field(default_factory=_default_decoder)  # Configuration for decoder (plain dict)
+    norm_domain: list[list[float]] = field(default_factory=lambda: [[-1, -1, -1], [1, 1, 1]])
+    magno: dict[str, Any] = field(default_factory=_default_magno)  # Configuration for MAGNO (plain dict)
+    transformer: dict[str, Any] = field(default_factory=_default_transformer)  # Configuration for Transformer (plain dict)
+    decoder: dict[str, Any] = field(default_factory=_default_decoder)  # Configuration for decoder (plain dict)
 
 
 @dataclass
@@ -142,7 +142,7 @@ class DatasetConfig:
     metaname: str = "gaot-unstructured/drivaernet_pressure"  # Metaname (identifier) for the dataset, used for loading the dataset
     base_path: str = "/cluster/work/math/camlab-data/graphnpde/drivaernet/"  # Base path where the dataset is stored
     processed_folder: str = "processed_pyg"  # Folder name of the saved/processed .pt files
-    active_variables: Optional[List[int]] = None  # List of active variables to use, if None, use all variables
+    active_variables: list[int] | None = None  # List of active variables to use, if None, use all variables
     force_recompute_stats: bool = False  # Whether to force recomputing the statistics
     use_metadata_stats: bool = False  # Whether to use metadata statistics
     sample_rate: float = 0.1  # Sampling rate of the dataset
@@ -159,13 +159,13 @@ class DatasetConfig:
     use_rescale_new: bool = True  # Whether to use new rescale methods for coordinates
     # for neural field training strategy
     training_strategy: str = "full_grid"  # Training strategy: ['neural_field', 'full_grid']
-    neural_field_input_nodes: Optional[int] = 40000  # Num nodes for fixed encoder input in neural_field strategy
-    neural_field_query_nodes_train: Optional[int] = 40000  # Num nodes for random decoder query in neural_field train
+    neural_field_input_nodes: int | None = 40000  # Num nodes for fixed encoder input in neural_field strategy
+    neural_field_query_nodes_train: int | None = 40000  # Num nodes for random decoder query in neural_field train
     # for multi-head / force-only training
-    order_file_name: Optional[str] = (
+    order_file_name: str | None = (
         None  # Custom order file name (e.g. "order_force_only.txt"), default uses order_{processed_folder}.txt
     )
-    active_heads: Optional[List[str]] = None  # List of active heads for loss (e.g. ["force"]), None = all heads
+    active_heads: list[str] | None = None  # List of active heads for loss (e.g. ["force"]), None = all heads
 
     field_loss_weight: float = 1.0  # Weight for field (per-vertex pressure) loss relative to scalar head loss
 

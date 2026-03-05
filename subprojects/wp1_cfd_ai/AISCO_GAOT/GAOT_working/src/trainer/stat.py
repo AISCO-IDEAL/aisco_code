@@ -2,14 +2,17 @@ import logging
 import os
 import statistics
 import time
+from dataclasses import asdict
+from typing import Any
 
 import numpy as np
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as f
 import torch_geometric as pyg
+from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from torch_geometric.data import Batch, Data
+from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch_geometric.transforms import Compose
 from tqdm import tqdm
@@ -18,11 +21,11 @@ from src.dataloader.collate_functions import create_collate_function
 from src.dataloader.pyg_datasets import EnrichedData, VTKMeshDataset
 from src.dataloader.pyg_transforms import NormalizeFeatures, RescalePosition, RescalePositionNew
 from src.model.gaot_3d import GAOT3D, masked_multi_head_loss
+from src.model.layers.magno import get_neighbor_strategy, parse_neighbor_strategy
 from src.utils.scale import rescale, rescale_new
 
 from .base import TrainerBase
 from .utils.metric import compute_drivaernet_metric
-from .utils.plot import plot_3d_comparison_matplotlib, plot_3d_comparison_pyvista
 
 EPSILON = 1e-10
 
@@ -67,14 +70,11 @@ def _build_gaot_config(model_config, input_size: int, output_size: int) -> dict:
 
     # args may be a dataclass (ModelArgsConfig) or already a dict
     if hasattr(args, "__dataclass_fields__"):
-        from dataclasses import asdict
-
         cfg = asdict(args)
     elif isinstance(args, dict):
         cfg = dict(args)
     else:
         # OmegaConf DictConfig or similar
-        from omegaconf import OmegaConf
 
         cfg = OmegaConf.to_container(args, resolve=True)
 
@@ -145,7 +145,7 @@ class StaticTrainer3D(TrainerBase):
         self.u_mean = self.u_mean.to(self.dtype)
         self.u_std = self.u_std.to(self.dtype)
 
-    def _compute_and_save_stats(self, dataset_config, order_file_path, stats_file):
+    def _compute_and_save_stats(self, dataset_config, order_file_path, stats_file):  # noqa: PLR0912, PLR0915
         """Compute normalization stats from training data and save to disk (rank 0 only)."""
         logging.getLogger(__name__).info("Calculating normalization statistics from training set...")
         temp_train_dataset = VTKMeshDataset(
@@ -226,15 +226,16 @@ class StaticTrainer3D(TrainerBase):
         logging.getLogger(__name__).info(f"Saving normalization stats to {stats_file}")
         os.makedirs(os.path.dirname(stats_file), exist_ok=True)
 
-        stats_to_save = {"mean": u_mean, "std": u_std}
+        stats_to_save: dict[str, Any] = {"mean": u_mean, "std": u_std}
         if c_mean is not None:
+            assert c_std is not None
             stats_to_save["c_mean"] = c_mean
             stats_to_save["c_std"] = c_std
         if per_head_stats:
             stats_to_save["per_head_stats"] = per_head_stats
         torch.save(stats_to_save, stats_file)
 
-    def _update_pt_files_with_edges(self, dataset_config, order_file_path, magno_cfg: dict):
+    def _update_pt_files_with_edges(self, dataset_config, order_file_path, magno_cfg: dict):  # noqa: PLR0912, PLR0915
         """
         Iterates through processed .pt files, computes edges (and optionally counts),
         and saves them back to the files. Runs ONLY on rank 0 in DDP.
@@ -265,8 +266,6 @@ class StaticTrainer3D(TrainerBase):
 
         latent_tokens_cpu = self.latent_tokens.cpu()
         num_latent_tokens = latent_tokens_cpu.shape[0]
-
-        from src.model.layers.magno import get_neighbor_strategy, parse_neighbor_strategy
 
         # Extract magno config values (dict access)
         gno_radius = magno_cfg.get("gno_radius", 0.15)
@@ -340,13 +339,13 @@ class StaticTrainer3D(TrainerBase):
                 os.replace(fpath_tmp, fpath)
             except FileNotFoundError:
                 logging.getLogger(__name__).warning(f"Warning: File not found during update: {fpath}")
-            except Exception as e:
-                logging.getLogger(__name__).error(f"Error processing file {fpath}: {e}")
+            except Exception:
+                logging.getLogger(__name__).exception(f"Error processing file {fpath}")
                 if os.path.exists(fpath_tmp):
                     os.remove(fpath_tmp)
         logging.getLogger(__name__).info("Rank 0: Finished checking/updating '.pt' files.")
 
-    def init_dataset(self, dataset_config):
+    def init_dataset(self, dataset_config):  # noqa: PLR0912, PLR0915
         logging.getLogger(__name__).info("Initializing PyG dataset ...")
         self.latent_token_size = self.model_config.args.latent_tokens
         data_root = dataset_config.base_path
@@ -633,9 +632,7 @@ class StaticTrainer3D(TrainerBase):
             for attr in ["force", "cd", "filename", "num_latent_nodes"]:
                 if hasattr(batch, attr) and getattr(batch, attr) is not None:
                     attr_value = getattr(batch, attr)
-                    if isinstance(attr_value, list):
-                        setattr(data_i, attr, attr_value[i])
-                    elif attr_value.dim() > 0 and len(attr_value) == batch.num_graphs:
+                    if isinstance(attr_value, list) or (attr_value.dim() > 0 and len(attr_value) == batch.num_graphs):
                         setattr(data_i, attr, attr_value[i])
 
             sampled_data_list.append(data_i)
@@ -651,7 +648,7 @@ class StaticTrainer3D(TrainerBase):
 
         return sampled_data_list, query_pos, query_batch_idx, field_target
 
-    def train_step(self, batch: "pyg.data.Batch"):
+    def train_step(self, batch: "pyg.data.Batch"):  # noqa: PLR0912
         strategy = self.dataset_config.training_strategy
         latent_tokens_dev = self.latent_tokens.to(self.device)
 
@@ -724,7 +721,7 @@ class StaticTrainer3D(TrainerBase):
                     # Mask out NaN entries (samples without field data)
                     valid = ~torch.isnan(ft)
                     if valid.any():
-                        field_loss = F.mse_loss(field_pred[valid], ft[valid])
+                        field_loss = f.mse_loss(field_pred[valid], ft[valid])
                     else:
                         field_loss = torch.tensor(0.0, device=self.device)
 
@@ -746,8 +743,8 @@ class StaticTrainer3D(TrainerBase):
         num_batches = len(loader)
 
         with torch.no_grad():
-            for batch in loader:
-                batch = batch.to(self.device)
+            for batch_raw in loader:
+                batch = batch_raw.to(self.device)
                 latent_tokens_dev = self.latent_tokens.to(self.device)
                 pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
 
@@ -760,7 +757,7 @@ class StaticTrainer3D(TrainerBase):
                     loss = masked_multi_head_loss(pred, targets)
 
                     # For Relative L2, we use the primary head (e.g., 'force')
-                    primary_key = self.active_heads[0] if self.active_heads else list(pred.keys())[0]
+                    primary_key = self.active_heads[0] if self.active_heads else next(iter(pred.keys()))
                     p = pred[primary_key]
                     t = targets[primary_key]
 
@@ -769,7 +766,7 @@ class StaticTrainer3D(TrainerBase):
                         ft = batch.x.to(self.device)
                         valid = ~torch.isnan(ft)
                         if valid.any():
-                            field_loss = F.mse_loss(pred["field"][valid], ft[valid])
+                            field_loss = f.mse_loss(pred["field"][valid], ft[valid])
                             field_weight = getattr(self.dataset_config, "field_loss_weight", 1.0)
                             loss = loss + field_weight * field_loss
                 else:
@@ -807,20 +804,22 @@ class StaticTrainer3D(TrainerBase):
 
         return {"loss": local_metrics[0].item() / denom, "rel_l2": local_metrics[1].item() / denom}
 
-    def test(self):
+    def test(self):  # noqa: PLR0912, PLR0915
         self.model.eval()
         metric_suite = self.dataset_config.metric_suite
 
         # Determine if model uses multi-head output
         _raw_model = self.model.module if hasattr(self.model, "module") else self.model
         _is_multi_head = hasattr(_raw_model, "decoder") and hasattr(_raw_model.decoder, "head_names")
+        all_batch_targets_denorm: dict[str, list[Any]] | list[Any]
+        all_batch_preds_denorm: dict[str, list[Any]] | list[Any]
         if _is_multi_head:
             all_batch_targets_denorm = {"force": [], "cd": []}
             all_batch_preds_denorm = {"force": [], "cd": []}
         else:
             all_batch_targets_denorm = []
             all_batch_preds_denorm = []
-        plot_coords, plot_gtr, plot_prd = None, None, None
+        _plot_coords, plot_gtr, plot_prd = None, None, None
 
         # Inference speed measurement variables
         inference_times = []
@@ -830,9 +829,9 @@ class StaticTrainer3D(TrainerBase):
         logging.getLogger(__name__).info(f"Starting testing with metric suite: '{metric_suite}'")
 
         with torch.no_grad():
-            for i, batch in enumerate(self.test_loader):
+            for i, batch_raw in enumerate(self.test_loader):
                 data_start_time = time.time()
-                batch = batch.to(self.device)
+                batch = batch_raw.to(self.device)
                 latent_tokens_dev = self.latent_tokens.to(self.device)
 
                 if self.device.type == "cuda":
@@ -859,8 +858,8 @@ class StaticTrainer3D(TrainerBase):
                 if isinstance(pred_norm, dict):
                     # Collect per-head predictions — use force if available, else cd
                     # For now, concatenate all heads for metric reporting
-                    force_pred = pred_norm.get("force")
-                    cd_pred = pred_norm.get("cd")
+                    pred_norm.get("force")
+                    pred_norm.get("cd")
 
                     # Denormalize multi-head predictions using per-head stats.
                     # Both predictions AND targets are in normalised space
@@ -885,7 +884,6 @@ class StaticTrainer3D(TrainerBase):
                             target_denorm_dict[head_name] = head_target
 
                     if i == 0 and self.setup_config.rank == 0:
-                        plot_coords = None
                         parts = []
                         if "force" in pred_denorm:
                             parts.append(f"Force={pred_denorm['force'][0].item():.4f}")
@@ -893,9 +891,8 @@ class StaticTrainer3D(TrainerBase):
                             parts.append(f"Cd={pred_denorm['cd'][0].item():.4f}")
                         logging.getLogger(__name__).info(f"First test sample predictions (denorm): {', '.join(parts)}")
 
-                    for head_name in pred_denorm:
+                    for head_name, head_pred_dn in pred_denorm.items():
                         head_target_dn = target_denorm_dict[head_name]
-                        head_pred_dn = pred_denorm[head_name]
                         valid = ~torch.isnan(head_target_dn)
                         if valid.any():
                             all_batch_targets_denorm[head_name].append(head_target_dn[valid].cpu())
@@ -908,11 +905,12 @@ class StaticTrainer3D(TrainerBase):
                     pred_de_norm = pred_norm * u_std_dev + u_mean_dev
                     target_de_norm = target_norm * u_std_dev + u_mean_dev
 
+                    assert isinstance(all_batch_targets_denorm, list)
+                    assert isinstance(all_batch_preds_denorm, list)
                     all_batch_targets_denorm.append(target_de_norm.cpu())
                     all_batch_preds_denorm.append(pred_de_norm.cpu())
 
                     if i == 0 and self.setup_config.rank == 0:
-                        plot_coords = None
                         plot_gtr = np.array([target_de_norm[0].item()])
                         plot_prd = np.array([pred_de_norm[0].item()])
 
@@ -931,6 +929,7 @@ class StaticTrainer3D(TrainerBase):
 
         if self.setup_config.rank == 0:
             if isinstance(all_batch_preds_denorm, dict):
+                assert isinstance(all_batch_targets_denorm, dict)
                 for head_name in all_batch_preds_denorm:
                     if not all_batch_preds_denorm[head_name]:
                         continue
@@ -968,6 +967,8 @@ class StaticTrainer3D(TrainerBase):
                         full_targets = torch.cat(all_batch_targets_denorm[head_name], dim=0)
                         break
             else:
+                assert isinstance(all_batch_preds_denorm, list)
+                assert isinstance(all_batch_targets_denorm, list)
                 full_preds = torch.cat(all_batch_preds_denorm, dim=0)
                 full_targets = torch.cat(all_batch_targets_denorm, dim=0)
 
@@ -1052,8 +1053,12 @@ class StaticTrainer3D(TrainerBase):
                 if self.dataset_config.active_variables is not None:
                     self.metadata.global_mean = [self.metadata.global_mean[i] for i in self.dataset_config.active_variables]
                     self.metadata.global_std = [self.metadata.global_std[i] for i in self.dataset_config.active_variables]
+                assert isinstance(all_batch_targets_denorm, list), "drivaernet metric requires non-multi-head (list) targets"
+                assert isinstance(all_batch_preds_denorm, list), "drivaernet metric requires non-multi-head (list) preds"
                 agg_metrics = compute_drivaernet_metric(
-                    gtr_ls=all_batch_targets_denorm, prd_ls=all_batch_preds_denorm, metadata=self.metadata
+                    gtr_ls=all_batch_targets_denorm,
+                    prd_ls=all_batch_preds_denorm,
+                    metadata=self.metadata,
                 )
 
                 logging.getLogger(__name__).info("--- Final Metrics (Drivaernet Suite - Full Dataset) ---")

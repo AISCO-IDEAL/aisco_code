@@ -35,6 +35,8 @@ repos:
           - types-paramiko
           - types-Pillow
           - paramiko
+          - matplotlib
+          - wandb
         pass_filenames: True # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
 
 

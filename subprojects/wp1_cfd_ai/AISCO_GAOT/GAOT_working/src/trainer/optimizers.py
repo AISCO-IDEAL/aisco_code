@@ -1,13 +1,20 @@
-import torch
-from torch.optim.lr_scheduler import _LRScheduler
-import torch.distributed as dist
-from tqdm import tqdm
-import numpy as np
+from __future__ import annotations
+
+import logging
+import os
 import time
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+import numpy as np
 import psutil
-import os
+import torch
+from torch.optim.lr_scheduler import _LRScheduler
+from tqdm import tqdm
+
+if TYPE_CHECKING:
+    from .base import TrainerBase
 
 
 ###############
@@ -29,7 +36,7 @@ class OptimizerargsConfig:
     # for step scheduler
     scheduler_step_size: int = 100  # Step size (number of epochs) for StepLR scheduler
     scheduler_gamma: float = 0.8  # Multiplicative factor for learning rate decay in StepLR scheduler
-    scheduler_T_max: int = 100  # Maximum number of iterations (usually total epochs) for CosineAnnealingLR scheduler
+    scheduler_t_max: int = 100  # Maximum number of iterations (usually total epochs) for CosineAnnealingLR scheduler
     scheduler_eta_min: float = 1e-4  # Minimum learning rate for CosineAnnealingLR scheduler
 
     # checkpoint/save settings
@@ -62,7 +69,7 @@ class CustomLRScheduler(_LRScheduler):
         self.max_lr = max_lr
         self.min_lr = min_lr
         self.final_lr = final_lr
-        super(CustomLRScheduler, self).__init__(optimizer, last_epoch)
+        super().__init__(optimizer, last_epoch)
 
     def get_lr(self):
         if self.last_epoch < self.warmup_epochs:
@@ -74,7 +81,7 @@ class CustomLRScheduler(_LRScheduler):
             cosine_ratio = (1 + np.cos(np.pi * epoch / self.cosine_epochs)) / 2
             lr = self.min_lr + (self.max_lr - self.min_lr) * cosine_ratio
         else:
-            # third stage (expontential)： min_lr to final_lr
+            # third stage (exponential): min_lr to final_lr
             epoch = self.last_epoch - self.warmup_epochs - self.cosine_epochs
             decay_steps = max(1, self.exp_decay_epochs - 1)
             lr = self.min_lr * ((self.final_lr / self.min_lr) ** (epoch / decay_steps))
@@ -86,7 +93,13 @@ class CustomLRScheduler(_LRScheduler):
 ###############
 class AdamOptimizer:
     optimizer: torch.optim.Adam
-    scheduler: torch.optim.lr_scheduler.StepLR
+    scheduler: (
+        torch.optim.lr_scheduler.StepLR
+        | torch.optim.lr_scheduler.CosineAnnealingLR
+        | torch.optim.lr_scheduler.ExponentialLR
+        | CustomLRScheduler
+        | None
+    )
     epoch: int
     batch_size: int
     lr: float
@@ -110,7 +123,7 @@ class AdamOptimizer:
             )
         elif config.scheduler == "cos":
             self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                self.optimizer, T_max=config.scheduler_T_max, eta_min=config.scheduler_eta_min
+                self.optimizer, T_max=config.scheduler_t_max, eta_min=config.scheduler_eta_min
             )
         elif config.scheduler == "exp":
             self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=config.scheduler_gamma)
@@ -138,7 +151,7 @@ class AdamOptimizer:
         else:
             self.scheduler = None
 
-    def optimize(self, trainer: "TrainerBase", description: str = "AdamOptimizer", color: str = "blue"):
+    def optimize(self, trainer: TrainerBase, description: str = "AdamOptimizer", color: str = "blue"):
         time_total = 0.0
         best_loss, best_epoch, best_state = np.inf, -1, None
         losses = []
@@ -153,7 +166,7 @@ class AdamOptimizer:
             # Ensure DistributedSampler shuffles differently each epoch
             train_sampler = getattr(trainer.train_loader, "sampler", None)
             if hasattr(train_sampler, "set_epoch"):
-                train_sampler.set_epoch(epoch)
+                train_sampler.set_epoch(epoch)  # type: ignore[union-attr]
             trainer.model.train()
             total_loss = 0.0
             for batch in trainer.train_loader:
@@ -183,10 +196,7 @@ class AdamOptimizer:
                 val_losses.append(val_loss)
                 val_epochs.append(epoch)
 
-                if self.early_save_metric == "val":
-                    current_loss = val_loss
-                else:
-                    current_loss = train_loss
+                current_loss = val_loss if self.early_save_metric == "val" else train_loss
 
                 if current_loss < best_loss:
                     best_loss = current_loss
@@ -218,7 +228,13 @@ class AdamOptimizer:
 
 class AdamWOptimizer:
     optimizer: torch.optim.AdamW
-    scheduler: torch.optim.lr_scheduler._LRScheduler
+    scheduler: (
+        torch.optim.lr_scheduler.StepLR
+        | torch.optim.lr_scheduler.CosineAnnealingLR
+        | torch.optim.lr_scheduler.ExponentialLR
+        | CustomLRScheduler
+        | None
+    )
     epoch: int
     batch_size: int
     lr: float
@@ -242,7 +258,7 @@ class AdamWOptimizer:
             )
         elif config.scheduler == "cos":
             self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                self.optimizer, T_max=config.scheduler_T_max, eta_min=config.scheduler_eta_min
+                self.optimizer, T_max=config.scheduler_t_max, eta_min=config.scheduler_eta_min
             )
         elif config.scheduler == "exp":
             self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=config.scheduler_gamma)
@@ -271,9 +287,9 @@ class AdamWOptimizer:
             self.scheduler = None
 
     @staticmethod
-    def _compute_grad_norms(model):
+    def _compute_grad_norms(model) -> dict[str, float]:
         """Compute per-component gradient norms for monitoring."""
-        norms = {}
+        norms: dict[str, float] = {}
         total_norm_sq = 0.0
         for name, p in model.named_parameters():
             if p.grad is not None:
@@ -287,7 +303,7 @@ class AdamWOptimizer:
         norms["grad_norm/total"] = total_norm_sq**0.5
         return norms
 
-    def optimize(self, trainer: "TrainerBase", description: str = "AdamWOptimizer", color: str = "blue"):
+    def optimize(self, trainer: TrainerBase, description: str = "AdamWOptimizer", color: str = "blue"):  # noqa: PLR0912, PLR0915
         time_total = 0.0
         best_loss, best_epoch, best_state = np.inf, -1, None
         losses = []
@@ -307,15 +323,15 @@ class AdamWOptimizer:
             # Ensure DistributedSampler shuffles differently each epoch
             train_sampler = getattr(trainer.train_loader, "sampler", None)
             if hasattr(train_sampler, "set_epoch"):
-                train_sampler.set_epoch(epoch)
+                train_sampler.set_epoch(epoch)  # type: ignore[union-attr]
 
             trainer.model.train()
-            total_loss = 0.0
-            epoch_grad_norms = {}
+            total_loss: torch.Tensor = torch.tensor(0.0)
+            epoch_grad_norms: dict[str, float] = {}
             num_batches = 0
 
             for batch in trainer.train_loader:
-                start_time = time.time()
+                time.time()
                 self.optimizer.zero_grad()
 
                 # trainer.train_step now returns (total_weighted_loss, dict_of_head_mses)
@@ -348,14 +364,10 @@ class AdamWOptimizer:
                     try:
                         step_loss = train_loss.detach().cpu().item()
                         trainer.save_ckpt()
-                        import logging
-
                         logging.getLogger(__name__).info(
                             f"Step checkpoint saved at global_step={global_step} (epoch {epoch + 1}), loss={step_loss:.4f}"
                         )
                     except Exception as e:
-                        import logging
-
                         logging.getLogger(__name__).warning(f"Failed to save step checkpoint: {e}")
 
             if self.scheduler is not None:

@@ -29,18 +29,18 @@ def load_mtl(filename_mtl):
 
 def load_textures(filename_obj, filename_mtl, texture_size, texture_wrapping='REPEAT', use_bilinear=True):
     # load vertices
-    vertices = []
+    vertices_list: list[list[float]] = []
     with open(filename_obj) as f:
         lines = f.readlines()
     for line in lines:
         if len(line.split()) == 0:
             continue
         if line.split()[0] == 'vt':
-            vertices.append([float(v) for v in line.split()[1:3]])
-    vertices = np.vstack(vertices).astype(np.float32)
+            vertices_list.append([float(v) for v in line.split()[1:3]])
+    vertices_arr = np.vstack(vertices_list).astype(np.float32)
 
     # load faces for textures
-    faces = []
+    faces_list: list[tuple[int, int, int]] = []
     material_names = []
     material_name = ''
     for line in lines:
@@ -62,13 +62,13 @@ def load_textures(filename_obj, filename_mtl, texture_size, texture_wrapping='RE
                     v2 = int(vs[i + 2].split('/')[1])
                 else:
                     v2 = 0
-                faces.append((v0, v1, v2))
+                faces_list.append((v0, v1, v2))
                 material_names.append(material_name)
         if line.split()[0] == 'usemtl':
             material_name = line.split()[1]
-    faces = np.vstack(faces).astype(np.int32) - 1
-    faces = vertices[faces]
-    faces = torch.from_numpy(faces).cuda()
+    faces_arr = np.vstack(faces_list).astype(np.int32) - 1
+    faces_uv = vertices_arr[faces_arr]
+    faces: torch.Tensor = torch.from_numpy(faces_uv).cuda()
 
     colors, texture_filenames = load_mtl(filename_mtl)
 
@@ -110,7 +110,7 @@ def load_obj(filename_obj, normalization=True, texture_size=4, load_texture=Fals
     """
 
     # load vertices
-    vertices = []
+    vertices_list: list[list[float]] = []
     with open(filename_obj) as f:
         lines = f.readlines()
 
@@ -118,11 +118,11 @@ def load_obj(filename_obj, normalization=True, texture_size=4, load_texture=Fals
         if len(line.split()) == 0:
             continue
         if line.split()[0] == 'v':
-            vertices.append([float(v) for v in line.split()[1:4]])
-    vertices = torch.from_numpy(np.vstack(vertices).astype(np.float32)).cuda()
+            vertices_list.append([float(v) for v in line.split()[1:4]])
+    vertices: torch.Tensor = torch.from_numpy(np.vstack(vertices_list).astype(np.float32)).cuda()
 
     # load faces
-    faces = []
+    faces_list: list[tuple[int, int, int]] = []
     for line in lines:
         if len(line.split()) == 0:
             continue
@@ -133,8 +133,8 @@ def load_obj(filename_obj, normalization=True, texture_size=4, load_texture=Fals
             for i in range(nv - 2):
                 v1 = int(vs[i + 1].split('/')[0])
                 v2 = int(vs[i + 2].split('/')[0])
-                faces.append((v0, v1, v2))
-    faces = torch.from_numpy(np.vstack(faces).astype(np.int32)).cuda() - 1
+                faces_list.append((v0, v1, v2))
+    faces: torch.Tensor = torch.from_numpy(np.vstack(faces_list).astype(np.int32)).cuda() - 1
 
     # load textures
     textures = None
