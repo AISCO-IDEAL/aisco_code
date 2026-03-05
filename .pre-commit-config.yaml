@@ -35,6 +35,7 @@ repos:
           - wandb
           - torch
           - cadquery
+          - types-pytz
         pass_filenames: False # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
         entry: mypy .
 
