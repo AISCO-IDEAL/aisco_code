@@ -83,9 +83,8 @@ def inner_nbz_sym(
         ),  # the 500 shall be removed, after correction in seat.py
         name="Seat",
     )
-    compound = assembly.model.toCompound()
-    solid = cq.Solid(compound.fuse().wrapped)
-    return solid
+    compound = assembly.toCompound()
+    return compound
 
 
 def outer_nbz(length: float, width: float, height: float) -> cq.Solid:
@@ -264,6 +263,7 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
 
     return assembly, outer, vision
 
+
 def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     """
     Docstring for bounding_box_of_assembly
@@ -272,13 +272,14 @@ def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float]
     :return: tuple with touples with ((x_min, y_min, z_min),(x_max,y_max,z_max))
     :rtype: tuple[tuple[float, float, float], tuple[float, float, float]]
     """
-    inner, _ = call_assembly(id_number)
-    inner_bounding_box = inner.toCompound().BoundingBox()
+    inner, _, _ = call_assembly(id_number)
+    inner_bounding_box = inner.BoundingBox()
 
     return (
         (inner_bounding_box.xmin, inner_bounding_box.ymin, inner_bounding_box.zmin),
         (inner_bounding_box.xmax, inner_bounding_box.ymax, inner_bounding_box.zmax),
     )
+
 
 def get_range_wheels() -> dict:
     """

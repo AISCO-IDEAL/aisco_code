@@ -158,7 +158,7 @@ class TotalLoss:
 
             # o: maximise cruising speed (CSE)
             o: torch.Tensor
-            if self.losses_config["CSE"] == "True":  # TODO: go through each separate loss and check
+            if self.losses_config["general_info"]["CSE"] == "True":  # TODO: go through each separate loss and check
                 o = torch.as_tensor(
                     -1.0
                     * cruising_speed(

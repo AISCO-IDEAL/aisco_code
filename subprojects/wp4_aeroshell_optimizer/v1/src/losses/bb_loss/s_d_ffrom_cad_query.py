@@ -28,7 +28,7 @@ class SDFfromCadQuery:
     def __init__(
         self,
         pointgrid_config: dict,
-        shape: cq.Solid | None = None,
+        shape: cq.Shape | None = None,
         shape_list: list[cq.Solid] | None = None,
         assembly_id: int = 1,
     ):
@@ -36,7 +36,7 @@ class SDFfromCadQuery:
             raise ValueError("Either shape or shape_list must be provided.")
         if shape is not None and shape_list is not None:
             raise ValueError("Only one of shape or shape_list must be provided.")
-        self.__shape = shape
+        self.__shape: cq.Shape | None = shape
         self.__assembly_id = assembly_id
         self.__shape_list = shape_list
         self.__pointgrid = self.__pointgrid_geni(pointgrid_config)
@@ -126,7 +126,7 @@ class SDFfromCadQuery:
         return points
 
     def __sdf(self, x: float, y: float, z: float) -> float:
-        # assumes self.__shape is a CadQuery Shape wrapping a closed solid
+        # assumes self.__shape is a CadQuery Shape wrapping a closed solid or compound
         assert self.__shape is not None, "Shape must be set when calling __sdf"
         shape = self.__shape.wrapped
 
@@ -153,7 +153,7 @@ class SDFfromCadQuery:
             return d
 
     def __sdf2(self, x: float, y: float, z: float) -> float:  # old but gold?
-        # calculates the signed distance form point (x, y, z) to the CadQuery shape boints inside the shape are negative
+        # calculates the signed distance from point (x, y, z) to the CadQuery shape; points inside are negative
         assert self.__shape is not None, "Shape must be set when calling __sdf2"
         pnt = gp_Pnt(x, y, z)
         vertex = BRepBuilderAPI_MakeVertex(pnt).Vertex()
@@ -218,14 +218,3 @@ class SDFfromCadQuery:
         plt.ylabel("Y-axis")
         plt.axis("equal")
         plt.savefig(f"/cluster/home/clhuber/immages/sdf_slice_z_{z}.png")
-
-
-if __name__ == "__main__":
-    if False:
-        inner_box, outer_box, __ = call_assembly(2)
-        sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 100, "dy": 50, "dz": 100, "rand": 0})
-        sdf_inner.visualizr_slice(z=501)
-    if True:
-        inner_box, outer_box, __ = call_assembly(2)
-        sdf_inner = SDFfromCadQuery(shape_list=inner_box, pointgrid_config={"dx": 100, "dy": 100, "dz": 100, "rand": 0})
-        sdf_inner.plot_pointgrid_slice(z=501)

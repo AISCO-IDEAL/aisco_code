@@ -73,7 +73,7 @@ class RenderingMode:
                 - render_mode: "rgb", "normal", "depth", etc.
                 - fps: GIF frame rate (optional but strongly recommended for gifs, default=15)
         """
-        self._rendering_config = load_config(v="v0", cfg_name="neural_renderer_v0.yaml")
+        self._rendering_config = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")
         self.visualiser: Visualiser = visualiser
         enabled: bool = self._rendering_config["rendering_modes"].get("enabled", False)
         self.enabled: bool = enabled

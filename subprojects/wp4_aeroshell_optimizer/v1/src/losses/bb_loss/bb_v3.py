@@ -12,13 +12,15 @@ class BbV3(ParentLoss):
         rng = np.random.default_rng()
         self.__assembly_id = int(rng.integers(1, 52))
         # Create SDFs for inner and outer boxes
-        (inner_box, outer_box, __) = call_assembly(id_number=self.__assembly_id)
-        self.__inner_SDF: SDFfromCadQuery = SDFfromCadQuery(shape_list=inner_box, pointgrid_config=self.__config)
-        self.__outer_SDF: SDFfromCadQuery = SDFfromCadQuery(shape=outer_box, pointgrid_config=self.__config)
+        inner_box, outer_box, __ = call_assembly(id_number=self.__assembly_id)
+        inner_solids_list = inner_box.Solids()
+        self.__inner_SDF: SDFfromCadQuery = SDFfromCadQuery(
+            shape_list=inner_solids_list, pointgrid_config=self.__config["pointgrid_params"]
+        )
+        self.__outer_SDF: SDFfromCadQuery = SDFfromCadQuery(shape=outer_box, pointgrid_config=self.__config["pointgrid_params"])
         self.__pointgrid: list[list[float]] = self.__inner_SDF.pointgrid()
         self.__inner_sdf_values: list[float] = self.__inner_SDF.sdf_at_pointgrid()
         self.__outer_sdf_values: list[float] = self.__outer_SDF.sdf_at_pointgrid()
-
 
     def _loss(self, model) -> torch.Tensor:
         """
