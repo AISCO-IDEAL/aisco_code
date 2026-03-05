@@ -19,7 +19,7 @@ def parse_neighbor_strategy(neighbor_strategy: str | list[str]) -> tuple[str, st
     """
     if isinstance(neighbor_strategy, str):
         return neighbor_strategy, neighbor_strategy
-    elif isinstance(neighbor_strategy, list) and len(neighbor_strategy) == 2:  # noqa: PLR2004
+    elif isinstance(neighbor_strategy, list) and len(neighbor_strategy) == 2:
         return neighbor_strategy[0], neighbor_strategy[1]
     else:
         raise ValueError(f"neighbor_strategy must be str or list of length 2, got {neighbor_strategy}")
@@ -31,7 +31,7 @@ def parse_geoembed_strategy(use_geoembed: bool | list[bool]) -> tuple[bool, bool
     """
     if isinstance(use_geoembed, bool):
         return use_geoembed, use_geoembed
-    elif isinstance(use_geoembed, list) and len(use_geoembed) == 2:  # noqa: PLR2004
+    elif isinstance(use_geoembed, list) and len(use_geoembed) == 2:
         return use_geoembed[0], use_geoembed[1]
     else:
         raise ValueError(f"use_geoembed must be bool or list of length 2, got {use_geoembed}")
@@ -229,7 +229,7 @@ def apply_neighbor_sampling(
 # MAGNOEncoder
 ############
 class MAGNOEncoder(nn.Module):
-    def __init__(self, in_channels, magno_config: dict):  # noqa: PLR0915
+    def __init__(self, in_channels, magno_config: dict):
         super().__init__()
         self.magno_config = magno_config
 

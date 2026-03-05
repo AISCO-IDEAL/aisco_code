@@ -167,11 +167,13 @@ class Transformer(nn.Module):
         attn_config = dict(transformer_config["attn_config"])
         attn_config.setdefault("positional_embedding", transformer_config.get("positional_embedding", "absolute"))
 
+        self.input_proj: nn.Linear | nn.Identity
         if transformer_config["input_size"] != transformer_config["hidden_size"]:
             self.input_proj = nn.Linear(transformer_config["input_size"], transformer_config["hidden_size"])
         else:
             self.input_proj = nn.Identity()
 
+        self.output_proj: nn.Linear | nn.Identity
         if transformer_config["hidden_size"] != transformer_config["output_size"]:
             self.output_proj = nn.Linear(transformer_config["hidden_size"], transformer_config["output_size"])
         else:

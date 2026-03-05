@@ -8,9 +8,7 @@ from torch_geometric.data import Batch
 from .layers.attn import Transformer
 from .layers.magno import MAGNODecoder, MAGNOEncoder
 
-_CONFIG_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "..", "config", "config.yaml"
-)
+_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "config", "config.yaml")
 
 
 def configloader() -> dict:
@@ -82,15 +80,15 @@ class GAOT3D(nn.Module):
     def _init_encoder(self, magno_cfg: dict) -> MAGNOEncoder:
         return MAGNOEncoder(
             in_channels=self.input_size,
-            #out_channels=self.node_latent_size,
+            # out channel deactivated -> out_channels=self.node_latent_size,
             magno_config=magno_cfg,
         )
 
     # ─── processor (vision transformer) ─────────────────────────────────
     def _init_processor(self, config: dict) -> Transformer:
         transformer_cfg = config["transformer"]
-        P = self.patch_size  # noqa: N806
-        C = self.node_latent_size  # noqa: N806
+        P = self.patch_size
+        C = self.node_latent_size
         patch_dim = P * P * P * C
 
         self.patch_linear = nn.Linear(patch_dim, patch_dim)
