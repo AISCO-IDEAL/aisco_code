@@ -38,14 +38,16 @@ import os
 import sys
 import time
 
+import matplotlib
 import numpy as np
 import torch
-import torch.nn.functional as F
-import matplotlib
+import torch.nn.functional as F  # noqa: N812
+from omegaconf import OmegaConf
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
-from torch_geometric.data import Batch, Data
+from torch_geometric.data import Data
 from torch_geometric.transforms import Compose
 
 # ── project imports ──────────────────────────────────────────────────────
@@ -53,14 +55,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.dataloader.collate_functions import create_collate_function
 from src.dataloader.metadata import DATASET_METADATA
-from src.dataloader.pyg_datasets import VTKMeshDataset
 from src.dataloader.pyg_transforms import NormalizeFeatures, RescalePosition, RescalePositionNew
 from src.model.gaot_3d import GAOT3D
 from src.trainer.utils.setup import load_ckpt
 from src.utils.pressure_integration import (
     compute_vertex_areas,
     drag_to_cd,
-    pressure_shear_to_drag,
     pressure_to_drag,
 )
 from src.utils.scale import rescale, rescale_new
@@ -75,10 +75,10 @@ log = logging.getLogger(__name__)
 EPSILON = 1e-10
 
 # ── Default flow parameters (DrivAer-scale) ─────────────────────────────
-DEFAULT_RHO = 1.225         # air density [kg/m³]
-DEFAULT_U_INF = 30.0        # freestream velocity [m/s]
-DEFAULT_A_REF = 2.16        # reference area [m²]
-DRAG_AXIS = 0               # x-axis
+DEFAULT_RHO = 1.225  # air density [kg/m³]
+DEFAULT_U_INF = 30.0  # freestream velocity [m/s]
+DEFAULT_A_REF = 2.16  # reference area [m²]
+DRAG_AXIS = 0  # x-axis
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -86,7 +86,6 @@ DRAG_AXIS = 0               # x-axis
 # ─────────────────────────────────────────────────────────────────────────
 def load_yaml_config(path: str):
     """Load a YAML config and return it as a nested namespace (like OmegaConf DictConfig)."""
-    from omegaconf import OmegaConf
     cfg = OmegaConf.load(path)
     return cfg
 
@@ -96,8 +95,6 @@ def load_yaml_config(path: str):
 # ─────────────────────────────────────────────────────────────────────────
 def build_model(cfg, num_input_channels: int, num_output_channels: int, device: torch.device):
     """Instantiate GAOT3D from config and move to device."""
-    from omegaconf import OmegaConf
-
     # Convert OmegaConf → plain dict for the new dict-config GAOT3D
     args = OmegaConf.to_container(cfg.model.args, resolve=True)
 
@@ -215,6 +212,67 @@ def load_raw_sample(data_root: str, sample_name: str) -> Data:
 
 
 # ─────────────────────────────────────────────────────────────────────────
+#  INFERENCE HELPER FUNCTIONS
+# ─────────────────────────────────────────────────────────────────────────
+def _run_forward(raw_data, model, transform, collate_fn, latent_tokens, device):
+    """Prepare input and run one forward pass. Returns (pred dict, inference_time_ms)."""
+    data_for_model = raw_data.clone()
+    data_for_model = transform(data_for_model)
+    batch = collate_fn([data_for_model])
+    batch = batch.to(device)
+    latent_dev = latent_tokens.to(device)
+    query_pos = batch.pos.to(device)
+    query_batch_idx = batch.batch.to(device)
+    t0 = time.perf_counter()
+    pred = model(batch=batch, tokens_pos=latent_dev, query_coord_pos=query_pos, query_coord_batch_idx=query_batch_idx)
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    return pred, (time.perf_counter() - t0) * 1000
+
+
+def _compute_shear_drag(raw_data, pos_raw, face_raw, drag_axis: int, rho: float, u_inf: float, a_ref: float) -> tuple:
+    """Estimate drag from GT wall_shear. Returns (shear_drag, shear_cd)."""
+    if not (hasattr(raw_data, "wall_shear") and raw_data.wall_shear is not None):
+        return float("nan"), float("nan")
+    ws = raw_data.wall_shear.float()
+    vertex_areas = compute_vertex_areas(pos_raw, face_raw)
+    shear_drag = (ws[:, drag_axis] * vertex_areas).sum().item()
+    shear_cd = drag_to_cd(torch.tensor(shear_drag), rho=rho, u_inf=u_inf, A_ref=a_ref).item()
+    return shear_drag, shear_cd
+
+
+def _integrate_pressure_drag(
+    pred_pressure, normals_raw, face_raw, pos_raw, n_verts: int, drag_axis: int, rho: float, u_inf: float, a_ref: float
+) -> tuple:
+    """Integrate predicted pressure field into drag. Returns (int_drag, int_cd)."""
+    if pred_pressure is None:
+        return float("nan"), float("nan")
+    if pred_pressure.shape[0] != n_verts:
+        log.warning(f"Vertex count mismatch: pred={pred_pressure.shape[0]} vs raw={n_verts}. Skipping pressure integration.")
+        return float("nan"), float("nan")
+    int_drag = pressure_to_drag(pred_pressure, normals_raw, face_raw, pos_raw, drag_direction=drag_axis).item()
+    int_cd = drag_to_cd(torch.tensor(int_drag), rho=rho, u_inf=u_inf, A_ref=a_ref).item()
+    return int_drag, int_cd
+
+
+def _compute_gt_field_metrics(
+    raw_data, pred_pressure, normals_raw, face_raw, pos_raw, n_verts: int, drag_axis: int, rho: float, u_inf: float, a_ref: float
+) -> tuple:
+    """Compute GT pressure integration and field error metrics. Returns (gt_int_drag, gt_int_cd, field_mse, field_mae)."""
+    if not (hasattr(raw_data, "x") and raw_data.x is not None):
+        return float("nan"), float("nan"), float("nan"), float("nan")
+    gt_pressure = raw_data.x.float().squeeze(-1)
+    gt_int_drag = pressure_to_drag(gt_pressure, normals_raw, face_raw, pos_raw, drag_direction=drag_axis).item()
+    gt_int_cd = drag_to_cd(torch.tensor(gt_int_drag), rho=rho, u_inf=u_inf, A_ref=a_ref).item()
+    field_mse = float("nan")
+    field_mae = float("nan")
+    if pred_pressure is not None and pred_pressure.shape[0] == n_verts:
+        field_mse = F.mse_loss(pred_pressure, gt_pressure).item()
+        field_mae = (pred_pressure - gt_pressure).abs().mean().item()
+    return gt_int_drag, gt_int_cd, field_mse, field_mae
+
+
+# ─────────────────────────────────────────────────────────────────────────
 #  INFERENCE ON ONE SAMPLE
 # ─────────────────────────────────────────────────────────────────────────
 @torch.no_grad()
@@ -246,31 +304,8 @@ def infer_single(
         n_vertices, total_area,
         inference_time_ms
     """
-    # ── 1. Prepare model input (transformed copy) ────────────────────────
-    # Deep-clone so transforms don't mutate the raw data
-    data_for_model = raw_data.clone()
-    data_for_model = transform(data_for_model)
-
-    # Collate builds encoder/decoder edges
-    batch = collate_fn([data_for_model])
-    batch = batch.to(device)
-    latent_dev = latent_tokens.to(device)
-
-    # Query positions = ALL vertices (full mesh, in transformed coordinate space)
-    query_pos = batch.pos.to(device)                     # [N_transformed, 3]
-    query_batch_idx = batch.batch.to(device)              # [N_transformed]
-
-    # ── 2. Forward pass ──────────────────────────────────────────────────
-    t0 = time.perf_counter()
-    pred = model(
-        batch=batch,
-        tokens_pos=latent_dev,
-        query_coord_pos=query_pos,
-        query_coord_batch_idx=query_batch_idx,
-    )
-    if device.type == "cuda":
-        torch.cuda.synchronize()
-    dt = (time.perf_counter() - t0) * 1000  # ms
+    # ── 1+2. Prepare input and run forward pass ──────────────────────────
+    pred, dt = _run_forward(raw_data, model, transform, collate_fn, latent_tokens, device)
 
     # ── 3. Denormalize scalar predictions ────────────────────────────────
     result = {"inference_time_ms": dt}
@@ -326,77 +361,24 @@ def infer_single(
     result["gt_force"] = gt_force
     result["gt_cd"] = gt_cd
 
-    # ── 6. Surface shear force estimation (from GT wall_shear) ───────────
+    # ── 6-8. Shear, pressure integration, and GT field metrics ──────────
     pos_raw = raw_data.pos.float()
     normals_raw = raw_data.c.float()
     face_raw = raw_data.face.long()
     n_verts = pos_raw.shape[0]
 
-    if hasattr(raw_data, "wall_shear") and raw_data.wall_shear is not None:
-        ws = raw_data.wall_shear.float()
-        vertex_areas = compute_vertex_areas(pos_raw, face_raw)
-        shear_drag = (ws[:, drag_axis] * vertex_areas).sum().item()
-        shear_cd = drag_to_cd(torch.tensor(shear_drag), rho=rho, u_inf=u_inf, A_ref=a_ref).item()
-    else:
-        shear_drag = float("nan")
-        shear_cd = float("nan")
-    result["shear_drag"] = shear_drag
-    result["shear_cd"] = shear_cd
-
-    # ── 7. Pressure integration — predicted field → drag ─────────────────
-    if pred_pressure is not None:
-        # The model predicts on the transformed mesh vertices.
-        # For pressure integration we need the *original* mesh geometry
-        # (pos, normals, faces in physical coordinates).
-        # The number of predicted vertices equals the model input mesh
-        # (which is a transformed copy of raw, same vertex count/order).
-        if pred_pressure.shape[0] == n_verts:
-            int_drag = pressure_to_drag(
-                pred_pressure, normals_raw, face_raw, pos_raw,
-                drag_direction=drag_axis,
-            ).item()
-            int_cd = drag_to_cd(
-                torch.tensor(int_drag), rho=rho, u_inf=u_inf, A_ref=a_ref,
-            ).item()
-        else:
-            log.warning(
-                f"Vertex count mismatch: pred={pred_pressure.shape[0]} vs raw={n_verts}. "
-                "Skipping pressure integration."
-            )
-            int_drag = float("nan")
-            int_cd = float("nan")
-    else:
-        int_drag = float("nan")
-        int_cd = float("nan")
-
+    result["shear_drag"], result["shear_cd"] = _compute_shear_drag(raw_data, pos_raw, face_raw, drag_axis, rho, u_inf, a_ref)
+    int_drag, int_cd = _integrate_pressure_drag(
+        pred_pressure, normals_raw, face_raw, pos_raw, n_verts, drag_axis, rho, u_inf, a_ref
+    )
     result["integrated_drag"] = int_drag
     result["integrated_cd"] = int_cd
     result["n_vertices"] = n_verts
     result["total_area"] = compute_vertex_areas(pos_raw, face_raw).sum().item()
 
-    # ── 8. GT pressure integration (for reference) ───────────────────────
-    if hasattr(raw_data, "x") and raw_data.x is not None:
-        gt_pressure = raw_data.x.float().squeeze(-1)
-        gt_int_drag = pressure_to_drag(
-            gt_pressure, normals_raw, face_raw, pos_raw,
-            drag_direction=drag_axis,
-        ).item()
-        gt_int_cd = drag_to_cd(
-            torch.tensor(gt_int_drag), rho=rho, u_inf=u_inf, A_ref=a_ref,
-        ).item()
-        # Field MSE
-        if pred_pressure is not None and pred_pressure.shape[0] == n_verts:
-            field_mse = F.mse_loss(pred_pressure, gt_pressure).item()
-            field_mae = (pred_pressure - gt_pressure).abs().mean().item()
-        else:
-            field_mse = float("nan")
-            field_mae = float("nan")
-    else:
-        gt_int_drag = float("nan")
-        gt_int_cd = float("nan")
-        field_mse = float("nan")
-        field_mae = float("nan")
-
+    gt_int_drag, gt_int_cd, field_mse, field_mae = _compute_gt_field_metrics(
+        raw_data, pred_pressure, normals_raw, face_raw, pos_raw, n_verts, drag_axis, rho, u_inf, a_ref
+    )
     result["gt_integrated_drag"] = gt_int_drag
     result["gt_integrated_cd"] = gt_int_cd
     result["field_mse"] = field_mse
@@ -418,18 +400,17 @@ def print_result(name: str, r: dict):
 
     # ── Scalar heads ─────────────────────────────────────────────────
     print("  ┌─ Scalar Head Predictions ──────────────────────────────┐")
-    print(f"  │  Force:  pred={r['pred_force']:>12.4f}   GT={r['gt_force']:>12.4f}    "
-          f"err={r['pred_force'] - r['gt_force']:>+10.4f}")
-    print(f"  │  Cd:     pred={r['pred_cd']:>12.6f}   GT={r['gt_cd']:>12.6f}    "
-          f"err={r['pred_cd'] - r['gt_cd']:>+10.6f}")
+    print(
+        f"  │  Force:  pred={r['pred_force']:>12.4f}   GT={r['gt_force']:>12.4f}    err={r['pred_force'] - r['gt_force']:>+10.4f}"
+    )
+    print(f"  │  Cd:     pred={r['pred_cd']:>12.6f}   GT={r['gt_cd']:>12.6f}    err={r['pred_cd'] - r['gt_cd']:>+10.6f}")
     print("  └──────────────────────────────────────────────────────────┘")
 
     # ── Pressure field ───────────────────────────────────────────────
     if r.get("pred_pressure") is not None:
         p = r["pred_pressure"]
         print("  ┌─ Pressure Field ─────────────────────────────────────────┐")
-        print(f"  │  Predicted pressure: min={p.min().item():.4f}, max={p.max().item():.4f}, "
-              f"mean={p.mean().item():.4f}")
+        print(f"  │  Predicted pressure: min={p.min().item():.4f}, max={p.max().item():.4f}, mean={p.mean().item():.4f}")
         if not np.isnan(r["field_mse"]):
             print(f"  │  Field MSE = {r['field_mse']:.6f},  MAE = {r['field_mae']:.6f}")
         print("  └──────────────────────────────────────────────────────────┘")
@@ -458,15 +439,25 @@ CSV_FIELDS = [
     "total_area",
     "inference_time_ms",
     # Scalar heads
-    "pred_force", "gt_force", "force_error",
-    "pred_cd", "gt_cd", "cd_error",
+    "pred_force",
+    "gt_force",
+    "force_error",
+    "pred_cd",
+    "gt_cd",
+    "cd_error",
     # Pressure integration
-    "integrated_drag", "gt_integrated_drag", "integ_drag_error",
-    "integrated_cd", "gt_integrated_cd", "integ_cd_error",
+    "integrated_drag",
+    "gt_integrated_drag",
+    "integ_drag_error",
+    "integrated_cd",
+    "gt_integrated_cd",
+    "integ_cd_error",
     # Shear
-    "shear_drag", "shear_cd",
+    "shear_drag",
+    "shear_cd",
     # Field quality
-    "field_mse", "field_mae",
+    "field_mse",
+    "field_mae",
 ]
 
 
@@ -525,6 +516,67 @@ def save_field_output(out_dir: str, name: str, raw_data: Data, result: dict):
 
 
 # ─────────────────────────────────────────────────────────────────────────
+#  VISUALIZATION HELPER FUNCTIONS
+# ─────────────────────────────────────────────────────────────────────────
+def _add_scatter_panel(fig, ax, xy, values, title, xlabel, ylabel, point_size, cmap, norm=None, **kwargs):
+    """Draw a scatter panel with colorbar and axis labels."""
+    sc = ax.scatter(xy[:, 0], xy[:, 1], c=values, s=point_size, cmap=cmap, norm=norm, rasterized=True, **kwargs)
+    ax.set_title(title, fontsize=9)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_aspect("equal")
+    fig.colorbar(sc, ax=ax, shrink=0.8, pad=0.02)
+
+
+def _draw_pressure_panels(fig, axes, xy, raw_data, result, idx, point_size, xlabel, ylabel, has_gt, has_pred, has_shear):
+    """Draw GT pressure, predicted pressure, error, and wall-shear panels onto axes."""
+    panel = 0
+    vmin, vmax, vcenter, gt, pred_p = None, None, None, None, None
+    if has_gt:
+        gt = raw_data.x.squeeze(-1).cpu().numpy()[idx]
+        vmin, vmax = np.percentile(gt, [2, 98])
+        vcenter = 0.0 if vmin < 0 < vmax else (vmin + vmax) / 2
+        try:
+            norm = TwoSlopeNorm(vcenter=vcenter, vmin=vmin, vmax=vmax)
+        except ValueError:
+            norm = None
+        _add_scatter_panel(fig, axes[panel], xy, gt, "GT Pressure [Pa]", xlabel, ylabel, point_size, "RdBu_r", norm=norm)
+        panel += 1
+    if has_pred:
+        pred_p = result["pred_pressure"].cpu().numpy()[idx]
+        if has_gt:
+            p_vmin, p_vmax = vmin, vmax
+            p_vcenter = vcenter
+        else:
+            p_vmin, p_vmax = np.percentile(pred_p, [2, 98])
+            p_vcenter = 0.0 if p_vmin < 0 < p_vmax else (p_vmin + p_vmax) / 2
+        try:
+            norm_p = TwoSlopeNorm(vcenter=p_vcenter, vmin=p_vmin, vmax=p_vmax)
+        except ValueError:
+            norm_p = None
+        _add_scatter_panel(
+            fig, axes[panel], xy, pred_p, "Predicted Pressure [Pa]", xlabel, ylabel, point_size, "RdBu_r", norm=norm_p
+        )
+        panel += 1
+    if has_gt and has_pred:
+        error = pred_p - gt
+        err_abs_max = max(abs(np.percentile(error, 2)), abs(np.percentile(error, 98)))
+        if err_abs_max < EPSILON:
+            err_abs_max = 1.0
+        mse_val = result.get("field_mse", float("nan"))
+        mae_val = result.get("field_mae", float("nan"))
+        err_title = f"Error (pred - GT)\nMSE={mse_val:.2f}, MAE={mae_val:.2f}"
+        _add_scatter_panel(
+            fig, axes[panel], xy, error, err_title, xlabel, ylabel, point_size, "coolwarm", vmin=-err_abs_max, vmax=err_abs_max
+        )
+        panel += 1
+    if has_shear:
+        ws = raw_data.wall_shear.cpu().numpy()[idx]
+        ws_mag = np.linalg.norm(ws, axis=1)
+        _add_scatter_panel(fig, axes[panel], xy, ws_mag, "Wall Shear |\u03c4| [Pa]", xlabel, ylabel, point_size, "inferno")
+
+
+# ─────────────────────────────────────────────────────────────────────────
 #  VISUALIZATION — 2D projections of pressure fields
 # ─────────────────────────────────────────────────────────────────────────
 def _project_2d(pos: np.ndarray):
@@ -558,10 +610,7 @@ def visualize_field(
     n_verts = pos.shape[0]
 
     # Subsample for plotting speed
-    if n_verts > max_points:
-        idx = np.random.default_rng(42).choice(n_verts, max_points, replace=False)
-    else:
-        idx = np.arange(n_verts)
+    idx = np.random.default_rng(42).choice(n_verts, max_points, replace=False) if n_verts > max_points else np.arange(n_verts)
 
     pos_sub = pos[idx]
     xy, xlabel, ylabel = _project_2d(pos_sub)
@@ -586,84 +635,10 @@ def visualize_field(
     if n_panels == 1:
         axes = [axes]
 
-    panel = 0
     point_size = max(0.1, min(2.0, 40_000 / len(idx)))
+    _draw_pressure_panels(fig, axes, xy, raw_data, result, idx, point_size, xlabel, ylabel, has_gt, has_pred, has_shear)
 
-    # ── GT pressure ──────────────────────────────────────────────────
-    if has_gt:
-        gt = raw_data.x.squeeze(-1).cpu().numpy()[idx]
-        vmin, vmax = np.percentile(gt, [2, 98])
-        vcenter = 0.0 if vmin < 0 < vmax else (vmin + vmax) / 2
-        try:
-            norm = TwoSlopeNorm(vcenter=vcenter, vmin=vmin, vmax=vmax)
-        except ValueError:
-            norm = None
-        sc = axes[panel].scatter(xy[:, 0], xy[:, 1], c=gt, s=point_size,
-                                 cmap="RdBu_r", norm=norm, rasterized=True)
-        axes[panel].set_title(f"GT Pressure [Pa]")
-        axes[panel].set_xlabel(xlabel)
-        axes[panel].set_ylabel(ylabel)
-        axes[panel].set_aspect("equal")
-        fig.colorbar(sc, ax=axes[panel], shrink=0.8, pad=0.02)
-        panel += 1
-
-    # ── Predicted pressure ───────────────────────────────────────────
-    if has_pred:
-        pred_p = result["pred_pressure"].cpu().numpy()[idx]
-        # Use GT range if available for consistent colorbar
-        if has_gt:
-            p_vmin, p_vmax = vmin, vmax
-            p_vcenter = vcenter
-        else:
-            p_vmin, p_vmax = np.percentile(pred_p, [2, 98])
-            p_vcenter = 0.0 if p_vmin < 0 < p_vmax else (p_vmin + p_vmax) / 2
-        try:
-            norm_p = TwoSlopeNorm(vcenter=p_vcenter, vmin=p_vmin, vmax=p_vmax)
-        except ValueError:
-            norm_p = None
-        sc = axes[panel].scatter(xy[:, 0], xy[:, 1], c=pred_p, s=point_size,
-                                 cmap="RdBu_r", norm=norm_p, rasterized=True)
-        axes[panel].set_title(f"Predicted Pressure [Pa]")
-        axes[panel].set_xlabel(xlabel)
-        axes[panel].set_ylabel(ylabel)
-        axes[panel].set_aspect("equal")
-        fig.colorbar(sc, ax=axes[panel], shrink=0.8, pad=0.02)
-        panel += 1
-
-    # ── Error map ────────────────────────────────────────────────────
-    if has_gt and has_pred:
-        error = pred_p - gt
-        err_abs_max = max(abs(np.percentile(error, 2)), abs(np.percentile(error, 98)))
-        if err_abs_max < 1e-10:
-            err_abs_max = 1.0
-        sc = axes[panel].scatter(xy[:, 0], xy[:, 1], c=error, s=point_size,
-                                 cmap="coolwarm",
-                                 vmin=-err_abs_max, vmax=err_abs_max,
-                                 rasterized=True)
-        mse_val = result.get("field_mse", float("nan"))
-        mae_val = result.get("field_mae", float("nan"))
-        title = f"Error (pred − GT)\nMSE={mse_val:.2f}, MAE={mae_val:.2f}"
-        axes[panel].set_title(title, fontsize=9)
-        axes[panel].set_xlabel(xlabel)
-        axes[panel].set_ylabel(ylabel)
-        axes[panel].set_aspect("equal")
-        fig.colorbar(sc, ax=axes[panel], shrink=0.8, pad=0.02)
-        panel += 1
-
-    # ── Wall shear magnitude ─────────────────────────────────────────
-    if has_shear:
-        ws = raw_data.wall_shear.cpu().numpy()[idx]
-        ws_mag = np.linalg.norm(ws, axis=1)
-        sc = axes[panel].scatter(xy[:, 0], xy[:, 1], c=ws_mag, s=point_size,
-                                 cmap="inferno", rasterized=True)
-        axes[panel].set_title("Wall Shear |τ| [Pa]")
-        axes[panel].set_xlabel(xlabel)
-        axes[panel].set_ylabel(ylabel)
-        axes[panel].set_aspect("equal")
-        fig.colorbar(sc, ax=axes[panel], shrink=0.8, pad=0.02)
-        panel += 1
-
-    # ── Title & save ─────────────────────────────────────────────────
+    # ── Title & save ──────────────────────────────────────────────────
     suptitle_parts = [f"{name}  ({n_verts:,} vertices)"]
     suptitle_parts.append(
         f"Force: pred={result['pred_force']:.2f}, GT={result['gt_force']:.2f}  |  "
@@ -681,185 +656,149 @@ def visualize_field(
 
 
 # ─────────────────────────────────────────────────────────────────────────
-#  MAIN
+#  MAIN HELPER FUNCTIONS
 # ─────────────────────────────────────────────────────────────────────────
-def main():
+def _build_arg_parser() -> argparse.ArgumentParser:
+    """Build the argument parser for the inference script."""
     parser = argparse.ArgumentParser(description="GAOT Field Inference")
-    parser.add_argument("--config", type=str, required=True,
-                        help="Path to training YAML config (e.g. config/euler_field.yaml). "
-                             "Defines model architecture and is used for data unless --data-config is set.")
-    parser.add_argument("--data-config", type=str, default=None,
-                        help="Optional: path to a DIFFERENT dataset config YAML. "
-                             "Use this for cross-dataset inference — e.g. Euler-trained model on Ahmed data. "
-                             "Model architecture comes from --config, data/transforms come from --data-config.")
-    parser.add_argument("--ckpt", type=str, required=True,
-                        help="Path to model checkpoint .pt file")
-    parser.add_argument("--out", type=str, default=None,
-                        help="Output directory (default: results/<config_name>_inference/)")
-    parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test"],
-                        help="Which data split to run inference on (default: test)")
-    parser.add_argument("--samples", type=int, nargs="*", default=None,
-                        help="Specific sample indices within the split (default: all)")
-    parser.add_argument("--device", type=str, default="cuda:0",
-                        help="Device (default: cuda:0)")
-    parser.add_argument("--save-fields", action="store_true", default=True,
-                        help="Save per-vertex predicted fields as .pt files (default: True)")
-    parser.add_argument("--no-save-fields", dest="save_fields", action="store_false",
-                        help="Do not save per-vertex field files")
-    # Flow parameters for Cd calculation
-    parser.add_argument("--rho", type=float, default=DEFAULT_RHO,
-                        help=f"Freestream density [kg/m³] (default: {DEFAULT_RHO})")
-    parser.add_argument("--u-inf", type=float, default=DEFAULT_U_INF,
-                        help=f"Freestream velocity [m/s] (default: {DEFAULT_U_INF})")
-    parser.add_argument("--a-ref", type=float, default=DEFAULT_A_REF,
-                        help=f"Reference area [m²] (default: {DEFAULT_A_REF})")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--config",
+        type=str,
+        required=True,
+        help="Path to training YAML config (e.g. config/euler_field.yaml). "
+        "Defines model architecture and is used for data unless --data-config is set.",
+    )
+    parser.add_argument(
+        "--data-config",
+        type=str,
+        default=None,
+        help="Optional: path to a DIFFERENT dataset config YAML. "
+        "Use this for cross-dataset inference — e.g. Euler-trained model on Ahmed data. "
+        "Model architecture comes from --config, data/transforms come from --data-config.",
+    )
+    parser.add_argument("--ckpt", type=str, required=True, help="Path to model checkpoint .pt file")
+    parser.add_argument("--out", type=str, default=None, help="Output directory (default: results/<config_name>_inference/)")
+    parser.add_argument(
+        "--split",
+        type=str,
+        default="test",
+        choices=["train", "val", "test"],
+        help="Which data split to run inference on (default: test)",
+    )
+    parser.add_argument(
+        "--samples", type=int, nargs="*", default=None, help="Specific sample indices within the split (default: all)"
+    )
+    parser.add_argument("--device", type=str, default="cuda:0", help="Device (default: cuda:0)")
+    parser.add_argument(
+        "--save-fields", action="store_true", default=True, help="Save per-vertex predicted fields as .pt files (default: True)"
+    )
+    parser.add_argument("--no-save-fields", dest="save_fields", action="store_false", help="Do not save per-vertex field files")
+    parser.add_argument(
+        "--rho", type=float, default=DEFAULT_RHO, help=f"Freestream density [kg/m\u00b3] (default: {DEFAULT_RHO})"
+    )
+    parser.add_argument(
+        "--u-inf", type=float, default=DEFAULT_U_INF, help=f"Freestream velocity [m/s] (default: {DEFAULT_U_INF})"
+    )
+    parser.add_argument("--a-ref", type=float, default=DEFAULT_A_REF, help=f"Reference area [m\u00b2] (default: {DEFAULT_A_REF})")
+    return parser
 
-    # ── Load config ──────────────────────────────────────────────────
-    cfg = load_yaml_config(args.config)
 
-    # Cross-dataset mode: model arch from --config, data from --data-config
-    if args.data_config is not None:
-        data_cfg_full = load_yaml_config(args.data_config)
-        dataset_cfg = data_cfg_full.dataset
-        log.info(f"CROSS-DATASET MODE: model from {args.config}, data from {args.data_config}")
-        log.info("  NOTE: Scalar predictions (force/cd) will be denormalized with the "
-                 "training dataset's stats — values are NOT directly comparable to the "
-                 "target dataset's ground truth. Field predictions are in the training "
-                 "dataset's pressure scale.")
-    else:
-        dataset_cfg = cfg.dataset
-
-    data_root = dataset_cfg.base_path
-    metaname = dataset_cfg.metaname
-    metadata = DATASET_METADATA[metaname]
-
-    # ── Output directory ─────────────────────────────────────────────
-    if args.out is None:
-        config_stem = os.path.splitext(os.path.basename(args.config))[0]
-        if args.data_config is not None:
-            data_stem = os.path.splitext(os.path.basename(args.data_config))[0]
-            args.out = os.path.join("results", f"{config_stem}_on_{data_stem}")
-        else:
-            args.out = os.path.join("results", f"{config_stem}_inference")
-    os.makedirs(args.out, exist_ok=True)
-    log.info(f"Output directory: {args.out}")
-
-    # ── Device ───────────────────────────────────────────────────────
-    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
-    log.info(f"Using device: {device}")
-
-    # ── Transforms & stats ───────────────────────────────────────────
-    # For same-dataset inference: use training stats for normalization + denormalization
-    # For cross-dataset: use training stats for model denorm, but apply only
-    #   position rescaling to the new data (no target normalization needed for inference)
-    train_data_root = cfg.dataset.base_path  # always the training dataset
-    composed_transform, per_head_stats, u_mean, u_std = build_transforms_and_stats(cfg, train_data_root)
-    log.info(f"Per-head stats keys (from training): {list(per_head_stats.keys())}")
-
-    if args.data_config is not None:
-        # Cross-dataset: only rescale positions on the new data, skip target normalization
-        use_rescale_new_flag = getattr(dataset_cfg, "use_rescale_new", False)
-        if use_rescale_new_flag:
-            phy_domain = metadata.domain_x
-            composed_transform = Compose([RescalePositionNew(lims=(-1.0, 1.0), phy_domain=phy_domain)])
-        else:
-            composed_transform = Compose([RescalePosition(lims=(-1.0, 1.0))])
-        log.info("Cross-dataset: using position-only transform (no target normalization)")
-
-    # ── Latent tokens ────────────────────────────────────────────────
-    # Always build from TRAINING config metadata (model was trained with these)
-    train_metadata = DATASET_METADATA[cfg.dataset.metaname]
-    latent_tokens = build_latent_tokens(cfg, train_metadata)
-    log.info(f"Latent tokens shape: {latent_tokens.shape}")
-
-    # ── Collate function (builds edges online) ───────────────────────
-    collate_fn = build_collate_fn(cfg, latent_tokens)
-
-    # ── Determine input channels from a sample ───────────────────────
-    # Load one sample to figure out num_input_channels
-    # Use data config for order file and data paths
+def _build_split_names(dataset_cfg, args, data_root: str) -> list:
+    """Read the order file, determine split indices, and return sample names for the given split."""
     order_file_name = getattr(dataset_cfg, "order_file_name", None)
     processed_folder = getattr(dataset_cfg, "processed_folder", "")
     if order_file_name:
         order_file_path = os.path.join(data_root, order_file_name)
     else:
         order_file_path = os.path.join(data_root, f"order_{processed_folder}.txt")
-
     with open(order_file_path) as f:
         all_sample_names = [line.strip() for line in f if line.strip()]
     log.info(f"Total samples in order file: {len(all_sample_names)}")
-
-    # Determine split indices (same logic as VTKMeshDataset)
-    total = len(all_sample_names)
-    indices = np.arange(total)
+    indices = np.arange(len(all_sample_names))
     if getattr(dataset_cfg, "rand_dataset", False):
         rng = np.random.default_rng(seed=42)
         rng.shuffle(indices)
-
     train_size = dataset_cfg.train_size
     val_size = dataset_cfg.val_size
     test_size = dataset_cfg.test_size
-
     if args.split == "train":
         split_indices = indices[:train_size]
     elif args.split == "val":
-        split_indices = indices[train_size:train_size + val_size]
-    elif args.split == "test":
+        split_indices = indices[train_size : train_size + val_size]
+    else:
         split_indices = indices[-test_size:]
-
     split_names = [all_sample_names[i] for i in split_indices]
     log.info(f"Split '{args.split}': {len(split_names)} samples")
-
     if args.samples is not None:
         split_names = [split_names[i] for i in args.samples]
         log.info(f"Running on {len(split_names)} selected samples: {split_names}")
+    return split_names
 
-    # ── Determine input channels ─────────────────────────────────────
-    sample0_raw = load_raw_sample(data_root, split_names[0])
-    sample0_transformed = composed_transform(sample0_raw.clone())
+
+def _detect_input_channels(sample_transformed, cfg) -> int:
+    """Detect the number of input channels from a transformed sample and config."""
     encoder_feature_attr = getattr(cfg.model.args.magno, "encoder_feature_attr", "x")
-    # OmegaConf returns ListConfig; convert to plain Python types
     if hasattr(encoder_feature_attr, "__iter__") and not isinstance(encoder_feature_attr, str):
         encoder_feature_attr = list(encoder_feature_attr)
     if isinstance(encoder_feature_attr, list):
-        num_input_channels = 0
+        num_channels = 0
         for attr_name in encoder_feature_attr:
-            if hasattr(sample0_transformed, attr_name):
-                num_input_channels += getattr(sample0_transformed, attr_name).shape[1]
+            if hasattr(sample_transformed, attr_name):
+                num_channels += getattr(sample_transformed, attr_name).shape[1]
             else:
-                num_input_channels += sample0_transformed.pos.shape[1]
-    elif isinstance(encoder_feature_attr, str) and hasattr(sample0_transformed, encoder_feature_attr):
-        num_input_channels = getattr(sample0_transformed, encoder_feature_attr).shape[1]
-    else:
-        num_input_channels = sample0_transformed.pos.shape[1]
+                num_channels += sample_transformed.pos.shape[1]
+        return num_channels
+    if isinstance(encoder_feature_attr, str) and hasattr(sample_transformed, encoder_feature_attr):
+        return getattr(sample_transformed, encoder_feature_attr).shape[1]
+    return sample_transformed.pos.shape[1]
 
-    num_output_channels = 2  # force + cd
 
-    log.info(f"Input channels: {num_input_channels}, Output channels: {num_output_channels}")
+def _print_inference_summary(all_results: list, args) -> None:
+    """Print aggregated statistics over all inferred samples."""
+    n = len(all_results)
+    if n == 0:
+        return
+    force_errors = [abs(r["pred_force"] - r["gt_force"]) for _, r in all_results if not np.isnan(r["gt_force"])]
+    cd_errors = [abs(r["pred_cd"] - r["gt_cd"]) for _, r in all_results if not np.isnan(r["gt_cd"])]
+    integ_errors = [
+        abs(r["integrated_drag"] - r["gt_integrated_drag"])
+        for _, r in all_results
+        if not np.isnan(r.get("gt_integrated_drag", float("nan")))
+    ]
+    field_mses = [r["field_mse"] for _, r in all_results if not np.isnan(r["field_mse"])]
+    times = [r["inference_time_ms"] for _, r in all_results]
+    print("\n" + "=" * 72)
+    print(f"  SUMMARY  ({n} samples, split={args.split})")
+    if args.data_config is not None:
+        print(
+            f"  CROSS-DATASET: model trained on {os.path.basename(args.config)}, data from {os.path.basename(args.data_config)}"
+        )
+        print("  NOTE: Scalar heads (force/cd) are in training-dataset units.")
+        print("        Field comparison (MSE/MAE) is meaningful; scalar comparison is NOT.")
+    print("=" * 72)
+    if force_errors:
+        print(f"  Force MAE:           {np.mean(force_errors):.4f}")
+    if cd_errors:
+        print(f"  Cd MAE:              {np.mean(cd_errors):.6f}")
+    if integ_errors:
+        print(f"  Integrated drag MAE: {np.mean(integ_errors):.4f}")
+    if field_mses:
+        print(f"  Field MSE (avg):     {np.mean(field_mses):.6f}")
+    print(f"  Avg inference time:  {np.mean(times):.1f} ms")
+    print("=" * 72 + "\n")
 
-    # ── Build & load model ───────────────────────────────────────────
-    # Ensure precompute_edges is set correctly for collate-built graphs
-    cfg.model.args.magno.precompute_edges = cfg.model.args.magno.asynchronous_graph_building
 
-    model = build_model(cfg, num_input_channels, num_output_channels, device)
-    model = load_checkpoint(model, args.ckpt)
-    model.eval()
-
-    total_params = sum(p.numel() for p in model.parameters())
-    log.info(f"Model parameters: {total_params:,}")
-
-    # ── Run inference ────────────────────────────────────────────────
+def _run_inference_loop(
+    split_names, model, composed_transform, collate_fn, latent_tokens, per_head_stats, device, args, data_root
+):
+    """Run inference on all samples. Returns (all_results, all_rows)."""
     all_results = []
     all_rows = []
-
-    log.info(f"\n{'='*72}")
+    log.info(f"\n{'=' * 72}")
     log.info(f"  Running inference on {len(split_names)} samples ...")
-    log.info(f"{'='*72}\n")
-
-    for idx, sample_name in enumerate(split_names):
-        log.info(f"[{idx+1}/{len(split_names)}] Processing {sample_name} ...")
-
+    log.info(f"{'=' * 72}\n")
+    for i, sample_name in enumerate(split_names):
+        log.info(f"[{i + 1}/{len(split_names)}] Processing {sample_name} ...")
         raw_data = load_raw_sample(data_root, sample_name)
         result = infer_single(
             model=model,
@@ -876,59 +815,90 @@ def main():
         )
         all_results.append((sample_name, result))
         all_rows.append(result_to_row(sample_name, result))
-
         print_result(sample_name, result)
-
-        # Save per-vertex field output
         if args.save_fields and result.get("pred_pressure") is not None:
             save_field_output(args.out, sample_name, raw_data, result)
-
-        # Visualize pressure field
-        if args.save_fields and result.get("pred_pressure") is not None:
             try:
                 visualize_field(args.out, sample_name, raw_data, result)
             except Exception as e:
                 log.warning(f"Visualization failed for {sample_name}: {e}")
+    return all_results, all_rows
 
-    # ── Summary statistics ───────────────────────────────────────────
-    n = len(all_results)
-    if n > 0:
-        force_errors = [abs(r["pred_force"] - r["gt_force"]) for _, r in all_results
-                        if not np.isnan(r["gt_force"])]
-        cd_errors = [abs(r["pred_cd"] - r["gt_cd"]) for _, r in all_results
-                     if not np.isnan(r["gt_cd"])]
-        integ_errors = [abs(r["integrated_drag"] - r["gt_integrated_drag"]) for _, r in all_results
-                        if not np.isnan(r.get("gt_integrated_drag", float("nan")))]
-        field_mses = [r["field_mse"] for _, r in all_results if not np.isnan(r["field_mse"])]
-        times = [r["inference_time_ms"] for _, r in all_results]
 
-        print("\n" + "=" * 72)
-        print(f"  SUMMARY  ({n} samples, split={args.split})")
+# ─────────────────────────────────────────────────────────────────────────
+#  MAIN
+# ─────────────────────────────────────────────────────────────────────────
+def _setup_run(args):
+    """Resolve config, dataset, output dir, device, transforms, tokens, collate, split names.
+
+    Returns (cfg, dataset_cfg, data_root, device, composed_transform, per_head_stats,
+             latent_tokens, collate_fn, split_names).
+    """
+    cfg = load_yaml_config(args.config)
+    if args.data_config is not None:
+        data_cfg_full = load_yaml_config(args.data_config)
+        dataset_cfg = data_cfg_full.dataset
+        log.info(f"CROSS-DATASET MODE: model from {args.config}, data from {args.data_config}")
+    else:
+        dataset_cfg = cfg.dataset
+    data_root = dataset_cfg.base_path
+    metadata = DATASET_METADATA[dataset_cfg.metaname]
+    # Output directory
+    if args.out is None:
+        config_stem = os.path.splitext(os.path.basename(args.config))[0]
         if args.data_config is not None:
-            print(f"  CROSS-DATASET: model trained on {os.path.basename(args.config)}, "
-                  f"data from {os.path.basename(args.data_config)}")
-            print(f"  NOTE: Scalar heads (force/cd) are in training-dataset units.")
-            print(f"        Field comparison (MSE/MAE) is meaningful; scalar comparison is NOT.")
-        print("=" * 72)
-        if force_errors:
-            print(f"  Force MAE:           {np.mean(force_errors):.4f}")
-        if cd_errors:
-            print(f"  Cd MAE:              {np.mean(cd_errors):.6f}")
-        if integ_errors:
-            print(f"  Integrated drag MAE: {np.mean(integ_errors):.4f}")
-        if field_mses:
-            print(f"  Field MSE (avg):     {np.mean(field_mses):.6f}")
-        print(f"  Avg inference time:  {np.mean(times):.1f} ms")
-        print("=" * 72 + "\n")
+            data_stem = os.path.splitext(os.path.basename(args.data_config))[0]
+            args.out = os.path.join("results", f"{config_stem}_on_{data_stem}")
+        else:
+            args.out = os.path.join("results", f"{config_stem}_inference")
+    os.makedirs(args.out, exist_ok=True)
+    log.info(f"Output directory: {args.out}")
+    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+    log.info(f"Using device: {device}")
+    # Transforms
+    composed_transform, per_head_stats, _u_mean, _u_std = build_transforms_and_stats(cfg, cfg.dataset.base_path)
+    log.info(f"Per-head stats keys (from training): {list(per_head_stats.keys())}")
+    if args.data_config is not None:
+        use_rescale_new_flag = getattr(dataset_cfg, "use_rescale_new", False)
+        if use_rescale_new_flag:
+            composed_transform = Compose([RescalePositionNew(lims=(-1.0, 1.0), phy_domain=metadata.domain_x)])
+        else:
+            composed_transform = Compose([RescalePosition(lims=(-1.0, 1.0))])
+    # Latent tokens & collate
+    train_metadata = DATASET_METADATA[cfg.dataset.metaname]
+    latent_tokens = build_latent_tokens(cfg, train_metadata)
+    log.info(f"Latent tokens shape: {latent_tokens.shape}")
+    collate_fn = build_collate_fn(cfg, latent_tokens)
+    split_names = _build_split_names(dataset_cfg, args, data_root)
+    return cfg, dataset_cfg, data_root, device, composed_transform, per_head_stats, latent_tokens, collate_fn, split_names
 
-    # ── Save CSV ─────────────────────────────────────────────────────
+
+def main():
+    args = _build_arg_parser().parse_args()
+    cfg, _dataset_cfg, data_root, device, composed_transform, per_head_stats, latent_tokens, collate_fn, split_names = _setup_run(
+        args
+    )
+
+    # ── Detect input channels & build model ──────────────────────────
+    sample0_transformed = composed_transform(load_raw_sample(data_root, split_names[0]).clone())
+    num_input_channels = _detect_input_channels(sample0_transformed, cfg)
+    log.info(f"Input channels: {num_input_channels}, Output channels: 2")
+    cfg.model.args.magno.precompute_edges = cfg.model.args.magno.asynchronous_graph_building
+    model = load_checkpoint(build_model(cfg, num_input_channels, 2, device), args.ckpt)
+    model.eval()
+    log.info(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+
+    # ── Run inference, print summary, save CSV ───────────────────────
+    all_results, all_rows = _run_inference_loop(
+        split_names, model, composed_transform, collate_fn, latent_tokens, per_head_stats, device, args, data_root
+    )
+    _print_inference_summary(all_results, args)
     csv_path = os.path.join(args.out, f"inference_{args.split}.csv")
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
         writer.writeheader()
         writer.writerows(all_rows)
     log.info(f"Results saved to {csv_path}")
-
     log.info("Inference complete.")
 
 
