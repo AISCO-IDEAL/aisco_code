@@ -1,5 +1,5 @@
 #!/bin/bash
-# setup_venv.sh
+# setup_venv_wsl.sh
 
 set -e  # Exit on error
 
@@ -24,6 +24,7 @@ if [[ "$skip_base" != "y" ]]; then
     echo "📦 Upgrading pip and installing standard dependencies..."
     "$VENV_PYTHON" -m pip install --upgrade pip setuptools wheel build
     "$VENV_PYTHON" -m pip install -e .
+    "$VENV_PYTHON" -m pip install '.[all]'
 else
     echo "⏭️ Skipping base install. Proceeding to CUDA tools..."
     if [ ! -f "$VENV_PIP" ]; then
