@@ -46,7 +46,7 @@ def test_route_loader():
     # Viewed from the +x (forward) axis so the left-up plane is front-facing.
     T = solar_vectors.shape[1]
     norm = plt.Normalize(0, T - 1)
-    cmap = plt.cm.viridis
+    cmap = plt.colormaps["viridis"]
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
     zeros = np.zeros(solar_vectors.shape[0])
