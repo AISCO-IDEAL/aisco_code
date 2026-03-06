@@ -32,6 +32,8 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0915, PLR0912 # definitly re
     wandb_config = None  # Store wandb config
     if general_config["wandb_general"].get("use_wandb", False):
         wandb.init(
+            entity=general_config["wandb_general"]["entity_name"],
+            project=general_config["wandb_general"]["project_name"],
             config=general_config,
         )
         wandb_config = wandb.config
@@ -122,7 +124,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0915, PLR0912 # definitly re
         run.config.update(config, allow_val_change=True)
 
     model_hash = dict_hashing(model.get_model_info_dict())
-    wandb_name = wandb.run.id if wandb.run is not None else None
+    wandb_name = wandb.run.name if wandb.run is not None else None
     rendering_dir = None
     if wandb_name is not None:
         # set rendering dir inside wandb log dir
@@ -151,7 +153,6 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0915, PLR0912 # definitly re
     # Check if model still is on device after pretraining
     model = model.to(device)
 
-    model.optimise(training_config=training_config, renderer_manager=renderer_manager)
     model.optimise(
         training_config=training_config, renderer_manager=renderer_manager, wandb_name=wandb_name, general_config=general_config
     )

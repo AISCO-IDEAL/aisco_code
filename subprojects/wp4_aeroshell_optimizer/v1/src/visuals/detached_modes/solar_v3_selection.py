@@ -113,7 +113,7 @@ class SolarV3Selection(RenderingMode):
 
         # log GIF to wandb
         try:
-            upload_neural_renderer_gif(gif_path, key=f"animations/{self.__class__.__name__}")
+            upload_neural_renderer_gif(gif_path, key=f"animations/{self.__class__.__name__}", step=1)
         except Exception as e:
             print(f"    Warning: Failed to upload SolarV3 selection GIF to wandb: {e}")
         # Save first frame as reference

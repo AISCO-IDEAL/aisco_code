@@ -45,6 +45,11 @@ class TotalLoss:
         self.__rendering_frequency = self.__general_config.get("wandb_general", {}).get("rendering_frequency")
         self._mesh_statistics = MeshStatistics(device=dev, use_wandb=self._use_wandb)  # For logging mesh statistics to wandb
 
+        # Load logging feature flags (once, not per iteration)
+        _logging_config = load_config(v="v1", cfg_name="logging.yaml")
+        self._memory_diagnostics: bool = _logging_config.get("memory_diagnostics", False)
+        self._mesh_statistics_enabled: bool = _logging_config.get("mesh_statistics", False)
+
         # Initialize mesh extractor with config from neural_renderer_v0.yaml
         renderer_config = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")
         mesh_config = renderer_config.get("mesh_extraction", {})
@@ -132,6 +137,34 @@ class TotalLoss:
                         losses_config=self.losses_config,
                     )
                     self.__active_losses[loss_name] = loss_instance
+
+    def _log_memory_diagnostics(self, epoch_name: int, device: torch.device) -> None:
+        """Print and optionally log GPU memory stats. Toggled by memory_diagnostics in logging.yaml."""
+        if not self._memory_diagnostics:
+            return
+        if device.type != "cuda":
+            return
+        allocated_mb = torch.cuda.memory_allocated(device) / 1024**2
+        reserved_mb = torch.cuda.memory_reserved(device) / 1024**2
+        peak_mb = torch.cuda.max_memory_allocated(device) / 1024**2
+        free_cached_mb = reserved_mb - allocated_mb
+        print(
+            f"[Epoch {epoch_name}] GPU Memory | "
+            f"Allocated: {allocated_mb:.1f} MB | "
+            f"Reserved: {reserved_mb:.1f} MB | "
+            f"Peak: {peak_mb:.1f} MB | "
+            f"Free (cached): {free_cached_mb:.1f} MB"
+        )
+        if self._use_wandb:
+            wandb.log(
+                {
+                    "memory/allocated_mb": allocated_mb,
+                    "memory/reserved_mb": reserved_mb,
+                    "memory/peak_allocated_mb": peak_mb,
+                    "memory/free_cached_mb": free_cached_mb,
+                },
+                step=epoch_name,
+            )
 
     def get_total_loss(  # noqa: PLR0912, PLR0915
         self, model: BaseModel, epoch_name: int = -1
@@ -234,12 +267,11 @@ class TotalLoss:
                     isovalue=self._mesh_extraction_config.get("isovalue", 0.0),
                     batch_size=self._mesh_extraction_config.get("batch_size", 8192),
                 )
-                if load_config(v="v1", cfg_name="logging.yaml")["mesh_statistics"]:
-                    # If solar logging is enabled, we log the rendered image of the current mesh to WandB using the VisualisationManager and its rendering modes
+                if self._mesh_statistics_enabled:
                     self._mesh_statistics.log_basic_mesh_stats(verts, faces, epoch_name)  # Log basic mesh stats to wandb
                     self._mesh_statistics.log_solar_area_stats(
                         verts, faces, epoch_name
-                    )  # Log solar area related stats to wandb                if load_config(v="v1", cfg_name="logging.yaml")["mesh_statistics"]:
+                    )  # Log solar area related stats to wandb
 
                 if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
                     if self._use_neural_renderer and self._renderer_manager is not None:
@@ -288,5 +320,8 @@ class TotalLoss:
         # logg the gradients of each loss component
         for loss_instance in self.__active_losses.values():
             loss_instance.log_gradients(epoch_name)
+
+        # Log GPU memory diagnostics (toggled by memory_diagnostics in logging.yaml)
+        self._log_memory_diagnostics(epoch_name, device)
 
         return weighted_total_loss

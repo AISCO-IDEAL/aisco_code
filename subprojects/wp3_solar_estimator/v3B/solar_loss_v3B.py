@@ -100,8 +100,6 @@ def solar_mesh_loss_v3(
         scalar loss in m²
     """
 
-    print(f"Number of epochs: {epoch_name}, Counter: {counter}")
-
     if faces.numel() == 0 or vertices.numel() == 0:
         print("Warning: Empty vertices or faces in solar_mesh_loss_v3, returning zero loss")
         return torch.zeros((), device=vertices.device, dtype=vertices.dtype)
@@ -320,7 +318,7 @@ class SolarLossEstimator:
 
         general_config = load_config(v="v1", cfg_name="general_config.yaml")
         cfg: dict[str, Any] = defaults if config is None else config
-        print(cfg)
+
         self.config = cfg
 
         self.method = cfg["method"]
@@ -348,7 +346,7 @@ class SolarLossEstimator:
         self.rendering_dir: Path | None
         if self.rendering and self.enable_wandb_logging:
             self.visualiser = Visualiser(
-                image_size=256,
+                image_size=1024,
                 background_color=None,
                 anti_aliasing=True,
                 camera_mode="look_at",
@@ -461,7 +459,6 @@ class SolarLossEstimator:
         self.counter += 1
 
         if self.method == "mesh_sdf":  # MeshSDF loss needs special handling
-            print("Using MeshSDF for Solar loss, gradients may be weird")
 
             def wrapper_solar_loss(vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
                 loss = solar_mesh_loss_v3(
@@ -494,7 +491,6 @@ class SolarLossEstimator:
             )
 
         else:
-            print(f"Using non-MeshSDF method for Solar loss ({self.method}), should be fully differentiable")
             vertices, faces = self.extract_mesh(model)
             loss = solar_mesh_loss_v3(
                 vertices,

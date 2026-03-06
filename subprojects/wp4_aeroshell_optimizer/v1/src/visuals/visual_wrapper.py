@@ -10,6 +10,8 @@ import traceback as tb
 from pathlib import Path
 from typing import Any
 
+import torch
+
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (
     upload_neural_renderer_gif,
     upload_neural_renderer_image,
@@ -164,6 +166,13 @@ class VisualisationManager:
                 - 'faces': Current mesh faces (optional)
                 - Any custom keys specific to your modes
         """
+        # Detach all tensors before dispatching to any mode so no rendering
+        # operation can retain or extend the training computation graph.
+        optimization_state = {
+            k: v.detach() if isinstance(v, torch.Tensor) else v
+            for k, v in optimization_state.items()
+        }
+
         for mode_name, mode in self.rendering_modes.items():
             if mode.enabled:
                 try:
