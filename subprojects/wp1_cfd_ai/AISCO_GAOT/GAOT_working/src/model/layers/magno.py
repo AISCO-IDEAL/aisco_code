@@ -396,8 +396,6 @@ class MAGNOEncoder(nn.Module):
                     x_pos=latent_tokens_pos,
                     edge_index=edge_index,
                     f_y=phys_feat_lifted,
-                    batch_y=batch_idx_phys,
-                    batch_x=latent_tokens_batch_idx,
                 )
             else:
                 encoded_gno = None
@@ -408,8 +406,8 @@ class MAGNOEncoder(nn.Module):
                     source_pos=phys_pos,
                     query_pos=latent_tokens_pos,
                     edge_index=edge_index,
-                    batch_source=batch_idx_phys,
-                    batch_query=latent_tokens_batch_idx,
+                    _batch_source=batch_idx_phys,
+                    _batch_query=latent_tokens_batch_idx,
                     neighbors_counts=neighbor_counts,
                 )
             else:
@@ -569,14 +567,12 @@ class MAGNODecoder(nn.Module):
                 training=self.training,
             )
 
-            # GNO Layer Call
+            # GNO Layer Call - removed batch_y and batch_x arguments
             decoded_unpatched = self.gno(
                 y_pos=latent_tokens_pos,
                 x_pos=phys_pos_query,
                 edge_index=edge_index,
                 f_y=rndata_flat,
-                batch_y=latent_tokens_batch_idx,
-                batch_x=batch_idx_phys_query,
             )
 
             # --- GeoEmbed (Optional) ---

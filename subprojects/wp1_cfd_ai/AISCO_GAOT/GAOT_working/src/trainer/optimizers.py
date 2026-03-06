@@ -326,7 +326,7 @@ class AdamWOptimizer:
                 train_sampler.set_epoch(epoch)  # type: ignore[union-attr]
 
             trainer.model.train()
-            total_loss: torch.Tensor = torch.tensor(0.0)
+            total_loss: torch.Tensor = torch.tensor(0.0, device = "cuda")
             epoch_grad_norms: dict[str, float] = {}
             num_batches = 0
 

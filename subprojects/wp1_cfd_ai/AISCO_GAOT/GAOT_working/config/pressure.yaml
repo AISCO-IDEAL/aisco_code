@@ -69,7 +69,7 @@ dataset:
     metaname: "incompressible_fluids/drivaernet_pressure"
     base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_drag_params"
     processed_folder: ""
-    force_recompute_stats: true
+    force_recompute_stats: false
     rand_dataset: true
     train_size: 40
     val_size: 10
