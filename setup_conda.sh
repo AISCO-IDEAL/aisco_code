@@ -39,6 +39,7 @@ echo "   - Workpackage 1 (WP1_WP1_CFD_AI):                  pip install '.[wp1_c
 echo "   - Workpackage 2 (wp2_assembler):                   pip install '.[wp2_assembler]'"
 echo "   - Workpackage 3 (WP_3_Solarestimator):             pip install '.[WP3_Solarestimator]'"
 echo "   - Workpackage 4 (WP_4_Aeroshell_optimizer):        pip install '.[wp4_aeroshell_optimizer]'"
+echo "   - Workpackage 7 (WP_7_gui):                        pip install '.[wp7_gui]'"
 echo "   - testing dependencies:                            pip install '.[testing]'"
 echo "   - All optional dependencies:                       pip install '.[all]'"
 ############# eschaerer addition for kaolin install #############
@@ -52,6 +53,17 @@ else
     echo "⏭️ Skipping Kaolin installation."
 fi
 echo ""
+## Do same for DISO
+read -p "Do you want to install DISO (Requires GPU/CUDA)? [y/n]: " install_diso
+if [[ "$install_diso" == "y" ]]; then
+    echo "🐍 Installing DISO build requirements..."
+    # Ensure build-time dependencies are present for --no-build-isolation
+    pip install cmake ninja
+
+    echo "🐍 Installing DISO from GitHub..."
+    python -m pip install diso --no-build-isolation --no-cache-dir
+    echo "✅ DISO installation complete."
+fi
 ##############################################################
 echo ""
 echo "✅ Setup complete!"

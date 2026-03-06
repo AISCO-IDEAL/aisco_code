@@ -1,11 +1,13 @@
 import sys
 from pathlib import Path
 
-from PyQt6.QtWidgets import QApplication, QMainWindow
+from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton
 from PyQt6.uic import loadUi
 
 
 class MainUI(QMainWindow):
+    pushButton: QPushButton  # noqa: N815
+
     def __init__(self):
         super(MainUI, self).__init__()  # noqa: UP008
         ui_path = Path(__file__).parent / "basicGUI.ui"

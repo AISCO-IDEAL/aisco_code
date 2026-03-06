@@ -32,12 +32,15 @@ repos:
         additional_dependencies:
           - types-requests
           - types-PyYAML
+          - types-paramiko
+          - types-Pillow
+          - paramiko
+          - types-pytz
           - wandb
           - torch
           - cadquery
-          - types-pytz
-        pass_filenames: False # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
-        entry: mypy .
+        pass_filenames: True # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
+
 
   # # MyPy für Typenprüfung (Local Hook)
   # - repo: local

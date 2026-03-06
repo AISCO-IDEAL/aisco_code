@@ -1,5 +1,4 @@
 import math
-import random
 from pathlib import Path
 
 import cadquery as cq
@@ -19,59 +18,13 @@ class WheelbaseTooSmallError(Exception):
         super().__init__(f"Wheelbase {dim} too small")
 
 
-def inner_nbz_sym_rand():
-    """
-    New implementation of innerNBZ for version 2
-    Args: constraints from regulations
-    Returns: cq.shape.solid of inner NBZ shape
-    """
-
-    # draw triangle
-    triangle = Triangle().build()
-    points = Triangle().get_points()
-
-    # add wheels to the corners of the triangle
-    wheels = Wheels()
-    wheel = wheels.create_wheel()
-
-    seat_class = Seat()
-    seat = seat_class.create_seat()
-
-    assembly = (
-        cq.Assembly(triangle, name="triangle")
-        # move to 0,0,0
-        .add(
-            wheel,
-            loc=cq.Location(points[0].x, points[0].y, points[0].z),
-            name="wheel_1",
-        )
-        .add(
-            wheel,
-            loc=cq.Location(points[1].x, points[1].y, points[1].z),
-            name="wheel_2",
-        )
-        .add(
-            wheel,
-            loc=cq.Location(points[2].x, points[2].y, points[2].z),
-            name="wheel_3",
-        )
-        .add(
-            seat,
-            loc=cq.Location(random.randint(0, float(points[2].x)), 0, -100),
-            name="Seat",
-        )
-    )
-
-    return assembly
-
-
 def inner_nbz_sym(
     wheel_base_width=1000,
     wheel_base_length=2500,
     tyre_diameter=557,
     seat_position_x=400,
     seat_position_z=-100,
-):
+) -> cq.Assembly:
     """
     Deterministic implementation of innerNBZ for version 2
     Args: parameters for the inner NBZ
@@ -134,7 +87,7 @@ def inner_nbz_sym(
     return assembly
 
 
-def outer_nbz(length: float, width: float, height: float):
+def outer_nbz(length: float, width: float, height: float) -> cq.Solid:
     """
     New implementation of outerNBZ for version 2
     Args: constraints from regulations
@@ -275,7 +228,7 @@ def save_assembly_parameters(parameters: dict) -> str:
     return str(next_id)
 
 
-def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid, cq.Assembly]:
+def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
     """
     Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
     Args: id-number
@@ -310,6 +263,17 @@ def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid, cq.Assembly]:
 
     return assembly, outer, vision
 
+# eschaerer: needed for visualiser
+def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
+    """
+    Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
+
+    Args: id-number
+
+    Returns:  tuple with list[inner solids] and outer solid
+    """
+    inner, outer , __= call_assembly(id_number)
+    return inner.toCompound().Solids(), outer
 
 def get_range_wheels() -> dict:
     """

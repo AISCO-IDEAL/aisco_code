@@ -17,6 +17,7 @@ def outer_nbz_ramps(assembly_id) -> cq.Solid:
     """
 
     inner, outer, _ = call_assembly(assembly_id)
+
     back_wheel_center = (inner["wheel_1"].loc.toTuple()[0][0], inner["wheel_1"].loc.toTuple()[0][2])
     front_wheel_center = (inner["wheel_2"].loc.toTuple()[0][0], inner["wheel_2"].loc.toTuple()[0][2])
     outer_xmax = outer.BoundingBox().xmax
@@ -75,6 +76,8 @@ if __name__ == "__main__":
     demo_id = 21  # random number because it was not defined at all.
 
     ramps = outer_nbz_ramps(demo_id)
+
+    inner_cmp: cq.Assembly
 
     inner_cmp, _, _ = call_assembly(demo_id)
 

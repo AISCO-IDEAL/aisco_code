@@ -5,12 +5,11 @@ from subprojects.wp2_assembler.version3.utils.distributions import truncated_gam
 
 class Triangle:
     def __init__(self):
-        self.a = None
-        self.b = None
-        self.c = None
+        self.a = cq.Vector(0, 0, 0)
+        self.b = cq.Vector(0, 0, 0)
+        self.c = cq.Vector(0, 0, 0)
 
     def build_random(self) -> "Triangle":
-        self.a = cq.Vector(0, 0, 0)
         self.b = cq.Vector(
             float(truncated_gamma(size=1)),  # get value lengthwise in x-direction
             float(truncated_gamma(size=1)),  # get value widthwise in y-direction
@@ -24,7 +23,6 @@ class Triangle:
         return self
 
     def build(self, wheel_base_length: int, wheel_base_width: int) -> "Triangle":
-        self.a = cq.Vector(0, 0, 0)
         self.b = cq.Vector(wheel_base_length, wheel_base_width / 2, 0)
         self.c = cq.Vector(wheel_base_length, -wheel_base_width / 2, 0)
         return self
