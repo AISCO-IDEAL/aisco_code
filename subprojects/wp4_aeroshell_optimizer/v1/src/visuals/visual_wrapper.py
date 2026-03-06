@@ -61,7 +61,7 @@ class VisualisationManager:
         # It contains all the settings that define a neural renderer object, and all modes will run through this same neural renderer instance.
         general_config = load_config(cfg_name="general_config.yaml")
         neural_renderer_config_name = general_config["active_configs"]["neural_renderer"]
-        self.config = load_config(cfg_name=neural_renderer_config_name)
+        self.config = load_config(v="v1", cfg_name=neural_renderer_config_name)
         self.store_wandb = self.config["general"].get("store_wandb", False)  # Whether to upload final GIFs to wandb
 
         # Initialize the shared Visualiser instance

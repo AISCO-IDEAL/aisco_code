@@ -1,4 +1,4 @@
-import fixed_renderer.cuda.rasterize as rasterize_cuda
+import subprojects.fixed_renderer.cuda.rasterize as rasterize_cuda
 import torch
 import torch.nn.functional as F
 from torch import nn

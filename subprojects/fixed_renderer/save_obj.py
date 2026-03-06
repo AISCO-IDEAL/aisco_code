@@ -1,6 +1,6 @@
 import os
 
-import fixed_renderer.cuda.create_texture_image as create_texture_image_cuda
+import subprojects.fixed_renderer.cuda.create_texture_image as create_texture_image_cuda
 import torch
 from skimage.io import imsave
 
