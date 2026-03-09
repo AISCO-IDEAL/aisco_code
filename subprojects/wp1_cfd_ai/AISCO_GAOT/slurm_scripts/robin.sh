@@ -68,28 +68,32 @@ echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 # Run the Relevant script
 #------------------------------------------------------------------------------
 export PYTHONUNBUFFERED=TRUE
-export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
+export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working:$PYTHONPATH"
 export WANDB_CACHE_DIR="/cluster/scratch/$USERNAME/wandb_cache"
-cd /cluster/home/$USERNAME/AISCO_code/
-#python -m src.main
+
+# Change to GAOT_working directory
+cd /cluster/home/$USERNAME/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/
 
 ulimit -n 65536
 
 # Define your base config
-BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/pressure.yaml"
+BASE_CONFIG="config/euler_field.yaml"
 
-# Define the new folder where you want to archive your run configs
-ARCHIVE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/configs"
-mkdir -p $ARCHIVE_DIR  # Make sure the folder exists!
+# Extract the 'name' parameter from the config
+RUN_NAME=$(grep "name:" $BASE_CONFIG | head -1 | awk '{print $2}' | tr -d '"')
+
+# Create results folder structure
+RESULTS_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/results"
+mkdir -p $RESULTS_DIR
 
 # Set the path for the temporary unique config
-TEMP_CONFIG="$ARCHIVE_DIR/run_${SLURM_JOB_ID}.yaml"
+TEMP_CONFIG="/tmp/run_${SLURM_JOB_ID}_config.yaml"
 
-# 1. Inject the Slurm Job ID into the YAML and save it to the archive folder
-sed "s/_RUN_ID_/${SLURM_JOB_ID}/g" $BASE_CONFIG > $TEMP_CONFIG
+# Substitute both _NAME_ and _RUN_ID_ tokens in the config
+sed "s|_NAME_|${RUN_NAME}|g; s|_RUN_ID_|${SLURM_JOB_ID}|g" $BASE_CONFIG > $TEMP_CONFIG
 
 # 2. Run the AI using the newly generated unique config file
-python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/main.py \
+python main.py \
     -c $TEMP_CONFIG \
     2>&1
 

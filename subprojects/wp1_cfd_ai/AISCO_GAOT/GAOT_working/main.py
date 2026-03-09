@@ -2,7 +2,9 @@ import argparse
 import logging
 import os
 import platform
+import shutil
 import subprocess
+import sys
 import time
 from multiprocessing import Process
 
@@ -12,6 +14,9 @@ import torch
 import torch.distributed as dist
 import yaml
 from omegaconf import OmegaConf
+
+# Add current directory to path for module discovery
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.trainer.stat import StaticTrainer3D
 
@@ -152,6 +157,23 @@ def run_arg(arg):  # noqa: PLR0912, PLR0915
             with open(config_save_path, "w") as f:
                 yaml.dump(model_config_dict, f, default_flow_style=False, sort_keys=False)
             logging.getLogger(__name__).info(f"Model config saved to {config_save_path}")
+
+            # Save the full training config to the RUN folder by copying the input config file
+            if "config_save_path" in arg.path:
+                full_config_save_path = arg.path["config_save_path"]
+                # Find the config file path from sys.argv
+                config_file_path = None
+                for i, argv in enumerate(sys.argv):
+                    if argv == "-c" and i + 1 < len(sys.argv):
+                        config_file_path = sys.argv[i + 1]
+                        break
+
+                if config_file_path and os.path.exists(config_file_path):
+                    os.makedirs(os.path.dirname(full_config_save_path), exist_ok=True)
+                    shutil.copy(config_file_path, full_config_save_path)
+                    logging.getLogger(__name__).info(f"Config copied to {full_config_save_path}")
+                else:
+                    logging.getLogger(__name__).warning(f"Could not find config file to copy: {config_file_path}")
 
     if arg.setup["test"]:
         # In DDP, only rank 0 runs test (it has the full test loader, no DistributedSampler)

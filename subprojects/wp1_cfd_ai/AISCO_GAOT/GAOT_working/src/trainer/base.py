@@ -265,6 +265,7 @@ class TrainerBase:
             ax.set_xlim(left=0)
             if (np.array(losses) > 0).all():
                 ax.set_yscale("log")
+            os.makedirs(os.path.dirname(self.path_config.loss_path), exist_ok=True)
             np.savez(self.path_config.loss_path[:-4] + ".npz", epochs=epochs, losses=losses)
 
         else:
@@ -289,6 +290,7 @@ class TrainerBase:
             ax[1].set_xlim(left=0)
             if (np.array(val_losses) > 0).all():
                 ax[1].set_yscale("log")
+            os.makedirs(os.path.dirname(self.path_config.loss_path), exist_ok=True)
             plt.savefig(self.path_config.loss_path)
             np.savez(
                 self.path_config.loss_path[:-4] + ".npz",
