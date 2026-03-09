@@ -39,6 +39,9 @@ class TotalLoss:
         self.__active_losses: dict = {}
         self._renderer_initialized = False
         self._renderer_manager = renderer_manager
+        # Populated each call to get_total_loss(); maps loss component name → weighted live tensor.
+        # The training loop uses this to call .backward() per component instead of on the summed total.
+        self._last_weighted_losses: dict[str, torch.Tensor] = {}
 
         project_root = Path.cwd()  # Correctly defines project root
         self.losses = self.losses_config.get("losses", {})  # get nested losses dict
@@ -49,6 +52,7 @@ class TotalLoss:
         _logging_config = load_config(v="v1", cfg_name="logging.yaml")
         self._memory_diagnostics: bool = _logging_config.get("memory_diagnostics", False)
         self._mesh_statistics_enabled: bool = _logging_config.get("mesh_statistics", False)
+        self._gradient_memory_diagnostics: bool = _logging_config.get("gradient_memory_diagnostics", False)
 
         # Initialize mesh extractor with config from neural_renderer_v0.yaml
         renderer_config = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")
