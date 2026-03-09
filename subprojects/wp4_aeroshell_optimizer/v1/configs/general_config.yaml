@@ -18,10 +18,11 @@ active_configs:
   model_params: "basic_MLP_v1.yaml"
   wandb: "wandb_v0_sweep.yaml"
   neural_renderer: "neural_renderer_v0.yaml"
+  solar: "solar_configs/solar_loss_config.yaml"
 
 wandb_general:
   use_wandb: True
-  project_name: "Memory-Debugging-Alex"
+  project_name: "WP3-Development-Alex"
   entity_name: "aisco"
   track_run: 1
   use_renderer: True
