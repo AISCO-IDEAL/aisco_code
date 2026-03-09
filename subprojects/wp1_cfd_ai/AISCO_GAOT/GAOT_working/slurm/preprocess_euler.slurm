@@ -17,9 +17,8 @@ source /cluster/home/elihuber/AISCO_code/aisco_env/bin/activate
 
 SCRIPT_DIR=/cluster/home/elihuber/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/dataset/euler
 
-OUTPUT_DIR=/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_multi_new
-echo "=== Clearing old data in $OUTPUT_DIR ==="
-rm -rf "$OUTPUT_DIR"
+OUTPUT_DIR=/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_new
+echo "=== Resuming processing (keeping existing files in $OUTPUT_DIR) ==="
 mkdir -p "$OUTPUT_DIR"
 
 echo "=== Processing Euler multi-head (pos + force) ==="

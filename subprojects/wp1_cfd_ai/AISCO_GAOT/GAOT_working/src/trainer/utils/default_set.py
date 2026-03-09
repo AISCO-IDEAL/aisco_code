@@ -168,6 +168,7 @@ class DatasetConfig:
     active_heads: list[str] | None = None  # List of active heads for loss (e.g. ["force"]), None = all heads
 
     field_loss_weight: float = 1.0  # Weight for field (per-vertex pressure) loss relative to scalar head loss
+    uncertainty_weighting: bool = False  # Enable Kendall et al. (2018) learned multi-task loss weighting
 
 
 @dataclass

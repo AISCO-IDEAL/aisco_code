@@ -246,6 +246,7 @@ class TrainerBase:
                         is_best=True,
                         config_dict=self.full_config_dict,
                     )
+                torch.cuda.empty_cache()
                 self.test()
 
         if self.setup_config.rank == 0:
