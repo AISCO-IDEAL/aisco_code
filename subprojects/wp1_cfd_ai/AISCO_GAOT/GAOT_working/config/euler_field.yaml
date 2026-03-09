@@ -7,7 +7,7 @@
 ##########################################################################
 
 setup:
-    wandb_run_name: "euler_field__RUN_ID_"
+    wandb_run_name: "gold3"
     seed: 42
     device: "cuda:0"
     dtype: "torch.float32"
@@ -32,7 +32,7 @@ model:
     name: "gaot_3d"
     use_conditional_norm: false
     args:
-        latent_tokens: [64,64,32]
+        latent_tokens: [32,32,16]
         field_output_size: 1
         magno:
             use_gno: true
@@ -79,7 +79,7 @@ dataset:
     metaname: "incompressible_fluids/euler_pressure"
     base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_pressure"
     processed_folder: ""
-    force_recompute_stats: true
+    force_recompute_stats: false
     rand_dataset: true
     train_size: 35
     val_size: 6
@@ -93,13 +93,15 @@ dataset:
     neural_field_input_nodes: 40000
     neural_field_query_nodes_train: 40000
     field_loss_weight: 1e-4
+    use_rescale_new: true
+    active_variables:
 
 optimizer:
     name: "adamw"
     args:
         lr: 3e-4
         weight_decay: 1e-05
-        epoch: 60
+        epoch: 4
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"
@@ -108,9 +110,15 @@ optimizer:
         final_lr: 1e-5
         save_every_epochs: 10
         save_every_steps: 50
+        early_save_metric: "val"  # Metric for early stopping, support ['train', 'val']
+        scheduler_step_size: 100  # Step size (number of epochs) for StepLR scheduler
+        scheduler_gamma: 0.8  # Multiplicative factor for learning rate decay in StepLR scheduler
+        scheduler_t_max: 100  # Maximum number of iterations (usually total epochs) for CosineAnnealingLR scheduler
+        scheduler_eta_min: 1e-4  # Minimum learning rate for CosineAnnealingLR scheduler
+
 
 path:
-    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/euler_field__RUN_ID_.pt"
-    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/euler_field__RUN_ID_.png"
-    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/euler_field__RUN_ID_.png"
-    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/euler_field_metrics.csv"
+    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/gold3.pt"
+    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/gold3.png"
+    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/gold3.png"
+    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/gold3.csv"
