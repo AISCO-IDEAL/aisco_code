@@ -30,8 +30,10 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.solar_v3_
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
 
-def _deterministic_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
+def _deterministic_cumsum_legacy(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
     """
+    LEGACY — kept for potential revert only. Use _efficient_cumsum instead.
+
     Deterministic cumulative sum using matrix multiplication - avoids torch.cumsum entirely.
     This is faster than manual loops but slower than native cumsum, but works with
     deterministic algorithms enabled without any warnings.
@@ -43,7 +45,7 @@ def _deterministic_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
         (N,) cumulative sum tensor where cumsum[i] = x[0] + x[1] + ... + x[i]
     """
     if dim != 0:
-        raise ValueError(f"_deterministic_cumsum only supports dim=0, got dim={dim}")
+        raise ValueError(f"_deterministic_cumsum_legacy only supports dim=0, got dim={dim}")
 
     n = x.shape[0]
     if n == 0:
@@ -56,6 +58,23 @@ def _deterministic_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
     # Matrix multiplication: tril_mask @ x gives cumulative sums
     # tril_mask[i, :] has ones from 0 to i, so (tril_mask @ x)[i] = sum(x[0:i+1])
     return tril_mask @ x
+
+
+def _efficient_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
+    """
+    Memory-efficient cumulative sum — O(N) memory, O(N) time.
+
+    Replaces _deterministic_cumsum_legacy which used an O(N²) triangular matmul
+    that caused OOM at high mesh resolutions (e.g. 512³ → ~100K faces → 37 GiB).
+
+    torch.cumsum_cuda_kernel has no deterministic implementation, so we run on CPU
+    (which is deterministic) and transfer back. The device transfer is differentiable,
+    so gradients flow correctly. For ~100K face tensors the transfer overhead is negligible.
+
+    To revert to the O(N²) deterministic fallback: replace `_efficient_cumsum` with
+    `_deterministic_cumsum_legacy` at the call site.
+    """
+    return torch.cumsum(x.cpu(), dim=dim).to(x.device)
 
 
 def solar_mesh_loss_v3(
@@ -123,7 +142,7 @@ def solar_mesh_loss_v3(
     sorted_quality = illumination_quality[quality_order_desc]
 
     # Deterministic-safe cumulative area
-    cumulative_area = _deterministic_cumsum(sorted_areas, dim=0)
+    cumulative_area = _efficient_cumsum(sorted_areas, dim=0)
 
     # Create soft selection mask using sigmoid
     # mask(i) = sigmoid(sharpness * (area_budget - cumsum_area[i]))
