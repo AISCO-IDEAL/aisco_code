@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=Main_test
-#SBATCH --time=02:00:00                   # Adjust time as needed
+#SBATCH --time=08:00:00                   # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
@@ -75,7 +75,7 @@ cd /cluster/home/$USERNAME/AISCO_code/
 ulimit -n 65536 
 
 python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/main.py \
-    -c subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/pressure.yaml \
+    -c subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/euler_field.yaml \
     2>&1
     
 #------------------------------------------------------------------------------
