@@ -98,4 +98,4 @@ path:
     ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/multi_model__RUN_ID_.pt"
     loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/multi_loss__RUN_ID_.png"
     result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/multi_result__RUN_ID_.png"
-    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/multi_metrics.csv"
+    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/multi_metricsHOHOHO.csv"
