@@ -8,6 +8,7 @@ from pathlib import Path
 import torch
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing, str_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import (
     get_diff_mesh,
@@ -39,6 +40,8 @@ def allround_save_data(
 
     For questions regarding this function, talk to #aalthaus
     """
+    # Get general config:
+    general_config = load_config(v="v1", cfg_name="general_config.yaml")
     # Get Dictonary containing all relevant model information needed to recreate the model
     model_data = model.get_model_info_dict()
     if model_data is None or storage_path is None:
@@ -47,6 +50,10 @@ def allround_save_data(
     # Hash the model_data dictionary
     model_hash_value = dict_hashing(model_data)
     # Baed on hash value see if directory exists, if not create it
+    if general_config["general_info"].get("run_locally", False):
+        storage_path = general_config["storage_paths"]["local_storage_dir"]
+    else:
+        storage_path = general_config["storage_paths"]["storage_dir"]
     dir_path = Path(storage_path) / model_hash_value
     os.makedirs(dir_path, exist_ok=True)
     # If not present, instantly store the model_data in a json file for readability

@@ -2,8 +2,8 @@ import os
 from pathlib import Path
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import dynamic_type_loading
@@ -99,11 +99,16 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0915, PLR0912 # definitly re
 
         model = pretraining(model=model, override_config=pretraining_override)
         # Save pretrained model and mesh for sanity check
+        if general_config["general_info"].get("run_locally", False):
+            # If running locally, save to local pretrained dir
+            pretrained_storage_path = general_config["storage_paths"].get("local_pretrained_dir", "./local_pretrained_dir")
+        else:
+            pretrained_storage_path = general_config["storage_paths"].get(
+                "pretrained_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset"
+            )
         allround_save_data(
             model=model,
-            storage_path=general_config["storage_paths"].get(
-                "pretrained_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_models"
-            ),
+            storage_path=pretrained_storage_path,
             save_model=True,
             save_mesh=True,
             verbose=verbose,
@@ -126,7 +131,10 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0915, PLR0912 # definitly re
     rendering_dir = None
     if wandb_name is not None:
         # set rendering dir inside wandb log dir
-        rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
+        if general_config["general_info"].get("run_locally", False):
+            rendering_dir = Path(general_config["storage_paths"]["local_storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
+        else:
+            rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
         os.makedirs(rendering_dir, exist_ok=True)
     # Initialize shared visual manager (reads rendering modes from config)
     renderer_manager = VisualisationManager(verbose=verbose, output_dir=rendering_dir)
