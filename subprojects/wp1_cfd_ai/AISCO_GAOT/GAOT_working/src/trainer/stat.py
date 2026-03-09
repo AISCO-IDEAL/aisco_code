@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import statistics
 import time
@@ -100,6 +101,28 @@ class StaticTrainer3D(TrainerBase):
                     "WARNING: neural_field training strategy requires precompute_edges=False, setting it to False automatically."
                 )
                 _magno_set(self.model_config, "precompute_edges", False)
+
+        # --- Uncertainty weighting (Kendall et al., 2018) ---
+        # Learns log(sigma) per task so the combined loss self-scales.
+        # Enabled via dataset.uncertainty_weighting: true in config.
+        self._uncertainty_weighting = getattr(self.dataset_config, "uncertainty_weighting", False)
+        if self._uncertainty_weighting:
+            self.log_sigma_field = torch.nn.Parameter(
+                torch.tensor([math.log(50.0)], device=self.device)
+            )
+            self.log_sigma_scalar = torch.nn.Parameter(
+                torch.tensor([math.log(1)], device=self.device)
+            )
+            # Register as an extra param group in the existing AdamW optimizer
+            # (no weight-decay on task-noise parameters)
+            self.optimizer.optimizer.add_param_group({
+                "params": [self.log_sigma_field, self.log_sigma_scalar],
+                "lr": self.optimizer_config.args.lr,
+                "weight_decay": 0.0,
+            })
+            logging.getLogger(__name__).info(
+                "Uncertainty weighting enabled: log_sigma_field and log_sigma_scalar will be learned."
+            )
 
     def _calculate_or_load_stats(self, dataset_config, order_file_path, data_root):
         """Calculates or loads normalization statistics.
@@ -649,7 +672,7 @@ class StaticTrainer3D(TrainerBase):
 
         return sampled_data_list, query_pos, query_batch_idx, field_target
 
-    def train_step(self, batch: "pyg.data.Batch"):  # noqa: PLR0912
+    def train_step(self, batch: "pyg.data.Batch"):  # noqa: PLR0912, PLR0915
         strategy = self.dataset_config.training_strategy
         latent_tokens_dev = self.latent_tokens.to(self.device)
 
@@ -728,9 +751,22 @@ class StaticTrainer3D(TrainerBase):
 
                     head_losses["field"] = field_loss.item()
 
-                    # Combine: configurable weight, default 1.0
-                    field_weight = getattr(self.dataset_config, "field_loss_weight", 1.0)
-                    return scalar_loss + field_weight * field_loss, head_losses
+                    if self._uncertainty_weighting:
+                        # Kendall et al. (2018) multi-task uncertainty loss:
+                        # L = (exp(-2s_f)/2)*L_f + s_f + (exp(-2s_s)/2)*L_scalar + s_s
+                        # where s_x = log(sigma_x)  (numerically stable via exp(-2s))
+                        s_f = self.log_sigma_field
+                        s_s = self.log_sigma_scalar
+                        combined = (
+                            0.5 * torch.exp(-2.0 * s_f) * field_loss + s_f
+                            + 0.5 * torch.exp(-2.0 * s_s) * scalar_loss + s_s
+                        )
+                        head_losses["sigma_field"] = torch.exp(s_f).item()
+                        head_losses["sigma_scalar"] = torch.exp(s_s).item()
+                        return combined.squeeze(), head_losses
+                    else:
+                        field_weight = getattr(self.dataset_config, "field_loss_weight", 1.0)
+                        return scalar_loss + field_weight * field_loss, head_losses
 
             return scalar_loss, head_losses
         else:
@@ -908,8 +944,8 @@ class StaticTrainer3D(TrainerBase):
 
                     assert isinstance(all_batch_targets_denorm, list)
                     assert isinstance(all_batch_preds_denorm, list)
-                    all_batch_targets_denorm.append(target_de_norm.cpu())
-                    all_batch_preds_denorm.append(pred_de_norm.cpu())
+                    all_batch_targets_denorm.append(target_de_norm.detach().cpu())
+                    all_batch_preds_denorm.append(pred_de_norm.detach().cpu())
 
                     if i == 0 and self.setup_config.rank == 0:
                         plot_gtr = np.array([target_de_norm[0].item()])

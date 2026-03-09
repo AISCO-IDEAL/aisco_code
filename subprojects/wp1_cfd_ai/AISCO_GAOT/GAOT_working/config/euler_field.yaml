@@ -92,7 +92,8 @@ dataset:
     training_strategy: "neural_field"
     neural_field_input_nodes: 40000
     neural_field_query_nodes_train: 40000
-    field_loss_weight: 1e-4
+    uncertainty_weighting: true
+    field_loss_weight: 1e-4  # fallback weight used when uncertainty_weighting is false
     use_rescale_new: true
     active_variables:
 

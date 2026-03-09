@@ -1,0 +1,185 @@
+from dataclasses import dataclass, field
+from typing import Any
+
+from omegaconf import OmegaConf
+
+from ..optimizers import OptimizerargsConfig
+
+
+def merge_config(default_config_class, user_config):
+    default_config_struct = OmegaConf.structured(default_config_class)
+    merged_config = OmegaConf.merge(default_config_struct, user_config)
+    return OmegaConf.to_object(merged_config)
+
+
+# ── Default dicts matching config.yaml structure ─────────────────────────
+
+
+def _default_magno() -> dict[str, Any]:
+    return {
+        "use_gno": True,
+        "gno_coord_dim": 3,
+        "gno_radius": 0.15,
+        "lifting_channels": 64,
+        "encoder_feature_attr": "x",
+        "in_gno_channel_mlp_hidden_layers": [128, 128],
+        "in_gno_transform_type": "linear",
+        "projection_channels": 256,
+        "out_gno_channel_mlp_hidden_layers": [64, 64],
+        "out_gno_transform_type": "linear",
+        "mlp_type": "channel",
+        "scales": [1.0],
+        "use_scale_weights": False,
+        "use_attn": None,
+        "attention_type": "cosine",
+        "use_geoembed": [True, True],
+        "embedding_method": "statistical",
+        "pooling": "max",
+        "sampling_strategy": None,
+        "max_neighbors": None,
+        "sample_ratio": None,
+        "neighbor_strategy": "radius",
+        "k_neighbors": 1,
+        "precompute_edges": True,
+        "asynchronous_graph_building": False,
+    }
+
+
+def _default_transformer() -> dict[str, Any]:
+    return {
+        "patch_size": 4,
+        "hidden_size": 256,
+        "use_attn_norm": True,
+        "use_ffn_norm": True,
+        "norm_eps": 1e-6,
+        "num_layers": 10,
+        "positional_embedding": "rope",
+        "use_long_range_skip": True,
+        "attn_config": {
+            "hidden_size": 256,
+            "num_heads": 8,
+            "num_kv_heads": 8,
+            "use_conditional_norm": False,
+            "cond_norm_hidden_size": 4,
+            "atten_dropout": 0.1,
+            "positional_embedding": "rope",
+        },
+        "ffn_config": {
+            "hidden_size": 1024,
+            "use_conditional_norm": False,
+            "cond_norm_hidden_size": 4,
+        },
+    }
+
+
+def _default_decoder() -> dict[str, Any]:
+    return {
+        "hidden_features": 256,
+        "num_shared_layers": 3,
+        "output_heads": {
+            "force": 1,
+            "cd": 1,
+        },
+    }
+
+
+@dataclass
+class SetUpConfig:
+    seed: int = 42  # Random seed for reproducibility
+    device: str = "cuda:0"  # Computation device, (e.g., "cuda:0", "cpu")
+    dtype: str = "torch.float32"  # Data type for computation (e.g., "torch.float32", "torch.float64")
+    trainer_name: str = "static3d"  # Type of trainer to use, support [static3d]
+    train: bool = True  # Whether to run the training phase
+    test: bool = False  # Whether to run the testing phase
+    ckpt: bool = False  # Whether to load the checkpoint
+    use_variance_test: bool = False  # TODO Whether to use variance testing
+    # Parameters for distributed mode
+    distributed: bool = False  # Whether to enable distributed training
+    world_size: int = 1  # Total number of processes in distributed training
+    rank: int = 0  # Rank of the current process in distributed training
+    local_rank: int = 0  # Local rank of the current process in distributed training
+    backend: str = "nccl"  # Backend for distributed training, e.g., 'nccl' (NVIDIA Collective Communications Library)
+
+    # Weights & Biases logging
+    wandb: bool = False  # Enable Weights & Biases logging
+    wandb_project: str | None = None  # W&B project name
+    wandb_entity: str | None = None  # W&B entity (team/user)
+    wandb_run_name: str | None = None  # Run name
+    wandb_group: str | None = None  # Group name for runs
+    wandb_mode: str = "online"  # 'online' | 'offline' | 'disabled'
+    wandb_notes: str | None = None  # Notes for the run
+    wandb_tags: list[str] = field(default_factory=list)  # Tags for the run
+    wandb_watch_model: bool = False  # Watch model gradients/parameters
+    wandb_log_interval: int = 1  # Log interval in epochs (usually align with eval_every_eps)
+
+    # Model checkpoint management with wandb artifacts
+    resume_from_artifact: str | None = None  # Load model from wandb artifact (e.g., "model-name:best")
+    test_during_training: bool = False  # Run test during training when checkpoints are saved
+
+
+@dataclass
+class ModelArgsConfig:
+    input_size: int = 6  # Input feature size
+    output_size: int = 1  # Output feature size
+    latent_tokens: tuple[int, int, int] = (64, 64, 64)  # Size (D, H, W) of latent tokens
+    field_output_size: int = 0  # Per-vertex field output channels (0=scalar-only, 1=pressure)
+    norm_domain: list[list[float]] = field(default_factory=lambda: [[-1, -1, -1], [1, 1, 1]])
+    magno: dict[str, Any] = field(default_factory=_default_magno)  # Configuration for MAGNO (plain dict)
+    transformer: dict[str, Any] = field(default_factory=_default_transformer)  # Configuration for Transformer (plain dict)
+    decoder: dict[str, Any] = field(default_factory=_default_decoder)  # Configuration for decoder (plain dict)
+
+
+@dataclass
+class ModelConfig:
+    name: str = "gaot_3d"  # Name of the model, support ['gaot_3d']
+    use_conditional_norm: bool = False  # Whether to use time-conditional normalization (not supported in this repo)
+    args: ModelArgsConfig = field(default_factory=ModelArgsConfig)  # Configuration for the model's components
+
+
+@dataclass
+class DatasetConfig:
+    name: str = "drivaernet_fullpressure"  # Name of the dataset
+    metaname: str = "gaot-unstructured/drivaernet_pressure"  # Metaname (identifier) for the dataset, used for loading the dataset
+    base_path: str = "/cluster/work/math/camlab-data/graphnpde/drivaernet/"  # Base path where the dataset is stored
+    processed_folder: str = "processed_pyg"  # Folder name of the saved/processed .pt files
+    active_variables: list[int] | None = None  # List of active variables to use, if None, use all variables
+    force_recompute_stats: bool = False  # Whether to force recomputing the statistics
+    use_metadata_stats: bool = False  # Whether to use metadata statistics
+    sample_rate: float = 0.1  # Sampling rate of the dataset
+    train_size: int = 5817  # Number of training samples
+    val_size: int = 1148  # Number of validation samples
+    test_size: int = 1154  # Number of test samples
+    rand_dataset: bool = False  # Whether to randomize the sequence of loaded dataset
+    batch_size: int = 64  # Batch size for training
+    num_workers: int = 4  # Number of workers for loading the dataset
+    shuffle: bool = True  # Whether to shuffle the dataset
+    metric_suite: str = "drivaernet"  # Literal["poseidon", "general"]
+    # for graph building
+    update_pt_files_with_edges: bool = False  # Flag to trigger edge computation/saving
+    use_rescale_new: bool = True  # Whether to use new rescale methods for coordinates
+    # for neural field training strategy
+    training_strategy: str = "full_grid"  # Training strategy: ['neural_field', 'full_grid']
+    neural_field_input_nodes: int | None = 40000  # Num nodes for fixed encoder input in neural_field strategy
+    neural_field_query_nodes_train: int | None = 40000  # Num nodes for random decoder query in neural_field train
+    # for multi-head / force-only training
+    order_file_name: str | None = (
+        None  # Custom order file name (e.g. "order_force_only.txt"), default uses order_{processed_folder}.txt
+    )
+    active_heads: list[str] | None = None  # List of active heads for loss (e.g. ["force"]), None = all heads
+
+    field_loss_weight: float = 1.0  # Weight for field (per-vertex pressure) loss relative to scalar head loss
+    uncertainty_weighting: bool = False  # Enable Kendall et al. (2018) learned multi-task loss weighting
+
+
+@dataclass
+class OptimizerConfig:
+    name: str = "adamw"
+    args: OptimizerargsConfig = field(default_factory=OptimizerargsConfig)
+
+
+@dataclass
+class PathConfig:
+    ckpt_path: str = ".ckpt/test/test.pt"  # Path to save the checkpoint
+    loss_path: str = ".loss/test/test.png"  # Path to save the loss plot
+    result_path: str = ".result/test/test.png"  # Path to save the result plot
+    database_path: str = ".database/test/test.csv"  # Path to save the database

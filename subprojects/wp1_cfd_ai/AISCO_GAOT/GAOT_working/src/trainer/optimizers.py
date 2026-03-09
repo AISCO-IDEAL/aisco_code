@@ -326,12 +326,11 @@ class AdamWOptimizer:
                 train_sampler.set_epoch(epoch)  # type: ignore[union-attr]
 
             trainer.model.train()
-            total_loss: torch.Tensor = torch.tensor(0.0, device = "cuda")
+            total_loss: float = 0.0
             epoch_grad_norms: dict[str, float] = {}
             num_batches = 0
 
             for batch in trainer.train_loader:
-                time.time()
                 self.optimizer.zero_grad()
 
                 # trainer.train_step now returns (total_weighted_loss, dict_of_head_mses)
@@ -341,11 +340,22 @@ class AdamWOptimizer:
 
                 # Accumulate individual head MSEs for logging
                 for h, val in head_losses.items():
-                    key = f"train/MSE_{h}"
-                    epoch_grad_norms[key] = epoch_grad_norms.get(key, 0.0) + val
+                    # sigma_* values are point-in-time (not cumulative MSE) — use last value
+                    if h.startswith("sigma_"):
+                        key = f"train/{h}"
+                        epoch_grad_norms[key] = val  # overwrite: take latest batch value
+                    else:
+                        key = f"train/MSE_{h}"
+                        epoch_grad_norms[key] = epoch_grad_norms.get(key, 0.0) + val
 
                 # Gradient clipping to stabilise training
-                torch.nn.utils.clip_grad_norm_(trainer.model.parameters(), max_grad_norm)
+                # Include uncertainty-weighting sigma params if present
+                params_to_clip = list(trainer.model.parameters())
+                log_sigma_field = getattr(trainer, "log_sigma_field", None)
+                log_sigma_scalar = getattr(trainer, "log_sigma_scalar", None)
+                if log_sigma_field is not None and log_sigma_scalar is not None:
+                    params_to_clip += [log_sigma_field, log_sigma_scalar]
+                torch.nn.utils.clip_grad_norm_(params_to_clip, max_grad_norm)
 
                 # Accumulate gradient norms (sampled every batch)
                 if not disable_pbar:
@@ -356,7 +366,7 @@ class AdamWOptimizer:
 
                 num_batches += 1
                 self.optimizer.step()
-                total_loss += train_loss.detach()
+                total_loss += train_loss.detach().item()
                 global_step += 1
 
                 # Save checkpoint every N steps if configured (rank 0 only)
@@ -377,7 +387,7 @@ class AdamWOptimizer:
 
             if (epoch + 1) % self.eval_every_eps == 0:
                 # Average total weighted MSE across all batches
-                avg_train_mse = total_loss.cpu().item() / num_batches
+                avg_train_mse = total_loss / num_batches
                 losses.append(avg_train_mse)
                 epochs.append(epoch)
 
@@ -402,12 +412,17 @@ class AdamWOptimizer:
                 # Add averaged head-specific MSEs and Gradient Norms
                 if epoch_grad_norms and num_batches > 0:
                     for k, v in epoch_grad_norms.items():
-                        metrics[k] = v / num_batches
+                        # sigma values are point-in-time, not accumulated sums
+                        if "sigma_" in k:
+                            metrics[k] = v
+                        else:
+                            metrics[k] = v / num_batches
 
                 val_losses.append(val_mse)
                 val_epochs.append(epoch)
 
                 metrics["memory"] = psutil.Process(os.getpid()).memory_info().rss / 1e9
+                metrics["gpu_memory_MB"] = torch.cuda.max_memory_allocated() / 1e6
                 trainer.tracker.log_metrics(metrics, step=epoch + 1)
 
                 # Early saving logic

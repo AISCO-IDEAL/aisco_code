@@ -113,7 +113,7 @@ def prepare_arg(arg):
     return arg
 
 
-def run_arg(arg):  # noqa: PLR0912
+def run_arg(arg):  # noqa: PLR0912, PLR0915
     arg = prepare_arg(arg)
     log_level = os.environ.get("LOG_LEVEL", "INFO")
     log_file = os.environ.get("LOG_FILE", None) or arg.path.get("log_path", None)
@@ -182,6 +182,10 @@ def run_arg(arg):  # noqa: PLR0912
             database = pd.DataFrame(columns=arg.datarow.keys())
         database.loc[len(database)] = arg.datarow
         database.to_csv(arg.path["database_path"], index=False)
+
+    # Clean up DDP process group to release NCCL/GPU resources
+    if dist.is_initialized():
+        dist.destroy_process_group()
 
     return t
 
