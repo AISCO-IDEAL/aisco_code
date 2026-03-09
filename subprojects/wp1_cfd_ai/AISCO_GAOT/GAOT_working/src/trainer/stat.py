@@ -486,7 +486,8 @@ class StaticTrainer3D(TrainerBase):
             root=data_root, order_file=order_file_path, dataset_config=dataset_config, split="test", transform=composed_transform
         )
 
-        encoder_feature_attr = _magno_get(self.model_config, "encoder_feature_attr", "x")
+        encoder_feature_attr = list(_magno_get(self.model_config, "encoder_feature_attr", "x"))
+        print(test_ds[0], encoder_feature_attr)
         if isinstance(encoder_feature_attr, list):
             self.num_input_channels = 0
             for attr_name in encoder_feature_attr:

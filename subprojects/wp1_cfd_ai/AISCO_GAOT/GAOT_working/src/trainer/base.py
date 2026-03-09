@@ -14,7 +14,6 @@ from ..dataloader.metadata import DATASET_METADATA
 # Import the new W&B Tracker
 from .logger import WandbTracker
 from .optimizers import AdamOptimizer, AdamWOptimizer
-from .utils.default_set import DatasetConfig, ModelConfig, OptimizerConfig, PathConfig, SetUpConfig, merge_config
 from .utils.setup import load_ckpt, manual_seed, save_ckpt
 
 
@@ -34,15 +33,15 @@ class TrainerBase:
     test_loader: Any
     rigraph: Any
     optimizer: AdamOptimizer | AdamWOptimizer
-
     def __init__(self, args):
         # Config setup
+        print("dasdado:", args)
         self.config = args
-        self.setup_config = merge_config(SetUpConfig, self.config.setup)
-        self.model_config = merge_config(ModelConfig, self.config.model)
-        self.dataset_config = merge_config(DatasetConfig, self.config.dataset)
-        self.optimizer_config = merge_config(OptimizerConfig, self.config.optimizer)
-        self.path_config = merge_config(PathConfig, self.config.path)
+        self.setup_config = self.config.setup
+        self.model_config = self.config.model
+        self.dataset_config =  self.config.dataset
+        self.optimizer_config = self.config.optimizer
+        self.path_config = self.config.path
 
         self.metadata = DATASET_METADATA[self.dataset_config.metaname]
 
@@ -97,7 +96,7 @@ class TrainerBase:
         raise NotImplementedError
 
     def init_optimizer(self, _optimizer_config):
-        """Initialize the optimizer"""
+        ### Initialize the optimizer
         self.optimizer = {"adam": AdamOptimizer, "adamw": AdamWOptimizer}[self.optimizer_config.name](  # type: ignore[assignment]
             self.model.parameters(), self.optimizer_config.args
         )
@@ -132,7 +131,6 @@ class TrainerBase:
             rank=self.setup_config.rank,
         )
         dist.barrier()
-
     # ------------ utils ------------ #
 
     def _to_serializable_config(self) -> dict[str, Any]:
