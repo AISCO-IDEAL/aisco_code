@@ -208,6 +208,11 @@ class WIRE(BaseModel):
                             {f"grad_memory/{component_name}_after_mb": mem_after},
                             step=epoch,
                         )
+                        # log memory each loss computation graph had
+                        wandb.log(
+                            {f"grad_memory/{component_name}_freed_mb": mem_before - mem_after},
+                            step=epoch,
+                        )
                 curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
                 delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
                 if wandb.run:
