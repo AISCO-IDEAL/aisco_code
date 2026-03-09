@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
@@ -322,7 +322,7 @@ class SolarLossEstimator:
         cfg: dict[str, Any] = defaults if config is None else config
         print(cfg)
         self.config = cfg
-
+        self.general_config = general_config
         self.method = cfg["method"]
         self.bbox = cfg["bbox"]
         self.resolution = int(cfg["resolution"])
@@ -444,12 +444,20 @@ class SolarLossEstimator:
         if self.rendering and self.enable_wandb_logging and self.model_hash is None:
             self.model_hash = dict_hashing(model.get_model_info_dict())
             if self.wandb_run_name is not None:
-                self.rendering_dir = (
-                    Path(self.storage_paths["storage_dir"])
-                    / self.model_hash
-                    / reformat_wandb_name(self.wandb_run_name)
-                    / "solar_loss_rendering"
-                )
+                if self.general_config["general_info"].get("run_locally", False):
+                    self.rendering_dir = (
+                        Path(self.storage_paths["local_storage_dir"])
+                        / self.model_hash
+                        / reformat_wandb_name(self.wandb_run_name)
+                        / "solar_loss_rendering"
+                    )
+                else:
+                    self.rendering_dir = (
+                        Path(self.storage_paths["storage_dir"])
+                        / self.model_hash
+                        / reformat_wandb_name(self.wandb_run_name)
+                        / "solar_loss_rendering"
+                    )
                 print(f"Rendering enabled: saving to {self.rendering_dir}")
                 os.makedirs(self.rendering_dir, exist_ok=True)
             else:
