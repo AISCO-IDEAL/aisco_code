@@ -41,15 +41,56 @@ def inner_nbz(assembly_nr: int = 0):
 
     return assembly
 
+def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
+    """
+    Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
+    Args: id-number
+    Returns: cadquery Assembly, outer NBZ as cq.Solid, vision NBZ as cadquery Assembly
+    """
+    config_path = Path(__file__).parent.parent / "config" / "assembly_map.yaml"
+
+    # Read existing data
+    with config_path.open("r") as file:
+        assembly_map = yaml.safe_load(file) or {}
+
+    # YAML loads numeric keys as integers, not strings
+    if id_number not in assembly_map:
+        raise ValueError(f"ID {id_number} not found in assembly map.")
+    params = assembly_map[id_number]
+    seat_pos_z = get_regulation("seat.position.z")
+
+    box_width = get_regulation("no_build_zones.outer_prism.width")
+    box_height = get_regulation("no_build_zones.outer_prism.height")
+
+    outer = outer_nbz(params["wheel_base_length"] * 2.2, box_width, box_height)
+
+
+    box, vision = vision_nbz(params["seat_position"], seat_pos_z, params["wheel_base_length"], get_box=True)
+    assembly.add(box)
+
+    outer_with_ramps = outer_nbz_ramps(assembly, outer)
+
+    return inner_nbz(id_number), outer_with_ramps, vision # inner_nbz returns an assembly
 
 if __name__ == "__main__":
     from ocp_vscode import show
-
+    from subprojects.wp2_assembler.version4.components.outer.outer_nbz import outer_nbz
     # for i in range(527):
     #     show(inner_nbz(i))  # noqa: ERA001
     print("showing")
     start = time.time()
+
+    # demo_id = 1
     # show([inner_nbz(random.randint(0, 2337)) for i in range(1)])  # noqa: ERA001
-    show(inner_nbz(10))
+    # show(inner_nbz(demo_id), outer_nbz(demo_id))
+    # show(inner_nbz(demo_id), outer_nbz(demo_id))
+    # for demo_id in range(100):
+    #    show(inner_nbz(demo_id), outer_nbz(demo_id))
+    demo_id = 0
+    while True:
+        show(inner_nbz(demo_id), outer_nbz(demo_id))
+        print(demo_id)
+        demo_id = demo_id +1
+
     end = time.time()
     print(end - start)

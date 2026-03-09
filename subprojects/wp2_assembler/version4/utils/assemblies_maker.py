@@ -3,7 +3,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+import cadquery as cq
 
+from subprojects.wp2_assembler.version4.components.outer.outer_nbz import outer_nbz
 
 def check_validity(assembly_nr: int = 0):
     """
@@ -346,6 +348,75 @@ def get_assembly_parameters(section: str) -> int | float:
 
     return current
 
+def filter_and_reindex_by_outer_nbz(
+    assembly_map_path: Path,
+    seat_margin: dict[str, float],
+    tol: float = 1e-6,
+) -> tuple[int, int]:
+    """
+    Deletes entries where the seat AABB is NOT fully inside the outer NBZ solid.
+    Then rewrites the YAML so IDs are contiguous: 0..N-1.
+
+    IMPORTANT: outer_nbz expects the YAML key (0,1,2,...) as assembly_id.
+    """
+
+    def compute_aabb(pos: tuple[float, float, float], bb: dict[str, float]) -> dict[str, float]:
+        x, y, z = pos
+        return {
+            "xmin": x - bb["x_back"],
+            "xmax": x + bb["x_fwd"],
+            "ymin": y - bb["y_down"],
+            "ymax": y + bb["y_up"],
+            "zmin": z - bb["z_down"],
+            "zmax": z + bb["z_up"],
+        }
+
+    def corners(aabb: dict[str, float]) -> list[tuple[float, float, float]]:
+        return [
+            (aabb["xmin"], aabb["ymin"], aabb["zmin"]),
+            (aabb["xmin"], aabb["ymin"], aabb["zmax"]),
+            (aabb["xmin"], aabb["ymax"], aabb["zmin"]),
+            (aabb["xmin"], aabb["ymax"], aabb["zmax"]),
+            (aabb["xmax"], aabb["ymin"], aabb["zmin"]),
+            (aabb["xmax"], aabb["ymin"], aabb["zmax"]),
+            (aabb["xmax"], aabb["ymax"], aabb["zmin"]),
+            (aabb["xmax"], aabb["ymax"], aabb["zmax"]),
+        ]
+
+    with assembly_map_path.open("r") as f:
+        data = yaml.safe_load(f) or {}
+
+    items = sorted(data.items(), key=lambda kv: int(kv[0]))
+
+    kept_entries: list[dict] = []
+
+    for yaml_id, entry in items:
+        assembly_id = int(yaml_id)  # THIS is what outer_nbz uses internally
+
+        seat = entry["seat"]
+        seat_pos = (float(seat["x"]), float(seat["y"]), float(seat["z"]))
+
+        solid = outer_nbz(assembly_id)  # fixed
+
+        aabb = compute_aabb(seat_pos, seat_margin)
+
+        ok = True
+        for x, y, z in corners(aabb):
+            if not solid.isInside(cq.Vector(x, y, z), tol):
+                ok = False
+                break
+
+        if ok:
+            kept_entries.append(entry)
+
+    new_data = {i: kept_entries[i] for i in range(len(kept_entries))}
+
+    with assembly_map_path.open("w") as f:
+        yaml.dump(new_data, f, default_flow_style=False, sort_keys=False)
+
+    kept = len(kept_entries)
+    removed = len(items) - kept
+    return kept, removed
 
 def make_assemblys():
     ordered = get_assembly_parameters("seat")
@@ -376,6 +447,13 @@ def make_assemblys():
     # Final flush
     if batch:
         save_assembly_parameters_batch(batch)
+
+    # NEW: filter + reindex based on outer NBZ containment
+    seat_margin = get_assembly_parameters("seat_margin")
+    assembly_map_path = Path(__file__).parent.parent / "config" / "assembly_map.yaml"
+
+    kept, removed = filter_and_reindex_by_outer_nbz(assembly_map_path, seat_margin)
+    print(f"outer_nbz filter done: kept={kept}, removed={removed}")
 
     print(time.time() - start)
 
