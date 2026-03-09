@@ -211,25 +211,31 @@ class TotalLoss:
                 o = torch.as_tensor(-1.0 * (loss_tensors[4] - loss_tensors[0]), device=device)
 
             # c: constraint loss (bb, eikonal, smoothness)
-            c = torch.stack([loss_tensors[1], loss_tensors[2], loss_tensors[3]])
+            # NOTE: we must NOT use torch.stack here — it creates a shared StackBackward node
+            # that causes "backward through the graph a second time" in the per-component loop. Has to to with our memory issues
+            constraint_tensors = [loss_tensors[1], loss_tensors[2], loss_tensors[3]]
 
             alm_thresholds = self.losses_config["general_info"]["alm_thresholds"]
-            thresholds_tensor = torch.tensor(alm_thresholds, device=c.device) if alm_thresholds else None
-            # get lambda, mu each for constraint losses
+            thresholds_tensor = torch.tensor(alm_thresholds, device=device) if alm_thresholds else None
+            # weights_alm needs a stacked tensor, but detach first to avoid shared graph nodes.
+            c_for_alm = torch.stack([ct.detach() for ct in constraint_tensors])
             self.lamdas, self.mus, self.nus = weights_alm(
                 lamdas=self.lamdas,
                 mus=self.mus,
                 nus=self.nus,
                 alphas=self.alphas,
                 gamma=self.gamma,
-                constrained_losses=c,
+                constrained_losses=c_for_alm,
                 thresholds=thresholds_tensor,
             )
 
-            weighted_total_loss = (
-                o + torch.dot(self.lamdas.squeeze(), c) + 1 / 2 * torch.dot(self.mus.squeeze(), c**2)
-            )  # dot products of weights and losses tensors
-            # Sum all loss tensors in a differentiable way
+            # Build per-component weighted tensors for individual backward() calls.
+            constraint_names = list(self.__active_losses.keys())[1:4]  # [bb, eikonal, smoothness]
+            self._last_weighted_losses = {"alm_objective": o}
+            for i, cname in enumerate(constraint_names):
+                ci = constraint_tensors[i]  # direct reference, no StackBackward
+                self._last_weighted_losses[f"alm_{cname}"] = self.lamdas[i].detach() * ci + 0.5 * self.mus[i].detach() * ci**2
+            weighted_total_loss = sum(self._last_weighted_losses.values())  # type: ignore[assignment]
 
         else:  # manual weighting
             weights = weights_manual(
@@ -238,10 +244,14 @@ class TotalLoss:
                 loss_families=list(self.__active_losses.keys()),
                 device=device,
             )
-            weights = torch.as_tensor(weights, device=device, dtype=torch.float32).requires_grad_(True)
-            # Stack losses into a single tensor and multiply by weights
-            # We convert weights to a tensor on the correct device to allow element-wise multiplication
-            weighted_total_loss = torch.dot(torch.stack(loss_tensors), weights)
+            weights = torch.as_tensor(weights, device=device, dtype=torch.float32)
+            # Build per-component weighted tensors for individual backward() calls.
+            # NOTE: we do NOT use torch.dot(torch.stack(...), weights) here because
+            # torch.stack creates a shared StackBackward node across all loss graphs.
+            self._last_weighted_losses = {
+                name: loss_tensors[i] * weights[i] for i, name in enumerate(self.__active_losses.keys())
+            }
+            weighted_total_loss = sum(self._last_weighted_losses.values())  # type: ignore[assignment]
 
         # Add the total loss to the logging dictionary
         loss_names["total_loss"] = weighted_total_loss.item()

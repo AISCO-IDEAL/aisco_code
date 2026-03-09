@@ -21,7 +21,7 @@ active_configs:
 
 wandb_general:
   use_wandb: True
-  project_name: "WP3_Testing_Alex"
+  project_name: "Memory-Debugging-Alex"
   entity_name: "aisco"
   track_run: 1
   use_renderer: True
