@@ -11,7 +11,6 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_al
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import load_class_from_path
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import deep_update
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
@@ -29,11 +28,8 @@ class TotalLoss:
             v=self.__general_config["general_info"]["version"],
             cfg_name=self.__general_config["active_configs"]["losses"],
         )
-
-        # Check for WandB sweep overrides for initial_lambda
-        if wandb.run and "initial_lambda" in wandb.config:
-            self.losses_config["general_info"]["initial_lambda"] = wandb.config.initial_lambda
-            print(f"Sweep: Updated initial_lambda to {wandb.config.initial_lambda}")
+        # NOTE: sweep overrides are applied automatically by the config
+        # registry (see config_utils.py). No manual wandb.config patching needed.
 
         self.weights = self.losses_config.get("losses", {})  # get nested losses dict
         self.__active_losses: dict = {}
@@ -70,53 +66,29 @@ class TotalLoss:
         )
         self._mesh_extraction_config = mesh_config  # Store for later use
 
-        # wandb init
-        if self.__general_config["wandb_general"].get("use_wandb", False) and wandb.run is None:
-            run = wandb.init(
-                # Set the wandb log directory
-                dir="wp4_aeroshell_optimizer/data/wandb_logs",
-                # Set the wandb entity where your project will be logged (generally your team name).
-                entity=self.__general_config["wandb_general"].get("entity_name", "aisco"),
-                # Set the wandb project where this run will be logged.
-                project=self.__general_config["wandb_general"].get("project_name", "Aeroshell Optimiser with ALM and Sweeping"),
-                # Track hyperparameters and run metadata.
-                config=self.__general_config,
-            )
-            config = deep_update(self.__general_config, dict(wandb.config))
-            run.config.update(config, allow_val_change=True)
-
         # ALM parameters init
+        # Values come from losses_config which is already sweep-patched by the
+        # config registry.  To sweep these, use parameter names like:
+        #   losses_v0_config.general_info.initial_lambda
+        #   losses_v0_config.general_info.alpha
+        #   losses_v0_config.general_info.gamma
         if self.losses_config["general_info"].get("ALM", False):
-            # store lambda, mu, nu as 1D tensors
-            self.lamda: float = (
-                wandb.config.get("alm.lambda_init", 0.01)
-                if wandb.run
-                else self.losses_config["general_info"].get("initial_lamda", 0.1)
-            )
-            self.lamdas = torch.tensor(
-                [[self.lamda], [self.lamda], [self.lamda]], device=dev
-            )  # SWEEP: could be log-uniform in [10-5,10-1][10-5,10-1] per constraint
+            alm_info = self.losses_config["general_info"]
+            self.lamda: float = alm_info.get("initial_lambda", 0.01)
+            self.lamdas = torch.tensor([[self.lamda], [self.lamda], [self.lamda]], device=dev)
             self.mus = torch.tensor(
                 [[1.0], [1.0], [1.0]], device=dev
-            )  # ... a larger value such as η=1 is advisable to balance constraint enforcement and objective minimization effectively.:
-            # NOTE: as seen in "Conditionally adaptive augmented Lagrangian method for physics-informed learning of forward and inverse problems using artificial neural networks"
-            #       Authors: Qifeng Hua, Shamsulhaq Basira, Inanc Senocak
-            #       https://arxiv.org/html/2508.15695v1
-            self.nus = torch.tensor([[1.0], [1.0], [1.0]], device=dev)  # Initialize to 1.0 to prevent mu explosion at start
-            self.alpha: float = (
-                wandb.config.get("alm.alpha", 0.99) if wandb.run else self.losses_config["general_info"].get("alpha", 0.99)
-            )
+            )  # η=1 balances constraint enforcement and objective minimization
+            # Ref: "Conditionally adaptive augmented Lagrangian method" — Hua, Basira, Senocak
+            #      https://arxiv.org/html/2508.15695v1
+            self.nus = torch.tensor([[1.0], [1.0], [1.0]], device=dev)
+            self.alpha: float = alm_info.get("alpha", 0.99)
             self.alphas = torch.tensor(
                 [[self.alpha], [self.alpha], [self.alpha]], device=dev
-            )  # increase mu by this factor if constraint not me, default = 0.99 acc. to "Conditionally adaptive augmented Lagrangian method"
-            # SWEEP: α ∈ {0.9,0.95,0.98,0.99}  # noqa: RUF003
-            self.gamma: float = (
-                wandb.config.get("alm.gamma", 0.01) if wandb.run else self.losses_config["general_info"].get("gamma", 0.01)
-            )
-            # NOTE: as seen "An Adaptive Augmented Lagrangian Method for Training Physics and Equality Constrained Artificial Neural Networks", Algortihm 3, ALM with adaptive penalty update (APU)
-            # AUTHORS: Shamsulhaq Basir and Inanc Senocak
-            #       https://arxiv.org/pdf/2306.04904
-            #       SWEEP: γ ∈ log-uniform in [10e-3,10e0]  # noqa: RUF003
+            )  # increase mu by this factor if constraint not met
+            self.gamma: float = alm_info.get("gamma", 0.01)
+            # Ref: "An Adaptive Augmented Lagrangian Method for Training Physics and Equality
+            #       Constrained ANNs" — Basir & Senocak, https://arxiv.org/pdf/2306.04904
 
         # Dynamically load and initialise active losses
         # category: aero, ... | lossnames: frontal_area_v0, ...

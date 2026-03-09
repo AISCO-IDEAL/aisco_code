@@ -1,23 +1,18 @@
-command:
-  - ${env}
-  - python3
-  - -m
-  - wp4_aeroshell_optimizer.src.main
-program: main_v1.1_one_model.py
-
-#TODO
+# ============================================================================
+# Wandb Sweep Config — Solar Loss Method Comparison (grid)
+# ============================================================================
+# Parameter naming: <config_filename_without_yaml>.<nested.path.to.value>
+# See wandb_sweep_v1_50_meshes.yaml for full documentation.
+# ============================================================================
+program: subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py
 method: grid
-
-
+metric:
+  goal: minimize
+  name: total_loss
 parameters:
-  SolarLossConfigV3:  # moved from solar_loss_v3.py
-    method: ["diso_dmc","diso_mc","flexicubes","mesh_sdf"] # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
-    bbox: list[list[float]] = [[-3500.0, 3500.0], [-3500.0, 3500.0], [-3500.0, 3500.0]]
-    resolution: 128
-    area_budget_mm2: float = 1e6
-    sun_dir: list[float] | torch.Tensor = None
-    device: str = "cuda"
-    batch_size: int = 4096
-    eps: float = 1e-12
-    "sigmoid_sharpness": 1.0,
-    "budget_penalty_weight": 0.1,
+  solar_loss_config.SolarLossConfigV3.method:
+    values: ["diso_dmc", "diso_mc", "flexicubes", "mesh_sdf"]
+  solar_loss_config.SolarLossConfigV3.resolution:
+    values: [128, 250]
+  solar_loss_config.SolarLossConfigV3.sigmoid_sharpness:
+    values: [1.0, 10.0]

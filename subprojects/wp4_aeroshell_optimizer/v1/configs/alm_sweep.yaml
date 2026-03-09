@@ -1,0 +1,23 @@
+# ============================================================================
+# Wandb Sweep Config — ALM (Augmented Lagrangian Method) Hyperparameters
+# ============================================================================
+# Parameter naming: <config_filename_without_yaml>.<nested.path.to.value>
+# See wandb_sweep_v1_50_meshes.yaml for full documentation.
+# ============================================================================
+program: subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py
+method: bayes
+metric:
+  name: total_loss
+  goal: minimize
+parameters:
+  losses_v0_config.general_info.initial_lambda:
+    distribution: log_uniform_values
+    min: 0.00001
+    max: 0.1
+  losses_v0_config.general_info.alpha:
+    distribution: categorical
+    values: [0.9, 0.95, 0.98, 0.99]
+  losses_v0_config.general_info.gamma:
+    distribution: log_uniform_values
+    min: 0.001
+    max: 1.0
