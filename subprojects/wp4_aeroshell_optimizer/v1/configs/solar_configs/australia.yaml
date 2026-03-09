@@ -12,5 +12,5 @@ sun_generation:
   racing_window: [8.0,17.0] # [float,float] times during which you can race, e.g. 13:30 would be 13.5
   start_date: "24/8/2025" # 2025 started on 24th of August (https://assets.worldsolarchallenge.org/app/uploads/2025/08/20102713/BWSC-2025-Official-Program-v4.pdf)
   use_different_tz: False #Whether to use different timezones depending on location
-  solar_samples: 8
+  solar_samples: 6
   average_speed: 19 #in m/s

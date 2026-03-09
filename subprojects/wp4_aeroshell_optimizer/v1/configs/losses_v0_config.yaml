@@ -19,7 +19,7 @@ losses: # [compute: bool, weight: float, path: str]
     bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15
     null_loss_bb_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/null_loss_bb_v1.py"]
     bb_v3: [1, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety
- 
+
   eikonal:
     eikonal_v0: [1, 10.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/eikonal_loss/eikonal_v0.py"]
 
@@ -32,7 +32,8 @@ losses: # [compute: bool, weight: float, path: str]
     solar_v1_brute_force: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v1_brute_force.py"]
     solar_v2: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v2.py"]
     solar_v3: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3.py"]
-    solar_v3B: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3B.py"]
+    solar_v3B: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3B.py"]
+    solar_v4: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v4.py"]
     null_loss_solar_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/null_loss_solar_v1.py"]
 
   total:

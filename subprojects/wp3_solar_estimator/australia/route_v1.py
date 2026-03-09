@@ -9,14 +9,14 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_c
 
 
 class Route:
-    def __init__(self):
+    def __init__(self, cfg_path: str = "solar_configs/australia.yaml") -> None:
         """
         Loads the route points from the CSV file and stores them in a tensor for efficient access.
         Each point (saved as self.route_points) is represented as an array of (latitude, longitude, heading).
         Use get_route_points() to retrieve the full tensor or a specific point by index.
         """
         loader = Routeloader()
-        config = load_config(cfg_name="australia.yaml")  # fix hardcode sometime
+        config = load_config(cfg_name=cfg_path)
         #init vars
 
         #round up race length and divide by intervals to get number of points

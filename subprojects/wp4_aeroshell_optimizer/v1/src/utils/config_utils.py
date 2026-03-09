@@ -7,6 +7,9 @@ import wandb
 
 
 def load_config(v="v1", cfg_name="general_config.yaml") -> dict:
+    """
+    Load a YAML configuration file by giving hte name/path of the config file, located in the v{x}/configs/ folder.
+    """
     config_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
 
     try:
