@@ -1,7 +1,7 @@
 general_info:
   config_debugging: "True"
   ALM: "True"  # Augmented Lagrangian Method
-  CSE: "True"  # Cruising Speed Estimation
+  CSE: "False"  # Cruising Speed Estimation
   alm_thresholds: [0.1, 0.1, 0.1]  # thresholds for constraint losses [bb, eikonal, smoothness]
   initial_lambda: 0.01  # initial value for lambda in ALM
   alpha: 0.99  # factor to increase mu in ALM if constraint not met
@@ -17,8 +17,9 @@ losses: # [compute: bool, weight: float, path: str]
   bb:
     bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v1.py"]
     bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15
-    null_loss_bb_v1: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/null_loss_bb_v1.py"]
-    bb_v3: [0, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety
+    null_loss_bb_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/null_loss_bb_v1.py"]
+    bb_v3: [1, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety
+ 
   eikonal:
     eikonal_v0: [1, 10.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/eikonal_loss/eikonal_v0.py"]
 
@@ -52,6 +53,7 @@ solar_config:
 main_solar_config:
   solar_angle: [1.0,0.0,0.0] # This is the direction in which a perfect solar cell should point, i.e. [0,0,1] if the sun shines from above
   area_budget: 4000000 #in mm^3
+
 bb_config:
   pointgrid_params:
     dx: 250

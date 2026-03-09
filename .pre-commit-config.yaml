@@ -35,6 +35,10 @@ repos:
           - types-paramiko
           - types-Pillow
           - paramiko
+          - types-pytz
+          - wandb
+          - torch
+          - cadquery
         pass_filenames: True # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
 
 

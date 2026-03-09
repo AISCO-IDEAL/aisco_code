@@ -33,9 +33,9 @@ class SolarPower(RenderingMode):
         self.fps = config.get("fps", 15)
         # Solar specific parameters
 
-        solar_config = load_config(v="v1", cfg_name="solar_loss_config.yaml")["general_config"]
-        self.solar_angle = torch.tensor(solar_config["solar_angle"], device=self.visualiser.device)
-        self.solar_angle = self.solar_angle / torch.norm(self.solar_angle)  # Normalize to be safe
+        solar_config = load_config(v="v1", cfg_name="solar_loss_config.yaml")["SolarLossConfigV3"]
+        self.solar_angle = torch.tensor(solar_config["sun_dir"], device=self.visualiser.device)
+        self.solar_angle = (self.solar_angle / torch.norm(self.solar_angle)).detach()  # Normalize; detach to drop grad_fn
         if self.solar_angle is None or self.solar_angle.shape != (3,):
             raise ValueError(
                 "Solar angle must be provided in the config and be a 3D vector --> shape = (3,), given in form of [A,B,C]."

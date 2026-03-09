@@ -39,7 +39,7 @@ module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
-USERNAME="eschaerer"
+USERNAME=$(whoami)
 LOG_DIR="/cluster/home/$USERNAME/AISCO_code/logs"
 # Ensure this directory exists
 mkdir -p "/cluster/home/$USERNAME/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/agents"

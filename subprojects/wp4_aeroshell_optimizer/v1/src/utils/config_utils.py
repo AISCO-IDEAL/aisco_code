@@ -1,8 +1,9 @@
 import json
 from pathlib import Path
 
-import wandb
 import yaml
+
+import wandb
 
 
 def load_config(v="v1", cfg_name="general_config.yaml") -> dict:

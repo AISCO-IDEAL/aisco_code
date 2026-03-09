@@ -1,8 +1,8 @@
 # Basic MLP Model
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager, Wrapper
@@ -51,13 +51,49 @@ class BasicMLP(BaseModel):
             # Clear gradients
             optimizer.zero_grad()
 
-            # Calculate loss, Tracking should also be done in TotalLoss
-            loss = loss_function.get_total_loss(model=self, epoch_name=epoch)
+            # Calculate loss and all logging. Individual weighted tensors are stored
+            # in loss_function._last_weighted_losses for the per-component backward below.
+            loss_function.get_total_loss(model=self, epoch_name=epoch)
 
-            # Optimize w.r.t. total loss
-            # Do this by calculating the gradients of the weights w.r.t. the loss
-            loss.backward()
-            # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
+            # Per-component backward: each graph is freed immediately (retain_graph=False).
+            # param.grad accumulates across calls — identical to backward() on the summed total.
+            # We track the delta of param.grad before/after each component to get per-loss
+            # gradient norms without needing retain_graph=True anywhere.
+            trainable_params = [p for p in self.parameters() if p.requires_grad]
+            prev_grad = [torch.zeros_like(p) for p in trainable_params]  # accumulator at zero
+            log_grad_mem = loss_function._gradient_memory_diagnostics
+            device_str = str(next(self.parameters()).device)
+            for component_name, weighted_loss in loss_function._last_weighted_losses.items():
+                if not weighted_loss.requires_grad:
+                    continue
+                if log_grad_mem and "cuda" in device_str:
+                    mem_before = torch.cuda.memory_allocated() / 1024**2
+                weighted_loss.backward(retain_graph=False)
+                if log_grad_mem and "cuda" in device_str:
+                    mem_after = torch.cuda.memory_allocated() / 1024**2
+                    print(
+                        f"  [Epoch {epoch}] backward({component_name}): "
+                        f"{mem_before:.1f} MB → {mem_after:.1f} MB "
+                        f"(freed {mem_before - mem_after:.1f} MB)"
+                    )
+                    if wandb.run:
+                        wandb.log(
+                            {f"grad_memory/{component_name}_after_mb": mem_after},
+                            step=epoch,
+                        )
+                        # log memory each loss computation graph had
+                        wandb.log(
+                            {f"grad_memory/{component_name}_freed_mb": mem_before - mem_after},
+                            step=epoch,
+                        )
+                curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
+                delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
+                if wandb.run:
+                    wandb.log({f"{component_name}_gradient": delta_norm}, step=epoch)
+                prev_grad = curr_grad
+
+            # param.grad now holds the sum of all per-component gradients — same as if
+            # we had called backward() on weighted_total_loss directly.
             optimizer.step()
 
     def get_model_info_dict(self):
