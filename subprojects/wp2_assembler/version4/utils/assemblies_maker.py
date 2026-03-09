@@ -2,10 +2,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-import yaml
 import cadquery as cq
+import yaml
 
 from subprojects.wp2_assembler.version4.components.outer.outer_nbz import outer_nbz
+
 
 def check_validity(assembly_nr: int = 0):
     """
@@ -461,7 +462,7 @@ def make_assemblys():
 if __name__ == "__main__":
     """
     All of the [ # noqa: ERA001 ] are to ignore ruff warnings for unused code
-    the code is indeed unused, but i use it sometimes manually to test changes. 
+    the code is indeed unused, but i use it sometimes manually to test changes.
     """
     start = time.time()
 

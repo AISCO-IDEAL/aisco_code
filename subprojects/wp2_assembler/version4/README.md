@@ -77,7 +77,7 @@ seat_width = get_regulation("seat.dimension.width")  # Returns 450.0
 bounding_box_coordinates = bounding_box_of_assembly(id_number=1) # returns tuple with two tuples: ((x_min, y_min, z_min),(x_max,y_max,z_max))
 
 # Visualize the bounding box
-bounding_box_solid = create_bb_visualization(coordinates = bounding_box_coordinates) # returns a solid of the bounding box, with the correct positioning and size. 
+bounding_box_solid = create_bb_visualization(coordinates = bounding_box_coordinates) # returns a solid of the bounding box, with the correct positioning and size.
 
 ```
 
@@ -144,7 +144,6 @@ Access regulations programmatically:
 ```python
 from subprojects.wp2_assembler.version2.utils.reg_imp import get_regulation
 
-outer_height = get_regulation("no_build_zones.outer_prism.height")
 tire_diameter = get_regulation("wheel.tire_diameter")
 ```
 

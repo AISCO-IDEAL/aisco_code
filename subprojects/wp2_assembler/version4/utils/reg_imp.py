@@ -24,7 +24,7 @@ def get_regulation(section: str) -> int | float:
             current = current[key]
         else:
             print("Error in get_regulation: Error 1 with: " + section)
-            # raise Exception("Error in get_regulation: Error 1")
+            # raise Exception("Error in get_regulation: Error 1")  # noqa: ERA001
             return -1  # Key not found or current is not a dict
 
     # Check if we ended up at a numeric value
@@ -32,12 +32,10 @@ def get_regulation(section: str) -> int | float:
         return current
 
     print("Error in get_regulation: Error 2 with: " + section)
-    # raise Exception("Error in get_regulation: Error 2")
+    # raise Exception("Error in get_regulation: Error 2") # noqa: ERA001
     return -1  # Final value is not a number
 
 
 if __name__ == "__main__":
     # Example usage - get values from nested YAML structure in test - print values 3 2 1
-    print(get_regulation("test.text.secondIndent.thirdIndent.drink"))
-    print(get_regulation("test.text.secondIndent.food"))
-    print(get_regulation("test.firstIndent.launch"))
+    pass

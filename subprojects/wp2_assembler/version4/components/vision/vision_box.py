@@ -66,3 +66,7 @@ def vision_driv_nbz() -> cq.Workplane:
     v_box = sweep_left.union(sweep_right)
 
     return v_box
+
+if __name__ == "__main__":
+    from ocp_vscode import show
+    show(vision_driv_nbz())

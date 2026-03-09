@@ -1,10 +1,11 @@
 Add outer box / done
-Add vision cones 
+Add vision cones / postponed
 un-hard code bounding boxes in assembly map paramaters
 Grab assembly map parameters positions from rules
 
+Fix mypy / done
+fix ruff / done
 
 Optional:
 Change assembly map from yaml to json
 Split yaml into multiple
-

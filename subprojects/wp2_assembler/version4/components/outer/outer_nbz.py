@@ -7,13 +7,13 @@ import yaml
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 
 
-def outer_nbz(assembly_id: int) -> tuple[cq.Workplane, cq.Workplane]:
+def outer_nbz(assembly_id: int) -> cq.Solid:
     """
-    Returns the approach and departure ramps
+    Returns the outer nbz with the cutted approach and departure ramps
 
     :param assembly_id: id of assembly
-    :return: tuple with both ramps
-    :rtype: tuple with two workplanes
+    :return: outer nbz
+    :rtype: solid
     """
 
     config_path = Path(__file__).parent.parent.parent / "config" / "assembly_map.yaml"
@@ -28,20 +28,26 @@ def outer_nbz(assembly_id: int) -> tuple[cq.Workplane, cq.Workplane]:
     if not wheels:
         raise ValueError("No wheels found in assembly_map")
 
-    print(wheels)
+    # print(wheels)  # noqa: ERA001
     # backmost = smallest y, frontmost = largest y
     back_x = min(p[0] for p in wheels)
     front_x = max(p[0] for p in wheels)
 
-    print("back_x:", back_x)
-    print("front_x:", front_x)
+    # print("back_x:", back_x) # noqa: ERA001
+    # print("front_x:", front_x)     # noqa: ERA001
 
-    # percentages
-    front_factor = 0.6
-    back_factor = 0.6
-    max_len = 5800
-    max_width = 2300
-    max_height = 2000
+    # # percentages
+    # front_factor = 0.6 # noqa: ERA001
+    # back_factor = 0.6 # noqa: ERA001
+    # max_len = 5800    # noqa: ERA001
+    # max_width = 2300  # noqa: ERA001
+    # max_height = 2000  # noqa: ERA001
+
+    front_factor = get_regulation("no_build_zones.wheel_based_rules.front_overhang")
+    back_factor = get_regulation("no_build_zones.wheel_based_rules.rear_overhang")
+    max_len = get_regulation("no_build_zones.outer_prism.length")
+    max_width = get_regulation("no_build_zones.outer_prism.width")
+    max_height = get_regulation("no_build_zones.outer_prism.height")
 
     # wheel distance
     wheel_distance = abs(front_x - back_x)
@@ -50,18 +56,18 @@ def outer_nbz(assembly_id: int) -> tuple[cq.Workplane, cq.Workplane]:
     outer_xmax = front_x + front_factor * wheel_distance
     outer_xmin = back_x - back_factor * wheel_distance
 
-    print(outer_xmin, outer_xmax)
+    # print(outer_xmin, outer_xmax)  # noqa: ERA001 used for debugging
     # cap total lenght to max length defined by regulations
 
     outer_len = outer_xmax - outer_xmin
-    print(outer_len)
+    # print(outer_len) # noqa: ERA001 used for debugging
     if outer_len > max_len:
         center_x = 0.5 * (outer_xmax + outer_xmin)
         outer_xmin = center_x - max_len / 2
         outer_xmax = center_x + max_len / 2
     outer_len = outer_xmax - outer_xmin
 
-    print(outer_len)
+    # print(outer_len) # noqa: ERA001 used for debugging
 
     outer = (
         cq.Workplane("XY")
