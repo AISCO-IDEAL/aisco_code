@@ -78,8 +78,8 @@ def _build_gaot_config(model_config, input_size: int, output_size: int) -> dict:
         cfg = dict(args)
     else:
         # OmegaConf DictConfig or similar
-
-        cfg = OmegaConf.to_container(args, resolve=True)
+        cfg_container = OmegaConf.to_container(args, resolve=True)
+        cfg = dict(cfg_container) if isinstance(cfg_container, dict) else {}
 
     # Inject runtime-detected sizes
     cfg["input_size"] = input_size
@@ -109,19 +109,17 @@ class StaticTrainer3D(TrainerBase):
         # Enabled via dataset.uncertainty_weighting: true in config.
         self._uncertainty_weighting = getattr(self.dataset_config, "uncertainty_weighting", False)
         if self._uncertainty_weighting:
-            self.log_sigma_field = torch.nn.Parameter(
-                torch.tensor([math.log(75.0)], device=self.device)
-            )
-            self.log_sigma_scalar = torch.nn.Parameter(
-                torch.tensor([math.log(0.5)], device=self.device)
-            )
+            self.log_sigma_field = torch.nn.Parameter(torch.tensor([math.log(75.0)], device=self.device))
+            self.log_sigma_scalar = torch.nn.Parameter(torch.tensor([math.log(0.5)], device=self.device))
             # Register as an extra param group in the existing AdamW optimizer
             # (no weight-decay on task-noise parameters)
-            self.optimizer.optimizer.add_param_group({
-                "params": [self.log_sigma_field, self.log_sigma_scalar],
-                "lr": self.optimizer_config.args.lr,
-                "weight_decay": 0.0,
-            })
+            self.optimizer.optimizer.add_param_group(
+                {
+                    "params": [self.log_sigma_field, self.log_sigma_scalar],
+                    "lr": self.optimizer_config.args.lr,
+                    "weight_decay": 0.0,
+                }
+            )
             logging.getLogger(__name__).info(
                 "Uncertainty weighting enabled: log_sigma_field and log_sigma_scalar will be learned."
             )
@@ -698,11 +696,11 @@ class StaticTrainer3D(TrainerBase):
             pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
 
         coords = batch.pos.cpu().numpy()
-        fname = getattr(sample, 'filename', split_label)
+        fname = getattr(sample, "filename", split_label)
 
         # --- Field visualisation ---
-        if isinstance(pred, dict) and 'field' in pred:
-            field_pred = pred['field'].cpu().numpy().squeeze()
+        if isinstance(pred, dict) and "field" in pred:
+            field_pred = pred["field"].cpu().numpy().squeeze()
             field_gt = batch.x.cpu().numpy().squeeze() if batch.x is not None else None
 
             if field_gt is not None:
@@ -716,36 +714,48 @@ class StaticTrainer3D(TrainerBase):
                 common_max = max(np.max(field_gt_dn), np.max(field_pred_dn))
 
                 fig = plt.figure(figsize=(20, 6))
-                for panel_idx, (data, title, cmap_name, vmin, vmax) in enumerate([
-                    (field_gt_dn, 'Ground Truth', 'jet', common_min, common_max),
-                    (field_pred_dn, 'Prediction', 'jet', common_min, common_max),
-                    (field_diff, 'Absolute Difference', 'Reds', None, None),
-                ]):
-                    ax = fig.add_subplot(1, 3, panel_idx + 1, projection='3d')
-                    sc = ax.scatter(coords[:, 0], coords[:, 1], coords[:, 2],
-                                    c=data, cmap=cmap_name, s=2, vmin=vmin, vmax=vmax, depthshade=False)
+                for panel_idx, (data, title, cmap_name, vmin, vmax) in enumerate(
+                    [
+                        (field_gt_dn, "Ground Truth", "jet", common_min, common_max),
+                        (field_pred_dn, "Prediction", "jet", common_min, common_max),
+                        (field_diff, "Absolute Difference", "Reds", None, None),
+                    ]
+                ):
+                    ax = fig.add_subplot(1, 3, panel_idx + 1, projection="3d")
+                    sc = ax.scatter(
+                        coords[:, 0],
+                        coords[:, 1],
+                        coords[:, 2],
+                        c=data,
+                        cmap=cmap_name,
+                        s=2,
+                        vmin=vmin,
+                        vmax=vmax,
+                        depthshade=False,
+                    )
                     ax.set_title(title)
                     fig.colorbar(sc, ax=ax, shrink=0.5)
                     ax.view_init(elev=20, azim=-120)
 
-                fig.suptitle(f'Pressure Field [{split_label}] {fname} — Epoch {epoch + 1}', fontsize=13)
+                fig.suptitle(f"Pressure Field [{split_label}] {fname} — Epoch {epoch + 1}", fontsize=13)
                 plt.tight_layout()
-                self.tracker.log_image(f'viz/{split_label}/pressure_field', fig, step=epoch + 1,
-                                       caption=f'{split_label} {fname} epoch {epoch + 1}')
+                self.tracker.log_image(
+                    f"viz/{split_label}/pressure_field", fig, step=epoch + 1, caption=f"{split_label} {fname} epoch {epoch + 1}"
+                )
                 plt.close(fig)
 
         # --- Scalar visualisation ---
         if isinstance(pred, dict):
             scalar_parts = []
-            for head in ['force', 'cd']:
+            for head in ["force", "cd"]:
                 if head in pred and hasattr(batch, head):
                     p = pred[head].cpu().item()
                     gt_val = getattr(batch, head)
                     if gt_val is not None and not torch.isnan(gt_val).all():
                         g = gt_val.cpu().item()
-                        if hasattr(self, 'per_head_stats') and head in self.per_head_stats:
-                            h_mean = self.per_head_stats[head]['mean'].item()
-                            h_std = self.per_head_stats[head]['std'].item()
+                        if hasattr(self, "per_head_stats") and head in self.per_head_stats:
+                            h_mean = self.per_head_stats[head]["mean"].item()
+                            h_std = self.per_head_stats[head]["std"].item()
                             p = p * h_std + h_mean
                             g = g * h_std + h_mean
                         scalar_parts.append((head, g, p))
@@ -755,24 +765,28 @@ class StaticTrainer3D(TrainerBase):
                 if len(scalar_parts) == 1:
                     axes = [axes]
                 for ax, (name, gt_v, pr_v) in zip(axes, scalar_parts, strict=False):
-                    ax.bar(['GT', 'Pred'], [gt_v, pr_v], color=['steelblue', 'coral'])
-                    ax.set_title(f'{name}  (GT={gt_v:.4f}, Pred={pr_v:.4f})')
+                    ax.bar(["GT", "Pred"], [gt_v, pr_v], color=["steelblue", "coral"])
+                    ax.set_title(f"{name}  (GT={gt_v:.4f}, Pred={pr_v:.4f})")
                     ax.set_ylabel(name)
-                fig.suptitle(f'Scalars [{split_label}] {fname} — Epoch {epoch + 1}', fontsize=13)
+                fig.suptitle(f"Scalars [{split_label}] {fname} — Epoch {epoch + 1}", fontsize=13)
                 plt.tight_layout()
-                self.tracker.log_image(f'viz/{split_label}/scalar_predictions', fig, step=epoch + 1,
-                                       caption=f'{split_label} {fname} epoch {epoch + 1}')
+                self.tracker.log_image(
+                    f"viz/{split_label}/scalar_predictions",
+                    fig,
+                    step=epoch + 1,
+                    caption=f"{split_label} {fname} epoch {epoch + 1}",
+                )
                 plt.close(fig)
 
     def visualize_sample(self, epoch: int):
         """Run inference on fixed train+val samples and log images to W&B each epoch."""
         if self.setup_config.rank != 0:
             return
-        if not hasattr(self, '_viz_train_sample'):
+        if not hasattr(self, "_viz_train_sample"):
             self._viz_train_sample, self._viz_val_sample = self._pick_viz_samples()
 
         self.model.eval()
-        for sample, label in [(self._viz_train_sample, 'train'), (self._viz_val_sample, 'val')]:
+        for sample, label in [(self._viz_train_sample, "train"), (self._viz_val_sample, "val")]:
             try:
                 self._run_viz_for_sample(sample, label, epoch)
             except Exception as e:
@@ -864,8 +878,7 @@ class StaticTrainer3D(TrainerBase):
                         s_f = self.log_sigma_field
                         s_s = self.log_sigma_scalar
                         combined = (
-                            0.5 * torch.exp(-2.0 * s_f) * field_loss + s_f
-                            + 0.5 * torch.exp(-2.0 * s_s) * scalar_loss + s_s
+                            0.5 * torch.exp(-2.0 * s_f) * field_loss + s_f + 0.5 * torch.exp(-2.0 * s_s) * scalar_loss + s_s
                         )
                         head_losses["sigma_field"] = torch.exp(s_f).item()
                         head_losses["sigma_scalar"] = torch.exp(s_s).item()

@@ -45,21 +45,21 @@ class FileParser:
     def __init__(self, filename):
         if filename.endswith((".toml", ".json", ".yaml")):
             with open(filename) as f:
-                self.kwargs = OmegaConf.load(f)
+                self.kwargs = OmegaConf.to_container(OmegaConf.load(f), resolve=True)
         else:
             raise NotImplementedError(f"File type {filename} not supported, currently only toml and json are supported.")
 
     def add_argument(self, *args, **kwargs):
         for raw_arg in args:
             key = raw_arg.removeprefix("--")
-            if key not in self.kwargs:
+            if key not in self.kwargs:  # type: ignore[operator]
                 if "action" in kwargs:
-                    self.kwargs[key] = False
+                    self.kwargs[key] = False  # type: ignore[index]
                 else:
-                    self.kwargs[key] = kwargs.get("default")
+                    self.kwargs[key] = kwargs.get("default")  # type: ignore[index]
 
     def parse_args(self):
-        return argparse.Namespace(**self.kwargs)
+        return argparse.Namespace(**self.kwargs)  # type: ignore[arg-type]
 
 
 def parse_cmd():

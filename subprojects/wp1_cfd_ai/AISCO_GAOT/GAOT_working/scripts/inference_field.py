@@ -96,13 +96,15 @@ def load_yaml_config(path: str):
 def build_model(cfg, num_input_channels: int, num_output_channels: int, device: torch.device):
     """Instantiate GAOT3D from config and move to device."""
     # Convert OmegaConf → plain dict for the new dict-config GAOT3D
-    args = OmegaConf.to_container(cfg.model.args, resolve=True)
+    args_raw = OmegaConf.to_container(cfg.model.args, resolve=True)
+    args: dict = dict(args_raw) if isinstance(args_raw, dict) else {}
 
     # Inject runtime-detected sizes
     args["input_size"] = num_input_channels
     args["output_size"] = num_output_channels
 
     field_output_size = args.get("field_output_size", 0)
+    assert isinstance(field_output_size, int)
 
     model = GAOT3D(config=args, field_output_size=field_output_size)
     model.to(device)

@@ -298,11 +298,17 @@ def integrate_from_model(data_dir, args):
     model_cfg = cfg.model
 
     # Determine input channels
-    encoder_attr = model_cfg.args.magno.get("encoder_feature_attr", "x")
+    magno_cfg = model_cfg.args.magno
+    encoder_attr = (
+        magno_cfg.get("encoder_feature_attr", "x")
+        if isinstance(magno_cfg, dict)
+        else getattr(magno_cfg, "encoder_feature_attr", "x")
+    )
     input_size = sum(3 for _ in encoder_attr) if isinstance(encoder_attr, list) else 3
 
     # Create model using dict config
-    model_args = OmegaConf.to_container(model_cfg.args, resolve=True)
+    model_args_raw = OmegaConf.to_container(model_cfg.args, resolve=True)
+    model_args: dict = dict(model_args_raw) if isinstance(model_args_raw, dict) else {}
     model_args["input_size"] = input_size
     model_args["output_size"] = 2  # force + cd scalar heads
     field_output_size = model_args.get("field_output_size", 0)
