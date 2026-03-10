@@ -14,10 +14,12 @@
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 #SBATCH --error=/cluster/scratch/%u/logs/%x_%j.err
 #SBATCH --mail-type=END,FAIL
-
+################################### RUN THIS CMD ##############################################
+##  sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/launch_sweep.sh ##
+###############################################################################################
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/AISCO_code-subprojects_wp4_aeroshell_optimizer_v1_src_main_files/frwfmylv"   # <-- EDIT THIS
-COUNT=3                                         # runs per agent
+SWEEP_ID="aisco/new_50_meshes/uso9j41g"   # <-- EDIT THIS
+COUNT=3                                      # runs per agent
 
 # ---- Job info ---------------------------------------------------------------
 echo "=========================================="

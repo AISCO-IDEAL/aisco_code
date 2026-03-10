@@ -5,7 +5,7 @@
 # See wandb_sweep_v1_50_meshes.yaml for full documentation.
 # ============================================================================
 program: subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py
-method: grid
+method: random
 metric:
   goal: minimize
   name: total_loss
@@ -14,3 +14,9 @@ parameters:
     values: [1, 5, 10, 20, 30, 69]
   losses_v0_config.bb_config.assembly_version:
     value: 3
+  training_v0_config.training_params.learning_rate:
+    distribution: log_uniform_values
+    min: 0.00001
+    max: 0.01
+  pretraining_v0_config.pretraining_shape:
+    values: ["sphere", "cube"]
