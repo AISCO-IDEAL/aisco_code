@@ -130,10 +130,10 @@ def solar_mesh_loss_v3(
     face_cross_norm = torch.linalg.norm(face_cross, dim=-1)
     face_area_mm2 = 0.5 * face_cross_norm
 
-    # Compute illumination quality (cosine of angle with sun direction, clamped to [0, 1])
+    # Compute illumination quality (cosine of angle with sun direction, between  [-1, 1] due to geometry)
     face_normals_unit = face_cross / (face_cross_norm.clamp_min(epsilon)).unsqueeze(-1)
     sun_direction_unit = sun_direction / (torch.linalg.norm(sun_direction).clamp_min(epsilon))
-    illumination_quality = torch.clamp((face_normals_unit * sun_direction_unit).sum(-1), 0.0, 1.0)
+    illumination_quality = (face_normals_unit * sun_direction_unit).sum(-1)
 
     # Sort faces by descending quality
     # NOTE: Currently ignores order priority for equal-quality faces (TODO: could optimize face ordering)

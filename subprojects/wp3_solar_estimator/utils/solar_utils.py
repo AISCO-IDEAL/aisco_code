@@ -7,7 +7,7 @@ def averaging_solar_quality(normals: torch.Tensor, sun_directions: torch.Tensor)
     This is a simple way to aggregate the solar quality values, but it can be replaced with a more sophisticated method if needed.
 
     Args:
-        normals: A tensor of shape (N, 3) containing the NORMALISED normal vectors of the mesh vertices.
+        normals: A tensor of shape (N, 3) OR (N, T, 3) containing the NORMALISED normal vectors of the mesh vertices.
         sun_directions: A tensor of shape (M, 3) containing the NORMALISED sun direction vectors you want to aggregate for each face
     """
     # if shapes of sun vectors is (N,T,3):
