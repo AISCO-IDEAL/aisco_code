@@ -9,8 +9,8 @@ Overwrite the following methods:
 """
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import get_points
 
@@ -49,6 +49,7 @@ class ParentLoss:
             self.points = get_points(
                 num_points=self.losses_config["get_points_params"]["num_points"],
                 bbox_size=self.losses_config["get_points_params"]["bbox_size"],
+                device=self.device,
             )
 
         self._setup()
@@ -87,19 +88,28 @@ class ParentLoss:
         total_gradient: float = 0.0
         params = [p for p in self._last_model.parameters() if p.requires_grad]
 
-        grads = torch.autograd.grad(
+        raw_grads = torch.autograd.grad(
             self._last_loss,
             params,
             retain_graph=True,
             allow_unused=True,
             create_graph=False,
         )
-        grads = [g for g in list(grads) if g is not None]
-        if grads:
-            dev = grads[0].device
+        active_grads = [g for g in list(raw_grads) if g is not None]
+        if active_grads:
+            dev = active_grads[0].device
             norm_sq = torch.tensor(0.0, device=dev)
-            for g in grads:
+            for g in active_grads:
                 norm_sq = norm_sq + g.detach().pow(2).sum()
             total_gradient = torch.sqrt(norm_sq).item()
 
             wandb.log({f"{self.loss_name}_gradient": total_gradient}, step=epoch_name)
+
+    def log_gradient_norm(self, norm: float, epoch_name: int) -> None:
+        """Log a pre-computed gradient norm for this loss (no autograd involved).
+
+        Called by the training loop after per-loss backward() passes, where the gradient
+        norm is computed externally from param.grad deltas. This avoids retain_graph=True.
+        """
+        if norm > 0.0:
+            wandb.log({f"{self.loss_name}_gradient": norm}, step=epoch_name)

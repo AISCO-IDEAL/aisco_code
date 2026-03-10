@@ -2,14 +2,15 @@ general_info:
   config_debugging: "True"
 
 training_params:
-  learning_rate: 0.00002
-  batch_size: 4096
+  learning_rate: 0.00005
   num_epochs: 50
+  scheduler_step_size: 200 # does what?
+  scheduler_gamma: 0.5 # does what?
+  batch_size: 4096
+  mesh_save_interval: 5
   model_capacity: 256
   num_layers: 8
   skip_connections: [4]
   weight_decay: 0.0
   activation: "relu"
   optimizer: "adam"
-  scheduler_step_size: 200
-  scheduler_gamma: 0.5

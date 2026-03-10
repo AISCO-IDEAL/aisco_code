@@ -1,6 +1,6 @@
 import os
 
-import fixed_renderer.cuda.create_texture_image as create_texture_image_cuda
+import subprojects.fixed_renderer.cuda.create_texture_image as create_texture_image_cuda
 import torch
 from skimage.io import imsave
 
@@ -28,11 +28,11 @@ def create_texture_image(textures, texture_size_out=16):
     vertices[:, :, 0] /= (image.shape[1] - 1)
     vertices[:, :, 1] /= (image.shape[0] - 1)
 
-    image = image.detach().cpu().numpy()
-    vertices = vertices.detach().cpu().numpy()
-    image = image[::-1, ::1]
+    image_np = image.detach().cpu().numpy()
+    vertices_np = vertices.detach().cpu().numpy()
+    image_np = image_np[::-1, ::1]
 
-    return image, vertices
+    return image_np, vertices_np
 
 
 def save_obj(filename, vertices, faces, textures=None):

@@ -24,7 +24,7 @@ class SolarV0(ParentLoss):
         NOTE: Does not work, as long as the kaolin_utils are not implemented
         """
 
-        verts, faces = get_diff_mesh(model, grid_res=64, device=self.device)
+        verts, faces = get_diff_mesh(model, grid_res=grid_res, device=self.device)
         deformed_verts = solar_mesh_deformation(
             verts,
             faces,
@@ -35,10 +35,3 @@ class SolarV0(ParentLoss):
         )
         loss = loss_from_deformed_mesh(deformed_verts, model)
         return loss
-
-    # this function is inherited from ParentLoss and shall not be overwritten (eschaerer 2025 11 25)
-    # def get_loss(self, model: BaseModel, grid_res: int = 64) -> torch.Tensor:
-    #     if self.__weight[0] == 0.0:
-    #         return torch.tensor(0.0, device=self.device)
-    #     else:
-    #         return self._loss(model)*self.__weight[1]

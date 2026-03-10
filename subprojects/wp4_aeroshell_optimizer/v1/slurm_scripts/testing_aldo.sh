@@ -6,6 +6,7 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
 #SBATCH --output=/cluster/home/baural/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/Aldo_TEST_%j.out 
+#SBATCH --error=/cluster/home/clhuber/logs/Aldo_TEST_%j.err 
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=baural@ethz.ch
 #------------------------------------------------------------------------------
@@ -16,8 +17,8 @@ module purge
 module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
 
 
-USERNAME="baural"
-LOG_DIR="/cluster/home/$USERNAME/AISCO_code/logs"
+USERNAME=$(whoami)
+LOG_DIR="/cluster/home/$USERNAME/logs"
 ##mkdir -p "$LOG_DIR"  # Ensure the log directory exists
 #------------------------------------------------------------------------------
 # Print job information
@@ -73,7 +74,7 @@ cd /cluster/home/$USERNAME/AISCO_code/
 
 python subprojects/wp4_aeroshell_optimizer/v1/src/models/testaldo.py \
     --save_model \
-    --problem_id="AISCO_WP4_Test1"  2>&1
+    --problem_id="AISCO_WP4_Test_Aldo"  2>&1
 #------------------------------------------------------------------------------
 # Print job end information
 #------------------------------------------------------------------------------

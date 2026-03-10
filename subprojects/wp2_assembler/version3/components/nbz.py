@@ -1,5 +1,4 @@
 import math
-import random
 from pathlib import Path
 
 import cadquery as cq
@@ -19,59 +18,13 @@ class WheelbaseTooSmallError(Exception):
         super().__init__(f"Wheelbase {dim} too small")
 
 
-def inner_nbz_sym_rand():
-    """
-    New implementation of innerNBZ for version 2
-    Args: constraints from regulations
-    Returns: cq.shape.solid of inner NBZ shape
-    """
-
-    # draw triangle
-    triangle = Triangle().build()
-    points = Triangle().get_points()
-
-    # add wheels to the corners of the triangle
-    wheels = Wheels()
-    wheel = wheels.create_wheel()
-
-    seat_class = Seat()
-    seat = seat_class.create_seat()
-
-    assembly = (
-        cq.Assembly(triangle, name="triangle")
-        # move to 0,0,0
-        .add(
-            wheel,
-            loc=cq.Location(points[0].x, points[0].y, points[0].z),
-            name="wheel_1",
-        )
-        .add(
-            wheel,
-            loc=cq.Location(points[1].x, points[1].y, points[1].z),
-            name="wheel_2",
-        )
-        .add(
-            wheel,
-            loc=cq.Location(points[2].x, points[2].y, points[2].z),
-            name="wheel_3",
-        )
-        .add(
-            seat,
-            loc=cq.Location(random.randint(0, float(points[2].x)), 0, -100),
-            name="Seat",
-        )
-    )
-
-    return assembly
-
-
 def inner_nbz_sym(
     wheel_base_width=1000,
     wheel_base_length=2500,
     tyre_diameter=557,
     seat_position_x=400,
     seat_position_z=-100,
-):
+) -> cq.Assembly:
     """
     Deterministic implementation of innerNBZ for version 2
     Args: parameters for the inner NBZ
@@ -130,11 +83,11 @@ def inner_nbz_sym(
         ),  # the 500 shall be removed, after correction in seat.py
         name="Seat",
     )
+    compound = assembly.toCompound()
+    return compound
 
-    return assembly
 
-
-def outer_nbz(length: float, width: float, height: float):
+def outer_nbz(length: float, width: float, height: float) -> cq.Solid:
     """
     New implementation of outerNBZ for version 2
     Args: constraints from regulations
@@ -145,7 +98,7 @@ def outer_nbz(length: float, width: float, height: float):
     return box
 
 
-def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length) -> list[cq.Solid]:
+def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length) -> cq.Assembly:
     """
     Generate a cadquery Assembly of the driver's and the tracker's vision NBZ with given parameters from regulations
     Args: regulations.yaml
@@ -275,11 +228,11 @@ def save_assembly_parameters(parameters: dict) -> str:
     return str(next_id)
 
 
-def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
+def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
     """
     Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
     Args: id-number
-    Returns: cadquery Assembly
+    Returns: cadquery Assembly, outer NBZ as cq.Solid, vision NBZ as cadquery Assembly
     """
     config_path = Path(__file__).parent.parent / "config" / "assembly_map.yaml"
 
@@ -289,7 +242,7 @@ def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
 
     # YAML loads numeric keys as integers, not strings
     if id_number not in assembly_map:
-        raise ValueError(f"ID {id_number} not found in assembly map.")  # noqa: TRY003
+        raise ValueError(f"ID {id_number} not found in assembly map.")
     params = assembly_map[id_number]
     seat_pos_z = get_regulation("seat.position.z")
 
@@ -309,6 +262,34 @@ def call_assembly(id_number: int) -> tuple[cq.Solid, cq.Solid]:
     vision = vision_nbz(params["seat_position"], seat_pos_z, params["wheel_base_length"])
 
     return assembly, outer, vision
+
+# eschaerer: needed for visualiser
+def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
+    """
+    Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
+
+    Args: id-number
+
+    Returns:  tuple with list[inner solids] and outer solid
+    """
+    inner, outer , __= call_assembly(id_number)
+    return inner.toCompound().Solids(), outer
+
+def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """
+    Docstring for bounding_box_of_assembly
+
+    :param id_number: id number of the assembly of the wanted bounding box
+    :return: tuple with touples with ((x_min, y_min, z_min),(x_max,y_max,z_max))
+    :rtype: tuple[tuple[float, float, float], tuple[float, float, float]]
+    """
+    inner, _, _ = call_assembly(id_number)
+    inner_bounding_box = inner.BoundingBox()
+
+    return (
+        (inner_bounding_box.xmin, inner_bounding_box.ymin, inner_bounding_box.zmin),
+        (inner_bounding_box.xmax, inner_bounding_box.ymax, inner_bounding_box.zmax),
+    )
 
 
 def get_range_wheels() -> dict:

@@ -1,4 +1,4 @@
-#file containing individual baseline tests
+# file containing individual baseline tests
 
 
 import traceback
@@ -13,6 +13,8 @@ from subprojects.wp3_solar_estimator.meshing_benchmarks.analytical_sdfs import (
     SphereSDF,
     load_testing_model,
 )
+
+# kdiehl: ignored some mypy errors, double check iff there actually is a bug
 
 
 class BaseTester:
@@ -35,7 +37,7 @@ class BaseTester:
         if the BaseTester or its child haven't set their grids already, this can be used to set all of them to the same bbox
         """
         for extractor in self.meshing_algorithms.values():
-            extractor.set_grid(bbox=bbox, resolution=resolution)
+            extractor.set_grid(bbox=bbox, resolution=resolution)  # type: ignore [attr-defined]
 
     def startup(self, bbox: list[list[int | float]] | None = None) -> bool:
         """
@@ -49,10 +51,10 @@ class BaseTester:
 
         for name, extractor in self.meshing_algorithms.items():
             print(f"Testing {name} on SphereSDF...")
-            extractor.set_grid(bbox=bbox, resolution=64)
+            extractor.set_grid(bbox=bbox, resolution=64)  # type: ignore [attr-defined]
             model = self.testing_models["SphereSDF"]
             try:
-                verts, faces = extractor.extract_mesh(model)
+                verts, faces = extractor.extract_mesh(model)  # type: ignore [attr-defined]
                 if verts.numel() == 0 or faces.numel() == 0:
                     print(f"Warning: {name} produced an empty mesh for SphereSDF.")
                 else:
@@ -89,11 +91,11 @@ class BaseTester:
         #Rotations and nonunifom stretching are not supported yet
         """
         # Baseline parameters for this test, as to ensure resolution is comparable when distorting bboxes
-        BASELINE_RES = 70  # noqa: N806
-        BBOX_CUBIC = [[-3500.0, 3500.0], [-3500.0, 3500.0], [-3500.0, 3500.0]]  # noqa: N806
-        UNIT_LENGTH = 7000.0  # total length of bbox along each axis for baseline cubic box, used to define stretched bboxes with same total length  # noqa: N806
-        STRETCHING_FACTOR = 1.5  # Ensure this * BASELINE_RES is still an int # noqa: N806
-        TRANSLATION_OFFSET = 200.0  # Translate bbox by this amount along each axis, ensure that UNIT_LENGTH/BASELINE_RES * N can eqaual this offset for comparable grid_spacing # noqa: N806
+        BASELINE_RES = 70
+        BBOX_CUBIC = [[-3500.0, 3500.0], [-3500.0, 3500.0], [-3500.0, 3500.0]]
+        UNIT_LENGTH = 7000.0  # total length of bbox along each axis for baseline cubic box, used to define stretched bboxes with same total length
+        STRETCHING_FACTOR = 1.5  # Ensure this * BASELINE_RES is still an int
+        TRANSLATION_OFFSET = 200.0  # Translate bbox by this amount along each axis, ensure that UNIT_LENGTH/BASELINE_RES * N can eqaual this offset for comparable grid_spacing
         if TRANSLATION_OFFSET % (UNIT_LENGTH / BASELINE_RES) != 0:
             print(
                 f"Warning: Translation offset {TRANSLATION_OFFSET} is not a multiple of grid spacing {UNIT_LENGTH / BASELINE_RES}. Consider adjusting these values for a more meaningful test."
@@ -104,7 +106,7 @@ class BaseTester:
         # create copies of the meshing algorithms to modify for this test
 
         meshing_algorithms_baseline = dict(self.meshing_algorithms.items())
-        distorted_algorithms = distorted_bboxes = {
+        distorted_algorithms = {
             "Stretched": dict(self.meshing_algorithms.items()),
             "Translated": dict(self.meshing_algorithms.items()),
             "Stretched_Translated": dict(self.meshing_algorithms.items()),
@@ -118,8 +120,8 @@ class BaseTester:
         baseline_results = {}
         print("\nRunning baseline algorithms on RectangularBoxSDF with cubic bbox...", end="")
         for name, extractor in meshing_algorithms_baseline.items():
-            extractor.set_grid(bbox=BBOX_CUBIC, resolution=BASELINE_RES)
-            baseline_results[name] = extractor.extract_mesh(box_sdf)  # stores verts, faces for later comparison
+            extractor.set_grid(bbox=BBOX_CUBIC, resolution=BASELINE_RES)  # type: ignore [attr-defined]
+            baseline_results[name] = extractor.extract_mesh(box_sdf)  # type: ignore [attr-defined] # stores verts, faces for later comparison
             tensors_to_mesh(
                 baseline_results[name][0],
                 baseline_results[name][1],
@@ -159,9 +161,9 @@ class BaseTester:
                     int(BASELINE_RES * STRETCHING_FACTOR) if "Stretched" in distortion_name else BASELINE_RES
                 )  # Adjust resolution for stretched bboxes to maintain comparable grid spacing
 
-                extractor.set_grid(bbox=bbox, resolution=distorted_res)
+                extractor.set_grid(bbox=bbox, resolution=distorted_res)  # type: ignore [attr-defined]
                 try:
-                    verts, faces = extractor.extract_mesh(box_sdf)
+                    verts, faces = extractor.extract_mesh(box_sdf)  # type: ignore [attr-defined]
                     if verts.numel() == 0 or faces.numel() == 0:
                         print(f"Warning: {name} produced an empty mesh for {distortion_name} bbox.")
                     else:

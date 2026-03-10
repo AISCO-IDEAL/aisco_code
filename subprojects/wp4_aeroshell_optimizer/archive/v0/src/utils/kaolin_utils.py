@@ -6,6 +6,7 @@ import trimesh
 from kaolin.ops.conversions import FlexiCubes, voxelgrids_to_trianglemeshes, sdf_to_voxelgrids
 
 from ..models.sdf import SDFNetwork
+from typing import Optional
 
 ####################### eschaerer #################
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"  # or ":16:8"
@@ -93,11 +94,11 @@ def marching_tetrahedra(model: SDFNetwork,
                         dev: str="cuda"):
     """
     Alternative mesh extraction using marching tetrahedra from Kaolin.
-    
+
     Should provide more stable normals than flexicubes, though it can't remove discontinuities completely
-    
+
     """
-    
+
     model.cpu()
     adjusted_model = lambda x: (model(x)[0].cpu()).squeeze(-1)  # return CPU for Kaolin
 
@@ -107,7 +108,7 @@ def marching_tetrahedra(model: SDFNetwork,
         bbox_dim=box_size,
         init_res=grid_res,
         upsampling_steps=upsampling,
-        
+
     )
     model.cuda() #necessary?
     # move to GPU
@@ -125,11 +126,11 @@ def marching_tetrahedra(model: SDFNetwork,
     return verts, faces[0]
 
 def flexicubes_to_PLY(
-    verts: torch.tensor,
-    faces: torch.tensor,
+    verts: torch.Tensor,
+    faces: torch.Tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.ply",
-    mesh_dir: str = None,  # Default to None, not a space
+    mesh_dir: Optional[str] = None,  # Default to None, not a space
 ):
     """
     Pre: Vertices and Faces generated from kaolin flexicubes algorithm
@@ -152,11 +153,11 @@ def flexicubes_to_PLY(
         return mesh
     return mesh
 
-def kaolin_to_STL(verts: torch.tensor,
-    faces: torch.tensor,
+def kaolin_to_STL(verts: torch.Tensor,
+    faces: torch.Tensor,
     save_mesh: bool = True,
     filename: str = "loading_test.ply",
-    mesh_dir: str = None,  # Default to None, not a space)
+    mesh_dir: Optional[str] = None,  # Default to None, not a space)
     ):
     """
     Same as flexicubes_to_PLY but saves as STL. Verts and faces in the kaolin format.

@@ -1,0 +1,3 @@
+mesh_statistics: True
+memory_diagnostics: True
+gradient_memory_diagnostics: True

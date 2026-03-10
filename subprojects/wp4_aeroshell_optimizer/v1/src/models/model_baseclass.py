@@ -7,15 +7,19 @@ from typing import TYPE_CHECKING  # this prevents from circular imports
 import torch
 from torch import nn
 
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+
 if TYPE_CHECKING:
     from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
 
 class BaseModel(nn.Module):
-    def __init__(self, config: dict, overwrite_base_init: bool = True, in_dim: int = 3, hidden: int = 64, layers: int = 3):
+    def __init__(
+        self, config: dict | None = None, overwrite_base_init: bool = True, in_dim: int = 3, hidden: int = 64, layers: int = 3
+    ):
         super().__init__()  # gets all the stuff from nn.Module
 
-        self.config = config
+        self.config = config if config is not None else {}
         self.in_dim = in_dim
         self.hidden = hidden
         self.layers = layers
@@ -46,7 +50,14 @@ class BaseModel(nn.Module):
         output = x.squeeze(-1)
         return output * 1000.0
 
-    def optimise(self, renderer_manager: VisualisationManager | None = None):
+    def optimise(
+        self,
+        renderer_manager: VisualisationManager | None = None,  # noqa: ARG002
+        renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
+        wandb_name: str | None = None,  # noqa: ARG002
+        general_config: dict | None = None,  # noqa: ARG002
+        training_config: dict | None = None,  # noqa: ARG002
+    ) -> None:
         super().train()  # Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
 
         # For textbook example of how our optimization works, look at basic_MLP_v1.py

@@ -1,34 +1,39 @@
 general_info:
   config_debugging: "True"
   ALM: "True"  # Augmented Lagrangian Method
+  CSE: "False"  # Cruising Speed Estimation
   alm_thresholds: [0.1, 0.1, 0.1]  # thresholds for constraint losses [bb, eikonal, smoothness]
   initial_lambda: 0.01  # initial value for lambda in ALM
   alpha: 0.99  # factor to increase mu in ALM if constraint not met
   gamma: 0.01  # parameter for ALM penalty update
 
 losses: # [compute: bool, weight: float, path: str]
+  # NOTE: that for each loss class, only one version should have compute=True
   aero:
     frontal_area_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/frontal_area_v0.py"]
     crude_estimator_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/crude_estimator_v0.py"]
     null_loss_aero_v1_: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
 
   bb:
-    bb_v1: [1,100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v1.py"]
+    bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v1.py"]
     bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15
     null_loss_bb_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/null_loss_bb_v1.py"]
-
+    bb_v3: [1, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety
+ 
   eikonal:
-    eikonal_v0: [1, 10, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/eikonal_loss/eikonal_v0.py"]
+    eikonal_v0: [1, 10.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/eikonal_loss/eikonal_v0.py"]
 
   smoothness:
     smoothness_v0: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/smoothness_loss/smoothness_v0.py"]
 
   solar:
     solar_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v0.py"]
-    solar_v0_brute_force: [0, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v0_brute_force.py"]
-    solar_v1_brute_force: [0, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v1_brute_force.py"]
-    solar_v2: [0, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v2.py"]
-    null_loss_solar_v1: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/null_loss_solar_v1.py"]
+    solar_v0_brute_force: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v0_brute_force.py"]
+    solar_v1_brute_force: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v1_brute_force.py"]
+    solar_v2: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v2.py"]
+    solar_v3: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3.py"]
+    solar_v3B: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3B.py"]
+    null_loss_solar_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/null_loss_solar_v1.py"]
 
   total:
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/total_loss.py"]
@@ -36,24 +41,24 @@ losses: # [compute: bool, weight: float, path: str]
 get_points_params: # used in eikonal and smoothness loss
   num_points: 1000
   bbox_size: 10.0
-
+#by clemens
 solar_config:
-  wandb_logging: True
+  wandb_logging: False
   rendering: False
   rendering_frequency: 1
   area_budget: 6000000
   normalise_loss: True
   solar_direction_solid_angle: [0.785398, 3.141592]
-
+#by alex
 main_solar_config:
-  solar_angle: [0.5,0.0,-0.5]
-  area_budget: 2500000 #in mm^3
+  solar_angle: [1.0,0.0,0.0] # This is the direction in which a perfect solar cell should point, i.e. [0,0,1] if the sun shines from above
+  area_budget: 4000000 #in mm^3
+
 bb_config:
   pointgrid_params:
     dx: 250
     dy: 250
     dz: 250
     rand: 400
-
   assembly_version: 2
   assembly_id: 30 # 1 for the standard one

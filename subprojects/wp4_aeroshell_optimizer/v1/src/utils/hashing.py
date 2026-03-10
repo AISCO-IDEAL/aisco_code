@@ -10,10 +10,11 @@ def dict_hashing(data: dict) -> str:
     Args:
         data (dict): The data to hash.
 
-        """
+    """
     canonical_bytes = json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
     hash_value = hashlib.sha1(canonical_bytes).hexdigest()[:10]
     return hash_value
+
 
 def str_hashing(data: str) -> str:
     """
@@ -23,7 +24,7 @@ def str_hashing(data: str) -> str:
     Args:
         data (str): The string to hash.
 
-        """
+    """
     canonical_bytes = data.encode("utf-8")
     hash_value = hashlib.sha1(canonical_bytes).hexdigest()[:10]
     return hash_value

@@ -5,9 +5,9 @@ from ..components.seat import Seat
 
 
 def chassis_constraints(
-    chassis: ChassisParams = ChassisParams,
-    seat: SeatParams = SeatParams,
-    wheels: WheelParams = WheelParams,
+    chassis: ChassisParams = ChassisParams(),
+    seat: SeatParams = SeatParams(),
+    wheels: WheelParams = WheelParams(),
 ) -> dict:
     return {
         # implement chassis contraints
@@ -15,9 +15,9 @@ def chassis_constraints(
 
 
 def seat_constraints(
-    chassis: ChassisParams = ChassisParams,
-    seat: SeatParams = SeatParams,
-    wheels: WheelParams = WheelParams,
+    chassis: ChassisParams = ChassisParams(),
+    seat: SeatParams = SeatParams(),
+    wheels: WheelParams = WheelParams(),
 ) -> dict:
     # -- calculations --
     s = Seat()
@@ -47,9 +47,9 @@ def seat_constraints(
 
 
 def wheels_constraints(
-    chassis: ChassisParams = ChassisParams,
-    seat: SeatParams = SeatParams,
-    wheels: WheelParams = WheelParams,
+    chassis: ChassisParams = ChassisParams(),
+    seat: SeatParams = SeatParams(),
+    wheels: WheelParams = WheelParams(),
 ) -> dict:
     return {
         # implement seat constraints

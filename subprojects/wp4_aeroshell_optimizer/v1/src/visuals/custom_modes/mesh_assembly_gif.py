@@ -1,4 +1,3 @@
-
 from subprojects.wp2_assembler.version3.components.nbz import call_assembly
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base_class import RenderingMode
@@ -14,14 +13,19 @@ class MeshAssemblyGIF(RenderingMode):
     - Finalize blends: assembly + mesh overlaid where silhouette > 0.
     - Alpha config controls mesh opacity (0=invisible, 1=opaque).
     """
+
     def __init__(self, visualiser, config):
         super().__init__(visualiser, config)
+        self.config = config
         self.rendered_assembly = False
         self.assembly_frame = None
+        self.frame_storage = []
         self.silhouettes = []
+        self.store_wandb = config.get("store_wandb", False)  # Whether to upload the final GIF to wandb
         self.alpha = config.get("alpha", 0.5)  # Transparency factor (mesh opacity)
         self.assembly_color = tuple(config.get("assembly_color", [0.8, 0.8, 0.8]))  # Default assembly color
         self.mesh_color = tuple(config.get("mesh_color", [0.8, 0.8, 0.8]))  # Default mesh color (light gray)
+
     def update(self, optimization_state: dict) -> None:
         """
         Update the rendering mode with the current optimization state.
@@ -88,7 +92,6 @@ class MeshAssemblyGIF(RenderingMode):
 
         # Render mesh RGB frame
 
-
         # Make texture for mesh rendering
 
         textures = self.visualiser.create_solid_texture(
@@ -142,7 +145,9 @@ class MeshAssemblyGIF(RenderingMode):
             return
 
         if len(self.silhouettes) != len(self.frame_storage):
-            print(f"  {self.__class__.__name__}: Silhouette count mismatch ({len(self.silhouettes)} vs {len(self.frame_storage)})")
+            print(
+                f"  {self.__class__.__name__}: Silhouette count mismatch ({len(self.silhouettes)} vs {len(self.frame_storage)})"
+            )
             return
 
         # Combine assembly + mesh frames using silhouette masks

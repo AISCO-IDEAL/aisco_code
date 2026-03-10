@@ -1,6 +1,6 @@
 import os
 
-import fixed_renderer.cuda.load_textures as load_textures_cuda
+import subprojects.fixed_renderer.cuda.load_textures as load_textures_cuda
 import numpy as np
 import torch
 from skimage.io import imread
@@ -72,7 +72,7 @@ def load_textures(filename_obj, filename_mtl, texture_size, texture_wrapping='RE
 
     colors, texture_filenames = load_mtl(filename_mtl)
 
-    textures = torch.zeros(faces.shape[0], texture_size, texture_size, texture_size, 3, dtype=torch.float32) + 0.5
+    textures = torch.zeros(faces_tensor.shape[0], texture_size, texture_size, texture_size, 3, dtype=torch.float32) + 0.5
     textures = textures.cuda()
 
     for material_name, color in colors.items():
@@ -97,7 +97,7 @@ def load_textures(filename_obj, filename_mtl, texture_size, texture_wrapping='RE
         image = torch.from_numpy(image.copy()).cuda()
         is_update = (np.array(material_names) == material_name).astype(np.int32)
         is_update = torch.from_numpy(is_update).cuda()
-        textures = load_textures_cuda.load_textures(image, faces, textures, is_update,
+        textures = load_textures_cuda.load_textures(image, faces_tensor, textures, is_update,
                                                     texture_wrapping_dict[texture_wrapping],
                                                     use_bilinear)
     return textures
@@ -150,12 +150,12 @@ def load_obj(filename_obj, normalization=True, texture_size=4, load_texture=Fals
 
     # normalize into a unit cube centered zero
     if normalization:
-        vertices -= vertices.min(0)[0][None, :]
-        vertices /= torch.abs(vertices).max()
-        vertices *= 2
-        vertices -= vertices.max(0)[0][None, :] / 2
+        vertices_tensor -= vertices_tensor.min(0)[0][None, :]
+        vertices_tensor /= torch.abs(vertices_tensor).max()
+        vertices_tensor *= 2
+        vertices_tensor -= vertices_tensor.max(0)[0][None, :] / 2
 
     if load_texture:
-        return vertices, faces, textures
+        return vertices_tensor, faces_tensor, textures
     else:
-        return vertices, faces
+        return vertices_tensor, faces_tensor

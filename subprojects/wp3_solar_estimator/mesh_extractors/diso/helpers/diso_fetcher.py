@@ -1,11 +1,8 @@
 import diso
 import torch
 
-"""
-This file is mainly used in diso_example
-"""
 
-def get_diff_mc(dtype : str= "float32") -> diso.DiffMC:
+def get_diff_mc(dtype: str = "float32") -> diso.DiffMC:
     """
     Returns isosurface extractor object based on Marching Cubes
     """
@@ -15,6 +12,7 @@ def get_diff_mc(dtype : str= "float32") -> diso.DiffMC:
         return diso.DiffMC(dtype=torch.float32).cuda()
     else:
         raise ValueError(f"We don't want to use dtype {dtype} for diso.DiffMC, use 'float32' or 'float64'")
+
 
 def get_diff_dmc(dtype: str = "float32") -> diso.DiffDMC:
     """

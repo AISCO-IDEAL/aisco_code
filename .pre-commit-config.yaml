@@ -6,6 +6,7 @@ exclude: ^subprojects_legacy/
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -35,8 +36,10 @@ repos:
           - types-paramiko
           - types-Pillow
           - paramiko
-          - matplotlib
+          - types-pytz
           - wandb
+          - torch
+          - cadquery
         pass_filenames: True # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
 
 

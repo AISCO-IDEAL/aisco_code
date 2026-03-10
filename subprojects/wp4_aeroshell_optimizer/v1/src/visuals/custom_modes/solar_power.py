@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 import torch
@@ -28,17 +27,20 @@ class SolarPower(RenderingMode):
     def __init__(self, visualiser, config: dict):
         """Initialize with custom parameter."""
         super().__init__(visualiser, config)
-        #Rendering parameters
+        # Rendering parameters
         self.render_interval = config.get("render_interval", 1)
         self.make_gif = config.get("make_gif", True)
         self.fps = config.get("fps", 15)
-        #Solar specific parameters
+        # Solar specific parameters
 
-        solar_config = load_config(v="v1", cfg_name="losses_v0_config.yaml")["main_solar_config"]
-        self.solar_angle=torch.tensor(solar_config["solar_angle"],device=self.visualiser.device)
-        self.solar_angle = self.solar_angle / torch.norm(self.solar_angle) #Normalize to be safe
+        solar_config = load_config(v="v1", cfg_name="solar_loss_config.yaml")["SolarLossConfigV3"]
+        self.solar_angle = torch.tensor(solar_config["sun_dir"], device=self.visualiser.device)
+        self.solar_angle = (self.solar_angle / torch.norm(self.solar_angle)).detach()  # Normalize; detach to drop grad_fn
         if self.solar_angle is None or self.solar_angle.shape != (3,):
-            raise ValueError("Solar angle must be provided in the config and be a 3D vector --> shape = (3,), given in form of [A,B,C].")
+            raise ValueError(
+                "Solar angle must be provided in the config and be a 3D vector --> shape = (3,), given in form of [A,B,C]."
+            )
+
     def update(self, optimization_state: dict) -> None:
         """
         Args:
@@ -51,12 +53,10 @@ class SolarPower(RenderingMode):
                 - Any other custom keys
         """
 
-
         iteration = optimization_state.get("iteration", 0)
         # Only render at specified intervals
         if iteration % self.render_interval != 0:
             return
-
 
         vertices = optimization_state.get("vertices")
         faces = optimization_state.get("faces")
@@ -64,18 +64,14 @@ class SolarPower(RenderingMode):
         if vertices is None or faces is None:
             raise Warning("Warning: No vertices/faces in optimization_state, skipping update")
 
-
-        #Whole selection logic here:
+        # Whole selection logic here:
 
         face_normals = compute_face_normals(vertices, faces)
         power_dotprods = (face_normals * self.solar_angle).sum(dim=1)
 
-
-
-
         # Normalize power_dotprods to [0,1] range
-        min_val = power_dotprods.min()
-        max_val = power_dotprods.max()
+        min_val = -1
+        max_val = 1
         if max_val > min_val:
             normalized_power = (power_dotprods - min_val) / (max_val - min_val)
         else:
@@ -83,22 +79,16 @@ class SolarPower(RenderingMode):
 
         # Create colors based on normalized power values
         colors = torch.zeros((faces.shape[0], 3), device=self.visualiser.device)
-        colors[:, 0] = normalized_power  # Red channel
-        colors[:, 1] = 1 - normalized_power  # Green channel
+        colors[:, 0] = 1 - normalized_power  # Red channel
+        colors[:, 1] = normalized_power  # Green channel
         colors[:, 2] = 0.5 * (1 - normalized_power)  # Blue channel
 
         textures = self.visualiser.face_colors_to_textures(face_colors=colors)
 
         # Render from fixed camera position
-        image = self.visualiser.render(vertices,
-                                        faces,
-                                        textures,
-                                        mode="rgb",
-                                        camera_position=self.camera_position,
-                                        camera_direction=self.camera_direction)
-
-
-
+        image = self.visualiser.render(
+            vertices, faces, textures, mode="rgb", camera_position=self.camera_position, camera_direction=self.camera_direction
+        )
 
         # Store the frame (handle batch dimension if present)
         if hasattr(image, "__len__") and len(image) > 0:

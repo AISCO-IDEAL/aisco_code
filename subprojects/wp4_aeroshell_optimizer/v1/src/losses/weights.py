@@ -13,7 +13,7 @@ def weights_alm(
     alphas: torch.Tensor,
     gamma: float,
     constrained_losses: torch.Tensor,
-    thresholds: torch.Tensor = None,
+    thresholds: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Calculate Augmented Lagrangian Method (ALM) weights for constrained losses.
 

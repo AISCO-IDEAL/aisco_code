@@ -1,8 +1,9 @@
-import fixed_renderer.cuda.rasterize as rasterize_cuda
+import subprojects.fixed_renderer.cuda.rasterize as rasterize_cuda
 import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.autograd import Function
+from typing import Optional
 
 DEFAULT_IMAGE_SIZE = 256
 DEFAULT_ANTI_ALIASING = True
@@ -10,6 +11,8 @@ DEFAULT_NEAR = 0.1
 DEFAULT_FAR = 100
 DEFAULT_EPS = 1e-4
 DEFAULT_BACKGROUND_COLOR = (0, 0, 0)
+
+# kdiehl: hardcoded torch.cuda is outdated. could be updated, however there are some pitfalls -> testing the functionality is cruicial
 
 class RasterizeFunction(Function):
     '''
@@ -42,30 +45,30 @@ class RasterizeFunction(Function):
             ctx.texture_size = textures.shape[2]
         else:
             # initializing with dummy values
-            textures = torch.cuda.FloatTensor(1).fill_(0)
+            textures = torch.cuda.FloatTensor(1).fill_(0) #type: ignore [attr-defined] # newest torch works differently, but i do not want to mess with code now
             ctx.texture_size = None
 
 
-        face_index_map = torch.cuda.IntTensor(ctx.batch_size, ctx.image_size, ctx.image_size).fill_(-1)
-        weight_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size, 3).fill_(0.0)
-        depth_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size).fill_(ctx.far)
+        face_index_map = torch.cuda.IntTensor(ctx.batch_size, ctx.image_size, ctx.image_size).fill_(-1) #type: ignore [attr-defined] # newest torch works differently, but i do not want to mess with code now
+        weight_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size, 3).fill_(0.0) #type: ignore [attr-defined] # newest torch works differently, but i do not want to mess with code now
+        depth_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size).fill_(ctx.far) #type: ignore [attr-defined] # newest torch works differently, but i do not want to mess with code now
 
         if ctx.return_rgb:
-            rgb_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size, 3).fill_(0)
-            sampling_index_map = torch.cuda.IntTensor(ctx.batch_size, ctx.image_size, ctx.image_size, 8).fill_(0)
-            sampling_weight_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size, 8).fill_(0)
+            rgb_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size, 3).fill_(0) #type: ignore [attr-defined] # newest torch works differently, but i do not want to mess with code now
+            sampling_index_map = torch.cuda.IntTensor(ctx.batch_size, ctx.image_size, ctx.image_size, 8).fill_(0) #type: ignore [attr-defined] # newest torch works differently, but i do not want to mess with code now
+            sampling_weight_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size, 8).fill_(0) #type: ignore [attr-defined] # newest torch works differently, but i do not want to mess with code now
         else:
-            rgb_map = torch.cuda.FloatTensor(1).fill_(0)
-            sampling_index_map = torch.cuda.FloatTensor(1).fill_(0)
-            sampling_weight_map = torch.cuda.FloatTensor(1).fill_(0)
+            rgb_map = torch.cuda.FloatTensor(1).fill_(0) #type: ignore [attr-defined] # newest torch works differently, but i do not want to mess with code now
+            sampling_index_map = torch.cuda.FloatTensor(1).fill_(0) #type: ignore [attr-defined] # newest torch works differently, but i do not want to mess with code now
+            sampling_weight_map = torch.cuda.FloatTensor(1).fill_(0) #type: ignore [attr-defined] # newest torch works differently, but i do not want to mess with code now
         if ctx.return_alpha:
-            alpha_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size).fill_(0)
+            alpha_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size).fill_(0) #type: ignore [attr-defined] # newest torch works differently, but i do not want to mess with code now
         else:
-            alpha_map = torch.cuda.FloatTensor(1).fill_(0)
+            alpha_map = torch.cuda.FloatTensor(1).fill_(0) #type: ignore [attr-defined]
         if ctx.return_depth:
-            face_inv_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size, 3, 3).fill_(0)
+            face_inv_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size, 3, 3).fill_(0) #type: ignore [attr-defined]
         else:
-            face_inv_map = torch.cuda.FloatTensor(1).fill_(0)
+            face_inv_map = torch.cuda.FloatTensor(1).fill_(0) #type: ignore [attr-defined]
 
         face_index_map, weight_map, depth_map, face_inv_map =\
             RasterizeFunction.forward_face_index_map(ctx, faces, face_index_map,
@@ -108,10 +111,11 @@ class RasterizeFunction(Function):
         # initialize output buffers
         # no need for explicit allocation of cuda.FloatTensor because zeros_like does it automatically
         grad_faces = torch.zeros_like(faces, dtype=torch.float32)
+        grad_textures: Optional[torch.Tensor] = None
         if ctx.return_rgb:
             grad_textures = torch.zeros_like(textures, dtype=torch.float32)
         else:
-            grad_textures = torch.cuda.FloatTensor(1).fill_(0.0)
+            grad_textures = torch.cuda.FloatTensor(1).fill_(0.0) #type: ignore [attr-defined]
 
         # get grad_outputs
         if ctx.return_rgb:
@@ -120,21 +124,21 @@ class RasterizeFunction(Function):
             else:
                 grad_rgb_map = torch.zeros_like(rgb_map)
         else:
-            grad_rgb_map = torch.cuda.FloatTensor(1).fill_(0.0)
+            grad_rgb_map = torch.cuda.FloatTensor(1).fill_(0.0) #type: ignore [attr-defined]
         if ctx.return_alpha:
             if grad_alpha_map is not None:
                 grad_alpha_map = grad_alpha_map.contiguous()
             else:
                 grad_alpha_map = torch.zeros_like(alpha_map)
         else:
-            grad_alpha_map = torch.cuda.FloatTensor(1).fill_(0.0)
+            grad_alpha_map = torch.cuda.FloatTensor(1).fill_(0.0) #type: ignore [attr-defined]
         if ctx.return_depth:
             if grad_depth_map is not None:
                 grad_depth_map = grad_depth_map.contiguous()
             else:
                 grad_depth_map = torch.zeros_like(ctx.depth_map)
         else:
-            grad_depth_map = torch.cuda.FloatTensor(1).fill_(0.0)
+            grad_depth_map = torch.cuda.FloatTensor(1).fill_(0.0) #type: ignore [attr-defined]
 
         # backward pass
         grad_faces = RasterizeFunction.backward_pixel_map(
@@ -185,7 +189,7 @@ class RasterizeFunction(Function):
     @staticmethod
     def forward_background(ctx, face_index_map, rgb_map):
         if ctx.return_rgb:
-            background_color = torch.cuda.FloatTensor(ctx.background_color)
+            background_color = torch.cuda.FloatTensor(ctx.background_color) #type: ignore [attr-defined]
             mask = (face_index_map >= 0).float()[:, :, :, None]
             if background_color.ndimension() == 1:
                 rgb_map = rgb_map * mask + (1-mask) * background_color[None, None, None, :]
