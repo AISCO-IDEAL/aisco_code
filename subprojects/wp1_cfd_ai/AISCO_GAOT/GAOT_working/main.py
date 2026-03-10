@@ -126,20 +126,20 @@ def run_arg(arg):  # noqa: PLR0912, PLR0915
 
     Trainer = {
         "static3d": StaticTrainer3D,
-    }[arg.setup.trainer_name]
+    }[arg.setup["trainer_name"]]
     t = Trainer(arg)
 
-    if arg.setup.train:
+    if arg.setup["train"]:
         # Load model checkpoint with priority: artifact > resume_from_ckpt > ckpt
         if getattr(arg.setup, "resume_from_artifact", None) is not None:
-            metadata = t.load_from_artifact(arg.setup.resume_from_artifact)
+            metadata = t.load_from_artifact(arg["setup"].resume_from_artifact)
             if metadata:
                 logging.getLogger(__name__).info(f"Loaded from artifact: {metadata}")
             else:
                 logging.getLogger(__name__).warning("Failed to load from artifact, skipping...")
         elif getattr(arg.setup, "resume_from_ckpt", None) is not None:
-            t.load_ckpt(path=arg.setup.resume_from_ckpt)
-        elif arg.setup.ckpt:
+            t.load_ckpt(path=arg.setup["resume_from_ckpt"])
+        elif arg.setup["ckpt"]:
             t.load_ckpt()
         t.fit()
 

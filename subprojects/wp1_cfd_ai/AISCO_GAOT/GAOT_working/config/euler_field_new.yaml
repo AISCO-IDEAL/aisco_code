@@ -8,7 +8,7 @@
 ##########################################################################
 
 setup:
-    wandb_run_name: "euler_field_new__RUN_ID_"
+    wandb_run_name: "Platin"
     seed: 42
     device: "cuda:0"
     dtype: "torch.float32"
@@ -26,6 +26,7 @@ setup:
     wandb_mode: online
     wandb_tags: ["field", "pressure", "euler", "multi_head", "gaot", "new_data"]
     wandb_watch_model: false
+    wandb_notes: 
 
     test_during_training: false
 
@@ -80,7 +81,7 @@ dataset:
     metaname: "incompressible_fluids/euler_pressure"
     base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_new"
     processed_folder: ""
-    force_recompute_stats: true
+    force_recompute_stats: false
     rand_dataset: true
     train_size: 70
     val_size: 15
@@ -95,13 +96,15 @@ dataset:
     field_loss_weight: 1.0
     use_rescale_new: true
     active_variables:
+    order_file_name: 
+    active_heads: ["force", "cd", "pressure"]
 
 optimizer:
     name: "adamw"
     args:
         lr: 3e-4
         weight_decay: 1e-05
-        epoch: 300
+        epoch: 3
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"
@@ -113,7 +116,7 @@ optimizer:
         early_save_metric: "val"
 
 path:
-    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/euler_field_new__RUN_ID_.pt"
-    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/euler_field_new__RUN_ID_.png"
-    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/euler_field_new__RUN_ID_.png"
-    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/euler_field_new_metrics.csv"
+    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/platin.pt"
+    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/platin.png"
+    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/platin.png"
+    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/platin.csv"

@@ -241,28 +241,28 @@ class AdamWOptimizer:
     loss_scale: float
     eval_every_eps: int
 
-    def __init__(self, params, config):
-        self.optimizer = torch.optim.AdamW(params, lr=config.lr, weight_decay=config.weight_decay)
-        self.epoch = config.epoch
-        self.lr = config.lr
-        self.loss_scale = config.loss_scale
-        self.eval_every_eps = config.eval_every_eps
-        self.early_save_metric = config.early_save_metric.lower()
+    def __init__(self, params, config:dict):
+        self.optimizer = torch.optim.AdamW(params, lr=config["lr"], weight_decay=config["weight_decay"])
+        self.epoch = config["epoch"]
+        self.lr = config["lr"]
+        self.loss_scale = config["loss_scale"]
+        self.eval_every_eps = config["eval_every_eps"]
+        self.early_save_metric = config["early_save_metric"].lower()
 
         if self.early_save_metric not in ["train", "val"]:
             raise ValueError("`early_save_metric` must be either 'train' or 'val'.")
 
-        if config.scheduler == "step":
+        if config["scheduler"] == "step":
             self.scheduler = torch.optim.lr_scheduler.StepLR(
-                self.optimizer, step_size=config.scheduler_step_size, gamma=config.scheduler_gamma
+                self.optimizer, step_size=config["scheduler_step_size"], gamma=config["scheduler_gamma"]
             )
-        elif config.scheduler == "cos":
+        elif config["scheduler"] == "cos":
             self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                self.optimizer, T_max=config.scheduler_t_max, eta_min=config.scheduler_eta_min
+                self.optimizer, T_max=config["scheduler_t_max"], eta_min=config["scheduler_eta_min"]
             )
-        elif config.scheduler == "exp":
-            self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=config.scheduler_gamma)
-        elif config.scheduler == "mix":
+        elif config["scheduler"] == "exp":
+            self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=config["scheduler_gamma"])
+        elif config["scheduler"] == "mix":
             warmup_epochs = int(0.02 * self.epoch)
             cosine_epochs = int(0.90 * self.epoch)
             exp_decay_epochs = self.epoch - warmup_epochs - cosine_epochs
@@ -279,9 +279,9 @@ class AdamWOptimizer:
                 cosine_epochs=cosine_epochs,
                 exp_decay_epochs=exp_decay_epochs,
                 initial_lr=self.lr,
-                max_lr=config.max_lr,
-                min_lr=config.min_lr,
-                final_lr=config.final_lr,
+                max_lr=config["max_lr"],
+                min_lr=config["min_lr"],
+                final_lr=config["final_lr"],
             )
         else:
             self.scheduler = None
@@ -318,12 +318,12 @@ class AdamWOptimizer:
         disable_pbar = hasattr(trainer.setup_config, "rank") and trainer.setup_config.rank != 0
         pbar = tqdm(total=self.epoch, desc=description, colour=color, disable=disable_pbar)
         global_step = 0
-        save_every_steps = getattr(trainer.optimizer_config.args, "save_every_steps", 0)
+        save_every_steps = trainer.optimizer_config["args"]["save_every_steps"]
         for epoch in range(self.epoch):
             # Ensure DistributedSampler shuffles differently each epoch
-            train_sampler = getattr(trainer.train_loader, "sampler", None)
+            train_sampler = trainer.train_loader.sampler
             if hasattr(train_sampler, "set_epoch"):
-                train_sampler.set_epoch(epoch)  # type: ignore[union-attr]
+                train_sampler.set_epoch(epoch) 
 
             trainer.model.train()
             total_loss: float = 0.0
@@ -447,8 +447,8 @@ class AdamWOptimizer:
 
                 # Periodic Artifact Saving
                 if (
-                    getattr(trainer.optimizer_config.args, "save_every_epochs", 0) > 0
-                    and (epoch + 1) % trainer.optimizer_config.args.save_every_epochs == 0
+                    getattr(trainer.optimizer_config["args"], "save_every_epochs", 0) > 0
+                    and (epoch + 1) % trainer.optimizer_config["args"]["save_every_epochs"] == 0
                     and getattr(trainer.setup_config, "rank", 0) == 0
                 ):
                     try:

@@ -43,27 +43,25 @@ class TrainerBase:
         self.optimizer_config = self.config.optimizer
         self.path_config = self.config.path
 
-        self.metadata = DATASET_METADATA[self.dataset_config.metaname]
+        self.metadata = DATASET_METADATA[self.dataset_config["metaname"]]
 
         # initialization the distributed learning environment
-        if self.setup_config.distributed:
+        if self.setup_config["distributed"]:
             self.init_distributed_mode()
-            torch.cuda.set_device(self.setup_config.local_rank)
-            self.device = torch.device("cuda", self.setup_config.local_rank)
-            logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Using device cuda:{self.setup_config.local_rank}")
+            torch.cuda.set_device(self.setup_config["local_rank"])
+            self.device = torch.device("cuda", self.setup_config["local_rank"])
         else:
-            self.device = torch.device(self.setup_config.device)
-            logging.getLogger(__name__).info(f"Using device {self.setup_config.device}")
+            self.device = torch.device(self.setup_config["device"])
 
-        manual_seed(self.setup_config.seed + self.setup_config.rank)
+        manual_seed(self.setup_config["seed"] + self.setup_config["rank"])
 
         # 1. Handle dtypes and loss first
-        if self.setup_config.dtype in ["float", "torch.float32", "torch.FloatTensor"]:
+        if self.setup_config["dtype"] in ["float", "torch.float32", "torch.FloatTensor"]:
             self.dtype = torch.float32
-        elif self.setup_config.dtype in ["double", "torch.float64", "torch.DoubleTensor"]:
+        elif self.setup_config["dtype"] in ["double", "torch.float64", "torch.DoubleTensor"]:
             self.dtype = torch.float64
         else:
-            raise ValueError(f"Invalid dtype: {self.setup_config.dtype}")
+            raise ValueError("Invalid dtype:", self.setup_config["dtype"])
         self.loss_fn = nn.MSELoss()
 
         # 2. Initialize the model components
@@ -76,7 +74,7 @@ class TrainerBase:
         self.tracker = WandbTracker(self.setup_config, self.path_config, self.full_config_dict)
         self.tracker.watch_model(self.model)
 
-        if self.setup_config.rank == 0:
+        if self.setup_config["rank"] == 0:
             nparam = sum([p.numel() * 2 if p.is_complex() else p.numel() for p in self.model.parameters()])
             nbytes = sum(
                 [
@@ -97,8 +95,8 @@ class TrainerBase:
 
     def init_optimizer(self, _optimizer_config):
         ### Initialize the optimizer
-        self.optimizer = {"adam": AdamOptimizer, "adamw": AdamWOptimizer}[self.optimizer_config.name](  # type: ignore[assignment]
-            self.model.parameters(), self.optimizer_config.args
+        self.optimizer = {"adam": AdamOptimizer, "adamw": AdamWOptimizer}[self.optimizer_config["name"]](  # type: ignore[assignment]
+            self.model.parameters(), self.optimizer_config["args"]
         )
 
     def init_distributed_mode(self):
@@ -112,23 +110,18 @@ class TrainerBase:
             )  # 移除默认值,如果没有设置应该报错 Translation by deepl:Remove the default value; if not set, an error should be reported.
         else:
             logger.info("Not using distributed mode")
-            self.setup_config.distributed = False
-            self.setup_config.rank = 0
-            self.setup_config.world_size = 1
-            self.setup_config.local_rank = 0
+            self.setup_config["distributed"] = False
+            self.setup_config["rank"] = 0
+            self.setup_config["world_size"] = 1
+            self.setup_config["local_rank"] = 0
             return
 
-        logger.info(
-            f"Distributed mode initialized - Rank: {self.setup_config.rank}, "
-            f"World Size: {self.setup_config.world_size}, "
-            f"Local Rank: {self.setup_config.local_rank}"
-        )
 
         dist.init_process_group(
-            backend=getattr(self.setup_config, "backend", "nccl"),
+            backend= str(self.setup_config["backend"]+ self.setup_config["nccl"]), 
             init_method="env://",
-            world_size=self.setup_config.world_size,
-            rank=self.setup_config.rank,
+            world_size=self.setup_config["world_size"],
+            rank=self.setup_config["rank"],
         )
         dist.barrier()
     # ------------ utils ------------ #
@@ -146,7 +139,7 @@ class TrainerBase:
         payload: dict[str, Any] = {}
         payload["setup"] = to_dict(self.setup_config)
         payload["model"] = to_dict(self.model_config)
-        payload["optimizer"] = {"name": self.optimizer_config.name, "args": to_dict(self.optimizer_config.args)}
+        payload["optimizer"] = {"name": self.optimizer_config["name"], "args": to_dict(self.optimizer_config["args"])}
         payload["dataset"] = to_dict(self.dataset_config)
         payload["path"] = to_dict(self.path_config)
         return payload
@@ -163,7 +156,7 @@ class TrainerBase:
 
     def load_ckpt(self, path: str | None = None):
         if path is None:
-            path = self.path_config.ckpt_path
+            path = self.path_config["ckpt_path"]
         load_ckpt(path, model=self.model)
         return self
 
@@ -178,7 +171,7 @@ class TrainerBase:
     def save_ckpt(self, path: str | None = None):
         """Save checkpoint to the config.ckpt_path"""
         if path is None:
-            path = self.path_config.ckpt_path
+            path = self.path_config["ckpt_path"]
         os.makedirs(os.path.dirname(path), exist_ok=True)
         save_ckpt(path, model=self.model)
         return self
@@ -225,7 +218,7 @@ class TrainerBase:
                 kwargs["best_epoch"] = result["best"]["epoch"]
                 kwargs["best_loss"] = result["best"]["loss"]
 
-            if self.setup_config.rank == 0:
+            if self.setup_config["rank"] == 0:
                 self.plot_losses(**kwargs)
 
                 # Use Tracker for metrics logging
@@ -236,7 +229,7 @@ class TrainerBase:
                 self.save_ckpt()
 
                 # Use Tracker for artifact saving
-                if getattr(self.setup_config, "wandb", False):
+                if self.setup_config["wandb"]:
                     self.tracker.save_checkpoint_artifact(
                         epoch=result["best"]["epoch"],
                         train_loss=result["best"]["loss"],
@@ -247,7 +240,7 @@ class TrainerBase:
                 torch.cuda.empty_cache()
                 self.test()
 
-        if self.setup_config.rank == 0:
+        if self.setup_config["rank"] == 0:
             # Use Tracker to finish the run
             self.tracker.close()
 
@@ -290,10 +283,10 @@ class TrainerBase:
             ax[1].set_xlim(left=0)
             if (np.array(val_losses) > 0).all():
                 ax[1].set_yscale("log")
-            os.makedirs(os.path.dirname(self.path_config.loss_path), exist_ok=True)
-            plt.savefig(self.path_config.loss_path)
+            os.makedirs(os.path.dirname(self.path_config["loss_path"]), exist_ok=True)
+            plt.savefig(self.path_config["loss_path"])
             np.savez(
-                self.path_config.loss_path[:-4] + ".npz",
+                self.path_config["loss_path"][:-4] + ".npz",
                 epochs=epochs,
                 losses=losses,
                 val_epochs=val_epochs,

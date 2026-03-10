@@ -56,7 +56,7 @@ class VTKMeshDataset(Dataset):
         self.order_file = order_file
         self.dataset_config = dataset_config
         self.split = split
-        self.active_variables = getattr(dataset_config, "active_variables", None)
+        self.active_variables = dataset_config["active_variables"] # None
         # Assuming processed files are stored in root/processed/
         super().__init__(root, transform, pre_transform, pre_filter)
         # Load indices after processing ensures processed files are available
@@ -71,7 +71,7 @@ class VTKMeshDataset(Dataset):
     @property
     def processed_dir(self) -> str:
         """Returns the path to the directory containing processed pyg files."""
-        return os.path.join(self.root, self.dataset_config.processed_folder)
+        return os.path.join(self.root, self.dataset_config["processed_folder"])
 
     @property
     def processed_file_names(self):
@@ -106,13 +106,13 @@ class VTKMeshDataset(Dataset):
             all_filenames = [line.strip() for line in f if line.strip()]
 
         total_samples = len(all_filenames)
-        train_size = self.dataset_config.train_size
-        val_size = self.dataset_config.val_size
-        test_size = self.dataset_config.test_size
+        train_size = self.dataset_config["train_size"]
+        val_size = self.dataset_config["val_size"]
+        test_size = self.dataset_config["test_size"]
 
         # Generate indices based on dataset size and split
         indices = np.arange(total_samples)
-        if getattr(self.dataset_config, "rand_dataset", False):
+        if self.dataset_config["rand_dataset"]: # False
             rng = np.random.default_rng(seed=42)
             rng.shuffle(indices)
 

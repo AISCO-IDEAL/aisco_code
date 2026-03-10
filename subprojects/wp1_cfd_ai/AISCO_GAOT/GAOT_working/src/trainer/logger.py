@@ -8,41 +8,38 @@ import wandb
 class WandbTracker:
     """Handles all Weights & Biases logging and artifact management."""
 
-    def __init__(self, setup_config, path_config, full_config_dict):
+    def __init__(self, setup_config: dict, path_config:dict , full_config_dict:dict):
         self.setup_config = setup_config
         self.path_config = path_config
         self.wandb_run = None
         self.logger = logging.getLogger(__name__)
-
         # Only initialize if enabled in config AND process is Rank 0
-        self.enabled = getattr(self.setup_config, "wandb", False) and getattr(self.setup_config, "rank", 0) == 0
-
+        self.enabled = self.setup_config["wandb"] and self.setup_config["rank"] == 0
         if self.enabled:
             self._init_wandb(full_config_dict)
 
     def _init_wandb(self, config_dict: dict[str, Any]) -> None:
-        self.logger.info(f"Rank {self.setup_config.rank}: Initializing wandb...")
-
+        rank = self.setup_config["rank"]
+        self.logger.info(f"Rank {rank}: Initializing wandb...")
+        print("working here just fine")
         # Respect mode: 'online' | 'offline' | 'disabled'
-        if hasattr(self.setup_config, "wandb_mode") and self.setup_config.wandb_mode:
-            os.environ["WANDB_MODE"] = str(self.setup_config.wandb_mode)
+        if hasattr(self.setup_config, "wandb_mode") and self.setup_config["wandb_mode"]:
+            os.environ["WANDB_MODE"] = str(self.setup_config["wandb_mode"])
 
         init_kwargs = {
-            "project": getattr(self.setup_config, "wandb_project", None),
-            "entity": getattr(self.setup_config, "wandb_entity", None),
-            "name": getattr(self.setup_config, "wandb_run_name", None),
-            "group": getattr(self.setup_config, "wandb_group", None),
-            "notes": getattr(self.setup_config, "wandb_notes", None),
-            "tags": getattr(self.setup_config, "wandb_tags", None),
-            "config": config_dict,
-            # Using finish_previous instead of deprecated reinit
-            "resume": "allow",
+        "project": self.setup_config["wandb_project"],
+        "entity": self.setup_config["wandb_entity"],
+        "name": self.setup_config["wandb_run_name"],
+        "group": self.setup_config["wandb_group"],
+        "notes": self.setup_config["wandb_notes"],
+        "tags": self.setup_config["wandb_tags"],
+        "config": config_dict,
+        "resume": "allow",
         }
         # Remove None values to avoid API complaints
         init_kwargs = {k: v for k, v in init_kwargs.items() if v is not None}
-
         try:
-            self.wandb_run = wandb.init(**init_kwargs)  # type: ignore[arg-type]
+            self.wandb_run = wandb.init(**init_kwargs)
         except Exception as e:
             self.logger.warning(f"Failed to initialize Weights & Biases: {e}")
             self.wandb_run = None

@@ -47,7 +47,7 @@ def move_to_device(data, device):
 
 def _magno_get(model_config, key, default=None):
     """Helper to access magno config keys whether magno is a dict or dataclass."""
-    magno = model_config.args.magno
+    magno = model_config["args"]["magno"]
     if isinstance(magno, dict):
         return magno.get(key, default)
     else:
@@ -56,7 +56,7 @@ def _magno_get(model_config, key, default=None):
 
 def _magno_set(model_config, key, value):
     """Helper to set magno config keys whether magno is a dict or dataclass."""
-    magno = model_config.args.magno
+    magno = model_config["args"]["magno"]
     if isinstance(magno, dict):
         magno[key] = value
     else:
@@ -69,7 +69,7 @@ def _build_gaot_config(model_config, input_size: int, output_size: int) -> dict[
     ModelConfig dataclass.  Runtime-detected input_size / output_size
     override whatever is stored in the YAML.
     """
-    args = model_config.args
+    args = model_config["args"]
 
     # args may be a dataclass (ModelArgsConfig) or already a dict
     cfg: dict[str, Any]
@@ -96,8 +96,8 @@ class StaticTrainer3D(TrainerBase):
 
     def __init__(self, args):
         super().__init__(args)
-        if self.dataset_config.training_strategy == "neural_field":
-            if self.dataset_config.update_pt_files_with_edges:
+        if self.dataset_config["training_strategy"] == "neural_field":
+            if self.dataset_config["update_pt_files_with_edges"]:
                 raise ValueError("neural_field training strategy requires update_pt_files_with_edges=False")
             if _magno_get(self.model_config, "precompute_edges", True):
                 logging.getLogger(__name__).warning(
@@ -108,7 +108,7 @@ class StaticTrainer3D(TrainerBase):
         # --- Uncertainty weighting (Kendall et al., 2018) ---
         # Learns log(sigma) per task so the combined loss self-scales.
         # Enabled via dataset.uncertainty_weighting: true in config.
-        self._uncertainty_weighting = getattr(self.dataset_config, "uncertainty_weighting", False)
+        self._uncertainty_weighting = self.dataset_config["uncertainty_weighting"]
         if self._uncertainty_weighting:
             self.log_sigma_field = torch.nn.Parameter(torch.tensor([math.log(75.0)], device=self.device))
             self.log_sigma_scalar = torch.nn.Parameter(torch.tensor([math.log(0.5)], device=self.device))
@@ -117,7 +117,7 @@ class StaticTrainer3D(TrainerBase):
             self.optimizer.optimizer.add_param_group(
                 {
                     "params": [self.log_sigma_field, self.log_sigma_scalar],
-                    "lr": self.optimizer_config.args.lr,
+                    "lr": self.optimizer_config["args"]["lr"],
                     "weight_decay": 0.0,
                 }
             )
@@ -131,11 +131,11 @@ class StaticTrainer3D(TrainerBase):
         In DDP mode, only rank 0 computes and saves stats; other ranks
         wait at a barrier and then load from the saved file.
         """
-        stats_file = os.path.join(data_root, f"{dataset_config.name}_norm_stats.pt")
-        rank = getattr(self.setup_config, "rank", 0)
-        distributed = getattr(self.setup_config, "distributed", False)
+        stats_file = os.path.join(data_root, dataset_config["name"] + "_norm_stats.pt")
+        rank = self.setup_config["rank"]
+        distributed = self.setup_config["distributed"]
 
-        need_compute = not os.path.exists(stats_file) or getattr(dataset_config, "force_recompute_stats", False)
+        need_compute = not os.path.exists(stats_file) or dataset_config["force_recompute_stats"]
 
         if need_compute:
             if rank == 0:
@@ -371,22 +371,22 @@ class StaticTrainer3D(TrainerBase):
 
     def init_dataset(self, dataset_config):  # noqa: PLR0912, PLR0915
         logging.getLogger(__name__).info("Initializing PyG dataset ...")
-        self.latent_token_size = self.model_config.args.latent_tokens
-        data_root = dataset_config.base_path
+        self.latent_token_size = self.model_config["args"]["latent_tokens"]
+        data_root = dataset_config["base_path"]
 
         # Allow custom order file name via config (e.g. "order_force_only.txt")
-        order_file_name = getattr(dataset_config, "order_file_name", None)
+        order_file_name = dataset_config["order_file_name"]
         if order_file_name:
             order_file_path = os.path.join(data_root, order_file_name)
         else:
-            order_file_path = os.path.join(data_root, f"order_{dataset_config.processed_folder}.txt")
+            order_file_path = os.path.join(data_root, "order_" + dataset_config["processed_folder"]+".txt")
 
         # Store active_heads for filtering (e.g. ["force"] or ["force","cd"])
-        self.active_heads = getattr(dataset_config, "active_heads", None)
+        self.active_heads = dataset_config["active_heads"]
         if self.active_heads:
             logging.getLogger(__name__).info(f"Active heads (training only on): {self.active_heads}")
 
-        processed_data_path = os.path.join(data_root, dataset_config.processed_folder)
+        processed_data_path = os.path.join(data_root, dataset_config["processed_folder"])
 
         if not os.path.exists(processed_data_path):
             raise FileNotFoundError(f"Processed data directory does not exist: {processed_data_path}")
@@ -404,22 +404,22 @@ class StaticTrainer3D(TrainerBase):
             indexing="ij",
         )
         latent_queries = torch.stack(meshgrid, dim=-1).reshape(-1, 3)
-        if dataset_config.use_rescale_new:
+        if dataset_config["use_rescale_new"]:
             self.latent_tokens = rescale_new(latent_queries, (-1, 1), phy_domain)
         else:
             self.latent_tokens = rescale(latent_queries, (-1, 1))
 
-        logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Dataset initialization finished.")
+        logging.getLogger(__name__).info("Rank"+ str(self.setup_config["rank"])+ ": Dataset initialization finished.")
 
         # --- Pre-computation /Update Step ---
-        if dataset_config.update_pt_files_with_edges:
+        if dataset_config["update_pt_files_with_edges"]:
             magno_cfg = self.model_config.args.magno
-            if self.setup_config.rank == 0:
+            if self.setup_config["rank"] == 0:
                 self._update_pt_files_with_edges(dataset_config, order_file_path, magno_cfg)
-            if self.setup_config.distributed:
-                logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Waiting for edge pre-computation barrier...")
+            if self.setup_config["distributed"]:
+                logging.getLogger(__name__).info("Rank"+str(self.setup_config.rank)+ ": Waiting for edge pre-computation barrier...")
                 torch.distributed.barrier()
-                logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Barrier passed.")
+                logging.getLogger(__name__).info("Rank"+str(self.setup_config.rank)+ ": Barrier passed.")
 
             _magno_set(self.model_config, "precompute_edges", True)
             logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Set model config to use precomputed edges.")
@@ -429,15 +429,15 @@ class StaticTrainer3D(TrainerBase):
         self._calculate_or_load_stats(dataset_config, order_file_path, data_root)
 
         # --- Define Transforms ---
-        if dataset_config.use_rescale_new:
+        if dataset_config["use_rescale_new"]:
             rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=phy_domain)
         else:
             rescale_transform = RescalePosition(lims=(-1.0, 1.0))
 
         # Apply active_variables selection to normalization stats if specified
-        if dataset_config.active_variables is not None:
-            mean_for_norm = self.u_mean[dataset_config.active_variables]
-            std_for_norm = self.u_std[dataset_config.active_variables]
+        if dataset_config["active_variables"] is not None:
+            mean_for_norm = self.u_mean[dataset_config["active_variables"]]
+            std_for_norm = self.u_std[dataset_config["active_variables"]]
         else:
             mean_for_norm = self.u_mean
             std_for_norm = self.u_std
@@ -464,7 +464,7 @@ class StaticTrainer3D(TrainerBase):
         composed_transform = Compose([rescale_transform, normalize_transform])
 
         # --- Create collate function for online graph building in DataLoader ---
-        magno_cfg = self.model_config.args.magno
+        magno_cfg = self.model_config["args"]["magno"]
         collate_fn = create_collate_function(
             coord_dim=magno_cfg["gno_coord_dim"] if isinstance(magno_cfg, dict) else magno_cfg.gno_coord_dim,
             magno_radius=magno_cfg["gno_radius"] if isinstance(magno_cfg, dict) else magno_cfg.gno_radius,
@@ -474,7 +474,7 @@ class StaticTrainer3D(TrainerBase):
             k_neighbors=magno_cfg["k_neighbors"] if isinstance(magno_cfg, dict) else magno_cfg.k_neighbors,
             asynchronous_graph_building=magno_cfg.get("asynchronous_graph_building", False)
             if isinstance(magno_cfg, dict)
-            else getattr(magno_cfg, "asynchronous_graph_building", False),
+            else magno_cfg["asynchronous_graph_building"]
         )
         # Store collate_fn so train_step can rebuild edges for subsampled batches
         self.collate_fn = collate_fn
@@ -482,14 +482,13 @@ class StaticTrainer3D(TrainerBase):
         async_graph = (
             magno_cfg.get("asynchronous_graph_building", False)
             if isinstance(magno_cfg, dict)
-            else getattr(magno_cfg, "asynchronous_graph_building", False)
+            else magno_cfg["asynchronous_graph_building"]
         )
         if async_graph:
             _magno_set(self.model_config, "precompute_edges", True)
             logging.getLogger(__name__).info("Enabled precompute_edges for MAGNO to consume collate-built graphs.")
 
-        if self.setup_config.train:
-            logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Loading train dataset...")
+        if self.setup_config["train"]:
             train_ds = VTKMeshDataset(
                 root=data_root,
                 order_file=order_file_path,
@@ -497,7 +496,6 @@ class StaticTrainer3D(TrainerBase):
                 split="train",
                 transform=composed_transform,
             )
-            logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Loading validation dataset...")
             val_ds = VTKMeshDataset(
                 root=data_root,
                 order_file=order_file_path,
@@ -505,7 +503,6 @@ class StaticTrainer3D(TrainerBase):
                 split="val",
                 transform=composed_transform,
             )
-        logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Loading test dataset...")
         test_ds = VTKMeshDataset(
             root=data_root, order_file=order_file_path, dataset_config=dataset_config, split="test", transform=composed_transform
         )
@@ -534,14 +531,14 @@ class StaticTrainer3D(TrainerBase):
             # Multi-head decoder: count total output dims across heads
             self.num_output_channels = 2  # force(1) + cd(1)
         # --- Create DataLoaders ---
-        if self.setup_config.train:
+        if self.setup_config["train"]:
             ## --- Create DistributedSampler for training ---
             train_sampler = None
-            if self.setup_config.distributed:
+            if self.setup_config["distributed"]:
                 train_sampler = DistributedSampler(
                     train_ds,
-                    num_replicas=self.setup_config.world_size,
-                    rank=self.setup_config.rank,
+                    num_replicas=self.setup_config["world_size"],
+                    rank=self.setup_config["rank"],
                     shuffle=dataset_config.shuffle,  # Sampler handles shuffling
                     drop_last=True,  # Often good practice for DDP
                 )
@@ -549,9 +546,9 @@ class StaticTrainer3D(TrainerBase):
 
             self.train_loader = DataLoader(
                 train_ds,
-                batch_size=dataset_config.batch_size,
-                shuffle=False if train_sampler is not None else dataset_config.shuffle,
-                num_workers=dataset_config.num_workers,
+                batch_size=dataset_config["batch_size"],
+                shuffle=False if train_sampler is not None else dataset_config["shuffle"],
+                num_workers=dataset_config["num_workers"],
                 sampler=train_sampler,
                 pin_memory=False,
                 drop_last=train_sampler is not None,
@@ -559,16 +556,15 @@ class StaticTrainer3D(TrainerBase):
             )
 
             val_sampler = None
-            if self.setup_config.distributed:
+            if self.setup_config["distributed"]:
                 val_sampler = DistributedSampler(
-                    val_ds, num_replicas=self.setup_config.world_size, rank=self.setup_config.rank, shuffle=False, drop_last=False
+                    val_ds, num_replicas=self.setup_config["world_size"], rank=self.setup_config["rank"], shuffle=False, drop_last=False
                 )
-                logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Created DistributedSampler for validation.")
             self.val_loader = DataLoader(
                 val_ds,
-                batch_size=dataset_config.batch_size,
+                batch_size=dataset_config["batch_size"],
                 shuffle=False,
-                num_workers=dataset_config.num_workers,
+                num_workers=dataset_config["num_workers"],
                 pin_memory=False,
                 sampler=val_sampler,
                 collate_fn=collate_fn,
@@ -577,9 +573,9 @@ class StaticTrainer3D(TrainerBase):
         test_sampler = None
         self.test_loader = DataLoader(
             test_ds,
-            batch_size=dataset_config.batch_size,
+            batch_size=dataset_config["batch_size"],
             shuffle=False,
-            num_workers=dataset_config.num_workers,
+            num_workers=dataset_config["num_workers"],
             pin_memory=False,
             sampler=test_sampler,
             collate_fn=collate_fn,
@@ -595,11 +591,11 @@ class StaticTrainer3D(TrainerBase):
         self.model = GAOT3D(config=config_dict)
         self.model.to(self.device)
 
-        if self.setup_config.distributed:
+        if self.setup_config["distributed"]:
             self.model = torch.nn.parallel.DistributedDataParallel(
                 self.model,
-                device_ids=[self.setup_config.local_rank],
-                output_device=self.setup_config.local_rank,
+                device_ids=[self.setup_config["local_rank"]],
+                output_device=self.setup_config["local_rank"],
                 find_unused_parameters=True,
             )
 
@@ -794,15 +790,15 @@ class StaticTrainer3D(TrainerBase):
                 logging.getLogger(__name__).warning(f"Viz failed for {label} sample: {e}")
 
     def train_step(self, batch: "pyg.data.Batch"):  # noqa: PLR0912, PLR0915
-        strategy = self.dataset_config.training_strategy
+        strategy = self.dataset_config["training_strategy"]
         latent_tokens_dev = self.latent_tokens.to(self.device)
 
         field_target = None  # per-vertex target from neural_field sampling
 
         if strategy == "neural_field":
             # --- Neural Field Strategy ---
-            num_input_nodes = self.dataset_config.neural_field_input_nodes
-            num_query_nodes = self.dataset_config.neural_field_query_nodes_train
+            num_input_nodes = self.dataset_config["neural_field_input_nodes"]
+            num_query_nodes = self.dataset_config["neural_field_query_nodes_train"]
 
             sampled_data_list, query_pos, query_batch_idx, field_target = self._sample_nodes_neural_field(
                 batch, num_input_nodes, num_query_nodes
@@ -885,7 +881,7 @@ class StaticTrainer3D(TrainerBase):
                         head_losses["sigma_scalar"] = torch.exp(s_s).item()
                         return combined.squeeze(), head_losses
                     else:
-                        field_weight = getattr(self.dataset_config, "field_loss_weight", 1.0)
+                        field_weight = self.dataset_config["field_loss_weight"]
                         return scalar_loss + field_weight * field_loss, head_losses
 
             return scalar_loss, head_losses
@@ -902,7 +898,7 @@ class StaticTrainer3D(TrainerBase):
         if valid.any():
             field_loss = f.mse_loss(pred["field"][valid], ft[valid])
             head_losses["field"] = head_losses.get("field", 0.0) + field_loss.item()
-            field_weight = getattr(self.dataset_config, "field_loss_weight", 1.0)
+            field_weight = self.dataset_config["field_loss_weight"] # 1.0
             loss = loss + field_weight * field_loss
         return loss
 
@@ -972,7 +968,7 @@ class StaticTrainer3D(TrainerBase):
         # Global reduction across ranks for DDP
         local_metrics = torch.tensor([total_loss, total_rel_l2], dtype=torch.float64, device=self.device)
         world_size = 1
-        if getattr(self.setup_config, "distributed", False):
+        if self.setup_config["distributed"]: # False
             torch.distributed.all_reduce(local_metrics, op=torch.distributed.ReduceOp.SUM)
             world_size = torch.distributed.get_world_size()
 
@@ -985,7 +981,7 @@ class StaticTrainer3D(TrainerBase):
 
     def test(self):  # noqa: PLR0912, PLR0915
         self.model.eval()
-        metric_suite = self.dataset_config.metric_suite
+        metric_suite = self.dataset_config["metric_suite"]
 
         # Determine if model uses multi-head output
         _raw_model = self.model.module if hasattr(self.model, "module") else self.model
@@ -1062,7 +1058,7 @@ class StaticTrainer3D(TrainerBase):
                             pred_denorm[head_name] = head_pred
                             target_denorm_dict[head_name] = head_target
 
-                    if i == 0 and self.setup_config.rank == 0:
+                    if i == 0 and self.setup_config["rank"] == 0:
                         parts = []
                         if "force" in pred_denorm:
                             parts.append(f"Force={pred_denorm['force'][0].item():.4f}")
@@ -1079,8 +1075,8 @@ class StaticTrainer3D(TrainerBase):
                 else:
                     target_norm = batch.y
 
-                    u_std_dev = self.u_std[self.dataset_config.active_variables].to(self.device)
-                    u_mean_dev = self.u_mean[self.dataset_config.active_variables].to(self.device)
+                    u_std_dev = self.u_std[self.dataset_config["active_variables"]].to(self.device)
+                    u_mean_dev = self.u_mean[self.dataset_config["active_variables"]].to(self.device)
                     pred_de_norm = pred_norm * u_std_dev + u_mean_dev
                     target_de_norm = target_norm * u_std_dev + u_mean_dev
 
@@ -1089,7 +1085,7 @@ class StaticTrainer3D(TrainerBase):
                     all_batch_targets_denorm.append(target_de_norm.detach().cpu())
                     all_batch_preds_denorm.append(pred_de_norm.detach().cpu())
 
-                    if i == 0 and self.setup_config.rank == 0:
+                    if i == 0 and self.setup_config["rank"] == 0:
                         plot_gtr = np.array([target_de_norm[0].item()])
                         plot_prd = np.array([pred_de_norm[0].item()])
 
@@ -1097,7 +1093,7 @@ class StaticTrainer3D(TrainerBase):
                             f"Extracted first test sample: True Drag = {plot_gtr[0]:.4f}, Predicted Drag = {plot_prd[0]:.4f}"
                         )
 
-                if (i + 1) % 10 == 0 and self.setup_config.rank == 0:
+                if (i + 1) % 10 == 0 and self.setup_config["rank"] == 0:
                     current_avg_inference_time = statistics.mean(inference_times[-10:])
                     throughput = 1.0 / current_avg_inference_time
                     logging.getLogger(__name__).info(
@@ -1106,7 +1102,7 @@ class StaticTrainer3D(TrainerBase):
                         f"Inference throughput: {throughput:.2f} samples/s"
                     )
 
-        if self.setup_config.rank == 0:
+        if self.setup_config["rank"] == 0:
             if isinstance(all_batch_preds_denorm, dict):
                 assert isinstance(all_batch_targets_denorm, dict)
                 for head_name in all_batch_preds_denorm:
@@ -1132,7 +1128,7 @@ class StaticTrainer3D(TrainerBase):
                     )
 
                     results_array = torch.cat([head_targets.view(-1, 1), head_preds.view(-1, 1)], dim=1).cpu().numpy()
-                    csv_path = self.path_config.result_path.replace(".png", f"_{head_name}_predictions.csv")
+                    csv_path = self.path_config["result_path"].replace(".png", f"_{head_name}_predictions.csv")
                     np.savetxt(
                         csv_path, results_array, delimiter=",", header=f"True_{head_name},Predicted_{head_name}", comments=""
                     )
@@ -1229,9 +1225,9 @@ class StaticTrainer3D(TrainerBase):
                 self.config.datarow["relative error (direct)"] = final_metric
 
             if metric_suite == "drivaernet":
-                if self.dataset_config.active_variables is not None:
-                    self.metadata.global_mean = [self.metadata.global_mean[i] for i in self.dataset_config.active_variables]
-                    self.metadata.global_std = [self.metadata.global_std[i] for i in self.dataset_config.active_variables]
+                if self.dataset_config["active_variables"] is not None:
+                    self.metadata.global_mean = [self.metadata.global_mean[i] for i in self.dataset_config["active_variables"]]
+                    self.metadata.global_std = [self.metadata.global_std[i] for i in self.dataset_config["active_variables"]]
                 assert isinstance(all_batch_targets_denorm, list), "drivaernet metric requires non-multi-head (list) targets"
                 assert isinstance(all_batch_preds_denorm, list), "drivaernet metric requires non-multi-head (list) preds"
                 agg_metrics = compute_drivaernet_metric(
@@ -1284,7 +1280,7 @@ class StaticTrainer3D(TrainerBase):
                 logging.getLogger(__name__).info(f"Rel L1 Error (%):   {final_metrics_dict['Rel L1 Error (%)']:.4f}")
 
                 results_array = torch.cat([full_targets.view(-1, 1), full_preds.view(-1, 1)], dim=1).cpu().numpy()
-                csv_save_path = self.path_config.result_path.replace(".png", "_predictions.csv")
+                csv_save_path = self.path_config["result_path"].replace(".png", "_predictions.csv")
                 np.savetxt(csv_save_path, results_array, delimiter=",", header="True_Drag,Predicted_Drag", comments="")
                 logging.getLogger(__name__).info(f"Saved all test predictions to {csv_save_path}")
 
