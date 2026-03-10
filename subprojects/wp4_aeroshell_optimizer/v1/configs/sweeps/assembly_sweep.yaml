@@ -1,0 +1,16 @@
+# ============================================================================
+# Wandb Sweep Config — Assembly ID sweep (grid over different assemblies)
+# ============================================================================
+# Parameter naming: <config_filename_without_yaml>.<nested.path.to.value>
+# See wandb_sweep_v1_50_meshes.yaml for full documentation.
+# ============================================================================
+program: subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py
+method: grid
+metric:
+  goal: minimize
+  name: total_loss
+parameters:
+  losses_v0_config.bb_config.assembly_id:
+    values: [1, 5, 10, 20, 30, 69]
+  losses_v0_config.bb_config.assembly_version:
+    value: 3
