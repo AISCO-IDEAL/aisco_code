@@ -168,16 +168,14 @@ class TotalLoss:
             # o: maximise cruising speed (CSE)
             o: torch.Tensor
             if self.losses_config["general_info"]["CSE"] == "True":  # TODO: go through each separate loss and check
-                o = torch.as_tensor(
-                    -1.0
-                    * cruising_speed(
-                        solar_power=loss_tensors[4],
-                        drag_force_at_25ms=loss_tensors[0],
-                        mass=210,
-                        c_losses=20,
-                        rolling_friction_coefficient=0.006,
-                    ),
-                    device=device,
+                o = -cruising_speed(
+                    solar_power=loss_tensors[4],
+                    drag_force_at_25ms=loss_tensors[0],
+                    mass=210,
+                    c_losses=20,
+                    rolling_friction_coefficient=0.006,
+                    max_iter=12,
+                    tol=1e-4,
                 )
             else:  # o: maximise solar power - drag losses
                 o = torch.as_tensor(-1.0 * (loss_tensors[4] - loss_tensors[0]), device=device)

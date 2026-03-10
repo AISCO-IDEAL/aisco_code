@@ -208,13 +208,14 @@ ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 check_untyped_defs = true
-files = ["subprojects/", "tests/"]
+files = ["subprojects/"]
 
 exclude = [
   "^build/",
   "^docs/",
   ".*fixed_renderer/.*", # <-- eschaerer: Fixed regex to catch it inside subprojects
   ".*/archive/.*",       # <-- eschaerer: Fixed regex typo
+  'tests/',
 ]
 
 [[tool.mypy.overrides]]
