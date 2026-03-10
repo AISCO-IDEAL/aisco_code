@@ -8,7 +8,7 @@ from subprojects.wp3_solar_estimator.australia.sun import get_solar_car_vec, get
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 
 
-class Route:
+class RouteV1:
     def __init__(self, cfg_path: str = "solar_configs/australia.yaml") -> None:
         """
         Loads the route points from the CSV file and stores them in a tensor for efficient access.

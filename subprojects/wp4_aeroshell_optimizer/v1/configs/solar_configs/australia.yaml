@@ -3,7 +3,7 @@ general:
   timezone: "Australia/Darwin" #insert "Australia/Darwin" or "Australia/Adelaide" here
 
 route_generation:
-
+  version: 1
   race_distance: 3026 # in km
   intervals: 100 # in km
 
@@ -13,4 +13,9 @@ sun_generation:
   start_date: "24/8/2025" # 2025 started on 24th of August (https://assets.worldsolarchallenge.org/app/uploads/2025/08/20102713/BWSC-2025-Official-Program-v4.pdf)
   use_different_tz: False #Whether to use different timezones depending on location
   solar_samples: 6
-  average_speed: 19 #in m/s
+
+
+
+simulation:
+  average_speed: 19 #in m/s (used for validation metrics)
+  num_points: 1000
