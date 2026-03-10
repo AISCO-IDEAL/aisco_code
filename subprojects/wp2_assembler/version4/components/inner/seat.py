@@ -88,7 +88,7 @@ class Seat:
         # make to cq.Face and mirror profile, to sweep around centerline with 1mm margin
         profile = profile_head.wires().val()
         face1 = cq.Face.makeFromWires(
-            profile 
+            profile
         )
         face2 = face1.mirror("XZ")
         w_sketch = face1.fuse(face2)
@@ -152,6 +152,27 @@ class Seat:
 
         return wedge.union(legroom)
 
+    def bounding_box_list(self) -> list[float]:
+        """
+        Compute a fast analytical bounding box for the seat without creating CAD geometry.
+
+        Returns:
+            [xmin, xmax, ymin, ymax, zmin, zmax]
+        """
+        ang_min = math.radians(self.minus_angle)
+        ang_plus = math.radians(self.plus_angle)
+
+        xmin = -math.sin(ang_min) * self.radius_top
+        xmax = max(self.Lr_l, math.sin(ang_plus) * self.radius_top)
+
+        ymin = -self.width / 2
+        ymax = self.width / 2
+
+        zmin = 0.0
+        zmax = max(self.radius_top, self.Lr_h)
+
+        return [xmin, xmax, ymin, ymax, zmin, zmax]
+
 
 if __name__ == "__main__":
     import time
@@ -166,6 +187,12 @@ if __name__ == "__main__":
     end = time.time()
     print(bbox_list)
     print(end - start)
+
+    start = time.time()
+    print(Seat().bounding_box_list())
+    end = time.time()
+    print(end - start)
+
     from ocp_vscode import show
 
     show(s)

@@ -2,13 +2,14 @@ import time
 from pathlib import Path
 from typing import Any
 
-import cadquery as cq
 import yaml
 
-from subprojects.wp2_assembler.version4.components.outer.outer_nbz import outer_nbz
+from subprojects.wp2_assembler.version4.components.inner.seat import Seat
+from subprojects.wp2_assembler.version4.components.inner.wheels import Wheels
+from subprojects.wp2_assembler.version4.components.outer.outer_nbz import aabb_inside_outer_nbz
 
 
-def check_validity(assembly_nr: int = 0):
+def check_validity(wheel_margin, seat_margin, assembly_nr: int = 0, nr_of_w: int=3):
     """
     Docstring for check_validity
 
@@ -17,16 +18,10 @@ def check_validity(assembly_nr: int = 0):
 
     checks validity of a given assembly. checks for collisions, and seat in wheels.
     """
-    wheel_margin = get_assembly_parameters("wheel_margin")
-    seat_margin = get_assembly_parameters("seat_margin")
-    nr_of_wheels = get_assembly_parameters("wheels.count")
 
-    if not isinstance(nr_of_wheels, int):
-        raise TypeError(f"nr_of_wheels must be int, got {type(nr_of_wheels).__name__}")
+    nr_of_wheels = nr_of_w
 
-    nr_of_wheels = int(nr_of_wheels)  # to avoid the mypy errors
-
-    map = generate_assembly_map(assembly_nr)
+    map = generate_assembly_map(assembly_nr, nr_of_w)
 
     positions = [(map["seat"]["x"], map["seat"]["y"], map["seat"]["z"])]
 
@@ -36,20 +31,36 @@ def check_validity(assembly_nr: int = 0):
     if all(
         p[0] == positions[1][0] for p in positions[1:]
     ):  # this checks if all wheels are in the same x. Would give problems with bounding box, nothing would be inside 60% of 0!
-        return False
+        return False, map
 
     bounding_boxes = [seat_margin] + [wheel_margin] * nr_of_wheels
 
     valid = check_no_collisions(positions, bounding_boxes)
     if not valid:
-        return False
+        return False, map
 
     positions_2d = [(i[0], i[1]) for i in positions]
 
     valid = point_in_polygon(positions_2d[0], positions_2d[1:])
 
-    return valid
+    return valid, map
 
+def bbox_list_to_margin_dict(bbox: list[float]) -> dict[str, float]:
+    # this function is needed as an adaptor, before we were working with dicts,
+    # but now our wheel and seat bounding boxes functions return a list.
+    # this function converts the list into a dict.
+    # yes, i know there are better ways to do this.
+
+    xmin, xmax, ymin, ymax, zmin, zmax = bbox
+
+    return {
+        "x_fwd": float(xmax),
+        "x_back": float(-xmin),
+        "y_up": float(ymax),
+        "y_down": float(-ymin),
+        "z_up": float(zmax),
+        "z_down": float(-zmin),
+    }
 
 def compute_aabb(pos, bb):
     """
@@ -136,7 +147,7 @@ def point_in_polygon(point, polygon, eps=1e-9):
     return inside
 
 
-def generate_assembly_map(assembly_nr: int = 0):
+def generate_assembly_map(assembly_nr: int = 0, nr_of_w: int = 3):
     """
     Docstring for generate_assembly_map
 
@@ -145,15 +156,15 @@ def generate_assembly_map(assembly_nr: int = 0):
 
     returns a dict with the parameters of a given assembly
     """
-    nr_of_wheels = get_assembly_parameters("wheels.count")
+    nr_of_wheels = nr_of_w
 
-    if not isinstance(nr_of_wheels, int):
-        raise TypeError(f"nr_of_wheels must be int, got {type(nr_of_wheels).__name__}")
+    ordered = get_assembly_parameters("seat.combinations")
+    unordered = get_assembly_parameters("wheel.combinations")
 
-    nr_of_wheels = int(nr_of_wheels)  # to avoid the mypy errors
+    if not isinstance(unordered, dict):
+        raise TypeError("Expected 'wheels' assembly parameters to be a dict")
 
-    ordered = get_assembly_parameters("seat")
-    unordered = get_assembly_parameters("wheels")
+    unordered['count'] = nr_of_w    # patch fix. count is now a list, so we have to make it back to a single int.
 
     map: dict[str, Any] = {  # start of map
         "real id": assembly_nr,
@@ -281,6 +292,7 @@ def get_combination(n, ordered, unordered):
         m *= h
 
     k = unordered["count"]
+
     unordered_total = nck(m + k - 1, k)
 
     total = ordered_total * unordered_total
@@ -323,16 +335,16 @@ def get_combination(n, ordered, unordered):
     return {"ordered": ordered_vals, "unordered": wheel_vals, "total": total}
 
 
-def get_assembly_parameters(section: str) -> int | float:
+def get_assembly_parameters(section: str) -> int | float | dict[str, Any]:
     """
     Fetch regulation data from a YAML configuration file.
     Args:
         section (str): The section of the regulations to retrieve, e.g. dimensions.max_length
     Returns:
-        int | float: The value of the specified regulation section, or -1 if not found.
+        int | float | dict: The value of the specified regulation section, or -1 if not found.
     """
     keys = section.split(".")
-    config_path = Path(__file__).parent.parent / "config" / "Assembly_parameters.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "regulations_and_parameters.yaml"
 
     with config_path.open() as file:
         data = yaml.safe_load(file)
@@ -343,23 +355,21 @@ def get_assembly_parameters(section: str) -> int | float:
         if isinstance(current, dict) and key in current:
             current = current[key]
         else:
-            print("Error in get_regulation: Error 1 with: " + section)
+            print("Error in get_regulation: Error 13 with: " + section)
             # raise Exception("Error in get_regulation: Error 1")  # noqa: ERA001
             return -1  # Key not found or current is not a dict
 
     return current
+
 
 def filter_and_reindex_by_outer_nbz(
     assembly_map_path: Path,
     seat_margin: dict[str, float],
     tol: float = 1e-6,
 ) -> tuple[int, int]:
-    """
-    Deletes entries where the seat AABB is NOT fully inside the outer NBZ solid.
-    Then rewrites the YAML so IDs are contiguous: 0..N-1.
 
-    IMPORTANT: outer_nbz expects the YAML key (0,1,2,...) as assembly_id.
-    """
+
+    start_total = time.time()
 
     def compute_aabb(pos: tuple[float, float, float], bb: dict[str, float]) -> dict[str, float]:
         x, y, z = pos
@@ -372,56 +382,76 @@ def filter_and_reindex_by_outer_nbz(
             "zmax": z + bb["z_up"],
         }
 
-    def corners(aabb: dict[str, float]) -> list[tuple[float, float, float]]:
-        return [
-            (aabb["xmin"], aabb["ymin"], aabb["zmin"]),
-            (aabb["xmin"], aabb["ymin"], aabb["zmax"]),
-            (aabb["xmin"], aabb["ymax"], aabb["zmin"]),
-            (aabb["xmin"], aabb["ymax"], aabb["zmax"]),
-            (aabb["xmax"], aabb["ymin"], aabb["zmin"]),
-            (aabb["xmax"], aabb["ymin"], aabb["zmax"]),
-            (aabb["xmax"], aabb["ymax"], aabb["zmin"]),
-            (aabb["xmax"], aabb["ymax"], aabb["zmax"]),
-        ]
+    print("Loading assembly map...")
 
     with assembly_map_path.open("r") as f:
         data = yaml.safe_load(f) or {}
 
     items = sorted(data.items(), key=lambda kv: int(kv[0]))
+    total = len(items)
+
+    print(f"Loaded {total} assemblies")
 
     kept_entries: list[dict] = []
 
-    for yaml_id, entry in items:
-        assembly_id = int(yaml_id)  # THIS is what outer_nbz uses internally
+    last_print = time.time()
+
+    for i, (_yaml_id, entry) in enumerate(items):
 
         seat = entry["seat"]
         seat_pos = (float(seat["x"]), float(seat["y"]), float(seat["z"]))
 
-        solid = outer_nbz(assembly_id)  # fixed
-
         aabb = compute_aabb(seat_pos, seat_margin)
 
-        ok = True
-        for x, y, z in corners(aabb):
-            if not solid.isInside(cq.Vector(x, y, z), tol):
-                ok = False
-                break
-
-        if ok:
+        if aabb_inside_outer_nbz(entry, aabb, tol):
             kept_entries.append(entry)
 
+        # print progress every ~2 seconds
+        if time.time() - last_print > 2:
+            progress = 100 * i / total
+            elapsed = time.time() - start_total
+
+            print(
+                f"Progress: {i}/{total} ({progress:.1f}%) | "
+                f"kept={len(kept_entries)} | "
+                f"time={elapsed:.1f}s"
+            )
+
+            last_print = time.time()
+
+    print("Filtering finished")
+
+    print("Reindexing entries...")
+
     new_data = {i: kept_entries[i] for i in range(len(kept_entries))}
+
+    print("Writing YAML...")
 
     with assembly_map_path.open("w") as f:
         yaml.dump(new_data, f, default_flow_style=False, sort_keys=False)
 
     kept = len(kept_entries)
     removed = len(items) - kept
+
+    print(
+        f"Done | kept={kept} removed={removed} | "
+        f"total_time={time.time() - start_total:.2f}s"
+    )
+
     return kept, removed
 
-def make_assemblys():
-    ordered = get_assembly_parameters("seat")
-    unordered = get_assembly_parameters("wheels")
+def make_assemblys(nr_of_w):
+
+    wheel_margin = bbox_list_to_margin_dict(Wheels().bounding_box_list())
+    seat_margin = bbox_list_to_margin_dict(Seat().bounding_box_list())
+
+    ordered = get_assembly_parameters("seat.combinations")
+    unordered = get_assembly_parameters("wheel.combinations")
+
+    if not isinstance(unordered, dict):
+        raise TypeError("Expected 'wheels' assembly parameters to be a dict")
+
+    unordered["count"] = nr_of_w    # patch fix. count is now a list, so we have to make it nack to a single int.
 
     total = get_combination(0, ordered, unordered)["total"]
     print(total)
@@ -441,8 +471,9 @@ def make_assemblys():
                 save_assembly_parameters_batch(batch)
                 batch.clear()
 
-        if check_validity(i):
-            batch[batch_count] = generate_assembly_map(i)
+        valid, map = check_validity(wheel_margin, seat_margin, i, nr_of_w)
+        if valid:
+            batch[batch_count] = map
             batch_count += 1
 
     # Final flush
@@ -450,13 +481,18 @@ def make_assemblys():
         save_assembly_parameters_batch(batch)
 
     # NEW: filter + reindex based on outer NBZ containment
-    seat_margin = get_assembly_parameters("seat_margin")
+
     assembly_map_path = Path(__file__).parent.parent / "config" / "assembly_map.yaml"
 
     kept, removed = filter_and_reindex_by_outer_nbz(assembly_map_path, seat_margin)
     print(f"outer_nbz filter done: kept={kept}, removed={removed}")
 
     print(time.time() - start)
+
+def make_assemblys_for_n_wheels():
+    nr_of_w = get_assembly_parameters("wheel.combinations.count")
+    for i in nr_of_w:
+        make_assemblys(i)
 
 
 if __name__ == "__main__":
@@ -466,9 +502,7 @@ if __name__ == "__main__":
     """
     start = time.time()
 
-    make_assemblys()
-
-    # generate_assembly_map(552)  # noqa: ERA001
+    make_assemblys_for_n_wheels()
 
     end = time.time()
     print(end - start)

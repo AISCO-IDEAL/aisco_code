@@ -20,6 +20,8 @@ no_build_zones:
     pos_angle: 100           # degrees from x-axis around z-axis in positive direction (right-hand rule)
     neg_angle: 100           # degrees from x-axis around z-axis in negative direction (right-hand rule)
     inner_radius: 1          # mm distance from centerline to start of vision box
+    eye_level_z: 700         # mm from origin of seat - so where the butt of the driver would be
+
 
 tracker_box:
   dimension:
@@ -42,11 +44,17 @@ seat:
     lr_h: 350.0             # legroom height
     width_hr: 280.0         # headroom width
     height_hr: 300.0        # headroom height
+  combinations:             # Defines the grid of seat positions that will be generated.
+    start: [-1300,-924,100] # Minimum (x, y, z) coordinate of the grid.
+    end: [2900,924,100]     # Maximum (x, y, z) coordinate of the grid.
+    how_many: [3, 3, 1]     # Number of evenly spaced samples along each axis (x, y, z).
 
 # Wheel and tire specs
 wheel:
-  min_wheel_count: 3
   tire_width: 96            # mm Silvretta tyre width
   tire_diameter: 557        # mm Silvretta tyre radius
-  margin_axial: 0          # mm minimum clearance between tire and NBZ
-  margin_radial: 0         # mm minimum clearance around tire will go outside outer NBZ
+  combinations:             # Defines the grid of seat positions that will be generated.
+    count: [3,4]            # Allowed numbers of wheels to test when generating assemblies.
+    start: [-1300,-1101,0]  # Minimum (x, y, z) coordinate of the grid.
+    end: [2900,1101,0]      # Maximum (x, y, z) coordinate of the grid.
+    how_many: [3, 3, 1]     # Number of evenly spaced samples along each axis (x, y, z).

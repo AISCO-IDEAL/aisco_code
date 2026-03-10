@@ -82,7 +82,7 @@ def outer_nbz(assembly_id: int) -> cq.Solid:
 
     approach_angle = math.radians(get_regulation("no_build_zones.wheel_based_rules.approach_angle"))
     departure_angle = math.radians(get_regulation("no_build_zones.wheel_based_rules.departure_angle"))
-    wheel_radius = (get_regulation("wheel.margin_radial") + get_regulation("wheel.tire_diameter")) / 2
+    wheel_radius = get_regulation("wheel.tire_diameter") / 2
 
     A = (front_x + math.sin(approach_angle) * wheel_radius, wheel_radius - math.cos(approach_angle) * wheel_radius)
     B = (outer_xmax, A[1] + (abs(outer_xmax - front_x)) * math.tan(approach_angle))
@@ -120,6 +120,118 @@ def outer_nbz(assembly_id: int) -> cq.Solid:
 
     return result
 
+def aabb_inside_outer_nbz(  # noqa: PLR0915
+    entry: dict[str, object],
+    aabb: dict[str, float],
+    tol: float = 1e-6,
+) -> bool:
+    """
+    Fast analytical containment check for the seat AABB inside the outer NBZ.
+
+    This reproduces the same geometry logic as outer_nbz(), but without creating
+    any CadQuery geometry.
+
+    Args:
+        entry: One assembly entry from assembly_map.yaml
+        aabb: Dict with xmin, xmax, ymin, ymax, zmin, zmax
+        tol: Numerical tolerance
+
+    Returns:
+        True if all 8 AABB corners are inside the analytical outer NBZ
+    """
+
+    wheels = [
+        float(v["x"])
+        for k, v in entry.items()
+        if isinstance(v, dict) and k.startswith("wheel_") and "x" in v
+    ]
+    if not wheels:
+        raise ValueError("No wheels found in assembly entry")
+
+    back_x = min(wheels)
+    front_x = max(wheels)
+
+    front_factor = float(get_regulation("no_build_zones.wheel_based_rules.front_overhang"))
+    back_factor = float(get_regulation("no_build_zones.wheel_based_rules.rear_overhang"))
+    max_len = float(get_regulation("no_build_zones.outer_prism.length"))
+    max_width = float(get_regulation("no_build_zones.outer_prism.width"))
+    max_height = float(get_regulation("no_build_zones.outer_prism.height"))
+
+    approach_angle = math.radians(float(get_regulation("no_build_zones.wheel_based_rules.approach_angle")))
+    departure_angle = math.radians(float(get_regulation("no_build_zones.wheel_based_rules.departure_angle")))
+    wheel_radius = float(get_regulation("wheel.tire_diameter")) / 2.0
+
+    wheel_distance = abs(front_x - back_x)
+
+    outer_xmax = front_x + front_factor * wheel_distance
+    outer_xmin = back_x - back_factor * wheel_distance
+
+    outer_len = outer_xmax - outer_xmin
+    if outer_len > max_len:
+        center_x = 0.5 * (outer_xmax + outer_xmin)
+        outer_xmin = center_x - max_len / 2.0
+        outer_xmax = center_x + max_len / 2.0
+
+    a_front_x = front_x + math.sin(approach_angle) * wheel_radius
+    a_front_z = wheel_radius - math.cos(approach_angle) * wheel_radius
+    b_front_x = outer_xmax
+    b_front_z = a_front_z + abs(outer_xmax - front_x) * math.tan(approach_angle)
+
+    a_rear_x = back_x - math.sin(departure_angle) * wheel_radius
+    a_rear_z = wheel_radius - math.cos(departure_angle) * wheel_radius
+    b_rear_x = outer_xmin
+    b_rear_z = a_rear_z + abs(outer_xmin - back_x) * math.tan(departure_angle)
+
+    def line_z(x: float, x1: float, z1: float, x2: float, z2: float) -> float:
+        if abs(x2 - x1) < tol:
+            return max(z1, z2)
+        return z1 + (x - x1) * (z2 - z1) / (x2 - x1)
+
+    def wheel_arc_z(x: float, wheel_center_x: float) -> float:
+        dx = x - wheel_center_x
+        inside = wheel_radius**2 - dx**2
+        if inside < 0:
+            inside = 0.0
+        return wheel_radius - math.sqrt(inside)
+
+    def required_min_z(x: float) -> float:
+        z_req = 0.0
+
+        if front_x - tol <= x <= outer_xmax + tol:
+            if x <= a_front_x + tol:
+                z_req = max(z_req, wheel_arc_z(x, front_x))
+            else:
+                z_req = max(z_req, line_z(x, a_front_x, a_front_z, b_front_x, b_front_z))
+
+        if outer_xmin - tol <= x <= back_x + tol:
+            if x >= a_rear_x - tol:
+                z_req = max(z_req, wheel_arc_z(x, back_x))
+            else:
+                z_req = max(z_req, line_z(x, b_rear_x, b_rear_z, a_rear_x, a_rear_z))
+
+        return z_req
+
+    def point_inside(x: float, y: float, z: float) -> bool:
+        if x < outer_xmin - tol or x > outer_xmax + tol:
+            return False
+        if y < -max_width / 2.0 - tol or y > max_width / 2.0 + tol:
+            return False
+        if z < 0.0 - tol or z > max_height + tol:
+            return False
+        return not z < required_min_z(x) - tol
+
+    corners = [
+        (aabb["xmin"], aabb["ymin"], aabb["zmin"]),
+        (aabb["xmin"], aabb["ymin"], aabb["zmax"]),
+        (aabb["xmin"], aabb["ymax"], aabb["zmin"]),
+        (aabb["xmin"], aabb["ymax"], aabb["zmax"]),
+        (aabb["xmax"], aabb["ymin"], aabb["zmin"]),
+        (aabb["xmax"], aabb["ymin"], aabb["zmax"]),
+        (aabb["xmax"], aabb["ymax"], aabb["zmin"]),
+        (aabb["xmax"], aabb["ymax"], aabb["zmax"]),
+    ]
+
+    return all(point_inside(x, y, z) for x, y, z in corners)
 
 if __name__ == "__main__":
     demo_id = 1

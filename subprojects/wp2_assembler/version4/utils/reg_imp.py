@@ -12,7 +12,7 @@ def get_regulation(section: str) -> int | float:
         int | float: The value of the specified regulation section, or -1 if not found.
     """
     keys = section.split(".")
-    config_path = Path(__file__).parent.parent / "config" / "example_regulations.yaml"
+    config_path = Path(__file__).parent.parent / "config" / "regulations_and_parameters.yaml"
 
     with config_path.open() as file:
         data = yaml.safe_load(file)
@@ -23,7 +23,7 @@ def get_regulation(section: str) -> int | float:
         if isinstance(current, dict) and key in current:
             current = current[key]
         else:
-            print("Error in get_regulation: Error 1 with: " + section)
+            print("Error in get_regulation: Error 11 with: " + section)
             # raise Exception("Error in get_regulation: Error 1")  # noqa: ERA001
             return -1  # Key not found or current is not a dict
 
@@ -31,7 +31,7 @@ def get_regulation(section: str) -> int | float:
     if isinstance(current, (int, float)):
         return current
 
-    print("Error in get_regulation: Error 2 with: " + section)
+    print("Error in get_regulation: Error 20 with: " + section)
     # raise Exception("Error in get_regulation: Error 2") # noqa: ERA001
     return -1  # Final value is not a number
 

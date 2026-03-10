@@ -1,32 +1,49 @@
 """
-
 READ ME!
 
-This file search for all uses in version 4 of the parameters defined in example rules.
-it says where there are used and what line.
-Usefull to see where they lead to, or if they are unusued.
+This file searches for all uses in version4 of the parameters defined in a YAML file.
+It shows where they are used and on which line.
+It can also search for parent names.
 
+Example:
+If the YAML contains:
+
+wheels:
+  x: 15
+
+it will search for both:
+- wheels
+- wheels.x
 """
 
 from pathlib import Path
 
 import yaml
 
-REGULATIONS_FILE = Path("subprojects/wp2_assembler/version4/config/example_regulations.yaml")
+REGULATIONS_FILE = Path("subprojects/wp2_assembler/version4/config/regulations_and_parameters.yaml")
 SEARCH_ROOT = Path("subprojects/wp2_assembler/version4")
 FILE_EXTENSIONS = {".py", ".yaml", ".yml", ".txt", ".md"}
 
-def flatten_dict(data: object, prefix: str = "") -> dict[str, object]:
+
+def flatten_dict_with_parents(data: object, prefix: str = "") -> dict[str, object]:
     flat: dict[str, object] = {}
 
     if isinstance(data, dict):
+        if prefix:
+            flat[prefix] = "<dict>"
+
         for key, value in data.items():
             new_prefix = f"{prefix}.{key}" if prefix else str(key)
-            flat.update(flatten_dict(value, new_prefix))
+            flat.update(flatten_dict_with_parents(value, new_prefix))
+
     elif isinstance(data, list):
+        if prefix:
+            flat[prefix] = "<list>"
+
         for i, value in enumerate(data):
             new_prefix = f"{prefix}[{i}]"
-            flat.update(flatten_dict(value, new_prefix))
+            flat.update(flatten_dict_with_parents(value, new_prefix))
+
     else:
         flat[prefix] = data
 
@@ -40,7 +57,7 @@ def load_regulation_keys(path: Path) -> dict[str, object]:
     if data is None:
         return {}
 
-    return flatten_dict(data)
+    return flatten_dict_with_parents(data)
 
 
 def search_key_usage(search_root: Path, key: str) -> list[str]:
@@ -99,15 +116,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-
-    """
-
-    READ ME!
-
-    This file search for all uses in version 4 of the parameters defined in example rules.
-    it says where there are used and what line.
-    Usefull to see where they lead to, or if they are unusued.
-
-    """
-
     main()

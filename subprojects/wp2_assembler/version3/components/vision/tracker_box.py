@@ -17,11 +17,11 @@ def tracker_box_nbz(
     g_box_len = get_regulation("tracker_box.dimension.length")
     g_box_wid = get_regulation("tracker_box.dimension.width")
     g_box_hei = get_regulation("tracker_box.dimension.height")
-    #print(f"Creating box with dimensions {g_box_len} x {g_box_wid} x {g_box_hei} mm")
+    #print(f"Creating box with dimensions {g_box_len} x {g_box_wid} x {g_box_hei} mm")  # noqa: ERA001
 
     cone_hei = get_regulation("tracker_box.cone.height")
     cone_apex_angle = get_regulation("tracker_box.cone.apex_angle")
-    #print(f"Creating cone with height {cone_hei} mm and apex angle {cone_apex_angle}°")
+    #print(f"Creating cone with height {cone_hei} mm and apex angle {cone_apex_angle}°")  # noqa: ERA001
 
     theta = math.radians(cone_apex_angle) / 2.0
     r = cone_hei * math.tan(theta)
@@ -45,7 +45,7 @@ def tracker_box_nbz(
         .add(cone)
         .translate((0, 0, g_box_hei / 2))
     )
-    
+
     if box_and_cone:
         return box, vision_cone
 
@@ -61,7 +61,7 @@ def tracker_cone_nbz() -> cq.Solid:
 
     cone_hei = get_regulation("tracker_box.cone.height")
     cone_apex_angle = get_regulation("tracker_box.cone.apex_angle")
-    #print(f"Creating cone with height {cone_hei} mm and apex angle {cone_apex_angle}°")
+    #print(f"Creating cone with height {cone_hei} mm and apex angle {cone_apex_angle}°")  # noqa: ERA001
 
     theta = math.radians(cone_apex_angle) / 2.0
     r = cone_hei * math.tan(theta)

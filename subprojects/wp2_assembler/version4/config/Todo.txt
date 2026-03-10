@@ -1,11 +1,11 @@
 Add outer box / done
-Add vision cones / postponed
-un-hard code bounding boxes in assembly map paramaters
-Grab assembly map parameters positions from rules
+Add vision cones / done
+un-hard code bounding boxes in assembly map paramaters / done
+Fix assemly maker / done
+Add n wheel assembly maker / done
+update readme / done
+
+Grab assembly map parameters positions from rules / done
 
 Fix mypy / done
 fix ruff / done
-
-Optional:
-Change assembly map from yaml to json
-Split yaml into multiple

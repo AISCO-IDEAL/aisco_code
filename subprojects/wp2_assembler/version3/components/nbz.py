@@ -8,10 +8,10 @@ from subprojects.wp2_assembler.version3.components.inner.base_triangle import Tr
 from subprojects.wp2_assembler.version3.components.inner.seat import Seat
 from subprojects.wp2_assembler.version3.components.inner.wheels import Wheels
 from subprojects.wp2_assembler.version3.components.outer.outer_box import outer_box2
+from subprojects.wp2_assembler.version3.components.outer.outer_nbz_ramps import outer_nbz_ramps
 from subprojects.wp2_assembler.version3.components.vision import tracker_box, vision_box
 from subprojects.wp2_assembler.version3.utils.distributions import uniform_distribution
 from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
-from subprojects.wp2_assembler.version3.components.outer.outer_nbz_ramps import outer_nbz_ramps
 
 
 class WheelbaseTooSmallError(Exception):
@@ -99,7 +99,7 @@ def outer_nbz(length: float, width: float, height: float) -> cq.Solid:
     return box
 
 
-def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length) -> cq.Assembly:
+def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length, get_box) -> cq.Assembly:
     """
     Generate a cadquery Assembly of the driver's and the tracker's vision NBZ with given parameters from regulations
     Args: regulations.yaml
@@ -265,13 +265,12 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
     box_width = get_regulation("no_build_zones.outer_prism.width")
     box_height = get_regulation("no_build_zones.outer_prism.height")
 
-    outer = outer_nbz(params["wheel_base_length"] * 2.2, box_width, box_height)
-
+    outer = outer_nbz(params["wheel_base_length"] * 2.2, box_width, box_height)  # noqa: F841
 
     box, vision = vision_nbz(params["seat_position"], seat_pos_z, params["wheel_base_length"], get_box=True)
     assembly.add(box)
 
-    outer_with_ramps = outer_nbz_ramps(assembly, outer)
+    outer_with_ramps = outer_nbz_ramps(id_number)
 
     return assembly, outer_with_ramps, vision
 
@@ -348,7 +347,7 @@ def get_range_seat(wheelbase_width: float, wheelbase_length: float) -> dict:
     }
     return ranges
 
-def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
+def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid, list[cq.Solid]]:
     """
     Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
 
@@ -363,12 +362,12 @@ def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
 def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     """
     Docstring for bounding_box_of_assembly
-    
+
     :param id_number: id number of the assembly of the wanted bounding box
     :return: tuple with touples with ((x_min, y_min, z_min),(x_max,y_max,z_max))
     :rtype: tuple[tuple[float, float, float], tuple[float, float, float]]
     """
-    inner, _ = call_assembly(id_number)
+    inner, _, _ = call_assembly(id_number)
     inner_bounding_box = inner.toCompound().BoundingBox()
 
     return (
@@ -386,7 +385,7 @@ def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float]
 def create_bb_visualization(BB_coords: tuple[tuple[float, float, float], tuple[float, float, float]]) -> cq.Solid:
     """
     Docstring for create_bb_visualization
-    
+
     :param BB_coords: Tuple with tuples with the coordinates of the bounding box wanted to visualize
     :type BB_coords: tuple[tuple[float, float, float], tuple[float, float, float]]
     :return: solid of Bounding Box wanted to visualize

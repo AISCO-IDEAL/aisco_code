@@ -85,3 +85,4 @@ if __name__ == "__main__":
 
     show(ramps, inner_cmp)
     print(type(ramps))
+    '''
