@@ -80,10 +80,7 @@ def _build_gaot_config(model_config, input_size: int, output_size: int) -> dict[
     else:
         # OmegaConf DictConfig or similar
         cfg_container = OmegaConf.to_container(args, resolve=True)
-        if isinstance(cfg_container, dict):
-            cfg = {str(k): v for k, v in cfg_container.items()}
-        else:
-            cfg = {}
+        cfg = {str(k): v for k, v in cfg_container.items()} if isinstance(cfg_container, dict) else {}
 
     # Inject runtime-detected sizes
     cfg["input_size"] = input_size
