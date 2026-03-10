@@ -9,3 +9,5 @@ Grab assembly map parameters positions from rules / done
 
 Fix mypy / done
 fix ruff / done
+
+Cut assembly below for wp4
