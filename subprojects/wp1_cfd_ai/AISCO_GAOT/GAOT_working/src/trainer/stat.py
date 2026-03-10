@@ -63,7 +63,7 @@ def _magno_set(model_config, key, value):
         setattr(magno, key, value)
 
 
-def _build_gaot_config(model_config, input_size: int, output_size: int) -> dict:
+def _build_gaot_config(model_config, input_size: int, output_size: int) -> dict[str, Any]:
     """
     Build the flat config dict that GAOT3D expects from the structured
     ModelConfig dataclass.  Runtime-detected input_size / output_size
@@ -72,6 +72,7 @@ def _build_gaot_config(model_config, input_size: int, output_size: int) -> dict:
     args = model_config.args
 
     # args may be a dataclass (ModelArgsConfig) or already a dict
+    cfg: dict[str, Any]
     if hasattr(args, "__dataclass_fields__"):
         cfg = asdict(args)
     elif isinstance(args, dict):
@@ -79,7 +80,10 @@ def _build_gaot_config(model_config, input_size: int, output_size: int) -> dict:
     else:
         # OmegaConf DictConfig or similar
         cfg_container = OmegaConf.to_container(args, resolve=True)
-        cfg = dict(cfg_container) if isinstance(cfg_container, dict) else {}
+        if isinstance(cfg_container, dict):
+            cfg = {str(k): v for k, v in cfg_container.items()}
+        else:
+            cfg = {}
 
     # Inject runtime-detected sizes
     cfg["input_size"] = input_size
