@@ -234,7 +234,7 @@
 
     async function refreshLogs() {
       try {
-        const res = await fetch("/run-local/logs");
+        const res = await fetch(`/run-local/logs?t=${Date.now()}`, { cache: "no-store" });
         const data = await res.json();
         const meta = [
           `running=${data.running}`,
@@ -244,6 +244,7 @@
         ].join(" | ");
         const body = data.logs && data.logs.length > 0 ? data.logs : "<empty log>";
         runLocalLogs.textContent = `${meta}\n\n${body}`;
+        runLocalLogs.scrollTop = runLocalLogs.scrollHeight;
       } catch (error) {
         runLocalLogs.textContent = `Failed to load logs: ${error}`;
       }
@@ -260,9 +261,9 @@
       }
 
       refreshLogs();
-      autoLogTimer = setInterval(refreshLogs, 2000);
+      autoLogTimer = setInterval(refreshLogs, 1000);
       button.textContent = "Stop auto-refresh";
-      setStatus(`[${nowStamp()}] Auto-refresh started (2s interval).`);
+      setStatus(`[${nowStamp()}] Auto-refresh started (1s interval).`);
     }
 
     async function runCommand() {
