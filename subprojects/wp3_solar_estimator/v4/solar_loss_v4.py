@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Any
 
 import torch
-
 import wandb
+
 from subprojects.wp3_solar_estimator.australia.route_v1 import RouteV1 as Route
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
