@@ -93,6 +93,8 @@ dataset:
     training_strategy: "full_grid"
     uncertainty_weighting: true
     field_loss_weight: 1.0
+    use_rescale_new: true
+    active_variables:
 
 optimizer:
     name: "adamw"
@@ -108,6 +110,7 @@ optimizer:
         final_lr: 1e-5
         save_every_epochs: 10
         save_every_steps: 0
+        early_save_metric: "val"
 
 path:
     ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/euler_field_new__RUN_ID_.pt"

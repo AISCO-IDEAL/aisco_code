@@ -408,6 +408,10 @@ class AdamWOptimizer:
                     "val/rel_l2": val_rel_l2,
                     "lr": current_lr,
                 }
+                # Add per-head val losses (force, cd, field)
+                for k, v in val_metrics.items():
+                    if k.startswith("head_"):
+                        metrics[f"val/MSE_{k[5:]}"] = v
 
                 # Add averaged head-specific MSEs and Gradient Norms
                 if epoch_grad_norms and num_batches > 0:
@@ -420,6 +424,14 @@ class AdamWOptimizer:
 
                 val_losses.append(val_mse)
                 val_epochs.append(epoch)
+
+                # Per-epoch visualization logging
+                if hasattr(trainer, 'visualize_sample'):
+                    try:
+                        trainer.visualize_sample(epoch)
+                    except Exception as e:
+                        logging.getLogger(__name__).warning(f"Visualization failed at epoch {epoch + 1}: {e}")
+                    trainer.model.train()
 
                 metrics["memory"] = psutil.Process(os.getpid()).memory_info().rss / 1e9
                 metrics["gpu_memory_MB"] = torch.cuda.max_memory_allocated() / 1e6
