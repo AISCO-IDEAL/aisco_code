@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-
 import wandb
 
 if TYPE_CHECKING:
