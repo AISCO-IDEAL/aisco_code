@@ -29,8 +29,8 @@ from typing import Any
 import numpy as np
 import torch
 import trimesh
-import wandb
 
+import wandb
 from subprojects.wp3_solar_estimator.v2.src.kaolin_utils import get_diff_mesh
 from subprojects.wp3_solar_estimator.v2.src.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import CADVisualizer as CADVisualizerBB
