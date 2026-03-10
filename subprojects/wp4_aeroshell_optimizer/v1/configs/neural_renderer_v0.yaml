@@ -85,7 +85,7 @@ rendering_modes:
   # Gif of which solar cells would be selected with the dot-product approach, given a budget and soalr angle in solar_loss_config.yaml
   solar_selection_mode:
     #Mandatory
-    enabled: true
+    enabled: false
     class_path: "custom_modes.solar_selection:SolarSelectionMode"
     #config for solar selection
     config:
@@ -100,7 +100,7 @@ rendering_modes:
   # Gif of the solar power of each face using the dot-product approach, green is good, red is bad
   solar_power_mode:
     #Mandatory
-    enabled: true
+    enabled: false
     class_path: "custom_modes.solar_power:SolarPower"
     #config for solar selection
     config:
