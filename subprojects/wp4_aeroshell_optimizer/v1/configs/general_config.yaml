@@ -5,10 +5,12 @@ general_info:
   pre: "a sphere as initial shape, datatype: SDF"
   post: "a PLY file representing the optimized aeroshell shape"
   config_debugging: "True" # adds print statements if config loading is succesfull
+  run_locally: "True"
 
 model_def:
   model_name: "BasicMLP"
   model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/basic_MLP_v1"
+  local_model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/basic_MLP_v1"
 
 
 active_configs:
@@ -31,10 +33,14 @@ wandb_general:
 
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
   pretrained_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset"
+  local_pretrained_dir: "./local_pretrained_dir" # only used for testing on local machine, not on cluster
   storage_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+  local_storage_dir: "./local_storage_dir" # only used for testing on local machine, not on cluster
   #Outdated, new version uses better storage solution
   model_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/models"
+  local_model_dir: "./local_model_dir" # only used for testing on local machine, not on cluster
   mesh_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/meshes" #Outdated
+  local_mesh_dir: "./local_mesh_dir" # only used for testing on local machine, not on cluster, Outdated
 
 # master example of how to reference other config files:
 #     def __pointgrid_geni(self) -> list[list[float]]:

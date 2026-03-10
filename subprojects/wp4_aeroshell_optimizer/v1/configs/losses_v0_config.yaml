@@ -1,7 +1,7 @@
 general_info:
   config_debugging: "True"
   ALM: "True"  # Augmented Lagrangian Method
-  CSE: "True"  # Cruising Speed Estimation
+  CSE: "False"  # Cruising Speed Estimation
   alm_thresholds: [0.1, 0.1, 0.1]  # thresholds for constraint losses [bb, eikonal, smoothness]
   initial_lambda: 0.01  # initial value for lambda in ALM
   alpha: 0.99  # factor to increase mu in ALM if constraint not met

@@ -1,12 +1,17 @@
 import json
+import os
 from pathlib import Path
 
-import wandb
 import yaml
+
+import wandb
 
 
 def load_config(v="v1", cfg_name="general_config.yaml") -> dict:
-    config_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
+    # Use environment variable or default to local path
+    v = v
+    base_path = Path(os.getenv("AISCO_CODE_PATH", str(Path.home() / "AISCO_code")))
+    config_path = base_path / "subprojects" / "wp4_aeroshell_optimizer" / "v1" / "configs" / cfg_name
 
     try:
         with config_path.open() as f:
