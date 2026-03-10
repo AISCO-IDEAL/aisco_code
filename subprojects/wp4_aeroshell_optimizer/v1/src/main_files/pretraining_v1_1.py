@@ -22,6 +22,7 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
     model = ModelClass()
     return model
 
+
 # 2026 03 05, eschaerer:
 # look i'm not sure if the changes i made also work on the HPC. Please revert them if they don't
 def pretraining(
