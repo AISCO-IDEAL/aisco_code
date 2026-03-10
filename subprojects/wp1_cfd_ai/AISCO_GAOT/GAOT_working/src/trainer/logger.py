@@ -130,6 +130,20 @@ class WandbTracker:
         else:
             return ckpt_path, artifact.metadata
 
+    def log_image(self, key: str, image, step: int | None = None, caption: str | None = None) -> None:
+        """Log a matplotlib figure or PIL image to W&B."""
+        if not self.enabled or not self.wandb_run:
+            return
+        try:
+            img = wandb.Image(image, caption=caption)
+            payload = {key: img}
+            if step is not None:
+                wandb.log(payload, step=step)
+            else:
+                wandb.log(payload)
+        except Exception as e:
+            self.logger.warning(f"Failed to log image to W&B: {e}")
+
     def close(self) -> None:
         if not self.enabled or not self.wandb_run:
             return

@@ -125,7 +125,7 @@ class TrainerBase:
         )
 
         dist.init_process_group(
-            backend=self.setup_config.backend,
+            backend=getattr(self.setup_config, "backend", "nccl"),
             init_method="env://",
             world_size=self.setup_config.world_size,
             rank=self.setup_config.rank,

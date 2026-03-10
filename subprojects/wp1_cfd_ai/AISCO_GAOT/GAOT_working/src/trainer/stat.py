@@ -1,11 +1,13 @@
 import logging
 import math
 import os
+import random
 import statistics
 import time
 from dataclasses import asdict
 from typing import Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as f
@@ -108,10 +110,10 @@ class StaticTrainer3D(TrainerBase):
         self._uncertainty_weighting = getattr(self.dataset_config, "uncertainty_weighting", False)
         if self._uncertainty_weighting:
             self.log_sigma_field = torch.nn.Parameter(
-                torch.tensor([math.log(50.0)], device=self.device)
+                torch.tensor([math.log(75.0)], device=self.device)
             )
             self.log_sigma_scalar = torch.nn.Parameter(
-                torch.tensor([math.log(1)], device=self.device)
+                torch.tensor([math.log(0.5)], device=self.device)
             )
             # Register as an extra param group in the existing AdamW optimizer
             # (no weight-decay on task-noise parameters)
@@ -672,6 +674,110 @@ class StaticTrainer3D(TrainerBase):
 
         return sampled_data_list, query_pos, query_batch_idx, field_target
 
+    def _pick_viz_samples(self):
+        """Randomly select one sample from train and one from val for per-epoch visualisation."""
+        # Use a fresh RNG seeded from OS entropy so the global training seed doesn't fix these picks
+        rng = random.Random(int.from_bytes(os.urandom(4), "big"))
+        train_idx = rng.randint(0, len(self.train_loader.dataset) - 1)
+        val_idx = rng.randint(0, len(self.val_loader.dataset) - 1)
+        train_sample = self.train_loader.dataset[train_idx]
+        val_sample = self.val_loader.dataset[val_idx]
+        logging.getLogger(__name__).info(
+            f"Rank {self.setup_config.rank}: Viz samples — "
+            f"train[{train_idx}] ({getattr(train_sample, 'filename', 'N/A')}), "
+            f"val[{val_idx}] ({getattr(val_sample, 'filename', 'N/A')})"
+        )
+        return train_sample, val_sample
+
+    def _run_viz_for_sample(self, sample, split_label: str, epoch: int):
+        """Run inference on a single sample and log field + scalar images to W&B."""
+        loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
+        batch = next(iter(loader)).to(self.device)
+        latent_tokens_dev = self.latent_tokens.to(self.device)
+        with torch.no_grad():
+            pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
+
+        coords = batch.pos.cpu().numpy()
+        fname = getattr(sample, 'filename', split_label)
+
+        # --- Field visualisation ---
+        if isinstance(pred, dict) and 'field' in pred:
+            field_pred = pred['field'].cpu().numpy().squeeze()
+            field_gt = batch.x.cpu().numpy().squeeze() if batch.x is not None else None
+
+            if field_gt is not None:
+                u_mean = self.u_mean.cpu().numpy().item() if self.u_mean.numel() == 1 else 0.0
+                u_std = self.u_std.cpu().numpy().item() if self.u_std.numel() == 1 else 1.0
+                field_pred_dn = field_pred * u_std + u_mean
+                field_gt_dn = field_gt * u_std + u_mean
+                field_diff = np.abs(field_gt_dn - field_pred_dn)
+
+                common_min = min(np.min(field_gt_dn), np.min(field_pred_dn))
+                common_max = max(np.max(field_gt_dn), np.max(field_pred_dn))
+
+                fig = plt.figure(figsize=(20, 6))
+                for panel_idx, (data, title, cmap_name, vmin, vmax) in enumerate([
+                    (field_gt_dn, 'Ground Truth', 'jet', common_min, common_max),
+                    (field_pred_dn, 'Prediction', 'jet', common_min, common_max),
+                    (field_diff, 'Absolute Difference', 'Reds', None, None),
+                ]):
+                    ax = fig.add_subplot(1, 3, panel_idx + 1, projection='3d')
+                    sc = ax.scatter(coords[:, 0], coords[:, 1], coords[:, 2],
+                                    c=data, cmap=cmap_name, s=2, vmin=vmin, vmax=vmax, depthshade=False)
+                    ax.set_title(title)
+                    fig.colorbar(sc, ax=ax, shrink=0.5)
+                    ax.view_init(elev=20, azim=-120)
+
+                fig.suptitle(f'Pressure Field [{split_label}] {fname} — Epoch {epoch + 1}', fontsize=13)
+                plt.tight_layout()
+                self.tracker.log_image(f'viz/{split_label}/pressure_field', fig, step=epoch + 1,
+                                       caption=f'{split_label} {fname} epoch {epoch + 1}')
+                plt.close(fig)
+
+        # --- Scalar visualisation ---
+        if isinstance(pred, dict):
+            scalar_parts = []
+            for head in ['force', 'cd']:
+                if head in pred and hasattr(batch, head):
+                    p = pred[head].cpu().item()
+                    gt_val = getattr(batch, head)
+                    if gt_val is not None and not torch.isnan(gt_val).all():
+                        g = gt_val.cpu().item()
+                        if hasattr(self, 'per_head_stats') and head in self.per_head_stats:
+                            h_mean = self.per_head_stats[head]['mean'].item()
+                            h_std = self.per_head_stats[head]['std'].item()
+                            p = p * h_std + h_mean
+                            g = g * h_std + h_mean
+                        scalar_parts.append((head, g, p))
+
+            if scalar_parts:
+                fig, axes = plt.subplots(1, len(scalar_parts), figsize=(5 * len(scalar_parts), 4))
+                if len(scalar_parts) == 1:
+                    axes = [axes]
+                for ax, (name, gt_v, pr_v) in zip(axes, scalar_parts, strict=False):
+                    ax.bar(['GT', 'Pred'], [gt_v, pr_v], color=['steelblue', 'coral'])
+                    ax.set_title(f'{name}  (GT={gt_v:.4f}, Pred={pr_v:.4f})')
+                    ax.set_ylabel(name)
+                fig.suptitle(f'Scalars [{split_label}] {fname} — Epoch {epoch + 1}', fontsize=13)
+                plt.tight_layout()
+                self.tracker.log_image(f'viz/{split_label}/scalar_predictions', fig, step=epoch + 1,
+                                       caption=f'{split_label} {fname} epoch {epoch + 1}')
+                plt.close(fig)
+
+    def visualize_sample(self, epoch: int):
+        """Run inference on fixed train+val samples and log images to W&B each epoch."""
+        if self.setup_config.rank != 0:
+            return
+        if not hasattr(self, '_viz_train_sample'):
+            self._viz_train_sample, self._viz_val_sample = self._pick_viz_samples()
+
+        self.model.eval()
+        for sample, label in [(self._viz_train_sample, 'train'), (self._viz_val_sample, 'val')]:
+            try:
+                self._run_viz_for_sample(sample, label, epoch)
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"Viz failed for {label} sample: {e}")
+
     def train_step(self, batch: "pyg.data.Batch"):  # noqa: PLR0912, PLR0915
         strategy = self.dataset_config.training_strategy
         latent_tokens_dev = self.latent_tokens.to(self.device)
@@ -773,10 +879,24 @@ class StaticTrainer3D(TrainerBase):
             target = batch.y
             return self.loss_fn(pred, target), {}
 
+    def _add_field_loss(self, batch, pred, loss, head_losses):
+        """Compute field MSE and add it to loss; updates head_losses in-place."""
+        if "field" not in pred or not hasattr(batch, "x") or batch.x is None:
+            return loss
+        ft = batch.x.to(self.device)
+        valid = ~torch.isnan(ft)
+        if valid.any():
+            field_loss = f.mse_loss(pred["field"][valid], ft[valid])
+            head_losses["field"] = head_losses.get("field", 0.0) + field_loss.item()
+            field_weight = getattr(self.dataset_config, "field_loss_weight", 1.0)
+            loss = loss + field_weight * field_loss
+        return loss
+
     def validate(self, loader: DataLoader):
         self.model.eval()
         total_loss = 0.0
         total_rel_l2 = 0.0
+        head_losses: dict[str, float] = {}
         num_batches = len(loader)
 
         with torch.no_grad():
@@ -793,19 +913,24 @@ class StaticTrainer3D(TrainerBase):
 
                     loss = masked_multi_head_loss(pred, targets)
 
+                    # --- Per-head scalar MSE ---
+                    loss_fn_none = torch.nn.MSELoss(reduction="none")
+                    for head_name, gt_raw in targets.items():
+                        if head_name not in pred or gt_raw is None:
+                            continue
+                        gt_head = gt_raw.to(self.device).view_as(pred[head_name])
+                        valid = ~torch.isnan(gt_head)
+                        if valid.any():
+                            head_mse = loss_fn_none(pred[head_name][valid], gt_head[valid]).mean().item()
+                            head_losses[head_name] = head_losses.get(head_name, 0.0) + head_mse
+
                     # For Relative L2, we use the primary head (e.g., 'force')
                     primary_key = self.active_heads[0] if self.active_heads else next(iter(pred.keys()))
                     p = pred[primary_key]
                     t = targets[primary_key]
 
                     # --- Field loss ---
-                    if "field" in pred and hasattr(batch, "x") and batch.x is not None:
-                        ft = batch.x.to(self.device)
-                        valid = ~torch.isnan(ft)
-                        if valid.any():
-                            field_loss = f.mse_loss(pred["field"][valid], ft[valid])
-                            field_weight = getattr(self.dataset_config, "field_loss_weight", 1.0)
-                            loss = loss + field_weight * field_loss
+                    loss = self._add_field_loss(batch, pred, loss, head_losses)
                 else:
                     target = batch.y
                     loss = self.loss_fn(pred, target)
@@ -839,7 +964,10 @@ class StaticTrainer3D(TrainerBase):
 
         denom = num_batches * world_size
 
-        return {"loss": local_metrics[0].item() / denom, "rel_l2": local_metrics[1].item() / denom}
+        result = {"loss": local_metrics[0].item() / denom, "rel_l2": local_metrics[1].item() / denom}
+        for h, v in head_losses.items():
+            result[f"head_{h}"] = v / num_batches
+        return result
 
     def test(self):  # noqa: PLR0912, PLR0915
         self.model.eval()
