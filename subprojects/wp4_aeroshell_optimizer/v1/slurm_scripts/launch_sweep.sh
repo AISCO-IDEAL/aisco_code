@@ -1,35 +1,41 @@
 #!/bin/bash
 # =============================================================================
-# Unified SLURM Sweep Launcher
-# =============================================================================
-# Usage:
-#   1. Create a sweep:    wandb sweep configs/alm_sweep.yaml
-#   2. Set SWEEP_ID below (the entity/project/id string wandb prints)
-#   3. Submit:            sbatch launch_sweep.sh
-#
-# The script auto-detects GPUs and launches one wandb agent per GPU.
-# Each agent runs COUNT runs (default 1) then exits.
-#
-# To change the sweep, just update SWEEP_ID — no other edits needed.
+# Unified SLURM Sweep Launcher — edit SWEEP_ID and COUNT below, then sbatch
 # =============================================================================
 
-# ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/AISCO_code-subprojects_wp4_aeroshell_optimizer_v1_src_main_files/xa27etq2"   # <-- EDIT THIS
-COUNT=3                                         # runs per agent
-
-# ---- SLURM directives ------------------------------------------------------
-# NOTE: keep --ntasks and --gpus in sync with each other (1 task = 1 GPU)
-#SBATCH --job-name=WP4_Sweep
+# ---- SLURM directives (must come before any executable code) ---------------
 #SBATCH --partition=gpu
+#SBATCH --job-name=WP4_Sweep
 #SBATCH --time=04:00:00
-#SBATCH --nodes=1
 #SBATCH --ntasks=2
-#SBATCH --cpus-per-task=4
-#SBATCH --gpus=2
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=rtx_4090:2
 #SBATCH --mem-per-cpu=5G
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 #SBATCH --error=/cluster/scratch/%u/logs/%x_%j.err
 #SBATCH --mail-type=END,FAIL
+
+# ---- Configurable variables ------------------------------------------------
+SWEEP_ID="aisco/AISCO_code-subprojects_wp4_aeroshell_optimizer_v1_src_main_files/frwfmylv"   # <-- EDIT THIS
+COUNT=3                                         # runs per agent
+
+# ---- Job info ---------------------------------------------------------------
+echo "=========================================="
+echo "Job started on: $(date)"
+echo "Job ID: $SLURM_JOB_ID"
+echo "Running on node: $SLURMD_NODENAME"
+echo "Number of CPUs: $SLURM_CPUS_PER_TASK"
+echo "Allocated memory per CPU: $SLURM_MEM_PER_CPU MB"
+echo "Number of GPUs: $SLURM_GPUS"
+echo "GPU type: $(nvidia-smi --query-gpu=name --format=csv,noheader)"
+echo "Allocated memory per GPU: $(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits) MB"
+echo "Working directory: $PWD"
+echo "=========================================="
+
+# ---- Verify GPU access ------------------------------------------------------
+echo "Verifying GPU access..."
+nvidia-smi
+echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 
 # ---- Environment setup -----------------------------------------------------
 module purge
@@ -42,32 +48,20 @@ mkdir -p "$LOG_DIR"
 VENV_DIR="/cluster/home/${USERNAME}/AISCO_code/aisco_env"
 source "$VENV_DIR/bin/activate"
 
-# ---- Job info ---------------------------------------------------------------
-echo "=========================================="
-echo "Job started on: $(date)"
-echo "Job ID: $SLURM_JOB_ID"
-echo "Running on node: $SLURMD_NODENAME"
-echo "CPUs per task: $SLURM_CPUS_PER_TASK"
-echo "GPUs: $SLURM_GPUS"
-echo "Sweep: $SWEEP_ID"
-echo "Count per agent: $COUNT"
-nvidia-smi --query-gpu=index,name,memory.total --format=csv
-echo "=========================================="
+export PYTHONUNBUFFERED=TRUE
+export PYTHONPATH="/cluster/home/${USERNAME}/AISCO_code/subprojects:$PYTHONPATH"
+export PYTHONPATH="/cluster/home/${USERNAME}/AISCO_code:$PYTHONPATH"
+cd /cluster/home/${USERNAME}/AISCO_code
 
 # ---- Launch agents ----------------------------------------------------------
-cd /cluster/home/${USERNAME}/AISCO_code
-export PYTHONPATH="/cluster/home/${USERNAME}/AISCO_code:$PYTHONPATH"
+NUM_GPUS=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
+echo "[$(date)] Detected $NUM_GPUS GPUs — launching 1 agent each, $COUNT runs per agent..."
 
-echo "[$(date)] Launching $SLURM_NTASKS wandb agents (1 per task, $COUNT runs each)..."
-
-for i in $(seq 0 $((SLURM_NTASKS - 1))); do
-    echo "[$(date)]   Task $i → agent starting"
-    srun --exclusive --ntasks=1 \
-        bash -c "
-            echo '[$(date)] Agent $i on $(hostname)' >> ${LOG_DIR}/agent_${SLURM_JOB_ID}_${i}.log
-            wandb agent --count $COUNT $SWEEP_ID >> ${LOG_DIR}/agent_${SLURM_JOB_ID}_${i}.log 2>&1
-            echo '[$(date)] Agent $i finished' >> ${LOG_DIR}/agent_${SLURM_JOB_ID}_${i}.log
-        " &
+for ((i=0; i<NUM_GPUS; i++)); do
+    AGENT_LOG="${LOG_DIR}/agent_gpu${i}_${SLURM_JOB_ID}.log"
+    echo "[$(date)]   GPU $i → agent starting. Log: $AGENT_LOG"
+    CUDA_VISIBLE_DEVICES=$i wandb agent --count "$COUNT" "$SWEEP_ID" > "$AGENT_LOG" 2>&1 &
+    sleep 10  # stagger startup to avoid race on wandb init
 done
 wait
 
