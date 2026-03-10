@@ -35,6 +35,31 @@
       gap: 16px;
     }
 
+    .team-logo {
+      position: fixed;
+      top: 16px;
+      right: 500px;
+      width: 200px;
+      height: 92px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.94);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+      z-index: 1000;
+      backdrop-filter: blur(2px);
+    }
+
+    .team-logo img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
     .card {
       background: var(--panel);
       border: 1px solid var(--border);
@@ -141,6 +166,10 @@
   </style>
 </head>
 <body>
+  <aside class="team-logo" aria-label="Team logo">
+    <img id="teamLogo" src="team_logo.png" alt="Team logo">
+  </aside>
+
   <main class="wrap">
     <section class="card">
       <h1>WP7 Minimal Browser GUI</h1>
@@ -183,6 +212,7 @@
     const statusBox = document.getElementById("status");
     const imageBox = document.getElementById("imageBox");
     const demoImage = document.getElementById("demoImage");
+    const teamLogo = document.getElementById("teamLogo");
     const runLocalLogs = document.getElementById("runLocalLogs");
     const commandInput = document.getElementById("commandInput");
     const commandOutput = document.getElementById("commandOutput");
@@ -305,6 +335,11 @@
       commandOutput.textContent = "No command output yet.";
       setStatus("Output cleared.");
     }
+
+    teamLogo.onerror = () => {
+      // Fallback keeps the logo badge populated until team_logo.png is provided.
+      teamLogo.src = "demo_image.png";
+    };
 
     document.getElementById("btnDummy").addEventListener("click", runDummyLogger);
     document.getElementById("btnImage").addEventListener("click", showImage);
