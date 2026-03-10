@@ -16,6 +16,7 @@ of re-reading the YAML from disk.
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import json
 from pathlib import Path
@@ -67,22 +68,18 @@ def register_all_configs(general_config: dict, *, v: str = "v1") -> None:
     _config_registry[_cfg_key("general_config.yaml")] = general_config
 
     # Register every config referenced in active_configs
-    for _role, cfg_name in general_config.get("active_configs", {}).items():
+    for cfg_name in general_config.get("active_configs", {}).values():
         if cfg_name and _cfg_key(cfg_name) not in _config_registry:
-            try:
+            with contextlib.suppress(FileNotFoundError):  # e.g. sweep definition YAMLs that were removed — skip
                 _config_registry[_cfg_key(cfg_name)] = _load_yaml(v, cfg_name)
-            except FileNotFoundError:
-                pass  # e.g. sweep definition YAMLs that were removed — skip
 
     # Register standalone configs used elsewhere in the codebase
     _standalone = ["solar_loss_config.yaml", "logging.yaml"]
     for cfg_name in _standalone:
         key = _cfg_key(cfg_name)
         if key not in _config_registry:
-            try:
+            with contextlib.suppress(FileNotFoundError):  # optional config, skip if missing
                 _config_registry[key] = _load_yaml(v, cfg_name)
-            except FileNotFoundError:
-                pass  # optional config, skip if missing
 
     _registry_initialised = True
 
@@ -163,20 +160,14 @@ def load_config(v: str = "v1", cfg_name: str = "general_config.yaml") -> dict:
     key = _cfg_key(cfg_name)
 
     # If the registry is populated, prefer the (possibly patched) version
-    if _registry_initialised and key in _config_registry:
-        config = _config_registry[key]
-    else:
-        config = _load_yaml(v, cfg_name)
+    config = _config_registry[key] if _registry_initialised and key in _config_registry else _load_yaml(v, cfg_name)
 
     # Log sub-configs to wandb for dashboard visibility (keep existing behavior)
     if wandb.run is not None and cfg_name != "general_config.yaml":
         wandb_key = f"SubCFG_{key}"
         if wandb_key not in wandb.config:
-            try:
+            with contextlib.suppress(Exception):  # non-critical — don't crash on logging failures
                 wandb.config.update({wandb_key: config})
-            except Exception:
-                pass  # non-critical — don't crash on logging failures
-
     return config
 
 
