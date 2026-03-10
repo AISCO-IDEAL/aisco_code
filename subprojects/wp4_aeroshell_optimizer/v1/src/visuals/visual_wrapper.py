@@ -168,10 +168,7 @@ class VisualisationManager:
         """
         # Detach all tensors before dispatching to any mode so no rendering
         # operation can retain or extend the training computation graph.
-        optimization_state = {
-            k: v.detach() if isinstance(v, torch.Tensor) else v
-            for k, v in optimization_state.items()
-        }
+        optimization_state = {k: v.detach() if isinstance(v, torch.Tensor) else v for k, v in optimization_state.items()}
 
         for mode_name, mode in self.rendering_modes.items():
             if mode.enabled:

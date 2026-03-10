@@ -24,6 +24,7 @@ Astral azimuth convention
     ``astral`` returns azimuth as degrees **clockwise from North** (0-360°),
     which is the compass-bearing convention used throughout this module.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
