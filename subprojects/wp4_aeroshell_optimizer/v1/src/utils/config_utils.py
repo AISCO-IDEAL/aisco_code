@@ -37,7 +37,9 @@ def _cfg_key(cfg_name: str) -> str:
 
 
 def _load_yaml(v: str, cfg_name: str) -> dict:
-    """Read a YAML config from disk (no registry, no wandb side-effects)."""
+    """
+    Load a YAML configuration file from disk (no registry, no wandb side-effects) by giving the name/path of the config file, located in the v{x}/configs/ folder.
+    """
     config_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
     try:
         with config_path.open() as f:
