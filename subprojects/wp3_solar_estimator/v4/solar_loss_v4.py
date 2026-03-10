@@ -23,6 +23,7 @@ from subprojects.wp3_solar_estimator.australia.route_v1 import RouteV1 as Route
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
+from subprojects.wp3_solar_estimator.utils.solar_utils import averaging_solar_quality
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
@@ -137,11 +138,9 @@ def solar_mesh_loss_v4(
         torch.linalg.norm(solar_vectors, dim=-1, keepdim=True).clamp_min(epsilon)
     )  # (K,3) unit solar vectors
     # now calculate the (average) illumination quality (solar_vectors dot normal vector) of each face for all solar vectors, use average so that we get a single quality value per face that considers all solar vectors along the route
-    illumination_quality = torch.einsum(
-        "ij,kj->ik", face_normals_unit, sun_directions_unit
-    )  # (M,K) cosine similarity of each face normal with each solar vector
-    aggregate_illumination_quality = illumination_quality.mean(
-        dim=1
+
+    aggregate_illumination_quality = averaging_solar_quality(
+        face_normals_unit, sun_directions_unit
     )  # (M,) average quality of each face across all solar vectors
     # Sort faces by descending quality
     # NOTE: Currently ignores order priority for equal-quality faces (TODO: could optimize face ordering)

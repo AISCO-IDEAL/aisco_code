@@ -3,8 +3,8 @@ general:
   timezone: "Australia/Darwin" #insert "Australia/Darwin" or "Australia/Adelaide" here
 
 route_generation:
-  version: 1
-  race_distance: 3026 # in km
+  version: 1 #unused atm
+  race_distance: 3026 # in km, don't change unless you have new/better data
   intervals: 100 # in km
 
 

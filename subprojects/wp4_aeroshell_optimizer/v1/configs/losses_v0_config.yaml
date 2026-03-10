@@ -34,6 +34,7 @@ losses: # [compute: bool, weight: float, path: str]
     solar_v3: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3.py"]
     solar_v3B: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3B.py"]
     solar_v4: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v4.py"]
+    solar_v5: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v5.py"]
     null_loss_solar_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/null_loss_solar_v1.py"]
 
   total:
