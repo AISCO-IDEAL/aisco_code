@@ -132,11 +132,17 @@ def solar_mesh_loss_v4(
     face_area_mm2 = 0.5 * face_cross_norm
 
     # Compute illumination quality (cosine of angle with sun direction, clamped to [0, 1])
-    face_normals_unit = face_cross / (face_cross_norm.clamp_min(epsilon)).unsqueeze(-1) # (M, 3) unit normals of faces
-    sun_directions_unit = solar_vectors / (torch.linalg.norm(solar_vectors, dim=-1, keepdim=True).clamp_min(epsilon)) # (K,3) unit solar vectors
-    #now calculate the (average) illumination quality (solar_vectors dot normal vector) of each face for all solar vectors, use average so that we get a single quality value per face that considers all solar vectors along the route
-    illumination_quality = torch.einsum("ij,kj->ik", face_normals_unit, sun_directions_unit)  # (M,K) cosine similarity of each face normal with each solar vector
-    aggregate_illumination_quality = illumination_quality.mean(dim=1)  # (M,) average quality of each face across all solar vectors
+    face_normals_unit = face_cross / (face_cross_norm.clamp_min(epsilon)).unsqueeze(-1)  # (M, 3) unit normals of faces
+    sun_directions_unit = solar_vectors / (
+        torch.linalg.norm(solar_vectors, dim=-1, keepdim=True).clamp_min(epsilon)
+    )  # (K,3) unit solar vectors
+    # now calculate the (average) illumination quality (solar_vectors dot normal vector) of each face for all solar vectors, use average so that we get a single quality value per face that considers all solar vectors along the route
+    illumination_quality = torch.einsum(
+        "ij,kj->ik", face_normals_unit, sun_directions_unit
+    )  # (M,K) cosine similarity of each face normal with each solar vector
+    aggregate_illumination_quality = illumination_quality.mean(
+        dim=1
+    )  # (M,) average quality of each face across all solar vectors
     # Sort faces by descending quality
     # NOTE: Currently ignores order priority for equal-quality faces (TODO: could optimize face ordering)
     quality_order_desc = torch.argsort(aggregate_illumination_quality, descending=True)
@@ -390,10 +396,13 @@ class SolarLossEstimator:
             self.wandb_run_name = None
             self.rendering_dir = None
 
-
-        self.route= Route(cfg_path=config["australia_cfg"])  # For solar vector calculation -- used to aggregate different solar vecs from australia cfg into mixed quality (no shading yet)
-        self.solar_vectors = self.route.get_route_solar_vecs()  # (N,T, 3) solar vectors along the route, pre-moved to device for efficiency
-        #ensure format is (K,3) where K is the number of solar vectors (e.g. number of points along the route), by flattening the first two dimensions if necessary
+        self.route = Route(
+            cfg_path=config["australia_cfg"]
+        )  # For solar vector calculation -- used to aggregate different solar vecs from australia cfg into mixed quality (no shading yet)
+        self.solar_vectors = (
+            self.route.get_route_solar_vecs()
+        )  # (N,T, 3) solar vectors along the route, pre-moved to device for efficiency
+        # ensure format is (K,3) where K is the number of solar vectors (e.g. number of points along the route), by flattening the first two dimensions if necessary
         self.solar_vectors = self.solar_vectors.view(-1, 3).to(self.device)
         self.extractor: FCExtractor | DISOExtractor | MeshSDFExtractor
         self._init_extractor()

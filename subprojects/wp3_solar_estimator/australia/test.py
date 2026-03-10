@@ -100,18 +100,20 @@ def test_route_loader():  # noqa: PLR0915
 
     # same as for routev1, plot solar vectors as arrows from origin, colored by time sample index.
     solar_vectors = routev2.get_route_solar_vecs()  # shape (N, 3)
+    N = solar_vectors.shape[0]
+    norm = plt.Normalize(0, N - 1)
+    cmap = plt.colormaps["viridis"]
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
-    for i in range(solar_vectors.shape[0]):
-        color = cmap(norm(i))
+    for i in range(N):
         ax.quiver(
             0,
             0,
-            0,  # origins at (0, 0, 0)
-            solar_vectors[i, 0],  # forward component
-            solar_vectors[i, 1],  # left component
-            solar_vectors[i, 2],  # up component
-            color=color,
+            0,
+            solar_vectors[i, 0],
+            solar_vectors[i, 1],
+            solar_vectors[i, 2],
+            color=cmap(norm(i)),
             alpha=0.4,
             length=1.0,
         )
@@ -125,7 +127,7 @@ def test_route_loader():  # noqa: PLR0915
     ax.set_xlabel("Forward/X")
     ax.set_ylabel("Left/Y")
     ax.set_zlabel("Up/Z")
-    ax.set_title("Solar Vectors and Route Points Colored by Time of Day")
+    ax.set_title("Solar Vectors and Route Points Colored by Race Progression")
     ax.view_init(elev=10, azim=0)  # look from the +x (forward) axis toward origin
     plt.savefig("subprojects/wp3_solar_estimator/australia/data/time_solar_vector_route_points_X.png")
     ax.view_init(elev=10, azim=90)  # look from the +y (left) axis toward origin
@@ -134,6 +136,8 @@ def test_route_loader():  # noqa: PLR0915
     plt.savefig("subprojects/wp3_solar_estimator/australia/data/time_solar_vector_route_points_Z.png")
 
     return routev1, routev2
+
+
 # Run to verify route is accurate, see data folder
 if __name__ == "__main__":
     routes = test_route_loader()
@@ -141,3 +145,9 @@ if __name__ == "__main__":
     for i, route in enumerate(routes):
         print(f"Route {i + 1} debug print:")
         route.debug_print()
+        # print first 25 route points and corresponding solar vectors
+        print("First 25 route points and corresponding solar vectors:")
+        for j in range(min(25, len(route.route_points))):
+            print(f"Point {j + 1}: {route.route_points[j]}")
+            print(f"Solar vector {j + 1}: {route.get_route_solar_vecs(index=j)}")
+        print("\n Shape of Solar vectors for all points:", route.get_route_solar_vecs().shape)

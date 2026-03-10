@@ -18,4 +18,4 @@ sun_generation:
 
 simulation:
   average_speed: 19 #in m/s (used for validation metrics)
-  num_points: 1000
+  num_points: 300
