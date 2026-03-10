@@ -38,7 +38,6 @@ def _cfg_key(cfg_name: str) -> str:
 
 
 def _load_yaml(v: str, cfg_name: str) -> dict:
-
     """
     Load a YAML configuration file from disk (no registry, no wandb side-effects) by giving the name/path of the config file, located in the v{x}/configs/ folder.
     """
