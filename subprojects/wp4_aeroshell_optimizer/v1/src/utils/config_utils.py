@@ -23,8 +23,6 @@ from pathlib import Path
 
 import yaml
 
-import wandb
-
 # ---------------------------------------------------------------------------
 # Module-level config registry
 # ---------------------------------------------------------------------------
@@ -164,12 +162,6 @@ def load_config(v: str = "v1", cfg_name: str = "general_config.yaml") -> dict:
     # If the registry is populated, prefer the (possibly patched) version
     config = _config_registry[key] if _registry_initialised and key in _config_registry else _load_yaml(v, cfg_name)
 
-    # Log sub-configs to wandb for dashboard visibility (keep existing behavior)
-    if wandb.run is not None and cfg_name != "general_config.yaml":
-        wandb_key = f"SubCFG_{key}"
-        if wandb_key not in wandb.config:
-            with contextlib.suppress(Exception):  # non-critical — don't crash on logging failures
-                wandb.config.update({wandb_key: config})
     return config
 
 
