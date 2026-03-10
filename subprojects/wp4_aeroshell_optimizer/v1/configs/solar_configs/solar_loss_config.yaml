@@ -12,7 +12,7 @@ general_config:
 SolarLossConfigV3:
   method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
-  resolution: 250
+  resolution: 150
   area_budget_mm2: 4000000
   sun_dir: [-1.0,0.0,1.0]
   device: "cuda"
