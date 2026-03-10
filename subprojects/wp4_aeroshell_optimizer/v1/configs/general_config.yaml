@@ -1,5 +1,5 @@
 general_info:
-  username: "eschaerer"
+  username: "kdiehl" #modify
   version: "v1"
   device: "cuda"
   pre: "a sphere as initial shape, datatype: SDF"
@@ -21,7 +21,7 @@ active_configs:
 
 wandb_general:
   use_wandb: True
-  project_name: "Memory-Debugging-Alex"
+  project_name: "Memory-Debugging-Alex" #modify
   entity_name: "aisco"
   track_run: 1
   use_renderer: True

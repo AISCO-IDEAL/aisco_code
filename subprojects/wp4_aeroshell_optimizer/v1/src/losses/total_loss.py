@@ -283,9 +283,7 @@ class TotalLoss:
                 )
                 if self._mesh_statistics_enabled:
                     self._mesh_statistics.log_basic_mesh_stats(verts, faces, epoch_name)  # Log basic mesh stats to wandb
-                    self._mesh_statistics.log_solar_area_stats(
-                        verts, faces, epoch_name
-                    )  # Log solar area related stats to wandb
+                    self._mesh_statistics.log_solar_area_stats(verts, faces, epoch_name)  # Log solar area related stats to wandb
 
                 if self.__rendering_frequency is not None and epoch_name % self.__rendering_frequency == 0:
                     if self._use_neural_renderer and self._renderer_manager is not None:
