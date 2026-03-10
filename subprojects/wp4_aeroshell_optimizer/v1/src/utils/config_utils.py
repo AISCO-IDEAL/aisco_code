@@ -74,7 +74,7 @@ def register_all_configs(general_config: dict, *, v: str = "v1") -> None:
                 _config_registry[_cfg_key(cfg_name)] = _load_yaml(v, cfg_name)
 
     # Register standalone configs used elsewhere in the codebase
-    _standalone = ["solar_loss_config.yaml", "logging.yaml"]
+    _standalone = ["solar_configs/solar_loss_config.yaml", "logging.yaml", "solar_configs/australia.yaml"]
     for cfg_name in _standalone:
         key = _cfg_key(cfg_name)
         if key not in _config_registry:
