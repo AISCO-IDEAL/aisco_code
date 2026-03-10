@@ -5,6 +5,7 @@ general_info:
 pretraining:
   use_pretrained: True # True or False possible
   pretraining_model_path: "subprojects/wp4_aeroshell_optimizer/data/test_models/xyz" # must be .pth file compatible with model_vxy, doesn't do anything atm
+  local_pretraining_model_path: "./local_pretrained_dir" # only used for testing on local machine, not on cluster, must be .pth file compatible with model_vxy, doesn't do anything atm
   username: "aalthaus"
 
 model: "WIRE" #Class name of model

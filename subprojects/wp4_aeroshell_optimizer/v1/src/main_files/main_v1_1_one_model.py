@@ -27,6 +27,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0915, PLR0912 # definitly re
     # Get general config
 
     general_config = load_config(v="v1", cfg_name="general_config.yaml")
+    pretrained_v0_config = load_config(v="v1", cfg_name="pretraining_v0_config.yaml")
 
     # Initialize WandB early to capture sweep parameters
     wandb_config = None  # Store wandb config
@@ -76,9 +77,13 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0915, PLR0912 # definitly re
         force_pretraining = True
 
     # Also Check if a specific pretraining shape is requested, and make part of cache key or similar if we were caching
-
+    if general_config["general_info"].get("run_locally", False):
+        pretrained_path = pretrained_v0_config["pretraining"].get("local_pretraining_model_path", False)
+    else:
+        pretrained_path = pretrained_v0_config["pretraining"].get("pretraining_model_path", False)
+    print(f"Pretrained path: {pretrained_path}")    
     pretrained_model = fetch_pretrained_model(
-        model, pretrained_path=general_config["storage_paths"].get("pretrained_dir", None), verbose=verbose
+        model, pretrained_path=pretrained_path, verbose=verbose
     )
 
     if pretrained_model is not None and not force_pretraining:
