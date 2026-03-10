@@ -21,9 +21,8 @@ import copy
 import json
 from pathlib import Path
 
-import yaml
-
 import wandb
+import yaml
 
 # ---------------------------------------------------------------------------
 # Module-level config registry
