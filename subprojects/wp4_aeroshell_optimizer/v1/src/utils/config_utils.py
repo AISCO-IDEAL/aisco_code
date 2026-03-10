@@ -23,8 +23,6 @@ from pathlib import Path
 
 import yaml
 
-import wandb
-
 # ---------------------------------------------------------------------------
 # Module-level config registry
 # ---------------------------------------------------------------------------
@@ -38,7 +36,9 @@ def _cfg_key(cfg_name: str) -> str:
 
 
 def _load_yaml(v: str, cfg_name: str) -> dict:
-    """Read a YAML config from disk (no registry, no wandb side-effects)."""
+    """
+    Load a YAML configuration file from disk (no registry, no wandb side-effects) by giving the name/path of the config file, located in the v{x}/configs/ folder.
+    """
     config_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
     try:
         with config_path.open() as f:
@@ -74,7 +74,7 @@ def register_all_configs(general_config: dict, *, v: str = "v1") -> None:
                 _config_registry[_cfg_key(cfg_name)] = _load_yaml(v, cfg_name)
 
     # Register standalone configs used elsewhere in the codebase
-    _standalone = ["solar_loss_config.yaml", "logging.yaml"]
+    _standalone = ["solar_configs/solar_loss_config.yaml", "logging.yaml", "solar_configs/australia.yaml"]
     for cfg_name in _standalone:
         key = _cfg_key(cfg_name)
         if key not in _config_registry:
@@ -162,12 +162,6 @@ def load_config(v: str = "v1", cfg_name: str = "general_config.yaml") -> dict:
     # If the registry is populated, prefer the (possibly patched) version
     config = _config_registry[key] if _registry_initialised and key in _config_registry else _load_yaml(v, cfg_name)
 
-    # Log sub-configs to wandb for dashboard visibility (keep existing behavior)
-    if wandb.run is not None and cfg_name != "general_config.yaml":
-        wandb_key = f"SubCFG_{key}"
-        if wandb_key not in wandb.config:
-            with contextlib.suppress(Exception):  # non-critical — don't crash on logging failures
-                wandb.config.update({wandb_key: config})
     return config
 
 

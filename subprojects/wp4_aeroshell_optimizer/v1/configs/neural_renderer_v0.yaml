@@ -3,7 +3,7 @@
 # overall visualiser/neural renderer config for default renderer instance that is used
 neural_renderer:
   image_size: 1024
-  background_color: [0.0,0.0,0.3]
+  background_color: [0.0,0.0,0.1]
   anti_aliasing: true
   camera_mode: "look_at"
   viewing_angle: 40

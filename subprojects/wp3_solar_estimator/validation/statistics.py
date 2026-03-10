@@ -40,7 +40,7 @@ class MeshStatistics:
         """
         if not self.use_wandb:
             return
-        solar_config = load_config(v="v1", cfg_name="solar_loss_config.yaml")["SolarLossConfigV3"]
+        solar_config = load_config(v="v1", cfg_name="solar_configs/solar_loss_config.yaml")["SolarLossConfigV3"]
         solar_angle = torch.tensor(solar_config["sun_dir"], device=vertices.device)
         self.solar_angle = solar_angle / torch.norm(solar_angle)  # Normalize to unit vector so dot products give cos(θ)
         self.area_budget = solar_config["area_budget_mm2"]
