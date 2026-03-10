@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WP7 GUI</title>
+  <style>
+    :root {
+      --bg: #f4f7f3;
+      --panel: #ffffff;
+      --accent: #1d6d54;
+      --accent-2: #104a39;
+      --text: #102018;
+      --muted: #496456;
+      --danger: #8f2e2e;
+      --border: #d7e4db;
+      --shadow: 0 12px 24px rgba(16, 32, 24, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: radial-gradient(circle at top right, #dceee4 0%, var(--bg) 45%, #edf3ef 100%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+
+    h1 {
+      margin: 0 0 6px 0;
+      font-size: 1.55rem;
+    }
+
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.08s ease, background 0.2s ease;
+    }
+
+    button:hover { background: var(--accent-2); }
+    button:active { transform: translateY(1px); }
+
+    .danger { background: var(--danger); }
+
+    #status {
+      margin-top: 14px;
+      padding: 10px;
+      border-radius: 10px;
+      background: #eef4ef;
+      border: 1px solid var(--border);
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.9rem;
+    }
+
+    #imageBox {
+      margin-top: 14px;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fafdfb;
+      display: none;
+    }
+
+    #demoImage {
+      max-width: 100%;
+      border-radius: 8px;
+      display: block;
+      margin: 0 auto;
+    }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    label {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 0.95rem;
+    }
+
+    pre {
+      margin: 0;
+      background: #0f1f17;
+      color: #ddf8e8;
+      border-radius: 10px;
+      padding: 12px;
+      min-height: 120px;
+      max-height: 420px;
+      overflow: auto;
+      border: 1px solid #2a4b3c;
+      font-size: 0.85rem;
+      line-height: 1.35;
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card">
+      <h1>WP7 Minimal Browser GUI</h1>
+      <p class="sub">Client-side controls for local test actions and run-local process monitoring.</p>
+      <div class="buttons">
+        <button id="btnDummy">Button 1: Run dummy logger</button>
+        <button id="btnImage">Button 2: Show local image</button>
+        <button id="btnRunLocal">Button 3: Start run_local.sh</button>
+      </div>
+      <div id="status">Ready.</div>
+      <div id="imageBox">
+        <img id="demoImage" src="demo_image.png" alt="Demo image">
+      </div>
+    </section>
+
+    <section class="card">
+      <h1>Run Local Logs</h1>
+      <div class="buttons">
+        <button id="btnRefreshLogs">Refresh logs</button>
+        <button id="btnAutoLogs">Start auto-refresh</button>
+      </div>
+      <pre id="runLocalLogs">No logs loaded yet.</pre>
+    </section>
+
+    <section class="card">
+      <h1>Run Arbitrary Bash Command</h1>
+      <div class="stack">
+        <label for="commandInput">Executed via POST /run-command</label>
+        <input id="commandInput" type="text" placeholder="Example: ls -la /home/eschaerer/AISCO_code">
+      </div>
+      <div class="buttons">
+        <button id="btnRunCommand">Run command</button>
+        <button id="btnClearOutput" class="danger">Clear output</button>
+      </div>
+      <pre id="commandOutput">No command output yet.</pre>
+    </section>
+  </main>
+
+  <script>
+    const statusBox = document.getElementById("status");
+    const imageBox = document.getElementById("imageBox");
+    const demoImage = document.getElementById("demoImage");
+    const runLocalLogs = document.getElementById("runLocalLogs");
+    const commandInput = document.getElementById("commandInput");
+    const commandOutput = document.getElementById("commandOutput");
+
+    let autoLogTimer = null;
+
+    function setStatus(message) {
+      statusBox.textContent = message;
+    }
+
+    function nowStamp() {
+      return new Date().toLocaleTimeString();
+    }
+
+    function runDummyLogger() {
+      setStatus("Dummy logger started...");
+      let i = 1;
+      const logs = [];
+      const timer = setInterval(() => {
+        logs.push(String(i));
+        setStatus(`[${nowStamp()}] Dummy output: ${logs.join(" ")}`);
+        i += 1;
+        if (i > 5) {
+          clearInterval(timer);
+          setStatus(`[${nowStamp()}] Dummy logger finished (1 to 5).`);
+        }
+      }, 450);
+    }
+
+    function showImage() {
+      imageBox.style.display = "block";
+      demoImage.onerror = () => {
+        setStatus(`[${nowStamp()}] Could not load demo_image.png from templates folder.`);
+      };
+      setStatus(`[${nowStamp()}] Showing demo_image.png.`);
+    }
+
+    async function startRunLocal() {
+      setStatus(`[${nowStamp()}] Starting run_local.sh ...`);
+      try {
+        const res = await fetch("/run-local", { method: "POST" });
+        const data = await res.json();
+        setStatus(`[${nowStamp()}] ${data.message || "No message"}${data.pid ? ` (PID ${data.pid})` : ""}`);
+        await refreshLogs();
+      } catch (error) {
+        setStatus(`[${nowStamp()}] Failed to call /run-local: ${error}`);
+      }
+    }
+
+    async function refreshLogs() {
+      try {
+        const res = await fetch("/run-local/logs");
+        const data = await res.json();
+        const meta = [
+          `running=${data.running}`,
+          `pid=${data.pid ?? "n/a"}`,
+          `return_code=${data.return_code ?? "n/a"}`,
+          `truncated=${data.truncated}`
+        ].join(" | ");
+        const body = data.logs && data.logs.length > 0 ? data.logs : "<empty log>";
+        runLocalLogs.textContent = `${meta}\n\n${body}`;
+      } catch (error) {
+        runLocalLogs.textContent = `Failed to load logs: ${error}`;
+      }
+    }
+
+    function toggleAutoLogs() {
+      const button = document.getElementById("btnAutoLogs");
+      if (autoLogTimer) {
+        clearInterval(autoLogTimer);
+        autoLogTimer = null;
+        button.textContent = "Start auto-refresh";
+        setStatus(`[${nowStamp()}] Auto-refresh stopped.`);
+        return;
+      }
+
+      refreshLogs();
+      autoLogTimer = setInterval(refreshLogs, 2000);
+      button.textContent = "Stop auto-refresh";
+      setStatus(`[${nowStamp()}] Auto-refresh started (2s interval).`);
+    }
+
+    async function runCommand() {
+      const command = commandInput.value.trim();
+      if (!command) {
+        setStatus("Please enter a command first.");
+        return;
+      }
+
+      setStatus(`[${nowStamp()}] Running command: ${command}`);
+      try {
+        const res = await fetch("/run-command", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command })
+        });
+        const data = await res.json();
+
+        const lines = [
+          `command: ${data.command}`,
+          `return_code: ${data.return_code}`,
+          "",
+          "--- stdout ---",
+          data.stdout || "<empty>",
+          "",
+          "--- stderr ---",
+          data.stderr || "<empty>"
+        ];
+
+        commandOutput.textContent = lines.join("\n");
+        setStatus(`[${nowStamp()}] Command finished with code ${data.return_code}.`);
+      } catch (error) {
+        commandOutput.textContent = `Failed to run command: ${error}`;
+        setStatus(`[${nowStamp()}] Command execution failed.`);
+      }
+    }
+
+    function clearCommandOutput() {
+      commandOutput.textContent = "No command output yet.";
+      setStatus("Output cleared.");
+    }
+
+    document.getElementById("btnDummy").addEventListener("click", runDummyLogger);
+    document.getElementById("btnImage").addEventListener("click", showImage);
+    document.getElementById("btnRunLocal").addEventListener("click", startRunLocal);
+    document.getElementById("btnRefreshLogs").addEventListener("click", refreshLogs);
+    document.getElementById("btnAutoLogs").addEventListener("click", toggleAutoLogs);
+    document.getElementById("btnRunCommand").addEventListener("click", runCommand);
+    document.getElementById("btnClearOutput").addEventListener("click", clearCommandOutput);
+  </script>
+</body>
+</html>
