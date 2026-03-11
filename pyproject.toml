@@ -215,7 +215,7 @@ exclude = [
   "^docs/",
   ".*fixed_renderer/.*", # <-- eschaerer: Fixed regex to catch it inside subprojects
   ".*/archive/.*",       # <-- eschaerer: Fixed regex typo
-  ".*blendednet/.*",     # <-- eschaerer: Tim's sinusoidal activation function model (just inspiration)
+  ".*/blendednet/.*",     # <-- eschaerer: Tim's sinusoidal activation function model (just inspiration)
   'tests/',
 ]
 
