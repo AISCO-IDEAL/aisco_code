@@ -99,6 +99,7 @@ def main(verbose: bool = True) -> None:
         if verbose:
             print("No pretrained model found (or forced pretraining), proceeding by pretraining")
         model = pretraining(model=model, pretraining_config_name=pretraining_config_name)
+        # save the pretrained model and mesh immediately after pretraining
         allround_save_data(
             model=model,
             storage_path=general_config["storage_paths"].get(
@@ -106,6 +107,7 @@ def main(verbose: bool = True) -> None:
             ),
             save_model=True,
             save_mesh=True,
+            epoch=None,
             verbose=verbose,
             pretraining=True,
         )
@@ -147,6 +149,7 @@ def main(verbose: bool = True) -> None:
         verbose=verbose,
         pretraining=False,
         wandb_run=wandb_name,
+        epoch=training_config["training_params"].get("num_epochs", 1000),
     )
 
     # ------------------------------------------------------------------
