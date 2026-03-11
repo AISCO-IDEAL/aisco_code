@@ -11,6 +11,8 @@
 #------------------------------------------------------------------------------
 # Print job information
 #------------------------------------------------------------------------------
+umask 0002 # ensure group write permissions for logs and models 
+
 echo "=========================================="
 echo "Job started on: $(date)"
 echo "Job ID: $SLURM_JOB_ID"

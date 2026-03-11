@@ -85,6 +85,7 @@ echo "   - Workpackage 7 (WP_7_gui):                        pip install '.[wp7_g
 echo "   - testing dependencies:                            python3 -m pip install '.[testing]'"
 echo "   - All optional dependencies:                       python3 -m pip install '.[all]'"
 echo ""
+read -p "Install your optional dependencies. Then press Enter to continue..." dummy
 
 # 9. Kaolin / Neural Renderer logic (Kept from your original)
 echo "🔍 Optional GPU-dependent dependencies:"

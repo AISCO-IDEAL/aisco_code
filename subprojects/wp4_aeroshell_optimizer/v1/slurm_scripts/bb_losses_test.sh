@@ -16,6 +16,8 @@
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
+umask 0002 # ensure group write permissions for logs and models 
+
 USERNAME=$(whoami)
 LOG_DIR="/cluster/home/$USERNAME/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs"
 mkdir -p "$LOG_DIR"  # Ensure the log directory exists
