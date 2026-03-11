@@ -46,32 +46,23 @@ def _load_yaml(v: str, cfg_name: str) -> dict:
         with config_path.open() as f:
             config = yaml.safe_load(f)
 
-        # Automatic detection of execution environment for general_config.yaml
-        if cfg_name == "general_config.yaml" and "general_info" in config:
-            is_cluster = False
+        if cfg_name == "general_config.yaml" and isinstance(config, dict) and "general_info" in config:
+            is_wsl = "WSL_DISTRO_NAME" in os.environ
+            hostname = socket.gethostname()
+            is_euler_node = hostname.startswith("eu-")
+            is_slurm_job = "SLURM_JOB_ID" in os.environ
 
-            try:
-                hostname = socket.gethostname()
-                # Check standard Slurm cluster environment variables
-                is_cluster = "SLURM_CLUSTER_NAME" in os.environ or "SLURM_JOB_ID" in os.environ or hostname.startswith("eu-")
-
-                # Force local if running inside WSL
-                if "WSL_DISTRO_NAME" in os.environ:
-                    is_cluster = False
-
-            except Exception:
-                # Fallback if detection fails
-                is_cluster = False
-
-            # Override run_locally setting based on detection
-            # Note: We use boolean values to ensure correct conditional evaluation in Python
-            config["general_info"]["run_locally"] = not is_cluster
-
-            if config["general_info"].get("verbose", "False") == "True":
-                print(f"Config Setup: Detected environment is_cluster={is_cluster}")
+            if is_wsl:
+                # Definitely local (WSL)
+                config["general_info"]["run_locally"] = "True"
+            elif is_euler_node or is_slurm_job:
+                # Definitely cluster (HPC)
+                config["general_info"]["run_locally"] = "False"
+            else:
+                # Default to Euler if uncertain
+                config["general_info"]["run_locally"] = "False"
 
         return config  # noqa: TRY300
-
     except FileNotFoundError as e:
         raise FileNotFoundError(f"Configuration file not found at {config_path}") from e
     except yaml.YAMLError as e:
