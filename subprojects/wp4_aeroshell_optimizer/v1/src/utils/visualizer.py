@@ -355,7 +355,7 @@ class CADVisualizer:
 
 
 if __name__ == "__main__":
-    username = "clhuber"
+    username = os.getenv("USER") or os.getenv("USERNAME") or "clhuber"
     base_path = f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data"
 
     for mesh_name, render_name in [

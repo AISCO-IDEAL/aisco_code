@@ -1,3 +1,6 @@
+# NOT USED AS A CONFIG — This is a WandB sweep definition file, not loaded by load_config().
+# It is only used by `wandb sweep alm_sweep.yaml` to define sweep hyperparameters.
+# The parameters it sweeps (initial_lambda, initial_mu) are applied via apply_sweep_overrides() at runtime.
 # ============================================================================
 # Wandb Sweep Config — ALM (Augmented Lagrangian Method) Hyperparameters
 # ============================================================================

@@ -110,6 +110,7 @@ class BasicMLP(BaseModel):
                     pretraining=False,
                     wandb_run=wandb_name,
                 )
+
             # param.grad now holds the sum of all per-component gradients — same as if
             # we had called backward() on weighted_total_loss directly.
             optimizer.step()
