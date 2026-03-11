@@ -83,7 +83,9 @@ def main(verbose: bool = True) -> None:
     # ------------------------------------------------------------------
     # 5. Pretraining (or load pretrained model)
     # ------------------------------------------------------------------
-    force_pretraining = general_config.get("force_pretraining", False)
+    pretraining_config_name = general_config["active_configs"].get("pretraining", "pretraining_v0_config.yaml")
+    pretraining_config = load_config(v="v1", cfg_name=pretraining_config_name)
+    force_pretraining = pretraining_config.get("pretraining", {}).get("force_pretraining", False)
 
     pretrained_model = fetch_pretrained_model(
         model, pretrained_path=general_config["storage_paths"].get("pretrained_dir", None), verbose=verbose
@@ -96,7 +98,7 @@ def main(verbose: bool = True) -> None:
     else:
         if verbose:
             print("No pretrained model found (or forced pretraining), proceeding by pretraining")
-        model = pretraining(model=model)
+        model = pretraining(model=model, pretraining_config_name=pretraining_config_name)
         allround_save_data(
             model=model,
             storage_path=general_config["storage_paths"].get(
