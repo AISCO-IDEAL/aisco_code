@@ -228,7 +228,9 @@ module = [
   "wandb.*",
   "pyvista.*",
   "*.blendednet.*",  # eschaerer
-  "blendednet.*"     # eschaerer
+  "blendednet.*",     # eschaerer
+  "*.fixed_renderer.*", # eschaerer
+  "fixed_renderer.*" # eschaerer
 ]
 
 ignore_missing_imports = true
