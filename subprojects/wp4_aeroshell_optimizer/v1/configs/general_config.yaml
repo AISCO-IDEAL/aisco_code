@@ -22,7 +22,7 @@ active_configs:
 
 wandb_general:
   use_wandb: True
-  project_name: "CSE_debugging" #modify
+  project_name: "50 meshes proper naming and storage" #modify
   entity_name: "aisco"
   track_run: 1
   use_renderer: True
