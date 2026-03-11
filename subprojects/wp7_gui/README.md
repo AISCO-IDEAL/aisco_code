@@ -8,6 +8,7 @@ We don't know yet wether we have to use Euler or get a local Computer, so the cu
 ### Features
 - Button 1 runs a dummy file (`dummy_logger.js`) and logs numbers `1` to `5` on screen.
 - Button 2 displays a local image (`demo_image.png`) on screen.
+- Button 3 starts `subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/run_local.sh`.
 
 ### Run in WSL
 From repo root:
@@ -29,9 +30,11 @@ You can also copy `http://localhost:8000` into Firefox manually on Windows.
 ## Folder structure
 
 ```text
-subprojects/wp7_gui/archive/v0
-└── README.md
-└── app.py
+subprojects/wp7_gui/
+├── __init__.py
+├── README.md
+├── app.py
+├── archive/
 └── templates/
     ├── index.html
     ├── dummy_logger.js

@@ -1,25 +1,24 @@
 #!/bin/bash
-#SBATCH --account=public
-#SBATCH --job-name=Main_test
-#SBATCH --time=00:20:00                   # Adjust time as needed
+#SBATCH --partition=gpu
+#SBATCH --job-name=BBLoss_Test_SLURM
+#SBATCH --time=00:10:00                   # Adjust time as needed
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=32
-#SBATCH --mem-per-cpu=4G                  # Total 40G memory
-#SBATCH --output=/cluster/home/baural/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/Aldo_TEST_%j.out 
-#SBATCH --error=/cluster/home/clhuber/logs/Aldo_TEST_%j.err 
+#SBATCH --cpus-per-task=1
+#SBATCH --mem-per-cpu=16G
+#SBATCH --gpus=rtx_4090:1
+##SBATCH --output=/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/AISCO_TEST_%j.out     #adjust path as needed
+##SBATCH --error=/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/AISCO_TEST_%j.err      #adjust path as needed
+#SBATCH --gpus=1  # rtx_4090:1
+#SBATCH --output=/cluster/home/clhuber/logs/AISCO_TEST_%j.out     #adjust path as needed
+#SBATCH --error=/cluster/home/clhuber/logs/AISCO_TEST_%j.err      #adjust path as needed
 ##SBATCH --mail-type=END,FAIL
-##SBATCH --mail-user=baural@ethz.ch
+##SBATCH --mail-user=eschaerer@ethz.ch
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
-
-module purge
-module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
-
-
 USERNAME=$(whoami)
-LOG_DIR="/cluster/home/$USERNAME/logs"
-##mkdir -p "$LOG_DIR"  # Ensure the log directory exists
+LOG_DIR="/cluster/home/$USERNAME/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs"
+mkdir -p "$LOG_DIR"  # Ensure the log directory exists
 #------------------------------------------------------------------------------
 # Print job information
 #------------------------------------------------------------------------------
@@ -37,12 +36,18 @@ echo "=========================================="
 #------------------------------------------------------------------------------
 # Load modules
 #------------------------------------------------------------------------------
-
+module purge
+module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
 #------------------------------------------------------------------------------
 # Activate the Python virtual environment
 #------------------------------------------------------------------------------
 VENV_DIR="/cluster/home/$USERNAME/AISCO_code/aisco_env"
 source "$VENV_DIR/bin/activate"
+### DEBUG INFO ###
+echo "Python executable: $(which python3)"
+echo "Python version: $(python3 --version)"
+
+### END DEBUG INFO ###
 #------------------------------------------------------------------------------
 # Verify GPU access
 #------------------------------------------------------------------------------
@@ -50,7 +55,12 @@ echo "Verifying GPU access..."
 nvidia-smi
 echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 #------------------------------------------------------------------------------
-
+# Set WANDB environment variables (not used for now)
+#------------------------------------------------------------------------------
+# export WANDB_API_KEY="API_KEY_HERE"  # connect to wandb, then go to wandb.ai/settings, scroll down to API key and reveal
+# export WANDB_PROJECT="test"
+# export WANDB_ENTITY="aisco"
+#------------------------------------------------------------------------------
 # Set Hugging Face environment variables (not used for now)
 #------------------------------------------------------------------------------
 # export HF_HOME="$SCRATCH/hf_models"
@@ -59,22 +69,28 @@ echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 #------------------------------------------------------------------------------
 # Log GPU/CPU info to the same log directory
 #------------------------------------------------------------------------------
-
-##echo "GPU Info:" >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
-##nvidia-smi >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
-##echo "CPU Info:" >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
-##lscpu >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
+echo "GPU Info:" >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
+nvidia-smi >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
+echo "CPU Info:" >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
+lscpu >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
 #------------------------------------------------------------------------------
 # Run the Relevant script
 #------------------------------------------------------------------------------
-export PYTHONUNBUFFERED=TRUE
-export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
-cd /cluster/home/$USERNAME/AISCO_code/
-#python -m src.main
+################################################################################
+# Set PYTHONPATH to include AISCO_code directory
+################################################################################
+export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code:$PYTHONPATH" # new
+################################################################################
+# Navigate to the subprojects root
+################################################################################
 
-python subprojects/wp4_aeroshell_optimizer/v1/src/models/testaldo.py \
+cd /cluster/home/$USERNAME/AISCO_code
+################################################################################
+# Run wp4 main as a module (so relative imports work!)
+################################################################################
+python3 -m  tests.wp4_aeroshell_optimizer.test_bb_losses\
     --save_model \
-    --problem_id="AISCO_WP4_Test_Aldo"  2>&1
+    --problem_id="AISCO_WP4_Test1" 2>&1 # 2>&1 leitet alle Fehler (stderr) in die .out-Datei um, sodass du siehst, was schiefgeht
 #------------------------------------------------------------------------------
 # Print job end information
 #------------------------------------------------------------------------------
@@ -82,3 +98,7 @@ echo "=========================================="
 echo "Job ended on: $(date)"
 echo "Total elapsed time: $SECONDS seconds"
 echo "=========================================="
+
+## chmod +x ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/bb_losses_test.sh
+## sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/bb_losses_test.sh
+## watch -n 5 squeue -u $USER
