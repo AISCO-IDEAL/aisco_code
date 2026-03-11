@@ -110,6 +110,7 @@ exclude = [
     "**/archive/**",
     "**/subprojects/fixed_renderer/**",
     "**/visuals/testing.py",
+    "**/blendednet/**",      # eschaerer: Tim's sinusoidal activation function model (just inspiration, not actually used in our code)
 ]
 
 
