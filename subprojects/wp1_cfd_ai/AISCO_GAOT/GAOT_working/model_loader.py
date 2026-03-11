@@ -8,13 +8,14 @@ from torch_geometric.data import Batch, Data
 
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.dataloader.pyg_transforms import RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.gaot_3d import GAOT3D
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.utils.kaolin_utils import get_diff_mesh
+from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 
 logger = logging.getLogger(__name__)
 
 
 model_dict = {"OnlyCorrectNormalized": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/New_Normalizer1.pt", # only trainde for 3 Epochs or something like this
-    "gold3": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/gold3.pt" # Schould be trained for 400 Epochs
+    "gold3": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/gold3.pt", # Should be trained for 400 Epochs
+    "platin": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/platin.pt"
     }
 
 
@@ -26,6 +27,7 @@ class ModelLoader:
         self.model_path = model_dict[model_id]
         self.device = device
         self._load_model()
+        self.extractor = MeshSDFExtractor(resolution=128, bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3], device=self.device, isovalue=0.0)
 
     def _load_model(self) -> None:
         # ── load config YAML saved alongside the checkpoint ─────────────
@@ -38,16 +40,9 @@ class ModelLoader:
         with open(config_path) as f:
             config = yaml.safe_load(f)
 
-        # The saved YAML may be either:
-        #   (a) flat: top-level keys are input_size, magno, transformer, ...
-        #   (b) nested under model.args from the training arg structure
-        # Support both layouts transparently.
         if "model" in config and "args" in config["model"]:
             config = config["model"]["args"]
 
-        # ── Force online edge computation for inference ──────────────────
-        # The training config may have precompute_edges=True, but at inference
-        # time we build Data objects on-the-fly without precomputed edges.
         if "magno" in config:
             config["magno"]["precompute_edges"] = False
 
@@ -85,22 +80,39 @@ class ModelLoader:
             device=self.device,
             per_head_stats={
                 "force": {
-                    "mean": 557.0568,
-                    "std": 60.3607,
+                    "mean": 95.75044250488281,
+                    "std": 105.13729858398438,
                 }
             },
         )
 
-    def forward(self, sdf_model, epoch_name) -> torch.Tensor:
-        mesh_verts, mesh_faces = get_diff_mesh(model=sdf_model)
+    def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
+        _, _, loss, surrogate_loss = self.extractor.extract_and_compute_loss(sdf_model=sdf_model, loss_fn=self.loss_fn)
+        return loss.item() + surrogate_loss - surrogate_loss.item()
+
+    def loss_fn(self, mesh_verts, mesh_faces):
         if mesh_verts is None or mesh_verts.shape[0] == 0:
             print("Fail")
             return torch.tensor(0.0, device=self.device)
 
-        optim_verts = mesh_verts.detach().clone().to(self.device).requires_grad_(True)
+        batch = self._reformat_data(mesh_verts, mesh_faces)
+
+        # ── latent token positions (registered buffer inside the model) ──
+        tokens_pos = self.gaot.latent_tokens  # already on self.device
+
+        # ── forward through GAOT3D ───────────────────────────────────────
+        with torch.autograd.set_detect_anomaly(True):
+            gaot_loss = self.normal_model.forward(data=batch, tokens_pos=tokens_pos)
+        return gaot_loss
+
+    def _reformat_data(self, mesh_verts, mesh_faces):
+        optim_verts = mesh_verts.to(self.device)
         mesh_faces = mesh_faces.to(self.device)
 
+        # ── convert vertices from mm to meters (SDF model outputs mm, GAOT expects m) ──
+        MM_TO_M = 1e-3
+        optim_verts_m = optim_verts * MM_TO_M
         # ── per-vertex normals (fully differentiable, no in-place ops) ──
         v0 = optim_verts[mesh_faces[:, 0]]
         v1 = optim_verts[mesh_faces[:, 1]]
@@ -118,37 +130,13 @@ class ModelLoader:
         vertex_normals = torch.nn.functional.normalize(vertex_normals, dim=-1)
 
         # ── build PyG batch ──────────────────────────────────────────────
-        data = Data(pos=optim_verts, face=mesh_faces.T, c=vertex_normals)
+        data = Data(pos=optim_verts_m, face=mesh_faces.T, c=vertex_normals)
 
-        # ── rescale positions to [-1, 1] using physical domain (matches training) ──
-        rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-3e3, -3e3, -3e3], [3e3, 3e3, 3e3]))
+        # ── rescale positions to [-1, 1] using physical domain in meters ──
+        rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-3.0, -3.0, -3.0], [3.0, 3.0, 3.0]))
         data = rescale_transform(data)
 
-        batch = Batch.from_data_list([data]).to(self.device)
-
-        # ── latent token positions (registered buffer inside the model) ──
-        tokens_pos = self.gaot.latent_tokens  # already on self.device
-
-        # ── forward through GAOT3D ───────────────────────────────────────
-        with torch.autograd.set_detect_anomaly(True):
-            gaot_loss = self.normal_model.forward(data=batch, tokens_pos=tokens_pos)
-
-            loss_to_vert_grad = torch.autograd.grad(gaot_loss, optim_verts, retain_graph=True)[0]
-
-        # ── surrogate coupling to SDF model ──────────────────────────────
-        sdf_at_verts = sdf_model(optim_verts).view(-1)
-        vert_to_sdf_grad = torch.autograd.grad(
-            sdf_at_verts,
-            optim_verts,
-            grad_outputs=torch.ones_like(sdf_at_verts),
-            create_graph=True,
-            retain_graph=True,
-        )[0]
-
-        dot = (loss_to_vert_grad * vert_to_sdf_grad).sum(dim=-1)
-        surrogate = (dot.detach() * sdf_at_verts).sum()
-        return gaot_loss + (surrogate - surrogate.detach())
-
+        return Batch.from_data_list([data]).to(self.device)
 
 EPSILON = 1e-12
 
@@ -171,8 +159,8 @@ class AutoNormDenorm(nn.Module):
         self.core = core_model
         self.device = device
 
-        y_mean = torch.tensor(-71.45201873779297, device=self.device)
-        y_std = torch.tensor(58.35132598876953, device=self.device)
+        y_mean = torch.tensor(95.75044250488281, device=self.device)
+        y_std = torch.tensor(105.13729858398438, device=self.device)
         c_mean = torch.tensor([-0.09271910786628723, 0.0027784164994955063, 0.04134528338909149], device=self.device)
         c_std = torch.tensor([0.4258987605571747, 0.6058956980705261, 0.6641716361045837], device=self.device)
 
