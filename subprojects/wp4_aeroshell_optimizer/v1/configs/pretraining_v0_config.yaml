@@ -8,7 +8,7 @@ pretraining:
   use_pretrained: True # True or False possible
   force_pretraining: False
   pretraining_model_path: "subprojects/wp4_aeroshell_optimizer/data/test_models/xyz" # must be .pth file compatible with model_vxy, doesn't do anything atm
-  username: "aalthaus"
+  username: ${USER} # for windows users: %USERNAME%
 
 model: "WIRE" #Class name of model
 model_filename: "WIRE" #Name of file where model is defined
