@@ -19,6 +19,7 @@ from __future__ import annotations
 import contextlib
 import copy
 import json
+import os
 from pathlib import Path
 
 import yaml
@@ -42,7 +43,18 @@ def _load_yaml(v: str, cfg_name: str) -> dict:
     config_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
     try:
         with config_path.open() as f:
-            return yaml.safe_load(f)
+            config = yaml.safe_load(f)
+
+        # Automatic detection of execution environment for general_config.yaml
+        if cfg_name == "general_config.yaml" and "general_info" in config:
+            # Check standard Slurm cluster environment variables
+            is_cluster = os.environ.get("HOSTNAME", "").startswith("eu-")
+            # Override run_locally setting based on detection
+            # Note: We use boolean values to ensure correct conditional evaluation in Python
+            config["general_info"]["run_locally"] = not is_cluster
+
+        return config  # noqa: TRY300
+
     except FileNotFoundError as e:
         raise FileNotFoundError(f"Configuration file not found at {config_path}") from e
     except yaml.YAMLError as e:

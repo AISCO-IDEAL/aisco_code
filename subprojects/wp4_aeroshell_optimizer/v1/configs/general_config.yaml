@@ -38,11 +38,7 @@ storage_paths: # Note that paths have to start with "/cluster/...", if you use "
   local_pretrained_dir: "./local_pretrained_dir" # only used for testing on local machine, not on cluster
   storage_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/sweep_storage_for_cfd_ai"
   local_storage_dir: "./local_storage_dir" # only used for testing on local machine, not on cluster
-  # WARNING: deleting the following two lines soon ... new version uses better storage solution
-  model_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/models"
-  local_model_dir: "./local_model_dir" # only used for testing on local machine, not on cluster
-  mesh_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/meshes" #Outdated
-  local_mesh_dir: "./local_mesh_dir" # only used for testing on local machine, not on cluster, Outdated
+
 
 # master example of how to reference other config files:
 #     def __pointgrid_geni(self) -> list[list[float]]:

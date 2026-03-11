@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
 #SBATCH --gpus=rtx_4090:3
-#SBATCH --output=/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/50_Meshes_CFD_AI_%j.out
+#SBATCH --output=/cluster/home/%u/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/50_Meshes_CFD_AI_%j.out
 ## run this command: sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/main_sweeping.sh
 #------------------------------------------------------------------------------
 # Print job information
