@@ -227,6 +227,10 @@ module = [
   "cadquery.*",
   "wandb.*",
   "pyvista.*"
+  "*.blendednet.*",  # eschaerer
+  "blendednet.*"     # eschaerer
+]
+
 
 ]
 ignore_missing_imports = true
