@@ -388,6 +388,7 @@ class SolarLossEstimator:
             self.wandb_run_name = wandb.run.name if wandb.run else None
             self.rendering_dir = None  # Will be set when solar_loss is first called with a model
             self.storage_paths = general_config["storage_paths"]
+            self.run_locally = general_config["general_info"].get("run_locally", "False") == "True"
         else:
             self.visualiser = None
             self.renderSolar = None
@@ -395,6 +396,7 @@ class SolarLossEstimator:
             self.model_hash = None
             self.wandb_run_name = None
             self.rendering_dir = None
+            self.run_locally = False
 
         self.route = Route(
             cfg_path=config["australia_cfg"]
@@ -471,11 +473,9 @@ class SolarLossEstimator:
         if self.rendering and self.enable_wandb_logging and self.model_hash is None:
             self.model_hash = dict_hashing(model.get_model_info_dict())
             if self.wandb_run_name is not None:
+                storage_path = self.storage_paths["local_storage_dir"] if self.run_locally else self.storage_paths["storage_dir"]
                 self.rendering_dir = (
-                    Path(self.storage_paths["storage_dir"])
-                    / self.model_hash
-                    / reformat_wandb_name(self.wandb_run_name)
-                    / "solar_loss_rendering"
+                    Path(storage_path) / self.model_hash / reformat_wandb_name(self.wandb_run_name) / "solar_loss_rendering"
                 )
                 print(f"Rendering enabled: saving to {self.rendering_dir}")
                 os.makedirs(self.rendering_dir, exist_ok=True)

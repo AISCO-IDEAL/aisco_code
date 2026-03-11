@@ -26,7 +26,6 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     # 1. Load general config from YAML
     # ------------------------------------------------------------------
     general_config = load_config(v="v1", cfg_name="general_config.yaml")
-    pretrained_v0_config = load_config(v="v1", cfg_name="pretraining_v0_config.yaml")
 
     # ------------------------------------------------------------------
     # 2. Initialise WandB (picks up sweep agent params into wandb.config)
@@ -87,10 +86,11 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     pretraining_config_name = general_config["active_configs"].get("pretraining", "pretraining_v0_config.yaml")
     pretraining_config = load_config(v="v1", cfg_name=pretraining_config_name)
     force_pretraining = pretraining_config.get("pretraining", {}).get("force_pretraining", False)
-    if general_config["general_info"].get("run_locally", False):
-        pretrained_path = pretrained_v0_config["pretraining"].get("local_pretraining_model_path", False)
+    run_locally = general_config["general_info"].get("run_locally", "False") == "True"
+    if run_locally:
+        pretrained_path = pretraining_config["pretraining"].get("local_pretraining_model_path", False)
     else:
-        pretrained_path = pretrained_v0_config["pretraining"].get("pretraining_model_path", False)
+        pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", False)
     print(f"Pretrained path: {pretrained_path}")
     pretrained_model = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
 
@@ -131,7 +131,8 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     rendering_dir = None
     if wandb_name is not None:
         # set rendering dir inside wandb log dir
-        if general_config["general_info"].get("run_locally", False):
+        run_locally = general_config["general_info"].get("run_locally", "False") == "True"
+        if run_locally:
             rendering_dir = (
                 Path(general_config["storage_paths"]["local_storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
             )

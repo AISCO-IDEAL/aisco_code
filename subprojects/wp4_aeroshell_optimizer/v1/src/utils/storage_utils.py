@@ -50,7 +50,8 @@ def allround_save_data(  # noqa: PLR0915
     # Hash the model_data dictionary
     model_hash_value = dict_hashing(model_data)
     # Baed on hash value see if directory exists, if not create it
-    if general_config["general_info"].get("run_locally", False):
+    run_locally = general_config["general_info"].get("run_locally", "False") == "True"
+    if run_locally:
         storage_path = general_config["storage_paths"]["local_storage_dir"]
     else:
         storage_path = general_config["storage_paths"]["storage_dir"]
