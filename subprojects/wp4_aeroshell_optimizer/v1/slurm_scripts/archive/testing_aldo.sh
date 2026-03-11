@@ -6,7 +6,6 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
 #SBATCH --output=/cluster/home/baural/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/Aldo_TEST_%j.out
-#SBATCH --error=/cluster/home/clhuber/logs/Aldo_TEST_%j.err
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=baural@ethz.ch
 #------------------------------------------------------------------------------

@@ -7,7 +7,6 @@
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
 #SBATCH --gpus=rtx_4090:1
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
-#SBATCH --error=/cluster/scratch/%u/logs/%x_%j.err
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=%u@ethz.ch
 ## run this command: sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/main_testing.sh
