@@ -1,21 +1,20 @@
 #Here put the config for model pretraining
 general_info:
-  config_debugging: "True"
+  config_debugging: "True"  # NOT USED — never read by any code in src/
 
-pretraining_shape: "sphere" # "sphere" or "cube"
+pretraining_shape: "sphere" # "sphere" or "cube"  # USED — pretraining_v1_1.py: config.get("pretraining_shape", "sphere")
 
 pretraining:
-  use_pretrained: True # True or False possible
-  force_pretraining: False
-  pretraining_model_path: "subprojects/wp4_aeroshell_optimizer/data/test_models/xyz" # must be .pth file compatible with model_vxy, doesn't do anything atm
-  local_pretraining_model_path: "./local_pretrained_dir" # only used for testing on local machine, not on cluster, must be .pth file compatible with model_vxy, doesn't do anything atm
-  username: "aalthaus"
+  use_pretrained: True # True or False possible  # NOT USED — never read by any code (main checks fetch_pretrained_model result instead)
+  force_pretraining: False  # USED — main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("force_pretraining", False)
+  pretraining_model_path: "subprojects/wp4_aeroshell_optimizer/data/test_models/xyz" # must be .pth file compatible with model_vxy, doesn't do anything atm  # USED — main_v1_1_one_model.py: pretraining_config["pretraining"].get("pretraining_model_path", False)
+  username: ${USER} # for windows users: %USERNAME%  # NOT USED — never read by any code in the optimisation loop
 
-model: "WIRE" #Class name of model
-model_filename: "WIRE" #Name of file where model is defined
+model: "WIRE" #Class name of model  # USED — pretraining_v1_1.py: config["model"] (only in dynamic_model_loading, not used when model is passed in)
+model_filename: "WIRE" #Name of file where model is defined  # USED — pretraining_v1_1.py: config["model_filename"] (only in dynamic_model_loading, not used when model is passed in)
 
 training_loop:
-  epochs: 5000
-  learning_rate: 0.0005
-  random_batch_size: 2048
-  print_interval: 25
+  epochs: 5000  # USED — pretraining_v1_1.py: config["training_loop"]["epochs"]
+  learning_rate: 0.0005  # USED — pretraining_v1_1.py: config["training_loop"]["learning_rate"]
+  random_batch_size: 2048  # USED — pretraining_v1_1.py: config["training_loop"]["random_batch_size"]
+  print_interval: 25  # USED — pretraining_v1_1.py: config["training_loop"]["print_interval"]
