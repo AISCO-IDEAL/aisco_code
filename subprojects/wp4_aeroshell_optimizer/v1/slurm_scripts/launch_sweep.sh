@@ -9,7 +9,7 @@
 #SBATCH --time=04:00:00
 #SBATCH --ntasks=2
 #SBATCH --cpus-per-task=8
-#SBATCH --gpus=rtx_4090:2
+#SBATCH --gpus=rtx_4090:3
 #SBATCH --mem-per-cpu=5G
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 #SBATCH --error=/cluster/scratch/%u/logs/%x_%j.err
@@ -18,8 +18,8 @@
 ##  sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/launch_sweep.sh ##
 ###############################################################################################
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/new_50_meshes/uso9j41g"   # <-- EDIT THIS
-COUNT=3                                      # runs per agent
+SWEEP_ID="aisco/new_50_meshes/ms1tekky"   # <-- EDIT THIS
+COUNT=16                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
 
 # ---- Job info ---------------------------------------------------------------
 echo "=========================================="

@@ -10,13 +10,30 @@ metric:
   goal: minimize
   name: total_loss
 parameters:
-  losses_v0_config.bb_config.assembly_id:
-    values: [1, 5, 10, 20, 30, 69]
-  losses_v0_config.bb_config.assembly_version:
-    value: 3
+  ### assemblies ###
+  losses_v0_config.bb_config.assembly_id: # TODO: make sure that this is used correctly
+    distribution: int_uniform
+    min: 1
+    max: 50
+
+  ### ALM ###
+  losses_v0_config.general_info.initial_mu: # NOTE: https://arxiv.org/pdf/2508.15695 has even mu = 1'000 as maximum
+    distribution: log_uniform_values
+    min: 0.001
+    max: 100.0
+  losses_v0_config.general_info.initial_lambda:
+    distribution: log_uniform_values
+    min: 0.00001
+    max: 0.1
+
+  ### model ###
+  basic_MLP_v1.hidden:
+    values: [32, 64, 128]
   training_v0_config.training_params.learning_rate:
     distribution: log_uniform_values
     min: 0.00001
     max: 0.01
+
+  ### pretraining ###
   pretraining_v0_config.pretraining_shape:
     values: ["sphere", "cube"]

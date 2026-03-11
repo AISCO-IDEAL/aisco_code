@@ -4,6 +4,7 @@ general_info:
   CSE: "True"  # Cruising Speed Estimation
   alm_thresholds: [0.1, 0.1, 0.1]  # thresholds for constraint losses [bb, eikonal, smoothness]
   initial_lambda: 0.01  # initial value for lambda in ALM
+  initial_mu: 1.0  # initial value for mu in ALM
   alpha: 0.99  # factor to increase mu in ALM if constraint not met
   gamma: 0.01  # parameter for ALM penalty update
 
@@ -42,6 +43,7 @@ losses: # [compute: bool, weight: float, path: str]
 get_points_params: # used in eikonal and smoothness loss
   num_points: 1000
   bbox_size: 10.0
+
 #by clemens
 solar_config:
   wandb_logging: False
@@ -50,6 +52,7 @@ solar_config:
   area_budget: 6000000
   normalise_loss: True
   solar_direction_solid_angle: [0.785398, 3.141592]
+
 #by alex
 main_solar_config:
   solar_angle: [1.0,0.0,0.0] # This is the direction in which a perfect solar cell should point, i.e. [0,0,1] if the sun shines from above
