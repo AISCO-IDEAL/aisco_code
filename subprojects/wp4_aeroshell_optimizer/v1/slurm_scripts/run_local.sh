@@ -11,6 +11,7 @@
 ###########################################################################
 USERNAME=$(whoami) #elegant, right?
 # Update this path to where your code actually sits on WSL
+
 PROJECT_ROOT="$HOME/AISCO_code"
 VENV_DIR="$PROJECT_ROOT/aisco_env"
 
@@ -49,7 +50,7 @@ fi
 export PYTHONUNBUFFERED=TRUE
 # Add the local subprojects folder to path
 export PYTHONPATH="$PROJECT_ROOT/subprojects:$PYTHONPATH"
-
+export AISCO_CODE_PATH="/home/eschaerer/AISCO_code"
 cd "$PROJECT_ROOT"
 
 # Run the python command

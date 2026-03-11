@@ -13,10 +13,12 @@ from urllib.parse import urlparse
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 LOGGER = logging.getLogger(__name__)
 
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GUI_ROOT = Path(__file__).resolve().parent
 RUN_LOCAL_SCRIPT = REPO_ROOT / "wp4_aeroshell_optimizer" / "v1" / "slurm_scripts" / "run_local.sh"
-RUN_LOCAL_LOG = GUI_ROOT / "run_local.log"
+RUN_LOCAL_LOG = GUI_ROOT / "logs" / f"run_local_{timestamp}.log"
 
 PROCESS_LOCK = threading.Lock()
 STATE: dict[str, subprocess.Popen[str] | None] = {"run_local_process": None}
