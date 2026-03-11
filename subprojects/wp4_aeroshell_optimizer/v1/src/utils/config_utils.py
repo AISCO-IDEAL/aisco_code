@@ -20,6 +20,7 @@ import contextlib
 import copy
 import json
 import os
+import socket
 from pathlib import Path
 
 import yaml
@@ -47,11 +48,27 @@ def _load_yaml(v: str, cfg_name: str) -> dict:
 
         # Automatic detection of execution environment for general_config.yaml
         if cfg_name == "general_config.yaml" and "general_info" in config:
-            # Check standard Slurm cluster environment variables
-            is_cluster = os.environ.get("HOSTNAME", "").startswith("eu-")
+            is_cluster = False
+
+            try:
+                hostname = socket.gethostname()
+                # Check standard Slurm cluster environment variables
+                is_cluster = "SLURM_CLUSTER_NAME" in os.environ or "SLURM_JOB_ID" in os.environ or hostname.startswith("eu-")
+
+                # Force local if running inside WSL
+                if "WSL_DISTRO_NAME" in os.environ:
+                    is_cluster = False
+
+            except Exception:
+                # Fallback if detection fails
+                is_cluster = False
+
             # Override run_locally setting based on detection
             # Note: We use boolean values to ensure correct conditional evaluation in Python
             config["general_info"]["run_locally"] = not is_cluster
+
+            if config["general_info"].get("verbose", "False") == "True":
+                print(f"Config Setup: Detected environment is_cluster={is_cluster}")
 
         return config  # noqa: TRY300
 
