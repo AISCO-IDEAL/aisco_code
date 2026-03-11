@@ -5,6 +5,7 @@ general_info:
   pre: "a sphere as initial shape, datatype: SDF"
   post: "a PLY file representing the optimized aeroshell shape"
   config_debugging: "True" # adds print statements if config loading is succesfull
+  verbose: "False"
 
 model_def:
   model_name: "BasicMLP"
@@ -22,7 +23,7 @@ active_configs:
 
 wandb_general:
   use_wandb: True
-  project_name: "CSE_debugging" #modify
+  project_name: "50 meshes proper naming and storage" #modify
   entity_name: "aisco"
   track_run: 1
   use_renderer: True
@@ -32,8 +33,8 @@ wandb_general:
 
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
   pretrained_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset"
-  storage_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
-  #Outdated, new version uses better storage solution
+  storage_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/sweep_storage_for_cfd_ai"
+  # WARNING: deleting the following two lines soon ... new version uses better storage solution
   model_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/models"
   mesh_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/meshes" #Outdated
 

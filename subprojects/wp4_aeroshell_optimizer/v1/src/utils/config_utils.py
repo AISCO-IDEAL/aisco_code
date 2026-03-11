@@ -93,7 +93,11 @@ def apply_sweep_overrides(sweep_params: dict) -> None:
 
     Keys whose first segment does **not** match any registered config are
     applied to ``general_config`` as a fallback (backward-compatible with old
-    flat keys).
+    flat keys)
+    Args:
+        sweep_params (dict): A dictionary of sweep parameters.
+    Returns:
+        None, the config values are updated in place
     """
     if not _registry_initialised:
         raise RuntimeError(

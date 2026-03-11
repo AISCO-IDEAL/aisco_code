@@ -21,7 +21,7 @@ mesh_extraction:
   #   - 128: Fast quality (~2M points)
   #   - 256: Good quality (~16M points)
   #   - 512: High quality (~134M points, use GPU with 16GB+ VRAM)
-  resolution: 128 # Conservative default, adjust based on your GPU
+  resolution: 256 # Conservative default, adjust based on your GPU
   # Bounding box [[xmin,xmax], [ymin,ymax], [zmin,zmax]]
   # Adjust to encompass your geometry with some margin
   bbox: [[-5000, 5000], [-5000, 5000], [-5000, 5000]]
@@ -42,10 +42,10 @@ mesh_extraction:
 # Insert custom modes here that should be handled by the VisualisationManager
 rendering_modes:
   enabled: true #Whether to use the visual wrapper at all, if false, no rendering is done, even if modes are enabled
-  #use alex_mode as an example, jsut renders a GIF of the mesh
+  #use alex_mode as an example, just renders a GIF of the mesh
   alex_mode:
     #mandatory
-    enabled: false
+    enabled: true
     class_path: "custom_modes.alex_mode:BasicAlexMode"
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you

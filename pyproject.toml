@@ -110,6 +110,7 @@ exclude = [
     "**/archive/**",
     "**/subprojects/fixed_renderer/**",
     "**/visuals/testing.py",
+    "**/blendednet/**",      # eschaerer: Tim's sinusoidal activation function model (just inspiration, not actually used in our code)
 ]
 
 
@@ -215,6 +216,7 @@ exclude = [
   "^docs/",
   ".*fixed_renderer/.*", # <-- eschaerer: Fixed regex to catch it inside subprojects
   ".*/archive/.*",       # <-- eschaerer: Fixed regex typo
+  ".*/blendednet/.*",     # <-- eschaerer: Tim's sinusoidal activation function model (just inspiration)
   'tests/',
 ]
 
@@ -224,9 +226,11 @@ module = [
   "kaolin.*",
   "cadquery.*",
   "wandb.*",
-  "pyvista.*"
-
+  "pyvista.*",
+  "*.blendednet.*",  # eschaerer
+  "blendednet.*"     # eschaerer
 ]
+
 ignore_missing_imports = true
 ignore_errors = true
 follow_imports = "skip"

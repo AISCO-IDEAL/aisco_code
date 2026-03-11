@@ -91,6 +91,9 @@ def allround_save_data(
 
         epoch_str = "no_epoch" if epoch is None else f"epoch{epoch:04d}"
 
+    #####################
+    ### save the mesh ###
+    #####################
     if save_mesh:
         # get a model using kaolin conversions
         # Use a copy to avoid disrupting training
@@ -101,6 +104,9 @@ def allround_save_data(
 
         kaolin_to_PLY(verts, faces, filename=f"{wandb_run}_{epoch_str}.ply", mesh_dir=mesh_dir, verbose=verbose)
 
+    ######################
+    ### save the model ###
+    ######################
     if save_model:
         model_file_path = model_dir / f"{wandb_run}_{epoch_str}.pth"
         # Check if you would overwrite an existing model

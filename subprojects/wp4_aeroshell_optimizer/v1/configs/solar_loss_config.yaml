@@ -1,0 +1,46 @@
+#to be cleaned up
+
+general_info:
+  version: 3.0
+  last_updated: 2026-01-19
+  description: "Configuration file for solar loss functions."
+
+general_config:
+  # replaced in SolarLossConfigV3: solar_angle: [0.0,1.0,1.0] # This is the direction in which a perfect solar cell should point, i.e. [0,0,1] if the sun shines from above
+  area_budget: 4000000 #in mm^3
+
+SolarLossConfigV3:
+  method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
+  bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
+  resolution: 150
+  area_budget_mm2: 4000000
+  sun_dir: [-1.0,0.0,1.0]
+  device: "cuda"
+  batch_size: 2048
+  eps: 1e-12
+  sigmoid_sharpness: 10.0
+  budget_penalty_weight: 0.1
+  wandb_logging: True
+  soft_mask_selection_threshold: 0.5 # This is the threshold for selecting points in the soft mask for the loss computation. Points with a soft mask value above this threshold will be considered for the loss computation.
+  soft_mask_full_selection_threshold: 0.95 # This is the threshold for fully selecting points in the soft mask (i.e., all points with a value above this threshold are fully selected).
+  rendering: True
+  selection_threshold_render: 0.05 # 0 for no threshold, i.e. clean color gradient. This is the threshold for selecting points in the soft mask for rendering. Points with a soft mask value above this threshold will be rendered as selected (e.g., highlighted in the visualization).
+  log_group_name: "solar_loss_metrics" # This is the name of the log group in wandb where solar loss metrics will be logged. You can use this to organize your logs and make it easier to analyze the results in wandb.
+
+SolarLossConfigV4:
+  australia_cfg: "solar_configs/australia.yaml" #path to australian sun/route config
+  method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
+  bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
+  resolution: 150
+  area_budget_mm2: 4000000
+  device: "cuda"
+  batch_size: 2048
+  eps: 1e-12
+  sigmoid_sharpness: 10.0
+  budget_penalty_weight: 0.1
+  wandb_logging: True
+  soft_mask_selection_threshold: 0.5 # This is the threshold for selecting points in the soft mask for the loss computation. Points with a soft mask value above this threshold will be considered for the loss computation.
+  soft_mask_full_selection_threshold: 0.95 # This is the threshold for fully selecting points in the soft mask (i.e., all points with a value above this threshold are fully selected).
+  rendering: True
+  selection_threshold_render: 0.05 # 0 for no threshold, i.e. gradient. This is the threshold for selecting points in the soft mask for rendering. Points with a soft mask value above this threshold will be rendered as selected (e.g., highlighted in the visualization).
+  log_group_name: "solar_loss_metrics" # This is the name of the log group in wandb where solar loss metrics will be logged. You can use this to organize your logs and make it easier to analyze the results in wandb.

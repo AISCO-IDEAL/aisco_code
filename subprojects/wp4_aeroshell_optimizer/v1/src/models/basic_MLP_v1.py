@@ -5,6 +5,7 @@ import torch
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager, Wrapper
 
 
@@ -21,11 +22,11 @@ class BasicMLP(BaseModel):
 
     def optimise(
         self,
+        general_config,
+        training_config,
         renderer_manager: VisualisationManager | None = None,
         renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
-        wandb_name: str | None = None,  # noqa: ARG002
-        general_config: dict | None = None,  # noqa: ARG002
-        training_config: dict | None = None,
+        wandb_name: str | None = None,
     ) -> None:
         if training_config is None:
             raise ValueError("Training config must be provided for optimisation.")
@@ -92,6 +93,23 @@ class BasicMLP(BaseModel):
                     wandb.log({f"{component_name}_gradient": delta_norm}, step=epoch)
                 prev_grad = curr_grad
 
+            ###########################
+            ### save mesh and model ###
+            ###########################
+            mesh_save_interval = training_config["training_params"].get("mesh_save_interval", 50)
+            if (epoch + 1) % mesh_save_interval == 0:
+                allround_save_data(
+                    model=self,
+                    storage_path=general_config["storage_paths"].get(
+                        "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+                    ),
+                    save_model=True,
+                    save_mesh=True,
+                    epoch=epoch + 1,
+                    verbose=general_config["general_info"].get("verbose", False),
+                    pretraining=False,
+                    wandb_run=wandb_name,
+                )
             # param.grad now holds the sum of all per-component gradients — same as if
             # we had called backward() on weighted_total_loss directly.
             optimizer.step()
