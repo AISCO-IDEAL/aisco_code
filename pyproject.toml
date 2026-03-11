@@ -231,8 +231,6 @@ module = [
   "blendednet.*"     # eschaerer
 ]
 
-
-]
 ignore_missing_imports = true
 ignore_errors = true
 follow_imports = "skip"
