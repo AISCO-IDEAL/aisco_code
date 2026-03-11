@@ -226,7 +226,7 @@ module = [
   "kaolin.*",
   "cadquery.*",
   "wandb.*",
-  "pyvista.*"
+  "pyvista.*",
   "*.blendednet.*",  # eschaerer
   "blendednet.*"     # eschaerer
 ]
