@@ -1,14 +1,14 @@
 #!/bin/bash
-#SBATCH --account=public
+#SBATCH --partition=gpu
 #SBATCH --job-name=Main_test
-#SBATCH --time=00:20:00                   # Adjust time as needed
+#SBATCH --time=02:00:00                   # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
-#SBATCH --output=/cluster/home/baural/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/Aldo_TEST_%j.out 
-#SBATCH --error=/cluster/home/clhuber/logs/Aldo_TEST_%j.err 
-##SBATCH --mail-type=END,FAIL
-##SBATCH --mail-user=baural@ethz.ch
+#SBATCH --gpus=rtx_4090:1
+#SBATCH --output=/cluster/home/clhuber/logs/Clemens_TEST_%j.out 
+#SBATCH --error=/cluster/home/clhuber/logs/Clemens_TEST_%j.err 
+
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
@@ -17,8 +17,8 @@ module purge
 module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
 
 
-USERNAME=$(whoami)
-LOG_DIR="/cluster/home/$USERNAME/logs"
+USERNAME="clhuber"
+LOG_DIR="/cluster/home/$USERNAME/AISCO_code/logs"
 ##mkdir -p "$LOG_DIR"  # Ensure the log directory exists
 #------------------------------------------------------------------------------
 # Print job information
@@ -72,9 +72,12 @@ export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
 cd /cluster/home/$USERNAME/AISCO_code/
 #python -m src.main
 
-python subprojects/wp4_aeroshell_optimizer/v1/src/models/testaldo.py \
-    --save_model \
-    --problem_id="AISCO_WP4_Test_Aldo"  2>&1
+ulimit -n 65536 
+
+python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/main.py \
+    -c subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/euler_field_new.yaml \
+    2>&1
+    
 #------------------------------------------------------------------------------
 # Print job end information
 #------------------------------------------------------------------------------
@@ -82,3 +85,7 @@ echo "=========================================="
 echo "Job ended on: $(date)"
 echo "Total elapsed time: $SECONDS seconds"
 echo "=========================================="
+
+## chmod +x ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/clemens.sh
+## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/clemens.sh
+## watch -n 5 squeue -u $USER

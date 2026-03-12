@@ -22,6 +22,7 @@ dependencies = [
   "pre-commit>=3.0.0",
   "mypy>=1.19.1",
   "torch==2.4.0",
+  "torchvision==0.19.0",
   "wandb[media] >= 0.23.1",
   "types-paramiko",
   "types-pytz",
@@ -110,6 +111,7 @@ exclude = [
     "**/archive/**",
     "**/subprojects/fixed_renderer/**",
     "**/visuals/testing.py",
+    "**/blendednet/**",      # eschaerer: Tim's sinusoidal activation function model (just inspiration, not actually used in our code)
 ]
 
 
@@ -208,13 +210,15 @@ ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 check_untyped_defs = true
-files = ["subprojects/", "tests/"]
+files = ["subprojects/"]
 
 exclude = [
   "^build/",
   "^docs/",
   ".*fixed_renderer/.*", # <-- eschaerer: Fixed regex to catch it inside subprojects
   ".*/archive/.*",       # <-- eschaerer: Fixed regex typo
+  ".*/blendednet/.*",     # <-- eschaerer: Tim's sinusoidal activation function model (just inspiration)
+  'tests/',
 ]
 
 [[tool.mypy.overrides]]
@@ -223,9 +227,13 @@ module = [
   "kaolin.*",
   "cadquery.*",
   "wandb.*",
-  "pyvista.*"
-
+  "pyvista.*",
+  "*.blendednet.*",  # eschaerer
+  "blendednet.*",     # eschaerer
+  "*.fixed_renderer.*", # eschaerer
+  "fixed_renderer.*" # eschaerer
 ]
+
 ignore_missing_imports = true
 ignore_errors = true
 follow_imports = "skip"

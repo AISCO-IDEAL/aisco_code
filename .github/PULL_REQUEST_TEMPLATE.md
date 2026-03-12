@@ -31,9 +31,8 @@ To upload images to a PR -- simply drag and drop an image while in edit mode and
 
 # Checklist:
 
-- [ ] I have run the [`pre-commit` checks](https://pre-commit.com/) with `pre-commit run --all-files`
 - [ ] I have run `ruff check .` and `ruff format`
-- [ ] I have run `mypy .`
+- [ ] I have run `mypy`
 - [ ] I have commented my code, particularly in hard-to-understand areas
 - [ ] I have made corresponding changes to the documentation
 - [ ] My changes generate no new warnings

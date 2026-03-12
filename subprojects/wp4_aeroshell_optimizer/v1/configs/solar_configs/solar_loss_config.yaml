@@ -1,14 +1,19 @@
-#to be cleaned up
+# to be cleaned up
+# This is the authoritative solar config loaded by solar_v4.py:
+#   load_config(v="v1", cfg_name="solar_configs/solar_loss_config.yaml")["SolarLossConfigV4"]
+# # The entire SolarLossConfigV4 dict is passed to WP3's SolarLossEstimator.
 
-general_info:
-  version: 3.0
-  last_updated: 2026-03-10
-  description: "Configuration file for solar loss functions."
+# general_info:
+#   version: 3.0  # NOT USED — never read by any code
+#   last_updated: 2026-01-19  # NOT USED — never read by any code
+#   description: "Configuration file for solar loss functions."  # NOT USED — never read by any code
 
+# NOT USED — ENTIRE SECTION: general_config is never read by any code
 general_config:
   # replaced in SolarLossConfigV3: solar_angle: [0.0,1.0,1.0] # This is the direction in which a perfect solar cell should point, i.e. [0,0,1] if the sun shines from above
   area_budget: 4000000 #in mm^3
 
+# USED !!!
 SolarLossConfigV3:
   method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
@@ -27,6 +32,8 @@ SolarLossConfigV3:
   selection_threshold_render: 0.05 # 0 for no threshold, i.e. clean color gradient. This is the threshold for selecting points in the soft mask for rendering. Points with a soft mask value above this threshold will be rendered as selected (e.g., highlighted in the visualization).
   log_group_name: "solar_loss_metrics" # This is the name of the log group in wandb where solar loss metrics will be logged. You can use this to organize your logs and make it easier to analyze the results in wandb.
 
+# USED — solar_v4.py: cfg["SolarLossConfigV4"] -> entire dict passed to SolarLossEstimator (WP3)
+# All keys below are consumed by WP3's SolarLossEstimator class
 SolarLossConfigV4:
   australia_cfg: "solar_configs/australia.yaml" #path to australian sun/route config
   validation_sim: True #whether to use validation sim
@@ -51,18 +58,18 @@ SolarLossConfigV5:
   australia_cfg: "solar_configs/australia.yaml" #path to australian sun/route config
   validation_sim: True #whether to use validation sim
   validation_interval: 10 # every N epochs validation sim is run, for 0 only at the end it is run
-  method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
-  bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
-  resolution: 150
-  area_budget_mm2: 4000000
-  device: "cuda"
-  batch_size: 2048
-  eps: 1e-12
-  sigmoid_sharpness: 10.0
-  budget_penalty_weight: 0.1
-  wandb_logging: True
-  soft_mask_selection_threshold: 0.5 # This is the threshold for selecting points in the soft mask for the loss computation. Points with a soft mask value above this threshold will be considered for the loss computation.
-  soft_mask_full_selection_threshold: 0.95 # This is the threshold for fully selecting points in the soft mask (i.e., all points with a value above this threshold are fully selected).
-  rendering: True
-  selection_threshold_render: 0.05 # 0 for no threshold, i.e. gradient. This is the threshold for selecting points in the soft mask for rendering. Points with a soft mask value above this threshold will be rendered as selected (e.g., highlighted in the visualization).
-  log_group_name: "solar_loss_metrics" # This is the name of the log group in wandb where solar loss metrics will be logged. You can use this to organize your logs and make it easier to analyze the results in wandb.
+  method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf  # USED — WP3
+  bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]  # USED — WP3
+  resolution: 150  # USED — WP3
+  area_budget_mm2: 4000000  # USED — WP3
+  device: "cuda"  # USED — WP3
+  batch_size: 2048  # USED — WP3
+  eps: 1e-12  # USED — WP3
+  sigmoid_sharpness: 10.0  # USED — WP3
+  budget_penalty_weight: 0.1  # USED — WP3
+  wandb_logging: True  # USED — WP3
+  soft_mask_selection_threshold: 0.5  # USED — WP3
+  soft_mask_full_selection_threshold: 0.95  # USED — WP3
+  rendering: True  # USED — WP3
+  selection_threshold_render: 0.05  # USED — WP3
+  log_group_name: "solar_loss_metrics"  # USED — WP3

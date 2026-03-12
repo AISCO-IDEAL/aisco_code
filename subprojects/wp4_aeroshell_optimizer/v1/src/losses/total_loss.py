@@ -75,13 +75,15 @@ class TotalLoss:
         if self.losses_config["general_info"].get("ALM", False):
             alm_info = self.losses_config["general_info"]
             self.lamda: float = alm_info.get("initial_lambda", 0.01)
+            self.mu: float = alm_info.get("initial_mu", 1.0)
+            self.nu: float = alm_info.get("initial_nu", 1.0)
             self.lamdas = torch.tensor([[self.lamda], [self.lamda], [self.lamda]], device=dev)
             self.mus = torch.tensor(
-                [[1.0], [1.0], [1.0]], device=dev
+                [[self.mu], [self.mu], [self.mu]], device=dev
             )  # η=1 balances constraint enforcement and objective minimization
             # Ref: "Conditionally adaptive augmented Lagrangian method" — Hua, Basira, Senocak
             #      https://arxiv.org/html/2508.15695v1
-            self.nus = torch.tensor([[1.0], [1.0], [1.0]], device=dev)
+            self.nus = torch.tensor([[self.nu], [self.nu], [self.nu]], device=dev)
             self.alpha: float = alm_info.get("alpha", 0.99)
             self.alphas = torch.tensor(
                 [[self.alpha], [self.alpha], [self.alpha]], device=dev
@@ -168,16 +170,14 @@ class TotalLoss:
             # o: maximise cruising speed (CSE)
             o: torch.Tensor
             if self.losses_config["general_info"]["CSE"] == "True":  # TODO: go through each separate loss and check
-                o = torch.as_tensor(
-                    -1.0
-                    * cruising_speed(
-                        solar_power=loss_tensors[4],
-                        drag_force_at_25ms=loss_tensors[0],
-                        mass=210,
-                        c_losses=20,
-                        rolling_friction_coefficient=0.006,
-                    ),
-                    device=device,
+                o = -cruising_speed(
+                    solar_power=loss_tensors[4],
+                    drag_force_at_25ms=loss_tensors[0],
+                    mass=210,
+                    c_losses=20,
+                    rolling_friction_coefficient=0.006,
+                    max_iter=12,
+                    tol=1e-4,
                 )
             else:  # o: maximise solar power - drag losses
                 o = torch.as_tensor(-1.0 * (loss_tensors[4] - loss_tensors[0]), device=device)

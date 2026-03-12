@@ -3,28 +3,35 @@ import torch
 
 class PhysicalRootFinder(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, drag_force_at_25ms, solar_power, rolling_friction_force, c):
+    def forward(ctx, drag_force_at_25ms, solar_power, rolling_friction_force, c, max_iter, tol):
         # We solve: f(u) = drag_force_normalized * u^3 + rolling_friction_force * u + (c - solar_power) = 0
         with torch.no_grad():
             # Initialization: Since drag and solar_power are > 0,
-            # a starting value of 1.0 is usually safe for convergence.
-            u = torch.ones_like(drag_force_at_25ms)
+            # A more adaptive starting guess
+            u_0 = (solar_power - c) / (rolling_friction_force + 1e-6)
+            u = torch.clamp(u_0, min=1.0, max=60.0)  # Keep it in a sane range
 
             # Newton's Method (5-10 iterations are typically sufficient given the monotonicity)
-            for _ in range(8):
+            for _ in range(max_iter):
                 f = drag_force_at_25ms * u**3 / (25**2) + rolling_friction_force * u + c - solar_power
                 df_du = 3 / (25**2) * drag_force_at_25ms * u**2 + rolling_friction_force
-                u = u - f / df_du
+                delta_u = f / (df_du + 1e-9)  # Avoid division by zero
+                u = u - delta_u
 
                 # Ensure we remain within the physical domain (speed must be positive)
                 u = torch.clamp(u, min=1e-6)  # TODO: is clamping feasible?
+                if torch.max(torch.abs(delta_u)) < tol:
+                    break
 
-        ctx.save_for_backward(u, drag_force_at_25ms, solar_power, rolling_friction_force, c)
+        ctx.save_for_backward(u, drag_force_at_25ms, solar_power)
+        ctx.rolling_friction_force = rolling_friction_force
+        ctx.c = c
         return u
 
     @staticmethod
     def backward(ctx, dloss_du):
-        u, drag_force_at_25ms, solar_power, rolling_friction_force, _c = ctx.saved_tensors
+        u, drag_force_at_25ms, solar_power = ctx.saved_tensors
+        rolling_friction_force = ctx.rolling_friction_force
 
         # Partial derivatives of the function F = u^2 / (25m/s)^2 * drag_force_at_25ms*u + rolling_friction_force*u + c - solar_power
         df_du = 3 / (25**2) * drag_force_at_25ms * u**2 + rolling_friction_force
@@ -42,7 +49,7 @@ class PhysicalRootFinder(torch.autograd.Function):
         dloss_dsolar_power = i_f_t * df_dsolar_power
 
         # rolling_friction_force and c are constants relative to this solver -> None
-        return dloss_ddrag_force_at_25ms, dloss_dsolar_power, None, None
+        return dloss_ddrag_force_at_25ms, dloss_dsolar_power, None, None, None, None
 
 
 def cruising_speed(
@@ -51,6 +58,8 @@ def cruising_speed(
     mass: float,
     c_losses: float,
     rolling_friction_coefficient: float = 0.006,
+    max_iter: int = 12,
+    tol: float = 1e-4,
 ) -> torch.Tensor:
     """
     Combines solar power prediction and drag force prediction into
@@ -75,6 +84,6 @@ def cruising_speed(
 
     # Apply the differentiable root finder to solve for cruising speed
     solver = PhysicalRootFinder.apply
-    cruising_speed_objective = solver(drag_force_at_25ms, solar_power, rolling_friction_force, c_losses)
+    cruising_speed_objective = solver(drag_force_at_25ms, solar_power, rolling_friction_force, c_losses, max_iter, tol)
 
     return cruising_speed_objective

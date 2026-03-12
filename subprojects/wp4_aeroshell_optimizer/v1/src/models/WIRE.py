@@ -149,11 +149,11 @@ class WIRE(BaseModel):
 
     def optimise(
         self,
+        general_config,
+        training_config,
         renderer_manager: VisualisationManager | None = None,
         renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
         wandb_name: str | None = None,
-        general_config: dict | None = None,
-        training_config: dict | None = None,
     ) -> None:
         """
         Args:

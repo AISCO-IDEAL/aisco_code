@@ -28,6 +28,7 @@ def cube_gt(
         points: Input coordinates of shape (batch_size, 3)
         side_length: Length of the cube's sides
     """
+    coordinates = coordinates.to(points.device)
     half_side = side_length / 2.0
     d = torch.abs(points - coordinates) - half_side
     d_clamped = torch.clamp(d, min=0)

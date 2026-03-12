@@ -31,14 +31,14 @@ class Renderer(nn.Module):
             self.R = R
             self.t = t
             if isinstance(self.K, numpy.ndarray):
-                self.K = torch.cuda.FloatTensor(self.K) #type: ignore [attr-defined]
+                self.K = torch.cuda.FloatTensor(self.K)
             if isinstance(self.R, numpy.ndarray):
-                self.R = torch.cuda.FloatTensor(self.R) #type: ignore [attr-defined]
+                self.R = torch.cuda.FloatTensor(self.R)
             if isinstance(self.t, numpy.ndarray):
-                self.t = torch.cuda.FloatTensor(self.t) #type: ignore [attr-defined]
+                self.t = torch.cuda.FloatTensor(self.t)
             self.dist_coeffs = dist_coeffs
             if dist_coeffs is None:
-                self.dist_coeffs = torch.cuda.FloatTensor([[0., 0., 0., 0., 0.]]) #type: ignore [attr-defined]
+                self.dist_coeffs = torch.cuda.FloatTensor([[0., 0., 0., 0., 0.]])
             self.orig_size = orig_size
         elif self.camera_mode in ['look', 'look_at']:
             self.perspective = perspective

@@ -1,5 +1,5 @@
 """
-weights for losses of aeroshell_optimizer are handeled here
+weights for constraints of aeroshell_optimizer are handeled here
 
 """
 
