@@ -89,13 +89,15 @@ def test_route_loader():  # noqa: PLR0915
     points = routev2.get_route_points()
     times = routev2.times
     hours = np.array([t.hour + t.minute / 60 for t in times])
-    plt.figure()
+    plt.figure(figsize=(4.5, 6))
+
     plt.scatter(points[:, 1], points[:, 0], c=hours, cmap="viridis")  # Plot longitude vs latitude, colored by time of day
     plt.colorbar(label="Time of day (hours)")
     plt.axis("equal")
     plt.xlabel("Longitude")
     plt.ylabel("Latitude")
     plt.title("Route Points Colored by Time of Day (RouteV2)")
+    plt.gca().set_aspect("equal", adjustable="box")
     plt.savefig("subprojects/wp3_solar_estimator/australia/data/route_points_time.png")
 
     # same as for routev1, plot solar vectors as arrows from origin, colored by time sample index.
