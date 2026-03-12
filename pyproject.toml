@@ -27,10 +27,6 @@ dependencies = [
   "types-paramiko",
   "types-pytz",
   "types-requests",
-  "types-PyYAML",
-  "types-paramiko",
-  "types-pytz",
-  "types-requests",
   "types-PyYAML"
 ]
 
