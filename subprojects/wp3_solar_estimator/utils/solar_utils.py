@@ -12,19 +12,15 @@ def averaging_solar_quality(normals: torch.Tensor, sun_directions: torch.Tensor)
     """
     # if shapes of sun vectors is (N,T,3):
     if sun_directions.ndim == 3:
-        #remove excess dimension by pputting it T into N dimension
+        # remove excess dimension by pputting it T into N dimension
         sun_directions = sun_directions.view(-1, 3)
-        #simple dot product between normals and all sun directions
-        illumination_quality = torch.einsum(
-            "ij,kj->ik", normals, sun_directions
-        )
+        # simple dot product between normals and all sun directions
+        illumination_quality = torch.einsum("ij,kj->ik", normals, sun_directions)
     elif sun_directions.ndim == 2:
-        #simple dot product between normals and all sun directions
-        illumination_quality = torch.einsum(
-            "ij,kj->ik", normals, sun_directions
-        )
+        # simple dot product between normals and all sun directions
+        illumination_quality = torch.einsum("ij,kj->ik", normals, sun_directions)
 
     else:
         raise ValueError("sun_directions must be either (N,T,3) or (N,3)")
 
-    return  illumination_quality.mean(dim=1)
+    return illumination_quality.mean(dim=1)

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from matplotlib import pyplot as plt  # noqa: F401
 
 import wandb
 from subprojects.wp3_solar_estimator.australia.route_v2 import RouteV2 as Route
@@ -138,9 +139,7 @@ def solar_mesh_loss_v5(
         torch.linalg.norm(solar_vectors, dim=-1, keepdim=True).clamp_min(epsilon)
     )  # (K,3) unit solar vectors
     # now calculate the (average) illumination quality (solar_vectors dot normal vector) of each face for all solar vectors, use average so that we get a single quality value per face that considers all solar vectors along the route
-    aggregate_illumination_quality = averaging_solar_quality(
-        face_normals_unit, sun_directions_unit
-    )
+    aggregate_illumination_quality = averaging_solar_quality(face_normals_unit, sun_directions_unit)
     # Sort faces by descending quality
     # NOTE: Currently ignores order priority for equal-quality faces (TODO: could optimize face ordering)
     quality_order_desc = torch.argsort(aggregate_illumination_quality, descending=True)
@@ -321,7 +320,7 @@ def log_to_wandb(
 
 
 class SolarLossEstimator:
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:  # noqa: PLR0915
         defaults = {
             "method": "flexicubes",
             "bbox": [[-5000, 5000], [-5000, 5000], [-5000, 5000]],
@@ -361,6 +360,15 @@ class SolarLossEstimator:
         self.soft_mask_full_selection_threshold = float(cfg["soft_mask_full_selection_threshold"])
         self.selection_threshold_render = float(cfg["selection_threshold_render"])
         self.counter = 0  # For logging purposes
+
+        self.validation_sim = bool(cfg.get("validation_sim", False))
+        self.validation_interval = int(cfg.get("validation_interval", 0))
+        self.simulator = None
+        if self.validation_sim:
+            from subprojects.wp3_solar_estimator.validation.simulationv1 import SimulationV1  # noqa: I001, PLC0415 Since this saves importing of simulation if not needed
+
+            australia_cfg = cfg.get("australia_cfg", "solar_configs/australia.yaml")
+            self.simulator = SimulationV1(cfg_path=australia_cfg, area_budget_mm2=self.area_budget_mm2)
 
         self.rendering = bool(cfg["rendering"])
         self.visualiser: Visualiser | None
@@ -488,6 +496,27 @@ class SolarLossEstimator:
         if self.method == "mesh_sdf":  # MeshSDF loss needs special handling
 
             def wrapper_solar_loss(vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
+                if self.validation_sim and self.simulator is not None:
+                    run_sim = False
+                    if (self.validation_interval > 0 and self.counter % self.validation_interval == 0) or (
+                        self.number_epochs is not None and self.counter == self.number_epochs
+                    ):
+                        run_sim = True
+
+                    if run_sim:
+                        self.simulator.run(vertices, faces, output_dir=self.rendering_dir, epoch_name=epoch_name)
+
+                        if (
+                            self.number_epochs is not None
+                            and self.counter == self.number_epochs
+                            and self.rendering_dir is not None
+                        ):
+                            from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (  # noqa: PLC0415 So we can save us from importing
+                                create_and_upload_gif_from_folder,
+                            )
+
+                            create_and_upload_gif_from_folder(self.rendering_dir / "sim_renders", step=self.counter, fps=10)
+
                 loss = solar_mesh_loss_v5(
                     vertices,
                     faces,
@@ -519,6 +548,24 @@ class SolarLossEstimator:
 
         else:
             vertices, faces = self.extract_mesh(model)
+
+            if self.validation_sim and self.simulator is not None:
+                run_sim = False
+                if (self.validation_interval > 0 and self.counter % self.validation_interval == 0) or (
+                    self.number_epochs is not None and self.counter == self.number_epochs
+                ):
+                    run_sim = True
+
+                if run_sim:
+                    self.simulator.run(vertices, faces, output_dir=self.rendering_dir, epoch_name=epoch_name)
+
+                    if self.number_epochs is not None and self.counter == self.number_epochs and self.rendering_dir is not None:
+                        from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (  # noqa: PLC0415 So we can save us from importing
+                            create_and_upload_gif_from_folder,
+                        )
+
+                        create_and_upload_gif_from_folder(self.rendering_dir / "sim_renders", step=self.counter, fps=10)
+
             loss = solar_mesh_loss_v5(
                 vertices,
                 faces,

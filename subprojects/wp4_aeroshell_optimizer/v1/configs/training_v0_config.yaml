@@ -2,8 +2,8 @@ general_info:
   config_debugging: "True"
 
 training_params:
-  learning_rate: 0.00005
-  num_epochs: 2
+  learning_rate: 0.0000005
+  num_epochs: 500
   scheduler_step_size: 200 # does what?
   scheduler_gamma: 0.5 # does what?
   batch_size: 4096

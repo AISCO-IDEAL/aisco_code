@@ -3,7 +3,7 @@ For validation purposes, runs a basic race simulation to predict the total solar
 Assumes a constant speed given in the australia.yaml config file, and a constant solar output per unit area given in the same config file.
 """
 
-
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,7 +19,13 @@ class SimulationV1:
         self.route = RouteV2(cfg_path=cfg_path)
         self.area_budget_mm2 = area_budget_mm2
 
-    def run(self, vertices: torch.Tensor, mesh_faces: torch.Tensor):
+    def run(
+        self,
+        vertices: torch.Tensor,
+        mesh_faces: torch.Tensor,
+        output_dir: Path | str | None = None,
+        epoch_name: str | int | None = None,
+    ):
         # disable gradient tracking since this is just a validation simulation
         verts, faces = vertices.detach().clone(), mesh_faces.detach().clone()
         verts.requires_grad_(False)
@@ -37,7 +43,7 @@ class SimulationV1:
         )  # array to store total solar projected area at each point along the route
         positions = np.zeros((self.route.num_points, 3))  # array to store positions along the route for debugging/analysis
         for point in range(self.route.num_points):
-            sun_vec = self.route.get_route_solar_vecs(point)
+            sun_vec = self.route.get_route_solar_vecs(point).to(verts.device)
             position = self.route.get_route_points(point)
 
             # dot product of all allocated normals with single solar vector to get solar quality, then multiply by area to get total solar projected area at this point
@@ -47,7 +53,7 @@ class SimulationV1:
             positions[point] = position.tolist()
             solar_output_area[point] = solar_projected_area.item()
 
-        self.plot_results(positions, solar_output_area)
+        self.plot_results(positions, solar_output_area, output_dir, epoch_name)
 
     def allocate_solar_cells(
         self, verts: torch.Tensor, faces: torch.Tensor, route: RouteV2
@@ -60,7 +66,7 @@ class SimulationV1:
             normals: (M, 3) tensor of unit face normals, for later use in computing solar quality
             areas_mm2: (M,) tensor of face areas in mm^2, for later use in computing total solar output
         """
-        solar_vectors = route.get_route_solar_vecs()
+        solar_vectors = route.get_route_solar_vecs().to(verts.device)
 
         v0, v1, v2 = verts[faces[:, 0]], verts[faces[:, 1]], verts[faces[:, 2]]
         edge_a, edge_b = v1 - v0, v2 - v0
@@ -79,7 +85,7 @@ class SimulationV1:
         sorted_areas = face_area_mm2[quality_order_desc]
 
         # Deterministic-safe cumulative area
-        cumulative_area = torch.cumsum(sorted_areas.cpu(), dim=0)
+        cumulative_area = torch.cumsum(sorted_areas.cpu(), dim=0).to(verts.device)
         # Find which faces we can allocate (better quality first) before exceeding the area budget
         allocated_mask_sorted = cumulative_area <= self.area_budget_mm2
         # Map back to original face order
@@ -88,19 +94,49 @@ class SimulationV1:
 
         return solar_cells_allocated, face_normals_unit, face_area_mm2
 
-    def plot_results(self, positions: np.ndarray, solar_output_area: np.ndarray):
+    def plot_results(
+        self,
+        positions: np.ndarray,
+        solar_output_area: np.ndarray,
+        output_dir: Path | str | None = None,
+        epoch_name: str | int | None = None,
+    ):
         # goal here is to make a gif of the australia route map with points colored by solar output, and a plot of solar output and lat/lon over the route points.
         # note: normalises mm2 to m2 with 1e-6 calculation
         plt.figure(figsize=(12, 6))
         plt.subplot(1, 2, 1)
-        plt.scatter(positions[:, 1], positions[:, 0], c=solar_output_area, cmap="inferno")
+        plt.scatter(
+            positions[:, 1],
+            positions[:, 0],
+            c=solar_output_area * 1e-6,
+            cmap="inferno",
+            vmin=0,
+            vmax=self.area_budget_mm2 * 1e-6,
+        )
         plt.colorbar(label="Solar Output (m^2)")
+        title_str = "Simulated Solar Output and Route Positions"
+        if epoch_name is not None:
+            title_str += f" (Epoch: {epoch_name})"
+        plt.title(title_str)
 
-        plt.title("Simulated Solar Output and Route Positions")
         plt.xlabel("Longitude")
         plt.ylabel("Latitude")
         # ensure equal aspect ratio for lat/lon
         plt.gca().set_aspect("equal", adjustable="box")
 
+        file_path = "simulation_results.png"
+        key_name = "simulation_results"
+        if output_dir is not None:
+            out_path = Path(output_dir) / "sim_renders"
+            out_path.mkdir(parents=True, exist_ok=True)
+            if epoch_name is not None:
+                file_path = str(out_path / f"simulation_results_{epoch_name}.png")
+                key_name = f"simulation_results_{epoch_name}"
+            else:
+                file_path = str(out_path / "simulation_results.png")
+
+        plt.savefig(file_path, bbox_inches="tight")
+        plt.close()
+
         # log to wandb as image
-        upload_neural_renderer_image(plt, "simulation_results.png")
+        upload_neural_renderer_image(file_path, key_name)
