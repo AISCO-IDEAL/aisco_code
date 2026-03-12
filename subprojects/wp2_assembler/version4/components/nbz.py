@@ -186,6 +186,12 @@ if __name__ == "__main__":
 
     print(type(cut_inner_solids[0]),type(cut_outer_nbz),type(vision_solids[0]))
 
+    print(max_assembly_id())
+
+
+    for i in range(max_assembly_id()):
+        show(call_assembly(i))
+
     # for demo_id in range(100):
     #     show(call_assembly(demo_id))  # noqa: ERA001
     #     print(demo_id)  # noqa: ERA001
