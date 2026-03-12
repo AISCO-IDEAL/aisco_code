@@ -44,6 +44,7 @@ class Visualiser:
         self.renderer.near = 0.1
         self.renderer.far = 50_000.0
 
+    @torch.no_grad()
     def render(
         self,
         vertices: torch.Tensor,
@@ -85,23 +86,22 @@ class Visualiser:
                 color=(0.7, 0.7, 0.7),
             )
 
-        with torch.no_grad():
-            if mode == "rgb":
-                output = self.renderer.render_rgb(
-                    vertices, faces, textures, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size
-                )
-            elif mode == "silhouettes":
-                output = self.renderer.render_silhouettes(
-                    vertices, faces, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size
-                )
-            elif mode == "depth":
-                output = self.renderer.render_depth(
-                    vertices, faces, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size
-                )
-            else:
-                output = self.renderer.render(
-                    vertices, faces, textures, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size
-                )
+        if mode == "rgb":
+            output = self.renderer.render_rgb(
+                vertices, faces, textures, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size
+            )
+        elif mode == "silhouettes":
+            output = self.renderer.render_silhouettes(
+                vertices, faces, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size
+            )
+        elif mode == "depth":
+            output = self.renderer.render_depth(
+                vertices, faces, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size
+            )
+        else:
+            output = self.renderer.render(
+                vertices, faces, textures, K=k_mat, R=r_mat, t=t_vec, dist_coeffs=dist_coeffs, orig_size=orig_size
+            )
 
         np_out = self._to_numpy(output)
         if save_frame:

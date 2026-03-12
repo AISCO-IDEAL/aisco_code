@@ -23,6 +23,8 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
     return model
 
 
+# 2026 03 05, eschaerer:
+# look i'm not sure if the changes i made also work on the HPC. Please revert them if they don't
 def pretraining(
     model: BaseModel | None = None,
     pretraining_config_name: str = "pretraining_v0_config.yaml",
@@ -70,17 +72,32 @@ def pretraining(
 
         # Eikonal regularization: ||∇f(x)|| = 1 in meters
 
+        # 1. Start the 'chain' here
         input_m = (input_data / 1000.0).detach().requires_grad_(True)
-        sdf_m = (model(input_data).squeeze()) / 1000.0  # save compute time here
+
+        # 2. Re-scale for the model (assuming model wants mm)
+        # By multiplying input_m, we keep the grad history alive
+        input_mm_for_model = input_m * 1000.0
+
+        # 3. PASS THE NEW TENSOR TO THE MODEL
+        sdf_m = (model(input_mm_for_model).squeeze()) / 1000.0
+
+        # 4. Now 'grad' will actually contain values
         grad = torch.autograd.grad(
             outputs=sdf_m,
             inputs=input_m,
             grad_outputs=torch.ones_like(sdf_m),
             create_graph=True,
             retain_graph=True,
+            allow_unused=True,
         )[0]
-        eikonal = ((grad.norm(dim=-1) - 1.0) ** 2).mean()
 
+        # Add a safety check for the norm
+        if grad is not None:
+            eikonal = ((grad.norm(dim=-1) - 1.0) ** 2).mean()
+        else:
+            print("WARNING: Gradient is still None. Check model connectivity.")
+            eikonal = torch.tensor(0.0, device=input_data.device)
         # eikonal = torch.tensor(0.0, device=device)  # Placeholder if Eikonal is disabled # noqa: ERA001
         loss = torch.nn.MSELoss()((target / 1000).squeeze(), (output / 1000).squeeze()) + 0.1 * eikonal
 

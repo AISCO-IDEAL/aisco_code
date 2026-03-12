@@ -148,7 +148,7 @@ def assembly_to_kaolin_mesh(
         >>> print(faces.shape)     # (F, 3)
     """
     # Convert assembly to a compound shape (combines all solids)
-    compound = assembly.toCompound()
+    compound = assembly
 
     # Tessellate the compound into triangles
     # Returns: (List[Vector], List[Tuple[int, int, int]]) # noqa: ERA001

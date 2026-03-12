@@ -84,8 +84,8 @@ def inner_nbz_sym(
         ),  # the 500 shall be removed, after correction in seat.py
         name="Seat",
     )
-
-    return assembly
+    compound = assembly.toCompound()
+    return compound
 
 
 def outer_nbz(length: float, width: float, height: float) -> cq.Solid:
@@ -273,6 +273,36 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
     outer_with_ramps = outer_nbz_ramps(id_number)
 
     return assembly, outer_with_ramps, vision
+
+
+# eschaerer: needed for visualiser
+def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
+    """
+    Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
+
+    Args: id-number
+
+    Returns:  tuple with list[inner solids] and outer solid
+    """
+    inner, outer, __ = call_assembly(id_number)
+    return inner.toCompound().Solids(), outer
+
+
+def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """
+    Docstring for bounding_box_of_assembly
+
+    :param id_number: id number of the assembly of the wanted bounding box
+    :return: tuple with touples with ((x_min, y_min, z_min),(x_max,y_max,z_max))
+    :rtype: tuple[tuple[float, float, float], tuple[float, float, float]]
+    """
+    inner, _, _ = call_assembly(id_number)
+    inner_bounding_box = inner.BoundingBox()
+
+    return (
+        (inner_bounding_box.xmin, inner_bounding_box.ymin, inner_bounding_box.zmin),
+        (inner_bounding_box.xmax, inner_bounding_box.ymax, inner_bounding_box.zmax),
+    )
 
 
 def get_range_wheels() -> dict:

@@ -22,7 +22,7 @@ dependencies = [
   "pre-commit>=3.0.0",
   "mypy>=1.19.1",
   "torch==2.4.0",
-  "wandb>=0.17.2",
+  "torchvision==0.19.0",
   "wandb[media] >= 0.23.1",
   "types-paramiko",
   "types-pytz",
@@ -32,7 +32,17 @@ dependencies = [
 
 [project.optional-dependencies]
 wp1_cfd_ai = [
-
+  "toml",
+  "omegaconf",
+  "tqdm",
+  "torch-geometric",
+  "xarray",
+  "seaborn",
+  "scikit-learn",
+  "pyvista",
+  "rotary-embedding-torch",
+  "scipy",
+  "torch-cluster"
 ]
 
 wp2_assembler =[
@@ -45,28 +55,29 @@ wp2_assembler =[
 
 wp3_solar_estimator = [
   "PyMCubes == 0.1.6",
+  "astral >= 3.2",
+  "pytz",
 ]
 
 wp4_aeroshell_optimizer = [
-  "cadquery == 2.6.0",
   "plotly==5.22.0",
   "scikit-image>=0.0.0",
   "torch_geometric==2.7.0",
-  "torchvision", # changed by eschaerer from torchvision==0.19.1, because it requires torch==2.4.1
+  # "torchvision", # changed by eschaerer from torchvision==0.19.1, because it requires torch==2.4.1 ## also
   "trimesh==4.8.3",
-  "visualtorch",
   "mesh2sdf", #From https://github.com/wang-ps/mesh2sdf?tab=readme-ov-file
-  "imageio>=2.31",
   "pyrender>=0.1.45",
   "PyOpenGL>=3.1.0",
   "pyvista>=0.40.0",
-  "imageio>=2.37.2"
+  "imageio>=2.37.2",
+  "Pillow",
+  "types-Pillow",
 ]
 
 wp7_gui = [
   "PyQt6 == 6.10.0",
   "pyvista == 0.46.4",
-  "pyvista1t == 0.11.3",
+  "pyvistaqt == 0.11.3",
 ]
 
 testing = [
@@ -75,7 +86,7 @@ testing = [
   ]
 
 all = [
-  "AISCO_code[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer, wp7_gui, testing]"
+  "AISCO_code[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer,wp7_gui,testing]"
 ]
 
 #make a all command
@@ -110,6 +121,7 @@ exclude = [
     "**/archive/**",
     "**/subprojects/fixed_renderer/**",
     "**/visuals/testing.py",
+    "**/blendednet/**",      # eschaerer: Tim's sinusoidal activation function model (just inspiration, not actually used in our code)
 ]
 
 
@@ -204,17 +216,19 @@ max-statements = 53
 python_version = "3.11"
 namespace_packages = true
 explicit_package_bases = true
-#mypy_path = "." our project does not need it, as all folder containing source code have init files
 ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = true
-files = ["subprojects/", "tests/"]
+check_untyped_defs = true
+files = ["subprojects/"]
 
 exclude = [
   "^build/",
   "^docs/",
   ".*fixed_renderer/.*", # <-- eschaerer: Fixed regex to catch it inside subprojects
   ".*/archive/.*",       # <-- eschaerer: Fixed regex typo
+  ".*/blendednet/.*",     # <-- eschaerer: Tim's sinusoidal activation function model (just inspiration)
+  'tests/',
 ]
 
 [[tool.mypy.overrides]]
@@ -223,9 +237,13 @@ module = [
   "kaolin.*",
   "cadquery.*",
   "wandb.*",
-  "pyvista.*"
+  "pyvista.*",
+  "*.blendednet.*",  # eschaerer
+  "blendednet.*",     # eschaerer
+  "*.fixed_renderer.*", # eschaerer
+  "fixed_renderer.*" # eschaerer
+]
 
-] # torch.*, could be added, iff it causes many problems
 ignore_missing_imports = true
 ignore_errors = true
 follow_imports = "skip"

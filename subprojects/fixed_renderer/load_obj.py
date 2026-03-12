@@ -1,6 +1,6 @@
 import os
 
-import fixed_renderer.cuda.load_textures as load_textures_cuda
+import subprojects.fixed_renderer.cuda.load_textures as load_textures_cuda
 import numpy as np
 import torch
 from skimage.io import imread
@@ -37,10 +37,10 @@ def load_textures(filename_obj, filename_mtl, texture_size, texture_wrapping='RE
             continue
         if line.split()[0] == 'vt':
             vertices.append([float(v) for v in line.split()[1:3]])
-    vertices = np.vstack(vertices).astype(np.float32)
+    vertices_np = np.vstack(vertices).astype(np.float32)
 
     # load faces for textures
-    faces = []
+    face_list = []
     material_names = []
     material_name = ''
     for line in lines:
@@ -62,17 +62,17 @@ def load_textures(filename_obj, filename_mtl, texture_size, texture_wrapping='RE
                     v2 = int(vs[i + 2].split('/')[1])
                 else:
                     v2 = 0
-                faces.append((v0, v1, v2))
+                face_list.append((v0, v1, v2))
                 material_names.append(material_name)
         if line.split()[0] == 'usemtl':
             material_name = line.split()[1]
-    faces = np.vstack(faces).astype(np.int32) - 1
-    faces = vertices[faces]
-    faces = torch.from_numpy(faces).cuda()
+    faces_np = np.vstack(face_list).astype(np.int32) - 1
+    faces_vertices = vertices_np[faces_np]
+    faces_tensor = torch.from_numpy(faces_vertices).cuda()
 
     colors, texture_filenames = load_mtl(filename_mtl)
 
-    textures = torch.zeros(faces.shape[0], texture_size, texture_size, texture_size, 3, dtype=torch.float32) + 0.5
+    textures = torch.zeros(faces_tensor.shape[0], texture_size, texture_size, texture_size, 3, dtype=torch.float32) + 0.5
     textures = textures.cuda()
 
     for material_name, color in colors.items():
@@ -97,7 +97,7 @@ def load_textures(filename_obj, filename_mtl, texture_size, texture_wrapping='RE
         image = torch.from_numpy(image.copy()).cuda()
         is_update = (np.array(material_names) == material_name).astype(np.int32)
         is_update = torch.from_numpy(is_update).cuda()
-        textures = load_textures_cuda.load_textures(image, faces, textures, is_update,
+        textures = load_textures_cuda.load_textures(image, faces_tensor, textures, is_update,
                                                     texture_wrapping_dict[texture_wrapping],
                                                     use_bilinear)
     return textures
@@ -110,7 +110,7 @@ def load_obj(filename_obj, normalization=True, texture_size=4, load_texture=Fals
     """
 
     # load vertices
-    vertices = []
+    vertices_list = []
     with open(filename_obj) as f:
         lines = f.readlines()
 
@@ -118,11 +118,11 @@ def load_obj(filename_obj, normalization=True, texture_size=4, load_texture=Fals
         if len(line.split()) == 0:
             continue
         if line.split()[0] == 'v':
-            vertices.append([float(v) for v in line.split()[1:4]])
-    vertices = torch.from_numpy(np.vstack(vertices).astype(np.float32)).cuda()
+            vertices_list.append([float(v) for v in line.split()[1:4]])
+    vertices_tensor = torch.from_numpy(np.vstack(vertices_list).astype(np.float32)).cuda()
 
     # load faces
-    faces = []
+    faces_list = []
     for line in lines:
         if len(line.split()) == 0:
             continue
@@ -133,8 +133,8 @@ def load_obj(filename_obj, normalization=True, texture_size=4, load_texture=Fals
             for i in range(nv - 2):
                 v1 = int(vs[i + 1].split('/')[0])
                 v2 = int(vs[i + 2].split('/')[0])
-                faces.append((v0, v1, v2))
-    faces = torch.from_numpy(np.vstack(faces).astype(np.int32)).cuda() - 1
+                faces_list.append((v0, v1, v2))
+    faces_tensor = torch.from_numpy(np.vstack(faces_list).astype(np.int32)).cuda() - 1
 
     # load textures
     textures = None
@@ -150,12 +150,12 @@ def load_obj(filename_obj, normalization=True, texture_size=4, load_texture=Fals
 
     # normalize into a unit cube centered zero
     if normalization:
-        vertices -= vertices.min(0)[0][None, :]
-        vertices /= torch.abs(vertices).max()
-        vertices *= 2
-        vertices -= vertices.max(0)[0][None, :] / 2
+        vertices_tensor -= vertices_tensor.min(0)[0][None, :]
+        vertices_tensor /= torch.abs(vertices_tensor).max()
+        vertices_tensor *= 2
+        vertices_tensor -= vertices_tensor.max(0)[0][None, :] / 2
 
     if load_texture:
-        return vertices, faces, textures
+        return vertices_tensor, faces_tensor, textures
     else:
-        return vertices, faces
+        return vertices_tensor, faces_tensor

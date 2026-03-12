@@ -1,0 +1,3 @@
+# NOT USED \u2014 ENTIRE FILE: SIREN.yaml is empty and never referenced by any active code path.
+# model_def.model_name is "BasicMLP" and active_configs.model_params is "basic_MLP_v1.yaml".
+# FUTURE USER: PLEASE REMOVE ALL THE UNUSED KEYS IN THIS FILE AND SIMPLIFY IT TO THE BARE MINIMUM NEEDED FOR YOUR MODEL, TO AVOID CONFUSION. ALSO DELETE THIS COMMENT THEN.

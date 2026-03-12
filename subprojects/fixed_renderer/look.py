@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+# kdiehl: hardcoded torch.cuda is outdated. could be updated, however there are some pitfalls -> testing the functionality is cruicial
 
 def look(vertices, eye, direction=[0, 1, 0], up=None):
     """

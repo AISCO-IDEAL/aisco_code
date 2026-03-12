@@ -1,22 +1,48 @@
 #to be cleaned up
+# NOTE: This file is a DUPLICATE of solar_configs/solar_loss_config.yaml.
+# solar_v4.py loads from solar_configs/solar_loss_config.yaml (SolarLossConfigV4).
+# Rendering modes solar_selection.py and solar_power.py load from THIS file (SolarLossConfigV3).
 
 general_info:
-  version: 3.0
-  last_updated: 2026-01-19
-  description: "Configuration file for solar loss functions."
+  version: 3.0  # NOT USED — never read by any code
+  last_updated: 2026-01-19  # NOT USED — never read by any code
+  description: "Configuration file for solar loss functions."  # NOT USED — never read by any code
 
+# NOT USED — ENTIRE SECTION: general_config is never read by any code
 general_config:
-  solar_angle: [0.0,1.0,1.0] # This is the direction in which a perfect solar cell should point, i.e. [0,0,1] if the sun shines from above
+  # replaced in SolarLossConfigV3: solar_angle: [0.0,1.0,1.0] # This is the direction in which a perfect solar cell should point, i.e. [0,0,1] if the sun shines from above
   area_budget: 4000000 #in mm^3
 
-SolarLossConfigV3:  # moved from solar_loss_v3.py
+# PARTIALLY USED — SolarLossConfigV3 is read by rendering modes (solar_selection.py, solar_power.py) from the TOP-LEVEL solar_loss_config.yaml
+# solar_selection.py reads: area_budget_mm2, sun_dir
+# solar_power.py reads: sun_dir
+SolarLossConfigV3:
+  method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf  # NOT USED by rendering modes
+  bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]  # NOT USED by rendering modes
+  resolution: 150  # NOT USED by rendering modes
+  area_budget_mm2: 4000000  # USED — solar_selection.py: solar_config["area_budget_mm2"]
+  sun_dir: [-1.0,0.0,1.0]  # USED — solar_selection.py & solar_power.py: solar_config["sun_dir"]
+  device: "cuda"  # NOT USED by rendering modes
+  batch_size: 2048  # NOT USED by rendering modes
+  eps: 1e-12  # NOT USED by rendering modes
+  sigmoid_sharpness: 10.0  # NOT USED by rendering modes
+  budget_penalty_weight: 0.1  # NOT USED by rendering modes
+  wandb_logging: True  # NOT USED by rendering modes
+  soft_mask_selection_threshold: 0.5  # NOT USED by rendering modes
+  soft_mask_full_selection_threshold: 0.95  # NOT USED by rendering modes
+  rendering: True  # NOT USED by rendering modes
+  selection_threshold_render: 0.05  # NOT USED by rendering modes
+  log_group_name: "solar_loss_metrics"  # NOT USED by rendering modes
+
+# NOT USED from THIS file — solar_v4.py loads SolarLossConfigV4 from solar_configs/solar_loss_config.yaml instead
+SolarLossConfigV4:
+  australia_cfg: "solar_configs/australia.yaml" #path to australian sun/route config
   method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
-  resolution: 100
-  area_budget_mm2: 4e6
-  sun_dir: [0.0,-1.5,1.0]
+  resolution: 150
+  area_budget_mm2: 4000000
   device: "cuda"
-  batch_size: 4096
+  batch_size: 2048
   eps: 1e-12
   sigmoid_sharpness: 10.0
   budget_penalty_weight: 0.1

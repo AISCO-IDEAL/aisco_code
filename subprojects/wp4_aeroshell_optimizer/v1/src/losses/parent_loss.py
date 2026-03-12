@@ -9,8 +9,8 @@ Overwrite the following methods:
 """
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.losses_utils import get_points
 
@@ -104,3 +104,12 @@ class ParentLoss:
             total_gradient = torch.sqrt(norm_sq).item()
 
             wandb.log({f"{self.loss_name}_gradient": total_gradient}, step=epoch_name)
+
+    def log_gradient_norm(self, norm: float, epoch_name: int) -> None:
+        """Log a pre-computed gradient norm for this loss (no autograd involved).
+
+        Called by the training loop after per-loss backward() passes, where the gradient
+        norm is computed externally from param.grad deltas. This avoids retain_graph=True.
+        """
+        if norm > 0.0:
+            wandb.log({f"{self.loss_name}_gradient": norm}, step=epoch_name)

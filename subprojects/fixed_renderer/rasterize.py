@@ -1,8 +1,9 @@
-import fixed_renderer.cuda.rasterize as rasterize_cuda
+import subprojects.fixed_renderer.cuda.rasterize as rasterize_cuda
 import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.autograd import Function
+from typing import Optional
 
 DEFAULT_IMAGE_SIZE = 256
 DEFAULT_ANTI_ALIASING = True
@@ -10,6 +11,8 @@ DEFAULT_NEAR = 0.1
 DEFAULT_FAR = 100
 DEFAULT_EPS = 1e-4
 DEFAULT_BACKGROUND_COLOR = (0, 0, 0)
+
+# kdiehl: hardcoded torch.cuda is outdated. could be updated, however there are some pitfalls -> testing the functionality is cruicial
 
 class RasterizeFunction(Function):
     '''
@@ -108,6 +111,7 @@ class RasterizeFunction(Function):
         # initialize output buffers
         # no need for explicit allocation of cuda.FloatTensor because zeros_like does it automatically
         grad_faces = torch.zeros_like(faces, dtype=torch.float32)
+        grad_textures: Optional[torch.Tensor] = None
         if ctx.return_rgb:
             grad_textures = torch.zeros_like(textures, dtype=torch.float32)
         else:
@@ -362,8 +366,6 @@ def rasterize(
     """
     return rasterize_rgbad(
         faces, textures, image_size, anti_aliasing, near, far, eps, background_color, True, False, False)['rgb']
-
-
 
 def rasterize_silhouettes(
         faces,

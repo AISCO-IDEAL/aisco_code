@@ -1,10 +1,11 @@
 import math
 
-import fixed_renderer as nr
+import subprojects.fixed_renderer as nr
 import numpy
 import torch
 from torch import nn
 
+# kdiehl: hardcoded torch.cuda is outdated. could be updated, however there are some pitfalls -> testing the functionality is cruicial
 
 class Renderer(nn.Module):
     def __init__(self, image_size=256, anti_aliasing=True, background_color=[0,0,0],
