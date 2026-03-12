@@ -1,125 +1,128 @@
 #This config includes everything regarding the visualiser and its wrapper you might need
 
 # overall visualiser/neural renderer config for default renderer instance that is used
+# USED — visual_wrapper.py: Visualiser(**(self.config.get("neural_renderer", {})))
 neural_renderer:
-  image_size: 1024
-  background_color: [0.0,0.0,0.3]
-  anti_aliasing: true
-  camera_mode: "look_at"
-  viewing_angle: 40
+  image_size: 1024  # USED — passed to Visualiser constructor
+  background_color: [0.0,0.0,0.1]  # USED — passed to Visualiser constructor
+  anti_aliasing: true  # USED — passed to Visualiser constructor
+  camera_mode: "look_at"  # USED — passed to Visualiser constructor
+  viewing_angle: 40  # USED — passed to Visualiser constructor
 general:
-  store_wandb: True #Whether to upload results to wandb at the end
+  store_wandb: True #Whether to upload results to wandb at the end  # USED — visual_wrapper.py: self.config["general"].get("store_wandb", False)
 
 
 # Mesh extraction settings for converting neural SDF to renderable mesh
+# USED — total_loss.py: load_config(v="v1", cfg_name="neural_renderer_v0.yaml").get("mesh_extraction", {})
 mesh_extraction:
   # Algorithm: "mc" (marching cubes via PyMCubes/sklearn) or "dmc" (dual marching cubes via DISO)
-  algorithm: "mc"
+  algorithm: "mc"  # USED — total_loss.py: mesh_config.get("algorithm", "mc")
   # Grid resolution per axis (e.g., 256 = 256³ grid = ~16M points)
   # Higher = more detail but slower. Typical values:
   #   - 64: Quick preview (old default, ~262K points)
   #   - 128: Fast quality (~2M points)
   #   - 256: Good quality (~16M points)
   #   - 512: High quality (~134M points, use GPU with 16GB+ VRAM)
-  resolution: 128 # Conservative default, adjust based on your GPU
+  resolution: 256 # Conservative default, adjust based on your GPU  # USED — total_loss.py: mesh_config.get("resolution", 128)
   # Bounding box [[xmin,xmax], [ymin,ymax], [zmin,zmax]]
   # Adjust to encompass your geometry with some margin
-  bbox: [[-5000, 5000], [-5000, 5000], [-5000, 5000]]
+  bbox: [[-5000, 5000], [-5000, 5000], [-5000, 5000]]  # USED — total_loss.py: mesh_config.get("bbox", ...)
   # Isovalue for surface extraction (0.0 = zero level set, standard for SDFs)
-  isovalue: 0.0
+  isovalue: 0.0  # USED — total_loss.py: self._mesh_extraction_config.get("isovalue", 0.0)
   # Batch size for SDF evaluation (points processed per GPU call)
   # Larger = faster but more GPU memory. Recommended values:
   #   - 2048: Conservative, works on 8GB GPU
   #   - 8192: Balanced for 16GB GPU (good for 512³)
   #   - 16384: Aggressive for 24GB+ GPU
-  batch_size: 8192
+  batch_size: 8192  # USED — total_loss.py: self._mesh_extraction_config.get("batch_size", 8192)
   # Device for SDF evaluation ("cuda", "cpu", or specific like "cuda:0")
-  device: "cuda"
+  device: "cuda"  # USED — total_loss.py: mesh_config.get("device", dev)
   # Verbose output (prints extraction stats: vertex count, backend, etc.)
   # Set false during training to reduce console spam
-  verbose: false
+  verbose: false  # USED — total_loss.py: mesh_config.get("verbose", False)
 
 # Insert custom modes here that should be handled by the VisualisationManager
+# USED — visual_wrapper.py: self.config.get("rendering_modes", {})
 rendering_modes:
-  enabled: true #Whether to use the visual wrapper at all, if false, no rendering is done, even if modes are enabled
-  #use alex_mode as an example, jsut renders a GIF of the mesh
-  alex_mode:
+  enabled: true #Whether to use the visual wrapper at all, if false, no rendering is done, even if modes are enabled  # USED — visual_wrapper.py: modes_config["enabled"]
+  #use alex_mode as an example, just renders a GIF of the mesh
+  alex_mode:  # USED — dynamically loaded by visual_wrapper.py
     #mandatory
-    enabled: false
-    class_path: "custom_modes.alex_mode:BasicAlexMode"
+    enabled: true  # USED — visual_wrapper.py: mode_config.get("enabled", False)
+    class_path: "custom_modes.alex_mode:BasicAlexMode"  # USED — visual_wrapper.py: mode_config.get("class_path")
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you
-    config:
-      camera_position: [2000, 2000, 2000]
-      look_at: [0, 0, 0]
-      render_mode: "rgb"
-      fps: 20
+    config:  # USED — visual_wrapper.py: mode_config.get("config", {})
+      camera_position: [2000, 2000, 2000]  # USED — passed to mode constructor
+      look_at: [0, 0, 0]  # USED — passed to mode constructor
+      render_mode: "rgb"  # USED — passed to mode constructor
+      fps: 20  # USED — passed to mode constructor
   # Just a picture of the current assembly
-  assembly_mode:
+  assembly_mode:  # USED — dynamically loaded by visual_wrapper.py
     #mandatory
-    enabled: true
-    class_path: "custom_modes.assembly_mode:AssemblyMode"
+    enabled: true  # USED
+    class_path: "custom_modes.assembly_mode:AssemblyMode"  # USED
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you
-    config:
-      camera_position: [3000, 3000, 3000]
-      look_at: [0, 0, 0]
-      render_mode: "rgb"
-      color: [1.0 ,0.55 ,0.0]
+    config:  # USED — also reads bb_config.assembly_id from losses_v0_config.yaml inside assembly_mode.py
+      camera_position: [3000, 3000, 3000]  # USED
+      look_at: [0, 0, 0]  # USED
+      render_mode: "rgb"  # USED
+      color: [1.0 ,0.55 ,0.0]  # USED
   # Gif of the semitransparant with its assembly
-  mesh_assembly_mode:
+  mesh_assembly_mode:  # USED — dynamically loaded by visual_wrapper.py
     #mandatory
-    enabled: true
-    class_path: "custom_modes.mesh_assembly_gif:MeshAssemblyGIF"
+    enabled: true  # USED
+    class_path: "custom_modes.mesh_assembly_gif:MeshAssemblyGIF"  # USED
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you
-    config:
-      store_wandb: True
-      render_mode: "rgb"
-      camera_position: [-3000, 3000,3000]
-      look_at: [0, 0, 0]
-      alpha: 0.5
-      fps: 10
-      assembly_color: [1.0, 0.55, 0.0]
-      mesh_color: [0.2,1.0,1.0] #Bugged?
+    config:  # USED — also reads bb_config.assembly_id from losses_v0_config.yaml inside mesh_assembly_gif.py
+      store_wandb: True  # USED
+      render_mode: "rgb"  # USED
+      camera_position: [-3000, 3000,3000]  # USED
+      look_at: [0, 0, 0]  # USED
+      alpha: 0.5  # USED
+      fps: 10  # USED
+      assembly_color: [1.0, 0.55, 0.0]  # USED
+      mesh_color: [0.2,1.0,1.0] #Bugged?  # USED
   # Gif of which solar cells would be selected with the dot-product approach, given a budget and soalr angle in solar_loss_config.yaml
-  solar_selection_mode:
+  solar_selection_mode:  # USED — dynamically loaded by visual_wrapper.py
     #Mandatory
-    enabled: true
-    class_path: "custom_modes.solar_selection:SolarSelectionMode"
+    enabled: true  # USED
+    class_path: "custom_modes.solar_selection:SolarSelectionMode"  # USED
     #config for solar selection
-    config:
-      camera_position: [-3500, 3500, 3500]
-      look_at: [0, 0, 0]
-      render_mode: "rgb"
-      make_gif: true #if false saves seperate image every interval iterations
-      render_interval: 1 #Rendering interval for gif/image. 1 means every iteration is rendered
-      fps: 10
-      solar_color: [0.2,0.2,0.8]
-      rest_color: [1.0,0.5,0.0]
+    config:  # USED — also reads SolarLossConfigV3 from solar_loss_config.yaml (area_budget_mm2, sun_dir) inside solar_selection.py
+      camera_position: [-3500, 3500, 3500]  # USED
+      look_at: [0, 0, 0]  # USED
+      render_mode: "rgb"  # USED
+      make_gif: true #if false saves seperate image every interval iterations  # USED
+      render_interval: 1 #Rendering interval for gif/image. 1 means every iteration is rendered  # USED
+      fps: 10  # USED
+      solar_color: [0.2,0.2,0.8]  # USED
+      rest_color: [1.0,0.5,0.0]  # USED
   # Gif of the solar power of each face using the dot-product approach, green is good, red is bad
-  solar_power_mode:
+  solar_power_mode:  # USED — dynamically loaded by visual_wrapper.py
     #Mandatory
-    enabled: true
-    class_path: "custom_modes.solar_power:SolarPower"
+    enabled: true  # USED
+    class_path: "custom_modes.solar_power:SolarPower"  # USED
     #config for solar selection
-    config:
-      camera_position: [-3500, 3500, 3500]
-      look_at: [0, 0, 0]
-      render_mode: "rgb"
-      make_gif: true #if false saves seperate image every interval iterations
-      render_interval: 1 #Rendering interval for gif/image. 1 means every iteration is rendered
-      fps: 10
-  #not really used, more of a basic demo
-  example_advanced_mode:
-    enabled: false
-    class_path: "custom_modes.rendering_mode_example_advanced:ExampleAdvancedMode"
-    config:
-      camera_position: [-1000, 3000, 1000]
-      look_at: [0, 0, 0]
-      render_mode: "rgb"
-      fps: 15
-      render_interval: 10
+    config:  # USED — also reads SolarLossConfigV3 from solar_loss_config.yaml (sun_dir) inside solar_power.py
+      camera_position: [-3500, 3500, 3500]  # USED
+      look_at: [0, 0, 0]  # USED
+      render_mode: "rgb"  # USED
+      make_gif: true #if false saves seperate image every interval iterations  # USED
+      render_interval: 1 #Rendering interval for gif/image. 1 means every iteration is rendered  # USED
+      fps: 10  # USED
+#   #not really used, more of a basic demo
+#   example_advanced_mode:  # NOT ACTIVE (enabled=false)
+#     enabled: false
+#     class_path: "custom_modes.rendering_mode_example_advanced:ExampleAdvancedMode"
+#     config:
+#       camera_position: [-1000, 3000, 1000]
+#       look_at: [0, 0, 0]
+#       render_mode: "rgb"
+#       fps: 15
+#       render_interval: 10
 
 
 
@@ -135,11 +138,13 @@ detached_modes:
       fps: 15
       render_interval: 10
 
-# not used atm, outdated
-gifs:
-  fps: 60
-  upload: false
-  save_locally: true
+# # NOT USED — ENTIRE SECTION: gifs section is outdated and never read by any code
+# # not used atm, outdated
+# gifs:
+#   fps: 60
+#   upload: false
+#   save_locally: true
 
-# also no longer used
-storage_dir: "/cluster/home/aalthaus/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/renderings"
+# # NOT USED — storage_dir is never read by any code (visual_wrapper uses output_dir parameter instead)
+# # also no longer used
+# storage_dir: "/cluster/home/aalthaus/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/renderings"

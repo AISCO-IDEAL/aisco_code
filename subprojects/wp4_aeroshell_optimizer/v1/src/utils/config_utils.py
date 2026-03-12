@@ -19,11 +19,11 @@ from __future__ import annotations
 import contextlib
 import copy
 import json
+import os
+import socket
 from pathlib import Path
 
 import yaml
-
-import wandb
 
 # ---------------------------------------------------------------------------
 # Module-level config registry
@@ -38,11 +38,31 @@ def _cfg_key(cfg_name: str) -> str:
 
 
 def _load_yaml(v: str, cfg_name: str) -> dict:
-    """Read a YAML config from disk (no registry, no wandb side-effects)."""
+    """
+    Load a YAML configuration file from disk (no registry, no wandb side-effects) by giving the name/path of the config file, located in the v{x}/configs/ folder.
+    """
     config_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
     try:
         with config_path.open() as f:
-            return yaml.safe_load(f)
+            config = yaml.safe_load(f)
+
+        if cfg_name == "general_config.yaml" and isinstance(config, dict) and "general_info" in config:
+            is_wsl = "WSL_DISTRO_NAME" in os.environ
+            hostname = socket.gethostname()
+            is_euler_node = hostname.startswith("eu-")
+            is_slurm_job = "SLURM_JOB_ID" in os.environ
+
+            if is_wsl:
+                # Definitely local (WSL)
+                config["general_info"]["run_locally"] = "True"
+            elif is_euler_node or is_slurm_job:
+                # Definitely cluster (HPC)
+                config["general_info"]["run_locally"] = "False"
+            else:
+                # Default to Euler if uncertain
+                config["general_info"]["run_locally"] = "False"
+
+        return config  # noqa: TRY300
     except FileNotFoundError as e:
         raise FileNotFoundError(f"Configuration file not found at {config_path}") from e
     except yaml.YAMLError as e:
@@ -74,7 +94,7 @@ def register_all_configs(general_config: dict, *, v: str = "v1") -> None:
                 _config_registry[_cfg_key(cfg_name)] = _load_yaml(v, cfg_name)
 
     # Register standalone configs used elsewhere in the codebase
-    _standalone = ["solar_loss_config.yaml", "logging.yaml"]
+    _standalone = ["solar_configs/solar_loss_config.yaml", "logging.yaml", "solar_configs/australia.yaml"]
     for cfg_name in _standalone:
         key = _cfg_key(cfg_name)
         if key not in _config_registry:
@@ -93,7 +113,11 @@ def apply_sweep_overrides(sweep_params: dict) -> None:
 
     Keys whose first segment does **not** match any registered config are
     applied to ``general_config`` as a fallback (backward-compatible with old
-    flat keys).
+    flat keys)
+    Args:
+        sweep_params (dict): A dictionary of sweep parameters.
+    Returns:
+        None, the config values are updated in place
     """
     if not _registry_initialised:
         raise RuntimeError(
@@ -162,12 +186,6 @@ def load_config(v: str = "v1", cfg_name: str = "general_config.yaml") -> dict:
     # If the registry is populated, prefer the (possibly patched) version
     config = _config_registry[key] if _registry_initialised and key in _config_registry else _load_yaml(v, cfg_name)
 
-    # Log sub-configs to wandb for dashboard visibility (keep existing behavior)
-    if wandb.run is not None and cfg_name != "general_config.yaml":
-        wandb_key = f"SubCFG_{key}"
-        if wandb_key not in wandb.config:
-            with contextlib.suppress(Exception):  # non-critical — don't crash on logging failures
-                wandb.config.update({wandb_key: config})
     return config
 
 

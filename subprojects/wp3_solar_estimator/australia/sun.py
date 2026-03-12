@@ -218,3 +218,32 @@ def get_solar_car_vecs_batch(
             elev_j, az_j = sun_position(lat, lon, dt)
             solar_vecs[i, j] = sun_data_to_car_vec(elev_j, az_j, heading)
     return solar_vecs
+
+
+def get_solar_car_vecs_one_to_one(
+    route_points: torch.Tensor,
+    times: list[datetime],
+) -> torch.Tensor:
+    """Return sun unit vectors for a one-to-one mapping of route points and times.
+
+    Parameters
+    ----------
+    route_points:
+        Tensor of shape ``(N, 3)`` where each row is ``[lat, lon, heading_deg]``.
+    times:
+        List of ``N`` :class:`datetime.datetime` objects, one for each route point.
+
+    Returns
+    -------
+    torch.Tensor, shape ``(N, 3)``
+        Sun unit vectors in the car body frame ``[forward, left, up]``.
+    """
+    if route_points.shape[0] != len(times):
+        raise ValueError(f"Number of route points ({route_points.shape[0]}) must match number of times ({len(times)})")
+    lats = route_points[:, 0]
+    lons = route_points[:, 1]
+    headings = route_points[:, 2]
+    solar_vecs_list = [
+        get_solar_car_vec(lat, lon, dt, heading) for lat, lon, dt, heading in zip(lats, lons, times, headings, strict=False)
+    ]
+    return torch.stack(solar_vecs_list)

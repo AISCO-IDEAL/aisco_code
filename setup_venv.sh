@@ -2,6 +2,7 @@
 # setup_venv.sh – Setup AISCO environment for WSL (Local) or Euler (HPC)
 # Modified for Matthews PC: WSL compatibility, TCC mode support, and venv management.
 # !!!not applicable for for local windows and linux pc. Only for HPC and WSL!!!
+## Usage: bash setup_venv.sh
 
 ENV_NAME="aisco_env"
 
