@@ -73,7 +73,7 @@ cd /cluster/home/$USERNAME/AISCO_code/
 #python -m src.main
 
 ulimit -n 65536 
-
+umask 0002
 python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/main.py \
     -c subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/euler_field_new.yaml \
     2>&1
