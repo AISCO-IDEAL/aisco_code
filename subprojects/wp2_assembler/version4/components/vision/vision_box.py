@@ -58,7 +58,7 @@ def vision_driv_nbz() -> cq.Workplane:
     )
 
     v_box_sketch = cq.Face.makeFromWires(
-        profile_v_box.wires().val()  # noqa: it works like this
+        profile_v_box.wires().val()  # noqa:
     )
 
     sweep_left = cq.Workplane("YZ").add(v_box_sketch).sweep(arch_pos, isFrenet=True)

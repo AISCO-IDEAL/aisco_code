@@ -459,7 +459,7 @@ def make_assemblys(nr_of_w):
     start = time.time()
     last = start
 
-    batch = {}
+    batch: dict[int, dict[str, Any]] = {}
     batch_count = 0
 
     for i in range(total):
@@ -491,6 +491,9 @@ def make_assemblys(nr_of_w):
 
 def make_assemblys_for_n_wheels():
     nr_of_w = get_assembly_parameters("wheel.combinations.count")
+    if not isinstance(nr_of_w, list):
+        raise TypeError("Expected 'wheels' assembly parameters to be a dict")
+
     for i in nr_of_w:
         make_assemblys(i)
 
