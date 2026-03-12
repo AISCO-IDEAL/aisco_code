@@ -367,8 +367,6 @@ def rasterize(
     return rasterize_rgbad(
         faces, textures, image_size, anti_aliasing, near, far, eps, background_color, True, False, False)['rgb']
 
-
-
 def rasterize_silhouettes(
         faces,
         image_size=DEFAULT_IMAGE_SIZE,
