@@ -42,7 +42,8 @@ wp1_cfd_ai = [
   "pyvista",
   "rotary-embedding-torch",
   "scipy",
-  "torch-cluster"
+  "torch-cluster",
+  "typing"
 ]
 
 wp2_assembler =[
