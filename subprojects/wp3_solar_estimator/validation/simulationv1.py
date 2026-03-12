@@ -15,9 +15,29 @@ from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import upl
 
 
 class SimulationV1:
-    def __init__(self, cfg_path: str = "solar_configs/australia.yaml", area_budget_mm2: float = 3500000) -> None:
+    def __init__(
+        self,
+        cfg_path: str = "solar_configs/australia.yaml",
+        area_budget_mm2: float = 3500000,
+        mesh_render_cameras: list[dict] | None = None,
+    ) -> None:
         self.route = RouteV2(cfg_path=cfg_path)
         self.area_budget_mm2 = area_budget_mm2
+        # Each dict: {"position": [x,y,z] | None, "direction": [x,y,z] | None, "suffix": str}
+        # None position/direction → auto-computed from mesh bounds at render time
+        self.mesh_render_cameras: list[dict] = mesh_render_cameras if mesh_render_cameras is not None else [
+            {"position": None, "direction": None, "suffix": "side"},
+        ]
+        self._visualiser = None  # lazy-initialised on first mesh render
+
+    def _get_visualiser(self):
+        """Lazy-initialise the Visualiser on first use so it doesn't load when not needed."""
+        if self._visualiser is None:
+            from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser  # noqa: PLC0415
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            self._visualiser = Visualiser(image_size=512, background_color=[0.1, 0.1, 0.1], device=device)
+        return self._visualiser
 
     def run(
         self,
@@ -53,7 +73,7 @@ class SimulationV1:
             positions[point] = position.tolist()
             solar_output_area[point] = solar_projected_area.item()
 
-        self.plot_results(positions, solar_output_area, output_dir, epoch_name)
+        self.plot_results(positions, solar_output_area, output_dir, epoch_name, verts=verts, faces=faces, solar_cells_mask=solar_cells_mask)
 
     def allocate_solar_cells(
         self, verts: torch.Tensor, faces: torch.Tensor, route: RouteV2
@@ -94,12 +114,71 @@ class SimulationV1:
 
         return solar_cells_allocated, face_normals_unit, face_area_mm2
 
+    def render_mesh_selection(
+        self,
+        verts: torch.Tensor,
+        faces: torch.Tensor,
+        solar_cells_mask: torch.Tensor,
+        out_path: Path,
+        epoch_name: str | int | None = None,
+    ) -> None:
+        """Render the mesh with selected solar faces highlighted in gold, rest in dark gray.
+
+        Each entry in self.mesh_render_cameras produces a separate image file.
+        position/direction of None in a camera config falls back to an auto-computed value
+        derived from the mesh bounding box, so adding new camera angles only requires
+        appending a dict to mesh_render_cameras – no other changes needed.
+        """
+        try:
+            vis = self._get_visualiser()
+
+            # Build per-face color tensor: gold for selected, dark gray for the rest
+            gold = torch.tensor([1.0, 0.75, 0.0], device=verts.device)
+            gray = torch.tensor([0.3, 0.3, 0.3], device=verts.device)
+            face_colors = torch.where(solar_cells_mask.unsqueeze(-1), gold, gray)  # (F, 3)
+
+            textures = vis.face_colors_to_textures(face_colors)
+
+            # Auto-compute a sensible default camera from bounding box
+            vmin = verts.min(dim=0).values.cpu()
+            vmax = verts.max(dim=0).values.cpu()
+            center = ((vmin + vmax) / 2.0).tolist()
+            extent = (vmax - vmin).max().item()
+            auto_pos = [center[0] + extent * 1.5, center[1], center[2] + extent * 0.3]
+            auto_dir = [-1.0, 0.0, -0.3]  # points roughly toward mesh center
+
+            out_path.mkdir(parents=True, exist_ok=True)
+
+            for cam in self.mesh_render_cameras:
+                pos = cam.get("position") or auto_pos
+                direction = cam.get("direction") or auto_dir
+                suffix = cam.get("suffix", "view")
+
+                image = vis.render(verts, faces, textures, mode="rgb", camera_position=pos, camera_direction=direction)
+
+                if epoch_name is not None:
+                    fname = f"mesh_selection_{suffix}_{epoch_name}.png"
+                    key_name = f"mesh_selection_{suffix}_{epoch_name}"
+                else:
+                    fname = f"mesh_selection_{suffix}.png"
+                    key_name = f"mesh_selection_{suffix}"
+
+                file_path = str(out_path / fname)
+                vis.save_image(image[0], file_path)
+                upload_neural_renderer_image(file_path, key_name)
+
+        except Exception as e:
+            print(f"Warning: mesh selection render failed (epoch={epoch_name}): {e}")
+
     def plot_results(
         self,
         positions: np.ndarray,
         solar_output_area: np.ndarray,
         output_dir: Path | str | None = None,
         epoch_name: str | int | None = None,
+        verts: torch.Tensor | None = None,
+        faces: torch.Tensor | None = None,
+        solar_cells_mask: torch.Tensor | None = None,
     ):
         # goal here is to make a gif of the australia route map with points colored by solar output, and a plot of solar output and lat/lon over the route points.
         # note: normalises mm2 to m2 with 1e-6 calculation
@@ -140,3 +219,8 @@ class SimulationV1:
 
         # log to wandb as image
         upload_neural_renderer_image(file_path, key_name)
+
+        # render 3-D mesh with selected faces highlighted
+        if verts is not None and faces is not None and solar_cells_mask is not None:
+            render_out = Path(output_dir) / "sim_renders" if output_dir is not None else Path("sim_renders")
+            self.render_mesh_selection(verts, faces, solar_cells_mask, render_out, epoch_name)
