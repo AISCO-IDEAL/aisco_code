@@ -4,14 +4,14 @@
 
 It uses:
 
-- `config/regulations_and_parameters.yaml` for all fixed dimensions and rules
-- `config/assembly_map.yaml` for precomputed seat and wheel positions
+- `config/regulations_and_parameters.yaml` for fixed dimensions, limits, and generation ranges
+- `config/assembly_map.yaml` for precomputed seat and wheel placements
 
-It now includes a driver vision box in the assembled output.
+The assembled output also includes the driver vision box.
 
 ## Main Files
 
-- `components/nbz.py`: main entry point for loading an assembly
+- `components/nbz.py`: main entry point for loading and post-processing an assembly
 - `components/inner/seat.py`: seat NBZ geometry
 - `components/inner/wheels.py`: wheel geometry
 - `components/outer/outer_nbz.py`: outer NBZ geometry
@@ -28,17 +28,55 @@ from subprojects.wp2_assembler.version4.components.nbz import (
 )
 ```
 
-- `call_assembly(id)`: returns inner geometry, outer NBZ, and vision geometry
-- `bounding_box_of_assembly(id)`: returns the inner assembly bounding box
-- `max_assembly_id()`: returns the highest available ID
+- `call_assembly(id)`: returns the processed inner solids, the processed outer NBZ solid, and the vision solids
+- `bounding_box_of_assembly(id)`: returns the bounding box of the inner assembly after processing
+- `max_assembly_id()`: returns the highest available assembly ID
+
+## `call_assembly` behavior
+
+`call_assembly(id)` no longer returns the raw assembly. It returns a cut version that is ready to use with the ground-clearance constraints:
+
+- The outer NBZ is cut at `no_build_zones.outer_prism.ground_clearance`
+- The wheel solids are cut `1 mm` higher than that plane, so there is clearance for the aeroshell
+- The seat is not cut
+- If the seat would intersect that cut plane, the function raises an exception instead of trimming it
+
+This keeps the seat geometry intact while enforcing that every returned assembly has enough space below the seat and around the wheels.
 
 ## Example
 
 ```python
 from subprojects.wp2_assembler.version4.components.nbz import call_assembly
 
-inner, outer, vision = call_assembly(0)
+inner_solids, outer_solid, vision_solids = call_assembly(0)
 ```
+
+## Configuration Files
+
+### `config/regulations_and_parameters.yaml`
+
+This file contains the fixed dimensions and rules used to build the geometry:
+
+- `no_build_zones.outer_prism`: global outer-envelope dimensions and `ground_clearance`
+- `no_build_zones.wheel_based_rules`: overhang and angle constraints used for the outer NBZ
+- `no_build_zones.vision_box`: parameters for the driver vision volume, including `eye_level_z`
+- `tracker_box`: tracker box dimensions and cone definition
+- `seat.dimension`: seat geometry parameters
+- `seat.combinations`: the grid of seat positions used when generating possible assemblies
+- `wheel`: tire dimensions
+- `wheel.combinations`: the grid of wheel positions, plus the allowed wheel counts used during generation
+
+In practice, this is the main file to edit when a regulation changes or when you want to change the parameter space used to generate assemblies.
+
+### `config/assembly_map.yaml`
+
+This file stores the generated assembly library. Each entry contains:
+
+- the assembly ID
+- one seat position
+- one position for each wheel
+
+`call_assembly(id)` reads this file to reconstruct a specific assembly. `utils/assemblies_maker.py` is responsible for generating, validating, and saving these entries.
 
 ## Notes
 

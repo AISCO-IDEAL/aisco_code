@@ -501,8 +501,11 @@ if __name__ == "__main__":
     the code is indeed unused, but i use it sometimes manually to test changes.
     """
     start = time.time()
-
-    make_assemblys_for_n_wheels()
+    if input("Are you sure you want to generate assemblies? (press y or n): ") == "y":
+        print("Generating")
+        make_assemblys_for_n_wheels()
+    else:
+        print("Exiting")
 
     end = time.time()
     print(end - start)

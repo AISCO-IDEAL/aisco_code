@@ -6,6 +6,7 @@ no_build_zones:
     height: 1650  # mm
     length: 5800  # mm
     width: 2300   # mm
+    ground_clearance: 100 # mm
 
   wheel_based_rules:
     front_overhang: 0.6       # percentage, with 1 = 100%
@@ -22,7 +23,6 @@ no_build_zones:
     inner_radius: 1          # mm distance from centerline to start of vision box
     eye_level_z: 700         # mm from origin of seat - so where the butt of the driver would be
 
-
 tracker_box:
   dimension:
     length: 120              # mm
@@ -33,8 +33,6 @@ tracker_box:
     apex_angle: 120           # degrees
 
 seat:
-  position:
-    z: 100                 # mm from ground                  # ADD!!!!
   dimension:
     width: 450.0            # general width of the seat
     radius_top: 835.0       # radius used to build the backrest
@@ -45,11 +43,10 @@ seat:
     width_hr: 280.0         # headroom width
     height_hr: 300.0        # headroom height
   combinations:             # Defines the grid of seat positions that will be generated.
-    start: [-1300,-924,100] # Minimum (x, y, z) coordinate of the grid.
-    end: [2900,924,100]     # Maximum (x, y, z) coordinate of the grid.
+    start: [-1300,-924,101] # Minimum (x, y, z) coordinate of the grid. (put the seat at least 1mm above the ground clearence)
+    end: [2900,924,101]     # Maximum (x, y, z) coordinate of the grid.
     how_many: [3, 3, 1]     # Number of evenly spaced samples along each axis (x, y, z).
 
-# Wheel and tire specs
 wheel:
   tire_width: 96            # mm Silvretta tyre width
   tire_diameter: 557        # mm Silvretta tyre radius

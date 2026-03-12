@@ -45,12 +45,73 @@ def inner_nbz(assembly_nr: int = 0):
     return assembly
 
 
-def call_assembly(id_number: int) -> tuple[list[cq.Solid], cq.Solid, list[cq.Solid]]:
 
-    if id_number>max_assembly_id():
+def call_assembly(id_number: int) -> tuple[list[cq.Solid], cq.Solid, list[cq.Solid]]:
+    if id_number > max_assembly_id():
         raise ValueError("ValueError in wp2, version4, nbz. id_number of assembly bigger than max.")
 
-    return inner_nbz(id_number).toCompound().Solids(), outer_nbz(id_number), vision_nbz(id_number).toCompound().Solids()
+    ground_clearance = get_regulation("no_build_zones.outer_prism.ground_clearance")
+
+    def keep_above_z(solid: cq.Solid, z_cut: float) -> cq.Solid | None:
+        """
+        Keep only the part of the solid with z >= z_cut.
+        Returns None if nothing remains.
+        """
+        bbox = solid.BoundingBox()
+
+        dx = max(bbox.xlen, 1.0) + 10000
+        dy = max(bbox.ylen, 1.0) + 10000
+        dz = max(bbox.zlen, 1.0) + 10000
+
+        upper_box = (
+            cq.Workplane("XY")
+            .box(dx, dy, dz, centered=(True, True, False))
+            .translate(((bbox.xmin + bbox.xmax) / 2, (bbox.ymin + bbox.ymax) / 2, z_cut))
+            .val()
+        )
+
+        result = solid.intersect(upper_box)
+
+        if result is None:
+            return None
+
+        try:
+            if result.isNull():
+                return None
+        except AttributeError:
+            pass
+
+        return result
+
+    inner_solids = inner_nbz(id_number).toCompound().Solids()
+
+    if len(inner_solids) < 1:
+        raise ValueError(f"No inner solids found for assembly {id_number}.")
+
+    seat_solid = inner_solids[0]
+    wheel_solids = inner_solids[1:]
+
+    seat_bbox = seat_solid.BoundingBox()
+    if seat_bbox.zmin < ground_clearance + 1:
+        raise ValueError(
+            f"Seat intersects the outer NBZ cut plane. "
+            f"seat zmin = {seat_bbox.zmin:.3f} mm, required >= {ground_clearance + 1:.3f} mm."
+        )
+
+    cut_inner_solids: list[cq.Solid] = [seat_solid]
+
+    for wheel in wheel_solids:
+        cut_wheel = keep_above_z(wheel, ground_clearance + 1) # the +1 is so that there is space for the mesh to go throgh.
+        if cut_wheel is not None:
+            cut_inner_solids.append(cut_wheel)
+
+    cut_outer_nbz = keep_above_z(outer_nbz(id_number), ground_clearance)
+    if cut_outer_nbz is None:
+        raise ValueError(f"Outer NBZ was completely removed for assembly {id_number}.")
+
+    vision_solids = vision_nbz(id_number).toCompound().Solids()
+
+    return cut_inner_solids, cut_outer_nbz.Solids()[0], vision_solids
 
 def max_assembly_id() -> int:
 
@@ -120,6 +181,10 @@ if __name__ == "__main__":
     start = time.time()
 
     show(call_assembly(0))
+
+    cut_inner_solids, cut_outer_nbz, vision_solids = call_assembly(0)
+
+    print(type(cut_inner_solids[0]),type(cut_outer_nbz),type(vision_solids[0]))
 
     # for demo_id in range(100):
     #     show(call_assembly(demo_id))  # noqa: ERA001
