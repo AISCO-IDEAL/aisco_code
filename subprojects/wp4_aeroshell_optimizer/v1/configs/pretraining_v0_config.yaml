@@ -14,7 +14,7 @@ model: "WIRE" #Class name of model  # USED — pretraining_v1_1.py: config["mode
 model_filename: "WIRE" #Name of file where model is defined  # USED — pretraining_v1_1.py: config["model_filename"] (only in dynamic_model_loading, not used when model is passed in)
 
 training_loop:
-  epochs: 5000  # USED — pretraining_v1_1.py: config["training_loop"]["epochs"]
+  epochs: 2000  # USED — pretraining_v1_1.py: config["training_loop"]["epochs"]
   learning_rate: 0.0005  # USED — pretraining_v1_1.py: config["training_loop"]["learning_rate"]
   random_batch_size: 2048  # USED — pretraining_v1_1.py: config["training_loop"]["random_batch_size"]
   print_interval: 25  # USED — pretraining_v1_1.py: config["training_loop"]["print_interval"]
