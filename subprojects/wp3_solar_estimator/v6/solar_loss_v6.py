@@ -27,6 +27,10 @@ from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.shading_modes import (
+    ShadingPenalty,
+    ShadingVisibility,
+)
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.solar_v3_selection import SolarV3Selection
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
@@ -114,7 +118,7 @@ def _compute_visibility_per_sun(
     return torch.cat(vis_chunks, dim=1)  # (F, K)
 
 
-def solar_mesh_loss_v6(
+def solar_mesh_loss_v6(  # noqa: PLR0912, PLR0915
     vertices: torch.Tensor,
     faces: torch.Tensor,
     solar_vectors: torch.Tensor,
@@ -136,6 +140,9 @@ def solar_mesh_loss_v6(
     output_dir: Path | None = None,
     num_epochs: int | None = None,
     render_solar: SolarV3Selection | None = None,
+    render_shading_visibility: Any | None = None,
+    render_shading_penalty: Any | None = None,
+    shading_render_interval: int = 1,
     selection_threshold_render: float = 0.5,
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
 ) -> torch.Tensor:
@@ -192,9 +199,7 @@ def solar_mesh_loss_v6(
     face_area_mm2 = 0.5 * face_cross_norm
 
     face_normals_unit = face_cross / (face_cross_norm.clamp_min(epsilon)).unsqueeze(-1)  # (M, 3)
-    sun_directions_unit = solar_vectors / (
-        torch.linalg.norm(solar_vectors, dim=-1, keepdim=True).clamp_min(epsilon)
-    )
+    sun_directions_unit = solar_vectors / (torch.linalg.norm(solar_vectors, dim=-1, keepdim=True).clamp_min(epsilon))
 
     # Illumination quality per face (average over sun vectors)
     aggregate_illumination_quality = averaging_solar_quality(face_normals_unit, sun_directions_unit)
@@ -213,6 +218,7 @@ def solar_mesh_loss_v6(
     quality_order_desc = torch.argsort(combined_quality, descending=True)
     sorted_areas = face_area_mm2[quality_order_desc]
     sorted_quality = combined_quality[quality_order_desc]
+    original_order = torch.argsort(quality_order_desc)
 
     # Deterministic-safe cumulative area
     cumulative_area = _efficient_cumsum(sorted_areas, dim=0)
@@ -232,16 +238,24 @@ def solar_mesh_loss_v6(
 
     # Shading penalty (high quality but shaded faces)
     shading_penalty = torch.zeros((), device=vertices.device, dtype=vertices.dtype)
+    shading_penalty_per_face = torch.zeros_like(face_area_mm2)
+    shading_penalty_unweighted = torch.zeros_like(face_area_mm2)
+    shading_penalty_intensity = torch.zeros_like(face_area_mm2)
     if use_shading_penalty:
         sorted_visibility = aggregate_visibility[quality_order_desc]
         sorted_raw_quality = aggregate_illumination_quality[quality_order_desc]
-        shading_penalty = shading_penalty_weight * (sorted_areas * sorted_raw_quality * (1.0 - sorted_visibility) * soft_mask).sum()
+        shading_per_sorted_unweighted = sorted_areas * sorted_raw_quality * (1.0 - sorted_visibility) * soft_mask
+        shading_intensity_sorted = sorted_raw_quality * (1.0 - sorted_visibility) * soft_mask
+        shading_per_sorted = shading_penalty_weight * shading_per_sorted_unweighted
+        shading_penalty = shading_per_sorted.sum()
+        shading_penalty_per_face = shading_per_sorted[original_order]
+        shading_penalty_unweighted = shading_per_sorted_unweighted[original_order]
+        shading_penalty_intensity = shading_intensity_sorted[original_order]
 
     # Combined loss
     loss_mm2 = quality_loss - budget_penalty - shading_penalty
 
     # Sort softmask back to original face order for logging/visualization
-    original_order = torch.argsort(quality_order_desc)
     sorted_soft_mask = soft_mask[original_order]
 
     # Analyze sigmoid transition zone
@@ -279,16 +293,31 @@ def solar_mesh_loss_v6(
         "faces": faces,
         "selection_weights": sorted_soft_mask,
         "threshold": selection_threshold_render,
+        "shading_visibility": aggregate_visibility,
+        "shading_penalty": shading_penalty_per_face,
+        "shading_penalty_unweighted": shading_penalty_unweighted,
+        "shading_penalty_intensity": shading_penalty_intensity,
     }
 
     loss = loss_mm2 * 1e-6  # Convert to m² for final loss
 
     # Rendering
-    if rendering and render_solar is not None and num_epochs is not None:
-        if counter <= num_epochs:
-            render_solar.update(optimization_state=metrics_render)
+    if rendering and num_epochs is not None:
+        do_render = shading_render_interval > 0 and (counter % shading_render_interval == 0)
+        if counter <= num_epochs and do_render:
+            if render_solar is not None:
+                render_solar.update(optimization_state=metrics_render)
+            if render_shading_visibility is not None:
+                render_shading_visibility.update(optimization_state=metrics_render)
+            if render_shading_penalty is not None:
+                render_shading_penalty.update(optimization_state=metrics_render)
         if counter == num_epochs and output_dir is not None:
-            render_solar.finalize(output_dir)
+            if render_solar is not None:
+                render_solar.finalize(output_dir)
+            if render_shading_visibility is not None:
+                render_shading_visibility.finalize(output_dir, file_name="shading_visibility.gif")
+            if render_shading_penalty is not None:
+                render_shading_penalty.finalize(output_dir, file_name="shading_penalty.gif")
 
     # Log to wandb if enabled
     if enable_wandb_logging and epoch_name is not None:
@@ -384,6 +413,8 @@ class SolarLossEstimator:
             "shading_penalty_weight": 10.0,
             "use_visibility_multiplier": True,
             "use_shading_penalty": True,
+            "sun_vector_source": "route",
+            "fixed_sun_dir": None,
             "wandb_logging": False,
             "soft_mask_selection_threshold": 0.5,
             "soft_mask_full_selection_threshold": 0.95,
@@ -437,6 +468,9 @@ class SolarLossEstimator:
         self.soft_mask_full_selection_threshold = float(cfg["soft_mask_full_selection_threshold"])
         self.selection_threshold_render = float(cfg["selection_threshold_render"])
         self.shading_cfg = dict(cfg.get("shading", {}))
+        self.shading_render_interval = int(self.shading_cfg.get("shading_render_interval", 1))
+        self.sun_vector_source = str(cfg.get("sun_vector_source", "route")).lower()
+        self.fixed_sun_dir = cfg.get("fixed_sun_dir")
         self.counter = 0
 
         self.validation_sim = bool(cfg.get("validation_sim", False))
@@ -451,6 +485,8 @@ class SolarLossEstimator:
         self.rendering = bool(cfg["rendering"])
         self.visualiser: Visualiser | None
         self.renderSolar: SolarV3Selection | None
+        self.renderShadingVisibility: ShadingVisibility | None
+        self.renderShadingPenalty: ShadingPenalty | None
         self.number_epochs: int | None
         self.model_hash: str | None
         self.wandb_run_name: str | None
@@ -458,14 +494,29 @@ class SolarLossEstimator:
         if self.rendering and self.enable_wandb_logging:
             self.visualiser = Visualiser(
                 image_size=1024,
-                background_color=None,
+                background_color=[0.0, 0.66, 0.0],
                 anti_aliasing=True,
                 camera_mode="look_at",
                 viewing_angle=30.0,
                 device=self.device,
                 up=[0.0, 0.0, 1.0],
             )
-            self.renderSolar = SolarV3Selection(visualiser=self.visualiser)
+            detached_cfg = load_config(v="v1", cfg_name="neural_renderer_v0.yaml").get("detached_modes", {})
+            self.renderSolar = (
+                SolarV3Selection(visualiser=self.visualiser)
+                if detached_cfg.get("solar_v3_selection", {}).get("enabled", False)
+                else None
+            )
+            self.renderShadingVisibility = (
+                ShadingVisibility(visualiser=self.visualiser)
+                if detached_cfg.get("shading_visibility", {}).get("enabled", False)
+                else None
+            )
+            self.renderShadingPenalty = (
+                ShadingPenalty(visualiser=self.visualiser)
+                if detached_cfg.get("shading_penalty", {}).get("enabled", False)
+                else None
+            )
             train_cfg = load_config(v="v1", cfg_name="training_v0_config.yaml")["training_params"]
             self.number_epochs = int(train_cfg["num_epochs"])
             self.model_hash = None
@@ -475,15 +526,25 @@ class SolarLossEstimator:
         else:
             self.visualiser = None
             self.renderSolar = None
+            self.renderShadingVisibility = None
+            self.renderShadingPenalty = None
             self.number_epochs = None
             self.model_hash = None
             self.wandb_run_name = None
             self.rendering_dir = None
 
-        route_cls = RouteV2 if self.route_version == "v2" else RouteV1
-        self.route = route_cls(cfg_path=cfg.get("australia_cfg", "solar_configs/australia.yaml"))
-        self.solar_vectors = self.route.get_route_solar_vecs()
-        self.solar_vectors = self.solar_vectors.view(-1, 3).to(self.device)
+        self.route = None
+        if self.sun_vector_source == "fixed" and self.fixed_sun_dir is not None:
+            fixed_dir = torch.tensor(self.fixed_sun_dir, dtype=torch.float32).view(-1)
+            if fixed_dir.numel() != 3:
+                raise ValueError("fixed_sun_dir must contain exactly 3 values")
+            fixed_dir = fixed_dir / fixed_dir.norm().clamp_min(self.eps)
+            self.solar_vectors = fixed_dir.view(1, 3).to(self.device)
+        else:
+            route_cls = RouteV2 if self.route_version == "v2" else RouteV1
+            self.route = route_cls(cfg_path=cfg.get("australia_cfg", "solar_configs/australia.yaml"))
+            self.solar_vectors = self.route.get_route_solar_vecs()
+            self.solar_vectors = self.solar_vectors.view(-1, 3).to(self.device)
 
         self.extractor: FCExtractor | DISOExtractor | MeshSDFExtractor
         self._init_extractor()
@@ -605,6 +666,9 @@ class SolarLossEstimator:
                     output_dir=self.rendering_dir,
                     num_epochs=self.number_epochs,
                     render_solar=self.renderSolar,
+                    render_shading_visibility=self.renderShadingVisibility,
+                    render_shading_penalty=self.renderShadingPenalty,
+                    shading_render_interval=self.shading_render_interval,
                     selection_threshold_render=self.selection_threshold_render,
                     sdf_fn=model,
                 )
@@ -659,6 +723,9 @@ class SolarLossEstimator:
                 output_dir=self.rendering_dir,
                 num_epochs=self.number_epochs,
                 render_solar=self.renderSolar,
+                render_shading_visibility=self.renderShadingVisibility,
+                render_shading_penalty=self.renderShadingPenalty,
+                shading_render_interval=self.shading_render_interval,
                 selection_threshold_render=self.selection_threshold_render,
                 sdf_fn=model,
             )

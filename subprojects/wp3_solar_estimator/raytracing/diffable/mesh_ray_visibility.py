@@ -28,6 +28,7 @@ import torch
 # Vectorised Möller-Trumbore (batched rays × batched triangles)
 # ---------------------------------------------------------------------------
 
+
 def _moller_trumbore_batch(
     ray_origins: torch.Tensor,
     ray_dir: torch.Tensor,
@@ -88,14 +89,7 @@ def _moller_trumbore_batch(
     t = (edge2[None, :, :] * q).sum(dim=-1) * inv_a[None, :]
 
     # Miss conditions: barycentric coords outside [0,1], t <= 0, parallel triangle
-    miss = (
-        (u < 0.0)
-        | (u > 1.0)
-        | (v < 0.0)
-        | ((u + v) > 1.0)
-        | (t <= 0.0)
-        | parallel_mask[None, :]
-    )
+    miss = (u < 0.0) | (u > 1.0) | (v < 0.0) | ((u + v) > 1.0) | (t <= 0.0) | parallel_mask[None, :]
 
     # Replace misses with large sentinel so they don't affect softmin
     t = torch.where(miss, torch.tensor(miss_t, device=t.device, dtype=t.dtype), t)
@@ -106,6 +100,7 @@ def _moller_trumbore_batch(
 # ---------------------------------------------------------------------------
 # Normal computation helpers
 # ---------------------------------------------------------------------------
+
 
 def _normals_from_mesh(
     vertices: torch.Tensor,
@@ -133,15 +128,14 @@ def _normals_from_sdf(
     pts = points.detach().requires_grad_(True)
     sdf_vals = sdf_fn(pts)  # (Q,)
     grad_outputs = torch.ones_like(sdf_vals)
-    (grads,) = torch.autograd.grad(
-        sdf_vals, pts, grad_outputs=grad_outputs, create_graph=True
-    )
+    (grads,) = torch.autograd.grad(sdf_vals, pts, grad_outputs=grad_outputs, create_graph=True)
     return grads / grads.norm(dim=-1, keepdim=True).clamp(min=eps)
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def mesh_visibility(
     vertices: torch.Tensor,
@@ -219,8 +213,8 @@ def mesh_visibility(
 
     for start in range(0, F_count, face_chunk_size):
         end = min(start + face_chunk_size, F_count)
-        chunk_centroids = centroids[start:end]          # (C, 3)
-        chunk_normals = normals[start:end]               # (C, 3)
+        chunk_centroids = centroids[start:end]  # (C, 3)
+        chunk_normals = normals[start:end]  # (C, 3)
 
         # Ray origins: far along the sun direction
         ray_origins = chunk_centroids + offset * chunk_normals + L * sun  # (C, 3)

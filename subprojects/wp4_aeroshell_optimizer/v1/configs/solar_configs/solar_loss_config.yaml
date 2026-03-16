@@ -78,6 +78,8 @@ SolarLossConfigV5:
 SolarLossConfigV6:
   australia_cfg: "solar_configs/australia.yaml"
   route_version: "v2" # v1 or v2
+  sun_vector_source: "route" # route | fixed
+  fixed_sun_dir: [-1,0,1.5] # [x, y, z] when sun_vector_source=fixed
   method: "mesh_sdf" # diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
   resolution: 64
@@ -85,9 +87,9 @@ SolarLossConfigV6:
   device: "cuda"
   batch_size: 100
   eps: 1e-12
-  sigmoid_sharpness: 10.0
+  sigmoid_sharpness: 8.0
   budget_penalty_weight: 0.1
-  shading_penalty_weight: 10.0
+  shading_penalty_weight: 1.0
   use_visibility_multiplier: True
   use_shading_penalty: True
   wandb_logging: True
@@ -100,9 +102,10 @@ SolarLossConfigV6:
     method: "sdf" # sdf | mesh | none
     normal_source: "mesh" # mesh | sdf
     sun_batch_size: 1
-    sun_subsample_fraction: 0.2 # 0..1 fraction of sun vectors to use
+    sun_subsample_fraction: 0.8 # 0..1 fraction of sun vectors to use
     sun_subsample_min: 1 # minimum sun vectors to keep
     sun_subsample_mode: "random" # random | first
+    shading_render_interval: 1 # render every N epochs
     # SDF shading params
     sdf_method: "sigmoid" # sigmoid | absorption
     sdf_alpha: 20.0
@@ -112,31 +115,7 @@ SolarLossConfigV6:
     sdf_step_size_factor: 0.1
     sdf_origin_offset_factor: 1e-3
     sdf_max_march_factor: 2.0
-    sdf_point_chunk_size: 300
-    # Mesh shading params
-    mesh_beta: 10.0
-    mesh_gamma: 20.0
-    mesh_margin_factor: 1e-3
-    mesh_origin_offset_eps: 1e-3
-    mesh_sun_distance_factor: 10.0
-    mesh_face_chunk_size: 512
-    mesh_miss_t: 1e9
-    method: "sdf" # sdf | mesh | none
-    normal_source: "mesh" # mesh | sdf
-    sun_batch_size: 1
-    sun_subsample_fraction: 0.2 # 0..1 fraction of sun vectors to use
-    sun_subsample_min: 1 # minimum sun vectors to keep
-    sun_subsample_mode: "random" # random | first
-    # SDF shading params
-    sdf_method: "sigmoid" # sigmoid | absorption
-    sdf_alpha: 20.0
-    sdf_beta: 20.0
-    sdf_kappa: 2.0
-    sdf_num_steps: 24
-    sdf_step_size_factor: 0.05
-    sdf_origin_offset_factor: 1e-3
-    sdf_max_march_factor: 2.0
-    sdf_point_chunk_size: 2048
+    sdf_point_chunk_size: 256
     # Mesh shading params
     mesh_beta: 10.0
     mesh_gamma: 20.0
