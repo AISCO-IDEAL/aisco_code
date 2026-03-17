@@ -88,7 +88,7 @@ rendering_modes:
   # Gif of which solar cells would be selected with the dot-product approach, given a budget and soalr angle in solar_loss_config.yaml
   solar_selection_mode:  # USED — dynamically loaded by visual_wrapper.py
     #Mandatory
-    enabled: true  # USED
+    enabled: false  # USED
     class_path: "custom_modes.solar_selection:SolarSelectionMode"  # USED
     #config for solar selection
     config:  # USED — also reads SolarLossConfigV3 from solar_loss_config.yaml (area_budget_mm2, sun_dir) inside solar_selection.py
@@ -103,7 +103,7 @@ rendering_modes:
   # Gif of the solar power of each face using the dot-product approach, green is good, red is bad
   solar_power_mode:  # USED — dynamically loaded by visual_wrapper.py
     #Mandatory
-    enabled: true  # USED
+    enabled: False  # USED
     class_path: "custom_modes.solar_power:SolarPower"  # USED
     #config for solar selection
     config:  # USED — also reads SolarLossConfigV3 from solar_loss_config.yaml (sun_dir) inside solar_power.py
@@ -129,7 +129,7 @@ rendering_modes:
 
 detached_modes:
   solar_v3_selection:
-    enabled: True
+    enabled: False
     class_path: "detached_modes.solar_v3_selection:SolarV3Selection"
     config:
       camera_position: [-3500, 3500, 3500]
@@ -145,7 +145,7 @@ detached_modes:
       look_at: [0, 0, 0]
       render_mode: "rgb"
       fps: 15
-      render_interval: 10
+      #render_interval: 10
   shading_penalty:
     enabled: True
     class_path: "detached_modes.shading_modes:ShadingPenalty"
@@ -154,7 +154,17 @@ detached_modes:
       look_at: [0, 0, 0]
       render_mode: "rgb"
       fps: 15
-      render_interval: 10
+      #render_interval: 10
+  MeshSDF_grads:
+    enabled: True
+    class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
+    config:
+      camera_position: [-3500, 3500, 700]
+      look_at: [0, 0, 0]
+      render_mode: "rgb"
+      fps: 15
+      #render_interval: 10
+
 
 # # NOT USED — ENTIRE SECTION: gifs section is outdated and never read by any code
 # # not used atm, outdated

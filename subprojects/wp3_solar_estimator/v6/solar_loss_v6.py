@@ -675,7 +675,7 @@ class SolarLossEstimator:
                 return loss
 
             assert isinstance(self.extractor, MeshSDFExtractor)
-            _vertices, _faces, loss, surrogate_loss = self.extractor.extract_and_compute_loss(
+            _vertices, _faces, loss, surrogate_loss, _vertice_grads = self.extractor.extract_and_compute_loss(
                 sdf_model=model,
                 loss_fn=wrapper_solar_loss,
                 enable_backward=True,
