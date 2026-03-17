@@ -39,7 +39,7 @@ def _chunked_sdf_eval(
         [B, N] SDF values.
     """
     N = points.shape[0]
-    if chunk_size is None or N <= chunk_size:
+    if chunk_size is None or chunk_size >= N:
         return sdf_fn(points)
     chunks = []
     for i in range(0, N, chunk_size):
