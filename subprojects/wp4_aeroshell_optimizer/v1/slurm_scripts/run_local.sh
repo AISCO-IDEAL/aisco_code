@@ -9,6 +9,8 @@
 # cd ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts
 # bash run_local.sh
 ###########################################################################
+umask 0002
+
 USERNAME=$(whoami) #elegant, right?
 # Update this path to where your code actually sits on WSL
 
