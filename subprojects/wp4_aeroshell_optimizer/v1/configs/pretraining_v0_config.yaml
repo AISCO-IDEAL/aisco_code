@@ -7,7 +7,7 @@ pretraining_shape: "sphere" # "sphere" or "cube"  # USED — pretraining_v1_1.py
 pretraining:
   use_pretrained: True # True or False possible  # NOT USED — never read by any code (main checks fetch_pretrained_model result instead)
   force_pretraining: False  # USED — main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("force_pretraining", False)
-  pretraining_model_path: "subprojects/wp4_aeroshell_optimizer/data/test_models/xyz" # must be .pth file compatible with model_vxy, doesn't do anything atm  # USED — main_v1_1_one_model.py: pretraining_config["pretraining"].get("pretraining_model_path", False)
+  pretraining_model_path: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset/bb489749d1/bb489749d1.pth"  # USED — main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("pretraining_model_path", "path/to/pretrained/model.pth")  # note: pretraining_v0_model.pth is the basic MLP sphere or ellipsoid
   username: ${USER} # for windows users: %USERNAME%  # NOT USED — never read by any code in the optimisation loop
 
 model: "WIRE" #Class name of model  # USED — pretraining_v1_1.py: config["model"] (only in dynamic_model_loading, not used when model is passed in)

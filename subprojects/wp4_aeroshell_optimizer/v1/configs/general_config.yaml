@@ -6,7 +6,7 @@ general_info:
   post: "a PLY file representing the optimized aeroshell shape"  # NOT USED — never read by any code
   config_debugging: "True" # adds print statements of config paths  # NOT USED — never read by any code (no grep hits in src/)
   run_locally: "True" # automatically detected, don't touch  # USED — main_v1_1_one_model.py, storage_utils.py (auto-detected & overwritten by config_utils.py)
-  verbose: "False"  # USED — basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
+  verbose: "True"  # USED — basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
 
 model_def:
   model_name: "BasicMLP"  # USED — main_v1_1_one_model.py: general_config["model_def"]["model_name"]
