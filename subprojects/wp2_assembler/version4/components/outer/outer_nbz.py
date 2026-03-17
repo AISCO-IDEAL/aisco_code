@@ -120,6 +120,7 @@ def outer_nbz(assembly_id: int) -> cq.Solid:
 
     return result
 
+
 def aabb_inside_outer_nbz(  # noqa: PLR0915
     entry: dict[str, object],
     aabb: dict[str, float],
@@ -140,11 +141,7 @@ def aabb_inside_outer_nbz(  # noqa: PLR0915
         True if all 8 AABB corners are inside the analytical outer NBZ
     """
 
-    wheels = [
-        float(v["x"])
-        for k, v in entry.items()
-        if isinstance(v, dict) and k.startswith("wheel_") and "x" in v
-    ]
+    wheels = [float(v["x"]) for k, v in entry.items() if isinstance(v, dict) and k.startswith("wheel_") and "x" in v]
     if not wheels:
         raise ValueError("No wheels found in assembly entry")
 
@@ -232,6 +229,7 @@ def aabb_inside_outer_nbz(  # noqa: PLR0915
     ]
 
     return all(point_inside(x, y, z) for x, y, z in corners)
+
 
 if __name__ == "__main__":
     demo_id = 1

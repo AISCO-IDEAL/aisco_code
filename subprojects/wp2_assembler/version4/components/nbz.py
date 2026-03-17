@@ -45,7 +45,6 @@ def inner_nbz(assembly_nr: int = 0):
     return assembly
 
 
-
 def call_assembly(id_number: int) -> tuple[list[cq.Solid], cq.Solid, list[cq.Solid]]:
     if id_number > max_assembly_id():
         raise ValueError("ValueError in wp2, version4, nbz. id_number of assembly bigger than max.")
@@ -101,7 +100,7 @@ def call_assembly(id_number: int) -> tuple[list[cq.Solid], cq.Solid, list[cq.Sol
     cut_inner_solids: list[cq.Solid] = [seat_solid]
 
     for wheel in wheel_solids:
-        cut_wheel = keep_above_z(wheel, ground_clearance + 1) # the +1 is so that there is space for the mesh to go throgh.
+        cut_wheel = keep_above_z(wheel, ground_clearance + 1)  # the +1 is so that there is space for the mesh to go throgh.
         if cut_wheel is not None:
             cut_inner_solids.append(cut_wheel)
 
@@ -112,6 +111,7 @@ def call_assembly(id_number: int) -> tuple[list[cq.Solid], cq.Solid, list[cq.Sol
     vision_solids = vision_nbz(id_number).toCompound().Solids()
 
     return cut_inner_solids, cut_outer_nbz.Solids()[0], vision_solids
+
 
 def max_assembly_id() -> int:
 
@@ -125,6 +125,7 @@ def max_assembly_id() -> int:
 
     return max(int(k) for k in data)
 
+
 def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     """
     Docstring for bounding_box_of_assembly
@@ -137,16 +138,10 @@ def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float]
     inner_bounding_box = cq.Compound.makeCompound(inner).BoundingBox()
 
     return (
-        (inner_bounding_box.xmin,
-         inner_bounding_box.ymin,
-         inner_bounding_box.zmin
-        ),
+        (inner_bounding_box.xmin, inner_bounding_box.ymin, inner_bounding_box.zmin),
+        (inner_bounding_box.xmax, inner_bounding_box.ymax, inner_bounding_box.zmax),
+    )
 
-        (inner_bounding_box.xmax,
-         inner_bounding_box.ymax,
-         inner_bounding_box.zmax
-        )
-        )
 
 def vision_nbz(id_number):
 
@@ -163,8 +158,18 @@ def vision_nbz(id_number):
 
     assy = cq.Assembly()
 
-    assy.add(driver_cone, loc=cq.Location(cq.Vector(params['seat']['x'], params['seat']['y'], params['seat']['z'] + get_regulation('no_build_zones.vision_box.eye_level_z'))), name="driver_cone")
-   # assy.add(tracker_cone, loc=cq.Location(cq.Vector(-50, 0, 150)), name="tracker_cone")  # noqa: ERA001
+    assy.add(
+        driver_cone,
+        loc=cq.Location(
+            cq.Vector(
+                params["seat"]["x"],
+                params["seat"]["y"],
+                params["seat"]["z"] + get_regulation("no_build_zones.vision_box.eye_level_z"),
+            )
+        ),
+        name="driver_cone",
+    )
+    # assy.add(tracker_cone, loc=cq.Location(cq.Vector(-50, 0, 150)), name="tracker_cone")  # noqa: ERA001
 
     return assy
 
@@ -176,7 +181,7 @@ if __name__ == "__main__":
     print(max_assembly_id())
     end = time.time()
 
-    print(end-start)
+    print(end - start)
 
     start = time.time()
 
@@ -184,10 +189,9 @@ if __name__ == "__main__":
 
     cut_inner_solids, cut_outer_nbz, vision_solids = call_assembly(0)
 
-    print(type(cut_inner_solids[0]),type(cut_outer_nbz),type(vision_solids[0]))
+    print(type(cut_inner_solids[0]), type(cut_outer_nbz), type(vision_solids[0]))
 
     print(max_assembly_id())
-
 
     for i in range(max_assembly_id()):
         show(call_assembly(i))

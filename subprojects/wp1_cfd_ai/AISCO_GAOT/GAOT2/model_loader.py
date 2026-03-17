@@ -13,10 +13,11 @@ from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor
 logger = logging.getLogger(__name__)
 
 
-model_dict = {"OnlyCorrectNormalized": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/New_Normalizer1.pt", # only trainde for 3 Epochs or something like this
-    "gold3": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/gold3.pt", # Should be trained for 400 Epochs
-    "platin": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/platin.pt"
-    }
+model_dict = {
+    "OnlyCorrectNormalized": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/New_Normalizer1.pt",  # only trainde for 3 Epochs or something like this
+    "gold3": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/gold3.pt",  # Should be trained for 400 Epochs
+    "platin": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/platin.pt",
+}
 
 
 class ModelLoader:
@@ -27,7 +28,9 @@ class ModelLoader:
         self.model_path = model_dict[model_id]
         self.device = device
         self._load_model()
-        self.extractor = MeshSDFExtractor(resolution=128, bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3], device=self.device, isovalue=0.0)
+        self.extractor = MeshSDFExtractor(
+            resolution=128, bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3], device=self.device, isovalue=0.0
+        )
 
     def _load_model(self) -> None:
         # ── load config YAML saved alongside the checkpoint ─────────────
@@ -137,6 +140,7 @@ class ModelLoader:
         data = rescale_transform(data)
 
         return Batch.from_data_list([data]).to(self.device)
+
 
 EPSILON = 1e-12
 

@@ -8,7 +8,7 @@ import wandb
 class WandbTracker:
     """Handles all Weights & Biases logging and artifact management."""
 
-    def __init__(self, setup_config: dict, path_config:dict , full_config_dict:dict):
+    def __init__(self, setup_config: dict, path_config: dict, full_config_dict: dict):
         self.setup_config = setup_config
         self.path_config = path_config
         self.wandb_run = None
@@ -27,14 +27,14 @@ class WandbTracker:
             os.environ["WANDB_MODE"] = str(self.setup_config["wandb_mode"])
 
         init_kwargs = {
-        "project": self.setup_config["wandb_project"],
-        "entity": self.setup_config["wandb_entity"],
-        "name": self.setup_config["wandb_run_name"],
-        "group": self.setup_config["wandb_group"],
-        "notes": self.setup_config["wandb_notes"],
-        "tags": self.setup_config["wandb_tags"],
-        "config": config_dict,
-        "resume": "allow",
+            "project": self.setup_config["wandb_project"],
+            "entity": self.setup_config["wandb_entity"],
+            "name": self.setup_config["wandb_run_name"],
+            "group": self.setup_config["wandb_group"],
+            "notes": self.setup_config["wandb_notes"],
+            "tags": self.setup_config["wandb_tags"],
+            "config": config_dict,
+            "resume": "allow",
         }
         # Remove None values to avoid API complaints
         init_kwargs = {k: v for k, v in init_kwargs.items() if v is not None}

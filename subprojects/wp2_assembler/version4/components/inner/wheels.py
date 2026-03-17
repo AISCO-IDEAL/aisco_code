@@ -47,8 +47,10 @@ class Wheels:
 
         return [xmin, xmax, ymin, ymax, zmin, zmax]
 
+
 if __name__ == "__main__":
     import time
+
     start = time.time()
     wheel = Wheels()
     w = wheel.create_wheel()

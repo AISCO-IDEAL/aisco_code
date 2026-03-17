@@ -8,8 +8,8 @@ def wheel_turning_angle(
     back_wheel: list[float],
     inner_wheel: list[float],
     turning_radius: float,
-    perpendicular_to_rear_wheel: list[float] | None = None
-) -> tuple[float,float]:
+    perpendicular_to_rear_wheel: list[float] | None = None,
+) -> tuple[float, float]:
     """
     Returns the steering angle of the inner front wheel.
 
@@ -74,6 +74,6 @@ def wheel_turning_angle(
 if __name__ == "__main__":
     outer = [0.0, 5.0]
     back = [0.0, 0.0]
-    inner = [0.0, 4.0]   # for example, inner wheel closer to center line
+    inner = [0.0, 4.0]  # for example, inner wheel closer to center line
     radius = 10
     print(wheel_turning_angle(outer, back, inner, radius))
