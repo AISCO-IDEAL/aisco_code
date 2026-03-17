@@ -1,4 +1,4 @@
-import fixed_renderer.cuda.rasterize as rasterize_cuda
+import subprojects.fixed_renderer.cuda.rasterize as rasterize_cuda
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -366,8 +366,6 @@ def rasterize(
     """
     return rasterize_rgbad(
         faces, textures, image_size, anti_aliasing, near, far, eps, background_color, True, False, False)['rgb']
-
-
 
 def rasterize_silhouettes(
         faces,

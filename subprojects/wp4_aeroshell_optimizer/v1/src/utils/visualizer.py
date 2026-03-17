@@ -12,8 +12,8 @@ import OpenGL
 import pyrender
 import trimesh
 from pyrender import RenderFlags
+from subprojects.wp2_assembler.version3.components.nbz import call_assembly
 
-from subprojects.wp2_assembler.version3.components.nbz import call_assembly_solids
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 
 # Constants for numerical thresholds
@@ -264,10 +264,12 @@ class CADVisualizer:
         meshes = []
         types = ["solid_a", "solid_b"]
 
-        if assembley_version == 2:
-            inner_box, outer_box = call_assembly_solids(assembly_id)
+        if assembley_version == 3:
+            inner_box, outer_box, _ = call_assembly(assembly_id)  # getting assembly for inner_nbz and outer_nbz as solid
+            compound_inner_box = inner_box.model.toCompound()
+            inner_box_solid = cq.Solid(compound_inner_box.fuse().wrapped)  # transforming to solid for rendering
             meshes = [
-                self.__cq_solid_to_trimesh(inner_box),
+                self.__cq_solid_to_trimesh(inner_box_solid),
                 self.__cq_solid_to_trimesh(outer_box),
             ]
 
@@ -353,7 +355,7 @@ class CADVisualizer:
 
 
 if __name__ == "__main__":
-    username = "clhuber"
+    username = os.getenv("USER") or os.getenv("USERNAME") or "clhuber"
     base_path = f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data"
 
     for mesh_name, render_name in [

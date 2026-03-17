@@ -10,6 +10,9 @@ import traceback as tb
 from pathlib import Path
 from typing import Any
 
+import torch
+
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (
     upload_neural_renderer_gif,
     upload_neural_renderer_image,
@@ -61,7 +64,7 @@ class VisualisationManager:
         # It contains all the settings that define a neural renderer object, and all modes will run through this same neural renderer instance.
         general_config = load_config(cfg_name="general_config.yaml")
         neural_renderer_config_name = general_config["active_configs"]["neural_renderer"]
-        self.config = load_config(cfg_name=neural_renderer_config_name)
+        self.config = load_config(v="v1", cfg_name=neural_renderer_config_name)
         self.store_wandb = self.config["general"].get("store_wandb", False)  # Whether to upload final GIFs to wandb
 
         # Initialize the shared Visualiser instance
@@ -164,10 +167,23 @@ class VisualisationManager:
                 - 'faces': Current mesh faces (optional)
                 - Any custom keys specific to your modes
         """
+        # Detach all tensors before dispatching to any mode so no rendering
+        # operation can retain or extend the training computation graph.
+        optimization_state = {k: v.detach() if isinstance(v, torch.Tensor) else v for k, v in optimization_state.items()}
+        step = optimization_state.get("iteration")
+
         for mode_name, mode in self.rendering_modes.items():
             if mode.enabled:
                 try:
+                    frames_before = len(mode.frame_storage)
                     mode.update(optimization_state)
+                    # Stream each new frame to the wandb dashboard as a wandb.Image
+                    if self.store_wandb and wandb.run and len(mode.frame_storage) > frames_before:
+                        upload_neural_renderer_image(
+                            mode.frame_storage[-1],
+                            key=f"renders/{mode_name}",
+                            step=step,
+                        )
                 except Exception as e:
                     print(f"Error in {mode_name}.update(): {e}")
                     tb.print_exc()
@@ -214,10 +230,10 @@ class VisualisationManager:
                             suffix = file.suffix.lower()
                             if suffix == ".gif":
                                 print(f"Uploading {file} to wandb under key animations/{mode_name}...")
-                                upload_neural_renderer_gif(str(file), key=f"animations/{mode_name}", step=1)
+                                upload_neural_renderer_gif(str(file), key=f"animations/{mode_name}", step=None)
                             elif suffix in {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}:
                                 print(f"Uploading {file} to wandb under key images/{mode_name}...")
-                                upload_neural_renderer_image(str(file), key=f"images/{mode_name}", step=1)
+                                upload_neural_renderer_image(str(file), key=f"images/{mode_name}", step=None)
                     else:
                         print(f"Output directory for mode {mode_name} does not exist: {mode_output_dir}")
 

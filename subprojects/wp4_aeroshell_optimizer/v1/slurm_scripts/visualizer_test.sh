@@ -12,7 +12,9 @@
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
-USERNAME="clhuber"
+umask 0002
+
+USERNAME=$(whoami)
 LOG_DIR="/cluster/home/$USERNAME/AISCO_code/logs"
 mkdir -p "$LOG_DIR"  # Ensure the log directory exists
 #------------------------------------------------------------------------------

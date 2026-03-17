@@ -52,11 +52,11 @@ class BaseModel(nn.Module):
 
     def optimise(
         self,
+        general_config,  # noqa: ARG002
+        training_config,  # noqa: ARG002
         renderer_manager: VisualisationManager | None = None,  # noqa: ARG002
         renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
         wandb_name: str | None = None,  # noqa: ARG002
-        general_config: dict | None = None,  # noqa: ARG002
-        training_config: dict | None = None,  # noqa: ARG002
     ) -> None:
         super().train()  # Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
 

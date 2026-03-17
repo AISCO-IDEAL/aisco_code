@@ -28,6 +28,7 @@ repos:
     rev: v1.19.1  # Aktuelle Version prüfen: https://github.com/pre-commit/mirrors-mypy/releases # eschaerer: update acc. to pyproject.toml
     hooks:
       - id: mypy
+        exclude: ^tests/|.*/tests/|.*/archive/
         args: [--config-file=pyproject.toml, --namespace-packages, --explicit-package-bases] # using a pyproject configs
         additional_dependencies:
           - types-requests
@@ -35,6 +36,10 @@ repos:
           - types-paramiko
           - types-Pillow
           - paramiko
+          - types-pytz
+          - wandb
+          - torch
+          - cadquery
         pass_filenames: True # eschaerer: mypy soll nur geänderte Dateien prüfen, damit es schneller läuft
 
 

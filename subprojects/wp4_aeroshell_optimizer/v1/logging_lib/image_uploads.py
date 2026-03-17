@@ -1,5 +1,6 @@
 import contextlib
 import os
+import re
 import tempfile
 from collections.abc import Iterable
 from io import BytesIO
@@ -45,11 +46,15 @@ def _load_image(obj) -> np.ndarray:
     # numpy array
     if isinstance(obj, np.ndarray):
         arr = obj
-        if arr.dtype != np.uint8:
-            arr = arr.astype(np.uint8)
-        # if CHW -> convert to HWC
+        # if CHW -> convert to HWC first (before any dtype conversion)
         if arr.ndim == 3 and arr.shape[0] in (1, 3):
             arr = np.transpose(arr, (1, 2, 0))
+        # Float arrays in [0, 1] (e.g. from the neural renderer) must be scaled to [0, 255]
+        if arr.dtype != np.uint8:
+            if np.issubdtype(arr.dtype, np.floating) and arr.max() <= 1.0:
+                arr = (arr * 255).clip(0, 255).astype(np.uint8)
+            else:
+                arr = arr.astype(np.uint8)
         return arr
 
     raise TypeError(f"Unsupported image type: {type(obj)}")
@@ -81,6 +86,10 @@ def _frames_to_array_list(frames: Iterable) -> list:
 
 def upload_neural_renderer_gif(frames, key: str, step: int | None = None, fps: int = 10):
     """Logs a GIF or sequence of frames to wandb.
+
+    key: the wandb key to log under
+    step: optional step number to log at (for wandb)
+    fps: frames per second for the GIF (default: 10)
 
     `frames` may be:
     - a filesystem path (str/Path) to an already-created GIF/video file
@@ -133,3 +142,50 @@ def upload_neural_renderer_gif(frames, key: str, step: int | None = None, fps: i
         return
 
     raise TypeError(f"Unsupported frames input type: {type(frames)}")
+
+
+def create_and_upload_gif_from_folder(
+    folder_path: str | Path,
+    output_gif_filename: str = "animated.gif",
+    wandb_key: str = "animated_gif",
+    fps: int = 10,
+    step: int | None = None,
+    pattern: str = "*.png",
+):
+    """
+    Reads all images matching a pattern in a folder, sorts them by numerical suffix or chronologically,
+    creates a GIF, saves it locally, and uploads it to wandb.
+    """
+    folder = Path(folder_path)
+    if not folder.exists() or not folder.is_dir():
+        print(f"Folder {folder} does not exist or is not a directory.")
+        return
+
+    image_paths = list(folder.glob(pattern))
+    if not image_paths:
+        print(f"No images found in {folder} matching pattern '{pattern}'.")
+        return
+
+    def sort_key(p: Path):
+        # Extract the last sequence of digits in the filename to sort by epoch/step
+        # e.g. "simulation_results_5.png" -> 5, "simulation_results_10.png" -> 10
+        nums = re.findall(r"\d+", p.stem)
+        if nums:
+            return float(nums[-1])
+        # Fallback to file modification time if no numbers are present
+        return os.path.getmtime(p)
+
+    image_paths.sort(key=sort_key)
+
+    if Image is None:
+        print("Pillow is not installed. Cannot create GIF.")
+        return
+
+    frames = [Image.open(p).convert("RGB") for p in image_paths]
+
+    output_path = folder / output_gif_filename
+    frames[0].save(str(output_path), format="GIF", save_all=True, append_images=frames[1:], duration=int(1000 / fps), loop=0)
+    print(f"Saved GIF locally to {output_path}")
+
+    # Use the existing tool to upload to wandb
+    upload_neural_renderer_gif(output_path, key=wandb_key, step=step, fps=fps)

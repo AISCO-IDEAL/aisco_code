@@ -1,9 +1,14 @@
+from typing import TYPE_CHECKING  # this prevents from circular imports
+
 import torch
 from torch import nn
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+
+if TYPE_CHECKING:
+    from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
 
 class VictorModel(BaseModel):
@@ -36,11 +41,11 @@ class VictorModel(BaseModel):
 
     def optimise(
         self,
-        renderer_manager: Wrapper | None = None,
+        general_config,  # noqa: ARG002
+        training_config,
+        renderer_manager: VisualisationManager | None = None,
         renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
         wandb_name: str | None = None,  # noqa: ARG002
-        general_config: dict | None = None,  # noqa: ARG002
-        training_config: dict | None = None,
     ) -> None:
         if training_config is None:
             raise ValueError("Training config must be provided for optimisation.")

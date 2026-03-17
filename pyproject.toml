@@ -23,7 +23,6 @@ dependencies = [
   "mypy>=1.19.1",
   "torch==2.4.0",
   "torchvision==0.19.0",
-  "wandb>=0.17.2",
   "wandb[media] >= 0.23.1",
   "types-paramiko",
   "types-pytz",
@@ -33,7 +32,18 @@ dependencies = [
 
 [project.optional-dependencies]
 wp1_cfd_ai = [
-
+  "toml",
+  "omegaconf",
+  "tqdm",
+  "torch-geometric",
+  "xarray",
+  "seaborn",
+  "scikit-learn",
+  "pyvista",
+  "rotary-embedding-torch",
+  "scipy",
+  "torch-cluster",
+  "typing"
 ]
 
 wp2_assembler =[
@@ -46,12 +56,15 @@ wp2_assembler =[
 
 wp3_solar_estimator = [
   "PyMCubes == 0.1.6",
+  "astral >= 3.2",
+  "pytz",
 ]
 
 wp4_aeroshell_optimizer = [
   "plotly==5.22.0",
   "scikit-image>=0.0.0",
   "torch_geometric==2.7.0",
+  # "torchvision", # changed by eschaerer from torchvision==0.19.1, because it requires torch==2.4.1 ## also
   "trimesh==4.8.3",
   "mesh2sdf", #From https://github.com/wang-ps/mesh2sdf?tab=readme-ov-file
   "pyrender>=0.1.45",
@@ -109,6 +122,7 @@ exclude = [
     "**/archive/**",
     "**/subprojects/fixed_renderer/**",
     "**/visuals/testing.py",
+    "**/blendednet/**",      # eschaerer: Tim's sinusoidal activation function model (just inspiration, not actually used in our code)
 ]
 
 
@@ -207,13 +221,15 @@ ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 check_untyped_defs = true
-files = ["subprojects/", "tests/"]
+files = ["subprojects/"]
 
 exclude = [
   "^build/",
   "^docs/",
   ".*fixed_renderer/.*", # <-- eschaerer: Fixed regex to catch it inside subprojects
   ".*/archive/.*",       # <-- eschaerer: Fixed regex typo
+  ".*/blendednet/.*",     # <-- eschaerer: Tim's sinusoidal activation function model (just inspiration)
+  'tests/',
 ]
 
 [[tool.mypy.overrides]]
@@ -222,9 +238,13 @@ module = [
   "kaolin.*",
   "cadquery.*",
   "wandb.*",
-  "pyvista.*"
-
+  "pyvista.*",
+  "*.blendednet.*",  # eschaerer
+  "blendednet.*",     # eschaerer
+  "*.fixed_renderer.*", # eschaerer
+  "fixed_renderer.*" # eschaerer
 ]
+
 ignore_missing_imports = true
 ignore_errors = true
 follow_imports = "skip"

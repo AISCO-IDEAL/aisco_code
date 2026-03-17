@@ -30,8 +30,10 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.solar_v3_
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
 
-def _deterministic_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
+def _deterministic_cumsum_legacy(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
     """
+    LEGACY — kept for potential revert only. Use _efficient_cumsum instead.
+
     Deterministic cumulative sum using matrix multiplication - avoids torch.cumsum entirely.
     This is faster than manual loops but slower than native cumsum, but works with
     deterministic algorithms enabled without any warnings.
@@ -43,7 +45,7 @@ def _deterministic_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
         (N,) cumulative sum tensor where cumsum[i] = x[0] + x[1] + ... + x[i]
     """
     if dim != 0:
-        raise ValueError(f"_deterministic_cumsum only supports dim=0, got dim={dim}")
+        raise ValueError(f"_deterministic_cumsum_legacy only supports dim=0, got dim={dim}")
 
     n = x.shape[0]
     if n == 0:
@@ -56,6 +58,23 @@ def _deterministic_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
     # Matrix multiplication: tril_mask @ x gives cumulative sums
     # tril_mask[i, :] has ones from 0 to i, so (tril_mask @ x)[i] = sum(x[0:i+1])
     return tril_mask @ x
+
+
+def _efficient_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
+    """
+    Memory-efficient cumulative sum — O(N) memory, O(N) time.
+
+    Replaces _deterministic_cumsum_legacy which used an O(N²) triangular matmul
+    that caused OOM at high mesh resolutions (e.g. 512³ → ~100K faces → 37 GiB).
+
+    torch.cumsum_cuda_kernel has no deterministic implementation, so we run on CPU
+    (which is deterministic) and transfer back. The device transfer is differentiable,
+    so gradients flow correctly. For ~100K face tensors the transfer overhead is negligible.
+
+    To revert to the O(N²) deterministic fallback: replace `_efficient_cumsum` with
+    `_deterministic_cumsum_legacy` at the call site.
+    """
+    return torch.cumsum(x.cpu(), dim=dim).to(x.device)
 
 
 def solar_mesh_loss_v3(
@@ -100,8 +119,6 @@ def solar_mesh_loss_v3(
         scalar loss in m²
     """
 
-    print(f"Number of epochs: {epoch_name}, Counter: {counter}")
-
     if faces.numel() == 0 or vertices.numel() == 0:
         print("Warning: Empty vertices or faces in solar_mesh_loss_v3, returning zero loss")
         return torch.zeros((), device=vertices.device, dtype=vertices.dtype)
@@ -113,10 +130,10 @@ def solar_mesh_loss_v3(
     face_cross_norm = torch.linalg.norm(face_cross, dim=-1)
     face_area_mm2 = 0.5 * face_cross_norm
 
-    # Compute illumination quality (cosine of angle with sun direction, clamped to [0, 1])
+    # Compute illumination quality (cosine of angle with sun direction, between  [-1, 1] due to geometry)
     face_normals_unit = face_cross / (face_cross_norm.clamp_min(epsilon)).unsqueeze(-1)
     sun_direction_unit = sun_direction / (torch.linalg.norm(sun_direction).clamp_min(epsilon))
-    illumination_quality = torch.clamp((face_normals_unit * sun_direction_unit).sum(-1), 0.0, 1.0)
+    illumination_quality = (face_normals_unit * sun_direction_unit).sum(-1)
 
     # Sort faces by descending quality
     # NOTE: Currently ignores order priority for equal-quality faces (TODO: could optimize face ordering)
@@ -125,7 +142,7 @@ def solar_mesh_loss_v3(
     sorted_quality = illumination_quality[quality_order_desc]
 
     # Deterministic-safe cumulative area
-    cumulative_area = _deterministic_cumsum(sorted_areas, dim=0)
+    cumulative_area = _efficient_cumsum(sorted_areas, dim=0)
 
     # Create soft selection mask using sigmoid
     # mask(i) = sigmoid(sharpness * (area_budget - cumsum_area[i]))
@@ -298,7 +315,7 @@ def log_to_wandb(
 
 
 class SolarLossEstimator:
-    def __init__(self, config: dict[str, Any] | None = None) -> None:
+    def __init__(self, config: dict[str, Any] | None = None) -> None:  # noqa: PLR0915
         defaults = {
             "method": "flexicubes",
             "bbox": [[-5000, 5000], [-5000, 5000], [-5000, 5000]],
@@ -320,7 +337,7 @@ class SolarLossEstimator:
 
         general_config = load_config(v="v1", cfg_name="general_config.yaml")
         cfg: dict[str, Any] = defaults if config is None else config
-        print(cfg)
+
         self.config = cfg
         self.general_config = general_config
         self.method = cfg["method"]
@@ -339,6 +356,15 @@ class SolarLossEstimator:
         self.selection_threshold_render = float(cfg["selection_threshold_render"])
         self.counter = 0  # For logging purposes
 
+        self.validation_sim = bool(cfg.get("validation_sim", False))
+        self.validation_interval = int(cfg.get("validation_interval", 0))
+        self.simulator = None
+        if self.validation_sim:
+            from subprojects.wp3_solar_estimator.validation.simulationv1 import SimulationV1  # noqa: I001, PLC0415 Since this saves importing of simulation if not needed
+
+            australia_cfg = cfg.get("australia_cfg", "solar_configs/australia.yaml")
+            self.simulator = SimulationV1(cfg_path=australia_cfg, area_budget_mm2=self.area_budget_mm2)
+
         self.rendering = bool(cfg["rendering"])
         self.visualiser: Visualiser | None
         self.renderSolar: SolarV3Selection | None
@@ -348,7 +374,7 @@ class SolarLossEstimator:
         self.rendering_dir: Path | None
         if self.rendering and self.enable_wandb_logging:
             self.visualiser = Visualiser(
-                image_size=256,
+                image_size=1024,
                 background_color=None,
                 anti_aliasing=True,
                 camera_mode="look_at",
@@ -469,9 +495,29 @@ class SolarLossEstimator:
         self.counter += 1
 
         if self.method == "mesh_sdf":  # MeshSDF loss needs special handling
-            print("Using MeshSDF for Solar loss, gradients may be weird")
 
             def wrapper_solar_loss(vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
+                if self.validation_sim and self.simulator is not None:
+                    run_sim = False
+                    if (self.validation_interval > 0 and self.counter % self.validation_interval == 0) or (
+                        self.number_epochs is not None and self.counter == self.number_epochs
+                    ):
+                        run_sim = True
+
+                    if run_sim:
+                        self.simulator.run(vertices, faces, output_dir=self.rendering_dir, epoch_name=epoch_name)
+
+                        if (
+                            self.number_epochs is not None
+                            and self.counter == self.number_epochs
+                            and self.rendering_dir is not None
+                        ):
+                            from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (  # noqa: PLC0415 So we can save us from importing
+                                create_and_upload_gif_from_folder,
+                            )
+
+                            create_and_upload_gif_from_folder(self.rendering_dir / "sim_renders", step=self.counter, fps=10)
+
                 loss = solar_mesh_loss_v3(
                     vertices,
                     faces,
@@ -502,8 +548,25 @@ class SolarLossEstimator:
             )
 
         else:
-            print(f"Using non-MeshSDF method for Solar loss ({self.method}), should be fully differentiable")
             vertices, faces = self.extract_mesh(model)
+
+            if self.validation_sim and self.simulator is not None:
+                run_sim = False
+                if (self.validation_interval > 0 and self.counter % self.validation_interval == 0) or (
+                    self.number_epochs is not None and self.counter == self.number_epochs
+                ):
+                    run_sim = True
+
+                if run_sim:
+                    self.simulator.run(vertices, faces, output_dir=self.rendering_dir, epoch_name=epoch_name)
+
+                    if self.number_epochs is not None and self.counter == self.number_epochs and self.rendering_dir is not None:
+                        from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (  # noqa: PLC0415 So we can save us from importing
+                            create_and_upload_gif_from_folder,
+                        )
+
+                        create_and_upload_gif_from_folder(self.rendering_dir / "sim_renders", step=self.counter, fps=10)
+
             loss = solar_mesh_loss_v3(
                 vertices,
                 faces,
