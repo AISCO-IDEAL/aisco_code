@@ -8,6 +8,7 @@ from subprojects.wp2_assembler.version3.components.inner.base_triangle import Tr
 from subprojects.wp2_assembler.version3.components.inner.seat import Seat
 from subprojects.wp2_assembler.version3.components.inner.wheels import Wheels
 from subprojects.wp2_assembler.version3.components.outer.outer_box import outer_box2
+from subprojects.wp2_assembler.version3.components.outer.outer_nbz_ramps import outer_nbz_ramps
 from subprojects.wp2_assembler.version3.components.vision import tracker_box, vision_box
 from subprojects.wp2_assembler.version3.utils.distributions import uniform_distribution
 from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
@@ -98,7 +99,7 @@ def outer_nbz(length: float, width: float, height: float) -> cq.Solid:
     return box
 
 
-def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length) -> cq.Assembly:
+def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length, get_box) -> cq.Assembly:
     """
     Generate a cadquery Assembly of the driver's and the tracker's vision NBZ with given parameters from regulations
     Args: regulations.yaml
@@ -111,16 +112,18 @@ def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length) -> cq.Assembly:
     rad = get_regulation("seat.dimension.radius_top")
     neg_angle = math.radians(get_regulation("seat.dimension.minus_angle"))
 
+    '''
     # print all parameters from above
     print(f"Tracker box length: {t_box_len} mm")
     print(f"Tracker box margin to seat: {t_box_margin} mm")
     print(f"Eye level Z: {eye_level_z} mm")
     print(f"Seat radius top: {rad} mm")
     print(f"Negative angle: {neg_angle} radians")
+    '''
 
     # refence point for the tracker box is the backmost point of the seat + margin of 10cm + half length of the box
     point_ref_t_box = cq.Vector(
-        seat_pos_x - math.sin(neg_angle) * rad - t_box_margin - t_box_len / 2, 0, seat_pos_z + math.cos(neg_angle) * rad
+        seat_pos_x - math.sin(neg_angle) * rad - t_box_margin - t_box_len / 2, 0,-100+ seat_pos_z + math.cos(neg_angle) * rad
     )
     # reference point for the vision box is the eye level of the driver
     point_ref_v_box = cq.Vector(seat_pos_x, 0, seat_pos_z + eye_level_z)
@@ -129,12 +132,17 @@ def vision_nbz(seat_pos_x, seat_pos_z, wheel_base_length) -> cq.Assembly:
     tyre_diameter = get_regulation("wheel.tire_diameter")
     shift_vec = cq.Vector(-wheel_base_length / 2, 0, tyre_diameter / 2)
 
-    t_box_cone = tracker_box.tracker_cone_nbz()
+    box, t_box_cone = tracker_box.tracker_box_nbz(box_and_cone=True)
     v_cone = vision_box.vision_driv_nbz()
 
     vision_assy = cq.Assembly(name="vision_cones_assembly")
     vision_assy.add(t_box_cone, loc=cq.Location(point_ref_t_box + shift_vec), name="tracker_cone")
     vision_assy.add(v_cone, loc=cq.Location(point_ref_v_box + shift_vec), name="driver_cone")
+
+    if get_box:
+        cone_assy = cq.Assembly(name="Tracking_box")
+        cone_assy.add(box, loc=cq.Location(point_ref_t_box + shift_vec), name="tracker_box")
+        return cone_assy, vision_assy
 
     return vision_assy
 
@@ -257,11 +265,14 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
     box_width = get_regulation("no_build_zones.outer_prism.width")
     box_height = get_regulation("no_build_zones.outer_prism.height")
 
-    outer = outer_nbz(params["wheel_base_length"] * 2.2, box_width, box_height)
+    outer = outer_nbz(params["wheel_base_length"] * 2.2, box_width, box_height)  # noqa: F841
 
-    vision = vision_nbz(params["seat_position"], seat_pos_z, params["wheel_base_length"])
+    box, vision = vision_nbz(params["seat_position"], seat_pos_z, params["wheel_base_length"], get_box=True)
+    assembly.add(box)
 
-    return assembly, outer, vision
+    outer_with_ramps = outer_nbz_ramps(id_number)
+
+    return assembly, outer_with_ramps, vision
 
 
 # eschaerer: needed for visualiser
@@ -365,3 +376,70 @@ def get_range_seat(wheelbase_width: float, wheelbase_length: float) -> dict:
         ),  # mm
     }
     return ranges
+
+def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid, list[cq.Solid]]:
+    """
+    Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
+
+    Args: id-number
+
+    Returns:  tuple with list[inner solids] and outer solid
+    """
+    inner, outer, vision = call_assembly(id_number)
+    return inner.toCompound().Solids(), outer, vision.toCompound().Solids()
+
+
+def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """
+    Docstring for bounding_box_of_assembly
+
+    :param id_number: id number of the assembly of the wanted bounding box
+    :return: tuple with touples with ((x_min, y_min, z_min),(x_max,y_max,z_max))
+    :rtype: tuple[tuple[float, float, float], tuple[float, float, float]]
+    """
+    inner, _, _ = call_assembly(id_number)
+    inner_bounding_box = inner.toCompound().BoundingBox()
+
+    return (
+        (inner_bounding_box.xmin,
+         inner_bounding_box.ymin,
+         inner_bounding_box.zmin
+        ),
+
+        (inner_bounding_box.xmax,
+         inner_bounding_box.ymax,
+         inner_bounding_box.zmax
+        )
+        )
+
+def create_bb_visualization(BB_coords: tuple[tuple[float, float, float], tuple[float, float, float]]) -> cq.Solid:
+    """
+    Docstring for create_bb_visualization
+
+    :param BB_coords: Tuple with tuples with the coordinates of the bounding box wanted to visualize
+    :type BB_coords: tuple[tuple[float, float, float], tuple[float, float, float]]
+    :return: solid of Bounding Box wanted to visualize
+    :rtype: Solid
+    """
+    MIN = BB_coords[0]
+    MAX = BB_coords[1]
+
+    # Calculate dimensions
+    x_len = MAX[0] - MIN[0]
+    y_len = MAX[1] - MIN[1]
+    z_len = MAX[2] - MIN[2]
+
+    # Calculate center point
+    center_x = (MAX[0] + MIN[0]) / 2
+    center_y = (MAX[1] + MIN[1]) / 2
+    center_z = (MAX[2] + MIN[2]) / 2
+
+    # Create and translate the box
+    return (cq.Workplane("XY").box(x_len, y_len, z_len).translate((center_x, center_y, center_z))).val()
+
+if __name__ == "__main__":
+    from ocp_vscode import show
+    demo_id = 30
+    inner, outer, vision = call_assembly_solids(demo_id)
+    show(inner, outer, vision)
+    print(type(inner), type(outer),type(vision))

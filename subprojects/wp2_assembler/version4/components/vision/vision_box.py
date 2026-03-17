@@ -2,7 +2,7 @@ import math
 
 import cadquery as cq
 
-from subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 
 
 def vision_driv_nbz() -> cq.Workplane:
@@ -34,12 +34,14 @@ def vision_driv_nbz() -> cq.Workplane:
     end_point = cq.Vector(radius * math.cos(neg_angle), radius * math.sin(neg_angle), 0)
 
     # print all points
+    """
     print(f"Point A: {point_a}")
     print(f"Point B: {point_b}")
     print(f"Point C: {point_c}")
     print(f"Starting Point: {start_point}")
     print(f"Mid Point: {mid_point}")
     print(f"Ending Point: {end_point}")
+    """
 
     arch_pos = (
         cq.Workplane("XY").moveTo(start_point.x, start_point.y).radiusArc(endPoint=(mid_point.x, mid_point.y), radius=radius)
@@ -55,18 +57,16 @@ def vision_driv_nbz() -> cq.Workplane:
         .close()
     )
 
-    # 1. Get the value
-    wire_shape = profile_v_box.wires().val()
-
-    # 2. Type guard for mypy and runtime safety
-    if not isinstance(wire_shape, cq.Wire):
-        raise TypeError(f"Expected a cq.Wire, but got {type(wire_shape)}")
-
-    # 3. Now mypy knows wire_shape is specifically a cq.Wire
-    v_box_sketch = cq.Face.makeFromWires(wire_shape)
+    v_box_sketch = cq.Face.makeFromWires(
+        profile_v_box.wires().val()  # noqa:
+    )
 
     sweep_left = cq.Workplane("YZ").add(v_box_sketch).sweep(arch_pos, isFrenet=True)
     sweep_right = cq.Workplane("XZ").add(v_box_sketch).sweep(arch_neg, isFrenet=True)
     v_box = sweep_left.union(sweep_right)
 
     return v_box
+
+if __name__ == "__main__":
+    from ocp_vscode import show
+    show(vision_driv_nbz())
