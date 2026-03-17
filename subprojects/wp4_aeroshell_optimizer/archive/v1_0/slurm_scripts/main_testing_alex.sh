@@ -6,8 +6,8 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
 #SBATCH --gpus=rtx_4090:1
-#SBATCH --output=/cluster/home/clhuber/logs/Clemens_TEST_%j.out 
-#SBATCH --error=/cluster/home/clhuber/logs/Clemens_TEST_%j.err 
+#SBATCH --output=/cluster/home/clhuber/logs/Clemens_TEST_%j.out
+#SBATCH --error=/cluster/home/clhuber/logs/Clemens_TEST_%j.err
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=clhuber@ethz.ch
 #------------------------------------------------------------------------------

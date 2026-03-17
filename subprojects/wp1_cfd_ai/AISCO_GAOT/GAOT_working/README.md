@@ -71,21 +71,21 @@ Paper: **"Geometry Aware Operator Transformer as an efficient and accurate neura
 ```mermaid
 graph TD
     A[get_neighbor_strategy] --> B{is_decoder?}
-    
+
     B -->|False| C[_get_encoder_strategy]
     B -->|True| D[_get_decoder_strategy]
-    
+
     C --> C1{strategy type}
     C1 -->|knn| C2["Each phys point<br/>→ k nearest latent tokens<br/>Direction: phys → latent"]
     C1 -->|radius| C3["Latent as center<br/>→ phys within radius<br/>Direction: phys → latent"]
     C1 -->|bidirectional| C4["Combine knn + radius<br/>Direction: phys → latent"]
-    
+
     D --> D1{strategy type}
     D1 -->|knn| D2["Each phys point<br/>→ k nearest latent tokens<br/>Direction: latent → phys"]
     D1 -->|radius| D3["Phys as center<br/>→ latent within radius<br/>Direction: latent → phys"]
     D1 -->|bidirectional| D4["Combine knn + radius<br/>Direction: latent → phys"]
     D1 -->|reverse| D5["Use encoder graph<br/>and reverse it<br/>Direction: latent → phys"]
-    
+
     C2 --> E[return edge_index]
     C3 --> E
     C4 --> E
@@ -93,7 +93,7 @@ graph TD
     D3 --> E
     D4 --> E
     D5 --> E
-    
+
     style A fill:#e1f5fe
     style C fill:#f3e5f5
     style D fill:#e8f5e8
@@ -102,7 +102,7 @@ graph TD
 ## Installation
 
 1.  **Create and activate a virtual environment (recommended):**
-    
+
     ```bash
     python -m venv venv-gaot3d
     source venv-gaot3d/bin/activate
@@ -113,7 +113,7 @@ graph TD
     pip install torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+${CUDA}.html
     ```
     Replace ${CUDA} with your CUDA version (e.g., cu128, cu121 or cpu).
-    
+
 2.  **Install dependencies:**
     ```bash
     pip install -r requirements.txt
@@ -125,7 +125,7 @@ graph TD
 This model is primarily evaluated on the DrivAerNet++ dataset for surface pressure and wall shear stress prediction.
 
 1.  **Download Data:** Obtain the original VTK files from the official [DrivAerNet repository](https://github.com/Mohamedelrefaie/DrivAerNet).
-2.  **Organize Data:** Follow the instructions in the DrivAerNet++ repository regarding the order and naming of training and testing samples. Create an `order_use.txt` file (or similar, as referenced in `src/trainer/stat.py`) in your `dataset.base_path` directory, listing the base names of the VTK files in the desired sequence. We provide an example `dataset/drivaernet/order_use.txt`. 
+2.  **Organize Data:** Follow the instructions in the DrivAerNet++ repository regarding the order and naming of training and testing samples. Create an `order_use.txt` file (or similar, as referenced in `src/trainer/stat.py`) in your `dataset.base_path` directory, listing the base names of the VTK files in the desired sequence. We provide an example `dataset/drivaernet/order_use.txt`.
 3.  **Preprocess Data:**
     Convert the raw VTK files into PyTorch Geometric (`.pt`) files using the provided script:
     ```bash

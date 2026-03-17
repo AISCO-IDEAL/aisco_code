@@ -44,7 +44,7 @@ def train_sdf_model(
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_fn = SDFLosses()
     # assembly_points=loss_fn.__inner_bb_points
-    
+
     for epoch in range(num_epochs):
         points = (torch.rand(1000, 3, requires_grad=True, device="cuda") - 0.5) * 10
         optimizer.zero_grad()
@@ -77,7 +77,7 @@ def train_sdf_model(
                         print(vs.render_until_blue_detected())
                         wandb.log({"sdf_image": wandb.Image(pth, caption=f"Epoch {epoch}")},step=epoch)
                         os.remove(pth)
-                    
+
 
 
         if epoch % 10 == 0:

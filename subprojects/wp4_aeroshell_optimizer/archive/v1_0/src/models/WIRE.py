@@ -19,7 +19,7 @@ Note that this implementation uses complex numbers!
 class ComplexGaborLayer(nn.Module):
     '''
         Implicit representation with complex Gabor nonlinearity
-        
+
         Inputs;
             in_features: Input features
             out_features; Output features
@@ -30,7 +30,7 @@ class ComplexGaborLayer(nn.Module):
             sigma0: Scaling of Gabor Gaussian term
             trainable: If True, omega and sigma are trainable parameters
     '''
-    
+
     def __init__(self, in_features, out_features, bias=True,
                  is_first=False, omega0=10.0, sigma0=40.0,
                  trainable=False):
@@ -38,41 +38,41 @@ class ComplexGaborLayer(nn.Module):
         self.omega_0 = omega0
         self.scale_0 = sigma0
         self.is_first = is_first
-        
+
         self.in_features = in_features
-        
+
         if self.is_first:
             dtype = torch.float
         else:
             dtype = torch.cfloat
-            
+
         # Set trainable parameters if they are to be simultaneously optimized
         self.omega_0 = nn.Parameter(self.omega_0*torch.ones(1), trainable)
         self.scale_0 = nn.Parameter(self.scale_0*torch.ones(1), trainable)
-        
+
         self.linear = nn.Linear(in_features,
                                 out_features,
                                 bias=bias,
                                 dtype=dtype)
-    
+
     def forward(self, input):
         lin = self.linear(input)
         omega = self.omega_0 * lin
         scale = self.scale_0 * lin
-        
+
         return torch.exp(1j*omega - scale.abs().square())
 
 
 class WIRE(BaseModel):
-    def __init__(self, config = {}, in_features = 3, hidden_features=256, 
-                 hidden_layers=16, 
+    def __init__(self, config = {}, in_features = 3, hidden_features=256,
+                 hidden_layers=16,
                  out_features = 1, outermost_linear=True,
                  first_omega_0=30, hidden_omega_0=1.0, scale=1.0,
                  trainable_params = True,
                  pos_encode=False, sidelength=512, fn_samples=None,
                  use_nyquist=True):
         super().__init__(config=config) #Initialize config to satisfy BaseModel inheritance (does nothing for now)
-        
+
          # variables needed for model info stored here
         self.in_features = in_features
         self.hidden_features = hidden_features
@@ -84,20 +84,20 @@ class WIRE(BaseModel):
         self.scale = scale
         # All results in the paper were with the default complex 'gabor' nonlinearity
         self.nonlin = ComplexGaborLayer
-        
-        # Since complex numbers are two real numbers, reduce the number of 
+
+        # Since complex numbers are two real numbers, reduce the number of
         # hidden parameters by 2
         hidden_features = int(hidden_features/torch.sqrt(torch.tensor(2.0)))
         dtype = torch.cfloat
         self.complex = True
         self.wavelet = 'gabor'
-        
+
         # Legacy parameter
         self.pos_encode = False
-        
+
         self.net = []
         self.net.append(self.nonlin(in_features,
-                                    hidden_features, 
+                                    hidden_features,
                                     omega0=first_omega_0,
                                     sigma0=scale,
                                     is_first=True,
@@ -105,16 +105,16 @@ class WIRE(BaseModel):
 
         for i in range(hidden_layers):
             self.net.append(self.nonlin(hidden_features,
-                                        hidden_features, 
+                                        hidden_features,
                                         omega0=hidden_omega_0,
                                         sigma0=scale,
                                         trainable=self.trainable_params))
 
         final_linear = nn.Linear(hidden_features,
                                  out_features,
-                                 dtype=dtype)            
+                                 dtype=dtype)
         self.net.append(final_linear)
-        
+
         self.net = nn.Sequential(*self.net)
 
         # Small-weight init for stability: limit Linear weights, zero biases
@@ -123,16 +123,16 @@ class WIRE(BaseModel):
                 nn.init.normal_(m.weight, mean=0.0, std=0.1)
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
-    
+
     def forward(self, coords: torch.Tensor) -> torch.Tensor:
         coords=coords/1000 #Scale mm to meters, nicer for activations
         output = self.net(coords)
-        
+
         if self.wavelet == 'gabor':
             return 1000*(output.real)  #Scale back to mm
         else:
             return output*1000 #Scale back to mm
-    
+
     def get_model_info_dict(self):
         model_info = {
             "in_features": self.in_features,
@@ -147,15 +147,15 @@ class WIRE(BaseModel):
 
         }
         return model_info
-    
+
     def optimise(self, training_config: dict = {}) -> None:
         if training_config == {}:
             raise ValueError("Training config must be provided for optimisation.")
-        
+
         self.train() # Set model to training mode, i.e. things like dropout layers are active, turn off by using self.eval() or model.eval()
         optimizer = torch.optim.Adam(self.parameters(), lr=training_config.get("learning_rate", 1e-3))
         num_epochs = training_config.get("epochs", 1000)
-        
+
         # IMPORTANT: the device the model is on defines the device passed to the loss_class
         loss_function = TotalLoss(self.device)
 
@@ -167,8 +167,7 @@ class WIRE(BaseModel):
             loss = loss_function.get_total_loss(model=self, epoch_name=epoch)
 
             # Optimize w.r.t. total loss
-            # Do this by calculating the gradients of the weights w.r.t. the loss 
+            # Do this by calculating the gradients of the weights w.r.t. the loss
             loss.backward()
             # The optimizer takes the weights of self.parameters(), i.e. the weights and updates them based on the gradients calculated in loss.backward()
             optimizer.step()
-

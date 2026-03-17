@@ -15,6 +15,7 @@ repos:
       - id: check-merge-conflict
       - id: debug-statements
       - id: check-docstring-first
+        exclude: .*/archive/
 
   # Ruff für Linting und Formatierung
   - repo: https://github.com/astral-sh/ruff-pre-commit
