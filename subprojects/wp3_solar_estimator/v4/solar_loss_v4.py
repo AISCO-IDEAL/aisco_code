@@ -23,6 +23,7 @@ from subprojects.wp3_solar_estimator.australia.route_v1 import RouteV1 as Route
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
+from subprojects.wp3_solar_estimator.utils.solar_utils import averaging_solar_quality
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
@@ -137,11 +138,9 @@ def solar_mesh_loss_v4(
         torch.linalg.norm(solar_vectors, dim=-1, keepdim=True).clamp_min(epsilon)
     )  # (K,3) unit solar vectors
     # now calculate the (average) illumination quality (solar_vectors dot normal vector) of each face for all solar vectors, use average so that we get a single quality value per face that considers all solar vectors along the route
-    illumination_quality = torch.einsum(
-        "ij,kj->ik", face_normals_unit, sun_directions_unit
-    )  # (M,K) cosine similarity of each face normal with each solar vector
-    aggregate_illumination_quality = illumination_quality.mean(
-        dim=1
+
+    aggregate_illumination_quality = averaging_solar_quality(
+        face_normals_unit, sun_directions_unit
     )  # (M,) average quality of each face across all solar vectors
     # Sort faces by descending quality
     # NOTE: Currently ignores order priority for equal-quality faces (TODO: could optimize face ordering)
@@ -323,7 +322,7 @@ def log_to_wandb(
 
 
 class SolarLossEstimator:
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:  # noqa: PLR0915
         defaults = {
             "method": "flexicubes",
             "bbox": [[-5000, 5000], [-5000, 5000], [-5000, 5000]],
@@ -363,6 +362,15 @@ class SolarLossEstimator:
         self.soft_mask_full_selection_threshold = float(cfg["soft_mask_full_selection_threshold"])
         self.selection_threshold_render = float(cfg["selection_threshold_render"])
         self.counter = 0  # For logging purposes
+
+        self.validation_sim = bool(cfg.get("validation_sim", False))
+        self.validation_interval = int(cfg.get("validation_interval", 0))
+        self.simulator = None
+        if self.validation_sim:
+            from subprojects.wp3_solar_estimator.validation.simulationv1 import SimulationV1  # noqa: I001, PLC0415 Since this saves importing of simulation if not needed
+
+            australia_cfg = cfg.get("australia_cfg", "solar_configs/australia.yaml")
+            self.simulator = SimulationV1(cfg_path=australia_cfg, area_budget_mm2=self.area_budget_mm2)
 
         self.rendering = bool(cfg["rendering"])
         self.visualiser: Visualiser | None
@@ -490,6 +498,27 @@ class SolarLossEstimator:
         if self.method == "mesh_sdf":  # MeshSDF loss needs special handling
 
             def wrapper_solar_loss(vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
+                if self.validation_sim and self.simulator is not None:
+                    run_sim = False
+                    if (self.validation_interval > 0 and self.counter % self.validation_interval == 0) or (
+                        self.number_epochs is not None and self.counter == self.number_epochs
+                    ):
+                        run_sim = True
+
+                    if run_sim:
+                        self.simulator.run(vertices, faces, output_dir=self.rendering_dir, epoch_name=epoch_name)
+
+                        if (
+                            self.number_epochs is not None
+                            and self.counter == self.number_epochs
+                            and self.rendering_dir is not None
+                        ):
+                            from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (  # noqa: PLC0415 So we can save us from importing
+                                create_and_upload_gif_from_folder,
+                            )
+
+                            create_and_upload_gif_from_folder(self.rendering_dir / "sim_renders", step=self.counter, fps=10)
+
                 loss = solar_mesh_loss_v4(
                     vertices,
                     faces,
@@ -521,6 +550,24 @@ class SolarLossEstimator:
 
         else:
             vertices, faces = self.extract_mesh(model)
+
+            if self.validation_sim and self.simulator is not None:
+                run_sim = False
+                if (self.validation_interval > 0 and self.counter % self.validation_interval == 0) or (
+                    self.number_epochs is not None and self.counter == self.number_epochs
+                ):
+                    run_sim = True
+
+                if run_sim:
+                    self.simulator.run(vertices, faces, output_dir=self.rendering_dir, epoch_name=epoch_name)
+
+                    if self.number_epochs is not None and self.counter == self.number_epochs and self.rendering_dir is not None:
+                        from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (  # noqa: PLC0415 So we can save us from importing
+                            create_and_upload_gif_from_folder,
+                        )
+
+                        create_and_upload_gif_from_folder(self.rendering_dir / "sim_renders", step=self.counter, fps=10)
+
             loss = solar_mesh_loss_v4(
                 vertices,
                 faces,

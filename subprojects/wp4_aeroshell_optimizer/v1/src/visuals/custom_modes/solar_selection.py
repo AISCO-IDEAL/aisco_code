@@ -34,7 +34,7 @@ class SolarSelectionMode(RenderingMode):
         # Solar specific parameters
         self.solar_color = config["solar_color"]
         self.rest_color = config["rest_color"]
-        solar_config = load_config(v="v1", cfg_name="solar_loss_config.yaml")["SolarLossConfigV3"]
+        solar_config = load_config(v="v1", cfg_name="solar_configs/solar_loss_config.yaml")["SolarLossConfigV3"]
         self.area_budget = solar_config["area_budget_mm2"]
         self.solar_angle = torch.tensor(solar_config["sun_dir"], device=self.visualiser.device)
         self.solar_angle = (self.solar_angle / torch.norm(self.solar_angle)).detach()  # Normalize; detach to drop grad_fn
