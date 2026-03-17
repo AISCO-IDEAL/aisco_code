@@ -87,9 +87,7 @@ class Seat:
 
         # make to cq.Face and mirror profile, to sweep around centerline with 1mm margin
         profile = profile_head.wires().val()
-        face1 = cq.Face.makeFromWires(
-            profile
-        )
+        face1 = cq.Face.makeFromWires(profile)
         face2 = face1.mirror("XZ")
         w_sketch = face1.fuse(face2)
 

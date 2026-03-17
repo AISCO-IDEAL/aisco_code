@@ -54,6 +54,8 @@ def tracker_cone_nbz() -> cq.Workplane:
 
     return cone
 
+
 if __name__ == "__main__":
     from ocp_vscode import show
+
     show(tracker_cone_nbz())

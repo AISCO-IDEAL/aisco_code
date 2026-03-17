@@ -9,7 +9,7 @@ from subprojects.wp2_assembler.version4.components.inner.wheels import Wheels
 from subprojects.wp2_assembler.version4.components.outer.outer_nbz import aabb_inside_outer_nbz
 
 
-def check_validity(wheel_margin, seat_margin, assembly_nr: int = 0, nr_of_w: int=3):
+def check_validity(wheel_margin, seat_margin, assembly_nr: int = 0, nr_of_w: int = 3):
     """
     Docstring for check_validity
 
@@ -45,6 +45,7 @@ def check_validity(wheel_margin, seat_margin, assembly_nr: int = 0, nr_of_w: int
 
     return valid, map
 
+
 def bbox_list_to_margin_dict(bbox: list[float]) -> dict[str, float]:
     # this function is needed as an adaptor, before we were working with dicts,
     # but now our wheel and seat bounding boxes functions return a list.
@@ -61,6 +62,7 @@ def bbox_list_to_margin_dict(bbox: list[float]) -> dict[str, float]:
         "z_up": float(zmax),
         "z_down": float(-zmin),
     }
+
 
 def compute_aabb(pos, bb):
     """
@@ -164,7 +166,7 @@ def generate_assembly_map(assembly_nr: int = 0, nr_of_w: int = 3):
     if not isinstance(unordered, dict):
         raise TypeError("Expected 'wheels' assembly parameters to be a dict")
 
-    unordered['count'] = nr_of_w    # patch fix. count is now a list, so we have to make it back to a single int.
+    unordered["count"] = nr_of_w  # patch fix. count is now a list, so we have to make it back to a single int.
 
     map: dict[str, Any] = {  # start of map
         "real id": assembly_nr,
@@ -368,7 +370,6 @@ def filter_and_reindex_by_outer_nbz(
     tol: float = 1e-6,
 ) -> tuple[int, int]:
 
-
     start_total = time.time()
 
     def compute_aabb(pos: tuple[float, float, float], bb: dict[str, float]) -> dict[str, float]:
@@ -397,7 +398,6 @@ def filter_and_reindex_by_outer_nbz(
     last_print = time.time()
 
     for i, (_yaml_id, entry) in enumerate(items):
-
         seat = entry["seat"]
         seat_pos = (float(seat["x"]), float(seat["y"]), float(seat["z"]))
 
@@ -411,11 +411,7 @@ def filter_and_reindex_by_outer_nbz(
             progress = 100 * i / total
             elapsed = time.time() - start_total
 
-            print(
-                f"Progress: {i}/{total} ({progress:.1f}%) | "
-                f"kept={len(kept_entries)} | "
-                f"time={elapsed:.1f}s"
-            )
+            print(f"Progress: {i}/{total} ({progress:.1f}%) | kept={len(kept_entries)} | time={elapsed:.1f}s")
 
             last_print = time.time()
 
@@ -433,12 +429,10 @@ def filter_and_reindex_by_outer_nbz(
     kept = len(kept_entries)
     removed = len(items) - kept
 
-    print(
-        f"Done | kept={kept} removed={removed} | "
-        f"total_time={time.time() - start_total:.2f}s"
-    )
+    print(f"Done | kept={kept} removed={removed} | total_time={time.time() - start_total:.2f}s")
 
     return kept, removed
+
 
 def make_assemblys(nr_of_w):
 
@@ -451,7 +445,7 @@ def make_assemblys(nr_of_w):
     if not isinstance(unordered, dict):
         raise TypeError("Expected 'wheels' assembly parameters to be a dict")
 
-    unordered["count"] = nr_of_w    # patch fix. count is now a list, so we have to make it nack to a single int.
+    unordered["count"] = nr_of_w  # patch fix. count is now a list, so we have to make it nack to a single int.
 
     total = get_combination(0, ordered, unordered)["total"]
     print(total)
@@ -488,6 +482,7 @@ def make_assemblys(nr_of_w):
     print(f"outer_nbz filter done: kept={kept}, removed={removed}")
 
     print(time.time() - start)
+
 
 def make_assemblys_for_n_wheels():
     nr_of_w = get_assembly_parameters("wheel.combinations.count")

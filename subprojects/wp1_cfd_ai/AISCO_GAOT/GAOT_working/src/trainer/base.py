@@ -33,13 +33,14 @@ class TrainerBase:
     test_loader: Any
     rigraph: Any
     optimizer: AdamOptimizer | AdamWOptimizer
+
     def __init__(self, args):
         # Config setup
         print("dasdado:", args)
         self.config = args
         self.setup_config = self.config.setup
         self.model_config = self.config.model
-        self.dataset_config =  self.config.dataset
+        self.dataset_config = self.config.dataset
         self.optimizer_config = self.config.optimizer
         self.path_config = self.config.path
 
@@ -116,14 +117,14 @@ class TrainerBase:
             self.setup_config["local_rank"] = 0
             return
 
-
         dist.init_process_group(
-            backend= str(self.setup_config["backend"]+ self.setup_config["nccl"]), 
+            backend=str(self.setup_config["backend"] + self.setup_config["nccl"]),
             init_method="env://",
             world_size=self.setup_config["world_size"],
             rank=self.setup_config["rank"],
         )
         dist.barrier()
+
     # ------------ utils ------------ #
 
     def _to_serializable_config(self) -> dict[str, Any]:

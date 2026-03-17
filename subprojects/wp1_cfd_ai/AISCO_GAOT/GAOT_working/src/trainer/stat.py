@@ -379,7 +379,7 @@ class StaticTrainer3D(TrainerBase):
         if order_file_name:
             order_file_path = os.path.join(data_root, order_file_name)
         else:
-            order_file_path = os.path.join(data_root, "order_" + dataset_config["processed_folder"]+".txt")
+            order_file_path = os.path.join(data_root, "order_" + dataset_config["processed_folder"] + ".txt")
 
         # Store active_heads for filtering (e.g. ["force"] or ["force","cd"])
         self.active_heads = dataset_config["active_heads"]
@@ -409,7 +409,7 @@ class StaticTrainer3D(TrainerBase):
         else:
             self.latent_tokens = rescale(latent_queries, (-1, 1))
 
-        logging.getLogger(__name__).info("Rank"+ str(self.setup_config["rank"])+ ": Dataset initialization finished.")
+        logging.getLogger(__name__).info("Rank" + str(self.setup_config["rank"]) + ": Dataset initialization finished.")
 
         # --- Pre-computation /Update Step ---
         if dataset_config["update_pt_files_with_edges"]:
@@ -417,9 +417,11 @@ class StaticTrainer3D(TrainerBase):
             if self.setup_config["rank"] == 0:
                 self._update_pt_files_with_edges(dataset_config, order_file_path, magno_cfg)
             if self.setup_config["distributed"]:
-                logging.getLogger(__name__).info("Rank"+str(self.setup_config.rank)+ ": Waiting for edge pre-computation barrier...")
+                logging.getLogger(__name__).info(
+                    "Rank" + str(self.setup_config.rank) + ": Waiting for edge pre-computation barrier..."
+                )
                 torch.distributed.barrier()
-                logging.getLogger(__name__).info("Rank"+str(self.setup_config.rank)+ ": Barrier passed.")
+                logging.getLogger(__name__).info("Rank" + str(self.setup_config.rank) + ": Barrier passed.")
 
             _magno_set(self.model_config, "precompute_edges", True)
             logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Set model config to use precomputed edges.")
@@ -474,7 +476,7 @@ class StaticTrainer3D(TrainerBase):
             k_neighbors=magno_cfg["k_neighbors"] if isinstance(magno_cfg, dict) else magno_cfg.k_neighbors,
             asynchronous_graph_building=magno_cfg.get("asynchronous_graph_building", False)
             if isinstance(magno_cfg, dict)
-            else magno_cfg["asynchronous_graph_building"]
+            else magno_cfg["asynchronous_graph_building"],
         )
         # Store collate_fn so train_step can rebuild edges for subsampled batches
         self.collate_fn = collate_fn
@@ -558,7 +560,11 @@ class StaticTrainer3D(TrainerBase):
             val_sampler = None
             if self.setup_config["distributed"]:
                 val_sampler = DistributedSampler(
-                    val_ds, num_replicas=self.setup_config["world_size"], rank=self.setup_config["rank"], shuffle=False, drop_last=False
+                    val_ds,
+                    num_replicas=self.setup_config["world_size"],
+                    rank=self.setup_config["rank"],
+                    shuffle=False,
+                    drop_last=False,
                 )
             self.val_loader = DataLoader(
                 val_ds,
@@ -898,7 +904,7 @@ class StaticTrainer3D(TrainerBase):
         if valid.any():
             field_loss = f.mse_loss(pred["field"][valid], ft[valid])
             head_losses["field"] = head_losses.get("field", 0.0) + field_loss.item()
-            field_weight = self.dataset_config["field_loss_weight"] # 1.0
+            field_weight = self.dataset_config["field_loss_weight"]  # 1.0
             loss = loss + field_weight * field_loss
         return loss
 
@@ -968,7 +974,7 @@ class StaticTrainer3D(TrainerBase):
         # Global reduction across ranks for DDP
         local_metrics = torch.tensor([total_loss, total_rel_l2], dtype=torch.float64, device=self.device)
         world_size = 1
-        if self.setup_config["distributed"]: # False
+        if self.setup_config["distributed"]:  # False
             torch.distributed.all_reduce(local_metrics, op=torch.distributed.ReduceOp.SUM)
             world_size = torch.distributed.get_world_size()
 

@@ -67,6 +67,8 @@ def vision_driv_nbz() -> cq.Workplane:
 
     return v_box
 
+
 if __name__ == "__main__":
     from ocp_vscode import show
+
     show(vision_driv_nbz())
