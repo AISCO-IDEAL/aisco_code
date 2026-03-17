@@ -472,6 +472,11 @@ class SolarLossEstimator:
             Scalar loss tensor
         """
 
+        print(
+            f"[SolarLossEstimator] Mesh extraction method for this loss evaluation: "
+            f"{self.method} (extractor={type(self.extractor).__name__})"
+        )
+
         # Initialize model_hash and rendering_dir on first call
         if self.rendering and self.enable_wandb_logging and self.model_hash is None:
             self.model_hash = dict_hashing(model.get_model_info_dict())
