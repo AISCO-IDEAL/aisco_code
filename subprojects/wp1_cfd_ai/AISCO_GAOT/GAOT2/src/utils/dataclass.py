@@ -1,0 +1,27 @@
+from dataclasses import fields, is_dataclass
+from typing import Any
+
+from omegaconf import DictConfig, OmegaConf
+
+
+def shallow_asdict(obj: Any) -> dict:
+    if is_dataclass(obj):
+        return {f.name: getattr(obj, f.name) for f in fields(obj)}
+    elif isinstance(obj, DictConfig):
+        return dict(obj.items())
+    else:
+        raise TypeError(f"Unsupported type for shallow_asdict: {type(obj)}")
+    return obj
+
+
+def safe_replace(obj: Any, **kwargs) -> Any:
+    if is_dataclass(obj):
+        field_names = {f.name for f in fields(obj)}
+        for key, value in kwargs.items():
+            if key in field_names:
+                setattr(obj, key, value)
+    elif isinstance(obj, DictConfig):
+        return OmegaConf.merge(obj, OmegaConf.create(kwargs))
+    else:
+        raise TypeError(f"Unsupported type for safe_replace: {type(obj)}")
+    return obj

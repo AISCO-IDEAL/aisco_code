@@ -1,5 +1,6 @@
 import contextlib
 import os
+import re
 import tempfile
 from collections.abc import Iterable
 from io import BytesIO
@@ -141,3 +142,50 @@ def upload_neural_renderer_gif(frames, key: str, step: int | None = None, fps: i
         return
 
     raise TypeError(f"Unsupported frames input type: {type(frames)}")
+
+
+def create_and_upload_gif_from_folder(
+    folder_path: str | Path,
+    output_gif_filename: str = "animated.gif",
+    wandb_key: str = "animated_gif",
+    fps: int = 10,
+    step: int | None = None,
+    pattern: str = "*.png",
+):
+    """
+    Reads all images matching a pattern in a folder, sorts them by numerical suffix or chronologically,
+    creates a GIF, saves it locally, and uploads it to wandb.
+    """
+    folder = Path(folder_path)
+    if not folder.exists() or not folder.is_dir():
+        print(f"Folder {folder} does not exist or is not a directory.")
+        return
+
+    image_paths = list(folder.glob(pattern))
+    if not image_paths:
+        print(f"No images found in {folder} matching pattern '{pattern}'.")
+        return
+
+    def sort_key(p: Path):
+        # Extract the last sequence of digits in the filename to sort by epoch/step
+        # e.g. "simulation_results_5.png" -> 5, "simulation_results_10.png" -> 10
+        nums = re.findall(r"\d+", p.stem)
+        if nums:
+            return float(nums[-1])
+        # Fallback to file modification time if no numbers are present
+        return os.path.getmtime(p)
+
+    image_paths.sort(key=sort_key)
+
+    if Image is None:
+        print("Pillow is not installed. Cannot create GIF.")
+        return
+
+    frames = [Image.open(p).convert("RGB") for p in image_paths]
+
+    output_path = folder / output_gif_filename
+    frames[0].save(str(output_path), format="GIF", save_all=True, append_images=frames[1:], duration=int(1000 / fps), loop=0)
+    print(f"Saved GIF locally to {output_path}")
+
+    # Use the existing tool to upload to wandb
+    upload_neural_renderer_gif(output_path, key=wandb_key, step=step, fps=fps)

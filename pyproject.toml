@@ -32,7 +32,18 @@ dependencies = [
 
 [project.optional-dependencies]
 wp1_cfd_ai = [
-
+  "toml",
+  "omegaconf",
+  "tqdm",
+  "torch-geometric",
+  "xarray",
+  "seaborn",
+  "scikit-learn",
+  "pyvista",
+  "rotary-embedding-torch",
+  "scipy",
+  "torch-cluster",
+  "typing"
 ]
 
 wp2_assembler =[

@@ -129,10 +129,28 @@ rendering_modes:
 
 detached_modes:
   solar_v3_selection:
-    enabled: false
+    enabled: True
     class_path: "detached_modes.solar_v3_selection:SolarV3Selection"
     config:
       camera_position: [-3500, 3500, 3500]
+      look_at: [0, 0, 0]
+      render_mode: "rgb"
+      fps: 15
+      render_interval: 10
+  shading_visibility:
+    enabled: True
+    class_path: "detached_modes.shading_modes:ShadingVisibility"
+    config:
+      camera_position: [-3500, 3500, 700]
+      look_at: [0, 0, 0]
+      render_mode: "rgb"
+      fps: 15
+      render_interval: 10
+  shading_penalty:
+    enabled: True
+    class_path: "detached_modes.shading_modes:ShadingPenalty"
+    config:
+      camera_position: [-3500, 3500, 700]
       look_at: [0, 0, 0]
       render_mode: "rgb"
       fps: 15
