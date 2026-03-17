@@ -12,6 +12,7 @@ import torch
 from subprojects.wp3_solar_estimator.australia.route_v2 import RouteV2
 from subprojects.wp3_solar_estimator.utils.solar_utils import averaging_solar_quality
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import upload_neural_renderer_image
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
 
 class SimulationV1:
@@ -25,16 +26,18 @@ class SimulationV1:
         self.area_budget_mm2 = area_budget_mm2
         # Each dict: {"position": [x,y,z] | None, "direction": [x,y,z] | None, "suffix": str}
         # None position/direction → auto-computed from mesh bounds at render time
-        self.mesh_render_cameras: list[dict] = mesh_render_cameras if mesh_render_cameras is not None else [
-            {"position": None, "direction": None, "suffix": "side"},
-        ]
-        self._visualiser = None  # lazy-initialised on first mesh render
+        self.mesh_render_cameras: list[dict] = (
+            mesh_render_cameras
+            if mesh_render_cameras is not None
+            else [
+                {"position": None, "direction": None, "suffix": "side"},
+            ]
+        )
+        self._visualiser: Visualiser | None = None  # lazy-initialised on first mesh render
 
     def _get_visualiser(self):
         """Lazy-initialise the Visualiser on first use so it doesn't load when not needed."""
         if self._visualiser is None:
-            from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser  # noqa: PLC0415
-
             device = "cuda" if torch.cuda.is_available() else "cpu"
             self._visualiser = Visualiser(image_size=512, background_color=[0.1, 0.1, 0.1], device=device)
         return self._visualiser
@@ -73,7 +76,9 @@ class SimulationV1:
             positions[point] = position.tolist()
             solar_output_area[point] = solar_projected_area.item()
 
-        self.plot_results(positions, solar_output_area, output_dir, epoch_name, verts=verts, faces=faces, solar_cells_mask=solar_cells_mask)
+        self.plot_results(
+            positions, solar_output_area, output_dir, epoch_name, verts=verts, faces=faces, solar_cells_mask=solar_cells_mask
+        )
 
     def allocate_solar_cells(
         self, verts: torch.Tensor, faces: torch.Tensor, route: RouteV2
@@ -127,7 +132,7 @@ class SimulationV1:
         Each entry in self.mesh_render_cameras produces a separate image file.
         position/direction of None in a camera config falls back to an auto-computed value
         derived from the mesh bounding box, so adding new camera angles only requires
-        appending a dict to mesh_render_cameras – no other changes needed.
+        appending a dict to mesh_render_cameras - no other changes needed.
         """
         try:
             vis = self._get_visualiser()
