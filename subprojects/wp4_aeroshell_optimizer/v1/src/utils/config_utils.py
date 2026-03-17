@@ -19,6 +19,8 @@ from __future__ import annotations
 import contextlib
 import copy
 import json
+import os
+import socket
 from pathlib import Path
 
 import yaml
@@ -42,7 +44,25 @@ def _load_yaml(v: str, cfg_name: str) -> dict:
     config_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
     try:
         with config_path.open() as f:
-            return yaml.safe_load(f)
+            config = yaml.safe_load(f)
+
+        if cfg_name == "general_config.yaml" and isinstance(config, dict) and "general_info" in config:
+            is_wsl = "WSL_DISTRO_NAME" in os.environ
+            hostname = socket.gethostname()
+            is_euler_node = hostname.startswith("eu-")
+            is_slurm_job = "SLURM_JOB_ID" in os.environ
+
+            if is_wsl:
+                # Definitely local (WSL)
+                config["general_info"]["run_locally"] = "True"
+            elif is_euler_node or is_slurm_job:
+                # Definitely cluster (HPC)
+                config["general_info"]["run_locally"] = "False"
+            else:
+                # Default to Euler if uncertain
+                config["general_info"]["run_locally"] = "False"
+
+        return config  # noqa: TRY300
     except FileNotFoundError as e:
         raise FileNotFoundError(f"Configuration file not found at {config_path}") from e
     except yaml.YAMLError as e:

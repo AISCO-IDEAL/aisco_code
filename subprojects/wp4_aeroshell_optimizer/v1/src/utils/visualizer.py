@@ -12,8 +12,8 @@ import OpenGL
 import pyrender
 import trimesh
 from pyrender import RenderFlags
-
 from subprojects.wp2_assembler.version3.components.nbz import call_assembly
+
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 
 # Constants for numerical thresholds
@@ -355,7 +355,7 @@ class CADVisualizer:
 
 
 if __name__ == "__main__":
-    username = "clhuber"
+    username = os.getenv("USER") or os.getenv("USERNAME") or "clhuber"
     base_path = f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data"
 
     for mesh_name, render_name in [

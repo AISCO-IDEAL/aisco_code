@@ -12,7 +12,6 @@
 #SBATCH --gpus=rtx_4090:3
 #SBATCH --mem-per-cpu=5G
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
-#SBATCH --error=/cluster/scratch/%u/logs/%x_%j.err
 #SBATCH --mail-type=END,FAIL
 ################################### RUN THIS CMD ##############################################
 ##  sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/launch_sweep.sh ##

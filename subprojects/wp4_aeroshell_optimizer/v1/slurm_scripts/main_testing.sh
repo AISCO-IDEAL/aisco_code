@@ -8,7 +8,7 @@
 #SBATCH --gpus=rtx_4090:1
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 ##SBATCH --mail-type=END,FAIL
-##SBATCH --mail-user=eschaerer@ethz.ch
+##SBATCH --mail-user=%u@ethz.ch
 ## run this command: sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/main_testing.sh
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)

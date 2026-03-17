@@ -1,6 +1,7 @@
 # ruff: noqa: PLR0912 # reduce the if else mess, once everything works again!
 import copy
 import datetime
+import glob
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,7 @@ from pathlib import Path
 import torch
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing, str_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import (
     get_diff_mesh,
@@ -15,7 +17,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import 
 )
 
 
-def allround_save_data(
+def allround_save_data(  # noqa: PLR0915
     model: BaseModel,  # Model to save data from
     wandb_run: str | None = None,  # Name of the wandb run to log to (e.g. "beautiful-banana-164")
     save_mesh: bool = True,  # Whether to save the mesh data
@@ -39,6 +41,8 @@ def allround_save_data(
 
     For questions regarding this function, talk to #aalthaus
     """
+    # Get general config:
+    general_config = load_config(v="v1", cfg_name="general_config.yaml")
     # Get Dictonary containing all relevant model information needed to recreate the model
     model_data = model.get_model_info_dict()
     if model_data is None or storage_path is None:
@@ -47,6 +51,11 @@ def allround_save_data(
     # Hash the model_data dictionary
     model_hash_value = dict_hashing(model_data)
     # Baed on hash value see if directory exists, if not create it
+    run_locally = general_config["general_info"].get("run_locally", "False") == "True"
+    if run_locally:
+        storage_path = general_config["storage_paths"]["local_storage_dir"]
+    else:
+        storage_path = general_config["storage_paths"]["storage_dir"]
     dir_path = Path(storage_path) / model_hash_value
     os.makedirs(dir_path, exist_ok=True)
     # If not present, instantly store the model_data in a json file for readability
@@ -120,7 +129,7 @@ def allround_save_data(
 
 def fetch_pretrained_model(
     model: BaseModel,
-    pretrained_path: str = "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset",
+    pretrained_path: str = "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_models",
     verbose: bool = True,
 ) -> None | Path:
     """
@@ -128,6 +137,27 @@ def fetch_pretrained_model(
     Returns the path to the pretrained model if found, else None.
 
     """
+    print(f"[DEBUG storage_utils] requested pretrained_path: {pretrained_path}")
+    if pretrained_path is None:
+        print("[DEBUG storage_utils] path is None")
+    else:
+        print(f"[DEBUG storage_utils] os.path.exists: {os.path.exists(pretrained_path)}")
+        print(f"[DEBUG storage_utils] os.path.isfile: {os.path.isfile(pretrained_path)}")
+        print(f"[DEBUG storage_utils] os.path.isdir: {os.path.isdir(pretrained_path)}")
+
+    # If exact file provided
+    if pretrained_path and os.path.isfile(pretrained_path):
+        print(f"[DEBUG storage_utils] exact file found: {pretrained_path}")
+        return Path(pretrained_path)
+
+    # If a directory provided, search for .pth recursively
+    if pretrained_path and os.path.isdir(pretrained_path):
+        candidates = glob.glob(os.path.join(pretrained_path, "**", "*.pth"), recursive=True)
+        print(f"[DEBUG storage_utils] candidates found in dir: {candidates}")
+        if candidates:
+            chosen = sorted(candidates)[0]
+            print(f"[DEBUG storage_utils] chosen candidate: {chosen}")
+
     if pretrained_path is None:
         print("No valid pretrained path provided, skipping pretrained model fetch.")
         return None

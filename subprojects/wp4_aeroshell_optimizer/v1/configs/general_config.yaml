@@ -1,42 +1,44 @@
 general_info:
-  username: ${USER} # for windows users: %USERNAME%
-  version: "v1"
-  device: "cuda"
-  pre: "a sphere as initial shape, datatype: SDF"
-  post: "a PLY file representing the optimized aeroshell shape"
-  config_debugging: "True" # adds print statements if config loading is succesfull
-  verbose: "False"
+  username: ${USER} # for windows users: %USERNAME%  # NOT USED — never read by any code in the optimisation loop
+  version: "v1"  # USED — total_loss.py, parent_loss.py: load_config(v=general_config["general_info"]["version"], ...)
+  device: "cuda"  # USED — main_v1_1_one_model.py: general_config["general_info"].get("device", ...)
+  pre: "a sphere as initial shape, datatype: SDF"  # NOT USED — never read by any code
+  post: "a PLY file representing the optimized aeroshell shape"  # NOT USED — never read by any code
+  config_debugging: "True" # adds print statements of config paths  # NOT USED — never read by any code (no grep hits in src/)
+  run_locally: "True" # automatically detected, don't touch  # USED — main_v1_1_one_model.py, storage_utils.py (auto-detected & overwritten by config_utils.py)
+  verbose: "True"  # USED — basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
 
 model_def:
-  model_name: "BasicMLP"
-  model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/basic_MLP_v1"
+  model_name: "BasicMLP"  # USED — main_v1_1_one_model.py: general_config["model_def"]["model_name"]
+  model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/basic_MLP_v1"  # USED — main_v1_1_one_model.py: general_config["model_def"]["model_file_path"]
+  # local_model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/basic_MLP_v1"  # NOT USED — never read by any code
 
 
 active_configs:
-  losses: "losses_v0_config.yaml"
-  pretraining: "pretraining_v0_config.yaml"
-  training: "training_v0_config.yaml"
-  model_params: "basic_MLP_v1.yaml"
-  wandb: "wandb_v0_sweep.yaml"
-  neural_renderer: "neural_renderer_v0.yaml"
-  solar: "solar_configs/solar_loss_config.yaml"
+  losses: "losses_v0_config.yaml"  # USED — total_loss.py, parent_loss.py, visual modes (assembly_mode, mesh_assembly_gif)
+  pretraining: "pretraining_v0_config.yaml"  # USED — main_v1_1_one_model.py: general_config["active_configs"].get("pretraining", ...)
+  training: "training_v0_config.yaml"  # USED — main_v1_1_one_model.py, parent_loss.py: general_config["active_configs"]["training"]
+  model_params: "basic_MLP_v1.yaml"  # USED — main_v1_1_one_model.py: general_config["active_configs"]["model_params"]
+  # wandb: "wandb_v0_sweep.yaml"  # NOT USED — never read by any code (registered but never loaded by name)
+  neural_renderer: "neural_renderer_v0.yaml"  # USED — visual_wrapper.py, total_loss.py
+  solar: "solar_configs/solar_loss_config.yaml"  # NOT USED — solar_v4.py loads solar config directly by hardcoded path, not via this key
 
 wandb_general:
-  use_wandb: True
-  project_name: "50 meshes proper naming and storage" #modify
-  entity_name: "aisco"
-  track_run: 1
-  use_renderer: True
-  use_neural_renderer: True
-  rendering_frequency: 1
-  use_sweep: 0
+  use_wandb: True  # USED — main_v1_1_one_model.py, total_loss.py
+  project_name: "WP3-Development-Alex" #modify  # USED — main_v1_1_one_model.py: wandb.init(project=...)
+  entity_name: "aisco"  # USED — main_v1_1_one_model.py: wandb.init(entity=...)
+  # track_run: 1  # NOT USED — never read by any code
+  use_renderer: True  # USED — total_loss.py: general_config["wandb_general"].get("use_renderer", True)
+  use_neural_renderer: True  # USED — total_loss.py, main_v1_1_one_model.py: general_config["wandb_general"].get("use_neural_renderer", False)
+  rendering_frequency: 1  # USED — total_loss.py: general_config["wandb_general"].get("rendering_frequency")
+  # use_sweep: 0  # NOT USED — never read by any code
 
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
-  pretrained_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset"
-  storage_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/sweep_storage_for_cfd_ai"
-  # WARNING: deleting the following two lines soon ... new version uses better storage solution
-  model_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/models"
-  mesh_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage/meshes" #Outdated
+  pretrained_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset"  # NOT USED — never read by any code (pretraining uses pretraining_v0_config.yaml paths instead)
+  # local_pretrained_dir: "./local_pretrained_dir" # only used for testing on local machine, not on cluster  # NOT USED — never read by any code
+  storage_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"  # USED — main_v1_1_one_model.py, basic_MLP_v1.py, storage_utils.py
+  local_storage_dir: "./local_storage_dir" # only used for testing on local machine, not on cluster  # USED — main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
+
 
 # master example of how to reference other config files:
 #     def __pointgrid_geni(self) -> list[list[float]]:
