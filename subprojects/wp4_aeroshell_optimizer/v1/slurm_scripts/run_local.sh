@@ -50,7 +50,7 @@ fi
 export PYTHONUNBUFFERED=TRUE
 # Add the local subprojects folder to path
 export PYTHONPATH="$PROJECT_ROOT/subprojects:$PYTHONPATH"
-export AISCO_CODE_PATH="/home/eschaerer/AISCO_code"
+export AISCO_CODE_PATH="/cluster/home/$USERNAME/AISCO_code"
 cd "$PROJECT_ROOT"
 
 # Run the python command
