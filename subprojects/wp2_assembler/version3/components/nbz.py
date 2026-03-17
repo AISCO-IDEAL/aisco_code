@@ -263,6 +263,7 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
 
     return assembly, outer, vision
 
+
 # eschaerer: needed for visualiser
 def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
     """
@@ -272,8 +273,9 @@ def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
 
     Returns:  tuple with list[inner solids] and outer solid
     """
-    inner, outer , __= call_assembly(id_number)
+    inner, outer, __ = call_assembly(id_number)
     return inner.toCompound().Solids(), outer
+
 
 def get_range_wheels() -> dict:
     """

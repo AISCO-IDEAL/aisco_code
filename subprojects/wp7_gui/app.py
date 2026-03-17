@@ -8,10 +8,9 @@ from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
-from datetime import datetime
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 LOGGER = logging.getLogger(__name__)
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -23,6 +22,7 @@ RUN_LOCAL_LOG = GUI_ROOT / "logs" / f"run_local_{timestamp}.log"
 
 PROCESS_LOCK = threading.Lock()
 STATE: dict[str, subprocess.Popen[str] | None] = {"run_local_process": None}
+
 
 class GUIRequestHandler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
@@ -180,7 +180,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
         response = json.dumps(payload).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*") # Useful if GUI is served differently
+        self.send_header("Access-Control-Allow-Origin", "*")  # Useful if GUI is served differently
         self.send_header("Content-Length", str(len(response)))
         self.end_headers()
         self.wfile.write(response)
@@ -200,6 +200,7 @@ def create_server(host: str, start_port: int, max_tries: int = 20) -> tuple[Thre
 
     msg = f"No free port found in range {start_port}-{start_port + max_tries - 1}"
     raise RuntimeError(msg)
+
 
 def main() -> None:
     templates_dir = Path(__file__).resolve().parent / "templates"
@@ -224,6 +225,7 @@ def main() -> None:
         print("\nShutting down gracefully...")
     finally:
         server.server_close()
+
 
 if __name__ == "__main__":
     main()

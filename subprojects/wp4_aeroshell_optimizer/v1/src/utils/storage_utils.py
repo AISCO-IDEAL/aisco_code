@@ -16,7 +16,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import 
 )
 
 
-def allround_save_data(
+def allround_save_data(  # noqa: PLR0915
     model: BaseModel,  # Model to save data from
     wandb_run: str | None = None,  # Name of the wandb run to log to (e.g. "beautiful-banana-164")
     save_mesh: bool = True,  # Whether to save the mesh data

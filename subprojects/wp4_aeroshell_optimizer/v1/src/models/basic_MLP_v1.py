@@ -1,8 +1,8 @@
 # Basic MLP Model
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager, Wrapper

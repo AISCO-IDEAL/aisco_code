@@ -81,10 +81,8 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0915, PLR0912 # definitly re
         pretrained_path = pretrained_v0_config["pretraining"].get("local_pretraining_model_path", False)
     else:
         pretrained_path = pretrained_v0_config["pretraining"].get("pretraining_model_path", False)
-    print(f"Pretrained path: {pretrained_path}")    
-    pretrained_model = fetch_pretrained_model(
-        model, pretrained_path=pretrained_path, verbose=verbose
-    )
+    print(f"Pretrained path: {pretrained_path}")
+    pretrained_model = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
 
     if pretrained_model is not None and not force_pretraining:
         model.load_state_dict(torch.load(pretrained_model, map_location=device))
@@ -137,7 +135,9 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0915, PLR0912 # definitly re
     if wandb_name is not None:
         # set rendering dir inside wandb log dir
         if general_config["general_info"].get("run_locally", False):
-            rendering_dir = Path(general_config["storage_paths"]["local_storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
+            rendering_dir = (
+                Path(general_config["storage_paths"]["local_storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
+            )
         else:
             rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
         os.makedirs(rendering_dir, exist_ok=True)
