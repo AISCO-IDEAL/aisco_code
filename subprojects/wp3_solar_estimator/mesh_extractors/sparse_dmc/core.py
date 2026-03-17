@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING
 import torch
 from torch import Tensor
 
+from .tables import get_tables
+
 if TYPE_CHECKING:
     from ..mesh import MeshTimer
 
@@ -220,9 +222,7 @@ def octree_sdf_eval(
     cur_res = coarse_res
     ci = torch.arange(cur_res, device=device, dtype=torch.int32)
     gx, gy, gz = torch.meshgrid(ci, ci, ci, indexing="ij")
-    level_cells = torch.stack(
-        [gx.reshape(-1), gy.reshape(-1), gz.reshape(-1)], dim=1
-    )  # [K, 3]
+    level_cells = torch.stack([gx.reshape(-1), gy.reshape(-1), gz.reshape(-1)], dim=1)  # [K, 3]
 
     # Octree refinement (no gradients needed for cell selection)
     with torch.no_grad():
@@ -236,25 +236,17 @@ def octree_sdf_eval(
             # Compute unique corners for current cells
             # Each cell has 8 corners at coords + corner_offsets
             # cell_corners_grid: [K, 8, 3] int coords at cur_res+1 grid
-            cell_corners_grid = level_cells.unsqueeze(1) + corner_offsets.unsqueeze(
-                0
-            )  # [K, 8, 3]
+            cell_corners_grid = level_cells.unsqueeze(1) + corner_offsets.unsqueeze(0)  # [K, 8, 3]
 
             # Flatten to [K*8, 3], find unique (1D keys — avoids broken MPS unique_dim)
             flat_corners = cell_corners_grid.reshape(-1, 3).long()
-            unique_corners, inverse_idx = _unique_int_coords(
-                flat_corners, max_coord=cur_res
-            )  # [M, 3], [K*8]
+            unique_corners, inverse_idx = _unique_int_coords(flat_corners, max_coord=cur_res)  # [M, 3], [K*8]
 
             # Convert unique corners to world-space positions
-            unique_pos = (
-                bb_min + (unique_corners.float() / cur_res) * bb_extent
-            )  # [M, 3]
+            unique_pos = bb_min + (unique_corners.float() / cur_res) * bb_extent  # [M, 3]
 
             # Evaluate SDF at unique corners
-            sdf_vals = _chunked_sdf_eval(
-                sdf_fn, unique_pos, max_points_per_chunk
-            )  # [B, M]
+            sdf_vals = _chunked_sdf_eval(sdf_fn, unique_pos, max_points_per_chunk)  # [B, M]
             if sdf_vals.dim() == 1:
                 sdf_vals = sdf_vals.unsqueeze(0)
 
@@ -263,15 +255,11 @@ def octree_sdf_eval(
 
             # Gather per-cell corner SDF: [B, K, 8]
             cell_corner_idx = inverse_idx.reshape(-1, 8)  # [K, 8]
-            cell_sdf = sdf_vals[
-                :, cell_corner_idx.long()
-            ]  # [B, K, 8] — advanced indexing on cols
+            cell_sdf = sdf_vals[:, cell_corner_idx.long()]  # [B, K, 8] — advanced indexing on cols
 
             # Lipschitz near-surface test: min(|sdf|) across corners AND batch < L * diag
             abs_sdf = cell_sdf.abs()  # [B, K, 8]
-            min_abs_per_cell = (
-                abs_sdf.min(dim=-1).values.min(dim=0).values
-            )  # [K] — min over batch and corners
+            min_abs_per_cell = abs_sdf.min(dim=-1).values.min(dim=0).values  # [K] — min over batch and corners
             near_surface = min_abs_per_cell < lipschitz * cell_diag
 
             # Keep only near-surface cells
@@ -306,23 +294,15 @@ def octree_sdf_eval(
     cell_diag_final = torch.norm(cell_size_final_world)
 
     # Compute corners for final cells
-    final_corners_grid = final_cells.unsqueeze(1) + corner_offsets.unsqueeze(
-        0
-    )  # [K, 8, 3]
+    final_corners_grid = final_cells.unsqueeze(1) + corner_offsets.unsqueeze(0)  # [K, 8, 3]
     flat_final = final_corners_grid.reshape(-1, 3).long()
-    unique_final, inv_final = _unique_int_coords(
-        flat_final, max_coord=resolution
-    )  # [M, 3], [K*8]
+    unique_final, inv_final = _unique_int_coords(flat_final, max_coord=resolution)  # [M, 3], [K*8]
 
     # World-space positions for unique corners
-    unique_pos_final = (
-        bb_min + (unique_final.float() / resolution) * bb_extent
-    )  # [M, 3]
+    unique_pos_final = bb_min + (unique_final.float() / resolution) * bb_extent  # [M, 3]
 
     # Evaluate with gradients
-    sdf_final = _chunked_sdf_eval(
-        sdf_fn, unique_pos_final, max_points_per_chunk
-    )  # [B, M]
+    sdf_final = _chunked_sdf_eval(sdf_fn, unique_pos_final, max_points_per_chunk)  # [B, M]
     if sdf_final.dim() == 1:
         sdf_final = sdf_final.unsqueeze(0)
 
@@ -330,9 +310,7 @@ def octree_sdf_eval(
     # Check if any SDF values on the 6 boundary faces of the bounding box are
     # negative, meaning the shape extends beyond the mesh bounds.
     with torch.no_grad():
-        _check_boundary_clipping_sparse(
-            unique_final, sdf_final, resolution, xyz_min, xyz_max
-        )
+        _check_boundary_clipping_sparse(unique_final, sdf_final, resolution, xyz_min, xyz_max)
 
     # Gather per-cell
     cell_corner_idx_final = inv_final.reshape(-1, 8)  # [K, 8]
@@ -401,9 +379,7 @@ def _resolve_ambiguous_cases(
     # Decode: bit0=sign (0=neg delta, 1=pos delta), bits1-2=axis (0=X, 1=Y, 2=Z)
     sign_bit = direction & 1  # [P]
     axis = (direction >> 1) & 3  # [P]
-    delta = torch.where(
-        sign_bit == 1, torch.ones_like(sign_bit), -torch.ones_like(sign_bit)
-    )  # [P]
+    delta = torch.where(sign_bit == 1, torch.ones_like(sign_bit), -torch.ones_like(sign_bit))  # [P]
 
     # Compute neighbor coordinates
     neighbor_coords = cell_coords[prob_indices].clone()  # [P, 3]
@@ -413,16 +389,10 @@ def _resolve_ambiguous_cases(
             neighbor_coords[mask_a, a] += delta[mask_a]
 
     # Bounds check
-    in_bounds = ((neighbor_coords >= 0) & (neighbor_coords < resolution)).all(
-        dim=1
-    )  # [P]
+    in_bounds = ((neighbor_coords >= 0) & (neighbor_coords < resolution)).all(dim=1)  # [P]
 
     # Look up neighbor cells
-    neighbor_keys = (
-        neighbor_coords[:, 0].long() * R * R
-        + neighbor_coords[:, 1].long() * R
-        + neighbor_coords[:, 2].long()
-    )  # [P]
+    neighbor_keys = neighbor_coords[:, 0].long() * R * R + neighbor_coords[:, 1].long() * R + neighbor_coords[:, 2].long()  # [P]
 
     neighbor_cell_idx = torch.full_like(neighbor_keys, -1)
     if in_bounds.any():
@@ -500,9 +470,7 @@ def _resolve_ambiguous_cases_batched(
     all_neighbor_coords = cell_coords.unsqueeze(1) + deltas.unsqueeze(0)  # [K, 6, 3]
 
     # Bounds check: [K, 6]
-    in_bounds = ((all_neighbor_coords >= 0) & (all_neighbor_coords < resolution)).all(
-        dim=2
-    )  # [K, 6]
+    in_bounds = ((all_neighbor_coords >= 0) & (all_neighbor_coords < resolution)).all(dim=2)  # [K, 6]
 
     # Compute keys for all 6 neighbors: [K, 6]
     all_neighbor_keys = (
@@ -527,9 +495,7 @@ def _resolve_ambiguous_cases_batched(
     # Gather neighbor cell idx per batch: [B, K]
     # all_neighbor_cell_idx is [K, 6], direction_safe is [B, K]
     # For each (b, k), pick all_neighbor_cell_idx[k, direction_safe[b, k]]
-    neighbor_cell_idx = all_neighbor_cell_idx[
-        torch.arange(K, device=device).unsqueeze(0).expand(B, -1), direction_safe
-    ]  # [B, K]
+    neighbor_cell_idx = all_neighbor_cell_idx[torch.arange(K, device=device).unsqueeze(0).expand(B, -1), direction_safe]  # [B, K]
 
     # Check if neighbor exists
     neighbor_exists = neighbor_cell_idx >= 0  # [B, K]
@@ -572,7 +538,6 @@ def sparse_dual_marching_cubes(
         vertices_list: List of B tensors, each [V_b, 3]
         faces_list:    List of B tensors, each [F_b, 4] (quads)
     """
-    from .tables import get_tables
 
     device = cell_coords.device
     tables = get_tables(device)
@@ -599,17 +564,9 @@ def sparse_dual_marching_cubes(
 
     # Build cell hash map: cell_coords -> cell_index
     R = resolution + 1
-    cell_keys = (
-        cell_coords[:, 0].long() * R * R
-        + cell_coords[:, 1].long() * R
-        + cell_coords[:, 2].long()
-    )  # [K]
+    cell_keys = cell_coords[:, 0].long() * R * R + cell_coords[:, 1].long() * R + cell_coords[:, 2].long()  # [K]
 
-    cell_idx_map = (
-        torch.full((R * R * R,), -1, dtype=torch.long, device=device)
-        if R * R * R < 50_000_000
-        else None
-    )
+    cell_idx_map = torch.full((R * R * R,), -1, dtype=torch.long, device=device) if R * R * R < 50_000_000 else None
 
     if cell_idx_map is not None:
         cell_idx_map[cell_keys] = torch.arange(K, device=device, dtype=torch.long)
@@ -639,9 +596,7 @@ def sparse_dual_marching_cubes(
     # ===================================================================
     # 3a. Vectorized case index [B, K]
     # ===================================================================
-    powers = torch.tensor(
-        [1, 2, 4, 8, 16, 32, 64, 128], dtype=torch.int32, device=device
-    )  # [8]
+    powers = torch.tensor([1, 2, 4, 8, 16, 32, 64, 128], dtype=torch.int32, device=device)  # [8]
     case_idx = ((corner_sdf <= 0).int() * powers).sum(dim=-1).int()  # [B, K]
 
     # ===================================================================
@@ -693,9 +648,7 @@ def sparse_dual_marching_cubes(
 
     # Crossing points: shared positions broadcast with per-batch t
     # pos_e0/pos_e1: [K_union, 12, 3], t: [B, K_union, 12]
-    crossing_pts = pos_e0.unsqueeze(0) + t.unsqueeze(-1) * (
-        pos_e1.unsqueeze(0) - pos_e0.unsqueeze(0)
-    )  # [B, K_union, 12, 3]
+    crossing_pts = pos_e0.unsqueeze(0) + t.unsqueeze(-1) * (pos_e1.unsqueeze(0) - pos_e0.unsqueeze(0))  # [B, K_union, 12, 3]
 
     # ===================================================================
     # 3e. Edge-to-slot via precomputed table
@@ -715,9 +668,7 @@ def sparse_dual_marching_cubes(
 
     for s in range(4):
         # Which edges belong to slot s: [B, K_union, 12]
-        mask_s = (
-            (dp_masks[:, :, s : s + 1] >> edge_bits) & 1
-        ).float()  # [B, K_union, 12]
+        mask_s = ((dp_masks[:, :, s : s + 1] >> edge_bits) & 1).float()  # [B, K_union, 12]
         count = mask_s.sum(dim=-1, keepdim=True).clamp(min=1.0)  # [B, K_union, 1]
         # Weighted sum of crossing points for this slot
         vertices[:, :, s] = (crossing_pts * mask_s.unsqueeze(-1)).sum(dim=2) / count
@@ -743,9 +694,7 @@ def sparse_dual_marching_cubes(
     # ===================================================================
     # Map: cell index (0..K-1) -> union index (0..K_union-1)
     cell_to_union = torch.full((K,), -1, dtype=torch.long, device=device)
-    cell_to_union[union_indices] = torch.arange(
-        K_union, device=device, dtype=torch.long
-    )
+    cell_to_union[union_indices] = torch.arange(K_union, device=device, dtype=torch.long)
 
     union_coords = cell_coords[union_indices]  # [K_union, 3]
     all_quads_list = []  # collect [B, Q_axis, 4] per axis
@@ -753,19 +702,13 @@ def sparse_dual_marching_cubes(
 
     for axis in range(3):
         offsets = quad_cell_offsets[axis]  # [4, 3]
-        neighbor_coords = union_coords.unsqueeze(1) + offsets.unsqueeze(
-            0
-        )  # [K_union, 4, 3]
+        neighbor_coords = union_coords.unsqueeze(1) + offsets.unsqueeze(0)  # [K_union, 4, 3]
 
         neighbor_keys = (
-            neighbor_coords[:, :, 0].long() * R * R
-            + neighbor_coords[:, :, 1].long() * R
-            + neighbor_coords[:, :, 2].long()
+            neighbor_coords[:, :, 0].long() * R * R + neighbor_coords[:, :, 1].long() * R + neighbor_coords[:, :, 2].long()
         )  # [K_union, 4]
 
-        neighbor_cell_idx = torch.stack(
-            [lookup_cells(neighbor_keys[:, j]) for j in range(4)], dim=1
-        )  # [K_union, 4]
+        neighbor_cell_idx = torch.stack([lookup_cells(neighbor_keys[:, j]) for j in range(4)], dim=1)  # [K_union, 4]
 
         # All 4 neighbors must exist in the sparse grid
         all_exist = (neighbor_cell_idx >= 0).all(dim=1)  # [K_union]
@@ -815,8 +758,7 @@ def sparse_dual_marching_cubes(
         local_edges = quad_local_edges[axis]  # [4]
         quad_vert_idx = torch.stack(
             [
-                sc_union_idx[:, j].unsqueeze(0).expand(B, -1) * 4
-                + edge_to_slot[:, sc_union_idx[:, j], local_edges[j].long()]
+                sc_union_idx[:, j].unsqueeze(0).expand(B, -1) * 4 + edge_to_slot[:, sc_union_idx[:, j], local_edges[j].long()]
                 for j in range(4)
             ],
             dim=2,
@@ -858,18 +800,14 @@ def sparse_dual_marching_cubes(
         b_faces = all_faces[b][b_valid]  # [Q_b, 4]
 
         if b_faces.shape[0] == 0:
-            vertices_list.append(
-                torch.zeros(0, 3, dtype=flat_verts.dtype, device=device)
-            )
+            vertices_list.append(torch.zeros(0, 3, dtype=flat_verts.dtype, device=device))
             faces_list.append(torch.zeros(0, 4, dtype=torch.long, device=device))
             continue
 
         # Compact vertices: keep only those referenced by valid faces
         used_idx = torch.unique(b_faces.reshape(-1))
         remap = torch.full((flat_verts.shape[1],), -1, dtype=torch.long, device=device)
-        remap[used_idx] = torch.arange(
-            used_idx.shape[0], device=device, dtype=torch.long
-        )
+        remap[used_idx] = torch.arange(used_idx.shape[0], device=device, dtype=torch.long)
 
         vertices_list.append(flat_verts[b][used_idx])
         faces_list.append(remap[b_faces])
@@ -945,9 +883,7 @@ def sparse_sdf_to_mesh(
         tri_faces_list = []
         for faces in faces_list:
             if faces.shape[0] == 0:
-                tri_faces_list.append(
-                    torch.zeros(0, 3, dtype=torch.long, device=faces.device)
-                )
+                tri_faces_list.append(torch.zeros(0, 3, dtype=torch.long, device=faces.device))
             else:
                 # Split each quad [v0, v1, v2, v3] into two triangles
                 tri1 = faces[:, [0, 1, 2]]

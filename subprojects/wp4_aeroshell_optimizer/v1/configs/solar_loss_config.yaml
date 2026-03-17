@@ -36,7 +36,7 @@ SolarLossConfigV3:
 # All keys below are consumed by WP3's SolarLossEstimator class
 SolarLossConfigV4:
   australia_cfg: "solar_configs/australia.yaml" #path to australian sun/route config  # USED — WP3 loads australia.yaml from this path
-  method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf  # USED — WP3
+  method: "sparse_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf  # USED — WP3
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]  # USED — WP3
   resolution: 150  # USED — WP3
   area_budget_mm2: 4000000  # USED — WP3

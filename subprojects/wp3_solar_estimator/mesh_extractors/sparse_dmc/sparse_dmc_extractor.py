@@ -14,6 +14,9 @@ class SparseDMCExtractor:
         self.resolution = resolution
         self.batch_size = batch_size
         self.device = device
+        print(
+            f"SparseDMCExtractor initialized with bbox={bbox}, resolution={resolution}, device={device}, batch_size={batch_size}"
+        )
 
     def extract_mesh(self, model) -> tuple[torch.Tensor, torch.Tensor]:
         """Extracts a mesh from SDF model(s) using the sparse DMC method.
@@ -34,6 +37,8 @@ class SparseDMCExtractor:
             faces = faces_list[0]
         else:
             raise ValueError("Batch size must be at least 1 to extract mesh.")
+
+        print(f"SparseDMCExtractor extracted mesh with {verts.shape[0]} vertices and {faces.shape[0]} faces.")
 
         return verts, faces
 
