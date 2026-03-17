@@ -440,7 +440,7 @@ class SolarLossEstimator:
             )
             self.extractor.set_grid(self.bbox, self.resolution)
         elif method == "sparse_sdf":
-            self.extractor = SparseDMCExtractor(model=None, grid=None)
+            self.extractor = SparseDMCExtractor(bbox=self.bbox, resolution=self.resolution, device=self.device)
             self.extractor.set_grid(self.bbox, self.resolution)
         else:
             raise ValueError(f"Unknown method: {method}")
@@ -457,7 +457,7 @@ class SolarLossEstimator:
             return self.extractor.extract_mesh(model)
         if self.method == "sparse_sdf":
             assert isinstance(self.extractor, SparseDMCExtractor)
-            return self.extractor.extract_mesh(model, batch_size=self.batch_size)
+            return self.extractor.extract_mesh(model)
         raise ValueError(f"Unknown method: {self.method}")
 
     def solar_loss(self, model: Any, epoch_name: int | None = None) -> torch.Tensor:

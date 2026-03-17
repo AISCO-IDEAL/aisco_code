@@ -1,30 +1,34 @@
-# create wrapper called SparseDMCExtractor, that will call sparse_sdf_to_mesh be wired to the different versions of the loss
+"""This module defines the SparseDMCExtractor, which serves as a wrapper around the core mesh extraction function sparse_sdf_to_mesh. The extractor is designed to be compatible with different versions of the loss function used in the meshing process. It provides a unified interface for extracting meshes from signed distance functions (SDFs) while allowing for flexibility in the underlying loss computations."""
+
 import torch
 
 from subprojects.wp3_solar_estimator.mesh_extractors.sparse_dmc.core import sparse_sdf_to_mesh
-
-"""This module defines the SparseDMCExtractor, which serves as a wrapper around the core mesh extraction function sparse_sdf_to_mesh. The extractor is designed to be compatible with different versions of the loss function used in the meshing process. It provides a unified interface for extracting meshes from signed distance functions (SDFs) while allowing for flexibility in the underlying loss computations.
-"""
 
 
 class SparseDMCExtractor:
     """Wrapper class for the SparseDMC mesh extraction method. This class interfaces with the core mesh extraction function sparse_sdf_to_mesh, allowing it to be used seamlessly within the solar loss computation framework."""
 
-    def __init__(self, model, bbox, resolution, batch_size=1):
-        self.model = model
+    def __init__(self, bbox, resolution, device, batch_size=1):
         self.xyz_min = tuple(bbox[i][0] for i in range(3))  # Extract min values for x, y, z from bbox
         self.xyz_max = tuple(bbox[i][1] for i in range(3))  # Extract max values for x, y, z from bbox
         self.resolution = resolution
         self.batch_size = batch_size
+        self.device = device
 
-    def extract_mesh(self) -> tuple[torch.Tensor, torch.Tensor]:
+    def extract_mesh(self, model) -> tuple[torch.Tensor, torch.Tensor]:
         """Extracts a mesh from SDF model(s) using the sparse DMC method.
         This function calls the core mesh extraction function sparse_sdf_to_mesh, which is implemented by Tim Aebersold.
         As until now only supports batch_size=1, it will return the first mesh in the list of meshes returned by sparse_sdf_to_mesh.
         """
         vertices_list, faces_list, batch_size = sparse_sdf_to_mesh(
-            sdf_fn=self.model, xyz_min=self.xyz_min, xyz_max=self.xyz_max, resolution=self.resolution, batch_size=self.batch_size
+            sdf_fn=model,
+            xyz_min=self.xyz_min,
+            xyz_max=self.xyz_max,
+            resolution=self.resolution,
+            batch_size=self.batch_size,
+            device=self.device,
         )
+
         if batch_size >= 1:
             verts = vertices_list[0]
             faces = faces_list[0]
