@@ -6,21 +6,7 @@ repo_root="$(git rev-parse --show-toplevel)"
 current_dir="$(pwd)"
 
 # Parse worktrees via porcelain output for robust field handling.
-git worktree list --porcelain | awk '
-  /^worktree / { wt=$2; branch=""; next }
-  /^branch /   { branch=$2; next }
-  /^$/ {
-    if (wt != "") {
-      printf "%s\t%s\n", wt, branch
-    }
-    wt=""; branch=""
-  }
-  END {
-    if (wt != "") {
-      printf "%s\t%s\n", wt, branch
-    }
-  }
-' | while IFS=$'\t' read -r wt branch; do
+while IFS=$'\t' read -r wt branch; do
   if [ "$wt" = "$repo_root" ]; then
     continue
   fi
@@ -32,7 +18,7 @@ git worktree list --porcelain | awk '
     echo "Branch:   (detached or unknown)"
   fi
 
-  read -r -p "Delete this worktree? [y/N] " reply
+  read -r -p "Delete this worktree? [y/N] " reply </dev/tty
   case "$reply" in
     y|Y)
       echo "Removing worktree: $wt"
@@ -51,6 +37,20 @@ git worktree list --porcelain | awk '
   esac
 
   echo
-done
+done < <(git worktree list --porcelain | awk '
+  /^worktree / { wt=$2; branch=""; next }
+  /^branch /   { branch=$2; next }
+  /^$/ {
+    if (wt != "") {
+      printf "%s\t%s\n", wt, branch
+    }
+    wt=""; branch=""
+  }
+  END {
+    if (wt != "") {
+      printf "%s\t%s\n", wt, branch
+    }
+  }
+  ')
 
 cd "$current_dir"
