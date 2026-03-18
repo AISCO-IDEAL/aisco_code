@@ -1,15 +1,26 @@
 #!/usr/bin/env python
 
 import math
+from pathlib import Path
 
 import torch
 import wandb
+import yaml
 from torch import nn
 
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import allround_save_data
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager, Wrapper
+
+# ============================================================================
+# WIRE Configuration - Set the YAML config path here
+# ============================================================================
+WIRE_CONFIG_PATH = Path(__file__).parent / "subprojects/wp4_aeroshell_optimizer/v1/src/configs/WIRE_v1.yaml"
+
+# Load WIRE configuration from the specified path
+with open(WIRE_CONFIG_PATH) as f:
+    WIRE_CONFIG = yaml.safe_load(f)
 
 
 class ComplexGaborLayer(BaseModel):
@@ -189,6 +200,8 @@ class WIREModel(BaseModel):
     This is a drop-in replacement for the original BaseModel that uses WIRE
     internally for superior high-frequency detail and faster convergence.
 
+    Configuration is loaded from WIRE_v1.yaml in the same directory.
+
     Key differences from original BaseModel:
     - Uses complex Gabor wavelets instead of ReLU/Tanh
     - Better at representing sharp features and fine details
@@ -196,18 +209,13 @@ class WIREModel(BaseModel):
     - Automatically reduces hidden width by sqrt2 internally
 
     Args:
-        config: Configuration dictionary. Can contain:
-            - config['model']['omega0']: Frequency parameter (default: 10.0)
-            - config['model']['sigma0']: Gaussian width (default: 10.0)
+        config: Configuration dictionary (kept for API compatibility)
         overwrite_base_init: If True, skip layer initialization (for subclassing)
         in_dim: Input dimension (3 for 3D coordinates)
         hidden: Hidden layer width (actual complex width: hidden/sqrt2)
         layers: Number of hidden layers
 
-    Recommended hyperparameters for 3D SDF:
-        - in_dim=3, hidden=256, layers=3
-        - omega0=10.0, sigma0=10.0
-        - Learning rate: 5e-3 to 1e-2
+    Note: Hyperparameters are loaded from WIRE_v1.yaml. Edit that file to tune.
     """
 
     def __init__(
@@ -216,7 +224,7 @@ class WIREModel(BaseModel):
         overwrite_base_init: bool = True,
         in_dim: int = 3,
         hidden: int = 64,
-        layers: int = 3
+        layers: int = 3,
     ):
         super().__init__()
 
@@ -228,10 +236,20 @@ class WIREModel(BaseModel):
         if overwrite_base_init:
             return
 
-        # Extract WIRE hyperparameters from config
-        model_cfg = config.get("model", {})
-        omega0 = float(model_cfg.get("omega0", 10.0))
-        sigma0 = float(model_cfg.get("sigma0", 10.0))
+        # Load hyperparameters from WIRE_CONFIG (loaded at module import)
+        omega0_first = float(WIRE_CONFIG.get("first_omega_0", 10.0))
+        omega0_hidden = float(WIRE_CONFIG.get("hidden_omega_0", 10.0))
+        sigma0 = float(WIRE_CONFIG.get("scale", 10.0))
+
+        # Override dimensions if specified in YAML
+        in_dim = int(WIRE_CONFIG.get("in_features", in_dim))
+        hidden = int(WIRE_CONFIG.get("hidden_features", hidden))
+        layers = int(WIRE_CONFIG.get("hidden_layers", layers))
+
+        # Update instance variables
+        self.in_dim = in_dim
+        self.hidden = hidden
+        self.layers = layers
 
         # Build WIRE network
         self.wire_network = WIREINR(
@@ -239,8 +257,8 @@ class WIREModel(BaseModel):
             hidden_features=hidden,
             hidden_layers=layers,
             out_features=1,
-            first_omega_0=omega0,
-            hidden_omega_0=omega0,
+            first_omega_0=omega0_first,
+            hidden_omega_0=omega0_hidden,
             scale=sigma0,
         )
 
