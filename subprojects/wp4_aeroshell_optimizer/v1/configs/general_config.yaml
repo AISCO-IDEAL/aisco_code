@@ -9,9 +9,9 @@ general_info:
   verbose: "True"  # USED — basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
 
 model_def:
-  model_name: "WIRERaschoff"  # USED — main_v1_1_one_model.py: general_config["model_def"]["model_name"]
-  model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/WIRE_raschoff.py"  # USED — main_v1_1_one_model.py: general_config["model_def"]["model_file_path"]
-  # local_model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/WIRE_raschoff.py"  # NOT USED — never read by any code
+  model_name: "BasicMLP"  # USED — main_v1_1_one_model.py: general_config["model_def"]["model_name"]
+  model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/basic_MLP_v1"  # USED — main_v1_1_one_model.py: general_config["model_def"]["model_file_path"]
+  # local_model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/basic_MLP_v1"  # NOT USED — never read by any code
 
 
 active_configs:
