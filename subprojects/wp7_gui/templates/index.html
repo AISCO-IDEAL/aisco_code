@@ -6,7 +6,7 @@
   <title>WP7 GUI</title>
   <style>
     :root {
-      --bg: #f4f7f3;
+      --bg: #23283e;
       --panel: #ffffff;
       --accent: #1d6d54;
       --accent-2: #104a39;
@@ -152,7 +152,7 @@
 
     pre {
       margin: 0;
-      background: #0f1f17;
+      background: #23283e;
       color: #ddf8e8;
       border-radius: 10px;
       padding: 12px;
@@ -170,7 +170,38 @@
       margin-top: 10px;
     }
 
+    .visuals-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .visual-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: #f8fcf9;
+      display: grid;
+      gap: 8px;
+    }
+
+    .visual-title {
+      font-size: 0.9rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
     #artifactImage {
+      max-width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #f5faf7;
+      min-height: 120px;
+      display: none;
+    }
+
+    #meshStepImage {
       max-width: 100%;
       border-radius: 10px;
       border: 1px solid var(--border);
@@ -196,6 +227,12 @@
 
     #meshFileLink:hover {
       text-decoration: underline;
+    }
+
+    @media (max-width: 860px) {
+      .visuals-grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -235,12 +272,22 @@
         <button id="btnRefreshArtifacts">Refresh artifacts</button>
       </div>
       <div class="artifacts-panel">
-        <img id="artifactImage" alt="mesh_assembly_mode gif preview">
-        <div id="artifactStatus">No GIF loaded yet.</div>
-        <div class="slider-row">
-          <label for="meshSlider" id="meshSliderLabel">Mesh epoch slider (no meshes loaded)</label>
-          <input id="meshSlider" type="range" min="0" max="0" value="0" step="1" disabled>
-          <a id="meshFileLink" href="#" target="_blank" rel="noopener">No mesh selected</a>
+        <div class="visuals-grid">
+          <div class="visual-card">
+            <div class="visual-title">Left: Mesh Steps (epoch slider)</div>
+            <img id="meshStepImage" alt="mesh step preview">
+            <div id="meshStepStatus">No mesh step image loaded yet.</div>
+            <div class="slider-row">
+              <label for="meshSlider" id="meshSliderLabel">Mesh step slider (no images loaded)</label>
+              <input id="meshSlider" type="range" min="0" max="0" value="0" step="1" disabled>
+              <a id="meshFileLink" href="#" target="_blank" rel="noopener">No mesh step selected</a>
+            </div>
+          </div>
+          <div class="visual-card">
+            <div class="visual-title">Right: Mesh Assembly GIF (slowed)</div>
+            <img id="artifactImage" alt="mesh_assembly_mode gif preview">
+            <div id="artifactStatus">No GIF loaded yet.</div>
+          </div>
         </div>
       </div>
     </section>
@@ -270,12 +317,14 @@
     const currentRunDir = document.getElementById("currentRunDir");
     const artifactImage = document.getElementById("artifactImage");
     const artifactStatus = document.getElementById("artifactStatus");
+    const meshStepImage = document.getElementById("meshStepImage");
+    const meshStepStatus = document.getElementById("meshStepStatus");
     const meshSlider = document.getElementById("meshSlider");
     const meshSliderLabel = document.getElementById("meshSliderLabel");
     const meshFileLink = document.getElementById("meshFileLink");
 
     let autoLogTimer = null;
-    let meshEntries = [];
+    let meshStepEntries = [];
 
     function setStatus(message) {
       statusBox.textContent = message;
@@ -340,19 +389,24 @@
     }
 
     function updateMeshSelection(index) {
-      if (!meshEntries.length) {
-        meshSliderLabel.textContent = "Mesh epoch slider (no meshes loaded)";
-        meshFileLink.textContent = "No mesh selected";
+      if (!meshStepEntries.length) {
+        meshSliderLabel.textContent = "Mesh step slider (no images loaded)";
+        meshFileLink.textContent = "No mesh step selected";
         meshFileLink.removeAttribute("href");
+        meshStepImage.style.display = "none";
+        meshStepStatus.textContent = "No mesh step image loaded yet.";
         return;
       }
 
-      const clampedIndex = Math.max(0, Math.min(index, meshEntries.length - 1));
-      const mesh = meshEntries[clampedIndex];
-      const epochLabel = mesh.epoch !== null ? `epoch ${mesh.epoch}` : "unknown epoch";
-      meshSliderLabel.textContent = `Mesh ${clampedIndex + 1}/${meshEntries.length} (${epochLabel})`;
-      meshFileLink.textContent = mesh.name;
-      meshFileLink.href = mesh.url;
+      const clampedIndex = Math.max(0, Math.min(index, meshStepEntries.length - 1));
+      const meshStep = meshStepEntries[clampedIndex];
+      const epochLabel = meshStep.epoch !== null ? `epoch ${meshStep.epoch}` : "unknown epoch";
+      meshSliderLabel.textContent = `Step ${clampedIndex + 1}/${meshStepEntries.length} (${epochLabel})`;
+      meshFileLink.textContent = meshStep.name;
+      meshFileLink.href = meshStep.url;
+      meshStepImage.src = `${meshStep.url}&t=${Date.now()}`;
+      meshStepImage.style.display = "block";
+      meshStepStatus.textContent = `Showing mesh step image: ${meshStep.name}`;
     }
 
     async function refreshArtifacts() {
@@ -365,21 +419,22 @@
         const gifList = data.mesh_assembly_gifs || [];
         if (gifList.length > 0) {
           const selectedGif = gifList[0];
-          artifactImage.src = `${selectedGif.url}&t=${Date.now()}`;
+          const gifUrl = selectedGif.slow_url || selectedGif.url;
+          artifactImage.src = `${gifUrl}&t=${Date.now()}`;
           artifactImage.style.display = "block";
-          artifactStatus.textContent = `Showing latest mesh_assembly_mode GIF: ${selectedGif.name}`;
+          artifactStatus.textContent = `Showing slowed mesh_assembly_mode GIF: ${selectedGif.name}`;
         } else {
           artifactImage.style.display = "none";
           artifactStatus.textContent = "No mesh_assembly_mode GIF found for current run.";
         }
 
-        meshEntries = data.meshes || [];
-        if (meshEntries.length > 0) {
+        meshStepEntries = data.mesh_step_images || [];
+        if (meshStepEntries.length > 0) {
           meshSlider.disabled = false;
           meshSlider.min = "0";
-          meshSlider.max = String(meshEntries.length - 1);
-          meshSlider.value = String(meshEntries.length - 1);
-          updateMeshSelection(meshEntries.length - 1);
+          meshSlider.max = String(meshStepEntries.length - 1);
+          meshSlider.value = String(meshStepEntries.length - 1);
+          updateMeshSelection(meshStepEntries.length - 1);
         } else {
           meshSlider.disabled = true;
           meshSlider.min = "0";
