@@ -90,7 +90,7 @@ echo "CUDA_VISIBLE_DEVICES: \$CUDA_VISIBLE_DEVICES"
 # ---- Environment --------------------------------------------------------
 module purge
 module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6 eth_proxy
-
+umask 0002
 USERNAME="\$(whoami)"
 LOG_DIR="/cluster/scratch/\${USERNAME}/logs/\${SLURM_JOB_NAME}_\${SLURM_JOB_ID}"
 mkdir -p "\$LOG_DIR"
