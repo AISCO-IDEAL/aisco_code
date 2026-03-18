@@ -1,5 +1,5 @@
 general_info:
-  CSE: "False"  # Cruising Speed Estimation  #  total_loss.py: self.losses_config["general_info"]["CSE"] == "True"
+  CSE: "True"  # Cruising Speed Estimation  #  total_loss.py: self.losses_config["general_info"]["CSE"] == "True"
   ALM: "True"  # Augmented Lagrangian Method  #  total_loss.py: self.losses_config["general_info"]["ALM"] == "True"
   alm_thresholds: [0.1, 0.1, 0.1]  # thresholds for constraint losses [bb, eikonal, smoothness]  #  total_loss.py: self.losses_config["general_info"]["alm_thresholds"]
   initial_lambda: 0.01  # initial value for lambda in ALM  #  total_loss.py: alm_info.get("initial_lambda", 0.01)
@@ -11,21 +11,22 @@ general_info:
 losses: # [compute: bool, weight: float, path: str]  #  total_loss.py dynamically loads and instantiates all losses with compute=1
   # NOTE: that for each loss class, only one version should have compute=True
   aero:
-    # frontal_area_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/frontal_area_v0.py"]  # NOT ACTIVE (compute=0)
-    # crude_estimator_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/crude_estimator_v0.py"]  # NOT ACTIVE (compute=0)
-    null_loss_aero_v1_: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]  # ACTIVE — loaded by total_loss.py
-    gaot_loss: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/gaot_loss.py"]  # NOT ACTIVE (compute=0)
+    # frontal_area_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/frontal_area_v0.py"]
+    # crude_estimator_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/crude_estimator_v0.py"]
+    null_loss_aero_v1_: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
+    gaot_loss: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/gaot_loss.py"]
+
   bb:
-    # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v1.py"]  # NOT ACTIVE (compute=0)
-    # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15  # NOT ACTIVE (compute=0)
-    null_loss_bb_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/null_loss_bb_v1.py"]  # NOT ACTIVE (compute=0)
-    bb_v3: [1, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety  # ACTIVE — loaded by total_loss.py
+    # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v1.py"]
+    # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15
+    null_loss_bb_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/null_loss_bb_v1.py"]
+    bb_v3: [1, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety y
 
   eikonal:
-    eikonal_v0: [1, 10.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/eikonal_loss/eikonal_v0.py"]  # ACTIVE — loaded by total_loss.py
+    eikonal_v0: [1, 10.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/eikonal_loss/eikonal_v0.py"]
 
   smoothness:
-    smoothness_v0: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/smoothness_loss/smoothness_v0.py"]  # ACTIVE — loaded by total_loss.py
+    smoothness_v0: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/smoothness_loss/smoothness_v0.py"]
 
   solar:
     solar_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v0.py"]
