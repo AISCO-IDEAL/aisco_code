@@ -13,9 +13,9 @@ class SparseDMCExtractor:
         self.xyz_max = tuple(bbox[i][1] for i in range(3))  # Extract max values for x, y, z from bbox
         self.resolution = resolution
         self.batch_size = batch_size
-        self.device = device
+        self.device = torch.device(device) if isinstance(device, str) else device
         print(
-            f"SparseDMCExtractor initialized with bbox={bbox}, resolution={resolution}, device={device}, batch_size={batch_size}"
+            f"SparseDMCExtractor initialized with bbox={bbox}, resolution={resolution}, device={self.device}, batch_size={batch_size}"
         )
 
     def extract_mesh(self, model) -> tuple[torch.Tensor, torch.Tensor]:

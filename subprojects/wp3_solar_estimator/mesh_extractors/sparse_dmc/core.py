@@ -186,6 +186,11 @@ def octree_sdf_eval(
 
     if device is None:
         device = torch.device("cpu")
+    elif isinstance(device, str):
+        device = torch.device(device)
+
+    print(__file__)
+    print(type(device),device)
 
     # Validate resolution is power of 2
     if resolution < 2 or (resolution & (resolution - 1)) != 0:
