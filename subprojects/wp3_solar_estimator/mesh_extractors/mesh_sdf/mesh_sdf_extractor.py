@@ -274,7 +274,7 @@ class MeshSDFExtractor:
 
     def extract_and_compute_loss(
         self, sdf_model: nn.Module, loss_fn: Callable, enable_backward: bool = True
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Extract mesh, compute loss, and return gradient flow.
 
@@ -294,20 +294,21 @@ class MeshSDFExtractor:
             faces: (F, 3) triangle indices
             loss: Scalar loss value
             surrogate_loss: Gradient flow term (for backward pass)
+            dL_dvertices: Upstream gradients w.r.t. vertices (for visualization/debugging)
         """
         # Extract mesh
         vertices, faces = self.extract_mesh(sdf_model)
 
         if vertices.shape[0] == 0:
             # Empty mesh - return zero loss
-            return vertices, faces, torch.tensor(0.0), torch.tensor(0.0)
+            return vertices, faces, torch.tensor(0.0), torch.tensor(0.0), torch.zeros_like(vertices)
 
         # Compute loss with gradient tracking for vertices
         vertices_for_loss = vertices.detach().requires_grad_(True)
         loss = loss_fn(vertices_for_loss, faces)
 
         if not enable_backward:
-            return vertices, faces, loss, torch.tensor(0.0)
+            return vertices, faces, loss, torch.tensor(0.0), torch.zeros_like(vertices)
 
         # Compute upstream gradients
         dL_dvertices = torch.autograd.grad(
@@ -317,4 +318,4 @@ class MeshSDFExtractor:
         # Compute gradient flow through implicit surface
         surrogate_loss = self.compute_gradient_flow(vertices=vertices, dL_dvertices=dL_dvertices, sdf_model=sdf_model)
 
-        return vertices, faces, loss, surrogate_loss
+        return vertices, faces, loss, surrogate_loss, dL_dvertices

@@ -642,7 +642,9 @@ class SolarLossEstimator:
                                 create_and_upload_gif_from_folder,
                             )
 
-                            create_and_upload_gif_from_folder(self.rendering_dir / "sim_renders", step=self.counter, fps=10)
+                            create_and_upload_gif_from_folder(
+                                self.rendering_dir / "sim_renders", pattern="simulation_results_*.png", step=self.counter, fps=10
+                            )
 
                 loss = solar_mesh_loss_v6(
                     vertices,
@@ -675,7 +677,7 @@ class SolarLossEstimator:
                 return loss
 
             assert isinstance(self.extractor, MeshSDFExtractor)
-            _vertices, _faces, loss, surrogate_loss = self.extractor.extract_and_compute_loss(
+            _vertices, _faces, loss, surrogate_loss, _vertice_grads = self.extractor.extract_and_compute_loss(
                 sdf_model=model,
                 loss_fn=wrapper_solar_loss,
                 enable_backward=True,
