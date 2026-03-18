@@ -4,7 +4,7 @@ umask 0002
 set -euo pipefail
 
 # ---- Config, EDIT HERE ---------------------------------------------------------------
-JOB_NAME="WP4_Sweep" # Name for the SLURM job
+JOB_NAME="Worktree_Sweep" # Name for the SLURM job
 TIME_LIMIT="04:00:00"  # Translates to --time below
 
 BRANCH_PREFIX="temp-sweep-branch"
@@ -12,7 +12,7 @@ WORKTREE_SUFFIX="_worktree"
 FREEZE_DIR_REL="subprojects/wp4_aeroshell_optimizer/v1/configs"
 SWEEP_ID="aisco/Alex_Sweeps/3r4ab3is"   # <-- EDIT THIS
 NUMBER_OF_GPUS=2  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
-GPU_TYPE="rtx_4090"  # Set to "" for generic allocation --> Translates to gpus below
+GPU_TYPE=""  # Set to "" for generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
 RUNS_PER_GPU=8   # Adjust based on your needs and cluster limits --> Translates to COUNT below
 CPUS_PER_TASK=8  # Translates to --cpus-per-task below
 MEM_PER_CPU="5G"  # Translates to --mem-per-cpu below
@@ -147,6 +147,7 @@ echo "[INFO] Job finished"
 
 # ---- Cleanup -------------------------------------------------------------
 cd "$WORKTREE_DIR"
+chmod -R u+w "$WORKTREE_DIR/$FREEZE_DIR_REL" || true
 
 if [ -z "$(git status --porcelain)" ]; then
     echo "[INFO] No changes detected — cleaning up"
