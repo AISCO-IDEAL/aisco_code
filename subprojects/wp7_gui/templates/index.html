@@ -8,8 +8,8 @@
     :root {
       --bg: #23283e;
       --panel: #23283e;
-      --accent: #1d6d54;
-      --accent-2: #104a39;
+      --accent: #c82121;
+      --accent-2: #9f1616;
       --text: #102018;
       --muted: #496456;
       --border: #23283e
@@ -63,7 +63,7 @@
 
     .controls {
       display: grid;
-      grid-template-columns: auto 1fr auto auto;
+      grid-template-columns: auto 1fr auto;
       align-items: center;
       gap: 12px;
     }
@@ -96,6 +96,15 @@
     progress {
       width: 100%;
       height: 18px;
+      accent-color: var(--accent);
+    }
+
+    progress::-webkit-progress-value {
+      background: var(--accent);
+    }
+
+    progress::-moz-progress-bar {
+      background: var(--accent);
     }
 
     #progressText {
@@ -103,14 +112,6 @@
       color: var(--muted);
       min-width: 120px;
       text-align: right;
-    }
-
-    #estimatedDragText {
-      font-size: 0.9rem;
-      color: var(--muted);
-      min-width: 170px;
-      text-align: right;
-      font-weight: 600;
     }
 
     .visuals-grid {
@@ -200,7 +201,7 @@
 <body>
   <main class="page">
     <section class="card logo-wrap" aria-label="Team logo">
-      <img id="teamLogo" src="team_logo.png" alt="Team logo">
+      <img id="teamLogo" src="logo.png" alt="Team logo">
     </section>
 
     <section class="card controls">
@@ -210,7 +211,6 @@
         <progress id="epochProgress" value="0" max="100"></progress>
       </div>
       <div id="progressText">0.0%</div>
-      <div id="estimatedDragText">Estimated drag: --</div>
     </section>
 
     <section class="card" style="min-height: 0;">
@@ -246,7 +246,6 @@
     const btnRunLocal = document.getElementById("btnRunLocal");
     const epochProgress = document.getElementById("epochProgress");
     const progressText = document.getElementById("progressText");
-    const estimatedDragText = document.getElementById("estimatedDragText");
 
     const artifactImage = document.getElementById("artifactImage");
     const artifactStatus = document.getElementById("artifactStatus");
@@ -364,12 +363,6 @@
         const pct = Number(data.progress_percent || 0);
         epochProgress.value = pct;
         progressText.textContent = `${pct.toFixed(1)}%`;
-
-        if (data.estimated_drag === null || data.estimated_drag === undefined || Number.isNaN(Number(data.estimated_drag))) {
-          estimatedDragText.textContent = "Estimated drag: --";
-        } else {
-          estimatedDragText.textContent = `Estimated drag: ${Number(data.estimated_drag).toFixed(4)}`;
-        }
 
         if (data.running) {
           btnRunLocal.disabled = true;

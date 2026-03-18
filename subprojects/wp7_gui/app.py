@@ -26,7 +26,6 @@ RUN_LOCAL_SCRIPT = REPO_ROOT / "wp4_aeroshell_optimizer" / "v1" / "slurm_scripts
 RUN_LOCAL_LOG = GUI_ROOT / "logs" / f"run_local_{timestamp}.log"
 LOCAL_STORAGE_DIR = REPO_ROOT.parent / "local_storage_dir"
 SLOW_GIF_CACHE_DIR = GUI_ROOT / "cache"
-WANDB_DIR = REPO_ROOT.parent / "wandb"
 
 PROCESS_LOCK = threading.Lock()
 STATE: dict[str, subprocess.Popen[str] | None] = {"run_local_process": None}
@@ -148,7 +147,6 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
         current_epoch = -1
         progress_percent = 0.0
         completed = False
-        estimated_drag = None
 
         if RUN_LOCAL_LOG.exists():
             logs = RUN_LOCAL_LOG.read_text(encoding="utf-8", errors="replace")
@@ -160,8 +158,6 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             if "Model optimisation completed." in logs or "Completed job successfully." in logs:
                 completed = True
                 progress_percent = 100.0
-
-        estimated_drag = self._extract_estimated_drag()
 
         with PROCESS_LOCK:
             process = STATE["run_local_process"]
@@ -177,86 +173,8 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                 "num_epochs": num_epochs,
                 "current_epoch": current_epoch,
                 "progress_percent": round(progress_percent, 1),
-                "estimated_drag": estimated_drag,
             },
         )
-
-    def _extract_estimated_drag(self) -> float | None:
-        """Return the best available drag estimate from run outputs."""
-        # First preference: explicit metric from the corresponding wandb summary.
-        summary_path = self._detect_wandb_summary_path_from_run_log()
-        drag_value = self._read_drag_from_wandb_summary(summary_path)
-        if drag_value is not None:
-            return drag_value
-
-        # Fallback: parse known drag-like scalar values from the run log.
-        if RUN_LOCAL_LOG.exists():
-            logs = RUN_LOCAL_LOG.read_text(encoding="utf-8", errors="replace")
-            patterns = [
-                r"gaot_loss\s*[:=]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)",
-                r"estimated\s*drag\s*[:=]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)",
-                r"drag\s*coefficient\s*[:=]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)",
-                r"\bcd\b\s*[:=]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)",
-            ]
-            for pattern in patterns:
-                matches = re.findall(pattern, logs, flags=re.IGNORECASE)
-                if matches:
-                    try:
-                        return float(matches[-1])
-                    except (TypeError, ValueError):
-                        continue
-
-        return None
-
-    def _detect_wandb_summary_path_from_run_log(self) -> Path | None:
-        if not RUN_LOCAL_LOG.exists() or not WANDB_DIR.exists():
-            return None
-
-        logs = RUN_LOCAL_LOG.read_text(encoding="utf-8", errors="replace")
-        run_id_match = re.findall(r"wandb:\s*setting up run\s+([a-zA-Z0-9]+)", logs)
-        if run_id_match:
-            run_id = run_id_match[-1]
-            candidates = sorted(WANDB_DIR.glob(f"run-*-{run_id}/files/wandb-summary.json"))
-            if candidates:
-                return max(candidates, key=lambda p: p.stat().st_mtime)
-
-        # Fallback to most recently updated summary.
-        candidates = list(WANDB_DIR.glob("run-*/files/wandb-summary.json"))
-        if not candidates:
-            return None
-        return max(candidates, key=lambda p: p.stat().st_mtime)
-
-    @staticmethod
-    def _read_drag_from_wandb_summary(summary_path: Path | None) -> float | None:
-        if summary_path is None or not summary_path.exists():
-            return None
-
-        try:
-            payload = json.loads(summary_path.read_text(encoding="utf-8", errors="replace"))
-        except Exception:
-            return None
-
-        for key in (
-            "gaot_loss",
-            "drag",
-            "estimated_drag",
-            "drag_coefficient",
-            "cd",
-            "aero_loss",
-        ):
-            value = payload.get(key)
-            if isinstance(value, (int, float)):
-                return float(value)
-
-        # Secondary pass: fuzzy match for uncommon key names containing drag/cd.
-        for key, value in payload.items():
-            if not isinstance(value, (int, float)):
-                continue
-            lowered = key.lower()
-            if "drag" in lowered or re.search(r"(^|[/_])cd($|[/_])", lowered):
-                return float(value)
-
-        return None
 
     def handle_run_command(self) -> None:
         body_data = self._read_json_body()
