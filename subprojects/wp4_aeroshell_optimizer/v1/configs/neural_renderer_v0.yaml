@@ -159,7 +159,7 @@ detached_modes:
     enabled: True
     class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
     config:
-      camera_position: [-3500, 3500, 700]
+      camera_position: [-3000, 3000, 3000]
       look_at: [0, 0, 0]
       render_mode: "rgb"
       fps: 15

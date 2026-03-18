@@ -1,6 +1,6 @@
 import torch
 
-from build.lib.subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import upload_neural_renderer_gif
+from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import upload_neural_renderer_gif
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base_class import RenderingMode
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
@@ -12,9 +12,23 @@ class MeshSDFGrads(RenderingMode):
         super().__init__(visualiser, config)
 
     def update(self, optimization_state: dict) -> None:
+        """
+        Render the mesh with per-face colors based on the dot product between vertex normals and SDF gradients.
+
+        Inputs:
+            optimization_state: dict containing "vertices", "faces", and "vertice_grads"
+            vertices: (V, 3) tensor of vertex positions
+            faces: (F, 3) tensor of vertex indices for each face
+            vertice_grads: (V, 3) tensor of gradients of the loss w.r.t. vertex positions, ideally extracted from the MeshSDF loss component
+        """
+
         vertices = optimization_state["vertices"].detach()
         faces = optimization_state["faces"].detach()
         vertice_grads = optimization_state["vertice_grads"].detach()
+
+        if faces.numel() == 0:
+            print(f"  {self.__class__.__name__}: No faces to render, skipping frame")
+            return
 
         # compute unit normals for each VERTEX by averaging face normals of adjacent faces
         face_normals = torch.cross(vertices[faces][:, 1] - vertices[faces][:, 0], vertices[faces][:, 2] - vertices[faces][:, 0])
@@ -30,6 +44,7 @@ class MeshSDFGrads(RenderingMode):
 
         # take dot products between unit normals and non-unit vertice_grads to get per-face scalar values for visualisation
         dot_products = torch.einsum("ij,ij->i", vertex_normals, vertice_grads)
+
         # Make color range go from a standard dark grey (zero, in the middle of the range) to light yellow (positive, max value) and dark blue (negative, min value)
 
         base_grey = torch.tensor([0.5, 0.5, 0.5], device=faces.device)

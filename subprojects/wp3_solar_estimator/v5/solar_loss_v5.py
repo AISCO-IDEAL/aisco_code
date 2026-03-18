@@ -521,7 +521,10 @@ class SolarLossEstimator:
                             )
 
                             create_and_upload_gif_from_folder(
-                                self.rendering_dir / "sim_renders", pattern="mesh_selection_side_*.png", step=self.counter, fps=10
+                                self.rendering_dir / "sim_renders",
+                                pattern="simulation_results_[0-9]*.png",
+                                step=self.counter,
+                                fps=10,
                             )
 
                 loss = solar_mesh_loss_v5(
@@ -560,7 +563,7 @@ class SolarLossEstimator:
                 }
             )
 
-            if self.counter == self.number_epochs - 1:
+            if self.counter == self.number_epochs:
                 self.render_grads.finalize(output_dir=self.rendering_dir, file_name="mesh_sdf_grads.gif")
 
         # We use something other than MeshSDF
@@ -582,7 +585,9 @@ class SolarLossEstimator:
                             create_and_upload_gif_from_folder,
                         )
 
-                        create_and_upload_gif_from_folder(self.rendering_dir / "sim_renders", step=self.counter, fps=10)
+                        create_and_upload_gif_from_folder(
+                            self.rendering_dir / "sim_renders", pattern="simulation_results_*.png", step=self.counter, fps=10
+                        )
 
             loss = solar_mesh_loss_v5(
                 vertices,

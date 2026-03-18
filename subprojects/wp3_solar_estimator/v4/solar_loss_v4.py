@@ -566,7 +566,9 @@ class SolarLossEstimator:
                             create_and_upload_gif_from_folder,
                         )
 
-                        create_and_upload_gif_from_folder(self.rendering_dir / "sim_renders", step=self.counter, fps=10)
+                        create_and_upload_gif_from_folder(
+                            self.rendering_dir / "sim_renders", pattern="simulation_results_*.png", fps=10
+                        )
 
             loss = solar_mesh_loss_v4(
                 vertices,
