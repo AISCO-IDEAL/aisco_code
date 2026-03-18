@@ -81,7 +81,7 @@ model:
 dataset:
     name: "drivaer_pressure_field"
     metaname: "incompressible_fluids/drivaer_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_pressure"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_cp_full"
     processed_folder: ""
     force_recompute_stats: true
     rand_dataset: true

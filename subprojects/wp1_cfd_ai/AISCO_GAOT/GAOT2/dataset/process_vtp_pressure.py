@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """
 Process VTP boundary mesh files from drivaer_complete / ahmed_complete
-into GAOT-compatible .pt files with pressure fields.
+into GAOT-compatible .pt files with canonical Cp fields and sample-level conditioning.
 
 For each run, extracts from the .vtp file:
   - pos:          [N, 3]   vertex coordinates
-  - x:            [N, 1]   pressure at each vertex (cell_data → point_data)
+    - x:            [N, 1]   pressure coefficient at each vertex
   - c:            [N, 3]   outward unit normals (computed)
   - face:         [3, F]   triangulated face connectivity
   - wall_shear:   [N, 3]   wall shear stress at each vertex
-  - cp:           [N, 1]   pressure coefficient at each vertex (if available)
+    - pressure:     [N, 1]   raw pressure at each vertex (if available)
   - force:        [1]      drag force from CSV (drivaer only; NaN for ahmed)
   - cd:           [1]      drag coefficient from CSV
-  - filename:     str
+    - v_inf:        [1]      freestream speed for the sample
+    - geom_extent:  [3]      geometry extents before normalization
+    - geom_aspect:  [3]      extent ratios before normalization
+    - conditioning: [1, 7]   [v_inf, extent_xyz, aspect_xyz]
+    - filename:     str
 
 Supports two dataset layouts:
   - drivaer_complete: boundary_{id}.vtp, drag_param_{id}.csv
@@ -36,6 +40,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import pyvista as pv
 import torch
+from common_preprocessing import AIR_DENSITY, V_INF_AHMED, V_INF_DRIVAER, compute_geom_conditioning, compute_pressure_coefficient
 from torch_geometric.data import Data
 from tqdm import tqdm
 
@@ -45,23 +50,25 @@ from tqdm import tqdm
 DATASETS = {
     "drivaer": {
         "input_dir": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_complete",
-        "output_dir": "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_pressure",
+        "output_dir": "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_cp_full",
         "vtp_pattern": "boundary_{id}.vtp",
         "pressure_key": "pMeanTrim",  # cell data key for pressure
         "cp_key": "CpMeanTrim",  # cell data key for Cp (pressure coef)
         "shear_key": "wallShearStressMeanTrim",  # cell data key for wall shear
         "csv_type": "drag_param",  # CSV format type
         "prefix": "drivaer_run",  # output folder prefix
+        "v_inf": V_INF_DRIVAER,
     },
     "ahmed": {
         "input_dir": "/cluster/work/fuge/AISCO/wp1_cfd_ai/ahmed_complete",
-        "output_dir": "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_ahmed_pressure",
+        "output_dir": "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_ahmed_cp_full",
         "vtp_pattern": "boundary_{id}.vtp",
         "pressure_key": "pMean",
         "cp_key": "static(p)_coeffMean",
         "shear_key": "wallShearStressMean",
         "csv_type": "force_mom",
         "prefix": "ahmed_run",
+        "v_inf": V_INF_AHMED,
     },
 }
 
@@ -148,14 +155,18 @@ def process_single_vtp(run_id, dataset_cfg):
     if pressure_key in mesh_pt.point_data:
         pressure = torch.tensor(mesh_pt.point_data[pressure_key], dtype=torch.float32).unsqueeze(-1)  # [N, 1]
     else:
-        print(f"  [WARN] run_{run_id}: '{pressure_key}' not found, using zeros")
-        pressure = torch.zeros(pos.shape[0], 1, dtype=torch.float32)
+        print(f"  [WARN] run_{run_id}: '{pressure_key}' not found")
+        pressure = None
 
     # Cp (pressure coefficient)
     cp_key = dataset_cfg.get("cp_key")
     cp = None
-    if cp_key and cp_key in mesh_pt.point_data:
+    if pressure is not None:
+        cp = compute_pressure_coefficient(pressure, dataset_cfg["v_inf"], AIR_DENSITY)
+    elif cp_key and cp_key in mesh_pt.point_data:
         cp = torch.tensor(mesh_pt.point_data[cp_key], dtype=torch.float32).unsqueeze(-1)  # [N, 1]
+    else:
+        cp = torch.full((pos.shape[0], 1), float("nan"), dtype=torch.float32)
 
     # Wall shear stress
     shear_key = dataset_cfg["shear_key"]
@@ -172,18 +183,25 @@ def process_single_vtp(run_id, dataset_cfg):
     csv_parser = CSV_PARSERS[dataset_cfg["csv_type"]]
     cd_val, force_val = csv_parser(run_dir, run_id)
 
+    geom_extent, geom_aspect, conditioning = compute_geom_conditioning(pos, dataset_cfg["v_inf"])
+
     # ---- 8. Build PyG Data and save ----
     data = Data(
         pos=pos,  # [N, 3]
-        x=pressure,  # [N, 1] — pressure field (GAOT target)
+        x=cp,  # [N, 1] — canonical Cp field
         c=normals,  # [N, 3]
         face=face,  # [3, F]
         wall_shear=wall_shear,  # [N, 3]
         force=torch.tensor([force_val], dtype=torch.float32),  # [1]
         cd=torch.tensor([cd_val], dtype=torch.float32),  # [1]
     )
-    if cp is not None:
-        data.cp = cp  # [N, 1]
+    if pressure is not None:
+        data.pressure = pressure
+    data.cp = cp
+    data.v_inf = torch.tensor([dataset_cfg["v_inf"]], dtype=torch.float32)
+    data.geom_extent = geom_extent
+    data.geom_aspect = geom_aspect
+    data.conditioning = conditioning
     data.filename = f"run_{run_id}"
 
     save_name = f"{prefix}_{run_id}"
@@ -210,14 +228,15 @@ def _detect_run_ids(input_dir: str) -> list:
 # ---------------------------------------------------------------------------
 #  Batch processing
 # ---------------------------------------------------------------------------
-def process_all(dataset_name, run_ids=None, max_runs=None, num_workers=NUM_WORKERS):
+def process_all(dataset_name, run_ids=None, max_runs=None, num_workers=NUM_WORKERS, output_dir=None):
     """Process all (or selected) runs for a given dataset."""
     if dataset_name not in DATASETS:
         raise ValueError(f"Unknown dataset '{dataset_name}'. Choose from: {list(DATASETS.keys())}")
 
-    cfg = DATASETS[dataset_name]
+    cfg = dict(DATASETS[dataset_name])
     input_dir = cfg["input_dir"]
-    output_dir = cfg["output_dir"]
+    output_dir = output_dir or cfg["output_dir"]
+    cfg["output_dir"] = output_dir
     os.makedirs(output_dir, exist_ok=True)
 
     # Auto-detect runs
@@ -274,6 +293,7 @@ def process_all(dataset_name, run_ids=None, max_runs=None, num_workers=NUM_WORKE
 def main():
     parser = argparse.ArgumentParser(description="Process VTP boundary meshes into GAOT .pt with pressure field.")
     parser.add_argument("dataset", choices=list(DATASETS.keys()), help="Which dataset to process (drivaer or ahmed)")
+    parser.add_argument("--output-dir", default=None)
     parser.add_argument("--run_ids", nargs="+", type=int, default=None)
     parser.add_argument("--max_runs", type=int, default=None)
     parser.add_argument("--workers", type=int, default=NUM_WORKERS)
@@ -284,6 +304,7 @@ def main():
         run_ids=args.run_ids,
         max_runs=args.max_runs,
         num_workers=args.workers,
+        output_dir=args.output_dir,
     )
 
 
