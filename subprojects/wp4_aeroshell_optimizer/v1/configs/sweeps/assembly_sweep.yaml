@@ -1,5 +1,5 @@
 # ============================================================================
-# Wandb Sweep Config — ALM (Augmented Lagrangian Method) Hyperparameters
+# Wandb Sweep Config — Sweep over differentAssembly IDs
 # ============================================================================
 # Parameter naming: <config_filename_without_yaml>.<nested.path.to.value>
 # See wandb_sweep_v1_50_meshes.yaml for full documentation.

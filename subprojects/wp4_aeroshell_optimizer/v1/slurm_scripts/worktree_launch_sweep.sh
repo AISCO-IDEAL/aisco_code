@@ -7,9 +7,6 @@ set -euo pipefail
 JOB_NAME="Worktree_Sweep" # Name for the SLURM job
 TIME_LIMIT="04:00:00"  # Translates to --time below
 
-BRANCH_PREFIX="temp-sweep-branch"
-WORKTREE_SUFFIX="_worktree"
-FREEZE_DIR_REL="subprojects/wp4_aeroshell_optimizer/v1/configs"
 SWEEP_ID="aisco/Alex_Sweeps/3r4ab3is"   # <-- EDIT THIS
 NUMBER_OF_GPUS=2  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
 GPU_TYPE=""  # Set to "" for generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
@@ -17,6 +14,9 @@ RUNS_PER_GPU=2 # Adjust based on your needs and cluster limits --> Translates to
 CPUS_PER_TASK=8  # Translates to --cpus-per-task below
 MEM_PER_CPU="5G"  # Translates to --mem-per-cpu below
 
+FREEZE_DIR_REL="subprojects/wp4_aeroshell_optimizer/v1/configs"
+BRANCH_PREFIX="temp-sweep-branch"
+WORKTREE_SUFFIX="_worktree"
 
 
 # ---- Setup ---------------------------------------------------------------
