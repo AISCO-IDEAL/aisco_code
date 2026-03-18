@@ -13,7 +13,7 @@ FREEZE_DIR_REL="subprojects/wp4_aeroshell_optimizer/v1/configs"
 SWEEP_ID="aisco/Alex_Sweeps/3r4ab3is"   # <-- EDIT THIS
 NUMBER_OF_GPUS=2  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
 GPU_TYPE=""  # Set to "" for generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
-RUNS_PER_GPU=8   # Adjust based on your needs and cluster limits --> Translates to COUNT below
+RUNS_PER_GPU=2 # Adjust based on your needs and cluster limits --> Translates to COUNT below
 CPUS_PER_TASK=8  # Translates to --cpus-per-task below
 MEM_PER_CPU="5G"  # Translates to --mem-per-cpu below
 
