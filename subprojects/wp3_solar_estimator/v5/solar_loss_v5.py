@@ -563,7 +563,7 @@ class SolarLossEstimator:
                 }
             )
 
-            if self.counter == self.number_epochs:
+            if self.counter + 1 == self.number_epochs:
                 self.render_grads.finalize(output_dir=self.rendering_dir, file_name="mesh_sdf_grads.gif")
 
         # We use something other than MeshSDF

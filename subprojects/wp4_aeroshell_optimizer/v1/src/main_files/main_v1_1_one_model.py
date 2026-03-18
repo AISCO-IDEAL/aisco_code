@@ -93,11 +93,11 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     if run_locally:
         pretrained_path = pretraining_config["pretraining"].get("local_pretraining_model_path", False)
     else:
-        pretrained_path = pretrained_v0_config["pretraining"].get("pretraining_model_path", False)
+        pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", False)
     print(f"Pretrained path: {pretrained_path}")
     pretrained_model = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
 
-        pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", False)
+    pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", False)
     print(f"[DEBUG main] pretraining_model_path from config: {pretrained_path}")
     ### load pretrained model if exists
     pretrained_model = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
@@ -143,7 +143,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     if wandb_name is not None:
         # set rendering dir inside wandb log dir
         if general_config["general_info"].get("run_locally", False):
-        run_locally = general_config["general_info"].get("run_locally", "False") == "True"
+            run_locally = general_config["general_info"].get("run_locally", "False") == "True"
         if run_locally:
             rendering_dir = (
                 Path(general_config["storage_paths"]["local_storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
