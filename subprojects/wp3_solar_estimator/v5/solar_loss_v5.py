@@ -30,6 +30,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.mesh_sdf_grads import MeshSDFGrads
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.solar_v3_selection import SolarV3Selection
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
@@ -215,10 +216,11 @@ def solar_mesh_loss_v5(
     loss = loss_mm2 * 1e-6  # Convert to m² for final loss
 
     # Rendering (if enabled)
-    if rendering and render_solar is not None and num_epochs is not None:
-        if counter <= num_epochs:
+    if rendering and num_epochs is not None:
+        if counter <= num_epochs and render_solar is not None:
             render_solar.update(optimization_state=metrics_render)
-        if counter == num_epochs and output_dir is not None:
+
+        if counter == num_epochs and output_dir is not None and render_solar is not None:
             render_solar.finalize(output_dir)
 
     # Log to wandb if enabled
@@ -333,7 +335,7 @@ class SolarLossEstimator:
             "eps": 1e-12,
             "sigmoid_sharpness": 10.0,
             "budget_penalty_weight": 0.1,
-            "wandb_logging": False,
+            "wandb_logging": True,
             "soft_mask_selection_threshold": 0.5,
             "soft_mask_full_selection_threshold": 0.95,
             "rendering": False,
@@ -387,8 +389,11 @@ class SolarLossEstimator:
                 viewing_angle=30.0,
                 device=self.device,
                 up=[0.0, 0.0, 1.0],
-            )  # Will not be used if rendering is False
-            self.renderSolar = SolarV3Selection(visualiser=self.visualiser)  # Will not be used if rendering is False
+            )
+            # Will not be used if rendering is False
+            self.renderSolar = SolarV3Selection(visualiser=self.visualiser)
+            # Will not be used if rendering is False
+            self.render_grads = MeshSDFGrads(visualiser=self.visualiser)
             train_cfg = load_config(v="v1", cfg_name="training_v0_config.yaml")["training_params"]
             self.number_epochs = int(train_cfg["num_epochs"])
             self.model_hash = None  # Will be set when solar_loss is first called with a model
@@ -522,7 +527,12 @@ class SolarLossEstimator:
                                 create_and_upload_gif_from_folder,
                             )
 
-                            create_and_upload_gif_from_folder(self.rendering_dir / "sim_renders", step=self.counter, fps=10)
+                            create_and_upload_gif_from_folder(
+                                self.rendering_dir / "sim_renders",
+                                pattern="simulation_results_[0-9]*.png",
+                                step=self.counter,
+                                fps=10,
+                            )
 
                 loss = solar_mesh_loss_v5(
                     vertices,
@@ -547,12 +557,23 @@ class SolarLossEstimator:
                 return loss
 
             assert isinstance(self.extractor, MeshSDFExtractor)  # Get mypy to shut up, confirm we are using MeshSDF
-            _vertices, _faces, loss, surrogate_loss = self.extractor.extract_and_compute_loss(
+            vertices, faces, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
                 sdf_model=model,
                 loss_fn=wrapper_solar_loss,
                 enable_backward=True,
             )
+            self.render_grads.update(
+                optimization_state={
+                    "vertices": vertices,
+                    "faces": faces,
+                    "vertice_grads": dL_dvertices,
+                }
+            )
 
+            if self.counter + 1 == self.number_epochs:
+                self.render_grads.finalize(output_dir=self.rendering_dir, file_name="mesh_sdf_grads.gif")
+
+        # We use something other than MeshSDF
         else:
             vertices, faces = self.extract_mesh(model)
 
@@ -571,7 +592,9 @@ class SolarLossEstimator:
                             create_and_upload_gif_from_folder,
                         )
 
-                        create_and_upload_gif_from_folder(self.rendering_dir / "sim_renders", step=self.counter, fps=10)
+                        create_and_upload_gif_from_folder(
+                            self.rendering_dir / "sim_renders", pattern="simulation_results_*.png", step=self.counter, fps=10
+                        )
 
             loss = solar_mesh_loss_v5(
                 vertices,

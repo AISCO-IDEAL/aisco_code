@@ -6,7 +6,7 @@ general_info:
   post: "a PLY file representing the optimized aeroshell shape"  # NOT USED — never read by any code
   config_debugging: "True" # adds print statements of config paths  # NOT USED — never read by any code (no grep hits in src/)
   run_locally: "True" # automatically detected, don't touch  # USED — main_v1_1_one_model.py, storage_utils.py (auto-detected & overwritten by config_utils.py)
-  verbose: "False"  # USED — basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
+  verbose: "True"  # USED — basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
 
 model_def:
   model_name: "BasicMLP"  # USED — main_v1_1_one_model.py: general_config["model_def"]["model_name"]
@@ -34,7 +34,7 @@ wandb_general:
   # use_sweep: 0  # NOT USED — never read by any code
 
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
-  # pretrained_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset"  # NOT USED — never read by any code (pretraining uses pretraining_v0_config.yaml paths instead)
+  pretrained_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset"  # NOT USED — never read by any code (pretraining uses pretraining_v0_config.yaml paths instead)
   # local_pretrained_dir: "./local_pretrained_dir" # only used for testing on local machine, not on cluster  # NOT USED — never read by any code
   storage_dir: "/cluster/work/fuge/AISCO/wp3_solar_estimator/sparse_dmc"  # USED — main_v1_1_one_model.py, basic_MLP_v1.py, storage_utils.py
   local_storage_dir: "./local_storage_dir" # only used for testing on local machine, not on cluster  # USED — main_v1_1_one_model.py, storage_utils.py (when run_locally=True)

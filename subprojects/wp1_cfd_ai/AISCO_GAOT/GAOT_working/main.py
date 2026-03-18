@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from multiprocessing import Process
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -42,24 +43,27 @@ def setup_logging(level: str = "INFO", log_file: str | None = None) -> None:
 
 
 class FileParser:
-    def __init__(self, filename):
+    def __init__(self, filename: str) -> None:
         if filename.endswith((".toml", ".json", ".yaml")):
             with open(filename) as f:
-                self.kwargs = OmegaConf.to_container(OmegaConf.load(f), resolve=True)
+                data = OmegaConf.to_container(OmegaConf.load(f), resolve=True)
+            if not isinstance(data, dict):
+                raise TypeError(f"Expected config mapping in {filename}, got {type(data).__name__}")
+            self.kwargs: dict[str, Any] = cast(dict[str, Any], data)
         else:
             raise NotImplementedError(f"File type {filename} not supported, currently only toml and json are supported.")
 
     def add_argument(self, *args, **kwargs):
         for raw_arg in args:
             key = raw_arg.removeprefix("--")
-            if key not in self.kwargs:  # type: ignore[operator]
+            if key not in self.kwargs:
                 if "action" in kwargs:
-                    self.kwargs[key] = False  # type: ignore[index]
+                    self.kwargs[key] = False
                 else:
-                    self.kwargs[key] = kwargs.get("default")  # type: ignore[index]
+                    self.kwargs[key] = kwargs.get("default")
 
     def parse_args(self):
-        return argparse.Namespace(**self.kwargs)  # type: ignore[arg-type]
+        return argparse.Namespace(**self.kwargs)
 
 
 def parse_cmd():

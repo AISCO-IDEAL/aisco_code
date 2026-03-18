@@ -27,7 +27,7 @@ no_build_zones:
       height: 75              # mm
       inner_lenght: 100       # mm
       outer_lenght: 150       # mm
-  
+
   vision_box:
     radius: 4000             # mm
     pos_height: 700          # mm from eye level
