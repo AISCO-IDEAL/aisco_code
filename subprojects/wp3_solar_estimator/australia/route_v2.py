@@ -21,12 +21,12 @@ class RouteV2:
 
         # round up race length and divide by intervals to get number of points
         race_length = config["route_generation"]["race_distance"]  # in km
-        num_points = config["simulation"]["num_points"]  # number of route points to sample
-        interval = race_length / num_points  # in km, distance between each sampled point
+        self.num_points = config["simulation"]["num_points"]  # number of route points to sample
+        interval = race_length / self.num_points  # in km, distance between each sampled point
         self.velocity = config["simulation"]["average_speed"]  # in m/s
         time_delta = datetime.timedelta(seconds=(interval * 1000) / self.velocity)
         self.route_points = torch.zeros(
-            (num_points, 3), dtype=torch.float32
+            (self.num_points, 3), dtype=torch.float32
         )  # Shape (N, 3) tensor of [lat, lon, heading] for each point along the route
 
         self.times: list[datetime.datetime] = []  # array of timestamps (datetime format)
@@ -51,7 +51,7 @@ class RouteV2:
 
         # set times to be from start_time to end_time with spacing of time_delta, but only include those within the racing window. Else, loop back to the next day until we have enough samples
         current_time = self.start_time
-        for _ in range(num_points):
+        for _ in range(self.num_points):
             # we still are in racing window, logic assume we dont't cross into next racing window within 1 step
             if (current_time.hour + current_time.minute / 60) <= racing_window[1]:
                 self.times.append(current_time)
@@ -81,16 +81,16 @@ class RouteV2:
                 )
 
         # get torch tensor with i * interval race distance values
-        distances = torch.tensor([i * interval for i in range(num_points)], dtype=torch.float32)
+        distances = torch.tensor([i * interval for i in range(self.num_points)], dtype=torch.float32)
         # save route points along route based on distances
-        for i in range(num_points):
+        for i in range(self.num_points):
             self.route_points[i] = loader.get_position(distances[i])
 
-        assert len(self.times) == num_points, (
-            f"Number of generated timestamps {len(self.times)} does not match number of route points {num_points}. This likely indicates a bug in the timestamp generation logic."
+        assert len(self.times) == self.num_points, (
+            f"Number of generated timestamps {len(self.times)} does not match number of route points {self.num_points}. This likely indicates a bug in the timestamp generation logic."
         )
-        assert len(self.route_points) == num_points, (
-            f"Number of generated route points {len(self.route_points)} does not match number of timestamps {num_points}. This likely indicates a bug in the route point generation logic."
+        assert len(self.route_points) == self.num_points, (
+            f"Number of generated route points {len(self.route_points)} does not match number of timestamps {self.num_points}. This likely indicates a bug in the route point generation logic."
         )
 
     def debug_print(self):

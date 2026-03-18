@@ -5,8 +5,8 @@ general:
   timezone: "Australia/Darwin" #insert "Australia/Darwin" or "Australia/Adelaide" here  # USED — WP3
 
 route_generation:
-  version: 1  # USED — WP3
-  race_distance: 3026 # in km  # USED — WP3
+  version: 2 #unused atm
+  race_distance: 3026 # in km, don't change unless you have new/better data  # USED — WP3
   intervals: 100 # in km  # USED — WP3
 
 
@@ -19,5 +19,6 @@ sun_generation:
 
 
 simulation:
-  average_speed: 19 #in m/s (used for validation metrics)  # USED — WP3
-  num_points: 300  # USED — WP3
+  # Note that tweaking these 2 values to unreasonably values will cause a crash (to few points cause sampling issues)
+  average_speed: 19 #in m/s (used for validation metrics and RouteV2)  # USED — WP3
+  num_points: 40  # USED — WP3

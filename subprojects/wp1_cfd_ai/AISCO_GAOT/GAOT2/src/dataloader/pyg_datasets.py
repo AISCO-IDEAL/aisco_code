@@ -56,7 +56,7 @@ class VTKMeshDataset(Dataset):
         self.order_file = order_file
         self.dataset_config = dataset_config
         self.split = split
-        self.active_variables = dataset_config["active_variables"] # None
+        self.active_variables = dataset_config["active_variables"]  # None
         # Assuming processed files are stored in root/processed/
         super().__init__(root, transform, pre_transform, pre_filter)
         # Load indices after processing ensures processed files are available
@@ -112,7 +112,7 @@ class VTKMeshDataset(Dataset):
 
         # Generate indices based on dataset size and split
         indices = np.arange(total_samples)
-        if self.dataset_config["rand_dataset"]: # False
+        if self.dataset_config["rand_dataset"]:  # False
             rng = np.random.default_rng(seed=42)
             rng.shuffle(indices)
 

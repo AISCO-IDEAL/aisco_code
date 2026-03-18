@@ -78,11 +78,12 @@ class BasicMLP(BaseModel):
                         f"(freed {mem_before - mem_after:.1f} MB)"
                     )
                     if wandb.run:
+                        # log memory after backward for each loss computation graph
                         wandb.log(
                             {f"grad_memory/{component_name}_after_mb": mem_after},
                             step=epoch,
                         )
-                        # log memory each loss computation graph had
+                        # log memory freed for each loss computation graph
                         wandb.log(
                             {f"grad_memory/{component_name}_freed_mb": mem_before - mem_after},
                             step=epoch,
