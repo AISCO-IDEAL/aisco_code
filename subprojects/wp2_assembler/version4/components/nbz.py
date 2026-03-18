@@ -45,7 +45,7 @@ def inner_nbz(assembly_nr: int = 0):
     return assembly
 
 
-def call_assembly(id_number: int) -> tuple[list[cq.Solid], cq.Solid, list[cq.Solid]]:
+def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
     if id_number > max_assembly_id():
         raise ValueError("ValueError in wp2, version4, nbz. id_number of assembly bigger than max.")
 
@@ -108,9 +108,13 @@ def call_assembly(id_number: int) -> tuple[list[cq.Solid], cq.Solid, list[cq.Sol
     if cut_outer_nbz is None:
         raise ValueError(f"Outer NBZ was completely removed for assembly {id_number}.")
 
-    vision_solids = vision_nbz(id_number).toCompound().Solids()
+    cut_inner_assembly = cq.Assembly()
+    for i, s in enumerate(cut_inner_solids):
+        cut_inner_assembly.add(s, name=f"{'inner'}_{i}")
 
-    return cut_inner_solids, cut_outer_nbz.Solids()[0], vision_solids
+    cut_inner_assembly.name = "inner_assembly"
+
+    return cut_inner_assembly, cut_outer_nbz.Solids()[0], vision_nbz(id_number)
 
 
 def max_assembly_id() -> int:
@@ -174,6 +178,19 @@ def vision_nbz(id_number):
     return assy
 
 
+# eschaerer: needed for visualiser
+def call_assembly_solids(id_number: int) -> tuple[list[cq.Solid], cq.Solid]:
+    """
+    Call the cadquery Assembly of the inner NBZ with given id-number from congif.assembly_map.yaml
+
+    Args: id-number
+
+    Returns:  tuple with list[inner solids] and outer solid
+    """
+    inner, outer, __ = call_assembly(id_number)
+    return inner.toCompound().Solids(), outer
+
+
 if __name__ == "__main__":
     from ocp_vscode import show
 
@@ -187,14 +204,19 @@ if __name__ == "__main__":
 
     show(call_assembly(0))
 
-    cut_inner_solids, cut_outer_nbz, vision_solids = call_assembly(0)
+    inner, outer, vision = call_assembly(0)
 
-    print(type(cut_inner_solids[0]), type(cut_outer_nbz), type(vision_solids[0]))
+    print(type(inner), type(outer), type(vision))
+    print(type(inner.toCompound().Solids()), type(outer), type(vision.toCompound().Solids()))
+
+    inner, outer = call_assembly_solids(0)
+
+    print(type(inner), type(outer))
 
     print(max_assembly_id())
 
-    for i in range(max_assembly_id()):
-        show(call_assembly(i))
+    # for i in range(max_assembly_id()):
+    #     show(call_assembly(i))        # noqa: ERA001
 
     # for demo_id in range(100):
     #     show(call_assembly(demo_id))  # noqa: ERA001
