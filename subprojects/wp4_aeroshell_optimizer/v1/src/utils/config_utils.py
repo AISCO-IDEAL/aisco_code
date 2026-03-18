@@ -32,11 +32,6 @@ _config_registry: dict[str, dict] = {}
 _registry_initialised: bool = False
 
 
-def load_config(v="v1", cfg_name="general_config.yaml") -> dict:
-    # Use environment variable or default to local path
-    v = v  # noqa: PLW0127
-    base_path = Path(os.getenv("AISCO_CODE_PATH", str(Path.home() / "AISCO_code")))
-    config_path = base_path / "subprojects" / "wp4_aeroshell_optimizer" / "v1" / "configs" / cfg_name
 def _cfg_key(cfg_name: str) -> str:
     """Normalise a config filename to a registry key (drop ``.yaml``)."""
     return cfg_name.replace(".yaml", "")
