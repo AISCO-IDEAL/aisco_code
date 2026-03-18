@@ -24,25 +24,6 @@ with open(WIRE_CONFIG_PATH) as f:
 
 
 class ComplexGaborLayer(BaseModel):
-    """
-    Complex Gabor wavelet activation layer.
-
-    Implements: exp(i·ω₀·(Wx+b)) · exp(-σ₀²·|Wx+b|²)
-
-    This combines:
-    - Frequency detail (complex sinusoid)
-    - Spatial localization (Gaussian envelope)
-
-    Args:
-        in_features: Input dimension
-        out_features: Output dimension (number of neurons)
-        bias: Whether to include bias term
-        is_first: True for first layer (real input), False for hidden layers (complex input)
-        omega0: Frequency parameter (controls oscillation rate)
-        sigma0: Gaussian width parameter (controls localization)
-        trainable: Whether omega0/sigma0 should be learned (not recommended)
-    """
-
     def __init__(
         self,
         in_features: int,
@@ -72,15 +53,6 @@ class ComplexGaborLayer(BaseModel):
         self.linear = nn.Linear(in_features, out_features, bias=bias, dtype=dtype)
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        """
-        Apply complex Gabor wavelet activation.
-
-        Args:
-            input_tensor: Input coordinates or features
-
-        Returns:
-            Complex-valued activations
-        """
         lin = self.linear(input_tensor)
         omega = self.omega_0 * lin
         scale = self.scale_0 * lin
@@ -90,30 +62,6 @@ class ComplexGaborLayer(BaseModel):
 
 
 class WIREINR(BaseModel):
-    """
-    WIRE Implicit Neural Representation core network.
-
-    Architecture:
-        Input (real) → ComplexGaborLayer → ComplexGaborLayer x N → Linear → Output (real)
-
-    Note: hidden_features is internally reduced by sqrt2 to account for complex
-    representation carrying 2x information per neuron.
-
-    Args:
-        in_features: Input dimensionality (3 for 3D coordinates)
-        hidden_features: Width of hidden layers (actual: hidden_features/sqrt2 complex neurons)
-        hidden_layers: Number of hidden Gabor layers
-        out_features: Output dimension (1 for SDF)
-        first_omega_0: Frequency for first layer
-        hidden_omega_0: Frequency for hidden layers
-        scale: Gaussian width (sigma0) for all layers
-        outermost_linear: Unused (kept for API compatibility)
-        pos_encode: Unused (kept for API compatibility)
-        sidelength: Unused (kept for API compatibility)
-        fn_samples: Unused (kept for API compatibility)
-        use_nyquist: Unused (kept for API compatibility)
-    """
-
     def __init__(
         self,
         in_features: int,
@@ -175,15 +123,6 @@ class WIREINR(BaseModel):
         self.net = nn.Sequential(*layers)
 
     def forward(self, coords: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass through WIRE network.
-
-        Args:
-            coords: Input coordinates, shape [batch, in_features]
-
-        Returns:
-            Real-valued output, shape [batch, out_features]
-        """
         output = self.net(coords)
 
         # Extract real component for downstream tasks
@@ -194,30 +133,6 @@ class WIREINR(BaseModel):
 
 
 class WIREModel(BaseModel):
-    """
-    WIRE-based model for 3D SDF tasks.
-
-    This is a drop-in replacement for the original BaseModel that uses WIRE
-    internally for superior high-frequency detail and faster convergence.
-
-    Configuration is loaded from WIRE_v1.yaml in the same directory.
-
-    Key differences from original BaseModel:
-    - Uses complex Gabor wavelets instead of ReLU/Tanh
-    - Better at representing sharp features and fine details
-    - Works well with 5-10x higher learning rates (5e-3 to 2e-2)
-    - Automatically reduces hidden width by sqrt2 internally
-
-    Args:
-        config: Configuration dictionary (kept for API compatibility)
-        overwrite_base_init: If True, skip layer initialization (for subclassing)
-        in_dim: Input dimension (3 for 3D coordinates)
-        hidden: Hidden layer width (actual complex width: hidden/sqrt2)
-        layers: Number of hidden layers
-
-    Note: Hyperparameters are loaded from WIRE_v1.yaml. Edit that file to tune.
-    """
-
     def __init__(
         self,
         config: dict,
@@ -263,15 +178,6 @@ class WIREModel(BaseModel):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass with input/output scaling.
-
-        Args:
-            x: Input coordinates in mm, shape [batch, in_dim]
-
-        Returns:
-            SDF values in mm, shape [batch]
-        """
         # Scale input from mm to meters (network works better with normalized inputs)
         x = x / 1000.0
 
@@ -383,12 +289,6 @@ class WIREModel(BaseModel):
         super().eval()
 
     def get_model_info_dict(self):
-        """
-        Get model information dictionary.
-
-        Returns:
-            Dictionary with model architecture details and parameter count
-        """
         model_info = {
             "in_dim": self.in_dim,
             "hidden": self.hidden,
