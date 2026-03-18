@@ -80,12 +80,12 @@ def animate(assembly_id, pos_array, orn_array):
 
     inv_pos, inv_quat = invert_transform()
 
-    animation.add_track(f"/{assembly.name}/speed_bump", "t", times, coords)
+    animation.add_track(f"/{assembly.name}/speed_bump", "t", times, inv_pos_array)
     animation.add_track(
         f"/{assembly.name}/speed_bump",
         "q",
         times,
-        [_quat_dict(q) for q in orn_array],
+        [_quat_dict(q) for q in inv_orn_array],
     )
 
     show(assembly)  # opens the viewer with the initial frame

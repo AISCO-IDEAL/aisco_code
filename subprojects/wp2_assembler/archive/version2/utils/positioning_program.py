@@ -260,11 +260,12 @@ def sim(assembly_number, only_final: bool = False):
 def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
     inner, outer = call_assembly(assembly_number)
     ground_shape = create_speed_hump_and_floor()
+    inv_pos_array, inv_orn_array = invert_transform(pos_array, orn_array)
 
     i = 0
     knife = []
-    moved_outer = outer
-    l = len(pos_array)
+    ground_shape_solid = ground_shape.val()
+    l = len(inv_pos_array)
 
     for pos, orn in zip(pos_array, orn_array):
         i += 1
@@ -289,7 +290,7 @@ def trim_outer_nbz(assembly_number: int, pos_array, orn_array) -> cq.Shape:
 
             knife.append(moved_outer.intersect(_as_shape(ground_shape).val()).located(location))
 
-    show(knife)
+    show(combined_compound)
     return
 
 
@@ -321,12 +322,19 @@ def invert_transform(pos, quat):
         )
 
     def qrot(q, v):
-        # rotate vector v by quaternion q
         v_q = np.array([v[0], v[1], v[2], 0.0])
-        return qmul(qmul(q, v_q), np.array([-q[0], -q[1], -q[2], q[3]]))[:3]
+        q_conj = np.array([-q[0], -q[1], -q[2], q[3]])
+        return qmul(qmul(q, v_q), q_conj)[:3]
 
-    # New translation: - R_inv * t
-    pos_inv = -qrot(quat_inv, p)
+    for pos, quat in zip(pos_list, quat_list):
+        px, py, pz = pos
+        qx, qy, qz, qw = quat
+
+        quat = np.array([qx, qy, qz, qw])
+        quat_inv = np.array([-qx, -qy, -qz,  qw])
+
+        p = np.array([px, py, pz])
+        pos_inv = -qrot(quat_inv, p)
 
     return pos_inv, quat_inv
 
