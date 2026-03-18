@@ -14,8 +14,8 @@ losses: # [compute: bool, weight: float, path: str]  # USED — total_loss.py dy
   aero:
     # frontal_area_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/frontal_area_v0.py"]  # NOT ACTIVE (compute=0)
     # crude_estimator_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/crude_estimator_v0.py"]  # NOT ACTIVE (compute=0)
-    null_loss_aero_v1_: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]  # ACTIVE — loaded by total_loss.py
-    gaot_loss: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/gaot_loss.py"]  # NOT ACTIVE (compute=0)
+    null_loss_aero_v1_: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]  # ACTIVE — loaded by total_loss.py
+    gaot_loss: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/gaot_loss.py"]  # NOT ACTIVE (compute=0)
   bb:
     # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v1.py"]  # NOT ACTIVE (compute=0)
     # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15  # NOT ACTIVE (compute=0)

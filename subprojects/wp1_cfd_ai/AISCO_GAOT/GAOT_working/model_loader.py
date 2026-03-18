@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 model_dict = {
     "OnlyCorrectNormalized": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/New_Normalizer1.pt",  # only trainde for 3 Epochs or something like this
     "gold3": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/gold3.pt",  # Should be trained for 400 Epochs
-    "platin": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/platin.pt",
+    "platin": "/home/eschaerer/AISCO_code/subprojects/wp7_gui/gaot/platin.pt",
 }
 
 

@@ -1,0 +1,56 @@
+latent_tokens:
+- 32
+- 32
+- 16
+field_output_size: 1
+magno:
+  use_gno: true
+  gno_coord_dim: 3
+  neighbor_strategy: bidirectional
+  projection_channels: 256
+  in_gno_channel_mlp_hidden_layers:
+  - 64
+  - 64
+  - 64
+  out_gno_channel_mlp_hidden_layers:
+  - 64
+  - 64
+  lifting_channels: 32
+  gno_radius: 0.033
+  gno_use_torch_cluster: true
+  attention_type: cosine
+  use_geoembed:
+  - true
+  - false
+  embedding_method: statistical
+  encoder_feature_attr:
+  - pos
+  - c
+  mlp_type: linear
+  precompute_edges: false
+  asynchronous_graph_building: false
+  scales:
+  - 1.0
+  use_scale_weights: false
+  k_neighbors: 1
+transformer:
+  patch_size: 2
+  hidden_size: 256
+  use_attn_norm: true
+  use_ffn_norm: true
+  norm_eps: 1.0e-06
+  num_layers: 10
+  positional_embedding: rope
+  use_long_range_skip: true
+  attn_config:
+    hidden_size: 256
+    num_heads: 8
+    num_kv_heads: 8
+    use_conditional_norm: false
+    cond_norm_hidden_size: 4
+  ffn_config:
+    hidden_size: 1024
+    use_conditional_norm: false
+    cond_norm_hidden_size: 4
+input_size: 6
+output_size: 2
