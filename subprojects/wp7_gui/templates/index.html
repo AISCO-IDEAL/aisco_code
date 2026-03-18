@@ -63,7 +63,7 @@
 
     .controls {
       display: grid;
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: auto 1fr auto auto;
       align-items: center;
       gap: 12px;
     }
@@ -103,6 +103,14 @@
       color: var(--muted);
       min-width: 120px;
       text-align: right;
+    }
+
+    #estimatedDragText {
+      font-size: 0.9rem;
+      color: var(--muted);
+      min-width: 170px;
+      text-align: right;
+      font-weight: 600;
     }
 
     .visuals-grid {
@@ -170,6 +178,10 @@
       width: 100%;
     }
 
+    .gif-actions {
+      margin-top: auto;
+    }
+
     @media (max-width: 900px) {
       .controls {
         grid-template-columns: 1fr;
@@ -198,6 +210,7 @@
         <progress id="epochProgress" value="0" max="100"></progress>
       </div>
       <div id="progressText">0.0%</div>
+      <div id="estimatedDragText">Estimated drag: --</div>
     </section>
 
     <section class="card" style="min-height: 0;">
@@ -216,14 +229,13 @@
 
         <div class="visual-card">
           <div class="visual-title">Mesh Assembly GIF (slowed)</div>
-          <div>
-            <button id="btnRestartGif" type="button">Restart GIF</button>
-          </div>
           <div class="image-slot">
             <img id="artifactImage" alt="mesh assembly gif preview">
           </div>
           <div class="hint" id="artifactStatus">No GIF loaded yet.</div>
-          <div class="hint" id="currentRunDir">Run folder: not detected yet.</div>
+          <div class="gif-actions">
+            <button id="btnRestartGif" type="button">Restart GIF</button>
+          </div>
         </div>
       </div>
     </section>
@@ -234,8 +246,8 @@
     const btnRunLocal = document.getElementById("btnRunLocal");
     const epochProgress = document.getElementById("epochProgress");
     const progressText = document.getElementById("progressText");
+    const estimatedDragText = document.getElementById("estimatedDragText");
 
-    const currentRunDir = document.getElementById("currentRunDir");
     const artifactImage = document.getElementById("artifactImage");
     const artifactStatus = document.getElementById("artifactStatus");
     const btnRestartGif = document.getElementById("btnRestartGif");
@@ -275,7 +287,7 @@
       meshSliderLabel.textContent = `Step ${clampedIndex + 1}/${meshStepEntries.length} (${epochLabel})`;
       meshStepImage.src = `${meshStep.url}&t=${Date.now()}`;
       meshStepImage.style.display = "block";
-      meshStepStatus.textContent = `Showing ${meshStep.name}`;
+      meshStepStatus.textContent = "";
     }
 
     function updateGifDisplay() {
@@ -292,7 +304,7 @@
         currentGifKey = gifEntry.key;
       }
       artifactImage.style.display = "block";
-      artifactStatus.textContent = `Playing slowed GIF: ${gifEntry.name}`;
+      artifactStatus.textContent = "";
       btnRestartGif.disabled = false;
     }
 
@@ -302,15 +314,13 @@
       }
       // Force a hard reload of the GIF source so playback starts from frame 1.
       artifactImage.src = `${gifEntry.playUrl}&t=${Date.now()}`;
-      artifactStatus.textContent = `Restarted GIF: ${gifEntry.name}`;
+      artifactStatus.textContent = "";
     }
 
     async function refreshArtifacts() {
       try {
         const res = await fetch(`/run-local/artifacts?t=${Date.now()}`, { cache: "no-store" });
         const data = await res.json();
-
-        currentRunDir.textContent = `Run folder: ${data.run_dir || "not detected yet"}`;
 
         const gifList = data.mesh_assembly_gifs || [];
         if (gifList.length > 0) {
@@ -354,6 +364,12 @@
         const pct = Number(data.progress_percent || 0);
         epochProgress.value = pct;
         progressText.textContent = `${pct.toFixed(1)}%`;
+
+        if (data.estimated_drag === null || data.estimated_drag === undefined || Number.isNaN(Number(data.estimated_drag))) {
+          estimatedDragText.textContent = "Estimated drag: --";
+        } else {
+          estimatedDragText.textContent = `Estimated drag: ${Number(data.estimated_drag).toFixed(4)}`;
+        }
 
         if (data.running) {
           btnRunLocal.disabled = true;
