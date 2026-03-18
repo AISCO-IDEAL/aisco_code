@@ -184,6 +184,7 @@ ignore = [
     "PLR2004", # triggers on if version == 2
     "N806", # in ML uppercase variables are common
     "N803", # invalid argument name
+    "PD011", # .values on torch tensors is correct, not pandas-specific
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
