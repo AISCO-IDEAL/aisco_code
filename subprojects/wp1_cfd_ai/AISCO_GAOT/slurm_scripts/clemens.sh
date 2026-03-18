@@ -6,8 +6,8 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
 #SBATCH --gpus=rtx_4090:1
-#SBATCH --output=/cluster/home/clhuber/logs/Clemens_TEST_%j.out
-#SBATCH --error=/cluster/home/clhuber/logs/Clemens_TEST_%j.err
+#SBATCH --output=/cluster/home/clhuber/logs/Clemens_TEST_%j.out 
+#SBATCH --error=/cluster/home/clhuber/logs/Clemens_TEST_%j.err 
 
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
@@ -72,12 +72,12 @@ export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
 cd /cluster/home/$USERNAME/AISCO_code/
 #python -m src.main
 
-ulimit -n 65536
+ulimit -n 65536 
 umask 0002
 python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/main.py \
     -c subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/euler_field_new.yaml \
     2>&1
-
+    
 #------------------------------------------------------------------------------
 # Print job end information
 #------------------------------------------------------------------------------

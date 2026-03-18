@@ -24,24 +24,6 @@ from tqdm import tqdm
 #   filename str
 
 NUM_WORKERS = 8  # number of parallel workers for mesh processing
-V_INF_DRIVAER = 38.89  # m/s
-COND_EPS = 1e-6
-
-
-def _compute_geom_conditioning(pos: torch.Tensor, v_inf: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Build geometry-aware conditioning vectors from unnormalized coordinates."""
-    extent = pos.max(dim=0).values - pos.min(dim=0).values
-    max_extent = torch.clamp(extent.max(), min=COND_EPS)
-    aspect = extent / max_extent
-    conditioning = torch.cat(
-        [
-            torch.tensor([v_inf], dtype=torch.float32),
-            extent.to(dtype=torch.float32),
-            aspect.to(dtype=torch.float32),
-        ],
-        dim=0,
-    ).unsqueeze(0)
-    return extent, aspect, conditioning
 
 
 def _interpolate_cp_from_vtp(ply_pos_zup, vtp_path, cp_key="CpMeanTrim"):
@@ -120,11 +102,6 @@ def _process_single_drivaer(run_folder, output_dir, target_col):
     data.x = cp
     data.cd = torch.tensor([drag_value], dtype=torch.float32)
     data.force = torch.tensor([float("nan")], dtype=torch.float32)
-    geom_extent, geom_aspect, conditioning = _compute_geom_conditioning(pos, V_INF_DRIVAER)
-    data.v_inf = torch.tensor([V_INF_DRIVAER], dtype=torch.float32)
-    data.geom_extent = geom_extent
-    data.geom_aspect = geom_aspect
-    data.conditioning = conditioning
     data.filename = folder_name
 
     torch.save(data, os.path.join(output_dir, f"{folder_name}.pt"))

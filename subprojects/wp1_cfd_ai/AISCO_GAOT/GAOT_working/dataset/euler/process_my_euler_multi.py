@@ -33,24 +33,6 @@ NUM_WORKERS = 8  # number of parallel workers for mesh processing
 SURFACE_ZONE_NAME = "car_surface"
 MIN_FORCE_COLS = 3  # minimum columns expected in a force report line
 MM_TO_M_THRESHOLD = 50  # if any coordinate exceeds this (mm), convert to meters
-V_INF_EULER = 25.0  # m/s
-COND_EPS = 1e-6
-
-
-def _compute_geom_conditioning(pos: torch.Tensor, v_inf: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Build geometry-aware conditioning vectors from unnormalized coordinates."""
-    extent = pos.max(dim=0).values - pos.min(dim=0).values
-    max_extent = torch.clamp(extent.max(), min=COND_EPS)
-    aspect = extent / max_extent
-    conditioning = torch.cat(
-        [
-            torch.tensor([v_inf], dtype=torch.float32),
-            extent.to(dtype=torch.float32),
-            aspect.to(dtype=torch.float32),
-        ],
-        dim=0,
-    ).unsqueeze(0)
-    return extent, aspect, conditioning
 
 
 def parse_force_report(filepath):
@@ -207,11 +189,6 @@ def _process_single_euler(ply_file, force_dir, results_dir, output_dir):
     data.x = cp_tensor
     data.force = torch.tensor([drag_force], dtype=torch.float32)  # [N], positive = drag in +x
     data.cd = torch.tensor([float("nan")], dtype=torch.float32)  # not available for Euler
-    geom_extent, geom_aspect, conditioning = _compute_geom_conditioning(pos, V_INF_EULER)
-    data.v_inf = torch.tensor([V_INF_EULER], dtype=torch.float32)
-    data.geom_extent = geom_extent
-    data.geom_aspect = geom_aspect
-    data.conditioning = conditioning
     data.filename = run_id
 
     run_num_int = int(run_number)

@@ -6,53 +6,6 @@ from torch_geometric.data import Data, Dataset
 
 # Shape dimension constants
 EXPECTED_DATA_SHAPE_DIMS = 3
-COND_EPS = 1e-6
-
-
-def _ensure_conditioning_fields(data: Data) -> None:
-    """Ensure sample-level conditioning is available and consistently shaped.
-
-    Target format:
-      - data.v_inf: [1]
-      - data.geom_extent: [3]
-      - data.geom_aspect: [3]
-      - data.conditioning: [1, C]
-    """
-    if hasattr(data, "conditioning") and data.conditioning is not None:
-        cond = data.conditioning.to(dtype=torch.float32)
-        if cond.dim() == 1:
-            cond = cond.unsqueeze(0)
-        data.conditioning = cond
-        return
-
-    v_inf = None
-    if hasattr(data, "v_inf") and data.v_inf is not None:
-        v_inf = data.v_inf.to(dtype=torch.float32).reshape(-1)[:1]
-
-    if v_inf is None:
-        return
-
-    geom_extent = None
-    geom_aspect = None
-    if hasattr(data, "geom_extent") and data.geom_extent is not None:
-        geom_extent = data.geom_extent.to(dtype=torch.float32).reshape(-1)
-    if hasattr(data, "geom_aspect") and data.geom_aspect is not None:
-        geom_aspect = data.geom_aspect.to(dtype=torch.float32).reshape(-1)
-
-    if (geom_extent is None or geom_aspect is None) and hasattr(data, "pos") and data.pos is not None:
-        extent = data.pos.max(dim=0).values - data.pos.min(dim=0).values
-        max_extent = torch.clamp(extent.max(), min=COND_EPS)
-        aspect = extent / max_extent
-        geom_extent = extent.to(dtype=torch.float32)
-        geom_aspect = aspect.to(dtype=torch.float32)
-
-    if geom_extent is None or geom_aspect is None:
-        return
-
-    data.v_inf = v_inf
-    data.geom_extent = geom_extent
-    data.geom_aspect = geom_aspect
-    data.conditioning = torch.cat([v_inf, geom_extent, geom_aspect], dim=0).unsqueeze(0)
 
 
 class EnrichedData(Data):
@@ -191,7 +144,6 @@ class VTKMeshDataset(Dataset):
                 data.x = data.x[:, self.active_variables]
             if hasattr(data, "x") and data.x is not None and len(data.x.shape) == EXPECTED_DATA_SHAPE_DIMS:
                 data.x = data.x.squeeze(-1)
-            _ensure_conditioning_fields(data)
         except FileNotFoundError as exc:
             raise FileNotFoundError(f"Processed file not found: {filepath}. Ensure preprocessing script was run.") from exc
         except Exception as e:
