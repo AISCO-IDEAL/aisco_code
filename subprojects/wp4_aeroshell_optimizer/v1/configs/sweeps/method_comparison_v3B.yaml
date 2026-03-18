@@ -1,0 +1,26 @@
+# ============================================================================
+# WandB Sweep Config — Solar V3B Mesh Extraction Method Comparison
+# ============================================================================
+# Goal: Compare mesh extraction methods under identical settings.
+# - Active solar loss must remain solar_v3B in losses_v0_config.yaml.
+# - Resolution is fixed to 128 (power-of-2, valid for sparse_sdf).
+# - Grid uses a repeat index to guarantee 5 runs per method.
+# - Total runs = 5 methods * 5 repeats = 25 runs.
+#
+# IMPORTANT parameter key prefix:
+#   solar_configs/solar_loss_config....
+# This targets configs/solar_configs/solar_loss_config.yaml via config_utils registry.
+# ============================================================================
+program: subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py
+method: grid
+metric:
+  goal: minimize
+  name: total_loss
+run_cap: 25
+parameters:
+  solar_configs/solar_loss_config.SolarLossConfigV3.method:
+    values: ["flexicubes", "diso_mc", "diso_dmc", "mesh_sdf", "sparse_sdf"]
+  solar_configs/solar_loss_config.SolarLossConfigV3.resolution:
+    values: [128]
+  sweep_repeat_index:
+    values: [0, 1, 2, 3, 4]

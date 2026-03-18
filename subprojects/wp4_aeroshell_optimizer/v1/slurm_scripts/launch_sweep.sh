@@ -17,8 +17,9 @@
 ##  sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/launch_sweep.sh ##
 ###############################################################################################
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/new_50_meshes/ms1tekky"   # <-- EDIT THIS
-COUNT=16                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
+SWEEP_ID="aisco/your_project/your_method_comparison_sweep"   # <-- set output from: wandb sweep .../method_comparison_v3B.yaml
+COUNT=25                                      # per-agent max pulls; with run_cap in sweep, total runs stay bounded
+MAX_AGENTS=4                                  # hard cap on parallel agents/GPU workers
 
 # ---- Job info ---------------------------------------------------------------
 echo "=========================================="
@@ -56,7 +57,10 @@ cd /cluster/home/${USERNAME}/AISCO_code
 
 # ---- Launch agents ----------------------------------------------------------
 NUM_GPUS=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
-echo "[$(date)] Detected $NUM_GPUS GPUs — launching 1 agent each, $COUNT runs per agent..."
+if [ "$NUM_GPUS" -gt "$MAX_AGENTS" ]; then
+    NUM_GPUS=$MAX_AGENTS
+fi
+echo "[$(date)] Launching $NUM_GPUS agents (max $MAX_AGENTS), up to $COUNT pulls per agent..."
 
 for ((i=0; i<NUM_GPUS; i++)); do
     AGENT_LOG="${LOG_DIR}/agent_gpu${i}_${SLURM_JOB_ID}.log"
