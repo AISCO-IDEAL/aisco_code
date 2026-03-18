@@ -302,7 +302,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(400, {"message": "Only GIF files are supported for slow playback"})
             return
 
-        cache_key = hashlib.sha1(f"{requested.resolve()}|{requested.stat().st_mtime_ns}|{factor:.2f}".encode("utf-8")).hexdigest()
+        cache_key = hashlib.sha1(f"{requested.resolve()}|{requested.stat().st_mtime_ns}|{factor:.2f}".encode()).hexdigest()
         SLOW_GIF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         cached_path = SLOW_GIF_CACHE_DIR / f"slow_{cache_key}.gif"
 
