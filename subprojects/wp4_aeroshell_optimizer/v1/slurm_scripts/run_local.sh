@@ -51,8 +51,8 @@ fi
 #------------------------------------------------------------------------------
 export PYTHONUNBUFFERED=TRUE
 # Add the local subprojects folder to path
-export PYTHONPATH="$PROJECT_ROOT/subprojects:$PYTHONPATH"
-export AISCO_CODE_PATH="/home/eschaerer/AISCO_code"
+export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+export AISCO_CODE_PATH="$PROJECT_ROOT"
 cd "$PROJECT_ROOT"
 
 # Run the python command
