@@ -67,18 +67,14 @@ from subprojects.wp2_assembler.version2.components import nbz
 from subprojects.wp2_assembler.version2.utils.reg_imp import get_regulation
 
 # Generate or retrieve an assembly by ID
-inner_nbz, outer_nbz, vision_cones = nbz.call_assembly_solids(id_number=1)
+inner_nbz, outer_nbz = nbz.call_assembly(id_number=1)
+
+# Generate a new random assembly (saved to assembly_map.yaml)
+nbz.generate_assembly()
 
 # Access regulation values
 tire_width = get_regulation("wheel.tire_width")  # Returns 96
 seat_width = get_regulation("seat.dimension.width")  # Returns 450.0
-
-# Get the smallest bounding box containing the inner nbz
-bounding_box_coordinates = bounding_box_of_assembly(id_number=1) # returns tuple with two tuples: ((x_min, y_min, z_min),(x_max,y_max,z_max))
-
-# Visualize the bounding box
-bounding_box_solid = create_bb_visualization(coordinates = bounding_box_coordinates) # returns a solid of the bounding box, with the correct positioning and size.
-
 ```
 
 ## Project Structure
@@ -202,7 +198,7 @@ Make sure `ocp-vscode` extension is installed in VS Code for 3D visualization.
 
 ## Status
 
-This version (v3) is now **frozen** and will not receive further modifications.
+This version (v2) is now **frozen** and will not receive further modifications. New features should be developed in version3 or later.
 
 ## References
 

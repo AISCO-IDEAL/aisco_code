@@ -71,8 +71,6 @@ def outer_nbz_ramps(assembly_id) -> cq.Solid:
 
 
 if __name__ == "__main__":
-    '''
-    demo_id = 0
     from ocp_vscode import show
 
     demo_id = 21  # random number because it was not defined at all.
@@ -85,4 +83,3 @@ if __name__ == "__main__":
 
     show(ramps, inner_cmp)
     print(type(ramps))
-    '''
