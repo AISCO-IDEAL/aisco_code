@@ -1,0 +1,43 @@
+# ============================================================================
+# Wandb Sweep Config — WIRE Model Architecture + Training Hyperparams
+# ============================================================================
+# Parameter naming: <config_filename_without_yaml>.<nested.path.to.value>
+# See alm_sweep.yaml for reference pattern.
+# ============================================================================
+program: subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py
+method: bayes
+metric:
+  name: total_loss
+  goal: minimize
+parameters:
+  # WIRE-specific wavelet parameters
+  WIRE_v1.first_omega_0:
+    values: [5, 10, 20, 30]
+  WIRE_v1.hidden_omega_0:
+    values: [5, 10, 20, 30]
+  WIRE_v1.scale:
+    values: [5, 10, 15, 20, 30]
+  # WIRE network architecture
+  WIRE_v1.hidden_features:
+    values: [128, 256, 512]
+  WIRE_v1.hidden_layers:
+    values: [2, 3, 4, 5]
+  # Training parameters (WIRE uses 5-10x higher LR than standard MLPs)
+  training_v0_config.training_params.learning_rate:
+    distribution: log_uniform_values
+    min: 0.005
+    max: 0.02
+
+  # ----------------------------------------------------------------------------
+  # Model Selection Overrides
+  # ----------------------------------------------------------------------------
+  # Tell the main script to load the WIREModel class instead of the default
+  general_config.model_def.model_name:
+    value: WIRE
+  general_config.model_def.model_file_path:
+    # Adjust this path if wiremodel.py is located elsewhere in your actual structure
+    value: subprojects/wp4_aeroshell_optimizer/v1/src/models/WIRE.py
+
+  # Tell the main script to use the WIRE_v1.yaml config for model parameters
+  general_config.active_configs.model_params:
+    value: WIRE_v1.yaml
