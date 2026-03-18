@@ -161,6 +161,48 @@ class WIREModel(BaseModel):
         hidden = int(WIRE_CONFIG.get("hidden_features", hidden))
         layers = int(WIRE_CONFIG.get("hidden_layers", layers))
 
+        # WandB Sweep overrides - these take precedence over YAML config
+        # Supports both direct keys (e.g., "first_omega_0") and prefixed keys (e.g., "WIRE_v1.first_omega_0")
+        if wandb.run:
+            # Helper to check both with and without "WIRE_v1." prefix
+            def get_wandb_param(param_name):
+                """Check wandb.config for param with or without WIRE_v1. prefix"""
+                if f"WIRE_v1.{param_name}" in wandb.config:
+                    return wandb.config[f"WIRE_v1.{param_name}"]
+                elif param_name in wandb.config:
+                    return wandb.config[param_name]
+                return None
+
+            param = get_wandb_param("first_omega_0")
+            if param is not None:
+                omega0_first = float(param)
+                print(f"Sweep: Updated first_omega_0 to {omega0_first}")
+
+            param = get_wandb_param("hidden_omega_0")
+            if param is not None:
+                omega0_hidden = float(param)
+                print(f"Sweep: Updated hidden_omega_0 to {omega0_hidden}")
+
+            param = get_wandb_param("scale")
+            if param is not None:
+                sigma0 = float(param)
+                print(f"Sweep: Updated scale (sigma0) to {sigma0}")
+
+            param = get_wandb_param("hidden_features")
+            if param is not None:
+                hidden = int(param)
+                print(f"Sweep: Updated hidden_features to {hidden}")
+
+            param = get_wandb_param("hidden_layers")
+            if param is not None:
+                layers = int(param)
+                print(f"Sweep: Updated hidden_layers to {layers}")
+
+            param = get_wandb_param("in_features")
+            if param is not None:
+                in_dim = int(param)
+                print(f"Sweep: Updated in_features to {in_dim}")
+
         # Update instance variables
         self.in_dim = in_dim
         self.hidden = hidden
@@ -202,9 +244,12 @@ class WIREModel(BaseModel):
         self.train()  # Set model to training mode, i.e. things like dropout layers are active, turn off by using self.eval() or model.eval()
 
         # Check for WandB sweep overrides for learning rate
-        if wandb.run and "learning_rate " in wandb.config:
+        if wandb.run and "learning_rate" in wandb.config:
             learning_rate = wandb.config.learning_rate
             print(f"Sweep: Updated learning_rate to {learning_rate}")
+        # Fallback to training_config (handle nested training_params if present)
+        elif "training_params" in training_config:
+            learning_rate = training_config["training_params"].get("learning_rate", 1e-3)
         else:
             learning_rate = training_config.get("learning_rate", 1e-3)
 
