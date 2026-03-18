@@ -7,14 +7,13 @@
   <style>
     :root {
       --bg: #23283e;
-      --panel: #ffffff;
+      --panel: #23283e;
       --accent: #1d6d54;
       --accent-2: #104a39;
       --text: #102018;
       --muted: #496456;
-      --danger: #8f2e2e;
-      --border: #d7e4db;
-      --shadow: 0 12px 24px rgba(16, 32, 24, 0.08);
+      --border: #23283e
+      --shadow: 0 10px 20px rgba(16, 32, 24, 0.08);
     }
 
     * { box-sizing: border-box; }
@@ -22,159 +21,95 @@
     body {
       margin: 0;
       font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-      background: radial-gradient(circle at top right, #dceee4 0%, var(--bg) 45%, #edf3ef 100%);
+      background: var(--bg);
       color: var(--text);
-      min-height: 100vh;
-      padding: 24px;
+      height: 100vh;
+      overflow: hidden;
+      padding: 16px;
     }
 
-    .wrap {
-      max-width: 980px;
-      margin: 140px auto;
+    .page {
+      height: calc(100vh - 32px);
       display: grid;
-      gap: 16px;
-    }
-
-    .team-logo {
-      position: fixed;
-      top: 0px;
-      right: 455px;
-      width: 1000px;
-      height: 140px;
-      border-radius: 14px;
-      background: rgba(255, 255, 255, 0.94);
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 8px;
-      z-index: 1000;
-      backdrop-filter: blur(2px);
-    }
-
-    .team-logo img {
-      max-width: 100%;
-      max-height: 100%;
-      object-fit: contain;
-      display: block;
+      grid-template-rows: auto auto 1fr;
+      gap: 12px;
+      max-width: 1200px;
+      margin: 0 auto;
     }
 
     .card {
       background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: 12px;
       box-shadow: var(--shadow);
-      padding: 18px;
+      padding: 12px;
+      overflow: hidden;
     }
 
-    h1 {
-      margin: 0 0 6px 0;
-      font-size: 1.55rem;
-    }
-
-    .sub {
-      margin: 0;
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
-
-    .buttons {
+    .logo-wrap {
       display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 14px;
+      align-items: center;
+      justify-content: center;
+      min-height: 90px;
+    }
+
+    .logo-wrap img {
+      max-height: 76px;
+      width: auto;
+      max-width: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 12px;
     }
 
     button {
       border: none;
       border-radius: 10px;
-      padding: 10px 14px;
+      padding: 10px 16px;
       background: var(--accent);
       color: #fff;
       font-size: 0.95rem;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
-      transition: transform 0.08s ease, background 0.2s ease;
     }
 
     button:hover { background: var(--accent-2); }
-    button:active { transform: translateY(1px); }
 
-    .danger { background: var(--danger); }
-
-    #status {
-      margin-top: 14px;
-      padding: 10px;
-      border-radius: 10px;
-      background: #eef4ef;
-      border: 1px solid var(--border);
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 0.9rem;
-    }
-
-    #imageBox {
-      margin-top: 14px;
-      border: 1px dashed var(--border);
-      border-radius: 10px;
-      padding: 10px;
-      background: #fafdfb;
-      display: none;
-    }
-
-    #demoImage {
-      max-width: 100%;
-      border-radius: 8px;
-      display: block;
-      margin: 0 auto;
-    }
-
-    .stack {
+    .progress-wrap {
+      width: 100%;
       display: grid;
-      gap: 10px;
-      margin-top: 8px;
+      gap: 6px;
     }
 
-    label {
+    .progress-label {
       font-size: 0.9rem;
       color: var(--muted);
+      font-weight: 600;
     }
 
-    input {
+    progress {
       width: 100%;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px;
-      font-size: 0.95rem;
+      height: 18px;
     }
 
-    pre {
-      margin: 0;
-      background: #23283e;
-      color: #ddf8e8;
-      border-radius: 10px;
-      padding: 12px;
-      min-height: 120px;
-      max-height: 420px;
-      overflow: auto;
-      border: 1px solid #2a4b3c;
-      font-size: 0.85rem;
-      line-height: 1.35;
-    }
-
-    .artifacts-panel {
-      display: grid;
-      gap: 10px;
-      margin-top: 10px;
+    #progressText {
+      font-size: 0.9rem;
+      color: var(--muted);
+      min-width: 120px;
+      text-align: right;
     }
 
     .visuals-grid {
+      height: 100%;
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 12px;
-      align-items: start;
     }
 
     .visual-card {
@@ -183,31 +118,42 @@
       padding: 10px;
       background: #f8fcf9;
       display: grid;
+      grid-template-rows: auto 1fr auto auto;
       gap: 8px;
+      min-height: 0;
     }
 
     .visual-title {
-      font-size: 0.9rem;
+      font-size: 0.95rem;
       color: var(--muted);
-      font-weight: 600;
+      font-weight: 700;
     }
 
-    #artifactImage {
-      max-width: 100%;
-      border-radius: 10px;
+    .image-slot {
+      width: 100%;
+      height: 100%;
+      min-height: 240px;
       border: 1px solid var(--border);
-      background: #f5faf7;
-      min-height: 120px;
+      border-radius: 8px;
+      background: #f1f7f3;
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+    }
+
+    .image-slot img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
       display: none;
     }
 
-    #meshStepImage {
-      max-width: 100%;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: #f5faf7;
-      min-height: 120px;
-      display: none;
+    .hint {
+      font-size: 0.85rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .slider-row {
@@ -215,21 +161,24 @@
       gap: 6px;
     }
 
-    input[type="range"] {
+    .slider-row label {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .slider-row input[type="range"] {
       width: 100%;
     }
 
-    #meshFileLink {
-      color: var(--accent-2);
-      font-weight: 600;
-      text-decoration: none;
-    }
+    @media (max-width: 900px) {
+      .controls {
+        grid-template-columns: 1fr;
+      }
 
-    #meshFileLink:hover {
-      text-decoration: underline;
-    }
+      #progressText {
+        text-align: left;
+      }
 
-    @media (max-width: 860px) {
       .visuals-grid {
         grid-template-columns: 1fr;
       }
@@ -237,162 +186,84 @@
   </style>
 </head>
 <body>
-  <aside class="team-logo" aria-label="Team logo">
-    <img id="teamLogo" src="team_logo.png" alt="Team logo">
-  </aside>
-
-  <main class="wrap">
-    <section class="card">
-      <h1>WP7 Maximal Browser GUI</h1>
-      <p class="sub">Client-side controls for local test actions and run-local process monitoring.</p>
-      <div class="buttons">
-        <button id="btnDummy">Button 1: Run dummy logger</button>
-        <button id="btnImage">Button 2: Show local image</button>
-        <button id="btnRunLocal">Button 3: Start run_local.sh</button>
-      </div>
-      <div id="status">Ready.</div>
-      <div id="imageBox">
-        <img id="demoImage" src="demo_image.png" alt="Demo image">
-      </div>
+  <main class="page">
+    <section class="card logo-wrap" aria-label="Team logo">
+      <img id="teamLogo" src="team_logo.png" alt="Team logo">
     </section>
 
-    <section class="card">
-      <h1>Run Local Logs</h1>
-      <div class="buttons">
-        <button id="btnRefreshLogs">Refresh logs</button>
-        <button id="btnAutoLogs">Start auto-refresh</button>
+    <section class="card controls">
+      <button id="btnRunLocal">RUN</button>
+      <div class="progress-wrap">
+        <div class="progress-label">Optimization Progress</div>
+        <progress id="epochProgress" value="0" max="100"></progress>
       </div>
-      <pre id="runLocalLogs">No logs loaded yet.</pre>
+      <div id="progressText">0.0%</div>
     </section>
 
-    <section class="card">
-      <h1>Current Run Artifacts</h1>
-      <p class="sub" id="currentRunDir">Run folder: not detected yet.</p>
-      <div class="buttons">
-        <button id="btnRefreshArtifacts">Refresh artifacts</button>
-      </div>
-      <div class="artifacts-panel">
-        <div class="visuals-grid">
-          <div class="visual-card">
-            <div class="visual-title">Left: Mesh Steps (epoch slider)</div>
+    <section class="card" style="min-height: 0;">
+      <div class="visuals-grid">
+        <div class="visual-card">
+          <div class="visual-title">Mesh Steps</div>
+          <div class="image-slot">
             <img id="meshStepImage" alt="mesh step preview">
-            <div id="meshStepStatus">No mesh step image loaded yet.</div>
-            <div class="slider-row">
-              <label for="meshSlider" id="meshSliderLabel">Mesh step slider (no images loaded)</label>
-              <input id="meshSlider" type="range" min="0" max="0" value="0" step="1" disabled>
-              <a id="meshFileLink" href="#" target="_blank" rel="noopener">No mesh step selected</a>
-            </div>
           </div>
-          <div class="visual-card">
-            <div class="visual-title">Right: Mesh Assembly GIF (slowed)</div>
-            <img id="artifactImage" alt="mesh_assembly_mode gif preview">
-            <div id="artifactStatus">No GIF loaded yet.</div>
+          <div class="hint" id="meshStepStatus">No mesh step image loaded yet.</div>
+          <div class="slider-row">
+            <label for="meshSlider" id="meshSliderLabel">Epoch slider</label>
+            <input id="meshSlider" type="range" min="0" max="0" value="0" step="1" disabled>
           </div>
         </div>
-      </div>
-    </section>
 
-    <section class="card">
-      <h1>Run Arbitrary Bash Command</h1>
-      <div class="stack">
-        <label for="commandInput">Executed via POST /run-command</label>
-        <input id="commandInput" type="text" placeholder="Example: ls -la /home/eschaerer/AISCO_code">
+        <div class="visual-card">
+          <div class="visual-title">Mesh Assembly GIF (slowed)</div>
+          <div>
+            <button id="btnRestartGif" type="button">Restart GIF</button>
+          </div>
+          <div class="image-slot">
+            <img id="artifactImage" alt="mesh assembly gif preview">
+          </div>
+          <div class="hint" id="artifactStatus">No GIF loaded yet.</div>
+          <div class="hint" id="currentRunDir">Run folder: not detected yet.</div>
+        </div>
       </div>
-      <div class="buttons">
-        <button id="btnRunCommand">Run command</button>
-        <button id="btnClearOutput" class="danger">Clear output</button>
-      </div>
-      <pre id="commandOutput">No command output yet.</pre>
     </section>
   </main>
 
   <script>
-    const statusBox = document.getElementById("status");
-    const imageBox = document.getElementById("imageBox");
-    const demoImage = document.getElementById("demoImage");
     const teamLogo = document.getElementById("teamLogo");
-    const runLocalLogs = document.getElementById("runLocalLogs");
-    const commandInput = document.getElementById("commandInput");
-    const commandOutput = document.getElementById("commandOutput");
+    const btnRunLocal = document.getElementById("btnRunLocal");
+    const epochProgress = document.getElementById("epochProgress");
+    const progressText = document.getElementById("progressText");
+
     const currentRunDir = document.getElementById("currentRunDir");
     const artifactImage = document.getElementById("artifactImage");
     const artifactStatus = document.getElementById("artifactStatus");
+    const btnRestartGif = document.getElementById("btnRestartGif");
     const meshStepImage = document.getElementById("meshStepImage");
     const meshStepStatus = document.getElementById("meshStepStatus");
     const meshSlider = document.getElementById("meshSlider");
     const meshSliderLabel = document.getElementById("meshSliderLabel");
-    const meshFileLink = document.getElementById("meshFileLink");
 
-    let autoLogTimer = null;
     let meshStepEntries = [];
-
-    function setStatus(message) {
-      statusBox.textContent = message;
-    }
-
-    function nowStamp() {
-      return new Date().toLocaleTimeString();
-    }
-
-    function runDummyLogger() {
-      setStatus("Dummy logger started...");
-      let i = 1;
-      const logs = [];
-      const timer = setInterval(() => {
-        logs.push(String(i));
-        setStatus(`[${nowStamp()}] Dummy output: ${logs.join(" ")}`);
-        i += 1;
-        if (i > 5) {
-          clearInterval(timer);
-          setStatus(`[${nowStamp()}] Dummy logger finished (1 to 5).`);
-        }
-      }, 450);
-    }
-
-    function showImage() {
-      imageBox.style.display = "block";
-      demoImage.onerror = () => {
-        setStatus(`[${nowStamp()}] Could not load demo_image.png from templates folder.`);
-      };
-      setStatus(`[${nowStamp()}] Showing demo_image.png.`);
-    }
+    let gifEntry = null;
+    let currentGifKey = null;
 
     async function startRunLocal() {
-      setStatus(`[${nowStamp()}] Starting run_local.sh ...`);
+      btnRunLocal.disabled = true;
+      btnRunLocal.textContent = "RUNNING...";
       try {
         const res = await fetch("/run-local", { method: "POST" });
-        const data = await res.json();
-        setStatus(`[${nowStamp()}] ${data.message || "No message"}${data.pid ? ` (PID ${data.pid})` : ""}`);
-        await refreshLogs();
-      } catch (error) {
-        setStatus(`[${nowStamp()}] Failed to call /run-local: ${error}`);
-      }
-    }
-
-    async function refreshLogs() {
-      try {
-        const res = await fetch(`/run-local/logs?t=${Date.now()}`, { cache: "no-store" });
-        const data = await res.json();
-        const meta = [
-          `running=${data.running}`,
-          `pid=${data.pid ?? "n/a"}`,
-          `return_code=${data.return_code ?? "n/a"}`,
-          `truncated=${data.truncated}`
-        ].join(" | ");
-        const body = data.logs && data.logs.length > 0 ? data.logs : "<empty log>";
-        runLocalLogs.textContent = `${meta}\n\n${body}`;
-        runLocalLogs.scrollTop = runLocalLogs.scrollHeight;
+        await res.json();
+      } catch (_error) {
+      } finally {
+        await refreshProgress();
         await refreshArtifacts();
-      } catch (error) {
-        runLocalLogs.textContent = `Failed to load logs: ${error}`;
       }
     }
 
     function updateMeshSelection(index) {
       if (!meshStepEntries.length) {
-        meshSliderLabel.textContent = "Mesh step slider (no images loaded)";
-        meshFileLink.textContent = "No mesh step selected";
-        meshFileLink.removeAttribute("href");
+        meshSliderLabel.textContent = "Epoch slider";
         meshStepImage.style.display = "none";
         meshStepStatus.textContent = "No mesh step image loaded yet.";
         return;
@@ -402,11 +273,36 @@
       const meshStep = meshStepEntries[clampedIndex];
       const epochLabel = meshStep.epoch !== null ? `epoch ${meshStep.epoch}` : "unknown epoch";
       meshSliderLabel.textContent = `Step ${clampedIndex + 1}/${meshStepEntries.length} (${epochLabel})`;
-      meshFileLink.textContent = meshStep.name;
-      meshFileLink.href = meshStep.url;
       meshStepImage.src = `${meshStep.url}&t=${Date.now()}`;
       meshStepImage.style.display = "block";
-      meshStepStatus.textContent = `Showing mesh step image: ${meshStep.name}`;
+      meshStepStatus.textContent = `Showing ${meshStep.name}`;
+    }
+
+    function updateGifDisplay() {
+      if (!gifEntry) {
+        artifactImage.style.display = "none";
+        artifactStatus.textContent = "No mesh_assembly_mode GIF found for current run.";
+        currentGifKey = null;
+        btnRestartGif.disabled = true;
+        return;
+      }
+
+      if (currentGifKey !== gifEntry.key) {
+        artifactImage.src = `${gifEntry.playUrl}&t=${Date.now()}`;
+        currentGifKey = gifEntry.key;
+      }
+      artifactImage.style.display = "block";
+      artifactStatus.textContent = `Playing slowed GIF: ${gifEntry.name}`;
+      btnRestartGif.disabled = false;
+    }
+
+    function restartGif() {
+      if (!gifEntry) {
+        return;
+      }
+      // Force a hard reload of the GIF source so playback starts from frame 1.
+      artifactImage.src = `${gifEntry.playUrl}&t=${Date.now()}`;
+      artifactStatus.textContent = `Restarted GIF: ${gifEntry.name}`;
     }
 
     async function refreshArtifacts() {
@@ -419,13 +315,15 @@
         const gifList = data.mesh_assembly_gifs || [];
         if (gifList.length > 0) {
           const selectedGif = gifList[0];
-          const gifUrl = selectedGif.slow_url || selectedGif.url;
-          artifactImage.src = `${gifUrl}&t=${Date.now()}`;
-          artifactImage.style.display = "block";
-          artifactStatus.textContent = `Showing slowed mesh_assembly_mode GIF: ${selectedGif.name}`;
+          gifEntry = {
+            key: selectedGif.rel_path || selectedGif.name,
+            name: selectedGif.name,
+            playUrl: selectedGif.slow_url || selectedGif.url
+          };
+          updateGifDisplay();
         } else {
-          artifactImage.style.display = "none";
-          artifactStatus.textContent = "No mesh_assembly_mode GIF found for current run.";
+          gifEntry = null;
+          updateGifDisplay();
         }
 
         meshStepEntries = data.mesh_step_images || [];
@@ -433,8 +331,10 @@
           meshSlider.disabled = false;
           meshSlider.min = "0";
           meshSlider.max = String(meshStepEntries.length - 1);
-          meshSlider.value = String(meshStepEntries.length - 1);
-          updateMeshSelection(meshStepEntries.length - 1);
+          if (Number(meshSlider.value) > meshStepEntries.length - 1) {
+            meshSlider.value = String(meshStepEntries.length - 1);
+          }
+          updateMeshSelection(Number(meshSlider.value));
         } else {
           meshSlider.disabled = true;
           meshSlider.min = "0";
@@ -442,85 +342,44 @@
           meshSlider.value = "0";
           updateMeshSelection(0);
         }
-      } catch (error) {
-        artifactStatus.textContent = `Failed to load artifacts: ${error}`;
+      } catch (_error) {
       }
     }
 
-    function toggleAutoLogs() {
-      const button = document.getElementById("btnAutoLogs");
-      if (autoLogTimer) {
-        clearInterval(autoLogTimer);
-        autoLogTimer = null;
-        button.textContent = "Start auto-refresh";
-        setStatus(`[${nowStamp()}] Auto-refresh stopped.`);
-        return;
-      }
-
-      refreshLogs();
-      autoLogTimer = setInterval(refreshLogs, 1000);
-      button.textContent = "Stop auto-refresh";
-      setStatus(`[${nowStamp()}] Auto-refresh started (1s interval).`);
-    }
-
-    async function runCommand() {
-      const command = commandInput.value.trim();
-      if (!command) {
-        setStatus("Please enter a command first.");
-        return;
-      }
-
-      setStatus(`[${nowStamp()}] Running command: ${command}`);
+    async function refreshProgress() {
       try {
-        const res = await fetch("/run-command", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command })
-        });
+        const res = await fetch(`/run-local/progress?t=${Date.now()}`, { cache: "no-store" });
         const data = await res.json();
 
-        const lines = [
-          `command: ${data.command}`,
-          `return_code: ${data.return_code}`,
-          "",
-          "--- stdout ---",
-          data.stdout || "<empty>",
-          "",
-          "--- stderr ---",
-          data.stderr || "<empty>"
-        ];
+        const pct = Number(data.progress_percent || 0);
+        epochProgress.value = pct;
+        progressText.textContent = `${pct.toFixed(1)}%`;
 
-        commandOutput.textContent = lines.join("\n");
-        setStatus(`[${nowStamp()}] Command finished with code ${data.return_code}.`);
-      } catch (error) {
-        commandOutput.textContent = `Failed to run command: ${error}`;
-        setStatus(`[${nowStamp()}] Command execution failed.`);
+        if (data.running) {
+          btnRunLocal.disabled = true;
+          btnRunLocal.textContent = "RUNNING...";
+        } else {
+          btnRunLocal.disabled = false;
+          btnRunLocal.textContent = "RUN";
+        }
+      } catch (_error) {
       }
-    }
-
-    function clearCommandOutput() {
-      commandOutput.textContent = "No command output yet.";
-      setStatus("Output cleared.");
     }
 
     teamLogo.onerror = () => {
-      // Fallback keeps the logo badge populated until team_logo.png is provided.
-      teamLogo.src = "demo_image.png";
+      teamLogo.style.display = "none";
     };
 
-    document.getElementById("btnDummy").addEventListener("click", runDummyLogger);
-    document.getElementById("btnImage").addEventListener("click", showImage);
-    document.getElementById("btnRunLocal").addEventListener("click", startRunLocal);
-    document.getElementById("btnRefreshLogs").addEventListener("click", refreshLogs);
-    document.getElementById("btnAutoLogs").addEventListener("click", toggleAutoLogs);
-    document.getElementById("btnRefreshArtifacts").addEventListener("click", refreshArtifacts);
-    document.getElementById("btnRunCommand").addEventListener("click", runCommand);
-    document.getElementById("btnClearOutput").addEventListener("click", clearCommandOutput);
+    btnRunLocal.addEventListener("click", startRunLocal);
+    btnRestartGif.addEventListener("click", restartGif);
     meshSlider.addEventListener("input", () => {
       updateMeshSelection(Number(meshSlider.value));
     });
 
+    refreshProgress();
     refreshArtifacts();
+    setInterval(refreshProgress, 1000);
+    setInterval(refreshArtifacts, 3000);
   </script>
 </body>
 </html>

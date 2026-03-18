@@ -12,6 +12,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+import yaml
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 LOGGER = logging.getLogger(__name__)
@@ -35,6 +37,9 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/run-local/logs":
             self.handle_run_local_logs()
             return
+        if parsed.path == "/run-local/progress":
+            self.handle_run_local_progress()
+            return
         if parsed.path == "/run-local/artifacts":
             self.handle_run_local_artifacts()
             return
@@ -43,6 +48,9 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/run-local/slow-gif":
             self.handle_slow_gif(parsed)
+            return
+        if parsed.path == "/run-local/gif-first-frame":
+            self.handle_gif_first_frame(parsed)
             return
 
         super().do_GET()
@@ -134,6 +142,40 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             },
         )
 
+    def handle_run_local_progress(self) -> None:
+        num_epochs = self._get_num_epochs_from_training_config()
+        current_epoch = -1
+        progress_percent = 0.0
+        completed = False
+
+        if RUN_LOCAL_LOG.exists():
+            logs = RUN_LOCAL_LOG.read_text(encoding="utf-8", errors="replace")
+            matches = re.findall(r"\[Epoch\s+(\d+)\]", logs)
+            if matches:
+                current_epoch = max(int(m) for m in matches)
+                progress_percent = min(100.0, ((current_epoch + 1) / max(num_epochs, 1)) * 100.0)
+
+            if "Model optimisation completed." in logs or "Completed job successfully." in logs:
+                completed = True
+                progress_percent = 100.0
+
+        with PROCESS_LOCK:
+            process = STATE["run_local_process"]
+            running = process is not None and process.poll() is None
+            return_code = None if running or process is None else process.poll()
+
+        self._send_json(
+            200,
+            {
+                "running": running,
+                "completed": completed,
+                "return_code": return_code,
+                "num_epochs": num_epochs,
+                "current_epoch": current_epoch,
+                "progress_percent": round(progress_percent, 1),
+            },
+        )
+
     def handle_run_command(self) -> None:
         body_data = self._read_json_body()
         command = str(body_data.get("command", "")).strip()
@@ -201,6 +243,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                         "rel_path": rel_path,
                         "url": f"/run-local/artifact-file?path={rel_path}",
                         "slow_url": f"/run-local/slow-gif?path={rel_path}&factor=2.5",
+                        "first_frame_url": f"/run-local/gif-first-frame?path={rel_path}",
                     }
                 )
 
@@ -276,6 +319,51 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
+    def handle_gif_first_frame(self, parsed) -> None:
+        query = parse_qs(parsed.query)
+        raw_path = query.get("path", [""])[0]
+        rel_path = unquote(raw_path).lstrip("/")
+        if not rel_path:
+            self._send_json(400, {"message": "Missing path query parameter"})
+            return
+
+        requested = self._resolve_local_storage_file(rel_path)
+        if requested is None:
+            self._send_json(400, {"message": "Invalid artifact path"})
+            return
+        if not requested.exists() or not requested.is_file():
+            self._send_json(404, {"message": "Artifact file not found"})
+            return
+        if requested.suffix.lower() != ".gif":
+            self._send_json(400, {"message": "Only GIF files are supported"})
+            return
+
+        cache_key = hashlib.sha1(f"{requested.resolve()}|{requested.stat().st_mtime_ns}|first_frame".encode()).hexdigest()
+        SLOW_GIF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cached_path = SLOW_GIF_CACHE_DIR / f"first_{cache_key}.png"
+
+        if not cached_path.exists():
+            try:
+                import imageio.v2 as imageio
+
+                frames = imageio.mimread(requested)
+                if not frames:
+                    self._send_json(500, {"message": "Failed to decode GIF frames"})
+                    return
+
+                imageio.imwrite(cached_path, frames[0], format="PNG")
+            except Exception as error:
+                self._send_json(500, {"message": f"Failed to extract first frame: {error}"})
+                return
+
+        content = cached_path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(content)
+
     def handle_slow_gif(self, parsed) -> None:
         query = parse_qs(parsed.query)
         raw_path = query.get("path", [""])[0]
@@ -339,6 +427,21 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             return requested
         except Exception:
             return None
+
+    def _get_num_epochs_from_training_config(self) -> int:
+        try:
+            general_config_path = REPO_ROOT / "wp4_aeroshell_optimizer" / "v1" / "configs" / "general_config.yaml"
+            with general_config_path.open(encoding="utf-8") as f:
+                general_cfg = yaml.safe_load(f) or {}
+
+            training_cfg_name = general_cfg.get("active_configs", {}).get("training", "training_v0_config.yaml")
+            training_cfg_path = REPO_ROOT / "wp4_aeroshell_optimizer" / "v1" / "configs" / training_cfg_name
+            with training_cfg_path.open(encoding="utf-8") as f:
+                training_cfg = yaml.safe_load(f) or {}
+
+            return int(training_cfg.get("training_params", {}).get("num_epochs", 100))
+        except Exception:
+            return 100
 
     def _detect_current_run_dir(self) -> Path | None:
         if RUN_LOCAL_LOG.exists():
