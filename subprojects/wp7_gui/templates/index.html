@@ -163,6 +163,40 @@
       font-size: 0.85rem;
       line-height: 1.35;
     }
+
+    .artifacts-panel {
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    #artifactImage {
+      max-width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #f5faf7;
+      min-height: 120px;
+      display: none;
+    }
+
+    .slider-row {
+      display: grid;
+      gap: 6px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    #meshFileLink {
+      color: var(--accent-2);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    #meshFileLink:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -172,7 +206,7 @@
 
   <main class="wrap">
     <section class="card">
-      <h1>WP7 Minimal Browser GUI</h1>
+      <h1>WP7 Maximal Browser GUI</h1>
       <p class="sub">Client-side controls for local test actions and run-local process monitoring.</p>
       <div class="buttons">
         <button id="btnDummy">Button 1: Run dummy logger</button>
@@ -192,6 +226,23 @@
         <button id="btnAutoLogs">Start auto-refresh</button>
       </div>
       <pre id="runLocalLogs">No logs loaded yet.</pre>
+    </section>
+
+    <section class="card">
+      <h1>Current Run Artifacts</h1>
+      <p class="sub" id="currentRunDir">Run folder: not detected yet.</p>
+      <div class="buttons">
+        <button id="btnRefreshArtifacts">Refresh artifacts</button>
+      </div>
+      <div class="artifacts-panel">
+        <img id="artifactImage" alt="mesh_assembly_mode gif preview">
+        <div id="artifactStatus">No GIF loaded yet.</div>
+        <div class="slider-row">
+          <label for="meshSlider" id="meshSliderLabel">Mesh epoch slider (no meshes loaded)</label>
+          <input id="meshSlider" type="range" min="0" max="0" value="0" step="1" disabled>
+          <a id="meshFileLink" href="#" target="_blank" rel="noopener">No mesh selected</a>
+        </div>
+      </div>
     </section>
 
     <section class="card">
@@ -216,8 +267,15 @@
     const runLocalLogs = document.getElementById("runLocalLogs");
     const commandInput = document.getElementById("commandInput");
     const commandOutput = document.getElementById("commandOutput");
+    const currentRunDir = document.getElementById("currentRunDir");
+    const artifactImage = document.getElementById("artifactImage");
+    const artifactStatus = document.getElementById("artifactStatus");
+    const meshSlider = document.getElementById("meshSlider");
+    const meshSliderLabel = document.getElementById("meshSliderLabel");
+    const meshFileLink = document.getElementById("meshFileLink");
 
     let autoLogTimer = null;
+    let meshEntries = [];
 
     function setStatus(message) {
       statusBox.textContent = message;
@@ -275,8 +333,62 @@
         const body = data.logs && data.logs.length > 0 ? data.logs : "<empty log>";
         runLocalLogs.textContent = `${meta}\n\n${body}`;
         runLocalLogs.scrollTop = runLocalLogs.scrollHeight;
+        await refreshArtifacts();
       } catch (error) {
         runLocalLogs.textContent = `Failed to load logs: ${error}`;
+      }
+    }
+
+    function updateMeshSelection(index) {
+      if (!meshEntries.length) {
+        meshSliderLabel.textContent = "Mesh epoch slider (no meshes loaded)";
+        meshFileLink.textContent = "No mesh selected";
+        meshFileLink.removeAttribute("href");
+        return;
+      }
+
+      const clampedIndex = Math.max(0, Math.min(index, meshEntries.length - 1));
+      const mesh = meshEntries[clampedIndex];
+      const epochLabel = mesh.epoch !== null ? `epoch ${mesh.epoch}` : "unknown epoch";
+      meshSliderLabel.textContent = `Mesh ${clampedIndex + 1}/${meshEntries.length} (${epochLabel})`;
+      meshFileLink.textContent = mesh.name;
+      meshFileLink.href = mesh.url;
+    }
+
+    async function refreshArtifacts() {
+      try {
+        const res = await fetch(`/run-local/artifacts?t=${Date.now()}`, { cache: "no-store" });
+        const data = await res.json();
+
+        currentRunDir.textContent = `Run folder: ${data.run_dir || "not detected yet"}`;
+
+        const gifList = data.mesh_assembly_gifs || [];
+        if (gifList.length > 0) {
+          const selectedGif = gifList[0];
+          artifactImage.src = `${selectedGif.url}&t=${Date.now()}`;
+          artifactImage.style.display = "block";
+          artifactStatus.textContent = `Showing latest mesh_assembly_mode GIF: ${selectedGif.name}`;
+        } else {
+          artifactImage.style.display = "none";
+          artifactStatus.textContent = "No mesh_assembly_mode GIF found for current run.";
+        }
+
+        meshEntries = data.meshes || [];
+        if (meshEntries.length > 0) {
+          meshSlider.disabled = false;
+          meshSlider.min = "0";
+          meshSlider.max = String(meshEntries.length - 1);
+          meshSlider.value = String(meshEntries.length - 1);
+          updateMeshSelection(meshEntries.length - 1);
+        } else {
+          meshSlider.disabled = true;
+          meshSlider.min = "0";
+          meshSlider.max = "0";
+          meshSlider.value = "0";
+          updateMeshSelection(0);
+        }
+      } catch (error) {
+        artifactStatus.textContent = `Failed to load artifacts: ${error}`;
       }
     }
 
@@ -346,8 +458,14 @@
     document.getElementById("btnRunLocal").addEventListener("click", startRunLocal);
     document.getElementById("btnRefreshLogs").addEventListener("click", refreshLogs);
     document.getElementById("btnAutoLogs").addEventListener("click", toggleAutoLogs);
+    document.getElementById("btnRefreshArtifacts").addEventListener("click", refreshArtifacts);
     document.getElementById("btnRunCommand").addEventListener("click", runCommand);
     document.getElementById("btnClearOutput").addEventListener("click", clearCommandOutput);
+    meshSlider.addEventListener("input", () => {
+      updateMeshSelection(Number(meshSlider.value));
+    });
+
+    refreshArtifacts();
   </script>
 </body>
 </html>
