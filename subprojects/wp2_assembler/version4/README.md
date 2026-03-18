@@ -23,12 +23,14 @@ The assembled output also includes the driver vision box.
 ```python
 from subprojects.wp2_assembler.version4.components.nbz import (
     call_assembly,
+    call_assembly_solids,
     bounding_box_of_assembly,
     max_assembly_id,
 )
 ```
 
-- `call_assembly(id)`: returns the processed inner solids, the processed outer NBZ solid, and the vision solids
+- `call_assembly(id)`: returns a tuple of (inner assembly, outer solid, vision assembly)
+- `call_assembly_solids(id)`: returns a tuple of (list of inner solids, outer solid) - useful for applications that need solids instead of assemblies
 - `bounding_box_of_assembly(id)`: returns the bounding box of the inner assembly after processing
 - `max_assembly_id()`: returns the highest available assembly ID
 
@@ -43,12 +45,16 @@ from subprojects.wp2_assembler.version4.components.nbz import (
 
 This keeps the seat geometry intact while enforcing that every returned assembly has enough space below the seat and around the wheels.
 
-## Example
+## Examples
 
 ```python
-from subprojects.wp2_assembler.version4.components.nbz import call_assembly
+from subprojects.wp2_assembler.version4.components.nbz import call_assembly, call_assembly_solids
 
-inner_solids, outer_solid, vision_solids = call_assembly(0)
+# Get assemblies as CadQuery Assembly objects
+inner_assembly, outer_solid, vision_assembly = call_assembly(0)
+
+# Get just the solids for visualization or analysis
+inner_solids, outer_solid = call_assembly_solids(0)
 ```
 
 ## Configuration Files
