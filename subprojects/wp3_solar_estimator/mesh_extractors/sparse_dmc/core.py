@@ -297,7 +297,7 @@ def octree_sdf_eval(
     xyz_min: tuple[float, float, float],
     xyz_max: tuple[float, float, float],
     resolution: int,
-    batch_size: int,
+    _batch_size: int,
     lipschitz: float = 1.1,
     coarse_factor: int = 8,
     device: torch.device | None = None,
@@ -316,7 +316,7 @@ def octree_sdf_eval(
         xyz_min: Bounding box min corner.
         xyz_max: Bounding box max corner.
         resolution: Target grid resolution (must be power of 2).
-        batch_size: Number of batch elements.
+        _batch_size: Number of batch elements.
         lipschitz: Lipschitz constant of the SDF (default 1.1).
         coarse_factor: Ratio of target to starting resolution (default 8).
         device: Torch device.
@@ -360,8 +360,6 @@ def octree_sdf_eval(
     bb_min = torch.tensor(xyz_min, dtype=torch.float32, device=device)
     bb_max = torch.tensor(xyz_max, dtype=torch.float32, device=device)
     bb_extent = bb_max - bb_min
-
-    from .tables import get_tables
 
     tables = get_tables(device)
     corner_offsets = tables[0]  # [8, 3] int32
@@ -559,9 +557,7 @@ def _resolve_ambiguous_cases_batched(
     # Clamp to [0, 5] for safe indexing (non-problematic cells get dir 0, but are masked out)
     direction_safe = prob.long().clamp(0, 5)  # [B, K]
 
-    # Gather neighbor cell idx per batch: [B, K]
-    # all_neighbor_cell_idx is [K, 6], direction_safe is [B, K]
-    # For each (b, k), pick all_neighbor_cell_idx[k, direction_safe[b, k]]
+    # Gather one neighbor index per batch/cell by selecting from the six precomputed neighbor slots using the per-batch direction code.
     neighbor_cell_idx = all_neighbor_cell_idx[torch.arange(K, device=device).unsqueeze(0).expand(B, -1), direction_safe]  # [B, K]
 
     # Check if neighbor exists
@@ -580,192 +576,22 @@ def _resolve_ambiguous_cases_batched(
     return torch.where(should_xor, case_idx ^ 0xFF, case_idx)
 
 
-def sparse_dual_marching_cubes(
+def _emit_union_quads(
     cell_coords: Tensor,
     corner_sdf: Tensor,
-    corner_positions: Tensor,
-    resolution: int,
-    timer: "MeshTimer | None" = None,
+    quad_cell_offsets: Tensor,
+    quad_local_edges: Tensor,
+    edge_to_slot: Tensor,
+    cell_to_union: Tensor,
+    union_indices: Tensor,
+    lookup_cells: Callable[[Tensor], Tensor],
+    R: int,
 ) -> tuple[list[Tensor], list[Tensor]]:
-    """
-    Sparse Manifold Dual Marching Cubes.
-
-    Multiple dual vertices per cell (1-4) for manifold output. Resolves
-    ambiguous C16/C19 cases via neighbor checks, places vertices per
-    surface component based on edge partitioning, and routes quad edges
-    to the correct vertex slot.
-
-    Args:
-        cell_coords:      [K, 3]    int32  — active cell grid coords
-        corner_sdf:       [B, K, 8] float  — SDF at 8 corners
-        corner_positions: [K, 8, 3] float  — world-space corner positions
-        resolution:       int              — grid resolution (for hash keys)
-
-    Returns:
-        vertices_list: List of B tensors, each [V_b, 3]
-        faces_list:    List of B tensors, each [F_b, 4] (quads)
-    """
-
-    device = cell_coords.device
-    tables = get_tables(device)
-    (
-        corner_offsets,
-        edge_corners_table,
-        edge_table,
-        edge_axis,
-        quad_cell_offsets,
-        dual_points_list,
-        problematic_configs,
-        num_dual_points,
-        quad_local_edges,
-        case_edge_to_slot_table,
-    ) = tables
-
+    """Emit quads for all axes and return per-batch faces with validity masks."""
     B = corner_sdf.shape[0]
-    K = cell_coords.shape[0]
-
-    if K == 0:
-        empty_v = torch.zeros(0, 3, device=device)
-        empty_f = torch.zeros(0, 4, dtype=torch.long, device=device)
-        return [empty_v] * B, [empty_f] * B
-
-    # Build cell hash map: cell_coords -> cell_index
-    R = resolution + 1
-    cell_keys = cell_coords[:, 0].long() * R * R + cell_coords[:, 1].long() * R + cell_coords[:, 2].long()  # [K]
-
-    cell_idx_map = torch.full((R * R * R,), -1, dtype=torch.long, device=device) if R * R * R < 50_000_000 else None
-
-    if cell_idx_map is not None:
-        cell_idx_map[cell_keys] = torch.arange(K, device=device, dtype=torch.long)
-    else:
-        sorted_keys, sort_perm = cell_keys.sort()
-
-    def lookup_cells(keys: Tensor) -> Tensor:
-        """Look up cell indices for given keys. Returns -1 for missing."""
-        if cell_idx_map is not None:
-            valid = (keys >= 0) & (keys < R * R * R)
-            result = torch.full_like(keys, -1, dtype=torch.long)
-            result[valid] = cell_idx_map[keys[valid]]
-            return result
-        pos = torch.searchsorted(sorted_keys, keys)
-        pos = pos.clamp(max=sorted_keys.shape[0] - 1)
-        found = sorted_keys[pos] == keys
-        result = torch.full_like(keys, -1, dtype=torch.long)
-        result[found] = sort_perm[pos[found]]
-        return result
-
-    # Edge corner connectivity (shared across batches)
-    ec = edge_corners_table.long()  # [12, 2]
-
-    if timer:
-        timer.start("dmc_case_resolution")
-
-    # ===================================================================
-    # 3a. Vectorized case index [B, K]
-    # ===================================================================
-    powers = torch.tensor([1, 2, 4, 8, 16, 32, 64, 128], dtype=torch.int32, device=device)  # [8]
-    case_idx = ((corner_sdf <= 0).int() * powers).sum(dim=-1).int()  # [B, K]
-
-    # ===================================================================
-    # 3b. Batched ambiguity resolution
-    # ===================================================================
-    resolved = _resolve_ambiguous_cases_batched(
-        case_idx,
-        cell_coords,
-        lookup_cells,
-        problematic_configs,
-        resolution,
-        R,
-    )  # [B, K]
-
-    # ===================================================================
-    # 3c. Union active cells (1 sync point)
-    # ===================================================================
-    active_mask = (resolved != 0) & (resolved != 255)  # [B, K]
-    union_active = active_mask.any(dim=0)  # [K]
-    union_indices = torch.where(union_active)[0]  # [K_union] — 1 sync
-    K_union = union_indices.shape[0]
-
-    if K_union == 0:
-        empty_v = torch.zeros(0, 3, device=device)
-        empty_f = torch.zeros(0, 4, dtype=torch.long, device=device)
-        return [empty_v] * B, [empty_f] * B
-
-    if timer:
-        timer.start("dmc_vertex_placement")
-
-    # ===================================================================
-    # 3d. Batched crossing points [B, K_union, 12, 3]
-    # ===================================================================
-    active_sdf = corner_sdf[:, union_indices]  # [B, K_union, 8]
-    active_pos = corner_positions[union_indices]  # [K_union, 8, 3]
-
-    # Gather SDF at edge endpoints
-    sdf_e0 = active_sdf[:, :, ec[:, 0]]  # [B, K_union, 12]
-    sdf_e1 = active_sdf[:, :, ec[:, 1]]  # [B, K_union, 12]
-    pos_e0 = active_pos[:, ec[:, 0]]  # [K_union, 12, 3]
-    pos_e1 = active_pos[:, ec[:, 1]]  # [K_union, 12, 3]
-
-    # Interpolation parameter with eps-safe division
-    # sign-preserving eps ensures denom is never exactly zero
-    # (sign() can't be used: sign(0)=0 leaves zeros unchanged)
-    denom = sdf_e0 - sdf_e1  # [B, K_union, 12]
-    eps = torch.where(denom >= 0, 1e-8, -1e-8)
-    t = (sdf_e0 / (denom + eps)).clamp(0.0, 1.0)  # [B, K_union, 12]
-
-    # Crossing points: shared positions broadcast with per-batch t
-    # pos_e0/pos_e1: [K_union, 12, 3], t: [B, K_union, 12]
-    crossing_pts = pos_e0.unsqueeze(0) + t.unsqueeze(-1) * (pos_e1.unsqueeze(0) - pos_e0.unsqueeze(0))  # [B, K_union, 12, 3]
-
-    # ===================================================================
-    # 3e. Edge-to-slot via precomputed table
-    # ===================================================================
-    active_cases = resolved[:, union_indices]  # [B, K_union]
-    edge_to_slot = case_edge_to_slot_table[active_cases.long()]  # [B, K_union, 12]
-
-    # ===================================================================
-    # 3f. Vertex placement [B, K_union, 4, 3]
-    # ===================================================================
-    # Each union cell always gets 4 vertex slots. For per-batch inactive cells,
-    # vertices collapse to cell center (degenerate faces).
-    dp_masks = dual_points_list[active_cases.long()]  # [B, K_union, 4]
-
-    vertices = torch.zeros(B, K_union, 4, 3, dtype=corner_sdf.dtype, device=device)
-    edge_bits = torch.arange(12, device=device)  # [12]
-
-    for s in range(4):
-        # Which edges belong to slot s: [B, K_union, 12]
-        mask_s = ((dp_masks[:, :, s : s + 1] >> edge_bits) & 1).float()  # [B, K_union, 12]
-        count = mask_s.sum(dim=-1, keepdim=True).clamp(min=1.0)  # [B, K_union, 1]
-        # Weighted sum of crossing points for this slot
-        vertices[:, :, s] = (crossing_pts * mask_s.unsqueeze(-1)).sum(dim=2) / count
-
-    # ===================================================================
-    # 3g. Collapse inactive cells to cell center
-    # ===================================================================
-    inactive = ~active_mask[:, union_indices]  # [B, K_union]
-    # Cell center: average of 8 corner positions
-    cell_center = active_pos.mean(dim=1)  # [K_union, 3]
-    # Broadcast: [B, K_union, 4, 3]
-    vertices = torch.where(
-        inactive[:, :, None, None].expand_as(vertices),
-        cell_center[None, :, None, :].expand_as(vertices),
-        vertices,
-    )
-
-    if timer:
-        timer.start("dmc_quad_emission")
-
-    # ===================================================================
-    # 3h. Union quad emission with per-batch routing
-    # ===================================================================
-    # Map: cell index (0..K-1) -> union index (0..K_union-1)
-    cell_to_union = torch.full((K,), -1, dtype=torch.long, device=device)
-    cell_to_union[union_indices] = torch.arange(K_union, device=device, dtype=torch.long)
-
     union_coords = cell_coords[union_indices]  # [K_union, 3]
-    all_quads_list = []  # collect [B, Q_axis, 4] per axis
-    all_face_valid_list = []  # collect [B, Q_axis] per-batch face validity
+    all_quads_list: list[Tensor] = []
+    all_face_valid_list: list[Tensor] = []
 
     for axis in range(3):
         offsets = quad_cell_offsets[axis]  # [4, 3]
@@ -814,18 +640,16 @@ def sparse_dual_marching_cubes(
             continue
 
         # Filter to quads with union sign change
-        valid_cell_idx[union_sign_change]  # [Q, 4]
         sc_union_idx = valid_union_idx[union_sign_change]  # [Q, 4]
         sc_sign_change = sign_change[:, union_sign_change]  # [B, Q]
         sc_sdf_c0 = sdf_c0[:, union_sign_change]  # [B, Q]
-
-        sc_union_idx.shape[0]
 
         # Per-batch vertex routing via edge_to_slot: [B, Q, 4]
         local_edges = quad_local_edges[axis]  # [4]
         quad_vert_idx = torch.stack(
             [
-                sc_union_idx[:, j].unsqueeze(0).expand(B, -1) * 4 + edge_to_slot[:, sc_union_idx[:, j], local_edges[j].long()]
+                sc_union_idx[:, j].unsqueeze(0).expand(B, -1) * 4
+                + edge_to_slot[:, sc_union_idx[:, j], local_edges[j].long()]
                 for j in range(4)
             ],
             dim=2,
@@ -843,25 +667,20 @@ def sparse_dual_marching_cubes(
         all_quads_list.append(quad_vert_idx)
         all_face_valid_list.append(sc_sign_change)  # [B, Q]
 
-    if timer:
-        timer.start("dmc_per_batch_compact")
+    return all_quads_list, all_face_valid_list
 
-    # ===================================================================
-    # 3i. Output (backward compatible List[Tensor])
-    # ===================================================================
-    # Flatten vertices: [B, K_union, 4, 3] -> [B, K_union*4, 3]
-    flat_verts = vertices.reshape(B, K_union * 4, 3)
 
-    if len(all_quads_list) == 0:
-        all_faces = torch.zeros(B, 0, 4, dtype=torch.long, device=device)
-        all_face_valid = torch.zeros(B, 0, dtype=torch.bool, device=device)
-    else:
-        all_faces = torch.cat(all_quads_list, dim=1)  # [B, Q_total, 4]
-        all_face_valid = torch.cat(all_face_valid_list, dim=1)  # [B, Q_total]
-
-    # Per-batch: filter to valid faces (per-batch sign change) and compact vertices
+def _compact_batch_mesh_outputs(
+    flat_verts: Tensor,
+    all_faces: Tensor,
+    all_face_valid: Tensor,
+    device: torch.device,
+) -> tuple[list[Tensor], list[Tensor]]:
+    """Filter per-batch faces and compact vertices to referenced indices."""
+    B = flat_verts.shape[0]
     vertices_list = []
     faces_list = []
+
     for b in range(B):
         b_valid = all_face_valid[b]  # [Q_total]
         b_faces = all_faces[b][b_valid]  # [Q_b, 4]
@@ -878,6 +697,256 @@ def sparse_dual_marching_cubes(
 
         vertices_list.append(flat_verts[b][used_idx])
         faces_list.append(remap[b_faces])
+
+    return vertices_list, faces_list
+
+
+def _build_cell_lookup(
+    cell_coords: Tensor,
+    resolution: int,
+    device: torch.device,
+) -> tuple[int, Callable[[Tensor], Tensor]]:
+    """Build cell lookup function keyed by integer grid hash."""
+    R = resolution + 1
+    cell_keys = cell_coords[:, 0].long() * R * R + cell_coords[:, 1].long() * R + cell_coords[:, 2].long()
+    cell_idx_map = torch.full((R * R * R,), -1, dtype=torch.long, device=device) if R * R * R < 50_000_000 else None
+
+    if cell_idx_map is not None:
+        cell_idx_map[cell_keys] = torch.arange(cell_coords.shape[0], device=device, dtype=torch.long)
+    else:
+        sorted_keys, sort_perm = cell_keys.sort()
+
+    def lookup_cells(keys: Tensor) -> Tensor:
+        """Look up cell indices for given keys. Returns -1 for missing."""
+        if cell_idx_map is not None:
+            valid = (keys >= 0) & (keys < R * R * R)
+            result = torch.full_like(keys, -1, dtype=torch.long)
+            result[valid] = cell_idx_map[keys[valid]]
+            return result
+        pos = torch.searchsorted(sorted_keys, keys)
+        pos = pos.clamp(max=sorted_keys.shape[0] - 1)
+        found = sorted_keys[pos] == keys
+        result = torch.full_like(keys, -1, dtype=torch.long)
+        result[found] = sort_perm[pos[found]]
+        return result
+
+    return R, lookup_cells
+
+
+def _resolve_union_active_cells(
+    corner_sdf: Tensor,
+    cell_coords: Tensor,
+    lookup_cells: Callable[[Tensor], Tensor],
+    problematic_configs: Tensor,
+    resolution: int,
+    R: int,
+) -> tuple[Tensor, Tensor, Tensor]:
+    """Resolve cases and return active mask and union-active indices."""
+    device = corner_sdf.device
+    powers = torch.tensor([1, 2, 4, 8, 16, 32, 64, 128], dtype=torch.int32, device=device)
+    case_idx = ((corner_sdf <= 0).int() * powers).sum(dim=-1).int()
+    resolved = _resolve_ambiguous_cases_batched(
+        case_idx,
+        cell_coords,
+        lookup_cells,
+        problematic_configs,
+        resolution,
+        R,
+    )
+    active_mask = (resolved != 0) & (resolved != 255)
+    union_indices = torch.where(active_mask.any(dim=0))[0]
+    return resolved, active_mask, union_indices
+
+
+def _compute_union_vertices(
+    corner_sdf: Tensor,
+    corner_positions: Tensor,
+    union_indices: Tensor,
+    resolved: Tensor,
+    active_mask: Tensor,
+    edge_corners_table: Tensor,
+    dual_points_list: Tensor,
+    case_edge_to_slot_table: Tensor,
+) -> tuple[Tensor, Tensor]:
+    """Compute per-slot dual vertices and edge-slot routing for union-active cells."""
+    device = corner_sdf.device
+    K_union = union_indices.shape[0]
+
+    active_sdf = corner_sdf[:, union_indices]  # [B, K_union, 8]
+    active_pos = corner_positions[union_indices]  # [K_union, 8, 3]
+    ec = edge_corners_table.long()  # [12, 2]
+
+    # Gather SDF at edge endpoints
+    sdf_e0 = active_sdf[:, :, ec[:, 0]]
+    sdf_e1 = active_sdf[:, :, ec[:, 1]]
+    pos_e0 = active_pos[:, ec[:, 0]]
+    pos_e1 = active_pos[:, ec[:, 1]]
+
+    denom = sdf_e0 - sdf_e1
+    eps = torch.where(denom >= 0, 1e-8, -1e-8)
+    t = (sdf_e0 / (denom + eps)).clamp(0.0, 1.0)
+    crossing_pts = pos_e0.unsqueeze(0) + t.unsqueeze(-1) * (pos_e1.unsqueeze(0) - pos_e0.unsqueeze(0))
+
+    active_cases = resolved[:, union_indices]
+    edge_to_slot = case_edge_to_slot_table[active_cases.long()]
+    dp_masks = dual_points_list[active_cases.long()]
+
+    vertices = torch.zeros(corner_sdf.shape[0], K_union, 4, 3, dtype=corner_sdf.dtype, device=device)
+    edge_bits = torch.arange(12, device=device)
+    for s in range(4):
+        mask_s = ((dp_masks[:, :, s : s + 1] >> edge_bits) & 1).float()
+        count = mask_s.sum(dim=-1, keepdim=True).clamp(min=1.0)
+        vertices[:, :, s] = (crossing_pts * mask_s.unsqueeze(-1)).sum(dim=2) / count
+
+    inactive = ~active_mask[:, union_indices]
+    cell_center = active_pos.mean(dim=1)
+    vertices = torch.where(
+        inactive[:, :, None, None].expand_as(vertices),
+        cell_center[None, :, None, :].expand_as(vertices),
+        vertices,
+    )
+    return vertices, edge_to_slot
+
+
+def _combine_face_tensors(
+    all_quads_list: list[Tensor],
+    all_face_valid_list: list[Tensor],
+    batch_size: int,
+    device: torch.device,
+) -> tuple[Tensor, Tensor]:
+    """Combine per-axis face chunks into dense per-batch tensors."""
+    if len(all_quads_list) == 0:
+        return (
+            torch.zeros(batch_size, 0, 4, dtype=torch.long, device=device),
+            torch.zeros(batch_size, 0, dtype=torch.bool, device=device),
+        )
+    return torch.cat(all_quads_list, dim=1), torch.cat(all_face_valid_list, dim=1)
+
+
+def sparse_dual_marching_cubes(
+    cell_coords: Tensor,
+    corner_sdf: Tensor,
+    corner_positions: Tensor,
+    resolution: int,
+    timer: "MeshTimer | None" = None,
+) -> tuple[list[Tensor], list[Tensor]]:
+    """
+    Sparse Manifold Dual Marching Cubes.
+
+    Multiple dual vertices per cell (1-4) for manifold output. Resolves
+    ambiguous C16/C19 cases via neighbor checks, places vertices per
+    surface component based on edge partitioning, and routes quad edges
+    to the correct vertex slot.
+
+    Args:
+        cell_coords:      [K, 3]    int32  — active cell grid coords
+        corner_sdf:       [B, K, 8] float  — SDF at 8 corners
+        corner_positions: [K, 8, 3] float  — world-space corner positions
+        resolution:       int              — grid resolution (for hash keys)
+
+    Returns:
+        vertices_list: List of B tensors, each [V_b, 3]
+        faces_list:    List of B tensors, each [F_b, 4] (quads)
+    """
+
+    device = cell_coords.device
+    tables = get_tables(device)
+    (
+        _corner_offsets,
+        edge_corners_table,
+        _edge_table,
+        _edge_axis,
+        quad_cell_offsets,
+        dual_points_list,
+        problematic_configs,
+        _num_dual_points,
+        quad_local_edges,
+        case_edge_to_slot_table,
+    ) = tables
+
+    B = corner_sdf.shape[0]
+    K = cell_coords.shape[0]
+
+    if K == 0:
+        empty_v = torch.zeros(0, 3, device=device)
+        empty_f = torch.zeros(0, 4, dtype=torch.long, device=device)
+        return [empty_v] * B, [empty_f] * B
+
+    R, lookup_cells = _build_cell_lookup(cell_coords, resolution, device)
+
+    start_phase = _phase_starter(timer)
+    start_phase("dmc_case_resolution")
+
+    resolved, active_mask, union_indices = _resolve_union_active_cells(
+        corner_sdf,
+        cell_coords,
+        lookup_cells,
+        problematic_configs,
+        resolution,
+        R,
+    )
+    K_union = union_indices.shape[0]
+
+    if K_union == 0:
+        empty_v = torch.zeros(0, 3, device=device)
+        empty_f = torch.zeros(0, 4, dtype=torch.long, device=device)
+        return [empty_v] * B, [empty_f] * B
+
+    start_phase("dmc_vertex_placement")
+
+    vertices, edge_to_slot = _compute_union_vertices(
+        corner_sdf,
+        corner_positions,
+        union_indices,
+        resolved,
+        active_mask,
+        edge_corners_table,
+        dual_points_list,
+        case_edge_to_slot_table,
+    )
+
+    start_phase("dmc_quad_emission")
+
+    # ===================================================================
+    # 3h. Union quad emission with per-batch routing
+    # ===================================================================
+    # Map: cell index (0..K-1) -> union index (0..K_union-1)
+    cell_to_union = torch.full((K,), -1, dtype=torch.long, device=device)
+    cell_to_union[union_indices] = torch.arange(K_union, device=device, dtype=torch.long)
+
+    all_quads_list, all_face_valid_list = _emit_union_quads(
+        cell_coords,
+        corner_sdf,
+        quad_cell_offsets,
+        quad_local_edges,
+        edge_to_slot,
+        cell_to_union,
+        union_indices,
+        lookup_cells,
+        R,
+    )
+
+    start_phase("dmc_per_batch_compact")
+
+    # ===================================================================
+    # 3i. Output (backward compatible List[Tensor])
+    # ===================================================================
+    # Flatten vertices: [B, K_union, 4, 3] -> [B, K_union*4, 3]
+    flat_verts = vertices.reshape(B, K_union * 4, 3)
+
+    all_faces, all_face_valid = _combine_face_tensors(
+        all_quads_list,
+        all_face_valid_list,
+        B,
+        device,
+    )
+
+    vertices_list, faces_list = _compact_batch_mesh_outputs(
+        flat_verts,
+        all_faces,
+        all_face_valid,
+        device,
+    )
 
     return vertices_list, faces_list
 
