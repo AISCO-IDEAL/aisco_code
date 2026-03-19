@@ -13,7 +13,7 @@ Public API:
 import math
 import warnings
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import torch
 from torch import Tensor
@@ -21,7 +21,15 @@ from torch import Tensor
 from .tables import get_tables
 
 if TYPE_CHECKING:
-    from ..mesh import MeshTimer
+    @runtime_checkable
+    class MeshTimer(Protocol):
+        """Protocol for mesh extraction phase timing.
+
+        Any object with a ``start(name)`` method satisfies this protocol.
+        Each ``start()`` call implicitly ends the previous phase.
+        """
+
+        def start(self, name: str) -> None: ...
 
 
 def _chunked_sdf_eval(
