@@ -28,14 +28,14 @@
       color: var(--text);
       height: 100vh;
       overflow: hidden;
-      padding: 16px;
+      padding: 12px;
     }
 
     .page {
-      height: calc(100vh - 32px);
+      height: calc(100vh - 24px);
       display: grid;
       grid-template-rows: auto auto 1fr;
-      gap: 12px;
+      gap: 8px;
       max-width: 1600px;
       margin: 0 auto;
     }
@@ -45,7 +45,7 @@
       border: 1px solid var(--border);
       border-radius: 12px;
       box-shadow: var(--shadow);
-      padding: 12px;
+      padding: 8px;
       overflow: hidden;
     }
 
@@ -53,11 +53,11 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      min-height: 90px;
+      min-height: 64px;
     }
 
     .logo-wrap img {
-      max-height: 76px;
+      max-height: 52px;
       width: auto;
       max-width: 100%;
       object-fit: contain;
@@ -68,7 +68,7 @@
       display: grid;
       grid-template-columns: auto auto 1fr auto;
       align-items: center;
-      gap: 12px;
+      gap: 8px;
     }
 
     .assembly-wrap {
@@ -157,22 +157,19 @@
       height: 100%;
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
+      gap: 8px;
     }
 
     .visual-card {
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 10px;
+      padding: 8px;
       background: #f8fcf9;
       display: grid;
-      grid-template-rows: auto 1fr auto;
-      gap: 8px;
+      grid-template-rows: auto 1fr auto auto;
+      gap: 2px;
       min-height: 0;
-    }
-
-    .visual-card-wide {
-      grid-column: 1 / -1;
+      overflow: hidden;
     }
 
     .visual-title {
@@ -183,21 +180,30 @@
 
     .image-slot {
       width: 100%;
-      height: 100%;
-      min-height: 240px;
+      height: 350px;
+      min-height: 350px;
       border: 1px solid var(--border);
       border-radius: 8px;
       background: #f1f7f3;
       overflow: hidden;
       display: grid;
       place-items: center;
+      position: relative;
     }
 
     .image-slot img {
+      width: 100%;
+      height: 100%;
       max-width: 100%;
       max-height: 100%;
       object-fit: contain;
+      object-position: top center;
       display: none;
+    }
+
+    #artifactImage,
+    #solarArtifactImage {
+      transform: translateY(-8px);
     }
 
     .hint {
@@ -208,22 +214,8 @@
       text-overflow: ellipsis;
     }
 
-    .slider-row {
-      display: grid;
-      gap: 6px;
-    }
-
-    .slider-row label {
-      font-size: 0.9rem;
-      color: var(--muted);
-    }
-
-    .slider-row input[type="range"] {
-      width: 100%;
-    }
-
     .gif-actions {
-      margin-top: auto;
+      margin-top: -2px;
     }
 
     @media (max-width: 900px) {
@@ -266,17 +258,6 @@
     <section class="card" style="min-height: 0;">
       <div class="visuals-grid">
         <div class="visual-card">
-          <div class="visual-title">Current Run Mesh Files</div>
-          <div class="image-slot">
-            <img id="meshStepImage" alt="mesh step preview">
-          </div>
-          <div class="hint" id="meshFileName">No mesh file found for current run yet.</div>
-          <div class="slider-row">
-            <input id="meshSlider" type="range" min="0" max="0" value="0" step="1" disabled>
-          </div>
-        </div>
-
-        <div class="visual-card">
           <div class="visual-title">Mesh Assembly GIF (slowed)</div>
           <div class="image-slot">
             <img id="artifactImage" alt="mesh assembly gif preview">
@@ -287,12 +268,15 @@
           </div>
         </div>
 
-        <div class="visual-card visual-card-wide">
+        <div class="visual-card">
           <div class="visual-title">Solar Loss Rendering GIF</div>
           <div class="image-slot">
             <img id="solarArtifactImage" alt="solar loss gif preview">
           </div>
           <div class="hint" id="solarArtifactStatus">No solar_loss_rendering GIF loaded yet.</div>
+          <div class="gif-actions">
+            <button id="btnRestartSolarGif" type="button">Restart GIF</button>
+          </div>
         </div>
       </div>
     </section>
@@ -310,17 +294,12 @@
     const btnRestartGif = document.getElementById("btnRestartGif");
     const solarArtifactImage = document.getElementById("solarArtifactImage");
     const solarArtifactStatus = document.getElementById("solarArtifactStatus");
-    const meshStepImage = document.getElementById("meshStepImage");
-    const meshFileName = document.getElementById("meshFileName");
-    const meshSlider = document.getElementById("meshSlider");
+    const btnRestartSolarGif = document.getElementById("btnRestartSolarGif");
 
-    let meshEntries = [];
-    let meshPreviewEntries = [];
     let gifEntry = null;
     let currentGifKey = null;
     let solarGifEntry = null;
     let currentSolarGifKey = null;
-    let currentMeshKey = null;
 
     function initializeAssemblyIdOptions() {
       for (let id = 1; id <= 51; id += 1) {
@@ -369,34 +348,6 @@
       }
     }
 
-    function updateMeshSelection(index) {
-      if (!meshEntries.length) {
-        meshStepImage.style.display = "none";
-        meshFileName.textContent = "No mesh file found for current run yet.";
-        currentMeshKey = null;
-        return;
-      }
-
-      const clampedIndex = Math.max(0, Math.min(index, meshEntries.length - 1));
-      const meshFile = meshEntries[clampedIndex];
-      meshFileName.textContent = meshFile.name;
-
-      const preview = meshPreviewEntries.find((entry) => entry.epoch === meshFile.epoch);
-      if (preview) {
-        // FIXED: Only update src if the URL has actually changed to prevent flickering
-        if (currentMeshKey !== preview.url) {
-          // FIXED: Use correct separator for cache busting
-          const separator = preview.url.includes('?') ? '&' : '?';
-          meshStepImage.src = `${preview.url}${separator}t=${Date.now()}`;
-          currentMeshKey = preview.url;
-        }
-        meshStepImage.style.display = "block";
-      } else {
-        meshStepImage.style.display = "none";
-        currentMeshKey = null;
-      }
-    }
-
     function updateGifDisplay() {
       if (!gifEntry) {
         artifactImage.style.display = "none";
@@ -432,6 +383,7 @@
         solarArtifactImage.style.display = "none";
         solarArtifactStatus.textContent = "No solar_loss_rendering GIF found for current run.";
         currentSolarGifKey = null;
+        btnRestartSolarGif.disabled = true;
         return;
       }
 
@@ -441,6 +393,16 @@
         currentSolarGifKey = solarGifEntry.key;
       }
       solarArtifactImage.style.display = "block";
+      solarArtifactStatus.textContent = "";
+      btnRestartSolarGif.disabled = false;
+    }
+
+    function restartSolarGif() {
+      if (!solarGifEntry) {
+        return;
+      }
+      const separator = solarGifEntry.playUrl.includes('?') ? '&' : '?';
+      solarArtifactImage.src = `${solarGifEntry.playUrl}${separator}t=${Date.now()}`;
       solarArtifactStatus.textContent = "";
     }
 
@@ -466,11 +428,11 @@
 
         const solarGifList = data.solar_loss_gifs || [];
         if (solarGifList.length > 0) {
-          const selectedSolarGif = solarGifList[0];
+          const selectedSolarGif = solarGifList.find((entry) => entry.name === "rendering.gif") || solarGifList[0];
           solarGifEntry = {
             key: selectedSolarGif.rel_path || selectedSolarGif.name,
             name: selectedSolarGif.name,
-            playUrl: selectedSolarGif.url
+            playUrl: selectedSolarGif.slow_url || selectedSolarGif.url
           };
           updateSolarGifDisplay();
         } else {
@@ -478,23 +440,6 @@
           updateSolarGifDisplay();
         }
 
-        meshEntries = data.meshes || [];
-        meshPreviewEntries = data.mesh_step_images || [];
-        if (meshEntries.length > 0) {
-          meshSlider.disabled = false;
-          meshSlider.min = "0";
-          meshSlider.max = String(meshEntries.length - 1);
-          if (Number(meshSlider.value) > meshEntries.length - 1) {
-            meshSlider.value = String(meshEntries.length - 1);
-          }
-          updateMeshSelection(Number(meshSlider.value));
-        } else {
-          meshSlider.disabled = true;
-          meshSlider.min = "0";
-          meshSlider.max = "0";
-          meshSlider.value = "0";
-          updateMeshSelection(0);
-        }
       } catch (_error) {
         console.error("Failed to fetch artifacts:", _error); // FIXED: Added error logging
       }
@@ -529,9 +474,7 @@
 
     btnRunLocal.addEventListener("click", startRunLocal);
     btnRestartGif.addEventListener("click", restartGif);
-    meshSlider.addEventListener("input", () => {
-      updateMeshSelection(Number(meshSlider.value));
-    });
+  btnRestartSolarGif.addEventListener("click", restartSolarGif);
 
     initializeAssemblyIdOptions();
     refreshProgress();
