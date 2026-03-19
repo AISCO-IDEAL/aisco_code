@@ -6,8 +6,8 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G
 #SBATCH --gpus=rtx_4090:1
-#SBATCH --output=/cluster/home/clhuber/logs/Clemens_TEST_%j.out
-#SBATCH --error=/cluster/home/clhuber/logs/Clemens_TEST_%j.err
+#SBATCH --output=/cluster/home/clhuber/logs/Clemens_TEST_%j.out 
+#SBATCH --error=/cluster/home/clhuber/logs/Clemens_TEST_%j.err 
 
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
@@ -110,7 +110,7 @@ fi
 python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/main.py \
     -c $TEMP_CONFIG \
     2>&1
-
+    
 #------------------------------------------------------------------------------
 # Print job end information
 #------------------------------------------------------------------------------

@@ -605,7 +605,7 @@ class StaticTrainer3D(TrainerBase):
                 find_unused_parameters=True,
             )
 
-    def _sample_nodes_neural_field(self, batch: "pyg.data.Batch", num_input_nodes: int, num_query_nodes: int):  # noqa: PLR0912
+    def _sample_nodes_neural_field(self, batch: "pyg.data.Batch", num_input_nodes: int, num_query_nodes: int):
         """
         Sample nodes for neural field training strategy.
         """
@@ -655,15 +655,12 @@ class StaticTrainer3D(TrainerBase):
             if full_x_i is not None:
                 data_i.x = full_x_i[input_perm]
 
-            # Copy scalar/sample-level attributes to sampled data
-            for attr in ["force", "cd", "filename", "num_latent_nodes", "v_inf", "geom_extent", "geom_aspect", "conditioning"]:
+            # Copy scalar attributes (force, cd) to sampled data
+            for attr in ["force", "cd", "filename", "num_latent_nodes"]:
                 if hasattr(batch, attr) and getattr(batch, attr) is not None:
                     attr_value = getattr(batch, attr)
                     if isinstance(attr_value, list) or (attr_value.dim() > 0 and len(attr_value) == batch.num_graphs):
-                        selected = attr_value[i]
-                        if attr == "conditioning" and isinstance(selected, torch.Tensor) and selected.dim() == 1:
-                            selected = selected.unsqueeze(0)
-                        setattr(data_i, attr, selected)
+                        setattr(data_i, attr, attr_value[i])
 
             sampled_data_list.append(data_i)
 

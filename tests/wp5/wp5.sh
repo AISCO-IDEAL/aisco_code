@@ -1,4 +1,5 @@
 #!/bin/bash
+#SBATCH --account=public
 #SBATCH --partition=gpu
 #SBATCH --job-name=AISCO_Test_SLURM
 #SBATCH --time=00:30:00                   # Adjust time as needed
