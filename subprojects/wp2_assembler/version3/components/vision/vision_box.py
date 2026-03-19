@@ -34,14 +34,12 @@ def vision_driv_nbz() -> cq.Workplane:
     end_point = cq.Vector(radius * math.cos(neg_angle), radius * math.sin(neg_angle), 0)
 
     # print all points
-    '''
     print(f"Point A: {point_a}")
     print(f"Point B: {point_b}")
     print(f"Point C: {point_c}")
     print(f"Starting Point: {start_point}")
     print(f"Mid Point: {mid_point}")
     print(f"Ending Point: {end_point}")
-    '''
 
     arch_pos = (
         cq.Workplane("XY").moveTo(start_point.x, start_point.y).radiusArc(endPoint=(mid_point.x, mid_point.y), radius=radius)

@@ -45,16 +45,16 @@ class YourMode(RenderingMode):
     def __init__(self, visualiser, config: dict):
         super().__init__(visualiser, config)
         self.interval = config.get("interval", 10)
-    
+
     def update(self, optimization_state: dict) -> None:
         # Only render every N iterations
         if optimization_state["iteration"] % self.interval == 0:
             super().update(optimization_state)  # Use base rendering
-    
+
     def finalize(self, output_dir: Path) -> None:
         # Create GIF + save extra outputs
         super().finalize(output_dir)
-        
+
         # Save first/last frames as PNGs
         if self.frame_storage:
             self._save_image(self.frame_storage[0], output_dir / "first.png")
@@ -70,7 +70,7 @@ class YourMode(RenderingMode):
 
 ```python
 # Render from any camera angle
-image = self._render(vertices, faces, mode="rgb", 
+image = self._render(vertices, faces, mode="rgb",
                      camera_position=[x,y,z],
                      camera_direction=[dx,dy,dz])
 
@@ -93,7 +93,7 @@ self.fps              # GIF frame rate
 
 ## File Naming
 
-✅ **DO:** `rendering_mode_yourname.py`  
+✅ **DO:** `rendering_mode_yourname.py`
 ❌ **DON'T:** `my_renderer.py`, `custom.py`, etc.
 
 This prevents naming conflicts when multiple people work on the project.
