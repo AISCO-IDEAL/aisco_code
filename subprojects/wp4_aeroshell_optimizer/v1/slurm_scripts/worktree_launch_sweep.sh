@@ -7,9 +7,9 @@ set -euo pipefail
 JOB_NAME="Worktree_Sweep" # Name for the SLURM job
 TIME_LIMIT="04:00:00"  # Translates to --time below
 
-SWEEP_ID="aisco/Alex_Sweeps/3r4ab3is"   # <-- EDIT THIS
-NUMBER_OF_GPUS=2  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
-GPU_TYPE=""  # Set to "" for generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
+SWEEP_ID="aisco/Mesh_Extractor_Sweep/mqg0mk3d"   # <-- EDIT THIS
+NUMBER_OF_GPUS=4  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
+GPU_TYPE="rtx_4090"  # Set to "" for generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
 RUNS_PER_GPU=1 # Adjust based on your needs and cluster limits --> Translates to COUNT below
 CPUS_PER_TASK=8  # Translates to --cpus-per-task below
 MEM_PER_CPU="5G"  # Translates to --mem-per-cpu below
