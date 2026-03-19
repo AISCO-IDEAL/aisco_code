@@ -60,8 +60,8 @@ class SDFfromCadQuery:
             self.__sdf_at_pointgrid = [self.sdf2(x, y, z) for x, y, z in self.__pointgrid]
         if min(self.__sdf_at_pointgrid) > -1:
             print("SDF from cq.solid conversion Problem")
-        
-    
+
+
     def sdf(self, x: float, y: float, z: float) -> float:
         # assumes self.__shape is a CadQuery Shape wrapping a closed solid
         shape = self.__shape.wrapped
@@ -96,9 +96,9 @@ class SDFfromCadQuery:
         dist_shape_shape = BRepExtrema_DistShapeShape(vertex, shape_ocp)
         dist_shape_shape.Perform()
         d = dist_shape_shape.Value()
-        
-        threshold = 0.1  
-        
+
+        threshold = 0.1
+
         if d < threshold:  # Point is either on the surface or inside the shape
             dist_shape_shape = BRepExtrema_DistShapeShape(vertex, self.__negativ)
             dist_shape_shape.Perform()

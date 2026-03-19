@@ -1,0 +1,82 @@
+# ── Top-level model config ──────────────────────────────────────────────
+input_size: 6
+output_size: 1
+latent_tokens: [16, 16, 16]
+norm_domain: [[-1, -1, -1], [1, 1, 1]]
+
+# ── MAGNO (encoder + decoder) ───────────────────────────────────────────
+magno:
+  # GNO parameters
+  use_gno: true
+  gno_coord_dim: 3
+  gno_radius: 0.15
+  # Encoder GNO
+  lifting_channels: 64
+  encoder_feature_attr: "x"
+  in_gno_channel_mlp_hidden_layers: [128, 128]
+  in_gno_transform_type: "linear"
+  # Decoder GNO
+  projection_channels: 256
+  out_gno_channel_mlp_hidden_layers: [64, 64]
+  out_gno_transform_type: "linear"
+  # MLP type
+  mlp_type: "channel"
+  # Multi-scale
+  scales: [1.0]
+  use_scale_weights: false
+  use_graph_cache: true
+  gno_use_torch_cluster: false
+  gno_use_torch_scatter: true
+  # Node embedding
+  node_embedding: false
+  # Attention
+  use_attn: null
+  attention_type: "cosine"
+  # Geometric embedding
+  use_geoembed: [true, true]
+  embedding_method: "statistical"
+  pooling: "max"
+  # Sampling
+  sampling_strategy: null
+  max_neighbors: null
+  sample_ratio: null
+  # Neighbor finding
+  neighbor_strategy: "radius"
+  k_neighbors: 1
+  # Dataset flags
+  precompute_edges: true
+  asynchronous_graph_building: false
+
+# ── Transformer (processor) ─────────────────────────────────────────────
+# NOTE: input_size / output_size are injected by gaot_3d.py at runtime
+transformer:
+  patch_size: 4
+  hidden_size: 256
+  use_attn_norm: true
+  use_ffn_norm: true
+  norm_eps: 1.0e-6
+  num_layers: 10
+  positional_embedding: "rope"
+  use_long_range_skip: true
+
+  attn_config:
+    hidden_size: 256
+    num_heads: 8
+    num_kv_heads: 8
+    use_conditional_norm: false
+    cond_norm_hidden_size: 4
+    atten_dropout: 0.1
+    positional_embedding: "rope"
+
+  ffn_config:
+    hidden_size: 1024
+    use_conditional_norm: false
+    cond_norm_hidden_size: 4
+
+# ── Decoder (pooling + multi-head) ──────────────────────────────────────
+decoder:
+  hidden_features: 256
+  num_shared_layers: 3
+  output_heads:
+    force: 1
+    cd: 1
