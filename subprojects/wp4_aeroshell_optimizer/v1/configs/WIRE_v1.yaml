@@ -3,11 +3,3 @@
 # It IS loaded during pretraining if pretraining_v0_config.yaml model = "WIRE" triggers dynamic_model_loading(),
 # but in the current main flow, the model is passed in directly (skipping dynamic_model_loading).
 # FUTURE USER: PLEASE REMOVE ALL THE UNUSED KEYS IN THIS FILE AND SIMPLIFY IT TO THE BARE MINIMUM NEEDED FOR YOUR MODEL, TO AVOID CONFUSION. ALSO DELETE THIS COMMENT THEN.
-in_features: 3
-out_features: 1
-hidden_features: 256
-hidden_layers: 3
-first_omega_0: 10.0
-hidden_omega_0: 10.0
-scale: 40.0
-trainable_params: True
