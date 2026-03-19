@@ -36,7 +36,7 @@
       display: grid;
       grid-template-rows: auto auto 1fr;
       gap: 12px;
-      max-width: 1200px;
+      max-width: 1600px;
       margin: 0 auto;
     }
 
@@ -120,7 +120,7 @@
     .visuals-grid {
       height: 100%;
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
     }
 
@@ -133,6 +133,10 @@
       grid-template-rows: auto 1fr auto;
       gap: 8px;
       min-height: 0;
+    }
+
+    .visual-card-wide {
+      grid-column: 1 / -1;
     }
 
     .visual-title {
@@ -240,6 +244,14 @@
             <button id="btnRestartGif" type="button">Restart GIF</button>
           </div>
         </div>
+
+        <div class="visual-card visual-card-wide">
+          <div class="visual-title">Solar Loss Rendering GIF</div>
+          <div class="image-slot">
+            <img id="solarArtifactImage" alt="solar loss gif preview">
+          </div>
+          <div class="hint" id="solarArtifactStatus">No solar_loss_rendering GIF loaded yet.</div>
+        </div>
       </div>
     </section>
   </main>
@@ -253,6 +265,8 @@
     const artifactImage = document.getElementById("artifactImage");
     const artifactStatus = document.getElementById("artifactStatus");
     const btnRestartGif = document.getElementById("btnRestartGif");
+    const solarArtifactImage = document.getElementById("solarArtifactImage");
+    const solarArtifactStatus = document.getElementById("solarArtifactStatus");
     const meshStepImage = document.getElementById("meshStepImage");
     const meshFileName = document.getElementById("meshFileName");
     const meshSlider = document.getElementById("meshSlider");
@@ -261,6 +275,8 @@
     let meshPreviewEntries = [];
     let gifEntry = null;
     let currentGifKey = null;
+    let solarGifEntry = null;
+    let currentSolarGifKey = null;
     let currentMeshKey = null; // FIXED: Added to prevent flickering
 
     async function startRunLocal() {
@@ -335,6 +351,23 @@
       artifactStatus.textContent = "";
     }
 
+    function updateSolarGifDisplay() {
+      if (!solarGifEntry) {
+        solarArtifactImage.style.display = "none";
+        solarArtifactStatus.textContent = "No solar_loss_rendering GIF found for current run.";
+        currentSolarGifKey = null;
+        return;
+      }
+
+      if (currentSolarGifKey !== solarGifEntry.key) {
+        const separator = solarGifEntry.playUrl.includes('?') ? '&' : '?';
+        solarArtifactImage.src = `${solarGifEntry.playUrl}${separator}t=${Date.now()}`;
+        currentSolarGifKey = solarGifEntry.key;
+      }
+      solarArtifactImage.style.display = "block";
+      solarArtifactStatus.textContent = "";
+    }
+
     async function refreshArtifacts() {
       try {
         const res = await fetch(`/run-local/artifacts?t=${Date.now()}`, { cache: "no-store" });
@@ -353,6 +386,20 @@
         } else {
           gifEntry = null;
           updateGifDisplay();
+        }
+
+        const solarGifList = data.solar_loss_gifs || [];
+        if (solarGifList.length > 0) {
+          const selectedSolarGif = solarGifList[0];
+          solarGifEntry = {
+            key: selectedSolarGif.rel_path || selectedSolarGif.name,
+            name: selectedSolarGif.name,
+            playUrl: selectedSolarGif.url
+          };
+          updateSolarGifDisplay();
+        } else {
+          solarGifEntry = null;
+          updateSolarGifDisplay();
         }
 
         meshEntries = data.meshes || [];

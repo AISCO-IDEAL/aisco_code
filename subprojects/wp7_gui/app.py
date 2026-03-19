@@ -247,6 +247,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                 {
                     "run_dir": None,
                     "mesh_assembly_gifs": [],
+                    "solar_loss_gifs": [],
                     "meshes": [],
                     "message": "No completed run output directory found yet.",
                 },
@@ -254,6 +255,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             return
 
         mesh_assembly_dir = run_dir / "mesh_assembly_mode"
+        solar_loss_dir = run_dir / "solar_loss_rendering"
         mesh_dir = run_dir / "meshes"
         mesh_steps_dir = run_dir / "solar_loss_rendering" / "sim_renders"
 
@@ -262,6 +264,20 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             for gif_path in sorted(mesh_assembly_dir.glob("*.gif"), key=lambda p: p.stat().st_mtime, reverse=True):
                 rel_path = gif_path.resolve().relative_to(LOCAL_STORAGE_DIR.resolve()).as_posix()
                 gifs.append(
+                    {
+                        "name": gif_path.name,
+                        "rel_path": rel_path,
+                        "url": f"/run-local/artifact-file?path={rel_path}",
+                        "slow_url": f"/run-local/slow-gif?path={rel_path}&factor=2.5",
+                        "first_frame_url": f"/run-local/gif-first-frame?path={rel_path}",
+                    }
+                )
+
+        solar_loss_gifs = []
+        if solar_loss_dir.exists():
+            for gif_path in sorted(solar_loss_dir.glob("*.gif"), key=lambda p: p.stat().st_mtime, reverse=True):
+                rel_path = gif_path.resolve().relative_to(LOCAL_STORAGE_DIR.resolve()).as_posix()
+                solar_loss_gifs.append(
                     {
                         "name": gif_path.name,
                         "rel_path": rel_path,
@@ -309,6 +325,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             {
                 "run_dir": run_dir.resolve().relative_to(REPO_ROOT.parent.resolve()).as_posix(),
                 "mesh_assembly_gifs": gifs,
+                "solar_loss_gifs": solar_loss_gifs,
                 "meshes": meshes,
                 "mesh_step_images": mesh_step_images,
                 "message": "Artifacts loaded",
@@ -424,6 +441,8 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
 
         if not cached_path.exists():
             try:
+                import imageio.v2 as imageio
+
                 frames = imageio.mimread(requested)
                 if not frames:
                     self._send_json(500, {"message": "Failed to decode GIF frames"})
