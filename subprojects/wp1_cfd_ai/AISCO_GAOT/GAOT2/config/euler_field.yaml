@@ -97,6 +97,8 @@ dataset:
     uncertainty_weighting: true
     field_loss_weight: 1e-4  # fallback weight used when uncertainty_weighting is false
     use_rescale_new: true
+    order_file_name:
+    active_heads: ["force", "cd", "pressure"]
     active_variables:
 
 optimizer:
