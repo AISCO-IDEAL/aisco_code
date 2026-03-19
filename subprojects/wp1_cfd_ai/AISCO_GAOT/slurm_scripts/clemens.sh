@@ -6,8 +6,8 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G
 #SBATCH --gpus=rtx_4090:1
-#SBATCH --output=/cluster/home/clhuber/logs/Robin_TEST_%j.out
-#SBATCH --error=/cluster/home/clhuber/logs/Robin_TEST_%j.err
+#SBATCH --output=/cluster/home/clhuber/logs/Clemens_TEST_%j.out
+#SBATCH --error=/cluster/home/clhuber/logs/Clemens_TEST_%j.err
 
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
@@ -119,6 +119,6 @@ echo "Job ended on: $(date)"
 echo "Total elapsed time: $SECONDS seconds"
 echo "=========================================="
 
-## chmod +x ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/robin.sh
-## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/robin.sh
-## watch -n 1.0 squeue -u roarnold
+## chmod +x ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/clemens.sh
+## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/clemens.sh
+## watch -n 5 squeue -u $USER

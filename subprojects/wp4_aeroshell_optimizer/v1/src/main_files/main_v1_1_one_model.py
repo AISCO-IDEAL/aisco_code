@@ -83,10 +83,13 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     # ------------------------------------------------------------------
     # 5. Pretraining (or load pretrained model)
     # ------------------------------------------------------------------
+    ### load configs
     pretraining_config_name = general_config["active_configs"].get("pretraining", "pretraining_v0_config.yaml")
     pretraining_config = load_config(v="v1", cfg_name=pretraining_config_name)
     force_pretraining = pretraining_config.get("pretraining", {}).get("force_pretraining", False)
     run_locally = general_config["general_info"].get("run_locally", "False") == "True"
+
+    ### get paths
     if run_locally:
         pretrained_path = pretraining_config["pretraining"].get("local_pretraining_model_path", False)
     else:
@@ -94,6 +97,14 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     print(f"Pretrained path: {pretrained_path}")
     pretrained_model = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
 
+    pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", False)
+    print(f"[DEBUG main] pretraining_model_path from config: {pretrained_path}")
+    ### load pretrained model if exists
+    pretrained_model = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
+    print(f"[DEBUG main] os.path.exists(path): {os.path.exists(pretrained_path)}")
+    print(f"[DEBUG main] os.path.isfile(path): {os.path.isfile(pretrained_path)}")
+    print(f"[DEBUG main] os.path.isdir(path): {os.path.isdir(pretrained_path)}")
+    ### pretraining if model doesn't exist
     if pretrained_model is not None and not force_pretraining:
         model.load_state_dict(torch.load(pretrained_model, map_location=device))
         if verbose:
@@ -131,7 +142,8 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     rendering_dir = None
     if wandb_name is not None:
         # set rendering dir inside wandb log dir
-        run_locally = general_config["general_info"].get("run_locally", "False") == "True"
+        if general_config["general_info"].get("run_locally", False):
+            run_locally = general_config["general_info"].get("run_locally", "False") == "True"
         if run_locally:
             rendering_dir = (
                 Path(general_config["storage_paths"]["local_storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)

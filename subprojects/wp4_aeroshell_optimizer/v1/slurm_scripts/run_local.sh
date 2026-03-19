@@ -9,6 +9,8 @@
 # cd ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts
 # bash run_local.sh
 ###########################################################################
+umask 0002
+
 USERNAME=$(whoami) #elegant, right?
 # Update this path to where your code actually sits on WSL
 
@@ -50,7 +52,7 @@ fi
 export PYTHONUNBUFFERED=TRUE
 # Add the local subprojects folder to path
 export PYTHONPATH="$PROJECT_ROOT/subprojects:$PYTHONPATH"
-export AISCO_CODE_PATH="/home/eschaerer/AISCO_code"
+export AISCO_CODE_PATH="/cluster/home/$USERNAME/AISCO_code"
 cd "$PROJECT_ROOT"
 
 # Run the python command

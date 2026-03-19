@@ -98,7 +98,7 @@ class ModelLoader:
 
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
-        _, _, loss, surrogate_loss = self.extractor.extract_and_compute_loss(sdf_model=sdf_model, loss_fn=self.loss_fn)
+        _, _, loss, surrogate_loss, _ = self.extractor.extract_and_compute_loss(sdf_model=sdf_model, loss_fn=self.loss_fn)
         return loss.item() + surrogate_loss - surrogate_loss.item()
 
     def loss_fn(self, mesh_verts, mesh_faces):

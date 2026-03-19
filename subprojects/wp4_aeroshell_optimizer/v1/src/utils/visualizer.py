@@ -12,8 +12,8 @@ import OpenGL
 import pyrender
 import trimesh
 from pyrender import RenderFlags
-
 from subprojects.wp2_assembler.version3.components.nbz import call_assembly
+
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 
 # Constants for numerical thresholds

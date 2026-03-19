@@ -8,6 +8,8 @@
 #SBATCH --output=/cluster/home/elihuber/logs/preprocess_euler_%j.out
 #SBATCH --error=/cluster/home/elihuber/logs/preprocess_euler_%j.err
 
+umask 0002
+
 echo "Job started on $(hostname) at $(date)"
 echo "CPUs available: $SLURM_CPUS_PER_TASK"
 
@@ -15,15 +17,14 @@ module purge
 module load stack/2024-06 python_cuda/3.11.6
 source /cluster/home/elihuber/AISCO_code/aisco_env/bin/activate
 
-SCRIPT_DIR=/cluster/home/elihuber/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/dataset/euler
+SCRIPT_PATH=/cluster/home/elihuber/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset/preprocess_all_datasets.py
 
-OUTPUT_DIR=/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_new
-echo "=== Resuming processing (keeping existing files in $OUTPUT_DIR) ==="
-mkdir -p "$OUTPUT_DIR"
+OUTPUT_ROOT=/cluster/work/fuge/AISCO/wp1_cfd_ai
+echo "=== Processing canonical Euler dataset into $OUTPUT_ROOT/processed_euler_cp_full ==="
 
-echo "=== Processing Euler multi-head (pos + force) ==="
-python "$SCRIPT_DIR/process_my_euler_multi.py" \
-    --output-dir "$OUTPUT_DIR" \
-    --num-workers 12
+python "$SCRIPT_PATH" \
+    --datasets euler \
+    --output-root "$OUTPUT_ROOT" \
+    --euler-workers 4
 
 echo "Job finished at $(date)"
