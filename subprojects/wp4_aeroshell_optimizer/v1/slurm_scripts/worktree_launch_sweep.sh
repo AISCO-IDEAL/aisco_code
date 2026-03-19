@@ -5,13 +5,13 @@ set -uo pipefail
 trap 'echo "[WARN] Script error at line $LINENO (exit $?)" >&2' ERR
 
 # ---- Config, EDIT HERE ---------------------------------------------------------------
-JOB_NAME="Worktree_Sweep" # Name for the SLURM job
+JOB_NAME="Raytracing_Sweep" # Name for the SLURM job
 TIME_LIMIT="04:00:00"  # Translates to --time below
 
-SWEEP_ID="aisco/CFD_integration_testing/y7sizfxi"   # <-- EDIT THIS
-NUMBER_OF_GPUS=2  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
-GPU_TYPE=""  # Set to "" for generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
-RUNS_PER_GPU=1 # Adjust based on your needs and cluster limits --> Translates to COUNT below
+SWEEP_ID="aisco/CFD_integration_testing/vuf7mdbz"   # <-- EDIT THIS
+NUMBER_OF_GPUS=4  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
+GPU_TYPE="rtx_4090"  # Set to "" for generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
+RUNS_PER_GPU=2 # Adjust based on your needs and cluster limits --> Translates to COUNT below
 CPUS_PER_TASK=8  # Translates to --cpus-per-task below
 MEM_PER_CPU="5G"  # Translates to --mem-per-cpu below
 

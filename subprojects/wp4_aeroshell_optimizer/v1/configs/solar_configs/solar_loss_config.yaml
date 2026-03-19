@@ -96,7 +96,7 @@ SolarLossConfigV6:
   soft_mask_selection_threshold: 0.5
   soft_mask_full_selection_threshold: 0.95
   rendering: True
-  selection_threshold_render: 0.05
+  selection_threshold_render: 0.03
   log_group_name: "solar_loss_metrics"
   shading:
     method: "sdf" # sdf | mesh | none
