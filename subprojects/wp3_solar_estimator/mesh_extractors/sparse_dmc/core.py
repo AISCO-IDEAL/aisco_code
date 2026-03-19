@@ -21,6 +21,7 @@ from torch import Tensor
 from .tables import get_tables
 
 if TYPE_CHECKING:
+
     @runtime_checkable
     class MeshTimer(Protocol):
         """Protocol for mesh extraction phase timing.
@@ -333,7 +334,7 @@ def octree_sdf_eval(
     device = _normalize_device(device)
 
     print(__file__)
-    print(type(device),device)
+    print(type(device), device)
 
     # Validate resolution is power of 2
     if resolution < 2 or (resolution & (resolution - 1)) != 0:
@@ -648,8 +649,7 @@ def _emit_union_quads(
         local_edges = quad_local_edges[axis]  # [4]
         quad_vert_idx = torch.stack(
             [
-                sc_union_idx[:, j].unsqueeze(0).expand(B, -1) * 4
-                + edge_to_slot[:, sc_union_idx[:, j], local_edges[j].long()]
+                sc_union_idx[:, j].unsqueeze(0).expand(B, -1) * 4 + edge_to_slot[:, sc_union_idx[:, j], local_edges[j].long()]
                 for j in range(4)
             ],
             dim=2,
