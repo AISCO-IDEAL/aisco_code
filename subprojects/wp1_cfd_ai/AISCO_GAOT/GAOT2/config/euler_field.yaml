@@ -79,7 +79,7 @@ model:
 dataset:
     name: "euler_pressure_field"
     metaname: "incompressible_fluids/euler_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_cp_full"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_pressure"
     processed_folder: ""
     force_recompute_stats: false
     rand_dataset: true

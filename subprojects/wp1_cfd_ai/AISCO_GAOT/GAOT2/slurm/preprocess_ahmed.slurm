@@ -8,8 +8,6 @@
 #SBATCH --output=/cluster/home/elihuber/logs/preprocess_ahmed_%j.out
 #SBATCH --error=/cluster/home/elihuber/logs/preprocess_ahmed_%j.err
 
-umask 0002
-
 echo "Job started on $(hostname) at $(date)"
 echo "CPUs available: $SLURM_CPUS_PER_TASK"
 
@@ -17,14 +15,16 @@ module purge
 module load stack/2024-06 python_cuda/3.11.6
 source /cluster/home/elihuber/AISCO_code/aisco_env/bin/activate
 
-SCRIPT_PATH=/cluster/home/elihuber/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset/preprocess_all_datasets.py
+SCRIPT_DIR=/cluster/home/elihuber/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/dataset/ahmed
 
-OUTPUT_ROOT=/cluster/work/fuge/AISCO/wp1_cfd_ai
-echo "=== Processing canonical Ahmed dataset into $OUTPUT_ROOT/processed_ahmed_cp_full ==="
+OUTPUT_DIR=/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_ahmed_multi_new
+echo "=== Clearing old data in $OUTPUT_DIR ==="
+rm -rf "$OUTPUT_DIR"
+mkdir -p "$OUTPUT_DIR"
 
-python "$SCRIPT_PATH" \
-    --datasets ahmed \
-    --output-root "$OUTPUT_ROOT" \
-    --ahmed-workers 2
+echo "=== Processing Ahmed body PLY dataset ==="
+python "$SCRIPT_DIR/process_ahmed_drag_params.py" \
+    --output-dir "$OUTPUT_DIR" \
+    --num-workers 28
 
 echo "Job finished at $(date)"

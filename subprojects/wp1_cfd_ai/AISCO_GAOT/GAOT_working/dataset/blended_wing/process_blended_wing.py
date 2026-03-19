@@ -37,42 +37,17 @@ CASE_DATA = os.path.join(DATA_ROOT, "case_data.dat")
 OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing"
 
 NUM_WORKERS = 8
-A_SEA_LEVEL = 340.294  # m/s
-COND_EPS = 1e-6
-
-
-def _compute_geom_conditioning(pos: torch.Tensor, v_inf: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Build geometry-aware conditioning vectors from unnormalized coordinates."""
-    extent = pos.max(dim=0).values - pos.min(dim=0).values
-    max_extent = torch.clamp(extent.max(), min=COND_EPS)
-    aspect = extent / max_extent
-    conditioning = torch.cat(
-        [
-            torch.tensor([v_inf], dtype=torch.float32),
-            extent.to(dtype=torch.float32),
-            aspect.to(dtype=torch.float32),
-        ],
-        dim=0,
-    ).unsqueeze(0)
-    return extent, aspect, conditioning
 
 
 def load_case_data(path: str) -> dict:
-    """Parse case_data.dat into dict with aerodynamic coefficients and Mach number."""
+    """Parse case_data.dat into dict: case_name -> {'CD': float, 'CL': float}."""
     case_df = pd.read_csv(
         path,
         sep=r"\s+",
         comment="#",
         names=["case_name", "geom_name", "alt_kft", "Re", "M_inf", "alpha_deg", "beta_deg", "CD", "CL", "CMy"],
     )
-    return {
-        row["case_name"]: {
-            "CD": row["CD"],
-            "CL": row["CL"],
-            "M_inf": row["M_inf"],
-        }
-        for _, row in case_df.iterrows()
-    }
+    return {row["case_name"]: {"CD": row["CD"], "CL": row["CL"]} for _, row in case_df.iterrows()}
 
 
 def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
@@ -95,17 +70,11 @@ def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
         return None
 
     aero = case_lookup[case_name]
-    v_inf = float(aero["M_inf"]) * A_SEA_LEVEL
 
     data = Data(pos=pos, c=c)
     data.x = cp  # per-vertex Cp field
     data.cd = torch.tensor([aero["CD"]], dtype=torch.float32)
     data.force = torch.tensor([float("nan")], dtype=torch.float32)  # no absolute force
-    geom_extent, geom_aspect, conditioning = _compute_geom_conditioning(pos, v_inf)
-    data.v_inf = torch.tensor([v_inf], dtype=torch.float32)
-    data.geom_extent = geom_extent
-    data.geom_aspect = geom_aspect
-    data.conditioning = conditioning
     data.filename = case_name
 
     torch.save(data, os.path.join(output_dir, f"{case_name}.pt"))

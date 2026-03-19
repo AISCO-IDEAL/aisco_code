@@ -92,3 +92,5 @@ csv_string += f"\n{sdf_converter.volume()} "
 # save csv string to a file
 with open(f'/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/sdf_conversions_tests/sdf_centre_values.csv', 'w') as f:
     f.write(csv_string)
+
+
