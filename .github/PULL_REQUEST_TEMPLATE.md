@@ -32,7 +32,7 @@ To upload images to a PR -- simply drag and drop an image while in edit mode and
     - [] ... no new warnings are generated
     - [] ... no errors are noticeable
 - [] I have run `ruff check .` and `ruff format`
-- [] I have run `mypy`
+- [] I have run `mypy .`
 - [] I have commented my code, particularly in hard-to-understand areas
 - [] I have made corresponding changes to the documentation
 - [] I have added tests that prove my fix is effective or that my feature works
