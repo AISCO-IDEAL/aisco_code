@@ -369,7 +369,6 @@ def filter_and_reindex_by_outer_nbz(
     seat_margin: dict[str, float],
     tol: float = 1e-6,
 ) -> tuple[int, int]:
-
     start_total = time.time()
 
     def compute_aabb(pos: tuple[float, float, float], bb: dict[str, float]) -> dict[str, float]:
@@ -435,7 +434,6 @@ def filter_and_reindex_by_outer_nbz(
 
 
 def make_assemblys(nr_of_w):
-
     wheel_margin = bbox_list_to_margin_dict(Wheels().bounding_box_list())
     seat_margin = bbox_list_to_margin_dict(Seat().bounding_box_list())
 

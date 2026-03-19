@@ -114,7 +114,7 @@ class IntegralTransform(nn.Module):
             output_shape = [num_query_nodes, output_channels]
             if batch_x is not None and f_y is not None and f_y.ndim == 3:
                 pass
-            return torch.zeros(output_shape, device=device, dtype=self.channel_mlp.fcs[-1].weight.dtype)
+            return torch.zeros(output_shape, device=device, dtype=self.channel_mlp.fcs[-1].weight.dtype)  # type: ignore[arg-type]
 
         query_idx = sampled_edge_index[1].long()
         source_idx = sampled_edge_index[0].long()

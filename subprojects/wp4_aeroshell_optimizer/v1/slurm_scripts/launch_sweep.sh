@@ -9,17 +9,18 @@
 #SBATCH --time=04:00:00
 #SBATCH --ntasks=2
 #SBATCH --cpus-per-task=8
-#SBATCH --gpus=rtx_4090:3
+#SBATCH --gpus=2
 #SBATCH --mem-per-cpu=5G
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
+#SBATCH --mail-user=%u@ethz.ch
+#SBATCH --mail-type=END,FAIL
 ################################### RUN THIS CMD ##############################################
 ##  sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/launch_sweep.sh ##
 ###############################################################################################
 umask 0002
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/your_project/your_method_comparison_sweep"   # <-- set output from: wandb sweep .../method_comparison_v3B.yaml
-COUNT=25                                      # per-agent max pulls; with run_cap in sweep, total runs stay bounded
-MAX_AGENTS=3                                # hard cap on parallel agents/GPU workers
+SWEEP_ID="aisco/"   # <-- EDIT THIS
+COUNT=2                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
 
 # ---- Job info ---------------------------------------------------------------
 echo "=========================================="
