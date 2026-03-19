@@ -1,5 +1,5 @@
 
 training_params:
-  learning_rate: 0.00005  # basic_MLP_v1.py reads training_config["training_params"].get("learning_rate", 1e-3)
-  num_epochs: 5 #  basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
-  mesh_save_interval: 100  #  basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
+  learning_rate: 0.00005  # NOT USED by BasicMLP — basic_MLP_v1.py reads training_config.get("learning_rate") at top level, not from training_params; always falls back to 1e-3. Only used if sweep overrides it.
+  num_epochs: 11 # USED — basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
+  mesh_save_interval: 100  # USED — basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
