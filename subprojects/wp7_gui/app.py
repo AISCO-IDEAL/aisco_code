@@ -22,6 +22,7 @@ RUN_LOCAL_LOG = GUI_ROOT / "logs" / f"run_local_{timestamp}.log"
 
 PROCESS_LOCK = threading.Lock()
 STATE: dict[str, subprocess.Popen[str] | None] = {"run_local_process": None}
+ASSEMBLY_ID_ENV_VAR = "AISCO_ASSEMBLY_ID"
 
 
 class GUIRequestHandler(SimpleHTTPRequestHandler):
@@ -42,6 +43,22 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(404, {"message": "Endpoint not found"})
 
     def handle_run_local(self) -> None:
+        body_data = self._read_json_body()
+        raw_assembly_id = body_data.get("assembly_id")
+
+        assembly_id: int | None = None
+        if raw_assembly_id not in (None, ""):
+            raw_assembly_id_str = str(raw_assembly_id).strip()
+            try:
+                assembly_id = int(raw_assembly_id_str)
+            except (TypeError, ValueError):
+                self._send_json(400, {"message": "assembly_id must be an integer between 1 and 51"})
+                return
+
+            if not 1 <= assembly_id <= 51:
+                self._send_json(400, {"message": "assembly_id must be in range 1..51"})
+                return
+
         if not RUN_LOCAL_SCRIPT.exists():
             LOGGER.error("Script missing: %s", RUN_LOCAL_SCRIPT)
             self._send_json(500, {"message": f"Optimization script not found at {RUN_LOCAL_SCRIPT}"})
@@ -62,10 +79,17 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                     return
 
                 start_stamp = datetime.now().isoformat(timespec="seconds")
+                run_label = "random assembly_id" if assembly_id is None else f"assembly_id={assembly_id}"
                 RUN_LOCAL_LOG.write_text(
-                    f"[{start_stamp}] Starting run_local.sh\n\n",
+                    f"[{start_stamp}] Starting run_local.sh ({run_label})\n\n",
                     encoding="utf-8",
                 )
+
+                process_env = os.environ.copy()
+                if assembly_id is not None:
+                    process_env[ASSEMBLY_ID_ENV_VAR] = str(assembly_id)
+                else:
+                    process_env.pop(ASSEMBLY_ID_ENV_VAR, None)
 
                 log_handle = RUN_LOCAL_LOG.open("a", encoding="utf-8")
                 process = subprocess.Popen(
@@ -74,6 +98,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                     stdout=log_handle,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    env=process_env,
                     start_new_session=True,
                 )
                 log_handle.close()
@@ -86,6 +111,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                     "status": "success",
                     "message": "Optimization process started",
                     "pid": process.pid,
+                    "assembly_id": assembly_id,
                 },
             )
         except Exception as e:

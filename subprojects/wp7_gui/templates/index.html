@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,7 +18,9 @@
       --shadow: 0 12px 24px rgba(16, 32, 24, 0.08);
     }
 
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
 
     body {
       margin: 0;
@@ -86,6 +89,23 @@
       margin-top: 14px;
     }
 
+    .assembly-control {
+      display: grid;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .assembly-control input {
+      width: 100px;
+      border: 1px solid #adbfb4;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+
     button {
       border: none;
       border-radius: 10px;
@@ -98,10 +118,17 @@
       transition: transform 0.08s ease, background 0.2s ease;
     }
 
-    button:hover { background: var(--accent-2); }
-    button:active { transform: translateY(1px); }
+    button:hover {
+      background: var(--accent-2);
+    }
 
-    .danger { background: var(--danger); }
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .danger {
+      background: var(--danger);
+    }
 
     #status {
       margin-top: 14px;
@@ -165,6 +192,7 @@
     }
   </style>
 </head>
+
 <body>
   <aside class="team-logo" aria-label="Team logo">
     <img id="teamLogo" src="team_logo.png" alt="Team logo">
@@ -350,4 +378,5 @@
     document.getElementById("btnClearOutput").addEventListener("click", clearCommandOutput);
   </script>
 </body>
+
 </html>
