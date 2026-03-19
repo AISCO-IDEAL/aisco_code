@@ -1,7 +1,8 @@
 #!/bin/bash
 
 umask 0002
-set -euo pipefail
+set -uo pipefail
+trap 'echo "[WARN] Script error at line $LINENO (exit $?)" >&2' ERR
 
 # ---- Config, EDIT HERE ---------------------------------------------------------------
 JOB_NAME="Worktree_Sweep" # Name for the SLURM job
