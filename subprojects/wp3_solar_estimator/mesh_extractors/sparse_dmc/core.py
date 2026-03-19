@@ -51,9 +51,7 @@ def _chunked_sdf_eval(
     N = points.shape[0]
     if chunk_size is None or chunk_size >= N:
         return sdf_fn(points)
-    chunks = []
-    for i in range(0, N, chunk_size):
-        chunks.append(sdf_fn(points[i : min(i + chunk_size, N)]))
+    chunks = [sdf_fn(points[i : i + chunk_size]) for i in range(0, N, chunk_size)]
     return torch.cat(chunks, dim=1)  # [B, N]
 
 
@@ -149,6 +147,146 @@ def _check_boundary_clipping_sparse(
         )
 
 
+def _normalize_device(device: torch.device | str | None) -> torch.device:
+    """Return a concrete torch.device, defaulting to CPU."""
+    if device is None:
+        return torch.device("cpu")
+    if isinstance(device, str):
+        return torch.device(device)
+    return device
+
+
+def _phase_starter(timer: "MeshTimer | None") -> Callable[[str], None]:
+    """Return a callable that starts timer phases, or a no-op."""
+    if timer is None:
+        return lambda _: None
+    return timer.start
+
+
+def _refine_octree_cells(
+    level_cells: Tensor,
+    cur_res: int,
+    num_levels: int,
+    corner_offsets: Tensor,
+    bb_min: Tensor,
+    bb_extent: Tensor,
+    lipschitz: float,
+    sdf_fn: Callable[[Tensor], Tensor],
+    max_points_per_chunk: int | None,
+    start_phase: Callable[[str], None],
+) -> Tensor:
+    """Refine sparse octree cells from coarse resolution to target."""
+    with torch.no_grad():
+        for level in range(num_levels):
+            start_phase(f"octree_level_{level}_sdf_eval")
+
+            cell_size_world = bb_extent / cur_res  # [3] world-space cell size
+            cell_diag = torch.norm(cell_size_world)
+
+            # Compute unique corners for current cells
+            # Each cell has 8 corners at coords + corner_offsets
+            # cell_corners_grid: [K, 8, 3] int coords at cur_res+1 grid
+            cell_corners_grid = level_cells.unsqueeze(1) + corner_offsets.unsqueeze(0)  # [K, 8, 3]
+
+            # Flatten to [K*8, 3], find unique (1D keys — avoids broken MPS unique_dim)
+            flat_corners = cell_corners_grid.reshape(-1, 3).long()
+            unique_corners, inverse_idx = _unique_int_coords(flat_corners, max_coord=cur_res)  # [M, 3], [K*8]
+
+            # Convert unique corners to world-space positions
+            unique_pos = bb_min + (unique_corners.float() / cur_res) * bb_extent  # [M, 3]
+
+            # Evaluate SDF at unique corners
+            sdf_vals = _chunked_sdf_eval(sdf_fn, unique_pos, max_points_per_chunk)  # [B, M]
+            if sdf_vals.dim() == 1:
+                sdf_vals = sdf_vals.unsqueeze(0)
+
+            start_phase(f"octree_level_{level}_cull_subdivide")
+
+            # Gather per-cell corner SDF: [B, K, 8]
+            cell_corner_idx = inverse_idx.reshape(-1, 8)  # [K, 8]
+            cell_sdf = sdf_vals[:, cell_corner_idx.long()]  # [B, K, 8] — advanced indexing on cols
+
+            # Lipschitz near-surface test: min(|sdf|) across corners AND batch < L * diag
+            abs_sdf = cell_sdf.abs()  # [B, K, 8]
+            min_abs_per_cell = abs_sdf.min(dim=-1).values.min(dim=0).values  # [K] — min over batch and corners
+            near_surface = min_abs_per_cell < lipschitz * cell_diag
+
+            # Keep only near-surface cells
+            active_cells = level_cells[near_surface]  # [K', 3]
+
+            # Subdivide: each cell becomes 8 children at 2x resolution.
+            cur_res *= 2
+            parent_2x = active_cells * 2  # [K', 3] scaled to new res
+            child_offsets = corner_offsets.unsqueeze(0)  # [1, 8, 3]
+            children = parent_2x.unsqueeze(1) + child_offsets  # [K', 8, 3]
+            level_cells = children.reshape(-1, 3)  # [K'*8, 3]
+
+            # Deduplicate children (cells can overlap from different parents)
+            level_cells, _ = _unique_int_coords(level_cells, max_coord=cur_res - 1)
+
+    return level_cells
+
+
+def _evaluate_final_octree_cells(
+    final_cells: Tensor,
+    resolution: int,
+    corner_offsets: Tensor,
+    bb_min: Tensor,
+    bb_extent: Tensor,
+    sdf_fn: Callable[[Tensor], Tensor],
+    max_points_per_chunk: int | None,
+    lipschitz: float,
+    xyz_min: tuple[float, float, float],
+    xyz_max: tuple[float, float, float],
+    start_phase: Callable[[str], None],
+) -> tuple[Tensor, Tensor, Tensor]:
+    """Evaluate final octree corners and cull non-surface cells."""
+    start_phase("octree_final_sdf")
+
+    cell_size_final_world = bb_extent / resolution  # [3]
+    cell_diag_final = torch.norm(cell_size_final_world)
+
+    # Compute corners for final cells
+    final_corners_grid = final_cells.unsqueeze(1) + corner_offsets.unsqueeze(0)  # [K, 8, 3]
+    flat_final = final_corners_grid.reshape(-1, 3).long()
+    unique_final, inv_final = _unique_int_coords(flat_final, max_coord=resolution)  # [M, 3], [K*8]
+
+    # World-space positions for unique corners
+    unique_pos_final = bb_min + (unique_final.float() / resolution) * bb_extent  # [M, 3]
+
+    # Evaluate with gradients
+    sdf_final = _chunked_sdf_eval(sdf_fn, unique_pos_final, max_points_per_chunk)  # [B, M]
+    if sdf_final.dim() == 1:
+        sdf_final = sdf_final.unsqueeze(0)
+
+    # --- Boundary clipping check ---
+    # Check if any SDF values on the 6 boundary faces of the bounding box are
+    # negative, meaning the shape extends beyond the mesh bounds.
+    with torch.no_grad():
+        _check_boundary_clipping_sparse(unique_final, sdf_final, resolution, xyz_min, xyz_max)
+
+    # Gather per-cell
+    cell_corner_idx_final = inv_final.reshape(-1, 8)  # [K, 8]
+    corner_sdf = sdf_final[:, cell_corner_idx_final.long()]  # [B, K, 8]
+
+    # Corner world positions: [K, 8, 3]
+    corner_positions = unique_pos_final[cell_corner_idx_final.long()]  # [K, 8, 3]
+
+    # One more Lipschitz cull — remove cells that are definitely not near surface
+    # at the final resolution
+    start_phase("octree_final_cull")
+    with torch.no_grad():
+        abs_final = corner_sdf.abs()
+        min_abs_final = abs_final.min(dim=-1).values.min(dim=0).values  # [K]
+        near_final = min_abs_final < lipschitz * cell_diag_final
+
+    final_cells = final_cells[near_final]
+    corner_sdf = corner_sdf[:, near_final]
+    corner_positions = corner_positions[near_final]
+
+    return final_cells, corner_sdf, corner_positions
+
+
 # ---------------------------------------------------------------------------
 # Phase 1: Octree-based adaptive SDF evaluation
 # ---------------------------------------------------------------------------
@@ -189,13 +327,10 @@ def octree_sdf_eval(
         corner_sdf:       [B, K, 8] float  — SDF at 8 corners (with gradients)
         corner_positions: [K, 8, 3] float  — world-space corner positions
     """
-    if timer:
-        timer.start("octree_init")
+    start_phase = _phase_starter(timer)
+    start_phase("octree_init")
 
-    if device is None:
-        device = torch.device("cpu")
-    elif isinstance(device, str):
-        device = torch.device(device)
+    device = _normalize_device(device)
 
     print(__file__)
     print(type(device),device)
@@ -237,113 +372,32 @@ def octree_sdf_eval(
     gx, gy, gz = torch.meshgrid(ci, ci, ci, indexing="ij")
     level_cells = torch.stack([gx.reshape(-1), gy.reshape(-1), gz.reshape(-1)], dim=1)  # [K, 3]
 
-    # Octree refinement (no gradients needed for cell selection)
-    with torch.no_grad():
-        for level in range(num_levels):
-            if timer:
-                timer.start(f"octree_level_{level}_sdf_eval")
+    level_cells = _refine_octree_cells(
+        level_cells,
+        cur_res,
+        num_levels,
+        corner_offsets,
+        bb_min,
+        bb_extent,
+        lipschitz,
+        sdf_fn,
+        max_points_per_chunk,
+        start_phase,
+    )
 
-            cell_size_world = bb_extent / cur_res  # [3] world-space cell size
-            cell_diag = torch.norm(cell_size_world)
-
-            # Compute unique corners for current cells
-            # Each cell has 8 corners at coords + corner_offsets
-            # cell_corners_grid: [K, 8, 3] int coords at cur_res+1 grid
-            cell_corners_grid = level_cells.unsqueeze(1) + corner_offsets.unsqueeze(0)  # [K, 8, 3]
-
-            # Flatten to [K*8, 3], find unique (1D keys — avoids broken MPS unique_dim)
-            flat_corners = cell_corners_grid.reshape(-1, 3).long()
-            unique_corners, inverse_idx = _unique_int_coords(flat_corners, max_coord=cur_res)  # [M, 3], [K*8]
-
-            # Convert unique corners to world-space positions
-            unique_pos = bb_min + (unique_corners.float() / cur_res) * bb_extent  # [M, 3]
-
-            # Evaluate SDF at unique corners
-            sdf_vals = _chunked_sdf_eval(sdf_fn, unique_pos, max_points_per_chunk)  # [B, M]
-            if sdf_vals.dim() == 1:
-                sdf_vals = sdf_vals.unsqueeze(0)
-
-            if timer:
-                timer.start(f"octree_level_{level}_cull_subdivide")
-
-            # Gather per-cell corner SDF: [B, K, 8]
-            cell_corner_idx = inverse_idx.reshape(-1, 8)  # [K, 8]
-            cell_sdf = sdf_vals[:, cell_corner_idx.long()]  # [B, K, 8] — advanced indexing on cols
-
-            # Lipschitz near-surface test: min(|sdf|) across corners AND batch < L * diag
-            abs_sdf = cell_sdf.abs()  # [B, K, 8]
-            min_abs_per_cell = abs_sdf.min(dim=-1).values.min(dim=0).values  # [K] — min over batch and corners
-            near_surface = min_abs_per_cell < lipschitz * cell_diag
-
-            # Keep only near-surface cells
-            active_cells = level_cells[near_surface]  # [K', 3]
-
-            if level < num_levels - 1:
-                # Subdivide: each cell becomes 8 children at 2x resolution
-                cur_res *= 2
-                parent_2x = active_cells * 2  # [K', 3] scaled to new res
-                child_offsets = corner_offsets.unsqueeze(0)  # [1, 8, 3]
-                children = parent_2x.unsqueeze(1) + child_offsets  # [K', 8, 3]
-                level_cells = children.reshape(-1, 3)  # [K'*8, 3]
-
-                # Deduplicate children (cells can overlap from different parents)
-                level_cells, _ = _unique_int_coords(level_cells, max_coord=cur_res - 1)
-            else:
-                # Final subdivision to target resolution
-                cur_res *= 2
-                parent_2x = active_cells * 2
-                child_offsets = corner_offsets.unsqueeze(0)
-                children = parent_2x.unsqueeze(1) + child_offsets
-                level_cells = children.reshape(-1, 3)
-                level_cells, _ = _unique_int_coords(level_cells, max_coord=cur_res - 1)
-
-    # Now level_cells are at target resolution (cur_res == resolution)
-    # Final SDF evaluation WITH gradients
-    if timer:
-        timer.start("octree_final_sdf")
-    final_cells = level_cells  # [K, 3] int32
-
-    cell_size_final_world = bb_extent / resolution  # [3]
-    cell_diag_final = torch.norm(cell_size_final_world)
-
-    # Compute corners for final cells
-    final_corners_grid = final_cells.unsqueeze(1) + corner_offsets.unsqueeze(0)  # [K, 8, 3]
-    flat_final = final_corners_grid.reshape(-1, 3).long()
-    unique_final, inv_final = _unique_int_coords(flat_final, max_coord=resolution)  # [M, 3], [K*8]
-
-    # World-space positions for unique corners
-    unique_pos_final = bb_min + (unique_final.float() / resolution) * bb_extent  # [M, 3]
-
-    # Evaluate with gradients
-    sdf_final = _chunked_sdf_eval(sdf_fn, unique_pos_final, max_points_per_chunk)  # [B, M]
-    if sdf_final.dim() == 1:
-        sdf_final = sdf_final.unsqueeze(0)
-
-    # --- Boundary clipping check ---
-    # Check if any SDF values on the 6 boundary faces of the bounding box are
-    # negative, meaning the shape extends beyond the mesh bounds.
-    with torch.no_grad():
-        _check_boundary_clipping_sparse(unique_final, sdf_final, resolution, xyz_min, xyz_max)
-
-    # Gather per-cell
-    cell_corner_idx_final = inv_final.reshape(-1, 8)  # [K, 8]
-    corner_sdf = sdf_final[:, cell_corner_idx_final.long()]  # [B, K, 8]
-
-    # Corner world positions: [K, 8, 3]
-    corner_positions = unique_pos_final[cell_corner_idx_final.long()]  # [K, 8, 3]
-
-    # One more Lipschitz cull — remove cells that are definitely not near surface
-    # at the final resolution
-    if timer:
-        timer.start("octree_final_cull")
-    with torch.no_grad():
-        abs_final = corner_sdf.abs()
-        min_abs_final = abs_final.min(dim=-1).values.min(dim=0).values  # [K]
-        near_final = min_abs_final < lipschitz * cell_diag_final
-
-    final_cells = final_cells[near_final]
-    corner_sdf = corner_sdf[:, near_final]
-    corner_positions = corner_positions[near_final]
+    final_cells, corner_sdf, corner_positions = _evaluate_final_octree_cells(
+        level_cells,
+        resolution,
+        corner_offsets,
+        bb_min,
+        bb_extent,
+        sdf_fn,
+        max_points_per_chunk,
+        lipschitz,
+        xyz_min,
+        xyz_max,
+        start_phase,
+    )
 
     return final_cells, corner_sdf, corner_positions
 
