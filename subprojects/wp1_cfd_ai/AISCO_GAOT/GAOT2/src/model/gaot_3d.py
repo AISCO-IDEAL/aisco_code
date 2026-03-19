@@ -8,7 +8,10 @@ from torch_geometric.data import Batch
 from .layers.attn import Transformer
 from .layers.magno import MAGNODecoder, MAGNOEncoder
 
-_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "config", "config.yaml")
+_CONFIG_PATH = os.path.join(
+    "/cluster/home/clhuber/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2",
+    "config/config.yaml"
+)
 
 
 def configloader() -> dict:

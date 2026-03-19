@@ -14,8 +14,9 @@ losses: # [compute: bool, weight: float, path: str]  # USED — total_loss.py dy
   aero:
     # frontal_area_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/frontal_area_v0.py"]  # NOT ACTIVE (compute=0)
     # crude_estimator_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/crude_estimator_v0.py"]  # NOT ACTIVE (compute=0)
-    null_loss_aero_v1_: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]  # ACTIVE — loaded by total_loss.py
-
+    null_loss_aero_v1_: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
+    gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/gaot_loss.py"]
+  
   bb:
     # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v1.py"]  # NOT ACTIVE (compute=0)
     # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15  # NOT ACTIVE (compute=0)
@@ -35,8 +36,8 @@ losses: # [compute: bool, weight: float, path: str]  # USED — total_loss.py dy
     # solar_v2: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v2.py"]  # NOT ACTIVE (compute=0)
     # solar_v3: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3.py"]  # NOT ACTIVE (compute=0)
     solar_v3B: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3B.py"]  # NOT ACTIVE (compute=0)
-    solar_v4: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v4.py"]  # ACTIVE — loaded by total_loss.py
-    null_loss_solar_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/null_loss_solar_v1.py"]  # NOT ACTIVE (compute=0)
+    solar_v4: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v4.py"]  # ACTIVE — loaded by total_loss.py
+    null_loss_solar_v1: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/null_loss_solar_v1.py"]  # NOT ACTIVE (compute=0)
 
   total:
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
@@ -64,9 +65,13 @@ get_points_params: # used in eikonal and smoothness loss  # USED — parent_loss
 
 bb_config:  # USED — bb_v3.py: self.losses_config["bb_config"]
   pointgrid_params:  # USED — bb_v3.py: self.__config["pointgrid_params"] -> passed to SDFfromCadQuery
-    dx: 250  # USED
-    dy: 250  # USED
-    dz: 250  # USED
+    dx: 200  # USED
+    dy: 150  # USED
+    dz: 150  # USED
     rand: 400  # USED
   # assembly_version: 2  # NOT USED — never read by any code
   assembly_id: 1 # 1 for the standard one  # USED by rendering modes only (assembly_mode.py, mesh_assembly_gif.py), NOT by bb_v3.py (which randomises 1-52)
+
+cfd:
+  model_id: "platin"
+  version: 1
