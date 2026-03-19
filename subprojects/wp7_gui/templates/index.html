@@ -216,13 +216,13 @@
     <section class="card" style="min-height: 0;">
       <div class="visuals-grid">
         <div class="visual-card">
-          <div class="visual-title">Mesh Steps</div>
+          <div class="visual-title">Current Run Mesh Files</div>
           <div class="image-slot">
             <img id="meshStepImage" alt="mesh step preview">
           </div>
-          <div class="hint" id="meshStepStatus">No mesh step image loaded yet.</div>
+          <div class="hint" id="meshStepStatus">No mesh file found for current run yet.</div>
           <div class="slider-row">
-            <label for="meshSlider" id="meshSliderLabel">Epoch slider</label>
+            <label for="meshSlider" id="meshSliderLabel">Current run mesh slider</label>
             <input id="meshSlider" type="range" min="0" max="0" value="0" step="1" disabled>
           </div>
         </div>
@@ -255,7 +255,8 @@
     const meshSlider = document.getElementById("meshSlider");
     const meshSliderLabel = document.getElementById("meshSliderLabel");
 
-    let meshStepEntries = [];
+    let meshEntries = [];
+    let meshPreviewEntries = [];
     let gifEntry = null;
     let currentGifKey = null;
 
@@ -273,20 +274,27 @@
     }
 
     function updateMeshSelection(index) {
-      if (!meshStepEntries.length) {
-        meshSliderLabel.textContent = "Epoch slider";
+      if (!meshEntries.length) {
+        meshSliderLabel.textContent = "Current run mesh slider";
         meshStepImage.style.display = "none";
-        meshStepStatus.textContent = "No mesh step image loaded yet.";
+        meshStepStatus.textContent = "No mesh file found for current run yet.";
         return;
       }
 
-      const clampedIndex = Math.max(0, Math.min(index, meshStepEntries.length - 1));
-      const meshStep = meshStepEntries[clampedIndex];
-      const epochLabel = meshStep.epoch !== null ? `epoch ${meshStep.epoch}` : "unknown epoch";
-      meshSliderLabel.textContent = `Step ${clampedIndex + 1}/${meshStepEntries.length} (${epochLabel})`;
-      meshStepImage.src = `${meshStep.url}&t=${Date.now()}`;
-      meshStepImage.style.display = "block";
-      meshStepStatus.textContent = "";
+      const clampedIndex = Math.max(0, Math.min(index, meshEntries.length - 1));
+      const meshFile = meshEntries[clampedIndex];
+      const epochLabel = meshFile.epoch !== null ? `epoch ${meshFile.epoch}` : "unknown epoch";
+      meshSliderLabel.textContent = `File ${clampedIndex + 1}/${meshEntries.length} (${epochLabel})`;
+
+      const preview = meshPreviewEntries.find((entry) => entry.epoch === meshFile.epoch);
+      if (preview) {
+        meshStepImage.src = `${preview.url}&t=${Date.now()}`;
+        meshStepImage.style.display = "block";
+        meshStepStatus.innerHTML = `Selected mesh: <a href="${meshFile.url}" target="_blank" rel="noopener">${meshFile.name}</a>`;
+      } else {
+        meshStepImage.style.display = "none";
+        meshStepStatus.innerHTML = `No preview image for this mesh yet. Selected mesh: <a href="${meshFile.url}" target="_blank" rel="noopener">${meshFile.name}</a>`;
+      }
     }
 
     function updateGifDisplay() {
@@ -335,13 +343,14 @@
           updateGifDisplay();
         }
 
-        meshStepEntries = data.mesh_step_images || [];
-        if (meshStepEntries.length > 0) {
+        meshEntries = data.meshes || [];
+        meshPreviewEntries = data.mesh_step_images || [];
+        if (meshEntries.length > 0) {
           meshSlider.disabled = false;
           meshSlider.min = "0";
-          meshSlider.max = String(meshStepEntries.length - 1);
-          if (Number(meshSlider.value) > meshStepEntries.length - 1) {
-            meshSlider.value = String(meshStepEntries.length - 1);
+          meshSlider.max = String(meshEntries.length - 1);
+          if (Number(meshSlider.value) > meshEntries.length - 1) {
+            meshSlider.value = String(meshEntries.length - 1);
           }
           updateMeshSelection(Number(meshSlider.value));
         } else {

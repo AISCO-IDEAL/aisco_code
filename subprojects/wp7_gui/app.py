@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import threading
+import imageio.v2 as imageio
 from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -249,7 +250,8 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
 
         meshes = []
         if mesh_dir.exists():
-            for mesh_path in sorted(mesh_dir.glob("*.ply")):
+            mesh_paths = sorted(list(mesh_dir.glob("*.ply")) + list(mesh_dir.glob("*.poly")))
+            for mesh_path in mesh_paths:
                 rel_path = mesh_path.resolve().relative_to(LOCAL_STORAGE_DIR.resolve()).as_posix()
                 epoch = self._extract_epoch(mesh_path.name)
                 meshes.append(
@@ -344,8 +346,6 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
 
         if not cached_path.exists():
             try:
-                import imageio.v2 as imageio
-
                 frames = imageio.mimread(requested)
                 if not frames:
                     self._send_json(500, {"message": "Failed to decode GIF frames"})
@@ -477,7 +477,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
     def _extract_epoch(filename: str) -> int | None:
         match = re.search(r"epoch(\d+)", filename)
         if match is None:
-            match = re.search(r"_(\d+)\.(?:png|gif|ply)$", filename)
+            match = re.search(r"_(\d+)\.(?:png|gif|ply|poly)$", filename)
         if match is None:
             return None
         return int(match.group(1))
