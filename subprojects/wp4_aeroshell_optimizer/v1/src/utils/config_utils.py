@@ -30,11 +30,77 @@ import yaml
 # ---------------------------------------------------------------------------
 _config_registry: dict[str, dict] = {}
 _registry_initialised: bool = False
+_registry_alias_index: dict[str, set[str]] = {}
 
 
 def _cfg_key(cfg_name: str) -> str:
     """Normalise a config filename to a registry key (drop ``.yaml``)."""
     return cfg_name.replace(".yaml", "")
+
+
+def _register_key_alias(alias: str, canonical_key: str) -> None:
+    """Register one alias that resolves to a canonical config key."""
+    _registry_alias_index.setdefault(alias, set()).add(canonical_key)
+
+
+def _rebuild_alias_index() -> None:
+    """Rebuild alias-to-config mapping from the current registry.
+
+    Canonical keys remain the source of truth. Additional aliases allow sweep
+    keys to reference subfolder configs robustly:
+    - canonical: ``solar_configs/solar_loss_config``
+    - dotted-path alias: ``solar_configs.solar_loss_config``
+    - basename alias: ``solar_loss_config`` (legacy compatibility)
+    """
+    _registry_alias_index.clear()
+    for canonical_key in _config_registry:
+        _register_key_alias(canonical_key, canonical_key)
+        _register_key_alias(canonical_key.replace("/", "."), canonical_key)
+        _register_key_alias(Path(canonical_key).name, canonical_key)
+
+
+def _resolve_sweep_target(key: str) -> tuple[dict | None, list[str]]:
+    """Resolve a sweep key to a target config dict and remaining nested path.
+
+    The key format is ``<config-id>.<nested.path>`` where ``<config-id>`` can
+    be canonical (path-aware), dotted-path alias, or basename alias.
+
+    If no config-id matches, this preserves old behaviour and falls back to
+    applying on ``general_config`` using the full key path.
+    """
+    if "." not in key:
+        return _config_registry.get("general_config"), [key]
+
+    candidates: list[tuple[int, int, str, str, list[str]]] = []
+    for alias, canonical_keys in _registry_alias_index.items():
+        prefix = f"{alias}."
+        if not key.startswith(prefix):
+            continue
+
+        remaining = key[len(prefix) :].split(".")
+        if not remaining:
+            continue
+
+        # Prefer longer alias matches first. For ties, prefer canonical over
+        # dotted-path alias over basename alias.
+        alias_kind_priority = 0
+        canonical_key = next(iter(sorted(canonical_keys)))
+        if alias == canonical_key:
+            alias_kind_priority = 2
+        elif alias == canonical_key.replace("/", "."):
+            alias_kind_priority = 1
+
+        for canonical in sorted(canonical_keys):
+            candidates.append((len(alias), alias_kind_priority, canonical, alias, remaining))
+
+    if candidates:
+        best = max(candidates, key=lambda item: (item[0], item[1]))
+        target_cfg = _config_registry.get(best[2])
+        if target_cfg is not None:
+            return target_cfg, best[4]
+
+    # Backward-compatible fallback for keys that do not name a config.
+    return _config_registry.get("general_config"), key.split(".")
 
 
 def _load_yaml(v: str, cfg_name: str) -> dict:
@@ -101,6 +167,8 @@ def register_all_configs(general_config: dict, *, v: str = "v1") -> None:
             with contextlib.suppress(FileNotFoundError):  # optional config, skip if missing
                 _config_registry[key] = _load_yaml(v, cfg_name)
 
+    _rebuild_alias_index()
+
     _registry_initialised = True
 
 
@@ -108,8 +176,13 @@ def apply_sweep_overrides(sweep_params: dict) -> None:
     """Apply wandb sweep parameters to the registered configs.
 
     Each key is expected to be of the form
-    ``<config_name>.<nested.path.to.value>`` where ``<config_name>`` matches a
-    registered config (filename without ``.yaml``).
+        ``<config_id>.<nested.path.to.value>`` where ``<config_id>`` can be:
+        - canonical relative config path without ``.yaml``
+            (e.g. ``solar_configs/solar_loss_config``)
+        - dotted-path alias for folder separators
+            (e.g. ``solar_configs.solar_loss_config``)
+        - basename alias (legacy compatibility)
+            (e.g. ``solar_loss_config``)
 
     Keys whose first segment does **not** match any registered config are
     applied to ``general_config`` as a fallback (backward-compatible with old
@@ -129,23 +202,15 @@ def apply_sweep_overrides(sweep_params: dict) -> None:
         if key.startswith(("_wandb", "SubCFG_")):
             continue
 
-        parts = key.split(".")
-        target_cfg = None
-
-        # Try to match the first segment to a registered config
-        if len(parts) >= 2 and parts[0] in _config_registry:
-            target_cfg = _config_registry[parts[0]]
-            remaining = parts[1:]
-        else:
-            # Fallback: apply to general_config
-            target_cfg = _config_registry.get("general_config")
-            remaining = parts
+        target_cfg, remaining = _resolve_sweep_target(key)
 
         if target_cfg is None:
             continue
 
         # Drill into nested dicts, creating intermediate dicts as needed
         d = target_cfg
+        if not remaining:
+            continue
         for segment in remaining[:-1]:
             if segment not in d or not isinstance(d[segment], dict):
                 d[segment] = {}
