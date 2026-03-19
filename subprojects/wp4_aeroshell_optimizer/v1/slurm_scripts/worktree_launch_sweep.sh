@@ -1,6 +1,6 @@
 #!/bin/bash
 
-umask 0002
+
 set -uo pipefail
 trap 'echo "[WARN] Script error at line $LINENO (exit $?)" >&2' ERR
 
@@ -8,7 +8,7 @@ trap 'echo "[WARN] Script error at line $LINENO (exit $?)" >&2' ERR
 JOB_NAME="Worktree_Sweep" # Name for the SLURM job
 TIME_LIMIT="04:00:00"  # Translates to --time below
 
-SWEEP_ID="aisco/Alex_Sweeps/3r4ab3is"   # <-- EDIT THIS
+SWEEP_ID="aisco/CFD_integration_testing/y7sizfxi"   # <-- EDIT THIS
 NUMBER_OF_GPUS=2  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
 GPU_TYPE=""  # Set to "" for generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
 RUNS_PER_GPU=1 # Adjust based on your needs and cluster limits --> Translates to COUNT below
