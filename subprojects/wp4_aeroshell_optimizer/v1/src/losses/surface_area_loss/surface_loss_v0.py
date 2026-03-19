@@ -24,9 +24,9 @@ class SurfaceLossV0(ParentLoss):
     back to the SDF network via the full MeshSDF surrogate gradient flow.
     """
 
-    TARGET_AREA_M2: float = 15.0      # desired upper-bound surface area [m²]
-    MM2_TO_M2: float = 1e-6           # unit conversion: mm² → m²
-    SOFTPLUS_K: float = 1.0           # sharpness; 1.0 gives ~1 m² transition width
+    TARGET_AREA_M2: float = 15.0  # desired upper-bound surface area [m²]
+    MM2_TO_M2: float = 1e-6  # unit conversion: mm² → m²
+    SOFTPLUS_K: float = 1.0  # sharpness; 1.0 gives ~1 m² transition width
 
     # MeshSDF extractor settings (hard-coded for speed/quality balance)
     _RESOLUTION: int = 64
@@ -62,9 +62,9 @@ class SurfaceLossV0(ParentLoss):
         v1 = vertices[faces[:, 1]]
         v2 = vertices[faces[:, 2]]
 
-        cross = torch.cross(v1 - v0, v2 - v0, dim=1)          # (F, 3)
-        area_mm2 = 0.5 * torch.norm(cross, dim=1).sum()        # scalar, mm²
-        area_m2 = area_mm2 * self.MM2_TO_M2                    # scalar, m²
+        cross = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
+        area_mm2 = 0.5 * torch.norm(cross, dim=1).sum()  # scalar, mm²
+        area_m2 = area_mm2 * self.MM2_TO_M2  # scalar, m²
 
         return F.softplus(self.SOFTPLUS_K * (area_m2 - self.TARGET_AREA_M2))
 
