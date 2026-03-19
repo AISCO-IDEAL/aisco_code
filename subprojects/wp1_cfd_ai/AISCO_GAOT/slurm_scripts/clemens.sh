@@ -121,4 +121,4 @@ echo "=========================================="
 
 ## chmod +x ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/clemens.sh
 ## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/clemens.sh
-## watch -n 5 squeue -u $USER
+## watch -n 1 squeue -u $USER
