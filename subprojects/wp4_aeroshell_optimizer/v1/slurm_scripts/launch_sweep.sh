@@ -9,7 +9,7 @@
 #SBATCH --time=04:00:00
 #SBATCH --ntasks=4
 #SBATCH --cpus-per-task=8
-#SBATCH --gpus=4:rtx_4090
+#SBATCH --gpus=rtx_4090:4
 #SBATCH --mem-per-cpu=5G
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 #SBATCH --mail-user=%u@ethz.ch
