@@ -50,7 +50,7 @@ class Seat:
             aux_l_0E * math.cos(math.atan((self.params.width / 2) / aux_l_0E)),
         )
         G = (self.params.width / 2, self.params.radius_top)
-
+        
         # --- model building: ---
         # 1. Profile 1 (Wedge)
         profile_wp1 = (
@@ -87,7 +87,7 @@ class Seat:
         solid1 = solid1.translate((0, self.params.width / 2, 0))
 
         # set_port(3939)
-
+        
         # 1. Create the first half of the profile on the YZ plane
         half_profile = (
             cq.Workplane("YZ")
