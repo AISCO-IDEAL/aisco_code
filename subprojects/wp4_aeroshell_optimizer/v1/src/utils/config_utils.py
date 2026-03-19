@@ -91,7 +91,7 @@ def _resolve_sweep_target(key: str) -> tuple[dict | None, list[str]]:
             alias_kind_priority = 1
 
         for canonical in sorted(canonical_keys):
-            candidates.append((len(alias), alias_kind_priority, canonical, alias, remaining))
+            candidates.append((len(alias), alias_kind_priority, canonical, alias, remaining))  # noqa: PERF401, does not really matter to us, one time thing
 
     if candidates:
         best = max(candidates, key=lambda item: (item[0], item[1]))
