@@ -26,7 +26,7 @@ setup:
     wandb_mode: online
     wandb_tags: ["field", "pressure", "euler", "multi_head", "gaot", "new_data"]
     wandb_watch_model: false
-    wandb_notes: 
+    wandb_notes:
 
     test_during_training: false
 
@@ -96,7 +96,7 @@ dataset:
     field_loss_weight: 1.0
     use_rescale_new: true
     active_variables:
-    order_file_name: 
+    order_file_name:
     active_heads: ["force", "cd", "pressure"]
 
 optimizer:
