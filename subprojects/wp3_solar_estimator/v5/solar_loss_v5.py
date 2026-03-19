@@ -401,9 +401,7 @@ class SolarLossEstimator:
             self.storage_paths = general_config["storage_paths"]
             run_locally_raw = general_config.get("general_info", {}).get("run_locally", False)
             self.run_locally = (
-                run_locally_raw
-                if isinstance(run_locally_raw, bool)
-                else str(run_locally_raw).strip().lower() == "true"
+                run_locally_raw if isinstance(run_locally_raw, bool) else str(run_locally_raw).strip().lower() == "true"
             )
         else:
             self.visualiser = None
@@ -492,10 +490,7 @@ class SolarLossEstimator:
                 storage_key = "local_storage_dir" if self.run_locally else "storage_dir"
                 base_storage = self.storage_paths[storage_key]
                 self.rendering_dir = (
-                    Path(base_storage)
-                    / self.model_hash
-                    / reformat_wandb_name(self.wandb_run_name)
-                    / "solar_loss_rendering"
+                    Path(base_storage) / self.model_hash / reformat_wandb_name(self.wandb_run_name) / "solar_loss_rendering"
                 )
                 print(f"Rendering enabled: saving to {self.rendering_dir}")
                 os.makedirs(self.rendering_dir, exist_ok=True)
