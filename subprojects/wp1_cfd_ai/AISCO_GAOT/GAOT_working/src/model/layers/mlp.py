@@ -60,7 +60,7 @@ class MLP(nn.Module):
 
     def reset_parameters(self):
         for layer in self.layers:
-            layer.reset_parameters()  # type: ignore[operator]
+            layer.reset_parameters()
 
     def forward(self, x):
         for layer in self.layers[:-1]:
@@ -92,9 +92,9 @@ class ConditionedNorm(nn.Module):
 
     def reset_parameters(self):
         for layer in self.mlp_scale.layers:
-            nn.init.normal_(layer.weight, std=0.01)  # type: ignore[arg-type]
+            nn.init.normal_(layer.weight, std=0.01)
         for layer in self.mlp_bias.layers:
-            nn.init.normal_(layer.weight, std=0.01)  # type: ignore[arg-type]
+            nn.init.normal_(layer.weight, std=0.01)
 
     def forward(self, c, x):
         """
