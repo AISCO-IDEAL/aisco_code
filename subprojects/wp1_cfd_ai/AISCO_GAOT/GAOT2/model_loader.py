@@ -1,36 +1,43 @@
+import ast
 import logging
 import os
 
+import pandas as pd
 import torch
 import torch.nn as nn  # noqa: PLR0402
 import yaml
 from torch_geometric.data import Batch, Data
 
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePositionNew
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.dataloader.pyg_transforms import RescalePositionNew
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.gaot_3d import GAOT3D
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 
 logger = logging.getLogger(__name__)
 
 
-model_dict = {
-    "OnlyCorrectNormalized": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/New_Normalizer1.pt",  # only trainde for 3 Epochs or something like this
-    "gold3": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/gold3.pt",  # Should be trained for 400 Epochs
-    "platin": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/platin.pt",
-}
-
-
 class ModelLoader:
     def __init__(self, cfd_config: dict, device: str) -> None:
         model_id = cfd_config["model_id"]
-        if model_id not in model_dict:
-            raise ValueError(f"Unknown model_id={model_id}. Valid: {list(model_dict.keys())}")
-        self.model_path = model_dict[model_id]
+        self.model_path = self.get_checkpoint_path(model_id)
         self.device = device
         self._load_model()
         self.extractor = MeshSDFExtractor(
             resolution=128, bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3], device=self.device, isovalue=0.0
         )
+
+    def get_checkpoint_path(self, model_id):
+        df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
+
+        for _, row in df.iterrows():
+            try:
+                setup_dict = ast.literal_eval(row["setup"])
+                if str(setup_dict.get("id")) == str(model_id):
+                    path_dict = ast.literal_eval(row["path"])
+                    return path_dict.get("ckpt_path")
+            except Exception:
+                continue
+
+        raise ValueError("Wrong ID for GAOT-Model")
 
     def _load_model(self) -> None:
         # ── load config YAML saved alongside the checkpoint ─────────────
@@ -91,9 +98,7 @@ class ModelLoader:
 
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
-        _, _, loss, surrogate_loss, _dl_dvertice = self.extractor.extract_and_compute_loss(
-            sdf_model=sdf_model, loss_fn=self.loss_fn
-        )
+        _, _, loss, surrogate_loss, _ = self.extractor.extract_and_compute_loss(sdf_model=sdf_model, loss_fn=self.loss_fn)
         return loss.item() + surrogate_loss - surrogate_loss.item()
 
     def loss_fn(self, mesh_verts, mesh_faces):
