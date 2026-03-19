@@ -18,7 +18,7 @@ SolarLossConfigV3: #Used for solarv3 AND solarv3B
   method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
   resolution: 200
-  area_budget_mm2: 4000000
+  area_budget_mm2: 6000000
   sun_dir: [-1.0,0.0,1.0]
   device: "cuda"
   batch_size: 2048
@@ -40,8 +40,8 @@ SolarLossConfigV4:
   validation_interval: 10 # every N epochs validation sim is run, for 0 only at the end it is run
   method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
-  resolution: 150
-  area_budget_mm2: 4000000
+  resolution: 250
+  area_budget_mm2: 6000000
   device: "cuda"
   batch_size: 2048
   eps: 1e-12
@@ -61,7 +61,7 @@ SolarLossConfigV5:
   method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf  # USED — WP3
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]  # USED — WP3
   resolution: 64  # USED — WP3
-  area_budget_mm2: 4000000  # USED — WP3
+  area_budget_mm2: 6000000  # USED — WP3
   device: "cuda"  # USED — WP3
   batch_size: 2048  # USED — WP3
   eps: 1e-12  # USED — WP3
@@ -83,7 +83,7 @@ SolarLossConfigV6:
   method: "mesh_sdf" # diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
   resolution: 64
-  area_budget_mm2: 4000000
+  area_budget_mm2: 6000000
   device: "cuda"
   batch_size: 100
   eps: 1e-12
