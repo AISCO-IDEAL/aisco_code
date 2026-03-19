@@ -93,8 +93,6 @@ dataset:
     neural_field_input_nodes: 40000
     neural_field_query_nodes_train: 40000
     field_loss_weight: 1.0
-    order_file_name:
-    active_heads: ["force", "cd", "pressure"]
 
 optimizer:
     name: "adamw"

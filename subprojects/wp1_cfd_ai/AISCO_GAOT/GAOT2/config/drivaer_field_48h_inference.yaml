@@ -95,8 +95,6 @@ dataset:
     neural_field_query_nodes_train: 40000
     uncertainty_weighting: true
     field_loss_weight: 1.0
-    order_file_name:
-    active_heads: ["force", "cd", "pressure"]
 
 optimizer:
     name: "adamw"
