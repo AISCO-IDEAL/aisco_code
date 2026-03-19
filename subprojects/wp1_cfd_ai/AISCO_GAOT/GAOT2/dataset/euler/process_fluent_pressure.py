@@ -1,21 +1,15 @@
 #!/usr/bin/env python3
 """
-Process Fluent .cas.h5 / .dat.h5 result files into GAOT-compatible .pt files
-with canonical Cp fields and sample-level conditioning.
+Process Fluent .cas.h5 / .dat.h5 result files into GAOT-compatible .pt files.
 
 For each run, extracts:
   - pos:        [N, 3]   vertex coordinates (surface nodes on car_surface)
-    - x:          [N, 1]   pressure coefficient at each vertex
+  - x:          [N, 1]   pressure at each vertex (interpolated from face centers)
   - c:          [N, 3]   outward unit normals
   - face:       [3, F']  triangulated face connectivity (local vertex indices)
   - wall_shear: [N, 3]   wall shear stress at each vertex
-    - pressure:   [N, 1]   raw pressure at each vertex
   - force:      [1]      converged drag force (from force report)
   - cd:         [1]      drag coefficient (from force report)
-    - v_inf:      [1]      freestream speed for the sample
-    - geom_extent:[3]      geometry extents before normalization
-    - geom_aspect:[3]      extent ratios before normalization
-    - conditioning:[1,7]   [v_inf, extent_xyz, aspect_xyz]
   - filename:   str
 
 Usage:
@@ -29,10 +23,8 @@ import argparse
 import glob
 import os
 import re
-import sys
 import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from pathlib import Path
 from typing import Any
 
 import h5py
@@ -41,17 +33,13 @@ import torch
 from torch_geometric.data import Data
 from tqdm import tqdm
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
-
-from common_preprocessing import AIR_DENSITY, V_INF_EULER, compute_geom_conditioning, compute_pressure_coefficient
-
 # ---------------------------------------------------------------------------
 #  Constants
 # ---------------------------------------------------------------------------
 FLUENT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT"
 RESULTS_DIR = os.path.join(FLUENT_DIR, "RUN/RESULTS")
 FORCE_DIR = os.path.join(FLUENT_DIR, "RUN/EULER_OUTPUT")
-OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_cp_full"
+OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_pressure"
 
 SURFACE_ZONE_NAME = "car_surface"
 # Fluent wall zone type (from Fluent HDF5 zoneType encoding)
@@ -272,7 +260,7 @@ def _interpolate_face_to_vertex(values_per_face, face_nodes, global_to_local, n_
 # ---------------------------------------------------------------------------
 #  Single-run processor
 # ---------------------------------------------------------------------------
-def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, output_dir=OUTPUT_DIR):  # noqa: PLR0915
+def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, output_dir=OUTPUT_DIR):
     """
     Process one Fluent run into a GAOT-compatible .pt file with pressure field.
 
@@ -311,10 +299,6 @@ def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, out
     # ---- 5. Compute vertex normals ----
     normals_np = _compute_vertex_normals(pos_np, triangles)  # [N, 3]
 
-    # Canonicalize Euler orientation to match the rest of the pipeline.
-    pos_np[:, 0] = -pos_np[:, 0]
-    normals_np[:, 0] = -normals_np[:, 0]
-
     # ---- 6. Extract face-center pressure & interpolate to vertices ----
     with h5py.File(dat_path, "r") as dat:
         face_pressure_all = dat["results/1/phase-1/faces/SV_P/1"][:]
@@ -334,31 +318,20 @@ def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, out
     if os.path.exists(force_path):
         cd_parsed, force_parsed = parse_force_report(force_path)
         if force_parsed is not None:
-            force_val = -force_parsed
+            force_val = force_parsed
         if cd_parsed is not None:
             cd_val = cd_parsed
 
-    pressure_tensor = torch.tensor(vertex_pressure, dtype=torch.float32).unsqueeze(-1)
-    cp_tensor = compute_pressure_coefficient(pressure_tensor, V_INF_EULER, AIR_DENSITY)
-    pos_tensor = torch.tensor(pos_np, dtype=torch.float32)
-    geom_extent, geom_aspect, conditioning = compute_geom_conditioning(pos_tensor, V_INF_EULER)
-
     # ---- 8. Build PyG Data and save ----
     data = Data(
-        pos=pos_tensor,  # [N, 3]
-        x=cp_tensor,  # [N, 1]
+        pos=torch.tensor(pos_np, dtype=torch.float32),  # [N, 3]
+        x=torch.tensor(vertex_pressure, dtype=torch.float32).unsqueeze(-1),  # [N, 1]
         c=torch.tensor(normals_np, dtype=torch.float32),  # [N, 3]
         face=torch.tensor(triangles.T, dtype=torch.long),  # [3, F_tri]
         wall_shear=torch.tensor(vertex_shear, dtype=torch.float32),  # [N, 3]
         force=torch.tensor([force_val], dtype=torch.float32),  # [1]
         cd=torch.tensor([cd_val], dtype=torch.float32),  # [1]
     )
-    data.pressure = pressure_tensor
-    data.cp = cp_tensor
-    data.v_inf = torch.tensor([V_INF_EULER], dtype=torch.float32)
-    data.geom_extent = geom_extent
-    data.geom_aspect = geom_aspect
-    data.conditioning = conditioning
     data.filename = f"RUN_{run_id:03d}"
     data.n_surface_faces = n_faces
 

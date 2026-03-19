@@ -62,3 +62,4 @@ class ParentLoss:
 
     def _loss(self, model) -> torch.Tensor:
         return torch.tensor(0.0, device=self.device)
+
