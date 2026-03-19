@@ -45,6 +45,7 @@ losses: # [compute: bool, weight: float, path: str]  #  total_loss.py dynamicall
 
 get_points_params: # used in eikonal and smoothness loss  #  parent_loss.py: self.losses_config["get_points_params"]["num_points"] and ["bbox_size"]
   num_points: 1000  #  parent_loss.py
+  bbox_size: 10.0  #  parent_loss.py
 
 
 bb_config:  # bb_v3.py: self.losses_config["bb_config"]
