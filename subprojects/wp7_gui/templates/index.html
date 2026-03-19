@@ -13,7 +13,7 @@
       --accent-2: #9f1616;
       --text: #102018;
       --muted: #496456;
-      --border: #23283e
+      --border: #23283e; /* FIXED: Added missing semicolon */
       --shadow: 0 10px 20px rgba(16, 32, 24, 0.08);
     }
 
@@ -130,7 +130,7 @@
       padding: 10px;
       background: #f8fcf9;
       display: grid;
-      grid-template-rows: auto 1fr auto auto;
+      grid-template-rows: auto 1fr auto;
       gap: 8px;
       min-height: 0;
     }
@@ -224,9 +224,8 @@
           <div class="image-slot">
             <img id="meshStepImage" alt="mesh step preview">
           </div>
-          <div class="hint" id="meshStepStatus">No mesh file found for current run yet.</div>
+          <div class="hint" id="meshFileName">No mesh file found for current run yet.</div>
           <div class="slider-row">
-            <label for="meshSlider" id="meshSliderLabel">Current run mesh slider</label>
             <input id="meshSlider" type="range" min="0" max="0" value="0" step="1" disabled>
           </div>
         </div>
@@ -255,14 +254,14 @@
     const artifactStatus = document.getElementById("artifactStatus");
     const btnRestartGif = document.getElementById("btnRestartGif");
     const meshStepImage = document.getElementById("meshStepImage");
-    const meshStepStatus = document.getElementById("meshStepStatus");
+    const meshFileName = document.getElementById("meshFileName");
     const meshSlider = document.getElementById("meshSlider");
-    const meshSliderLabel = document.getElementById("meshSliderLabel");
 
     let meshEntries = [];
     let meshPreviewEntries = [];
     let gifEntry = null;
     let currentGifKey = null;
+    let currentMeshKey = null; // FIXED: Added to prevent flickering
 
     async function startRunLocal() {
       btnRunLocal.disabled = true;
@@ -271,6 +270,7 @@
         const res = await fetch("/run-local", { method: "POST" });
         await res.json();
       } catch (_error) {
+        console.error("Failed to start run:", _error); // FIXED: Added error logging
       } finally {
         await refreshProgress();
         await refreshArtifacts();
@@ -279,25 +279,29 @@
 
     function updateMeshSelection(index) {
       if (!meshEntries.length) {
-        meshSliderLabel.textContent = "Current run mesh slider";
         meshStepImage.style.display = "none";
-        meshStepStatus.textContent = "No mesh file found for current run yet.";
+        meshFileName.textContent = "No mesh file found for current run yet.";
+        currentMeshKey = null;
         return;
       }
 
       const clampedIndex = Math.max(0, Math.min(index, meshEntries.length - 1));
       const meshFile = meshEntries[clampedIndex];
-      const epochLabel = meshFile.epoch !== null ? `epoch ${meshFile.epoch}` : "unknown epoch";
-      meshSliderLabel.textContent = `File ${clampedIndex + 1}/${meshEntries.length} (${epochLabel})`;
+      meshFileName.textContent = meshFile.name;
 
       const preview = meshPreviewEntries.find((entry) => entry.epoch === meshFile.epoch);
       if (preview) {
-        meshStepImage.src = `${preview.url}&t=${Date.now()}`;
+        // FIXED: Only update src if the URL has actually changed to prevent flickering
+        if (currentMeshKey !== preview.url) {
+          // FIXED: Use correct separator for cache busting
+          const separator = preview.url.includes('?') ? '&' : '?';
+          meshStepImage.src = `${preview.url}${separator}t=${Date.now()}`;
+          currentMeshKey = preview.url;
+        }
         meshStepImage.style.display = "block";
-        meshStepStatus.innerHTML = `Selected mesh: <a href="${meshFile.url}" target="_blank" rel="noopener">${meshFile.name}</a>`;
       } else {
         meshStepImage.style.display = "none";
-        meshStepStatus.innerHTML = `No preview image for this mesh yet. Selected mesh: <a href="${meshFile.url}" target="_blank" rel="noopener">${meshFile.name}</a>`;
+        currentMeshKey = null;
       }
     }
 
@@ -311,7 +315,9 @@
       }
 
       if (currentGifKey !== gifEntry.key) {
-        artifactImage.src = `${gifEntry.playUrl}&t=${Date.now()}`;
+        // FIXED: Use correct separator for cache busting
+        const separator = gifEntry.playUrl.includes('?') ? '&' : '?';
+        artifactImage.src = `${gifEntry.playUrl}${separator}t=${Date.now()}`;
         currentGifKey = gifEntry.key;
       }
       artifactImage.style.display = "block";
@@ -323,8 +329,9 @@
       if (!gifEntry) {
         return;
       }
-      // Force a hard reload of the GIF source so playback starts from frame 1.
-      artifactImage.src = `${gifEntry.playUrl}&t=${Date.now()}`;
+      // FIXED: Use correct separator for cache busting
+      const separator = gifEntry.playUrl.includes('?') ? '&' : '?';
+      artifactImage.src = `${gifEntry.playUrl}${separator}t=${Date.now()}`;
       artifactStatus.textContent = "";
     }
 
@@ -339,7 +346,8 @@
           gifEntry = {
             key: selectedGif.rel_path || selectedGif.name,
             name: selectedGif.name,
-            playUrl: selectedGif.slow_url || selectedGif.url
+            playUrl: selectedGif.slow_url || selectedGif.url,
+            firstFrameUrl: selectedGif.first_frame_url || null
           };
           updateGifDisplay();
         } else {
@@ -365,6 +373,7 @@
           updateMeshSelection(0);
         }
       } catch (_error) {
+        console.error("Failed to fetch artifacts:", _error); // FIXED: Added error logging
       }
     }
 
@@ -385,6 +394,7 @@
           btnRunLocal.textContent = "RUN";
         }
       } catch (_error) {
+        console.error("Failed to fetch progress:", _error); // FIXED: Added error logging
       }
     }
 

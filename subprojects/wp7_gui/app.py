@@ -12,9 +12,6 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-import imageio.v2 as imageio
-import yaml
-
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 LOGGER = logging.getLogger(__name__)
@@ -372,12 +369,17 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
 
         if not cached_path.exists():
             try:
+                import imageio.v2 as imageio
+
                 frames = imageio.mimread(requested)
                 if not frames:
                     self._send_json(500, {"message": "Failed to decode GIF frames"})
                     return
 
                 imageio.imwrite(cached_path, frames[0], format="PNG")
+            except ModuleNotFoundError:
+                self._send_json(500, {"message": "imageio is required for GIF preview generation"})
+                return
             except Exception as error:
                 self._send_json(500, {"message": f"Failed to extract first frame: {error}"})
                 return
@@ -433,6 +435,9 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                 base_duration = float(meta.get("duration", 0.08))
                 slow_duration = max(0.02, base_duration * factor)
                 imageio.mimsave(cached_path, frames, format="GIF", duration=slow_duration)
+            except ModuleNotFoundError:
+                self._send_json(500, {"message": "imageio is required for slow GIF generation"})
+                return
             except Exception as error:
                 self._send_json(500, {"message": f"Failed to build slowed GIF: {error}"})
                 return
@@ -456,6 +461,8 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
 
     def _get_num_epochs_from_training_config(self) -> int:
         try:
+            import yaml
+
             general_config_path = REPO_ROOT / "wp4_aeroshell_optimizer" / "v1" / "configs" / "general_config.yaml"
             with general_config_path.open(encoding="utf-8") as f:
                 general_cfg = yaml.safe_load(f) or {}
@@ -466,22 +473,36 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                 training_cfg = yaml.safe_load(f) or {}
 
             return int(training_cfg.get("training_params", {}).get("num_epochs", 100))
+        except ModuleNotFoundError:
+            return 100
         except Exception:
             return 100
 
     def _detect_current_run_dir(self) -> Path | None:
+        logs_dir = GUI_ROOT / "logs"
+        candidate_logs: list[Path] = []
         if RUN_LOCAL_LOG.exists():
-            logs = RUN_LOCAL_LOG.read_text(encoding="utf-8", errors="replace")
-            matches = re.findall(r"Output directory:\s*(.+)", logs)
-            if matches:
-                run_dir = Path(matches[-1].strip())
-                if not run_dir.is_absolute():
-                    run_dir = (REPO_ROOT.parent / run_dir).resolve()
-                else:
-                    run_dir = run_dir.resolve()
+            candidate_logs.append(RUN_LOCAL_LOG)
+        if logs_dir.exists():
+            historical_logs = sorted(logs_dir.glob("run_local_*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+            for path in historical_logs:
+                if path not in candidate_logs:
+                    candidate_logs.append(path)
 
-                if run_dir.exists() and run_dir.is_dir():
-                    return run_dir
+        for log_path in candidate_logs:
+            logs = log_path.read_text(encoding="utf-8", errors="replace")
+            matches = re.findall(r"Output directory:\s*(.+)", logs)
+            if not matches:
+                continue
+
+            run_dir = Path(matches[-1].strip())
+            if not run_dir.is_absolute():
+                run_dir = (REPO_ROOT.parent / run_dir).resolve()
+            else:
+                run_dir = run_dir.resolve()
+
+            if run_dir.exists() and run_dir.is_dir():
+                return run_dir
 
         if not LOCAL_STORAGE_DIR.exists():
             return None
@@ -491,7 +512,9 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             if not model_dir.is_dir():
                 continue
             for child in model_dir.iterdir():
-                if child.is_dir() and (child / "mesh_assembly_mode").exists():
+                has_meshes = (child / "meshes").exists()
+                has_mesh_assembly = (child / "mesh_assembly_mode").exists()
+                if child.is_dir() and (has_meshes or has_mesh_assembly):
                     run_dirs.append(child)
 
         if not run_dirs:
