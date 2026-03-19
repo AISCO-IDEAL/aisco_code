@@ -38,7 +38,7 @@ class BasicMLP(BaseModel):
             learning_rate = wandb.config.learning_rate
             print(f"Sweep: Updated learning_rate to {learning_rate}")
         else:
-            learning_rate = training_config.get("learning_rate", 1e-3)
+            learning_rate = training_config["training_params"].get("learning_rate", 1e-3)
 
         optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
         num_epochs = training_config["training_params"].get("num_epochs", 1000)

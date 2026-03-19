@@ -1,10 +1,11 @@
 #!/bin/bash
 
-umask 0002
-set -euo pipefail
+
+set -uo pipefail
+trap 'echo "[WARN] Script error at line $LINENO (exit $?)" >&2' ERR
 
 # ---- Config, EDIT HERE ---------------------------------------------------------------
-JOB_NAME="Worktree_Sweep" # Name for the SLURM job
+JOB_NAME="Raytracing_Sweep" # Name for the SLURM job
 TIME_LIMIT="04:00:00"  # Translates to --time below
 
 SWEEP_ID="aisco/Mesh_Extractor_Sweep/mqg0mk3d"   # <-- EDIT THIS
@@ -34,12 +35,20 @@ git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" HEAD
 cd "$WORKTREE_DIR"
 git commit --allow-empty -m "snapshot: $BRANCH_NAME"
 
-# Freeze config
-if [ ! -d "$WORKTREE_DIR/$FREEZE_DIR_REL" ]; then
-    echo "[ERROR] Freeze directory not found: $WORKTREE_DIR/$FREEZE_DIR_REL" >&2
-    exit 1
-fi
-chmod -R a-w "$WORKTREE_DIR/$FREEZE_DIR_REL" || true
+# Freeze config (optional)
+read -r -p "Freeze config directory? [y/N] " freeze_reply </dev/tty
+case "$freeze_reply" in
+    y|Y)
+        if [ ! -d "$WORKTREE_DIR/$FREEZE_DIR_REL" ]; then
+            echo "[ERROR] Freeze directory not found: $WORKTREE_DIR/$FREEZE_DIR_REL" >&2
+            exit 1
+        fi
+        chmod -R a-w "$WORKTREE_DIR/$FREEZE_DIR_REL" || true
+        ;;
+    *)
+        echo "[INFO] Skipping config freeze."
+        ;;
+esac
 
 echo "[INFO] Worktree ready at: $WORKTREE_DIR"
 
