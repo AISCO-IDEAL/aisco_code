@@ -14,10 +14,10 @@ general_config:
   area_budget: 4000000 #in mm^3
 
 # USED !!!
-SolarLossConfigV3: #Used for solarv3 AND solarv3B
-  method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
+SolarLossConfigV3:
+  method: "sparse_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
-  resolution: 200
+  resolution: 128 # has to be a power of 2 for sparse sdf
   area_budget_mm2: 4000000
   sun_dir: [-1.0,0.0,1.0]
   device: "cuda"
@@ -40,7 +40,7 @@ SolarLossConfigV4:
   validation_interval: 10 # every N epochs validation sim is run, for 0 only at the end it is run
   method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
-  resolution: 150
+  resolution: 128 # has to be a power of 2 for sparse sdf
   area_budget_mm2: 4000000
   device: "cuda"
   batch_size: 2048
