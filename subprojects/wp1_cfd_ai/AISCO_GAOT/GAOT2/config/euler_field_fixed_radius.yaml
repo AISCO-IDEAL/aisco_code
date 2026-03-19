@@ -1,0 +1,128 @@
+##########################################################################
+#  GAOT — Euler dataset: combined scalar (force + cd) + pressure field
+#
+#  47 samples, ~384K vertices each.
+#  Small dataset — good for validating the field pipeline before scaling.
+#  Uses neural_field strategy with 40K vertex subsampling.
+##########################################################################
+
+setup:
+    name: "euler_field"
+    id: "_RUN_ID_"
+    seed: 42
+    device: "cuda:0"
+    dtype: "torch.float32"
+    trainer_name: "static3d"
+    train: true
+    test: true
+    ckpt: false
+    use_variance_test: false
+    distributed: true
+
+    wandb: true
+    wandb_run_name: "_NAME___RUN_ID_"
+    wandb_project: "WP1_drag"
+    wandb_entity: aisco
+    wandb_group: euler_field
+    wandb_mode: online
+    wandb_tags: ["field", "pressure", "euler", "multi_head", "gaot"]
+    wandb_watch_model: false
+
+    test_during_training: false
+
+model:
+    name: "gaot_3d"
+    use_conditional_norm: false
+    args:
+        latent_tokens: [32,32,16]
+        field_output_size: 1
+        magno:
+            use_gno: true
+            gno_coord_dim: 3
+            neighbor_strategy: "bidirectional"
+            projection_channels: 256
+            in_gno_channel_mlp_hidden_layers: [64,64,64]
+            out_gno_channel_mlp_hidden_layers: [64,64]
+            lifting_channels: 32
+            gno_radius: 0.066
+            gno_use_torch_cluster: true
+            attention_type: "cosine"
+            use_geoembed: [true, false]
+            embedding_method: "statistical"
+            encoder_feature_attr: ["pos","c"]
+            mlp_type: "linear"
+            precompute_edges: false
+            asynchronous_graph_building: true
+            scales: [1.0]
+            use_scale_weights: false
+            k_neighbors: 1
+        transformer:
+            patch_size: 2
+            hidden_size: 256
+            use_attn_norm: true
+            use_ffn_norm: true
+            norm_eps: 1e-06
+            num_layers: 10
+            positional_embedding: "rope"
+            use_long_range_skip: true
+            attn_config:
+                hidden_size: 256
+                num_heads: 8
+                num_kv_heads: 8
+                use_conditional_norm: false
+                cond_norm_hidden_size: 4
+            ffn_config:
+                hidden_size: 1024
+                use_conditional_norm: false
+                cond_norm_hidden_size: 4
+
+dataset:
+    name: "euler_pressure_field"
+    metaname: "incompressible_fluids/euler_pressure"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_cp_full"
+    processed_folder: ""
+    force_recompute_stats: false
+    rand_dataset: true
+    train_size: 35
+    val_size: 6
+    test_size: 6
+    batch_size: 1
+    num_workers: 4
+    shuffle: true
+    metric_suite: "general"
+    update_pt_files_with_edges: false
+    training_strategy: "neural_field"
+    neural_field_input_nodes: 40000
+    neural_field_query_nodes_train: 40000
+    uncertainty_weighting: true
+    field_loss_weight: 1e-4  # fallback weight used when uncertainty_weighting is false
+    use_rescale_new: true
+    active_variables:
+
+optimizer:
+    name: "adamw"
+    args:
+        lr: 3e-4
+        weight_decay: 1e-05
+        epoch: 4
+        loss_scale: 1.0
+        eval_every_eps: 1
+        scheduler: "mix"
+        max_lr: 5e-4
+        min_lr: 1e-4
+        final_lr: 1e-5
+        save_every_epochs: 10
+        save_every_steps: 50
+        early_save_metric: "val"  # Metric for early stopping, support ['train', 'val']
+        scheduler_step_size: 100  # Step size (number of epochs) for StepLR scheduler
+        scheduler_gamma: 0.8  # Multiplicative factor for learning rate decay in StepLR scheduler
+        scheduler_t_max: 100  # Maximum number of iterations (usually total epochs) for CosineAnnealingLR scheduler
+        scheduler_eta_min: 1e-4  # Minimum learning rate for CosineAnnealingLR scheduler
+
+
+path:
+    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/model.pt"
+    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/loss.png"
+    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/results.png"
+    config_save_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/config.yaml"
+    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv"
