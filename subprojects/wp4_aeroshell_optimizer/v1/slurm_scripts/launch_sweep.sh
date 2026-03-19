@@ -7,20 +7,19 @@
 #SBATCH --partition=gpu
 #SBATCH --job-name=WP4_Sweep
 #SBATCH --time=04:00:00
-#SBATCH --ntasks=2
+#SBATCH --ntasks=4
 #SBATCH --cpus-per-task=8
-#SBATCH --gpus=2
+#SBATCH --gpus=4:rtx_4090
 #SBATCH --mem-per-cpu=5G
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 #SBATCH --mail-user=%u@ethz.ch
-#SBATCH --mail-type=END,FAIL
 ################################### RUN THIS CMD ##############################################
 ##  sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/launch_sweep.sh ##
 ###############################################################################################
 umask 0002
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/"   # <-- EDIT THIS
-COUNT=2                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
+SWEEP_ID="aisco/Mesh_Extractor_Sweep/mqg0mk3d"   # <-- EDIT THIS
+COUNT=4                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
 
 # ---- Job info ---------------------------------------------------------------
 echo "=========================================="
