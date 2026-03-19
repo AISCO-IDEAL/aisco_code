@@ -4,7 +4,7 @@
 #SBATCH --time=00:10:00                   # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=16G                  
+#SBATCH --mem-per-cpu=16G
 #SBATCH --gpus=rtx_4090:1
 ##SBATCH --output=/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/AISCO_TEST_%j.out     #adjust path as needed
 ##SBATCH --error=/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs/AISCO_TEST_%j.err      #adjust path as needed

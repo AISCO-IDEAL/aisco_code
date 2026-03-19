@@ -1,29 +1,29 @@
 general_info:
   config_debugging: "True"
-  
+
 losses: # [compute: bool, weight: float, path: str]
   aero:
     frontal_area_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/frontal_area_v0.py"]
     crude_estimator_v0: [1,0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/crude_estimator_v0.py"]
-  
+
   bb:
     bb_v1: [1,1000, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v1.py"]
     bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v2.py"]
-  
-  eikonal: 
+
+  eikonal:
     eikonal_v0: [1, 100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/eikonal_loss/eikonal_v0.py"]
-  
-  smoothness: 
+
+  smoothness:
     smoothness_v0: [1, 0.5, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/smoothness_loss/smoothness_v0.py"]
-    
+
   solar:
     solar_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v0.py"]
-  
-  total: 
+
+  total:
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/total_loss.py"]
 
 get_points_params: # used in eikonal and smoothness loss
   num_points: 1000
   bbox_size: 10.0
 
-solar_config: 
+solar_config:
