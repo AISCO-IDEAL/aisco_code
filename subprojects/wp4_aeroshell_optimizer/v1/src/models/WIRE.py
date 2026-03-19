@@ -29,14 +29,8 @@ class ComplexGaborLayer(BaseModel):
         dtype = torch.float if is_first else torch.cfloat
 
         # Wavelet parameters (typically fixed, not learned)
-        self.omega_0 = nn.Parameter(
-            torch.tensor([omega0], dtype=torch.float32),
-            requires_grad=trainable
-        )
-        self.scale_0 = nn.Parameter(
-            torch.tensor([sigma0], dtype=torch.float32),
-            requires_grad=trainable
-        )
+        self.omega_0 = nn.Parameter(torch.tensor([omega0], dtype=torch.float32), requires_grad=trainable)
+        self.scale_0 = nn.Parameter(torch.tensor([sigma0], dtype=torch.float32), requires_grad=trainable)
 
         # Linear transformation
         self.linear = nn.Linear(in_features, out_features, bias=bias, dtype=dtype)
@@ -63,7 +57,7 @@ class WIREINR(BaseModel):
         scale: float = 10.0,
         pos_encode: bool = False,
         sidelength: int = 512,
-        fn_samples = None,
+        fn_samples=None,
         use_nyquist: bool = True,
     ):
         super().__init__()
@@ -81,33 +75,21 @@ class WIREINR(BaseModel):
 
         # First layer: real → complex
         layers.append(
-            ComplexGaborLayer(
-                in_features,
-                hidden_features,
-                omega0=first_omega_0,
-                sigma0=scale,
-                is_first=True,
-                trainable=False
-            )
+            ComplexGaborLayer(in_features, hidden_features, omega0=first_omega_0, sigma0=scale, is_first=True, trainable=False)
         )
 
         # Hidden layers: complex → complex
-        layers.extend([
-            ComplexGaborLayer(
-                hidden_features,
-                hidden_features,
-                omega0=hidden_omega_0,
-                sigma0=scale,
-                is_first=False,
-                trainable=False
-            )
-            for _ in range(hidden_layers)
-        ])
+        layers.extend(
+            [
+                ComplexGaborLayer(
+                    hidden_features, hidden_features, omega0=hidden_omega_0, sigma0=scale, is_first=False, trainable=False
+                )
+                for _ in range(hidden_layers)
+            ]
+        )
 
         # Final layer: complex → complex (we extract .real in forward)
-        layers.append(
-            nn.Linear(hidden_features, out_features, dtype=torch.cfloat)
-        )
+        layers.append(nn.Linear(hidden_features, out_features, dtype=torch.cfloat))
 
         self.net = nn.Sequential(*layers)
 
@@ -295,7 +277,6 @@ class WIREModel(BaseModel):
         raise ValueError("No Debug Info implemented")
 
 
-
 if __name__ == "__main__":
     # Example usage and validation
     print("WIRE-based BaseModel - Drop-in Replacement Demo")
@@ -309,13 +290,7 @@ if __name__ == "__main__":
         }
     }
 
-    model = BaseModel(
-        config=config,
-        overwrite_base_init=False,
-        in_dim=3,
-        hidden=256,
-        layers=3
-    )
+    model = BaseModel(config=config, overwrite_base_init=False, in_dim=3, hidden=256, layers=3)
 
     # Test forward pass
     coords = torch.randn(100, 3) * 100  # 100 random 3D points in mm
@@ -334,7 +309,7 @@ if __name__ == "__main__":
 
     print("\nMemory footprint:")
     total_params = sum(p.numel() for p in model.parameters())
-    memory_mb = total_params * 8 / (1024 ** 2)  # Complex float64 = 8 bytes per param
+    memory_mb = total_params * 8 / (1024**2)  # Complex float64 = 8 bytes per param
     print(f"  Total parameters: {total_params:,}")
     print(f"  Approx memory:    {memory_mb:.2f} MB")
 
