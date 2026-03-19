@@ -496,6 +496,15 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             return 100
 
     def _detect_current_run_dir(self) -> Path | None:
+        def has_any_gif_artifacts(run_path: Path) -> bool:
+            mesh_assembly_gifs = list((run_path / "mesh_assembly_mode").glob("*.gif"))
+            solar_loss_gifs = list((run_path / "solar_loss_rendering").glob("*.gif"))
+            return bool(mesh_assembly_gifs or solar_loss_gifs)
+
+        def has_display_artifacts(run_path: Path) -> bool:
+            meshes = list((run_path / "meshes").glob("*.ply")) + list((run_path / "meshes").glob("*.poly"))
+            return has_any_gif_artifacts(run_path) or bool(meshes)
+
         logs_dir = GUI_ROOT / "logs"
         candidate_logs: list[Path] = []
         if RUN_LOCAL_LOG.exists():
@@ -506,6 +515,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                 if path not in candidate_logs:
                     candidate_logs.append(path)
 
+        fallback_logged_run_with_meshes: Path | None = None
         for log_path in candidate_logs:
             logs = log_path.read_text(encoding="utf-8", errors="replace")
             matches = re.findall(r"Output directory:\s*(.+)", logs)
@@ -519,7 +529,10 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                 run_dir = run_dir.resolve()
 
             if run_dir.exists() and run_dir.is_dir():
-                return run_dir
+                if has_any_gif_artifacts(run_dir):
+                    return run_dir
+                if has_display_artifacts(run_dir) and fallback_logged_run_with_meshes is None:
+                    fallback_logged_run_with_meshes = run_dir
 
         if not LOCAL_STORAGE_DIR.exists():
             return None
@@ -535,7 +548,18 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                     run_dirs.append(child)
 
         if not run_dirs:
-            return None
+            return fallback_logged_run_with_meshes
+
+        run_dirs_with_gifs = [path for path in run_dirs if has_any_gif_artifacts(path)]
+        if run_dirs_with_gifs:
+            return max(run_dirs_with_gifs, key=lambda p: p.stat().st_mtime)
+
+        run_dirs_with_artifacts = [path for path in run_dirs if has_display_artifacts(path)]
+        if run_dirs_with_artifacts:
+            return max(run_dirs_with_artifacts, key=lambda p: p.stat().st_mtime)
+
+        if fallback_logged_run_with_meshes is not None:
+            return fallback_logged_run_with_meshes
 
         return max(run_dirs, key=lambda p: p.stat().st_mtime)
 
