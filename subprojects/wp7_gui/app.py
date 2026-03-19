@@ -392,7 +392,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
-    def handle_slow_gif(self, parsed) -> None:
+    def handle_slow_gif(self, parsed) -> None:  # noqa: PLR0911
         query = parse_qs(parsed.query)
         raw_path = query.get("path", [""])[0]
         rel_path = unquote(raw_path).lstrip("/")
@@ -424,8 +424,6 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
 
         if not cached_path.exists():
             try:
-                import imageio.v2 as imageio
-
                 frames = imageio.mimread(requested)
                 if not frames:
                     self._send_json(500, {"message": "Failed to decode GIF frames"})
