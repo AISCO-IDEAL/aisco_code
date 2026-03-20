@@ -23,7 +23,7 @@ Both are fully differentiable through the SDF network weights θ.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 
@@ -152,17 +152,7 @@ def sdf_visibility(
     normal_source: Literal["mesh", "sdf"] = "mesh",
     method: Literal["sigmoid", "absorption"] = "sigmoid",
     # Sigmoid method params
-    alpha: float = 20.0,
-    # Absorption method params
-    beta: float = 20.0,
-    kappa: float = 2.0,
-    # March geometry
-    num_steps: int = 32,
-    step_size_factor: float = 0.05,
-    origin_offset_factor: float = 1e-3,
-    max_march_factor: float = 2.0,
-    # Performance
-    point_chunk_size: int = 8192,
+    sdf_cfg: dict[str, Any],
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Differentiable per-face visibility via SDF ray marching.
@@ -179,12 +169,13 @@ def sdf_visibility(
                              "sdf"  — normals from ∇f evaluated at face centres
         method:              "sigmoid"    — Π σ(α f(x_k))  (sharper)
                              "absorption" — exp(-κ Σ exp(-β f(x_k)) Δt)  (smoother)
-        alpha:               sigmoid softness (sigmoid method)
-        beta:                density sharpness (absorption method)
-        kappa:               absorption coefficient (absorption method)
-        num_steps:           number of march steps
-        step_size_factor:    step size as fraction of bounding-box diagonal
-        origin_offset_factor: initial offset along normal as fraction of bbox diagonal
+        sdf_cfg:             SDF configuration dictionary with the following keys:
+                             - "alpha": sigmoid softness (sigmoid method)
+                             - "beta": density sharpness (absorption method)
+                             - "kappa": absorption coefficient (absorption method)
+                             - "num_steps": number of march steps
+                             - "step_size_factor": step size as fraction of bounding-box diagonal
+                             - "origin_offset_factor": initial offset along normal as fraction of bbox diagonal
         max_march_factor:    stop marching after this × bbox diagonal
         point_chunk_size:    SDF query batch size (controls GPU memory)
 
@@ -193,6 +184,17 @@ def sdf_visibility(
         normals:     (F, 3) unit face normals used
         centroids:   (F, 3) face centroids
     """
+    print("Using 'sdf_visibility' version 1")
+
+    alpha=float(sdf_cfg["alpha"])
+    beta=float(sdf_cfg["beta"])
+    kappa=float(sdf_cfg["kappa"])
+    num_steps=int(sdf_cfg["num_steps"])
+    step_size_factor=float(sdf_cfg["step_size_factor"])
+    origin_offset_factor=float(sdf_cfg["origin_offset_factor"])
+    max_march_factor=float(sdf_cfg["max_march_factor"])
+    point_chunk_size=int(sdf_cfg["point_chunk_size"])
+
     device = vertices.device
 
     # -- Sun direction (unit) --------------------------------------------------

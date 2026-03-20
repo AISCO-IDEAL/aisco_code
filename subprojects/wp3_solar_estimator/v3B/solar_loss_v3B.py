@@ -439,7 +439,7 @@ class SolarLossEstimator:
                 device=self.device,
             )
             self.extractor.set_grid(self.bbox, self.resolution)
-        elif method == "sparse_sdf":
+        elif method == "sparse_dmc":
             self.extractor = SparseDMCExtractor(bbox=self.bbox, resolution=self.resolution, device=self.device)
             self.extractor.set_grid(self.bbox, self.resolution)
         else:
@@ -455,7 +455,7 @@ class SolarLossEstimator:
         if self.method in {"mesh_sdf", "mc"}:
             assert isinstance(self.extractor, MeshSDFExtractor)
             return self.extractor.extract_mesh(model)
-        if self.method == "sparse_sdf":
+        if self.method == "sparse_dmc":
             assert isinstance(self.extractor, SparseDMCExtractor)
             return self.extractor.extract_mesh(model)
         raise ValueError(f"Unknown method: {self.method}")

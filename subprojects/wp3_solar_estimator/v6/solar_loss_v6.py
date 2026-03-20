@@ -7,6 +7,7 @@ Supports RouteV1 or RouteV2 via config.
 
 from __future__ import annotations
 
+import importlib
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -21,7 +22,7 @@ from subprojects.wp3_solar_estimator.australia.route_v2 import RouteV2
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
-from subprojects.wp3_solar_estimator.raytracing.diffable import mesh_visibility, sdf_visibility
+from subprojects.wp3_solar_estimator.mesh_extractors.sparse_dmc.sparse_dmc_extractor import SparseDMCExtractor
 from subprojects.wp3_solar_estimator.utils.solar_utils import averaging_solar_quality
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -64,6 +65,25 @@ def _resolve_sdf_method(sdf_cfg: dict[str, Any]) -> Literal["sigmoid", "absorpti
     raise ValueError("RaytracingConfigV1.sdf.method must be one of: sigmoid, absorption")
 
 
+def _bytes_to_mb(value: int) -> float:
+    return float(value) / (1024.0 * 1024.0)
+
+
+def _get_cuda_vram_stats(device: torch.device) -> dict[str, float] | None:
+    if device.type != "cuda" or not torch.cuda.is_available():
+        return None
+
+    device_index = device.index if device.index is not None else torch.cuda.current_device()
+    torch.cuda.synchronize(device_index)
+
+    return {
+        "allocated_mb": _bytes_to_mb(torch.cuda.memory_allocated(device_index)),
+        "reserved_mb": _bytes_to_mb(torch.cuda.memory_reserved(device_index)),
+        "max_allocated_mb": _bytes_to_mb(torch.cuda.max_memory_allocated(device_index)),
+        "max_reserved_mb": _bytes_to_mb(torch.cuda.max_memory_reserved(device_index)),
+    }
+
+
 def _compute_visibility_for_sun(
     vertices: torch.Tensor,
     faces: torch.Tensor,
@@ -72,46 +92,73 @@ def _compute_visibility_for_sun(
     raytracing_cfg: dict[str, Any],
     method: Literal["mesh", "sdf"],
     normal_source: Literal["mesh", "sdf"],
+    enable_wandb_logging: bool = False,
+    log_group_name: str = "solar_loss_metrics",
+    epoch_name: int | None = None,
+    ray_call_index: int | None = None,
 ) -> torch.Tensor:
+    # make selection between different ray tracing methods based on path in config
+
+    before_stats: dict[str, float] | None = None
+    if vertices.device.type == "cuda" and torch.cuda.is_available():
+        device_index = vertices.device.index if vertices.device.index is not None else torch.cuda.current_device()
+        torch.cuda.reset_peak_memory_stats(device_index)
+        before_stats = _get_cuda_vram_stats(vertices.device)
+
     if method == "mesh":
+        mv_path = str(raytracing_cfg["path"]) + ".mesh_ray_visibility"
+        mod = importlib.import_module(mv_path)
+        mesh_visibility = mod.mesh_visibility
         mesh_cfg = raytracing_cfg["mesh"]
+
         vis, _, _ = mesh_visibility(
             vertices,
             faces,
             sun_dir,
             sdf_fn=sdf_fn,
             normal_source=normal_source,
-            beta=float(mesh_cfg["beta"]),
-            gamma=float(mesh_cfg["gamma"]),
-            margin_factor=float(mesh_cfg["margin_factor"]),
-            origin_offset_eps=float(mesh_cfg["origin_offset_eps"]),
-            sun_distance_factor=float(mesh_cfg["sun_distance_factor"]),
-            face_chunk_size=int(mesh_cfg["face_chunk_size"]),
-            miss_t=float(mesh_cfg["miss_t"]),
+            mesh_cfg=mesh_cfg,
         )
-        return vis
+    else:
+        if sdf_fn is None:
+            raise ValueError("sdf_fn is required when shading method is 'sdf'")
 
-    if sdf_fn is None:
-        raise ValueError("sdf_fn is required when shading method is 'sdf'")
+        sdfv_path = str(raytracing_cfg["path"]) + ".sdf_ray_visibility"
+        mod = importlib.import_module(sdfv_path)
+        sdf_visibility = mod.sdf_visibility
+        sdf_cfg = raytracing_cfg["sdf"]
+        sdf_method = _resolve_sdf_method(sdf_cfg)
+        vis, _, _ = sdf_visibility(
+            sdf_fn,
+            vertices,
+            faces,
+            sun_dir,
+            normal_source=normal_source,
+            method=sdf_method,
+            sdf_cfg=sdf_cfg,
+        )
 
-    sdf_cfg = raytracing_cfg["sdf"]
-    sdf_method = _resolve_sdf_method(sdf_cfg)
-    vis, _, _ = sdf_visibility(
-        sdf_fn,
-        vertices,
-        faces,
-        sun_dir,
-        normal_source=normal_source,
-        method=sdf_method,
-        alpha=float(sdf_cfg["alpha"]),
-        beta=float(sdf_cfg["beta"]),
-        kappa=float(sdf_cfg["kappa"]),
-        num_steps=int(sdf_cfg["num_steps"]),
-        step_size_factor=float(sdf_cfg["step_size_factor"]),
-        origin_offset_factor=float(sdf_cfg["origin_offset_factor"]),
-        max_march_factor=float(sdf_cfg["max_march_factor"]),
-        point_chunk_size=int(sdf_cfg["point_chunk_size"]),
-    )
+    after_stats = _get_cuda_vram_stats(vertices.device)
+    if (
+        enable_wandb_logging
+        and epoch_name is not None
+        and before_stats is not None
+        and after_stats is not None
+    ):
+        peak_delta_mb = after_stats["max_allocated_mb"] - before_stats["allocated_mb"]
+        log_dict: dict[str, float] = {
+            "raytracing_mem_before_allocated_mb": before_stats["allocated_mb"],
+            "raytracing_mem_before_reserved_mb": before_stats["reserved_mb"],
+            "raytracing_mem_peak_allocated_mb": after_stats["max_allocated_mb"],
+            "raytracing_mem_peak_reserved_mb": after_stats["max_reserved_mb"],
+            "raytracing_mem_during_peak_delta_mb": peak_delta_mb,
+            "raytracing_mem_after_allocated_mb": after_stats["allocated_mb"],
+            "raytracing_mem_after_reserved_mb": after_stats["reserved_mb"],
+        }
+        if ray_call_index is not None:
+            log_dict["raytracing_call_index"] = float(ray_call_index)
+        multi_log_in_one(log_group_name, log_dict, step=int(epoch_name))
+
     return vis
 
 
@@ -122,6 +169,9 @@ def _compute_visibility_per_sun(
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None,
     shading_cfg: dict[str, Any],
     raytracing_cfg: dict[str, Any],
+    enable_wandb_logging: bool = False,
+    log_group_name: str = "solar_loss_metrics",
+    epoch_name: int | None = None,
 ) -> torch.Tensor:
     """
     Compute per-face visibility for each sun direction.
@@ -140,6 +190,8 @@ def _compute_visibility_per_sun(
         raise ValueError(f"Unknown shading method: {method}")
 
     sun_batch_size = int(shading_cfg.get("sun_batch_size", 1))
+    vram_log_interval = int(shading_cfg.get("raytracing_vram_log_interval", 1))
+    vram_log_interval = max(vram_log_interval, 1)
     normal_source = _resolve_normal_source(raytracing_cfg)
 
     vis_chunks: list[torch.Tensor] = []
@@ -156,8 +208,12 @@ def _compute_visibility_per_sun(
                 raytracing_cfg=raytracing_cfg,
                 method=method_lit,
                 normal_source=normal_source,
+                enable_wandb_logging=enable_wandb_logging and ((start + i) % vram_log_interval == 0),
+                log_group_name=log_group_name,
+                epoch_name=epoch_name,
+                ray_call_index=start + i,
             )
-            for sun_dir in sun_chunk
+            for i, sun_dir in enumerate(sun_chunk)
         ]
 
         vis_chunks.append(torch.stack(vis_per_chunk, dim=1))  # (F, B)
@@ -261,6 +317,9 @@ def solar_mesh_loss_v6(  # noqa: PLR0912, PLR0915
         sdf_fn,
         shading_cfg,
         raytracing_cfg,
+        enable_wandb_logging=enable_wandb_logging,
+        log_group_name=log_group_name,
+        epoch_name=epoch_name,
     )
     aggregate_visibility = visibility_per_sun.mean(dim=1)
 
@@ -593,7 +652,7 @@ class SolarLossEstimator:
             self.solar_vectors = self.route.get_route_solar_vecs()
             self.solar_vectors = self.solar_vectors.view(-1, 3).to(self.device)
 
-        self.extractor: FCExtractor | DISOExtractor | MeshSDFExtractor
+        self.extractor: FCExtractor | DISOExtractor | MeshSDFExtractor | SparseDMCExtractor
         self._init_extractor()
 
     @staticmethod
@@ -697,6 +756,14 @@ class SolarLossEstimator:
                 device=self.device,
             )
             self.extractor.set_grid(self.bbox, self.resolution)
+        elif method == "sparse_dmc":
+            self.extractor = SparseDMCExtractor(
+                bbox=self.bbox,
+                resolution=self.resolution,
+                device=self.device,
+                batch_size=self.batch_size,
+            )
+            self.extractor.set_grid(self.bbox, self.resolution)
         else:
             raise ValueError(f"Unknown method: {method}")
 
@@ -710,7 +777,9 @@ class SolarLossEstimator:
         if self.method in {"mesh_sdf", "mc"}:
             assert isinstance(self.extractor, MeshSDFExtractor)
             return self.extractor.extract_mesh(model)
-
+        if self.method == "sparse_dmc":
+            assert isinstance(self.extractor, SparseDMCExtractor)
+            return self.extractor.extract_mesh(model)
         raise ValueError(f"Unknown method: {self.method}")
 
     def solar_loss(self, model: Any, epoch_name: int | None = None) -> torch.Tensor:

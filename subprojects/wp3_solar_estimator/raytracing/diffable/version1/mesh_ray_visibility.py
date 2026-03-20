@@ -20,7 +20,7 @@ Reference formulation (softmin + sigmoid):
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 
@@ -144,13 +144,7 @@ def mesh_visibility(
     *,
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
     normal_source: Literal["mesh", "sdf"] = "mesh",
-    beta: float = 10.0,
-    gamma: float = 20.0,
-    margin_factor: float = 1e-3,
-    origin_offset_eps: float = 1e-3,
-    sun_distance_factor: float = 10.0,
-    face_chunk_size: int = 512,
-    miss_t: float = 1e9,
+    mesh_cfg: dict[str, Any],
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Differentiable per-face visibility using mesh ray-triangle intersections.
@@ -166,12 +160,13 @@ def mesh_visibility(
         sdf_fn:             SDF callable (required when normal_source="sdf")
         normal_source:      "mesh" — normals from cross product of edges
                             "sdf"  — normals from ∇f evaluated at face centres
-        beta:               softmin sharpness (higher → closer to true min)
-        gamma:              sigmoid sharpness (higher → more binary shadow)
-        margin_factor:      self-occlusion margin as fraction of bbox diagonal
-        origin_offset_eps:  ray-origin offset along normal as fraction of bbox diagonal
-        sun_distance_factor: how far "behind the sun" rays originate (× bbox diagonal)
-        face_chunk_size:    number of faces processed per chunk (controls peak memory)
+        mesh_cfg:           Mesh configuration dictionary with the following keys:
+                             - "beta":               softmin sharpness (higher → closer to true min)
+                             - "gamma":              sigmoid sharpness (higher → more binary shadow)
+                             - "margin_factor":      self-occlusion margin as fraction of bbox diagonal
+                             - "origin_offset_eps":  ray-origin offset along normal as fraction of bbox diagonal
+                             - "sun_distance_factor": how far "behind the sun" rays originate (× bbox diagonal)
+                             - "face_chunk_size":    number of faces processed per chunk (controls peak memory)
         miss_t:             sentinel distance for ray misses
 
     Returns:
@@ -179,6 +174,16 @@ def mesh_visibility(
         normals:     (F, 3) unit face normals used
         centroids:   (F, 3) face centroids
     """
+    print("Using 'mesh_visibility' version 1")
+
+    beta=float(mesh_cfg["beta"])
+    gamma=float(mesh_cfg["gamma"])
+    margin_factor=float(mesh_cfg["margin_factor"])
+    origin_offset_eps=float(mesh_cfg["origin_offset_eps"])
+    sun_distance_factor=float(mesh_cfg["sun_distance_factor"])
+    face_chunk_size=int(mesh_cfg["face_chunk_size"])
+    miss_t=float(mesh_cfg["miss_t"])
+
     device = vertices.device
     F_count = faces.shape[0]
 
