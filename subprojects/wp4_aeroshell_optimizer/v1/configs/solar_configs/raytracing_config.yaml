@@ -1,7 +1,7 @@
 RaytracingConfigV1:
   method: "sdf" # sdf | mesh | none
   normal_source: "mesh" # mesh | sdf
-  path: "subprojects/wp3_solar_estimator/raytracing/diffable/version1"
+  path: "subprojects.wp3_solar_estimator.raytracing.diffable.version1"
 
   sdf:
     method: "sigmoid" # sigmoid | absorption
@@ -27,7 +27,7 @@ RaytracingConfigV1:
 RaytracingConfigV2:
   method: "sdf" # sdf | mesh | none
   normal_source: "mesh" # mesh | sdf
-  path: "subprojects/wp3_solar_estimator/raytracing/diffable/version2"
+  path: "subprojects.wp3_solar_estimator.raytracing.diffable.version2"
 
   sdf:
     method: "sigmoid" # sigmoid | absorption
