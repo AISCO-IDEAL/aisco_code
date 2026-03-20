@@ -10,5 +10,5 @@ parameters:
     values: [64,128,200,256]
 
   #sweep over mesh raytracing params
-  solar_configs/solar_loss_config.SolarLossConfigV6.shading.mesh_face_chunk_size:
+  solar_configs/raytracing_config.RaytracingConfigV1.mesh.face_chunk_size:
     values: [64,128,200,256]
