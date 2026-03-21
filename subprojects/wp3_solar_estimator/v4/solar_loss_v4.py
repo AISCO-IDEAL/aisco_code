@@ -17,12 +17,13 @@ from pathlib import Path
 from typing import Any
 
 import torch
-
 import wandb
+
 from subprojects.wp3_solar_estimator.australia.route_v1 import RouteV1 as Route
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
+from subprojects.wp3_solar_estimator.mesh_extractors.sparse_dmc.sparse_dmc_extractor import SparseDMCExtractor
 from subprojects.wp3_solar_estimator.utils.solar_utils import averaging_solar_quality
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -414,7 +415,7 @@ class SolarLossEstimator:
         )  # (N,T, 3) solar vectors along the route, pre-moved to device for efficiency
         # ensure format is (K,3) where K is the number of solar vectors (e.g. number of points along the route), by flattening the first two dimensions if necessary
         self.solar_vectors = self.solar_vectors.view(-1, 3).to(self.device)
-        self.extractor: FCExtractor | DISOExtractor | MeshSDFExtractor
+        self.extractor: FCExtractor | DISOExtractor | MeshSDFExtractor | SparseDMCExtractor
         self._init_extractor()
 
     def _init_extractor(self) -> None:
@@ -449,6 +450,9 @@ class SolarLossEstimator:
                 device=self.device,
             )
             self.extractor.set_grid(self.bbox, self.resolution)
+        elif method == "sparse_sdf":
+            self.extractor = SparseDMCExtractor(bbox=self.bbox, resolution=self.resolution, device=self.device)
+            self.extractor.set_grid(self.bbox, self.resolution)
         else:
             raise ValueError(f"Unknown method: {method}")
 
@@ -461,6 +465,9 @@ class SolarLossEstimator:
             return self.extractor.extract_mesh(model, isovalue=0.0, batch_size=self.batch_size)
         if self.method in {"mesh_sdf", "mc"}:
             assert isinstance(self.extractor, MeshSDFExtractor)
+            return self.extractor.extract_mesh(model)
+        if self.method == "sparse_sdf":
+            assert isinstance(self.extractor, SparseDMCExtractor)
             return self.extractor.extract_mesh(model)
 
         raise ValueError(f"Unknown method: {self.method}")

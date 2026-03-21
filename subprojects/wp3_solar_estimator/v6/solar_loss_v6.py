@@ -64,8 +64,8 @@ def _compute_visibility_per_sun(
     if method == "none":
         return torch.ones((faces.shape[0], sun_dirs.shape[0]), device=vertices.device, dtype=vertices.dtype)
 
-    sun_batch_size = int(shading_cfg.get("sun_batch_size", 1))
-    normal_source = str(raytracing_cfg["normal_source"]).lower()
+    sun_batch_size: int = int(shading_cfg.get("sun_batch_size", 1))
+    normal_source: str = str(raytracing_cfg["normal_source"]).lower()
 
     vis_chunks: list[torch.Tensor] = []
     for start in range(0, sun_dirs.shape[0], sun_batch_size):
@@ -572,7 +572,7 @@ class SolarLossEstimator:
 
         sdf_cfg = cfg["sdf"]
         if not isinstance(sdf_cfg, dict):
-            raise ValueError("RaytracingConfigV1.sdf must be a mapping")
+            raise TypeError("RaytracingConfigV1.sdf must be a mapping")
         cls._require_keys(
             sdf_cfg,
             [
@@ -595,7 +595,7 @@ class SolarLossEstimator:
 
         mesh_cfg = cfg["mesh"]
         if not isinstance(mesh_cfg, dict):
-            raise ValueError("RaytracingConfigV1.mesh must be a mapping")
+            raise TypeError("RaytracingConfigV1.mesh must be a mapping")
         cls._require_keys(
             mesh_cfg,
             ["beta", "gamma", "margin_factor", "origin_offset_eps", "sun_distance_factor", "face_chunk_size", "miss_t"],
