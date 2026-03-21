@@ -2,8 +2,8 @@ from pathlib import Path
 
 import torch
 import trimesh
-import wandb
 
+import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
 from subprojects.wp3_solar_estimator.validation.statistics import MeshStatistics
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.cruising_speed import cruising_speed
