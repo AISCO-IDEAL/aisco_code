@@ -13,8 +13,9 @@ losses: # [compute: bool, weight: float, path: str]  #  total_loss.py dynamicall
   aero:
     # frontal_area_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/frontal_area_v0.py"]  # NOT ACTIVE (compute=0)
     # crude_estimator_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/crude_estimator_v0.py"]  # NOT ACTIVE (compute=0)
-    null_loss_aero_v1_: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]  # ACTIVE — loaded by total_loss.py
-    gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/gaot_loss.py"]  # NOT ACTIVE (compute=0)
+    null_loss_aero_v1_: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
+    gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/gaot_loss.py"]
+  
   bb:
     # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v1.py"]
     # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15
@@ -59,4 +60,5 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
   assembly_id: 1 # 1 for the standard one  # rendering modes only (assembly_mode.py, mesh_assembly_gif.py), not bb_v3.py (which randomises 1-52)
 
 cfd:
-  model_id: "platin" # name that gets fed to the model loader
+  model_id: "platin"
+  version: 1

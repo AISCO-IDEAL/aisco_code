@@ -173,14 +173,14 @@ class StaticTrainer3D(TrainerBase):
         """Compute normalization stats from training data and save to disk (rank 0 only)."""
         logging.getLogger(__name__).info("Calculating normalization statistics from training set...")
         temp_train_dataset = VTKMeshDataset(
-            root=dataset_config.base_path,
+            root=dataset_config["base_path"],
             order_file=order_file_path,
             dataset_config=dataset_config,
             split="train",
             transform=RescalePosition(),
         )
 
-        temp_loader = PyGDataLoader(temp_train_dataset, batch_size=dataset_config.batch_size, shuffle=False, num_workers=4)
+        temp_loader = PyGDataLoader(temp_train_dataset, batch_size=dataset_config["batch_size"], shuffle=False, num_workers=4)
 
         all_x = []
         all_c = []
