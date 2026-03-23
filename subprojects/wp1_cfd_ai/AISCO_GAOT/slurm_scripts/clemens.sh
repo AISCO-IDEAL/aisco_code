@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=ddddddddd
+#SBATCH --job-name=WP1_laeuft
 #SBATCH --time=2:00:00          # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
@@ -78,7 +78,7 @@ umask 0002
 ulimit -n 65536
 
 # Define your base config
-BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/euler_field_new.yaml"
+BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/main_config.yaml"
 
 # Extract the 'name' parameter from the config
 RUN_NAME=$(grep "name:" $BASE_CONFIG | head -1 | awk '{print $2}' | tr -d '"')

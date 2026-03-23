@@ -8,13 +8,6 @@ from torch_geometric.data import Batch
 from .layers.attn import Transformer
 from .layers.magno import MAGNODecoder, MAGNOEncoder
 
-_CONFIG_PATH = os.path.join("/cluster/home/clhuber/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2", "config/config.yaml")
-
-
-def configloader() -> dict:
-    with open(_CONFIG_PATH) as f:
-        config = yaml.safe_load(f)
-    return config
 
 
 class GAOT3D(nn.Module):
@@ -25,7 +18,7 @@ class GAOT3D(nn.Module):
 
     def __init__(
         self,
-        config: dict = configloader(),
+        config: dict,
         field_output_size: int = 0,
     ):
         nn.Module.__init__(self)

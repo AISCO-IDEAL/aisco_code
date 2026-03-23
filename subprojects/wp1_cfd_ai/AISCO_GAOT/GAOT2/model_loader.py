@@ -121,8 +121,7 @@ class ModelLoader:
         mesh_faces = mesh_faces.to(self.device)
 
         # ── convert vertices from mm to meters (SDF model outputs mm, GAOT expects m) ──
-        MM_TO_M = 1e-3
-        optim_verts_m = optim_verts * MM_TO_M
+        optim_verts_m = optim_verts * 1e-3
         # ── per-vertex normals (fully differentiable, no in-place ops) ──
         v0 = optim_verts[mesh_faces[:, 0]]
         v1 = optim_verts[mesh_faces[:, 1]]
