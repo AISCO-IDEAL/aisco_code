@@ -152,6 +152,7 @@ def mesh_visibility(
     For every mesh face, a ray is cast from a distant sun origin through the
     face centre.  Soft intersection logic (softmin + sigmoid) yields a smooth
     visibility value that is differentiable w.r.t. vertex positions.
+    Does not take partial occlusion into account — a face is either fully visible or fully shadowed.
 
     Args:
         vertices:           (V, 3) mesh vertex positions

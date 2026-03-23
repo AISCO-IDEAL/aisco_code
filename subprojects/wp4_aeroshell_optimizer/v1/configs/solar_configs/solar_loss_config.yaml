@@ -77,7 +77,7 @@ SolarLossConfigV5:
 # USED — solar_v6.py: cfg["SolarLossConfigV6"] -> entire dict passed to WP3's SolarLossEstimator (v6)
 SolarLossConfigV6:
   australia_cfg: "solar_configs/australia.yaml"
-  raytracing_version: "v2"
+  raytracing_version: "v1"
   route_version: "v2" # v1 or v2
   sun_vector_source: "route" # route | fixed
   fixed_sun_dir: [-1,0,1.5] # [x, y, z] when sun_vector_source=fixed
