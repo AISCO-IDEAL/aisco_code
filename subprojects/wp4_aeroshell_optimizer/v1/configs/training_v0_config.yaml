@@ -1,7 +1,7 @@
 
 training_params:
-  learning_rate: 0.00000005  # NOT USED by BasicMLP — basic_MLP_v1.py reads training_config.get("learning_rate") at top level, not from training_params; always falls back to 1e-3. Only used if sweep overrides it.
-  num_epochs: 2 # USED — basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
+  learning_rate: 0.0005  # NOT USED by BasicMLP — basic_MLP_v1.py reads training_config.get("learning_rate") at top level, not from training_params; always falls back to 1e-3. Only used if sweep overrides it.
+  num_epochs: 150 # USED — basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
   # scheduler_step_size: 200 # does what?  # NOT USED — never read by any code
   # scheduler_gamma: 0.5 # does what?  # NOT USED — never read by any code
   # batch_size: 4096  # NOT USED — never read by any code in the optimisation loop

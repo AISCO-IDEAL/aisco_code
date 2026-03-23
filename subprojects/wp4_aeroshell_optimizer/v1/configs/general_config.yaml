@@ -14,11 +14,11 @@ active_configs:
   training: "training_v0_config.yaml"  #  main_v1_1_one_model.py, parent_loss.py: general_config["active_configs"]["training"]
   model_params: "basic_MLP_v1.yaml"  #  main_v1_1_one_model.py: general_config["active_configs"]["model_params"]
   neural_renderer: "neural_renderer_v0.yaml"  #  visual_wrapper.py, total_loss.py
-  solar: "solar_configs/solar_loss_config.yaml"  # ALEX!! PLEASE CONFIRM: solar_v4.py loads solar config directly by hardcoded path, not via this key
+  solar: "solar_configs/solar_loss_config.yaml" # Used in all solar versions above V3s
 
 wandb_general:
   use_wandb: True  #  main_v1_1_one_model.py, total_loss.py
-  project_name: "WP3-Victor" #modify  #  main_v1_1_one_model.py: wandb.init(project=...)
+  project_name: "WP3-Development-Alex" #modify  #  main_v1_1_one_model.py: wandb.init(project=...)
   entity_name: "aisco"  #  main_v1_1_one_model.py: wandb.init(entity=...)
   use_renderer: True  #  total_loss.py: general_config["wandb_general"].get("use_renderer", True)
   use_neural_renderer: True  #  total_loss.py, main_v1_1_one_model.py: general_config["wandb_general"].get("use_neural_renderer", False)

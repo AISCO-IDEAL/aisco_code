@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -511,12 +512,12 @@ class SolarLossEstimator:
                 else None
             )
             self.renderShadingVisibility = (
-                ShadingVisibility(visualiser=self.visualiser)
+                ShadingVisibility(visualiser=deepcopy(self.visualiser))
                 if detached_cfg.get("shading_visibility", {}).get("enabled", False)
                 else None
             )
             self.renderShadingPenalty = (
-                ShadingPenalty(visualiser=self.visualiser)
+                ShadingPenalty(visualiser=deepcopy(self.visualiser))
                 if detached_cfg.get("shading_penalty", {}).get("enabled", False)
                 else None
             )
