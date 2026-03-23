@@ -213,12 +213,12 @@ def mesh_visibility(
     # -- Triangle vertices (all triangles are potential occluders) --------------
     tri_v0, tri_v1, tri_v2 = v0, v1, v2  # (F, 3) each
 
-    # -- Process in chunks to avoid (F × F) memory blow-up ---------------------
     visibility_chunks: list[torch.Tensor] = []
 
     for start in range(0, F_count, face_chunk_size):
 
         end = min(start + face_chunk_size, F_count)
+
         chunk_centroids = centroids[start:end]  # (C, 3)
         chunk_normals = normals[start:end]  # (C, 3)
 
@@ -228,19 +228,37 @@ def mesh_visibility(
         # Distance from sun origin down to face centre = L  (for all rays)
         t_face = L
 
-        # All-pairs intersection  (C, F)
-        t = _moller_trumbore_batch(ray_origins, ray_dir, tri_v0, tri_v1, tri_v2, miss_t=miss_t)
-
-        # Mask out self-intersection: for face i (global index start+local),
-        # zero out column i so it can't occlude itself
+        # All-pairs intersection is computed as CxC blocks over occluder faces.
+        # We then aggregate logsumexp blockwise to match the full CxF softmin.
         local_size = end - start
         global_indices = torch.arange(start, end, device=device)
-        # Set self-column to miss_t
-        t[torch.arange(local_size, device=device), global_indices] = miss_t
+        running_lse = torch.full((local_size,), float("-inf"), device=device, dtype=vertices.dtype)
 
-        # Softmin over triangles (numerically stable via logsumexp)
-        # t_near is equal to -(1/β) * logsumexp(-β * t, dim=1)
-        t_near = -(1.0 / beta) * torch.logsumexp(-beta * t, dim=1)  # (C,)
+        for occluder_start in range(0, F_count, face_chunk_size):
+            occluder_end = min(occluder_start + face_chunk_size, F_count)
+
+            # Local CxC (or smaller edge block) intersection matrix.
+            t_block = _moller_trumbore_batch(
+                ray_origins,
+                ray_dir,
+                tri_v0[occluder_start:occluder_end],
+                tri_v1[occluder_start:occluder_end],
+                tri_v2[occluder_start:occluder_end],
+                miss_t=miss_t,
+            )
+
+            # Mask out self-intersection only when the face index is in this block.
+            self_in_block = (global_indices >= occluder_start) & (global_indices < occluder_end)
+            if torch.any(self_in_block):
+                row_idx = torch.nonzero(self_in_block, as_tuple=False).squeeze(-1)
+                col_idx = global_indices[self_in_block] - occluder_start
+                t_block[row_idx, col_idx] = miss_t
+
+            block_lse = torch.logsumexp(-beta * t_block, dim=1)
+            running_lse = torch.logaddexp(running_lse, block_lse)
+
+        # Softmin over all triangles via accumulated logsumexp.
+        t_near = -(1.0 / beta) * running_lse  # (C,)
 
         # Occlusion score: sigmoid(γ * (t_face - t_near - margin))
         occl = torch.sigmoid(gamma * (t_face - t_near - margin))  # (C,)
