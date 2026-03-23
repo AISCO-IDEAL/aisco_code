@@ -488,7 +488,7 @@ class SolarLossEstimator:
         if self.rendering and self.model_hash is None:
             self.model_hash = dict_hashing(model.get_model_info_dict())
             run_name = reformat_wandb_name(self.wandb_run_name) if self.wandb_run_name else "no_wandb_run"
-            if self.general_config["general_info"].get("run_locally", False):
+            if self.general_config["general_info"].get("run_locally", False).lower() == "true":
                 storage_path = self.storage_paths["local_storage_dir"]
             else:
                 storage_path = self.storage_paths["storage_dir"]
