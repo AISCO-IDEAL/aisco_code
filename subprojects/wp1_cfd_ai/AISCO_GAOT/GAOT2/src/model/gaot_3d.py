@@ -1,13 +1,9 @@
-import os
-
 import torch
-import yaml
 from torch import nn
 from torch_geometric.data import Batch
 
 from .layers.attn import Transformer
 from .layers.magno import MAGNODecoder, MAGNOEncoder
-
 
 
 class GAOT3D(nn.Module):
