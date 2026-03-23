@@ -215,6 +215,8 @@ def mesh_visibility(
 
     visibility_chunks: list[torch.Tensor] = []
 
+    print(f"Computing visibility in chunks of {face_chunk_size} faces (total {F_count} faces)")
+
     for start in range(0, F_count, face_chunk_size):
 
         end = min(start + face_chunk_size, F_count)
