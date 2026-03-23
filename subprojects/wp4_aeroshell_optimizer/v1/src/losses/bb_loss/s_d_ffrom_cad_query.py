@@ -13,7 +13,7 @@ from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 from OCP.gp import gp_Pnt
 from OCP.TopAbs import TopAbs_IN, TopAbs_ON
 
-from subprojects.wp2_assembler.version3.components.nbz import bounding_box_of_assembly
+from subprojects.wp2_assembler.version3.components.nbz import bounding_box_of_assembly as _default_bbox_fn
 
 
 class SDFfromCadQuery:
@@ -32,6 +32,7 @@ class SDFfromCadQuery:
         shape: cq.Shape | None = None,
         shape_list: list[cq.Solid] | None = None,
         assembly_id: int = 1,
+        bounding_box_fn=None,
     ):
         if shape is None and shape_list is None:
             raise ValueError("Either shape or shape_list must be provided.")
@@ -40,13 +41,17 @@ class SDFfromCadQuery:
         self.__shape: cq.Shape | None = shape
         self.__assembly_id = assembly_id
         self.__shape_list = shape_list
+        self.__bounding_box_fn = bounding_box_fn or _default_bbox_fn
         self.__pointgrid = self.__pointgrid_geni(pointgrid_config)
         if self.__shape is None:
             l = len(self.__shape_list) if self.__shape_list is not None else 0  # noqa: E741
             self.__sdfs = []
             for x in self.__shape_list or []:
                 # Pass shapes directly; no redundant casts
-                self.__sdfs.append(SDFfromCadQuery(shape=x, pointgrid_config=pointgrid_config))
+                self.__sdfs.append(SDFfromCadQuery(
+                    shape=x, pointgrid_config=pointgrid_config,
+                    assembly_id=assembly_id, bounding_box_fn=bounding_box_fn,
+                ))
             self.__sdf_at_pointgrid = [
                 min(self.__sdfs[i].sdf_at_pointgrid()[j] for i in range(l))
                 for j in range(len(self.__pointgrid))  # From all shapes take the minimum SDF at each point
@@ -67,7 +72,7 @@ class SDFfromCadQuery:
                 print("SDF from cq.Solid conversion Problem")
 
     def __pointgrid_geni(self, pointgrid_config) -> list[list[float]]:
-        inner_grid_edges = bounding_box_of_assembly(self.__assembly_id)
+        inner_grid_edges = self.__bounding_box_fn(self.__assembly_id)
         print(inner_grid_edges)
         dx, dy, dz, rand = (
             pointgrid_config.get("dx"),

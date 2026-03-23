@@ -15,12 +15,13 @@ losses: # [compute: bool, weight: float, path: str]  #  total_loss.py dynamicall
     # crude_estimator_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/crude_estimator_v0.py"]  # NOT ACTIVE (compute=0)
     null_loss_aero_v1_: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
     gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/gaot_loss.py"]
-  
+
   bb:
     # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v1.py"]
     # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15
     null_loss_bb_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/null_loss_bb_v1.py"]
     bb_v3: [1, 10, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety y
+    bb_v4: [0, 10, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v4.py"] # assembler version4 with ground clearance validation
 
   eikonal:
     eikonal_v0: [1, 10.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/eikonal_loss/eikonal_v0.py"]
