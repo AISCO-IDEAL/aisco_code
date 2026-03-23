@@ -31,8 +31,10 @@ To upload images to a PR -- simply drag and drop an image while in edit mode and
 - [] I have run sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/main_testing.sh, and ...
     - [] ... no new warnings are generated
     - [] ... no errors are noticeable
+insert screenshot as proof here (CTRl+V)
 - [] I have run `ruff check .` and `ruff format`
 - [] I have run `mypy .`
+insert screenshot as proof here (CTRl+V)
 - [] I have commented my code, particularly in hard-to-understand areas
 - [] I have made corresponding changes to the documentation
 - [] I have added tests that prove my fix is effective or that my feature works
