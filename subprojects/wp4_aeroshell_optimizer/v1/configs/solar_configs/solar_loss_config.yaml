@@ -15,7 +15,7 @@ general_config:
 
 # USED !!!
 SolarLossConfigV3:
-  method: "sparse_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
+  method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
   resolution: 256
   area_budget_mm2: 6000000
