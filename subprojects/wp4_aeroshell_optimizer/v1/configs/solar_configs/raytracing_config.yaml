@@ -25,7 +25,7 @@ RaytracingConfigV1:
 
 #RaytracingConfigV2: accessed in solar_v6.py, with selection of version via SolarLossConfigV6's raytracing_version key
 RaytracingConfigV2:
-  method: "sdf" # sdf | mesh | none
+  method: "mesh" # sdf | mesh | none
   normal_source: "mesh" # mesh | sdf
   path: "subprojects.wp3_solar_estimator.raytracing.diffable.version2"
 

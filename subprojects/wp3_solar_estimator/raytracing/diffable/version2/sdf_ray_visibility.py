@@ -184,7 +184,6 @@ def sdf_visibility(
         normals:     (F, 3) unit face normals used
         centroids:   (F, 3) face centroids
     """
-    print("Using 'sdf_visibility' version 2")
 
     alpha=float(sdf_cfg["alpha"])
     beta=float(sdf_cfg["beta"])
