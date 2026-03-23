@@ -7,8 +7,11 @@ metric:
   name: memory/peak_allocated_mb
 parameters:
   solar_configs/solar_loss_config.SolarLossConfigV6.resolution:
-    values: [64,128,200,256]
+    values: [100]
 
   #sweep over mesh raytracing params
   solar_configs/raytracing_config.RaytracingConfigV1.mesh.face_chunk_size:
-    values: [64,128,200,256]
+    values: [128,192]
+
+  solar_configs/raytracing_config.RaytracingConfigV1.mesh.blocker_chunk_size:
+    values: [32,64,128]
