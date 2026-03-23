@@ -18,25 +18,20 @@ logger = logging.getLogger(__name__)
 class ModelLoader:
     def __init__(self, cfd_config: dict, device: str) -> None:
         model_id = cfd_config["model_id"]
-        self.model_path = self.get_checkpoint_path(model_id)
+        self.model_path = self._get_checkpoint_path(model_id)
         self.device = device
         self._load_model()
         self.extractor = MeshSDFExtractor(
             resolution=128, bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3], device=self.device, isovalue=0.0
         )
 
-    def get_checkpoint_path(self, model_id):
+    def _get_checkpoint_path(self, model_id):
         df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
-
         for _, row in df.iterrows():
-            try:
-                setup_dict = ast.literal_eval(row["setup"])
-                if str(setup_dict.get("id")) == str(model_id):
-                    path_dict = ast.literal_eval(row["path"])
-                    return path_dict.get("ckpt_path")
-            except Exception:
-                continue
-
+            setup_dict = ast.literal_eval(row["setup"])
+            if str(setup_dict.get("id")) == str(model_id):
+                path_dict = ast.literal_eval(row["path"])
+                return path_dict.get("ckpt_path")
         raise ValueError("Wrong ID for GAOT-Model")
 
     def _load_model(self) -> None:
@@ -109,7 +104,7 @@ class ModelLoader:
         batch = self._reformat_data(mesh_verts, mesh_faces)
 
         # ── latent token positions (registered buffer inside the model) ──
-        tokens_pos = self.gaot.latent_tokens  # already on self.device
+        tokens_pos = self.gaot.latent_tokens 
 
         # ── forward through GAOT3D ───────────────────────────────────────
         with torch.autograd.set_detect_anomaly(True):
