@@ -106,7 +106,7 @@ model:
 dataset:
     name: "euler_pressure_field_new"
     metaname: "incompressible_fluids/euler_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_new" # changing this to /processed_euler_cp_full currently gives a cuda out of memmory issue
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_new" # changing this to /processed_euler_cp_full currently gives a cuda out of memory issue
     processed_folder: ""
     force_recompute_stats: false
     rand_dataset: true
