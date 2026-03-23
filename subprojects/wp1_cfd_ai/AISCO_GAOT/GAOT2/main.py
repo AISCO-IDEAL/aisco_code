@@ -94,7 +94,6 @@ def parse_files():
 
 
 def prepare_arg(arg):
-    print(vars(arg))
     # make sure all paths are exist
     basepath = os.path.dirname(os.path.abspath(__file__))
     for _path in arg.path:
