@@ -1,5 +1,5 @@
 RaytracingConfigV1:
-  method: "sdf" # sdf | mesh | none
+  method: "mesh" # sdf | mesh | none
   normal_source: "mesh" # mesh | sdf
   path: "subprojects.wp3_solar_estimator.raytracing.diffable.version1"
 
