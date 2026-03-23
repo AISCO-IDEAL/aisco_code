@@ -168,7 +168,7 @@ class TotalLoss:
             loss_names[loss_name] = current_loss.item()  # convert to float, gradient is lost
 
         if self.losses_config["general_info"]["ALM"] == "True":  # ALM weighting
-            use_alm_aggressive = self.losses_config["general_info"].get("ALM_agressive") == "True"
+            use_alm_aggressive = self.losses_config["general_info"].get("ALM_aggressive") == "True"
             # DOCUMENTATION: `Losses and their weights` in Obsidian
 
             # o: maximise cruising speed (CSE)

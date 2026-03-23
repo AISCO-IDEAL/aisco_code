@@ -2,7 +2,7 @@ general_info:
   # config_debugging: "True"  # NOT USED — never read by any code in src/
   CSE: "True"  # Cruising Speed Estimation  # USED — total_loss.py: self.losses_config["general_info"]["CSE"] == "True"
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self.losses_config["general_info"]["ALM"] == "True"
-  ALM_agressive: "False" # capu version of ALM
+  ALM_aggressive: "False" # capu version of ALM
   alm_thresholds: [0.1, 0.1, 0.1]  # thresholds for constraint losses [bb, eikonal, smoothness]  # USED — total_loss.py: self.losses_config["general_info"]["alm_thresholds"]
   initial_lambda: 0.01  # initial value for lambda in ALM  # USED — total_loss.py: alm_info.get("initial_lambda", 0.01)
   initial_mu: 1.0  # initial value for mu in ALM  # USED — total_loss.py: alm_info.get("initial_mu", 1.0)

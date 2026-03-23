@@ -8,14 +8,14 @@
 # See wandb_sweep_v1_50_meshes.yaml for full documentation.
 # ============================================================================
 program: subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py
-#method: bayes
+method: grid # all parameter combinations are going to be run
 entity: aisco
 project: compare_alm_modes
 metric:
   name: total_loss
   goal: minimize
 parameters:
-  losses_v0_config.general_info.alm_aggressive:
+  losses_v0_config.general_info.ALM_aggressive:
     values: ["True", "False"]
   losses_v0_config.general_info.alpha:
     values: [0.9, 0.99]
