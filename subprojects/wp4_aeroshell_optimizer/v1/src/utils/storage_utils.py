@@ -1,6 +1,7 @@
 # ruff: noqa: PLR0912 # reduce the if else mess, once everything works again!
 import copy
 import datetime
+import glob
 import json
 import os
 from pathlib import Path
@@ -128,7 +129,7 @@ def allround_save_data(  # noqa: PLR0915
 
 def fetch_pretrained_model(
     model: BaseModel,
-    pretrained_path: str = "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset",
+    pretrained_path: str = "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_models",
     verbose: bool = True,
 ) -> None | Path:
     """
@@ -136,6 +137,27 @@ def fetch_pretrained_model(
     Returns the path to the pretrained model if found, else None.
 
     """
+    print(f"[DEBUG storage_utils] requested pretrained_path: {pretrained_path}")
+    if pretrained_path is None:
+        print("[DEBUG storage_utils] path is None")
+    else:
+        print(f"[DEBUG storage_utils] os.path.exists: {os.path.exists(pretrained_path)}")
+        print(f"[DEBUG storage_utils] os.path.isfile: {os.path.isfile(pretrained_path)}")
+        print(f"[DEBUG storage_utils] os.path.isdir: {os.path.isdir(pretrained_path)}")
+
+    # If exact file provided
+    if pretrained_path and os.path.isfile(pretrained_path):
+        print(f"[DEBUG storage_utils] exact file found: {pretrained_path}")
+        return Path(pretrained_path)
+
+    # If a directory provided, search for .pth recursively
+    if pretrained_path and os.path.isdir(pretrained_path):
+        candidates = glob.glob(os.path.join(pretrained_path, "**", "*.pth"), recursive=True)
+        print(f"[DEBUG storage_utils] candidates found in dir: {candidates}")
+        if candidates:
+            chosen = sorted(candidates)[0]
+            print(f"[DEBUG storage_utils] chosen candidate: {chosen}")
+
     if pretrained_path is None:
         print("No valid pretrained path provided, skipping pretrained model fetch.")
         return None

@@ -1,20 +1,16 @@
 #Here put the config for model pretraining
-general_info:
-  config_debugging: "True"  # NOT USED — never read by any code in src/
-
-pretraining_shape: "sphere" # "sphere" or "cube"  # USED — pretraining_v1_1.py: config.get("pretraining_shape", "sphere")
+pretraining_shape: "sphere" # "sphere" or "cube"  #  pretraining_v1_1.py: config.get("pretraining_shape", "sphere")
 
 pretraining:
-  use_pretrained: True # True or False possible  # NOT USED — never read by any code (main checks fetch_pretrained_model result instead)
-  force_pretraining: False  # USED — main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("force_pretraining", False)
-  pretraining_model_path: "subprojects/wp4_aeroshell_optimizer/data/test_models/xyz" # must be .pth file compatible with model_vxy, doesn't do anything atm  # USED — main_v1_1_one_model.py: pretraining_config["pretraining"].get("pretraining_model_path", False)
-  username: ${USER} # for windows users: %USERNAME%  # NOT USED — never read by any code in the optimisation loop
+  force_pretraining: False  # main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("force_pretraining", False)
+  pretraining_model_path: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset/bb489749d1/bb489749d1.pth"  # main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("pretraining_model_path", "path/to/pretrained/model.pth")  # note: pretraining_v0_model.pth is the basic MLP sphere or ellipsoid
+  local_pretraining_model_path: "./local_pretrained_model.pth" # only used for testing on local machine, not on cluster  # main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("local_pretraining_model_path", "path/to/pretrained/model.pth") (when run_locally=True)
 
-model: "WIRE" #Class name of model  # USED — pretraining_v1_1.py: config["model"] (only in dynamic_model_loading, not used when model is passed in)
-model_filename: "WIRE" #Name of file where model is defined  # USED — pretraining_v1_1.py: config["model_filename"] (only in dynamic_model_loading, not used when model is passed in)
+model: "WIRE" #Class name of model  # pretraining_v1_1.py: config["model"] (only in dynamic_model_loading, not used when model is passed in)
+model_filename: "WIRE" #Name of file where model is defined  # pretraining_v1_1.py: config["model_filename"] (only in dynamic_model_loading, not used when model is passed in)
 
 training_loop:
-  epochs: 5000  # USED — pretraining_v1_1.py: config["training_loop"]["epochs"]
-  learning_rate: 0.0005  # USED — pretraining_v1_1.py: config["training_loop"]["learning_rate"]
-  random_batch_size: 2048  # USED — pretraining_v1_1.py: config["training_loop"]["random_batch_size"]
-  print_interval: 25  # USED — pretraining_v1_1.py: config["training_loop"]["print_interval"]
+  epochs: 2000  # pretraining_v1_1.py: config["training_loop"]["epochs"]
+  learning_rate: 0.0005  # pretraining_v1_1.py: config["training_loop"]["learning_rate"]
+  random_batch_size: 2048  # pretraining_v1_1.py: config["training_loop"]["random_batch_size"]
+  print_interval: 25  # pretraining_v1_1.py: config["training_loop"]["print_interval"]

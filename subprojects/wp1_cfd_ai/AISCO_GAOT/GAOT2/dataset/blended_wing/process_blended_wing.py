@@ -23,7 +23,9 @@ Saved Data fields:
 
 import glob
 import os
+import sys
 from concurrent.futures import BrokenExecutor, ProcessPoolExecutor, as_completed
+from pathlib import Path
 
 import pandas as pd
 import pyvista as pv
@@ -31,23 +33,34 @@ import torch
 from torch_geometric.data import Data
 from tqdm import tqdm
 
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from common_preprocessing import A_SEA_LEVEL, compute_geom_conditioning
+
 DATA_ROOT = "/cluster/work/fuge/AISCO/wp1_cfd_ai/blended_wing/train"
 VTK_DIR = os.path.join(DATA_ROOT, "vtk")
 CASE_DATA = os.path.join(DATA_ROOT, "case_data.dat")
-OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing"
+OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing_cp_full"
 
 NUM_WORKERS = 8
 
 
 def load_case_data(path: str) -> dict:
-    """Parse case_data.dat into dict: case_name -> {'CD': float, 'CL': float}."""
+    """Parse case_data.dat into dict with aerodynamic coefficients and Mach number."""
     case_df = pd.read_csv(
         path,
         sep=r"\s+",
         comment="#",
         names=["case_name", "geom_name", "alt_kft", "Re", "M_inf", "alpha_deg", "beta_deg", "CD", "CL", "CMy"],
     )
-    return {row["case_name"]: {"CD": row["CD"], "CL": row["CL"]} for _, row in case_df.iterrows()}
+    return {
+        row["case_name"]: {
+            "CD": row["CD"],
+            "CL": row["CL"],
+            "M_inf": row["M_inf"],
+        }
+        for _, row in case_df.iterrows()
+    }
 
 
 def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
@@ -70,11 +83,17 @@ def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
         return None
 
     aero = case_lookup[case_name]
+    v_inf = float(aero["M_inf"]) * A_SEA_LEVEL
 
     data = Data(pos=pos, c=c)
     data.x = cp  # per-vertex Cp field
     data.cd = torch.tensor([aero["CD"]], dtype=torch.float32)
     data.force = torch.tensor([float("nan")], dtype=torch.float32)  # no absolute force
+    geom_extent, geom_aspect, conditioning = compute_geom_conditioning(pos, v_inf)
+    data.v_inf = torch.tensor([v_inf], dtype=torch.float32)
+    data.geom_extent = geom_extent
+    data.geom_aspect = geom_aspect
+    data.conditioning = conditioning
     data.filename = case_name
 
     torch.save(data, os.path.join(output_dir, f"{case_name}.pt"))

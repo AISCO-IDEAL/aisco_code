@@ -73,7 +73,7 @@ def test_route_loader():  # noqa: PLR0915
     ax.set_xlabel("Forward/X")
     ax.set_ylabel("Left/Y")
     ax.set_zlabel("Up/Z")
-    ax.set_title("Solar Vectors in Car Body Frame")
+    ax.set_title("Solar Vectors in Car Body Frame (RouteV1)")
     ax.view_init(elev=10, azim=0)  # look from the +x (forward) axis toward origin
     plt.savefig("subprojects/wp3_solar_estimator/australia/data/solar_vectors_X.png")
     ax.view_init(elev=10, azim=90)  # look from the +y (left) axis toward origin
@@ -89,13 +89,15 @@ def test_route_loader():  # noqa: PLR0915
     points = routev2.get_route_points()
     times = routev2.times
     hours = np.array([t.hour + t.minute / 60 for t in times])
-    plt.figure()
+    plt.figure(figsize=(4.5, 6))
+
     plt.scatter(points[:, 1], points[:, 0], c=hours, cmap="viridis")  # Plot longitude vs latitude, colored by time of day
     plt.colorbar(label="Time of day (hours)")
     plt.axis("equal")
     plt.xlabel("Longitude")
     plt.ylabel("Latitude")
-    plt.title("Route Points Colored by Time of Day")
+    plt.title("Route Points Colored by Time of Day (RouteV2)")
+    plt.gca().set_aspect("equal", adjustable="box")
     plt.savefig("subprojects/wp3_solar_estimator/australia/data/route_points_time.png")
 
     # same as for routev1, plot solar vectors as arrows from origin, colored by time sample index.
@@ -127,7 +129,7 @@ def test_route_loader():  # noqa: PLR0915
     ax.set_xlabel("Forward/X")
     ax.set_ylabel("Left/Y")
     ax.set_zlabel("Up/Z")
-    ax.set_title("Solar Vectors and Route Points Colored by Race Progression")
+    ax.set_title("Solar Vectors and Route Points Colored by Race Progression (RouteV2)")
     ax.view_init(elev=10, azim=0)  # look from the +x (forward) axis toward origin
     plt.savefig("subprojects/wp3_solar_estimator/australia/data/time_solar_vector_route_points_X.png")
     ax.view_init(elev=10, azim=90)  # look from the +y (left) axis toward origin

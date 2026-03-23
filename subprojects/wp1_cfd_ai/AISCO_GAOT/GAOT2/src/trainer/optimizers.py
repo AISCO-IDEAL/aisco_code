@@ -241,7 +241,7 @@ class AdamWOptimizer:
     loss_scale: float
     eval_every_eps: int
 
-    def __init__(self, params, config:dict):
+    def __init__(self, params, config: dict):
         self.optimizer = torch.optim.AdamW(params, lr=config["lr"], weight_decay=config["weight_decay"])
         self.epoch = config["epoch"]
         self.lr = config["lr"]
@@ -323,7 +323,7 @@ class AdamWOptimizer:
             # Ensure DistributedSampler shuffles differently each epoch
             train_sampler = trainer.train_loader.sampler
             if hasattr(train_sampler, "set_epoch"):
-                train_sampler.set_epoch(epoch) 
+                train_sampler.set_epoch(epoch)
 
             trainer.model.train()
             total_loss: float = 0.0
@@ -426,7 +426,7 @@ class AdamWOptimizer:
                 val_epochs.append(epoch)
 
                 # Per-epoch visualization logging
-                if hasattr(trainer, 'visualize_sample'):
+                if hasattr(trainer, "visualize_sample"):
                     try:
                         trainer.visualize_sample(epoch)
                     except Exception as e:

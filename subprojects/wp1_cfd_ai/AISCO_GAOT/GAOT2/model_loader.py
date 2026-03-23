@@ -13,10 +13,11 @@ from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor
 logger = logging.getLogger(__name__)
 
 
-model_dict = {"OnlyCorrectNormalized": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/New_Normalizer1.pt", # only trainde for 3 Epochs or something like this
-    "gold3": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/gold3.pt", # Should be trained for 400 Epochs
-    "platin": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/platin.pt"
-    }
+model_dict = {
+    "OnlyCorrectNormalized": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/New_Normalizer1.pt",  # only trainde for 3 Epochs or something like this
+    "gold3": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/gold3.pt",  # Should be trained for 400 Epochs
+    "platin": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/platin.pt",
+}
 
 
 class ModelLoader:
@@ -27,7 +28,9 @@ class ModelLoader:
         self.model_path = model_dict[model_id]
         self.device = device
         self._load_model()
-        self.extractor = MeshSDFExtractor(resolution=128, bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3], device=self.device, isovalue=0.0)
+        self.extractor = MeshSDFExtractor(
+            resolution=128, bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3], device=self.device, isovalue=0.0
+        )
 
     def _load_model(self) -> None:
         # ── load config YAML saved alongside the checkpoint ─────────────
@@ -88,7 +91,9 @@ class ModelLoader:
 
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
-        _, _, loss, surrogate_loss = self.extractor.extract_and_compute_loss(sdf_model=sdf_model, loss_fn=self.loss_fn)
+        _, _, loss, surrogate_loss, _dl_dvertice = self.extractor.extract_and_compute_loss(
+            sdf_model=sdf_model, loss_fn=self.loss_fn
+        )
         return loss.item() + surrogate_loss - surrogate_loss.item()
 
     def loss_fn(self, mesh_verts, mesh_faces):
@@ -137,6 +142,7 @@ class ModelLoader:
         data = rescale_transform(data)
 
         return Batch.from_data_list([data]).to(self.device)
+
 
 EPSILON = 1e-12
 

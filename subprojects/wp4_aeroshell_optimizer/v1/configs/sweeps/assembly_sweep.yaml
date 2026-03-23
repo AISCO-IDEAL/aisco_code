@@ -1,18 +1,17 @@
 # ============================================================================
-# Wandb Sweep Config — Solar Loss Method Comparison (grid)
+# Wandb Sweep Config — Sweep over different Assembly IDs
 # ============================================================================
 # Parameter naming: <config_filename_without_yaml>.<nested.path.to.value>
 # See wandb_sweep_v1_50_meshes.yaml for full documentation.
 # ============================================================================
 program: subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py
+entity: aisco
+project: Alex_Sweeps
+
 method: grid
-metric:
-  goal: minimize
-  name: total_loss
+
 parameters:
-  solar_loss_config.SolarLossConfigV3.method:
-    values: ["diso_dmc", "diso_mc", "flexicubes", "mesh_sdf"]
-  solar_loss_config.SolarLossConfigV3.resolution:
-    values: [128, 250]
-  solar_loss_config.SolarLossConfigV3.sigmoid_sharpness:
-    values: [1.0, 10.0]
+  losses_v0_config.bb_config.assembly_id:
+    distribution: int_uniform
+    min: 1
+    max: 50

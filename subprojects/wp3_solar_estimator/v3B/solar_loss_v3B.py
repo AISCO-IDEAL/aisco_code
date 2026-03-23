@@ -22,6 +22,7 @@ import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
+from subprojects.wp3_solar_estimator.mesh_extractors.sparse_dmc.sparse_dmc_extractor import SparseDMCExtractor
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
@@ -130,10 +131,10 @@ def solar_mesh_loss_v3(
     face_cross_norm = torch.linalg.norm(face_cross, dim=-1)
     face_area_mm2 = 0.5 * face_cross_norm
 
-    # Compute illumination quality (cosine of angle with sun direction, clamped to [0, 1])
+    # Compute illumination quality (cosine of angle with sun direction, between  [-1, 1] due to geometry)
     face_normals_unit = face_cross / (face_cross_norm.clamp_min(epsilon)).unsqueeze(-1)
     sun_direction_unit = sun_direction / (torch.linalg.norm(sun_direction).clamp_min(epsilon))
-    illumination_quality = torch.clamp((face_normals_unit * sun_direction_unit).sum(-1), 0.0, 1.0)
+    illumination_quality = (face_normals_unit * sun_direction_unit).sum(-1)
 
     # Sort faces by descending quality
     # NOTE: Currently ignores order priority for equal-quality faces (TODO: could optimize face ordering)
@@ -315,7 +316,7 @@ def log_to_wandb(
 
 
 class SolarLossEstimator:
-    def __init__(self, config: dict[str, Any] | None = None) -> None:
+    def __init__(self, config: dict[str, Any] | None = None) -> None:  # noqa: PLR0915
         defaults = {
             "method": "flexicubes",
             "bbox": [[-5000, 5000], [-5000, 5000], [-5000, 5000]],
@@ -356,6 +357,15 @@ class SolarLossEstimator:
         self.selection_threshold_render = float(cfg["selection_threshold_render"])
         self.counter = 0  # For logging purposes
 
+        self.validation_sim = bool(cfg.get("validation_sim", False))
+        self.validation_interval = int(cfg.get("validation_interval", 0))
+        self.simulator = None
+        if self.validation_sim:
+            from subprojects.wp3_solar_estimator.validation.simulationv1 import SimulationV1  # noqa: I001, PLC0415 Since this saves importing of simulation if not needed
+
+            australia_cfg = cfg.get("australia_cfg", "solar_configs/australia.yaml")
+            self.simulator = SimulationV1(cfg_path=australia_cfg, area_budget_mm2=self.area_budget_mm2)
+
         self.rendering = bool(cfg["rendering"])
         self.visualiser: Visualiser | None
         self.renderSolar: SolarV3Selection | None
@@ -394,7 +404,7 @@ class SolarLossEstimator:
         else:
             self.sun_dir = sun_dir.to(device=self.device, dtype=torch.float32)
 
-        self.extractor: FCExtractor | DISOExtractor | MeshSDFExtractor
+        self.extractor: FCExtractor | DISOExtractor | MeshSDFExtractor | SparseDMCExtractor
         self._init_extractor()
 
     def _init_extractor(self) -> None:
@@ -429,6 +439,9 @@ class SolarLossEstimator:
                 device=self.device,
             )
             self.extractor.set_grid(self.bbox, self.resolution)
+        elif method == "sparse_sdf":
+            self.extractor = SparseDMCExtractor(bbox=self.bbox, resolution=self.resolution, device=self.device)
+            self.extractor.set_grid(self.bbox, self.resolution)
         else:
             raise ValueError(f"Unknown method: {method}")
 
@@ -442,7 +455,9 @@ class SolarLossEstimator:
         if self.method in {"mesh_sdf", "mc"}:
             assert isinstance(self.extractor, MeshSDFExtractor)
             return self.extractor.extract_mesh(model)
-
+        if self.method == "sparse_sdf":
+            assert isinstance(self.extractor, SparseDMCExtractor)
+            return self.extractor.extract_mesh(model)
         raise ValueError(f"Unknown method: {self.method}")
 
     def solar_loss(self, model: Any, epoch_name: int | None = None) -> torch.Tensor:
@@ -456,6 +471,11 @@ class SolarLossEstimator:
         Returns:
             Scalar loss tensor
         """
+
+        print(
+            f"[SolarLossEstimator] Mesh extraction method for this loss evaluation: "
+            f"{self.method} (extractor={type(self.extractor).__name__})"
+        )
 
         # Initialize model_hash and rendering_dir on first call
         if self.rendering and self.enable_wandb_logging and self.model_hash is None:
@@ -488,6 +508,27 @@ class SolarLossEstimator:
         if self.method == "mesh_sdf":  # MeshSDF loss needs special handling
 
             def wrapper_solar_loss(vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
+                if self.validation_sim and self.simulator is not None:
+                    run_sim = False
+                    if (self.validation_interval > 0 and self.counter % self.validation_interval == 0) or (
+                        self.number_epochs is not None and self.counter == self.number_epochs
+                    ):
+                        run_sim = True
+
+                    if run_sim:
+                        self.simulator.run(vertices, faces, output_dir=self.rendering_dir, epoch_name=epoch_name)
+
+                        if (
+                            self.number_epochs is not None
+                            and self.counter == self.number_epochs
+                            and self.rendering_dir is not None
+                        ):
+                            from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (  # noqa: PLC0415 So we can save us from importing
+                                create_and_upload_gif_from_folder,
+                            )
+
+                            create_and_upload_gif_from_folder(self.rendering_dir / "sim_renders", step=self.counter, fps=10)
+
                 loss = solar_mesh_loss_v3(
                     vertices,
                     faces,
@@ -511,7 +552,7 @@ class SolarLossEstimator:
                 return loss
 
             assert isinstance(self.extractor, MeshSDFExtractor)  # Get mypy to shut up, confirm we are using MeshSDF
-            _vertices, _faces, loss, surrogate_loss = self.extractor.extract_and_compute_loss(
+            _vertices, _faces, loss, surrogate_loss, _vertice_grads = self.extractor.extract_and_compute_loss(
                 sdf_model=model,
                 loss_fn=wrapper_solar_loss,
                 enable_backward=True,
@@ -519,6 +560,24 @@ class SolarLossEstimator:
 
         else:
             vertices, faces = self.extract_mesh(model)
+
+            if self.validation_sim and self.simulator is not None:
+                run_sim = False
+                if (self.validation_interval > 0 and self.counter % self.validation_interval == 0) or (
+                    self.number_epochs is not None and self.counter == self.number_epochs
+                ):
+                    run_sim = True
+
+                if run_sim:
+                    self.simulator.run(vertices, faces, output_dir=self.rendering_dir, epoch_name=epoch_name)
+
+                    if self.number_epochs is not None and self.counter == self.number_epochs and self.rendering_dir is not None:
+                        from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (  # noqa: PLC0415 So we can save us from importing
+                            create_and_upload_gif_from_folder,
+                        )
+
+                        create_and_upload_gif_from_folder(self.rendering_dir / "sim_renders", step=self.counter, fps=10)
+
             loss = solar_mesh_loss_v3(
                 vertices,
                 faces,
