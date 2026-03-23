@@ -7,7 +7,6 @@ Supports RouteV1 or RouteV2 via config.
 
 from __future__ import annotations
 
-import importlib
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -23,6 +22,7 @@ from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DI
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.sparse_dmc.sparse_dmc_extractor import SparseDMCExtractor
+from subprojects.wp3_solar_estimator.raytracing import diffable as diffable_raytracing
 from subprojects.wp3_solar_estimator.utils.solar_utils import averaging_solar_quality
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -84,6 +84,17 @@ def _get_cuda_vram_stats(device: torch.device) -> dict[str, float] | None:
     }
 
 
+def _resolve_visibility_callables(
+    raytracing_version: str,
+) -> tuple[Callable[..., tuple[torch.Tensor, Any, Any]], Callable[..., tuple[torch.Tensor, Any, Any]]]:
+    version = raytracing_version.lower()
+    if version == "v1":
+        return diffable_raytracing.mesh_visibility, diffable_raytracing.sdf_visibility
+    if version == "v2":
+        return diffable_raytracing.mesh_visibility_v2, diffable_raytracing.sdf_visibility_v2
+    raise ValueError(f"Unsupported raytracing_version '{raytracing_version}'. Expected one of: v1, v2")
+
+
 def _compute_visibility_for_sun(
     vertices: torch.Tensor,
     faces: torch.Tensor,
@@ -99,6 +110,9 @@ def _compute_visibility_for_sun(
 ) -> torch.Tensor:
     # make selection between different ray tracing methods based on path in config
 
+    raytracing_version = str(raytracing_cfg.get("version", "v1")).lower()
+    mesh_visibility, sdf_visibility = _resolve_visibility_callables(raytracing_version)
+
     before_stats: dict[str, float] | None = None
     if vertices.device.type == "cuda" and torch.cuda.is_available():
         device_index = vertices.device.index if vertices.device.index is not None else torch.cuda.current_device()
@@ -106,9 +120,6 @@ def _compute_visibility_for_sun(
         before_stats = _get_cuda_vram_stats(vertices.device)
 
     if method == "mesh":
-        mv_path = str(raytracing_cfg["path"]) + ".mesh_ray_visibility"
-        mod = importlib.import_module(mv_path)
-        mesh_visibility = mod.mesh_visibility
         mesh_cfg = raytracing_cfg["mesh"]
 
         vis, _, _ = mesh_visibility(
@@ -123,9 +134,6 @@ def _compute_visibility_for_sun(
         if sdf_fn is None:
             raise ValueError("sdf_fn is required when shading method is 'sdf'")
 
-        sdfv_path = str(raytracing_cfg["path"]) + ".sdf_ray_visibility"
-        mod = importlib.import_module(sdfv_path)
-        sdf_visibility = mod.sdf_visibility
         sdf_cfg = raytracing_cfg["sdf"]
         sdf_method = _resolve_sdf_method(sdf_cfg)
         vis, _, _ = sdf_visibility(
@@ -662,20 +670,20 @@ class SolarLossEstimator:
             raise ValueError(f"{cfg_name} is missing required keys: {missing}")
 
     @classmethod
-    def _validate_raytracing_v1_cfg(cls, cfg: dict[str, Any]) -> None:
-        cls._require_keys(cfg, ["method", "normal_source", "sdf", "mesh"], "RaytracingConfigV1")
+    def _validate_raytracing_cfg(cls, cfg: dict[str, Any], cfg_name: str) -> None:
+        cls._require_keys(cfg, ["method", "normal_source", "sdf", "mesh"], cfg_name)
 
         method = str(cfg["method"]).lower()
         if method not in {"none", "mesh", "sdf"}:
-            raise ValueError("RaytracingConfigV1.method must be one of: none, mesh, sdf")
+            raise ValueError(f"{cfg_name}.method must be one of: none, mesh, sdf")
 
         normal_source = str(cfg["normal_source"]).lower()
         if normal_source not in {"mesh", "sdf"}:
-            raise ValueError("RaytracingConfigV1.normal_source must be one of: mesh, sdf")
+            raise ValueError(f"{cfg_name}.normal_source must be one of: mesh, sdf")
 
         sdf_cfg = cfg["sdf"]
         if not isinstance(sdf_cfg, dict):
-            raise TypeError("RaytracingConfigV1.sdf must be a mapping")
+            raise TypeError(f"{cfg_name}.sdf must be a mapping")
         cls._require_keys(
             sdf_cfg,
             [
@@ -689,26 +697,27 @@ class SolarLossEstimator:
                 "max_march_factor",
                 "point_chunk_size",
             ],
-            "RaytracingConfigV1.sdf",
+            f"{cfg_name}.sdf",
         )
 
         sdf_method = str(sdf_cfg["method"]).lower()
         if sdf_method not in {"sigmoid", "absorption"}:
-            raise TypeError("RaytracingConfigV1.sdf.method must be one of: sigmoid, absorption")
+            raise TypeError(f"{cfg_name}.sdf.method must be one of: sigmoid, absorption")
 
         mesh_cfg = cfg["mesh"]
         if not isinstance(mesh_cfg, dict):
-            raise TypeError("RaytracingConfigV1.mesh must be a mapping")
+            raise TypeError(f"{cfg_name}.mesh must be a mapping")
         cls._require_keys(
             mesh_cfg,
             ["beta", "gamma", "margin_factor", "origin_offset_eps", "sun_distance_factor", "face_chunk_size", "miss_t"],
-            "RaytracingConfigV1.mesh",
+            f"{cfg_name}.mesh",
         )
 
     @classmethod
     def _load_versioned_raytracing_config(cls, raytracing_version: str) -> dict[str, Any]:
+        normalized_version = raytracing_version.lower()
         rt_cfg = load_config(v="v1", cfg_name="solar_configs/raytracing_config.yaml")
-        key = f"RaytracingConfig{raytracing_version.upper()}"
+        key = f"RaytracingConfig{normalized_version.upper()}"
         if key not in rt_cfg:
             available = sorted(rt_cfg.keys())
             raise ValueError(
@@ -717,10 +726,9 @@ class SolarLossEstimator:
             )
 
         resolved_cfg = dict(rt_cfg[key])
-        if raytracing_version == "v1":
-            cls._validate_raytracing_v1_cfg(resolved_cfg)
-        else:
-            raise ValueError(f"Unsupported raytracing_version '{raytracing_version}'.")
+        cls._validate_raytracing_cfg(resolved_cfg, key)
+        _resolve_visibility_callables(normalized_version)
+        resolved_cfg["version"] = normalized_version
 
         return resolved_cfg
 
