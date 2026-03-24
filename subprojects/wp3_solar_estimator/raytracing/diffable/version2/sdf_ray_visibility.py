@@ -187,14 +187,14 @@ def sdf_visibility(
 
     assert sdf_fn is not None, "sdf_fn cannot be None for sdf_ray_visibility computation."
 
-    alpha=float(sdf_cfg["alpha"])
-    beta=float(sdf_cfg["beta"])
-    kappa=float(sdf_cfg["kappa"])
-    num_steps=int(sdf_cfg["num_steps"])
-    step_size_factor=float(sdf_cfg["step_size_factor"])
-    origin_offset_factor=float(sdf_cfg["origin_offset_factor"])
-    max_march_factor=float(sdf_cfg["max_march_factor"])
-    point_chunk_size=int(sdf_cfg["point_chunk_size"])
+    alpha = float(sdf_cfg["alpha"])
+    beta = float(sdf_cfg["beta"])
+    kappa = float(sdf_cfg["kappa"])
+    num_steps = int(sdf_cfg["num_steps"])
+    step_size_factor = float(sdf_cfg["step_size_factor"])
+    origin_offset_factor = float(sdf_cfg["origin_offset_factor"])
+    max_march_factor = float(sdf_cfg["max_march_factor"])
+    point_chunk_size = int(sdf_cfg["point_chunk_size"])
 
     device = vertices.device
 

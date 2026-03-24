@@ -101,12 +101,14 @@ def _moller_trumbore_batch(
 # Normal computation helpers
 # ---------------------------------------------------------------------------
 
+
 def _normals_unit_check(normals: torch.Tensor | None) -> bool:
     """Check if provided normals are unit vectors.  If not, we will recompute them."""
     if normals is None:
         return False
     norms = normals.norm(dim=-1)
     return bool(torch.all((norms > 0) & (torch.abs(norms - 1.0) < 1e-3)).item())
+
 
 def _normals_from_mesh(
     vertices: torch.Tensor,
@@ -254,14 +256,14 @@ def mesh_visibility(
     """
     print("Using 'mesh_visibility' version 2")
 
-    beta=float(mesh_cfg["beta"])
-    gamma=float(mesh_cfg["gamma"])
-    margin_factor=float(mesh_cfg["margin_factor"])
-    origin_offset_eps=float(mesh_cfg["origin_offset_eps"])
-    sun_distance_factor=float(mesh_cfg["sun_distance_factor"])
-    face_chunk_size=int(mesh_cfg["face_chunk_size"])
-    blocker_chunk_size=int(mesh_cfg.get("blocker_chunk_size", face_chunk_size))
-    miss_t=float(mesh_cfg["miss_t"])
+    beta = float(mesh_cfg["beta"])
+    gamma = float(mesh_cfg["gamma"])
+    margin_factor = float(mesh_cfg["margin_factor"])
+    origin_offset_eps = float(mesh_cfg["origin_offset_eps"])
+    sun_distance_factor = float(mesh_cfg["sun_distance_factor"])
+    face_chunk_size = int(mesh_cfg["face_chunk_size"])
+    blocker_chunk_size = int(mesh_cfg.get("blocker_chunk_size", face_chunk_size))
+    miss_t = float(mesh_cfg["miss_t"])
 
     if blocker_chunk_size <= 0:
         raise ValueError("mesh_cfg['blocker_chunk_size'] must be > 0")
@@ -302,9 +304,7 @@ def mesh_visibility(
     visibility_chunks: list[torch.Tensor] = []
 
     print(
-        "Computing visibility in chunks: "
-        f"ray faces={face_chunk_size}, blocker faces={blocker_chunk_size} "
-        f"(total {F_count} faces)"
+        f"Computing visibility in chunks: ray faces={face_chunk_size}, blocker faces={blocker_chunk_size} (total {F_count} faces)"
     )
 
     for start in range(0, F_count, face_chunk_size):

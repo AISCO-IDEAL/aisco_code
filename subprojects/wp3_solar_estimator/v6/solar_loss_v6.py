@@ -149,12 +149,7 @@ def _compute_visibility_for_sun(
         )
 
     after_stats = _get_cuda_vram_stats(vertices.device)
-    if (
-        enable_wandb_logging
-        and epoch_name is not None
-        and before_stats is not None
-        and after_stats is not None
-    ):
+    if enable_wandb_logging and epoch_name is not None and before_stats is not None and after_stats is not None:
         peak_delta_mb = after_stats["max_allocated_mb"] - before_stats["allocated_mb"]
         log_dict: dict[str, float] = {
             "raytracing_mem_before_allocated_mb": before_stats["allocated_mb"],
