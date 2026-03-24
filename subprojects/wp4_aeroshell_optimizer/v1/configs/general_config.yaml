@@ -1,7 +1,7 @@
 general_info:
   version: "v1"  #  total_loss.py, parent_loss.py: load_config(v=general_config["general_info"]["version"], ...)
   device: "cuda"  #  main_v1_1_one_model.py: general_config["general_info"].get("device", ...)
-  run_locally: "True" # automatically detected, don't touch  #  main_v1_1_one_model.py, storage_utils.py (auto-detected & overwritten by config_utils.py)
+  run_locally: "False" # automatically detected, don't touch  #  main_v1_1_one_model.py, storage_utils.py (auto-detected & overwritten by config_utils.py)
   verbose: "True"  #  basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
 
 model_def:
