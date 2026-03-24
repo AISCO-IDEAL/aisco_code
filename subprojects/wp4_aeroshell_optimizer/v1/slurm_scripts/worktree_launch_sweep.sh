@@ -1,16 +1,17 @@
 #!/bin/bash
 
-umask 0002
-set -euo pipefail
+
+set -uo pipefail
+trap 'echo "[WARN] Script error at line $LINENO (exit $?)" >&2' ERR
 
 # ---- Config, EDIT HERE ---------------------------------------------------------------
-JOB_NAME="Worktree_Sweep" # Name for the SLURM job
-TIME_LIMIT="04:00:00"  # Translates to --time below
+JOB_NAME="Raytracing_Sweep" # Name for the SLURM job
+TIME_LIMIT="04:15:00"  # Translates to --time below
 
-SWEEP_ID="aisco/Alex_Sweeps/3r4ab3is"   # <-- EDIT THIS
-NUMBER_OF_GPUS=2  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
-GPU_TYPE=""  # Set to "" for generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
-RUNS_PER_GPU=1 # Adjust based on your needs and cluster limits --> Translates to COUNT below
+SWEEP_ID="aisco/Raytracing_Memory/qqtwy3ar"   # <-- EDIT THIS
+NUMBER_OF_GPUS=4  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
+GPU_TYPE="rtx_4090"  # Set to "" for generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
+RUNS_PER_GPU=28 # Adjust based on your needs and cluster limits --> Translates to COUNT below
 CPUS_PER_TASK=8  # Translates to --cpus-per-task below
 MEM_PER_CPU="5G"  # Translates to --mem-per-cpu below
 
@@ -24,6 +25,24 @@ USERNAME="$(whoami)"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT"
 
+### Move unstaged changes to new worktree
+PATCH_FILE=""
+UNTRACKED_LIST=""
+UNTRACKED_TAR=""
+if [ -n "$(git status --porcelain)" ]; then
+    echo "[INFO] Working tree dirty — capturing changes for worktree copy"
+    PATCH_FILE="/tmp/worktree-sweep-$(date +%Y%m%d_%H%M%S).patch"
+    git diff > "$PATCH_FILE"
+
+    UNTRACKED_LIST="/tmp/worktree-sweep-untracked-$(date +%Y%m%d_%H%M%S).txt"
+    git ls-files --others --exclude-standard > "$UNTRACKED_LIST"
+
+    if [ -s "$UNTRACKED_LIST" ]; then
+        UNTRACKED_TAR="/tmp/worktree-sweep-untracked-$(date +%Y%m%d_%H%M%S).tar"
+        tar -cf "$UNTRACKED_TAR" -T "$UNTRACKED_LIST"
+    fi
+fi
+
 TS=$(date +%Y%m%d_%H%M%S)
 BRANCH_NAME="${BRANCH_PREFIX}-${TS}"
 WORKTREE_DIR="$(dirname "$REPO_ROOT")/${BRANCH_NAME}${WORKTREE_SUFFIX}"
@@ -32,14 +51,32 @@ echo "=== Creating worktree ==="
 git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" HEAD
 
 cd "$WORKTREE_DIR"
-git commit --allow-empty -m "snapshot: $BRANCH_NAME"
-
-# Freeze config
-if [ ! -d "$WORKTREE_DIR/$FREEZE_DIR_REL" ]; then
-    echo "[ERROR] Freeze directory not found: $WORKTREE_DIR/$FREEZE_DIR_REL" >&2
-    exit 1
+if [ -n "$PATCH_FILE" ]; then
+    git apply "$PATCH_FILE"
+    if [ -n "$UNTRACKED_TAR" ]; then
+        tar -xf "$UNTRACKED_TAR"
+    fi
+    git add -A
+    git commit --no-verify -m "snapshot: $BRANCH_NAME (worktree)"
+    rm -f "$PATCH_FILE" "$UNTRACKED_LIST" "$UNTRACKED_TAR"
+else
+    git commit --allow-empty --no-verify -m "snapshot: $BRANCH_NAME"
 fi
-chmod -R a-w "$WORKTREE_DIR/$FREEZE_DIR_REL" || true
+
+# Freeze config (optional)
+read -r -p "Freeze config directory? [y/N] " freeze_reply </dev/tty
+case "$freeze_reply" in
+    y|Y)
+        if [ ! -d "$WORKTREE_DIR/$FREEZE_DIR_REL" ]; then
+            echo "[ERROR] Freeze directory not found: $WORKTREE_DIR/$FREEZE_DIR_REL" >&2
+            exit 1
+        fi
+        chmod -R a-w "$WORKTREE_DIR/$FREEZE_DIR_REL" || true
+        ;;
+    *)
+        echo "[INFO] Skipping config freeze."
+        ;;
+esac
 
 echo "[INFO] Worktree ready at: $WORKTREE_DIR"
 

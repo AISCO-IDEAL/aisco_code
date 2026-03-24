@@ -1,25 +1,25 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=GAOT_multi
-#SBATCH --time=4:00:00
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=2
-#SBATCH --cpus-per-task=16
-#SBATCH --mem-per-cpu=4G
-#SBATCH --gpus=rtx_4090:2
-#SBATCH --output=/cluster/scratch/elihuber/scratch_logs/Multi_%j.out
-#SBATCH --error=/cluster/scratch/elihuber/scratch_logs/Multi_%j.err
-
+#SBATCH --job-name=Main_test
+#SBATCH --time=02:00:00                   # Adjust time as needed
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --mem-per-cpu=4G                  # Total 40G memory
+#SBATCH --gpus=rtx_4090:1
+#SBATCH --output=/cluster/home/clhuber/logs/Clemens_TEST_%j.out 
+##SBATCH --mail-type=END,FAIL
+##SBATCH --mail-user=%u@ethz.ch
+## run this command: sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/experimental_scripts/clemens_wp4_testing.sh
 #------------------------------------------------------------------------------
-# Define username variable
+# Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
 
 module purge
 module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
 
-USERNAME="elihuber"
-LOG_DIR="/cluster/scratch/elihuber/scratch_logs"
-
+USERNAME=$(whoami)
+LOG_DIR="/cluster/home/$USERNAME/AISCO_code/logs"
+##mkdir -p "$LOG_DIR"  # Ensure the log directory exists
 #------------------------------------------------------------------------------
 # Print job information
 #------------------------------------------------------------------------------
@@ -34,50 +34,48 @@ echo "GPU type: $(nvidia-smi --query-gpu=name --format=csv,noheader)"
 echo "Allocated memory per GPU: $(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits) MB"
 echo "Working directory: $PWD"
 echo "=========================================="
+#------------------------------------------------------------------------------
+# Load modules
+#------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
 # Activate the Python virtual environment
 #------------------------------------------------------------------------------
 VENV_DIR="/cluster/home/$USERNAME/AISCO_code/aisco_env"
 source "$VENV_DIR/bin/activate"
-
 #------------------------------------------------------------------------------
 # Verify GPU access
 #------------------------------------------------------------------------------
 echo "Verifying GPU access..."
 nvidia-smi
 echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
-
 #------------------------------------------------------------------------------
-# Run the training
+
+# Set Hugging Face environment variables (not used for now)
+#------------------------------------------------------------------------------
+# export HF_HOME="$SCRATCH/hf_models"
+# export HF_DATASETS_CACHE="$SCRATCH/hf_datasets"
+# export HF_TOKEN="HuggingFace_TOKEN"  # Replace with your actual Huggingface token, create in Settings, Access Tokens, Read
+#------------------------------------------------------------------------------
+# Log GPU/CPU info to the same log directory
+#------------------------------------------------------------------------------
+
+##echo "GPU Info:" >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
+##nvidia-smi >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
+##echo "CPU Info:" >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
+##lscpu >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
+#------------------------------------------------------------------------------
+# Run the Relevant script
 #------------------------------------------------------------------------------
 export PYTHONUNBUFFERED=TRUE
+## export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True # Allow PyTorch to expand GPU memory allocation as needed
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-export NCCL_DEBUG=INFO
 cd /cluster/home/$USERNAME/AISCO_code/
+#python -m src.main
 
-ulimit -n 65536
-
-# Define your base config
-BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/config/pressure.yaml"
-
-# Archive folder for run configs
-ARCHIVE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/configs"
-mkdir -p $ARCHIVE_DIR
-
-# Set the path for the temporary unique config
-TEMP_CONFIG="$ARCHIVE_DIR/multi_run_${SLURM_JOB_ID}.yaml"
-
-# 1. Inject the Slurm Job ID into the YAML and save it to the archive folder
-sed "s/_RUN_ID_/${SLURM_JOB_ID}/g" $BASE_CONFIG > $TEMP_CONFIG
-
-# 2. Run training with the multi-head config (multi-GPU via torchrun)
-torchrun --standalone --nproc_per_node=2 \
-    subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/main.py \
-    -c $TEMP_CONFIG \
-    2>&1
-
+python subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py \
+    --save_model \
+    --problem_id="AISCO_WP4_Test1"  2>&1
 #------------------------------------------------------------------------------
 # Print job end information
 #------------------------------------------------------------------------------
@@ -86,6 +84,4 @@ echo "Job ended on: $(date)"
 echo "Total elapsed time: $SECONDS seconds"
 echo "=========================================="
 
-## chmod +x ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/elias.sh
-## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/elias.sh
-## watch -n 5 squeue -u elihuber
+

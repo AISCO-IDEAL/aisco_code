@@ -6,45 +6,6 @@ from torch_geometric.data import Data, Dataset
 
 # Shape dimension constants
 EXPECTED_DATA_SHAPE_DIMS = 3
-COND_EPS = 1e-6
-
-
-def _ensure_conditioning_fields(data: Data) -> None:
-    if hasattr(data, "conditioning") and data.conditioning is not None:
-        cond = data.conditioning.to(dtype=torch.float32)
-        if cond.dim() == 1:
-            cond = cond.unsqueeze(0)
-        data.conditioning = cond
-        return
-
-    v_inf = None
-    if hasattr(data, "v_inf") and data.v_inf is not None:
-        v_inf = data.v_inf.to(dtype=torch.float32).reshape(-1)[:1]
-
-    if v_inf is None:
-        return
-
-    geom_extent = None
-    geom_aspect = None
-    if hasattr(data, "geom_extent") and data.geom_extent is not None:
-        geom_extent = data.geom_extent.to(dtype=torch.float32).reshape(-1)
-    if hasattr(data, "geom_aspect") and data.geom_aspect is not None:
-        geom_aspect = data.geom_aspect.to(dtype=torch.float32).reshape(-1)
-
-    if (geom_extent is None or geom_aspect is None) and hasattr(data, "pos") and data.pos is not None:
-        extent = data.pos.max(dim=0).values - data.pos.min(dim=0).values
-        max_extent = torch.clamp(extent.max(), min=COND_EPS)
-        aspect = extent / max_extent
-        geom_extent = extent.to(dtype=torch.float32)
-        geom_aspect = aspect.to(dtype=torch.float32)
-
-    if geom_extent is None or geom_aspect is None:
-        return
-
-    data.v_inf = v_inf
-    data.geom_extent = geom_extent
-    data.geom_aspect = geom_aspect
-    data.conditioning = torch.cat([v_inf, geom_extent, geom_aspect], dim=0).unsqueeze(0)
 
 
 class EnrichedData(Data):
@@ -96,6 +57,8 @@ class VTKMeshDataset(Dataset):
         self.dataset_config = dataset_config
         self.split = split
         self.active_variables = dataset_config["active_variables"]  # None
+        self.drop_pressure = dataset_config.get("drop_pressure", False)
+        self.subsample_nodes = dataset_config.get("subsample_nodes", None)
         # Assuming processed files are stored in root/processed/
         super().__init__(root, transform, pre_transform, pre_filter)
         # Load indices after processing ensures processed files are available
@@ -179,11 +142,36 @@ class VTKMeshDataset(Dataset):
                 filepath = alt
         try:
             data = torch.load(filepath, weights_only=False)
+
+            # Drop raw pressure field — model trains on cp (stored as x), not absolute pressure
+            if self.drop_pressure and hasattr(data, "pressure"):
+                del data.pressure
+
+            # Drop face connectivity unconditionally when subsampling is enabled —
+            # face indices are invalid after subsampling, and samples that happen to
+            # be smaller than subsample_nodes would keep face otherwise, causing
+            # PyG collate to fail (KeyError: 'face') when mixing subsampled and
+            # non-subsampled samples in the same batch.
+            if self.subsample_nodes is not None and hasattr(data, "face"):
+                del data.face
+
+            # Random node subsampling: if sample has more nodes than subsample_nodes,
+            # pick a fresh random subset each time this sample is loaded
+            if self.subsample_nodes is not None and data.num_nodes > self.subsample_nodes:
+                # Capture num_nodes BEFORE modifying any attribute — PyG recomputes
+                # data.num_nodes dynamically, so it would shrink mid-loop otherwise
+                original_num_nodes = data.num_nodes
+                perm = torch.randperm(original_num_nodes)[: self.subsample_nodes]
+                # Apply permutation to every per-node tensor
+                for attr in list(data.keys()):
+                    val = data[attr]
+                    if isinstance(val, torch.Tensor) and val.dim() >= 1 and val.shape[0] == original_num_nodes:
+                        data[attr] = val[perm]
+
             if self.active_variables is not None and hasattr(data, "x") and data.x is not None:
                 data.x = data.x[:, self.active_variables]
             if hasattr(data, "x") and data.x is not None and len(data.x.shape) == EXPECTED_DATA_SHAPE_DIMS:
                 data.x = data.x.squeeze(-1)
-            _ensure_conditioning_fields(data)
         except FileNotFoundError as exc:
             raise FileNotFoundError(f"Processed file not found: {filepath}. Ensure preprocessing script was run.") from exc
         except Exception as e:

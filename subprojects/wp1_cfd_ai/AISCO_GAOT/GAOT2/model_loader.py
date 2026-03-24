@@ -1,6 +1,8 @@
+import ast
 import logging
 import os
 
+import pandas as pd
 import torch
 import torch.nn as nn  # noqa: PLR0402
 import yaml
@@ -9,28 +11,32 @@ from torch_geometric.data import Batch, Data
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.mesh_sdf_grads import MeshSDFGrads
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
 logger = logging.getLogger(__name__)
-
-
-model_dict = {
-    "OnlyCorrectNormalized": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/New_Normalizer1.pt",  # only trainde for 3 Epochs or something like this
-    "gold3": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/gold3.pt",  # Should be trained for 400 Epochs
-    "platin": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/platin.pt",
-}
 
 
 class ModelLoader:
     def __init__(self, cfd_config: dict, device: str) -> None:
         model_id = cfd_config["model_id"]
-        if model_id not in model_dict:
-            raise ValueError(f"Unknown model_id={model_id}. Valid: {list(model_dict.keys())}")
-        self.model_path = model_dict[model_id]
+        self.model_path = self._get_checkpoint_path(model_id)
         self.device = device
         self._load_model()
         self.extractor = MeshSDFExtractor(
             resolution=128, bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3], device=self.device, isovalue=0.0
         )
+        visualiser = Visualiser(device=self.device)
+        self.gradlogger = MeshSDFGrads(visualiser, intensity=2.5)
+
+    def _get_checkpoint_path(self, model_id):
+        df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
+        for _, row in df.iterrows():
+            setup_dict = ast.literal_eval(row["setup"])
+            if str(setup_dict.get("id")) == str(model_id):
+                path_dict = ast.literal_eval(row["path"])
+                return path_dict.get("ckpt_path")
+        raise ValueError("Wrong ID for GAOT-Model")
 
     def _load_model(self) -> None:
         # ── load config YAML saved alongside the checkpoint ─────────────
@@ -91,9 +97,13 @@ class ModelLoader:
 
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
-        _, _, loss, surrogate_loss, _dl_dvertice = self.extractor.extract_and_compute_loss(
+        _, _, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
             sdf_model=sdf_model, loss_fn=self.loss_fn
         )
+
+        self.optimization_state["vertice_grads"] = dL_dvertices
+        self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
+
         return loss.item() + surrogate_loss - surrogate_loss.item()
 
     def loss_fn(self, mesh_verts, mesh_faces):
@@ -104,11 +114,14 @@ class ModelLoader:
         batch = self._reformat_data(mesh_verts, mesh_faces)
 
         # ── latent token positions (registered buffer inside the model) ──
-        tokens_pos = self.gaot.latent_tokens  # already on self.device
+        tokens_pos = self.gaot.latent_tokens
 
         # ── forward through GAOT3D ───────────────────────────────────────
         with torch.autograd.set_detect_anomaly(True):
             gaot_loss = self.normal_model.forward(data=batch, tokens_pos=tokens_pos)
+
+        self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces, "vertice_grads": []}
+
         return gaot_loss
 
     def _reformat_data(self, mesh_verts, mesh_faces):
@@ -116,8 +129,7 @@ class ModelLoader:
         mesh_faces = mesh_faces.to(self.device)
 
         # ── convert vertices from mm to meters (SDF model outputs mm, GAOT expects m) ──
-        MM_TO_M = 1e-3
-        optim_verts_m = optim_verts * MM_TO_M
+        optim_verts_m = optim_verts * 1e-3
         # ── per-vertex normals (fully differentiable, no in-place ops) ──
         v0 = optim_verts[mesh_faces[:, 0]]
         v1 = optim_verts[mesh_faces[:, 1]]

@@ -6,52 +6,60 @@ weights for constraints of aeroshell_optimizer are handeled here
 import torch
 
 
+@torch.no_grad()
 def weights_alm(
     lamdas: torch.Tensor,
     mus: torch.Tensor,
     nus: torch.Tensor,
     alphas: torch.Tensor,
     gamma: float,
+    gamma_aggressive: float,
     constrained_losses: torch.Tensor,
     thresholds: torch.Tensor | None = None,
+    use_alm_aggressive: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Calculate Augmented Lagrangian Method (ALM) weights for constrained losses.
+    epsilon = 1e-16
 
-    Args:
-        lamdas (torch.Tensor): Lagrange multipliers for the constrained losses.
-        mus (torch.Tensor): Penalty parameters for the constrained losses.
-        nus (torch.Tensor): Smoothed Violation for adaptive penalty.
-        alphas (torch.Tensor): used to compute the new smoothed violation. Effectively averages violations over past epochs
-        gamma (float): learning rate for updating mu.
-        constrained_losses (torch.Tensor): Values of the constrained losses.
-        thresholds (torch.Tensor, optional): Thresholds for the constrained losses. If provided, mu will be clamped.
-    Returns:
-        torch.Tensor: the updated lambdas, mus and nus.
-    """
-    epsilon = 1e-16  # Small constant to prevent division by zero
-    # SOURCE: "Conditionally adaptive augmented Lagrangian method for physics-informed learning of forward and inverse problems using artificial neural networks", page 6 after (8)
+    # --- SCHUTZ VOR BROADCASTING FEHLERN ---
+    # Wir machen aus allen Tensoren 1D-Vektoren (z.B. Shape [3]).
+    # Das verhindert, dass [3, 1] und [3] zu einer [3, 3] Matrix explodieren.
+    lams = lamdas.view(-1)
+    ms = mus.view(-1)
+    ns = nus.view(-1)
+    alps = alphas.view(-1)
+    closs = constrained_losses.view(-1)
 
-    with torch.no_grad():
-        for i in range(len(constrained_losses)):  # iterate over constrained losses
-            # update nu, which is a torch tensor
-            nu_1 = alphas[i] * nus[i] + (1 - alphas[i]) * abs(constrained_losses[i])
-            nus[i] = nu_1
+    if use_alm_aggressive:
+        # --- CAPU LOGIK ---
+        eta = 0.25
+        # 1. Update Mu nur wenn nötig (Sufficient Decrease Condition)
+        update_mask = torch.abs(closs) > (eta * ns)
+        ms[update_mask] *= gamma_aggressive
 
-            # update mu
-            mu_1 = gamma / (nus[i] + epsilon)
+        # 2. Update Nu (Benchmark) in-place
+        ns.mul_(alps).add_((1 - alps) * torch.abs(closs))
 
-            if thresholds is not None:
-                # Ensure mu doesn't drop below a value corresponding to the threshold
-                # This prevents the penalty from becoming too weak when violation is large
-                min_mu = gamma / (thresholds[i] + epsilon)
-                mu_1 = torch.max(mu_1, min_mu)
+    else:
+        # --- RMS LOGIK (Klassisch Berzins) ---
+        # 1. Update Nu (EMA des quadratischen Fehlers) in-place
+        ns.mul_(alps).add_((1 - alps) * (closs * closs))
 
-            mus[i] = mu_1
+        # 2. Update Mu basierend auf Nu
+        new_mus = gamma / (torch.sqrt(ns) + epsilon)
 
-            # update lambda
-            lamda_1 = lamdas[i] + mus[i] * abs(constrained_losses[i])
-            lamdas[i] = lamda_1
+        if thresholds is not None:
+            ts = thresholds.view(-1)
+            min_mu = gamma / (ts + epsilon)
+            new_mus = torch.max(new_mus, min_mu)
 
+        ms.copy_(new_mus)
+
+    # --- LAMBDA UPDATE ---
+    # Das entspricht: lamda = lamda + mu * c(x)
+    # addcmul_ macht das in-place und extrem effizient
+    lams.addcmul_(ms, closs)
+
+    # Wir geben die originalen Tensoren zurück (die jetzt aktualisiert sind)
     return lamdas, mus, nus
 
 

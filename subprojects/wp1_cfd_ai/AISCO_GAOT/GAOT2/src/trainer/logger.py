@@ -47,7 +47,7 @@ class WandbTracker:
     def watch_model(self, model) -> None:
         if not self.enabled or not self.wandb_run:
             return
-        if not getattr(self.setup_config, "wandb_watch_model", False):
+        if not self.setup_config.get("wandb_watch_model", False):
             return
         try:
             # Handle DDP wrapped models safely

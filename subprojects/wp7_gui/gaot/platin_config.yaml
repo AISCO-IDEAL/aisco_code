@@ -16,7 +16,7 @@ magno:
   - 64
   - 64
   lifting_channels: 32
-  gno_radius: 0.033
+  gno_radius: 0.066
   gno_use_torch_cluster: true
   attention_type: cosine
   use_geoembed:
