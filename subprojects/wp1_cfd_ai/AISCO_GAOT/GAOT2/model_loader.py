@@ -11,6 +11,8 @@ from torch_geometric.data import Batch, Data
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.mesh_sdf_grads import MeshSDFGrads
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,8 @@ class ModelLoader:
         self.extractor = MeshSDFExtractor(
             resolution=128, bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3], device=self.device, isovalue=0.0
         )
+        visualiser = Visualiser(device = self.device)
+        self.gradlogger = MeshSDFGrads(visualiser, intensity=2.5)
 
     def _get_checkpoint_path(self, model_id):
         df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
@@ -93,7 +97,12 @@ class ModelLoader:
 
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
-        _, _, loss, surrogate_loss, _ = self.extractor.extract_and_compute_loss(sdf_model=sdf_model, loss_fn=self.loss_fn)
+        _, _, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(sdf_model=sdf_model, loss_fn=self.loss_fn)
+
+        self.optimization_state["vertice_grads"] = dL_dvertices
+        self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
+
+        
         return loss.item() + surrogate_loss - surrogate_loss.item()
 
     def loss_fn(self, mesh_verts, mesh_faces):
@@ -109,6 +118,9 @@ class ModelLoader:
         # ── forward through GAOT3D ───────────────────────────────────────
         with torch.autograd.set_detect_anomaly(True):
             gaot_loss = self.normal_model.forward(data=batch, tokens_pos=tokens_pos)
+
+        self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces, "vertice_grads": []}
+            
         return gaot_loss
 
     def _reformat_data(self, mesh_verts, mesh_faces):
