@@ -20,6 +20,7 @@ Reference formulation (softmin + sigmoid):
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any, Literal
 
 import torch
 
@@ -100,6 +101,12 @@ def _moller_trumbore_batch(
 # Normal computation helpers
 # ---------------------------------------------------------------------------
 
+def _normals_unit_check(normals: torch.Tensor | None) -> bool:
+    """Check if provided normals are unit vectors.  If not, we will recompute them."""
+    if normals is None:
+        return False
+    norms = normals.norm(dim=-1)
+    return bool(torch.all((norms > 0) & (torch.abs(norms - 1.0) < 1e-3)).item())
 
 def _normals_from_mesh(
     vertices: torch.Tensor,
@@ -131,6 +138,74 @@ def _normals_from_sdf(
     return grads / grads.norm(dim=-1, keepdim=True).clamp(min=eps)
 
 
+def _compute_visibility_for_chunk(
+    *,
+    start: int,
+    end: int,
+    centroids: torch.Tensor,
+    normals: torch.Tensor,
+    sun: torch.Tensor,
+    ray_dir: torch.Tensor,
+    tri_v0: torch.Tensor,
+    tri_v1: torch.Tensor,
+    tri_v2: torch.Tensor,
+    offset: torch.Tensor,
+    L: torch.Tensor,
+    beta: float,
+    gamma: float,
+    margin: torch.Tensor,
+    miss_t: float,
+    blocker_chunk_size: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    chunk_centroids = centroids[start:end]  # (C, 3)
+    chunk_normals = normals[start:end]  # (C, 3)
+
+    # Ray origins: far along the sun direction
+    ray_origins = chunk_centroids + offset * chunk_normals + L * sun  # (C, 3)
+
+    # Distance from sun origin down to face centre = L  (for all rays)
+    t_face = L
+
+    # All-pairs intersection is computed as CxB blocks over occluder faces.
+    # We then aggregate logsumexp blockwise to match the full CxF softmin.
+    local_size = end - start
+    global_indices = torch.arange(start, end, device=device)
+    running_lse = torch.full((local_size,), float("-inf"), device=device, dtype=dtype)
+    F_count = tri_v0.shape[0]
+
+    for occluder_start in range(0, F_count, blocker_chunk_size):
+        occluder_end = min(occluder_start + blocker_chunk_size, F_count)
+
+        # Local CxB (or smaller edge block) intersection matrix.
+        t_block = _moller_trumbore_batch(
+            ray_origins,
+            ray_dir,
+            tri_v0[occluder_start:occluder_end],
+            tri_v1[occluder_start:occluder_end],
+            tri_v2[occluder_start:occluder_end],
+            miss_t=miss_t,
+        )
+
+        # Mask out self-intersection only when the face index is in this block.
+        self_in_block = (global_indices >= occluder_start) & (global_indices < occluder_end)
+        if torch.any(self_in_block):
+            row_idx = torch.nonzero(self_in_block, as_tuple=False).squeeze(-1)
+            col_idx = global_indices[self_in_block] - occluder_start
+            t_block[row_idx, col_idx] = miss_t
+
+        block_lse = torch.logsumexp(-beta * t_block, dim=1)
+        running_lse = torch.logaddexp(running_lse, block_lse)
+
+    # Softmin over all triangles via accumulated logsumexp.
+    t_near = -(1.0 / beta) * running_lse  # (C,)
+
+    # Occlusion score: sigmoid(γ * (t_face - t_near - margin))
+    occl = torch.sigmoid(gamma * (t_face - t_near - margin))  # (C,)
+    return 1.0 - occl  # (C,)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -141,15 +216,10 @@ def mesh_visibility(
     faces: torch.Tensor,
     sun_dir: torch.Tensor,
     *,
+    mesh_cfg: dict[str, Any],
+    normals: torch.Tensor | None = None,
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
-    normal_source: str = "mesh",  # expects "mesh" or "sdf"
-    beta: float = 10.0,
-    gamma: float = 20.0,
-    margin_factor: float = 1e-3,
-    origin_offset_eps: float = 1e-3,
-    sun_distance_factor: float = 10.0,
-    face_chunk_size: int = 512,
-    miss_t: float = 1e9,
+    normal_source: Literal["mesh", "sdf"] = "mesh",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Differentiable per-face visibility using mesh ray-triangle intersections.
@@ -162,15 +232,19 @@ def mesh_visibility(
         vertices:           (V, 3) mesh vertex positions
         faces:              (F, 3) triangle face indices
         sun_dir:            (3,) unit vector **toward** the sun
+        normals:            (F, 3) optional precomputed face normals (overrides normal_source)
         sdf_fn:             SDF callable (required when normal_source="sdf")
         normal_source:      "mesh" — normals from cross product of edges
                             "sdf"  — normals from ∇f evaluated at face centres
-        beta:               softmin sharpness (higher → closer to true min)
-        gamma:              sigmoid sharpness (higher → more binary shadow)
-        margin_factor:      self-occlusion margin as fraction of bbox diagonal
-        origin_offset_eps:  ray-origin offset along normal as fraction of bbox diagonal
-        sun_distance_factor: how far "behind the sun" rays originate (× bbox diagonal)
-        face_chunk_size:    number of faces processed per chunk (controls peak memory)
+        mesh_cfg:           Mesh configuration dictionary with the following keys:
+                             - "beta":               softmin sharpness (higher → closer to true min)
+                             - "gamma":              sigmoid sharpness (higher → more binary shadow)
+                             - "margin_factor":      self-occlusion margin as fraction of bbox diagonal
+                             - "origin_offset_eps":  ray-origin offset along normal as fraction of bbox diagonal
+                             - "sun_distance_factor": how far "behind the sun" rays originate (x bbox diagonal)
+                             - "face_chunk_size":    number of faces processed per chunk (controls peak memory)
+                             - "blocker_chunk_size": number of occluder faces processed per inner block
+                                                    (defaults to face_chunk_size)
         miss_t:             sentinel distance for ray misses
 
     Returns:
@@ -178,6 +252,20 @@ def mesh_visibility(
         normals:     (F, 3) unit face normals used
         centroids:   (F, 3) face centroids
     """
+    print("Using 'mesh_visibility' version 2")
+
+    beta=float(mesh_cfg["beta"])
+    gamma=float(mesh_cfg["gamma"])
+    margin_factor=float(mesh_cfg["margin_factor"])
+    origin_offset_eps=float(mesh_cfg["origin_offset_eps"])
+    sun_distance_factor=float(mesh_cfg["sun_distance_factor"])
+    face_chunk_size=int(mesh_cfg["face_chunk_size"])
+    blocker_chunk_size=int(mesh_cfg.get("blocker_chunk_size", face_chunk_size))
+    miss_t=float(mesh_cfg["miss_t"])
+
+    if blocker_chunk_size <= 0:
+        raise ValueError("mesh_cfg['blocker_chunk_size'] must be > 0")
+
     device = vertices.device
     F_count = faces.shape[0]
 
@@ -195,10 +283,12 @@ def mesh_visibility(
         if sdf_fn is None:
             raise ValueError("sdf_fn is required when normal_source='sdf'")
         normals = _normals_from_sdf(sdf_fn, centroids)
-    elif normal_source == "mesh":
+    # check for mesh_sdf if normals are unit vectors
+    elif normal_source == "mesh" and not _normals_unit_check(normals):
         normals = _normals_from_mesh(vertices, faces)
-    else:
-        raise ValueError(f"Unknown normal_source: {normal_source}, expects 'mesh' or 'sdf'")
+
+    if normals is None:
+        raise ValueError("normals must be provided or computed before visibility chunking")
 
     # -- Bounding-box scale for adaptive parameters ----------------------------
     bbox_diag = (vertices.max(dim=0).values - vertices.min(dim=0).values).norm()
@@ -209,39 +299,38 @@ def mesh_visibility(
     # -- Triangle vertices (all triangles are potential occluders) --------------
     tri_v0, tri_v1, tri_v2 = v0, v1, v2  # (F, 3) each
 
-    # -- Process in chunks to avoid (F × F) memory blow-up ---------------------
     visibility_chunks: list[torch.Tensor] = []
+
+    print(
+        "Computing visibility in chunks: "
+        f"ray faces={face_chunk_size}, blocker faces={blocker_chunk_size} "
+        f"(total {F_count} faces)"
+    )
 
     for start in range(0, F_count, face_chunk_size):
         end = min(start + face_chunk_size, F_count)
-        chunk_centroids = centroids[start:end]  # (C, 3)
-        chunk_normals = normals[start:end]  # (C, 3)
-
-        # Ray origins: far along the sun direction
-        ray_origins = chunk_centroids + offset * chunk_normals + L * sun  # (C, 3)
-
-        # Distance from sun origin down to face centre = L  (for all rays)
-        t_face = L
-
-        # All-pairs intersection  (C, F)
-        t = _moller_trumbore_batch(ray_origins, ray_dir, tri_v0, tri_v1, tri_v2, miss_t=miss_t)
-
-        # Mask out self-intersection: for face i (global index start+local),
-        # zero out column i so it can't occlude itself
-        local_size = end - start
-        global_indices = torch.arange(start, end, device=device)
-        # Set self-column to miss_t
-        t[torch.arange(local_size, device=device), global_indices] = miss_t
-
-        # Softmin over triangles (numerically stable via logsumexp)
-        # t_near is equal to -(1/β) * logsumexp(-β * t, dim=1)
-        t_near = -(1.0 / beta) * torch.logsumexp(-beta * t, dim=1)  # (C,)
-
-        # Occlusion score: sigmoid(γ * (t_face - t_near - margin))
-        occl = torch.sigmoid(gamma * (t_face - t_near - margin))  # (C,)
-
-        vis = 1.0 - occl  # (C,)
-        visibility_chunks.append(vis)
+        visibility_chunks.append(
+            _compute_visibility_for_chunk(
+                start=start,
+                end=end,
+                centroids=centroids,
+                normals=normals,
+                sun=sun,
+                ray_dir=ray_dir,
+                tri_v0=tri_v0,
+                tri_v1=tri_v1,
+                tri_v2=tri_v2,
+                offset=offset,
+                L=L,
+                beta=beta,
+                gamma=gamma,
+                margin=margin,
+                miss_t=miss_t,
+                blocker_chunk_size=blocker_chunk_size,
+                device=device,
+                dtype=vertices.dtype,
+            )
+        )
 
     visibility = torch.cat(visibility_chunks, dim=0)  # (F,)
 

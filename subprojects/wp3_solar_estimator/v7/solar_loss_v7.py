@@ -181,20 +181,13 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         ### Raytracing to get visibility
         if raytracing_cfg["method"] == "mesh":
             visibility, _, _ = mesh_visibility(
-                vertices,
-                faces,
-                sun_batch,
-                normal_source=raytracing_cfg["normal_source"],
-                beta=float(raytracing_cfg["mesh"]["beta"]),
-                gamma=float(raytracing_cfg["mesh"]["gamma"]),
-                margin_factor=float(raytracing_cfg["mesh"]["margin_factor"]),
-                origin_offset_eps=float(raytracing_cfg["mesh"]["origin_offset_eps"]),
-                sun_distance_factor=float(raytracing_cfg["mesh"]["sun_distance_factor"]),
-                face_chunk_size=int(raytracing_cfg["mesh"]["face_chunk_size"]),
-                miss_t=float(raytracing_cfg["mesh"]["miss_t"]),
+                vertices, faces, sun_batch, normal_source=str(raytracing_cfg["normal_source"]), mesh_cfg=raytracing_cfg["mesh"]
             )  # (F,) in range [0, 1]
         elif raytracing_cfg["method"] == "sdf":
-            visibility, _, _ = sdf_visibility(sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch)
+            assert sdf_fn is not None, "sdf_fn must be provided for sdf_visibility"
+            visibility, _, _ = sdf_visibility(
+                sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch, sdf_cfg=raytracing_cfg["sdf"]
+            )  # (F,) in range [0, 1]
         else:
             raise ValueError(f"Unknown raytracing method: {raytracing_cfg['method']}")
 

@@ -6,8 +6,7 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G
 #SBATCH --gpus=rtx_4090:1
-#SBATCH --output=/cluster/home/clhuber/logs/Clemens_TEST_%j.out 
-#SBATCH --error=/cluster/home/clhuber/logs/Clemens_TEST_%j.err 
+#SBATCH --output=/cluster/home/%u/logs/WP1_main_TEST_%j.out
 
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
@@ -17,8 +16,8 @@ module purge
 module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
 
 
-USERNAME="clhuber"
-LOG_DIR="/cluster/home/clhuber/logs"  # Define a log directory for GPU/CPU info
+USERNAME=$(whoami)
+LOG_DIR="/cluster/home/$USERNAME/logs"  # Define a log directory for GPU/CPU info
 ##mkdir -p "$LOG_DIR"  # Ensure the log directory exists
 #------------------------------------------------------------------------------
 # Print job information
@@ -119,6 +118,6 @@ echo "Job ended on: $(date)"
 echo "Total elapsed time: $SECONDS seconds"
 echo "=========================================="
 
-## chmod +x ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/clemens.sh
-## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/clemens.sh
+## chmod +x ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/wp1_main.sh
+## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/wp1_main.sh
 ## watch -n 1 squeue -u $USER
