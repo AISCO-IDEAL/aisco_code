@@ -110,8 +110,8 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         return torch.zeros((), device=vertices.device, dtype=vertices.dtype)
 
     if raytracing_version.startswith("v"):
-        version_module = raytracing_version
-        module_path = f"subprojects.wp3_solar_estimator.raytracing.diffable.{version_module}"
+        version_module = raytracing_version.lstrip("v")
+        module_path = f"subprojects.wp3_solar_estimator.raytracing.diffable.version{version_module}"
         try:
             visibility_module = __import__(module_path, fromlist=["mesh_visibility", "sdf_visibility"])
             mesh_visibility = visibility_module.mesh_visibility

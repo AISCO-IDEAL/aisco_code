@@ -90,8 +90,8 @@ def _resolve_visibility_callables(
 ) -> tuple[Callable[..., tuple[torch.Tensor, Any, Any]], Callable[..., tuple[torch.Tensor, Any, Any]]]:
     version = raytracing_version.lower()
     if version.startswith("v"):
-        version_module = raytracing_version
-        module_path = f"subprojects.wp3_solar_estimator.raytracing.diffable.{version_module}"
+        version_module = raytracing_version.lstrip("v")
+        module_path = f"subprojects.wp3_solar_estimator.raytracing.diffable.version{version_module}"
         try:
             visibility_module = __import__(module_path, fromlist=["mesh_visibility", "sdf_visibility"])
             mesh_visibility = visibility_module.mesh_visibility
