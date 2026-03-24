@@ -1,0 +1,923 @@
+"""Comprehensive tests for the refactored TotalLoss pipeline.
+
+Tests every public and private method of TotalLoss using mocks to avoid
+heavy I/O (config files, WandB, GPU, mesh extraction, rendering).
+
+Run:  pytest tests/wp4_aeroshell_optimizer/test_total_loss.py -v
+"""
+
+from __future__ import annotations
+
+import math
+from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock, patch
+
+import pytest
+import torch
+from torch import nn
+
+# ---------------------------------------------------------------------------
+# Module under test
+# ---------------------------------------------------------------------------
+MODULE = "subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss"
+
+# ---------------------------------------------------------------------------
+# Helpers & Stubs
+# ---------------------------------------------------------------------------
+
+
+def _make_general_config(**overrides: Any) -> dict[str, Any]:
+    """Return a minimal general_config dict."""
+    cfg: dict[str, Any] = {
+        "general_info": {"version": "v1"},
+        "active_configs": {"losses": "losses_v0_config.yaml"},
+        "wandb_general": {
+            "use_wandb": False,
+            "use_renderer": False,
+            "use_neural_renderer": False,
+            "rendering_frequency": 1,
+        },
+    }
+    cfg.update(overrides)
+    return cfg
+
+
+def _make_losses_config(
+    *,
+    alm: str = "True",
+    cse: str = "True",
+    alm_aggressive: str = "False",
+    alm_thresholds: list[float] | None = None,
+    initial_lambda: float = 0.01,
+    initial_mu: float = 1.0,
+    initial_nu: float = 1.0,
+    alpha: float = 0.99,
+    gamma: float = 0.01,
+    gamma_aggressive: float = 1.1,
+) -> dict[str, Any]:
+    """Return a minimal losses_config dict with active losses covering all categories."""
+    if alm_thresholds is None:
+        alm_thresholds = [0.1, 0.1, 0.1]
+    return {
+        "general_info": {
+            "ALM": alm,
+            "CSE": cse,
+            "ALM_aggressive": alm_aggressive,
+            "alm_thresholds": alm_thresholds,
+            "initial_lambda": initial_lambda,
+            "initial_mu": initial_mu,
+            "initial_nu": initial_nu,
+            "alpha": alpha,
+            "gamma": gamma,
+            "gamma_aggressive": gamma_aggressive,
+        },
+        "losses": {
+            "aero": {
+                "gaot_loss": [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/gaot_loss.py"],
+            },
+            "bb": {
+                "bb_v3": [1, 10, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v3.py"],
+            },
+            "eikonal": {
+                "eikonal_v0": [1, 10.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/eikonal_loss/eikonal_v0.py"],
+            },
+            "smoothness": {
+                "smoothness_v0": [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/smoothness_loss/smoothness_v0.py"],
+            },
+            "surface_area": {
+                "surface_loss_v0": [
+                    1,
+                    1.0,
+                    "subprojects/wp4_aeroshell_optimizer/v1/src/losses/surface_area_loss/surface_loss_v0.py",
+                ],
+            },
+            "solar": {
+                "solar_v3B": [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3B.py"],
+            },
+            "total": {
+                "total_loss": [1, 1.0, "path"],
+            },
+        },
+        "get_points_params": {"num_points": 10, "bbox_size": 1.0},
+    }
+
+
+def _make_logging_config() -> dict[str, Any]:
+    return {"memory_diagnostics": False, "mesh_statistics": False, "gradient_memory_diagnostics": False}
+
+
+def _make_renderer_config() -> dict[str, Any]:
+    return {
+        "mesh_extraction": {
+            "algorithm": "mc",
+            "resolution": 32,
+            "bbox": [[-1, 1], [-1, 1], [-1, 1]],
+            "isovalue": 0.0,
+            "batch_size": 64,
+            "device": "cpu",
+            "verbose": False,
+        },
+    }
+
+
+class StubLossInstance:
+    """Mimics ParentLoss - returns a fixed tensor from get_loss()."""
+
+    def __init__(self, value: float, requires_grad: bool = True, device: str = "cpu", **_kw: Any) -> None:
+        self._value = value
+        self._requires_grad = requires_grad
+        self._device = device
+
+    def get_loss(self, model: Any, epoch_name: int) -> torch.Tensor:  # noqa: ARG002
+        t = torch.tensor(self._value, device=self._device, dtype=torch.float32)
+        if self._requires_grad:
+            t = t.clone().requires_grad_(True)
+        return t
+
+    def log_gradients(self, epoch_name: int) -> None:
+        pass
+
+
+class SimpleModel(nn.Module):
+    """Tiny model that satisfies BaseModel's interface for tests."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.linear = nn.Linear(3, 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.linear(x)
+
+
+# ---------------------------------------------------------------------------
+# Config dispatcher used by all tests
+# ---------------------------------------------------------------------------
+
+
+def _config_dispatcher(
+    general_cfg: dict | None = None,
+    losses_cfg: dict | None = None,
+    logging_cfg: dict | None = None,
+    renderer_cfg: dict | None = None,
+):
+    """Return a side_effect callable for load_config."""
+    gc = general_cfg or _make_general_config()
+    lc = losses_cfg or _make_losses_config()
+    logc = logging_cfg or _make_logging_config()
+    rc = renderer_cfg or _make_renderer_config()
+
+    def _dispatch(v: str = "v1", cfg_name: str = "general_config.yaml") -> dict:  # noqa: ARG001
+        if cfg_name == "general_config.yaml":
+            return gc
+        if "losses" in cfg_name:
+            return lc
+        if cfg_name == "logging.yaml":
+            return logc
+        if "renderer" in cfg_name:
+            return rc
+        return gc  # fallback
+
+    return _dispatch
+
+
+# ---------------------------------------------------------------------------
+# Fixture: build a TotalLoss with all heavy deps mocked
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def make_total_loss():
+    """Factory that returns (TotalLoss instance, dict of mocks).
+
+    Usage:
+        tl, mocks = make_total_loss()  # default configs
+        tl, mocks = make_total_loss(losses_cfg=custom)
+    """
+
+    def _factory(
+        general_cfg: dict | None = None,
+        losses_cfg: dict | None = None,
+        logging_cfg: dict | None = None,
+        renderer_cfg: dict | None = None,
+        loss_values: dict[str, float] | None = None,
+    ):
+        lv: dict[str, float] = loss_values or {
+            "gaot_loss": 2.0,
+            "bb_v3": 0.5,
+            "eikonal_v0": 0.3,
+            "smoothness_v0": 0.1,
+            "surface_loss_v0": 1.0,
+            "solar_v3B": 100.0,
+        }
+
+        stub_instances: dict[str, StubLossInstance] = {
+            name: StubLossInstance(value=val, device="cpu") for name, val in lv.items()
+        }
+
+        def _fake_load_class(path: str, family: str):  # noqa: ARG001
+            """Return a callable that, when invoked, returns the pre-built stub."""
+            stem = Path(path).stem
+            for name, stub in stub_instances.items():
+                if name == stem or name.startswith(stem):
+                    return lambda device="cpu", loss_name="", losses_config=None, _s=stub: _s  # noqa: ARG005
+            return lambda device="cpu", _loss_name="", _losses_config=None: StubLossInstance(0.0, device=device)
+
+        mocks: dict[str, Any] = {}
+
+        patches = [
+            patch(f"{MODULE}.load_config", side_effect=_config_dispatcher(general_cfg, losses_cfg, logging_cfg, renderer_cfg)),
+            patch(f"{MODULE}.load_class_from_path", side_effect=_fake_load_class),
+            patch(f"{MODULE}.MeshExtractor", return_value=MagicMock()),
+            patch(f"{MODULE}.MeshStatistics", return_value=MagicMock()),
+            patch(f"{MODULE}.wandb", MagicMock()),
+        ]
+
+        for p in patches:
+            m = p.start()
+            key = p.attribute if hasattr(p, "attribute") and p.attribute else str(p)
+            mocks[key] = m
+
+        from subprojects.wp4_aeroshell_optimizer.v1.src.losses.total_loss import TotalLoss  # noqa: PLC0415
+
+        tl = TotalLoss(dev="cpu", renderer_manager=None)
+
+        def _cleanup():
+            for p in patches:
+                p.stop()
+
+        return tl, mocks, _cleanup
+
+    return _factory
+
+
+# ===========================================================================
+# Test: __init__ and _load_configs                                              # noqa: ERA001
+# ===========================================================================
+
+
+class TestInit:
+    """Tests for __init__ and its sub-helpers."""
+
+    def test_device_normalisation_from_string(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            assert isinstance(tl._device, torch.device)
+            assert tl._device == torch.device("cpu")
+        finally:
+            cleanup()
+
+    def test_alm_state_initialised(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            assert tl.lamdas.shape == (3, 1)
+            assert tl.mus.shape == (3, 1)
+            assert tl.nus.shape == (3, 1)
+            assert tl.alphas.shape == (3, 1)
+            assert torch.allclose(tl.lamdas, torch.full((3, 1), 0.01))
+            assert torch.allclose(tl.mus, torch.full((3, 1), 1.0))
+            assert torch.allclose(tl.nus, torch.full((3, 1), 1.0))
+        finally:
+            cleanup()
+
+    def test_alm_false_raises_value_error(self, make_total_loss):
+        """ALM != 'True' should raise ValueError."""
+        with pytest.raises(ValueError, match="requires ALM"):
+            make_total_loss(losses_cfg=_make_losses_config(alm="False"))
+
+    def test_wandb_flags_set_from_config(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            assert tl._use_wandb is False
+            assert tl._use_renderer is False
+        finally:
+            cleanup()
+
+    def test_logging_flags_defaults(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            assert tl._memory_diagnostics is False
+            assert tl._mesh_statistics_enabled is False
+            assert tl._gradient_memory_diagnostics is False
+        finally:
+            cleanup()
+
+
+# ===========================================================================
+# Test: _init_active_losses / Category classification
+# ===========================================================================
+
+
+class TestCategoryClassification:
+    """Verify losses are classified into objective / constraint / auxiliary."""
+
+    def test_objective_losses_contain_aero_and_solar(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            assert "aero" in tl._objective_losses
+            assert "solar" in tl._objective_losses
+            assert tl._objective_losses["aero"][0] == "gaot_loss"
+            assert tl._objective_losses["solar"][0] == "solar_v3B"
+        finally:
+            cleanup()
+
+    def test_constraint_losses_ordered_bb_eikonal_smoothness(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            keys = list(tl._constraint_losses.keys())
+            assert keys == ["bb", "eikonal", "smoothness"]
+            assert tl._constraint_losses["bb"][0] == "bb_v3"
+            assert tl._constraint_losses["eikonal"][0] == "eikonal_v0"
+            assert tl._constraint_losses["smoothness"][0] == "smoothness_v0"
+        finally:
+            cleanup()
+
+    def test_auxiliary_losses_contain_surface_area(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            assert "surface_loss_v0" in tl._auxiliary_losses
+        finally:
+            cleanup()
+
+    def test_total_category_is_skipped(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            all_names = set(tl._active_losses.keys())
+            assert "total_loss" not in all_names
+        finally:
+            cleanup()
+
+    def test_active_losses_contains_all_six(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            expected = {"gaot_loss", "bb_v3", "eikonal_v0", "smoothness_v0", "surface_loss_v0", "solar_v3B"}
+            assert set(tl._active_losses.keys()) == expected
+        finally:
+            cleanup()
+
+    def test_disabled_loss_not_loaded(self, make_total_loss):
+        """A loss with compute=0 should not appear in _active_losses."""
+        cfg = _make_losses_config()
+        cfg["losses"]["aero"]["gaot_loss"] = [
+            0,
+            1.0,
+            "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/gaot_loss.py",
+        ]
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            assert "gaot_loss" not in tl._active_losses
+            assert "aero" not in tl._objective_losses
+        finally:
+            cleanup()
+
+
+# ===========================================================================
+# Test: _compute_raw_losses                                                     # noqa: ERA001
+# ===========================================================================
+
+
+class TestComputeRawLosses:
+    """Unit tests for the raw loss computation stage."""
+
+    def test_returns_dict_with_all_active_losses(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            assert set(raw.keys()) == set(tl._active_losses.keys())
+        finally:
+            cleanup()
+
+    def test_values_are_tensors(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            for v in raw.values():
+                assert isinstance(v, torch.Tensor)
+        finally:
+            cleanup()
+
+    def test_values_match_stub_outputs(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            assert raw["gaot_loss"].item() == pytest.approx(2.0)
+            assert raw["bb_v3"].item() == pytest.approx(0.5)
+            assert raw["solar_v3B"].item() == pytest.approx(100.0)
+        finally:
+            cleanup()
+
+
+# ===========================================================================
+# Test: _apply_alm_weighting                                                    # noqa: ERA001
+# ===========================================================================
+
+
+class TestALMWeighting:
+    """Bit-for-bit equivalence tests for the ALM weighting path."""
+
+    @staticmethod
+    def _hand_compute_alm(
+        o_val: float,
+        c_vals: list[float],
+        lamdas: list[float],
+        mus: list[float],
+    ) -> float:
+        """Hand-compute expected total: o + sum[lambda_i * c_i + 0.5 * mu_i * c_i^2]."""
+        total = o_val
+        for i, c in enumerate(c_vals):
+            total += lamdas[i] * c + 0.5 * mus[i] * c**2
+        return total
+
+    def test_alm_total_loss_value_with_cse_off(self, make_total_loss):
+        """CSE=False: o = -(solar - drag) = -(100 - 2) = -98."""
+        cfg = _make_losses_config(cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            total = tl._apply_alm_weighting(raw, torch.device("cpu"))
+
+            lam_after = tl.lamdas.view(-1).tolist()
+            mu_after = tl.mus.view(-1).tolist()
+
+            o_expected = -(100.0 - 2.0)  # -98
+            c_vals = [0.5, 0.3, 0.1]
+            expected = self._hand_compute_alm(o_expected, c_vals, lam_after, mu_after)
+
+            assert total.item() == pytest.approx(expected, rel=1e-5)
+        finally:
+            cleanup()
+
+    def test_last_weighted_losses_populated(self, make_total_loss):
+        cfg = _make_losses_config(cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            tl._apply_alm_weighting(raw, torch.device("cpu"))
+
+            assert "alm_objective" in tl._last_weighted_losses
+            assert "alm_bb_v3" in tl._last_weighted_losses
+            assert "alm_eikonal_v0" in tl._last_weighted_losses
+            assert "alm_smoothness_v0" in tl._last_weighted_losses
+            assert len(tl._last_weighted_losses) == 4
+        finally:
+            cleanup()
+
+    def test_auxiliary_losses_excluded_from_weighted(self, make_total_loss):
+        cfg = _make_losses_config(cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            tl._apply_alm_weighting(raw, torch.device("cpu"))
+
+            for key in tl._last_weighted_losses:
+                assert "surface" not in key
+        finally:
+            cleanup()
+
+    def test_cruising_speed_stored_when_cse_on(self, make_total_loss):
+        """When CSE=True, _last_cruising_speed should be a tensor."""
+        cfg = _make_losses_config(cse="True")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
+                tl._apply_alm_weighting(raw, torch.device("cpu"))
+            assert tl._last_cruising_speed is not None
+            assert tl._last_cruising_speed.item() == pytest.approx(25.0)
+        finally:
+            cleanup()
+
+    def test_cruising_speed_none_when_cse_off(self, make_total_loss):
+        cfg = _make_losses_config(cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            tl._apply_alm_weighting(raw, torch.device("cpu"))
+            assert tl._last_cruising_speed is None
+        finally:
+            cleanup()
+
+
+# ===========================================================================
+# Test: Graph independence of _last_weighted_losses
+# ===========================================================================
+
+
+class TestGraphIndependence:
+    """Each entry in _last_weighted_losses must have an independent graph."""
+
+    def test_no_shared_stack_backward(self, make_total_loss):
+        cfg = _make_losses_config(cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            tl._apply_alm_weighting(raw, torch.device("cpu"))
+
+            grad_fns = [v.grad_fn for v in tl._last_weighted_losses.values() if v.grad_fn is not None]
+
+            assert len(grad_fns) == len(set(grad_fns)), "Shared grad_fn detected - StackBackward leak!"
+        finally:
+            cleanup()
+
+    def test_individual_backward_does_not_raise(self, make_total_loss):
+        """Calling .backward(retain_graph=False) on each component must not raise."""
+        cfg = _make_losses_config(cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            tl._apply_alm_weighting(raw, torch.device("cpu"))
+
+            for weighted_loss in tl._last_weighted_losses.values():
+                if not weighted_loss.requires_grad:
+                    continue
+                weighted_loss.backward(retain_graph=False)
+        finally:
+            cleanup()
+
+
+# ===========================================================================
+# Test: ALM multiplier update (mathematical correctness)
+# ===========================================================================
+
+
+class TestALMMultiplierUpdate:
+    """Verify lambda, mu, nu updates match the analytical formulas."""
+
+    def test_rms_nu_update(self, make_total_loss):
+        """nu <- alpha*nu + (1-alpha)*c^2.  With alpha=0.99, nu0=1.0, c=0.5 -> nu=0.9925."""
+        cfg = _make_losses_config(alpha=0.99, alm_aggressive="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            tl._apply_alm_weighting(raw, torch.device("cpu"))
+
+            expected_nu_bb = 0.99 * 1.0 + 0.01 * (0.5**2)  # = 0.9925
+            assert tl.nus[0].item() == pytest.approx(expected_nu_bb, rel=1e-6)
+        finally:
+            cleanup()
+
+    def test_rms_mu_update(self, make_total_loss):
+        """mu = max(gamma/(sqrt(nu)+eps), gamma/(tau+eps)). No threshold -> raw RMS formula."""
+        cfg = _make_losses_config(gamma=0.01, alpha=0.99, alm_aggressive="False", alm_thresholds=[])
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            tl._apply_alm_weighting(raw, torch.device("cpu"))
+
+            eps = 1e-16
+            expected_nu_bb = 0.99 * 1.0 + 0.01 * (0.5**2)
+            expected_mu_bb = 0.01 / (math.sqrt(expected_nu_bb) + eps)
+            assert tl.mus[0].item() == pytest.approx(expected_mu_bb, rel=1e-5)
+        finally:
+            cleanup()
+
+    def test_rms_lambda_update(self, make_total_loss):
+        """lambda <- lambda + mu*c.  Initial lambda=0.01. No thresholds -> raw RMS mu."""
+        cfg = _make_losses_config(gamma=0.01, alpha=0.99, initial_lambda=0.01, alm_aggressive="False", alm_thresholds=[])
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            tl._apply_alm_weighting(raw, torch.device("cpu"))
+
+            eps = 1e-16
+            nu_after = 0.99 * 1.0 + 0.01 * (0.5**2)
+            mu_after = 0.01 / (math.sqrt(nu_after) + eps)
+            expected_lam = 0.01 + mu_after * 0.5
+            assert tl.lamdas[0].item() == pytest.approx(expected_lam, rel=1e-5)
+        finally:
+            cleanup()
+
+    def test_rms_mu_floored_by_threshold(self, make_total_loss):
+        """When threshold is set, mu >= gamma/(threshold + eps)."""
+        cfg = _make_losses_config(
+            gamma=0.01,
+            alpha=0.99,
+            alm_aggressive="False",
+            alm_thresholds=[0.1, 0.1, 0.1],
+        )
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            tl._apply_alm_weighting(raw, torch.device("cpu"))
+
+            eps = 1e-16
+            min_mu = 0.01 / (0.1 + eps)
+            assert tl.mus[0].item() >= min_mu - 1e-6
+        finally:
+            cleanup()
+
+    def test_capu_mu_scaling(self, make_total_loss):
+        """CAPU: if |c| > 0.25*nu -> mu *= gamma_aggressive."""
+        cfg = _make_losses_config(
+            alm_aggressive="True",
+            gamma_aggressive=1.1,
+            initial_mu=1.0,
+            initial_nu=0.1,  # small nu so |c| > 0.25*nu triggers
+        )
+        tl, _m, cleanup = make_total_loss(
+            losses_cfg=cfg,
+            loss_values={
+                "gaot_loss": 2.0,
+                "bb_v3": 5.0,
+                "eikonal_v0": 5.0,
+                "smoothness_v0": 5.0,
+                "surface_loss_v0": 1.0,
+                "solar_v3B": 100.0,
+            },
+        )
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+
+            with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
+                tl._apply_alm_weighting(raw, torch.device("cpu"))
+
+            assert tl.mus[0].item() == pytest.approx(1.0 * 1.1, rel=1e-5)
+        finally:
+            cleanup()
+
+    def test_capu_nu_update(self, make_total_loss):
+        """CAPU: nu <- alpha*nu + (1-alpha)*|c|."""
+        cfg = _make_losses_config(
+            alm_aggressive="True",
+            alpha=0.99,
+            initial_nu=1.0,
+        )
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
+                tl._apply_alm_weighting(raw, torch.device("cpu"))
+
+            # bb_v3 = 0.5 -> nu = 0.99 * 1.0 + 0.01 * |0.5| = 0.995
+            expected_nu = 0.99 * 1.0 + 0.01 * abs(0.5)
+            assert tl.nus[0].item() == pytest.approx(expected_nu, rel=1e-6)
+        finally:
+            cleanup()
+
+
+# ===========================================================================
+# Test: _handle_telemetry                                                        # noqa: ERA001
+# ===========================================================================
+
+
+class TestHandleTelemetry:
+    """Tests for the telemetry/logging dispatch method."""
+
+    def test_gradient_logging_called_even_without_wandb(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            total = tl._apply_alm_weighting(raw, torch.device("cpu"))
+            loss_log = {n: t.item() for n, t in raw.items()}
+            loss_log["total_loss"] = total.item()
+
+            for inst in tl._active_losses.values():
+                inst.log_gradients = MagicMock()
+
+            tl._handle_telemetry(loss_log, 0, torch.device("cpu"), model, total)
+
+            for inst in tl._active_losses.values():
+                inst.log_gradients.assert_called_once_with(0)
+        finally:
+            cleanup()
+
+    def test_wandb_log_called_with_loss_dict_when_enabled(self, make_total_loss):
+        gc = _make_general_config()
+        gc["wandb_general"]["use_wandb"] = True
+        tl, _m, cleanup = make_total_loss(general_cfg=gc)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=5)
+            with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
+                total = tl._apply_alm_weighting(raw, torch.device("cpu"))
+            loss_log = {n: t.item() for n, t in raw.items()}
+            loss_log["total_loss"] = total.item()
+
+            from subprojects.wp4_aeroshell_optimizer.v1.src.losses import total_loss as tl_mod  # noqa: PLC0415
+
+            tl_mod.wandb.log = MagicMock()
+
+            tl._handle_telemetry(loss_log, 5, torch.device("cpu"), model, total)
+
+            assert tl_mod.wandb.log.call_count >= 3
+
+            all_logged_keys: set[str] = set()
+            for call in tl_mod.wandb.log.call_args_list:
+                logged_dict = call[0][0] if call[0] else call[1].get("data", {})
+                all_logged_keys.update(logged_dict.keys())
+
+            assert "metrics/cruising_speed_ms" in all_logged_keys
+            assert any(k.startswith("weighted/") for k in all_logged_keys)
+            assert any(k.startswith("alm/lambda_") for k in all_logged_keys)
+            assert any(k.startswith("alm/mu_") for k in all_logged_keys)
+            assert any(k.startswith("alm/nu_") for k in all_logged_keys)
+        finally:
+            cleanup()
+
+    def test_no_cruising_speed_logged_when_cse_off(self, make_total_loss):
+        gc = _make_general_config()
+        gc["wandb_general"]["use_wandb"] = True
+        cfg = _make_losses_config(cse="False")
+        tl, _m, cleanup = make_total_loss(general_cfg=gc, losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            total = tl._apply_alm_weighting(raw, torch.device("cpu"))
+            loss_log = {n: t.item() for n, t in raw.items()}
+            loss_log["total_loss"] = total.item()
+
+            from subprojects.wp4_aeroshell_optimizer.v1.src.losses import total_loss as tl_mod  # noqa: PLC0415
+
+            tl_mod.wandb.log = MagicMock()
+
+            tl._handle_telemetry(loss_log, 0, torch.device("cpu"), model, total)
+
+            all_logged_keys: set[str] = set()
+            for call in tl_mod.wandb.log.call_args_list:
+                logged_dict = call[0][0] if call[0] else {}
+                all_logged_keys.update(logged_dict.keys())
+
+            assert "metrics/cruising_speed_ms" not in all_logged_keys
+        finally:
+            cleanup()
+
+    def test_skip_rendering_message_when_renderer_off(self, make_total_loss, capsys):
+        gc = _make_general_config()
+        gc["wandb_general"]["use_wandb"] = True
+        tl, _m, cleanup = make_total_loss(general_cfg=gc)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
+                total = tl._apply_alm_weighting(raw, torch.device("cpu"))
+            loss_log = {"total_loss": total.item()}
+
+            from subprojects.wp4_aeroshell_optimizer.v1.src.losses import total_loss as tl_mod  # noqa: PLC0415
+
+            tl_mod.wandb.log = MagicMock()
+
+            tl._handle_telemetry(loss_log, 0, torch.device("cpu"), model, total)
+
+            captured = capsys.readouterr()
+            assert "Skipping rendering" in captured.out
+        finally:
+            cleanup()
+
+
+# ===========================================================================
+# Test: _log_memory_diagnostics                                                  # noqa: ERA001
+# ===========================================================================
+
+
+class TestLogMemoryDiagnostics:
+    """Tests for the memory diagnostics helper."""
+
+    def test_noop_when_disabled(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            tl._memory_diagnostics = False
+            tl._log_memory_diagnostics(0, torch.device("cpu"))
+        finally:
+            cleanup()
+
+    def test_noop_on_cpu_even_if_enabled(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            tl._memory_diagnostics = True
+            tl._log_memory_diagnostics(0, torch.device("cpu"))
+        finally:
+            cleanup()
+
+
+# ===========================================================================
+# Test: _run_cad_vis                                                             # noqa: ERA001
+# ===========================================================================
+
+
+class TestRunCadVis:
+    """Tests for the CAD visualisation helper."""
+
+    def test_creates_stl_and_renders(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            verts = torch.tensor([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=torch.float32)
+            faces = torch.tensor([[0, 1, 2]], dtype=torch.int64)
+
+            from subprojects.wp4_aeroshell_optimizer.v1.src.losses import total_loss as tl_mod  # noqa: PLC0415
+
+            mock_cad = MagicMock()
+            tl_mod.CADVisualizer = MagicMock(return_value=mock_cad)
+            tl_mod.wandb = MagicMock()
+            tl_mod.trimesh = MagicMock()
+
+            tl._run_cad_vis(verts, faces, epoch_name=42)
+
+            tl_mod.trimesh.Trimesh.assert_called_once()
+            tl_mod.CADVisualizer.assert_called_once()
+            mock_cad.render_until_blue_detected.assert_called_once()
+        finally:
+            cleanup()
+
+
+# ===========================================================================
+# Test: get_total_loss (end-to-end orchestrator)
+# ===========================================================================
+
+
+class TestGetTotalLoss:
+    """End-to-end tests for the orchestrator."""
+
+    def test_returns_tensor(self, make_total_loss):
+        tl, _m, cleanup = make_total_loss()
+        try:
+            model = SimpleModel()
+            with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
+                total = tl.get_total_loss(model, epoch_name=0)
+            assert isinstance(total, torch.Tensor)
+            assert total.numel() >= 1
+            assert torch.isfinite(total).all()
+        finally:
+            cleanup()
+
+    def test_weighted_losses_keys_stable_across_epochs(self, make_total_loss):
+        cfg = _make_losses_config(cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            tl.get_total_loss(model, epoch_name=0)
+            keys_0 = set(tl._last_weighted_losses.keys())
+
+            tl.get_total_loss(model, epoch_name=1)
+            keys_1 = set(tl._last_weighted_losses.keys())
+
+            assert keys_0 == keys_1
+        finally:
+            cleanup()
+
+    def test_total_loss_is_sum_of_weighted_components(self, make_total_loss):
+        cfg = _make_losses_config(cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            total = tl.get_total_loss(model, epoch_name=0)
+
+            recomputed = sum(v.item() for v in tl._last_weighted_losses.values())
+            assert total.item() == pytest.approx(recomputed, rel=1e-5)
+        finally:
+            cleanup()
+
+    def test_backward_compatible_with_training_loop_pattern(self, make_total_loss):
+        """Simulate the WIRE_raschoff per-component backward pattern."""
+        cfg = _make_losses_config(cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+            optimizer.zero_grad()
+
+            tl.get_total_loss(model, epoch_name=0)
+
+            for weighted_loss in tl._last_weighted_losses.values():
+                if not weighted_loss.requires_grad:
+                    continue
+                weighted_loss.backward(retain_graph=False)
+
+            optimizer.step()
+        finally:
+            cleanup()
+
+    def test_multiple_epochs_update_alm_state(self, make_total_loss):
+        """ALM state (lambda, mu, nu) should evolve across epochs."""
+        cfg = _make_losses_config(cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            lam_initial = tl.lamdas.clone()
+
+            tl.get_total_loss(model, epoch_name=0)
+            lam_after_1 = tl.lamdas.clone()
+
+            tl.get_total_loss(model, epoch_name=1)
+            lam_after_2 = tl.lamdas.clone()
+
+            assert not torch.allclose(lam_initial, lam_after_1)
+            assert not torch.allclose(lam_after_1, lam_after_2)
+        finally:
+            cleanup()
