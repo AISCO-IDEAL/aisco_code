@@ -60,7 +60,7 @@ class _ShadingBase(RenderingMode):
         print(f"    Saved GIF: {gif_path}")
 
         try:
-            upload_neural_renderer_gif(gif_path, key="animations/shading_baseclass")
+            upload_neural_renderer_gif(gif_path, key=f"animations/{self.__class__.__name__}")
         except Exception as e:
             print(f"    Warning: Failed to upload shading GIF to wandb: {e}")
 
