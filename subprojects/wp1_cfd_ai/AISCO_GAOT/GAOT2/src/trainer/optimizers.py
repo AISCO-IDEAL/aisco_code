@@ -160,7 +160,7 @@ class AdamOptimizer:
         val_losses = []
 
         # Only rank 0 should display progress bar
-        disable_pbar = hasattr(trainer.setup_config, "rank") and trainer.setup_config.rank != 0
+        disable_pbar = trainer.setup_config.get("rank", 0) != 0
         pbar = tqdm(total=self.epoch, desc=description, colour=color, disable=disable_pbar)
         for epoch in range(self.epoch):
             # Ensure DistributedSampler shuffles differently each epoch
@@ -315,7 +315,7 @@ class AdamWOptimizer:
         max_grad_norm = 1.0
 
         # Only rank 0 should display progress bar
-        disable_pbar = hasattr(trainer.setup_config, "rank") and trainer.setup_config.rank != 0
+        disable_pbar = trainer.setup_config.get("rank", 0) != 0
         pbar = tqdm(total=self.epoch, desc=description, colour=color, disable=disable_pbar)
         global_step = 0
         save_every_steps = trainer.optimizer_config["args"]["save_every_steps"]

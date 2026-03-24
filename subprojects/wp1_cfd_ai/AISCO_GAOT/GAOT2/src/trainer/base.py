@@ -206,7 +206,7 @@ class TrainerBase:
         self.config.datarow["training time"] = result["time"]
 
         if len(result["train"]["loss"]) == 0:
-            if self.setup_config.rank == 0:
+            if self.setup_config["rank"] == 0:
                 self.test()
         else:
             kwargs = {"epochs": result["train"]["epoch"], "losses": result["train"]["loss"]}

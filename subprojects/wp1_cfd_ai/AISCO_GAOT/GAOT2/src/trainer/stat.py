@@ -264,7 +264,7 @@ class StaticTrainer3D(TrainerBase):
         Iterates through processed .pt files, computes edges (and optionally counts),
         and saves them back to the files. Runs ONLY on rank 0 in DDP.
         """
-        if self.setup_config.rank != 0:
+        if self.setup_config["rank"] != 0:
             return
 
         processed_dir = os.path.join(dataset_config.base_path, dataset_config.processed_folder)
@@ -418,13 +418,13 @@ class StaticTrainer3D(TrainerBase):
                 self._update_pt_files_with_edges(dataset_config, order_file_path, magno_cfg)
             if self.setup_config["distributed"]:
                 logging.getLogger(__name__).info(
-                    "Rank" + str(self.setup_config.rank) + ": Waiting for edge pre-computation barrier..."
+                    "Rank" + str(self.setup_config["rank"]) + ": Waiting for edge pre-computation barrier..."
                 )
                 torch.distributed.barrier()
-                logging.getLogger(__name__).info("Rank" + str(self.setup_config.rank) + ": Barrier passed.")
+                logging.getLogger(__name__).info("Rank" + str(self.setup_config["rank"]) + ": Barrier passed.")
 
             _magno_set(self.model_config, "precompute_edges", True)
-            logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Set model config to use precomputed edges.")
+            logging.getLogger(__name__).info(f"Rank {self.setup_config['rank']}: Set model config to use precomputed edges.")
         # --- end Pre-computation /Update Step ---
 
         # --- Calculate or Load Normalization Stats ---
@@ -544,7 +544,7 @@ class StaticTrainer3D(TrainerBase):
                     shuffle=dataset_config.shuffle,  # Sampler handles shuffling
                     drop_last=True,  # Often good practice for DDP
                 )
-                logging.getLogger(__name__).info(f"Rank {self.setup_config.rank}: Created DistributedSampler for training.")
+                logging.getLogger(__name__).info(f"Rank {self.setup_config['rank']}: Created DistributedSampler for training.")
 
             self.train_loader = DataLoader(
                 train_ds,
@@ -684,7 +684,7 @@ class StaticTrainer3D(TrainerBase):
         train_sample = self.train_loader.dataset[train_idx]
         val_sample = self.val_loader.dataset[val_idx]
         logging.getLogger(__name__).info(
-            f"Rank {self.setup_config.rank}: Viz samples — "
+            f"Rank {self.setup_config['rank']}: Viz samples — "
             f"train[{train_idx}] ({getattr(train_sample, 'filename', 'N/A')}), "
             f"val[{val_idx}] ({getattr(val_sample, 'filename', 'N/A')})"
         )
@@ -783,7 +783,7 @@ class StaticTrainer3D(TrainerBase):
 
     def visualize_sample(self, epoch: int):
         """Run inference on fixed train+val samples and log images to W&B each epoch."""
-        if self.setup_config.rank != 0:
+        if self.setup_config["rank"] != 0:
             return
         if not hasattr(self, "_viz_train_sample"):
             self._viz_train_sample, self._viz_val_sample = self._pick_viz_samples()
