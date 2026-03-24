@@ -116,7 +116,7 @@ class ShadingPenalty(_ShadingBase):
     """Render per-face shading penalty values."""
 
     _config_key = "shading_penalty"
-    _value_key = "shading_penalty"
+    _value_key = "shading_penalty_intensity"
     _wandb_key = "ShadingPenalty"
 
     def _normalize_weights(

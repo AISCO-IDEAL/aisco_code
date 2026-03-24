@@ -143,7 +143,7 @@ def _march_absorption(
 
 
 def sdf_visibility(
-    sdf_fn: Callable[[torch.Tensor], torch.Tensor],
+    sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None,
     vertices: torch.Tensor,
     faces: torch.Tensor,
     sun_dir: torch.Tensor,
@@ -192,6 +192,8 @@ def sdf_visibility(
         normals:     (F, 3) unit face normals used
         centroids:   (F, 3) face centroids
     """
+
+    assert sdf_fn is not None, "sdf_fn cannot be None for sdf_ray_visibility computation."
     device = vertices.device
 
     # -- Sun direction (unit) --------------------------------------------------

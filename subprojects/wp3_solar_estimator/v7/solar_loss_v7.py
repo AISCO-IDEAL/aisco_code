@@ -72,8 +72,8 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     output_dir: Path | None = None,
     num_epochs: int | None = None,
     render_solar: SolarV3Selection | None = None,
-    render_shading_visibility: Any | None = None,
-    render_shading_penalty: Any | None = None,
+    render_shading_visibility: ShadingVisibility | None = None,
+    render_shading_penalty: ShadingPenalty | None = None,
     shading_render_interval: int = 1,
     selection_threshold_render: float = 0.5,
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
@@ -125,6 +125,10 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
             raise ValueError(f"Unknown sun_subsample_mode: {subsample_mode}")
         solar_vectors = solar_vectors[idx]
 
+    if vertices.device != faces.device:
+        raise RuntimeError(
+            f"Vertices and faces must be on the same device, but got {vertices.device} and {faces.device}, something really went wrong!"
+        )
     ### Setup of variables and mesh precomputations
 
     # initialise loss and bookkeeping variables as zero for overview
@@ -132,13 +136,12 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     S = solar_vectors.shape[0]
     sun_batch_size = 1  #####CHANGE THIS WITH CONFIG PARAM
     # Loss per face, will be aggregated into total loss later.
-    if vertices.device != faces.device:
-        raise RuntimeError(
-            f"Vertices and faces must be on the same device, but got {vertices.device} and {faces.device}, something really went wrong!"
-        )
+
     losses = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
     soft_weights = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
-
+    visual_aggregate_visibility = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
+    visual_aggregate_penalty = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
+    visual_quality_loss = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
     # Compute face areas and normals (mesh normals only for quality)
     v0, v1, v2 = vertices[faces[:, 0]], vertices[faces[:, 1]], vertices[faces[:, 2]]
     edge_a, edge_b = v1 - v0, v2 - v0
@@ -162,6 +165,8 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     # Create soft selection weights using sigmoid with custom sharpness
     distance_to_budget = (area_budget_mm2 - cumulative_area) / max(area_budget_mm2, epsilon)
     soft_weights = torch.sigmoid(sigmoid_sharpness * distance_to_budget)
+    # Can use the computation before the loop starts
+    visual_quality_loss += (soft_weights * aggregate_illumination_quality).detach().clone()
 
     for s in range(0, S, sun_batch_size):
         sun_batch = sun_directions_unit[s : s + sun_batch_size]  # (B, 3)
@@ -199,6 +204,12 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         numerical_factor = 1 - _lambda * torch.pow(1 + epsilon - visibility, 1 / kappa)
         # Loss already including penalty term in the numerical factor
         losses += soft_weights * qualities * numerical_factor  # 3 times (F,) --> (F,)
+
+        # visualisation storages, don't track gradients for these
+        # Divide by S at the end to get average visibility and penalty across sun directions for visualization
+        visual_aggregate_visibility += visibility.detach().clone()
+        visual_aggregate_penalty += numerical_factor.detach().clone() - 1
+
     ### Finalisation of loss terms
 
     # Penalty for unused budget
@@ -228,14 +239,14 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     metrics_log = {
         "face_area_mm2": face_area_mm2,
         "illumination_quality": aggregate_illumination_quality,
-        # "visibility_mean": aggregate_visibility,
+        "visibility_mean": visual_aggregate_visibility / S,
         "sorted_areas": sorted_areas,
         "sorted_quality": sorted_quality,
         "soft_weights": soft_weights,
         "sorted_soft_weights": sorted_soft_mask,
-        # "quality_loss": quality_loss,
+        "quality_loss": visual_quality_loss,
         "budget_penalty": budget_penalty,
-        # "shading_penalty": shading_penalty,
+        "shading_penalty": visual_aggregate_penalty / S,
         "soft_mask_selection_threshold": soft_mask_selection_threshold,
         "soft_mask_full_selection_threshold": soft_mask_full_selection_threshold,
         "transition_zone_faces": transition_zone_faces,
@@ -248,10 +259,8 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         "faces": faces,
         "selection_weights": sorted_soft_mask,
         "threshold": selection_threshold_render,
-        # "shading_visibility": aggregate_visibility,
-        # "shading_penalty": shading_penalty_per_face,
-        # "shading_penalty_unweighted": shading_penalty_unweighted,
-        # "shading_penalty_intensity": shading_penalty_intensity,
+        "shading_visibility": visual_aggregate_visibility / S,
+        "shading_penalty_intensity": visual_aggregate_penalty / S,
     }
 
     loss = loss_mm2 * 1e-6  # Convert to m² for final loss
