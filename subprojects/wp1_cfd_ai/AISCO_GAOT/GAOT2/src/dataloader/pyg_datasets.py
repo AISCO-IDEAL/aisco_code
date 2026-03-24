@@ -150,11 +150,14 @@ class VTKMeshDataset(Dataset):
             # Random node subsampling: if sample has more nodes than subsample_nodes,
             # pick a fresh random subset each time this sample is loaded
             if self.subsample_nodes is not None and data.num_nodes > self.subsample_nodes:
-                perm = torch.randperm(data.num_nodes)[: self.subsample_nodes]
+                # Capture num_nodes BEFORE modifying any attribute — PyG recomputes
+                # data.num_nodes dynamically, so it would shrink mid-loop otherwise
+                original_num_nodes = data.num_nodes
+                perm = torch.randperm(original_num_nodes)[: self.subsample_nodes]
                 # Apply permutation to every per-node tensor
                 for attr in list(data.keys()):
                     val = data[attr]
-                    if isinstance(val, torch.Tensor) and val.dim() >= 1 and val.shape[0] == data.num_nodes:
+                    if isinstance(val, torch.Tensor) and val.dim() >= 1 and val.shape[0] == original_num_nodes:
                         data[attr] = val[perm]
                 # Drop face connectivity — indices are invalid after subsampling
                 if hasattr(data, "face"):
