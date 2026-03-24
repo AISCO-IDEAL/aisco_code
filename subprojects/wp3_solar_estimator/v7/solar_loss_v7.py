@@ -565,20 +565,20 @@ class SolarLossEstimator:
             raise ValueError(f"{cfg_name} is missing required keys: {missing}")
 
     @classmethod
-    def _validate_raytracing_v1_cfg(cls, cfg: dict[str, Any]) -> None:
-        cls._require_keys(cfg, ["method", "normal_source", "sdf", "mesh"], "RaytracingConfigV1")
+    def _validate_raytracing_cfg(cls, cfg: dict[str, Any], raytracing_version: str) -> None:
+        cls._require_keys(cfg, ["method", "normal_source", "sdf", "mesh"], f"RaytracingConfig{raytracing_version.upper()}")
 
         method = str(cfg["method"]).lower()
         if method not in {"none", "mesh", "sdf"}:
-            raise ValueError("RaytracingConfigV1.method must be one of: none, mesh, sdf")
+            raise ValueError(f"RaytracingConfig{raytracing_version.upper()}.method must be one of: none, mesh, sdf")
 
         normal_source = str(cfg["normal_source"]).lower()
         if normal_source not in {"mesh", "sdf"}:
-            raise ValueError("RaytracingConfigV1.normal_source must be one of: mesh, sdf")
+            raise ValueError(f"RaytracingConfig{raytracing_version.upper()}.normal_source must be one of: mesh, sdf")
 
         sdf_cfg = cfg["sdf"]
         if not isinstance(sdf_cfg, dict):
-            raise TypeError("RaytracingConfigV1.sdf must be a mapping")
+            raise TypeError(f"RaytracingConfig{raytracing_version.upper()}.sdf must be a mapping")
         cls._require_keys(
             sdf_cfg,
             [
@@ -592,21 +592,23 @@ class SolarLossEstimator:
                 "max_march_factor",
                 "point_chunk_size",
             ],
-            "RaytracingConfigV1.sdf",
+            f"RaytracingConfig{raytracing_version.upper()}.sdf",
         )
 
         sdf_method = str(sdf_cfg["method"]).lower()
         if sdf_method not in {"sigmoid", "absorption"}:
-            raise ValueError("RaytracingConfigV1.sdf.method must be one of: sigmoid, absorption")
+            raise ValueError(f"RaytracingConfig{raytracing_version.upper()}.sdf.method must be one of: sigmoid, absorption")
 
         mesh_cfg = cfg["mesh"]
         if not isinstance(mesh_cfg, dict):
-            raise TypeError("RaytracingConfigV1.mesh must be a mapping")
+            raise TypeError(f"RaytracingConfig{raytracing_version.upper()}.mesh must be a mapping")
         cls._require_keys(
             mesh_cfg,
             ["beta", "gamma", "margin_factor", "origin_offset_eps", "sun_distance_factor", "face_chunk_size", "miss_t"],
-            "RaytracingConfigV1.mesh",
+            f"RaytracingConfig{raytracing_version.upper()}.mesh",
         )
+        if raytracing_version == "v2":
+            cls._require_keys(mesh_cfg, ["blocker_chunk_size"], f"RaytracingConfig{raytracing_version.upper()}.mesh")
 
     @classmethod
     def _load_versioned_raytracing_config(cls, raytracing_version: str) -> dict[str, Any]:
@@ -620,8 +622,8 @@ class SolarLossEstimator:
             )
 
         resolved_cfg = dict(rt_cfg[key])
-        if raytracing_version == "v1":
-            cls._validate_raytracing_v1_cfg(resolved_cfg)
+        if raytracing_version in {"v1", "v2"}:
+            cls._validate_raytracing_cfg(resolved_cfg, raytracing_version)
         else:
             raise ValueError(f"Unsupported raytracing_version '{raytracing_version}'.")
 
