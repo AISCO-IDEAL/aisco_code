@@ -13,6 +13,7 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.mesh_sdf_grads import MeshSDFGrads
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import pressure_to_drag
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class ModelLoader:
             resolution=128, bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3], device=self.device, isovalue=0.0
         )
         visualiser = Visualiser(device=self.device)
-        self.gradlogger = MeshSDFGrads(visualiser, intensity=2.5)
+        self.gradlogger = MeshSDFGrads(visualiser, intensity=10)
 
     def _get_checkpoint_path(self, model_id):
         df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
@@ -84,17 +85,6 @@ class ModelLoader:
                 missing,
             )
 
-        self.normal_model = AutoNormDenorm(
-            core_model=self.gaot,
-            device=self.device,
-            per_head_stats={
-                "force": {
-                    "mean": 95.75044250488281,
-                    "std": 105.13729858398438,
-                }
-            },
-        )
-
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
         _, _, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
@@ -118,11 +108,15 @@ class ModelLoader:
 
         # ── forward through GAOT3D ───────────────────────────────────────
         with torch.autograd.set_detect_anomaly(True):
-            gaot_loss = self.normal_model.forward(data=batch, tokens_pos=tokens_pos)
+            gaot_loss = self.gaot.forward(batch=batch, tokens_pos=tokens_pos)
 
         self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces, "vertice_grads": []}
 
-        return gaot_loss
+        pressure_field = gaot_loss["field"]
+
+        int_drag_f = pressure_to_drag(pred_pressure=pressure_field, normals=batch.c, face=mesh_faces, pos=mesh_verts*1e-3)
+        print(f"Force-Value:{int_drag_f.item()}")
+        return int_drag_f
 
     def _reformat_data(self, mesh_verts, mesh_faces):
         optim_verts = mesh_verts.to(self.device)
@@ -154,72 +148,3 @@ class ModelLoader:
         data = rescale_transform(data)
 
         return Batch.from_data_list([data]).to(self.device)
-
-
-EPSILON = 1e-12
-
-
-class AutoNormDenorm(nn.Module):
-    """
-    Matches your NormalizeFeatures transform:
-      - input: normalizes data.c (optional)
-      - output: de-normalizes data.y OR (data.force, data.cd) using per_head_stats
-    Keeps autograd graph w.r.t. inputs (no detaching of runtime tensors).
-    """
-
-    def __init__(
-        self,
-        core_model: nn.Module,
-        device,
-        per_head_stats,  # : dict = None,  # {"force": {"mean":..., "std":...}, "cd": {...}}
-    ):
-        super().__init__()
-        self.core = core_model
-        self.device = device
-
-        y_mean = torch.tensor(95.75044250488281, device=self.device)
-        y_std = torch.tensor(105.13729858398438, device=self.device)
-        c_mean = torch.tensor([-0.09271910786628723, 0.0027784164994955063, 0.04134528338909149], device=self.device)
-        c_std = torch.tensor([0.4258987605571747, 0.6058956980705261, 0.6641716361045837], device=self.device)
-
-        def buf(name, t, persistent=True):
-            if t is None:
-                self.register_buffer(name, None, persistent=False)
-            else:
-                self.register_buffer(name, torch.as_tensor(t).clone().detach(), persistent=persistent)
-
-        buf("y_mean", y_mean)
-        buf("y_std", y_std)
-        buf("c_mean", c_mean)
-        buf("c_std", c_std)
-
-        # per-head stats as buffers too
-        self.per_head = {}
-        per_head_stats = per_head_stats or {}
-        for head in ("force", "cd"):
-            if head in per_head_stats:
-                buf(f"{head}_mean", per_head_stats[head]["mean"])
-                buf(f"{head}_std", per_head_stats[head]["std"])
-                self.per_head[head] = True
-            else:
-                buf(f"{head}_mean", None, persistent=False)
-                buf(f"{head}_std", None, persistent=False)
-                self.per_head[head] = False
-
-    def _norm(self, t, mean, std):
-        return (t - mean) / (std + EPSILON)
-
-    def _denorm(self, t, mean, std):
-        return t * (std + EPSILON) + mean
-
-    def forward(self, data, tokens_pos=None):
-        # ---- normalize inputs (only what you normalized during training) ----
-        if getattr(data, "c", None) is not None and self.c_mean is not None and self.c_std is not None:
-            data.c = self._norm(data.c, self.c_mean, self.c_std)
-
-        # ---- run model ----
-        out = self.core(data, tokens_pos=tokens_pos) if tokens_pos is not None else self.core(data)
-
-        out["force"] = self._denorm(out["force"], self.force_mean, self.force_std)
-
-        return out["force"]
