@@ -7,12 +7,12 @@
 #SBATCH --partition=gpu
 #SBATCH --job-name=WP4_Sweep
 #SBATCH --time=04:00:00
-#SBATCH --ntasks=2
+#SBATCH --ntasks=4
 #SBATCH --cpus-per-task=8
-#SBATCH --gpus=rtx_4090:3
+#SBATCH --gpus=rtx_4090:4
 #SBATCH --mem-per-cpu=5G
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
-#SBATCH --mail-type=START, END,FAIL
+#SBATCH --mail-user=%u@ethz.ch
 ################################### RUN THIS CMD ##############################################
 ##  sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/launch_sweep.sh ##
 ###############################################################################################
@@ -20,8 +20,8 @@
 umask 0002 # ensure group write permissions for logs
 
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/new_50_meshes/ms1tekky"   # <-- EDIT THIS
-COUNT=16                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
+SWEEP_ID="aisco/Mesh_Extractor_Sweep/mqg0mk3d"   # <-- EDIT THIS
+COUNT=4                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
 
 # ---- Job info ---------------------------------------------------------------
 
@@ -60,7 +60,10 @@ cd /cluster/home/${USERNAME}/AISCO_code
 
 # ---- Launch agents ----------------------------------------------------------
 NUM_GPUS=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
-echo "[$(date)] Detected $NUM_GPUS GPUs — launching 1 agent each, $COUNT runs per agent..."
+if [ "$NUM_GPUS" -gt "$MAX_AGENTS" ]; then
+    NUM_GPUS=$MAX_AGENTS
+fi
+echo "[$(date)] Launching $NUM_GPUS agents (max $MAX_AGENTS), up to $COUNT pulls per agent..."
 
 for ((i=0; i<NUM_GPUS; i++)); do
     AGENT_LOG="${LOG_DIR}/agent_gpu${i}_${SLURM_JOB_ID}.log"

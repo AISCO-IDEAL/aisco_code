@@ -1,0 +1,15 @@
+
+program: subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py
+method: grid
+entity: aisco
+project: CFD_integration_testing
+name: solar_cfd_sweep1
+
+parameters:
+  losses_v0_config.losses.solar:
+    values: [
+      solar_v3B: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3B.py"],
+      solar_v4: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v4.py"],
+      solar_v5: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v5.py"],
+      solar_v6: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v6.py"],
+      ]

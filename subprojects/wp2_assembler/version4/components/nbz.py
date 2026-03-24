@@ -118,7 +118,6 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
 
 
 def max_assembly_id() -> int:
-
     assembly_map_path = Path("subprojects/wp2_assembler/version4/config/assembly_map.yaml")
 
     with assembly_map_path.open("r") as f:
@@ -139,7 +138,7 @@ def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float]
     :rtype: tuple[tuple[float, float, float], tuple[float, float, float]]
     """
     inner, _, _ = call_assembly(id_number)
-    inner_bounding_box = cq.Compound.makeCompound(inner).BoundingBox()
+    inner_bounding_box = inner.toCompound().BoundingBox()
 
     return (
         (inner_bounding_box.xmin, inner_bounding_box.ymin, inner_bounding_box.zmin),
@@ -148,7 +147,6 @@ def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float]
 
 
 def vision_nbz(id_number):
-
     config_path = Path(__file__).parent.parent / "config" / "assembly_map.yaml"
 
     # print(config_path)  # noqa: ERA001

@@ -1,14 +1,13 @@
 ##########################################################################
-#  GAOT — Euler dataset (NEW processing): scalar (force + cd) + pressure
+#  GAOT — Ahmed dataset: combined scalar (cd) + pressure field
 #
-#  58 samples, ~2.3K vertices each.
-#  Small meshes — full_grid strategy (no subsampling needed at 2.3K verts).
-#  Data: /cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_new/
-#  Files: run_1.pt .. run_58.pt (flat layout)
+#  500 samples, ~1.1M vertices each.
+#  Ahmed body: force column is NaN (only Cd available from CSV).
+#  Uses neural_field strategy with 40K vertex subsampling.
 ##########################################################################
 
 setup:
-    wandb_run_name: "Platin"
+    wandb_run_name: "ahmed_field__RUN_ID_"
     seed: 42
     device: "cuda:0"
     dtype: "torch.float32"
@@ -22,11 +21,10 @@ setup:
     wandb: true
     wandb_project: "WP1_drag"
     wandb_entity: aisco
-    wandb_group: euler_field
+    wandb_group: ahmed_field
     wandb_mode: online
-    wandb_tags: ["field", "pressure", "euler", "multi_head", "gaot", "new_data"]
+    wandb_tags: ["field", "pressure", "ahmed", "multi_head", "gaot"]
     wandb_watch_model: false
-    wandb_notes: 
 
     test_during_training: false
 
@@ -34,25 +32,25 @@ model:
     name: "gaot_3d"
     use_conditional_norm: false
     args:
-        latent_tokens: [32, 32, 16]
+        latent_tokens: [64,64,32]
         field_output_size: 1
         magno:
             use_gno: true
             gno_coord_dim: 3
             neighbor_strategy: "bidirectional"
             projection_channels: 256
-            in_gno_channel_mlp_hidden_layers: [64, 64, 64]
-            out_gno_channel_mlp_hidden_layers: [64, 64]
+            in_gno_channel_mlp_hidden_layers: [64,64,64]
+            out_gno_channel_mlp_hidden_layers: [64,64]
             lifting_channels: 32
             gno_radius: 0.033
             gno_use_torch_cluster: true
             attention_type: "cosine"
             use_geoembed: [true, false]
             embedding_method: "statistical"
-            encoder_feature_attr: ["pos", "c"]
+            encoder_feature_attr: ["pos","c"]
             mlp_type: "linear"
             precompute_edges: false
-            asynchronous_graph_building: false
+            asynchronous_graph_building: true
             scales: [1.0]
             use_scale_weights: false
             k_neighbors: 1
@@ -77,34 +75,31 @@ model:
                 cond_norm_hidden_size: 4
 
 dataset:
-    name: "euler_pressure_field_new"
-    metaname: "incompressible_fluids/euler_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_new"
+    name: "ahmed_pressure_field"
+    metaname: "incompressible_fluids/ahmed_pressure"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_ahmed_cp_full"
     processed_folder: ""
-    force_recompute_stats: false
+    force_recompute_stats: true
     rand_dataset: true
-    train_size: 70
-    val_size: 15
-    test_size: 15
-    batch_size: 12
+    train_size: 400
+    val_size: 50
+    test_size: 50
+    batch_size: 1
     num_workers: 4
     shuffle: true
     metric_suite: "general"
     update_pt_files_with_edges: false
-    training_strategy: "full_grid"
-    uncertainty_weighting: true
+    training_strategy: "neural_field"
+    neural_field_input_nodes: 40000
+    neural_field_query_nodes_train: 40000
     field_loss_weight: 1.0
-    use_rescale_new: true
-    active_variables:
-    order_file_name: 
-    active_heads: ["force", "cd", "pressure"]
 
 optimizer:
     name: "adamw"
     args:
         lr: 3e-4
         weight_decay: 1e-05
-        epoch: 3
+        epoch: 300
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"
@@ -112,11 +107,9 @@ optimizer:
         min_lr: 1e-4
         final_lr: 1e-5
         save_every_epochs: 10
-        save_every_steps: 0
-        early_save_metric: "val"
 
 path:
-    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/platin.pt"
-    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/platin.png"
-    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/platin.png"
-    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/platin.csv"
+    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/ahmed_field__RUN_ID_.pt"
+    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/ahmed_field__RUN_ID_.png"
+    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/ahmed_field__RUN_ID_.png"
+    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/ahmed_field_metrics.csv"

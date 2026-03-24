@@ -1,21 +1,24 @@
 ##########################################################################
-#  GAOT — DrivAer dataset: INFERENCE ONLY on test split
+#  GAOT — DrivAer dataset: combined scalar (force + cd) + pressure field
 #
-#  Loads checkpoint from interrupted 48h run (job 58873639) and runs
-#  test() on the 50-sample test split.
-#  No training — train: false, test: true.
+#  500 samples, ~8.8M vertices each.
+#  Largest dataset — needs aggressive subsampling (40K of 8.8M = 0.45%).
+#  Uses neural_field strategy. batch_size=1 mandatory.
+#
+#  48-HOUR training run (250 epochs) on 4x RTX 4090.
+#  484 total samples: 384 train / 50 val / 50 test.
+#  Estimated ~10 min/epoch with 4 GPUs (96 samples/GPU × ~5.6s/sample).
 ##########################################################################
 
 setup:
-    wandb_run_name: "drivaer_field_48h_inference__RUN_ID_"
+    wandb_run_name: "drivaer_field_48h__RUN_ID_"
     seed: 42
     device: "cuda:0"
     dtype: "torch.float32"
     trainer_name: "static3d"
-    train: false
+    train: true
     test: true
     ckpt: false
-    resume_from_ckpt: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drivaer_field_48h_58873639.pt"
     use_variance_test: false
     distributed: true
 
@@ -24,7 +27,7 @@ setup:
     wandb_entity: aisco
     wandb_group: drivaer_field
     wandb_mode: online
-    wandb_tags: ["field", "pressure", "drivaer", "multi_head", "gaot", "inference"]
+    wandb_tags: ["field", "pressure", "drivaer", "multi_head", "gaot", "48h"]
     wandb_watch_model: false
 
     test_during_training: false
@@ -78,7 +81,7 @@ model:
 dataset:
     name: "drivaer_pressure_field"
     metaname: "incompressible_fluids/drivaer_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_pressure"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_cp_full"
     processed_folder: ""
     force_recompute_stats: true
     rand_dataset: true
@@ -94,14 +97,14 @@ dataset:
     neural_field_input_nodes: 40000
     neural_field_query_nodes_train: 40000
     uncertainty_weighting: true
-    field_loss_weight: 1.0
+    field_loss_weight: 1.0  # fallback weight used when uncertainty_weighting is false
 
 optimizer:
     name: "adamw"
     args:
         lr: 3e-4
         weight_decay: 1e-05
-        epoch: 1
+        epoch: 240
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"
@@ -112,7 +115,7 @@ optimizer:
         save_every_steps: 50
 
 path:
-    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drivaer_field_48h_58873639.pt"
-    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/drivaer_field_48h_inference__RUN_ID_.png"
-    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/drivaer_field_48h_inference__RUN_ID_.png"
+    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/drivaer_field_48h__RUN_ID_.pt"
+    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/drivaer_field_48h__RUN_ID_.png"
+    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/drivaer_field_48h__RUN_ID_.png"
     database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/drivaer_field_metrics.csv"
