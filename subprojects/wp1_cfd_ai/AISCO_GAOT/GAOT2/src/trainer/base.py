@@ -104,9 +104,9 @@ class TrainerBase:
         logger = logging.getLogger(__name__)
 
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-            self.setup_config.rank = int(os.environ["RANK"])
-            self.setup_config.world_size = int(os.environ["WORLD_SIZE"])
-            self.setup_config.local_rank = int(
+            self.setup_config["rank"] = int(os.environ["RANK"])
+            self.setup_config["world_size"] = int(os.environ["WORLD_SIZE"])
+            self.setup_config["local_rank"] = int(
                 os.environ["LOCAL_RANK"]
             )  # 移除默认值,如果没有设置应该报错 Translation by deepl:Remove the default value; if not set, an error should be reported.
         else:
