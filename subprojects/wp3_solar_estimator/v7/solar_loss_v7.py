@@ -165,6 +165,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     # Create soft selection weights using sigmoid with custom sharpness
     distance_to_budget = (area_budget_mm2 - cumulative_area) / max(area_budget_mm2, epsilon)
     soft_weights = torch.sigmoid(sigmoid_sharpness * distance_to_budget)
+
     # Can use the computation before the loop starts
     visual_quality_loss += (soft_weights * aggregate_illumination_quality).detach().clone()
 
@@ -200,10 +201,10 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         ### Given visibility for one sun_vector, compute loss for each face
 
         # simple dot product per face (sun_direction dot normals = quality)
-        qualities = sun_batch @ face_normals_unit.t()  # (F,) quality of each face (ignoring visibility)
+        qualities = sun_batch @ face_normals_unit.t()  # (F,) quality of each face, not accounting shading
         numerical_factor = 1 - _lambda * torch.pow(1 + epsilon - visibility, 1 / kappa)
-        # Loss already including penalty term in the numerical factor
-        losses += soft_weights * qualities * numerical_factor  # 3 times (F,) --> (F,)
+        # Loss already including penalty term in the numerical factor (take care of correct ordering of tensors!)
+        losses += face_area_mm2 * soft_weights[original_order] * qualities * numerical_factor  # 3 times (F,) --> (F,)
 
         # visualisation storages, don't track gradients for these
         # Divide by S at the end to get average visibility and penalty across sun directions for visualization
@@ -213,12 +214,12 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     ### Finalisation of loss terms
 
     # Penalty for unused budget
-    total_selected_area = (sorted_areas * soft_weights).sum()
+    total_selected_area = (sorted_areas * soft_weights[original_order]).sum()
     unused_ratio = torch.clamp((area_budget_mm2 - total_selected_area) / max(area_budget_mm2, epsilon), min=0.0)
     budget_penalty = budget_penalty_weight * (unused_ratio**2)
 
     losses = losses / S  # Average over sun directions
-    # Combined loss
+    # Combined loss over sum of all faces
     loss_mm2 = losses.sum() + budget_penalty
 
     # Sort softmask back to original face order for logging/visualization
@@ -246,7 +247,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         "sorted_soft_weights": sorted_soft_mask,
         "quality_loss": visual_quality_loss,
         "budget_penalty": budget_penalty,
-        "shading_penalty": visual_aggregate_penalty / S,
+        "shading_penalty": visual_aggregate_penalty.sum() / S,
         "soft_mask_selection_threshold": soft_mask_selection_threshold,
         "soft_mask_full_selection_threshold": soft_mask_full_selection_threshold,
         "transition_zone_faces": transition_zone_faces,
@@ -294,7 +295,7 @@ def log_to_wandb(
     loss: torch.Tensor,
     vertices: torch.Tensor,
     faces: torch.Tensor,
-    metrics: dict[str, torch.Tensor],
+    metrics: dict[str, Any],
     epoch_name: int,
     log_group_name: str = "solar_loss_metrics",
     epsilon: float = 1e-12,
@@ -302,49 +303,91 @@ def log_to_wandb(
     """
     Log solar loss metrics to wandb using pre-computed metrics.
     """
+
+    def _as_float_scalar(value: Any) -> float:
+        if isinstance(value, torch.Tensor):
+            if value.numel() != 1:
+                raise ValueError(f"Expected scalar tensor, got shape={tuple(value.shape)}")
+            return float(value.detach().cpu().item())
+        return float(value)
+
+    def _summary_stats(value: Any) -> tuple[float, float, float]:
+        if isinstance(value, torch.Tensor):
+            if value.numel() == 1:
+                scalar = float(value.detach().cpu().item())
+                return scalar, scalar, scalar
+            v = value.detach()
+            return float(v.mean().item()), float(v.max().item()), float(v.min().item())
+        scalar = float(value)
+        return scalar, scalar, scalar
+
     try:
         if faces.numel() > 0 and vertices.numel() > 0 and metrics:
+            required_keys = [
+                "face_area_mm2",
+                "illumination_quality",
+                "visibility_mean",
+                "sorted_areas",
+                "soft_weights",
+                "quality_loss",
+                "budget_penalty",
+                "shading_penalty",
+                "soft_mask_selection_threshold",
+                "soft_mask_full_selection_threshold",
+                "transition_zone_faces",
+                "transition_zone_area_mm2",
+                "budget_crossover_idx",
+            ]
+            missing = [k for k in required_keys if k not in metrics]
+            if missing:
+                print(f"Warning: Skipping solar wandb logging due to missing metrics keys: {missing}")
+                return
+
             face_area_mm2 = metrics["face_area_mm2"]
             illumination_quality = metrics["illumination_quality"]
+            visibility_mean = metrics["visibility_mean"]
             sorted_areas = metrics["sorted_areas"]
-            soft_mask = metrics["soft_mask"]
+            soft_mask = metrics["soft_weights"]
             quality_loss = metrics["quality_loss"]
             budget_penalty = metrics["budget_penalty"]
             shading_penalty = metrics["shading_penalty"]
-            soft_mask_selection_threshold = metrics["soft_mask_selection_threshold"]
-            soft_mask_full_selection_threshold = metrics["soft_mask_full_selection_threshold"]
-            transition_zone_faces = metrics["transition_zone_faces"]
-            transition_zone_area_mm2 = metrics["transition_zone_area_mm2"]
-            budget_crossover_idx = metrics["budget_crossover_idx"]
-            visibility_mean = metrics["visibility_mean"]
+            soft_mask_selection_threshold = float(metrics["soft_mask_selection_threshold"])
+            soft_mask_full_selection_threshold = float(metrics["soft_mask_full_selection_threshold"])
+            transition_zone_faces = int(metrics["transition_zone_faces"])
+            transition_zone_area_mm2 = float(metrics["transition_zone_area_mm2"])
+            budget_crossover_idx = int(metrics["budget_crossover_idx"])
 
-            total_area_mm2 = face_area_mm2.sum().item()
+            total_area_mm2 = float(face_area_mm2.sum().item())
             total_num_faces = len(face_area_mm2)
-            selected_area_mm2 = (sorted_areas * soft_mask).sum().item()
+            selected_area_mm2 = float((sorted_areas * soft_mask).sum().item())
 
-            quality_mean = illumination_quality.mean().item()
-            quality_max = illumination_quality.max().item()
-            quality_min = illumination_quality.min().item()
+            quality_mean, quality_max, quality_min = _summary_stats(illumination_quality)
+            visibility_mean_scalar, _, _ = _summary_stats(visibility_mean)
+            soft_mask_mean, soft_mask_max, soft_mask_min = _summary_stats(soft_mask)
 
-            soft_mask_mean = soft_mask.mean().item()
-            soft_mask_max = soft_mask.max().item()
-            soft_mask_min = soft_mask.min().item()
+            selected_faces = int((soft_mask > soft_mask_selection_threshold).sum().item())
+            fully_selected_faces = int((soft_mask > soft_mask_full_selection_threshold).sum().item())
 
-            selected_faces = (soft_mask > soft_mask_selection_threshold).sum().item()
-            fully_selected_faces = (soft_mask > soft_mask_full_selection_threshold).sum().item()
+            if isinstance(quality_loss, torch.Tensor) and quality_loss.numel() > 1:
+                quality_loss_scalar = float(quality_loss.detach().sum().cpu().item())
+            else:
+                quality_loss_scalar = _as_float_scalar(quality_loss)
+
+            shading_penalty_scalar = _as_float_scalar(shading_penalty)
+            budget_penalty_scalar = _as_float_scalar(budget_penalty)
 
             log_dict = {
                 "solar_loss": float(loss.detach().cpu().item()),
                 "total_area_m2": total_area_mm2 * 1e-6,
                 "selected_area_m2": selected_area_mm2 * 1e-6,
                 "selection_ratio": selected_area_mm2 / max(total_area_mm2, epsilon),
-                "solar_quality_loss": float(quality_loss.detach().cpu().item()) * 1e-6,
-                "solar_budget_penalty": float(budget_penalty.detach().cpu().item()),
-                "solar_shading_penalty": float(shading_penalty.detach().cpu().item()) * 1e-6,
+                "solar_quality_loss": quality_loss_scalar * 1e-6,
+                "solar_budget_penalty": budget_penalty_scalar,
+                "solar_shading_penalty": shading_penalty_scalar * 1e-6,
                 "solar_quality_mean": quality_mean,
                 "solar_quality_max": quality_max,
                 "solar_quality_min": quality_min,
-                "solar_visibility_mean": visibility_mean.mean().item(),
+                "solar_visibility_mean": visibility_mean_scalar,
                 "solar_soft_mask_mean": soft_mask_mean,
                 "solar_soft_mask_max": soft_mask_max,
                 "solar_soft_mask_min": soft_mask_min,
@@ -358,7 +401,7 @@ def log_to_wandb(
             }
             multi_log_in_one(log_group_name, log_dict, step=int(epoch_name))
     except Exception as e:
-        print(f"Warning: Failed to log solar loss metrics to wandb: {e}")
+        print(f"Warning: Failed to log solar loss metrics to wandb at epoch {epoch_name}: {e}")
 
 
 class SolarLossEstimator:
@@ -410,10 +453,13 @@ class SolarLossEstimator:
         self.area_budget_mm2 = float(cfg["area_budget_mm2"])
         self.device = cfg["device"]
         self.batch_size = int(cfg["batch_size"])
-        self.eps = float(cfg["eps"])
+
         self.log_group_name = str(cfg["log_group_name"])
         self.sigmoid_sharpness = float(cfg["sigmoid_sharpness"])
         self.budget_penalty_weight = float(cfg["budget_penalty_weight"])
+        self._lambda = float(cfg["lambda"])
+        self.kappa = float(cfg["kappa"])
+        self.epsilon = float(cfg["epsilon"])
 
         self.enable_wandb_logging = bool(cfg["wandb_logging"])
         self.soft_mask_selection_threshold = float(cfg["soft_mask_selection_threshold"])
@@ -496,7 +542,7 @@ class SolarLossEstimator:
             fixed_dir = torch.tensor(self.fixed_sun_dir, dtype=torch.float32).view(-1)
             if fixed_dir.numel() != 3:
                 raise ValueError("fixed_sun_dir must contain exactly 3 values")
-            fixed_dir = fixed_dir / fixed_dir.norm().clamp_min(self.eps)
+            fixed_dir = fixed_dir / fixed_dir.norm()
             self.solar_vectors = fixed_dir.view(1, 3).to(self.device)
         else:
             route_cls = RouteV2 if self.route_version == "v2" else RouteV1
@@ -676,7 +722,9 @@ class SolarLossEstimator:
                     soft_mask_selection_threshold=self.soft_mask_selection_threshold,
                     soft_mask_full_selection_threshold=self.soft_mask_full_selection_threshold,
                     budget_penalty_weight=self.budget_penalty_weight,
-                    epsilon=self.eps,
+                    _lambda=self._lambda,
+                    kappa=self.kappa,
+                    epsilon=self.epsilon,
                     epoch_name=epoch_name,
                     log_group_name=self.log_group_name,
                     enable_wandb_logging=self.enable_wandb_logging,
@@ -746,7 +794,9 @@ class SolarLossEstimator:
                 soft_mask_selection_threshold=self.soft_mask_selection_threshold,
                 soft_mask_full_selection_threshold=self.soft_mask_full_selection_threshold,
                 budget_penalty_weight=self.budget_penalty_weight,
-                epsilon=self.eps,
+                _lambda=self._lambda,
+                epsilon=self.epsilon,
+                kappa=self.kappa,
                 epoch_name=epoch_name,
                 log_group_name=self.log_group_name,
                 enable_wandb_logging=self.enable_wandb_logging,
