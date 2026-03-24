@@ -18,7 +18,7 @@
 ###############################################################################################
 umask 0002
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/Raytracing_Memory/sl3aim46"   # <-- EDIT THIS
+SWEEP_ID="aisco/Raytracing_Memory/akttuasy"   # <-- EDIT THIS
 COUNT=2                                       # runs per agent (no empty space, otherwise it will recognise count as empty string)
 MAX_AGENTS=3                                  # max number of parallel agents (will be capped by available GPUs)
 
