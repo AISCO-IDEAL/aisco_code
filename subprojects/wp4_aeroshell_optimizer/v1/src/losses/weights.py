@@ -18,7 +18,6 @@ def weights_alm(
     thresholds: torch.Tensor | None = None,
     use_alm_aggressive: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-
     epsilon = 1e-16
 
     # --- SCHUTZ VOR BROADCASTING FEHLERN ---

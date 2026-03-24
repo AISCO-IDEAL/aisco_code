@@ -26,7 +26,7 @@ class ModelLoader:
         self.extractor = MeshSDFExtractor(
             resolution=128, bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3], device=self.device, isovalue=0.0
         )
-        visualiser = Visualiser(device = self.device)
+        visualiser = Visualiser(device=self.device)
         self.gradlogger = MeshSDFGrads(visualiser, intensity=2.5)
 
     def _get_checkpoint_path(self, model_id):
@@ -97,12 +97,13 @@ class ModelLoader:
 
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
-        _, _, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(sdf_model=sdf_model, loss_fn=self.loss_fn)
+        _, _, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
+            sdf_model=sdf_model, loss_fn=self.loss_fn
+        )
 
         self.optimization_state["vertice_grads"] = dL_dvertices
         self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
 
-        
         return loss.item() + surrogate_loss - surrogate_loss.item()
 
     def loss_fn(self, mesh_verts, mesh_faces):
@@ -113,14 +114,14 @@ class ModelLoader:
         batch = self._reformat_data(mesh_verts, mesh_faces)
 
         # ── latent token positions (registered buffer inside the model) ──
-        tokens_pos = self.gaot.latent_tokens 
+        tokens_pos = self.gaot.latent_tokens
 
         # ── forward through GAOT3D ───────────────────────────────────────
         with torch.autograd.set_detect_anomaly(True):
             gaot_loss = self.normal_model.forward(data=batch, tokens_pos=tokens_pos)
 
         self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces, "vertice_grads": []}
-            
+
         return gaot_loss
 
     def _reformat_data(self, mesh_verts, mesh_faces):

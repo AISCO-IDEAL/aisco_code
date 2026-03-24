@@ -8,7 +8,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visual
 
 
 class MeshSDFGrads(RenderingMode):
-    def __init__(self, visualiser: Visualiser, intensity:float = 1.0):
+    def __init__(self, visualiser: Visualiser, intensity: float = 1.0):
         self.intensity = intensity
         config = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")["detached_modes"]["MeshSDF_grads"]["config"]
         super().__init__(visualiser, config)
@@ -56,9 +56,7 @@ class MeshSDFGrads(RenderingMode):
         norm = dot_products / (dot_products.abs().max() + 1e-8)
         norm = torch.clamp(norm * self.intensity, -1.0, 1.0)
 
-        colors = base_grey.unsqueeze(0) + norm.unsqueeze(-1) * (
-            max_color - min_color
-        ).unsqueeze(0)
+        colors = base_grey.unsqueeze(0) + norm.unsqueeze(-1) * (max_color - min_color).unsqueeze(0)
         self.visualiser.vertex_colors_to_textures(vertex_colors=colors, faces=faces)
 
         image = self._render(
@@ -111,8 +109,8 @@ class MeshSDFGrads(RenderingMode):
         print(f"    Saved sample frames to {output_dir}")
 
     def log_single_image_to_wandb(self, optimization_state: dict, epoch_name: int) -> None:
-        self.update(optimization_state)
-        wandb.log({
-            "epoch": epoch_name,
-            "Aero-Gradients": wandb.Image(self.frame_storage[-1])
-        })
+        try:
+            self.update(optimization_state)
+            wandb.log({"epoch": epoch_name, "Aero-Gradients": wandb.Image(self.frame_storage[-1])})
+        except Exception as e:
+            print(f"Couldnt produce Gradient-immage in Epoch {epoch_name} for Reason {e}")
