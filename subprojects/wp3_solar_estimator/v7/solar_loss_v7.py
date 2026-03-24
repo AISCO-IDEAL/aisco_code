@@ -16,15 +16,14 @@ from pathlib import Path
 from typing import Any
 
 import torch
+import wandb
 from matplotlib import pyplot as plt  # noqa: F401
 
-import wandb
 from subprojects.wp3_solar_estimator.australia.route_v1 import RouteV1
 from subprojects.wp3_solar_estimator.australia.route_v2 import RouteV2
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
-from subprojects.wp3_solar_estimator.raytracing.diffable import mesh_visibility, sdf_visibility
 from subprojects.wp3_solar_estimator.utils.solar_utils import averaging_solar_quality
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -56,6 +55,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     solar_vectors: torch.Tensor,
     area_budget_mm2: float,
     sun_batching_cfg: dict[str, Any],
+    raytracing_version: str,
     raytracing_cfg: dict[str, Any],
     sigmoid_sharpness: float = 10.0,
     soft_mask_selection_threshold: float = 0.5,
@@ -108,6 +108,18 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     if faces.numel() == 0 or vertices.numel() == 0:
         print("Warning: Empty vertices or faces in solar_mesh_loss_v7, returning zero loss")
         return torch.zeros((), device=vertices.device, dtype=vertices.dtype)
+
+    if raytracing_version.startswith("v"):
+        version_module = raytracing_version
+        module_path = f"subprojects.wp3_solar_estimator.raytracing.diffable.{version_module}"
+        try:
+            visibility_module = __import__(module_path, fromlist=["mesh_visibility", "sdf_visibility"])
+            mesh_visibility = visibility_module.mesh_visibility
+            sdf_visibility = visibility_module.sdf_visibility
+        except ImportError as err:
+            raise ImportError(
+                f"Failed to import raytracing functions for version {raytracing_version} from {module_path}"
+            ) from err
 
     # Optional sun-vector subsampling (reduces compute)
     sun_batch_size = int(sun_batching_cfg.get("sun_batch_size", 1))
@@ -710,6 +722,7 @@ class SolarLossEstimator:
                     self.solar_vectors,
                     self.area_budget_mm2,
                     sun_batching_cfg=self.sun_batching_cfg,
+                    raytracing_version=self.raytracing_version,
                     raytracing_cfg=self.raytracing_cfg,
                     sigmoid_sharpness=self.sigmoid_sharpness,
                     soft_mask_selection_threshold=self.soft_mask_selection_threshold,
@@ -782,6 +795,7 @@ class SolarLossEstimator:
                 self.solar_vectors,
                 self.area_budget_mm2,
                 sun_batching_cfg=self.sun_batching_cfg,
+                raytracing_version=self.raytracing_version,
                 raytracing_cfg=self.raytracing_cfg,
                 sigmoid_sharpness=self.sigmoid_sharpness,
                 soft_mask_selection_threshold=self.soft_mask_selection_threshold,

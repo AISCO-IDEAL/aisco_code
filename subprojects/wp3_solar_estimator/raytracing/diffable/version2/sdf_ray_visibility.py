@@ -185,6 +185,8 @@ def sdf_visibility(
         centroids:   (F, 3) face centroids
     """
 
+    print("Using 'sdf_visibility' version 2")
+
     assert sdf_fn is not None, "sdf_fn cannot be None for sdf_ray_visibility computation."
 
     alpha = float(sdf_cfg["alpha"])
