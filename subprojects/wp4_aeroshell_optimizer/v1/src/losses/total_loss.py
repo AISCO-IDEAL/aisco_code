@@ -89,6 +89,9 @@ class TotalLoss:
                 [[self.alpha], [self.alpha], [self.alpha]], device=dev
             )  # increase mu by this factor if constraint not met
             self.gamma: float = alm_info.get("gamma", 0.01)
+            self.gamma_aggressive: float = alm_info.get(
+                "gamma_aggressive", 1.1
+            )  # multiplicative increase factor for mu in aggressive CAPU mode
             # Ref: "An Adaptive Augmented Lagrangian Method for Training Physics and Equality
             #       Constrained ANNs" — Basir & Senocak, https://arxiv.org/pdf/2306.04904
 
@@ -165,6 +168,7 @@ class TotalLoss:
             loss_names[loss_name] = current_loss.item()  # convert to float, gradient is lost
 
         if self.losses_config["general_info"]["ALM"] == "True":  # ALM weighting
+            use_alm_aggressive = self.losses_config["general_info"].get("ALM_aggressive") == "True"
             # DOCUMENTATION: `Losses and their weights` in Obsidian
 
             # o: maximise cruising speed (CSE)
@@ -197,8 +201,10 @@ class TotalLoss:
                 nus=self.nus,
                 alphas=self.alphas,
                 gamma=self.gamma,
+                gamma_aggressive=self.gamma_aggressive,
                 constrained_losses=c_for_alm,
                 thresholds=thresholds_tensor,
+                use_alm_aggressive=use_alm_aggressive,
             )
 
             # Build per-component weighted tensors for individual backward() calls.

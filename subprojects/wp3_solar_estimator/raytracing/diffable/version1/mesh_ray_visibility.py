@@ -20,7 +20,7 @@ Reference formulation (softmin + sigmoid):
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Any
 
 import torch
 
@@ -143,7 +143,7 @@ def mesh_visibility(
     sun_dir: torch.Tensor,
     *,
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
-    normal_source: Literal["mesh", "sdf"] = "mesh",
+    normal_source: str = "mesh",  # expects "mesh" or "sdf"
     mesh_cfg: dict[str, Any],
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
@@ -202,8 +202,10 @@ def mesh_visibility(
         if sdf_fn is None:
             raise ValueError("sdf_fn is required when normal_source='sdf'")
         normals = _normals_from_sdf(sdf_fn, centroids)
-    else:
+    elif normal_source == "mesh":
         normals = _normals_from_mesh(vertices, faces)
+    else:
+        raise ValueError(f"Unknown normal_source: {normal_source}, expects 'mesh' or 'sdf'")
 
     # -- Bounding-box scale for adaptive parameters ----------------------------
     bbox_diag = (vertices.max(dim=0).values - vertices.min(dim=0).values).norm()

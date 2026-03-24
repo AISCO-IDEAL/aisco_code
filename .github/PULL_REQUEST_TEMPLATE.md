@@ -28,11 +28,15 @@ To upload images to a PR -- simply drag and drop an image while in edit mode and
 -->
 
 # Checklist:
-- [] I have run sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/main_testing.sh, and ...
-    - [] ... no new warnings are generated
-    - [] ... no errors are noticeable
+- [] I have run sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/main_testing.sh,
+    {BB Loss, GAOT Loss and Solar Loss} are active and ...
+    - [] ... no new warnings are shown
+    - [] ... no errors are shown
+insert screenshot as proof here (WIN+SHIFT+S, CTRl+V)
+- [] I have not commited any incoherent or misleading config updates (e.g. learning rate for WIRE and Model = BasicMLP, username = "eschaerer")
 - [] I have run `ruff check .` and `ruff format`
 - [] I have run `mypy .`
+insert screenshot as proof here (CTRl+V)
 - [] I have commented my code, particularly in hard-to-understand areas
 - [] I have made corresponding changes to the documentation
 - [] I have added tests that prove my fix is effective or that my feature works

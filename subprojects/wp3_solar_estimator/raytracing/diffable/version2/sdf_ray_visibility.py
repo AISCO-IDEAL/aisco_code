@@ -23,7 +23,7 @@ Both are fully differentiable through the SDF network weights θ.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Any
 
 import torch
 
@@ -149,8 +149,8 @@ def sdf_visibility(
     faces: torch.Tensor,
     sun_dir: torch.Tensor,
     *,
-    normal_source: Literal["mesh", "sdf"] = "mesh",
-    method: Literal["sigmoid", "absorption"] = "sigmoid",
+    normal_source: str = "mesh",  # expects "mesh" or "sdf"
+    method: str = "sigmoid",  # expects "sigmoid" or "absorption"
     # Sigmoid method params
     sdf_cfg: dict[str, Any],
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
