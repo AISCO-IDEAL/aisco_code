@@ -8,6 +8,7 @@ from pathlib import Path
 
 import torch
 
+from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MarchingCubesExtractor
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing, str_hashing
@@ -107,11 +108,34 @@ def allround_save_data(  # noqa: PLR0915
         # get a model using kaolin conversions
         # Use a copy to avoid disrupting training
         temp_model = copy.deepcopy(model).cpu()
-        verts, faces = get_diff_mesh(temp_model, grid_res=64, device="cpu")
+        grid_res = 64
+        verts, faces = get_diff_mesh(temp_model, grid_res=grid_res, device="cpu")  # fsanche: keeping this in case marching cubes doest work. this one is the original.
+
+        diff_vertices = verts.shape[0] #added
+        diff_faces = faces.shape[0] #added
+
         if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
             print(f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
 
-        kaolin_to_PLY(verts, faces, filename=f"{wandb_run}_{epoch_str}.ply", mesh_dir=mesh_dir, verbose=verbose)
+        kaolin_to_PLY(verts, faces, filename=f"{wandb_run}_{epoch_str}_get_diff_mesh_GridRes_{grid_res}.ply", mesh_dir=mesh_dir, verbose=verbose)
+
+        # get a model using kaolin conversions
+        # Use a copy to avoid disrupting training
+        temp_model = copy.deepcopy(model).cpu()
+        # verts, faces = get_diff_mesh(temp_model, grid_res=64, device="cpu")  # noqa: ERA001 # fsanche: keeping this in case marching cubes doest work. this one is the original.
+        resolution = 64
+        extractor = MarchingCubesExtractor(device="cpu", verbose=False)
+        extractor.set_grid(
+            bbox=[[-5000, 5000], [-5000, 5000], [-5000, 5000]],
+            resolution= resolution,
+        )
+        verts, faces = extractor.extract_mesh(temp_model, isovalue=0.0, batch_size=8192)
+        print(f"Res diff: {grid_res}| Res Marching cubes: {resolution}| get_diff_mesh: {diff_vertices} vertices, {diff_faces} faces | marching_cubes: {verts.shape[0]} vertices, {faces.shape[0]} faces") #added
+        if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
+            print(f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
+
+        kaolin_to_PLY(verts, faces, filename=f"{wandb_run}_{epoch_str}__marching_cubes_GridRes:_{resolution}.ply", mesh_dir=mesh_dir, verbose=verbose)
+
 
     ######################
     ### save the model ###

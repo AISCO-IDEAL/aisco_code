@@ -1,12 +1,8 @@
 general_info:
-  username: ${USER} # for windows users: %USERNAME%  # NOT USED — never read by any code in the optimisation loop
-  version: "v1"  # USED — total_loss.py, parent_loss.py: load_config(v=general_config["general_info"]["version"], ...)
-  device: "cuda"  # USED — main_v1_1_one_model.py: general_config["general_info"].get("device", ...)
-  pre: "a sphere as initial shape, datatype: SDF"  # NOT USED — never read by any code
-  post: "a PLY file representing the optimized aeroshell shape"  # NOT USED — never read by any code
-  config_debugging: "True" # adds print statements of config paths  # NOT USED — never read by any code (no grep hits in src/)
-  run_locally: "True" # automatically detected, don't touch  # USED — main_v1_1_one_model.py, storage_utils.py (auto-detected & overwritten by config_utils.py)
-  verbose: "True"  # USED — basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
+  version: "v1"  #  total_loss.py, parent_loss.py: load_config(v=general_config["general_info"]["version"], ...)
+  device: "cuda"  #  main_v1_1_one_model.py: general_config["general_info"].get("device", ...)
+  run_locally: "False" # automatically detected, don't touch  #  main_v1_1_one_model.py, storage_utils.py (auto-detected & overwritten by config_utils.py)
+  verbose: "True"  #  basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
 
 model_def:
   model_name: "BasicMLP"  # USED — main_v1_1_one_model.py: general_config["model_def"]["model_name"]
