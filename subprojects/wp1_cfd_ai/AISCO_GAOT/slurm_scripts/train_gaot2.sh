@@ -1,0 +1,58 @@
+#!/bin/bash
+#SBATCH --partition=gpu
+#SBATCH --job-name=GAOT2
+#SBATCH --time=4:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=2
+#SBATCH --cpus-per-task=16
+#SBATCH --mem-per-cpu=4G
+#SBATCH --gpus=rtx_4090:2
+#SBATCH --output=/cluster/scratch/elihuber/scratch_logs/GAOT2_%j.out
+#SBATCH --error=/cluster/scratch/elihuber/scratch_logs/GAOT2_%j.err
+
+# Train GAOT2 with main_config.yaml
+
+module purge
+module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6 eth_proxy
+
+USERNAME="elihuber"
+VENV_DIR="/cluster/home/$USERNAME/AISCO_code/aisco_env"
+source "$VENV_DIR/bin/activate"
+
+echo "=========================================="
+echo "GAOT2 Training"
+echo "Job ID: $SLURM_JOB_ID"
+echo "Started: $(date)"
+echo "Node: $SLURMD_NODENAME"
+echo "GPUs: $SLURM_GPUS"
+echo "=========================================="
+
+nvidia-smi
+echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
+
+export PYTHONUNBUFFERED=TRUE
+export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export NCCL_DEBUG=INFO
+
+cd /cluster/home/$USERNAME/AISCO_code/
+ulimit -n 65536
+
+BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/main_config.yaml"
+ARCHIVE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/configs"
+mkdir -p $ARCHIVE_DIR
+
+TEMP_CONFIG="$ARCHIVE_DIR/gaot2_${SLURM_JOB_ID}.yaml"
+sed "s/_RUN_ID_/${SLURM_JOB_ID}/g" $BASE_CONFIG > $TEMP_CONFIG
+
+torchrun --standalone --nproc_per_node=2 \
+    subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/main.py \
+    -c $TEMP_CONFIG \
+    2>&1
+
+echo "=========================================="
+echo "Finished: $(date)"
+echo "Total elapsed: $SECONDS seconds"
+echo "=========================================="
+
+## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/train_gaot2.sh
