@@ -22,6 +22,7 @@ import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
+from subprojects.wp3_solar_estimator.mesh_extractors.sparse_dmc.sparse_dmc_extractor import SparseDMCExtractor
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
@@ -403,7 +404,7 @@ class SolarLossEstimator:
         else:
             self.sun_dir = sun_dir.to(device=self.device, dtype=torch.float32)
 
-        self.extractor: FCExtractor | DISOExtractor | MeshSDFExtractor
+        self.extractor: FCExtractor | DISOExtractor | MeshSDFExtractor | SparseDMCExtractor
         self._init_extractor()
 
     def _init_extractor(self) -> None:
@@ -438,6 +439,9 @@ class SolarLossEstimator:
                 device=self.device,
             )
             self.extractor.set_grid(self.bbox, self.resolution)
+        elif method == "sparse_sdf":
+            self.extractor = SparseDMCExtractor(bbox=self.bbox, resolution=self.resolution, device=self.device)
+            self.extractor.set_grid(self.bbox, self.resolution)
         else:
             raise ValueError(f"Unknown method: {method}")
 
@@ -451,7 +455,9 @@ class SolarLossEstimator:
         if self.method in {"mesh_sdf", "mc"}:
             assert isinstance(self.extractor, MeshSDFExtractor)
             return self.extractor.extract_mesh(model)
-
+        if self.method == "sparse_sdf":
+            assert isinstance(self.extractor, SparseDMCExtractor)
+            return self.extractor.extract_mesh(model)
         raise ValueError(f"Unknown method: {self.method}")
 
     def solar_loss(self, model: Any, epoch_name: int | None = None) -> torch.Tensor:
@@ -465,6 +471,11 @@ class SolarLossEstimator:
         Returns:
             Scalar loss tensor
         """
+
+        print(
+            f"[SolarLossEstimator] Mesh extraction method for this loss evaluation: "
+            f"{self.method} (extractor={type(self.extractor).__name__})"
+        )
 
         # Initialize model_hash and rendering_dir on first call
         if self.rendering and self.enable_wandb_logging and self.model_hash is None:

@@ -8,7 +8,8 @@
 ##########################################################################
 
 setup:
-    wandb_run_name: "Platin"
+    name: "euler_field"
+    id: "_RUN_ID_"
     seed: 42
     device: "cuda:0"
     dtype: "torch.float32"
@@ -20,6 +21,8 @@ setup:
     distributed: true
 
     wandb: true
+    wandb_run_name: "_NAME___RUN_ID_"
+
     wandb_project: "WP1_drag"
     wandb_entity: aisco
     wandb_group: euler_field
@@ -34,17 +37,20 @@ model:
     name: "gaot_3d"
     use_conditional_norm: false
     args:
+        input_size: 6
+        output_size: 1
         latent_tokens: [32, 32, 16]
         field_output_size: 1
+        norm_domain: [[-1, -1, -1], [1, 1, 1]]
         magno:
             use_gno: true
             gno_coord_dim: 3
             neighbor_strategy: "bidirectional"
             projection_channels: 256
-            in_gno_channel_mlp_hidden_layers: [64, 64, 64]
+            in_gno_channel_mlp_hidden_layers: [64, 64, 64] # why not [128, 128] as in config.yaml?
             out_gno_channel_mlp_hidden_layers: [64, 64]
             lifting_channels: 32
-            gno_radius: 0.033
+            gno_radius: 0.066
             gno_use_torch_cluster: true
             attention_type: "cosine"
             use_geoembed: [true, false]
@@ -56,6 +62,17 @@ model:
             scales: [1.0]
             use_scale_weights: false
             k_neighbors: 1
+            # encoder_feature_attr: "x"
+            in_gno_transform_type: "linear"
+            out_gno_transform_type: "linear"
+            use_graph_cache: true
+            gno_use_torch_scatter: true
+            node_embedding: false
+            use_attn: null
+            pooling: "max"
+            sampling_strategy: null
+            max_neighbors: null
+            sample_ratio: null
         transformer:
             patch_size: 2
             hidden_size: 256
@@ -65,21 +82,31 @@ model:
             num_layers: 10
             positional_embedding: "rope"
             use_long_range_skip: true
+
             attn_config:
                 hidden_size: 256
                 num_heads: 8
                 num_kv_heads: 8
                 use_conditional_norm: false
                 cond_norm_hidden_size: 4
+                atten_dropout: 0.1
+                positional_embedding: "rope"
+
             ffn_config:
                 hidden_size: 1024
                 use_conditional_norm: false
                 cond_norm_hidden_size: 4
+        decoder:
+            hidden_features: 256
+            num_shared_layers: 3
+            output_heads:
+                force: 1
+                cd: 1
 
 dataset:
     name: "euler_pressure_field_new"
     metaname: "incompressible_fluids/euler_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_new"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_new" # changing this to /processed_euler_cp_full currently gives a cuda out of memory issue
     processed_folder: ""
     force_recompute_stats: false
     rand_dataset: true
@@ -104,7 +131,7 @@ optimizer:
     args:
         lr: 3e-4
         weight_decay: 1e-05
-        epoch: 3
+        epoch: 300
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"
@@ -116,7 +143,8 @@ optimizer:
         early_save_metric: "val"
 
 path:
-    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/platin.pt"
-    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/platin.png"
-    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/platin.png"
-    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/platin.csv"
+    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/model.pt"
+    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/loss.png"
+    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/results.png"
+    config_save_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/config.yaml"
+    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv"

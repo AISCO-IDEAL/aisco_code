@@ -3,6 +3,8 @@
 Reference: https://github.com/neuraloperator/neuraloperator/blob/main/neuralop/layers/integral_transform.py
 """
 
+from typing import cast
+
 import torch
 import torch.nn.functional as f
 from torch import nn
@@ -110,11 +112,12 @@ class IntegralTransform(nn.Module):
 
         num_sampled_edges = sampled_edge_index.shape[1]
         if num_sampled_edges == 0:
-            output_channels = self.channel_mlp.fcs[-1].out_features
+            last_fc = cast(nn.Linear, self.channel_mlp.fcs[-1])
+            output_channels = last_fc.out_features
             output_shape = [num_query_nodes, output_channels]
             if batch_x is not None and f_y is not None and f_y.ndim == 3:
                 pass
-            return torch.zeros(output_shape, device=device, dtype=self.channel_mlp.fcs[-1].weight.dtype)  # type: ignore[arg-type]
+            return torch.zeros(output_shape, device=device, dtype=last_fc.weight.dtype)
 
         query_idx = sampled_edge_index[1].long()
         source_idx = sampled_edge_index[0].long()
