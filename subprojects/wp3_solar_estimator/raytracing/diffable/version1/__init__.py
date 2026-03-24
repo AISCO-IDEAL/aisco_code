@@ -1,2 +1,2 @@
-from subprojects.wp3_solar_estimator.raytracing.diffable.version1.mesh_ray_visibility import mesh_visibility
-from subprojects.wp3_solar_estimator.raytracing.diffable.version1.sdf_ray_visibility import sdf_visibility
+from subprojects.wp3_solar_estimator.raytracing.diffable.version1.mesh_ray_visibility_v1 import mesh_visibility_v1
+from subprojects.wp3_solar_estimator.raytracing.diffable.version1.sdf_ray_visibility_v1 import sdf_visibility_v1

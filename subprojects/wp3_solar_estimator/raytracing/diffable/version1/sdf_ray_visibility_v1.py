@@ -23,7 +23,7 @@ Both are fully differentiable through the SDF network weights θ.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 import torch
 
@@ -143,14 +143,14 @@ def _march_absorption(
 # ---------------------------------------------------------------------------
 
 
-def sdf_visibility(
-    sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None,
+def sdf_visibility_v1(
+    sdf_fn: Callable[[torch.Tensor], torch.Tensor],
     vertices: torch.Tensor,
     faces: torch.Tensor,
     sun_dir: torch.Tensor,
     *,
-    normal_source: str = "mesh",  # expects "mesh" or "sdf"
-    method: str = "sigmoid",  # expects "sigmoid" or "absorption"
+    normal_source: Literal["mesh", "sdf"] = "mesh",
+    method: Literal["sigmoid", "absorption"] = "sigmoid",
     # Sigmoid method params
     sdf_cfg: dict[str, Any],
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -185,9 +185,7 @@ def sdf_visibility(
         centroids:   (F, 3) face centroids
     """
 
-    print("Using 'sdf_visibility' version 2")
-
-    assert sdf_fn is not None, "sdf_fn cannot be None for sdf_ray_visibility computation."
+    print("Using 'sdf_visibility' version 1")
 
     alpha = float(sdf_cfg["alpha"])
     beta = float(sdf_cfg["beta"])

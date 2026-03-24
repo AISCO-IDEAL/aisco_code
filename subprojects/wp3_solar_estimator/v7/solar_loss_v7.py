@@ -24,6 +24,10 @@ from subprojects.wp3_solar_estimator.australia.route_v2 import RouteV2
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
+from subprojects.wp3_solar_estimator.raytracing.diffable.version1.mesh_ray_visibility_v1 import mesh_visibility_v1
+from subprojects.wp3_solar_estimator.raytracing.diffable.version1.sdf_ray_visibility_v1 import sdf_visibility_v1
+from subprojects.wp3_solar_estimator.raytracing.diffable.version2.mesh_ray_visibility_v2 import mesh_visibility_v2
+from subprojects.wp3_solar_estimator.raytracing.diffable.version2.sdf_ray_visibility_v2 import sdf_visibility_v2
 from subprojects.wp3_solar_estimator.utils.solar_utils import averaging_solar_quality
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -109,18 +113,6 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         print("Warning: Empty vertices or faces in solar_mesh_loss_v7, returning zero loss")
         return torch.zeros((), device=vertices.device, dtype=vertices.dtype)
 
-    if raytracing_version.startswith("v"):
-        version_module = raytracing_version.lstrip("v")
-        module_path = f"subprojects.wp3_solar_estimator.raytracing.diffable.version{version_module}"
-        try:
-            visibility_module = __import__(module_path, fromlist=["mesh_visibility", "sdf_visibility"])
-            mesh_visibility = visibility_module.mesh_visibility
-            sdf_visibility = visibility_module.sdf_visibility
-        except ImportError as err:
-            raise ImportError(
-                f"Failed to import raytracing functions for version {raytracing_version} from {module_path}"
-            ) from err
-
     # Optional sun-vector subsampling (reduces compute)
     sun_batch_size = int(sun_batching_cfg.get("sun_batch_size", 1))
     subsample_fraction = float(sun_batching_cfg.get("sun_subsample_fraction", 1.0))
@@ -192,29 +184,41 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
 
         ### Raytracing to get visibility
         if raytracing_cfg["method"] == "mesh":
-            visibility, _, _ = mesh_visibility(
-                vertices, faces, sun_batch, normal_source=str(raytracing_cfg["normal_source"]), mesh_cfg=raytracing_cfg["mesh"]
-            )  # (F,) in range [0, 1]
+            if raytracing_version == "v1":
+                visibility, _, _ = mesh_visibility_v1(
+                    vertices, faces, sun_batch, normal_source=str(raytracing_cfg["normal_source"]), mesh_cfg=raytracing_cfg["mesh"]
+                )  # (F,) in range [0, 1]
+            elif raytracing_version == "v2":
+                visibility, _, _ = mesh_visibility_v2(
+                    vertices, faces, sun_batch, normal_source=str(raytracing_cfg["normal_source"]), mesh_cfg=raytracing_cfg["mesh"]
+                )  # (F,) in range [0, 1]
+            else:
+                raise ValueError(f"Unknown raytracing version: {raytracing_version}")
         elif raytracing_cfg["method"] == "sdf":
             assert sdf_fn is not None, "sdf_fn must be provided for sdf_visibility"
-            visibility, _, _ = sdf_visibility(
-                sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch, sdf_cfg=raytracing_cfg["sdf"]
-            )  # (F,) in range [0, 1]
+            if raytracing_version == "v1":
+                visibility, _, _ = sdf_visibility_v1(
+                        sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch, sdf_cfg=raytracing_cfg["sdf"]
+                    )  # (F,) in range [0, 1]
+            elif raytracing_version == "v2":
+                visibility, _, _ = sdf_visibility_v2(
+                    sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch, sdf_cfg=raytracing_cfg["sdf"]
+                )  # (F,) in range [0, 1]
+            else:
+                raise ValueError(f"Unknown raytracing version: {raytracing_version}")
         else:
             raise ValueError(f"Unknown raytracing method: {raytracing_cfg['method']}")
 
-        ### Given visibility for one sun_vector, compute loss for each face
-
-        # simple dot product per face (sun_direction dot normals = quality)
-        qualities = sun_batch @ face_normals_unit.t()  # (F,) quality of each face, not accounting shading
-        numerical_factor = 1 - _lambda * torch.pow(1 + epsilon - visibility, 1 / kappa)
-        # Loss already including penalty term in the numerical factor (take care of correct ordering of tensors!)
-        losses += face_area_mm2 * soft_weights[original_order] * qualities * numerical_factor  # 3 times (F,) --> (F,)
-
-        # visualisation storages, don't track gradients for these
-        # Divide by S at the end to get average visibility and penalty across sun directions for visualization
-        visual_aggregate_visibility += visibility.detach().clone()
-        visual_aggregate_penalty += numerical_factor.detach().clone() - 1
+    ### Given visibility for one sun_vector, compute loss for each face
+    # simple dot product per face (sun_direction dot normals = quality)
+    qualities = sun_batch @ face_normals_unit.t()  # (F,) quality of each face, not accounting shading
+    numerical_factor = 1 - _lambda * torch.pow(1 + epsilon - visibility, 1 / kappa)
+    # Loss already including penalty term in the numerical factor (take care of correct ordering of tensors!)
+    losses += face_area_mm2 * soft_weights[original_order] * qualities * numerical_factor  # 3 times (F,) --> (F,)
+    # visualisation storages, don't track gradients for these
+    # Divide by S at the end to get average visibility and penalty across sun directions for visualization
+    visual_aggregate_visibility += visibility.detach().clone()
+    visual_aggregate_penalty += numerical_factor.detach().clone() - 1
 
     ### Finalisation of loss terms
 
