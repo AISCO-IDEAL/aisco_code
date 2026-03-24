@@ -138,7 +138,7 @@ def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float]
     :rtype: tuple[tuple[float, float, float], tuple[float, float, float]]
     """
     inner, _, _ = call_assembly(id_number)
-    inner_bounding_box = cq.Compound.makeCompound(inner).BoundingBox()
+    inner_bounding_box = inner.toCompound().BoundingBox()
 
     return (
         (inner_bounding_box.xmin, inner_bounding_box.ymin, inner_bounding_box.zmin),
