@@ -27,6 +27,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.mesh_sdf_grads import MeshSDFGrads
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.solar_v3_selection import SolarV3Selection
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
@@ -369,11 +370,12 @@ class SolarLossEstimator:
         self.rendering = bool(cfg["rendering"])
         self.visualiser: Visualiser | None
         self.renderSolar: SolarV3Selection | None
+        self.render_grads: MeshSDFGrads | None
         self.number_epochs: int | None
         self.model_hash: str | None
         self.wandb_run_name: str | None
         self.rendering_dir: Path | None
-        if self.rendering and self.enable_wandb_logging:
+        if self.rendering:
             self.visualiser = Visualiser(
                 image_size=1024,
                 background_color=None,
@@ -384,6 +386,10 @@ class SolarLossEstimator:
                 up=[0.0, 0.0, 1.0],
             )  # Will not be used if rendering is False
             self.renderSolar = SolarV3Selection(visualiser=self.visualiser)  # Will not be used if rendering is False
+            detached_cfg = load_config(v="v1", cfg_name="neural_renderer_v0.yaml").get("detached_modes", {})
+            self.render_grads = (
+                MeshSDFGrads(visualiser=self.visualiser) if detached_cfg.get("MeshSDF_grads", {}).get("enabled", False) else None
+            )
             train_cfg = load_config(v="v1", cfg_name="training_v0_config.yaml")["training_params"]
             self.number_epochs = int(train_cfg["num_epochs"])
             self.model_hash = None  # Will be set when solar_loss is first called with a model
@@ -393,6 +399,7 @@ class SolarLossEstimator:
         else:
             self.visualiser = None
             self.renderSolar = None
+            self.render_grads = None
             self.number_epochs = None
             self.model_hash = None
             self.wandb_run_name = None
@@ -439,7 +446,7 @@ class SolarLossEstimator:
                 device=self.device,
             )
             self.extractor.set_grid(self.bbox, self.resolution)
-        elif method == "sparse_sdf":
+        elif method == "sparse_dmc":
             self.extractor = SparseDMCExtractor(bbox=self.bbox, resolution=self.resolution, device=self.device)
             self.extractor.set_grid(self.bbox, self.resolution)
         else:
@@ -455,7 +462,7 @@ class SolarLossEstimator:
         if self.method in {"mesh_sdf", "mc"}:
             assert isinstance(self.extractor, MeshSDFExtractor)
             return self.extractor.extract_mesh(model)
-        if self.method == "sparse_sdf":
+        if self.method == "sparse_dmc":
             assert isinstance(self.extractor, SparseDMCExtractor)
             return self.extractor.extract_mesh(model)
         raise ValueError(f"Unknown method: {self.method}")
@@ -478,28 +485,16 @@ class SolarLossEstimator:
         )
 
         # Initialize model_hash and rendering_dir on first call
-        if self.rendering and self.enable_wandb_logging and self.model_hash is None:
+        if self.rendering and self.model_hash is None:
             self.model_hash = dict_hashing(model.get_model_info_dict())
-            if self.wandb_run_name is not None:
-                if self.general_config["general_info"].get("run_locally", False):
-                    self.rendering_dir = (
-                        Path(self.storage_paths["local_storage_dir"])
-                        / self.model_hash
-                        / reformat_wandb_name(self.wandb_run_name)
-                        / "solar_loss_rendering"
-                    )
-                else:
-                    self.rendering_dir = (
-                        Path(self.storage_paths["storage_dir"])
-                        / self.model_hash
-                        / reformat_wandb_name(self.wandb_run_name)
-                        / "solar_loss_rendering"
-                    )
-                print(f"Rendering enabled: saving to {self.rendering_dir}")
-                os.makedirs(self.rendering_dir, exist_ok=True)
+            run_name = reformat_wandb_name(self.wandb_run_name) if self.wandb_run_name else "no_wandb_run"
+            if self.general_config["general_info"].get("run_locally", False).lower() == "true":
+                storage_path = self.storage_paths["local_storage_dir"]
             else:
-                print("Warning: Wandb logging is enabled but no active run found, solar_loss_rendering will not be saved")
-                self.rendering_dir = None
+                storage_path = self.storage_paths["storage_dir"]
+            self.rendering_dir = Path(storage_path) / self.model_hash / run_name / "solar_loss_rendering"
+            print(f"Rendering enabled: saving to {self.rendering_dir}")
+            os.makedirs(self.rendering_dir, exist_ok=True)
             print(f"Model hash: {self.model_hash}")
             print(f"Wandb run name: {self.wandb_run_name}")
 
@@ -552,11 +547,26 @@ class SolarLossEstimator:
                 return loss
 
             assert isinstance(self.extractor, MeshSDFExtractor)  # Get mypy to shut up, confirm we are using MeshSDF
-            _vertices, _faces, loss, surrogate_loss, _vertice_grads = self.extractor.extract_and_compute_loss(
+            vertices, faces, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
                 sdf_model=model,
                 loss_fn=wrapper_solar_loss,
                 enable_backward=True,
             )
+            if self.rendering and self.render_grads is not None:
+                self.render_grads.update(
+                    optimization_state={
+                        "vertices": vertices,
+                        "faces": faces,
+                        "vertice_grads": dL_dvertices,
+                    }
+                )
+                if (
+                    self.enable_wandb_logging
+                    and self.number_epochs is not None
+                    and self.counter == self.number_epochs
+                    and self.rendering_dir is not None
+                ):
+                    self.render_grads.finalize(output_dir=self.rendering_dir, file_name="mesh_sdf_grads.gif")
 
         else:
             vertices, faces = self.extract_mesh(model)

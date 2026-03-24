@@ -1,5 +1,6 @@
 import torch
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import upload_neural_renderer_gif
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base_class import RenderingMode
@@ -7,7 +8,8 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visual
 
 
 class MeshSDFGrads(RenderingMode):
-    def __init__(self, visualiser: Visualiser):
+    def __init__(self, visualiser: Visualiser, intensity: float = 1.0):
+        self.intensity = intensity
         config = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")["detached_modes"]["MeshSDF_grads"]["config"]
         super().__init__(visualiser, config)
 
@@ -48,11 +50,13 @@ class MeshSDFGrads(RenderingMode):
         # Make color range go from a standard dark grey (zero, in the middle of the range) to light yellow (positive, max value) and dark blue (negative, min value)
 
         base_grey = torch.tensor([0.5, 0.5, 0.5], device=faces.device)
-        max_color = torch.tensor([1.0, 1.0, 0.0], device=faces.device)  # light yellow
-        min_color = torch.tensor([0.0, 0.0, 0.5], device=faces.device)  # dark blue
-        colors = base_grey.unsqueeze(0) + (dot_products / (dot_products.abs().max() + 1e-8)).unsqueeze(-1) * (
-            max_color - min_color
-        ).unsqueeze(0)
+        max_color = torch.tensor([0.25, 1.0, 0.25], device=faces.device)  # Green for pushing out
+        min_color = torch.tensor([1, 0.0, 0.0], device=faces.device)  # Red for pushing in
+
+        norm = dot_products / (dot_products.abs().max() + 1e-8)
+        norm = torch.clamp(norm * self.intensity, -1.0, 1.0)
+
+        colors = base_grey.unsqueeze(0) + norm.unsqueeze(-1) * (max_color - min_color).unsqueeze(0)
         self.visualiser.vertex_colors_to_textures(vertex_colors=colors, faces=faces)
 
         image = self._render(
@@ -103,3 +107,10 @@ class MeshSDFGrads(RenderingMode):
         if delete:
             self.clear_frames()
         print(f"    Saved sample frames to {output_dir}")
+
+    def log_single_image_to_wandb(self, optimization_state: dict, epoch_name: int) -> None:
+        try:
+            self.update(optimization_state)
+            wandb.log({"epoch": epoch_name, "Aero-Gradients": wandb.Image(self.frame_storage[-1])})
+        except Exception as e:
+            print(f"Couldnt produce Gradient-immage in Epoch {epoch_name} for Reason {e}")
