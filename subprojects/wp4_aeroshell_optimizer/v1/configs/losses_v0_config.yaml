@@ -1,21 +1,23 @@
 general_info:
-  CSE: "True"  # Cruising Speed Estimation  #  total_loss.py: self.losses_config["general_info"]["CSE"] == "True"
-  ALM: "True"  # Augmented Lagrangian Method  #  total_loss.py: self.losses_config["general_info"]["ALM"] == "True"
-  alm_thresholds: [0.1, 0.1, 0.1]  # thresholds for constraint losses [bb, eikonal, smoothness]  #  total_loss.py: self.losses_config["general_info"]["alm_thresholds"]
-  initial_lambda: 0.01  # initial value for lambda in ALM  #  total_loss.py: alm_info.get("initial_lambda", 0.01)
-  initial_mu: 1.0  # initial value for mu in ALM  #  total_loss.py: alm_info.get("initial_mu", 1.0)
-  initial_nu: 1.0  # initial value for nu in ALM (CSE penalty parameter)  #  total_loss.py: alm_info.get("initial_nu", 1.0)
-  alpha: 0.99  # factor to increase mu in ALM if constraint not met  #  total_loss.py: alm_info.get("alpha", 0.99)
-  gamma: 0.01  # parameter for ALM penalty update  #  total_loss.py: alm_info.get("gamma", 0.01)
+  # config_debugging: "True"  # NOT USED — never read by any code in src/
+  CSE: "True"  # Cruising Speed Estimation  # USED — total_loss.py: self.losses_config["general_info"]["CSE"] == "True"
+  ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self.losses_config["general_info"]["ALM"] == "True"
+  ALM_aggressive: "False" # capu version of ALM
+  alm_thresholds: [0.1, 0.1, 0.1]  # thresholds for constraint losses [bb, eikonal, smoothness]  # USED — total_loss.py: self.losses_config["general_info"]["alm_thresholds"]
+  initial_lambda: 0.01  # initial value for lambda in ALM  # USED — total_loss.py: alm_info.get("initial_lambda", 0.01)
+  initial_mu: 1.0  # initial value for mu in ALM  # USED — total_loss.py: alm_info.get("initial_mu", 1.0)
+  initial_nu: 1.0  # initial value for nu in ALM (CSE penalty parameter)  # USED — total_loss.py: alm_info.get("initial_nu", 1.0)
+  alpha: 0.99  # factor to increase mu in ALM if constraint not met  # USED — total_loss.py: alm_info.get("alpha", 0.99)
+  gamma: 0.01  # parameter for ALM penalty update  # USED — total_loss.py: alm_info.get("gamma", 0.01)
 
-losses: # [compute: bool, weight: float, path: str]  #  total_loss.py dynamically loads and instantiates all losses with compute=1
+losses: # [compute: bool, weight: float, path: str]  # USED — total_loss.py dynamically loads and instantiates all losses with compute=1
   # NOTE: that for each loss class, only one version should have compute=True
   aero:
     # frontal_area_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/frontal_area_v0.py"]  # NOT ACTIVE (compute=0)
     # crude_estimator_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/crude_estimator_v0.py"]  # NOT ACTIVE (compute=0)
     null_loss_aero_v1_: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
     gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/gaot_loss.py"]
-  
+
   bb:
     # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v1.py"]
     # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15
