@@ -1022,6 +1022,8 @@ class StaticTrainer3D(TrainerBase):
         else:
             all_batch_targets_denorm = []
             all_batch_preds_denorm = []
+        all_field_preds_denorm: list[torch.Tensor] = []
+        all_field_targets_denorm: list[torch.Tensor] = []
         _plot_coords, plot_gtr, plot_prd = None, None, None
 
         # Inference speed measurement variables
@@ -1092,6 +1094,9 @@ class StaticTrainer3D(TrainerBase):
                             parts.append(f"Force={pred_denorm['force'][0].item():.4f}")
                         if "cd" in pred_denorm:
                             parts.append(f"Cd={pred_denorm['cd'][0].item():.4f}")
+                        if "field" in pred_norm:
+                            fp = pred_norm["field"]
+                            parts.append(f"Field nodes={fp.shape[0]}, range=[{fp.min().item():.4f}, {fp.max().item():.4f}]")
                         logging.getLogger(__name__).info(f"First test sample predictions (denorm): {', '.join(parts)}")
 
                     for head_name, head_pred_dn in pred_denorm.items():
@@ -1100,6 +1105,20 @@ class StaticTrainer3D(TrainerBase):
                         if valid.any():
                             all_batch_targets_denorm[head_name].append(head_target_dn[valid].cpu())
                             all_batch_preds_denorm[head_name].append(head_pred_dn[valid].detach().cpu())
+
+                    # --- Collect field predictions ---
+                    if "field" in pred_norm and hasattr(batch, "x") and batch.x is not None:
+                        field_pred_norm = pred_norm["field"]
+                        field_target_norm = batch.x.to(self.device)
+                        # Denormalize field using u_mean / u_std
+                        u_mean_dev = self.u_mean.to(self.device)
+                        u_std_dev = self.u_std.to(self.device)
+                        field_pred_dn = field_pred_norm * u_std_dev + u_mean_dev
+                        field_target_dn = field_target_norm * u_std_dev + u_mean_dev
+                        valid_field = ~torch.isnan(field_target_dn)
+                        if valid_field.any():
+                            all_field_preds_denorm.append(field_pred_dn[valid_field].detach().cpu())
+                            all_field_targets_denorm.append(field_target_dn[valid_field].cpu())
                 else:
                     target_norm = batch.y
 
@@ -1162,6 +1181,7 @@ class StaticTrainer3D(TrainerBase):
                     )
                     logging.getLogger(__name__).info(f"Saved {head_name} predictions to {csv_path}")
 
+                # Use field predictions as primary if scalar heads are empty
                 full_preds = torch.tensor([0.0])
                 full_targets = torch.tensor([0.0])
                 for head_name in all_batch_preds_denorm:
@@ -1169,6 +1189,11 @@ class StaticTrainer3D(TrainerBase):
                         full_preds = torch.cat(all_batch_preds_denorm[head_name], dim=0)
                         full_targets = torch.cat(all_batch_targets_denorm[head_name], dim=0)
                         break
+                else:
+                    # No scalar heads had data — fall back to field
+                    if all_field_preds_denorm:
+                        full_preds = torch.cat(all_field_preds_denorm, dim=0)
+                        full_targets = torch.cat(all_field_targets_denorm, dim=0)
             else:
                 assert isinstance(all_batch_preds_denorm, list)
                 assert isinstance(all_batch_targets_denorm, list)
@@ -1312,4 +1337,23 @@ class StaticTrainer3D(TrainerBase):
                 np.savetxt(csv_save_path, results_array, delimiter=",", header="True_Drag,Predicted_Drag", comments="")
                 logging.getLogger(__name__).info(f"Saved all test predictions to {csv_save_path}")
 
-            logging.getLogger(__name__).info("Skipping 3D plotting for scalar drag prediction")
+            # --- Field-level metrics ---
+            if all_field_preds_denorm:
+                field_preds_all = torch.cat(all_field_preds_denorm, dim=0)
+                field_targets_all = torch.cat(all_field_targets_denorm, dim=0)
+                field_diff = field_preds_all - field_targets_all
+                field_mse = torch.mean(field_diff**2).item()
+                field_mae = torch.mean(torch.abs(field_diff)).item()
+                field_rel_l2 = (
+                    torch.linalg.norm(field_diff.float()) / (torch.linalg.norm(field_targets_all.float()) + EPSILON)
+                ).item() * 100.0
+                logging.getLogger(__name__).info("--- Field Metrics (denormalized) ---")
+                logging.getLogger(__name__).info(f"  Field MSE:          {field_mse:.6f}")
+                logging.getLogger(__name__).info(f"  Field MAE:          {field_mae:.6f}")
+                logging.getLogger(__name__).info(f"  Field Rel L2 (%):   {field_rel_l2:.4f}")
+                logging.getLogger(__name__).info(f"  Field n_nodes:      {field_preds_all.shape[0]}")
+                self.tracker.log_metrics(
+                    {"test/field_mse": field_mse, "test/field_mae": field_mae, "test/field_rel_l2_percent": field_rel_l2}
+                )
+            else:
+                logging.getLogger(__name__).info("Skipping 3D plotting for scalar drag prediction")
