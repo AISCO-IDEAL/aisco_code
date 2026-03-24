@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (
     upload_neural_renderer_gif,
     upload_neural_renderer_image,

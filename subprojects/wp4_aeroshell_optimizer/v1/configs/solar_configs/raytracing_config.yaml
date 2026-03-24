@@ -17,10 +17,10 @@ RaytracingConfigV1:
   mesh:
     beta: 10.0
     gamma: 20.0
-    margin_factor: 1e-3
+    margin_factor: 0.001
     origin_offset_eps: 1e-3
-    sun_distance_factor: 10.0
-    face_chunk_size: 512
+    sun_distance_factor: 2.0
+    face_chunk_size: 128
     miss_t: 1e9
 
 #RaytracingConfigV2: accessed in solar_v6.py, with selection of version via SolarLossConfigV6's raytracing_version key
