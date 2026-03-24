@@ -108,9 +108,9 @@ dataset:
     processed_folder: ""
     force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
-    train_size: 70
-    val_size: 15
-    test_size: 15
+    train_size: 110
+    val_size: 23
+    test_size: 20
     batch_size: 4  # reduced from 12 to avoid OOM on larger CP-full meshes
     num_workers: 4
     shuffle: true
@@ -122,7 +122,7 @@ dataset:
     use_rescale_new: true
     active_variables:
     order_file_name:
-    active_heads: ["force", "cd", "pressure"]
+    active_heads: []  # empty = field-only (disable force/cd scalar heads)
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
     subsample_nodes: 50000     # randomly sample 50k nodes per load if sample exceeds this
 
@@ -131,7 +131,7 @@ optimizer:
     args:
         lr: 3e-4
         weight_decay: 1e-05
-        epoch: 300
+        epoch: 100
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"

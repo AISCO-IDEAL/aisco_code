@@ -596,6 +596,17 @@ class StaticTrainer3D(TrainerBase):
             output_size=self.num_output_channels,
         )
 
+        # When active_heads is set, remove scalar heads that are not active
+        if self.active_heads is not None:
+            decoder_cfg = config_dict.get("decoder", {})
+            orig_heads = decoder_cfg.get("output_heads", {"force": 1, "cd": 1})
+            filtered = {k: v for k, v in orig_heads.items() if k in self.active_heads}
+            decoder_cfg["output_heads"] = filtered
+            config_dict["decoder"] = decoder_cfg
+            logging.getLogger(__name__).info(
+                f"Filtered output_heads by active_heads={self.active_heads}: {orig_heads} -> {filtered}"
+            )
+
         self.model = GAOT3D(config=config_dict)
         self.model.to(self.device)
 
@@ -839,7 +850,7 @@ class StaticTrainer3D(TrainerBase):
         if isinstance(pred, dict):
             # --- Scalar head loss ---
             targets = {"force": batch.force, "cd": batch.cd}
-            if self.active_heads:
+            if self.active_heads is not None:
                 targets = {k: v for k, v in targets.items() if k in self.active_heads}
             scalar_loss = masked_multi_head_loss(pred, targets)
 
@@ -912,7 +923,7 @@ class StaticTrainer3D(TrainerBase):
             loss = loss + field_weight * field_loss
         return loss
 
-    def validate(self, loader: DataLoader):
+    def validate(self, loader: DataLoader):  # noqa: PLR0912, PLR0915
         self.model.eval()
         total_loss = 0.0
         total_rel_l2 = 0.0
@@ -928,7 +939,7 @@ class StaticTrainer3D(TrainerBase):
                 if isinstance(pred, dict):
                     # --- Scalar loss ---
                     targets = {"force": batch.force, "cd": batch.cd}
-                    if self.active_heads:
+                    if self.active_heads is not None:
                         targets = {k: v for k, v in targets.items() if k in self.active_heads}
 
                     loss = masked_multi_head_loss(pred, targets)
@@ -944,10 +955,17 @@ class StaticTrainer3D(TrainerBase):
                             head_mse = loss_fn_none(pred[head_name][valid], gt_head[valid]).mean().item()
                             head_losses[head_name] = head_losses.get(head_name, 0.0) + head_mse
 
-                    # For Relative L2, we use the primary head (e.g., 'force')
-                    primary_key = self.active_heads[0] if self.active_heads else next(iter(pred.keys()))
-                    p = pred[primary_key]
-                    t = targets[primary_key]
+                    # For Relative L2: use primary scalar head, or fall back to field
+                    if targets:
+                        primary_key = self.active_heads[0] if self.active_heads else next(iter(targets.keys()))
+                        p = pred[primary_key]
+                        t = targets[primary_key]
+                    elif "field" in pred and hasattr(batch, "x") and batch.x is not None:
+                        p = pred["field"]
+                        t = batch.x.to(self.device)
+                    else:
+                        p = next(iter(pred.values()))
+                        t = p.detach()  # no target available, rel_l2 = 0
 
                     # --- Field loss ---
                     loss = self._add_field_loss(batch, pred, loss, head_losses)

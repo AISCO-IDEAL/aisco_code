@@ -24,12 +24,13 @@ from functools import reduce
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import torch
+from main import FileParser
+from omegaconf import OmegaConf
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
 from src.dataloader.pyg_datasets import VTKMeshDataset
 from src.dataloader.pyg_transforms import RescalePosition
-from src.model import get_model
-from src.utils.file_parser import FileParser
+from src.model.gaot_3d import GAOT3D
 
 
 def mb(nbytes):
@@ -52,7 +53,13 @@ def _profile_model(model_config, device, dtype, total_vram_mb):
     torch.cuda.reset_peak_memory_stats(device)
     mem_before = torch.cuda.memory_allocated(device)
 
-    model = get_model(model_config).to(device).to(dtype)
+    args = model_config["args"]
+    if isinstance(args, dict):
+        cfg = dict(args)
+    else:
+        container = OmegaConf.to_container(args, resolve=True)
+        cfg = dict(container) if isinstance(container, dict) else {}
+    model = GAOT3D(config=cfg).to(device).to(dtype)
 
     mem_after = torch.cuda.memory_allocated(device)
     model_mem = mem_after - mem_before
@@ -83,9 +90,16 @@ def _profile_data(dataset_config, device, total_vram_mb):
     print("\n" + "=" * 70)
     print("Loading one training batch...")
 
+    data_root = dataset_config["base_path"]
+    order_file_name = dataset_config.get("order_file_name")
+    if order_file_name:
+        order_file = os.path.join(data_root, order_file_name)
+    else:
+        order_file = os.path.join(data_root, "order_" + dataset_config["processed_folder"] + ".txt")
+
     ds = VTKMeshDataset(
-        root=dataset_config["base_path"],
-        order_file=None,
+        root=data_root,
+        order_file=order_file,
         dataset_config=dataset_config,
         split="train",
         transform=RescalePosition(),
@@ -172,12 +186,15 @@ def main():
     dataset_config = parsed.dataset
     model_config = parsed.model
 
-    device = torch.device(setup_config.get("device", "cuda:0"))
-    dtype = getattr(torch, setup_config.get("dtype", "torch.float32").replace("torch.", ""))
-
     if not torch.cuda.is_available():
         print("ERROR: No CUDA device available")
         sys.exit(1)
+
+    device = torch.device(setup_config.get("device", "cuda:0"))
+    # Force CUDA init before any memory queries
+    torch.cuda.set_device(device)
+    torch.cuda.init()
+    dtype = getattr(torch, setup_config.get("dtype", "torch.float32").replace("torch.", ""))
 
     torch.cuda.reset_peak_memory_stats(device)
     torch.cuda.empty_cache()
@@ -190,11 +207,12 @@ def main():
     optimizer = _profile_optimizer(model, param_mem, total_vram_mb)
     batch, data_mem = _profile_data(dataset_config, device, total_vram_mb)
 
-    # Latent tokens
+    # Latent tokens: shape [n_tokens, 3] — same as trainer's self.latent_tokens
+    # The model internally does .repeat(num_graphs, 1) to batch them
     latent_shape = model_config["args"]["latent_tokens"]
     n_tokens = reduce(operator.mul, latent_shape, 1)
     mem_before_tokens = torch.cuda.memory_allocated(device)
-    latent_tokens = torch.randn(batch.num_graphs, n_tokens, 3, device=device, dtype=dtype)
+    latent_tokens = torch.randn(n_tokens, 3, device=device, dtype=dtype)
     mem_after_tokens = torch.cuda.memory_allocated(device)
     print_memory_line("Latent tokens", mb(mem_after_tokens - mem_before_tokens), total_vram_mb)
 
