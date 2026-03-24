@@ -4,6 +4,8 @@ import datetime
 import glob
 import json
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import torch
@@ -13,7 +15,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import Ba
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing, str_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import (
-    get_diff_mesh,
+    get_diff_mesh,  # noqa: F401 still used in commented code
     kaolin_to_PLY,
 )
 
@@ -107,34 +109,75 @@ def allround_save_data(  # noqa: PLR0915
     if save_mesh:
         # get a model using kaolin conversions
         # Use a copy to avoid disrupting training
+        # temp_model = copy.deepcopy(model).cpu()  # noqa: ERA001 fsanche: im leaving this code because it works. if marching cubes with threads fails, return to this one.
+        # grid_res = 64     # noqa: ERA001
+        # verts, faces = get_diff_mesh(temp_model, grid_res=grid_res, device="cpu")  # fsanche: keeping this in case marching cubes doest work. this one is the original.   # noqa: ERA001
+        # if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
+        #     print(f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")   # noqa: ERA001
+        # kaolin_to_PLY(verts, faces, filename=f"{wandb_run}_{epoch_str}_get_diff_mesh_GridRes_{grid_res}.ply", mesh_dir=mesh_dir, verbose=verbose) # noqa: ERA001
+
+        def run_marching_cubes_and_save(resolution):
+            thread_label = f"[THREAD res={resolution}]"
+            start = time.time()
+
+            try:
+                print(f"{thread_label} Started worker.", flush=True)
+
+                extractor = MarchingCubesExtractor(device="cpu", verbose=False)
+
+                extractor.set_grid(
+                    bbox=[[-5000, 5000], [-5000, 5000], [-5000, 5000]],
+                    resolution=resolution,
+                )
+
+                print(f"{thread_label} Grid set. Extracting mesh...", flush=True)
+
+                verts, faces = extractor.extract_mesh(
+                    temp_model,
+                    isovalue=0.0,
+                    batch_size=8192,
+                )
+
+                print(
+                    f"{thread_label} Extraction done | "
+                    f"marching_cubes: {verts.shape[0]} verts, {faces.shape[0]} faces",
+                    flush=True,
+                )
+
+                filename = f"{wandb_run}_{epoch_str}__marching_cubes_GridRes_{resolution}.ply"
+                output_path = mesh_dir / filename
+
+                if output_path.exists():
+                    print(f"{thread_label} Overwriting {output_path}", flush=True)
+
+                print(f"{thread_label} Saving mesh...", flush=True)
+
+                kaolin_to_PLY(
+                    verts.clone(),
+                    faces.clone(),
+                    filename=filename,
+                    mesh_dir=mesh_dir,
+                    verbose=verbose,
+                )
+
+                end = time.time()
+                print(f"{thread_label} Done in {end - start:.3f}s", flush=True)
+
+            except Exception as exc:
+                print(f"{thread_label} FAILED: {exc}", flush=True)
+
+
+        # copy model once
         temp_model = copy.deepcopy(model).cpu()
-        grid_res = 64
-        verts, faces = get_diff_mesh(temp_model, grid_res=grid_res, device="cpu")  # fsanche: keeping this in case marching cubes doest work. this one is the original.
 
-        diff_vertices = verts.shape[0] #added
-        diff_faces = faces.shape[0] #added
+        resolutions = [300]
 
-        if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
-            print(f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
+        # limit to max 20 concurrent threads
+        executor = ThreadPoolExecutor(max_workers=20)
 
-        kaolin_to_PLY(verts, faces, filename=f"{wandb_run}_{epoch_str}_get_diff_mesh_GridRes_{grid_res}.ply", mesh_dir=mesh_dir, verbose=verbose)
-
-        # get a model using kaolin conversions
-        # Use a copy to avoid disrupting training
-        temp_model = copy.deepcopy(model).cpu()
-        # verts, faces = get_diff_mesh(temp_model, grid_res=64, device="cpu")  # noqa: ERA001 # fsanche: keeping this in case marching cubes doest work. this one is the original.
-        resolution = 64
-        extractor = MarchingCubesExtractor(device="cpu", verbose=False)
-        extractor.set_grid(
-            bbox=[[-5000, 5000], [-5000, 5000], [-5000, 5000]],
-            resolution= resolution,
-        )
-        verts, faces = extractor.extract_mesh(temp_model, isovalue=0.0, batch_size=8192)
-        print(f"Res diff: {grid_res}| Res Marching cubes: {resolution}| get_diff_mesh: {diff_vertices} vertices, {diff_faces} faces | marching_cubes: {verts.shape[0]} vertices, {faces.shape[0]} faces") #added
-        if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
-            print(f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
-
-        kaolin_to_PLY(verts, faces, filename=f"{wandb_run}_{epoch_str}__marching_cubes_GridRes:_{resolution}.ply", mesh_dir=mesh_dir, verbose=verbose)
+        for res in resolutions:
+            executor.submit(run_marching_cubes_and_save, res)
+            print(f"[MAIN] Submitted job for res={res}", flush=True)
 
 
     ######################
