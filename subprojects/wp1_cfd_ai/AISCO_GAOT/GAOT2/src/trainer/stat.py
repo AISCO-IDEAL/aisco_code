@@ -1139,12 +1139,17 @@ class StaticTrainer3D(TrainerBase):
                                 s_mse = torch.mean(s_diff**2).item()
                                 s_mae = torch.mean(torch.abs(s_diff)).item()
                                 s_rel_l2 = (
-                                    torch.linalg.norm(s_diff.float())
-                                    / (torch.linalg.norm(s_tgt[s_valid].float()) + EPSILON)
+                                    torch.linalg.norm(s_diff.float()) / (torch.linalg.norm(s_tgt[s_valid].float()) + EPSILON)
                                 ).item() * 100.0
                                 fname = filenames[s_idx] if filenames is not None else f"sample_{len(field_sample_metrics)}"
                                 field_sample_metrics.append(
-                                    {"filename": fname, "n_nodes": s_valid.sum().item(), "MSE": s_mse, "MAE": s_mae, "Rel_L2_pct": s_rel_l2}
+                                    {
+                                        "filename": fname,
+                                        "n_nodes": s_valid.sum().item(),
+                                        "MSE": s_mse,
+                                        "MAE": s_mae,
+                                        "Rel_L2_pct": s_rel_l2,
+                                    }
                                 )
                 else:
                     target_norm = batch.y
