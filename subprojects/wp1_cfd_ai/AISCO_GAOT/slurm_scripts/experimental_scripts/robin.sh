@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G
-#SBATCH --gpus=rtx_4090:1
+#SBATCH --gpus=rtx_2080:1
 #SBATCH --output=/cluster/scratch/roarnold/scratch_logs/Robin_TEST_%j.out
 #SBATCH --error=/cluster/scratch/roarnold/scratch_logs/Robin_TEST_%j.err
 
@@ -77,7 +77,7 @@ cd /cluster/home/$USERNAME/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_wor
 ulimit -n 65536
 
 # Define your base config
-BASE_CONFIG="config/euler_field.yaml"
+BASE_CONFIG="config/euler_field_new.yaml"
 
 # Extract the 'name' parameter from the config
 RUN_NAME=$(grep "name:" $BASE_CONFIG | head -1 | awk '{print $2}' | tr -d '"')
