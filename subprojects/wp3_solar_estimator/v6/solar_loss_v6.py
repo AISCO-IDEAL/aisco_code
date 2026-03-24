@@ -52,6 +52,7 @@ def _compute_visibility_per_sun(
     sun_dirs: torch.Tensor,
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None,
     shading_cfg: dict[str, Any],
+    raytracing_cfg: dict[str, Any],
 ) -> torch.Tensor:
     """
     Compute per-face visibility for each sun direction.
@@ -59,12 +60,12 @@ def _compute_visibility_per_sun(
     Returns:
         visibility: (F, K) tensor in [0, 1]
     """
-    method = shading_cfg.get("method", "none")
+    method = str(raytracing_cfg["method"]).lower()
     if method == "none":
         return torch.ones((faces.shape[0], sun_dirs.shape[0]), device=vertices.device, dtype=vertices.dtype)
 
-    sun_batch_size = int(shading_cfg.get("sun_batch_size", 1))
-    normal_source = shading_cfg.get("normal_source", "mesh")
+    sun_batch_size: int = int(shading_cfg.get("sun_batch_size", 1))
+    normal_source: str = str(raytracing_cfg["normal_source"]).lower()
 
     vis_chunks: list[torch.Tensor] = []
     for start in range(0, sun_dirs.shape[0], sun_batch_size):
@@ -75,38 +76,40 @@ def _compute_visibility_per_sun(
         for i in range(sun_chunk.shape[0]):
             sun_dir = sun_chunk[i]
             if method == "mesh":
+                mesh_cfg = raytracing_cfg["mesh"]
                 vis, _, _ = mesh_visibility(
                     vertices,
                     faces,
                     sun_dir,
                     sdf_fn=sdf_fn,
                     normal_source=normal_source,
-                    beta=float(shading_cfg.get("mesh_beta", 10.0)),
-                    gamma=float(shading_cfg.get("mesh_gamma", 20.0)),
-                    margin_factor=float(shading_cfg.get("mesh_margin_factor", 1e-3)),
-                    origin_offset_eps=float(shading_cfg.get("mesh_origin_offset_eps", 1e-3)),
-                    sun_distance_factor=float(shading_cfg.get("mesh_sun_distance_factor", 10.0)),
-                    face_chunk_size=int(shading_cfg.get("mesh_face_chunk_size", 512)),
-                    miss_t=float(shading_cfg.get("mesh_miss_t", 1e9)),
+                    beta=float(mesh_cfg["beta"]),
+                    gamma=float(mesh_cfg["gamma"]),
+                    margin_factor=float(mesh_cfg["margin_factor"]),
+                    origin_offset_eps=float(mesh_cfg["origin_offset_eps"]),
+                    sun_distance_factor=float(mesh_cfg["sun_distance_factor"]),
+                    face_chunk_size=int(mesh_cfg["face_chunk_size"]),
+                    miss_t=float(mesh_cfg["miss_t"]),
                 )
             elif method == "sdf":
                 if sdf_fn is None:
                     raise ValueError("sdf_fn is required when shading method is 'sdf'")
+                sdf_cfg = raytracing_cfg["sdf"]
                 vis, _, _ = sdf_visibility(
                     sdf_fn,
                     vertices,
                     faces,
                     sun_dir,
                     normal_source=normal_source,
-                    method=shading_cfg.get("sdf_method", "sigmoid"),
-                    alpha=float(shading_cfg.get("sdf_alpha", 20.0)),
-                    beta=float(shading_cfg.get("sdf_beta", 20.0)),
-                    kappa=float(shading_cfg.get("sdf_kappa", 2.0)),
-                    num_steps=int(shading_cfg.get("sdf_num_steps", 32)),
-                    step_size_factor=float(shading_cfg.get("sdf_step_size_factor", 0.05)),
-                    origin_offset_factor=float(shading_cfg.get("sdf_origin_offset_factor", 1e-3)),
-                    max_march_factor=float(shading_cfg.get("sdf_max_march_factor", 2.0)),
-                    point_chunk_size=int(shading_cfg.get("sdf_point_chunk_size", 8192)),
+                    method=str(sdf_cfg["method"]),
+                    alpha=float(sdf_cfg["alpha"]),
+                    beta=float(sdf_cfg["beta"]),
+                    kappa=float(sdf_cfg["kappa"]),
+                    num_steps=int(sdf_cfg["num_steps"]),
+                    step_size_factor=float(sdf_cfg["step_size_factor"]),
+                    origin_offset_factor=float(sdf_cfg["origin_offset_factor"]),
+                    max_march_factor=float(sdf_cfg["max_march_factor"]),
+                    point_chunk_size=int(sdf_cfg["point_chunk_size"]),
                 )
             else:
                 raise ValueError(f"Unknown shading method: {method}")
@@ -124,6 +127,7 @@ def solar_mesh_loss_v6(  # noqa: PLR0912, PLR0915
     solar_vectors: torch.Tensor,
     area_budget_mm2: float,
     shading_cfg: dict[str, Any],
+    raytracing_cfg: dict[str, Any],
     sigmoid_sharpness: float = 10.0,
     soft_mask_selection_threshold: float = 0.5,
     soft_mask_full_selection_threshold: float = 0.95,
@@ -154,7 +158,8 @@ def solar_mesh_loss_v6(  # noqa: PLR0912, PLR0915
         faces: (M, 3) face indices
         solar_vectors: (K, 3) solar vectors along the route
         area_budget_mm2: maximum selectable area in mm²
-        shading_cfg: dict with raytracing parameters
+        shading_cfg: dict with shading orchestration parameters
+        raytracing_cfg: resolved raytracing config selected via raytracing_version
         sigmoid_sharpness: steepness of selection blur (higher = sharper boundary)
         soft_mask_selection_threshold: threshold for soft selection mask (0.0 to 1.0)
         soft_mask_full_selection_threshold: threshold for full selection mask (0.0 to 1.0)
@@ -205,7 +210,14 @@ def solar_mesh_loss_v6(  # noqa: PLR0912, PLR0915
     aggregate_illumination_quality = averaging_solar_quality(face_normals_unit, sun_directions_unit)
 
     # Visibility per face (average over sun vectors)
-    visibility_per_sun = _compute_visibility_per_sun(vertices, faces, sun_directions_unit, sdf_fn, shading_cfg)
+    visibility_per_sun = _compute_visibility_per_sun(
+        vertices,
+        faces,
+        sun_directions_unit,
+        sdf_fn,
+        shading_cfg,
+        raytracing_cfg,
+    )
     aggregate_visibility = visibility_per_sun.mean(dim=1)
 
     # Combine quality and visibility
@@ -401,6 +413,7 @@ class SolarLossEstimator:
     def __init__(self, config: dict[str, Any]) -> None:  # noqa: PLR0915
         defaults = {
             "route_version": "v2",
+            "raytracing_version": "v1",
             "method": "flexicubes",
             "bbox": [[-5000, 5000], [-5000, 5000], [-5000, 5000]],
             "resolution": 64,
@@ -422,25 +435,11 @@ class SolarLossEstimator:
             "selection_threshold_render": 0.5,
             "log_group_name": "solar_loss_metrics",
             "shading": {
-                "method": "sdf",
-                "normal_source": "mesh",
                 "sun_batch_size": 1,
-                "sdf_method": "sigmoid",
-                "sdf_alpha": 20.0,
-                "sdf_beta": 20.0,
-                "sdf_kappa": 2.0,
-                "sdf_num_steps": 32,
-                "sdf_step_size_factor": 0.05,
-                "sdf_origin_offset_factor": 1e-3,
-                "sdf_max_march_factor": 2.0,
-                "sdf_point_chunk_size": 8192,
-                "mesh_beta": 10.0,
-                "mesh_gamma": 20.0,
-                "mesh_margin_factor": 1e-3,
-                "mesh_origin_offset_eps": 1e-3,
-                "mesh_sun_distance_factor": 10.0,
-                "mesh_face_chunk_size": 512,
-                "mesh_miss_t": 1e9,
+                "sun_subsample_fraction": 1.0,
+                "sun_subsample_min": 1,
+                "sun_subsample_mode": "random",
+                "shading_render_interval": 1,
             },
         }
 
@@ -450,6 +449,9 @@ class SolarLossEstimator:
         self.config = cfg
 
         self.route_version = str(cfg.get("route_version", "v2")).lower()
+        if "raytracing_version" not in cfg:
+            raise ValueError("SolarLossConfigV6 must define 'raytracing_version'")
+        self.raytracing_version = str(cfg["raytracing_version"]).lower()
         self.method = cfg["method"]
         self.bbox = cfg["bbox"]
         self.resolution = int(cfg["resolution"])
@@ -468,6 +470,7 @@ class SolarLossEstimator:
         self.soft_mask_full_selection_threshold = float(cfg["soft_mask_full_selection_threshold"])
         self.selection_threshold_render = float(cfg["selection_threshold_render"])
         self.shading_cfg = dict(cfg.get("shading", {}))
+        self.raytracing_cfg = self._load_versioned_raytracing_config(self.raytracing_version)
         self.shading_render_interval = int(self.shading_cfg.get("shading_render_interval", 1))
         self.sun_vector_source = str(cfg.get("sun_vector_source", "route")).lower()
         self.fixed_sun_dir = cfg.get("fixed_sun_dir")
@@ -548,6 +551,75 @@ class SolarLossEstimator:
 
         self.extractor: FCExtractor | DISOExtractor | MeshSDFExtractor
         self._init_extractor()
+
+    @staticmethod
+    def _require_keys(cfg: dict[str, Any], required_keys: list[str], cfg_name: str) -> None:
+        missing = [key for key in required_keys if key not in cfg]
+        if missing:
+            raise ValueError(f"{cfg_name} is missing required keys: {missing}")
+
+    @classmethod
+    def _validate_raytracing_v1_cfg(cls, cfg: dict[str, Any]) -> None:
+        cls._require_keys(cfg, ["method", "normal_source", "sdf", "mesh"], "RaytracingConfigV1")
+
+        method = str(cfg["method"]).lower()
+        if method not in {"none", "mesh", "sdf"}:
+            raise ValueError("RaytracingConfigV1.method must be one of: none, mesh, sdf")
+
+        normal_source = str(cfg["normal_source"]).lower()
+        if normal_source not in {"mesh", "sdf"}:
+            raise ValueError("RaytracingConfigV1.normal_source must be one of: mesh, sdf")
+
+        sdf_cfg = cfg["sdf"]
+        if not isinstance(sdf_cfg, dict):
+            raise TypeError("RaytracingConfigV1.sdf must be a mapping")
+        cls._require_keys(
+            sdf_cfg,
+            [
+                "method",
+                "alpha",
+                "beta",
+                "kappa",
+                "num_steps",
+                "step_size_factor",
+                "origin_offset_factor",
+                "max_march_factor",
+                "point_chunk_size",
+            ],
+            "RaytracingConfigV1.sdf",
+        )
+
+        sdf_method = str(sdf_cfg["method"]).lower()
+        if sdf_method not in {"sigmoid", "absorption"}:
+            raise ValueError("RaytracingConfigV1.sdf.method must be one of: sigmoid, absorption")
+
+        mesh_cfg = cfg["mesh"]
+        if not isinstance(mesh_cfg, dict):
+            raise TypeError("RaytracingConfigV1.mesh must be a mapping")
+        cls._require_keys(
+            mesh_cfg,
+            ["beta", "gamma", "margin_factor", "origin_offset_eps", "sun_distance_factor", "face_chunk_size", "miss_t"],
+            "RaytracingConfigV1.mesh",
+        )
+
+    @classmethod
+    def _load_versioned_raytracing_config(cls, raytracing_version: str) -> dict[str, Any]:
+        rt_cfg = load_config(v="v1", cfg_name="solar_configs/raytracing_config.yaml")
+        key = f"RaytracingConfig{raytracing_version.upper()}"
+        if key not in rt_cfg:
+            available = sorted(rt_cfg.keys())
+            raise ValueError(
+                f"Unknown raytracing_version '{raytracing_version}'. Expected key '{key}' in raytracing_config.yaml. "
+                f"Available versions: {available}"
+            )
+
+        resolved_cfg = dict(rt_cfg[key])
+        if raytracing_version == "v1":
+            cls._validate_raytracing_v1_cfg(resolved_cfg)
+        else:
+            raise ValueError(f"Unsupported raytracing_version '{raytracing_version}'.")
+
+        return resolved_cfg
 
     def _init_extractor(self) -> None:
         method = self.method
@@ -652,6 +724,7 @@ class SolarLossEstimator:
                     self.solar_vectors,
                     self.area_budget_mm2,
                     shading_cfg=self.shading_cfg,
+                    raytracing_cfg=self.raytracing_cfg,
                     sigmoid_sharpness=self.sigmoid_sharpness,
                     soft_mask_selection_threshold=self.soft_mask_selection_threshold,
                     soft_mask_full_selection_threshold=self.soft_mask_full_selection_threshold,
@@ -709,6 +782,7 @@ class SolarLossEstimator:
                 self.solar_vectors,
                 self.area_budget_mm2,
                 shading_cfg=self.shading_cfg,
+                raytracing_cfg=self.raytracing_cfg,
                 sigmoid_sharpness=self.sigmoid_sharpness,
                 soft_mask_selection_threshold=self.soft_mask_selection_threshold,
                 soft_mask_full_selection_threshold=self.soft_mask_full_selection_threshold,

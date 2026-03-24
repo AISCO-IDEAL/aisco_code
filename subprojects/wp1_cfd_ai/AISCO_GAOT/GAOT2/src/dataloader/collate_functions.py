@@ -70,10 +70,8 @@ class UnifiedCollateFunction:
                 for attr, value in sample:
                     if attr not in ["pos", "x"]:
                         setattr(enriched, attr, value)
-                self._normalize_conditioning(enriched)
                 data_list.append(enriched)
             else:
-                self._normalize_conditioning(sample)
                 data_list.append(sample)
 
         # Always rebuild if online_graph_building is True
@@ -136,22 +134,7 @@ class UnifiedCollateFunction:
                         dec_counts = torch.zeros(num_phys_nodes, dtype=torch.long)
                     setattr(data, f"decoder_query_counts_s{scale_idx}", dec_counts)
 
-        out_batch = Batch.from_data_list(data_list)
-        if hasattr(out_batch, "conditioning") and out_batch.conditioning is not None:
-            cond = out_batch.conditioning.to(dtype=torch.float32)
-            if cond.dim() == 1 and out_batch.num_graphs > 0:
-                cond_dim = cond.numel() // out_batch.num_graphs
-                cond = cond.view(out_batch.num_graphs, cond_dim)
-            out_batch.conditioning = cond
-        return out_batch
-
-    @staticmethod
-    def _normalize_conditioning(data: EnrichedData) -> None:
-        if hasattr(data, "conditioning") and data.conditioning is not None:
-            cond = data.conditioning.to(dtype=torch.float32)
-            if cond.dim() == 1:
-                cond = cond.unsqueeze(0)
-            data.conditioning = cond
+        return Batch.from_data_list(data_list)
 
     def update_config(self, **kwargs):
         """
