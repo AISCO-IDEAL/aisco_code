@@ -111,7 +111,7 @@ dataset:
     train_size: 110
     val_size: 23
     test_size: 20
-    batch_size: 4  # reduced from 12 to avoid OOM on larger CP-full meshes
+    batch_size: 6  # reduced from 12 to avoid OOM on larger CP-full meshes
     num_workers: 4
     shuffle: true
     metric_suite: "general"
@@ -131,7 +131,7 @@ optimizer:
     args:
         lr: 3e-4
         weight_decay: 1e-05
-        epoch: 100
+        epoch: 40
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"

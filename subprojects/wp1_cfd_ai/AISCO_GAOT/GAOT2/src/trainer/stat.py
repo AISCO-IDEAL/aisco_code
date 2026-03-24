@@ -1,3 +1,4 @@
+import csv
 import logging
 import math
 import os
@@ -1024,6 +1025,7 @@ class StaticTrainer3D(TrainerBase):
             all_batch_preds_denorm = []
         all_field_preds_denorm: list[torch.Tensor] = []
         all_field_targets_denorm: list[torch.Tensor] = []
+        field_sample_metrics: list[dict[str, Any]] = []  # per-sample field metrics for CSV
         _plot_coords, plot_gtr, plot_prd = None, None, None
 
         # Inference speed measurement variables
@@ -1119,6 +1121,31 @@ class StaticTrainer3D(TrainerBase):
                         if valid_field.any():
                             all_field_preds_denorm.append(field_pred_dn[valid_field].detach().cpu())
                             all_field_targets_denorm.append(field_target_dn[valid_field].cpu())
+
+                        # Per-sample field metrics using batch.ptr
+                        ptr = batch.ptr.cpu() if hasattr(batch, "ptr") else None
+                        filenames = batch.filename if hasattr(batch, "filename") else None
+                        n_graphs = batch.num_graphs if hasattr(batch, "num_graphs") else 1
+                        for s_idx in range(n_graphs):
+                            if ptr is not None:
+                                start, end = ptr[s_idx].item(), ptr[s_idx + 1].item()
+                            else:
+                                start, end = 0, field_pred_dn.shape[0]
+                            s_pred = field_pred_dn[start:end]
+                            s_tgt = field_target_dn[start:end]
+                            s_valid = ~torch.isnan(s_tgt)
+                            if s_valid.any():
+                                s_diff = s_pred[s_valid] - s_tgt[s_valid]
+                                s_mse = torch.mean(s_diff**2).item()
+                                s_mae = torch.mean(torch.abs(s_diff)).item()
+                                s_rel_l2 = (
+                                    torch.linalg.norm(s_diff.float())
+                                    / (torch.linalg.norm(s_tgt[s_valid].float()) + EPSILON)
+                                ).item() * 100.0
+                                fname = filenames[s_idx] if filenames is not None else f"sample_{len(field_sample_metrics)}"
+                                field_sample_metrics.append(
+                                    {"filename": fname, "n_nodes": s_valid.sum().item(), "MSE": s_mse, "MAE": s_mae, "Rel_L2_pct": s_rel_l2}
+                                )
                 else:
                     target_norm = batch.y
 
@@ -1334,7 +1361,14 @@ class StaticTrainer3D(TrainerBase):
 
                 results_array = torch.cat([full_targets.view(-1, 1), full_preds.view(-1, 1)], dim=1).cpu().numpy()
                 csv_save_path = self.path_config["result_path"].replace(".png", "_predictions.csv")
-                np.savetxt(csv_save_path, results_array, delimiter=",", header="True_Drag,Predicted_Drag", comments="")
+                # If field is the primary data, save per-sample metrics instead of per-node values
+                if field_sample_metrics and full_preds.shape[0] > total_samples:
+                    with open(csv_save_path, "w", newline="") as f:
+                        writer = csv.DictWriter(f, fieldnames=["filename", "n_nodes", "MSE", "MAE", "Rel_L2_pct"])
+                        writer.writeheader()
+                        writer.writerows(field_sample_metrics)
+                else:
+                    np.savetxt(csv_save_path, results_array, delimiter=",", header="True_Drag,Predicted_Drag", comments="")
                 logging.getLogger(__name__).info(f"Saved all test predictions to {csv_save_path}")
 
             # --- Field-level metrics ---
