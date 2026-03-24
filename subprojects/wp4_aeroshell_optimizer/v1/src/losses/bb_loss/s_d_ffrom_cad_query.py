@@ -48,10 +48,14 @@ class SDFfromCadQuery:
             self.__sdfs = []
             for x in self.__shape_list or []:
                 # Pass shapes directly; no redundant casts
-                self.__sdfs.append(SDFfromCadQuery(
-                    shape=x, pointgrid_config=pointgrid_config,
-                    assembly_id=assembly_id, bounding_box_fn=bounding_box_fn,
-                ))
+                self.__sdfs.append(
+                    SDFfromCadQuery(
+                        shape=x,
+                        pointgrid_config=pointgrid_config,
+                        assembly_id=assembly_id,
+                        bounding_box_fn=bounding_box_fn,
+                    )
+                )
             self.__sdf_at_pointgrid = [
                 min(self.__sdfs[i].sdf_at_pointgrid()[j] for i in range(l))
                 for j in range(len(self.__pointgrid))  # From all shapes take the minimum SDF at each point
