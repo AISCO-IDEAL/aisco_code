@@ -18,8 +18,8 @@
 ###############################################################################################
 umask 0002
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/Raytracing_Memory/ej68pilu"   # <-- EDIT THIS
-COUNT=21                                       # runs per agent (no empty space, otherwise it will recognise count as empty string)
+SWEEP_ID="aisco/Raytracing_Memory/qoladjdr"   # <-- EDIT THIS
+COUNT=32                                       # runs per agent (no empty space, otherwise it will recognise count as empty string)
 MAX_AGENTS=4                                  # max number of parallel agents (will be capped by available GPUs)
 
 # ---- Job info ---------------------------------------------------------------
