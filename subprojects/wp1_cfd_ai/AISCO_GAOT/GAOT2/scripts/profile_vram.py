@@ -198,9 +198,7 @@ def main():
     mem_after_tokens = torch.cuda.memory_allocated(device)
     print_memory_line("Latent tokens", mb(mem_after_tokens - mem_before_tokens), total_vram_mb)
 
-    fwd_mem, bwd_mem, opt_step_mem, peak_final = _profile_forward_backward(
-        model, batch, latent_tokens, optimizer, total_vram_mb
-    )
+    fwd_mem, bwd_mem, opt_step_mem, peak_final = _profile_forward_backward(model, batch, latent_tokens, optimizer, total_vram_mb)
 
     # Summary
     print("\n" + "=" * 70)
