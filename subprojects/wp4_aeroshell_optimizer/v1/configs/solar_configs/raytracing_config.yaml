@@ -16,8 +16,8 @@ RaytracingConfigV1:
   mesh:
     beta: 10.0
     gamma: 20.0
-    margin_factor: 1e-3
+    margin_factor: 0.001
     origin_offset_eps: 1e-3
-    sun_distance_factor: 10.0
+    sun_distance_factor: 2.0
     face_chunk_size: 512
     miss_t: 1e9

@@ -50,96 +50,20 @@ def _efficient_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
     return torch.cumsum(x.cpu(), dim=dim).to(x.device)
 
 
-def _compute_visibility_per_sun(
-    vertices: torch.Tensor,
-    faces: torch.Tensor,
-    sun_dirs: torch.Tensor,
-    sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None,
-    shading_cfg: dict[str, Any],
-    raytracing_cfg: dict[str, Any],
-) -> torch.Tensor:
-    """
-    Compute per-face visibility for each sun direction.
-
-    Returns:
-        visibility: (F, K) tensor in [0, 1]
-    """
-    method = str(raytracing_cfg["method"]).lower()
-    if method == "none":
-        return torch.ones((faces.shape[0], sun_dirs.shape[0]), device=vertices.device, dtype=vertices.dtype)
-
-    sun_batch_size: int = int(shading_cfg.get("sun_batch_size", 1))
-    normal_source: str = str(raytracing_cfg["normal_source"]).lower()
-
-    vis_chunks: list[torch.Tensor] = []
-    for start in range(0, sun_dirs.shape[0], sun_batch_size):
-        end = min(start + sun_batch_size, sun_dirs.shape[0])
-        sun_chunk = sun_dirs[start:end]  # (B, 3)
-        vis_per_chunk: list[torch.Tensor] = []
-
-        for i in range(sun_chunk.shape[0]):
-            sun_dir = sun_chunk[i]
-            if method == "mesh":
-                mesh_cfg = raytracing_cfg["mesh"]
-                vis, _, _ = mesh_visibility(
-                    vertices,
-                    faces,
-                    sun_dir,
-                    sdf_fn=sdf_fn,
-                    normal_source=normal_source,
-                    beta=float(mesh_cfg["beta"]),
-                    gamma=float(mesh_cfg["gamma"]),
-                    margin_factor=float(mesh_cfg["margin_factor"]),
-                    origin_offset_eps=float(mesh_cfg["origin_offset_eps"]),
-                    sun_distance_factor=float(mesh_cfg["sun_distance_factor"]),
-                    face_chunk_size=int(mesh_cfg["face_chunk_size"]),
-                    miss_t=float(mesh_cfg["miss_t"]),
-                )
-            elif method == "sdf":
-                if sdf_fn is None:
-                    raise ValueError("sdf_fn is required when shading method is 'sdf'")
-                sdf_cfg = raytracing_cfg["sdf"]
-                vis, _, _ = sdf_visibility(
-                    sdf_fn,
-                    vertices,
-                    faces,
-                    sun_dir,
-                    normal_source=normal_source,
-                    method=str(sdf_cfg["method"]),
-                    alpha=float(sdf_cfg["alpha"]),
-                    beta=float(sdf_cfg["beta"]),
-                    kappa=float(sdf_cfg["kappa"]),
-                    num_steps=int(sdf_cfg["num_steps"]),
-                    step_size_factor=float(sdf_cfg["step_size_factor"]),
-                    origin_offset_factor=float(sdf_cfg["origin_offset_factor"]),
-                    max_march_factor=float(sdf_cfg["max_march_factor"]),
-                    point_chunk_size=int(sdf_cfg["point_chunk_size"]),
-                )
-            else:
-                raise ValueError(f"Unknown shading method: {method}")
-
-            vis_per_chunk.append(vis)
-
-        vis_chunks.append(torch.stack(vis_per_chunk, dim=1))  # (F, B)
-
-    return torch.cat(vis_chunks, dim=1)  # (F, K)
-
-
 def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     vertices: torch.Tensor,
     faces: torch.Tensor,
     solar_vectors: torch.Tensor,
     area_budget_mm2: float,
-    shading_cfg: dict[str, Any],
+    sun_batching_cfg: dict[str, Any],
     raytracing_cfg: dict[str, Any],
     sigmoid_sharpness: float = 10.0,
     soft_mask_selection_threshold: float = 0.5,
     soft_mask_full_selection_threshold: float = 0.95,
     budget_penalty_weight: float = 0.1,
-    shading_penalty_weight: float = 10.0,
-    use_visibility_multiplier: bool = True,
-    use_shading_penalty: bool = True,
     epsilon: float = 1e-12,
+    kappa: float = 1.0,
+    _lambda: float = 1.0,
     enable_wandb_logging: bool = False,
     rendering: bool = False,
     counter: int = 0,
@@ -162,7 +86,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         faces: (M, 3) face indices
         solar_vectors: (K, 3) solar vectors along the route
         area_budget_mm2: maximum selectable area in mm²
-        shading_cfg: dict with shading orchestration parameters
+        sun_batching_cfg: dict with shading orchestration parameters
         raytracing_cfg: resolved raytracing config selected via raytracing_version
         sigmoid_sharpness: steepness of selection blur (higher = sharper boundary)
         soft_mask_selection_threshold: threshold for soft selection mask (0.0 to 1.0)
@@ -180,15 +104,16 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     Returns:
         scalar loss in m²
     """
-
+    ### Basic checks and solar batching
     if faces.numel() == 0 or vertices.numel() == 0:
         print("Warning: Empty vertices or faces in solar_mesh_loss_v7, returning zero loss")
         return torch.zeros((), device=vertices.device, dtype=vertices.dtype)
 
-    # Optional sun-vector subsampling (reduces memory/compute)
-    subsample_fraction = float(shading_cfg.get("sun_subsample_fraction", 1.0))
-    subsample_min = int(shading_cfg.get("sun_subsample_min", 1))
-    subsample_mode = str(shading_cfg.get("sun_subsample_mode", "random")).lower()
+    # Optional sun-vector subsampling (reduces compute)
+    sun_batch_size = int(sun_batching_cfg.get("sun_batch_size", 1))
+    subsample_fraction = float(sun_batching_cfg.get("sun_subsample_fraction", 1.0))
+    subsample_min = int(sun_batching_cfg.get("sun_subsample_min", 1))
+    subsample_mode = str(sun_batching_cfg.get("sun_subsample_mode", "random")).lower()
     if 0.0 < subsample_fraction < 1.0 and solar_vectors.shape[0] > 0:
         target_k = max(subsample_min, int(solar_vectors.shape[0] * subsample_fraction))
         target_k = min(target_k, solar_vectors.shape[0])
@@ -200,83 +125,97 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
             raise ValueError(f"Unknown sun_subsample_mode: {subsample_mode}")
         solar_vectors = solar_vectors[idx]
 
+    ### Setup of variables and mesh precomputations
+
+    # initialise loss and bookkeeping variables as zero for overview
+    F = faces.shape[0]
+    S = solar_vectors.shape[0]
+    sun_batch_size = 1  #####CHANGE THIS WITH CONFIG PARAM
+    # Loss per face, will be aggregated into total loss later.
+    if vertices.device != faces.device:
+        raise RuntimeError(
+            f"Vertices and faces must be on the same device, but got {vertices.device} and {faces.device}, something really went wrong!"
+        )
+    losses = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
+    soft_weights = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
+
     # Compute face areas and normals (mesh normals only for quality)
     v0, v1, v2 = vertices[faces[:, 0]], vertices[faces[:, 1]], vertices[faces[:, 2]]
     edge_a, edge_b = v1 - v0, v2 - v0
     face_cross = torch.cross(edge_a, edge_b, dim=-1)
     face_cross_norm = torch.linalg.norm(face_cross, dim=-1)
-    face_area_mm2 = 0.5 * face_cross_norm
 
-    face_normals_unit = face_cross / (face_cross_norm.clamp_min(epsilon)).unsqueeze(-1)  # (M, 3)
-    sun_directions_unit = solar_vectors / (torch.linalg.norm(solar_vectors, dim=-1, keepdim=True).clamp_min(epsilon))
+    face_area_mm2 = 0.5 * face_cross_norm  # (F,)
+    face_normals_unit = face_cross / (face_cross_norm).unsqueeze(-1)  # (F, 3)
+    sun_directions_unit = solar_vectors / (torch.linalg.norm(solar_vectors, dim=-1, keepdim=True))  # (S, 3)
 
-    # Illumination quality per face (average over sun vectors)
-    aggregate_illumination_quality = averaging_solar_quality(face_normals_unit, sun_directions_unit)
-
-    # Visibility per face (average over sun vectors)
-    visibility_per_sun = _compute_visibility_per_sun(
-        vertices,
-        faces,
-        sun_directions_unit,
-        sdf_fn,
-        shading_cfg,
-        raytracing_cfg,
-    )
-    aggregate_visibility = visibility_per_sun.mean(dim=1)
-
-    # Combine quality and visibility
-    if use_visibility_multiplier:
-        combined_quality = aggregate_illumination_quality * aggregate_visibility
-    else:
-        combined_quality = aggregate_illumination_quality
-
-    # Sort faces by descending combined quality
-    quality_order_desc = torch.argsort(combined_quality, descending=True)
-    sorted_areas = face_area_mm2[quality_order_desc]
-    sorted_quality = combined_quality[quality_order_desc]
-    original_order = torch.argsort(quality_order_desc)
-
+    # First ignore shading and sort by quality to get soft selection mask (Uses F x sun_batch_size Memory)
+    aggregate_illumination_quality = averaging_solar_quality(
+        face_normals_unit, sun_directions_unit, batch_size=sun_batch_size, debug_print=True
+    )  # (F,)
+    sorted_quality, sorted_indices = torch.sort(aggregate_illumination_quality, descending=True)
+    original_order = torch.argsort(sorted_indices)
+    sorted_areas = face_area_mm2[sorted_indices]
     # Deterministic-safe cumulative area
     cumulative_area = _efficient_cumsum(sorted_areas, dim=0)
 
-    # Create soft selection mask using sigmoid
+    # Create soft selection weights using sigmoid with custom sharpness
     distance_to_budget = (area_budget_mm2 - cumulative_area) / max(area_budget_mm2, epsilon)
-    soft_mask = torch.sigmoid(sigmoid_sharpness * distance_to_budget)
+    soft_weights = torch.sigmoid(sigmoid_sharpness * distance_to_budget)
 
-    # Base quality-area term
-    weighted_quality_area = sorted_areas * sorted_quality * soft_mask
-    quality_loss = weighted_quality_area.sum()
+    for s in range(0, S, sun_batch_size):
+        sun_batch = sun_directions_unit[s : s + sun_batch_size]  # (B, 3)
+        if sun_batch_size == 1:
+            sun_batch = sun_batch.squeeze(0)  # (3,)
+        else:
+            raise NotImplementedError(
+                f"Batching for multiple (tried {sun_batch_size}) sun directions is not yet implemented in solar_mesh_loss_v7. Please set sun_batch_size to 1."
+            )
+
+        ### Raytracing to get visibility
+        if raytracing_cfg["method"] == "mesh":
+            visibility, _, _ = mesh_visibility(
+                vertices,
+                faces,
+                sun_batch,
+                normal_source=raytracing_cfg["normal_source"],
+                beta=float(raytracing_cfg["mesh"]["beta"]),
+                gamma=float(raytracing_cfg["mesh"]["gamma"]),
+                margin_factor=float(raytracing_cfg["mesh"]["margin_factor"]),
+                origin_offset_eps=float(raytracing_cfg["mesh"]["origin_offset_eps"]),
+                sun_distance_factor=float(raytracing_cfg["mesh"]["sun_distance_factor"]),
+                face_chunk_size=int(raytracing_cfg["mesh"]["face_chunk_size"]),
+                miss_t=float(raytracing_cfg["mesh"]["miss_t"]),
+            )  # (F,) in range [0, 1]
+        elif raytracing_cfg["method"] == "sdf":
+            visibility, _, _ = sdf_visibility(sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch)
+        else:
+            raise ValueError(f"Unknown raytracing method: {raytracing_cfg['method']}")
+
+        ### Given visibility for one sun_vector, compute loss for each face
+
+        # simple dot product per face (sun_direction dot normals = quality)
+        qualities = sun_batch @ face_normals_unit.t()  # (F,) quality of each face (ignoring visibility)
+        numerical_factor = 1 - _lambda * torch.pow(1 + epsilon - visibility, 1 / kappa)
+        # Loss already including penalty term in the numerical factor
+        losses += soft_weights * qualities * numerical_factor  # 3 times (F,) --> (F,)
+    ### Finalisation of loss terms
 
     # Penalty for unused budget
-    total_selected_area = (sorted_areas * soft_mask).sum()
+    total_selected_area = (sorted_areas * soft_weights).sum()
     unused_ratio = torch.clamp((area_budget_mm2 - total_selected_area) / max(area_budget_mm2, epsilon), min=0.0)
     budget_penalty = budget_penalty_weight * (unused_ratio**2)
 
-    # Shading penalty (high quality but shaded faces)
-    shading_penalty = torch.zeros((), device=vertices.device, dtype=vertices.dtype)
-    shading_penalty_per_face = torch.zeros_like(face_area_mm2)
-    shading_penalty_unweighted = torch.zeros_like(face_area_mm2)
-    shading_penalty_intensity = torch.zeros_like(face_area_mm2)
-    if use_shading_penalty:
-        sorted_visibility = aggregate_visibility[quality_order_desc]
-        sorted_raw_quality = aggregate_illumination_quality[quality_order_desc]
-        shading_per_sorted_unweighted = sorted_areas * sorted_raw_quality * (1.0 - sorted_visibility) * soft_mask
-        shading_intensity_sorted = sorted_raw_quality * (1.0 - sorted_visibility) * soft_mask
-        shading_per_sorted = shading_penalty_weight * shading_per_sorted_unweighted
-        shading_penalty = shading_per_sorted.sum()
-        shading_penalty_per_face = shading_per_sorted[original_order]
-        shading_penalty_unweighted = shading_per_sorted_unweighted[original_order]
-        shading_penalty_intensity = shading_intensity_sorted[original_order]
-
+    losses = losses / S  # Average over sun directions
     # Combined loss
-    loss_mm2 = quality_loss - budget_penalty - shading_penalty
+    loss_mm2 = losses.sum() + budget_penalty
 
     # Sort softmask back to original face order for logging/visualization
-    sorted_soft_mask = soft_mask[original_order]
+    sorted_soft_mask = soft_weights[original_order]
 
     # Analyze sigmoid transition zone
-    transition_zone_faces = ((soft_mask > 0.1) & (soft_mask < 0.9)).sum().item()
-    faces_near_boundary = (soft_mask > 0.1) & (soft_mask < 0.9)
+    transition_zone_faces = ((soft_weights > 0.1) & (soft_weights < 0.9)).sum().item()
+    faces_near_boundary = (soft_weights > 0.1) & (soft_weights < 0.9)
     transition_zone_area_mm2 = (sorted_areas[faces_near_boundary]).sum().item() if faces_near_boundary.any() else 0.0
 
     # Find approximate budget crossover point
@@ -289,14 +228,14 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     metrics_log = {
         "face_area_mm2": face_area_mm2,
         "illumination_quality": aggregate_illumination_quality,
-        "visibility_mean": aggregate_visibility,
+        # "visibility_mean": aggregate_visibility,
         "sorted_areas": sorted_areas,
         "sorted_quality": sorted_quality,
-        "soft_mask": soft_mask,
-        "sorted_soft_mask": sorted_soft_mask,
-        "quality_loss": quality_loss,
+        "soft_weights": soft_weights,
+        "sorted_soft_weights": sorted_soft_mask,
+        # "quality_loss": quality_loss,
         "budget_penalty": budget_penalty,
-        "shading_penalty": shading_penalty,
+        # "shading_penalty": shading_penalty,
         "soft_mask_selection_threshold": soft_mask_selection_threshold,
         "soft_mask_full_selection_threshold": soft_mask_full_selection_threshold,
         "transition_zone_faces": transition_zone_faces,
@@ -309,10 +248,10 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         "faces": faces,
         "selection_weights": sorted_soft_mask,
         "threshold": selection_threshold_render,
-        "shading_visibility": aggregate_visibility,
-        "shading_penalty": shading_penalty_per_face,
-        "shading_penalty_unweighted": shading_penalty_unweighted,
-        "shading_penalty_intensity": shading_penalty_intensity,
+        # "shading_visibility": aggregate_visibility,
+        # "shading_penalty": shading_penalty_per_face,
+        # "shading_penalty_unweighted": shading_penalty_unweighted,
+        # "shading_penalty_intensity": shading_penalty_intensity,
     }
 
     loss = loss_mm2 * 1e-6  # Convert to m² for final loss
@@ -466,16 +405,14 @@ class SolarLossEstimator:
         self.log_group_name = str(cfg["log_group_name"])
         self.sigmoid_sharpness = float(cfg["sigmoid_sharpness"])
         self.budget_penalty_weight = float(cfg["budget_penalty_weight"])
-        self.shading_penalty_weight = float(cfg["shading_penalty_weight"])
-        self.use_visibility_multiplier = bool(cfg.get("use_visibility_multiplier", True))
-        self.use_shading_penalty = bool(cfg.get("use_shading_penalty", True))
+
         self.enable_wandb_logging = bool(cfg["wandb_logging"])
         self.soft_mask_selection_threshold = float(cfg["soft_mask_selection_threshold"])
         self.soft_mask_full_selection_threshold = float(cfg["soft_mask_full_selection_threshold"])
         self.selection_threshold_render = float(cfg["selection_threshold_render"])
-        self.shading_cfg = dict(cfg.get("shading", {}))
+        self.sun_batching_cfg = dict(cfg.get("sunbatching", {}))
         self.raytracing_cfg = self._load_versioned_raytracing_config(self.raytracing_version)
-        self.shading_render_interval = int(self.shading_cfg.get("shading_render_interval", 1))
+        self.shading_render_interval = int(self.sun_batching_cfg.get("shading_render_interval", 1))
         self.sun_vector_source = str(cfg.get("sun_vector_source", "route")).lower()
         self.fixed_sun_dir = cfg.get("fixed_sun_dir")
         self.counter = 0
@@ -724,15 +661,12 @@ class SolarLossEstimator:
                     faces,
                     self.solar_vectors,
                     self.area_budget_mm2,
-                    shading_cfg=self.shading_cfg,
+                    sun_batching_cfg=self.sun_batching_cfg,
                     raytracing_cfg=self.raytracing_cfg,
                     sigmoid_sharpness=self.sigmoid_sharpness,
                     soft_mask_selection_threshold=self.soft_mask_selection_threshold,
                     soft_mask_full_selection_threshold=self.soft_mask_full_selection_threshold,
                     budget_penalty_weight=self.budget_penalty_weight,
-                    shading_penalty_weight=self.shading_penalty_weight,
-                    use_visibility_multiplier=self.use_visibility_multiplier,
-                    use_shading_penalty=self.use_shading_penalty,
                     epsilon=self.eps,
                     epoch_name=epoch_name,
                     log_group_name=self.log_group_name,
@@ -797,15 +731,12 @@ class SolarLossEstimator:
                 faces,
                 self.solar_vectors,
                 self.area_budget_mm2,
-                shading_cfg=self.shading_cfg,
+                sun_batching_cfg=self.sun_batching_cfg,
                 raytracing_cfg=self.raytracing_cfg,
                 sigmoid_sharpness=self.sigmoid_sharpness,
                 soft_mask_selection_threshold=self.soft_mask_selection_threshold,
                 soft_mask_full_selection_threshold=self.soft_mask_full_selection_threshold,
                 budget_penalty_weight=self.budget_penalty_weight,
-                shading_penalty_weight=self.shading_penalty_weight,
-                use_visibility_multiplier=self.use_visibility_multiplier,
-                use_shading_penalty=self.use_shading_penalty,
                 epsilon=self.eps,
                 epoch_name=epoch_name,
                 log_group_name=self.log_group_name,
