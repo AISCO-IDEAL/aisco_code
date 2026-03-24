@@ -18,7 +18,7 @@ active_configs:
 
 wandb_general:
   use_wandb: True # USED — main_v1_1_one_model.py, total_loss.py
-  project_name: "WP4_default" #modify  # USED — main_v1_1_one_model.py: wandb.init(project=...)
+  project_name: "WP3-Victor" #modify  # USED — main_v1_1_one_model.py: wandb.init(project=...)
   entity_name: "aisco"  # USED — main_v1_1_one_model.py: wandb.init(entity=...)
   # track_run: 1  # NOT USED — never read by any code
   use_renderer: True  # USED — total_loss.py: general_config["wandb_general"].get("use_renderer", True)
