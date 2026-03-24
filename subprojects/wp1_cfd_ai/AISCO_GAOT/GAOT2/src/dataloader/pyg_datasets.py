@@ -57,6 +57,8 @@ class VTKMeshDataset(Dataset):
         self.dataset_config = dataset_config
         self.split = split
         self.active_variables = dataset_config["active_variables"]  # None
+        self.drop_pressure = dataset_config.get("drop_pressure", False)
+        self.subsample_nodes = dataset_config.get("subsample_nodes", None)
         # Assuming processed files are stored in root/processed/
         super().__init__(root, transform, pre_transform, pre_filter)
         # Load indices after processing ensures processed files are available
@@ -140,6 +142,24 @@ class VTKMeshDataset(Dataset):
                 filepath = alt
         try:
             data = torch.load(filepath, weights_only=False)
+
+            # Drop raw pressure field — model trains on cp (stored as x), not absolute pressure
+            if self.drop_pressure and hasattr(data, "pressure"):
+                del data.pressure
+
+            # Random node subsampling: if sample has more nodes than subsample_nodes,
+            # pick a fresh random subset each time this sample is loaded
+            if self.subsample_nodes is not None and data.num_nodes > self.subsample_nodes:
+                perm = torch.randperm(data.num_nodes)[: self.subsample_nodes]
+                # Apply permutation to every per-node tensor
+                for attr in list(data.keys()):
+                    val = data[attr]
+                    if isinstance(val, torch.Tensor) and val.dim() >= 1 and val.shape[0] == data.num_nodes:
+                        data[attr] = val[perm]
+                # Drop face connectivity — indices are invalid after subsampling
+                if hasattr(data, "face"):
+                    del data.face
+
             if self.active_variables is not None and hasattr(data, "x") and data.x is not None:
                 data.x = data.x[:, self.active_variables]
             if hasattr(data, "x") and data.x is not None and len(data.x.shape) == EXPECTED_DATA_SHAPE_DIMS:

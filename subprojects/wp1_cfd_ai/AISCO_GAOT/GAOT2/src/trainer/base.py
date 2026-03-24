@@ -52,6 +52,9 @@ class TrainerBase:
             torch.cuda.set_device(self.setup_config["local_rank"])
             self.device = torch.device("cuda", self.setup_config["local_rank"])
         else:
+            self.setup_config["rank"] = 0
+            self.setup_config["world_size"] = 1
+            self.setup_config["local_rank"] = 0
             self.device = torch.device(self.setup_config["device"])
 
         manual_seed(self.setup_config["seed"] + self.setup_config["rank"])
