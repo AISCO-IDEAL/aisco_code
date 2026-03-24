@@ -16,14 +16,12 @@ def compute_vertex_areas(pos: Tensor, face: Tensor) -> Tensor:
     return vertex_areas
 
 
-
 def compute_face_normals(pos: Tensor, face: Tensor) -> Tensor:
     v0 = pos[face[0]]
     v1 = pos[face[1]]
     v2 = pos[face[2]]
     cross = torch.cross(v1 - v0, v2 - v0, dim=-1)
     return cross / (cross.norm(dim=-1, keepdim=True) + 1e-12)
-
 
 
 def pressure_to_drag(
@@ -40,7 +38,7 @@ def pressure_to_drag(
     v2 = pos[face[2]]
 
     # 1. Compute unnormalized face normal vectors
-    area_normals = 0.5 * torch.cross(v1 - v0, v2 - v0, dim=-1) # [F, 3]
+    area_normals = 0.5 * torch.cross(v1 - v0, v2 - v0, dim=-1)  # [F, 3]
 
     # 2. ROBUST ORIENTATION: Match the dataset's outward normals
     outward_n = (normals[face[0]] + normals[face[1]] + normals[face[2]]) / 3.0
@@ -58,7 +56,6 @@ def pressure_to_drag(
     return drag
 
 
-
 def pressure_shear_to_drag(
     pred_pressure: Tensor,
     pred_shear: Tensor,
@@ -74,7 +71,7 @@ def pressure_shear_to_drag(
     v2 = pos[face[2]]
 
     # 1. Compute unnormalized face normal vectors
-    area_normals = 0.5 * torch.cross(v1 - v0, v2 - v0, dim=-1) # [F, 3]
+    area_normals = 0.5 * torch.cross(v1 - v0, v2 - v0, dim=-1)  # [F, 3]
 
     # 2. ROBUST ORIENTATION: Match the dataset's outward normals
     outward_n = (normals[face[0]] + normals[face[1]] + normals[face[2]]) / 3.0
@@ -92,13 +89,12 @@ def pressure_shear_to_drag(
     # OpenFOAM's wallShearStress is already the exact force vector (kinematic).
     # We just average it to the face and multiply by the exact area!
     tau_face = (pred_shear[face[0]] + pred_shear[face[1]] + pred_shear[face[2]]) / 3.0
-    face_areas = area_normals.norm(dim=-1) # [F]
+    face_areas = area_normals.norm(dim=-1)  # [F]
 
     tau_dir = tau_face[:, drag_direction]
     friction_drag = (-tau_dir * face_areas).sum()
 
     return pressure_drag + friction_drag
-
 
 
 def drag_to_cd(
