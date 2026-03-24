@@ -4,11 +4,14 @@ entity: aisco
 project: Raytracing_Memory
 metric:
   goal: minimize
-  name: memory/peak_allocated_mb
+  name: solar_loss_metrics/raytracing_mem_peak_allocated_mb
 parameters:
   solar_configs/solar_loss_config.SolarLossConfigV6.resolution:
-    values: [64,128,200,256]
+    values: [64,128]
 
   #sweep over mesh raytracing params
-  solar_configs/raytracing_config.RaytracingConfigV1.mesh.face_chunk_size:
-    values: [64,128,200,256]
+  solar_configs/raytracing_config.RaytracingConfigV2.mesh.face_chunk_size:
+    values: [32,64,96,128,192,256]
+
+  solar_configs/raytracing_config.RaytracingConfigV2.mesh.blocker_chunk_size:
+    values: [16,32,48,64,96,128,192]
