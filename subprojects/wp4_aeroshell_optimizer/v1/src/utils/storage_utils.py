@@ -139,8 +139,7 @@ def allround_save_data(  # noqa: PLR0915
                 )
 
                 print(
-                    f"{thread_label} Extraction done | "
-                    f"marching_cubes: {verts.shape[0]} verts, {faces.shape[0]} faces",
+                    f"{thread_label} Extraction done | marching_cubes: {verts.shape[0]} verts, {faces.shape[0]} faces",
                     flush=True,
                 )
 
@@ -166,7 +165,6 @@ def allround_save_data(  # noqa: PLR0915
             except Exception as exc:
                 print(f"{thread_label} FAILED: {exc}", flush=True)
 
-
         # copy model once
         temp_model = copy.deepcopy(model).cpu()
 
@@ -178,7 +176,6 @@ def allround_save_data(  # noqa: PLR0915
         for res in resolutions:
             executor.submit(run_marching_cubes_and_save, res)
             print(f"[MAIN] Submitted job for res={res}", flush=True)
-
 
     ######################
     ### save the model ###
