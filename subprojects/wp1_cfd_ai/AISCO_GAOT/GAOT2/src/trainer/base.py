@@ -242,7 +242,6 @@ class TrainerBase:
                         config_dict=self.full_config_dict,
                     )
                 torch.cuda.empty_cache()
-                self.test()
 
         if self.setup_config["rank"] == 0:
             # Use Tracker to finish the run
