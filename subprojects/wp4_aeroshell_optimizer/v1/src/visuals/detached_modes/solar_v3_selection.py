@@ -109,7 +109,7 @@ class SolarV3Selection(RenderingMode):
         # Create GIF animation
         gif_path = output_dir / file_name
         self._frames_to_gif(gif_path, fps=self.fps)
-        print(f"    Saved GIF: {gif_path}")
+        print(f"    Saved SolarV3Selection GIF: {gif_path}")
 
         # log GIF to wandb
         try:

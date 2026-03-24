@@ -220,7 +220,6 @@ namespace_packages = true
 explicit_package_bases = true
 ignore_missing_imports = true
 warn_redundant_casts = true
-warn_unused_ignores = true
 check_untyped_defs = true
 files = ["subprojects/"]
 

@@ -1,6 +1,33 @@
 RaytracingConfigV1:
-  method: "sdf" # sdf | mesh | none
+  method: "mesh" # sdf | mesh | none
   normal_source: "mesh" # mesh | sdf
+  path: "subprojects.wp3_solar_estimator.raytracing.diffable.version1"
+
+  sdf:
+    method: "sigmoid" # sigmoid | absorption
+    alpha: 20.0
+    beta: 20.0
+    kappa: 2.0
+    num_steps: 12
+    step_size_factor: 0.1
+    origin_offset_factor: 1e-3
+    max_march_factor: 2.0
+    point_chunk_size: 256
+
+  mesh:
+    beta: 10.0
+    gamma: 20.0
+    margin_factor: 0.001
+    origin_offset_eps: 1e-3
+    sun_distance_factor: 2.0
+    face_chunk_size: 128
+    miss_t: 1e9
+
+#RaytracingConfigV2: accessed in solar_v6.py, with selection of version via SolarLossConfigV6's raytracing_version key
+RaytracingConfigV2:
+  method: "mesh" # sdf | mesh | none
+  normal_source: "mesh" # mesh | sdf
+  path: "subprojects.wp3_solar_estimator.raytracing.diffable.version2"
 
   sdf:
     method: "sigmoid" # sigmoid | absorption
@@ -20,4 +47,5 @@ RaytracingConfigV1:
     origin_offset_eps: 1e-3
     sun_distance_factor: 10.0
     face_chunk_size: 512
+    blocker_chunk_size: 128
     miss_t: 1e9
