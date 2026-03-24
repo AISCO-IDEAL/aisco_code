@@ -10,8 +10,8 @@ parameters:
     values: [100]
 
   #sweep over mesh raytracing params
-  solar_configs/raytracing_config.RaytracingConfigV1.mesh.face_chunk_size:
+  solar_configs/raytracing_config.RaytracingConfigV2.mesh.face_chunk_size:
     values: [128,192]
 
-  solar_configs/raytracing_config.RaytracingConfigV1.mesh.blocker_chunk_size:
+  solar_configs/raytracing_config.RaytracingConfigV2.mesh.blocker_chunk_size:
     values: [32,64,128]
