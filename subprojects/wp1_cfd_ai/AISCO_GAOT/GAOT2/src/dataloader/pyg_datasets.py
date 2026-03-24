@@ -147,6 +147,14 @@ class VTKMeshDataset(Dataset):
             if self.drop_pressure and hasattr(data, "pressure"):
                 del data.pressure
 
+            # Drop face connectivity unconditionally when subsampling is enabled —
+            # face indices are invalid after subsampling, and samples that happen to
+            # be smaller than subsample_nodes would keep face otherwise, causing
+            # PyG collate to fail (KeyError: 'face') when mixing subsampled and
+            # non-subsampled samples in the same batch.
+            if self.subsample_nodes is not None and hasattr(data, "face"):
+                del data.face
+
             # Random node subsampling: if sample has more nodes than subsample_nodes,
             # pick a fresh random subset each time this sample is loaded
             if self.subsample_nodes is not None and data.num_nodes > self.subsample_nodes:
@@ -159,9 +167,6 @@ class VTKMeshDataset(Dataset):
                     val = data[attr]
                     if isinstance(val, torch.Tensor) and val.dim() >= 1 and val.shape[0] == original_num_nodes:
                         data[attr] = val[perm]
-                # Drop face connectivity — indices are invalid after subsampling
-                if hasattr(data, "face"):
-                    del data.face
 
             if self.active_variables is not None and hasattr(data, "x") and data.x is not None:
                 data.x = data.x[:, self.active_variables]

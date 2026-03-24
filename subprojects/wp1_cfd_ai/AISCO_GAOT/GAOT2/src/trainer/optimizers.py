@@ -370,7 +370,7 @@ class AdamWOptimizer:
                 global_step += 1
 
                 # Save checkpoint every N steps if configured (rank 0 only)
-                if save_every_steps > 0 and global_step % save_every_steps == 0 and getattr(trainer.setup_config, "rank", 0) == 0:
+                if save_every_steps > 0 and global_step % save_every_steps == 0 and trainer.setup_config.get("rank", 0) == 0:
                     try:
                         step_loss = train_loss.detach().cpu().item()
                         trainer.save_ckpt()
@@ -434,7 +434,16 @@ class AdamWOptimizer:
                     trainer.model.train()
 
                 metrics["memory"] = psutil.Process(os.getpid()).memory_info().rss / 1e9
-                metrics["gpu_memory_MB"] = torch.cuda.max_memory_allocated() / 1e6
+
+                # Detailed GPU memory breakdown (all in MB)
+                if torch.cuda.is_available():
+                    metrics["gpu/allocated_MB"] = torch.cuda.memory_allocated() / 1e6
+                    metrics["gpu/reserved_MB"] = torch.cuda.memory_reserved() / 1e6
+                    metrics["gpu/max_allocated_MB"] = torch.cuda.max_memory_allocated() / 1e6
+                    metrics["gpu/max_reserved_MB"] = torch.cuda.max_memory_reserved() / 1e6
+                    # free = reserved by PyTorch but not currently used by tensors
+                    metrics["gpu/cache_free_MB"] = (torch.cuda.memory_reserved() - torch.cuda.memory_allocated()) / 1e6
+
                 trainer.tracker.log_metrics(metrics, step=epoch + 1)
 
                 # Early saving logic
@@ -447,9 +456,9 @@ class AdamWOptimizer:
 
                 # Periodic Artifact Saving
                 if (
-                    getattr(trainer.optimizer_config["args"], "save_every_epochs", 0) > 0
+                    trainer.optimizer_config["args"].get("save_every_epochs", 0) > 0
                     and (epoch + 1) % trainer.optimizer_config["args"]["save_every_epochs"] == 0
-                    and getattr(trainer.setup_config, "rank", 0) == 0
+                    and trainer.setup_config.get("rank", 0) == 0
                 ):
                     try:
                         trainer.save_ckpt()
@@ -460,7 +469,7 @@ class AdamWOptimizer:
                             is_best=False,
                             config_dict=trainer.full_config_dict,
                         )
-                        if getattr(trainer.setup_config, "test_during_training", False):
+                        if trainer.setup_config.get("test_during_training", False):
                             trainer.test()
                     except Exception as e:
                         logging.getLogger(__name__).warning(f"Periodic save failed: {e}")

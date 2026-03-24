@@ -110,8 +110,8 @@ class StaticTrainer3D(TrainerBase):
         # Enabled via dataset.uncertainty_weighting: true in config.
         self._uncertainty_weighting = self.dataset_config["uncertainty_weighting"]
         if self._uncertainty_weighting:
-            self.log_sigma_field = torch.nn.Parameter(torch.tensor([math.log(75.0)], device=self.device))
-            self.log_sigma_scalar = torch.nn.Parameter(torch.tensor([math.log(0.5)], device=self.device))
+            self.log_sigma_field = torch.nn.Parameter(torch.tensor([math.log(1)], device=self.device))
+            self.log_sigma_scalar = torch.nn.Parameter(torch.tensor([math.log(1)], device=self.device))
             # Register as an extra param group in the existing AdamW optimizer
             # (no weight-decay on task-noise parameters)
             self.optimizer.optimizer.add_param_group(
@@ -198,8 +198,10 @@ class StaticTrainer3D(TrainerBase):
                 valid = batch.cd[~torch.isnan(batch.cd)]
                 if valid.numel() > 0:
                     all_cd.append(valid.cpu())
-            # Fallback: if data still uses old .y format
-            if hasattr(batch, "y") and batch.y is not None:
+            # Field values: prefer batch.x (per-node field like Cp), fall back to old .y
+            if hasattr(batch, "x") and batch.x is not None:
+                all_x.append(batch.x.cpu())
+            elif hasattr(batch, "y") and batch.y is not None:
                 all_x.append(batch.y.cpu())
             if hasattr(batch, "c") and batch.c is not None:
                 all_c.append(batch.c.cpu())
@@ -713,8 +715,10 @@ class StaticTrainer3D(TrainerBase):
                 field_gt_dn = field_gt * u_std + u_mean
                 field_diff = np.abs(field_gt_dn - field_pred_dn)
 
-                common_min = min(np.min(field_gt_dn), np.min(field_pred_dn))
-                common_max = max(np.max(field_gt_dn), np.max(field_pred_dn))
+                # Use ground-truth range for colorbar so wild early predictions
+                # don't blow out the scale
+                common_min = float(np.min(field_gt_dn))
+                common_max = float(np.max(field_gt_dn))
 
                 fig = plt.figure(figsize=(20, 6))
                 for panel_idx, (data, title, cmap_name, vmin, vmax) in enumerate(
@@ -792,8 +796,8 @@ class StaticTrainer3D(TrainerBase):
         for sample, label in [(self._viz_train_sample, "train"), (self._viz_val_sample, "val")]:
             try:
                 self._run_viz_for_sample(sample, label, epoch)
-            except Exception as e:
-                logging.getLogger(__name__).warning(f"Viz failed for {label} sample: {e}")
+            except Exception:
+                logging.getLogger(__name__).exception(f"Viz failed for {label} sample (epoch {epoch + 1}):")
 
     def train_step(self, batch: "pyg.data.Batch"):  # noqa: PLR0912, PLR0915
         strategy = self.dataset_config["training_strategy"]
