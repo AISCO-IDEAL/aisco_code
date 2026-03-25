@@ -44,6 +44,33 @@ class OptimizerargsConfig:
     save_every_epochs: int = 0  # Save checkpoint every N epochs (0=disabled)
     save_every_steps: int = 0  # Save checkpoint every N training steps (0=disabled)
 
+    # loss function
+    loss: str = "mse"  # Loss function to use, support ['mse', 'relative_l2']
+
+
+###############
+# Loss functions
+###############
+class RelativeL2Loss(torch.nn.Module):
+    """||pred - target||_2 / ||target||_2, averaged over the batch."""
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        diff = pred - target
+        # flatten everything except the batch dim
+        diff_norm = diff.flatten(1).norm(p=2, dim=1)
+        target_norm = target.flatten(1).norm(p=2, dim=1).clamp(min=1e-8)
+        return (diff_norm / target_norm).mean()
+
+
+def build_loss_fn(loss_name: str) -> torch.nn.Module:
+    """Return the loss module for the given name."""
+    if loss_name == "mse":
+        return torch.nn.MSELoss()
+    elif loss_name == "relative_l2":
+        return RelativeL2Loss()
+    else:
+        raise ValueError(f"Unknown loss '{loss_name}'. Supported: ['mse', 'relative_l2']")
+
 
 ###############
 # Scheduler

@@ -13,7 +13,7 @@ from ..dataloader.metadata import DATASET_METADATA
 
 # Import the new W&B Tracker
 from .logger import WandbTracker
-from .optimizers import AdamOptimizer, AdamWOptimizer
+from .optimizers import AdamOptimizer, AdamWOptimizer, build_loss_fn
 from .utils.setup import load_ckpt, manual_seed, save_ckpt
 
 
@@ -66,7 +66,9 @@ class TrainerBase:
             self.dtype = torch.float64
         else:
             raise ValueError("Invalid dtype:", self.setup_config["dtype"])
-        self.loss_fn = nn.MSELoss()
+
+        loss_name = self.optimizer_config["args"].get("loss", "mse") if isinstance(self.optimizer_config["args"], dict) else getattr(self.optimizer_config["args"], "loss", "mse")
+        self.loss_fn = build_loss_fn(loss_name)
 
         # 2. Initialize the model components
         self.init_dataset(self.dataset_config)
