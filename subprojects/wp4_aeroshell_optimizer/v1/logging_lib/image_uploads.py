@@ -16,6 +16,7 @@ def _safe_step(step: int | None) -> int:
     """Return an explicit non-drifting step for wandb logging."""
     return 0 if step is None else int(step)
 
+
 if TYPE_CHECKING:
     from PIL import Image
 else:

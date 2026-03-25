@@ -284,36 +284,37 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         else:
             raise ValueError(f"Unknown raytracing method: {raytracing_cfg['method']}")
 
-    ### Given visibility for one sun_vector, compute loss for each face
-    # simple dot product per face (sun_direction dot normals = quality)
-    qualities = sun_batch @ face_normals_unit.t()  # (F,) quality of each face, not accounting shading
-    # apply softplus to qualities
-    if Softplus is not None:
-        qualities = Softplus(qualities)
-    numerical_factor = 1 - _lambda * torch.pow(1 + epsilon - visibility, 1 / kappa)
-    # Loss already including penalty term in the numerical factor (take care of correct ordering of tensors!)
-    losses += face_area_mm2 * soft_weights[original_order] * qualities * numerical_factor  # 3 times (F,) --> (F,)
-    # visualisation storages, don't track gradients for these
-    # Divide by S at the end to get average visibility and penalty across sun directions for visualization
+        ### Given visibility for one sun_vector, compute loss for each face
+        # simple dot product per face (sun_direction dot normals = quality)
+        qualities = sun_batch @ face_normals_unit.t()  # (F,) quality of each face, not accounting shading
+        # apply softplus to qualities
+        if Softplus is not None:
+            qualities = Softplus(qualities)
+        numerical_factor = 1 - _lambda * torch.pow(1 + epsilon - visibility, 1 / kappa)
+        # Loss already including penalty term in the numerical factor (take care of correct ordering of tensors!)
+        losses += face_area_mm2 * soft_weights[original_order] * qualities * numerical_factor  # 3 times (F,) --> (F,)
+        # visualisation storages, don't track gradients for these
+        # Divide by S at the end to get average visibility and penalty across sun directions for visualization
 
-    # make wandb histogram of values in visibility tensor across faces for this sun direction
-    if enable_wandb_logging:
-        visibility_detached = visibility.detach()
-        payload = {
-            f"{log_group_name}/visibility_histogram": wandb.Histogram(visibility_detached.cpu().numpy()),
-            f"{log_group_name}/visibility_histogram_mean": float(visibility_detached.mean().item()),
-            f"{log_group_name}/visibility_histogram_std": float(visibility_detached.std(unbiased=False).item()),
-        }
-        if epoch_name is not None:
-            payload["epoch"] = epoch_name
-            wandb.log(payload, step=int(epoch_name))
-        else:
-            wandb.log(payload)
-    visual_aggregate_visibility += visibility.detach().clone()
-    visual_aggregate_penalty_factor += (-numerical_factor.detach().clone()) + 1
-    visual_aggregate_penalty += (
-        (-numerical_factor.detach().clone() + 1) * qualities.detach().clone() * face_area_mm2.detach().clone()
-    )
+        # make wandb histogram of values in visibility tensor across faces for this sun direction
+        if enable_wandb_logging:
+            visibility_detached = visibility.detach()
+            payload = {
+                f"{log_group_name}/visibility_histogram": wandb.Histogram(visibility_detached.cpu().numpy()),
+                f"{log_group_name}/visibility_histogram_mean": float(visibility_detached.mean().item()),
+                f"{log_group_name}/visibility_histogram_std": float(visibility_detached.std(unbiased=False).item()),
+            }
+            if epoch_name is not None:
+                payload["epoch"] = epoch_name
+                wandb.log(payload, step=int(epoch_name))
+            else:
+                wandb.log(payload)
+        visual_aggregate_visibility += visibility.detach().clone()
+        visual_aggregate_penalty_factor += (-numerical_factor.detach().clone()) + 1
+        visual_aggregate_penalty += (
+            (-numerical_factor.detach().clone() + 1) * qualities.detach().clone() * face_area_mm2.detach().clone()
+        )
+
     ### Finalisation of loss terms
 
     # Penalty for unused budget

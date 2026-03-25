@@ -1,25 +1,25 @@
 program: subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py
 method: grid
 entity: aisco
-project: Raytracing_Saturation
+project: RTParam_Sweep
+name: sweep1
 metric:
-  goal: minimize
-  name: solar_loss_metrics/ray_diag_sat_abs_gt5_ratio
+  goal: maximize
+  name: solar_loss_metrics/visibility_histogram_std
 
 parameters:
   # Keep the tested solar loss path fixed for this sweep
   solar_configs/solar_loss_config.SolarLossConfigV7.raytracing_version:
     value: "v3"
 
-  solar_configs/raytracing_config.RaytracingConfigV3.mesh.diagnostics_log_histograms:
-    value: True
+
 
   # Keep memory-sensitive chunking explicit during tests
   solar_configs/raytracing_config.RaytracingConfigV3.mesh.face_chunk_size:
-    values: [200]
+    values: [400]
 
   solar_configs/raytracing_config.RaytracingConfigV3.mesh.blocker_chunk_size:
-    values: [250]
+    values: [500]
 
   #solar_configs/raytracing_config.RaytracingConfigV3.mesh.depth_normalization:
   #  values: ["bbox", "ray_length"]
@@ -28,13 +28,13 @@ parameters:
     values: [0.5, 1.0, 2.0, 4.0]
 
   solar_configs/raytracing_config.RaytracingConfigV3.mesh.transmittance_kappa:
-    values: [0.5, 1.0, 2.0, 4.0]
+    values: [0.5, 1.0, 2.0]
 
   solar_configs/raytracing_config.RaytracingConfigV3.mesh.bary_softness_tau:
-    values: [4, 8, 12, 20]
+    values: [4, 12, 20]
 
   solar_configs/raytracing_config.RaytracingConfigV3.mesh.t_softness_tau:
-    values: [4, 8, 12, 20]
+    values: [4, 12, 20]
 
   solar_configs/raytracing_config.RaytracingConfigV3.mesh.face_samples:
     values: [3, 7, 13]

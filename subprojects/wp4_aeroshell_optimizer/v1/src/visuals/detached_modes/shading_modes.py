@@ -109,6 +109,7 @@ class ShadingVisibility(SolarBase):
     def finalize(self, output_dir: Path, file_name: str = "shading_visibility.gif", delete: bool = True) -> None:
         super().finalize(output_dir, file_name, delete)
 
+
 class ShadingPenalty(SolarBase):
     """Render per-face shading penalty values."""
 
@@ -139,7 +140,6 @@ class AverageQuality(SolarBase):
         faces: torch.Tensor,
         optimization_state: dict,
     ) -> torch.Tensor:
-
         # Use this so the qualities are scaled from a [-1,1] to a [0,1] range always
         # This ensures the actual quality values are rendered, makes differences from normal/softmax calculation visible
         return (weights + 1) / 2
