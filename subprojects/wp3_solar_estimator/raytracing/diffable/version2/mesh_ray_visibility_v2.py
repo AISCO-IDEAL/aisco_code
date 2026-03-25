@@ -20,7 +20,7 @@ Reference formulation (softmin + sigmoid):
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Any
 
 import torch
 
@@ -213,7 +213,7 @@ def _compute_visibility_for_chunk(
 # ---------------------------------------------------------------------------
 
 
-def mesh_visibility(
+def mesh_visibility_v2(
     vertices: torch.Tensor,
     faces: torch.Tensor,
     sun_dir: torch.Tensor,
@@ -221,7 +221,7 @@ def mesh_visibility(
     mesh_cfg: dict[str, Any],
     normals: torch.Tensor | None = None,
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
-    normal_source: Literal["mesh", "sdf"] = "mesh",
+    normal_source: str = "mesh",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Differentiable per-face visibility using mesh ray-triangle intersections.
@@ -255,7 +255,8 @@ def mesh_visibility(
         centroids:   (F, 3) face centroids
     """
     print("Using 'mesh_visibility' version 2")
-
+    if normal_source not in {"mesh", "sdf"}:
+        raise ValueError(f"Invalid normal_source '{normal_source}'. Must be 'mesh' or 'sdf'.")
     beta = float(mesh_cfg["beta"])
     gamma = float(mesh_cfg["gamma"])
     margin_factor = float(mesh_cfg["margin_factor"])

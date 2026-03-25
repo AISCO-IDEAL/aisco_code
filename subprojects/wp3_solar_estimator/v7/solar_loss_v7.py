@@ -16,15 +16,18 @@ from pathlib import Path
 from typing import Any
 
 import torch
+import wandb
 from matplotlib import pyplot as plt  # noqa: F401
 
-import wandb
 from subprojects.wp3_solar_estimator.australia.route_v1 import RouteV1
 from subprojects.wp3_solar_estimator.australia.route_v2 import RouteV2
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
-from subprojects.wp3_solar_estimator.raytracing.diffable import mesh_visibility, sdf_visibility
+from subprojects.wp3_solar_estimator.raytracing.diffable.version1.mesh_ray_visibility_v1 import mesh_visibility_v1
+from subprojects.wp3_solar_estimator.raytracing.diffable.version1.sdf_ray_visibility_v1 import sdf_visibility_v1
+from subprojects.wp3_solar_estimator.raytracing.diffable.version2.mesh_ray_visibility_v2 import mesh_visibility_v2
+from subprojects.wp3_solar_estimator.raytracing.diffable.version2.sdf_ray_visibility_v2 import sdf_visibility_v2
 from subprojects.wp3_solar_estimator.utils.solar_utils import averaging_solar_quality
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -56,6 +59,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     solar_vectors: torch.Tensor,
     area_budget_mm2: float,
     sun_batching_cfg: dict[str, Any],
+    raytracing_version: str,
     raytracing_cfg: dict[str, Any],
     sigmoid_sharpness: float = 10.0,
     soft_mask_selection_threshold: float = 0.5,
@@ -180,29 +184,41 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
 
         ### Raytracing to get visibility
         if raytracing_cfg["method"] == "mesh":
-            visibility, _, _ = mesh_visibility(
-                vertices, faces, sun_batch, normal_source=str(raytracing_cfg["normal_source"]), mesh_cfg=raytracing_cfg["mesh"]
-            )  # (F,) in range [0, 1]
+            if raytracing_version == "v1":
+                visibility, _, _ = mesh_visibility_v1(
+                    vertices, faces, sun_batch, normal_source=str(raytracing_cfg["normal_source"]), mesh_cfg=raytracing_cfg["mesh"]
+                )  # (F,) in range [0, 1]
+            elif raytracing_version == "v2":
+                visibility, _, _ = mesh_visibility_v2(
+                    vertices, faces, sun_batch, normal_source=str(raytracing_cfg["normal_source"]), mesh_cfg=raytracing_cfg["mesh"]
+                )  # (F,) in range [0, 1]
+            else:
+                raise ValueError(f"Unknown raytracing version: {raytracing_version}")
         elif raytracing_cfg["method"] == "sdf":
             assert sdf_fn is not None, "sdf_fn must be provided for sdf_visibility"
-            visibility, _, _ = sdf_visibility(
-                sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch, sdf_cfg=raytracing_cfg["sdf"]
-            )  # (F,) in range [0, 1]
+            if raytracing_version == "v1":
+                visibility, _, _ = sdf_visibility_v1(
+                        sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch, sdf_cfg=raytracing_cfg["sdf"]
+                    )  # (F,) in range [0, 1]
+            elif raytracing_version == "v2":
+                visibility, _, _ = sdf_visibility_v2(
+                    sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch, sdf_cfg=raytracing_cfg["sdf"]
+                )  # (F,) in range [0, 1]
+            else:
+                raise ValueError(f"Unknown raytracing version: {raytracing_version}")
         else:
             raise ValueError(f"Unknown raytracing method: {raytracing_cfg['method']}")
 
-        ### Given visibility for one sun_vector, compute loss for each face
-
-        # simple dot product per face (sun_direction dot normals = quality)
-        qualities = sun_batch @ face_normals_unit.t()  # (F,) quality of each face, not accounting shading
-        numerical_factor = 1 - _lambda * torch.pow(1 + epsilon - visibility, 1 / kappa)
-        # Loss already including penalty term in the numerical factor (take care of correct ordering of tensors!)
-        losses += face_area_mm2 * soft_weights[original_order] * qualities * numerical_factor  # 3 times (F,) --> (F,)
-
-        # visualisation storages, don't track gradients for these
-        # Divide by S at the end to get average visibility and penalty across sun directions for visualization
-        visual_aggregate_visibility += visibility.detach().clone()
-        visual_aggregate_penalty += numerical_factor.detach().clone() - 1
+    ### Given visibility for one sun_vector, compute loss for each face
+    # simple dot product per face (sun_direction dot normals = quality)
+    qualities = sun_batch @ face_normals_unit.t()  # (F,) quality of each face, not accounting shading
+    numerical_factor = 1 - _lambda * torch.pow(1 + epsilon - visibility, 1 / kappa)
+    # Loss already including penalty term in the numerical factor (take care of correct ordering of tensors!)
+    losses += face_area_mm2 * soft_weights[original_order] * qualities * numerical_factor  # 3 times (F,) --> (F,)
+    # visualisation storages, don't track gradients for these
+    # Divide by S at the end to get average visibility and penalty across sun directions for visualization
+    visual_aggregate_visibility += visibility.detach().clone()
+    visual_aggregate_penalty += numerical_factor.detach().clone() - 1
 
     ### Finalisation of loss terms
 
@@ -553,20 +569,20 @@ class SolarLossEstimator:
             raise ValueError(f"{cfg_name} is missing required keys: {missing}")
 
     @classmethod
-    def _validate_raytracing_v1_cfg(cls, cfg: dict[str, Any]) -> None:
-        cls._require_keys(cfg, ["method", "normal_source", "sdf", "mesh"], "RaytracingConfigV1")
+    def _validate_raytracing_cfg(cls, cfg: dict[str, Any], raytracing_version: str) -> None:
+        cls._require_keys(cfg, ["method", "normal_source", "sdf", "mesh"], f"RaytracingConfig{raytracing_version.upper()}")
 
         method = str(cfg["method"]).lower()
         if method not in {"none", "mesh", "sdf"}:
-            raise ValueError("RaytracingConfigV1.method must be one of: none, mesh, sdf")
+            raise ValueError(f"RaytracingConfig{raytracing_version.upper()}.method must be one of: none, mesh, sdf")
 
         normal_source = str(cfg["normal_source"]).lower()
         if normal_source not in {"mesh", "sdf"}:
-            raise ValueError("RaytracingConfigV1.normal_source must be one of: mesh, sdf")
+            raise ValueError(f"RaytracingConfig{raytracing_version.upper()}.normal_source must be one of: mesh, sdf")
 
         sdf_cfg = cfg["sdf"]
         if not isinstance(sdf_cfg, dict):
-            raise TypeError("RaytracingConfigV1.sdf must be a mapping")
+            raise TypeError(f"RaytracingConfig{raytracing_version.upper()}.sdf must be a mapping")
         cls._require_keys(
             sdf_cfg,
             [
@@ -580,21 +596,23 @@ class SolarLossEstimator:
                 "max_march_factor",
                 "point_chunk_size",
             ],
-            "RaytracingConfigV1.sdf",
+            f"RaytracingConfig{raytracing_version.upper()}.sdf",
         )
 
         sdf_method = str(sdf_cfg["method"]).lower()
         if sdf_method not in {"sigmoid", "absorption"}:
-            raise ValueError("RaytracingConfigV1.sdf.method must be one of: sigmoid, absorption")
+            raise ValueError(f"RaytracingConfig{raytracing_version.upper()}.sdf.method must be one of: sigmoid, absorption")
 
         mesh_cfg = cfg["mesh"]
         if not isinstance(mesh_cfg, dict):
-            raise TypeError("RaytracingConfigV1.mesh must be a mapping")
+            raise TypeError(f"RaytracingConfig{raytracing_version.upper()}.mesh must be a mapping")
         cls._require_keys(
             mesh_cfg,
             ["beta", "gamma", "margin_factor", "origin_offset_eps", "sun_distance_factor", "face_chunk_size", "miss_t"],
-            "RaytracingConfigV1.mesh",
+            f"RaytracingConfig{raytracing_version.upper()}.mesh",
         )
+        if raytracing_version == "v2":
+            cls._require_keys(mesh_cfg, ["blocker_chunk_size"], f"RaytracingConfig{raytracing_version.upper()}.mesh")
 
     @classmethod
     def _load_versioned_raytracing_config(cls, raytracing_version: str) -> dict[str, Any]:
@@ -608,8 +626,8 @@ class SolarLossEstimator:
             )
 
         resolved_cfg = dict(rt_cfg[key])
-        if raytracing_version == "v1":
-            cls._validate_raytracing_v1_cfg(resolved_cfg)
+        if raytracing_version in {"v1", "v2"}:
+            cls._validate_raytracing_cfg(resolved_cfg, raytracing_version)
         else:
             raise ValueError(f"Unsupported raytracing_version '{raytracing_version}'.")
 
@@ -710,6 +728,7 @@ class SolarLossEstimator:
                     self.solar_vectors,
                     self.area_budget_mm2,
                     sun_batching_cfg=self.sun_batching_cfg,
+                    raytracing_version=self.raytracing_version,
                     raytracing_cfg=self.raytracing_cfg,
                     sigmoid_sharpness=self.sigmoid_sharpness,
                     soft_mask_selection_threshold=self.soft_mask_selection_threshold,
@@ -782,6 +801,7 @@ class SolarLossEstimator:
                 self.solar_vectors,
                 self.area_budget_mm2,
                 sun_batching_cfg=self.sun_batching_cfg,
+                raytracing_version=self.raytracing_version,
                 raytracing_cfg=self.raytracing_cfg,
                 sigmoid_sharpness=self.sigmoid_sharpness,
                 soft_mask_selection_threshold=self.soft_mask_selection_threshold,

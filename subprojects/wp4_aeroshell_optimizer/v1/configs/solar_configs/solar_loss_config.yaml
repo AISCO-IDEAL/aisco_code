@@ -111,9 +111,9 @@ SolarLossConfigV6:
 # USED — solar_v7.py: cfg["SolarLossConfigV7"] -> entire dict passed to WP3's SolarLossEstimator (v7)
 SolarLossConfigV7:
   australia_cfg: "solar_configs/australia.yaml"
-  raytracing_version: "v1"
+  raytracing_version: "v2"
   route_version: "v2" # v1 or v2
-  sun_vector_source: "route" # route | fixed
+  sun_vector_source: "fixed" # route | fixed
   fixed_sun_dir: [-1,0,1.5] # [x, y, z] when sun_vector_source=fixed
   method: "mesh_sdf" # diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
