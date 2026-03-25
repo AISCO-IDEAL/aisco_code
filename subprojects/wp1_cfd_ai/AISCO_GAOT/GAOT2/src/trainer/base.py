@@ -67,7 +67,11 @@ class TrainerBase:
         else:
             raise ValueError("Invalid dtype:", self.setup_config["dtype"])
 
-        loss_name = self.optimizer_config["args"].get("loss", "mse") if isinstance(self.optimizer_config["args"], dict) else getattr(self.optimizer_config["args"], "loss", "mse")
+        loss_name = (
+            self.optimizer_config["args"].get("loss", "mse")
+            if isinstance(self.optimizer_config["args"], dict)
+            else getattr(self.optimizer_config["args"], "loss", "mse")
+        )
         self.loss_fn = build_loss_fn(loss_name)
 
         # 2. Initialize the model components
