@@ -55,9 +55,9 @@ def _compute_visibility_for_sun(
     sun_dir: torch.Tensor,
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None,
     raytracing_cfg: dict[str, Any],
+    raytracing_version: str,
     output_dir: Path | None = None,
 ) -> torch.Tensor:
-    raytracing_version = str(raytracing_cfg["version"]).lower()
     if raytracing_cfg["method"] == "mesh":
         if raytracing_version == "v1":
             visibility, _, _ = mesh_visibility_v1(
@@ -112,6 +112,7 @@ def _compute_visibility_per_sun(
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None,
     shading_cfg: dict[str, Any],
     raytracing_cfg: dict[str, Any],
+    raytracing_version: str,
     output_dir: Path | None = None,
 ) -> torch.Tensor:
     """
@@ -136,6 +137,7 @@ def _compute_visibility_per_sun(
                 sdf_fn=sdf_fn,
                 raytracing_cfg=raytracing_cfg,
                 output_dir=output_dir,
+                raytracing_version=raytracing_version,
             )
             for sun_dir in sun_chunk
         ]
@@ -152,6 +154,7 @@ def solar_mesh_loss_v6(  # noqa: PLR0912, PLR0915
     area_budget_mm2: float,
     shading_cfg: dict[str, Any],
     raytracing_cfg: dict[str, Any],
+    raytracing_version: str,
     sigmoid_sharpness: float = 10.0,
     soft_mask_selection_threshold: float = 0.5,
     soft_mask_full_selection_threshold: float = 0.95,
@@ -241,6 +244,7 @@ def solar_mesh_loss_v6(  # noqa: PLR0912, PLR0915
         sdf_fn,
         shading_cfg,
         raytracing_cfg,
+        raytracing_version,
         output_dir,
     )
     aggregate_visibility = visibility_per_sun.mean(dim=1)
@@ -752,6 +756,7 @@ class SolarLossEstimator:
                     self.area_budget_mm2,
                     shading_cfg=self.shading_cfg,
                     raytracing_cfg=self.raytracing_cfg,
+                    raytracing_version=self.raytracing_version,
                     sigmoid_sharpness=self.sigmoid_sharpness,
                     soft_mask_selection_threshold=self.soft_mask_selection_threshold,
                     soft_mask_full_selection_threshold=self.soft_mask_full_selection_threshold,
@@ -810,6 +815,7 @@ class SolarLossEstimator:
                 self.area_budget_mm2,
                 shading_cfg=self.shading_cfg,
                 raytracing_cfg=self.raytracing_cfg,
+                raytracing_version=self.raytracing_version,
                 sigmoid_sharpness=self.sigmoid_sharpness,
                 soft_mask_selection_threshold=self.soft_mask_selection_threshold,
                 soft_mask_full_selection_threshold=self.soft_mask_full_selection_threshold,
