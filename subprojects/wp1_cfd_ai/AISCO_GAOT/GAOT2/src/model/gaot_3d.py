@@ -247,11 +247,13 @@ class GAOT3D(nn.Module):
         rndata_proc = self.process(rndata=rndata, condition=condition)
 
         # ── scalar path: pool → multi-head decoder ───────────────────────
-        # Shape: [B, M, C_lifted] -> [B, C_lifted]
-        pooled_features = self.attn_pool(rndata_proc)
-
-        # Multi-head decode: returns {"force": [B,1], "cd": [B,1]}
-        output = self.decoder(pooled_features)
+        if self.decoder.head_names:
+            # Shape: [B, M, C_lifted] -> [B, C_lifted]
+            pooled_features = self.attn_pool(rndata_proc)
+            # Multi-head decode: returns e.g. {"force": [B,1], "cd": [B,1]}
+            output = self.decoder(pooled_features)
+        else:
+            output = {}
 
         # ── field path (optional): MAGNODecoder ──────────────────────────
         if self.field_output_size > 0:

@@ -9,7 +9,7 @@
 #SBATCH --output=/cluster/home/clhuber/logs/Clemens_TEST_%j.out 
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=%u@ethz.ch
-## run this command: sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/clemens_wp4_testing.sh
+## run this command: sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/experimental_scripts/clemens_wp4_testing.sh
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
