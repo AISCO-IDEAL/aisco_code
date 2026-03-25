@@ -49,16 +49,19 @@ def _make_losses_config(
     cse: str = "True",
     alm_aggressive: str = "False",
     alm_thresholds: list[float] | None = None,
-    initial_lambda: float = 0.01,
-    initial_mu: float = 1.0,
-    initial_nu: float = 1.0,
+    initial_lambda: float | list[float] = 0.01,
+    initial_mu: float | list[float] = 1.0,
+    initial_nu: float | list[float] = 1.0,
     alpha: float = 0.99,
     gamma: float = 0.01,
     gamma_aggressive: float = 1.1,
+    cse_prefactors: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Return a minimal losses_config dict with active losses covering all categories."""
     if alm_thresholds is None:
         alm_thresholds = [0.1, 0.1, 0.1]
+    if cse_prefactors is None:
+        cse_prefactors = {"drag": 1.0, "solar": 1.0}
     return {
         "general_info": {
             "ALM": alm,
@@ -71,6 +74,7 @@ def _make_losses_config(
             "alpha": alpha,
             "gamma": gamma,
             "gamma_aggressive": gamma_aggressive,
+            "cse_prefactors": cse_prefactors,
         },
         "losses": {
             "aero": {
@@ -280,10 +284,15 @@ class TestInit:
         finally:
             cleanup()
 
-    def test_alm_false_raises_value_error(self, make_total_loss):
-        """ALM != 'True' should raise ValueError."""
-        with pytest.raises(ValueError, match="requires ALM"):
-            make_total_loss(losses_cfg=_make_losses_config(alm="False"))
+    def test_manual_mode_no_alm_state(self, make_total_loss):
+        """ALM='False' → manual mode: no lamdas/mus/nus attributes."""
+        tl, _m, cleanup = make_total_loss(losses_cfg=_make_losses_config(alm="False"))
+        try:
+            assert tl._use_alm is False
+            assert not hasattr(tl, "lamdas")
+            assert not hasattr(tl, "mus")
+        finally:
+            cleanup()
 
     def test_wandb_flags_set_from_config(self, make_total_loss):
         tl, _m, cleanup = make_total_loss()
@@ -301,6 +310,46 @@ class TestInit:
             assert tl._gradient_memory_diagnostics is False
         finally:
             cleanup()
+
+    def test_per_constraint_alm_init_from_lists(self, make_total_loss):
+        """initial_lambda/mu/nu as lists → distinct per-constraint values."""
+        cfg = _make_losses_config(
+            initial_lambda=[0.1, 0.2, 0.3],
+            initial_mu=[2.0, 3.0, 4.0],
+            initial_nu=[0.5, 0.6, 0.7],
+        )
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            assert tl.lamdas.shape == (3, 1)
+            assert tl.lamdas[0].item() == pytest.approx(0.1)
+            assert tl.lamdas[1].item() == pytest.approx(0.2)
+            assert tl.lamdas[2].item() == pytest.approx(0.3)
+            assert tl.mus[0].item() == pytest.approx(2.0)
+            assert tl.mus[1].item() == pytest.approx(3.0)
+            assert tl.nus[2].item() == pytest.approx(0.7)
+        finally:
+            cleanup()
+
+    def test_per_constraint_scalar_broadcasts(self, make_total_loss):
+        """Scalar initial_lambda → same value for all constraints."""
+        cfg = _make_losses_config(initial_lambda=0.05, initial_mu=2.0, initial_nu=0.5)
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            assert torch.allclose(tl.lamdas, torch.full((3, 1), 0.05))
+            assert torch.allclose(tl.mus, torch.full((3, 1), 2.0))
+            assert torch.allclose(tl.nus, torch.full((3, 1), 0.5))
+        finally:
+            cleanup()
+
+    def test_use_cse_flag(self, make_total_loss):
+        tl_on, _, c1 = make_total_loss(losses_cfg=_make_losses_config(cse="True"))
+        tl_off, _, c2 = make_total_loss(losses_cfg=_make_losses_config(cse="False"))
+        try:
+            assert tl_on._use_cse is True
+            assert tl_off._use_cse is False
+        finally:
+            c1()
+            c2()
 
 
 # ===========================================================================
@@ -411,7 +460,7 @@ class TestComputeRawLosses:
 
 
 # ===========================================================================
-# Test: _apply_alm_weighting                                                    # noqa: ERA001
+# Test: _apply_weighting                                                    # noqa: ERA001
 # ===========================================================================
 
 
@@ -432,51 +481,81 @@ class TestALMWeighting:
         return total
 
     def test_alm_total_loss_value_with_cse_off(self, make_total_loss):
-        """CSE=False: o = -(solar - drag) = -(100 - 2) = -98."""
+        """ALM=True, CSE=False: objectives get manual weights, constraints get ALM.
+
+        gaot_loss=2.0 * w=1.0, solar_v3B=100.0 * w=50.0, surface_loss_v0=1.0 * w=1.0.
+        Constraints: ALM(bb=0.5, eikonal=0.3, smoothness=0.1).
+        """
         cfg = _make_losses_config(cse="False")
         tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
         try:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
-            total = tl._apply_alm_weighting(raw, torch.device("cpu"))
+            total = tl._apply_weighting(raw, torch.device("cpu"))
 
             lam_after = tl.lamdas.view(-1).tolist()
             mu_after = tl.mus.view(-1).tolist()
 
-            o_expected = -(100.0 - 2.0)  # -98
+            # Manual objective contribution: gaot*1 + solar*50
+            obj_expected = 2.0 * 1.0 + 100.0 * 50.0
+            # Auxiliary contribution: surface_loss_v0 * 1.0
+            aux_expected = 1.0 * 1.0
+            # ALM constraint contribution
             c_vals = [0.5, 0.3, 0.1]
-            expected = self._hand_compute_alm(o_expected, c_vals, lam_after, mu_after)
+            alm_expected = sum(lam_after[i] * c_vals[i] + 0.5 * mu_after[i] * c_vals[i] ** 2 for i in range(3))
 
+            expected = obj_expected + aux_expected + alm_expected
             assert total.item() == pytest.approx(expected, rel=1e-5)
         finally:
             cleanup()
 
-    def test_last_weighted_losses_populated(self, make_total_loss):
-        cfg = _make_losses_config(cse="False")
+    def test_last_weighted_losses_populated_alm_cse(self, make_total_loss):
+        """ALM=True, CSE=True: cse_objective + 3 alm constraints + auxiliary."""
+        cfg = _make_losses_config(alm="True", cse="True")
         tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
         try:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
-            tl._apply_alm_weighting(raw, torch.device("cpu"))
+            with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
+                tl._apply_weighting(raw, torch.device("cpu"))
 
-            assert "alm_objective" in tl._last_weighted_losses
+            assert "cse_objective" in tl._last_weighted_losses
             assert "alm_bb_v3" in tl._last_weighted_losses
             assert "alm_eikonal_v0" in tl._last_weighted_losses
             assert "alm_smoothness_v0" in tl._last_weighted_losses
-            assert len(tl._last_weighted_losses) == 4
+            assert "surface_loss_v0" in tl._last_weighted_losses
+            assert len(tl._last_weighted_losses) == 5
         finally:
             cleanup()
 
-    def test_auxiliary_losses_excluded_from_weighted(self, make_total_loss):
+    def test_last_weighted_losses_populated_alm_manual_obj(self, make_total_loss):
+        """ALM=True, CSE=False: manual objective keys + alm constraints + auxiliary."""
+        cfg = _make_losses_config(alm="True", cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            tl._apply_weighting(raw, torch.device("cpu"))
+
+            assert "gaot_loss" in tl._last_weighted_losses
+            assert "solar_v3B" in tl._last_weighted_losses
+            assert "alm_bb_v3" in tl._last_weighted_losses
+            assert "surface_loss_v0" in tl._last_weighted_losses
+        finally:
+            cleanup()
+
+    def test_auxiliary_losses_included_with_manual_weight(self, make_total_loss):
+        """Auxiliary losses should always be present with their manual weight."""
         cfg = _make_losses_config(cse="False")
         tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
         try:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
-            tl._apply_alm_weighting(raw, torch.device("cpu"))
+            tl._apply_weighting(raw, torch.device("cpu"))
 
-            for key in tl._last_weighted_losses:
-                assert "surface" not in key
+            assert "surface_loss_v0" in tl._last_weighted_losses
+            # weight from config is 1.0, raw value is 1.0 → 1.0
+            assert tl._last_weighted_losses["surface_loss_v0"].item() == pytest.approx(1.0)
         finally:
             cleanup()
 
@@ -488,7 +567,7 @@ class TestALMWeighting:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
             with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
-                tl._apply_alm_weighting(raw, torch.device("cpu"))
+                tl._apply_weighting(raw, torch.device("cpu"))
             assert tl._last_cruising_speed is not None
             assert tl._last_cruising_speed.item() == pytest.approx(25.0)
         finally:
@@ -500,7 +579,7 @@ class TestALMWeighting:
         try:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
-            tl._apply_alm_weighting(raw, torch.device("cpu"))
+            tl._apply_weighting(raw, torch.device("cpu"))
             assert tl._last_cruising_speed is None
         finally:
             cleanup()
@@ -520,7 +599,7 @@ class TestGraphIndependence:
         try:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
-            tl._apply_alm_weighting(raw, torch.device("cpu"))
+            tl._apply_weighting(raw, torch.device("cpu"))
 
             grad_fns = [v.grad_fn for v in tl._last_weighted_losses.values() if v.grad_fn is not None]
 
@@ -535,7 +614,7 @@ class TestGraphIndependence:
         try:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
-            tl._apply_alm_weighting(raw, torch.device("cpu"))
+            tl._apply_weighting(raw, torch.device("cpu"))
 
             for weighted_loss in tl._last_weighted_losses.values():
                 if not weighted_loss.requires_grad:
@@ -560,7 +639,7 @@ class TestALMMultiplierUpdate:
         try:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
-            tl._apply_alm_weighting(raw, torch.device("cpu"))
+            tl._apply_weighting(raw, torch.device("cpu"))
 
             expected_nu_bb = 0.99 * 1.0 + 0.01 * (0.5**2)  # = 0.9925
             assert tl.nus[0].item() == pytest.approx(expected_nu_bb, rel=1e-6)
@@ -574,7 +653,7 @@ class TestALMMultiplierUpdate:
         try:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
-            tl._apply_alm_weighting(raw, torch.device("cpu"))
+            tl._apply_weighting(raw, torch.device("cpu"))
 
             eps = 1e-16
             expected_nu_bb = 0.99 * 1.0 + 0.01 * (0.5**2)
@@ -590,7 +669,7 @@ class TestALMMultiplierUpdate:
         try:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
-            tl._apply_alm_weighting(raw, torch.device("cpu"))
+            tl._apply_weighting(raw, torch.device("cpu"))
 
             eps = 1e-16
             nu_after = 0.99 * 1.0 + 0.01 * (0.5**2)
@@ -612,7 +691,7 @@ class TestALMMultiplierUpdate:
         try:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
-            tl._apply_alm_weighting(raw, torch.device("cpu"))
+            tl._apply_weighting(raw, torch.device("cpu"))
 
             eps = 1e-16
             min_mu = 0.01 / (0.1 + eps)
@@ -644,7 +723,7 @@ class TestALMMultiplierUpdate:
             raw = tl._compute_raw_losses(model, epoch_name=0)
 
             with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
-                tl._apply_alm_weighting(raw, torch.device("cpu"))
+                tl._apply_weighting(raw, torch.device("cpu"))
 
             assert tl.mus[0].item() == pytest.approx(1.0 * 1.1, rel=1e-5)
         finally:
@@ -662,13 +741,280 @@ class TestALMMultiplierUpdate:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
             with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
-                tl._apply_alm_weighting(raw, torch.device("cpu"))
+                tl._apply_weighting(raw, torch.device("cpu"))
 
             # bb_v3 = 0.5 -> nu = 0.99 * 1.0 + 0.01 * |0.5| = 0.995
             expected_nu = 0.99 * 1.0 + 0.01 * abs(0.5)
             assert tl.nus[0].item() == pytest.approx(expected_nu, rel=1e-6)
         finally:
             cleanup()
+
+
+# ===========================================================================
+# Test: _apply_weighting                                                  # noqa: ERA001
+# ===========================================================================
+
+
+class TestManualWeighting:
+    """Tests for the manual (config-weight) weighting path."""
+
+    def test_manual_weights_stored_from_config(self, make_total_loss):
+        """_manual_weights should contain the second element of each [compute, weight, path] tuple."""
+        tl, _m, cleanup = make_total_loss(losses_cfg=_make_losses_config(alm="False", cse="False"))
+        try:
+            assert tl._manual_weights["gaot_loss"] == pytest.approx(1.0)
+            assert tl._manual_weights["bb_v3"] == pytest.approx(10.0)
+            assert tl._manual_weights["eikonal_v0"] == pytest.approx(10.0)
+            assert tl._manual_weights["smoothness_v0"] == pytest.approx(0.0)
+            assert tl._manual_weights["solar_v3B"] == pytest.approx(50.0)
+        finally:
+            cleanup()
+
+    def test_manual_total_is_weighted_sum(self, make_total_loss):
+        """Total = sum(loss_i * weight_i) for all active losses."""
+        cfg = _make_losses_config(alm="False", cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            total = tl._apply_weighting(raw, torch.device("cpu"))
+
+            expected = sum(raw[n].item() * tl._manual_weights[n] for n in raw)
+            assert total.item() == pytest.approx(expected, rel=1e-5)
+        finally:
+            cleanup()
+
+    def test_manual_last_weighted_losses_contain_all_active(self, make_total_loss):
+        cfg = _make_losses_config(alm="False", cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            tl._apply_weighting(raw, torch.device("cpu"))
+
+            assert set(tl._last_weighted_losses.keys()) == set(tl._active_losses.keys())
+        finally:
+            cleanup()
+
+    def test_manual_no_cruising_speed(self, make_total_loss):
+        cfg = _make_losses_config(alm="False", cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            tl._apply_weighting(raw, torch.device("cpu"))
+            assert tl._last_cruising_speed is None
+        finally:
+            cleanup()
+
+    def test_manual_graph_independence(self, make_total_loss):
+        """Each entry in _last_weighted_losses must have an independent graph."""
+        cfg = _make_losses_config(alm="False", cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            tl._apply_weighting(raw, torch.device("cpu"))
+
+            grad_fns = [v.grad_fn for v in tl._last_weighted_losses.values() if v.grad_fn is not None]
+            assert len(grad_fns) == len(set(grad_fns)), "Shared grad_fn detected!"
+        finally:
+            cleanup()
+
+    def test_manual_individual_backward(self, make_total_loss):
+        """Per-component backward must not raise."""
+        cfg = _make_losses_config(alm="False", cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            tl._apply_weighting(raw, torch.device("cpu"))
+
+            for weighted_loss in tl._last_weighted_losses.values():
+                if not weighted_loss.requires_grad:
+                    continue
+                weighted_loss.backward(retain_graph=False)
+        finally:
+            cleanup()
+
+    def test_manual_get_total_loss_end_to_end(self, make_total_loss):
+        """get_total_loss works end-to-end in manual mode."""
+        cfg = _make_losses_config(alm="False", cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            total = tl.get_total_loss(model, epoch_name=0)
+
+            assert isinstance(total, torch.Tensor)
+            assert torch.isfinite(total).all()
+            recomputed = sum(v.item() for v in tl._last_weighted_losses.values())
+            assert total.item() == pytest.approx(recomputed, rel=1e-5)
+        finally:
+            cleanup()
+
+    def test_manual_telemetry_no_alm_params(self, make_total_loss):
+        """In manual mode, wandb.log should NOT contain alm/ keys."""
+        gc = _make_general_config()
+        gc["wandb_general"]["use_wandb"] = True
+        cfg = _make_losses_config(alm="False", cse="False")
+        tl, _m, cleanup = make_total_loss(general_cfg=gc, losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+            total = tl._apply_weighting(raw, torch.device("cpu"))
+            loss_log = {n: t.item() for n, t in raw.items()}
+            loss_log["total_loss"] = total.item()
+
+            from subprojects.wp4_aeroshell_optimizer.v1.src.losses import total_loss as tl_mod  # noqa: PLC0415
+
+            tl_mod.wandb.log = MagicMock()
+            tl._handle_telemetry(loss_log, 0, torch.device("cpu"), model, total)
+
+            assert tl_mod.wandb.log.call_count == 1
+            logged_dict = tl_mod.wandb.log.call_args[0][0]
+            alm_keys = [k for k in logged_dict if k.startswith("alm/")]
+            assert alm_keys == [], f"Unexpected ALM keys in manual mode: {alm_keys}"
+        finally:
+            cleanup()
+
+
+# ===========================================================================
+# Test: CSE prefactors
+# ===========================================================================
+
+
+class TestCSEPrefactors:
+    """Test that CSE prefactors scale objectives before the cruising-speed solver."""
+
+    def test_prefactors_passed_to_cruising_speed(self, make_total_loss):
+        """Verify drag/solar passed to cruising_speed include prefactor scaling."""
+        cfg = _make_losses_config(cse="True", cse_prefactors={"drag": 2.0, "solar": 0.5})
+        gc = _make_general_config()
+        tl, _m, cleanup = make_total_loss(general_cfg=gc, losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+
+            with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(10.0, requires_grad=True)) as mock_cse:
+                tl._apply_weighting(raw, torch.device("cpu"))
+
+            mock_cse.assert_called_once()
+            call_kwargs = mock_cse.call_args[1]
+            # drag raw=2.0 * pf=2.0 = 4.0;  solar raw=100.0 * pf=0.5 = 50.0
+            assert call_kwargs["drag_force_at_25ms"].item() == pytest.approx(4.0)
+            assert call_kwargs["solar_power"].item() == pytest.approx(50.0)
+        finally:
+            cleanup()
+
+    def test_default_prefactors_are_one(self, make_total_loss):
+        """Without cse_prefactors in config, defaults to 1.0."""
+        gi = _make_losses_config(cse="True")
+        del gi["general_info"]["cse_prefactors"]  # simulates missing key
+        tl, _m, cleanup = make_total_loss(losses_cfg=gi)
+        try:
+            model = SimpleModel()
+            raw = tl._compute_raw_losses(model, epoch_name=0)
+
+            with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(10.0, requires_grad=True)) as mock_cse:
+                tl._apply_weighting(raw, torch.device("cpu"))
+
+            call_kwargs = mock_cse.call_args[1]
+            # raw values directly (pf=1.0)
+            assert call_kwargs["drag_force_at_25ms"].item() == pytest.approx(2.0)
+            assert call_kwargs["solar_power"].item() == pytest.approx(100.0)
+        finally:
+            cleanup()
+
+
+# ===========================================================================
+# Test: all four weighting modes end-to-end
+# ===========================================================================
+
+
+class TestFourModes:
+    """Verify all four ALM x CSE combinations produce valid results."""
+
+    def test_alm_cse(self, make_total_loss):
+        """ALM=True, CSE=True: cse_objective + alm constraints + auxiliary."""
+        cfg = _make_losses_config(alm="True", cse="True")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
+                total = tl.get_total_loss(model, epoch_name=0)
+            assert torch.isfinite(total)
+            assert "cse_objective" in tl._last_weighted_losses
+            assert any(k.startswith("alm_") for k in tl._last_weighted_losses)
+            assert tl._last_cruising_speed is not None
+        finally:
+            cleanup()
+
+    def test_alm_manual_obj(self, make_total_loss):
+        """ALM=True, CSE=False: manual objectives + alm constraints."""
+        cfg = _make_losses_config(alm="True", cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            total = tl.get_total_loss(model, epoch_name=0)
+            assert torch.isfinite(total)
+            # Objectives should appear by name, not as cse_objective
+            assert "gaot_loss" in tl._last_weighted_losses
+            assert "solar_v3B" in tl._last_weighted_losses
+            assert any(k.startswith("alm_") for k in tl._last_weighted_losses)
+            assert tl._last_cruising_speed is None
+        finally:
+            cleanup()
+
+    def test_manual_cstr_cse(self, make_total_loss):
+        """ALM=False, CSE=True: CSE objective + manual constraints."""
+        cfg = _make_losses_config(alm="False", cse="True")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
+                total = tl.get_total_loss(model, epoch_name=0)
+            assert torch.isfinite(total)
+            assert "cse_objective" in tl._last_weighted_losses
+            # Constraints should appear by name, not alm_ prefixed
+            assert "bb_v3" in tl._last_weighted_losses
+            assert not any(k.startswith("alm_") for k in tl._last_weighted_losses)
+            assert tl._last_cruising_speed is not None
+        finally:
+            cleanup()
+
+    def test_fully_manual(self, make_total_loss):
+        """ALM=False, CSE=False: everything manual-weighted."""
+        cfg = _make_losses_config(alm="False", cse="False")
+        tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+        try:
+            model = SimpleModel()
+            total = tl.get_total_loss(model, epoch_name=0)
+            assert torch.isfinite(total)
+            assert set(tl._last_weighted_losses.keys()) == set(tl._active_losses.keys())
+            assert tl._last_cruising_speed is None
+        finally:
+            cleanup()
+
+    def test_backward_all_four_modes(self, make_total_loss):
+        """Per-component backward works in all four modes without raising."""
+        modes = [
+            {"alm": "True", "cse": "True"},
+            {"alm": "True", "cse": "False"},
+            {"alm": "False", "cse": "True"},
+            {"alm": "False", "cse": "False"},
+        ]
+        for mode in modes:
+            cfg = _make_losses_config(**mode)
+            tl, _m, cleanup = make_total_loss(losses_cfg=cfg)
+            try:
+                model = SimpleModel()
+                with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
+                    tl.get_total_loss(model, epoch_name=0)
+                for wl in tl._last_weighted_losses.values():
+                    if wl.requires_grad:
+                        wl.backward(retain_graph=False)
+            finally:
+                cleanup()
 
 
 # ===========================================================================
@@ -684,7 +1030,8 @@ class TestHandleTelemetry:
         try:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
-            total = tl._apply_alm_weighting(raw, torch.device("cpu"))
+            with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
+                total = tl._apply_weighting(raw, torch.device("cpu"))
             loss_log = {n: t.item() for n, t in raw.items()}
             loss_log["total_loss"] = total.item()
 
@@ -706,7 +1053,7 @@ class TestHandleTelemetry:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=5)
             with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
-                total = tl._apply_alm_weighting(raw, torch.device("cpu"))
+                total = tl._apply_weighting(raw, torch.device("cpu"))
             loss_log = {n: t.item() for n, t in raw.items()}
             loss_log["total_loss"] = total.item()
 
@@ -716,18 +1063,19 @@ class TestHandleTelemetry:
 
             tl._handle_telemetry(loss_log, 5, torch.device("cpu"), model, total)
 
-            assert tl_mod.wandb.log.call_count >= 3
+            # After batching fix: single wandb.log call per step
+            assert tl_mod.wandb.log.call_count == 1
 
-            all_logged_keys: set[str] = set()
-            for call in tl_mod.wandb.log.call_args_list:
-                logged_dict = call[0][0] if call[0] else call[1].get("data", {})
-                all_logged_keys.update(logged_dict.keys())
+            logged_dict = tl_mod.wandb.log.call_args[0][0]
+            all_logged_keys = set(logged_dict.keys())
 
             assert "metrics/cruising_speed_ms" in all_logged_keys
             assert any(k.startswith("weighted/") for k in all_logged_keys)
             assert any(k.startswith("alm/lambda_") for k in all_logged_keys)
             assert any(k.startswith("alm/mu_") for k in all_logged_keys)
             assert any(k.startswith("alm/nu_") for k in all_logged_keys)
+            # Verify step parameter
+            assert tl_mod.wandb.log.call_args[1].get("step") == 5
         finally:
             cleanup()
 
@@ -739,7 +1087,7 @@ class TestHandleTelemetry:
         try:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
-            total = tl._apply_alm_weighting(raw, torch.device("cpu"))
+            total = tl._apply_weighting(raw, torch.device("cpu"))
             loss_log = {n: t.item() for n, t in raw.items()}
             loss_log["total_loss"] = total.item()
 
@@ -749,10 +1097,10 @@ class TestHandleTelemetry:
 
             tl._handle_telemetry(loss_log, 0, torch.device("cpu"), model, total)
 
-            all_logged_keys: set[str] = set()
-            for call in tl_mod.wandb.log.call_args_list:
-                logged_dict = call[0][0] if call[0] else {}
-                all_logged_keys.update(logged_dict.keys())
+            # Single batched call
+            assert tl_mod.wandb.log.call_count == 1
+            logged_dict = tl_mod.wandb.log.call_args[0][0]
+            all_logged_keys = set(logged_dict.keys())
 
             assert "metrics/cruising_speed_ms" not in all_logged_keys
         finally:
@@ -766,7 +1114,7 @@ class TestHandleTelemetry:
             model = SimpleModel()
             raw = tl._compute_raw_losses(model, epoch_name=0)
             with patch(f"{MODULE}.cruising_speed", return_value=torch.tensor(25.0, requires_grad=True)):
-                total = tl._apply_alm_weighting(raw, torch.device("cpu"))
+                total = tl._apply_weighting(raw, torch.device("cpu"))
             loss_log = {"total_loss": total.item()}
 
             from subprojects.wp4_aeroshell_optimizer.v1.src.losses import total_loss as tl_mod  # noqa: PLC0415

@@ -1,22 +1,51 @@
 """Modular total-loss pipeline for the aeroshell optimiser.
 
 1. ``_compute_raw_losses``  - evaluate every active loss instance
-2. ``_apply_alm_weighting`` - single objective by calling CSE + constraint weighting by ALM (adaptive or aggressive)
+2. ``_apply_weighting``     - independent objective & constraint weighting
 3. ``_handle_telemetry``    - WandB logging, mesh rendering, memory diagnostics
 
-**Category convention** (instead of fragile index-based lookup):
+**Weighting modes** - controlled by two independent flags in ``general_info``:
 
-* ``aero``, ``solar``       → *objective* losses  (fed to cruising-speed / ALM objective)
-* ``bb``, ``eikonal``, ``smoothness`` → *constraint* losses (ALM penalty terms)
-* everything else            → *auxiliary* losses  (logged only, no backward)
++-----------------------+----------------------------+------------------------------+
+|                       | **CSE objectives**         | **Manual objectives**        |
+|                       | ``CSE='True'``             | ``CSE`` absent / ``'False'`` |
++=======================+============================+==============================+
+| **ALM constraints**   | ALM + CSE                  | ALM + manual obj weights     |
+| ``ALM='True'``        |                            |                              |
++-----------------------+----------------------------+------------------------------+
+| **Manual constraints** | Manual cstr + CSE          | Fully manual                |
+| ``ALM`` absent/       |                            |                              |
+| ``'False'``           |                            |                              |
++-----------------------+----------------------------+------------------------------+
+
+**CSE prefactors**: When CSE is active each objective loss is multiplied by a
+configurable prefactor before being fed to the cruising-speed solver::
+
+    cse_prefactors:
+      drag: 1.0
+      solar: 1.0
+
+**Per-constraint ALM initial values**: ``initial_lambda``, ``initial_mu`` and
+``initial_nu`` are lists of length *n_constraints* (one entry per constraint in
+`[bb, eikonal, smoothness]` order).  A single scalar is broadcast to all.
+
+**Category convention**:
+
+* ``aero``, ``solar``                → *objective* losses
+* ``bb``, ``eikonal``, ``smoothness`` → *constraint* losses
+* everything else                    → *auxiliary* losses (always manual-weighted)
 """
 
 from __future__ import annotations
 
+import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import trimesh
 
@@ -41,16 +70,16 @@ _ALM_CONSTRAINT_CATEGORIES: tuple[str, ...] = ("bb", "eikonal", "smoothness")  #
 
 
 class TotalLoss:
-    """Aggregates, weights (ALM), calls CSE, and logs all loss components.
+    """Aggregates, weights (ALM / manual x CSE / manual), and logs all loss components.
 
-    complies with main file, which:
-    * Call ``get_total_loss(model, epoch_name)`` each epoch.
-    * Iterate ``_last_weighted_losses`` for per-component ``.backward(retain_graph=False)``.
-    * Access ``_gradient_memory_diagnostics`` for optional per-backward memory logging.
+    Complies with the main training file which:
+    * Calls ``get_total_loss(model, epoch_name)`` each epoch.
+    * Iterates ``_last_weighted_losses`` for per-component ``.backward(retain_graph=False)``.
+    * Reads ``_gradient_memory_diagnostics`` for optional per-backward memory logging.
     """
 
     # ------------------------------------------------------------------
-    # initilization
+    # initialisation
     # ------------------------------------------------------------------
     def __init__(
         self,
@@ -65,11 +94,20 @@ class TotalLoss:
         self._last_weighted_losses: dict[str, torch.Tensor] = {}
         # Stores the last computed cruising speed (if CSE active) for telemetry.
         self._last_cruising_speed: torch.Tensor | None = None
+        # Rolling history for loss-competition stacked-area chart (one dict per epoch).
+        self._raw_loss_history: list[dict[str, float]] = []
+        self._weighted_loss_history: list[dict[str, float]] = []
 
         self._load_configs()
-        self._init_alm_state()
+
+        gi: dict[str, Any] = self.losses_config["general_info"]
+        self._use_alm: bool = gi.get("ALM") == "True"
+        self._use_cse: bool = gi.get("CSE") == "True"
+
         self._init_mesh_infrastructure()
-        self._init_active_losses()
+        self._init_active_losses()  # must come before _init_alm_state (needs n_constraints)
+        if self._use_alm:
+            self._init_alm_state()
 
     def _load_configs(self) -> None:
         self._general_config: dict[str, Any] = load_config()
@@ -91,28 +129,41 @@ class TotalLoss:
         self._mesh_statistics_enabled: bool = _log_cfg.get("mesh_statistics", False)
         self._gradient_memory_diagnostics: bool = _log_cfg.get("gradient_memory_diagnostics", False)
 
-    def _init_alm_state(self) -> None:
-        """Initialise λ, μ, ν tensors and scalar hyper-parameters for ALM."""  # noqa: RUF002
-        gi: dict[str, Any] = self.losses_config["general_info"]
-        if gi.get("ALM") != "True":
-            raise ValueError(
-                "TotalLoss requires ALM='True' in losses config. "
-                "Manual weighting has been removed (see refactoring decision log)."
-            )
+    # ---- helpers for per-constraint list / scalar config values --------
+    @staticmethod
+    def _as_list(val: float | list[float], n: int, name: str) -> list[float]:
+        """Accept a scalar (broadcast) or a list of length *n*."""
+        if isinstance(val, (list, tuple)):
+            if len(val) != n:
+                msg = f"{name}: expected {n} values, got {len(val)}"
+                raise ValueError(msg)
+            return [float(v) for v in val]
+        return [float(val)] * n
 
+    def _init_alm_state(self) -> None:
+        """Initialise λ, μ, ν tensors and scalar hyper-parameters for ALM.
+
+        ``initial_lambda``, ``initial_mu`` and ``initial_nu`` may be a single
+        scalar (broadcast to all constraints) or a list of length
+        *n_constraints* for per-constraint control.
+        """  # noqa: RUF002
+        gi: dict[str, Any] = self.losses_config["general_info"]
         dev = self._device
-        self.lamda: float = gi.get("initial_lambda", 0.01)
-        self.mu: float = gi.get("initial_mu", 1.0)
-        self.nu: float = gi.get("initial_nu", 1.0)
+        nc: int = len(self._constraint_losses)  # typically 3
+
+        lam_list = self._as_list(gi.get("initial_lambda", 0.01), nc, "initial_lambda")
+        mu_list = self._as_list(gi.get("initial_mu", 1.0), nc, "initial_mu")
+        nu_list = self._as_list(gi.get("initial_nu", 1.0), nc, "initial_nu")
+
         self.alpha: float = gi.get("alpha", 0.99)
         self.gamma: float = gi.get("gamma", 0.01)
         self.gamma_aggressive: float = gi.get("gamma_aggressive", 1.1)
 
-        # Shape [3, 1] to match weights_alm's internal broadcasting logic.
-        self.lamdas: torch.Tensor = torch.full((3, 1), self.lamda, device=dev)
-        self.mus: torch.Tensor = torch.full((3, 1), self.mu, device=dev)
-        self.nus: torch.Tensor = torch.full((3, 1), self.nu, device=dev)
-        self.alphas: torch.Tensor = torch.full((3, 1), self.alpha, device=dev)
+        # Shape [nc, 1] to match weights_alm's internal broadcasting logic.
+        self.lamdas: torch.Tensor = torch.tensor(lam_list, device=dev, dtype=torch.float32).unsqueeze(1)
+        self.mus: torch.Tensor = torch.tensor(mu_list, device=dev, dtype=torch.float32).unsqueeze(1)
+        self.nus: torch.Tensor = torch.tensor(nu_list, device=dev, dtype=torch.float32).unsqueeze(1)
+        self.alphas: torch.Tensor = torch.full((nc, 1), self.alpha, device=dev)
 
     def _init_mesh_infrastructure(self) -> None:
         dev_str = str(self._device)
@@ -137,6 +188,8 @@ class TotalLoss:
 
         # Flat ordered dict of *all* active losses (for _compute_raw_losses iteration)
         self._active_losses: dict[str, Any] = {}
+        # Manual weights from config (second element of [compute, weight, path] tuple)
+        self._manual_weights: dict[str, float] = {}
         # Role-classified subsets (references into _active_losses values)
         self._objective_losses: dict[str, tuple[str, Any]] = {}  # category → (loss_name, instance)
         self._constraint_losses: OrderedDict[str, tuple[str, Any]] = OrderedDict()  # bb → eikonal → smoothness
@@ -145,7 +198,7 @@ class TotalLoss:
         for category, lossnames in losses_block.items():
             if category == "total":
                 continue
-            for loss_name, (compute, _weight, path) in lossnames.items():
+            for loss_name, (compute, weight, path) in lossnames.items():
                 if not compute:
                     continue
                 abs_path: Path = project_root / Path(path)
@@ -157,6 +210,7 @@ class TotalLoss:
                     losses_config=self.losses_config,
                 )
                 self._active_losses[loss_name] = instance
+                self._manual_weights[loss_name] = float(weight)
 
                 # Classify by category
                 if category in _ALM_OBJECTIVE_CATEGORIES:
@@ -181,27 +235,40 @@ class TotalLoss:
             raw[name] = instance.get_loss(model, epoch_name)
         return raw
 
-    def _apply_alm_weighting(
+    def _apply_weighting(
         self,
         raw_losses: dict[str, torch.Tensor],
         device: torch.device,
     ) -> torch.Tensor:
-        """Apply Augmented Lagrangian weighting on the constraints, calls the CSE, calculate and return the total loss.
+        """Weight objectives and constraints independently then sum.
+
+        Objective weighting (``self._use_cse``):
+          * **CSE**: combine aero + solar via cruising-speed estimator (with
+            per-objective prefactors from config).
+          * **Manual**: multiply each objective loss by its config weight.
+
+        Constraint weighting (``self._use_alm``):
+          * **ALM**: adaptive lambda*c + 0.5*mu*c^2 penalty per constraint.
+          * **Manual**: multiply each constraint loss by its config weight.
+
+        Auxiliary losses are always manual-weighted.
 
         Populates ``self._last_weighted_losses`` with independent-graph tensors
         suitable for per-component ``.backward(retain_graph=False)``.
         """
         gi: dict[str, Any] = self.losses_config["general_info"]
-        use_alm_aggressive: bool = gi.get("ALM_aggressive") == "True"
+        self._last_weighted_losses = {}
 
-        # --- Objective: maximise cruising speed or (solar - drag) ----------
-        drag_name: str = self._objective_losses["aero"][0]
-        solar_name: str = self._objective_losses["solar"][0]
-        drag: torch.Tensor = raw_losses[drag_name]
-        solar: torch.Tensor = raw_losses[solar_name]
+        # ---- Objectives --------------------------------------------------
+        if self._use_cse:
+            prefactors: dict[str, float] = gi.get("cse_prefactors", {})
+            drag_name: str = self._objective_losses["aero"][0]
+            solar_name: str = self._objective_losses["solar"][0]
+            drag_pf: float = float(prefactors.get("drag", 1.0))
+            solar_pf: float = float(prefactors.get("solar", 1.0))
+            drag: torch.Tensor = raw_losses[drag_name] * drag_pf
+            solar: torch.Tensor = raw_losses[solar_name] * solar_pf
 
-        o: torch.Tensor
-        if gi.get("CSE") == "True":
             v_cruise: torch.Tensor = cruising_speed(
                 solar_power=solar,
                 drag_force_at_25ms=drag,
@@ -212,43 +279,55 @@ class TotalLoss:
                 tol=1e-4,
             )
             self._last_cruising_speed = v_cruise
-            o = -v_cruise  # minimise negative speed
+            self._last_weighted_losses["cse_objective"] = -v_cruise
         else:
             self._last_cruising_speed = None
-            o = torch.as_tensor(-1.0 * (solar - drag), device=device)
+            for cat in ("aero", "solar"):
+                if cat not in self._objective_losses:
+                    continue
+                name: str = self._objective_losses[cat][0]
+                w: float = self._manual_weights.get(name, 1.0)
+                self._last_weighted_losses[name] = raw_losses[name] * w
 
-        # --- Constraints: bb, eikonal, smoothness -------------------------
-        # NOTE: we must NOT use torch.stack on live tensors — it creates a
-        # shared StackBackward node that causes "backward through the graph a
-        # second time" in the per-component loop.
-        constraint_names: list[str] = [name for (name, _inst) in self._constraint_losses.values()]
+        # ---- Constraints -------------------------------------------------
+        constraint_names: list[str] = [n for (n, _inst) in self._constraint_losses.values()]
         constraints: list[torch.Tensor] = [raw_losses[n] for n in constraint_names]
 
-        # Detach for the multiplier update (no gradient through λ/μ/ν update) # noqa: RUF003
-        c_for_alm: torch.Tensor = torch.stack([c.detach() for c in constraints])
+        if self._use_alm:
+            use_alm_aggressive: bool = gi.get("ALM_aggressive") == "True"
 
-        alm_thresholds = gi.get("alm_thresholds")
-        thresholds_tensor: torch.Tensor | None = torch.tensor(alm_thresholds, device=device) if alm_thresholds else None
+            # Detach for the multiplier update (no gradient through lambda/mu/nu update)
+            c_for_alm: torch.Tensor = torch.stack([c.detach() for c in constraints])
 
-        self.lamdas, self.mus, self.nus = weights_alm(
-            lamdas=self.lamdas,
-            mus=self.mus,
-            nus=self.nus,
-            alphas=self.alphas,
-            gamma=self.gamma,
-            gamma_aggressive=self.gamma_aggressive,
-            constrained_losses=c_for_alm,
-            thresholds=thresholds_tensor,
-            use_alm_aggressive=use_alm_aggressive,
-        )
+            alm_thresholds = gi.get("alm_thresholds")
+            thresholds_tensor: torch.Tensor | None = torch.tensor(alm_thresholds, device=device) if alm_thresholds else None
 
-        # --- Build per-component weighted tensors -------------------------
-        self._last_weighted_losses = {"alm_objective": o}
-        for i, cname in enumerate(constraint_names):
-            ci: torch.Tensor = constraints[i]  # direct reference, no StackBackward
-            lam_i: torch.Tensor = self.lamdas[i].detach()
-            mu_i: torch.Tensor = self.mus[i].detach()
-            self._last_weighted_losses[f"alm_{cname}"] = lam_i * ci + 0.5 * mu_i * ci**2
+            self.lamdas, self.mus, self.nus = weights_alm(
+                lamdas=self.lamdas,
+                mus=self.mus,
+                nus=self.nus,
+                alphas=self.alphas,
+                gamma=self.gamma,
+                gamma_aggressive=self.gamma_aggressive,
+                constrained_losses=c_for_alm,
+                thresholds=thresholds_tensor,
+                use_alm_aggressive=use_alm_aggressive,
+            )
+
+            for i, cname in enumerate(constraint_names):
+                ci: torch.Tensor = constraints[i]
+                lam_i: torch.Tensor = self.lamdas[i].detach()
+                mu_i: torch.Tensor = self.mus[i].detach()
+                self._last_weighted_losses[f"alm_{cname}"] = lam_i * ci + 0.5 * mu_i * ci**2
+        else:
+            for cname, raw_t in zip(constraint_names, constraints, strict=True):
+                w_c: float = self._manual_weights.get(cname, 1.0)
+                self._last_weighted_losses[cname] = raw_t * w_c
+
+        # ---- Auxiliary (always manual-weighted) --------------------------
+        for aux_name in self._auxiliary_losses:
+            w_a: float = self._manual_weights.get(aux_name, 1.0)
+            self._last_weighted_losses[aux_name] = raw_losses[aux_name] * w_a
 
         weighted_total: torch.Tensor = sum(self._last_weighted_losses.values())  # type: ignore[assignment]
         return weighted_total
@@ -256,7 +335,7 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # logging
     # ------------------------------------------------------------------
-    def _handle_telemetry(
+    def _handle_telemetry(  # noqa: PLR0912
         self,
         loss_log: dict[str, float],
         epoch_name: int,
@@ -272,28 +351,43 @@ class TotalLoss:
             self._log_memory_diagnostics(epoch_name, device)
             return
 
-        # --- unweighted losses + total loss metrics -------------------------------------
-        wandb.log(loss_log, step=epoch_name)
+        # --- Build ONE log dict for all scalar metrics, then call wandb.log ONCE.
+        # Multiple wandb.log(step=N) calls at the same step can prematurely
+        # commit the step and corrupt wandb's internal step counter, causing
+        # later media uploads (GIFs from finalize) to land at wrong steps.
+        log_dict: dict[str, float] = {}
 
-        # --- individual weighted contributions ------------------
-        weighted_log: dict[str, float] = {f"weighted/{name}": val.item() for name, val in self._last_weighted_losses.items()}
-        wandb.log(weighted_log, step=epoch_name)
+        # unweighted losses + total loss
+        log_dict.update(loss_log)
 
-        # --- cruising speed ---------------------------
+        # individual weighted contributions
+        for name, val in self._last_weighted_losses.items():
+            log_dict[f"weighted_losses/{name}"] = val.item()
+
+        # cruising speed
         if self._last_cruising_speed is not None:
-            wandb.log(
-                {"metrics/cruising_speed_ms": self._last_cruising_speed.item()},
-                step=epoch_name,
-            )
+            log_dict["cruising_speed_ms"] = self._last_cruising_speed.item()
 
-        # --- ALM multiplier -------------------------------------
-        constraint_names: list[str] = [name for (name, _inst) in self._constraint_losses.values()]
-        alm_params: dict[str, float] = {}
-        for i, cname in enumerate(constraint_names):
-            alm_params[f"alm/lambda_{cname}"] = self.lamdas[i].item()
-            alm_params[f"alm/mu_{cname}"] = self.mus[i].item()
-            alm_params[f"alm/nu_{cname}"] = self.nus[i].item()
-        wandb.log(alm_params, step=epoch_name)
+        # ALM multipliers (only in ALM mode)
+        if self._use_alm:
+            constraint_names: list[str] = [name for (name, _inst) in self._constraint_losses.values()]
+            for i, cname in enumerate(constraint_names):
+                log_dict[f"alm_params/lambda_{cname}"] = self.lamdas[i].item()
+                log_dict[f"alm_params/mu_{cname}"] = self.mus[i].item()
+                log_dict[f"alm_params/nu_{cname}"] = self.nus[i].item()
+
+        wandb.log(log_dict, step=epoch_name)  # ein riesen log
+
+        # --- Loss competition charts -------------------------------------
+        # raw_floats: strip prefix, exclude total, take abs (handles negative cse_objective)
+        raw_floats: dict[str, float] = {
+            k.removeprefix("raw_losses/"): abs(v) for k, v in loss_log.items() if k != "raw_losses/total_loss"
+        }
+        # weighted_floats: abs of each weighted component.
+        # When CSE is active, _last_weighted_losses contains cse_objective instead of
+        # drag/solar, so the weighted charts naturally show cruising-speed competition.
+        weighted_floats: dict[str, float] = {k: abs(v.item()) for k, v in self._last_weighted_losses.items()}
+        self._log_loss_competition_charts(raw_floats, weighted_floats, epoch_name)
 
         # --- Mesh extraction & rendering ----------------------------------
         if self._use_renderer and self._renderer_manager is not None:
@@ -352,10 +446,12 @@ class TotalLoss:
         visualizer.render_until_blue_detected()
 
         if stl_path.exists():
-            wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name)
+            wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name, commit=True)
+            time.sleep(2)
             stl_path.unlink()
         if image_path.exists():
-            wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name)
+            wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch_name, commit=True)
+            time.sleep(2)
             image_path.unlink()
 
     def _log_memory_diagnostics(self, epoch_name: int, device: torch.device) -> None:
@@ -378,13 +474,171 @@ class TotalLoss:
         if self._use_wandb:
             wandb.log(
                 {
-                    "memory/allocated_mb": allocated_mb,
-                    "memory/reserved_mb": reserved_mb,
-                    "memory/peak_allocated_mb": peak_mb,
-                    "memory/free_cached_mb": free_cached_mb,
+                    "memory_stats/allocated_mb": allocated_mb,
+                    "memory_stats/reserved_mb": reserved_mb,
+                    "memory_stats/peak_allocated_mb": peak_mb,
+                    "memory_stats/free_cached_mb": free_cached_mb,
                 },
                 step=epoch_name,
             )
+
+    # ------------------------------------------------------------------
+    # Loss competition charts
+    # ------------------------------------------------------------------
+    def _log_loss_competition_charts(  # noqa: PLR0915
+        self,
+        raw_floats: dict[str, float],
+        weighted_floats: dict[str, float],
+        epoch_name: int,
+    ) -> None:
+        """Generate 6 loss-competition visualizations and log to WandB under loss_competition/.
+
+        (a) raw_pie          - pie chart of raw loss shares
+        (b) weighted_pie     - pie chart of weighted loss shares
+        (c) raw_bar          - normalized horizontal stacked bar, raw
+        (d) weighted_bar     - normalized horizontal stacked bar, weighted
+        (e) radar            - polar overlay of raw (dashed) vs weighted (solid), both normalized 0-1
+        (f) stacked_area     - stacked area over training time (two subplots)
+
+        When CSE is active, ``weighted_floats`` already contains ``cse_objective``
+        in place of individual drag/solar entries, so the weighted charts naturally
+        reflect cruising-speed competition without special-casing here.
+        """
+        matplotlib.use("Agg")  # headless cluster - no display server
+        # Append to rolling history (feeds stacked-area chart)
+        self._raw_loss_history.append(dict(raw_floats))
+        self._weighted_loss_history.append(dict(weighted_floats))
+
+        competition_log: dict = {}
+
+        # ----------------------------------------------------------------
+        # helpers
+        # ----------------------------------------------------------------
+        def _safe_pie(values: list[float], labels: list[str], title: str) -> plt.Figure:
+            fig, ax = plt.subplots(figsize=(6, 6))
+            total = sum(values)
+            if total == 0 or len(values) == 0:
+                ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
+            else:
+                ax.pie(values, labels=labels, autopct="%1.1f%%", startangle=90)
+            ax.set_title(title)
+            return fig
+
+        def _safe_hbar(values: list[float], labels: list[str], title: str) -> plt.Figure:
+            fig, ax = plt.subplots(figsize=(8, 1.8))
+            total = sum(values)
+            if total == 0 or len(values) == 0:
+                ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
+            else:
+                pcts = [v / total * 100 for v in values]
+                left = 0.0
+                colors = matplotlib.colormaps["tab10"].colors  # type: ignore[attr-defined]
+                for i, (pct, lbl) in enumerate(zip(pcts, labels, strict=True)):
+                    ax.barh(0, pct, left=left, color=colors[i % len(colors)], edgecolor="white")
+                    if pct > 3:
+                        ax.text(
+                            left + pct / 2,
+                            0,
+                            f"{lbl}\n{pct:.1f}%",
+                            ha="center",
+                            va="center",
+                            fontsize=8,
+                            color="white",
+                            fontweight="bold",
+                        )
+                    left += pct
+            ax.set_xlim(0, 100)
+            ax.set_xlabel("% of total")
+            ax.set_yticks([])
+            ax.set_title(title)
+            fig.tight_layout()
+            return fig
+
+        raw_labels = list(raw_floats.keys())
+        raw_vals = [raw_floats[k] for k in raw_labels]
+        w_labels = list(weighted_floats.keys())
+        w_vals = [weighted_floats[k] for k in w_labels]
+
+        # --- (a) Raw pie -------------------------------------------------
+        fig_a = _safe_pie(raw_vals, raw_labels, f"Raw Losses (epoch {epoch_name})")
+        competition_log["loss_competition/raw_pie"] = wandb.Image(fig_a)
+        plt.close(fig_a)
+
+        # --- (b) Weighted pie --------------------------------------------
+        fig_b = _safe_pie(w_vals, w_labels, f"Weighted Losses (epoch {epoch_name})")
+        competition_log["loss_competition/weighted_pie"] = wandb.Image(fig_b)
+        plt.close(fig_b)
+
+        # --- (c) Raw normalized horizontal bar ---------------------------
+        fig_c = _safe_hbar(raw_vals, raw_labels, f"Raw Loss Shares % (epoch {epoch_name})")
+        competition_log["loss_competition/raw_bar"] = wandb.Image(fig_c)
+        plt.close(fig_c)
+
+        # --- (d) Weighted normalized horizontal bar ----------------------
+        fig_d = _safe_hbar(w_vals, w_labels, f"Weighted Loss Shares % (epoch {epoch_name})")
+        competition_log["loss_competition/weighted_bar"] = wandb.Image(fig_d)
+        plt.close(fig_d)
+
+        # --- (e) Radar / spider chart ------------------------------------
+        # Union of all loss keys; missing entries get 0 so both series share axes.
+        all_keys = list(dict.fromkeys(list(raw_floats.keys()) + list(weighted_floats.keys())))
+        n = len(all_keys)
+        if n >= 2:
+            angles = np.linspace(0, 2 * np.pi, n, endpoint=False).tolist()
+            angles += angles[:1]  # close the polygon
+
+            raw_vals_r = [raw_floats.get(k, 0.0) for k in all_keys]
+            w_vals_r = [weighted_floats.get(k, 0.0) for k in all_keys]
+            raw_max = max(raw_vals_r) or 1.0
+            w_max = max(w_vals_r) or 1.0
+            raw_norm = [v / raw_max for v in raw_vals_r] + [raw_vals_r[0] / raw_max]
+            w_norm = [v / w_max for v in w_vals_r] + [w_vals_r[0] / w_max]
+
+            fig_e, ax_e = plt.subplots(figsize=(6, 6), subplot_kw={"polar": True})
+            ax_e.plot(angles, raw_norm, "o--", color="steelblue", linewidth=1.5, label="raw (norm)")
+            ax_e.fill(angles, raw_norm, color="steelblue", alpha=0.15)
+            ax_e.plot(angles, w_norm, "o-", color="tomato", linewidth=2, label="weighted (norm)")
+            ax_e.fill(angles, w_norm, color="tomato", alpha=0.15)
+            ax_e.set_xticks(angles[:-1])
+            ax_e.set_xticklabels(all_keys, fontsize=9)
+            ax_e.set_title(f"Loss Radar (epoch {epoch_name})", pad=15)
+            ax_e.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1))
+            fig_e.tight_layout()
+            competition_log["loss_competition/radar"] = wandb.Image(fig_e)
+            plt.close(fig_e)
+
+        # --- (f) Stacked area over training time -------------------------
+        if len(self._raw_loss_history) >= 2:
+            epochs_so_far = list(range(len(self._raw_loss_history)))
+
+            def _stacked_area(history: list[dict[str, float]], ax: plt.Axes, title: str) -> None:
+                all_k = list(dict.fromkeys(k for d in history for k in d))
+                matrix = np.array([[d.get(k, 0.0) for k in all_k] for d in history])  # [T, K]
+                row_sums = matrix.sum(axis=1, keepdims=True)
+                row_sums[row_sums == 0] = 1.0
+                matrix_pct = matrix / row_sums * 100
+                tab_colors = matplotlib.colormaps["tab10"].colors  # type: ignore[attr-defined]
+                ax.stackplot(
+                    epochs_so_far,
+                    matrix_pct.T,
+                    labels=all_k,
+                    colors=[tab_colors[i % len(tab_colors)] for i in range(len(all_k))],
+                    alpha=0.85,
+                )
+                ax.set_ylabel("% share")
+                ax.set_title(title)
+                ax.legend(loc="upper left", fontsize=8, ncol=2)
+                ax.set_ylim(0, 100)
+
+            fig_f, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+            _stacked_area(self._raw_loss_history, ax_top, "Raw Loss Competition Over Training")
+            _stacked_area(self._weighted_loss_history, ax_bot, "Weighted Loss Competition Over Training")
+            ax_bot.set_xlabel("Epoch")
+            fig_f.tight_layout()
+            competition_log["loss_competition/stacked_area"] = wandb.Image(fig_f)
+            plt.close(fig_f)
+
+        wandb.log(competition_log, step=epoch_name)
 
     # ------------------------------------------------------------------
     # Orchestrator
@@ -401,12 +655,12 @@ class TotalLoss:
         # 1. Evaluate all active loss instances
         raw: dict[str, torch.Tensor] = self._compute_raw_losses(model, epoch_name)
 
-        # 2. Apply ALM weighting (populates _last_weighted_losses) & CSE
-        total: torch.Tensor = self._apply_alm_weighting(raw, device)
+        # 2. Apply weighting (populates _last_weighted_losses)
+        total: torch.Tensor = self._apply_weighting(raw, device)
 
         # 3. Build logging dict and dispatch telemetry
-        loss_log: dict[str, float] = {name: t.item() for name, t in raw.items()}
-        loss_log["total_loss"] = total.item()
+        loss_log: dict[str, float] = {f"raw_losses/{name}": t.item() for name, t in raw.items()}
+        loss_log["raw_losses/total_loss"] = total.item()
         self._handle_telemetry(loss_log, epoch_name, device, model, total)
 
         return total
