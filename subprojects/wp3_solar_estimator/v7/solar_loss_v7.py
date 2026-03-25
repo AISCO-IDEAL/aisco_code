@@ -16,9 +16,9 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import wandb
 from matplotlib import pyplot as plt  # noqa: F401
 
+import wandb
 from subprojects.wp3_solar_estimator.australia.route_v1 import RouteV1
 from subprojects.wp3_solar_estimator.australia.route_v2 import RouteV2
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
@@ -186,11 +186,19 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         if raytracing_cfg["method"] == "mesh":
             if raytracing_version == "v1":
                 visibility, _, _ = mesh_visibility_v1(
-                    vertices, faces, sun_batch, normal_source=str(raytracing_cfg["normal_source"]), mesh_cfg=raytracing_cfg["mesh"]
+                    vertices,
+                    faces,
+                    sun_batch,
+                    normal_source=str(raytracing_cfg["normal_source"]),
+                    mesh_cfg=raytracing_cfg["mesh"],
                 )  # (F,) in range [0, 1]
             elif raytracing_version == "v2":
                 visibility, _, _ = mesh_visibility_v2(
-                    vertices, faces, sun_batch, normal_source=str(raytracing_cfg["normal_source"]), mesh_cfg=raytracing_cfg["mesh"]
+                    vertices,
+                    faces,
+                    sun_batch,
+                    normal_source=str(raytracing_cfg["normal_source"]),
+                    mesh_cfg=raytracing_cfg["mesh"],
                 )  # (F,) in range [0, 1]
             else:
                 raise ValueError(f"Unknown raytracing version: {raytracing_version}")
@@ -198,8 +206,8 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
             assert sdf_fn is not None, "sdf_fn must be provided for sdf_visibility"
             if raytracing_version == "v1":
                 visibility, _, _ = sdf_visibility_v1(
-                        sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch, sdf_cfg=raytracing_cfg["sdf"]
-                    )  # (F,) in range [0, 1]
+                    sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch, sdf_cfg=raytracing_cfg["sdf"]
+                )  # (F,) in range [0, 1]
             elif raytracing_version == "v2":
                 visibility, _, _ = sdf_visibility_v2(
                     sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch, sdf_cfg=raytracing_cfg["sdf"]
