@@ -18,7 +18,7 @@ SolarLossConfigV3:
   method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
   resolution: 128 # has to be a power of 2 for sparse sdf
-  area_budget_mm2: 6000000
+  area_budget_mm2: 4000000
   sun_dir: [-1.0,0.0,1.0]
   device: "cuda"
   batch_size: 2048
@@ -81,9 +81,9 @@ SolarLossConfigV6:
   route_version: "v2" # v1 or v2
   sun_vector_source: "fixed" # route | fixed
   fixed_sun_dir: [-1,0,1.5] # [x, y, z] when sun_vector_source=fixed
-  method: "mesh_sdf" # diso_mc/diso_dmc/flexicubes or mesh_sdf
+  method: "diso_mc" # diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
-  resolution: 96
+  resolution: 100
   area_budget_mm2: 6000000
   device: "cuda"
   batch_size: 100
@@ -111,25 +111,31 @@ SolarLossConfigV6:
 # USED — solar_v7.py: cfg["SolarLossConfigV7"] -> entire dict passed to WP3's SolarLossEstimator (v7)
 SolarLossConfigV7:
   australia_cfg: "solar_configs/australia.yaml"
-  raytracing_version: "v2"
+  raytracing_version: "v3" # v1, v2 or v3
   route_version: "v2" # v1 or v2
   sun_vector_source: "fixed" # route | fixed
-  fixed_sun_dir: [-1,0,1.5] # [x, y, z] when sun_vector_source=fixed
+  fixed_sun_dir: [0,1,0.8] # [x, y, z] when sun_vector_source=fixed
   method: "mesh_sdf" # diso_mc/diso_dmc/flexicubes or mesh_sdf
-  bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
-  resolution: 100
-  area_budget_mm2: 4000000
+  bbox: [[-4000.0, 4000.0], [-4000.0, 4000.0], [-4000.0, 4000.0]]
+  resolution: 80
+  area_budget_mm2: 6000000
   device: "cuda"
   batch_size: 100
   sigmoid_sharpness: 8.0 # for soft budget selection
   budget_penalty_weight: 0.1
+  ### Dot product Quality modified by softplus or no? I.e. soft clamp quality to be > 0 so shading at bottom never produced penalty gradients
+  apply_softplus: False #Whether to apply softplus to qualities (used to influence weighting/shading penalties)
+  softplus_beta: 5.2 #best value to keep quality values between 0 and 1
+
   # Loss formula parameters
   lambda: 1.0
   kappa: 1.0
   epsilon: 0.0005 # 0.0005 recommended value
   #####
+
+
   sun_batching:
-    sun_batch_size: 1
+    sun_batch_size: 4
     sun_subsample_fraction: 0.8 # 0..1 fraction of sun vectors to use
     sun_subsample_min: 1 # minimum sun vectors to keep
     sun_subsample_mode: "random" # random | first
@@ -140,5 +146,5 @@ SolarLossConfigV7:
   soft_mask_selection_threshold: 0.5
   soft_mask_full_selection_threshold: 0.95
   rendering: True
-  selection_threshold_render: 0.03
+  selection_threshold_render: 0.01
   log_group_name: "solar_loss_metrics"

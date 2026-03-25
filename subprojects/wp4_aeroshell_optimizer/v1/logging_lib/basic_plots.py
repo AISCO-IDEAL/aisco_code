@@ -4,6 +4,11 @@ import torch
 import wandb
 
 
+def _safe_step(step: int | None) -> int:
+    """Return an explicit non-drifting step for wandb logging."""
+    return 0 if step is None else int(step)
+
+
 def sanitize_metric(value):
     """
     Converts tensors or numpy arrays to python scalars for logging.
@@ -21,7 +26,7 @@ def basic_single_log(key, value, step: int | None = None):
     - value (float or int): The value of the metric to log.
     - step (int): The current step or epoch number to associate with this log entry.
     """
-    wandb.log({key: sanitize_metric(value)}, step=step)
+    wandb.log({key: sanitize_metric(value)}, step=_safe_step(step))
 
 
 def basic_multi_log(metrics_dict: dict, step: int | None = None):
@@ -33,7 +38,7 @@ def basic_multi_log(metrics_dict: dict, step: int | None = None):
     - step (int): The current step or epoch number to associate with this log entry.
     """
     sanitized_dict = {k: sanitize_metric(v) for k, v in metrics_dict.items()}
-    wandb.log(sanitized_dict, step=step)
+    wandb.log(sanitized_dict, step=_safe_step(step))
 
 
 def multi_log_in_one(metric_name: str | None = None, metrics_dict: dict | None = None, step: int | None = None):
@@ -48,7 +53,7 @@ def multi_log_in_one(metric_name: str | None = None, metrics_dict: dict | None =
     sanitized_dict = (
         {f"{metric_name}/{k}": sanitize_metric(v) for k, v in metrics_dict.items()} if metrics_dict is not None else {}
     )
-    wandb.log(sanitized_dict, step=step)
+    wandb.log(sanitized_dict, step=_safe_step(step))
 
 
 def log_matplotlib_fig(fig: plt.Figure, key: str, step: int | None = None):
@@ -59,7 +64,7 @@ def log_matplotlib_fig(fig: plt.Figure, key: str, step: int | None = None):
     - key (str): The name of the metric to log the figure under.
     - step (int): The current step or epoch number to associate with this log entry.
     """
-    wandb.log({key: wandb.Image(fig)}, step=step)
+    wandb.log({key: wandb.Image(fig)}, step=_safe_step(step))
 
 
 def log_renderer_image(image, key: str, step: int | None = None):
@@ -70,4 +75,4 @@ def log_renderer_image(image, key: str, step: int | None = None):
     - key (str): The name of the metric to log the image under.
     - step (int): The current step or epoch number to associate with this log entry.
     """
-    wandb.log({key: wandb.Image(image)}, step=step)
+    wandb.log({key: wandb.Image(image)}, step=_safe_step(step))

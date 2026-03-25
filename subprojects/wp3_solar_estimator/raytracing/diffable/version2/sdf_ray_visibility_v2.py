@@ -256,7 +256,6 @@ def sdf_visibility_v2(
     *,
     save_dir: Path | None = None,
     normal_source: str = "mesh",
-    # Sigmoid method params
     sdf_cfg: dict[str, Any],
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
@@ -322,7 +321,11 @@ def sdf_visibility_v2(
 
     # -- Debug: sample SDF along z-axis to check values and gradients ----------------
 
-    debug = int(sdf_cfg["debug"])
+    if save_dir is None:
+        debug = 0
+        print("No save_dir provided, skipping SDF debug plots, in sdf_ray_visibility_v2")
+    else:
+        debug = int(sdf_cfg["debug"])
     if debug < 0:
         raise ValueError(f"Invalid debug value: {debug}. Must be non-negative integer.")
 
