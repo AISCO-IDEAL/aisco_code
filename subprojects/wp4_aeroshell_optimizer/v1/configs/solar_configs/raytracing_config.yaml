@@ -30,7 +30,7 @@ RaytracingConfigV2:
   path: "subprojects.wp3_solar_estimator.raytracing.diffable.version2"
 
   sdf:
-    method: "sigmoid" # sigmoid | absorption
+    method: "absorption" # sigmoid | absorption
     alpha: 20.0
     beta: 20.0
     kappa: 2.0
