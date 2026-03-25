@@ -240,6 +240,8 @@ def _plot_function(
         plt.savefig(output_dir / f"sdf_debug_layer_{i:03d}.png")
         plt.close()
 
+    print(f"Saved SDF debug plots to {output_dir}")
+
 
 # ---------------------------------------------------------------------------
 # Public API
