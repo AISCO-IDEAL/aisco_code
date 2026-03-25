@@ -341,6 +341,7 @@ def sdf_visibility_v2(
 
     # -- March -----------------------------------------------------------------
     method = str(sdf_cfg["method"]).lower()
+    print(f"Marching with method: {method!r}")
     if method == "sigmoid":
         visibility = _march_sigmoid(sdf_fn, origins, sun, effective_steps, step_size, alpha, point_chunk_size)
     elif method == "absorption":
