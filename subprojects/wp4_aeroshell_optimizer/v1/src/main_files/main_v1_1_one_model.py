@@ -2,8 +2,8 @@ import os
 from pathlib import Path
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
     apply_sweep_overrides,
@@ -102,7 +102,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
         pretrained_model = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
     else:
         print("Skipping pretrained model fetch: No path provided in config.")
-        pretrained_model = ""
+        pretrained_model = None
 
     # Dein Debug-Print kann danach kommen
     print(f"[DEBUG main] pretraining_model_path from config: {pretrained_path}")
