@@ -210,7 +210,13 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
                 )  # (F,) in range [0, 1]
             elif raytracing_version == "v2":
                 visibility, _, _ = sdf_visibility_v2(
-                    sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch, sdf_cfg=raytracing_cfg["sdf"]
+                    sdf_fn=sdf_fn,
+                    vertices=vertices,
+                    faces=faces,
+                    sun_dir=sun_batch,
+                    debug=raytracing_cfg.get("debug", 0),
+                    save_dir=output_dir,
+                    sdf_cfg=raytracing_cfg["sdf"],
                 )  # (F,) in range [0, 1]
             else:
                 raise ValueError(f"Unknown raytracing version: {raytracing_version}")
