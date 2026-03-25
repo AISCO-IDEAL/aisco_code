@@ -41,7 +41,7 @@ RaytracingConfigV2:
     point_chunk_size: 256
 
   mesh:
-    beta: 10.0
+    beta: 0.1
     gamma: 20.0
     margin_factor: 1e-3
     origin_offset_eps: 1e-3
