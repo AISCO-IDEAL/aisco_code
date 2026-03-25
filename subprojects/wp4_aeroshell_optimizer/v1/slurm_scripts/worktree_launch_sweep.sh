@@ -6,7 +6,7 @@ trap 'echo "[WARN] Script error at line $LINENO (exit $?)" >&2' ERR
 
 # ---- Config, EDIT HERE ---------------------------------------------------------------
 JOB_NAME="Ray_Debug_Sweep" # Name for the SLURM job
-TIME_LIMIT="02:50:00"  # Translates to --time below
+TIME_LIMIT="04:00:00"  # Translates to --time below
 
 SWEEP_ID="aisco/RTParam_Sweep/li255fga"   # <-- EDIT THIS
 NUMBER_OF_GPUS=1  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
