@@ -29,7 +29,6 @@ from typing import Any, Literal
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from scipy.interpolate import interp2d
 
 # ---------------------------------------------------------------------------
 # Normal computation helpers
@@ -159,19 +158,22 @@ def _sample_sdf_along_z_axis(
         num_points: number of points to sample
 
     Returns:
-        xs: (num_points,) x-coordinates of the sampled points at given z
-        ys: (num_points,) y-coordinates of the sampled points at given z
-        sdf_vals: (num_points,) SDF values at the sampled points at given x, y, z
+        xs: (G,) x-coordinates of the sampled grid at given z
+        ys: (G,) y-coordinates of the sampled grid at given z
+        sdf_vals: (G, G) SDF values sampled on the xy grid at given z
     """
     if bbox_width is None or bbox_length is None:
         raise ValueError("bbox_width and bbox_length must be provided for sampling SDF along z-axis.")
 
     sample_device = device if device is not None else torch.device("cpu")
-    xs = torch.linspace(-bbox_width / 2, bbox_width / 2, num_points, device=sample_device)
-    ys = torch.linspace(-bbox_length / 2, bbox_length / 2, num_points, device=sample_device)
-    zs = torch.full_like(xs, offset)
-    points = torch.stack([xs, ys, zs], dim=-1)
-    sdf_vals = sdf_fn(points)
+    grid_size = max(2, int(np.sqrt(num_points)))
+    xs = torch.linspace(-bbox_width / 2, bbox_width / 2, grid_size, device=sample_device)
+    ys = torch.linspace(-bbox_length / 2, bbox_length / 2, grid_size, device=sample_device)
+
+    grid_x, grid_y = torch.meshgrid(xs, ys, indexing="xy")
+    grid_z = torch.full_like(grid_x, offset)
+    points = torch.stack([grid_x.reshape(-1), grid_y.reshape(-1), grid_z.reshape(-1)], dim=-1)
+    sdf_vals = sdf_fn(points).reshape(grid_size, grid_size)
     return xs, ys, sdf_vals
 
 
@@ -214,18 +216,14 @@ def _plot_function(
         )
         # plot should be a SDF-value heatmap with x and y coordinates, then the samples shall be saved
         # Debug plotting should not keep autograd history.
-        x_list = sample[0].detach().cpu().numpy()
-        y_list = sample[1].detach().cpu().numpy()
-        sdf_vals_list = sample[2].detach().cpu().numpy()
-        f = interp2d(x_list, y_list, sdf_vals_list, kind="linear")
-        x_coords = np.arange(min(x_list), max(x_list) + 1)
-        y_coords = np.arange(min(y_list), max(y_list) + 1)
-        sdf_vals = f(x_coords, y_coords)
+        x_coords = sample[0].detach().cpu().numpy()
+        y_coords = sample[1].detach().cpu().numpy()
+        sdf_vals = sample[2].detach().cpu().numpy()
         extent: tuple[float, float, float, float] = (
-            float(min(x_list)),
-            float(max(x_list)),
-            float(min(y_list)),
-            float(max(y_list)),
+            float(np.min(x_coords)),
+            float(np.max(x_coords)),
+            float(np.min(y_coords)),
+            float(np.max(y_coords)),
         )
         fig = plt.imshow(
             sdf_vals,
@@ -235,7 +233,8 @@ def _plot_function(
         )
         # Show the positions of the sample points, just to have some reference
         fig.axes.set_autoscale_on(False)
-        plt.scatter(x_list, y_list, 400, facecolors="none")
+        sample_x, sample_y = np.meshgrid(x_coords, y_coords, indexing="xy")
+        plt.scatter(sample_x.ravel(), sample_y.ravel(), 10, facecolors="none", linewidths=0.2)
         plt.colorbar()
         # Save first, then close to avoid accumulating figures in long runs.
         plt.savefig(output_dir / f"sdf_debug_layer_{i:03d}.png")
