@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import logging
 import os
 import time
@@ -319,6 +320,20 @@ class AdamWOptimizer:
         pbar = tqdm(total=self.epoch, desc=description, colour=color, disable=disable_pbar)
         global_step = 0
         save_every_steps = trainer.optimizer_config["args"]["save_every_steps"]
+
+        # Per-epoch CSV logging (rank 0 only)
+        _csv_file = None
+        _csv_writer = None
+        if not disable_pbar:
+            _csv_path = trainer.path_config["result_path"].replace(".png", "_epoch_metrics.csv")
+            os.makedirs(os.path.dirname(_csv_path), exist_ok=True)
+            _csv_file = open(_csv_path, "w", newline="")  # noqa: SIM115
+            _csv_writer = csv.DictWriter(
+                _csv_file,
+                fieldnames=["epoch", "train_loss", "val_loss", "val_rel_l2", "lr"],
+                extrasaction="ignore",
+            )
+            _csv_writer.writeheader()
         for epoch in range(self.epoch):
             # Ensure DistributedSampler shuffles differently each epoch
             train_sampler = trainer.train_loader.sampler
@@ -363,6 +378,32 @@ class AdamWOptimizer:
                     for k, v in batch_norms.items():
                         epoch_grad_norms.setdefault(k, 0.0)
                         epoch_grad_norms[k] += v
+
+                # Scalar encoder diagnostics (fusion ratio + scale factor stats)
+                raw_model = trainer.model.module if hasattr(trainer.model, "module") else trainer.model
+                sc_enc = getattr(raw_model, "scalar_encoder", None)
+                if sc_enc is not None:
+                    tok_n = getattr(sc_enc, "_last_token_norm", 0.0)
+                    sc_n = getattr(sc_enc, "_last_scalar_norm", 0.0)
+                    ratio = sc_n / tok_n if tok_n > 0 else 0.0
+                    epoch_grad_norms["scalar_encoder/fusion_ratio"] = (
+                        epoch_grad_norms.get("scalar_encoder/fusion_ratio", 0.0) + ratio
+                    )
+                    sf = getattr(batch, "scale_factors", None)
+                    if sf is not None:
+                        sf_flat = sf.detach().float()
+                        epoch_grad_norms["scalar_encoder/sf_mean"] = (
+                            epoch_grad_norms.get("scalar_encoder/sf_mean", 0.0) + sf_flat.mean().item()
+                        )
+                        epoch_grad_norms["scalar_encoder/sf_std"] = (
+                            epoch_grad_norms.get("scalar_encoder/sf_std", 0.0) + sf_flat.std().item()
+                        )
+                        epoch_grad_norms["scalar_encoder/sf_min"] = min(
+                            epoch_grad_norms.get("scalar_encoder/sf_min", float("inf")), sf_flat.min().item()
+                        )
+                        epoch_grad_norms["scalar_encoder/sf_max"] = max(
+                            epoch_grad_norms.get("scalar_encoder/sf_max", float("-inf")), sf_flat.max().item()
+                        )
 
                 num_batches += 1
                 self.optimizer.step()
@@ -416,8 +457,8 @@ class AdamWOptimizer:
                 # Add averaged head-specific MSEs and Gradient Norms
                 if epoch_grad_norms and num_batches > 0:
                     for k, v in epoch_grad_norms.items():
-                        # sigma values are point-in-time, not accumulated sums
-                        if "sigma_" in k:
+                        # sigma values and sf_min/sf_max are point-in-time, not accumulated sums
+                        if "sigma_" in k or k.endswith(("/sf_min", "/sf_max")):
                             metrics[k] = v
                         else:
                             metrics[k] = v / num_batches
@@ -445,6 +486,19 @@ class AdamWOptimizer:
                     metrics["gpu/cache_free_MB"] = (torch.cuda.memory_reserved() - torch.cuda.memory_allocated()) / 1e6
 
                 trainer.tracker.log_metrics(metrics, step=epoch + 1)
+
+                # Write per-epoch row to CSV (rank 0 only)
+                if _csv_writer is not None and _csv_file is not None:
+                    _csv_writer.writerow(
+                        {
+                            "epoch": epoch + 1,
+                            "train_loss": avg_train_mse,
+                            "val_loss": val_mse,
+                            "val_rel_l2": val_rel_l2,
+                            "lr": current_lr,
+                        }
+                    )
+                    _csv_file.flush()
 
                 # Early saving logic
                 current_loss = val_mse if self.early_save_metric == "val" else avg_train_mse
@@ -476,6 +530,9 @@ class AdamWOptimizer:
 
         if best_state is not None:
             trainer.model.load_state_dict(best_state)
+
+        if _csv_file is not None:
+            _csv_file.close()
 
         if not disable_pbar:
             pbar.close()
