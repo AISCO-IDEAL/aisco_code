@@ -439,7 +439,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                     self._send_json(500, {"message": "Failed to decode GIF frames"})
                     return
 
-                imageio.imwrite(cached_path, frames[0], format="PNG")
+                imageio.imwrite(cached_path, frames[0])
             except Exception as error:
                 self._send_json(500, {"message": f"Failed to extract first frame: {error}"})
                 return
@@ -495,7 +495,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                 meta = imageio.get_reader(requested).get_meta_data()
                 base_duration = float(meta.get("duration", 0.08))
                 slow_duration = max(0.02, base_duration * factor)
-                imageio.mimsave(cached_path, frames, format="GIF", duration=slow_duration)
+                imageio.mimsave(cached_path, frames, duration=slow_duration)
             except Exception as error:
                 self._send_json(500, {"message": f"Failed to build slowed GIF: {error}"})
                 return
