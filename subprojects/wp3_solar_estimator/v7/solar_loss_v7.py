@@ -36,6 +36,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.shading_m
     ShadingVisibility,
 )
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.solar_v3_selection import SolarV3Selection
+from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
 
@@ -71,9 +72,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     log_group_name: str = "solar_loss_metrics",
     output_dir: Path | None = None,
     num_epochs: int | None = None,
-    render_solar: SolarV3Selection | None = None,
-    render_shading_visibility: ShadingVisibility | None = None,
-    render_shading_penalty: ShadingPenalty | None = None,
+    rendering_manager: VisualisationManager | None = None,
     shading_render_interval: int = 1,
     selection_threshold_render: float = 0.5,
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
@@ -255,6 +254,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         "threshold": selection_threshold_render,
         "shading_visibility": visual_aggregate_visibility / S,
         "shading_penalty_intensity": visual_aggregate_penalty / S,
+        "qualities": aggregate_illumination_quality,
     }
 
     loss = loss_mm2 * 1e-6  # Convert to m² for final loss
@@ -263,19 +263,9 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     if rendering and num_epochs is not None:
         do_render = shading_render_interval > 0 and (counter % shading_render_interval == 0)
         if counter <= num_epochs and do_render:
-            if render_solar is not None:
-                render_solar.update(optimization_state=metrics_render)
-            if render_shading_visibility is not None:
-                render_shading_visibility.update(optimization_state=metrics_render)
-            if render_shading_penalty is not None:
-                render_shading_penalty.update(optimization_state=metrics_render)
-        if counter == num_epochs and output_dir is not None:
-            if render_solar is not None:
-                render_solar.finalize(output_dir)
-            if render_shading_visibility is not None:
-                render_shading_visibility.finalize(output_dir, file_name="shading_visibility.gif")
-            if render_shading_penalty is not None:
-                render_shading_penalty.finalize(output_dir, file_name="shading_penalty.gif")
+            rendering_manager.update(optimization_state=metrics_render)
+        if counter == num_epochs and rendering_manager is not None:
+            rendering_manager.finalize()
 
     # Log to wandb if enabled
     if enable_wandb_logging and epoch_name is not None:
@@ -475,11 +465,6 @@ class SolarLossEstimator:
             self.simulator = SimulationV1(cfg_path=australia_cfg, area_budget_mm2=self.area_budget_mm2)
 
         self.rendering = bool(cfg["rendering"])
-        self.visualiser: Visualiser | None
-        self.renderSolar: SolarV3Selection | None
-        self.renderShadingVisibility: ShadingVisibility | None
-        self.renderShadingPenalty: ShadingPenalty | None
-        self.render_grads: MeshSDFGrads | None
         self.number_epochs: int | None
         self.model_hash: str | None
         self.wandb_run_name: str | None
@@ -494,24 +479,13 @@ class SolarLossEstimator:
                 device=self.device,
                 up=[0.0, 0.0, 1.0],
             )
-            detached_cfg = load_config(v="v1", cfg_name="neural_renderer_v0.yaml").get("detached_modes", {})
-            self.renderSolar = (
-                SolarV3Selection(visualiser=self.visualiser)
-                if detached_cfg.get("solar_v3_selection", {}).get("enabled", False)
-                else None
+
+            self.visualisation_manager = VisualisationManager(
+                visualiser=self.visualiser, key_for_modes="solar_info_modes", verbose=True
             )
-            self.renderShadingVisibility = (
-                ShadingVisibility(visualiser=deepcopy(self.visualiser))
-                if detached_cfg.get("shading_visibility", {}).get("enabled", False)
-                else None
-            )
-            self.renderShadingPenalty = (
-                ShadingPenalty(visualiser=deepcopy(self.visualiser))
-                if detached_cfg.get("shading_penalty", {}).get("enabled", False)
-                else None
-            )
-            self.render_grads = (
-                MeshSDFGrads(visualiser=self.visualiser) if detached_cfg.get("MeshSDF_grads", {}).get("enabled", False) else None
+            detached_cfg = load_config(v="v1", cfg_name=general_config["active_configs"]["neural_renderer"])["detached_modes"]
+            self.render_grads = MeshSDFGrads(
+                visualiser=deepcopy(self.visualiser) if detached_cfg.get("MeshSDF_grads", {}).get("enabled", False) else None
             )
             train_cfg = load_config(v="v1", cfg_name="training_v0_config.yaml")["training_params"]
             self.number_epochs = int(train_cfg["num_epochs"])
@@ -671,6 +645,7 @@ class SolarLossEstimator:
             self.model_hash = dict_hashing(model.get_model_info_dict())
             run_name = reformat_wandb_name(self.wandb_run_name) if self.wandb_run_name else "no_wandb_run"
             self.rendering_dir = Path(self.storage_paths["storage_dir"]) / self.model_hash / run_name / "solar_loss_rendering"
+            self.visualisation_manager.output_dir = self.rendering_dir
             print(f"Rendering enabled: saving to {self.rendering_dir}")
             os.makedirs(self.rendering_dir, exist_ok=True)
             print(f"Model hash: {self.model_hash}")
@@ -725,9 +700,7 @@ class SolarLossEstimator:
                     counter=self.counter,
                     output_dir=self.rendering_dir,
                     num_epochs=self.number_epochs,
-                    render_solar=self.renderSolar,
-                    render_shading_visibility=self.renderShadingVisibility,
-                    render_shading_penalty=self.renderShadingPenalty,
+                    rendering_manager=self.visualisation_manager,
                     shading_render_interval=self.shading_render_interval,
                     selection_threshold_render=self.selection_threshold_render,
                     sdf_fn=model,
@@ -797,9 +770,7 @@ class SolarLossEstimator:
                 counter=self.counter,
                 output_dir=self.rendering_dir,
                 num_epochs=self.number_epochs,
-                render_solar=self.renderSolar,
-                render_shading_visibility=self.renderShadingVisibility,
-                render_shading_penalty=self.renderShadingPenalty,
+                rendering_manager=self.visualisation_manager,
                 shading_render_interval=self.shading_render_interval,
                 selection_threshold_render=self.selection_threshold_render,
                 sdf_fn=model,

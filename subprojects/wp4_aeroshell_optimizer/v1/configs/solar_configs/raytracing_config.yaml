@@ -15,8 +15,8 @@ RaytracingConfigV1:
     point_chunk_size: 256
 
   mesh:
-    beta: 10.0
-    gamma: 20.0
+    beta: 1.0
+    gamma: 1.0
     margin_factor: 0.001
     origin_offset_eps: 1e-3
     sun_distance_factor: 2.0
@@ -41,11 +41,11 @@ RaytracingConfigV2:
     point_chunk_size: 256
 
   mesh:
-    beta: 10.0
+    beta: 1.0
     gamma: 20.0
     margin_factor: 1e-3
     origin_offset_eps: 1e-3
-    sun_distance_factor: 10.0
-    face_chunk_size: 512
+    sun_distance_factor: 2.0
+    face_chunk_size: 128
     blocker_chunk_size: 128
     miss_t: 1e9

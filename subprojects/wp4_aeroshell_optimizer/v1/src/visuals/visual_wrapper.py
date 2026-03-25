@@ -50,7 +50,13 @@ class VisualisationManager:
         manager.finalize()
     """
 
-    def __init__(self, verbose: bool = True, output_dir: Path | None = None):
+    def __init__(
+        self,
+        verbose: bool = True,
+        output_dir: Path | None = None,
+        visualiser: Visualiser | None = None,
+        key_for_modes: str = "rendering_modes",
+    ):
         """
         Initialize manager, the shared Visualiser, and all rendering modes from config.
 
@@ -68,7 +74,10 @@ class VisualisationManager:
         self.store_wandb = self.config["general"].get("store_wandb", False)  # Whether to upload final GIFs to wandb
 
         # Initialize the shared Visualiser instance
-        self.visualiser = Visualiser(**(self.config.get("neural_renderer", {})))
+        if visualiser is not None:
+            self.visualiser = visualiser
+        else:
+            self.visualiser = Visualiser(**(self.config.get("neural_renderer", {})))
 
         # set output dir (WIP, not sure if keeping this way)
 
@@ -78,13 +87,13 @@ class VisualisationManager:
 
         # Initialize all rendering modes
         self.rendering_modes: dict[str, RenderingMode] = {}
-        self._initialize_rendering_modes()
+        self._initialize_rendering_modes(key=key_for_modes)
 
         if verbose:
             print("Initialized Visualisation Manager")
             self.status()
 
-    def _initialize_rendering_modes(self) -> None:
+    def _initialize_rendering_modes(self, key: str = "rendering_modes") -> None:
         """
         Dynamically load and initialize all rendering modes from config.
 
@@ -103,7 +112,7 @@ class VisualisationManager:
         - visualiser: self.visualiser (the shared Visualiser instance)
         - config: The mode-specific config dict from YAML
         """
-        modes_config = self.config.get("rendering_modes", {})
+        modes_config = self.config.get(key, {})
         if not modes_config["enabled"]:
             if self.verbose:
                 print("Rendering Manager is disabled in config")
