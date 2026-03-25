@@ -117,7 +117,7 @@ SolarLossConfigV7:
   fixed_sun_dir: [0,1,0.8] # [x, y, z] when sun_vector_source=fixed
   method: "mesh_sdf" # diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-4000.0, 4000.0], [-4000.0, 4000.0], [-4000.0, 4000.0]]
-  resolution: 64
+  resolution: 80
   area_budget_mm2: 6000000
   device: "cuda"
   batch_size: 100

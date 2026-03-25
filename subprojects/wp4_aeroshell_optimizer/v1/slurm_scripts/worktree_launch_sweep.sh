@@ -9,9 +9,9 @@ JOB_NAME="Ray_Debug_Sweep" # Name for the SLURM job
 TIME_LIMIT="04:00:00"  # Translates to --time below
 
 SWEEP_ID="aisco/RTParam_Sweep/li255fga"   # <-- EDIT THIS
-NUMBER_OF_GPUS=1  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
-GPU_TYPE="rtx_4090"  # Set to "" for generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
-RUNS_PER_GPU=60 # Adjust based on your needs and cluster limits --> Translates to COUNT below
+NUMBER_OF_GPUS=8  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
+GPU_TYPE=""  # Set to "" for generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
+RUNS_PER_GPU=35 # Adjust based on your needs and cluster limits --> Translates to COUNT below
 CPUS_PER_TASK=8  # Translates to --cpus-per-task below
 MEM_PER_CPU="5G"  # Translates to --mem-per-cpu below
 
