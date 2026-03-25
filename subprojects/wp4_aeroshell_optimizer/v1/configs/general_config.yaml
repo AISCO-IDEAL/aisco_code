@@ -6,7 +6,7 @@ general_info:
 
 model_def:
   model_name: "BasicMLP"  #  main_v1_1_one_model.py: general_config["model_def"]["model_name"]
-  model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/Basic_MLP_v1.py"  #  main_v1_1_one_model.py: general_config["model_def"]["model_file_path"]
+  model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/basic_MLP_v1.py"  #  main_v1_1_one_model.py: general_config["model_def"]["model_file_path"]
 
 active_configs:
   losses: "losses_v0_config.yaml"  #  total_loss.py, parent_loss.py, visual modes (assembly_mode, mesh_assembly_gif)
