@@ -101,15 +101,6 @@ class ShadingVisibility(SolarBase):
     _value_key = "shading_visibility"
     _wandb_key = "ShadingVisibility"
 
-    def _normalize_weights(
-        self,
-        weights: torch.Tensor,
-        vertices: torch.Tensor,
-        faces: torch.Tensor,
-        optimization_state: dict,
-    ) -> torch.Tensor:
-        return weights.clamp(0.0, 1.0)
-
     def _colors_from_weights(self, normalized_weights: torch.Tensor, device: torch.device) -> torch.Tensor:
         min_color = torch.tensor([0.0, 0.0, 0.25], dtype=torch.float32, device=device)
         max_color = torch.tensor([0.9, 0.95, 1.0], dtype=torch.float32, device=device)
@@ -148,7 +139,7 @@ class AverageQuality(SolarBase):
     """Render per-face average quality values."""
 
     _config_key = "average_quality"
-    _value_key = ""
+    _value_key = "qualities"
     _wandb_key = "AverageQuality"
 
     def _normalize_weights(

@@ -16,9 +16,9 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import wandb
 from matplotlib import pyplot as plt  # noqa: F401
 
+import wandb
 from subprojects.wp3_solar_estimator.australia.route_v1 import RouteV1
 from subprojects.wp3_solar_estimator.australia.route_v2 import RouteV2
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
@@ -216,6 +216,9 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     losses += face_area_mm2 * soft_weights[original_order] * qualities * numerical_factor  # 3 times (F,) --> (F,)
     # visualisation storages, don't track gradients for these
     # Divide by S at the end to get average visibility and penalty across sun directions for visualization
+
+    # make wandb histogram of values in visibility tensor across faces for this sun direction
+    wandb.log({f"{log_group_name}/visibility_histogram": wandb.Histogram(visibility.detach().cpu().numpy()), "epoch": epoch_name})
     visual_aggregate_visibility += visibility.detach().clone()
     visual_aggregate_penalty += numerical_factor.detach().clone() - 1
 

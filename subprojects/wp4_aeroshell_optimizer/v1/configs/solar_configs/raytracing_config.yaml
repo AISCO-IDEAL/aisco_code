@@ -46,6 +46,35 @@ RaytracingConfigV2:
     margin_factor: 1e-3
     origin_offset_eps: 1e-3
     sun_distance_factor: 2.0
-    face_chunk_size: 128
-    blocker_chunk_size: 128
+    face_chunk_size: 128 #C
+    blocker_chunk_size: 128 #K --> peak memory usage will be C*K
     miss_t: 1e9
+
+
+RaytracingConfigV3:
+  method: "mesh" # sdf | mesh | none
+  normal_source: "mesh" # mesh | sdf
+  path: "subprojects.wp3_solar_estimator.raytracing.diffable.version3"
+
+  sdf:
+    method: "sigmoid" # sigmoid | absorption
+    alpha: 20.0
+    beta: 20.0
+    kappa: 2.0
+    num_steps: 12
+    step_size_factor: 0.1
+    origin_offset_factor: 1e-3
+    max_march_factor: 2.0
+    point_chunk_size: 256
+
+  mesh:
+    beta: 1.0
+    gamma: 20.0
+    margin_factor: 1e-3
+    origin_offset_eps: 1e-3
+    sun_distance_factor: 2.0
+    face_chunk_size: 128 #C
+    blocker_chunk_size: 128 #K --> peak memory usage will be C*K
+    miss_t: 1e9
+
+
