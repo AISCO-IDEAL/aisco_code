@@ -153,7 +153,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     face_cross_norm = torch.linalg.norm(face_cross, dim=-1)
 
     face_area_mm2 = 0.5 * face_cross_norm  # (F,)
-    face_normals_unit = face_cross / (face_cross_norm).unsqueeze(-1)  # (F, 3)
+    face_normals_unit = face_cross / (face_cross_norm).unsqueeze(-1).clamp(min=epsilon)  # (F, 3)
     sun_directions_unit = solar_vectors / (torch.linalg.norm(solar_vectors, dim=-1, keepdim=True))  # (S, 3)
 
     # First ignore shading and sort by quality to get soft selection mask (Uses F x sun_batch_size Memory)

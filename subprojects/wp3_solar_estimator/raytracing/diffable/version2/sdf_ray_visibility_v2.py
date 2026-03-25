@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -256,7 +256,6 @@ def sdf_visibility_v2(
     *,
     save_dir: Path | None = None,
     normal_source: str = "mesh",
-    method: Literal["sigmoid", "absorption"] = "sigmoid",
     # Sigmoid method params
     sdf_cfg: dict[str, Any],
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -341,6 +340,7 @@ def sdf_visibility_v2(
     origins = centroids + offset * normals  # (F, 3)
 
     # -- March -----------------------------------------------------------------
+    method = str(sdf_cfg["method"]).lower()
     if method == "sigmoid":
         visibility = _march_sigmoid(sdf_fn, origins, sun, effective_steps, step_size, alpha, point_chunk_size)
     elif method == "absorption":
