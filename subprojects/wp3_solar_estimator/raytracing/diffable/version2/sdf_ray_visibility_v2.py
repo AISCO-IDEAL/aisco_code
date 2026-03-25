@@ -254,7 +254,6 @@ def sdf_visibility_v2(
     faces: torch.Tensor,
     sun_dir: torch.Tensor,
     *,
-    debug: int = 0,
     save_dir: Path | None = None,
     normal_source: Literal["mesh", "sdf"] = "mesh",
     method: Literal["sigmoid", "absorption"] = "sigmoid",
@@ -292,7 +291,7 @@ def sdf_visibility_v2(
         centroids:   (F, 3) face centroids
     """
 
-    print("Using 'sdf_visibility' version 1")
+    print("Using 'sdf_visibility' version 2")
 
     alpha = float(sdf_cfg["alpha"])
     beta = float(sdf_cfg["beta"])
@@ -323,10 +322,17 @@ def sdf_visibility_v2(
     max_dist = max_march_factor * bbox_diag
 
     # -- Debug: sample SDF along z-axis to check values and gradients ----------------
+
+    debug = int(sdf_cfg["debug"])
+    if debug < 0:
+        raise ValueError(f"Invalid debug value: {debug}. Must be non-negative integer.")
+
     if bool(debug):
         print("Debug mode is ON for sdfRT")
         # call plot function
         _plot_function(sdf_fn, vertices, device, debug, save_dir)
+    else:
+        print("Debug mode is OFF for sdfRT")
 
     # Clamp num_steps so we don't march past the bounding region
     effective_steps = min(num_steps, max(1, int((max_dist / step_size).item())))
