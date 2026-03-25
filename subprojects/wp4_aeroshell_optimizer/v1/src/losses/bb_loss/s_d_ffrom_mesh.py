@@ -1,5 +1,3 @@
-from typing import cast
-
 import torch
 import trimesh
 
@@ -58,13 +56,12 @@ class SDFfromMesh:
                 min(self.__sdfs[i].sdf_at_pointgrid()[j] for i in range(l)) for j in range(len(self.__pointgrid))
             ]
         else:
-            mesh_cast = cast(trimesh.Trimesh, self.__mesh)
-            if len(mesh_cast.faces) == 0:
+            if len(self.__mesh.faces) == 0:
                 raise ValueError("Mesh has no faces, cannot compute SDF.")
 
             query = torch.tensor(self.__pointgrid, dtype=torch.float32, device=self.__sdf_device)
-            vertices = torch.tensor(mesh_cast.vertices, dtype=torch.float32, device=self.__sdf_device)
-            faces = torch.tensor(mesh_cast.faces, dtype=torch.long, device=self.__sdf_device)
+            vertices = torch.tensor(self.__mesh.vertices, dtype=torch.float32, device=self.__sdf_device)
+            faces = torch.tensor(self.__mesh.faces, dtype=torch.long, device=self.__sdf_device)
             sdf_values = mesh_sdf(query=query, vertices=vertices, faces=faces)
             self.__sdf_at_pointgrid = sdf_values.detach().cpu().tolist()
 
@@ -140,4 +137,4 @@ class SDFfromMesh:
             for sdf in self.__sdfs:
                 vol += sdf.volume()
             return vol
-        return float(cast(trimesh.Trimesh, self.__mesh).volume)
+        return float(self.__mesh.volume)
