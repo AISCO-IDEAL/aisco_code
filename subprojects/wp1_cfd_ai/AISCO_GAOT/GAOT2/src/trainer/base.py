@@ -52,6 +52,9 @@ class TrainerBase:
             torch.cuda.set_device(self.setup_config["local_rank"])
             self.device = torch.device("cuda", self.setup_config["local_rank"])
         else:
+            self.setup_config["rank"] = 0
+            self.setup_config["world_size"] = 1
+            self.setup_config["local_rank"] = 0
             self.device = torch.device(self.setup_config["device"])
 
         manual_seed(self.setup_config["seed"] + self.setup_config["rank"])
@@ -104,9 +107,9 @@ class TrainerBase:
         logger = logging.getLogger(__name__)
 
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-            self.setup_config.rank = int(os.environ["RANK"])
-            self.setup_config.world_size = int(os.environ["WORLD_SIZE"])
-            self.setup_config.local_rank = int(
+            self.setup_config["rank"] = int(os.environ["RANK"])
+            self.setup_config["world_size"] = int(os.environ["WORLD_SIZE"])
+            self.setup_config["local_rank"] = int(
                 os.environ["LOCAL_RANK"]
             )  # 移除默认值,如果没有设置应该报错 Translation by deepl:Remove the default value; if not set, an error should be reported.
         else:
@@ -206,7 +209,7 @@ class TrainerBase:
         self.config.datarow["training time"] = result["time"]
 
         if len(result["train"]["loss"]) == 0:
-            if self.setup_config.rank == 0:
+            if self.setup_config["rank"] == 0:
                 self.test()
         else:
             kwargs = {"epochs": result["train"]["epoch"], "losses": result["train"]["loss"]}
@@ -239,7 +242,6 @@ class TrainerBase:
                         config_dict=self.full_config_dict,
                     )
                 torch.cuda.empty_cache()
-                self.test()
 
         if self.setup_config["rank"] == 0:
             # Use Tracker to finish the run
