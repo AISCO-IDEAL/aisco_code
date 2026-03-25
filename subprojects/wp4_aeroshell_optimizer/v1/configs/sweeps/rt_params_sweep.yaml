@@ -9,31 +9,35 @@ metric:
 parameters:
   # Keep the tested solar loss path fixed for this sweep
   solar_configs/solar_loss_config.SolarLossConfigV7.raytracing_version:
-    value: "v2"
+    value: "v3"
 
-  # Enable diagnostics from mesh raytracing v2
-  solar_configs/raytracing_config.RaytracingConfigV2.mesh.diagnostics_enabled:
-    value: true
-
-  solar_configs/raytracing_config.RaytracingConfigV2.mesh.diagnostics_log_histograms:
-    value: false
-
-  # Sweep over the main saturation controls
-  solar_configs/raytracing_config.RaytracingConfigV2.mesh.beta:
-    values: [0.25, 0.5, 1.0, 2.0, 5.0]
-
-  solar_configs/raytracing_config.RaytracingConfigV2.mesh.gamma:
-    values: [0.5, 1.0, 2.0, 5.0, 10.0, 20.0]
-
-  solar_configs/raytracing_config.RaytracingConfigV2.mesh.margin_factor:
-    values: [0.0005, 0.001, 0.002, 0.005]
-
-  solar_configs/raytracing_config.RaytracingConfigV2.mesh.sun_distance_factor:
-    values: [1.0, 2.0, 5.0]
+  solar_configs/raytracing_config.RaytracingConfigV3.mesh.diagnostics_log_histograms:
+    value: True
 
   # Keep memory-sensitive chunking explicit during tests
-  solar_configs/raytracing_config.RaytracingConfigV2.mesh.face_chunk_size:
-    values: [64, 128]
+  solar_configs/raytracing_config.RaytracingConfigV3.mesh.face_chunk_size:
+    values: [200]
 
-  solar_configs/raytracing_config.RaytracingConfigV2.mesh.blocker_chunk_size:
-    values: [64, 128]
+  solar_configs/raytracing_config.RaytracingConfigV3.mesh.blocker_chunk_size:
+    values: [250]
+
+  #solar_configs/raytracing_config.RaytracingConfigV3.mesh.depth_normalization:
+  #  values: ["bbox", "ray_length"]
+
+  solar_configs/raytracing_config.RaytracingConfigV3.mesh.transmittance_beta:
+    values: [0.5, 1.0, 2.0, 4.0]
+
+  solar_configs/raytracing_config.RaytracingConfigV3.mesh.transmittance_kappa:
+    values: [0.5, 1.0, 2.0, 4.0]
+
+  solar_configs/raytracing_config.RaytracingConfigV3.mesh.bary_softness_tau:
+    values: [4, 8, 12, 20]
+
+  solar_configs/raytracing_config.RaytracingConfigV3.mesh.t_softness_tau:
+    values: [4, 8, 12, 20]
+
+  solar_configs/raytracing_config.RaytracingConfigV3.mesh.face_samples:
+    values: [3, 7, 13]
+
+  solar_configs/raytracing_config.RaytracingConfigV3.mesh.origin_offset_eps:
+    values: [ 5e-5, 1e-3]

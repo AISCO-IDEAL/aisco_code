@@ -239,10 +239,10 @@ class VisualisationManager:
                             suffix = file.suffix.lower()
                             if suffix == ".gif":
                                 print(f"Uploading {file} to wandb under key animations/{mode_name}...")
-                                upload_neural_renderer_gif(str(file), key=f"animations/{mode_name}", step=None)
+                                upload_neural_renderer_gif(str(file), key=f"animations/{mode_name}", step=0)
                             elif suffix in {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}:
                                 print(f"Uploading {file} to wandb under key images/{mode_name}...")
-                                upload_neural_renderer_image(str(file), key=f"images/{mode_name}", step=None)
+                                upload_neural_renderer_image(str(file), key=f"images/{mode_name}", step=0)
                     else:
                         print(f"Output directory for mode {mode_name} does not exist: {mode_output_dir}")
 

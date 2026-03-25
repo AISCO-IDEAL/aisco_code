@@ -1,6 +1,6 @@
 import torch
-import wandb
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import upload_neural_renderer_gif
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base_class import RenderingMode
@@ -93,7 +93,7 @@ class MeshSDFGrads(RenderingMode):
 
         # log GIF to wandb
         try:
-            upload_neural_renderer_gif(gif_path, key=f"animations/{self.__class__.__name__}_{file_name}")
+            upload_neural_renderer_gif(gif_path, key=f"animations/{self.__class__.__name__}_{file_name}", step=0)
         except Exception as e:
             print(f"    Warning: Failed to upload {file_name} to wandb: {e}")
         # Save first frame as reference
@@ -111,6 +111,6 @@ class MeshSDFGrads(RenderingMode):
     def log_single_image_to_wandb(self, optimization_state: dict, epoch_name: int) -> None:
         try:
             self.update(optimization_state)
-            wandb.log({"epoch": epoch_name, "Aero-Gradients": wandb.Image(self.frame_storage[-1])})
+            wandb.log({"epoch": epoch_name, "Aero-Gradients": wandb.Image(self.frame_storage[-1])}, step=int(epoch_name))
         except Exception as e:
             print(f"Couldnt produce Gradient-immage in Epoch {epoch_name} for Reason {e}")

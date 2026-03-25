@@ -64,7 +64,7 @@ class SolarBase(RenderingMode):
         print(f"    Saved GIF: {gif_path}")
 
         try:
-            upload_neural_renderer_gif(gif_path, key=f"animations/{self.__class__.__name__}")
+            upload_neural_renderer_gif(gif_path, key=f"animations/{self.__class__.__name__}", step=0)
         except Exception as e:
             print(f"    Warning: Failed to upload shading GIF to wandb: {e}")
 
@@ -102,7 +102,7 @@ class ShadingVisibility(SolarBase):
     _wandb_key = "ShadingVisibility"
 
     def _colors_from_weights(self, normalized_weights: torch.Tensor, device: torch.device) -> torch.Tensor:
-        min_color = torch.tensor([0.0, 0.0, 0.25], dtype=torch.float32, device=device)
+        min_color = torch.tensor([0.0, 0.0, 0.3], dtype=torch.float32, device=device)
         max_color = torch.tensor([0.9, 0.95, 1.0], dtype=torch.float32, device=device)
         return min_color.unsqueeze(0) + normalized_weights.unsqueeze(-1) * (max_color - min_color).unsqueeze(0)
 
@@ -115,16 +115,6 @@ class ShadingPenalty(SolarBase):
     _config_key = "shading_penalty"
     _value_key = "shading_penalty_intensity"
     _wandb_key = "ShadingPenalty"
-
-    def _normalize_weights(
-        self,
-        weights: torch.Tensor,
-        vertices: torch.Tensor,
-        faces: torch.Tensor,
-        optimization_state: dict,
-    ) -> torch.Tensor:
-        shading_intensity = optimization_state.get("shading_penalty_intensity", weights)
-        return shading_intensity.to(dtype=torch.float32).clamp(0.0, 1.0)
 
     def _colors_from_weights(self, normalized_weights: torch.Tensor, device: torch.device) -> torch.Tensor:
         min_color = torch.tensor([0.8, 0.8, 0.8], dtype=torch.float32, device=device)
@@ -149,7 +139,10 @@ class AverageQuality(SolarBase):
         faces: torch.Tensor,
         optimization_state: dict,
     ) -> torch.Tensor:
-        return weights.to(dtype=torch.float32).clamp(0.0, 1.0)
+
+        # Use this so the qualities are scaled from a [-1,1] to a [0,1] range always
+        # This ensures the actual quality values are rendered, makes differences from normal/softmax calculation visible
+        return (weights + 1) / 2
 
     def _colors_from_weights(self, normalized_weights: torch.Tensor, device: torch.device) -> torch.Tensor:
         min_color = torch.tensor([0.8, 0.0, 0.15], dtype=torch.float32, device=device)

@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from matplotlib import pyplot as plt  # noqa: F401
 
 import wandb
 from subprojects.wp3_solar_estimator.australia.route_v1 import RouteV1
@@ -28,17 +27,14 @@ from subprojects.wp3_solar_estimator.raytracing.diffable.version1.mesh_ray_visib
 from subprojects.wp3_solar_estimator.raytracing.diffable.version1.sdf_ray_visibility_v1 import sdf_visibility_v1
 from subprojects.wp3_solar_estimator.raytracing.diffable.version2.mesh_ray_visibility_v2 import mesh_visibility_v2
 from subprojects.wp3_solar_estimator.raytracing.diffable.version2.sdf_ray_visibility_v2 import sdf_visibility_v2
+from subprojects.wp3_solar_estimator.raytracing.diffable.version3.mesh_ray_visibility_v3 import mesh_visibility_v3
+from subprojects.wp3_solar_estimator.raytracing.diffable.version3.sdf_ray_visibility_v3 import sdf_visibility_v3
 from subprojects.wp3_solar_estimator.utils.solar_utils import averaging_solar_quality
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.mesh_sdf_grads import MeshSDFGrads
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.shading_modes import (
-    ShadingPenalty,
-    ShadingVisibility,
-)
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.solar_v3_selection import SolarV3Selection
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
@@ -107,12 +103,12 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     epsilon: float = 1e-12,
     kappa: float = 1.0,
     _lambda: float = 1.0,
+    Softplus: torch.nn.Module | None = None,
     enable_wandb_logging: bool = False,
     rendering: bool = False,
     counter: int = 0,
     epoch_name: int | None = None,
     log_group_name: str = "solar_loss_metrics",
-    output_dir: Path | None = None,
     num_epochs: int | None = None,
     rendering_manager: VisualisationManager | None = None,
     shading_render_interval: int = 1,
@@ -182,9 +178,11 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     soft_weights = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
     visual_aggregate_visibility = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
     visual_aggregate_penalty = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
+    visual_aggregate_penalty_factor = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
     visual_quality_loss = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
+
     mesh_cfg = raytracing_cfg.get("mesh", {}) if raytracing_cfg.get("method") == "mesh" else {}
-    ray_diag_enabled = bool(mesh_cfg.get("diagnostics_enabled", False)) and raytracing_version == "v2"
+    ray_diag_enabled = bool(mesh_cfg.get("diagnostics_enabled", False)) and raytracing_version in ("v2", "v3")
     ray_diag_log_histograms = bool(mesh_cfg.get("diagnostics_log_histograms", True))
     ray_diag_quantiles = [float(q) for q in mesh_cfg.get("diagnostics_quantiles", [0.01, 0.05, 0.5, 0.95, 0.99])]
     ray_diag_sigmoid_arg_chunks: list[torch.Tensor] = []
@@ -244,13 +242,22 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
                     ray_diag_sigmoid_arg_chunks.append(ray_diag["sigmoid_arg"].detach())
                     ray_diag_delta_norm_chunks.append(ray_diag["delta_norm"].detach())
                 else:
-                    visibility, _, _ = mesh_visibility_v2(
+                    visibility, _, _, _ = mesh_visibility_v2(
                         vertices,
                         faces,
                         sun_batch,
                         normal_source=str(raytracing_cfg["normal_source"]),
                         mesh_cfg=raytracing_cfg["mesh"],
+                        return_diagnostics=False,
                     )  # (F,) in range [0, 1]
+            elif raytracing_version == "v3":
+                visibility, _, _ = mesh_visibility_v3(
+                    vertices,
+                    faces,
+                    sun_batch,
+                    normal_source=str(raytracing_cfg["normal_source"]),
+                    mesh_cfg=raytracing_cfg["mesh"],
+                )
             else:
                 raise ValueError(f"Unknown raytracing version: {raytracing_version}")
         elif raytracing_cfg["method"] == "sdf":
@@ -263,6 +270,10 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
                 visibility, _, _ = sdf_visibility_v2(
                     sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch, sdf_cfg=raytracing_cfg["sdf"]
                 )  # (F,) in range [0, 1]
+            elif raytracing_version == "v3":
+                visibility, _, _ = sdf_visibility_v3(
+                    sdf_fn=sdf_fn, vertices=vertices, faces=faces, sun_dir=sun_batch, sdf_cfg=raytracing_cfg["sdf"]
+                )
             else:
                 raise ValueError(f"Unknown raytracing version: {raytracing_version}")
         else:
@@ -271,6 +282,9 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     ### Given visibility for one sun_vector, compute loss for each face
     # simple dot product per face (sun_direction dot normals = quality)
     qualities = sun_batch @ face_normals_unit.t()  # (F,) quality of each face, not accounting shading
+    # apply softplus to qualities
+    if Softplus is not None:
+        qualities = Softplus(qualities)
     numerical_factor = 1 - _lambda * torch.pow(1 + epsilon - visibility, 1 / kappa)
     # Loss already including penalty term in the numerical factor (take care of correct ordering of tensors!)
     losses += face_area_mm2 * soft_weights[original_order] * qualities * numerical_factor  # 3 times (F,) --> (F,)
@@ -278,10 +292,23 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     # Divide by S at the end to get average visibility and penalty across sun directions for visualization
 
     # make wandb histogram of values in visibility tensor across faces for this sun direction
-    wandb.log({f"{log_group_name}/visibility_histogram": wandb.Histogram(visibility.detach().cpu().numpy()), "epoch": epoch_name})
+    if enable_wandb_logging:
+        visibility_detached = visibility.detach()
+        payload = {
+            f"{log_group_name}/visibility_histogram": wandb.Histogram(visibility_detached.cpu().numpy()),
+            f"{log_group_name}/visibility_histogram_mean": float(visibility_detached.mean().item()),
+            f"{log_group_name}/visibility_histogram_std": float(visibility_detached.std(unbiased=False).item()),
+        }
+        if epoch_name is not None:
+            payload["epoch"] = epoch_name
+            wandb.log(payload, step=int(epoch_name))
+        else:
+            wandb.log(payload)
     visual_aggregate_visibility += visibility.detach().clone()
-    visual_aggregate_penalty += numerical_factor.detach().clone() - 1
-
+    visual_aggregate_penalty_factor += (-numerical_factor.detach().clone()) + 1
+    visual_aggregate_penalty += (
+        (-numerical_factor.detach().clone() + 1) * qualities.detach().clone() * face_area_mm2.detach().clone()
+    )
     ### Finalisation of loss terms
 
     # Penalty for unused budget
@@ -318,6 +345,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         "sorted_soft_weights": sorted_soft_mask,
         "quality_loss": visual_quality_loss,
         "budget_penalty": budget_penalty,
+        "numerical_factor": visual_aggregate_penalty_factor.sum() / S,
         "shading_penalty": visual_aggregate_penalty.sum() / S,
         "soft_mask_selection_threshold": soft_mask_selection_threshold,
         "soft_mask_full_selection_threshold": soft_mask_full_selection_threshold,
@@ -353,6 +381,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
 
     # Rendering
     if rendering and num_epochs is not None:
+        assert rendering_manager is not None, "rendering_manager must be provided for rendering"
         do_render = shading_render_interval > 0 and (counter % shading_render_interval == 0)
         if counter <= num_epochs and do_render:
             rendering_manager.update(optimization_state=metrics_render)
@@ -366,7 +395,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     return loss
 
 
-def log_to_wandb(
+def log_to_wandb(  # noqa: PLR0915 #too many statements since we log a ton of stuff
     loss: torch.Tensor,
     vertices: torch.Tensor,
     faces: torch.Tensor,
@@ -503,7 +532,7 @@ def log_to_wandb(
                         metrics["ray_diag_delta_norm"].detach().cpu().numpy()
                     )
                 if len(hist_payload) > 1:
-                    wandb.log(hist_payload)
+                    wandb.log(hist_payload, step=int(epoch_name))
     except Exception as e:
         print(f"Warning: Failed to log solar loss metrics to wandb at epoch {epoch_name}: {e}")
 
@@ -564,7 +593,11 @@ class SolarLossEstimator:
         self._lambda = float(cfg["lambda"])
         self.kappa = float(cfg["kappa"])
         self.epsilon = float(cfg["epsilon"])
-
+        self.Softplus: torch.nn.Module | None
+        if cfg["apply_softplus"]:
+            self.Softplus = torch.nn.Softplus(beta=cfg.get("softplus_beta", 5.2))
+        else:
+            self.Softplus = None
         self.enable_wandb_logging = bool(cfg["wandb_logging"])
         self.soft_mask_selection_threshold = float(cfg["soft_mask_selection_threshold"])
         self.soft_mask_full_selection_threshold = float(cfg["soft_mask_full_selection_threshold"])
@@ -590,6 +623,8 @@ class SolarLossEstimator:
         self.model_hash: str | None
         self.wandb_run_name: str | None
         self.rendering_dir: Path | None
+        self.visualiser: Visualiser | None
+        self.render_grads: MeshSDFGrads | None
         if self.rendering:
             self.visualiser = Visualiser(
                 image_size=1024,
@@ -605,9 +640,13 @@ class SolarLossEstimator:
                 visualiser=self.visualiser, key_for_modes="solar_info_modes", verbose=True
             )
             detached_cfg = load_config(v="v1", cfg_name=general_config["active_configs"]["neural_renderer"])["detached_modes"]
-            self.render_grads = MeshSDFGrads(
-                visualiser=deepcopy(self.visualiser) if detached_cfg.get("MeshSDF_grads", {}).get("enabled", False) else None
+            assert self.visualiser is not None  # for type checker
+            self.render_grads = (
+                MeshSDFGrads(visualiser=deepcopy(self.visualiser))
+                if detached_cfg.get("MeshSDF_grads", {}).get("enabled", False)
+                else None
             )
+
             train_cfg = load_config(v="v1", cfg_name="training_v0_config.yaml")["training_params"]
             self.number_epochs = int(train_cfg["num_epochs"])
             self.model_hash = None
@@ -690,7 +729,7 @@ class SolarLossEstimator:
             ["beta", "gamma", "margin_factor", "origin_offset_eps", "sun_distance_factor", "face_chunk_size", "miss_t"],
             f"RaytracingConfig{raytracing_version.upper()}.mesh",
         )
-        if raytracing_version == "v2":
+        if raytracing_version in {"v2", "v3"}:
             cls._require_keys(mesh_cfg, ["blocker_chunk_size"], f"RaytracingConfig{raytracing_version.upper()}.mesh")
 
     @classmethod
@@ -705,7 +744,7 @@ class SolarLossEstimator:
             )
 
         resolved_cfg = dict(rt_cfg[key])
-        if raytracing_version in {"v1", "v2"}:
+        if raytracing_version in {"v1", "v2", "v3"}:
             cls._validate_raytracing_cfg(resolved_cfg, raytracing_version)
         else:
             raise ValueError(f"Unsupported raytracing_version '{raytracing_version}'.")
@@ -817,12 +856,12 @@ class SolarLossEstimator:
                     _lambda=self._lambda,
                     kappa=self.kappa,
                     epsilon=self.epsilon,
+                    Softplus=self.Softplus,
                     epoch_name=epoch_name,
                     log_group_name=self.log_group_name,
                     enable_wandb_logging=self.enable_wandb_logging,
                     rendering=self.rendering,
                     counter=self.counter,
-                    output_dir=self.rendering_dir,
                     num_epochs=self.number_epochs,
                     rendering_manager=self.visualisation_manager,
                     shading_render_interval=self.shading_render_interval,
@@ -888,12 +927,12 @@ class SolarLossEstimator:
                 _lambda=self._lambda,
                 epsilon=self.epsilon,
                 kappa=self.kappa,
+                Softplus=self.Softplus,
                 epoch_name=epoch_name,
                 log_group_name=self.log_group_name,
                 enable_wandb_logging=self.enable_wandb_logging,
                 rendering=self.rendering,
                 counter=self.counter,
-                output_dir=self.rendering_dir,
                 num_epochs=self.number_epochs,
                 rendering_manager=self.visualisation_manager,
                 shading_render_interval=self.shading_render_interval,

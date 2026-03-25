@@ -209,7 +209,7 @@ def _compute_visibility_for_chunk(
     visibility = 1.0 - occl  # (C,)
     if return_t_near:
         return visibility, t_near
-    return visibility
+    return visibility, torch.Tensor(0)
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +227,7 @@ def mesh_visibility_v2(
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
     normal_source: str = "mesh",
     return_diagnostics: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
     """
     Differentiable per-face visibility using mesh ray-triangle intersections.
 
@@ -337,12 +337,10 @@ def mesh_visibility_v2(
             dtype=vertices.dtype,
             return_t_near=return_diagnostics,
         )
+        vis_chunk, t_near_chunk = chunk_result
+        visibility_chunks.append(vis_chunk)
         if return_diagnostics:
-            vis_chunk, t_near_chunk = chunk_result
-            visibility_chunks.append(vis_chunk)
             t_near_chunks.append(t_near_chunk)
-        else:
-            visibility_chunks.append(chunk_result)
 
     visibility = torch.cat(visibility_chunks, dim=0)  # (F,)
 
@@ -357,7 +355,7 @@ def mesh_visibility_v2(
         )
         return visibility, normals, centroids, diagnostics
 
-    return visibility, normals, centroids
+    return visibility, normals, centroids, {}  # none for mypy
 
 
 # ---------------------------------------------------------------------------
