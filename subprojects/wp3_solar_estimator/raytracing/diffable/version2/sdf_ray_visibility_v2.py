@@ -213,9 +213,10 @@ def _plot_function(
             sdf_fn, i * step_size, num_points=1000, bbox_width=bbox_width, bbox_length=bbox_length, device=device
         )
         # plot should be a SDF-value heatmap with x and y coordinates, then the samples shall be saved
-        x_list = sample[0].cpu().numpy()
-        y_list = sample[1].cpu().numpy()
-        sdf_vals_list = sample[2].cpu().numpy()
+        # Debug plotting should not keep autograd history.
+        x_list = sample[0].detach().cpu().numpy()
+        y_list = sample[1].detach().cpu().numpy()
+        sdf_vals_list = sample[2].detach().cpu().numpy()
         f = interp2d(x_list, y_list, sdf_vals_list, kind="linear")
         x_coords = np.arange(min(x_list), max(x_list) + 1)
         y_coords = np.arange(min(y_list), max(y_list) + 1)
