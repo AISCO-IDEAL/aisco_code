@@ -19,7 +19,7 @@ parameters:
     values: [400]
 
   solar_configs/raytracing_config.RaytracingConfigV3.mesh.blocker_chunk_size:
-    values: [500]
+    values: [750]
 
   #solar_configs/raytracing_config.RaytracingConfigV3.mesh.depth_normalization:
   #  values: ["bbox", "ray_length"]

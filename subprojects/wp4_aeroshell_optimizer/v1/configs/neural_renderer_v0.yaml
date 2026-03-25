@@ -133,7 +133,7 @@ detached_modes:
     enabled: True
     class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
     config:
-      camera_position: [0, -4000, 1500]
+      camera_position: [0, -5000, 1500]
       look_at: [0, 0, 0]
       render_mode: "rgb"
       fps: 10
@@ -156,7 +156,7 @@ solar_info_modes:
       enabled: True
       class_path: "detached_modes.solar_v3_selection:SolarV3Selection"
       config:
-        camera_position: [0, -4000, 1500]
+        camera_position: [0, -5000, 1500]
         look_at: [0, 0, 0]
         render_mode: "rgb"
         fps: 10
@@ -165,7 +165,7 @@ solar_info_modes:
     enabled: True
     class_path: "detached_modes.shading_modes:ShadingVisibility"
     config:
-      camera_position: [0, -4000, 1500]
+      camera_position: [0, -5000, 1500]
       look_at: [0, 0, 0]
       render_mode: "rgb"
       fps: 10
@@ -174,7 +174,7 @@ solar_info_modes:
     enabled: True
     class_path: "detached_modes.shading_modes:ShadingPenalty"
     config:
-      camera_position: [0, -4000, 1500]
+      camera_position: [0, -5000, 1500]
       look_at: [0, 0, 0]
       render_mode: "rgb"
       fps: 10
@@ -183,7 +183,7 @@ solar_info_modes:
     enabled: True
     class_path: "detached_modes.shading_modes:AverageQuality"
     config:
-      camera_position: [0, -4000, 1500]#[-3000, 1000, 8000]
+      camera_position: [0, -5000, 1500]
       look_at: [0, 0, 0]
       render_mode: "rgb"
       fps: 10
