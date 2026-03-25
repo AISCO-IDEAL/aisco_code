@@ -54,6 +54,44 @@ def _efficient_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
     return torch.cumsum(x.cpu(), dim=dim).to(x.device)
 
 
+def _tensor_quantiles(x: torch.Tensor, q_values: list[float]) -> dict[str, float]:
+    """Return quantiles as plain floats for stable wandb scalar logging."""
+    if x.numel() == 0:
+        return {f"p{round(q * 100):02d}": float("nan") for q in q_values}
+    q = torch.tensor(q_values, device=x.device, dtype=x.dtype)
+    values = torch.quantile(x, q)
+    return {f"p{round(float(q_i) * 100):02d}": float(v.item()) for q_i, v in zip(q.tolist(), values, strict=False)}
+
+
+def _build_ray_diagnostics_metrics(
+    *,
+    visibility: torch.Tensor,
+    sigmoid_arg: torch.Tensor,
+    delta_norm: torch.Tensor,
+    q_values: list[float],
+) -> dict[str, Any]:
+    """Build scalar + tensor diagnostics for saturation analysis logging."""
+    abs_arg = torch.abs(sigmoid_arg)
+    q_sigmoid_arg = _tensor_quantiles(sigmoid_arg, q_values)
+    q_delta_norm = _tensor_quantiles(delta_norm, q_values)
+
+    metrics: dict[str, Any] = {
+        "ray_diag_enabled": True,
+        "ray_diag_sat_abs_gt5_ratio": float((abs_arg > 5.0).float().mean().item()),
+        "ray_diag_sat_abs_gt8_ratio": float((abs_arg > 8.0).float().mean().item()),
+        "ray_diag_grad_region_abs_le2_ratio": float((abs_arg <= 2.0).float().mean().item()),
+        "ray_diag_vis_transition_01_09_ratio": float(((visibility > 0.1) & (visibility < 0.9)).float().mean().item()),
+        "ray_diag_vis_transition_001_099_ratio": float(((visibility > 0.01) & (visibility < 0.99)).float().mean().item()),
+        "ray_diag_sigmoid_arg": sigmoid_arg,
+        "ray_diag_delta_norm": delta_norm,
+    }
+    for name, value in q_sigmoid_arg.items():
+        metrics[f"ray_diag_sigmoid_arg_{name}"] = value
+    for name, value in q_delta_norm.items():
+        metrics[f"ray_diag_delta_norm_{name}"] = value
+    return metrics
+
+
 def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     vertices: torch.Tensor,
     faces: torch.Tensor,
@@ -145,6 +183,12 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     visual_aggregate_visibility = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
     visual_aggregate_penalty = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
     visual_quality_loss = torch.zeros(F, device=vertices.device, dtype=vertices.dtype)
+    mesh_cfg = raytracing_cfg.get("mesh", {}) if raytracing_cfg.get("method") == "mesh" else {}
+    ray_diag_enabled = bool(mesh_cfg.get("diagnostics_enabled", False)) and raytracing_version == "v2"
+    ray_diag_log_histograms = bool(mesh_cfg.get("diagnostics_log_histograms", True))
+    ray_diag_quantiles = [float(q) for q in mesh_cfg.get("diagnostics_quantiles", [0.01, 0.05, 0.5, 0.95, 0.99])]
+    ray_diag_sigmoid_arg_chunks: list[torch.Tensor] = []
+    ray_diag_delta_norm_chunks: list[torch.Tensor] = []
     # Compute face areas and normals (mesh normals only for quality)
     v0, v1, v2 = vertices[faces[:, 0]], vertices[faces[:, 1]], vertices[faces[:, 2]]
     edge_a, edge_b = v1 - v0, v2 - v0
@@ -188,9 +232,25 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
                     vertices, faces, sun_batch, normal_source=str(raytracing_cfg["normal_source"]), mesh_cfg=raytracing_cfg["mesh"]
                 )  # (F,) in range [0, 1]
             elif raytracing_version == "v2":
-                visibility, _, _ = mesh_visibility_v2(
-                    vertices, faces, sun_batch, normal_source=str(raytracing_cfg["normal_source"]), mesh_cfg=raytracing_cfg["mesh"]
-                )  # (F,) in range [0, 1]
+                if ray_diag_enabled:
+                    visibility, _, _, ray_diag = mesh_visibility_v2(
+                        vertices,
+                        faces,
+                        sun_batch,
+                        normal_source=str(raytracing_cfg["normal_source"]),
+                        mesh_cfg=raytracing_cfg["mesh"],
+                        return_diagnostics=True,
+                    )  # (F,) in range [0, 1]
+                    ray_diag_sigmoid_arg_chunks.append(ray_diag["sigmoid_arg"].detach())
+                    ray_diag_delta_norm_chunks.append(ray_diag["delta_norm"].detach())
+                else:
+                    visibility, _, _ = mesh_visibility_v2(
+                        vertices,
+                        faces,
+                        sun_batch,
+                        normal_source=str(raytracing_cfg["normal_source"]),
+                        mesh_cfg=raytracing_cfg["mesh"],
+                    )  # (F,) in range [0, 1]
             else:
                 raise ValueError(f"Unknown raytracing version: {raytracing_version}")
         elif raytracing_cfg["method"] == "sdf":
@@ -265,6 +325,19 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         "transition_zone_area_mm2": transition_zone_area_mm2,
         "budget_crossover_idx": budget_crossover_idx,
     }
+
+    if ray_diag_enabled and ray_diag_sigmoid_arg_chunks and ray_diag_delta_norm_chunks:
+        ray_diag_sigmoid_arg = torch.cat(ray_diag_sigmoid_arg_chunks, dim=0)
+        ray_diag_delta_norm = torch.cat(ray_diag_delta_norm_chunks, dim=0)
+        metrics_log.update(
+            _build_ray_diagnostics_metrics(
+                visibility=visual_aggregate_visibility / S,
+                sigmoid_arg=ray_diag_sigmoid_arg,
+                delta_norm=ray_diag_delta_norm,
+                q_values=ray_diag_quantiles,
+            )
+        )
+        metrics_log["ray_diag_log_histograms"] = ray_diag_log_histograms
 
     metrics_render = {
         "vertices": vertices,
@@ -401,7 +474,36 @@ def log_to_wandb(
                 "transition_zone_ratio": transition_zone_faces / max(total_num_faces, 1),
                 "budget_crossover_idx": budget_crossover_idx,
             }
+
+            if bool(metrics.get("ray_diag_enabled", False)):
+                diag_scalar_keys = [
+                    "ray_diag_sat_abs_gt5_ratio",
+                    "ray_diag_sat_abs_gt8_ratio",
+                    "ray_diag_grad_region_abs_le2_ratio",
+                    "ray_diag_vis_transition_01_09_ratio",
+                    "ray_diag_vis_transition_001_099_ratio",
+                ]
+                diag_quantile_keys = [
+                    key for key in metrics if key.startswith(("ray_diag_sigmoid_arg_p", "ray_diag_delta_norm_p"))
+                ]
+                for key in diag_scalar_keys + diag_quantile_keys:
+                    if key in metrics:
+                        log_dict[key] = float(metrics[key])
+
             multi_log_in_one(log_group_name, log_dict, step=int(epoch_name))
+
+            if bool(metrics.get("ray_diag_enabled", False)) and bool(metrics.get("ray_diag_log_histograms", True)):
+                hist_payload = {"epoch": epoch_name}
+                if "ray_diag_sigmoid_arg" in metrics:
+                    hist_payload[f"{log_group_name}/ray_diag_sigmoid_arg_histogram"] = wandb.Histogram(
+                        metrics["ray_diag_sigmoid_arg"].detach().cpu().numpy()
+                    )
+                if "ray_diag_delta_norm" in metrics:
+                    hist_payload[f"{log_group_name}/ray_diag_delta_norm_histogram"] = wandb.Histogram(
+                        metrics["ray_diag_delta_norm"].detach().cpu().numpy()
+                    )
+                if len(hist_payload) > 1:
+                    wandb.log(hist_payload)
     except Exception as e:
         print(f"Warning: Failed to log solar loss metrics to wandb at epoch {epoch_name}: {e}")
 

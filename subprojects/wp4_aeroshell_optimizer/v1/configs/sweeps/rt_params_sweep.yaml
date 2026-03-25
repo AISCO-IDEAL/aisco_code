@@ -1,0 +1,39 @@
+program: subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py
+method: grid
+entity: aisco
+project: Raytracing_Saturation
+metric:
+  goal: minimize
+  name: solar_loss_metrics/ray_diag_sat_abs_gt5_ratio
+
+parameters:
+  # Keep the tested solar loss path fixed for this sweep
+  solar_configs/solar_loss_config.SolarLossConfigV7.raytracing_version:
+    value: "v2"
+
+  # Enable diagnostics from mesh raytracing v2
+  solar_configs/raytracing_config.RaytracingConfigV2.mesh.diagnostics_enabled:
+    value: true
+
+  solar_configs/raytracing_config.RaytracingConfigV2.mesh.diagnostics_log_histograms:
+    value: false
+
+  # Sweep over the main saturation controls
+  solar_configs/raytracing_config.RaytracingConfigV2.mesh.beta:
+    values: [0.25, 0.5, 1.0, 2.0, 5.0]
+
+  solar_configs/raytracing_config.RaytracingConfigV2.mesh.gamma:
+    values: [0.5, 1.0, 2.0, 5.0, 10.0, 20.0]
+
+  solar_configs/raytracing_config.RaytracingConfigV2.mesh.margin_factor:
+    values: [0.0005, 0.001, 0.002, 0.005]
+
+  solar_configs/raytracing_config.RaytracingConfigV2.mesh.sun_distance_factor:
+    values: [1.0, 2.0, 5.0]
+
+  # Keep memory-sensitive chunking explicit during tests
+  solar_configs/raytracing_config.RaytracingConfigV2.mesh.face_chunk_size:
+    values: [64, 128]
+
+  solar_configs/raytracing_config.RaytracingConfigV2.mesh.blocker_chunk_size:
+    values: [64, 128]
