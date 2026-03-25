@@ -143,7 +143,7 @@ def _march_absorption(
 # ---------------------------------------------------------------------------
 
 
-def sdf_visibility(
+def sdf_visibility_v2(
     sdf_fn: Callable[[torch.Tensor], torch.Tensor],
     vertices: torch.Tensor,
     faces: torch.Tensor,

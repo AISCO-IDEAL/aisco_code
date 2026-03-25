@@ -14,16 +14,15 @@ from pathlib import Path
 from typing import Any, Literal
 
 import torch
+import wandb
 from matplotlib import pyplot as plt  # noqa: F401
 
-import wandb
 from subprojects.wp3_solar_estimator.australia.route_v1 import RouteV1
 from subprojects.wp3_solar_estimator.australia.route_v2 import RouteV2
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.sparse_dmc.sparse_dmc_extractor import SparseDMCExtractor
-from subprojects.wp3_solar_estimator.raytracing import diffable as diffable_raytracing
 from subprojects.wp3_solar_estimator.utils.solar_utils import averaging_solar_quality
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -90,11 +89,18 @@ def _resolve_visibility_callables(
     raytracing_version: str,
 ) -> tuple[Callable[..., tuple[torch.Tensor, Any, Any]], Callable[..., tuple[torch.Tensor, Any, Any]]]:
     version = raytracing_version.lower()
-    if version == "v1":
-        return diffable_raytracing.mesh_visibility, diffable_raytracing.sdf_visibility
-    if version == "v2":
-        return diffable_raytracing.mesh_visibility_v2, diffable_raytracing.sdf_visibility_v2
-    raise ValueError(f"Unsupported raytracing_version '{raytracing_version}'. Expected one of: v1, v2")
+    if version.startswith("v"):
+        version_module = raytracing_version.lstrip("v")
+        module_path = f"subprojects.wp3_solar_estimator.raytracing.diffable.version{version_module}"
+        try:
+            visibility_module = __import__(module_path, fromlist=["mesh_visibility", "sdf_visibility"])
+            mesh_visibility = visibility_module.mesh_visibility
+            sdf_visibility = visibility_module.sdf_visibility
+        except ImportError as err:
+            raise ImportError(
+                f"Failed to import raytracing functions for version {raytracing_version} from {module_path}"
+            ) from err
+    return mesh_visibility, sdf_visibility
 
 
 def _compute_visibility_for_sun(

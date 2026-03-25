@@ -7,7 +7,7 @@ metric:
   name: solar_loss_metrics/raytracing_mem_peak_allocated_mb
 parameters:
   solar_configs/solar_loss_config.SolarLossConfigV6.resolution:
-    values: [64,128]
+    values: [64,128,256]
 
   #sweep over mesh raytracing params
   solar_configs/raytracing_config.RaytracingConfigV2.mesh.face_chunk_size:
