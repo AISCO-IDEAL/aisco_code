@@ -125,6 +125,19 @@ class ShadingPenalty(SolarBase):
     def finalize(self, output_dir: Path, file_name: str = "shading_penalty.gif", delete: bool = True) -> None:
         super().finalize(output_dir, file_name, delete)
 
+class ShadingFactor(SolarBase):
+    _config_key = "shading_factor"
+    _value_key = "shading_factor"
+    _wandb_key = "ShadingFactor"
+
+    def _colors_from_weights(self, normalized_weights: torch.Tensor, device: torch.device) -> torch.Tensor:
+        min_color = torch.tensor([0.8, 0.8, 0.8], dtype=torch.float32, device=device)
+        max_color = torch.tensor([1.0, 0.0, 0.0], dtype=torch.float32, device=device)
+        return min_color.unsqueeze(0) + normalized_weights.unsqueeze(-1) * (max_color - min_color).unsqueeze(0)
+
+    def finalize(self, output_dir: Path, file_name: str = "shading_penalty.gif", delete: bool = True) -> None:
+        super().finalize(output_dir, file_name, delete)
+
 
 class AverageQuality(SolarBase):
     """Render per-face average quality values."""

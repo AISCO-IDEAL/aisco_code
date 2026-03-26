@@ -380,6 +380,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         "threshold": selection_threshold_render,
         "shading_visibility": visual_aggregate_visibility / S,
         "shading_penalty_intensity": visual_aggregate_penalty / S,
+        "shading_factor": visual_aggregate_penalty_factor / S,
         "qualities": aggregate_illumination_quality,
     }
 

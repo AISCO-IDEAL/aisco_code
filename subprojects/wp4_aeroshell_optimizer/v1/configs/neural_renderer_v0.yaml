@@ -178,6 +178,14 @@ solar_info_modes:
       look_at: [-500, 0, 0]
       render_mode: "rgb"
       fps: 10
+  shading_factor:
+    enabled: True
+    class_path: "detached_modes.shading_modes:ShadingFactor"
+    config:
+      camera_position: [0, -5000, 1500]
+      look_at: [-500, 0, 0]
+      render_mode: "rgb"
+      fps: 10
 
   average_quality:
     enabled: True
