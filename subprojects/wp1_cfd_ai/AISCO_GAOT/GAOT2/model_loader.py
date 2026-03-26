@@ -7,7 +7,10 @@ import torch
 import torch.nn as nn  # noqa: PLR0402
 import yaml
 from torch_geometric.data import Batch, Data
-
+import matplotlib.pyplot as plt
+import numpy as np
+from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader as PyGDataLoader
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
@@ -98,37 +101,104 @@ class ModelLoader:
 
         return loss.item() + surrogate_loss - surrogate_loss.item()
 
-    def _visualize_pressure_field(self, pressure_field: torch.Tensor, mesh_verts: torch.Tensor, mesh_faces: torch.Tensor):
+     def _visualize_pressure_field(self, pressure_field: torch.Tensor, mesh_verts: torch.Tensor, mesh_faces: torch.Tensor):
         """
-        Visualize the predicted pressure field on the current mesh.
+        Visualise the predicted pressure field in the same style as
+        StaticTrainer3D._run_viz_for_sample (field part).
 
-        pressure_field: node-wise pressure from GAOT (N,) or (N,1)
-        mesh_verts: vertices in *millimeters* (same as incoming to loss_fn)
-        mesh_faces: faces as (F, 3) int indices
+        Uses a temporary PyG Data object + PyGDataLoader and logs a 3-panel
+        3D scatter figure (GT, Pred, |Diff|) to self.tracker.
         """
-        if pressure_field is None:
-            return
+        # ---- build a synthetic "sample" compatible with trainer logic ----
+        # we have only prediction on the mesh surface; there is no GT field here,
+        # so we will just plot the prediction and skip GT/diff if GT is missing.
+        sample = Data(
+            pos=mesh_verts * 1e-3,  # convert mm -> m to match GAOT convention
+            x=None,                 # no GT field on this mesh
+            face=mesh_faces.T,
+        )
 
-        # squeeze possible trailing channel dimension
-        if pressure_field.dim() == 2 and pressure_field.size(-1) == 1:
-            pressure_field = pressure_field.squeeze(-1)
+        loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
+        batch = next(iter(loader)).to(self.device)
 
-        # detach to avoid messing with autograd
-        verts_vis = mesh_verts.detach().cpu()
-        faces_vis = mesh_faces.detach().cpu()
-        pressure_vis = pressure_field.detach().cpu()
+        # coordinates used for scatter plot
+        coords = batch.pos.cpu().numpy()
+        fname = getattr(self, "epoch_name", "mesh")
 
-        # call Visualiser (adapt method name/signature if different)
-        try:
-            self.visualiser.plot_scalar_on_mesh(
-                vertices=verts_vis,
-                faces=faces_vis,
-                scalar_field=pressure_vis,
-                title=getattr(self, "epoch_name", "pressure_field"),
+        # predicted field is passed in as pressure_field (node-wise, already GAOT output)
+        field_pred = pressure_field.detach().cpu().numpy().squeeze()
+        field_gt = None  # no GT available on optimization mesh
+
+        # if you *do* have GT on this mesh in future, set batch.x and use it here
+        if field_gt is not None:
+            # optional: use the same u_mean/u_std as in StaticTrainer3D if you
+            # store them on ModelLoader (see explanation below)
+            u_mean = getattr(self, "u_mean", torch.tensor(0.0, device=self.device))
+            u_std = getattr(self, "u_std", torch.tensor(1.0, device=self.device))
+            if isinstance(u_mean, torch.Tensor):
+                u_mean = u_mean.cpu().numpy().item() if u_mean.numel() == 1 else 0.0
+            if isinstance(u_std, torch.Tensor):
+                u_std = u_std.cpu().numpy().item() if u_std.numel() == 1 else 1.0
+
+            field_pred_dn = field_pred * u_std + u_mean
+            field_gt_dn = field_gt * u_std + u_mean
+            field_diff = np.abs(field_gt_dn - field_pred_dn)
+
+            common_min = float(np.min(field_gt_dn))
+            common_max = float(np.max(field_gt_dn))
+        else:
+            # no GT: just plot the prediction with its own range
+            field_pred_dn = field_pred
+            field_gt_dn = None
+            field_diff = None
+            common_min = float(np.min(field_pred_dn))
+            common_max = float(np.max(field_pred_dn))
+
+        # ---- build matplotlib figure in same style as trainer ------------
+
+        panels = []
+        if field_gt_dn is not None:
+            panels.append((field_gt_dn, "Ground Truth", "jet", common_min, common_max))
+        panels.append((field_pred_dn, "Prediction", "jet", common_min, common_max))
+        if field_diff is not None:
+            panels.append((field_diff, "Absolute Difference", "Reds", None, None))
+
+        fig = plt.figure(figsize=(20, 6))
+        for panel_idx, (data, title, cmap_name, vmin, vmax) in enumerate(panels):
+            ax = fig.add_subplot(1, len(panels), panel_idx + 1, projection="3d")
+            sc = ax.scatter(
+                coords[:, 0],
+                coords[:, 1],
+                coords[:, 2],
+                c=data,
+                cmap=cmap_name,
+                s=2,
+                vmin=vmin,
+                vmax=vmax,
+                depthshade=False,
             )
-        except AttributeError:
-            logger.warning("Visualiser.plot_scalar_on_mesh not found. Adapt _visualize_pressure_field to your Visualiser API.")
+            ax.set_title(title)
+            fig.colorbar(sc, ax=ax, shrink=0.5)
+            ax.view_init(elev=20, azim=-120)
 
+        # epoch_name here is just a string; we don't have "epoch" from trainer
+        title_epoch = getattr(self, "epoch_name", "opt_step")
+        fig.suptitle(f"Pressure Field [opt] {fname} — {title_epoch}", fontsize=13)
+        plt.tight_layout()
+
+        # ---- log to tracker in the same style as trainer -----------------
+        if hasattr(self, "tracker") and self.tracker is not None:
+            try:
+                self.tracker.log_image(
+                    f"viz/opt/pressure_field",
+                    fig,
+                    step=None,  # or some optimization step counter if you have one
+                    caption=f"opt {fname} {title_epoch}",
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to log pressure field image to tracker: %s", exc)
+
+        plt.close(fig)
     def loss_fn(self, mesh_verts, mesh_faces):
         print(f"Number of Mesh Verts:{mesh_faces.shape[0]}")
         if mesh_verts is None or mesh_verts.shape[0] == 0:
