@@ -10,49 +10,65 @@ EPSILON = 1e-10
 
 
 class RescalePosition(BaseTransform):
-    """Rescales node positions 'pos' to a specified range (default: [-1, 1])."""
+    """Rescales node positions 'pos' to a specified range (default: [-1, 1]).
+
+    Also computes per-sample ``scale_factors`` (physical extent per axis)
+    and stores them on ``data.scale_factors`` so the model can learn
+    size-dependent behaviour.
+    """
 
     def __init__(self, lims=(-1.0, 1.0)):
         self.lims = lims
 
-    def forward(self, data: Data) -> Data:
+    def _rescale(self, data: Data) -> Data:
         if hasattr(data, "pos") and data.pos is not None:
-            data.pos = rescale(data.pos, lims=self.lims)
+            pos = data.pos
+            # Per-axis physical extent *before* normalisation (differentiable).
+            # Shape [1, D] so PyG batches correctly to [B, D].
+            # Divide by 1000 to convert from mm to metres.
+            data.scale_factors = (pos.max(dim=0).values - pos.min(dim=0).values).unsqueeze(0) / 1000.0
+            data.pos = rescale(pos, lims=self.lims)
         else:
             print("Warning: RescalePosition transform called but data has no 'pos' attribute.")
         return data
 
+    def forward(self, data: Data) -> Data:
+        return self._rescale(data)
+
     def __call__(self, data: Data) -> Data:
-        if hasattr(data, "pos") and data.pos is not None:
-            data.pos = rescale(data.pos, lims=self.lims)
-        else:
-            print("Warning: RescalePosition transform called but data has no 'pos' attribute.")
-        return data
+        return self._rescale(data)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(lims={self.lims})"
 
 
 class RescalePositionNew(BaseTransform):
-    """Rescales node positions 'pos' to a specified range (default: [-1, 1])."""
+    """Rescales node positions 'pos' using fixed physical domain bounds.
+
+    Also computes per-sample ``scale_factors`` (physical extent per axis)
+    and stores them on ``data.scale_factors``.
+    """
 
     def __init__(self, lims=(-1.0, 1.0), phy_domain=([-3e3, -3e3, -3e3], [3e3, 3e3, 3e3])):
         self.lims = lims
         self.phy_domain = phy_domain
 
-    def forward(self, data: Data) -> Data:
+    def _rescale(self, data: Data) -> Data:
         if hasattr(data, "pos") and data.pos is not None:
-            data.pos = rescale_new(data.pos, lims=self.lims, phys_domain=self.phy_domain)
+            pos = data.pos
+            # Shape [1, D] so PyG batches correctly to [B, D].
+            # Divide by 1000 to convert from mm to metres.
+            data.scale_factors = (pos.max(dim=0).values - pos.min(dim=0).values).unsqueeze(0) / 1000.0
+            data.pos = rescale_new(pos, lims=self.lims, phys_domain=self.phy_domain)
         else:
             print("Warning: RescalePosition transform called but data has no 'pos' attribute.")
         return data
 
+    def forward(self, data: Data) -> Data:
+        return self._rescale(data)
+
     def __call__(self, data: Data) -> Data:
-        if hasattr(data, "pos") and data.pos is not None:
-            data.pos = rescale_new(data.pos, lims=self.lims, phys_domain=self.phy_domain)
-        else:
-            print("Warning: RescalePosition transform called but data has no 'pos' attribute.")
-        return data
+        return self._rescale(data)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(lims={self.lims})"

@@ -2,8 +2,8 @@ import os
 from pathlib import Path
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
     apply_sweep_overrides,
@@ -91,14 +91,22 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
 
     ### get paths
     if run_locally:
-        pretrained_path = pretraining_config["pretraining"].get("local_pretraining_model_path", False)
+        pretrained_path = pretraining_config["pretraining"].get("local_pretraining_model_path", "")
     else:
-        pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", False)
-    print(f"Pretrained path: {pretrained_path}")
-    pretrained_model = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
+        pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", "")
 
-    pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", False)
+    print(f"Pretrained path: {pretrained_path}")
+
+    # Sicherheitscheck: Nur ausführen, wenn pretrained_path ein gültiger Wert ist
+    if pretrained_path:
+        pretrained_model = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
+    else:
+        print("Skipping pretrained model fetch: No path provided in config.")
+        pretrained_model = None
+
+    # Dein Debug-Print kann danach kommen
     print(f"[DEBUG main] pretraining_model_path from config: {pretrained_path}")
+
     ### load pretrained model if exists
     pretrained_model = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
     print(f"[DEBUG main] os.path.exists(path): {os.path.exists(pretrained_path)}")

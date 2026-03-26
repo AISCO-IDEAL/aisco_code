@@ -23,7 +23,7 @@ Both are fully differentiable through the SDF network weights θ.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 import torch
 
@@ -143,14 +143,14 @@ def _march_absorption(
 # ---------------------------------------------------------------------------
 
 
-def sdf_visibility(
+def sdf_visibility_v2(
     sdf_fn: Callable[[torch.Tensor], torch.Tensor],
     vertices: torch.Tensor,
     faces: torch.Tensor,
     sun_dir: torch.Tensor,
     *,
-    normal_source: str = "mesh",  # expects "mesh" or "sdf"
-    method: str = "sigmoid",  # expects "sigmoid" or "absorption"
+    normal_source: Literal["mesh", "sdf"] = "mesh",
+    method: Literal["sigmoid", "absorption"] = "sigmoid",
     # Sigmoid method params
     sdf_cfg: dict[str, Any],
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -185,14 +185,16 @@ def sdf_visibility(
         centroids:   (F, 3) face centroids
     """
 
-    alpha=float(sdf_cfg["alpha"])
-    beta=float(sdf_cfg["beta"])
-    kappa=float(sdf_cfg["kappa"])
-    num_steps=int(sdf_cfg["num_steps"])
-    step_size_factor=float(sdf_cfg["step_size_factor"])
-    origin_offset_factor=float(sdf_cfg["origin_offset_factor"])
-    max_march_factor=float(sdf_cfg["max_march_factor"])
-    point_chunk_size=int(sdf_cfg["point_chunk_size"])
+    print("Using 'sdf_visibility' version 1")
+
+    alpha = float(sdf_cfg["alpha"])
+    beta = float(sdf_cfg["beta"])
+    kappa = float(sdf_cfg["kappa"])
+    num_steps = int(sdf_cfg["num_steps"])
+    step_size_factor = float(sdf_cfg["step_size_factor"])
+    origin_offset_factor = float(sdf_cfg["origin_offset_factor"])
+    max_march_factor = float(sdf_cfg["max_march_factor"])
+    point_chunk_size = int(sdf_cfg["point_chunk_size"])
 
     device = vertices.device
 

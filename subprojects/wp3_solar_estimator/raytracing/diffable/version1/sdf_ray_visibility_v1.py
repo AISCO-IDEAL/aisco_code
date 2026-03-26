@@ -143,7 +143,7 @@ def _march_absorption(
 # ---------------------------------------------------------------------------
 
 
-def sdf_visibility(
+def sdf_visibility_v1(
     sdf_fn: Callable[[torch.Tensor], torch.Tensor],
     vertices: torch.Tensor,
     faces: torch.Tensor,
@@ -184,16 +184,17 @@ def sdf_visibility(
         normals:     (F, 3) unit face normals used
         centroids:   (F, 3) face centroids
     """
+
     print("Using 'sdf_visibility' version 1")
 
-    alpha=float(sdf_cfg["alpha"])
-    beta=float(sdf_cfg["beta"])
-    kappa=float(sdf_cfg["kappa"])
-    num_steps=int(sdf_cfg["num_steps"])
-    step_size_factor=float(sdf_cfg["step_size_factor"])
-    origin_offset_factor=float(sdf_cfg["origin_offset_factor"])
-    max_march_factor=float(sdf_cfg["max_march_factor"])
-    point_chunk_size=int(sdf_cfg["point_chunk_size"])
+    alpha = float(sdf_cfg["alpha"])
+    beta = float(sdf_cfg["beta"])
+    kappa = float(sdf_cfg["kappa"])
+    num_steps = int(sdf_cfg["num_steps"])
+    step_size_factor = float(sdf_cfg["step_size_factor"])
+    origin_offset_factor = float(sdf_cfg["origin_offset_factor"])
+    max_march_factor = float(sdf_cfg["max_march_factor"])
+    point_chunk_size = int(sdf_cfg["point_chunk_size"])
 
     device = vertices.device
 

@@ -137,7 +137,7 @@ def _normals_from_sdf(
 # ---------------------------------------------------------------------------
 
 
-def mesh_visibility(
+def mesh_visibility_v1(
     vertices: torch.Tensor,
     faces: torch.Tensor,
     sun_dir: torch.Tensor,
@@ -177,13 +177,13 @@ def mesh_visibility(
     """
     print("Using 'mesh_visibility' version 1")
 
-    beta=float(mesh_cfg["beta"])
-    gamma=float(mesh_cfg["gamma"])
-    margin_factor=float(mesh_cfg["margin_factor"])
-    origin_offset_eps=float(mesh_cfg["origin_offset_eps"])
-    sun_distance_factor=float(mesh_cfg["sun_distance_factor"])
-    face_chunk_size=int(mesh_cfg["face_chunk_size"])
-    miss_t=float(mesh_cfg["miss_t"])
+    beta = float(mesh_cfg["beta"])
+    gamma = float(mesh_cfg["gamma"])
+    margin_factor = float(mesh_cfg["margin_factor"])
+    origin_offset_eps = float(mesh_cfg["origin_offset_eps"])
+    sun_distance_factor = float(mesh_cfg["sun_distance_factor"])
+    face_chunk_size = int(mesh_cfg["face_chunk_size"])
+    miss_t = float(mesh_cfg["miss_t"])
 
     device = vertices.device
     F_count = faces.shape[0]

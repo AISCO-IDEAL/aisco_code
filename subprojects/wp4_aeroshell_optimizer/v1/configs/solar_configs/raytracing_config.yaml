@@ -15,12 +15,12 @@ RaytracingConfigV1:
     point_chunk_size: 256
 
   mesh:
-    beta: 10.0
-    gamma: 20.0
-    margin_factor: 1e-3
+    beta: 1.0
+    gamma: 1.0
+    margin_factor: 0.001
     origin_offset_eps: 1e-3
-    sun_distance_factor: 10.0
-    face_chunk_size: 512
+    sun_distance_factor: 2.0
+    face_chunk_size: 128
     miss_t: 1e9
 
 #RaytracingConfigV2: accessed in solar_v6.py, with selection of version via SolarLossConfigV6's raytracing_version key
@@ -41,11 +41,53 @@ RaytracingConfigV2:
     point_chunk_size: 256
 
   mesh:
-    beta: 10.0
+    beta: 1.0
     gamma: 20.0
     margin_factor: 1e-3
     origin_offset_eps: 1e-3
-    sun_distance_factor: 10.0
-    face_chunk_size: 512
-    blocker_chunk_size: 128
+    sun_distance_factor: 2.0
+    face_chunk_size: 128 #C
+    blocker_chunk_size: 128 #K --> peak memory usage will be C*K
     miss_t: 1e9
+    diagnostics_enabled: True
+    diagnostics_log_histograms: True
+    diagnostics_quantiles: [0.01, 0.05, 0.5, 0.95, 0.99]
+
+
+RaytracingConfigV3:
+  method: "mesh" # sdf | mesh | none
+  normal_source: "mesh" # mesh | sdf
+  path: "subprojects.wp3_solar_estimator.raytracing.diffable.version3"
+
+  sdf:
+    method: "sigmoid" # sigmoid | absorption
+    alpha: 20.0
+    beta: 20.0
+    kappa: 2.0
+    num_steps: 12
+    step_size_factor: 0.1
+    origin_offset_factor: 1e-3
+    max_march_factor: 2.0
+    point_chunk_size: 256
+
+  mesh:
+    beta: 1.0
+    gamma: 20.0
+    margin_factor: 1e-3
+    origin_offset_eps: 1e-3
+    sun_distance_factor: 2.0
+    face_chunk_size: 400 #C
+    blocker_chunk_size: 750 #K --> peak memory usage will be C*K
+    miss_t: 1e9
+    smoothing_mode: "soft_barycentric_transmittance" # soft_barycentric_transmittance | v2_sigmoid
+    face_samples: 7 # number of deterministic barycentric sample rays per face
+    sample_pattern: "barycentric_ring" # centroid | barycentric_ring
+    depth_normalization: "bbox" # bbox | ray_length
+    transmittance_beta: 2.0 # depth attenuation sharpness
+    transmittance_kappa: 1.0 # total occlusion-to-transmittance scale
+    bary_softness_tau: 40 # sharpness of barycentric inside/outside transition
+    t_softness_tau: 8.0 # sharpness of front-hit transition (t > 0)
+    eps: 1e-8 # numerical epsilon for intersection denominator handling
+    diagnostics_enabled: True
+    diagnostics_log_histograms: True
+    diagnostics_quantiles: [0.01, 0.05, 0.5, 0.95, 0.99]

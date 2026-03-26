@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (
     upload_neural_renderer_gif,
     upload_neural_renderer_image,
@@ -50,7 +50,13 @@ class VisualisationManager:
         manager.finalize()
     """
 
-    def __init__(self, verbose: bool = True, output_dir: Path | None = None):
+    def __init__(
+        self,
+        verbose: bool = True,
+        output_dir: Path | None = None,
+        visualiser: Visualiser | None = None,
+        key_for_modes: str = "rendering_modes",
+    ):
         """
         Initialize manager, the shared Visualiser, and all rendering modes from config.
 
@@ -68,7 +74,10 @@ class VisualisationManager:
         self.store_wandb = self.config["general"].get("store_wandb", False)  # Whether to upload final GIFs to wandb
 
         # Initialize the shared Visualiser instance
-        self.visualiser = Visualiser(**(self.config.get("neural_renderer", {})))
+        if visualiser is not None:
+            self.visualiser = visualiser
+        else:
+            self.visualiser = Visualiser(**(self.config.get("neural_renderer", {})))
 
         # set output dir (WIP, not sure if keeping this way)
 
@@ -78,13 +87,13 @@ class VisualisationManager:
 
         # Initialize all rendering modes
         self.rendering_modes: dict[str, RenderingMode] = {}
-        self._initialize_rendering_modes()
+        self._initialize_rendering_modes(key=key_for_modes)
 
         if verbose:
             print("Initialized Visualisation Manager")
             self.status()
 
-    def _initialize_rendering_modes(self) -> None:
+    def _initialize_rendering_modes(self, key: str = "rendering_modes") -> None:
         """
         Dynamically load and initialize all rendering modes from config.
 
@@ -103,7 +112,7 @@ class VisualisationManager:
         - visualiser: self.visualiser (the shared Visualiser instance)
         - config: The mode-specific config dict from YAML
         """
-        modes_config = self.config.get("rendering_modes", {})
+        modes_config = self.config.get(key, {})
         if not modes_config["enabled"]:
             if self.verbose:
                 print("Rendering Manager is disabled in config")
@@ -230,10 +239,10 @@ class VisualisationManager:
                             suffix = file.suffix.lower()
                             if suffix == ".gif":
                                 print(f"Uploading {file} to wandb under key animations/{mode_name}...")
-                                upload_neural_renderer_gif(str(file), key=f"animations/{mode_name}", step=None)
+                                upload_neural_renderer_gif(str(file), key=f"animations/{mode_name}", step=0)
                             elif suffix in {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}:
                                 print(f"Uploading {file} to wandb under key images/{mode_name}...")
-                                upload_neural_renderer_image(str(file), key=f"images/{mode_name}", step=None)
+                                upload_neural_renderer_image(str(file), key=f"images/{mode_name}", step=0)
                     else:
                         print(f"Output directory for mode {mode_name} does not exist: {mode_output_dir}")
 
