@@ -137,7 +137,7 @@ def _normals_from_sdf(
 # ---------------------------------------------------------------------------
 
 
-def mesh_visibility(
+def mesh_visibility_v1(
     vertices: torch.Tensor,
     faces: torch.Tensor,
     sun_dir: torch.Tensor,
