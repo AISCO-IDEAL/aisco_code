@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn  # noqa: PLR0402
 import yaml
 from torch_geometric.data import Batch, Data
 from torch_geometric.loader import DataLoader as PyGDataLoader
@@ -117,7 +116,7 @@ class ModelLoader:
         Uses a temporary PyG Data object + PyGDataLoader and logs a 3-panel
         3D scatter figure (GT, Pred, |Diff|) to self.tracker.
         """
-        if self.rendering==False:
+        if not self.rendering:
             return
         if pressure_field is None:
             return
@@ -138,7 +137,6 @@ class ModelLoader:
         fname = getattr(self, "epoch_name", "mesh")
 
         # predicted field is passed in as pressure_field (node-wise GAOT output)
-        # shape [N] or [N,1]
         if pressure_field.dim() == 2 and pressure_field.size(-1) == 1:
             pressure_field = pressure_field.squeeze(-1)
 
