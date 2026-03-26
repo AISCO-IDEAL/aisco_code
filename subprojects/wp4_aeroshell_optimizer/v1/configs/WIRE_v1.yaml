@@ -1,5 +1,5 @@
-# NOT USED IN CURRENT LOOP — WIRE_v1.yaml is only used when model_def.model_name is "WIRE" and active_configs.model_params is "WIRE_v1.yaml".
-# Currently model_def.model_name = "BasicMLP" and model_params = "basic_MLP_v1.yaml", so this file is not loaded.
-# It IS loaded during pretraining if pretraining_v0_config.yaml model = "WIRE" triggers dynamic_model_loading(),
-# but in the current main flow, the model is passed in directly (skipping dynamic_model_loading).
-# FUTURE USER: PLEASE REMOVE ALL THE UNUSED KEYS IN THIS FILE AND SIMPLIFY IT TO THE BARE MINIMUM NEEDED FOR YOUR MODEL, TO AVOID CONFUSION. ALSO DELETE THIS COMMENT THEN.
+config: {}
+overwrite_base_init: False
+in_dim: 3
+hidden: 256
+layers: 3

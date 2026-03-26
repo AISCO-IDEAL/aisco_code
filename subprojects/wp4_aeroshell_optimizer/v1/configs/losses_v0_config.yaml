@@ -14,7 +14,7 @@ general_info:
     drag: 1.0
     solar: 1.0
 
-losses: # [compute: bool, weight: float, path: str]  # USED — total_loss.py dynamically loads and instantiates all losses with compute=1
+losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically loads and instantiates all losses with compute=1
   # NOTE: that for each loss class, only one version should have compute=True
   aero:
     # frontal_area_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/aerodynamic_loss/frontal_area_v0.py"]  # NOT ACTIVE (compute=0)
@@ -35,8 +35,8 @@ losses: # [compute: bool, weight: float, path: str]  # USED — total_loss.py dy
   smoothness:
     smoothness_v0: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/smoothness_loss/smoothness_v0.py"]
 
-  #surface_area:
-  #  surface_loss_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/surface_area_loss/surface_loss_v0.py"]
+  # surface_area:
+  #   surface_loss_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/surface_area_loss/surface_loss_v0.py"]
 
   solar:
     solar_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v0.py"]
@@ -71,6 +71,6 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
   render_until_blue: "True"
 
 cfd:
-  model_id: "platin"
+  model_id: "gold3"
   version: 1
   visualisations: "True" # only works for Version 2
