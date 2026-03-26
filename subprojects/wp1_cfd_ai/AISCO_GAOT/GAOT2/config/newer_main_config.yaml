@@ -11,7 +11,7 @@ setup:
     id: "_RUN_ID_"
     seed: 42
     device: "cuda:0"
-    dtype: "torch.float32"
+    dtype: "bfloat16"  # options: "torch.float32" | "bfloat16"
     trainer_name: "static3d"
     train: true
     test: true
@@ -68,9 +68,9 @@ model:
             node_embedding: false
             use_attn: null
             pooling: "max"
-            sampling_strategy: null
+            sampling_strategy: "ratio"  # "ratio" = fast vectorised dropout_edge; "max_neighbors" = slow Python loop
             max_neighbors: null
-            sample_ratio: null
+            sample_ratio: 0.5
         transformer:
             patch_size: 2
             hidden_size: 256

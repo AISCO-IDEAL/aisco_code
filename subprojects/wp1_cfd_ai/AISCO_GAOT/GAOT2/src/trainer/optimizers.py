@@ -200,7 +200,8 @@ class AdamOptimizer:
             for batch in trainer.train_loader:
                 start_time = time.time()
                 self.optimizer.zero_grad()
-                train_loss = trainer.train_step(batch)
+                with trainer.autocast_ctx:
+                    train_loss = trainer.train_step(batch)
                 train_loss.backward()
                 self.optimizer.step()
                 total_loss += train_loss.item()
@@ -376,7 +377,8 @@ class AdamWOptimizer:
                 self.optimizer.zero_grad()
 
                 # trainer.train_step now returns (total_weighted_loss, dict_of_head_mses)
-                train_loss, head_losses = trainer.train_step(batch)
+                with trainer.autocast_ctx:
+                    train_loss, head_losses = trainer.train_step(batch)
 
                 train_loss.backward()
 
