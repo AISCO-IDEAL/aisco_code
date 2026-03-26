@@ -11,6 +11,12 @@ import numpy as np
 
 import wandb
 
+
+def _safe_step(step: int | None) -> int:
+    """Return an explicit non-drifting step for wandb logging."""
+    return 0 if step is None else int(step)
+
+
 if TYPE_CHECKING:
     from PIL import Image
 else:
@@ -70,7 +76,7 @@ def upload_neural_renderer_image(image, key: str, step: int | None = None):
     - a numpy array (HWC or CHW)
     """
     arr = _load_image(image)
-    wandb.log({key: wandb.Image(arr)}, step=step)
+    wandb.log({key: wandb.Image(arr)}, step=_safe_step(step))
 
 
 def _frames_to_array_list(frames: Iterable) -> list:
@@ -99,7 +105,8 @@ def upload_neural_renderer_gif(frames, key: str, step: int | None = None, fps: i
     """
     # If a path-like was provided, pass it straight to wandb.Video
     if isinstance(frames, (str | Path)):
-        wandb.log({key: wandb.Video(str(frames), fps=fps, format="gif")}, step=step)
+        safe_step = _safe_step(step)
+        wandb.log({key: wandb.Video(str(frames), fps=fps, format="gif")}, step=safe_step)
         print(f"Logged GIF file {frames} to wandb under key '{key}' at step {step}")
         return
 
@@ -114,7 +121,8 @@ def upload_neural_renderer_gif(frames, key: str, step: int | None = None, fps: i
 
         # 2. Now that the file is closed (but not deleted), wandb can safely read it
         try:
-            wandb.log({key: wandb.Video(temp_path, fps=fps, format="gif")}, step=step)
+            safe_step = _safe_step(step)
+            wandb.log({key: wandb.Video(temp_path, fps=fps, format="gif")}, step=safe_step)
             print(f"Logged GIF bytes to wandb under key '{key}' at step {step}")
         finally:
             # 3. Manually clean up the file
@@ -125,7 +133,8 @@ def upload_neural_renderer_gif(frames, key: str, step: int | None = None, fps: i
     # If numpy array of shape (T,H,W,C)
     if isinstance(frames, np.ndarray):
         if frames.ndim == 4:
-            wandb.log({key: wandb.Video(frames, fps=fps, format="gif")}, step=step)
+            safe_step = _safe_step(step)
+            wandb.log({key: wandb.Video(frames, fps=fps, format="gif")}, step=safe_step)
             print(f"Logged GIF numpy array with {frames.shape[0]} frames to wandb under key '{key}' at step {step}")
             return
         else:
@@ -137,7 +146,8 @@ def upload_neural_renderer_gif(frames, key: str, step: int | None = None, fps: i
         # Convert list of arrays to a single numpy array (T, H, W, C)
         # This satisfies wandb.Video input requirement
         video_array = np.stack(frame_list)
-        wandb.log({key: wandb.Video(video_array, fps=fps, format="gif")}, step=step)
+        safe_step = _safe_step(step)
+        wandb.log({key: wandb.Video(video_array, fps=fps, format="gif")}, step=safe_step)
         print(f"Logged GIF with {len(frame_list)} frames to wandb under key '{key}' at step {step}")
         return
 
