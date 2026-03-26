@@ -4,18 +4,19 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-import torch
+
 import cadquery as cq
 import imageio.v2 as imageio
 import numpy as np
 import OpenGL
 import pyrender
+import torch
 import trimesh
 from pyrender import RenderFlags
-from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 
 import wandb
 from subprojects.wp2_assembler.version3.components.nbz import call_assembly
+from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 
 # Constants for numerical thresholds
@@ -258,10 +259,8 @@ class CADVisualizer:
         types = ["solid_a", "solid_b"]
 
         inner_box, outer_box = self.inner_bb, self.outer_bb
-        compound_inner_box = inner_box.model.toCompound()
-        inner_box_solid = cq.Solid(compound_inner_box.fuse().wrapped)  # transforming to solid for rendering
         meshes = [
-            self.__cq_solid_to_trimesh(inner_box_solid),
+            self.__cq_solid_to_trimesh(inner_box),
             self.__cq_solid_to_trimesh(outer_box),
         ]
 
@@ -332,7 +331,6 @@ class CADVisualizer:
         return bool(np.mean(blue_dom) >= self.__min_blue_ratio)
 
     def render_until_blue_detected(self, outer_bb: cq.Solid | None = None, inner_bb: list | None = None) -> tuple[str, bool, int]:
-        meshes = []
         types = ["solid_a", "solid_b"]
         if outer_bb == None:
             config = load_config(
@@ -346,20 +344,12 @@ class CADVisualizer:
                 assembly_id = bb_config["assembly_id"]
 
             if assembley_version == 3:
-                inner_box, outer_box, _ = call_assembly(assembly_id)  # getting assembly for inner_nbz and outer_nbz as solid
-                compound_inner_box = inner_box.model.toCompound()
-                inner_box_solid = cq.Solid(compound_inner_box.fuse().wrapped)  # transforming to solid for rendering
-                meshes = [
-                    self.__cq_solid_to_trimesh(inner_box_solid),
-                    self.__cq_solid_to_trimesh(outer_box),
-                ]
+                self.inner_bb, self.outer_b, _ = call_assembly(assembly_id)  # getting assembly for inner_nbz and outer_nbz as solid
+
         else:
             self.outer_bb = outer_bb
             self.inner_bb = inner_bb
-            meshes = [
-                self.__cq_solid_to_trimesh(inner_bb),  # type: ignore
-                self.__cq_solid_to_trimesh(outer_bb),
-            ]
+
         for attempts in range(1, self.__max_attempts + 1):
             p = Path(self.__out_image_path)
             cur = f"{p.parent / p.stem}_attempt_{attempts}{p.suffix}"
@@ -376,27 +366,30 @@ class CADVisualizer:
 
 class AutoVisToWandB:
     def __init__(self, inner_bb, outer_bb, sdf_model, epoch_name, device):
-        self.device = device
-        ply_file = self.extract_sdf_to_temp_ply(
-            sdf_model=sdf_model,
-            resolution=64,
-            bbox=[-1, 1, -1, 1, -1, 1],
-            isovalue=0.0,
-            device=device,
-        )
-        self.device=device
-        tmp_dir = tempfile.mkdtemp(prefix="nice")
-        out_image_path = os.path.join(tmp_dir, "nice.png")
-        visualiser = CADVisualizer(ply_path=ply_file, out_image_path=out_image_path)
-        path, _, _ = visualiser.render_until_blue_detected(outer_bb=outer_bb, inner_bb=inner_bb)
-        wandb.log(
-            {
-                "Bounding Boxes:": wandb.Image(
-                    path,
-                )
-            },
-            step=epoch_name,
-        )
+        try:
+            self.device = device
+            ply_file = self.extract_sdf_to_temp_ply(
+                sdf_model=sdf_model,
+                resolution=128,
+                bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3],
+                isovalue=0.0,
+                device=device,
+            )
+            self.device=device
+            tmp_dir = tempfile.mkdtemp(prefix="nice")
+            out_image_path = os.path.join(tmp_dir, "nice.png")
+            visualiser = CADVisualizer(ply_path=ply_file, out_image_path=out_image_path)
+            path, _, _ = visualiser.render_until_blue_detected(outer_bb=outer_bb, inner_bb=inner_bb)
+            wandb.log(
+                {
+                    "Bounding Boxes:": wandb.Image(
+                        path,
+                    )
+                },
+                step=epoch_name,
+            )
+        except Exception as _:
+            return
 
     def write_ply(self, vertices: torch.Tensor, faces: torch.Tensor, out_path: str) -> None:
         """
