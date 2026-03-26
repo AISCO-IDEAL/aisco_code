@@ -15,8 +15,8 @@
       --muted: #496456;
       --border: #23283e;
       --shadow: 0 10px 20px rgba(16, 32, 24, 0.08);
-      --visual-card-width: 560px;
-      --visual-media-height: 350px;
+      --visual-card-width: 480px;
+      --visual-media-height: 300px;
       --visual-gap: 12px;
     }
 
@@ -43,6 +43,19 @@
       margin: 0 auto;
     }
 
+    /* --- NEW CSS FOR LOGO WRAPPER --- */
+    .logo-container {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .logo-container .card {
+      flex: 1;
+    }
+
+    /* -------------------------------- */
+
     .card {
       background: var(--panel);
       border: 1px solid var(--border);
@@ -56,13 +69,13 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      gap: 24px;
       min-height: 64px;
     }
 
     .logo-wrap img {
       max-height: 52px;
       width: auto;
-      max-width: 100%;
       object-fit: contain;
       display: block;
     }
@@ -159,7 +172,7 @@
     .visuals-grid {
       height: 100%;
       display: grid;
-      grid-template-columns: repeat(2, var(--visual-card-width));
+      grid-template-columns: repeat(3, var(--visual-card-width));
       justify-content: center;
       align-content: start;
       gap: var(--visual-gap);
@@ -223,7 +236,23 @@
       display: none;
     }
 
-    .gif-actions {
+    .mesh-controls {
+      display: grid;
+      gap: 6px;
+    }
+
+    .mesh-slider-label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      cursor: pointer;
+    }
+
+    .mesh-actions {
       margin-top: -10px;
     }
 
@@ -259,9 +288,19 @@
 
 <body>
   <main class="page">
-    <section class="card logo-wrap" aria-label="Team logo">
-      <img id="teamLogo" src="logo.png" alt="Team logo">
-    </section>
+
+    <div class="logo-container">
+      <section class="card logo-wrap" aria-label="Team logo">
+        <img id="logo2" src="ideal.png" alt="Logo IDEAL">
+      </section>
+      <section class="card logo-wrap" aria-label="Team logo">
+        <img id="logo1" src="logo.png" alt="Logo AISCO">
+      </section>
+      <section class="card logo-wrap" aria-label="Team logo">
+        <img id="logo3" src="aCe.png" alt="Logo aCe">
+      </section>
+
+    </div>
 
     <section class="card controls">
       <button id="btnRunLocal">RUN</button>
@@ -281,7 +320,7 @@
     <section class="card" style="min-height: 0;">
       <div class="visuals-grid">
         <div class="visual-card">
-          <div class="visual-title">Mesh Assembly GIF (slowed)</div>
+          <div class="visual-title">Aeroshell Evolution</div>
           <div class="image-slot">
             <img id="artifactImage" alt="mesh assembly gif preview">
           </div>
@@ -292,7 +331,7 @@
         </div>
 
         <div class="visual-card">
-          <div class="visual-title">Solar Loss Rendering GIF</div>
+          <div class="visual-title">Solar Placement</div>
           <div class="image-slot">
             <img id="solarArtifactImage" alt="solar loss gif preview">
           </div>
@@ -301,12 +340,31 @@
             <button id="btnRestartSolarGif" type="button">Restart GIF</button>
           </div>
         </div>
+
+        <div class="visual-card">
+          <div class="visual-title"> Aeroshell Mesh</div>
+          <div class="image-slot">
+            <img id="meshImage" alt="mesh preview" style="display: none;">
+            <span id="meshPlaceholder" style="color: var(--muted); font-size: 0.9rem;">No mesh loaded yet</span>
+          </div>
+          <div class="hint" id="meshStatus">No mesh available.</div>
+          <div class="mesh-actions">
+            <div class="mesh-controls">
+              <div class="mesh-slider-label">Epoch Slider</div>
+              <input type="range" id="meshEpochSlider" min="0" max="100" value="0" disabled>
+            </div>
+            <button id="btnDownloadMesh" type="button" disabled style="margin-top: 6px;">Download Mesh</button>
+          </div>
+        </div>
       </div>
     </section>
   </main>
 
   <script>
-    const teamLogo = document.getElementById("teamLogo");
+    // UPDATED IDs IN JAVASCRIPT
+    const logo1 = document.getElementById("logo1");
+    const logo2 = document.getElementById("logo2");
+
     const btnRunLocal = document.getElementById("btnRunLocal");
     const assemblyIdSelect = document.getElementById("assemblyIdSelect");
     const epochProgress = document.getElementById("epochProgress");
@@ -323,6 +381,8 @@
     let currentGifKey = null;
     let solarGifEntry = null;
     let currentSolarGifKey = null;
+    let meshes = [];
+    let currentMeshIndex = 0;
 
     function initializeAssemblyIdOptions() {
       for (let id = 1; id <= 51; id += 1) {
@@ -428,6 +488,64 @@
       solarArtifactStatus.textContent = "";
     }
 
+    function formatFileSize(bytes) {
+      if (bytes === 0) return "0 B";
+      const k = 1024;
+      const sizes = ["B", "KB", "MB", "GB"];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
+    }
+
+    function updateMeshDisplay() {
+      const meshEpochSlider = document.getElementById("meshEpochSlider");
+      const meshStatus = document.getElementById("meshStatus");
+      const meshPlaceholder = document.getElementById("meshPlaceholder");
+      const btnDownloadMesh = document.getElementById("btnDownloadMesh");
+      const meshImage = document.getElementById("meshImage"); // Grab the image element
+
+      if (meshes.length === 0) {
+        meshEpochSlider.disabled = true;
+        btnDownloadMesh.disabled = true;
+        meshStatus.textContent = "No mesh available.";
+        meshPlaceholder.style.display = "block";
+        meshPlaceholder.textContent = "No mesh loaded yet";
+        meshImage.style.display = "none";
+        return;
+      }
+
+      // Enable controls
+      meshEpochSlider.disabled = false;
+      meshEpochSlider.max = String(meshes.length - 1);
+      btnDownloadMesh.disabled = false;
+
+      // Get current mesh data
+      const currentMesh = meshes[currentMeshIndex];
+      meshStatus.textContent = currentMesh.name;
+
+      // Ensure the broken image is hidden and show a helpful placeholder text instead
+      meshImage.style.display = "none";
+      meshPlaceholder.style.display = "block";
+      meshPlaceholder.textContent = `Ready to download: ${currentMesh.name}`;
+
+      // Update slider position
+      meshEpochSlider.value = String(currentMeshIndex);
+    }
+
+    function handleMeshSliderChange(event) {
+      currentMeshIndex = Number.parseInt(event.target.value, 10);
+      updateMeshDisplay();
+    }
+
+    function handleMeshDownload() {
+      if (currentMeshIndex >= 0 && currentMeshIndex < meshes.length) {
+        const mesh = meshes[currentMeshIndex];
+        const link = document.createElement("a");
+        link.href = mesh.url;
+        link.download = mesh.name;
+        link.click();
+      }
+    }
+
     async function refreshArtifacts() {
       try {
         const res = await fetch(`/run-local/artifacts?t=${Date.now()}`, { cache: "no-store" });
@@ -461,6 +579,16 @@
           updateSolarGifDisplay();
         }
 
+        const meshList = data.meshes || [];
+        if (meshList.length > 0) {
+          meshes = meshList;
+          currentMeshIndex = meshes.length - 1;
+          updateMeshDisplay();
+        } else {
+          meshes = [];
+          updateMeshDisplay();
+        }
+
       } catch (_error) {
         console.error("Failed to fetch artifacts:", _error);
       }
@@ -489,13 +617,16 @@
       }
     }
 
-    teamLogo.onerror = () => {
-      teamLogo.style.display = "none";
-    };
+    // UPDATED ERROR HANDLING FOR BOTH LOGOS
+    logo1.onerror = () => logo1.style.display = "none";
+    logo2.onerror = () => logo2.style.display = "none";
 
     btnRunLocal.addEventListener("click", startRunLocal);
     btnRestartGif.addEventListener("click", restartGif);
     btnRestartSolarGif.addEventListener("click", restartSolarGif);
+
+    document.getElementById("meshEpochSlider").addEventListener("input", handleMeshSliderChange);
+    document.getElementById("btnDownloadMesh").addEventListener("click", handleMeshDownload);
 
     initializeAssemblyIdOptions();
     refreshProgress();
