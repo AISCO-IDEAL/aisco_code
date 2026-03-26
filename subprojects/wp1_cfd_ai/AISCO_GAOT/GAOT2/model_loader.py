@@ -87,16 +87,18 @@ class ModelLoader:
 
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
+        self.sdf_model = sdf_model
         _, _, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
             sdf_model=sdf_model, loss_fn=self.loss_fn
         )
-
+        
         self.optimization_state["vertice_grads"] = dL_dvertices
         self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
 
         return loss.item() + surrogate_loss - surrogate_loss.item()
 
     def loss_fn(self, mesh_verts, mesh_faces):
+        print(f"Number of Mesh Verts:{mesh_faces.shape[0]}")
         if mesh_verts is None or mesh_verts.shape[0] == 0:
             print("Fail")
             return torch.tensor(0.0, device=self.device)
@@ -128,9 +130,13 @@ class ModelLoader:
         v0 = optim_verts[mesh_faces[:, 0]]
         v1 = optim_verts[mesh_faces[:, 1]]
         v2 = optim_verts[mesh_faces[:, 2]]
+        face_centers = (v0 + v1 + v2) / 3
 
         face_normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
+
+        sdf_values = self.sdf_model(face_centers)
+        face_normals[sdf_values < 0] *= -1
 
         num_verts = optim_verts.shape[0]
         all_idx = mesh_faces.reshape(-1)
