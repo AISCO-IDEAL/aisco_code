@@ -160,7 +160,8 @@ def _compute_visibility_for_chunk(
     blocker_chunk_size: int,
     device: torch.device,
     dtype: torch.dtype,
-) -> torch.Tensor:
+    return_t_near: bool = False,
+) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     chunk_centroids = centroids[start:end]  # (C, 3)
     chunk_normals = normals[start:end]  # (C, 3)
 
@@ -205,7 +206,10 @@ def _compute_visibility_for_chunk(
 
     # Occlusion score: sigmoid(γ * (t_face - t_near - margin))
     occl = torch.sigmoid(gamma * (t_face - t_near - margin))  # (C,)
-    return 1.0 - occl  # (C,)
+    visibility = 1.0 - occl  # (C,)
+    if return_t_near:
+        return visibility, t_near
+    return visibility, torch.Tensor(0)
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +226,8 @@ def mesh_visibility_v2(
     normals: torch.Tensor | None = None,
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
     normal_source: str = "mesh",
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    return_diagnostics: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
     """
     Differentiable per-face visibility using mesh ray-triangle intersections.
 
@@ -303,6 +308,7 @@ def mesh_visibility_v2(
     tri_v0, tri_v1, tri_v2 = v0, v1, v2  # (F, 3) each
 
     visibility_chunks: list[torch.Tensor] = []
+    t_near_chunks: list[torch.Tensor] = []
 
     print(
         f"Computing visibility in chunks: ray faces={face_chunk_size}, blocker faces={blocker_chunk_size} (total {F_count} faces)"
@@ -310,29 +316,89 @@ def mesh_visibility_v2(
 
     for start in range(0, F_count, face_chunk_size):
         end = min(start + face_chunk_size, F_count)
-        visibility_chunks.append(
-            _compute_visibility_for_chunk(
-                start=start,
-                end=end,
-                centroids=centroids,
-                normals=normals,
-                sun=sun,
-                ray_dir=ray_dir,
-                tri_v0=tri_v0,
-                tri_v1=tri_v1,
-                tri_v2=tri_v2,
-                offset=offset,
-                L=L,
-                beta=beta,
-                gamma=gamma,
-                margin=margin,
-                miss_t=miss_t,
-                blocker_chunk_size=blocker_chunk_size,
-                device=device,
-                dtype=vertices.dtype,
-            )
+        chunk_result = _compute_visibility_for_chunk(
+            start=start,
+            end=end,
+            centroids=centroids,
+            normals=normals,
+            sun=sun,
+            ray_dir=ray_dir,
+            tri_v0=tri_v0,
+            tri_v1=tri_v1,
+            tri_v2=tri_v2,
+            offset=offset,
+            L=L,
+            beta=beta,
+            gamma=gamma,
+            margin=margin,
+            miss_t=miss_t,
+            blocker_chunk_size=blocker_chunk_size,
+            device=device,
+            dtype=vertices.dtype,
+            return_t_near=return_diagnostics,
         )
+        vis_chunk, t_near_chunk = chunk_result
+        visibility_chunks.append(vis_chunk)
+        if return_diagnostics:
+            t_near_chunks.append(t_near_chunk)
 
     visibility = torch.cat(visibility_chunks, dim=0)  # (F,)
 
-    return visibility, normals, centroids
+    if return_diagnostics:
+        t_near = torch.cat(t_near_chunks, dim=0)
+        diagnostics = _build_visibility_diagnostics(
+            visibility=visibility,
+            t_near=t_near,
+            t_face=L,
+            margin=margin,
+            gamma=gamma,
+        )
+        return visibility, normals, centroids, diagnostics
+
+    return visibility, normals, centroids, {}  # none for mypy
+
+
+# ---------------------------------------------------------------------------
+# Diagnostics helpers
+# ---------------------------------------------------------------------------
+
+
+def _expand_scalar_like(value: float | torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """Broadcast scalar-like values to a 1D tensor matching target shape."""
+    if isinstance(value, torch.Tensor):
+        if value.numel() == 1:
+            return torch.full_like(target, float(value.detach().item()))
+        return value.to(device=target.device, dtype=target.dtype)
+    return torch.full_like(target, float(value))
+
+
+def _build_visibility_diagnostics(
+    *,
+    visibility: torch.Tensor,
+    t_near: torch.Tensor,
+    t_face: float | torch.Tensor,
+    margin: float | torch.Tensor,
+    gamma: float,
+    eps: float = 1e-12,
+) -> dict[str, torch.Tensor]:
+    """Build per-face diagnostic tensors for saturation analysis."""
+    t_face_vec = _expand_scalar_like(t_face, t_near)
+    margin_vec = _expand_scalar_like(margin, t_near)
+    delta = t_face_vec - t_near - margin_vec
+    sigmoid_arg = gamma * delta
+    delta_norm = delta / t_face_vec.abs().clamp(min=eps)
+    abs_sigmoid_arg = torch.abs(sigmoid_arg)
+
+    return {
+        "t_near": t_near,
+        "t_face": t_face_vec,
+        "margin": margin_vec,
+        "delta": delta,
+        "delta_norm": delta_norm,
+        "sigmoid_arg": sigmoid_arg,
+        "sat_abs_gt5": (abs_sigmoid_arg > 5.0).to(dtype=visibility.dtype),
+        "sat_abs_gt8": (abs_sigmoid_arg > 8.0).to(dtype=visibility.dtype),
+        "grad_region_abs_le2": (abs_sigmoid_arg <= 2.0).to(dtype=visibility.dtype),
+        "vis_transition_01_09": ((visibility > 0.1) & (visibility < 0.9)).to(dtype=visibility.dtype),
+        "vis_transition_001_099": ((visibility > 0.01) & (visibility < 0.99)).to(dtype=visibility.dtype),
+    }
