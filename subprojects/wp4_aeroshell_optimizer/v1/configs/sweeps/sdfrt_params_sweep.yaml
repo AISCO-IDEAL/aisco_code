@@ -1,4 +1,5 @@
 program: subprojects/wp3_solar_estimator/raytracing/easier_sweep.py
+method: grid
 entity: aisco
 project: RTParam_Sweep
 name: SDFRT - Beta and Kappa Sweep
