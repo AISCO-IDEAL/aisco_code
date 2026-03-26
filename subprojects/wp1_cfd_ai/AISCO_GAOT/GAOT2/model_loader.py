@@ -135,8 +135,9 @@ class ModelLoader:
         face_normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
 
-        sdf_values = self.sdf_model(face_centers)
+        sdf_values = self.sdf_model(face_centers*1e3+face_normals*10)
         face_normals[sdf_values < 0] *= -1
+        print("dumdidum",sdf_values < 0)
 
         num_verts = optim_verts.shape[0]
         all_idx = mesh_faces.reshape(-1)
