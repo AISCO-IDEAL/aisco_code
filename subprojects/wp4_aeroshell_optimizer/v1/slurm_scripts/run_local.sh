@@ -11,9 +11,10 @@ export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH
 # cd ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts
 # bash run_local.sh
 ###########################################################################
-umask 0002
 
-USERNAME=$(whoami) #elegant, right?
+umask 0002 # ensure group write permissions for logs and models
+
+USERNAME=$(whoami) #elegant, right? yes
 # Update this path to where your code actually sits on WSL
 
 PROJECT_ROOT="$HOME/AISCO_code"
