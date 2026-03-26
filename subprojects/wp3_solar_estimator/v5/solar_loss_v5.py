@@ -404,6 +404,10 @@ class SolarLossEstimator:
             self.wandb_run_name = wandb.run.name if wandb.run else None
             self.rendering_dir = None  # Will be set when solar_loss is first called with a model
             self.storage_paths = general_config["storage_paths"]
+            run_locally_raw = general_config.get("general_info", {}).get("run_locally", False)
+            self.run_locally = (
+                run_locally_raw if isinstance(run_locally_raw, bool) else str(run_locally_raw).strip().lower() == "true"
+            )
         else:
             self.visualiser = None
             self.renderSolar = None
@@ -412,6 +416,7 @@ class SolarLossEstimator:
             self.model_hash = None
             self.wandb_run_name = None
             self.rendering_dir = None
+            self.run_locally = False
 
         self.route = Route(
             cfg_path=config["australia_cfg"]

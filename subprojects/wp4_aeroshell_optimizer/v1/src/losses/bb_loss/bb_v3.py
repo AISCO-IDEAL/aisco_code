@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import torch
 
@@ -9,8 +11,23 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import Parent
 class BbV3(ParentLoss):
     def _setup(self) -> None:
         self.__config = self.losses_config["bb_config"]
-        rng = np.random.default_rng()
-        self.__assembly_id = int(rng.integers(1, 52))
+        env_assembly_id = os.getenv("AISCO_ASSEMBLY_ID", "").strip()
+        configured_assembly_id = self.__config.get("assembly_id")
+
+        self.__assembly_id: int
+        if env_assembly_id:
+            self.__assembly_id = int(env_assembly_id)
+        elif configured_assembly_id is not None:
+            self.__assembly_id = int(configured_assembly_id)
+        else:
+            rng = np.random.default_rng()
+            self.__assembly_id = int(rng.integers(1, 52))
+
+        if not 1 <= self.__assembly_id <= 51:
+            msg = f"assembly_id must be in range 1..51, got {self.__assembly_id}"
+            raise ValueError(msg)
+
+        print(f"[BbV3] Using assembly_id={self.__assembly_id}")
         # Create SDFs for inner and outer boxes
         inner_box, outer_box, __ = call_assembly(id_number=self.__assembly_id)
         inner_solids_list = inner_box.Solids()

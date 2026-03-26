@@ -4,6 +4,7 @@ from torch_geometric.data import Batch
 
 from .layers.attn import Transformer
 from .layers.magno import MAGNODecoder, MAGNOEncoder
+from .layers.scalar_encoder import ScalarEncoder
 
 
 class GAOT3D(nn.Module):
@@ -64,6 +65,28 @@ class GAOT3D(nn.Module):
                 out_channels=self.field_output_size,
                 magno_config=magno_config,
             )
+
+        # ── optional scalar encoder (scaling factors, flow speed, …) ─────
+        scalar_cfg = config.get("scalar_encoder")
+        if scalar_cfg and scalar_cfg.get("enabled", False):
+            self.scalar_encoder: ScalarEncoder | None = ScalarEncoder(
+                feature_names=scalar_cfg["features"],
+                latent_dim=self.node_latent_size,
+                hidden_dim=scalar_cfg.get("hidden_dim"),
+            )
+        else:
+            self.scalar_encoder = None
+
+        # ── optional late scalar encoder (post-transformer conditioning) ──
+        late_scalar_cfg = config.get("late_scalar_encoder")
+        if late_scalar_cfg and late_scalar_cfg.get("enabled", False):
+            self.late_scalar_encoder: ScalarEncoder | None = ScalarEncoder(
+                feature_names=late_scalar_cfg["features"],
+                latent_dim=self.node_latent_size,
+                hidden_dim=late_scalar_cfg.get("hidden_dim"),
+            )
+        else:
+            self.late_scalar_encoder = None
 
     # ─── encoder ─────────────────────────────────────────────────────────
     def _init_encoder(self, magno_cfg: dict) -> MAGNOEncoder:
@@ -243,8 +266,16 @@ class GAOT3D(nn.Module):
             latent_tokens_batch_idx=batch_idx_latent,
         )
 
+        # ── scalar conditioning (optional) ───────────────────────────────
+        if self.scalar_encoder is not None:
+            rndata = self.scalar_encoder(rndata, batch)
+
         # ── process ──────────────────────────────────────────────────────
         rndata_proc = self.process(rndata=rndata, condition=condition)
+
+        # ── late scalar conditioning (post-transformer, optional) ─────────
+        if self.late_scalar_encoder is not None:
+            rndata_proc = self.late_scalar_encoder(rndata_proc, batch)
 
         # ── scalar path: pool → multi-head decoder ───────────────────────
         if self.decoder.head_names:
