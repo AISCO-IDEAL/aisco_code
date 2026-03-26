@@ -33,6 +33,10 @@ def pressure_to_drag(
     pos: Tensor,
     drag_direction: int = 0,
 ) -> Tensor:
+
+    print(f"1. Pressures Shape: {pred_pressure.shape}")
+    print(f"2. Mesh Faces Shape: {face.shape}")
+    print(pos.shape)
     p = pred_pressure.squeeze(-1) if pred_pressure.dim() > 1 else pred_pressure
 
     v0 = pos[face[0]]
@@ -54,7 +58,11 @@ def pressure_to_drag(
     n_dir_area = area_normals[:, drag_direction]
 
     drag = (-p_face * n_dir_area).sum()
-
+    print(f"Area Normals: {area_normals}")
+    print(f"Outward Normals: {outward_n}")
+    print(f"Pressure per Face: {p_face}")
+    print(f"Directional Area Normals: {n_dir_area}")
+    print(f"Computed Drag: {drag}")
     return drag
 
 
