@@ -70,5 +70,5 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
   assembly_id: 1 # 1 for the standard one  # rendering modes only (assembly_mode.py, mesh_assembly_gif.py), not bb_v3.py (which randomises 1-52)
 
 cfd:
-  model_id: "platin"
+  model_id: "gold3"
   version: 1
