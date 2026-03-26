@@ -1,26 +1,23 @@
 import ast
 import logging
 import os
+
 import matplotlib.pyplot as plt
 import numpy as np
-from torch_geometric.data import Data
-from torch_geometric.loader import DataLoader as PyGDataLoader
 import pandas as pd
 import torch
-import wandb
 import torch.nn as nn  # noqa: PLR0402
 import yaml
 from torch_geometric.data import Batch, Data
-import matplotlib.pyplot as plt
-import numpy as np
-from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader as PyGDataLoader
+
+import wandb
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import pressure_to_drag
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.mesh_sdf_grads import MeshSDFGrads
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import pressure_to_drag
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +25,7 @@ logger = logging.getLogger(__name__)
 class ModelLoader:
     def __init__(self, cfd_config: dict, device: str) -> None:
         model_id = cfd_config["model_id"]
+        self.rendering = cfd_config["visualisations"]
         self.model_path = self._get_checkpoint_path(model_id)
         self.device = device
         self._load_model()
@@ -101,7 +99,8 @@ class ModelLoader:
         )
 
         self.optimization_state["vertice_grads"] = dL_dvertices
-        self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
+        if self.rendering:
+            self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
 
         return loss.item() + surrogate_loss - surrogate_loss.item()
 
@@ -118,6 +117,8 @@ class ModelLoader:
         Uses a temporary PyG Data object + PyGDataLoader and logs a 3-panel
         3D scatter figure (GT, Pred, |Diff|) to self.tracker.
         """
+        if self.rendering==False:
+            return
         if pressure_field is None:
             return
 
@@ -204,7 +205,7 @@ class ModelLoader:
 
         wandb.log(
             {
-                f"viz/opt/pressure_field/{self.epoch_name}": wandb.Image(
+                "Pressure-Field visualisation": wandb.Image(
                     fig,
                     caption=f"opt {fname} {title_epoch}",
                 )
