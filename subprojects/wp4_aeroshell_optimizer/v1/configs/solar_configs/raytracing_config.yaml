@@ -30,7 +30,7 @@ RaytracingConfigV2:
   path: "subprojects.wp3_solar_estimator.raytracing.diffable.version2"
 
   sdf:
-    alpha: 0.01
+    alpha: 0.001
     beta: 20.0
     debug: 5 # 0 for no debug output, >0 for various debug plots (only works if save_dir is also provided)
     kappa: 2.0
