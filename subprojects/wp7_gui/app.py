@@ -62,7 +62,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             root = Path(raw_root)
             root = (REPO_ROOT.parent / root).resolve() if not root.is_absolute() else root.resolve()
 
-            return root #noqa: TRY300
+            return root  # noqa: TRY300
         except Exception as error:
             LOGGER.warning("Falling back to default local storage root due to config read error: %s", error)
             return DEFAULT_LOCAL_STORAGE_DIR.resolve()
