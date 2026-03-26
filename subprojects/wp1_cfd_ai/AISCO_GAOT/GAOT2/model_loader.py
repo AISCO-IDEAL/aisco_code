@@ -25,7 +25,7 @@ class ModelLoader:
         self.device = device
         self._load_model()
         self.extractor = MeshSDFExtractor(
-            resolution=128, bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3], device=self.device, isovalue=0.0
+            resolution=256, bbox=[-3e3, 3e3, -3e3, 3e3, -3e3, 3e3], device=self.device, isovalue=0.0
         )
         visualiser = Visualiser(device=self.device)
         self.gradlogger = MeshSDFGrads(visualiser, intensity=10)
@@ -116,7 +116,7 @@ class ModelLoader:
 
         pressure_field = gaot_loss["field"]
 
-        int_drag_f = pressure_to_drag(pred_pressure=pressure_field, normals=batch.c, face=mesh_faces, pos=mesh_verts*1e-3)
+        int_drag_f = pressure_to_drag(pred_pressure=pressure_field, normals=batch.c, face=mesh_faces.T, pos=mesh_verts*1e-3)
         print(f"Force-Value:{int_drag_f.item()}")
         return int_drag_f
 
@@ -135,7 +135,7 @@ class ModelLoader:
         face_normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
 
-        sdf_values = self.sdf_model(face_centers*1e3+face_normals*10)
+        sdf_values = self.sdf_model(face_centers*1e3+face_normals*50)
         face_normals[sdf_values < 0] *= -1
         print("dumdidum",sdf_values < 0)
 
