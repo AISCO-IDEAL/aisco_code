@@ -27,8 +27,9 @@ class ModelLoader:
         self.extractor = MeshSDFExtractor(
             resolution=256, bbox=[-3e3, 3e3, -3e3, 3e3, -3e3, 3e3], device=self.device, isovalue=0.0
         )
-        visualiser = Visualiser(device=self.device)
-        self.gradlogger = MeshSDFGrads(visualiser, intensity=10)
+        # keep visualiser on self so we can reuse it
+        self.visualiser = Visualiser(device=self.device)
+        self.gradlogger = MeshSDFGrads(self.visualiser, intensity=10)
 
     def _get_checkpoint_path(self, model_id):
         df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
@@ -91,11 +92,42 @@ class ModelLoader:
         _, _, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
             sdf_model=sdf_model, loss_fn=self.loss_fn
         )
-        
+
         self.optimization_state["vertice_grads"] = dL_dvertices
         self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
 
         return loss.item() + surrogate_loss - surrogate_loss.item()
+
+    def _visualize_pressure_field(self, pressure_field: torch.Tensor, mesh_verts: torch.Tensor, mesh_faces: torch.Tensor):
+        """
+        Visualize the predicted pressure field on the current mesh.
+
+        pressure_field: node-wise pressure from GAOT (N,) or (N,1)
+        mesh_verts: vertices in *millimeters* (same as incoming to loss_fn)
+        mesh_faces: faces as (F, 3) int indices
+        """
+        if pressure_field is None:
+            return
+
+        # squeeze possible trailing channel dimension
+        if pressure_field.dim() == 2 and pressure_field.size(-1) == 1:
+            pressure_field = pressure_field.squeeze(-1)
+
+        # detach to avoid messing with autograd
+        verts_vis = mesh_verts.detach().cpu()
+        faces_vis = mesh_faces.detach().cpu()
+        pressure_vis = pressure_field.detach().cpu()
+
+        # call Visualiser (adapt method name/signature if different)
+        try:
+            self.visualiser.plot_scalar_on_mesh(
+                vertices=verts_vis,
+                faces=faces_vis,
+                scalar_field=pressure_vis,
+                title=getattr(self, "epoch_name", "pressure_field"),
+            )
+        except AttributeError:
+            logger.warning("Visualiser.plot_scalar_on_mesh not found. Adapt _visualize_pressure_field to your Visualiser API.")
 
     def loss_fn(self, mesh_verts, mesh_faces):
         print(f"Number of Mesh Verts:{mesh_faces.shape[0]}")
@@ -114,9 +146,18 @@ class ModelLoader:
 
         self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces, "vertice_grads": []}
 
+        # predicted pressure field from GAOT (key name "field" as in your code)
         pressure_field = gaot_loss["field"]
 
-        int_drag_f = pressure_to_drag(pred_pressure=pressure_field, normals=batch.c, face=mesh_faces.T, pos=mesh_verts*1e-3)
+        # visualize pressure on mesh every call
+        self._visualize_pressure_field(pressure_field=pressure_field, mesh_verts=mesh_verts, mesh_faces=mesh_faces)
+
+        int_drag_f = pressure_to_drag(
+            pred_pressure=pressure_field,
+            normals=batch.c,
+            face=mesh_faces.T,
+            pos=mesh_verts * 1e-3,
+        )
         print(f"Force-Value:{int_drag_f.item()}")
         return int_drag_f
 
@@ -135,9 +176,9 @@ class ModelLoader:
         face_normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
 
-        sdf_values = self.sdf_model(face_centers*1e3+face_normals*50)
+        sdf_values = self.sdf_model(face_centers * 1e3 + face_normals * 50)
         face_normals[sdf_values < 0] *= -1
-        print("dumdidum",sdf_values < 0)
+        print("dumdidum", sdf_values < 0)
 
         num_verts = optim_verts.shape[0]
         all_idx = mesh_faces.reshape(-1)
