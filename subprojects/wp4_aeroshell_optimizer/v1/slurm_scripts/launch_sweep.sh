@@ -9,7 +9,7 @@
 #SBATCH --time=20:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --gpus=rtx_4090:1
+#SBATCH --gpus=rtx_4090:2
 #SBATCH --mem-per-cpu=5G
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 #SBATCH --mail-user=%u@ethz.ch
@@ -18,9 +18,9 @@
 ###############################################################################################
 umask 0002
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/Raytracing_Memory/7ehhly9u"   # <-- EDIT THIS
-COUNT=20                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
-MAX_AGENTS=1                                  # max number of parallel agents (will be capped by available GPUs)
+SWEEP_ID="aisco/RTParam_Sweep/5zm13gbk"   # <-- EDIT THIS
+COUNT=8                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
+MAX_AGENTS=2                                  # max number of parallel agents (will be capped by available GPUs)
 
 # ---- Job info ---------------------------------------------------------------
 echo "=========================================="
