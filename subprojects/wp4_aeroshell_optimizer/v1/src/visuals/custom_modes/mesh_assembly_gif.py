@@ -1,3 +1,5 @@
+import os
+
 from subprojects.wp2_assembler.version3.components.nbz import call_assembly
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base_class import RenderingMode
@@ -54,7 +56,12 @@ class MeshAssemblyGIF(RenderingMode):
             # Resolve assembly id from configs (mirrors AssemblyMode behavior)
             assembly_cfg = load_config(cfg_name="general_config.yaml")
             active_losses_cfg = load_config(cfg_name=assembly_cfg["active_configs"]["losses"])
-            assembly_id = active_losses_cfg["bb_config"]["assembly_id"]
+
+            # --- INCORPORATED FIX ---
+            env_assembly_id = os.getenv("AISCO_ASSEMBLY_ID", "").strip()
+
+            assembly_id = int(env_assembly_id) if env_assembly_id else active_losses_cfg["bb_config"].get("assembly_id", 1)
+            # ------------------------
 
             assembly, _, _ = call_assembly(assembly_id)
 

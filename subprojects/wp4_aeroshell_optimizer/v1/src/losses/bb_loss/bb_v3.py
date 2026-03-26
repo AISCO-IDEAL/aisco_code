@@ -22,6 +22,7 @@ class BbV3(ParentLoss):
         else:
             rng = np.random.default_rng()
             self.__assembly_id = int(rng.integers(1, 52))
+            os.environ["AISCO_ASSEMBLY_ID"] = str(self.__assembly_id)
 
         if not 1 <= self.__assembly_id <= 51:
             msg = f"assembly_id must be in range 1..51, got {self.__assembly_id}"
