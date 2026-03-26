@@ -1,5 +1,4 @@
-program: subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py
-method: grid
+program: subprojects/wp3_solar_estimator/raytracing/easier_sweep.py
 entity: aisco
 project: RTParam_Sweep
 name: sweep1
