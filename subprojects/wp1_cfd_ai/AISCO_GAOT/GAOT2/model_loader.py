@@ -1,9 +1,13 @@
 import ast
 import logging
 import os
-
+import matplotlib.pyplot as plt
+import numpy as np
+from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader as PyGDataLoader
 import pandas as pd
 import torch
+import wandb
 import torch.nn as nn  # noqa: PLR0402
 import yaml
 from torch_geometric.data import Batch, Data
@@ -101,7 +105,12 @@ class ModelLoader:
 
         return loss.item() + surrogate_loss - surrogate_loss.item()
 
-     def _visualize_pressure_field(self, pressure_field: torch.Tensor, mesh_verts: torch.Tensor, mesh_faces: torch.Tensor):
+    def _visualize_pressure_field(
+        self,
+        pressure_field: torch.Tensor,
+        mesh_verts: torch.Tensor,
+        mesh_faces: torch.Tensor,
+    ) -> None:
         """
         Visualise the predicted pressure field in the same style as
         StaticTrainer3D._run_viz_for_sample (field part).
@@ -109,36 +118,41 @@ class ModelLoader:
         Uses a temporary PyG Data object + PyGDataLoader and logs a 3-panel
         3D scatter figure (GT, Pred, |Diff|) to self.tracker.
         """
+        if pressure_field is None:
+            return
+
         # ---- build a synthetic "sample" compatible with trainer logic ----
-        # we have only prediction on the mesh surface; there is no GT field here,
-        # so we will just plot the prediction and skip GT/diff if GT is missing.
+        # vertices are in mm from SDF pipeline; convert to m as in GAOT training
         sample = Data(
-            pos=mesh_verts * 1e-3,  # convert mm -> m to match GAOT convention
-            x=None,                 # no GT field on this mesh
-            face=mesh_faces.T,
+            pos=mesh_verts.detach() * 1e-3,  # mm -> m
+            x=None,  # no GT field on this mesh
+            face=mesh_faces.detach().T,
         )
 
         loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
         batch = next(iter(loader)).to(self.device)
 
-        # coordinates used for scatter plot
-        coords = batch.pos.cpu().numpy()
+        # coordinates for scatter plot  (DETACH before numpy)
+        coords = batch.pos.detach().cpu().numpy()
         fname = getattr(self, "epoch_name", "mesh")
 
-        # predicted field is passed in as pressure_field (node-wise, already GAOT output)
+        # predicted field is passed in as pressure_field (node-wise GAOT output)
+        # shape [N] or [N,1]
+        if pressure_field.dim() == 2 and pressure_field.size(-1) == 1:
+            pressure_field = pressure_field.squeeze(-1)
+
         field_pred = pressure_field.detach().cpu().numpy().squeeze()
         field_gt = None  # no GT available on optimization mesh
 
         # if you *do* have GT on this mesh in future, set batch.x and use it here
         if field_gt is not None:
-            # optional: use the same u_mean/u_std as in StaticTrainer3D if you
-            # store them on ModelLoader (see explanation below)
+            # optional: same denorm as StaticTrainer3D if you store stats on ModelLoader
             u_mean = getattr(self, "u_mean", torch.tensor(0.0, device=self.device))
             u_std = getattr(self, "u_std", torch.tensor(1.0, device=self.device))
             if isinstance(u_mean, torch.Tensor):
-                u_mean = u_mean.cpu().numpy().item() if u_mean.numel() == 1 else 0.0
+                u_mean = u_mean.detach().cpu().numpy().item() if u_mean.numel() == 1 else 0.0
             if isinstance(u_std, torch.Tensor):
-                u_std = u_std.cpu().numpy().item() if u_std.numel() == 1 else 1.0
+                u_std = u_std.detach().cpu().numpy().item() if u_std.numel() == 1 else 1.0
 
             field_pred_dn = field_pred * u_std + u_mean
             field_gt_dn = field_gt * u_std + u_mean
@@ -181,24 +195,24 @@ class ModelLoader:
             fig.colorbar(sc, ax=ax, shrink=0.5)
             ax.view_init(elev=20, azim=-120)
 
-        # epoch_name here is just a string; we don't have "epoch" from trainer
+        # we don't have a numeric epoch here, only a name
         title_epoch = getattr(self, "epoch_name", "opt_step")
         fig.suptitle(f"Pressure Field [opt] {fname} — {title_epoch}", fontsize=13)
         plt.tight_layout()
 
-        # ---- log to tracker in the same style as trainer -----------------
-        if hasattr(self, "tracker") and self.tracker is not None:
-            try:
-                self.tracker.log_image(
-                    f"viz/opt/pressure_field",
+        step_val = int(self.epoch_name)
+
+        wandb.log(
+            {
+                f"viz/opt/pressure_field/{self.epoch_name}": wandb.Image(
                     fig,
-                    step=None,  # or some optimization step counter if you have one
                     caption=f"opt {fname} {title_epoch}",
                 )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to log pressure field image to tracker: %s", exc)
-
+            },
+            step=step_val,
+        )
         plt.close(fig)
+
     def loss_fn(self, mesh_verts, mesh_faces):
         print(f"Number of Mesh Verts:{mesh_faces.shape[0]}")
         if mesh_verts is None or mesh_verts.shape[0] == 0:
