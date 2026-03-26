@@ -1069,11 +1069,11 @@ class TestHandleTelemetry:
             logged_dict = tl_mod.wandb.log.call_args[0][0]
             all_logged_keys = set(logged_dict.keys())
 
-            assert "metrics/cruising_speed_ms" in all_logged_keys
-            assert any(k.startswith("weighted/") for k in all_logged_keys)
-            assert any(k.startswith("alm/lambda_") for k in all_logged_keys)
-            assert any(k.startswith("alm/mu_") for k in all_logged_keys)
-            assert any(k.startswith("alm/nu_") for k in all_logged_keys)
+            assert "cruising_speed_ms" in all_logged_keys
+            assert any(k.startswith("weighted_losses/") for k in all_logged_keys)
+            assert any(k.startswith("alm_params/lambda_") for k in all_logged_keys)
+            assert any(k.startswith("alm_params/mu_") for k in all_logged_keys)
+            assert any(k.startswith("alm_params/nu_") for k in all_logged_keys)
             # Verify step parameter
             assert tl_mod.wandb.log.call_args[1].get("step") == 5
         finally:
@@ -1102,7 +1102,7 @@ class TestHandleTelemetry:
             logged_dict = tl_mod.wandb.log.call_args[0][0]
             all_logged_keys = set(logged_dict.keys())
 
-            assert "metrics/cruising_speed_ms" not in all_logged_keys
+            assert "cruising_speed_ms" not in all_logged_keys
         finally:
             cleanup()
 
