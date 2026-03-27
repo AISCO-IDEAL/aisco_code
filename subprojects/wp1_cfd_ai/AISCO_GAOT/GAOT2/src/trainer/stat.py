@@ -704,7 +704,7 @@ class StaticTrainer3D(TrainerBase):
         )
         return train_sample, val_sample
 
-    def _run_viz_for_sample(self, sample, split_label: str, epoch: int):
+    def _run_viz_for_sample(self, sample, split_label: str, epoch: int): # noqa: PLR0915
         """Run inference on a single sample and log field + scalar images to W&B."""
         loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
         batch = next(iter(loader)).to(self.device)
@@ -732,6 +732,10 @@ class StaticTrainer3D(TrainerBase):
                 common_min = float(np.min(field_gt_dn))
                 common_max = float(np.max(field_gt_dn))
 
+                # Equal-aspect bounds: same range on all 3 axes
+                _mid = coords.mean(axis=0)
+                _half_range = float((coords.max(axis=0) - coords.min(axis=0)).max()) / 2
+
                 fig = plt.figure(figsize=(20, 6))
                 for panel_idx, (data, title, cmap_name, vmin, vmax) in enumerate(
                     [
@@ -754,6 +758,9 @@ class StaticTrainer3D(TrainerBase):
                     )
                     ax.set_title(title)
                     fig.colorbar(sc, ax=ax, shrink=0.5)
+                    ax.set_xlim(_mid[0] - _half_range, _mid[0] + _half_range)
+                    ax.set_ylim(_mid[1] - _half_range, _mid[1] + _half_range)
+                    ax.set_zlim(_mid[2] - _half_range, _mid[2] + _half_range)
                     ax.view_init(elev=20, azim=-120)
 
                 fig.suptitle(f"Pressure Field [{split_label}] {fname} — Epoch {epoch + 1}", fontsize=13)
