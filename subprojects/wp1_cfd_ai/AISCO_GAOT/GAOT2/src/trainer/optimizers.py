@@ -158,7 +158,6 @@ class AdamOptimizer:
             self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=config.scheduler_gamma)
         elif config.scheduler == "mix":
             warmup_epochs = int(config.warmup_epochs)
-            print("HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH")
             cosine_epochs = int(0.96 * self.epoch)
             exp_decay_epochs = self.epoch - warmup_epochs - cosine_epochs
             if warmup_epochs == 0:
