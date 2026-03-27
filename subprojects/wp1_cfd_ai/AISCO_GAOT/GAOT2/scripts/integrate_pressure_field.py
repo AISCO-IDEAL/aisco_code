@@ -33,18 +33,19 @@ import glob
 import os
 import sys
 
+# Add project root to path so that 'src.*' imports work regardless of cwd
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
 import numpy as np
 import torch
 from omegaconf import OmegaConf
 from torch_geometric.data import Batch
 
 from src.model.gaot_3d import GAOT3D
-
-# Add project root to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 from src.utils.pressure_integration import (
+    compute_frontal_area,
     compute_vertex_areas,
+    cp_to_pressure,
     drag_to_cd,
     pressure_shear_to_drag,
     pressure_to_drag,
@@ -54,14 +55,52 @@ from src.utils.pressure_integration import (
 #  Default flow parameters
 # ---------------------------------------------------------------------------
 DEFAULT_RHO = 1.225  # Air density [kg/m³] at sea level
-DEFAULT_U_INF = 30.0  # Freestream velocity [m/s]
-DEFAULT_A_REF = 2.16  # Reference area [m²] (DrivAer-style)
+DEFAULT_U_INF = None  # When None, read from data.v_inf per sample
+DEFAULT_A_REF = None  # When None, compute frontal area from mesh per sample
 DRAG_AXIS = 0  # x-axis for drag direction
 SMALL_DIFF = 1e-6  # threshold for treating two floats as equal
 
+# Per-dataset defaults (fallbacks when data.v_inf is missing)
+DATASET_DEFAULTS = {
+    "euler":        {"v_inf": 25.0,  "rho": 1.225},
+    "drivaer":      {"v_inf": 38.89, "rho": 1.225},
+    "ahmed":        {"v_inf": 1.0,   "rho": 1.225},
+    "blended_wing": {"v_inf": None,  "rho": 1.225},  # v_inf varies per sample (Mach)
+}
+
+
+def _resolve_v_inf(data, u_inf_override):
+    """Return the freestream velocity to use for this sample.
+
+    Priority: CLI override > data.v_inf attribute > error.
+    """
+    if u_inf_override is not None:
+        return u_inf_override
+    if hasattr(data, "v_inf") and data.v_inf is not None:
+        return float(data.v_inf.item() if hasattr(data.v_inf, "item") else data.v_inf)
+    raise ValueError(
+        "No freestream velocity available. Either pass --u_inf on the CLI "
+        "or ensure data.v_inf is stored in the .pt file."
+    )
+
+
+def _resolve_a_ref(data, a_ref_override, drag_axis):
+    """Return the reference area to use for this sample.
+
+    Priority: CLI override > compute frontal area from mesh.
+    """
+    if a_ref_override is not None:
+        return a_ref_override
+    # Auto-compute from mesh projected frontal area
+    pos = data.pos.float()
+    face = data.face.long()
+    normals = data.c.float()
+    return compute_frontal_area(pos, face, normals, drag_direction=drag_axis)
+
 
 def integrate_single_sample(
-    data, rho=DEFAULT_RHO, u_inf=DEFAULT_U_INF, a_ref=DEFAULT_A_REF, drag_axis=DRAG_AXIS, use_shear=False, pressure_key="x"
+    data, rho=DEFAULT_RHO, u_inf=DEFAULT_U_INF, a_ref=DEFAULT_A_REF, drag_axis=DRAG_AXIS, use_shear=False, pressure_key="x",
+    is_cp=False,
 ):
     """
     Integrate pressure (and optionally shear) from one PyG Data sample.
@@ -74,16 +113,20 @@ def integrate_single_sample(
         Optionally: wall_shear [N,3] for friction drag.
     rho : float
         Freestream density.
-    u_inf : float
-        Freestream velocity.
-    a_ref : float
-        Reference area.
+    u_inf : float or None
+        Freestream velocity.  If None, read from ``data.v_inf``.
+    a_ref : float or None
+        Reference area.  If None, computed as the projected frontal area
+        of the mesh perpendicular to the drag axis.
     drag_axis : int
         Axis index for drag direction (0=x, 1=y, 2=z).
     use_shear : bool
         Include wall shear stress (friction drag) in total drag.
     pressure_key : str
         Attribute name for pressure field. Default "x".
+    is_cp : bool
+        If True, the pressure field is Cp (pressure coefficient) and will
+        be converted to Pascals using ``u_inf`` and ``rho`` before integration.
 
     Returns
     -------
@@ -96,6 +139,8 @@ def integrate_single_sample(
         gt_cd         : float   — ground truth Cd (NaN if unavailable)
         n_vertices    : int     — number of surface vertices
         total_area    : float   — total integrated surface area
+        a_ref         : float   — reference area used for Cd
+        v_inf         : float   — freestream velocity used
     """
     pressure = getattr(data, pressure_key, None)
     if pressure is None:
@@ -104,6 +149,13 @@ def integrate_single_sample(
     pos = data.pos.float()
     normals = data.c.float()
     face = data.face.long()
+
+    # Resolve per-sample v_inf and a_ref
+    sample_v_inf = _resolve_v_inf(data, u_inf)
+    sample_a_ref = _resolve_a_ref(data, a_ref, drag_axis)
+
+    # Convert Cp -> Pa if needed
+    pressure = cp_to_pressure(pressure.float(), v_inf=sample_v_inf, rho=rho) if is_cp else pressure.float()
 
     # Pressure drag
     drag_p = pressure_to_drag(pressure, normals, face, pos, drag_direction=drag_axis)
@@ -122,8 +174,8 @@ def integrate_single_sample(
         drag_total = drag_p
 
     # Cd
-    cd_p = drag_to_cd(drag_p, rho=rho, u_inf=u_inf, A_ref=a_ref)
-    cd_total = drag_to_cd(drag_total, rho=rho, u_inf=u_inf, A_ref=a_ref)
+    cd_p = drag_to_cd(drag_p, rho=rho, u_inf=sample_v_inf, A_ref=sample_a_ref)
+    cd_total = drag_to_cd(drag_total, rho=rho, u_inf=sample_v_inf, A_ref=sample_a_ref)
 
     # Ground truth
     gt_force = float("nan")
@@ -146,6 +198,8 @@ def integrate_single_sample(
         "gt_cd": gt_cd,
         "n_vertices": pos.shape[0],
         "total_area": total_area,
+        "a_ref": sample_a_ref,
+        "v_inf": sample_v_inf,
     }
 
 
@@ -162,7 +216,10 @@ def format_result(name, result, show_gt=True):
         lines.append(f"    GT force      = {result['gt_force']:>12.4f} N")
     if show_gt and not np.isnan(result["gt_cd"]):
         lines.append(f"    GT Cd         = {result['gt_cd']:>12.6f}")
-    lines.append(f"    Vertices: {result['n_vertices']:,}   Area: {result['total_area']:.4f} m²")
+    lines.append(
+        f"    Vertices: {result['n_vertices']:,}   Area: {result['total_area']:.4f} m²"
+        f"   A_ref: {result['a_ref']:.4f} m²   v_inf: {result['v_inf']:.2f} m/s"
+    )
     return "\n".join(lines)
 
 
@@ -180,6 +237,7 @@ def integrate_single_file(pt_path, args):
         drag_axis=args.drag_axis,
         use_shear=args.use_shear,
         pressure_key=args.pressure_key,
+        is_cp=args.is_cp,
     )
     name = getattr(data, "filename", os.path.basename(pt_path))
     print(format_result(name, result))
@@ -189,28 +247,55 @@ def integrate_single_file(pt_path, args):
 # ---------------------------------------------------------------------------
 #  Mode 2: Dataset directory
 # ---------------------------------------------------------------------------
+def _find_pt_files(data_dir):
+    """Find all .pt sample files in a dataset directory.
+
+    Supports two layouts:
+      - ``<data_dir>/<subdir>/data.pt``   (euler, drivaer, ahmed)
+      - ``<data_dir>/<name>.pt``          (blended_wing)
+    Excludes known non-sample files (norm_stats, order files, etc.).
+    """
+    EXCLUDE_PREFIXES = ("norm_stats", "order_", "metadata")
+
+    # Layout 1: subdirectory/data.pt
+    pt_files = sorted(glob.glob(os.path.join(data_dir, "*/data.pt")))
+    if pt_files:
+        return pt_files
+
+    # Layout 2: flat directory with *.pt
+    pt_files = sorted(glob.glob(os.path.join(data_dir, "*.pt")))
+    pt_files = [
+        f for f in pt_files
+        if not any(os.path.basename(f).startswith(pre) for pre in EXCLUDE_PREFIXES)
+    ]
+    return pt_files
+
+
 def integrate_dataset(data_dir, args):
     """Integrate pressure fields for all samples in a dataset directory."""
 
-    # Find all data.pt files
-    pt_files = sorted(glob.glob(os.path.join(data_dir, "*/data.pt")))
+    pt_files = _find_pt_files(data_dir)
     if not pt_files:
-        # Check if data_dir itself contains data.pt
-        single = os.path.join(data_dir, "data.pt")
-        if os.path.exists(single):
-            return integrate_single_file(single, args)
-        print(f"No data.pt files found in {data_dir}")
+        print(f"No .pt sample files found in {data_dir}")
         return
 
+    u_inf_str = f"{args.u_inf}" if args.u_inf is not None else "per-sample"
+    a_ref_str = f"{args.a_ref}" if args.a_ref is not None else "frontal-area"
     print(f"Integrating {len(pt_files)} samples from {data_dir}")
-    print(f"  rho={args.rho}, u_inf={args.u_inf}, a_ref={args.a_ref}, drag_axis={args.drag_axis}")
-    print(f"  use_shear={args.use_shear}, pressure_key={args.pressure_key}")
+    print(f"  rho={args.rho}, u_inf={u_inf_str}, a_ref={a_ref_str}, drag_axis={args.drag_axis}")
+    print(f"  is_cp={args.is_cp}, use_shear={args.use_shear}, pressure_key={args.pressure_key}")
     print()
 
     results = []
     for pt_path in pt_files:
         data = torch.load(pt_path, weights_only=False)
-        name = getattr(data, "filename", os.path.basename(os.path.dirname(pt_path)))
+        # Name: prefer data.filename, else parent dir name (layout 1) or stem (layout 2)
+        if hasattr(data, "filename") and data.filename:
+            name = data.filename
+        elif os.path.basename(pt_path) == "data.pt":
+            name = os.path.basename(os.path.dirname(pt_path))
+        else:
+            name = os.path.splitext(os.path.basename(pt_path))[0]
         try:
             result = integrate_single_sample(
                 data,
@@ -220,6 +305,7 @@ def integrate_dataset(data_dir, args):
                 drag_axis=args.drag_axis,
                 use_shear=args.use_shear,
                 pressure_key=args.pressure_key,
+                is_cp=args.is_cp,
             )
             result["name"] = name
             results.append(result)
@@ -280,6 +366,8 @@ def _print_dataset_summary(results: list, args) -> None:
                     "gt_cd",
                     "n_vertices",
                     "total_area",
+                    "a_ref",
+                    "v_inf",
                 ],
             )
             w.writeheader()
@@ -290,7 +378,7 @@ def _print_dataset_summary(results: list, args) -> None:
 # ---------------------------------------------------------------------------
 #  Mode 3: Model inference + integration
 # ---------------------------------------------------------------------------
-def integrate_from_model(data_dir, args):
+def integrate_from_model(data_dir, args):  # noqa: PLR0915
     """Run GAOT inference on a dataset, then integrate the predicted field."""
 
     # Load config
@@ -335,7 +423,10 @@ def integrate_from_model(data_dir, args):
         return
 
     # Load dataset
-    pt_files = sorted(glob.glob(os.path.join(data_dir, "*/data.pt")))
+    pt_files = _find_pt_files(data_dir)
+    if not pt_files:
+        print(f"No .pt sample files found in {data_dir}")
+        return
     print(f"  Running inference on {len(pt_files)} samples...")
 
     results = []
@@ -344,7 +435,13 @@ def integrate_from_model(data_dir, args):
     with torch.no_grad():
         for pt_path in pt_files:
             data = torch.load(pt_path, weights_only=False)
-            name = getattr(data, "filename", os.path.basename(os.path.dirname(pt_path)))
+            # Name: prefer data.filename, else parent dir name (layout 1) or stem (layout 2)
+            if hasattr(data, "filename") and data.filename:
+                name = data.filename
+            elif os.path.basename(pt_path) == "data.pt":
+                name = os.path.basename(os.path.dirname(pt_path))
+            else:
+                name = os.path.splitext(os.path.basename(pt_path))[0]
 
             batch = Batch.from_data_list([data]).to(device)
 
@@ -369,6 +466,7 @@ def integrate_from_model(data_dir, args):
                     drag_axis=args.drag_axis,
                     use_shear=args.use_shear,
                     pressure_key="x",
+                    is_cp=args.is_cp,
                 )
                 result["name"] = name
 
@@ -415,31 +513,57 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Integrate ground truth pressure from a single .pt file
-  python integrate_pressure_field.py /path/to/euler_run_1/data.pt
+  # Integrate ground truth Cp field from a single .pt file (auto v_inf & a_ref)
+  python integrate_pressure_field.py /path/to/euler_run_1/data.pt --is_cp
 
-  # Integrate all samples in a processed dataset directory
-  python integrate_pressure_field.py /path/to/processed_euler_pressure/ --use_shear
+  # Integrate all samples in a dataset directory (Cp field, auto v_inf & a_ref)
+  python integrate_pressure_field.py /path/to/processed_euler_cp_full/ --is_cp
+
+  # Override v_inf/a_ref for the whole dataset (optional)
+  python integrate_pressure_field.py /path/to/processed_euler_cp_full/ --is_cp \\
+      --u_inf 25.0 --a_ref 0.35
+
+  # DrivAer dataset
+  python integrate_pressure_field.py /path/to/processed_drivaer_cp_full/ --is_cp
+
+  # Blended wing (flat *.pt layout, variable v_inf per sample)
+  python integrate_pressure_field.py /path/to/processed_blended_wing_cp_full/ --is_cp
+
+  # Include friction drag from wall shear
+  python integrate_pressure_field.py /path/to/dataset/ --is_cp --use_shear
 
   # Run GAOT inference + integration from a checkpoint
   python integrate_pressure_field.py /path/to/processed_dir/ \\
-      --ckpt /path/to/field_model.pt --config config/pressure_field.yaml
+      --ckpt /path/to/field_model.pt --config config/pressure_field.yaml --is_cp
 
   # Save results to CSV
-  python integrate_pressure_field.py /path/to/dataset/ --output_csv results.csv
+  python integrate_pressure_field.py /path/to/dataset/ --is_cp --output_csv results.csv
         """,
     )
-    parser.add_argument("input", type=str, help="Path to a .pt file or a dataset directory containing */data.pt")
+    parser.add_argument(
+        "input", type=str,
+        help="Path to a .pt file or a dataset directory. "
+             "Supports both subdirectory layout (*/data.pt) and flat layout (*.pt)."
+    )
     parser.add_argument("--rho", type=float, default=DEFAULT_RHO, help=f"Freestream density [kg/m³] (default: {DEFAULT_RHO})")
     parser.add_argument(
-        "--u_inf", type=float, default=DEFAULT_U_INF, help=f"Freestream velocity [m/s] (default: {DEFAULT_U_INF})"
+        "--u_inf", type=float, default=DEFAULT_U_INF,
+        help="Freestream velocity [m/s]. If omitted, read from each sample's v_inf attribute."
     )
-    parser.add_argument("--a_ref", type=float, default=DEFAULT_A_REF, help=f"Reference area [m²] (default: {DEFAULT_A_REF})")
+    parser.add_argument(
+        "--a_ref", type=float, default=DEFAULT_A_REF,
+        help="Reference area [m²]. If omitted, computed as frontal area from each sample's mesh."
+    )
     parser.add_argument(
         "--drag_axis", type=int, default=DRAG_AXIS, choices=[0, 1, 2], help="Drag direction axis: 0=x, 1=y, 2=z (default: 0)"
     )
     parser.add_argument("--use_shear", action="store_true", help="Include wall shear stress (friction drag) if available")
     parser.add_argument("--pressure_key", type=str, default="x", help="Data attribute name for pressure field (default: 'x')")
+    parser.add_argument(
+        "--is_cp", action="store_true",
+        help="Treat the pressure field as Cp (pressure coefficient). "
+             "It will be converted to Pascals via p = Cp * 0.5 * rho * u_inf^2 before integration."
+    )
     parser.add_argument("--output_csv", type=str, default=None, help="Save per-sample results to this CSV file")
 
     # Model inference mode

@@ -13,7 +13,7 @@ from torch_geometric.loader import DataLoader as PyGDataLoader
 import wandb
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import pressure_to_drag
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import cp_field_to_drag
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.mesh_sdf_grads import MeshSDFGrads
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
@@ -25,6 +25,8 @@ class ModelLoader:
     def __init__(self, cfd_config: dict, device: str) -> None:
         model_id = cfd_config["model_id"]
         self.rendering = cfd_config["visualisations"]
+        self.v_inf = float(cfd_config.get("v_inf", 25.0))
+        self.rho = float(cfd_config.get("rho", 1.225))
         self.model_path = self._get_checkpoint_path(model_id)
         self.device = device
         self._load_model()
@@ -235,11 +237,13 @@ class ModelLoader:
         # visualize pressure on mesh every call
         self._visualize_pressure_field(pressure_field=pressure_field, mesh_verts=mesh_verts, mesh_faces=mesh_faces)
 
-        int_drag_f = pressure_to_drag(
-            pred_pressure=pressure_field,
+        int_drag_f = cp_field_to_drag(
+            cp_field=pressure_field,
             normals=batch.c,
             face=mesh_faces.T,
             pos=mesh_verts * 1e-3,
+            v_inf=self.v_inf,
+            rho=self.rho,
         )
         print(f"Force-Value:{int_drag_f.item()}")
         return int_drag_f

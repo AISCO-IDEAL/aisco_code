@@ -129,6 +129,9 @@ dataset:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
     subsample_nodes: 50000     # randomly sample 50k nodes per load if sample exceeds this
+    v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
+    rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
+    num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
 
 optimizer:
     name: "adamw"

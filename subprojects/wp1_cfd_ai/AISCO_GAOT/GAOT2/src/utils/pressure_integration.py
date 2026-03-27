@@ -1,6 +1,36 @@
 import torch
 from torch import Tensor
 
+# Default flow constants (match common_preprocessing.py)
+DEFAULT_RHO = 1.225  # Air density [kg/m³]
+DEFAULT_V_INF = 25.0  # Freestream velocity [m/s] (Euler default)
+
+
+def cp_to_pressure(cp: Tensor, v_inf: float, rho: float = DEFAULT_RHO) -> Tensor:
+    """Convert pressure coefficient field back to pressure in Pascals.
+
+    p = Cp * q_inf  where  q_inf = 0.5 * rho * v_inf^2
+    """
+    q_inf = 0.5 * rho * v_inf**2
+    return cp * q_inf
+
+
+def cp_field_to_drag(
+    cp_field: Tensor,
+    normals: Tensor,
+    face: Tensor,
+    pos: Tensor,
+    v_inf: float,
+    rho: float = DEFAULT_RHO,
+    drag_direction: int = 0,
+) -> Tensor:
+    """Integrate a Cp field to drag force in Newtons.
+
+    Converts Cp -> pressure (Pa) then delegates to ``pressure_to_drag``.
+    """
+    pressure_pa = cp_to_pressure(cp_field, v_inf=v_inf, rho=rho)
+    return pressure_to_drag(pressure_pa, normals, face, pos, drag_direction=drag_direction)
+
 
 def compute_vertex_areas(pos: Tensor, face: Tensor) -> Tensor:
     v0 = pos[face[0]]
@@ -22,6 +52,33 @@ def compute_face_normals(pos: Tensor, face: Tensor) -> Tensor:
     v2 = pos[face[2]]
     cross = torch.cross(v1 - v0, v2 - v0, dim=-1)
     return cross / (cross.norm(dim=-1, keepdim=True) + 1e-12)
+
+
+def compute_frontal_area(pos: Tensor, face: Tensor, normals: Tensor, drag_direction: int = 0) -> float:
+    """Compute the projected frontal area of a surface mesh perpendicular to the drag axis.
+
+    For each triangle face, projects its area-normal onto the drag axis and
+    sums the absolute projected area, then divides by 2 (front + back faces
+    both contribute).  Uses the stored outward normals to orient the
+    cross-product consistently.
+
+    Returns the frontal area in the same length-unit² as ``pos``.
+    """
+    v0 = pos[face[0]]
+    v1 = pos[face[1]]
+    v2 = pos[face[2]]
+    area_normals = 0.5 * torch.cross(v1 - v0, v2 - v0, dim=-1)  # [F, 3]
+
+    # Orient consistently using stored normals
+    outward_n = (normals[face[0]] + normals[face[1]] + normals[face[2]]) / 3.0
+    dot_prod = (area_normals * outward_n).sum(dim=-1, keepdim=True)
+    area_normals = torch.where(dot_prod < 0, -area_normals, area_normals)
+
+    # Projected area = |n_drag_component| per face, sum over front-facing half
+    proj = area_normals[:, drag_direction]
+    # Only count faces whose normal points against the flow (front-facing)
+    frontal = proj[proj > 0].sum()
+    return frontal.item()
 
 
 def pressure_to_drag(
@@ -64,11 +121,6 @@ def pressure_to_drag(
     n_dir_area = area_normals[:, drag_direction]
 
     drag = (-p_face * n_dir_area).sum()
-    print(f"Area Normals: {area_normals}")
-    print(f"Outward Normals: {outward_n}")
-    print(f"Pressure per Face: {p_face}")
-    print(f"Directional Area Normals: {n_dir_area}")
-    print(f"Computed Drag: {drag}")
     return drag
 
 
