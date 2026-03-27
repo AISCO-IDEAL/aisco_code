@@ -156,7 +156,7 @@ solar_info_modes:
       enabled: True
       class_path: "detached_modes.solar_v3_selection:SolarV3Selection"
       config:
-        camera_position: [0, -5000, 1500]
+        camera_position: [3000, -5000, 3000]
         look_at: [-500, 0, 0]
         render_mode: "rgb"
         fps: 10
