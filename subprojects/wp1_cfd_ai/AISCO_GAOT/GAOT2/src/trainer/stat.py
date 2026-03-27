@@ -11,7 +11,6 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn.functional as f
 import torch_geometric as pyg
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
@@ -704,7 +703,7 @@ class StaticTrainer3D(TrainerBase):
         )
         return train_sample, val_sample
 
-    def _run_viz_for_sample(self, sample, split_label: str, epoch: int):
+    def _run_viz_for_sample(self, sample, split_label: str, epoch: int):  # noqa: PLR0915
         """Run inference on a single sample and log field + scalar images to W&B."""
         loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
         batch = next(iter(loader)).to(self.device)
@@ -732,6 +731,10 @@ class StaticTrainer3D(TrainerBase):
                 common_min = float(np.min(field_gt_dn))
                 common_max = float(np.max(field_gt_dn))
 
+                # Equal-aspect bounds: same range on all 3 axes
+                _mid = coords.mean(axis=0)
+                _half_range = float((coords.max(axis=0) - coords.min(axis=0)).max()) / 2
+
                 fig = plt.figure(figsize=(20, 6))
                 for panel_idx, (data, title, cmap_name, vmin, vmax) in enumerate(
                     [
@@ -754,6 +757,9 @@ class StaticTrainer3D(TrainerBase):
                     )
                     ax.set_title(title)
                     fig.colorbar(sc, ax=ax, shrink=0.5)
+                    ax.set_xlim(_mid[0] - _half_range, _mid[0] + _half_range)
+                    ax.set_ylim(_mid[1] - _half_range, _mid[1] + _half_range)
+                    ax.set_zlim(_mid[2] - _half_range, _mid[2] + _half_range)
                     ax.view_init(elev=20, azim=-120)
 
                 fig.suptitle(f"Pressure Field [{split_label}] {fname} — Epoch {epoch + 1}", fontsize=13)
@@ -853,7 +859,7 @@ class StaticTrainer3D(TrainerBase):
             targets = {"force": batch.force, "cd": batch.cd}
             if self.active_heads is not None:
                 targets = {k: v for k, v in targets.items() if k in self.active_heads}
-            scalar_loss = masked_multi_head_loss(pred, targets)
+            scalar_loss = masked_multi_head_loss(pred, targets, loss_fn=self.loss_fn)
 
             # --- Per-head MSE for logging ---
             head_losses = {}
@@ -884,7 +890,7 @@ class StaticTrainer3D(TrainerBase):
                     # Mask out NaN entries (samples without field data)
                     valid = ~torch.isnan(ft)
                     if valid.any():
-                        field_loss = f.mse_loss(field_pred[valid], ft[valid])
+                        field_loss = self.loss_fn(field_pred[valid], ft[valid])
                     else:
                         field_loss = torch.tensor(0.0, device=self.device)
 
@@ -912,13 +918,13 @@ class StaticTrainer3D(TrainerBase):
             return self.loss_fn(pred, target), {}
 
     def _add_field_loss(self, batch, pred, loss, head_losses):
-        """Compute field MSE and add it to loss; updates head_losses in-place."""
+        """Compute field loss and add it to loss; updates head_losses in-place."""
         if "field" not in pred or not hasattr(batch, "x") or batch.x is None:
             return loss
         ft = batch.x.to(self.device)
         valid = ~torch.isnan(ft)
         if valid.any():
-            field_loss = f.mse_loss(pred["field"][valid], ft[valid])
+            field_loss = self.loss_fn(pred["field"][valid], ft[valid])
             head_losses["field"] = head_losses.get("field", 0.0) + field_loss.item()
             field_weight = self.dataset_config["field_loss_weight"]  # 1.0
             loss = loss + field_weight * field_loss
@@ -927,9 +933,11 @@ class StaticTrainer3D(TrainerBase):
     def validate(self, loader: DataLoader):  # noqa: PLR0912, PLR0915
         self.model.eval()
         total_loss = 0.0
+        total_mse = 0.0
         total_rel_l2 = 0.0
         head_losses: dict[str, float] = {}
         num_batches = len(loader)
+        _mse_fn = torch.nn.MSELoss()
 
         with torch.no_grad():
             for batch_raw in loader:
@@ -943,7 +951,8 @@ class StaticTrainer3D(TrainerBase):
                     if self.active_heads is not None:
                         targets = {k: v for k, v in targets.items() if k in self.active_heads}
 
-                    loss = masked_multi_head_loss(pred, targets)
+                    loss = masked_multi_head_loss(pred, targets, loss_fn=self.loss_fn)
+                    mse = masked_multi_head_loss(pred, targets, loss_fn=_mse_fn)
 
                     # --- Per-head scalar MSE ---
                     loss_fn_none = torch.nn.MSELoss(reduction="none")
@@ -970,12 +979,21 @@ class StaticTrainer3D(TrainerBase):
 
                     # --- Field loss ---
                     loss = self._add_field_loss(batch, pred, loss, head_losses)
+                    # Always track MSE for the field component too
+                    if "field" in pred and hasattr(batch, "x") and batch.x is not None:
+                        ft = batch.x.to(self.device)
+                        fv = ~torch.isnan(ft)
+                        if fv.any():
+                            field_weight = self.dataset_config["field_loss_weight"]
+                            mse = mse + field_weight * _mse_fn(pred["field"][fv], ft[fv])
                 else:
                     target = batch.y
                     loss = self.loss_fn(pred, target)
+                    mse = _mse_fn(pred, target)
                     p, t = pred, target
 
                 total_loss += loss.item()
+                total_mse += mse.item()
 
                 # 2. Calculate Relative L2 Error with NaN Masking
                 # We must mask NaNs before taking the norm, otherwise the result is NaN
@@ -995,7 +1013,7 @@ class StaticTrainer3D(TrainerBase):
                     pass
 
         # Global reduction across ranks for DDP
-        local_metrics = torch.tensor([total_loss, total_rel_l2], dtype=torch.float64, device=self.device)
+        local_metrics = torch.tensor([total_loss, total_mse, total_rel_l2], dtype=torch.float64, device=self.device)
         world_size = 1
         if self.setup_config["distributed"]:  # False
             torch.distributed.all_reduce(local_metrics, op=torch.distributed.ReduceOp.SUM)
@@ -1003,7 +1021,11 @@ class StaticTrainer3D(TrainerBase):
 
         denom = num_batches * world_size
 
-        result = {"loss": local_metrics[0].item() / denom, "rel_l2": local_metrics[1].item() / denom}
+        result = {
+            "loss": local_metrics[0].item() / denom,
+            "mse": local_metrics[1].item() / denom,
+            "rel_l2": local_metrics[2].item() / denom,
+        }
         for h, v in head_losses.items():
             result[f"head_{h}"] = v / num_batches
         return result

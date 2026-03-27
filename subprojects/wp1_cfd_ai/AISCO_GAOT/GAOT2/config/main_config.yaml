@@ -1,35 +1,34 @@
 ##########################################################################
-#  GAOT — Euler dataset (NEW processing): scalar (force + cd) + pressure
+#  GAOT — Euler CP-full dataset: OOM investigation
 #
-#  58 samples, ~2.3K vertices each.
-#  Small meshes — full_grid strategy (no subsampling needed at 2.3K verts).
-#  Data: /cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_new/
-#  Files: run_1.pt .. run_58.pt (flat layout)
+#  Same as main_config.yaml but points to /processed_euler_cp_full/.
+#  The full CP meshes are larger → hits CUDA OOM with batch_size=12.
+#  Reduce batch_size and/or use smaller model to investigate.
 ##########################################################################
 
 setup:
-    name: "euler_field"
+    name: "euler_field_cp_full"
     id: "_RUN_ID_"
     seed: 42
     device: "cuda:0"
-    dtype: "torch.float32"
+    dtype: "bfloat16"  # options: "torch.float32" | "bfloat16"
     trainer_name: "static3d"
     train: true
     test: true
     ckpt: false
     use_variance_test: false
-    distributed: true
+    distributed: false
 
     wandb: true
     wandb_run_name: "_NAME___RUN_ID_"
 
     wandb_project: "WP1_drag"
     wandb_entity: aisco
-    wandb_group: euler_field
+    wandb_group: euler_field_cp_full
     wandb_mode: online
-    wandb_tags: ["field", "pressure", "euler", "multi_head", "gaot", "new_data"]
+    wandb_tags: ["field", "pressure", "euler", "multi_head", "gaot", "cp_full", "oom_investigation"]
     wandb_watch_model: false
-    wandb_notes:
+    wandb_notes: "OOM investigation on CP-full dataset — reduce batch_size/model if needed"
 
     test_during_training: false
 
@@ -47,7 +46,7 @@ model:
             gno_coord_dim: 3
             neighbor_strategy: "bidirectional"
             projection_channels: 256
-            in_gno_channel_mlp_hidden_layers: [64, 64, 64] # why not [128, 128] as in config.yaml?
+            in_gno_channel_mlp_hidden_layers: [64, 64, 64]
             out_gno_channel_mlp_hidden_layers: [64, 64]
             lifting_channels: 32
             gno_radius: 0.066
@@ -62,7 +61,6 @@ model:
             scales: [1.0]
             use_scale_weights: false
             k_neighbors: 1
-            # encoder_feature_attr: "x"
             in_gno_transform_type: "linear"
             out_gno_transform_type: "linear"
             use_graph_cache: true
@@ -70,9 +68,9 @@ model:
             node_embedding: false
             use_attn: null
             pooling: "max"
-            sampling_strategy: null
+            sampling_strategy: "ratio"  # "ratio" = fast vectorised dropout_edge; "max_neighbors" = slow Python loop
             max_neighbors: null
-            sample_ratio: null
+            sample_ratio: 0.5
         transformer:
             patch_size: 2
             hidden_size: 256
@@ -102,48 +100,55 @@ model:
             output_heads:
                 force: 1
                 cd: 1
+        scalar_encoder:
+            enabled: false              # set true to inject per-sample scaling factors
+            features: ["scale_factors"] # extend with e.g. "v_inf" later
+            hidden_dim: 32              # encoder MLP hidden width (matches lifting_channels)
 
 dataset:
     name: "euler_pressure_field_new"
     metaname: "incompressible_fluids/euler_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_new" # changing this to /processed_euler_cp_full currently gives a cuda out of memory issue
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_cp_full"
     processed_folder: ""
-    force_recompute_stats: false
+    force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
-    train_size: 70
-    val_size: 15
-    test_size: 15
-    batch_size: 12
+    train_size: 110
+    val_size: 23
+    test_size: 20
+    batch_size: 6  # reduced from 12 to avoid OOM on larger CP-full meshes
     num_workers: 4
     shuffle: true
     metric_suite: "general"
     update_pt_files_with_edges: false
     training_strategy: "full_grid"
-    uncertainty_weighting: true
+    uncertainty_weighting: false
     field_loss_weight: 1.0
     use_rescale_new: true
     active_variables:
     order_file_name:
-    active_heads: ["force", "cd", "pressure"]
+    active_heads: []  # empty = field-only (disable force/cd scalar heads)
+    drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
+    subsample_nodes: 50000     # randomly sample 50k nodes per load if sample exceeds this
 
 optimizer:
     name: "adamw" # the option "adam" hasen't been adopted yet to the new config-style
     args:
-        lr: 3e-4
+        lr: 6e-4
         weight_decay: 1e-05
         epoch: 300
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"
-        max_lr: 5e-4
-        min_lr: 1e-4
-        final_lr: 1e-5
+        max_lr: 1e-3
+        min_lr: 2e-4
+        final_lr: 2e-5
         save_every_epochs: 10
         save_every_steps: 0
         early_save_metric: "val"
         warmup_epochs: 30
         betas: [0.95, 0.999]
         eps: 1e-6
+        loss: "relative_l2"  # options: "mse" | "l2" | "relative_l2"
 
 path:
     ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/model.pt"
