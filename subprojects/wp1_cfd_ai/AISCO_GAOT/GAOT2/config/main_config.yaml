@@ -131,7 +131,7 @@ dataset:
     subsample_nodes: 50000     # randomly sample 50k nodes per load if sample exceeds this
 
 optimizer:
-    name: "adamw"
+    name: "adamw" # the option "adam" hasen't been adopted yet to the new config-style
     args:
         lr: 6e-4
         weight_decay: 1e-05
@@ -145,6 +145,9 @@ optimizer:
         save_every_epochs: 10
         save_every_steps: 0
         early_save_metric: "val"
+        warmup_epochs: 30
+        betas: [0.95, 0.999]
+        eps: 1e-6
         loss: "relative_l2"  # options: "mse" | "l2" | "relative_l2"
 
 path:
