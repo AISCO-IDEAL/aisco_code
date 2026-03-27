@@ -104,7 +104,16 @@ class AdamOptimizer:
     eval_every_eps: int
 
     def __init__(self, params, config):
-        self.optimizer = torch.optim.Adam(params, lr=config.lr)
+        # New: allow overriding betas / eps from config, with stable defaults
+        betas = getattr(config, "betas", (0.95, 0.999))
+        eps = getattr(config, "eps", 1e-6)
+
+        self.optimizer = torch.optim.Adam(
+            params,
+            lr=config.lr,
+            betas=betas,
+            eps=eps,
+        )
         self.epoch = config.epoch
         self.lr = config.lr
         self.loss_scale = config.loss_scale
@@ -240,7 +249,17 @@ class AdamWOptimizer:
     eval_every_eps: int
 
     def __init__(self, params, config: dict):
-        self.optimizer = torch.optim.AdamW(params, lr=config["lr"], weight_decay=config["weight_decay"])
+        # New: configurable betas / eps with stable defaults
+        betas = config["betas"]
+        eps = config["eps"]
+
+        self.optimizer = torch.optim.AdamW(
+            params,
+            lr=config["lr"],
+            weight_decay=config["weight_decay"],
+            betas=betas,
+            eps=eps,
+        )
         self.epoch = config["epoch"]
         self.lr = config["lr"]
         self.loss_scale = config["loss_scale"]
@@ -262,7 +281,6 @@ class AdamWOptimizer:
             self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=config["scheduler_gamma"])
         elif config["scheduler"] == "mix":
             warmup_epochs = config["warmup_epochs"]
-            print("JJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJ")
             cosine_epochs = int(0.90 * self.epoch)
             exp_decay_epochs = self.epoch - warmup_epochs - cosine_epochs
             if warmup_epochs == 0:
