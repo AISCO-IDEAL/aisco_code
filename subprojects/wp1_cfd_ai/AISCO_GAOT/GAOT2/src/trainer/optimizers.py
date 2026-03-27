@@ -5,7 +5,6 @@ import logging
 import os
 import time
 from copy import deepcopy
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -16,36 +15,6 @@ from tqdm import tqdm
 
 if TYPE_CHECKING:
     from .base import TrainerBase
-
-
-###############
-# Config
-###############
-@dataclass
-class OptimizerargsConfig:
-    lr: float = 1e-3  # Initial learning rate
-    weight_decay: float = 1e-3  # L2 regularization (weight decay) coefficient
-    epoch: int = 100  # Total number of training epochs
-    loss_scale: float = 1.0  # Loss scaling factor
-    eval_every_eps: int = 2  # Evaluate every n epochs
-    scheduler: str = "mix"  # Learning rate scheduler type, support ['step', 'cos', 'exp', 'mix']
-    early_save_metric: str = "val"  # Metric for early stopping, support ['train', 'val']
-    # for mix scheduler
-    max_lr: float = 1e-2  # Maximum learning rate for the cosine annealing phase
-    min_lr: float = 1e-5  # Minimum learning rate for the cosine annealing phase
-    final_lr: float = 1e-5  # Final learning rate for the exponential decay phase
-    # for step scheduler
-    scheduler_step_size: int = 100  # Step size (number of epochs) for StepLR scheduler
-    scheduler_gamma: float = 0.8  # Multiplicative factor for learning rate decay in StepLR scheduler
-    scheduler_t_max: int = 100  # Maximum number of iterations (usually total epochs) for CosineAnnealingLR scheduler
-    scheduler_eta_min: float = 1e-4  # Minimum learning rate for CosineAnnealingLR scheduler
-
-    # checkpoint/save settings
-    save_every_epochs: int = 0  # Save checkpoint every N epochs (0=disabled)
-    save_every_steps: int = 0  # Save checkpoint every N training steps (0=disabled)
-
-    # loss function
-    loss: str = "mse"  # Loss function to use, support ['mse', 'relative_l2']
 
 
 ###############
@@ -156,7 +125,8 @@ class AdamOptimizer:
         elif config.scheduler == "exp":
             self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=config.scheduler_gamma)
         elif config.scheduler == "mix":
-            warmup_epochs = int(0.02 * self.epoch)
+            warmup_epochs = int(config.warmup_epochs)
+            print("HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH")
             cosine_epochs = int(0.96 * self.epoch)
             exp_decay_epochs = self.epoch - warmup_epochs - cosine_epochs
             if warmup_epochs == 0:
@@ -291,7 +261,8 @@ class AdamWOptimizer:
         elif config["scheduler"] == "exp":
             self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=config["scheduler_gamma"])
         elif config["scheduler"] == "mix":
-            warmup_epochs = int(0.02 * self.epoch)
+            warmup_epochs = config["warmup_epochs"]
+            print("JJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJ")
             cosine_epochs = int(0.90 * self.epoch)
             exp_decay_epochs = self.epoch - warmup_epochs - cosine_epochs
             if warmup_epochs == 0:
