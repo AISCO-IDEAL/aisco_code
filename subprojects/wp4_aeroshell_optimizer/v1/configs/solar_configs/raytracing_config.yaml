@@ -36,10 +36,10 @@ RaytracingConfigV2:
     kappa: 2.0
     max_march_factor: 2.0
     method: "absorption" # sigmoid | absorption
-    num_steps: 80
+    num_steps: 96
     origin_offset_factor: 1e-3
     point_chunk_size: 256
-    step_size_factor: 0.025
+    step_size_factor: 0.02
 
   mesh:
     beta: 1.0
