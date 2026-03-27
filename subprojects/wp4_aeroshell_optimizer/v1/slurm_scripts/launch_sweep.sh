@@ -18,8 +18,8 @@
 ###############################################################################################
 umask 0002
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/RTParam_Sweep/5zm13gbk"   # <-- EDIT THIS
-COUNT=8                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
+SWEEP_ID="aisco/RTParam_Sweep/xzcagshy"   # <-- EDIT THIS
+COUNT=10                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
 MAX_AGENTS=2                                  # max number of parallel agents (will be capped by available GPUs)
 
 # ---- Job info ---------------------------------------------------------------
