@@ -7,6 +7,7 @@ command:
   - ${program}
   - -c
   - subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/main_config.yaml
+  - ${args}
 
 # Optimization setup
 method: bayes  # or "random" if you prefer
