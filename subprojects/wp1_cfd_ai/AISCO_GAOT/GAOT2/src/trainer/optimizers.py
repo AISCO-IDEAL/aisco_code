@@ -45,16 +45,23 @@ class OptimizerargsConfig:
     save_every_steps: int = 0  # Save checkpoint every N training steps (0=disabled)
 
     # loss function
-    loss: str = "mse"  # Loss function to use, support ['mse', 'relative_l2']
+    loss: str = "mse"  # Loss function to use, support ['mse', 'l2', 'relative_l2']
 
 
 ###############
 # Loss functions
 ###############
 class RelativeL2Loss(torch.nn.Module):
-    """||pred - target||_2 / ||target||_2, averaged over the batch."""
+    """||pred - target||_2 / ||target||_2, averaged over the batch.
+
+    1-D inputs (e.g. masked field tensors) are treated as a single sample
+    with N features, giving the whole-field relative L2 error.
+    """
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        if pred.ndim == 1:
+            pred = pred.unsqueeze(0)
+            target = target.unsqueeze(0)
         diff = pred - target
         # flatten everything except the batch dim
         diff_norm = diff.flatten(1).norm(p=2, dim=1)
@@ -62,14 +69,30 @@ class RelativeL2Loss(torch.nn.Module):
         return (diff_norm / target_norm).mean()
 
 
+class L2Loss(torch.nn.Module):
+    """Mean L2 norm per sample: mean_batch( ||pred - target||_2 ).
+
+    1-D inputs are treated as a single sample with N features.
+    """
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        if pred.ndim == 1:
+            pred = pred.unsqueeze(0)
+            target = target.unsqueeze(0)
+        diff = pred - target
+        return diff.flatten(1).norm(p=2, dim=1).mean()
+
+
 def build_loss_fn(loss_name: str) -> torch.nn.Module:
     """Return the loss module for the given name."""
     if loss_name == "mse":
         return torch.nn.MSELoss()
+    elif loss_name == "l2":
+        return L2Loss()
     elif loss_name == "relative_l2":
         return RelativeL2Loss()
     else:
-        raise ValueError(f"Unknown loss '{loss_name}'. Supported: ['mse', 'relative_l2']")
+        raise ValueError(f"Unknown loss '{loss_name}'. Supported: ['mse', 'l2', 'relative_l2']")
 
 
 ###############
@@ -200,7 +223,8 @@ class AdamOptimizer:
             for batch in trainer.train_loader:
                 start_time = time.time()
                 self.optimizer.zero_grad()
-                train_loss = trainer.train_step(batch)
+                with trainer.autocast_ctx:
+                    train_loss = trainer.train_step(batch)
                 train_loss.backward()
                 self.optimizer.step()
                 total_loss += train_loss.item()
@@ -376,7 +400,8 @@ class AdamWOptimizer:
                 self.optimizer.zero_grad()
 
                 # trainer.train_step now returns (total_weighted_loss, dict_of_head_mses)
-                train_loss, head_losses = trainer.train_step(batch)
+                with trainer.autocast_ctx:
+                    train_loss, head_losses = trainer.train_step(batch)
 
                 train_loss.backward()
 
@@ -454,24 +479,27 @@ class AdamWOptimizer:
             pbar.update(1)
 
             if (epoch + 1) % self.eval_every_eps == 0:
-                # Average total weighted MSE across all batches
-                avg_train_mse = total_loss / num_batches
-                losses.append(avg_train_mse)
+                # Average total loss across all batches
+                avg_train_loss = total_loss / num_batches
+                losses.append(avg_train_loss)
                 epochs.append(epoch)
 
-                # Capture validation metrics (MSE and Relative L2)
+                # Capture validation metrics
                 val_metrics = trainer.validate(trainer.val_loader)
-                val_mse = val_metrics["loss"]
+                val_loss = val_metrics["loss"]
+                val_mse = val_metrics["mse"]
                 val_rel_l2 = val_metrics["rel_l2"]
 
                 current_lr = self.optimizer.param_groups[0]["lr"]
 
                 if not disable_pbar:
-                    pbar.set_postfix({"train_MSE": avg_train_mse, "val_MSE": val_mse, "rel_l2": val_rel_l2})
+                    pbar.set_postfix({"train_loss": avg_train_loss, "val_MSE": val_mse, "rel_l2": val_rel_l2})
 
                 # Construct the final metrics dictionary for WandB
                 metrics = {
-                    "train/MSE_total": avg_train_mse,
+                    "train/loss_total": avg_train_loss,
+                    "train/MSE_total": avg_train_loss,  # updated below if per-head MSEs available
+                    "val/loss": val_loss,
                     "val/MSE": val_mse,
                     "val/rel_l2": val_rel_l2,
                     "lr": current_lr,
@@ -483,14 +511,22 @@ class AdamWOptimizer:
 
                 # Add averaged head-specific MSEs and Gradient Norms
                 if epoch_grad_norms and num_batches > 0:
+                    train_mse_sum = 0.0
+                    train_mse_count = 0
                     for k, v in epoch_grad_norms.items():
                         # sigma values and sf_min/sf_max are point-in-time, not accumulated sums
                         if "sigma_" in k or k.endswith(("/sf_min", "/sf_max")):
                             metrics[k] = v
                         else:
                             metrics[k] = v / num_batches
+                        # Aggregate per-head MSEs to get overall train MSE
+                        if k.startswith("train/MSE_"):
+                            train_mse_sum += v / num_batches
+                            train_mse_count += 1
+                    if train_mse_count > 0:
+                        metrics["train/MSE_total"] = train_mse_sum / train_mse_count
 
-                val_losses.append(val_mse)
+                val_losses.append(val_loss)
                 val_epochs.append(epoch)
 
                 # Per-epoch visualization logging
@@ -519,8 +555,8 @@ class AdamWOptimizer:
                     _csv_writer.writerow(
                         {
                             "epoch": epoch + 1,
-                            "train_loss": avg_train_mse,
-                            "val_loss": val_mse,
+                            "train_loss": avg_train_loss,
+                            "val_loss": val_loss,
                             "val_rel_l2": val_rel_l2,
                             "lr": current_lr,
                         }
@@ -528,7 +564,7 @@ class AdamWOptimizer:
                     _csv_file.flush()
 
                 # Early saving logic
-                current_loss = val_mse if self.early_save_metric == "val" else avg_train_mse
+                current_loss = val_loss if self.early_save_metric == "val" else avg_train_loss
 
                 if current_loss < best_loss:
                     best_loss = current_loss
@@ -545,8 +581,8 @@ class AdamWOptimizer:
                         trainer.save_ckpt()
                         trainer.tracker.save_checkpoint_artifact(
                             epoch=epoch + 1,
-                            train_loss=avg_train_mse,
-                            val_loss=val_mse,
+                            train_loss=avg_train_loss,
+                            val_loss=val_loss,
                             is_best=False,
                             config_dict=trainer.full_config_dict,
                         )
