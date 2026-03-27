@@ -933,9 +933,11 @@ class StaticTrainer3D(TrainerBase):
     def validate(self, loader: DataLoader):  # noqa: PLR0912, PLR0915
         self.model.eval()
         total_loss = 0.0
+        total_mse = 0.0
         total_rel_l2 = 0.0
         head_losses: dict[str, float] = {}
         num_batches = len(loader)
+        _mse_fn = torch.nn.MSELoss()
 
         with torch.no_grad():
             for batch_raw in loader:
@@ -950,6 +952,7 @@ class StaticTrainer3D(TrainerBase):
                         targets = {k: v for k, v in targets.items() if k in self.active_heads}
 
                     loss = masked_multi_head_loss(pred, targets, loss_fn=self.loss_fn)
+                    mse = masked_multi_head_loss(pred, targets, loss_fn=_mse_fn)
 
                     # --- Per-head scalar MSE ---
                     loss_fn_none = torch.nn.MSELoss(reduction="none")
@@ -976,12 +979,21 @@ class StaticTrainer3D(TrainerBase):
 
                     # --- Field loss ---
                     loss = self._add_field_loss(batch, pred, loss, head_losses)
+                    # Always track MSE for the field component too
+                    if "field" in pred and hasattr(batch, "x") and batch.x is not None:
+                        ft = batch.x.to(self.device)
+                        fv = ~torch.isnan(ft)
+                        if fv.any():
+                            field_weight = self.dataset_config["field_loss_weight"]
+                            mse = mse + field_weight * _mse_fn(pred["field"][fv], ft[fv])
                 else:
                     target = batch.y
                     loss = self.loss_fn(pred, target)
+                    mse = _mse_fn(pred, target)
                     p, t = pred, target
 
                 total_loss += loss.item()
+                total_mse += mse.item()
 
                 # 2. Calculate Relative L2 Error with NaN Masking
                 # We must mask NaNs before taking the norm, otherwise the result is NaN
@@ -1001,7 +1013,7 @@ class StaticTrainer3D(TrainerBase):
                     pass
 
         # Global reduction across ranks for DDP
-        local_metrics = torch.tensor([total_loss, total_rel_l2], dtype=torch.float64, device=self.device)
+        local_metrics = torch.tensor([total_loss, total_mse, total_rel_l2], dtype=torch.float64, device=self.device)
         world_size = 1
         if self.setup_config["distributed"]:  # False
             torch.distributed.all_reduce(local_metrics, op=torch.distributed.ReduceOp.SUM)
@@ -1009,7 +1021,11 @@ class StaticTrainer3D(TrainerBase):
 
         denom = num_batches * world_size
 
-        result = {"loss": local_metrics[0].item() / denom, "rel_l2": local_metrics[1].item() / denom}
+        result = {
+            "loss": local_metrics[0].item() / denom,
+            "mse": local_metrics[1].item() / denom,
+            "rel_l2": local_metrics[2].item() / denom,
+        }
         for h, v in head_losses.items():
             result[f"head_{h}"] = v / num_batches
         return result
