@@ -2,14 +2,18 @@ import ast
 import logging
 import os
 
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn  # noqa: PLR0402
 import yaml
 from torch_geometric.data import Batch, Data
+from torch_geometric.loader import DataLoader as PyGDataLoader
 
+import wandb
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import cp_field_to_drag
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.mesh_sdf_grads import MeshSDFGrads
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
@@ -20,14 +24,18 @@ logger = logging.getLogger(__name__)
 class ModelLoader:
     def __init__(self, cfd_config: dict, device: str) -> None:
         model_id = cfd_config["model_id"]
+        self.rendering = cfd_config["visualisations"]
+        self.v_inf = float(cfd_config.get("v_inf", 25.0))
+        self.rho = float(cfd_config.get("rho", 1.225))
         self.model_path = self._get_checkpoint_path(model_id)
         self.device = device
         self._load_model()
         self.extractor = MeshSDFExtractor(
-            resolution=128, bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3], device=self.device, isovalue=0.0
+            resolution=256, bbox=[-3e3, 3e3, -3e3, 3e3, -3e3, 3e3], device=self.device, isovalue=0.0
         )
-        visualiser = Visualiser(device=self.device)
-        self.gradlogger = MeshSDFGrads(visualiser, intensity=2.5)
+        # keep visualiser on self so we can reuse it
+        self.visualiser = Visualiser(device=self.device)
+        self.gradlogger = MeshSDFGrads(self.visualiser, intensity=10)
 
     def _get_checkpoint_path(self, model_id):
         df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
@@ -84,29 +92,130 @@ class ModelLoader:
                 missing,
             )
 
-        self.normal_model = AutoNormDenorm(
-            core_model=self.gaot,
-            device=self.device,
-            per_head_stats={
-                "force": {
-                    "mean": 95.75044250488281,
-                    "std": 105.13729858398438,
-                }
-            },
-        )
-
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
+        self.sdf_model = sdf_model
         _, _, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
             sdf_model=sdf_model, loss_fn=self.loss_fn
         )
 
         self.optimization_state["vertice_grads"] = dL_dvertices
-        self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
+        if self.rendering:
+            self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
 
         return loss.item() + surrogate_loss - surrogate_loss.item()
 
+    def _visualize_pressure_field(
+        self,
+        pressure_field: torch.Tensor,
+        mesh_verts: torch.Tensor,
+        mesh_faces: torch.Tensor,
+    ) -> None:
+        """
+        Visualise the predicted pressure field in the same style as
+        StaticTrainer3D._run_viz_for_sample (field part).
+
+        Uses a temporary PyG Data object + PyGDataLoader and logs a 3-panel
+        3D scatter figure (GT, Pred, |Diff|) to self.tracker.
+        """
+        if not self.rendering:
+            return
+        if pressure_field is None:
+            return
+
+        # ---- build a synthetic "sample" compatible with trainer logic ----
+        # vertices are in mm from SDF pipeline; convert to m as in GAOT training
+        sample = Data(
+            pos=mesh_verts.detach() * 1e-3,  # mm -> m
+            x=None,  # no GT field on this mesh
+            face=mesh_faces.detach().T,
+        )
+
+        loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
+        batch = next(iter(loader)).to(self.device)
+
+        # coordinates for scatter plot  (DETACH before numpy)
+        coords = batch.pos.detach().cpu().numpy()
+        fname = getattr(self, "epoch_name", "mesh")
+
+        # predicted field is passed in as pressure_field (node-wise GAOT output)
+        if pressure_field.dim() == 2 and pressure_field.size(-1) == 1:
+            pressure_field = pressure_field.squeeze(-1)
+
+        field_pred = pressure_field.detach().cpu().numpy().squeeze()
+        field_gt = None  # no GT available on optimization mesh
+
+        # if you *do* have GT on this mesh in future, set batch.x and use it here
+        if field_gt is not None:
+            # optional: same denorm as StaticTrainer3D if you store stats on ModelLoader
+            u_mean = getattr(self, "u_mean", torch.tensor(0.0, device=self.device))
+            u_std = getattr(self, "u_std", torch.tensor(1.0, device=self.device))
+            if isinstance(u_mean, torch.Tensor):
+                u_mean = u_mean.detach().cpu().numpy().item() if u_mean.numel() == 1 else 0.0
+            if isinstance(u_std, torch.Tensor):
+                u_std = u_std.detach().cpu().numpy().item() if u_std.numel() == 1 else 1.0
+
+            field_pred_dn = field_pred * u_std + u_mean
+            field_gt_dn = field_gt * u_std + u_mean
+            field_diff = np.abs(field_gt_dn - field_pred_dn)
+
+            common_min = float(np.min(field_gt_dn))
+            common_max = float(np.max(field_gt_dn))
+        else:
+            # no GT: just plot the prediction with its own range
+            field_pred_dn = field_pred
+            field_gt_dn = None
+            field_diff = None
+            common_min = float(np.min(field_pred_dn))
+            common_max = float(np.max(field_pred_dn))
+
+        # ---- build matplotlib figure in same style as trainer ------------
+
+        panels = []
+        if field_gt_dn is not None:
+            panels.append((field_gt_dn, "Ground Truth", "jet", common_min, common_max))
+        panels.append((field_pred_dn, "Prediction", "jet", common_min, common_max))
+        if field_diff is not None:
+            panels.append((field_diff, "Absolute Difference", "Reds", None, None))
+
+        fig = plt.figure(figsize=(20, 6))
+        for panel_idx, (data, title, cmap_name, vmin, vmax) in enumerate(panels):
+            ax = fig.add_subplot(1, len(panels), panel_idx + 1, projection="3d")
+            sc = ax.scatter(
+                coords[:, 0],
+                coords[:, 1],
+                coords[:, 2],
+                c=data,
+                cmap=cmap_name,
+                s=2,
+                vmin=vmin,
+                vmax=vmax,
+                depthshade=False,
+            )
+            ax.set_title(title)
+            fig.colorbar(sc, ax=ax, shrink=0.5)
+            ax.view_init(elev=20, azim=-120)
+
+        # we don't have a numeric epoch here, only a name
+        title_epoch = getattr(self, "epoch_name", "opt_step")
+        fig.suptitle(f"Pressure Field [opt] {fname} — {title_epoch}", fontsize=13)
+        plt.tight_layout()
+
+        step_val = int(self.epoch_name)
+
+        wandb.log(
+            {
+                "Pressure-Field visualisation": wandb.Image(
+                    fig,
+                    caption=f"opt {fname} {title_epoch}",
+                )
+            },
+            step=step_val,
+        )
+        plt.close(fig)
+
     def loss_fn(self, mesh_verts, mesh_faces):
+        print(f"Number of Mesh Verts:{mesh_faces.shape[0]}")
         if mesh_verts is None or mesh_verts.shape[0] == 0:
             print("Fail")
             return torch.tensor(0.0, device=self.device)
@@ -118,11 +227,26 @@ class ModelLoader:
 
         # ── forward through GAOT3D ───────────────────────────────────────
         with torch.autograd.set_detect_anomaly(True):
-            gaot_loss = self.normal_model.forward(data=batch, tokens_pos=tokens_pos)
+            gaot_loss = self.gaot.forward(batch=batch, tokens_pos=tokens_pos)
 
         self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces, "vertice_grads": []}
 
-        return gaot_loss
+        # predicted pressure field from GAOT (key name "field" as in your code)
+        pressure_field = gaot_loss["field"]
+
+        # visualize pressure on mesh every call
+        self._visualize_pressure_field(pressure_field=pressure_field, mesh_verts=mesh_verts, mesh_faces=mesh_faces)
+
+        int_drag_f = cp_field_to_drag(
+            cp_field=pressure_field,
+            normals=batch.c,
+            face=mesh_faces.T,
+            pos=mesh_verts * 1e-3,
+            v_inf=self.v_inf,
+            rho=self.rho,
+        )
+        print(f"Force-Value:{int_drag_f.item()}")
+        return int_drag_f
 
     def _reformat_data(self, mesh_verts, mesh_faces):
         optim_verts = mesh_verts.to(self.device)
@@ -134,9 +258,14 @@ class ModelLoader:
         v0 = optim_verts[mesh_faces[:, 0]]
         v1 = optim_verts[mesh_faces[:, 1]]
         v2 = optim_verts[mesh_faces[:, 2]]
+        face_centers = (v0 + v1 + v2) / 3
 
         face_normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
+
+        sdf_values = self.sdf_model(face_centers * 1e3 + face_normals * 50)
+        face_normals[sdf_values < 0] *= -1
+        print("dumdidum", sdf_values < 0)
 
         num_verts = optim_verts.shape[0]
         all_idx = mesh_faces.reshape(-1)
@@ -154,72 +283,3 @@ class ModelLoader:
         data = rescale_transform(data)
 
         return Batch.from_data_list([data]).to(self.device)
-
-
-EPSILON = 1e-12
-
-
-class AutoNormDenorm(nn.Module):
-    """
-    Matches your NormalizeFeatures transform:
-      - input: normalizes data.c (optional)
-      - output: de-normalizes data.y OR (data.force, data.cd) using per_head_stats
-    Keeps autograd graph w.r.t. inputs (no detaching of runtime tensors).
-    """
-
-    def __init__(
-        self,
-        core_model: nn.Module,
-        device,
-        per_head_stats,  # : dict = None,  # {"force": {"mean":..., "std":...}, "cd": {...}}
-    ):
-        super().__init__()
-        self.core = core_model
-        self.device = device
-
-        y_mean = torch.tensor(95.75044250488281, device=self.device)
-        y_std = torch.tensor(105.13729858398438, device=self.device)
-        c_mean = torch.tensor([-0.09271910786628723, 0.0027784164994955063, 0.04134528338909149], device=self.device)
-        c_std = torch.tensor([0.4258987605571747, 0.6058956980705261, 0.6641716361045837], device=self.device)
-
-        def buf(name, t, persistent=True):
-            if t is None:
-                self.register_buffer(name, None, persistent=False)
-            else:
-                self.register_buffer(name, torch.as_tensor(t).clone().detach(), persistent=persistent)
-
-        buf("y_mean", y_mean)
-        buf("y_std", y_std)
-        buf("c_mean", c_mean)
-        buf("c_std", c_std)
-
-        # per-head stats as buffers too
-        self.per_head = {}
-        per_head_stats = per_head_stats or {}
-        for head in ("force", "cd"):
-            if head in per_head_stats:
-                buf(f"{head}_mean", per_head_stats[head]["mean"])
-                buf(f"{head}_std", per_head_stats[head]["std"])
-                self.per_head[head] = True
-            else:
-                buf(f"{head}_mean", None, persistent=False)
-                buf(f"{head}_std", None, persistent=False)
-                self.per_head[head] = False
-
-    def _norm(self, t, mean, std):
-        return (t - mean) / (std + EPSILON)
-
-    def _denorm(self, t, mean, std):
-        return t * (std + EPSILON) + mean
-
-    def forward(self, data, tokens_pos=None):
-        # ---- normalize inputs (only what you normalized during training) ----
-        if getattr(data, "c", None) is not None and self.c_mean is not None and self.c_std is not None:
-            data.c = self._norm(data.c, self.c_mean, self.c_std)
-
-        # ---- run model ----
-        out = self.core(data, tokens_pos=tokens_pos) if tokens_pos is not None else self.core(data)
-
-        out["force"] = self._denorm(out["force"], self.force_mean, self.force_std)
-
-        return out["force"]
