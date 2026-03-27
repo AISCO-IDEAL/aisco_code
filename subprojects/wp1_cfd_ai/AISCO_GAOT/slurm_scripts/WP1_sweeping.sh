@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=WP1_sweep
-#SBATCH --time=24:00:00          # adjust as needed
+#SBATCH --time=02:00:00          # adjust as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G
