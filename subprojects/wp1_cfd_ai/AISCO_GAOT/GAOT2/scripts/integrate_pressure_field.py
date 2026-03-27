@@ -62,10 +62,10 @@ SMALL_DIFF = 1e-6  # threshold for treating two floats as equal
 
 # Per-dataset defaults (fallbacks when data.v_inf is missing)
 DATASET_DEFAULTS = {
-    "euler":        {"v_inf": 25.0,  "rho": 1.225},
-    "drivaer":      {"v_inf": 38.89, "rho": 1.225},
-    "ahmed":        {"v_inf": 1.0,   "rho": 1.225},
-    "blended_wing": {"v_inf": None,  "rho": 1.225},  # v_inf varies per sample (Mach)
+    "euler": {"v_inf": 25.0, "rho": 1.225},
+    "drivaer": {"v_inf": 38.89, "rho": 1.225},
+    "ahmed": {"v_inf": 1.0, "rho": 1.225},
+    "blended_wing": {"v_inf": None, "rho": 1.225},  # v_inf varies per sample (Mach)
 }
 
 
@@ -79,8 +79,7 @@ def _resolve_v_inf(data, u_inf_override):
     if hasattr(data, "v_inf") and data.v_inf is not None:
         return float(data.v_inf.item() if hasattr(data.v_inf, "item") else data.v_inf)
     raise ValueError(
-        "No freestream velocity available. Either pass --u_inf on the CLI "
-        "or ensure data.v_inf is stored in the .pt file."
+        "No freestream velocity available. Either pass --u_inf on the CLI or ensure data.v_inf is stored in the .pt file."
     )
 
 
@@ -99,7 +98,13 @@ def _resolve_a_ref(data, a_ref_override, drag_axis):
 
 
 def integrate_single_sample(
-    data, rho=DEFAULT_RHO, u_inf=DEFAULT_U_INF, a_ref=DEFAULT_A_REF, drag_axis=DRAG_AXIS, use_shear=False, pressure_key="x",
+    data,
+    rho=DEFAULT_RHO,
+    u_inf=DEFAULT_U_INF,
+    a_ref=DEFAULT_A_REF,
+    drag_axis=DRAG_AXIS,
+    use_shear=False,
+    pressure_key="x",
     is_cp=False,
 ):
     """
@@ -264,10 +269,7 @@ def _find_pt_files(data_dir):
 
     # Layout 2: flat directory with *.pt
     pt_files = sorted(glob.glob(os.path.join(data_dir, "*.pt")))
-    pt_files = [
-        f for f in pt_files
-        if not any(os.path.basename(f).startswith(pre) for pre in EXCLUDE_PREFIXES)
-    ]
+    pt_files = [f for f in pt_files if not any(os.path.basename(f).startswith(pre) for pre in EXCLUDE_PREFIXES)]
     return pt_files
 
 
@@ -541,18 +543,22 @@ Examples:
         """,
     )
     parser.add_argument(
-        "input", type=str,
-        help="Path to a .pt file or a dataset directory. "
-             "Supports both subdirectory layout (*/data.pt) and flat layout (*.pt)."
+        "input",
+        type=str,
+        help="Path to a .pt file or a dataset directory. Supports both subdirectory layout (*/data.pt) and flat layout (*.pt).",
     )
     parser.add_argument("--rho", type=float, default=DEFAULT_RHO, help=f"Freestream density [kg/m³] (default: {DEFAULT_RHO})")
     parser.add_argument(
-        "--u_inf", type=float, default=DEFAULT_U_INF,
-        help="Freestream velocity [m/s]. If omitted, read from each sample's v_inf attribute."
+        "--u_inf",
+        type=float,
+        default=DEFAULT_U_INF,
+        help="Freestream velocity [m/s]. If omitted, read from each sample's v_inf attribute.",
     )
     parser.add_argument(
-        "--a_ref", type=float, default=DEFAULT_A_REF,
-        help="Reference area [m²]. If omitted, computed as frontal area from each sample's mesh."
+        "--a_ref",
+        type=float,
+        default=DEFAULT_A_REF,
+        help="Reference area [m²]. If omitted, computed as frontal area from each sample's mesh.",
     )
     parser.add_argument(
         "--drag_axis", type=int, default=DRAG_AXIS, choices=[0, 1, 2], help="Drag direction axis: 0=x, 1=y, 2=z (default: 0)"
@@ -560,9 +566,10 @@ Examples:
     parser.add_argument("--use_shear", action="store_true", help="Include wall shear stress (friction drag) if available")
     parser.add_argument("--pressure_key", type=str, default="x", help="Data attribute name for pressure field (default: 'x')")
     parser.add_argument(
-        "--is_cp", action="store_true",
+        "--is_cp",
+        action="store_true",
         help="Treat the pressure field as Cp (pressure coefficient). "
-             "It will be converted to Pascals via p = Cp * 0.5 * rho * u_inf^2 before integration."
+        "It will be converted to Pascals via p = Cp * 0.5 * rho * u_inf^2 before integration.",
     )
     parser.add_argument("--output_csv", type=str, default=None, help="Save per-sample results to this CSV file")
 

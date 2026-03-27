@@ -707,12 +707,9 @@ class StaticTrainer3D(TrainerBase):
         names_train = ", ".join(
             f"{i}({getattr(s, 'filename', 'N/A')})" for i, s in zip(train_indices, train_samples, strict=True)
         )
-        names_val = ", ".join(
-            f"{i}({getattr(s, 'filename', 'N/A')})" for i, s in zip(val_indices, val_samples, strict=True)
-        )
+        names_val = ", ".join(f"{i}({getattr(s, 'filename', 'N/A')})" for i, s in zip(val_indices, val_samples, strict=True))
         logging.getLogger(__name__).info(
-            f"Rank {self.setup_config['rank']}: Viz samples — "
-            f"train[{names_train}], val[{names_val}]"
+            f"Rank {self.setup_config['rank']}: Viz samples — train[{names_train}], val[{names_val}]"
         )
         return train_samples, val_samples
 
@@ -779,7 +776,10 @@ class StaticTrainer3D(TrainerBase):
                 fig.suptitle(f"Pressure Field [{split_label}] {fname} — Epoch {epoch + 1}", fontsize=13)
                 plt.tight_layout()
                 self.tracker.log_image(
-                    f"viz/{split_label}/pressure_field{suffix}", fig, step=epoch + 1, caption=f"{split_label} {fname} epoch {epoch + 1}"
+                    f"viz/{split_label}/pressure_field{suffix}",
+                    fig,
+                    step=epoch + 1,
+                    caption=f"{split_label} {fname} epoch {epoch + 1}",
                 )
                 plt.close(fig)
 
@@ -800,18 +800,14 @@ class StaticTrainer3D(TrainerBase):
             drag_gt_val = float("nan")
             if normals_cpu is not None:
                 try:
-                    drag_pred_val = cp_field_to_drag(
-                        field_pred_t, normals_cpu, face_cpu, pos_cpu, v_inf=v_inf, rho=rho
-                    ).item()
+                    drag_pred_val = cp_field_to_drag(field_pred_t, normals_cpu, face_cpu, pos_cpu, v_inf=v_inf, rho=rho).item()
                 except Exception:
                     logging.getLogger(__name__).debug("Integrated drag (pred) failed", exc_info=True)
 
                 if batch.x is not None:
                     field_gt_t = batch.x.cpu().float().squeeze() * u_std_t.cpu().float() + u_mean_t.cpu().float()
                     try:
-                        drag_gt_val = cp_field_to_drag(
-                            field_gt_t, normals_cpu, face_cpu, pos_cpu, v_inf=v_inf, rho=rho
-                        ).item()
+                        drag_gt_val = cp_field_to_drag(field_gt_t, normals_cpu, face_cpu, pos_cpu, v_inf=v_inf, rho=rho).item()
                     except Exception:
                         logging.getLogger(__name__).debug("Integrated drag (GT) failed", exc_info=True)
 
@@ -846,7 +842,9 @@ class StaticTrainer3D(TrainerBase):
                 fig_drag.suptitle(f"Integrated Pressure Drag [{split_label}] {fname} — Epoch {epoch + 1}", fontsize=11)
                 plt.tight_layout()
                 self.tracker.log_image(
-                    f"viz/{split_label}/integrated_drag{suffix}", fig_drag, step=epoch + 1,
+                    f"viz/{split_label}/integrated_drag{suffix}",
+                    fig_drag,
+                    step=epoch + 1,
                     caption=f"{split_label} {fname} epoch {epoch + 1}",
                 )
                 plt.close(fig_drag)
