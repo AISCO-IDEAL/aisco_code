@@ -703,7 +703,7 @@ class StaticTrainer3D(TrainerBase):
         )
         return train_sample, val_sample
 
-    def _run_viz_for_sample(self, sample, split_label: str, epoch: int): # noqa: PLR0915
+    def _run_viz_for_sample(self, sample, split_label: str, epoch: int):  # noqa: PLR0915
         """Run inference on a single sample and log field + scalar images to W&B."""
         loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
         batch = next(iter(loader)).to(self.device)
