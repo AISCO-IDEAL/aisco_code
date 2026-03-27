@@ -54,7 +54,9 @@ class BbV3(ParentLoss):
         Loss = mean( relu(sdf_model - sdf_inner) + relu(sdf_outer - sdf_model) )
         """
         if self.losses_config["bb_config"]["render_until_blue"]:
-            AutoVisToWandB(inner_bb=self.inner_box, outer_bb=self.outer_box, sdf_model=model, epoch_name=self.epoch_name, device = self.device)
+            AutoVisToWandB(
+                inner_bb=self.inner_box, outer_bb=self.outer_box, sdf_model=model, epoch_name=self.epoch_name, device=self.device
+            )
 
         with torch.enable_grad():
             # Automatically find where the model is (CPU or GPU)

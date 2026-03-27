@@ -123,7 +123,7 @@ def drag_to_cd(
     return drag / q
 
 
-def _validate_pressure_drag_inputs( #Noqa: PLR0912, PLR0915
+def _validate_pressure_drag_inputs(  # Noqa: PLR0912, PLR0915
     pred_pressure: Tensor,
     normals: Tensor,
     face: Tensor,
@@ -380,7 +380,7 @@ def check_normal_orientation_consistency(
     }
 
 
-def _validate_normal_checker_inputs( #Noqa: PLR0912
+def _validate_normal_checker_inputs(  # Noqa: PLR0912
     normals: Tensor,
     pos: Tensor,
     k: int,
@@ -466,10 +466,12 @@ def raise_if_normals_locally_inconsistent(
             f"Bad vertices: {result['n_bad_vertices']}",
             "Example inconsistent pairs:",
         ]
-        for item in result["sample_bad_pairs"]:
-            lines.append(
+        lines.extend(
+            [
                 f"  i={item['vertex_i']}, j={item['vertex_j']}, "
                 f"distance={item['distance']:.6g}, "
                 f"cos={item['cosine_similarity']:.6f}"
-            )
+                for item in result["sample_bad_pairs"]
+            ]
+        )
         raise ValueError("\n".join(lines))

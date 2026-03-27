@@ -331,8 +331,7 @@ class CADVisualizer:
         return bool(np.mean(blue_dom) >= self.__min_blue_ratio)
 
     def render_until_blue_detected(self, outer_bb: cq.Solid | None = None, inner_bb: list | None = None) -> tuple[str, bool, int]:
-        types = ["solid_a", "solid_b"]
-        if outer_bb == None:
+        if outer_bb is None:
             config = load_config(
                 v=self.__general_config["general_info"]["version"],
                 cfg_name=self.__general_config["active_configs"]["losses"],
@@ -344,7 +343,9 @@ class CADVisualizer:
                 assembly_id = bb_config["assembly_id"]
 
             if assembley_version == 3:
-                self.inner_bb, self.outer_b, _ = call_assembly(assembly_id)  # getting assembly for inner_nbz and outer_nbz as solid
+                self.inner_bb, self.outer_b, _ = call_assembly(
+                    assembly_id
+                )  # getting assembly for inner_nbz and outer_nbz as solid
 
         else:
             self.outer_bb = outer_bb
@@ -375,7 +376,7 @@ class AutoVisToWandB:
                 isovalue=0.0,
                 device=device,
             )
-            self.device=device
+            self.device = device
             tmp_dir = tempfile.mkdtemp(prefix="nice")
             out_image_path = os.path.join(tmp_dir, "nice.png")
             visualiser = CADVisualizer(ply_path=ply_file, out_image_path=out_image_path)
@@ -458,7 +459,7 @@ class AutoVisToWandB:
         # Optional: pre-set grid (not strictly required, but explicit)
         extractor.set_grid(bbox=bbox, resolution=resolution)
 
-        # Extract mesh (non‑differentiable path is fine for exporting)
+        # Extract mesh (non-differentiable path is fine for exporting)
         with torch.no_grad():
             vertices, faces = extractor.extract_mesh(sdf_model)
 
