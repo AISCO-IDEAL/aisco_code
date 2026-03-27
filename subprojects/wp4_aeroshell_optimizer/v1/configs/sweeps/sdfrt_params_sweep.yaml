@@ -2,7 +2,7 @@ program: subprojects/wp3_solar_estimator/raytracing/easier_sweep.py
 method: grid
 entity: aisco
 project: RTParam_Sweep
-name: SDFRT - Beta and Kappa Sweep
+name: SDFRT - absorption,sigmoid x res 128,144,160,176,192
 metric:
   goal: maximize
   name: solar_loss_metrics/visibility_histogram_std
@@ -12,7 +12,7 @@ parameters:
   solar_configs/solar_loss_config.SolarLossConfigV7.raytracing_version:
     value: "v2"
 
-  solar_configs/solar_loss_config.SolarLossConfigV7.method:
+  solar_configs/raytracing_config.RaytracingConfigV2.sdf.method:
     values: ["absorption", "sigmoid"]
 
   solar_configs/solar_loss_config.SolarLossConfigV7.resolution:
