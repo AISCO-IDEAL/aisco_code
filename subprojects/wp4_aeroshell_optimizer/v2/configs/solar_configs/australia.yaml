@@ -1,0 +1,24 @@
+# USED — loaded by WP3's SolarLossEstimator via SolarLossConfigV4.australia_cfg path
+# All keys are consumed by WP3 code (subprojects/wp3_solar_estimator/)
+general:
+  path: "subprojects/wp3_solar_estimator/australia/route_preprocessed.csv"  # USED — WP3
+  timezone: "Australia/Darwin" #insert "Australia/Darwin" or "Australia/Adelaide" here  # USED — WP3
+
+route_generation:
+  version: 2 #unused atm
+  race_distance: 3026 # in km, don't change unless you have new/better data  # USED — WP3
+  intervals: 100 # in km  # USED — WP3
+
+
+sun_generation:
+  racing_window: [8.0,17.0] # [float,float] times during which you can race, e.g. 13:30 would be 13.5  # USED — WP3
+  start_date: "24/8/2025" # 2025 started on 24th of August (https://assets.worldsolarchallenge.org/app/uploads/2025/08/20102713/BWSC-2025-Official-Program-v4.pdf)  # USED — WP3
+  use_different_tz: False #Whether to use different timezones depending on location  # USED — WP3
+  solar_samples: 6  # USED — WP3
+
+
+
+simulation:
+  # Note that tweaking these 2 values to unreasonably values will cause a crash (to few points cause sampling issues)
+  average_speed: 19 #in m/s (used for validation metrics and RouteV2)  # USED — WP3
+  num_points: 200  # USED — WP3

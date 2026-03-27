@@ -1,0 +1,40 @@
+general_info:
+  version: "v1"  #  total_loss.py, parent_loss.py: load_config(v=general_config["general_info"]["version"], ...)
+  device: "cuda"  #  main_v1_1_one_model.py: general_config["general_info"].get("device", ...)
+  run_locally: "False" # automatically detected, don't touch  #  main_v1_1_one_model.py, storage_utils.py (auto-detected & overwritten by config_utils.py)
+  verbose: "True"  #  basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
+
+model_def:
+  model_name: "BasicMLP"  #  main_v1_1_one_model.py: general_config["model_def"]["model_name"]
+  model_file_path: "subprojects/wp4_aeroshell_optimizer/v2/src/models/basic_MLP_v1"  #  main_v1_1_one_model.py: general_config["model_def"]["model_file_path"]
+
+active_configs:
+  losses: "losses_v0_config.yaml"  #  total_loss.py, parent_loss.py, visual modes (assembly_mode, mesh_assembly_gif)
+  pretraining: "pretraining_v0_config.yaml"  #  main_v1_1_one_model.py: general_config["active_configs"].get("pretraining", ...)
+  training: "training_v0_config.yaml"  #  main_v1_1_one_model.py, parent_loss.py: general_config["active_configs"]["training"]
+  model_params: "basic_MLP_v1.yaml"  #  main_v1_1_one_model.py: general_config["active_configs"]["model_params"]
+  neural_renderer: "neural_renderer_v0.yaml"  #  visual_wrapper.py, total_loss.py
+  solar: "solar_configs/solar_loss_config.yaml" # Used in all solar versions above V3s
+
+wandb_general:
+  use_wandb: True  # USED — main_v1_1_one_model.py, total_loss.py
+  project_name: "GUI_testing" #modify  # USED — main_v1_1_one_model.py: wandb.init(project=...)
+  entity_name: "aisco"  # USED — main_v1_1_one_model.py: wandb.init(entity=...)
+  # track_run: 1  # NOT USED — never read by any code
+  use_renderer: True  # USED — total_loss.py: general_config["wandb_general"].get("use_renderer", True)
+  use_neural_renderer: True  # USED — total_loss.py, main_v1_1_one_model.py: general_config["wandb_general"].get("use_neural_renderer", False)
+  rendering_frequency: 1  # USED — total_loss.py: general_config["wandb_general"].get("rendering_frequency")
+  # use_sweep: 0  # NOT USED — never read by any code
+
+storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
+  storage_dir: "/cluster/work/fuge/AISCO/bulk_storage"  #  main_v1_1_one_model.py, basic_MLP_v1.py, storage_utils.py
+  local_storage_dir: "./local_storage_dir" # only used for testing on local machine, not on cluster  #  main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
+
+
+# master example of how to reference other config files:
+#         general_config = load_config()
+#         training_config = load_config(
+#             v=general_config["general_info"]["version"],
+#             cfg_name=general_config["active_configs"]["training"],
+#         )
+#         pointgrid_params = training_config["pointgrid_params"]

@@ -1,0 +1,17 @@
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v1_1_one_model.py
+method: grid
+entity: aisco
+project: Raytracing_Memory
+metric:
+  goal: minimize
+  name: solar_loss_metrics/raytracing_mem_peak_allocated_mb
+parameters:
+  solar_configs/solar_loss_config.SolarLossConfigV6.resolution:
+    values: [64,128,256]
+
+  #sweep over mesh raytracing params
+  solar_configs/raytracing_config.RaytracingConfigV2.mesh.face_chunk_size:
+    values: [32,64,96,128,192,256]
+
+  solar_configs/raytracing_config.RaytracingConfigV2.mesh.blocker_chunk_size:
+    values: [16,32,48,64,96,128,192]
