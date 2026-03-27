@@ -12,7 +12,7 @@ command:
 # Optimization setup
 method: bayes  # or "random" if you prefer
 metric:
-  name: val_loss   # adapt to your logged metric name
+  name: val/loss   # adapt to your logged metric name
   goal: minimize
 
 # Global sweep info (matches your project)
