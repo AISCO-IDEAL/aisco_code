@@ -31,15 +31,15 @@ RaytracingConfigV2:
 
   sdf:
     alpha: 1.0
-    beta: 1.0
+    beta: 4.0
     debug: 5 # 0 for no debug output, >0 for various debug plots (only works if save_dir is also provided)
     kappa: 2.0
     max_march_factor: 2.0
     method: "absorption" # sigmoid | absorption
-    num_steps: 12
+    num_steps: 64
     origin_offset_factor: 1e-3
     point_chunk_size: 256
-    step_size_factor: 0.1
+    step_size_factor: 0.03
 
   mesh:
     beta: 1.0
