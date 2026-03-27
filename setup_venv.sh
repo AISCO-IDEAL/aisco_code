@@ -73,19 +73,6 @@ pre-commit install
 echo ""
 echo "✅ Standard dependencies & Pre-commit Hooks installed."
 
-# 9. Optional Dependencies
-
-echo ""
-echo "📌 Optional dependencies can be installed manually:"
-echo "   - Workpackage 1 (WP1_WP1_CFD_AI):                  python3 -m pip install '.[wp1_cfd_ai]'"
-echo "   - Workpackage 2 (wp2_assembler):                   python3 -m pip install '.[wp2_assembler]'"
-echo "   - Workpackage 3 (WP_3_Solarestimator):             python3 -m pip install '.[WP3_Solarestimator]'"
-echo "   - Workpackage 4 (WP_4_Aeroshell_optimizer):        python3 -m pip install '.[wp4_aeroshell_optimizer]'"
-echo "   - Workpackage 7 (WP_7_gui):                        pip install '.[wp7_gui]'"
-echo "   - testing dependencies:                            python3 -m pip install '.[testing]'"
-echo "   - All optional dependencies:                       python3 -m pip install '.[all]'"
-echo ""
-
 # 9. Kaolin / Neural Renderer logic (Kept from your original)
 echo "🔍 Optional GPU-dependent dependencies:"
 read -p "Install Kaolin? [y/n]: " install_kaolin
@@ -94,15 +81,28 @@ if [[ "$install_kaolin" == "y" ]]; then
     pip install --no-deps -e .
 fi
 
-read -p "Install DISO? [y/n]: " install_diso
+read -p "Install DISO? You MUST be on a GPU node for this installation [y/n]: " install_diso
 if [[ "$install_diso" == "y" ]]; then
     python3 -m pip install diso --no-build-isolation --no-cache-dir
 
 fi
 python3 -m pip install -e . # for incorporating new deps.
-echo "✅ Setup complete!"
+
+echo "✅ Basic Setupcomplete!"
 echo "------------------------------------------------"
 echo "Next steps:"
 echo "1. Activate: source $ENV_NAME/bin/activate"
 echo "2. WSL GPU users: Run 'nvidia-smi' to verify L4 connectivity."
 echo "------------------------------------------------"
+# 10. Optional Dependencies
+
+echo ""
+echo "📌 Install Optional dependencies manually (needs activated environment):"
+echo "   - Workpackage 1 (WP1_WP1_CFD_AI):                  python3 -m pip install '.[wp1_cfd_ai]'"
+echo "   - Workpackage 2 (wp2_assembler):                   python3 -m pip install '.[wp2_assembler]'"
+echo "   - Workpackage 3 (WP_3_Solarestimator):             python3 -m pip install '.[WP3_Solarestimator]'"
+echo "   - Workpackage 4 (WP_4_Aeroshell_optimizer):        python3 -m pip install '.[wp4_aeroshell_optimizer]'"
+echo "   - Workpackage 7 (WP_7_gui):                        pip install '.[wp7_gui]'"
+echo "   - testing dependencies:                            python3 -m pip install '.[testing]'"
+echo "   - All optional dependencies:                       python3 -m pip install '.[all]'"
+echo ""

@@ -19,9 +19,18 @@ def dynamic_type_loading(
 
     """
 
-    file_path = file_path.replace("/", ".")  # convert path to module format
+    # Accept both module notation (a.b.c) and file-system notation (a/b/c.py).
+    # If a real Python file exists at the given path, import directly from it.
+
+    # 1. Remove a trailing .py extension if present
+    file_path = file_path.removesuffix(".py")
+
+    # 2. Convert file-system path separators to module separators
+    file_path = file_path.replace("\\", "/").strip("/").replace("/", ".")
+
+    # 3. Import and return
     module = importlib.import_module(file_path)
-    ObjectType = getattr(module, class_name)  # gets <class 'type'>
+    ObjectType = getattr(module, class_name)
     return ObjectType
 
 

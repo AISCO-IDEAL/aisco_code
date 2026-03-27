@@ -11,7 +11,6 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn.functional as f
 import torch_geometric as pyg
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
@@ -860,7 +859,7 @@ class StaticTrainer3D(TrainerBase):
             targets = {"force": batch.force, "cd": batch.cd}
             if self.active_heads is not None:
                 targets = {k: v for k, v in targets.items() if k in self.active_heads}
-            scalar_loss = masked_multi_head_loss(pred, targets)
+            scalar_loss = masked_multi_head_loss(pred, targets, loss_fn=self.loss_fn)
 
             # --- Per-head MSE for logging ---
             head_losses = {}
@@ -891,7 +890,7 @@ class StaticTrainer3D(TrainerBase):
                     # Mask out NaN entries (samples without field data)
                     valid = ~torch.isnan(ft)
                     if valid.any():
-                        field_loss = f.mse_loss(field_pred[valid], ft[valid])
+                        field_loss = self.loss_fn(field_pred[valid], ft[valid])
                     else:
                         field_loss = torch.tensor(0.0, device=self.device)
 
@@ -919,13 +918,13 @@ class StaticTrainer3D(TrainerBase):
             return self.loss_fn(pred, target), {}
 
     def _add_field_loss(self, batch, pred, loss, head_losses):
-        """Compute field MSE and add it to loss; updates head_losses in-place."""
+        """Compute field loss and add it to loss; updates head_losses in-place."""
         if "field" not in pred or not hasattr(batch, "x") or batch.x is None:
             return loss
         ft = batch.x.to(self.device)
         valid = ~torch.isnan(ft)
         if valid.any():
-            field_loss = f.mse_loss(pred["field"][valid], ft[valid])
+            field_loss = self.loss_fn(pred["field"][valid], ft[valid])
             head_losses["field"] = head_losses.get("field", 0.0) + field_loss.item()
             field_weight = self.dataset_config["field_loss_weight"]  # 1.0
             loss = loss + field_weight * field_loss
@@ -950,7 +949,7 @@ class StaticTrainer3D(TrainerBase):
                     if self.active_heads is not None:
                         targets = {k: v for k, v in targets.items() if k in self.active_heads}
 
-                    loss = masked_multi_head_loss(pred, targets)
+                    loss = masked_multi_head_loss(pred, targets, loss_fn=self.loss_fn)
 
                     # --- Per-head scalar MSE ---
                     loss_fn_none = torch.nn.MSELoss(reduction="none")

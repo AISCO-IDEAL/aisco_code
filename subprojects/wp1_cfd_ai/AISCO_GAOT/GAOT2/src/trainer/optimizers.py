@@ -45,7 +45,7 @@ class OptimizerargsConfig:
     save_every_steps: int = 0  # Save checkpoint every N training steps (0=disabled)
 
     # loss function
-    loss: str = "mse"  # Loss function to use, support ['mse', 'relative_l2']
+    loss: str = "mse"  # Loss function to use, support ['mse', 'l2', 'relative_l2']
 
 
 ###############
@@ -62,14 +62,24 @@ class RelativeL2Loss(torch.nn.Module):
         return (diff_norm / target_norm).mean()
 
 
+class L2Loss(torch.nn.Module):
+    """Mean L2 norm per sample: mean_batch( ||pred - target||_2 )."""
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        diff = pred - target
+        return diff.flatten(1).norm(p=2, dim=1).mean()
+
+
 def build_loss_fn(loss_name: str) -> torch.nn.Module:
     """Return the loss module for the given name."""
     if loss_name == "mse":
         return torch.nn.MSELoss()
+    elif loss_name == "l2":
+        return L2Loss()
     elif loss_name == "relative_l2":
         return RelativeL2Loss()
     else:
-        raise ValueError(f"Unknown loss '{loss_name}'. Supported: ['mse', 'relative_l2']")
+        raise ValueError(f"Unknown loss '{loss_name}'. Supported: ['mse', 'l2', 'relative_l2']")
 
 
 ###############

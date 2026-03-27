@@ -6,7 +6,7 @@ general_info:
 
 model_def:
   model_name: "BasicMLP"  #  main_v1_1_one_model.py: general_config["model_def"]["model_name"]
-  model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/basic_MLP_v1"  #  main_v1_1_one_model.py: general_config["model_def"]["model_file_path"]
+  model_file_path: "subprojects/wp4_aeroshell_optimizer/v1/src/models/basic_MLP_v1.py"  #  main_v1_1_one_model.py: general_config["model_def"]["model_file_path"]
 
 active_configs:
   losses: "losses_v0_config.yaml"  #  total_loss.py, parent_loss.py, visual modes (assembly_mode, mesh_assembly_gif)
@@ -17,17 +17,15 @@ active_configs:
   solar: "solar_configs/solar_loss_config.yaml" # Used in all solar versions above V3s
 
 wandb_general:
-  use_wandb: True # USED — main_v1_1_one_model.py, total_loss.py
-  project_name: "WP4_default" #modify  # USED — main_v1_1_one_model.py: wandb.init(project=...)
-  entity_name: "aisco"  # USED — main_v1_1_one_model.py: wandb.init(entity=...)
-  # track_run: 1  # NOT USED — never read by any code
-  use_renderer: True  # USED — total_loss.py: general_config["wandb_general"].get("use_renderer", True)
-  use_neural_renderer: True  # USED — total_loss.py, main_v1_1_one_model.py: general_config["wandb_general"].get("use_neural_renderer", False)
-  rendering_frequency: 1  # USED — total_loss.py: general_config["wandb_general"].get("rendering_frequency")
-  # use_sweep: 0  # NOT USED — never read by any code
+  use_wandb: True # main_v1_1_one_model.py, total_loss.py
+  project_name: "WP4_default" # DEFAULT: "WP4_default"  # main_v1_1_one_model.py: wandb.init(project=...)
+  entity_name: "aisco"  # main_v1_1_one_model.py: wandb.init(entity=...)
+  use_renderer: True  # total_loss.py: general_config["wandb_general"].get("use_renderer", True)
+  use_neural_renderer: True  # total_loss.py, main_v1_1_one_model.py: general_config["wandb_general"].get("use_neural_renderer", False)
+  rendering_frequency: 1  # total_loss.py: general_config["wandb_general"].get("rendering_frequency")
 
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
-  storage_dir: "/cluster/work/fuge/AISCO/bulk_storage"  #  main_v1_1_one_model.py, basic_MLP_v1.py, storage_utils.py
+  storage_dir: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"  # DEFAULT: /cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage, used in main_v1_1_one_model.py, basic_MLP_v1.py, storage_utils.py
   local_storage_dir: "./local_storage_dir" # only used for testing on local machine, not on cluster  #  main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
 
 

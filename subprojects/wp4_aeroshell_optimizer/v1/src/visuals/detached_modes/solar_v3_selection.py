@@ -29,7 +29,7 @@ class SolarV3Selection(RenderingMode):
         - fps: GIF frame rate (default: 15)
     """
 
-    def __init__(self, visualiser):
+    def __init__(self, visualiser, config: dict | None = None):
         """
         Initialize the example rendering mode.
 
@@ -38,7 +38,11 @@ class SolarV3Selection(RenderingMode):
             config: Mode configuration from YAML
         """
 
-        config = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")["detached_modes"]["solar_v3_selection"]["config"]
+        if config is None:
+            renderer_cfg = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")
+            config = renderer_cfg.get("solar_info_modes", {}).get("solar_v3_selection", {}).get("config")
+            if config is None:
+                config = renderer_cfg["detached_modes"]["solar_v3_selection"]["config"]
         super().__init__(visualiser, config)
         self.camera_position = config["camera_position"]
         self.look_at = config["look_at"]
