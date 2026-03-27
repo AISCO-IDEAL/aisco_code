@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import torch
 
@@ -9,9 +11,19 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import Parent
 class BbV4(ParentLoss):
     def _setup(self) -> None:
         self.__config = self.losses_config["bb_config"]
-        rng = np.random.default_rng()
-        self.__assembly_id = int(rng.integers(0, max_assembly_id() + 1))
-        # Create SDFs for inner and outer boxes
+        env_assembly_id = os.getenv("AISCO_ASSEMBLY_ID", "").strip()
+        configured_assembly_id = self.__config.get("assembly_id")
+
+        if env_assembly_id:
+            self.__assembly_id = int(env_assembly_id)
+        elif configured_assembly_id is not None:
+            self.__assembly_id = int(configured_assembly_id)
+        else:
+            rng = np.random.default_rng()
+            self.__assembly_id = int(rng.integers(0, max_assembly_id() + 1))
+
+        os.environ["AISCO_ASSEMBLY_ID"] = str(self.__assembly_id)
+
         inner_box, outer_box, __ = call_assembly(id_number=self.__assembly_id)
         inner_solids_list = inner_box.toCompound().Solids()
         self.__inner_SDF: SDFfromCadQuery = SDFfromCadQuery(
