@@ -6,7 +6,7 @@
 # ---- SLURM directives (must come before any executable code) ---------------
 #SBATCH --partition=gpu
 #SBATCH --job-name=WP4_Sweep
-#SBATCH --time=20:00:00
+#SBATCH --time=2:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=rtx_4090:2

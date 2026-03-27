@@ -224,6 +224,7 @@ def apply_sweep_overrides(sweep_params: dict) -> None:  # noqa: PLR0915
 
     def _coerce_like_existing(raw_value: object, existing_value: object) -> object:  # noqa: PLR0911
         """Cast grouped values to match the existing config leaf type when possible."""
+        # Keep grouped sweeps type-stable by mirroring the target leaf type.
         if isinstance(existing_value, bool):
             if isinstance(raw_value, str):
                 lowered = raw_value.strip().lower()
@@ -269,6 +270,7 @@ def apply_sweep_overrides(sweep_params: dict) -> None:  # noqa: PLR0915
             return
 
         d = target_cfg
+        # Create intermediate dicts so new nested keys can be injected safely.
         for segment in remaining[:-1]:
             if segment not in d or not isinstance(d[segment], dict):
                 d[segment] = {}
@@ -281,7 +283,10 @@ def apply_sweep_overrides(sweep_params: dict) -> None:  # noqa: PLR0915
 
         d[leaf] = value_to_set
 
-    grouped_keys = [key for key in sweep_params if isinstance(key, str) and re.match(r"^group\d+\..+", key)]
+    grouped_key_pattern = re.compile(r"^group(\d+)\.(.+)$")
+    # Guardrail: forbid multiple grouped dimensions in one run to prevent
+    # accidental Cartesian coupling between grouped keys.
+    grouped_keys = [key for key in sweep_params if isinstance(key, str) and grouped_key_pattern.fullmatch(key)]
 
     if len(grouped_keys) > 1:
         raise RuntimeError(
@@ -293,7 +298,7 @@ def apply_sweep_overrides(sweep_params: dict) -> None:  # noqa: PLR0915
         if key.startswith(("_wandb", "SubCFG_")):
             continue
 
-        grouped_match = re.match(r"^group(\d+)\.(.+)$", key)
+        grouped_match = grouped_key_pattern.fullmatch(key)
         if grouped_match:
             group_size = int(grouped_match.group(1))
             grouped_path = grouped_match.group(2)
@@ -324,9 +329,14 @@ def apply_sweep_overrides(sweep_params: dict) -> None:  # noqa: PLR0915
                 )
                 continue
 
+            # group<n> consumes the last n dotted segments as parameter names.
+            # Split grouped key into shared config path + grouped parameter suffix.
             base_path = ".".join(path_parts[:-group_size])
             param_names = path_parts[-group_size:]
 
+            # W&B already selected one row for this run; we now fan it out into
+            # individual flat overrides that reuse the existing config resolver.
+            # Left-to-right mapping: param_names[i] gets value[i].
             for param_name, param_value in zip(param_names, value, strict=True):
                 target_key = f"{base_path}.{param_name}"
                 _apply_single_override(target_key, param_value, infer_type=True)
