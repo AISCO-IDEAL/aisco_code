@@ -12,11 +12,5 @@ parameters:
   solar_configs/solar_loss_config.SolarLossConfigV7.raytracing_version:
     value: "v2"
 
-  #solar_configs/raytracing_config.RaytracingConfigV3.mesh.depth_normalization:
-  #  values: ["bbox", "ray_length"]
-
-  solar_configs/raytracing_config.RaytracingConfigV2.sdf.beta:
-    values: [4.0]
-
-  solar_configs/raytracing_config.RaytracingConfigV2.sdf.kappa:
-    values: [0.25, 0.5, 0.75, 1.0, 1.3, 1.6, 2.0, 5.0, 10.0,]
+  solar_configs/solar_loss_config.SolarLossConfigV7.resolution:
+    values: [96, 128, 192, 256, 320, 384, 448, 512]
