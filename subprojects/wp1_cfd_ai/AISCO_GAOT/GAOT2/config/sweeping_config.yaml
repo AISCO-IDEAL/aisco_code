@@ -1,0 +1,76 @@
+program: subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/main.py
+
+# Base arguments for main.py
+command:
+  - ${env}
+  - python
+  - ${program}
+  - -c
+  - subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/main_config.yaml
+
+# Optimization setup
+method: bayes  # or "random" if you prefer
+metric:
+  name: val_loss   # adapt to your logged metric name
+  goal: minimize
+
+# Global sweep info (matches your project)
+project: WP1_drag
+entity: aisco
+name: "wp1_gaot_sweep"
+
+parameters:
+  # ========== OPTIMIZER / TRAINING ==========
+  optimizer.args.lr:
+    distribution: log_uniform_values
+    min: 1e-5
+    max: 5e-4
+
+  optimizer.args.weight_decay:
+    distribution: log_uniform_values
+    min: 1e-6
+    max: 1e-3
+
+  optimizer.args.epoch:
+    values: [150, 300, 450]
+
+  dataset.batch_size:
+    values: [8, 12, 16]
+
+  # ========== MODEL / TRANSFORMER ==========
+  model.args.transformer.num_layers:
+    values: [8, 10, 12]
+
+  model.args.transformer.attn_config.num_heads:
+    values: [4, 8]
+
+  model.args.transformer.ffn_config.hidden_size:
+    values: [512, 1024, 1536]
+
+  # ========== GNO / MAGNO HYPERPARAMS ==========
+  model.args.magno.gno_radius:
+    distribution: uniform
+    min: 0.04
+    max: 0.09
+
+  model.args.magno.projection_channels:
+    values: [128, 256, 384]
+
+  model.args.magno.lifting_channels:
+    values: [16, 32, 64]
+
+  # ========== REGULARIZATION / DROPOUT ==========
+  model.args.transformer.attn_config.atten_dropout:
+    distribution: uniform
+    min: 0.0
+    max: 0.2
+
+  # ========== DATASET / LOSS WEIGHTING ==========
+  dataset.field_loss_weight:
+    distribution: uniform
+    min: 0.5
+    max: 2.0
+
+  # example of toggling variance test or similar flags (if you later add them):
+  # setup.use_variance_test:
+  #   values: [true, false]
