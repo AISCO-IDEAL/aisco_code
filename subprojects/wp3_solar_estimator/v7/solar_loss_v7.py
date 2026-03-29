@@ -310,9 +310,11 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
             else:
                 wandb.log(payload)
         visual_aggregate_visibility += visibility.detach().clone()
+        # The factor that gets subtracted from 1 to get the total solar "power"
         visual_aggregate_penalty_factor += (-numerical_factor.detach().clone()) + 1
+        # The actual penalty contribution (given as per area penalty)
         visual_aggregate_penalty += (
-            (-numerical_factor.detach().clone() + 1) * qualities.detach().clone() * face_area_mm2.detach().clone()
+            (-numerical_factor.detach().clone() + 1) * qualities.detach().clone() * soft_weights[original_order].detach().clone()
         )
 
     ### Finalisation of loss terms
@@ -382,6 +384,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         "shading_penalty_intensity": visual_aggregate_penalty / S,
         "shading_factor": visual_aggregate_penalty_factor / S,
         "qualities": aggregate_illumination_quality,
+        "losses": losses,
     }
 
     loss = loss_mm2 * 1e-6  # Convert to m² for final loss
@@ -634,8 +637,8 @@ class SolarLossEstimator:
         self.render_grads: MeshSDFGrads | None
         if self.rendering:
             self.visualiser = Visualiser(
-                image_size=1024,
-                background_color=[0.0, 0.66, 0.0],
+                image_size=4500,
+                background_color=[1.0, 1.0, 1.0],
                 anti_aliasing=True,
                 camera_mode="look_at",
                 viewing_angle=30.0,
