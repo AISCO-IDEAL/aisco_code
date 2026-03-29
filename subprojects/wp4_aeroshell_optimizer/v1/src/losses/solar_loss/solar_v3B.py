@@ -11,5 +11,6 @@ class SolarV3B(ParentLoss):
         solar_cfg = load_config(v="v1", cfg_name=cfg_path)["SolarLossConfigV3"]
         self.solar_estimator = SolarLossEstimator(config=solar_cfg)
         self.power_conversion_factor = solar_cfg["power_conversion_factor"]
+
     def _loss(self, model):
         return self.solar_estimator.solar_loss(model=model, epoch_name=self.epoch_name) * self.power_conversion_factor
