@@ -697,7 +697,7 @@ def log_to_wandb(  # noqa: PLR0915 #too many statements since we log a ton of st
 
 class SolarLossEstimator:
     def __init__(self, config: dict[str, Any]) -> None:  # noqa: PLR0915
-        defaults = {
+        defaults: dict[str, Any] = {
             "route_version": "v2",
             "raytracing_version": "v1",
             "method": "mesh_sdf",
@@ -766,7 +766,8 @@ class SolarLossEstimator:
         self.soft_mask_full_selection_threshold = float(cfg["soft_mask_full_selection_threshold"])
         self.selection_threshold_render = float(cfg["selection_threshold_render"])
         sun_batching_cfg_raw = cfg.get("sun_batching", cfg.get("sunbatching", cfg.get("shading", {})))
-        self.sun_batching_cfg = {**defaults["sun_batching"], **dict(sun_batching_cfg_raw)}
+        sun_batching_cfg_dict = sun_batching_cfg_raw if isinstance(sun_batching_cfg_raw, dict) else {}
+        self.sun_batching_cfg = {**defaults["sun_batching"], **sun_batching_cfg_dict}
         self.raytracing_cfg = self._load_versioned_raytracing_config(self.raytracing_version)
         self.shading_render_interval = int(self.sun_batching_cfg.get("shading_render_interval", 1))
         self.sun_vector_source = str(cfg.get("sun_vector_source", "route")).lower()
