@@ -1,8 +1,6 @@
-
-
-
 from __future__ import annotations
 
+import itertools
 import math
 import os
 from pathlib import Path
@@ -137,7 +135,7 @@ def _save_visibility_histogram_plot(bins: list[float], counts: list[float], outp
         raise ValueError("Invalid histogram shape for plotting.")
 
     left_edges = bins[:-1]
-    widths = [b1 - b0 for b0, b1 in zip(bins[:-1], bins[1:], strict=False)]
+    widths = [b1 - b0 for b0, b1 in itertools.pairwise(bins)]
     centers = [left + 0.5 * width for left, width in zip(left_edges, widths, strict=False)]
 
     fig, ax = plt.subplots(figsize=(10, 5), dpi=150)

@@ -125,6 +125,7 @@ class ShadingPenalty(SolarBase):
     def finalize(self, output_dir: Path, file_name: str = "shading_penalty.gif", delete: bool = True) -> None:
         super().finalize(output_dir, file_name, delete)
 
+
 class ShadingFactor(SolarBase):
     _config_key = "shading_factor"
     _value_key = "shading_factor"
