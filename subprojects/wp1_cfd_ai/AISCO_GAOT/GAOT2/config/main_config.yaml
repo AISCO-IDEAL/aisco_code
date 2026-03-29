@@ -22,7 +22,7 @@ setup:
     wandb: true
     wandb_run_name: "_NAME___RUN_ID_"
 
-    wandb_project: "WP1_drag"
+    wandb_project: "WP1_lr_sweep"
     wandb_entity: aisco
     wandb_group: euler_field_cp_full
     wandb_mode: online

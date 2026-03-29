@@ -31,3 +31,13 @@ parameters:
     distribution: log_uniform_values
     min: 1e-6
     max: 1e-3
+
+  optimizer.args.max_lr:
+    distribution: log_uniform_values
+    min: 5e-4
+    max: 1e-2
+
+  optimizer.args.min_lr:
+    distribution: log_uniform_values
+    min: 2e-5
+    max: 5e-4
