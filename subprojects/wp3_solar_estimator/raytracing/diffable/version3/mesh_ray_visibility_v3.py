@@ -280,6 +280,7 @@ def _compute_visibility_for_chunk_soft(
     transmittance_kappa: float,
     bary_softness_tau: float,
     t_softness_tau: float,
+    margin: float | torch.Tensor,
     blocker_chunk_size: int,
     device: torch.device,
     eps: float,
@@ -322,7 +323,8 @@ def _compute_visibility_for_chunk_soft(
 
         # d_face_to_blocker > 0 means the blocker is between the sun and the face.
         d_face_to_blocker = L - t_block
-        w_t = torch.sigmoid(t_softness_tau * (d_face_to_blocker / depth_scale))
+        # Include a negative margin to require blockers to be strictly 'margin' distance away.
+        w_t = torch.sigmoid(t_softness_tau * ((d_face_to_blocker - margin) / depth_scale))
 
         w_parallel = (~parallel_mask).to(dtype=tri_v0.dtype)[None, :]
         w_hit = w_u * w_v * w_w * w_t * w_parallel
@@ -534,6 +536,7 @@ def mesh_visibility_v3(  # noqa: PLR0912, PLR0915 #sadly it's a big mess.
                 transmittance_kappa=transmittance_kappa,
                 bary_softness_tau=bary_softness_tau,
                 t_softness_tau=t_softness_tau,
+                margin=margin,
                 blocker_chunk_size=blocker_chunk_size,
                 device=device,
                 eps=eps,

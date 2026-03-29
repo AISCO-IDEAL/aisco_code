@@ -3,7 +3,7 @@ method: random
 run_cap: 200
 entity: aisco
 project: RTParam_Sweep
-name: faster_body_sweep
+name: Fix2
 
 metric:
   goal: maximize
@@ -22,32 +22,9 @@ parameters:
   solar_configs/raytracing_config.RaytracingConfigV3.mesh.blocker_chunk_size:
     value: 500
 
-  # Through-body sensitivity: absolute depth normalization choice
-  solar_configs/raytracing_config.RaytracingConfigV3.mesh.depth_normalization:
-    values: ["bbox", "ray_length"]
-
-
-  # How far behind the sun origins are placed
-  solar_configs/raytracing_config.RaytracingConfigV3.mesh.sun_distance_factor:
-    values: [0.5, 1.0, 2.0, 4.0, 8.0]
-
-  # Depth attenuation and global transmittance strength
-  solar_configs/raytracing_config.RaytracingConfigV3.mesh.transmittance_beta:
-    values: [0.25, 2.0, 4.0, 12.0, 24]
-
-  solar_configs/raytracing_config.RaytracingConfigV3.mesh.transmittance_kappa:
-    values: [1.0]
-
+ 
   # Soft hit-membership sharpness
   solar_configs/raytracing_config.RaytracingConfigV3.mesh.bary_softness_tau:
-    values: [6, 20, 50]
+    values: [2,4,8,12,18,22]
 
-  solar_configs/raytracing_config.RaytracingConfigV3.mesh.t_softness_tau:
-    values: [0.5, 2, 8, 16]
-
-  # Spatial anti-aliasing over each face
-  solar_configs/raytracing_config.RaytracingConfigV3.mesh.face_samples:
-    values: [3]
-
-  solar_configs/raytracing_config.RaytracingConfigV3.mesh.sample_pattern:
-    values: ["barycentric_ring"]
+  

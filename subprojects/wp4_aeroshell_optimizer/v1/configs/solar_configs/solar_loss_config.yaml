@@ -19,7 +19,7 @@ SolarLossConfigV3:
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
   resolution: 128 # has to be a power of 2 for sparse sdf
   area_budget_mm2: 4000000
-  sun_dir: [-1.0,0.0,1.0]
+  sun_dir: [-1.0,0.0,1.0] # Is also used for hte solar area validation stats
   device: "cuda"
   batch_size: 2048
   eps: 1e-12
@@ -114,11 +114,12 @@ SolarLossConfigV7:
   raytracing_version: "v3" # v1, v2 or v3
   route_version: "v2" # v1 or v2
   sun_vector_source: "fixed" # route | fixed
-  fixed_sun_dir: [0,1,0.8] # [x, y, z] when sun_vector_source=fixed
+  fixed_sun_dir: [-1.0,1.0,0.8] # [x, y, z] when sun_vector_source=fixed
   method: "mesh_sdf" # diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-4000.0, 4000.0], [-4000.0, 4000.0], [-4000.0, 4000.0]]
   resolution: 80
   area_budget_mm2: 6000000
+  power_conversion_factor: 250 #How many watts you get per square meter of projected solar area
   device: "cuda"
   batch_size: 100
   sigmoid_sharpness: 8.0 # for soft budget selection
@@ -135,16 +136,21 @@ SolarLossConfigV7:
 
 
   sun_batching:
-    sun_batch_size: 4
+    sun_batch_size: 1
     sun_subsample_fraction: 0.8 # 0..1 fraction of sun vectors to use
     sun_subsample_min: 1 # minimum sun vectors to keep
     sun_subsample_mode: "random" # random | first
+    use_activation_checkpointing: True # recompute per-sun activations in backward to reduce peak VRAM
     shading_render_interval: 1 # render every N epochs
+    memory_safe_mode: True # enables conservative memory defaults in solar loss loop
+    memory_safe_max_sun_vectors: 256 # hard cap as emergency fallback for very large routes
+    log_visibility_histograms: False # avoid per-sun wandb histogram materialisation
+    visibility_histogram_interval: 0 # 0 disables per-sun visibility histogram logging
 
 
   wandb_logging: True
   soft_mask_selection_threshold: 0.5
   soft_mask_full_selection_threshold: 0.95
   rendering: True
-  selection_threshold_render: 0.01
+  selection_threshold_render: 0.0005
   log_group_name: "solar_loss_metrics"
