@@ -19,6 +19,7 @@ SolarLossConfigV3:
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
   resolution: 128 # has to be a power of 2 for sparse sdf
   area_budget_mm2: 4000000
+  power_conversion_factor: 250 #How many watts you get per square meter of projected solar area
   sun_dir: [-1.0,0.0,1.0] # Is also used for hte solar area validation stats
   device: "cuda"
   batch_size: 2048
