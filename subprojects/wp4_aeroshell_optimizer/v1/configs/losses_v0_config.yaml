@@ -69,7 +69,7 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     dy: 250  #
     dz: 250  #
     rand: 400  #
-  assembly_id: 1 # 1 for the standard one  # rendering modes only (assembly_mode.py, mesh_assembly_gif.py), not bb_v3.py (which randomises 1-52)
+  assembly_id: 1 # 1 for the standard one  # rendering modes only (assembly_mode.py, mesh_assembly_mode_v2.py), not bb_v3.py (which randomises 1-52)
   render_until_blue: "False"
   sdf_device: cuda  # mesh-backed BB SDF compute device
   # v4.2 specific:

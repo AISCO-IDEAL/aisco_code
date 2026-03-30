@@ -45,10 +45,33 @@ mesh_extraction:
 #  visual_wrapper.py: self.config.get("rendering_modes", {})
 rendering_modes:
   enabled: true #Whether to use the visual wrapper at all, if false, no rendering is done, even if modes are enabled  #  visual_wrapper.py: modes_config["enabled"]
+
+  mesh_assembly_mode_v2: # inner+outer bb + sdf visualisation, fast compute time
+    enabled: true
+    class_path: "custom_modes.mesh_assembly_mode_v2:MeshAssemblyModeV2"
+    config:
+      store_wandb: true
+      render_mode: "rgb"
+      camera_position: [-3000, 3000, 3000]
+      look_at: [0, 0, 0]
+      fps: 10
+      render_interval: 1
+      make_gif: true
+      mesh_color: [0.2, 1.0, 1.0]
+      mesh_alpha: 0.5
+      assembly_color: [1.0, 0.55, 0.0]
+      outer_color: [1.0, 0.35, 0.15]
+      outer_alpha: 0.2
+      outer_edge_color: [0.0, 0.0, 0.0]
+      outer_edge_strength: 1.0
+      tolerance: 2.0
+      angular_tolerance: 0.4
+
+
   #use alex_mode as an example, just renders a GIF of the mesh
   alex_mode:  #  dynamically loaded by visual_wrapper.py
     #mandatory
-    enabled: true  #  visual_wrapper.py: mode_config.get("enabled", False)
+    enabled: false  #  visual_wrapper.py: mode_config.get("enabled", False)
     class_path: "custom_modes.alex_mode:BasicAlexMode"  #  visual_wrapper.py: mode_config.get("class_path")
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you
@@ -57,119 +80,49 @@ rendering_modes:
       look_at: [0, 0, 0]  #  passed to mode constructor
       render_mode: "rgb"  #  passed to mode constructor
       fps: 20  #  passed to mode constructor
+
   # Just a picture of the current assembly
   assembly_mode:  #  dynamically loaded by visual_wrapper.py
     #mandatory
-    enabled: true  # USED
-    class_path: "custom_modes.assembly_mode:AssemblyMode"  # USED
+    enabled: false
+    class_path: "custom_modes.assembly_mode:AssemblyMode"
     # config that is passed as dictionary into your mode
     # Use for any settings that are relevant for you
     config:  #  also reads bb_config.assembly_id from losses_v0_config.yaml inside assembly_mode.py
-      camera_position: [3000, 3000, 3000]  # USED
-      look_at: [0, 0, 0]  # USED
-      render_mode: "rgb"  # USED
-      color: [1.0 ,0.55 ,0.0]  # USED
-
-  bb_inner_mode:
-    enabled: true
-    class_path: "custom_modes.bb_inner_mode:InnerBoundingBoxMode"
-    config:
       camera_position: [3000, 3000, 3000]
       look_at: [0, 0, 0]
       render_mode: "rgb"
-      color: [0.2, 0.7, 1.0]
-      sdf_color: [0.75, 0.75, 0.75]
-      inner_alpha: 0.45
-      tolerance: 2.0
-      angular_tolerance: 0.4
+      color: [1.0 ,0.55 ,0.0]
 
-  bb_outer_mode:
-    enabled: true
-    class_path: "custom_modes.bb_outer_mode:OuterBoundingBoxMode"
-    config:
-      camera_position: [3000, 3000, 3000]
-      look_at: [0, 0, 0]
-      render_mode: "rgb"
-      color: [1.0, 0.35, 0.15]
-      sdf_color: [0.75, 0.75, 0.75]
-      outer_alpha: 0.2
-      edge_color: [0.0, 0.0, 0.0]
-      edge_strength: 1.0
-      tolerance: 2.0
-      angular_tolerance: 0.4
-
-  bb_both_mode:
-    enabled: true
-    class_path: "custom_modes.bb_both_mode:BoundingBoxesCombinedMode"
-    config:
-      camera_position: [3000, 3000, 3000]
-      look_at: [0, 0, 0]
-      render_mode: "rgb"
-      inner_color: [0.2, 0.7, 1.0]
-      outer_color: [1.0, 0.35, 0.15]
-      sdf_color: [0.75, 0.75, 0.75]
-      inner_alpha: 0.4
-      outer_alpha: 0.18
-      edge_color: [0.0, 0.0, 0.0]
-      edge_strength: 1.0
-      tolerance: 2.0
-      angular_tolerance: 0.4
-  # Gif of the semitransparant with its assembly
-  mesh_assembly_mode:  #  dynamically loaded by visual_wrapper.py
-    #mandatory
-    enabled: true  # USED
-    class_path: "custom_modes.mesh_assembly_gif:MeshAssemblyGIF"  # USED
-    # config that is passed as dictionary into your mode
-    # Use for any settings that are relevant for you
-    config:  #  also reads bb_config.assembly_id from losses_v0_config.yaml inside mesh_assembly_gif.py
-      store_wandb: True  # USED
-      render_mode: "rgb"  # USED
-      camera_position: [-3000, 3000,3000]  # USED
-      look_at: [0, 0, 0]  # USED
-      alpha: 0.5  # USED
-      fps: 10  # USED
-      assembly_color: [1.0, 0.55, 0.0]  # USED
-      mesh_color: [0.2,1.0,1.0] #Bugged?  # USED
   # Gif of which solar cells would be selected with the dot-product approach, given a budget and soalr angle in solar_loss_config.yaml
   solar_selection_mode:  #  dynamically loaded by visual_wrapper.py
     #Mandatory
-    enabled: false  # USED
-    class_path: "custom_modes.solar_selection:SolarSelectionMode"  # USED
+    enabled: false
+    class_path: "custom_modes.solar_selection:SolarSelectionMode"
     #config for solar selection
     config:  #  also reads SolarLossConfigV3 from solar_loss_config.yaml (area_budget_mm2, sun_dir) inside solar_selection.py
-      camera_position: [-3500, 3500, 3500]  # USED
-      look_at: [0, 0, 0]  # USED
-      render_mode: "rgb"  # USED
-      make_gif: true #if false saves seperate image every interval iterations  # USED
-      render_interval: 1 #Rendering interval for gif/image. 1 means every iteration is rendered  # USED
-      fps: 10  # USED
-      solar_color: [0.2,0.2,0.8]  # USED
-      rest_color: [1.0,0.5,0.0]  # USED
+      camera_position: [-3500, 3500, 3500]
+      look_at: [0, 0, 0]
+      render_mode: "rgb"
+      make_gif: true #if false saves seperate image every interval iterations
+      render_interval: 1 #Rendering interval for gif/image. 1 means every iteration is rendered
+      fps: 10
+      solar_color: [0.2,0.2,0.8]
+      rest_color: [1.0,0.5,0.0]
+
   # Gif of the solar power of each face using the dot-product approach, green is good, red is bad
   solar_power_mode:  #  dynamically loaded by visual_wrapper.py
     #Mandatory
-    enabled: False  # USED
-    class_path: "custom_modes.solar_power:SolarPower"  # USED
+    enabled: False
+    class_path: "custom_modes.solar_power:SolarPower"
     #config for solar selection
     config:  #  also reads SolarLossConfigV3 from solar_loss_config.yaml (sun_dir) inside solar_power.py
-      camera_position: [-3500, 3500, 3500]  # USED
-      look_at: [0, 0, 0]  # USED
-      render_mode: "rgb"  # USED
-      make_gif: true #if false saves seperate image every interval iterations  # USED
-      render_interval: 1 #Rendering interval for gif/image. 1 means every iteration is rendered  # USED
-      fps: 10  # USED
-#   #not really used, more of a basic demo
-#   example_advanced_mode:  # NOT ACTIVE (enabled=false)
-#     enabled: false
-#     class_path: "custom_modes.rendering_mode_example_advanced:ExampleAdvancedMode"
-#     config:
-#       camera_position: [-1000, 3000, 1000]
-#       look_at: [0, 0, 0]
-#       render_mode: "rgb"
-#       fps: 15
-#       render_interval: 10
-
-
+      camera_position: [-3500, 3500, 3500]
+      look_at: [0, 0, 0]
+      render_mode: "rgb"
+      make_gif: true #if false saves seperate image every interval iterations
+      render_interval: 1 #Rendering interval for gif/image. 1 means every iteration is rendered
+      fps: 10
 
 
 detached_modes:
