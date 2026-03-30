@@ -10,10 +10,13 @@ import imageio.v2 as imageio
 import numpy as np
 import OpenGL
 import pyrender
+import torch
 import trimesh
 from pyrender import RenderFlags
 
+import wandb
 from subprojects.wp2_assembler.version3.components.nbz import call_assembly
+from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 
 # Constants for numerical thresholds
@@ -251,27 +254,15 @@ class CADVisualizer:
         # Setup fresh rendering environment for each render attempt
         self.__setup_rendering_environment()
         self.__general_config = load_config()
-        config = load_config(
-            v=self.__general_config["general_info"]["version"],
-            cfg_name=self.__general_config["active_configs"]["losses"],
-        )
-        bb_config = config.get("bb_config")
-
-        if bb_config:
-            assembley_version = bb_config.get("assembly_version")
-            assembly_id = bb_config["assembly_id"]
 
         meshes = []
         types = ["solid_a", "solid_b"]
 
-        if assembley_version == 3:
-            inner_box, outer_box, _ = call_assembly(assembly_id)  # getting assembly for inner_nbz and outer_nbz as solid
-            compound_inner_box = inner_box.model.toCompound()
-            inner_box_solid = cq.Solid(compound_inner_box.fuse().wrapped)  # transforming to solid for rendering
-            meshes = [
-                self.__cq_solid_to_trimesh(inner_box_solid),
-                self.__cq_solid_to_trimesh(outer_box),
-            ]
+        inner_box, outer_box = self.inner_bb, self.outer_bb
+        meshes = [
+            self.__cq_solid_to_trimesh(inner_box),
+            self.__cq_solid_to_trimesh(outer_box),
+        ]
 
         if self.__ply_path and Path(self.__ply_path).exists():
             loaded_mesh = self.__load_mesh(self.__ply_path, "ply")
@@ -339,7 +330,27 @@ class CADVisualizer:
         blue_dom = (b > self.__blue_threshold) & (b > (r + g) * 0.5)
         return bool(np.mean(blue_dom) >= self.__min_blue_ratio)
 
-    def render_until_blue_detected(self) -> tuple[str, bool, int]:
+    def render_until_blue_detected(self, outer_bb: cq.Solid | None = None, inner_bb: list | None = None) -> tuple[str, bool, int]:
+        if outer_bb is None:
+            config = load_config(
+                v=self.__general_config["general_info"]["version"],
+                cfg_name=self.__general_config["active_configs"]["losses"],
+            )
+            bb_config = config.get("bb_config")
+
+            if bb_config:
+                assembley_version = bb_config.get("assembly_version")
+                assembly_id = bb_config["assembly_id"]
+
+            if assembley_version == 3:
+                self.inner_bb, self.outer_b, _ = call_assembly(
+                    assembly_id
+                )  # getting assembly for inner_nbz and outer_nbz as solid
+
+        else:
+            self.outer_bb = outer_bb
+            self.inner_bb = inner_bb
+
         for attempts in range(1, self.__max_attempts + 1):
             p = Path(self.__out_image_path)
             cur = f"{p.parent / p.stem}_attempt_{attempts}{p.suffix}"
@@ -354,17 +365,109 @@ class CADVisualizer:
         return self.__out_image_path, ok, self.__max_attempts
 
 
-if __name__ == "__main__":
-    username = os.getenv("USER") or os.getenv("USERNAME") or "clhuber"
-    base_path = f"/cluster/home/{username}/AISCO_code/subprojects/wp4_aeroshell_optimizer/data"
+class AutoVisToWandB:
+    def __init__(self, inner_bb, outer_bb, sdf_model, epoch_name, device):
+        try:
+            self.device = device
+            ply_file = self.extract_sdf_to_temp_ply(
+                sdf_model=sdf_model,
+                resolution=128,
+                bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3],
+                isovalue=0.0,
+                device=device,
+            )
+            self.device = device
+            tmp_dir = tempfile.mkdtemp(prefix="nice")
+            out_image_path = os.path.join(tmp_dir, "nice.png")
+            visualiser = CADVisualizer(ply_path=ply_file, out_image_path=out_image_path)
+            path, _, _ = visualiser.render_until_blue_detected(outer_bb=outer_bb, inner_bb=inner_bb)
+            wandb.log(
+                {
+                    "Bounding Boxes:": wandb.Image(
+                        path,
+                    )
+                },
+                step=epoch_name,
+            )
+        except Exception as _:
+            return
 
-    for mesh_name, render_name in [
-        ("mesh1.ply", "render_ply1.png"),
-        ("mesh.ply", "render_ply.png"),
-        ("mesh_g.ply", "render_ply2.png"),
-    ]:
-        visualizer = CADVisualizer(
-            ply_path=f"{base_path}/Meshes/{mesh_name}",
-            out_image_path=f"{base_path}/Renders/{render_name}",
+    def write_ply(self, vertices: torch.Tensor, faces: torch.Tensor, out_path: str) -> None:
+        """
+        Minimal ASCII PLY writer.
+
+        Args:
+            vertices: (V, 3) float tensor
+            faces: (F, 3) long tensor
+            out_path: output .ply file path
+        """
+        v = vertices.detach().cpu().numpy()
+        f = faces.detach().cpu().numpy()
+
+        num_vertices = v.shape[0]
+        num_faces = f.shape[0]
+
+        with open(out_path, "w") as f_out:
+            # Header
+            f_out.write("ply\n")
+            f_out.write("format ascii 1.0\n")
+            f_out.write(f"element vertex {num_vertices}\n")
+            f_out.write("property float x\n")
+            f_out.write("property float y\n")
+            f_out.write("property float z\n")
+            f_out.write(f"element face {num_faces}\n")
+            f_out.write("property list uchar int vertex_indices\n")
+            f_out.write("end_header\n")
+
+            # Vertices
+            for i in range(num_vertices):
+                x, y, z = v[i]
+                f_out.write(f"{x} {y} {z}\n")
+
+            # Faces
+            for i in range(num_faces):
+                i0, i1, i2 = f[i]
+                f_out.write(f"3 {int(i0)} {int(i1)} {int(i2)}\n")
+
+    def extract_sdf_to_temp_ply(
+        self,
+        sdf_model: torch.nn.Module,
+        resolution: int = 64,
+        bbox: list | None = None,
+        isovalue: float = 0.0,
+        device: str = "cuda",
+    ) -> str:
+        """
+        Calls MeshSDFExtractor with the given sdf_model and writes a PLY file
+        to a temporary directory. Returns the PLY file path.
+        """
+        if bbox is None:
+            # Example: cube centered at origin with side length 2
+            bbox = [-1.0, 1.0, -1.0, 1.0, -1.0, 1.0]
+
+        # Move model to device and set eval mode
+        sdf_model = sdf_model.to(device)
+        sdf_model.eval()
+
+        extractor = MeshSDFExtractor(
+            resolution=resolution,
+            bbox=bbox,
+            isovalue=isovalue,
+            device=device,
         )
-        visualizer.render_until_blue_detected()
+
+        # Optional: pre-set grid (not strictly required, but explicit)
+        extractor.set_grid(bbox=bbox, resolution=resolution)
+
+        # Extract mesh (non-differentiable path is fine for exporting)
+        with torch.no_grad():
+            vertices, faces = extractor.extract_mesh(sdf_model)
+
+        # Create temporary directory and file path
+        tmp_dir = tempfile.mkdtemp(prefix="mesh_sdf_")
+        ply_path = os.path.join(tmp_dir, "mesh_sdf_output.ply")
+
+        # Write PLY
+        self.write_ply(vertices, faces, ply_path)
+
+        return ply_path

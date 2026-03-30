@@ -1,43 +1,28 @@
-program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v1_1_one_model.py
-method: grid
+program: subprojects/wp3_solar_estimator/raytracing/easier_sweep.py
+method: random
+run_cap: 200
 entity: aisco
 project: RTParam_Sweep
-name: sweep1
+name: Fix2
+
 metric:
   goal: maximize
   name: solar_loss_metrics/visibility_histogram_std
+
 
 parameters:
   # Keep the tested solar loss path fixed for this sweep
   solar_configs/solar_loss_config.SolarLossConfigV7.raytracing_version:
     value: "v3"
 
-
-
   # Keep memory-sensitive chunking explicit during tests
   solar_configs/raytracing_config.RaytracingConfigV3.mesh.face_chunk_size:
-    values: [400]
+    value: 300
 
   solar_configs/raytracing_config.RaytracingConfigV3.mesh.blocker_chunk_size:
-    values: [750]
+    value: 500
 
-  #solar_configs/raytracing_config.RaytracingConfigV3.mesh.depth_normalization:
-  #  values: ["bbox", "ray_length"]
 
-  solar_configs/raytracing_config.RaytracingConfigV3.mesh.transmittance_beta:
-    values: [0.5, 1.0, 2.0, 4.0]
-
-  solar_configs/raytracing_config.RaytracingConfigV3.mesh.transmittance_kappa:
-    values: [0.5, 1.0, 2.0]
-
+  # Soft hit-membership sharpness
   solar_configs/raytracing_config.RaytracingConfigV3.mesh.bary_softness_tau:
-    values: [4, 12, 20]
-
-  solar_configs/raytracing_config.RaytracingConfigV3.mesh.t_softness_tau:
-    values: [4, 12, 20]
-
-  solar_configs/raytracing_config.RaytracingConfigV3.mesh.face_samples:
-    values: [3, 7, 13]
-
-  solar_configs/raytracing_config.RaytracingConfigV3.mesh.origin_offset_eps:
-    values: [ 5e-5, 1e-3]
+    values: [2,4,8,12,18,22]
