@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import torch
+import trimesh
 
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MarchingCubesExtractor
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
@@ -288,3 +289,37 @@ def reformat_wandb_name(wandb_name: str) -> str:
         else wandb_name
     )
     return wandb_name
+
+
+def _load_mesh(path: str) -> trimesh.Trimesh:
+    if not path:
+        raise ValueError("PLY path must be a non-empty string.")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"PLY file does not exist: {path}")
+
+    loaded = trimesh.load(path, file_type="ply", process=False)
+    if isinstance(loaded, trimesh.Scene):
+        geoms = tuple(loaded.geometry.values())
+        if len(geoms) == 0:
+            raise ValueError(f"PLY scene has no geometry: {path}")
+        mesh: trimesh.Trimesh = trimesh.util.concatenate(geoms)
+    elif isinstance(loaded, trimesh.Trimesh):
+        mesh = loaded
+    else:
+        raise TypeError(f"Unsupported PLY payload at {path}: {type(loaded)}")
+
+    mesh.remove_infinite_values()
+    mesh.remove_unreferenced_vertices()
+    if len(mesh.faces) > 0:
+        trimesh.repair.fix_normals(mesh, multibody=False)
+    else:
+        raise ValueError(f"Mesh has no faces: {path}")
+
+    return mesh
+
+
+def fetch_bounding_box_ply(inner_ply_location: str = "", outer_ply_location: str = ""):
+    """Load and return inner/outer bounding-box meshes from PLY files."""
+    inner_mesh = _load_mesh(inner_ply_location)
+    outer_mesh = _load_mesh(outer_ply_location)
+    return inner_mesh, outer_mesh

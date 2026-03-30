@@ -13,7 +13,7 @@ from ..dataloader.metadata import DATASET_METADATA
 
 # Import the new W&B Tracker
 from .logger import WandbTracker
-from .optimizers import AdamOptimizer, AdamWOptimizer
+from .optimizers import AdamOptimizer, AdamWOptimizer, build_loss_fn
 from .utils.setup import load_ckpt, manual_seed, save_ckpt
 
 
@@ -62,11 +62,28 @@ class TrainerBase:
         # 1. Handle dtypes and loss first
         if self.setup_config["dtype"] in ["float", "torch.float32", "torch.FloatTensor"]:
             self.dtype = torch.float32
+            self.use_bf16 = False
         elif self.setup_config["dtype"] in ["double", "torch.float64", "torch.DoubleTensor"]:
             self.dtype = torch.float64
+            self.use_bf16 = False
+        elif self.setup_config["dtype"] in ["bfloat16", "torch.bfloat16", "bf16"]:
+            self.dtype = torch.float32  # model stays fp32; autocast handles bf16
+            self.use_bf16 = True
         else:
             raise ValueError("Invalid dtype:", self.setup_config["dtype"])
-        self.loss_fn = nn.MSELoss()
+
+        self.autocast_ctx = (
+            torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
+            if self.use_bf16
+            else torch.amp.autocast(device_type="cuda", enabled=False)
+        )
+
+        loss_name = (
+            self.optimizer_config["args"].get("loss", "mse")
+            if isinstance(self.optimizer_config["args"], dict)
+            else getattr(self.optimizer_config["args"], "loss", "mse")
+        )
+        self.loss_fn = build_loss_fn(loss_name)
 
         # 2. Initialize the model components
         self.init_dataset(self.dataset_config)

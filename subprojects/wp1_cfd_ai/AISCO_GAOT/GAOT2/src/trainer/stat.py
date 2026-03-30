@@ -11,7 +11,6 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn.functional as f
 import torch_geometric as pyg
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
@@ -26,6 +25,7 @@ from src.dataloader.pyg_datasets import EnrichedData, VTKMeshDataset
 from src.dataloader.pyg_transforms import NormalizeFeatures, RescalePosition, RescalePositionNew
 from src.model.gaot_3d import GAOT3D, masked_multi_head_loss
 from src.model.layers.magno import get_neighbor_strategy, parse_neighbor_strategy
+from src.utils.pressure_integration import cp_field_to_drag
 from src.utils.scale import rescale, rescale_new
 
 from .base import TrainerBase
@@ -690,22 +690,31 @@ class StaticTrainer3D(TrainerBase):
         return sampled_data_list, query_pos, query_batch_idx, field_target
 
     def _pick_viz_samples(self):
-        """Randomly select one sample from train and one from val for per-epoch visualisation."""
-        # Use a fresh RNG seeded from OS entropy so the global training seed doesn't fix these picks
-        rng = random.Random(int.from_bytes(os.urandom(4), "big"))
-        train_idx = rng.randint(0, len(self.train_loader.dataset) - 1)
-        val_idx = rng.randint(0, len(self.val_loader.dataset) - 1)
-        train_sample = self.train_loader.dataset[train_idx]
-        val_sample = self.val_loader.dataset[val_idx]
-        logging.getLogger(__name__).info(
-            f"Rank {self.setup_config['rank']}: Viz samples — "
-            f"train[{train_idx}] ({getattr(train_sample, 'filename', 'N/A')}), "
-            f"val[{val_idx}] ({getattr(val_sample, 'filename', 'N/A')})"
-        )
-        return train_sample, val_sample
+        """Randomly select N samples from train and N from val for per-epoch visualisation.
 
-    def _run_viz_for_sample(self, sample, split_label: str, epoch: int):
-        """Run inference on a single sample and log field + scalar images to W&B."""
+        N is determined by ``dataset.num_viz_samples`` (default 1).  Returns two lists.
+        """
+        n = self.dataset_config.get("num_viz_samples", 1)
+        if n <= 0:
+            return [], []
+        rng = random.Random(int.from_bytes(os.urandom(4), "big"))
+        train_size = len(self.train_loader.dataset)
+        val_size = len(self.val_loader.dataset)
+        train_indices = rng.sample(range(train_size), min(n, train_size))
+        val_indices = rng.sample(range(val_size), min(n, val_size))
+        train_samples = [self.train_loader.dataset[i] for i in train_indices]
+        val_samples = [self.val_loader.dataset[i] for i in val_indices]
+        names_train = ", ".join(
+            f"{i}({getattr(s, 'filename', 'N/A')})" for i, s in zip(train_indices, train_samples, strict=True)
+        )
+        names_val = ", ".join(f"{i}({getattr(s, 'filename', 'N/A')})" for i, s in zip(val_indices, val_samples, strict=True))
+        logging.getLogger(__name__).info(
+            f"Rank {self.setup_config['rank']}: Viz samples — train[{names_train}], val[{names_val}]"
+        )
+        return train_samples, val_samples
+
+    def _run_viz_for_sample(self, sample, split_label: str, epoch: int, sample_idx: int = 0):  # noqa: PLR0912,PLR0915
+        """Run inference on a single sample and log field + scalar + integrated-drag images to W&B."""
         loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
         batch = next(iter(loader)).to(self.device)
         latent_tokens_dev = self.latent_tokens.to(self.device)
@@ -714,6 +723,7 @@ class StaticTrainer3D(TrainerBase):
 
         coords = batch.pos.cpu().numpy()
         fname = getattr(sample, "filename", split_label)
+        suffix = f"_{sample_idx}" if sample_idx > 0 else ""
 
         # --- Field visualisation ---
         if isinstance(pred, dict) and "field" in pred:
@@ -731,6 +741,10 @@ class StaticTrainer3D(TrainerBase):
                 # don't blow out the scale
                 common_min = float(np.min(field_gt_dn))
                 common_max = float(np.max(field_gt_dn))
+
+                # Equal-aspect bounds: same range on all 3 axes
+                _mid = coords.mean(axis=0)
+                _half_range = float((coords.max(axis=0) - coords.min(axis=0)).max()) / 2
 
                 fig = plt.figure(figsize=(20, 6))
                 for panel_idx, (data, title, cmap_name, vmin, vmax) in enumerate(
@@ -754,14 +768,86 @@ class StaticTrainer3D(TrainerBase):
                     )
                     ax.set_title(title)
                     fig.colorbar(sc, ax=ax, shrink=0.5)
+                    ax.set_xlim(_mid[0] - _half_range, _mid[0] + _half_range)
+                    ax.set_ylim(_mid[1] - _half_range, _mid[1] + _half_range)
+                    ax.set_zlim(_mid[2] - _half_range, _mid[2] + _half_range)
                     ax.view_init(elev=20, azim=-120)
 
                 fig.suptitle(f"Pressure Field [{split_label}] {fname} — Epoch {epoch + 1}", fontsize=13)
                 plt.tight_layout()
                 self.tracker.log_image(
-                    f"viz/{split_label}/pressure_field", fig, step=epoch + 1, caption=f"{split_label} {fname} epoch {epoch + 1}"
+                    f"viz/{split_label}/pressure_field{suffix}",
+                    fig,
+                    step=epoch + 1,
+                    caption=f"{split_label} {fname} epoch {epoch + 1}",
                 )
                 plt.close(fig)
+
+        # --- Integrated pressure drag visualisation (Cp → Newtons) ---
+        if isinstance(pred, dict) and "field" in pred and hasattr(batch, "face") and batch.face is not None:
+            v_inf = self.dataset_config.get("v_inf", 25.0)
+            rho = self.dataset_config.get("rho", 1.225)
+            u_mean_t = self.u_mean if self.u_mean.numel() == 1 else torch.tensor(0.0)
+            u_std_t = self.u_std if self.u_std.numel() == 1 else torch.tensor(1.0)
+
+            # Denormalize predicted and GT Cp fields
+            field_pred_t = pred["field"].cpu().float().squeeze() * u_std_t.cpu().float() + u_mean_t.cpu().float()
+            pos_cpu = batch.pos.cpu().float()
+            normals_cpu = batch.c.cpu().float() if hasattr(batch, "c") and batch.c is not None else None
+            face_cpu = batch.face.cpu().long()
+
+            drag_pred_val = float("nan")
+            drag_gt_val = float("nan")
+            if normals_cpu is not None:
+                try:
+                    drag_pred_val = cp_field_to_drag(field_pred_t, normals_cpu, face_cpu, pos_cpu, v_inf=v_inf, rho=rho).item()
+                except Exception:
+                    logging.getLogger(__name__).debug("Integrated drag (pred) failed", exc_info=True)
+
+                if batch.x is not None:
+                    field_gt_t = batch.x.cpu().float().squeeze() * u_std_t.cpu().float() + u_mean_t.cpu().float()
+                    try:
+                        drag_gt_val = cp_field_to_drag(field_gt_t, normals_cpu, face_cpu, pos_cpu, v_inf=v_inf, rho=rho).item()
+                    except Exception:
+                        logging.getLogger(__name__).debug("Integrated drag (GT) failed", exc_info=True)
+
+            # Log as scalar metrics
+            drag_metrics = {}
+            if not np.isnan(drag_pred_val):
+                drag_metrics[f"viz/{split_label}/integrated_drag_pred{suffix}"] = drag_pred_val
+            if not np.isnan(drag_gt_val):
+                drag_metrics[f"viz/{split_label}/integrated_drag_gt{suffix}"] = drag_gt_val
+            if drag_metrics:
+                self.tracker.log_metrics(drag_metrics, step=epoch + 1)
+
+            # Bar chart comparing GT vs Pred integrated drag
+            if not np.isnan(drag_pred_val):
+                fig_drag, ax_drag = plt.subplots(figsize=(5, 4))
+                labels = []
+                values = []
+                colors = []
+                if not np.isnan(drag_gt_val):
+                    labels.append("GT")
+                    values.append(drag_gt_val)
+                    colors.append("steelblue")
+                labels.append("Pred")
+                values.append(drag_pred_val)
+                colors.append("coral")
+                ax_drag.bar(labels, values, color=colors)
+                ax_drag.set_ylabel("Drag Force [N]")
+                if not np.isnan(drag_gt_val):
+                    ax_drag.set_title(f"Integrated Drag  GT={drag_gt_val:.4f} N  Pred={drag_pred_val:.4f} N")
+                else:
+                    ax_drag.set_title(f"Integrated Drag  Pred={drag_pred_val:.4f} N")
+                fig_drag.suptitle(f"Integrated Pressure Drag [{split_label}] {fname} — Epoch {epoch + 1}", fontsize=11)
+                plt.tight_layout()
+                self.tracker.log_image(
+                    f"viz/{split_label}/integrated_drag{suffix}",
+                    fig_drag,
+                    step=epoch + 1,
+                    caption=f"{split_label} {fname} epoch {epoch + 1}",
+                )
+                plt.close(fig_drag)
 
         # --- Scalar visualisation ---
         if isinstance(pred, dict):
@@ -790,7 +876,7 @@ class StaticTrainer3D(TrainerBase):
                 fig.suptitle(f"Scalars [{split_label}] {fname} — Epoch {epoch + 1}", fontsize=13)
                 plt.tight_layout()
                 self.tracker.log_image(
-                    f"viz/{split_label}/scalar_predictions",
+                    f"viz/{split_label}/scalar_predictions{suffix}",
                     fig,
                     step=epoch + 1,
                     caption=f"{split_label} {fname} epoch {epoch + 1}",
@@ -801,15 +887,19 @@ class StaticTrainer3D(TrainerBase):
         """Run inference on fixed train+val samples and log images to W&B each epoch."""
         if self.setup_config["rank"] != 0:
             return
-        if not hasattr(self, "_viz_train_sample"):
-            self._viz_train_sample, self._viz_val_sample = self._pick_viz_samples()
+        num_viz = self.dataset_config.get("num_viz_samples", 1)
+        if num_viz <= 0:
+            return
+        if not hasattr(self, "_viz_train_samples"):
+            self._viz_train_samples, self._viz_val_samples = self._pick_viz_samples()
 
         self.model.eval()
-        for sample, label in [(self._viz_train_sample, "train"), (self._viz_val_sample, "val")]:
-            try:
-                self._run_viz_for_sample(sample, label, epoch)
-            except Exception:
-                logging.getLogger(__name__).exception(f"Viz failed for {label} sample (epoch {epoch + 1}):")
+        for samples, label in [(self._viz_train_samples, "train"), (self._viz_val_samples, "val")]:
+            for idx, sample in enumerate(samples):
+                try:
+                    self._run_viz_for_sample(sample, label, epoch, sample_idx=idx)
+                except Exception:
+                    logging.getLogger(__name__).exception(f"Viz failed for {label} sample {idx} (epoch {epoch + 1}):")
 
     def train_step(self, batch: "pyg.data.Batch"):  # noqa: PLR0912, PLR0915
         strategy = self.dataset_config["training_strategy"]
@@ -853,7 +943,7 @@ class StaticTrainer3D(TrainerBase):
             targets = {"force": batch.force, "cd": batch.cd}
             if self.active_heads is not None:
                 targets = {k: v for k, v in targets.items() if k in self.active_heads}
-            scalar_loss = masked_multi_head_loss(pred, targets)
+            scalar_loss = masked_multi_head_loss(pred, targets, loss_fn=self.loss_fn)
 
             # --- Per-head MSE for logging ---
             head_losses = {}
@@ -884,7 +974,7 @@ class StaticTrainer3D(TrainerBase):
                     # Mask out NaN entries (samples without field data)
                     valid = ~torch.isnan(ft)
                     if valid.any():
-                        field_loss = f.mse_loss(field_pred[valid], ft[valid])
+                        field_loss = self.loss_fn(field_pred[valid], ft[valid])
                     else:
                         field_loss = torch.tensor(0.0, device=self.device)
 
@@ -912,13 +1002,13 @@ class StaticTrainer3D(TrainerBase):
             return self.loss_fn(pred, target), {}
 
     def _add_field_loss(self, batch, pred, loss, head_losses):
-        """Compute field MSE and add it to loss; updates head_losses in-place."""
+        """Compute field loss and add it to loss; updates head_losses in-place."""
         if "field" not in pred or not hasattr(batch, "x") or batch.x is None:
             return loss
         ft = batch.x.to(self.device)
         valid = ~torch.isnan(ft)
         if valid.any():
-            field_loss = f.mse_loss(pred["field"][valid], ft[valid])
+            field_loss = self.loss_fn(pred["field"][valid], ft[valid])
             head_losses["field"] = head_losses.get("field", 0.0) + field_loss.item()
             field_weight = self.dataset_config["field_loss_weight"]  # 1.0
             loss = loss + field_weight * field_loss
@@ -927,9 +1017,11 @@ class StaticTrainer3D(TrainerBase):
     def validate(self, loader: DataLoader):  # noqa: PLR0912, PLR0915
         self.model.eval()
         total_loss = 0.0
+        total_mse = 0.0
         total_rel_l2 = 0.0
         head_losses: dict[str, float] = {}
         num_batches = len(loader)
+        _mse_fn = torch.nn.MSELoss()
 
         with torch.no_grad():
             for batch_raw in loader:
@@ -943,7 +1035,8 @@ class StaticTrainer3D(TrainerBase):
                     if self.active_heads is not None:
                         targets = {k: v for k, v in targets.items() if k in self.active_heads}
 
-                    loss = masked_multi_head_loss(pred, targets)
+                    loss = masked_multi_head_loss(pred, targets, loss_fn=self.loss_fn)
+                    mse = masked_multi_head_loss(pred, targets, loss_fn=_mse_fn)
 
                     # --- Per-head scalar MSE ---
                     loss_fn_none = torch.nn.MSELoss(reduction="none")
@@ -970,12 +1063,21 @@ class StaticTrainer3D(TrainerBase):
 
                     # --- Field loss ---
                     loss = self._add_field_loss(batch, pred, loss, head_losses)
+                    # Always track MSE for the field component too
+                    if "field" in pred and hasattr(batch, "x") and batch.x is not None:
+                        ft = batch.x.to(self.device)
+                        fv = ~torch.isnan(ft)
+                        if fv.any():
+                            field_weight = self.dataset_config["field_loss_weight"]
+                            mse = mse + field_weight * _mse_fn(pred["field"][fv], ft[fv])
                 else:
                     target = batch.y
                     loss = self.loss_fn(pred, target)
+                    mse = _mse_fn(pred, target)
                     p, t = pred, target
 
                 total_loss += loss.item()
+                total_mse += mse.item()
 
                 # 2. Calculate Relative L2 Error with NaN Masking
                 # We must mask NaNs before taking the norm, otherwise the result is NaN
@@ -995,7 +1097,7 @@ class StaticTrainer3D(TrainerBase):
                     pass
 
         # Global reduction across ranks for DDP
-        local_metrics = torch.tensor([total_loss, total_rel_l2], dtype=torch.float64, device=self.device)
+        local_metrics = torch.tensor([total_loss, total_mse, total_rel_l2], dtype=torch.float64, device=self.device)
         world_size = 1
         if self.setup_config["distributed"]:  # False
             torch.distributed.all_reduce(local_metrics, op=torch.distributed.ReduceOp.SUM)
@@ -1003,7 +1105,11 @@ class StaticTrainer3D(TrainerBase):
 
         denom = num_batches * world_size
 
-        result = {"loss": local_metrics[0].item() / denom, "rel_l2": local_metrics[1].item() / denom}
+        result = {
+            "loss": local_metrics[0].item() / denom,
+            "mse": local_metrics[1].item() / denom,
+            "rel_l2": local_metrics[2].item() / denom,
+        }
         for h, v in head_losses.items():
             result[f"head_{h}"] = v / num_batches
         return result
