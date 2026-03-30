@@ -18,26 +18,16 @@ metric:
 # Global sweep info (matches your project)
 project: WP1_drag
 entity: aisco
-name: "wp1_gaot_lr_sweep"
+name: "wp1_gaot_optimiser_sweep"
 
 parameters:
   # ========== OPTIMIZER / LR-RELATED ONLY ==========
-  optimizer.args.lr:
-    distribution: log_uniform_values
-    min: 1e-5
-    max: 1e-3
+  optimizer.args.beta1:
+    distribution: uniform
+    min: 0.85
+    max: 1
 
-  optimizer.args.weight_decay:
+  optimizer.args.eps:
     distribution: log_uniform_values
-    min: 1e-6
-    max: 1e-3
-
-  optimizer.args.max_lr:
-    distribution: log_uniform_values
-    min: 5e-4
-    max: 1e-2
-
-  optimizer.args.min_lr:
-    distribution: log_uniform_values
-    min: 2e-5
-    max: 5e-4
+    min: 1e-9
+    max: 1e-4
