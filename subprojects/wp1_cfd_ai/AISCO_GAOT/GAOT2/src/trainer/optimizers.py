@@ -128,7 +128,7 @@ class AdamOptimizer:
 
     def __init__(self, params, config):
         # New: allow overriding betas / eps from config, with stable defaults
-        betas = getattr(config, "betas", (0.95, 0.999))
+        betas = (config["beta1"], config["beta2"])
         eps = getattr(config, "eps", 1e-6)
 
         self.optimizer = torch.optim.Adam(
@@ -273,7 +273,7 @@ class AdamWOptimizer:
 
     def __init__(self, params, config: dict):
         # New: configurable betas / eps with stable defaults
-        betas = config["betas"]
+        betas = (config["beta1"], config["beta2"])
         eps = config["eps"]
 
         self.optimizer = torch.optim.AdamW(
