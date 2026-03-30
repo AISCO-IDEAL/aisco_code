@@ -23,7 +23,6 @@ def sdf_visibility_v3(
     sun_dir: torch.Tensor,
     *,
     normal_source: Literal["mesh", "sdf"] = "mesh",
-    method: Literal["sigmoid", "absorption"] = "sigmoid",
     # Sigmoid method params
     sdf_cfg: dict[str, Any],
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -35,6 +34,5 @@ def sdf_visibility_v3(
         faces=faces,
         sun_dir=sun_dir,
         normal_source=normal_source,
-        method=method,
         sdf_cfg=sdf_cfg,
     )

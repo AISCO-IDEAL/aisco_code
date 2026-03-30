@@ -280,6 +280,7 @@ def _compute_visibility_for_chunk_soft(
     transmittance_kappa: float,
     bary_softness_tau: float,
     t_softness_tau: float,
+    margin: float | torch.Tensor,
     blocker_chunk_size: int,
     device: torch.device,
     eps: float,
@@ -319,7 +320,12 @@ def _compute_visibility_for_chunk_soft(
         w_u = torch.sigmoid(bary_softness_tau * u_block)
         w_v = torch.sigmoid(bary_softness_tau * v_block)
         w_w = torch.sigmoid(bary_softness_tau * (1.0 - u_block - v_block))
-        w_t = torch.sigmoid(t_softness_tau * t_block)
+
+        # d_face_to_blocker > 0 means the blocker is between the sun and the face.
+        d_face_to_blocker = L - t_block
+        # Include a negative margin to require blockers to be strictly 'margin' distance away.
+        w_t = torch.sigmoid(t_softness_tau * ((d_face_to_blocker - margin) / depth_scale))
+
         w_parallel = (~parallel_mask).to(dtype=tri_v0.dtype)[None, :]
         w_hit = w_u * w_v * w_w * w_t * w_parallel
 
@@ -330,9 +336,10 @@ def _compute_visibility_for_chunk_soft(
             col_idx = ray_face_indices[self_in_block] - occluder_start
             w_hit[row_idx, col_idx] = 0.0
 
-        t_pos = torch.clamp(t_block, min=0.0)
-        t_norm = t_pos / depth_scale
-        depth_weight = torch.exp(-transmittance_beta * t_norm)
+        # Depth weight primarily penalizes blockers that are far away from the face.
+        d_pos = torch.clamp(d_face_to_blocker, min=0.0)
+        d_norm = d_pos / depth_scale
+        depth_weight = torch.exp(-transmittance_beta * d_norm)
 
         occlusion_mass = occlusion_mass + torch.sum(w_hit * depth_weight, dim=1)
 
@@ -529,6 +536,7 @@ def mesh_visibility_v3(  # noqa: PLR0912, PLR0915 #sadly it's a big mess.
                 transmittance_kappa=transmittance_kappa,
                 bary_softness_tau=bary_softness_tau,
                 t_softness_tau=t_softness_tau,
+                margin=margin,
                 blocker_chunk_size=blocker_chunk_size,
                 device=device,
                 eps=eps,
