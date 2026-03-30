@@ -42,6 +42,8 @@ class MeshSDFExtractor:
         target_nr_vertices: int = -1,
         tolerance: float = 0.1,
         max_iters: int = 20,
+        auto_isovalue_if_out_of_range: bool = True,
+        warn_out_of_range: bool = True,
     ):
         """
         Args:
@@ -61,6 +63,9 @@ class MeshSDFExtractor:
         self.bbox = bbox
         self.isovalue = isovalue
         self.device = device
+        self.auto_isovalue_if_out_of_range = auto_isovalue_if_out_of_range
+        self.warn_out_of_range = warn_out_of_range
+        self._out_of_range_warned_once = False
 
         # Fixed grid support (to align with DISO/FC wrappers)
         self._grid_points: torch.Tensor | None = None
@@ -143,11 +148,39 @@ class MeshSDFExtractor:
         sdf_combined = torch.cat(sdf_batches, dim=0).cpu().numpy()
         sdf_grid = sdf_combined.reshape(self._resolution, self._resolution, self._resolution)
 
+        sdf_min = float(np.min(sdf_grid))
+        sdf_max = float(np.max(sdf_grid))
+        level = float(self.isovalue)
+
+        # If no zero crossing exists in the sampled range, MC fails.
+        # Optional fallback: choose a level inside [min, max] to keep training/rendering alive.
+        if not (sdf_min <= level <= sdf_max):
+            if self.auto_isovalue_if_out_of_range:
+                level = 0.5 * (sdf_min + sdf_max)
+                if self.warn_out_of_range and not self._out_of_range_warned_once:
+                    warnings.warn(
+                        (
+                            f"Requested isovalue={self.isovalue} is outside sampled SDF range "
+                            f"[{sdf_min:.6g}, {sdf_max:.6g}]. Falling back to auto level {level:.6g}."
+                        ),
+                        stacklevel=2,
+                    )
+                    self._out_of_range_warned_once = True
+            elif self.warn_out_of_range and not self._out_of_range_warned_once:
+                warnings.warn(
+                    (
+                        f"Requested isovalue={self.isovalue} is outside sampled SDF range "
+                        f"[{sdf_min:.6g}, {sdf_max:.6g}]. Returning empty mesh."
+                    ),
+                    stacklevel=2,
+                )
+                self._out_of_range_warned_once = True
+
         # Run Marching Cubes
         try:
             vertices, faces, _, _ = measure.marching_cubes(  # 3rd return value would be normals
                 sdf_grid,
-                level=self.isovalue,
+                level=level,
                 spacing=(
                     (self.bbox[1] - self.bbox[0]) / (self._resolution - 1),
                     (self.bbox[3] - self.bbox[2]) / (self._resolution - 1),
@@ -161,7 +194,9 @@ class MeshSDFExtractor:
             vertices[:, 2] += self.bbox[4]
 
         except (ValueError, RuntimeError) as e:
-            warnings.warn(f"Marching Cubes failed: {e}. Returning empty mesh.", stacklevel=2)
+            if self.warn_out_of_range and not self._out_of_range_warned_once:
+                warnings.warn(f"Marching Cubes failed: {e}. Returning empty mesh.", stacklevel=2)
+                self._out_of_range_warned_once = True
             vertices = np.zeros((0, 3))
             faces = np.zeros((0, 3), dtype=np.int32)
 

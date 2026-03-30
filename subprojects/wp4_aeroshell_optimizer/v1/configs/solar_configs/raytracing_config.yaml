@@ -25,20 +25,21 @@ RaytracingConfigV1:
 
 #RaytracingConfigV2: accessed in solar_v6.py, with selection of version via SolarLossConfigV6's raytracing_version key
 RaytracingConfigV2:
-  method: "mesh" # sdf | mesh | none
+  method: "sdf" # sdf | mesh | none
   normal_source: "mesh" # mesh | sdf
   path: "subprojects.wp3_solar_estimator.raytracing.diffable.version2"
 
   sdf:
-    method: "sigmoid" # sigmoid | absorption
-    alpha: 20.0
-    beta: 20.0
+    alpha: 1.0
+    beta: 4.0
+    debug: 0 # 0 for no debug output, >0 for various debug plots (only works if save_dir is also provided)
     kappa: 2.0
-    num_steps: 12
-    step_size_factor: 0.1
-    origin_offset_factor: 1e-3
     max_march_factor: 2.0
+    method: "absorption" # sigmoid | absorption
+    num_steps: 128
+    origin_offset_factor: 1e-3
     point_chunk_size: 256
+    step_size_factor: 0.015
 
   mesh:
     beta: 1.0
@@ -78,7 +79,6 @@ RaytracingConfigV3:
     sun_distance_factor: 1.0
     face_chunk_size: 400 #C
     blocker_chunk_size: 750 #K --> peak memory usage will be C*K
-    miss_t: 1e9
     smoothing_mode: "soft_barycentric_transmittance" # soft_barycentric_transmittance | v2_sigmoid
     face_samples: 7 # number of deterministic barycentric sample rays per face
     sample_pattern: "barycentric_ring" # centroid | barycentric_ring

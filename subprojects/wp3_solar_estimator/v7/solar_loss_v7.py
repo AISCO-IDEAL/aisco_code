@@ -121,6 +121,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     shading_render_interval: int = 1,
     selection_threshold_render: float = 0.5,
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
+    output_dir: Path | None = None,
 ) -> torch.Tensor:
     """
     Compute differentiable solar mesh loss with soft selection and shading.
@@ -145,6 +146,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
         counter: counter for rendering
         epoch_name: name of the current epoch for logging
         log_group_name: name of the log group in wandb
+        output_dir: directory to save output files
     Returns:
         scalar loss in m²
     """
@@ -229,7 +231,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     face_cross_norm = torch.linalg.norm(face_cross, dim=-1)
 
     face_area_mm2 = 0.5 * face_cross_norm  # (F,)
-    face_normals_unit = face_cross / (face_cross_norm).unsqueeze(-1)  # (F, 3)
+    face_normals_unit = face_cross / (face_cross_norm).unsqueeze(-1).clamp(min=epsilon)  # (F, 3)
     sun_directions_unit = solar_vectors / (torch.linalg.norm(solar_vectors, dim=-1, keepdim=True))  # (S, 3)
 
     # First ignore shading and sort by quality to get soft selection mask (Uses F x sun_batch_size Memory)
@@ -269,23 +271,25 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
                 )
             elif raytracing_version == "v2":
                 if collect_diag:
-                    visibility_local, _, _, ray_diag_local = mesh_visibility_v2(
+                    results = mesh_visibility_v2(
                         current_vertices,
                         faces,
                         sun_dir,
                         normal_source=str(raytracing_cfg["normal_source"]),
                         mesh_cfg=raytracing_cfg["mesh"],
                         return_diagnostics=True,
-                    )
+                    )  # (F,) in range [0, 1]
+                    visibility_local, _, _, ray_diag_local = results
                 else:
-                    visibility_local, _, _, _ = mesh_visibility_v2(
+                    results = mesh_visibility_v2(
                         current_vertices,
                         faces,
                         sun_dir,
                         normal_source=str(raytracing_cfg["normal_source"]),
                         mesh_cfg=raytracing_cfg["mesh"],
                         return_diagnostics=False,
-                    )
+                    )  # (F,) in range [0, 1]
+                    visibility_local, _, _, _ = results
             elif raytracing_version == "v3":
                 visibility_local, _, _ = mesh_visibility_v3(
                     current_vertices,
@@ -304,6 +308,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
                     vertices=current_vertices,
                     faces=faces,
                     sun_dir=sun_dir,
+                    normal_source=str(raytracing_cfg["normal_source"]),
                     sdf_cfg=raytracing_cfg["sdf"],
                 )
             elif raytracing_version == "v2":
@@ -312,6 +317,8 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
                     vertices=current_vertices,
                     faces=faces,
                     sun_dir=sun_dir,
+                    save_dir=output_dir,
+                    normal_source=str(raytracing_cfg["normal_source"]),
                     sdf_cfg=raytracing_cfg["sdf"],
                 )
             elif raytracing_version == "v3":
@@ -1032,6 +1039,7 @@ class SolarLossEstimator:
                     shading_render_interval=self.shading_render_interval,
                     selection_threshold_render=self.selection_threshold_render,
                     sdf_fn=model,
+                    output_dir=self.rendering_dir,
                 )
                 return loss
 
@@ -1103,6 +1111,7 @@ class SolarLossEstimator:
                 shading_render_interval=self.shading_render_interval,
                 selection_threshold_render=self.selection_threshold_render,
                 sdf_fn=model,
+                output_dir=self.rendering_dir,
             )
 
         return loss if self.method != "mesh_sdf" else surrogate_loss

@@ -10,12 +10,17 @@ class SilvrettaBbV0(ParentLoss):
         self.__config = self.losses_config["bb_config"]
         self.__inner_ply_location = self.losses_config["bb_config"]["inner_ply_location"]
         self.__outer_ply_location = self.losses_config["bb_config"]["outer_ply_location"]
+        self.__device = self.losses_config["bb_config"].get("sdf_device", "cuda")  # Default to 'cuda' if not specified
         # Create SDFs for inner and outer boxes
         inner_mesh, outer_mesh = fetch_bounding_box_ply(
             inner_ply_location=self.__inner_ply_location, outer_ply_location=self.__outer_ply_location
         )
-        self.__inner_SDF: SDFfromMesh = SDFfromMesh(mesh=inner_mesh, pointgrid_config=self.__config["pointgrid_params"])
-        self.__outer_SDF: SDFfromMesh = SDFfromMesh(mesh=outer_mesh, pointgrid_config=self.__config["pointgrid_params"])
+        self.__inner_SDF: SDFfromMesh = SDFfromMesh(
+            mesh=inner_mesh, pointgrid_config=self.__config["pointgrid_params"], sdf_device=self.__device
+        )
+        self.__outer_SDF: SDFfromMesh = SDFfromMesh(
+            mesh=outer_mesh, pointgrid_config=self.__config["pointgrid_params"], sdf_device=self.__device
+        )
         self.__pointgrid: list[list[float]] = self.__inner_SDF.pointgrid()
         self.__inner_sdf_values: list[float] = self.__inner_SDF.sdf_at_pointgrid()
         self.__outer_sdf_values: list[float] = self.__outer_SDF.sdf_at_pointgrid()

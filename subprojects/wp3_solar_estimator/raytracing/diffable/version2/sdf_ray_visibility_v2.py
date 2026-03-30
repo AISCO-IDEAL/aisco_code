@@ -23,8 +23,11 @@ Both are fully differentiable through the SDF network weights θ.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Literal
+from pathlib import Path
+from typing import Any
 
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 
 # ---------------------------------------------------------------------------
@@ -94,7 +97,7 @@ def _march_sigmoid(
         d = torch.cat(sdf_vals_list, dim=0)  # (R,)
 
         # log σ(α·d) — use log_sigmoid for numerical stability
-        log_vis = log_vis + torch.nn.functional.logsigmoid(alpha * d)
+        log_vis += torch.nn.functional.logsigmoid(alpha * d)
 
         # Fixed step along sun direction
         x = x + step_size * sun_dir.unsqueeze(0)
@@ -131,11 +134,113 @@ def _march_absorption(
         d = torch.cat(sdf_vals_list, dim=0)  # (R,)
 
         # density = exp(-β · d) ;  high near the surface (d ≈ 0)
-        occlusion = occlusion + torch.exp(-beta * d) * step_size
+        occlusion += torch.exp(-beta * d) * step_size
 
         x = x + step_size * sun_dir.unsqueeze(0)
 
     return torch.exp(-kappa * occlusion)  # (R,)
+
+
+def _sample_sdf_along_z_axis(
+    sdf_fn: Callable[[torch.Tensor], torch.Tensor],
+    offset: float,
+    num_points: int = 1000,
+    bbox_width: float | None = None,
+    bbox_length: float | None = None,
+    device: torch.device | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Sample the SDF along the z-axis for debugging.
+
+    Args:
+        sdf_fn: SDF callable: (Q, 3) → (Q,)
+        offset: initial offset along z-axis
+        num_points: number of points to sample
+
+    Returns:
+        xs: (G,) x-coordinates of the sampled grid at given z
+        ys: (G,) y-coordinates of the sampled grid at given z
+        sdf_vals: (G, G) SDF values sampled on the xy grid at given z
+    """
+    if bbox_width is None or bbox_length is None:
+        raise ValueError("bbox_width and bbox_length must be provided for sampling SDF along z-axis.")
+
+    sample_device = device if device is not None else torch.device("cpu")
+    grid_size = max(2, int(np.sqrt(num_points)))
+    xs = torch.linspace(-bbox_width / 2, bbox_width / 2, grid_size, device=sample_device)
+    ys = torch.linspace(-bbox_length / 2, bbox_length / 2, grid_size, device=sample_device)
+
+    grid_x, grid_y = torch.meshgrid(xs, ys, indexing="xy")
+    grid_z = torch.full_like(grid_x, offset)
+    points = torch.stack([grid_x.reshape(-1), grid_y.reshape(-1), grid_z.reshape(-1)], dim=-1)
+    sdf_vals = sdf_fn(points).reshape(grid_size, grid_size)
+    return xs, ys, sdf_vals
+
+
+def _plot_function(
+    sdf_fn: Callable[[torch.Tensor], torch.Tensor],
+    vertices: torch.Tensor,
+    device: torch.device | None = None,
+    debug: int = 1,
+    save_dir: Path | None = None,
+) -> None:
+    """
+    Plot the SDF values along the z-axis for debugging.
+
+    Args:
+        sdf_fn: SDF callable: (Q, 3) → (Q,)
+        vertices: (V, 3) mesh vertex positions to determine bounding box for sampling
+        device: device to use for sampling
+        debug: number of debug layers to plot
+    """
+
+    if save_dir is not None and debug > 0:
+        output_dir = save_dir / "sdf_rt_debug"
+    else:
+        raise ValueError("save_dir must be provided and debug must be > 0 to plot SDF values.")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # bounding box height determined from bbox_diag
+    bbox_min = vertices.min(dim=0).values
+    bbox_max = vertices.max(dim=0).values
+    # ensure bbox dimensions are tfloat and non-zero to avoid issues with sampling
+    bbox_width = float((bbox_max[0] - bbox_min[0]).clamp(min=1e-12))
+    bbox_length = float((bbox_max[1] - bbox_min[1]).clamp(min=1e-12))
+    bbox_height = float((bbox_max[2] - bbox_min[2]).clamp(min=1e-12))
+    # step size should be bbox heigth / debug, so we sample exactly debug layers until max_march_factor
+    step_size = bbox_height / (debug + 1)
+    for i in range(1, debug + 1):
+        sample = _sample_sdf_along_z_axis(
+            sdf_fn, i * step_size, num_points=1000, bbox_width=bbox_width, bbox_length=bbox_length, device=device
+        )
+        # plot should be a SDF-value heatmap with x and y coordinates, then the samples shall be saved
+        # Debug plotting should not keep autograd history.
+        x_coords = sample[0].detach().cpu().numpy()
+        y_coords = sample[1].detach().cpu().numpy()
+        sdf_vals = sample[2].detach().cpu().numpy()
+        extent: tuple[float, float, float, float] = (
+            float(np.min(x_coords)),
+            float(np.max(x_coords)),
+            float(np.min(y_coords)),
+            float(np.max(y_coords)),
+        )
+        fig = plt.imshow(
+            sdf_vals,
+            extent=extent,
+            origin="lower",
+            interpolation="bicubic",
+        )
+        # Show the positions of the sample points, just to have some reference
+        fig.axes.set_autoscale_on(False)
+        sample_x, sample_y = np.meshgrid(x_coords, y_coords, indexing="xy")
+        plt.scatter(sample_x.ravel(), sample_y.ravel(), 10, facecolors="none", linewidths=0.2)
+        plt.colorbar()
+        # Save first, then close to avoid accumulating figures in long runs.
+        plt.savefig(output_dir / f"sdf_debug_layer_{i:03d}.png")
+        plt.close()
+
+    print(f"Saved SDF debug plots to {output_dir}")
 
 
 # ---------------------------------------------------------------------------
@@ -149,9 +254,8 @@ def sdf_visibility_v2(
     faces: torch.Tensor,
     sun_dir: torch.Tensor,
     *,
-    normal_source: Literal["mesh", "sdf"] = "mesh",
-    method: Literal["sigmoid", "absorption"] = "sigmoid",
-    # Sigmoid method params
+    save_dir: Path | None = None,
+    normal_source: str = "mesh",
     sdf_cfg: dict[str, Any],
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
@@ -185,7 +289,7 @@ def sdf_visibility_v2(
         centroids:   (F, 3) face centroids
     """
 
-    print("Using 'sdf_visibility' version 1")
+    print("Using 'sdf_visibility' version 2")
 
     alpha = float(sdf_cfg["alpha"])
     beta = float(sdf_cfg["beta"])
@@ -215,6 +319,23 @@ def sdf_visibility_v2(
     offset = origin_offset_factor * bbox_diag
     max_dist = max_march_factor * bbox_diag
 
+    # -- Debug: sample SDF along z-axis to check values and gradients ----------------
+
+    if save_dir is None:
+        debug = 0
+        print("No save_dir provided, skipping SDF debug plots, in sdf_ray_visibility_v2")
+    else:
+        debug = int(sdf_cfg["debug"])
+    if debug < 0:
+        raise ValueError(f"Invalid debug value: {debug}. Must be non-negative integer.")
+
+    if bool(debug):
+        print("Debug mode is ON for sdfRT")
+        # call plot function
+        _plot_function(sdf_fn, vertices, device, debug, save_dir)
+    else:
+        print("Debug mode is OFF for sdfRT")
+
     # Clamp num_steps so we don't march past the bounding region
     effective_steps = min(num_steps, max(1, int((max_dist / step_size).item())))
 
@@ -222,6 +343,8 @@ def sdf_visibility_v2(
     origins = centroids + offset * normals  # (F, 3)
 
     # -- March -----------------------------------------------------------------
+    method = str(sdf_cfg["method"]).lower()
+    print(f"Marching with method: {method!r}")
     if method == "sigmoid":
         visibility = _march_sigmoid(sdf_fn, origins, sun, effective_steps, step_size, alpha, point_chunk_size)
     elif method == "absorption":

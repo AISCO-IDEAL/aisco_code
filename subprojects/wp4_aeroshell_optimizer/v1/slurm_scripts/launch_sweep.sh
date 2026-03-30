@@ -6,10 +6,10 @@
 # ---- SLURM directives (must come before any executable code) ---------------
 #SBATCH --partition=gpu
 #SBATCH --job-name=WP4_Sweep
-#SBATCH --time=20:00:00
+#SBATCH --time=2:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --gpus=rtx_4090:1
+#SBATCH --gpus=rtx_4090:2
 #SBATCH --mem-per-cpu=5G
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 #SBATCH --mail-user=%u@ethz.ch
@@ -20,9 +20,9 @@
 umask 0002 # ensure group write permissions for logs
 
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/Raytracing_Memory/qoladjdr"   # <-- EDIT THIS
-COUNT=130                                     # runs per agent (no empty space, otherwise it will recognise count as empty string)
-MAX_AGENTS=1                                  # max number of parallel agents (will be capped by available GPUs)
+SWEEP_ID="aisco/RTParam_Sweep/5q3zwllg"   # <-- EDIT THIS
+COUNT=10                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
+MAX_AGENTS=2                                  # max number of parallel agents (will be capped by available GPUs)
 
 # ---- Job info ---------------------------------------------------------------
 
