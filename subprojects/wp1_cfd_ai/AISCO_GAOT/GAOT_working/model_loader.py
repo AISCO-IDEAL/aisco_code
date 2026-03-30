@@ -1,6 +1,5 @@
 import logging
 import os
-from pathlib import Path
 
 import torch
 import torch.nn as nn  # noqa: PLR0402
@@ -17,7 +16,7 @@ logger = logging.getLogger(__name__)
 model_dict = {
     "OnlyCorrectNormalized": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/New_Normalizer1.pt",  # only trainde for 3 Epochs or something like this
     "gold3": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/gold3.pt",  # Should be trained for 400 Epochs
-    "platin": str(Path.home() / "AISCO_code" / "subprojects" / "wp7_gui" / "gaot" / "platin.pt"),
+    "platin": "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/platin.pt",
 }
 
 
