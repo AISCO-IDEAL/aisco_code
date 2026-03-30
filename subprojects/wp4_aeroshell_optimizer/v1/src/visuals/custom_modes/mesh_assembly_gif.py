@@ -1,7 +1,12 @@
 import os
 
-from subprojects.wp2_assembler.version3.components.nbz import call_assembly
+import torch
+
+# Import both versions of the assembler to support BbV3 and BbV4
+from subprojects.wp2_assembler.version3.components.nbz import call_assembly as call_assembly_v3
+from subprojects.wp2_assembler.version4.components.nbz import call_assembly as call_assembly_v4
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import fetch_bounding_box_ply
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.rendering_mode_base_class import RenderingMode
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser_utils import assembly_to_kaolin_mesh
 
@@ -31,108 +36,95 @@ class MeshAssemblyGIF(RenderingMode):
     def update(self, optimization_state: dict) -> None:
         """
         Update the rendering mode with the current optimization state.
-
-        First update: render assembly (RGB) as static background.
-        Every update: render mesh (RGB) + silhouette mask, store both.
-
-        Args:
-            optimization_state: Dictionary with 'vertices' and 'faces' (or 'verts'/'faces_in')
         """
-        # Get vertices and faces from optimization state
-        vertices = optimization_state.get("vertices")
-        if vertices is None:
-            vertices = optimization_state.get("verts")
-
-        faces = optimization_state.get("faces")
-        if faces is None:
-            faces = optimization_state.get("faces_in")
-
+        # 1. Extract and validate data
+        vertices, faces = self._get_geometry(optimization_state)
         if vertices is None or faces is None:
             print("Warning: No vertices/faces in optimization_state, skipping update")
             return
 
-        # Render assembly once on first update (use CadQuery assembly, not the current mesh)
+        # 2. Render assembly once on first update
         if not self.rendered_assembly:
-            # Resolve assembly id from configs (mirrors AssemblyMode behavior)
-            assembly_cfg = load_config(cfg_name="general_config.yaml")
-            active_losses_cfg = load_config(cfg_name=assembly_cfg["active_configs"]["losses"])
+            self._setup_background_assembly()
 
-            # --- INCORPORATED FIX ---
-            env_assembly_id = os.getenv("AISCO_ASSEMBLY_ID", "").strip()
+        # 3. Perform the iteration renderings
+        self._render_iteration_frame(vertices, faces)
 
-            assembly_id = int(env_assembly_id) if env_assembly_id else active_losses_cfg["bb_config"].get("assembly_id", 1)
-            # ------------------------
+    def _get_geometry(self, state: dict):
+        """Handles the naming variations in the optimization state dictionary."""
+        vertices = state.get("vertices") or state.get("verts")
+        faces = state.get("faces") or state.get("faces_in")
+        return vertices, faces
 
-            assembly, _, _ = call_assembly(assembly_id)
+    def _setup_background_assembly(self) -> None:
+        """Resolves config and renders the static background assembly."""
+        assembly_cfg = load_config(cfg_name="general_config.yaml")
+        active_losses_cfg = load_config(cfg_name=assembly_cfg["active_configs"]["losses"])
+        bb_config = active_losses_cfg.get("bb_config", {})
 
-            tolerance = self.config.get("tolerance", 0.1)
-            angular_tolerance = self.config.get("angular_tolerance", 0.1)
-
-            assembly_vertices, assembly_faces = assembly_to_kaolin_mesh(
-                assembly,
-                tolerance=tolerance,
-                angular_tolerance=angular_tolerance,
+        # Route logic: Static PLY vs CAD Assembly
+        if "inner_ply_location" in bb_config:
+            inner_mesh, _ = fetch_bounding_box_ply(
+                inner_ply_location=bb_config["inner_ply_location"], outer_ply_location=bb_config.get("outer_ply_location", "")
             )
+            assembly_vertices = torch.as_tensor(inner_mesh.vertices, dtype=torch.float32)
+            assembly_faces = torch.as_tensor(inner_mesh.faces, dtype=torch.long)
+        else:
+            assembly_vertices, assembly_faces = self._get_cad_assembly_geometry(bb_config)
 
-            # Solid texture for assembly so renderer gets expected texture shape
-            textures = self.visualiser.create_solid_texture(
-                batch_size=1,
-                num_faces=assembly_faces.shape[0],
-                color=self.assembly_color,
-            )
-
-            assembly_render = self._render(
-                vertices=assembly_vertices,
-                faces=assembly_faces,
-                mode="rgb",
-                camera_position=self.camera_position,
-                camera_direction=self.camera_direction,
-                textures=textures,
-            )
-            # Remove batch dimension: (1, H, W, C) → (H, W, C)
-            if hasattr(assembly_render, "__len__") and len(assembly_render) > 0:
-                self.assembly_frame = assembly_render[0]
-            else:
-                self.assembly_frame = assembly_render
-
-            self.rendered_assembly = True
-
-        # Render mesh RGB frame
-
-        # Make texture for mesh rendering
-
+        # Render the background frame
         textures = self.visualiser.create_solid_texture(
-            batch_size=1,
-            num_faces=faces.shape[0],
-            color=self.mesh_color,
+            batch_size=1, num_faces=assembly_faces.shape[0], color=self.assembly_color
+        )
+        render = self._render(
+            vertices=assembly_vertices,
+            faces=assembly_faces,
+            mode="rgb",
+            camera_position=self.camera_position,
+            camera_direction=self.camera_direction,
+            textures=textures,
         )
 
-        mesh_rgb = self._render(
+        self.assembly_frame = render[0] if hasattr(render, "__len__") and len(render) > 0 else render
+        self.rendered_assembly = True
+
+    def _get_cad_assembly_geometry(self, bb_config: dict):
+        """Handles CAD specific assembly fetching logic."""
+        env_id = os.getenv("AISCO_ASSEMBLY_ID", "").strip()
+        assembly_id = int(env_id) if env_id else bb_config.get("assembly_id", 1)
+
+        if os.getenv("AISCO_WP2_VERSION", "v3") == "v4":
+            assembly, _, _ = call_assembly_v4(assembly_id)
+        else:
+            assembly, _, _ = call_assembly_v3(assembly_id)
+
+        return assembly_to_kaolin_mesh(
+            assembly, tolerance=self.config.get("tolerance", 0.1), angular_tolerance=self.config.get("angular_tolerance", 0.1)
+        )
+
+    def _render_iteration_frame(self, vertices, faces) -> None:
+        """Renders both the RGB mesh and the silhouette mask for the current step."""
+        # RGB Rendering
+        textures = self.visualiser.create_solid_texture(batch_size=1, num_faces=faces.shape[0], color=self.mesh_color)
+        rgb = self._render(
             vertices=vertices,
             faces=faces,
             mode="rgb",
             camera_position=self.camera_position,
             camera_direction=self.camera_direction,
+            textures=textures,
         )
-        # Remove batch dimension
-        if hasattr(mesh_rgb, "__len__") and len(mesh_rgb) > 0:
-            self.frame_storage.append(mesh_rgb[0])
-        else:
-            self.frame_storage.append(mesh_rgb)
+        self.frame_storage.append(rgb[0] if hasattr(rgb, "__len__") and len(rgb) > 0 else rgb)
 
-        # Render mesh silhouette (binary mask)
-        silhouette = self._render(
+        # Silhouette Rendering
+        sil = self._render(
             vertices=vertices,
             faces=faces,
-            mode="silhouettes",  # Note: plural
+            mode="silhouettes",
             camera_position=self.camera_position,
             camera_direction=self.camera_direction,
         )
-        # Remove batch dimension
-        if hasattr(silhouette, "__len__") and len(silhouette) > 0:
-            self.silhouettes.append(silhouette[0])
-        else:
-            self.silhouettes.append(silhouette)
+        self.silhouettes.append(sil[0] if hasattr(sil, "__len__") and len(sil) > 0 else sil)
 
     def finalize(self, output_dir, file_name="mesh_assembly.gif", delete: bool = False) -> None:
         """

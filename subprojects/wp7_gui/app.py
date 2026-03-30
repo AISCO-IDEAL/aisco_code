@@ -248,7 +248,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             )
             return
 
-        mesh_assembly_dir = run_dir / "mesh_assembly_mode"
+        mesh_assembly_dir = run_dir / "alex_mode"
         solar_loss_dir = run_dir / "solar_loss_rendering"
         mesh_dir = run_dir / "meshes"
 
