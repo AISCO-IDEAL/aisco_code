@@ -75,7 +75,7 @@ class MeshSDFExtractor:
             return [[bbox[0], bbox[1]], [bbox[2], bbox[3]], [bbox[4], bbox[5]]]
         return bbox
 
-    def set_grid(self, bbox: list):
+    def set_grid(self, bbox: list, resolution: int = -1):
         """
         Prepare a fixed sampling grid for SDF evaluation (similar to DISO/FC APIs).
 
@@ -83,6 +83,8 @@ class MeshSDFExtractor:
             bbox: [[xmin,xmax],[ymin,ymax],[zmin,zmax]] or flat [xmin,xmax,ymin,ymax,zmin,zmax]
             resolution: integer grid resolution per axis
         """
+        if resolution != -1:
+            self._resolution = resolution
         bbox_nested = self._to_nested_bbox(bbox)
         # Store bbox in flat form for spacing and vertex offset computation
 
