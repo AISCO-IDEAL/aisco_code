@@ -78,6 +78,8 @@ rendering_modes:
       look_at: [0, 0, 0]
       render_mode: "rgb"
       color: [0.2, 0.7, 1.0]
+      sdf_color: [0.75, 0.75, 0.75]
+      inner_alpha: 0.45
       tolerance: 2.0
       angular_tolerance: 0.4
 
@@ -89,6 +91,10 @@ rendering_modes:
       look_at: [0, 0, 0]
       render_mode: "rgb"
       color: [1.0, 0.35, 0.15]
+      sdf_color: [0.75, 0.75, 0.75]
+      outer_alpha: 0.2
+      edge_color: [0.0, 0.0, 0.0]
+      edge_strength: 1.0
       tolerance: 2.0
       angular_tolerance: 0.4
 
@@ -101,6 +107,11 @@ rendering_modes:
       render_mode: "rgb"
       inner_color: [0.2, 0.7, 1.0]
       outer_color: [1.0, 0.35, 0.15]
+      sdf_color: [0.75, 0.75, 0.75]
+      inner_alpha: 0.4
+      outer_alpha: 0.18
+      edge_color: [0.0, 0.0, 0.0]
+      edge_strength: 1.0
       tolerance: 2.0
       angular_tolerance: 0.4
   # Gif of the semitransparant with its assembly
