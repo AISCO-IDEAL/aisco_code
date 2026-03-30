@@ -26,8 +26,10 @@ losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically
     # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v1.py"]
     # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15
     null_loss_bb_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/null_loss_bb_v1.py"]
-    bb_v3: [1, 1, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety y
+    bb_v3: [0, 1, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety y
     bb_v4: [0, 10, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v4.py"] # assembler version4 with ground clearance validation
+    bb_v4_2: [1, 10, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v4_2.py"] # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
+    silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/silvretta_bb_v0.py"] # version provided by Silvretta, not working well as of 2025 12 15
 
   eikonal:
     eikonal_v0: [1, 10.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/eikonal_loss/eikonal_v0.py"]
@@ -68,7 +70,15 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     dz: 250  #
     rand: 400  #
   assembly_id: 1 # 1 for the standard one  # rendering modes only (assembly_mode.py, mesh_assembly_gif.py), not bb_v3.py (which randomises 1-52)
-  render_until_blue: "True"
+  render_until_blue: "False"
+  sdf_device: cuda  # mesh-backed BB SDF compute device
+  # v4.2 specific:
+  sdf_chunk_size: 4096  # query chunk size for mesh_sdf (higher can be faster but uses more memory)
+  tessellation_tolerance: 2.0  # CadQuery tessellation quality for bb_v4_2 (higher is faster, lower detail)
+  tessellation_angular_tolerance: 0.4  # CadQuery tessellation angular quality for bb_v4_2
+  # silvretta_v0 specific:
+  inner_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/inner.ply"
+  outer_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/outer.ply"
 
 cfd:
   model_id: "gold3"

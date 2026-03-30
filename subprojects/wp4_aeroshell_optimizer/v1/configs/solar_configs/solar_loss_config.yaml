@@ -18,6 +18,9 @@ SolarLossConfigV3:
   method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
   bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
   resolution: 128 # has to be a power of 2 for sparse sdf
+  isovalue: 0.0 # target level-set for marching cubes
+  auto_isovalue_if_out_of_range: true # fallback to mid-range level if 0.0 is outside sampled SDF range
+  warn_mesh_extraction: true # keep one warning for diagnostics, avoids repetitive warning spam
   area_budget_mm2: 4000000
   sun_dir: [-1.0,0.0,1.0]
   device: "cuda"
