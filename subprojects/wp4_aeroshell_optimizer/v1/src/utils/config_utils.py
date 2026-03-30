@@ -20,8 +20,10 @@ import contextlib
 import copy
 import json
 import os
+import re
 import socket
 from pathlib import Path
+from warnings import warn
 
 import yaml
 
@@ -177,7 +179,7 @@ def register_all_configs(general_config: dict, *, v: str = "v1") -> None:
     _registry_initialised = True
 
 
-def apply_sweep_overrides(sweep_params: dict) -> None:
+def apply_sweep_overrides(sweep_params: dict) -> None:  # noqa: PLR0915
     """Apply wandb sweep parameters to the registered configs.
 
     Each key is expected to be of the form
@@ -191,7 +193,25 @@ def apply_sweep_overrides(sweep_params: dict) -> None:
 
     Keys whose first segment does **not** match any registered config are
     applied to ``general_config`` as a fallback (backward-compatible with old
-    flat keys)
+    flat keys).
+
+    Grouped sweep keys are also supported with this syntax:
+        ``group<n>.<path>.<param1>...<param_n>``
+
+    where:
+    - ``n`` is the group size,
+    - ``path`` points to the shared config object,
+    - trailing ``param`` names are mapped left-to-right to row values.
+
+    Example:
+        ``group2.solar_configs/raytracing_config.RaytracingConfigV2.sdf.step_size_factor.num_steps``
+        with value ``[0.03, 64]`` maps to:
+        - ``...sdf.step_size_factor = 0.03``
+        - ``...sdf.num_steps = 64``
+
+    Grouped rows with invalid shape are skipped with a warning.
+    Multiple grouped keys in one run are forbidden to prevent accidental
+    combinatorial coupling.
     Args:
         sweep_params (dict): A dictionary of sweep parameters.
     Returns:
@@ -202,25 +222,127 @@ def apply_sweep_overrides(sweep_params: dict) -> None:
             "apply_sweep_overrides() called before register_all_configs(). Call register_all_configs(general_config) first."
         )
 
+    def _coerce_like_existing(raw_value: object, existing_value: object) -> object:  # noqa: PLR0911
+        """Cast grouped values to match the existing config leaf type when possible."""
+        # Keep grouped sweeps type-stable by mirroring the target leaf type.
+        if isinstance(existing_value, bool):
+            if isinstance(raw_value, str):
+                lowered = raw_value.strip().lower()
+                if lowered in {"true", "1", "yes", "on"}:
+                    return True
+                if lowered in {"false", "0", "no", "off"}:
+                    return False
+                return raw_value
+            if isinstance(raw_value, (int, float)):
+                return bool(raw_value)
+            return raw_value
+
+        if isinstance(existing_value, int) and not isinstance(existing_value, bool):
+            if isinstance(raw_value, (str, int, float, bool)):
+                try:
+                    return int(raw_value)
+                except (TypeError, ValueError):
+                    return raw_value
+            return raw_value
+
+        if isinstance(existing_value, float):
+            if isinstance(raw_value, (str, int, float, bool)):
+                try:
+                    return float(raw_value)
+                except (TypeError, ValueError):
+                    return raw_value
+            return raw_value
+
+        if isinstance(existing_value, str):
+            return str(raw_value)
+
+        return raw_value
+
+    def _apply_single_override(full_key: str, raw_value: object, *, infer_type: bool = False) -> None:
+        target_cfg, remaining = _resolve_sweep_target(full_key)
+
+        if target_cfg is None:
+            warn(f"Skipping override with unresolved target: {full_key}", stacklevel=2)
+            return
+
+        if not remaining:
+            warn(f"Skipping override with empty path: {full_key}", stacklevel=2)
+            return
+
+        d = target_cfg
+        # Create intermediate dicts so new nested keys can be injected safely.
+        for segment in remaining[:-1]:
+            if segment not in d or not isinstance(d[segment], dict):
+                d[segment] = {}
+            d = d[segment]
+
+        leaf = remaining[-1]
+        value_to_set = raw_value
+        if infer_type and leaf in d:
+            value_to_set = _coerce_like_existing(raw_value, d[leaf])
+
+        d[leaf] = value_to_set
+
+    grouped_key_pattern = re.compile(r"^group(\d+)\.(.+)$")
+    # Guardrail: forbid multiple grouped dimensions in one run to prevent
+    # accidental Cartesian coupling between grouped keys.
+    grouped_keys = [key for key in sweep_params if isinstance(key, str) and grouped_key_pattern.fullmatch(key)]
+
+    if len(grouped_keys) > 1:
+        raise RuntimeError(
+            f"Multiple grouped sweep keys are not supported in one run. Found: {grouped_keys}. Keep exactly one grouped key."
+        )
+
     for key, value in sweep_params.items():
         # Skip internal wandb keys and SubCFG_ keys logged by older code
         if key.startswith(("_wandb", "SubCFG_")):
             continue
 
-        target_cfg, remaining = _resolve_sweep_target(key)
+        grouped_match = grouped_key_pattern.fullmatch(key)
+        if grouped_match:
+            group_size = int(grouped_match.group(1))
+            grouped_path = grouped_match.group(2)
 
-        if target_cfg is None:
+            if group_size <= 0:
+                warn(f"Skipping grouped key with non-positive size: {key}", stacklevel=2)
+                continue
+
+            path_parts = grouped_path.split(".")
+            if len(path_parts) <= group_size:
+                warn(
+                    f"Skipping grouped key because it does not have enough path segments for group size {group_size}: {key}",
+                    stacklevel=2,
+                )
+                continue
+
+            if not isinstance(value, (list, tuple)):
+                warn(
+                    f"Skipping grouped key {key}: expected list/tuple row, got {type(value).__name__}",
+                    stacklevel=2,
+                )
+                continue
+
+            if len(value) != group_size:
+                warn(
+                    f"Skipping grouped row for {key}: expected length {group_size}, got {len(value)}",
+                    stacklevel=2,
+                )
+                continue
+
+            # group<n> consumes the last n dotted segments as parameter names.
+            # Split grouped key into shared config path + grouped parameter suffix.
+            base_path = ".".join(path_parts[:-group_size])
+            param_names = path_parts[-group_size:]
+
+            # W&B already selected one row for this run; we now fan it out into
+            # individual flat overrides that reuse the existing config resolver.
+            # Left-to-right mapping: param_names[i] gets value[i].
+            for param_name, param_value in zip(param_names, value, strict=True):
+                target_key = f"{base_path}.{param_name}"
+                _apply_single_override(target_key, param_value, infer_type=True)
             continue
 
-        # Drill into nested dicts, creating intermediate dicts as needed
-        d = target_cfg
-        if not remaining:
-            continue
-        for segment in remaining[:-1]:
-            if segment not in d or not isinstance(d[segment], dict):
-                d[segment] = {}
-            d = d[segment]
-        d[remaining[-1]] = value
+        _apply_single_override(key, value, infer_type=False)
 
 
 def get_master_config() -> dict:

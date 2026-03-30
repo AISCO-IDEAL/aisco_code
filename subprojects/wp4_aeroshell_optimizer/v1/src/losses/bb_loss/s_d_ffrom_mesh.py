@@ -24,7 +24,8 @@ class SDFfromMesh:
         mesh_list: list[trimesh.Trimesh] | None = None,
         assembly_id: int = 1,
         bounding_box_fn=None,
-        sdf_device: str = "cpu",
+        sdf_device: str = "cuda",
+        sdf_chunk_size: int = 2048,
     ):
         if mesh is None and mesh_list is None:
             raise ValueError("Either mesh or mesh_list must be provided.")
@@ -36,6 +37,7 @@ class SDFfromMesh:
         self.__assembly_id = assembly_id
         self.__bounding_box_fn = bounding_box_fn or _default_bbox_fn
         self.__sdf_device = torch.device(sdf_device)
+        self.__sdf_chunk_size = int(sdf_chunk_size)
         self.__pointgrid = self.__pointgrid_geni(pointgrid_config)
 
         if self.__mesh is None:
@@ -49,6 +51,7 @@ class SDFfromMesh:
                         assembly_id=assembly_id,
                         bounding_box_fn=bounding_box_fn,
                         sdf_device=sdf_device,
+                        sdf_chunk_size=sdf_chunk_size,
                     )
                 )
 
@@ -62,7 +65,12 @@ class SDFfromMesh:
             query = torch.tensor(self.__pointgrid, dtype=torch.float32, device=self.__sdf_device)
             vertices = torch.tensor(self.__mesh.vertices, dtype=torch.float32, device=self.__sdf_device)
             faces = torch.tensor(self.__mesh.faces, dtype=torch.long, device=self.__sdf_device)
-            sdf_values = mesh_sdf(query=query, vertices=vertices, faces=faces)
+            sdf_values = mesh_sdf(
+                query=query,
+                vertices=vertices,
+                faces=faces,
+                chunk_size=self.__sdf_chunk_size,
+            )
             self.__sdf_at_pointgrid = sdf_values.detach().cpu().tolist()
 
     def __pointgrid_geni(self, pointgrid_config) -> list[list[float]]:
