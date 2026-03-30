@@ -12,7 +12,7 @@
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
-umask 0002
+umask 0002 # ensure group write permissions for logs and models
 
 USERNAME=$(whoami)
 LOG_DIR="/cluster/home/$USERNAME/AISCO_code/logs"

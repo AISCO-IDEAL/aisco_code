@@ -4,7 +4,7 @@
 #SBATCH --time=00:10:00                   # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
-#SBATCH --mem-per-cpu=4G                  # Total 40G memory
+#SBATCH --mem-per-cpu=8G                  # Total 40G memory
 #SBATCH --gpus=rtx_4090:1
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 ##SBATCH --mail-type=END,FAIL
@@ -13,13 +13,14 @@
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
-umask 0002
+umask 0002 # ensure group write permissions for logs and models
+
 module purge
 module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
 
 
 USERNAME=$(whoami)
-LOG_DIR="/cluster/home/$USERNAME/AISCO_code/logs"
+LOG_DIR="/cluster/scratch/$USERNAME/logs"
 ##mkdir -p "$LOG_DIR"  # Ensure the log directory exists
 #------------------------------------------------------------------------------
 # Print job information

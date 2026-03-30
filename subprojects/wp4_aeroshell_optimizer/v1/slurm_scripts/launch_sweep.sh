@@ -16,13 +16,16 @@
 ################################### RUN THIS CMD ##############################################
 ##  sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/launch_sweep.sh ##
 ###############################################################################################
-umask 0002
+
+umask 0002 # ensure group write permissions for logs
+
 # ---- Configurable variables ------------------------------------------------
 SWEEP_ID="aisco/RTParam_Sweep/5q3zwllg"   # <-- EDIT THIS
 COUNT=10                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
 MAX_AGENTS=2                                  # max number of parallel agents (will be capped by available GPUs)
 
 # ---- Job info ---------------------------------------------------------------
+
 echo "=========================================="
 echo "Job started on: $(date)"
 echo "Job ID: $SLURM_JOB_ID"

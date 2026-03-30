@@ -68,13 +68,14 @@ def _compute_visibility_for_sun(
                 mesh_cfg=raytracing_cfg["mesh"],
             )  # (F,) in range [0, 1]
         elif raytracing_version == "v2":
-            visibility, _, _ = mesh_visibility_v2(
+            results = mesh_visibility_v2(
                 vertices,
                 faces,
                 sun_dir=sun_dir,
                 normal_source=str(raytracing_cfg["normal_source"]),
                 mesh_cfg=raytracing_cfg["mesh"],
             )  # (F,) in range [0, 1]
+            visibility, _, _, _ = results
         else:
             raise ValueError(f"Unknown raytracing version: {raytracing_version}")
     elif raytracing_cfg["method"] == "sdf":

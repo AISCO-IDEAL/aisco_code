@@ -74,21 +74,21 @@ RaytracingConfigV3:
   mesh:
     beta: 1.0
     gamma: 20.0
-    margin_factor: 1e-3
-    miss_t: 1e9
-    origin_offset_eps: 1e-3
-    sun_distance_factor: 2.0
+    margin_factor: 8e-3
+    origin_offset_eps: 1e-2
+    sun_distance_factor: 1.0
     face_chunk_size: 400 #C
     blocker_chunk_size: 750 #K --> peak memory usage will be C*K
     smoothing_mode: "soft_barycentric_transmittance" # soft_barycentric_transmittance | v2_sigmoid
     face_samples: 7 # number of deterministic barycentric sample rays per face
     sample_pattern: "barycentric_ring" # centroid | barycentric_ring
     depth_normalization: "bbox" # bbox | ray_length
-    transmittance_beta: 2.0 # depth attenuation sharpness
-    transmittance_kappa: 1.0 # total occlusion-to-transmittance scale
-    bary_softness_tau: 40 # sharpness of barycentric inside/outside transition
-    t_softness_tau: 8.0 # sharpness of front-hit transition (t > 0)
+    transmittance_beta: 0.000001 # depth attenuation sharpness
+    transmittance_kappa: 4.0 # total occlusion-to-transmittance scale
+    bary_softness_tau: 2.5 # sharpness of barycentric inside/outside transition
+    t_softness_tau: 300 # sharpness of front-hit transition (t > 0)
     eps: 1e-8 # numerical epsilon for intersection denominator handling
-    diagnostics_enabled: True
-    diagnostics_log_histograms: True
+    diagnostics_enabled: False
+    diagnostics_log_histograms: False
+    diagnostics_sample_limit: 4096
     diagnostics_quantiles: [0.01, 0.05, 0.5, 0.95, 0.99]

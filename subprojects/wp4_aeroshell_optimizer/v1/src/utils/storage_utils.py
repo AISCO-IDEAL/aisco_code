@@ -4,15 +4,19 @@ import datetime
 import glob
 import json
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import torch
+import trimesh
 
+from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MarchingCubesExtractor
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing, str_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.kaolin_conversions import (
-    get_diff_mesh,
+    get_diff_mesh,  # noqa: F401 still used in commented code
     kaolin_to_PLY,
 )
 
@@ -106,12 +110,73 @@ def allround_save_data(  # noqa: PLR0915
     if save_mesh:
         # get a model using kaolin conversions
         # Use a copy to avoid disrupting training
-        temp_model = copy.deepcopy(model).cpu()
-        verts, faces = get_diff_mesh(temp_model, grid_res=64, device="cpu")
-        if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
-            print(f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
+        # temp_model = copy.deepcopy(model).cpu()  # noqa: ERA001 fsanche: im leaving this code because it works. if marching cubes with threads fails, return to this one.
+        # grid_res = 64     # noqa: ERA001
+        # verts, faces = get_diff_mesh(temp_model, grid_res=grid_res, device="cpu")  # fsanche: keeping this in case marching cubes doest work. this one is the original.   # noqa: ERA001
+        # if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
+        #     print(f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")   # noqa: ERA001
+        # kaolin_to_PLY(verts, faces, filename=f"{wandb_run}_{epoch_str}_get_diff_mesh_GridRes_{grid_res}.ply", mesh_dir=mesh_dir, verbose=verbose) # noqa: ERA001
 
-        kaolin_to_PLY(verts, faces, filename=f"{wandb_run}_{epoch_str}.ply", mesh_dir=mesh_dir, verbose=verbose)
+        def run_marching_cubes_and_save(resolution):
+            thread_label = f"[THREAD res={resolution}]"
+            start = time.time()
+
+            try:
+                print(f"{thread_label} Started worker.", flush=True)
+
+                extractor = MarchingCubesExtractor(device="cpu", verbose=False)
+
+                extractor.set_grid(
+                    bbox=[[-5000, 5000], [-5000, 5000], [-5000, 5000]],
+                    resolution=resolution,
+                )
+
+                print(f"{thread_label} Grid set. Extracting mesh...", flush=True)
+
+                verts, faces = extractor.extract_mesh(
+                    temp_model,
+                    isovalue=0.0,
+                    batch_size=8192,
+                )
+
+                print(
+                    f"{thread_label} Extraction done | marching_cubes: {verts.shape[0]} verts, {faces.shape[0]} faces",
+                    flush=True,
+                )
+
+                filename = f"{wandb_run}_{epoch_str}__marching_cubes_GridRes_{resolution}.ply"
+                output_path = mesh_dir / filename
+
+                if output_path.exists():
+                    print(f"{thread_label} Overwriting {output_path}", flush=True)
+
+                print(f"{thread_label} Saving mesh...", flush=True)
+
+                kaolin_to_PLY(
+                    verts.clone(),
+                    faces.clone(),
+                    filename=filename,
+                    mesh_dir=mesh_dir,
+                    verbose=verbose,
+                )
+
+                end = time.time()
+                print(f"{thread_label} Done in {end - start:.3f}s", flush=True)
+
+            except Exception as exc:
+                print(f"{thread_label} FAILED: {exc}", flush=True)
+
+        # copy model once
+        temp_model = copy.deepcopy(model).cpu()
+
+        resolutions = [300]
+
+        # limit to max 20 concurrent threads
+        executor = ThreadPoolExecutor(max_workers=20)
+
+        for res in resolutions:
+            executor.submit(run_marching_cubes_and_save, res)
+            print(f"[MAIN] Submitted job for res={res}", flush=True)
 
     ######################
     ### save the model ###
@@ -224,3 +289,37 @@ def reformat_wandb_name(wandb_name: str) -> str:
         else wandb_name
     )
     return wandb_name
+
+
+def _load_mesh(path: str) -> trimesh.Trimesh:
+    if not path:
+        raise ValueError("PLY path must be a non-empty string.")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"PLY file does not exist: {path}")
+
+    loaded = trimesh.load(path, file_type="ply", process=False)
+    if isinstance(loaded, trimesh.Scene):
+        geoms = tuple(loaded.geometry.values())
+        if len(geoms) == 0:
+            raise ValueError(f"PLY scene has no geometry: {path}")
+        mesh: trimesh.Trimesh = trimesh.util.concatenate(geoms)
+    elif isinstance(loaded, trimesh.Trimesh):
+        mesh = loaded
+    else:
+        raise TypeError(f"Unsupported PLY payload at {path}: {type(loaded)}")
+
+    mesh.remove_infinite_values()
+    mesh.remove_unreferenced_vertices()
+    if len(mesh.faces) > 0:
+        trimesh.repair.fix_normals(mesh, multibody=False)
+    else:
+        raise ValueError(f"Mesh has no faces: {path}")
+
+    return mesh
+
+
+def fetch_bounding_box_ply(inner_ply_location: str = "", outer_ply_location: str = ""):
+    """Load and return inner/outer bounding-box meshes from PLY files."""
+    inner_mesh = _load_mesh(inner_ply_location)
+    outer_mesh = _load_mesh(outer_ply_location)
+    return inner_mesh, outer_mesh

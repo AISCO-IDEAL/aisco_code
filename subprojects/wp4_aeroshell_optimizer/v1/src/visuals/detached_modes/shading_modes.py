@@ -118,11 +118,44 @@ class ShadingPenalty(SolarBase):
     _wandb_key = "ShadingPenalty"
 
     def _colors_from_weights(self, normalized_weights: torch.Tensor, device: torch.device) -> torch.Tensor:
-        min_color = torch.tensor([0.8, 0.8, 0.8], dtype=torch.float32, device=device)
-        max_color = torch.tensor([1.0, 0.0, 0.0], dtype=torch.float32, device=device)
+        min_color = torch.tensor([1.0, 1.0, 1.0], dtype=torch.float32, device=device)
+        max_color = torch.tensor([0.95, 0.0, 0.0], dtype=torch.float32, device=device)
         return min_color.unsqueeze(0) + normalized_weights.unsqueeze(-1) * (max_color - min_color).unsqueeze(0)
 
     def finalize(self, output_dir: Path, file_name: str = "shading_penalty.gif", delete: bool = True) -> None:
+        super().finalize(output_dir, file_name, delete)
+
+
+class ShadingFactor(SolarBase):
+    _config_key = "shading_factor"
+    _value_key = "shading_factor"
+    _wandb_key = "ShadingFactor"
+
+    def _colors_from_weights(self, normalized_weights: torch.Tensor, device: torch.device) -> torch.Tensor:
+        # Reversed inferno-style anchors: low values are bright yellow, high values are dark purple.
+        palette = torch.tensor(
+            [
+                [0.988, 0.998, 0.645],
+                [0.987, 0.554, 0.147],
+                [0.736, 0.216, 0.330],
+                [0.341, 0.063, 0.429],
+                [0.078, 0.042, 0.206],
+            ],
+            dtype=torch.float32,
+            device=device,
+        )
+
+        weights = normalized_weights.clamp(0.0, 1.0)
+        scaled = weights * (palette.shape[0] - 1)
+        lower_idx = torch.floor(scaled).to(torch.long)
+        upper_idx = torch.clamp(lower_idx + 1, max=palette.shape[0] - 1)
+        blend = (scaled - lower_idx.to(scaled.dtype)).unsqueeze(-1)
+
+        lower_colors = palette[lower_idx]
+        upper_colors = palette[upper_idx]
+        return lower_colors + blend * (upper_colors - lower_colors)
+
+    def finalize(self, output_dir: Path, file_name: str = "shading_factor.gif", delete: bool = True) -> None:
         super().finalize(output_dir, file_name, delete)
 
 
@@ -145,9 +178,43 @@ class AverageQuality(SolarBase):
         return (weights + 1) / 2
 
     def _colors_from_weights(self, normalized_weights: torch.Tensor, device: torch.device) -> torch.Tensor:
-        min_color = torch.tensor([0.8, 0.0, 0.15], dtype=torch.float32, device=device)
-        max_color = torch.tensor([0.0, 0.8, 0.15], dtype=torch.float32, device=device)
+        min_color = torch.tensor([0.9, 0.0, 0.25], dtype=torch.float32, device=device)
+        max_color = torch.tensor([0.0, 0.9, 0.25], dtype=torch.float32, device=device)
         return min_color.unsqueeze(0) + normalized_weights.unsqueeze(-1) * (max_color - min_color).unsqueeze(0)
 
     def finalize(self, output_dir: Path, file_name: str = "average_quality.gif", delete: bool = True) -> None:
+        super().finalize(output_dir, file_name, delete)
+
+
+class OverallLosses(SolarBase):
+    """Render per-face overall loss values."""
+
+    _config_key = "overall_losses"
+    _value_key = "losses"
+    _wandb_key = "OverallLosses"
+
+    def _colors_from_weights(self, normalized_weights: torch.Tensor, device: torch.device) -> torch.Tensor:
+        palette = torch.tensor(
+            [
+                [0.078, 0.042, 0.206],
+                [0.341, 0.063, 0.429],
+                [0.736, 0.216, 0.330],
+                [0.987, 0.554, 0.147],
+                [0.988, 0.998, 0.645],
+            ],
+            dtype=torch.float32,
+            device=device,
+        )
+
+        weights = normalized_weights.clamp(0.0, 1.0)
+        scaled = weights * (palette.shape[0] - 1)
+        lower_idx = torch.floor(scaled).to(torch.long)
+        upper_idx = torch.clamp(lower_idx + 1, max=palette.shape[0] - 1)
+        blend = (scaled - lower_idx.to(scaled.dtype)).unsqueeze(-1)
+
+        lower_colors = palette[lower_idx]
+        upper_colors = palette[upper_idx]
+        return lower_colors + blend * (upper_colors - lower_colors)
+
+    def finalize(self, output_dir: Path, file_name: str = "overall_losses.gif", delete: bool = True) -> None:
         super().finalize(output_dir, file_name, delete)

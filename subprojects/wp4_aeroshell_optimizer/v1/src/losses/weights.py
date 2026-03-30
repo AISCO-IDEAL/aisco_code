@@ -61,23 +61,3 @@ def weights_alm(
 
     # Wir geben die originalen Tensoren zurück (die jetzt aktualisiert sind)
     return lamdas, mus, nus
-
-
-def weights_manual(loss_names: dict, losses_config: dict, loss_families: list, device: torch.device) -> torch.Tensor:
-    """Get manual weight for a given loss from the losses_config dictionary.
-
-    Args:
-        losses_config (dict): Dictionary containing loss configurations, including weights.
-        loss_families (list): Families of the losses (e.g., ['bb', 'solar'], etc).
-        loss_names (list): Names of the losses for which to get the weights.
-    Returns:
-        list: The weights for the specified losses.
-
-    """
-    all_weights = torch.tensor([], device=device)
-    for f in loss_families:
-        for loss_name in loss_names[f]:
-            weight = losses_config[f][loss_name].get("weight", 1.0)
-            # add weight to all_weights tensor
-            all_weights = torch.cat((all_weights, torch.tensor([weight], device=device)))
-    return all_weights

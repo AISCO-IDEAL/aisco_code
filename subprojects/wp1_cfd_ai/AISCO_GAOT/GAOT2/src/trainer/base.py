@@ -62,10 +62,21 @@ class TrainerBase:
         # 1. Handle dtypes and loss first
         if self.setup_config["dtype"] in ["float", "torch.float32", "torch.FloatTensor"]:
             self.dtype = torch.float32
+            self.use_bf16 = False
         elif self.setup_config["dtype"] in ["double", "torch.float64", "torch.DoubleTensor"]:
             self.dtype = torch.float64
+            self.use_bf16 = False
+        elif self.setup_config["dtype"] in ["bfloat16", "torch.bfloat16", "bf16"]:
+            self.dtype = torch.float32  # model stays fp32; autocast handles bf16
+            self.use_bf16 = True
         else:
             raise ValueError("Invalid dtype:", self.setup_config["dtype"])
+
+        self.autocast_ctx = (
+            torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
+            if self.use_bf16
+            else torch.amp.autocast(device_type="cuda", enabled=False)
+        )
 
         loss_name = (
             self.optimizer_config["args"].get("loss", "mse")
