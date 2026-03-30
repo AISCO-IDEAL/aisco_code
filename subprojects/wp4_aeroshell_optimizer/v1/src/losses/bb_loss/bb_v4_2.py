@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import torch
 import trimesh
@@ -32,10 +34,25 @@ class BbV42(ParentLoss):
     def _setup(self) -> None:
         self.__config = self.losses_config["bb_config"]
 
-        rng = np.random.default_rng()
-        self.__assembly_id = int(rng.integers(0, max_assembly_id() + 1))
+        env_assembly_id = os.getenv("AISCO_ASSEMBLY_ID", "").strip()
+        configured_assembly_id = self.__config.get("assembly_id")
 
-        inner_box, outer_box, __ = call_assembly(id_number=self.__assembly_id)
+        if env_assembly_id:
+            self.assembly_id = int(env_assembly_id)
+        elif configured_assembly_id is not None:
+            self.assembly_id = int(configured_assembly_id)
+        else:
+            rng = np.random.default_rng()
+            self.assembly_id = int(rng.integers(0, max_assembly_id() + 1))
+
+        max_id = max_assembly_id()
+        if not 0 <= self.assembly_id <= max_id:
+            msg = f"assembly_id must be in range 0..{max_id}, got {self.assembly_id}"
+            raise ValueError(msg)
+
+        print(f"[BbV42] Using assembly_id={self.assembly_id}")
+
+        inner_box, outer_box, __ = call_assembly(id_number=self.assembly_id)
         inner_solids = list(inner_box.toCompound().Solids())
 
         tess_tolerance = float(self.__config.get("tessellation_tolerance", 2.0))
@@ -55,7 +72,7 @@ class BbV42(ParentLoss):
         self.__inner_sdf: SDFfromMesh = SDFfromMesh(
             mesh_list=inner_mesh_list,
             pointgrid_config=self.__config["pointgrid_params"],
-            assembly_id=self.__assembly_id,
+            assembly_id=self.assembly_id,
             bounding_box_fn=bounding_box_of_assembly,
             sdf_device=sdf_device,
             sdf_chunk_size=sdf_chunk_size,
@@ -63,7 +80,7 @@ class BbV42(ParentLoss):
         self.__outer_sdf: SDFfromMesh = SDFfromMesh(
             mesh=outer_mesh,
             pointgrid_config=self.__config["pointgrid_params"],
-            assembly_id=self.__assembly_id,
+            assembly_id=self.assembly_id,
             bounding_box_fn=bounding_box_of_assembly,
             sdf_device=sdf_device,
             sdf_chunk_size=sdf_chunk_size,

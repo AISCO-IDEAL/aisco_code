@@ -30,6 +30,7 @@ class MeshAssemblyModeV2(RenderingMode):
         super().__init__(visualiser, config)
         self.config = config
         self.base_frame = None
+        self.base_assembly_id: int | None = None
         self.frame_storage = []
         self.render_interval = int(config.get("render_interval", 1))
         self.make_gif = bool(config.get("make_gif", True))
@@ -66,8 +67,21 @@ class MeshAssemblyModeV2(RenderingMode):
 
         return np.asarray(pil_img).astype(np.float32) / 255.0
 
-    def _build_base_frame(self) -> np.ndarray:
-        assembly_id = int(self.config.get("assembly_id", load_bb_assembly_id()))
+    def _resolve_assembly_id(self, optimization_state: dict[str, Any] | None = None) -> int:
+        if optimization_state is not None:
+            runtime_assembly_id = optimization_state.get("assembly_id")
+            if runtime_assembly_id is None:
+                runtime_assembly_id = optimization_state.get("bb_assembly_id")
+            if runtime_assembly_id is not None:
+                return int(runtime_assembly_id)
+
+        configured_assembly_id = self.config.get("assembly_id")
+        if configured_assembly_id is not None:
+            return int(configured_assembly_id)
+
+        return load_bb_assembly_id()
+
+    def _build_base_frame(self, assembly_id: int) -> np.ndarray:
         inner_solids, outer_solid = load_inner_outer_solids(assembly_id)
 
         inner_meshes = [
@@ -137,8 +151,11 @@ class MeshAssemblyModeV2(RenderingMode):
         if iteration is not None and iteration % self.render_interval != 0:
             return
 
-        if self.base_frame is None:
-            self.base_frame = self._build_base_frame()
+        current_assembly_id = self._resolve_assembly_id(optimization_state)
+        if self.base_frame is None or self.base_assembly_id != current_assembly_id:
+            print(f"[MeshAssemblyModeV2] Using assembly_id={current_assembly_id}")
+            self.base_assembly_id = current_assembly_id
+            self.base_frame = self._build_base_frame(current_assembly_id)
 
         vertices, faces = get_mesh_from_optimization_state(optimization_state)
         if vertices is None or faces is None or int(faces.numel()) == 0:

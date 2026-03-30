@@ -10,20 +10,20 @@ class BbV4(ParentLoss):
     def _setup(self) -> None:
         self.__config = self.losses_config["bb_config"]
         rng = np.random.default_rng()
-        self.__assembly_id = int(rng.integers(0, max_assembly_id() + 1))
+        self.assembly_id = int(rng.integers(0, max_assembly_id() + 1))
         # Create SDFs for inner and outer boxes
-        inner_box, outer_box, __ = call_assembly(id_number=self.__assembly_id)
+        inner_box, outer_box, __ = call_assembly(id_number=self.assembly_id)
         inner_solids_list = inner_box.toCompound().Solids()
         self.__inner_SDF: SDFfromCadQuery = SDFfromCadQuery(
             shape_list=inner_solids_list,
             pointgrid_config=self.__config["pointgrid_params"],
-            assembly_id=self.__assembly_id,
+            assembly_id=self.assembly_id,
             bounding_box_fn=bounding_box_of_assembly,
         )
         self.__outer_SDF: SDFfromCadQuery = SDFfromCadQuery(
             shape=outer_box,
             pointgrid_config=self.__config["pointgrid_params"],
-            assembly_id=self.__assembly_id,
+            assembly_id=self.assembly_id,
             bounding_box_fn=bounding_box_of_assembly,
         )
         self.__pointgrid: list[list[float]] = self.__inner_SDF.pointgrid()

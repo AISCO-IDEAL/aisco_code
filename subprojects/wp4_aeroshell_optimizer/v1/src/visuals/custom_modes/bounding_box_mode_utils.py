@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import numpy as np
@@ -9,15 +10,34 @@ from subprojects.wp2_assembler.version4.components.nbz import call_assembly
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
 
 
-def load_bb_assembly_id(default_id: int = 0) -> int:
-    general_config = load_config(cfg_name="general_config.yaml")
-    losses_cfg_name = general_config["active_configs"]["losses"]
-    losses_cfg = load_config(cfg_name=losses_cfg_name)
-    return int(losses_cfg.get("bb_config", {}).get("assembly_id", default_id))
+def load_bb_assembly_id(default_id: int | None = None) -> int:
+    # Highest-priority override for reproducible runs.
+    env_assembly_id = os.getenv("AISCO_ASSEMBLY_ID", "").strip()
+    if env_assembly_id:
+        return int(env_assembly_id)
+
+    # Fallback to active losses config (bb_config.assembly_id).
+    try:
+        general_cfg = load_config(cfg_name="general_config.yaml")
+        losses_cfg_name = general_cfg.get("active_configs", {}).get("losses")
+        if losses_cfg_name:
+            losses_cfg = load_config(cfg_name=losses_cfg_name)
+            configured_assembly_id = losses_cfg.get("bb_config", {}).get("assembly_id")
+            if configured_assembly_id is not None:
+                return int(configured_assembly_id)
+    except Exception:
+        # Keep renderer usable even if config loading fails in edge environments.
+        pass
+
+    if default_id is not None:
+        return int(default_id)
+
+    msg = "Unable to resolve assembly_id from AISCO_ASSEMBLY_ID or losses config (bb_config.assembly_id)."
+    raise ValueError(msg)
 
 
 def load_inner_outer_solids(assembly_id: int):
-    inner_assy, outer_solid, __ = call_assembly(assembly_id)
+    inner_assy, outer_solid, __ = call_assembly(id_number=assembly_id)
     inner_solids = list(inner_assy.toCompound().Solids())
     return inner_solids, outer_solid
 
@@ -82,7 +102,9 @@ def silhouette_edge_mask(mask_2d: np.ndarray) -> np.ndarray:
     return edge.astype(np.float32)
 
 
-def overlay_edges(base_rgb: np.ndarray, edge_mask_2d: np.ndarray, edge_color: tuple[float, float, float], strength: float) -> np.ndarray:
+def overlay_edges(
+    base_rgb: np.ndarray, edge_mask_2d: np.ndarray, edge_color: tuple[float, float, float], strength: float
+) -> np.ndarray:
     edge_rgb = np.array(edge_color, dtype=np.float32)[None, None, :]
     w = np.clip(edge_mask_2d, 0.0, 1.0)[..., None] * float(strength)
     out = base_rgb * (1.0 - w) + edge_rgb * w

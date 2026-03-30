@@ -1,4 +1,4 @@
 training_params:
   learning_rate: 0.0005  # basic_MLP_v1.py reads training_config["training_params"].get("learning_rate", 0.001)
   num_epochs: 20 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
-  mesh_save_interval: 100  # basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
+  mesh_save_interval: 10  # basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
