@@ -48,8 +48,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import trimesh
-import wandb
 
+import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import (
     MeshExtractor,
 )
@@ -235,6 +235,43 @@ class TotalLoss:
             raw[name] = instance.get_loss(model, epoch_name)
         return raw
 
+    def _extract_assembly_id_from_instance(self, instance: Any) -> int | None:
+        """Extract assembly id from loss instance (supports public and mangled/private fields)."""
+        candidates: list[Any] = [
+            getattr(instance, "assembly_id", None),
+            getattr(instance, "_assembly_id", None),
+        ]
+
+        for attr_name, attr_value in vars(instance).items():
+            if attr_name.lower().endswith("assembly_id"):
+                candidates.append(attr_value)
+
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            try:
+                return int(candidate)
+            except (TypeError, ValueError):
+                continue
+
+        return None
+
+    def _active_assembly_id(self) -> int | None:
+        """Best-effort extraction of runtime BB assembly id from active loss instances."""
+        bb_entry = self._constraint_losses.get("bb")
+        if bb_entry is not None:
+            _bb_name, bb_instance = bb_entry
+            bb_assembly_id = self._extract_assembly_id_from_instance(bb_instance)
+            if bb_assembly_id is not None:
+                return bb_assembly_id
+
+        for instance in self._active_losses.values():
+            runtime_assembly_id = self._extract_assembly_id_from_instance(instance)
+            if runtime_assembly_id is not None:
+                return runtime_assembly_id
+
+        return None
+
     def _apply_weighting(
         self,
         raw_losses: dict[str, torch.Tensor],
@@ -403,6 +440,7 @@ class TotalLoss:
             if self._rendering_freq is not None and epoch_name % self._rendering_freq == 0:
                 if self._use_neural_renderer and self._renderer_manager is not None:
                     try:
+                        runtime_assembly_id = self._active_assembly_id()
                         self._renderer_manager.update(
                             {
                                 "model": model,
@@ -410,6 +448,8 @@ class TotalLoss:
                                 "loss": total_loss.item(),
                                 "vertices": verts,
                                 "faces": faces,
+                                "assembly_id": runtime_assembly_id,
+                                "bb_assembly_id": runtime_assembly_id,
                             }
                         )
                     except Exception as e:

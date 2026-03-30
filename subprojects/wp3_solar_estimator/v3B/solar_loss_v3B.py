@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
@@ -432,6 +432,9 @@ class SolarLossEstimator:
             self.extractor.set_grid(self.bbox, self.resolution)
         elif method in {"mesh_sdf", "mc"}:
             bbox = self.bbox
+            isovalue = float(self.config.get("isovalue", 0.0))
+            auto_iso = bool(self.config.get("auto_isovalue_if_out_of_range", True))
+            warn_out_of_range = bool(self.config.get("warn_mesh_extraction", True))
             self.extractor = MeshSDFExtractor(
                 resolution=self.resolution,
                 bbox=[
@@ -442,8 +445,10 @@ class SolarLossEstimator:
                     bbox[2][0],
                     bbox[2][1],
                 ],
-                isovalue=0.0,
+                isovalue=isovalue,
                 device=self.device,
+                auto_isovalue_if_out_of_range=auto_iso,
+                warn_out_of_range=warn_out_of_range,
             )
             self.extractor.set_grid(self.bbox, self.resolution)
         elif method == "sparse_dmc":
