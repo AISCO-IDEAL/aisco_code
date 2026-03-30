@@ -1,4 +1,5 @@
 import argparse
+import ast
 import logging
 import os
 import platform
@@ -42,14 +43,63 @@ def setup_logging(level: str = "INFO", log_file: str | None = None) -> None:
     )
 
 
+def parse_wandb_overrides(unknown_args) -> dict[str, Any]:
+    overrides: dict[str, Any] = {}
+
+    for arg in unknown_args:
+        if not arg.startswith("--"):
+            continue
+
+        item = arg[2:]
+        if "=" not in item:
+            continue
+
+        key, raw_value = item.split("=", 1)
+
+        lower = raw_value.lower()
+        if lower == "true":
+            value = True
+        elif lower == "false":
+            value = False
+        elif lower in ("none", "null"):
+            value = None
+        else:
+            try:
+                value = ast.literal_eval(raw_value)
+            except (ValueError, SyntaxError):
+                value = raw_value
+
+        overrides[key] = value
+
+    return overrides
+
+
+def set_nested_value(cfg: dict[str, Any], dotted_key: str, value: Any) -> None:
+    keys = dotted_key.split(".")
+    cur = cfg
+    for key in keys[:-1]:
+        if key not in cur or not isinstance(cur[key], dict):
+            cur[key] = {}
+        cur = cur[key]
+    cur[keys[-1]] = value
+
+
+def apply_overrides(cfg: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    for key, value in overrides.items():
+        set_nested_value(cfg, key, value)
+    return cfg
+
+
 class FileParser:
-    def __init__(self, filename: str) -> None:
+    def __init__(self, filename: str, overrides: dict[str, Any] | None = None) -> None:
         if filename.endswith((".toml", ".json", ".yaml")):
             with open(filename) as f:
                 data = OmegaConf.to_container(OmegaConf.load(f), resolve=True)
             if not isinstance(data, dict):
                 raise TypeError(f"Expected config mapping in {filename}, got {type(data).__name__}")
             self.kwargs: dict[str, Any] = cast(dict[str, Any], data)
+            if overrides:
+                self.kwargs = apply_overrides(self.kwargs, overrides)
         else:
             raise NotImplementedError(f"File type {filename} not supported, currently only toml and json are supported.")
 
@@ -78,7 +128,8 @@ def parse_files():
     parser.add_argument("--debug", action="store_true", help="debug mode, to dispalce multiprocessing")
     parser.add_argument("--num_works_per_device", type=int, default=10, help="number of works per device")
     parser.add_argument("--visible_devices", nargs="*", type=int, default=None, help="visible devices")
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
+    args.wandb_overrides = parse_wandb_overrides(unknown)
     assert args.config or args.folder, "Please specify --config or --folder"
     if args.visible_devices is not None:
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, args.visible_devices))
@@ -226,18 +277,18 @@ def run_arg_file_popen_handle(arg_file):
         print(f"Job {arg_file} error: {err.decode('utf-8').strip()}")
 
 
-def run_arg_files(arg_files, is_debug, num_works_per_device=3):  # noqa: PLR0912
+def run_arg_files(arg_files, is_debug, num_works_per_device=3, overrides=None):  # noqa: PLR0912
     if len(arg_files) == 1:
-        run_arg(FileParser(arg_files[0]).parse_args())
+        run_arg(FileParser(arg_files[0], overrides=overrides).parse_args())
     elif is_debug:
         for arg_file in arg_files:
             print("\n")
             print(arg_file, end="\n\n\n")
-            run_arg(FileParser(arg_file).parse_args())
+            run_arg(FileParser(arg_file, overrides=overrides).parse_args())
     elif platform.system() == "Windows":
         processes: list[Process] = []
         for arg_file in arg_files:
-            arg = FileParser(arg_file).parse_args()
+            arg = FileParser(arg_file, overrides=overrides).parse_args()
             p = Process(target=run_arg, args=(arg,))
             p.start()
             processes.append(p)
@@ -249,7 +300,7 @@ def run_arg_files(arg_files, is_debug, num_works_per_device=3):  # noqa: PLR0912
         for i in range(num_devices):
             process_map[f"cuda:{i}"] = []
         for arg_file in arg_files:
-            arg = FileParser(arg_file).parse_args()
+            arg = FileParser(arg_file, overrides=overrides).parse_args()
             p = Process(target=run_arg_file_popen_handle, args=(arg_file,))
             if arg.device.startswith("cuda"):
                 device_id = int(arg.device[-1])
@@ -272,5 +323,9 @@ def run_arg_files(arg_files, is_debug, num_works_per_device=3):  # noqa: PLR0912
 
 if __name__ == "__main__":
     config = parse_files()
-    run_arg_files(config.arg_files, config.debug, config.num_works_per_device)
+    if getattr(config, "wandb_overrides", None):
+        print("Applied W&B sweep overrides:")
+        for k, v in config.wandb_overrides.items():
+            print(f"  {k} = {v}")
+    run_arg_files(config.arg_files, config.debug, config.num_works_per_device, getattr(config, "wandb_overrides", None))
     print("Finished")
