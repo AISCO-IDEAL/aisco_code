@@ -133,8 +133,8 @@ detached_modes:
     enabled: True
     class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
     config:
-      camera_position: [0, -5000, 1500]
-      look_at: [-500, 0, 0]
+      camera_position: [-2000,0,7000] # [0, -7500, 3250]
+      look_at: [-1500, 0, 0]
       render_mode: "rgb"
       fps: 10
       #render_interval: 10
@@ -142,8 +142,8 @@ detached_modes:
       enabled: True
       class_path: "detached_modes.solar_v3_selection:SolarV3Selection"
       config:
-        camera_position: [-3500, 0, 3500]
-        look_at: [-500, 0, 0]
+        camera_position: [-2000,0,7000] #[0, -7500, 3250]
+        look_at: [-1500, 0, 0]
         render_mode: "rgb"
         fps: 15
         render_interval: 10
@@ -156,8 +156,8 @@ solar_info_modes:
       enabled: True
       class_path: "detached_modes.solar_v3_selection:SolarV3Selection"
       config:
-        camera_position: [0, -5000, 1500]
-        look_at: [-500, 0, 0]
+        camera_position: [-2000,0,7000] #[0, -7500, 3250]
+        look_at: [-1500, 0, 0]
         render_mode: "rgb"
         fps: 10
         render_interval: 1
@@ -165,8 +165,8 @@ solar_info_modes:
     enabled: True
     class_path: "detached_modes.shading_modes:ShadingVisibility"
     config:
-      camera_position: [0, -5000, 1500]
-      look_at: [-500, 0, 0]
+      camera_position: [-2000,0,7000] #[0, -7500, 3250]
+      look_at: [-1500, 0, 0]
       render_mode: "rgb"
       fps: 10
       #render_interval: 10
@@ -174,8 +174,16 @@ solar_info_modes:
     enabled: True
     class_path: "detached_modes.shading_modes:ShadingPenalty"
     config:
-      camera_position: [0, -5000, 1500]
-      look_at: [-500, 0, 0]
+      camera_position: [-2000,0,7000] # [0, -7500, 3250]
+      look_at: [-1500, 0, 0]
+      render_mode: "rgb"
+      fps: 10
+  shading_factor:
+    enabled: True
+    class_path: "detached_modes.shading_modes:ShadingFactor"
+    config:
+      camera_position: [-2000,0,7000] # [0, -7500, 3250]
+      look_at: [-1500, 0, 0]
       render_mode: "rgb"
       fps: 10
 
@@ -183,8 +191,18 @@ solar_info_modes:
     enabled: True
     class_path: "detached_modes.shading_modes:AverageQuality"
     config:
-      camera_position: [0, -5000, 1500]
-      look_at: [-500, 0, 0]
+      camera_position: [-2000,0,7000] #[0, -7500, 3250]
+      look_at: [-1500, 0, 0]
+      render_mode: "rgb"
+      fps: 10
+
+
+  overall_losses:
+    enabled: True
+    class_path: "detached_modes.shading_modes:OverallLosses"
+    config:
+      camera_position: [-2000,0,7000] # [0, -7500, 3250]
+      look_at: [-1500, 0, 0]
       render_mode: "rgb"
       fps: 10
 

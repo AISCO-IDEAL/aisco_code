@@ -54,7 +54,7 @@ class MeshStatistics:
         away_from_origin = (origin_dot_prods > 0).sum().item()
         total_faces = faces.shape[0]
         multi_log_in_one(
-            "Inside out stats",
+            "Mesh Stats",
             {
                 "Faces Pointing Away from Origin": away_from_origin,
                 "Percentage pointing inside": (1 - away_from_origin / total_faces) * 100
@@ -103,7 +103,7 @@ class MeshStatistics:
         total_projected_area = (solar_dot_prods[pos_mask] * cost[pos_mask]).sum()
 
         multi_log_in_one(
-            "Solar Area Stats",
+            "Solar Area Validation Stats",
             {
                 "Total Surface Area": total_surface_area / 1e6,
                 "Selected Surface Area": selected_solar_area / 1e6,
