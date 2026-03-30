@@ -22,9 +22,7 @@ parameters:
   solar_configs/raytracing_config.RaytracingConfigV3.mesh.blocker_chunk_size:
     value: 500
 
- 
+
   # Soft hit-membership sharpness
   solar_configs/raytracing_config.RaytracingConfigV3.mesh.bary_softness_tau:
     values: [2,4,8,12,18,22]
-
-  
