@@ -51,9 +51,15 @@ class MeshAssemblyGIF(RenderingMode):
         self._render_iteration_frame(vertices, faces)
 
     def _get_geometry(self, state: dict):
-        """Handles the naming variations in the optimization state dictionary."""
-        vertices = state.get("vertices") or state.get("verts")
-        faces = state.get("faces") or state.get("faces_in")
+        """Handles the naming variations in the optimization state dictionary safely."""
+        vertices = state.get("vertices")
+        if vertices is None:
+            vertices = state.get("verts")
+
+        faces = state.get("faces")
+        if faces is None:
+            faces = state.get("faces_in")
+
         return vertices, faces
 
     def _setup_background_assembly(self) -> None:
@@ -61,9 +67,14 @@ class MeshAssemblyGIF(RenderingMode):
         assembly_cfg = load_config(cfg_name="general_config.yaml")
         active_losses_cfg = load_config(cfg_name=assembly_cfg["active_configs"]["losses"])
         bb_config = active_losses_cfg.get("bb_config", {})
+        losses_cfg = active_losses_cfg.get("losses", {})
+        bb_losses_cfg = losses_cfg.get("bb", {})
 
-        # Route logic: Static PLY vs CAD Assembly
-        if "inner_ply_location" in bb_config:
+        silvretta_entry = bb_losses_cfg.get("silvretta_bb_v0", [0])
+        silvretta_active = bool(silvretta_entry[0]) if isinstance(silvretta_entry, (list, tuple)) and silvretta_entry else bool(silvretta_entry)
+
+        # Use inner/outer PLYs only when silvretta_bb_v0 is explicitly active.
+        if silvretta_active and "inner_ply_location" in bb_config:
             inner_mesh, _ = fetch_bounding_box_ply(
                 inner_ply_location=bb_config["inner_ply_location"], outer_ply_location=bb_config.get("outer_ply_location", "")
             )
