@@ -311,6 +311,8 @@ class MeshSDFExtractor:
             vertices: (V, 3) tensor with gradients enabled
             faces: (F, 3) tensor (no gradients, topology is discrete)
         """
+        vertices: torch.tensor
+        faces: torch.tensor
         if self._dynamic_resolution:
             # Dynamic resolution adjustment to approach target vertex count
             self.dynamic_resolution_adjustment(sdf_model)
@@ -350,6 +352,9 @@ class MeshSDFExtractor:
             surrogate_loss: Gradient flow term (for backward pass)
             dL_dvertices: Upstream gradients w.r.t. vertices (for visualization/debugging)
         """
+        if self._dynamic_resolution:
+            # Dynamic resolution adjustment to approach target vertex count
+            self.dynamic_resolution_adjustment(sdf_model)
         # Extract mesh
         vertices, faces = self.extract_mesh(sdf_model)
 
@@ -368,7 +373,7 @@ class MeshSDFExtractor:
         dL_dvertices = torch.autograd.grad(
             outputs=loss, inputs=vertices_for_loss, grad_outputs=torch.ones_like(loss), create_graph=False, retain_graph=False
         )[0]
-
+        dL_dvertices = torch.clamp(dL_dvertices, min=-0.1, max=0.1)
         # Compute gradient flow through implicit surface
         surrogate_loss = self.compute_gradient_flow(vertices=vertices, dL_dvertices=dL_dvertices, sdf_model=sdf_model)
 
@@ -402,9 +407,8 @@ class MeshSDFExtractor:
             if abs(v - target) <= self.tolerance * target:
                 break
 
-            factor = target / v
+            factor = (target / v) ** 0.5
             new_res = round(self._resolution * factor)
-            new_res = max(8, min(512, new_res))
 
             if new_res == self._resolution:
                 break
