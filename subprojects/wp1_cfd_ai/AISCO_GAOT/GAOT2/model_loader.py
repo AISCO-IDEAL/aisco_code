@@ -98,7 +98,14 @@ class ModelLoader:
             sdf_model=sdf_model, loss_fn=self.loss_fn
         )
 
-        self.optimization_state["vertice_grads"] = dL_dvertices
+        eps = 1e-8
+        abs_grad = torch.abs(dL_dvertices)
+        sign_grad = torch.sign(dL_dvertices)
+        mask = abs_grad >= 1.0
+        dL_dvertices_log = torch.zeros_like(dL_dvertices)
+        dL_dvertices_log[mask] = sign_grad[mask] * torch.log(abs_grad[mask] + eps)
+        self.optimization_state["vertice_grads"] = dL_dvertices_log
+
         if self.rendering:
             self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
 
