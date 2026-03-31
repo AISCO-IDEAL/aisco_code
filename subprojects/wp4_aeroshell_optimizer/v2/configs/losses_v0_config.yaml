@@ -1,0 +1,88 @@
+general_info:
+  # config_debugging: "True"  # NOT USED — never read by any code in src/
+  CSE: "True"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
+  ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
+  ALM_aggressive: "False" # capu version of ALM
+  alm_thresholds: [0.1, 0.1, 0.1]  # thresholds for constraint losses [bb, eikonal, smoothness]
+  initial_lambda: [0.01, 0.01, 0.01]  # per-constraint initial λ [bb, eikonal, smoothness] (scalar also accepted)
+  initial_mu: [1.0, 1.0, 1.0]  # per-constraint initial μ [bb, eikonal, smoothness]
+  initial_nu: [1.0, 1.0, 1.0]  # per-constraint initial ν [bb, eikonal, smoothness]
+  alpha: 0.99  # EMA decay factor for ν update
+  gamma: 0.01  # parameter for ALM penalty update
+  gamma_aggressive: 1.1  # multiplicative increase factor for μ in aggressive CAPU mode
+  cse_prefactors:  # prefactors applied to objectives before feeding into CSE
+    drag: 1.0
+    solar: 1.0
+
+losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically loads and instantiates all losses with compute=1
+  # NOTE: that for each loss class, only one version should have compute=True
+  aero:
+    # frontal_area_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/frontal_area_v0.py"]  # NOT ACTIVE (compute=0)
+    # crude_estimator_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/crude_estimator_v0.py"]  # NOT ACTIVE (compute=0)
+    null_loss_aero_v1_: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
+    gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+
+  bb:
+    # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v1.py"]
+    # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15
+    null_loss_bb_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/null_loss_bb_v1.py"]
+    bb_v3: [0, 1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety y
+    bb_v4: [0, 10, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"] # assembler version4 with ground clearance validation
+    bb_v4_2: [1, 10, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"] # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
+    silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"] # version provided by Silvretta, not working well as of 2025 12 15
+
+  eikonal:
+    eikonal_v0: [1, 10.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
+
+  smoothness:
+    smoothness_v0: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
+
+  # surface_area:
+  #   surface_loss_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
+
+  solar:
+    solar_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v0.py"]
+    solar_v0_brute_force: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v0_brute_force.py"]
+    solar_v1_brute_force: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v1_brute_force.py"]
+    solar_v2: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v2.py"]
+    solar_v3: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3.py"]
+    #Everything above here is not really used/garbage compared to V3B and above
+    solar_v3B: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B.py"]
+    solar_v4: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
+    solar_v5: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
+    solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
+    solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
+    null_loss_solar_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/null_loss_solar_v1.py"]
+
+  total:
+    total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
+    artifact_every: 10  # save model+mesh checkpoint artifact to wandb every N epochs
+
+get_points_params: # used in eikonal and smoothness loss  #  parent_loss.py: self.losses_config["get_points_params"]["num_points"] and ["bbox_size"]
+  num_points: 1000  #  parent_loss.py
+  bbox_size: 10.0  #  parent_loss.py
+
+
+bb_config:  # bb_v3.py: self.losses_config["bb_config"]
+  pointgrid_params:  #  bb_v3.py: self.__config["pointgrid_params"] -> passed to SDFfromCadQuery
+    dx: 250  #
+    dy: 250  #
+    dz: 250  #
+    rand: 400  #
+  assembly_id: 1 # 1 for the standard one  # rendering modes only (assembly_mode.py, mesh_assembly_mode_v2.py), not bb_v3.py (which randomises 1-52)
+  render_until_blue: "False"
+  sdf_device: cuda  # mesh-backed BB SDF compute device
+  # v4.2 specific:
+  sdf_chunk_size: 4096  # query chunk size for mesh_sdf (higher can be faster but uses more memory)
+  tessellation_tolerance: 2.0  # CadQuery tessellation quality for bb_v4_2 (higher is faster, lower detail)
+  tessellation_angular_tolerance: 0.4  # CadQuery tessellation angular quality for bb_v4_2
+  # silvretta_v0 specific:
+  inner_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/inner.ply"
+  outer_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/outer.ply"
+
+cfd:
+  model_id: "gold3"
+  version: 1
+  visualisations: "True" # only works for Version 2
+  v_inf: 25.0   # freestream velocity [m/s] for Cp -> Pa conversion
+  rho: 1.225    # air density [kg/m³] for Cp -> Pa conversion

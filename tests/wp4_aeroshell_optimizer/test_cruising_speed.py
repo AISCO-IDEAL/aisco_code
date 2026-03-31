@@ -15,9 +15,7 @@ Tested edge cases:
 
 import torch
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.cruising_speed import (
-    cruising_speed,
-)
+from subprojects.wp4_aeroshell_optimizer import cruising_speed
 
 # ---------------------------------------------------------------------------
 # Helpers

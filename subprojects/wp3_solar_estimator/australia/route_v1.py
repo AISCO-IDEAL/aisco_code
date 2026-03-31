@@ -5,7 +5,7 @@ import torch
 
 from subprojects.wp3_solar_estimator.australia.routeloader import Routeloader
 from subprojects.wp3_solar_estimator.australia.sun import get_solar_car_vec, get_solar_car_vecs_batch
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer import load_config
 
 
 class RouteV1:

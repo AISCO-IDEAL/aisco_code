@@ -7,7 +7,7 @@ src_path = Path("/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_op
 sys.path.append(str(src_path))
 
 try:
-    from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+    from subprojects.wp4_aeroshell_optimizer import load_config
 
     # Check what load_config returns
     config = load_config(v="v1", cfg_name="general_config.yaml")
