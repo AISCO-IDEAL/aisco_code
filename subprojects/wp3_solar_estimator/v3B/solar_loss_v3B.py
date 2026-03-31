@@ -23,13 +23,15 @@ from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DI
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.sparse_dmc.sparse_dmc_extractor import SparseDMCExtractor
-from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.mesh_sdf_grads import MeshSDFGrads
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.solar_v3_selection import SolarV3Selection
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
+from subprojects.wp4_aeroshell_optimizer import (
+    MeshSDFGrads,
+    SolarV3Selection,
+    Visualiser,
+    dict_hashing,
+    load_config,
+    multi_log_in_one,
+    reformat_wandb_name,
+)
 
 
 def _deterministic_cumsum_legacy(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
@@ -432,6 +434,9 @@ class SolarLossEstimator:
             self.extractor.set_grid(self.bbox, self.resolution)
         elif method in {"mesh_sdf", "mc"}:
             bbox = self.bbox
+            isovalue = float(self.config.get("isovalue", 0.0))
+            auto_iso = bool(self.config.get("auto_isovalue_if_out_of_range", True))
+            warn_out_of_range = bool(self.config.get("warn_mesh_extraction", True))
             self.extractor = MeshSDFExtractor(
                 resolution=self.resolution,
                 bbox=[
@@ -442,8 +447,10 @@ class SolarLossEstimator:
                     bbox[2][0],
                     bbox[2][1],
                 ],
-                isovalue=0.0,
+                isovalue=isovalue,
                 device=self.device,
+                auto_isovalue_if_out_of_range=auto_iso,
+                warn_out_of_range=warn_out_of_range,
             )
             self.extractor.set_grid(self.bbox, self.resolution)
         elif method == "sparse_dmc":
@@ -518,7 +525,7 @@ class SolarLossEstimator:
                             and self.counter == self.number_epochs
                             and self.rendering_dir is not None
                         ):
-                            from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (  # noqa: PLC0415 So we can save us from importing
+                            from subprojects.wp4_aeroshell_optimizer import (  # noqa: PLC0415
                                 create_and_upload_gif_from_folder,
                             )
 
@@ -582,7 +589,7 @@ class SolarLossEstimator:
                     self.simulator.run(vertices, faces, output_dir=self.rendering_dir, epoch_name=epoch_name)
 
                     if self.number_epochs is not None and self.counter == self.number_epochs and self.rendering_dir is not None:
-                        from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (  # noqa: PLC0415 So we can save us from importing
+                        from subprojects.wp4_aeroshell_optimizer import (  # noqa: PLC0415
                             create_and_upload_gif_from_folder,
                         )
 

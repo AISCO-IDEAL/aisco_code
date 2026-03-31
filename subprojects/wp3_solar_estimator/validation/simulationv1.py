@@ -11,8 +11,7 @@ import torch
 
 from subprojects.wp3_solar_estimator.australia.route_v2 import RouteV2
 from subprojects.wp3_solar_estimator.utils.solar_utils import averaging_solar_quality
-from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import upload_neural_renderer_image
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
+from subprojects.wp4_aeroshell_optimizer import Visualiser, upload_neural_renderer_image
 
 
 class SimulationV1:

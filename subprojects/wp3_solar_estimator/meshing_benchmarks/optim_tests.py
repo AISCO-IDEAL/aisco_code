@@ -7,7 +7,7 @@ from wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper im
 from wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from wp3_solar_estimator.meshing_benchmarks.analytical_sdfs import SphereSDF
 from wp3_solar_estimator.meshing_benchmarks.tests import BaseTester
-from wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
+from wp4_aeroshell_optimizer import Wrapper
 
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.helpers.storage_functions import tensors_to_mesh
 

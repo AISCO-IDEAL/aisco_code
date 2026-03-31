@@ -1,0 +1,30 @@
+# NOT USED AS A CONFIG — This is a WandB sweep definition file, not loaded by load_config().
+# It is only used by `wandb sweep alm_sweep.yaml` to define sweep hyperparameters.
+# The parameters it sweeps (initial_lambda, initial_mu) are applied via apply_sweep_overrides() at runtime.
+# ============================================================================
+# Wandb Sweep Config — ALM (Augmented Lagrangian Method) Hyperparameters
+# ============================================================================
+# Parameter naming: <config_filename_without_yaml>.<nested.path.to.value>
+# See wandb_sweep_v1_50_meshes.yaml for full documentation.
+# ============================================================================
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v1_1_one_model.py
+method: grid # all parameter combinations are going to be run
+entity: aisco
+project: compare_alm_modes
+metric:
+  name: total_loss
+  goal: minimize
+parameters:
+  losses_v0_config.general_info.ALM_aggressive:
+    values: ["True", "False"]
+  losses_v0_config.general_info.alpha:
+    values: [0.9, 0.99]
+
+  # losses_v0_config.general_info.initial_lambda:
+  #   distribution: log_uniform_values
+  #   min: 0.00001
+  #   max: 0.1
+  # losses_v0_config.general_info.initial_mu:
+  #   distribution: log_uniform_values
+  #   min: 0.001
+  #   max: 100.0

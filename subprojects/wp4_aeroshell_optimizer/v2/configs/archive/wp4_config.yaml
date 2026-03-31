@@ -1,0 +1,49 @@
+username: "eschaerer"
+
+use_pretrained: True
+
+general_info:
+  Model: "SDFNetwork"
+  Model_Expl: "an SDF Network with torch Neural Network"
+  Pre: "a sphere as initial shape, datatype: SDF"
+  Post: "a PLY file representing the optimized aeroshell shape"
+
+
+# loss: [active (enables computing & logging (bool), weight (float)]
+losses:
+  eikonal: [1, 1000]
+  smoothness: [1, 0.5]
+  bounding_boxes_1: [1, 1000]
+  bounding_boxes_2: [0, 1000]
+  watertightness: [1, 0.0]
+  frontal_area: [1, 0.0]
+  drag: [1, 0]
+  solar_area: [1, 1.0]
+  total: [1, 1.0]
+
+training_params:
+  learning_rate: 0.00008
+  batch_size: 4096
+  num_epochs: 400
+  model_capacity: 256
+  num_layers: 8
+  skip_connections: [4]
+  weight_decay: 0.0
+  activation: "relu"
+  optimizer: "adam"
+  scheduler_step_size: 200
+  scheduler_gamma: 0.5
+
+model_dir: "wp4_aeroshell_optimizer/data/test_models"
+mesh_dir: "wp4_aeroshell_optimizer/data/test_meshes"
+
+wandb:
+  track_run: 1
+  rendering_frequency: 5
+  use_sweep: 0
+
+pointgrid_params:
+  dx: 100
+  dy: 100
+  dz: 100
+  rand: 400
