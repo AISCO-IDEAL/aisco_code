@@ -29,8 +29,14 @@ class ModelLoader:
         self.model_path = self._get_checkpoint_path(model_id)
         self.device = device
         self._load_model()
+        print("initialising Extractor")
         self.extractor = MeshSDFExtractor(
-            resolution=256, bbox=[-3e3, 3e3, -3e3, 3e3, -3e3, 3e3], device=self.device, isovalue=0.0
+            resolution=128,
+            bbox=[-3e3, 3e3, -3e3, 3e3, -3e3, 3e3],
+            device=self.device,
+            isovalue=0.0,
+            target_nr_vertices=cfd_config["mesh_resolution"],
+            max_iters=1000,
         )
         # keep visualiser on self so we can reuse it
         self.visualiser = Visualiser(device=self.device)
@@ -98,18 +104,14 @@ class ModelLoader:
             sdf_model=sdf_model, loss_fn=self.loss_fn
         )
 
-        eps = 1e-8
-        abs_grad = torch.abs(dL_dvertices)
-        sign_grad = torch.sign(dL_dvertices)
-        mask = abs_grad >= 1.0
-        dL_dvertices_log = torch.zeros_like(dL_dvertices)
-        dL_dvertices_log[mask] = sign_grad[mask] * torch.log(abs_grad[mask] + eps)
-        self.optimization_state["vertice_grads"] = dL_dvertices_log
+        self.optimization_state["vertice_grads"] = dL_dvertices
 
         if self.rendering:
             self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
 
-        return loss.item() + surrogate_loss - surrogate_loss.item()
+        cuppled_loss = loss.detach() + surrogate_loss - surrogate_loss.detach()
+        assert cuppled_loss == loss.item() + surrogate_loss - surrogate_loss.item()
+        return cuppled_loss
 
     def _visualize_pressure_field(
         self,
@@ -221,11 +223,10 @@ class ModelLoader:
         plt.close(fig)
 
     def loss_fn(self, mesh_verts, mesh_faces):
-        print(f"Number of Mesh Verts:{mesh_faces.shape[0]}")
+        wandb.log({"Aero-resolution": mesh_verts.shape[0]}, step=self.epoch_name)
         if mesh_verts is None or mesh_verts.shape[0] == 0:
             print("Fail")
             return torch.tensor(0.0, device=self.device)
-
         batch = self._reformat_data(mesh_verts, mesh_faces)
 
         # ── latent token positions (registered buffer inside the model) ──
