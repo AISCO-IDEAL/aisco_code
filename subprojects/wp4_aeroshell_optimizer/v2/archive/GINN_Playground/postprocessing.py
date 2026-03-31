@@ -54,12 +54,12 @@ def _find_latest_model(path: str) -> str:
 try:
 	from .density import make_grid
 except Exception:
-	from density import make_grid
+	from subprojects.wp4_aeroshell_optimizer.v2.archive.GINN_Playground.density import make_grid
 
 try:
 	from .simple_GINN import SimpleGINN
 except Exception:
-	from simple_GINN import SimpleGINN
+	from subprojects.wp4_aeroshell_optimizer.v2.archive.GINN_Playground.simple_GINN import SimpleGINN
 
 
 def load_model(path: str, device: str = "cpu") -> SimpleGINN:

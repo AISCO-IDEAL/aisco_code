@@ -5,7 +5,7 @@ from typing import Tuple
 import torch
 from torch import nn
 
-from subprojects.GINN_Playground.simple_GINN import SimpleGINN
+from subprojects.wp4_aeroshell_optimizer.v2.archive.GINN_Playground.simple_GINN import SimpleGINN
 
 
 def make_grid(nx: int, ny: int, box=(0.0, 1.0, 0.0, 1.0), device: str = "cpu") -> tuple[torch.Tensor, float, tuple[int, int]]:
