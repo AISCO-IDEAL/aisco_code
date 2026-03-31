@@ -22,6 +22,8 @@ while IFS=$'\t' read -r wt branch; do
   case "$reply" in
     y|Y)
       echo "Removing worktree: $wt"
+      # give yourself write permission for the worktree directory to ensure it can be removed
+      chmod -R u+w "$wt"
       git worktree remove "$wt" --force
 
       # Delete branch if it is a local branch (refs/heads/*)
