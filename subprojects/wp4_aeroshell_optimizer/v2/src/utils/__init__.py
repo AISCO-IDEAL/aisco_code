@@ -1,1 +1,1 @@
-"""Utils package for wp4 v1."""
+"""Utils package for wp4 v2."""

@@ -1,1 +1,1 @@
-"""Source package for wp4 v1."""
+"""Source package for wp4 v2."""

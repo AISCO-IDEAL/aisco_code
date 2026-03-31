@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_alm
+from subprojects.wp4_aeroshell_optimizer import weights_alm
 
 
 def test_weights_alm_relative_import_and_callable():

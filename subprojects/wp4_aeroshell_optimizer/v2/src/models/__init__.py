@@ -1,1 +1,1 @@
-"""Models package for wp4 v1."""
+"""Models package for wp4 v2."""
