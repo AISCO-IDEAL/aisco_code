@@ -233,7 +233,7 @@ if __name__ == "__main__":
 	base = os.path.dirname(__file__)
 	# find latest numbered model file simple_ginn_N.pt (N integer) if present
 	data_dir = os.path.join(base, "data")
-	N = 3
+	N = None
 	if os.path.isdir(data_dir) and N is None:
 		for fname in os.listdir(data_dir):
 			if fname.startswith("simple_ginn_") and fname.endswith(".pt"):
