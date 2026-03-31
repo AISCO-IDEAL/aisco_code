@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import wandb
 from matplotlib import pyplot as plt  # noqa: F401
 
+import wandb
 from subprojects.wp3_solar_estimator.australia.route_v1 import RouteV1
 from subprojects.wp3_solar_estimator.australia.route_v2 import RouteV2
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
