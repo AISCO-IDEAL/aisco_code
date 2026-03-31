@@ -11,7 +11,7 @@
 #   load_config(v="v1", cfg_name="debug.yaml")
 # =============================================================================
 
-GLOBAL_DEBUG: True  # True | False | null (Custom)
+GLOBAL_DEBUG: False  # True | False | null (Custom)
 
 # ---------------------------------------------------------------------------
 # Granular feature toggles  (only effective when GLOBAL_DEBUG is null)
@@ -109,6 +109,49 @@ log_loss_diagnostics:
     "rolling_friction (N)": false
     speed_is_nan:           true
     speed_is_inf:           true
+
+  # ── Solar losses (v3B–v7) ───────────────────────────────────────────────
+  # v3B and v7 include power_conversion_factor scaling fields.
+  # v4, v5, v6 have a simpler field set.
+
+  solar_v3B:
+    loss_value_raw:           true
+    loss_value_scaled:        true
+    power_conversion_factor:  false
+    method:                   true
+    counter:                  true
+    area_budget_mm2:          false
+    resolution:               false
+
+  solar_v4:
+    loss_value:               true
+    method:                   true
+    counter:                  true
+    area_budget_mm2:          false
+    resolution:               false
+
+  solar_v5:
+    loss_value:               true
+    method:                   true
+    counter:                  true
+    area_budget_mm2:          false
+    resolution:               false
+
+  solar_v6:
+    loss_value:               true
+    method:                   true
+    counter:                  true
+    area_budget_mm2:          false
+    resolution:               false
+
+  solar_v7:
+    loss_value_raw:           true
+    loss_value_scaled:        true
+    power_conversion_factor:  false
+    method:                   true
+    counter:                  true
+    area_budget_mm2:          false
+    resolution:               false
 
   # Any loss not listed here defaults to: show ALL its fields
   # To add a new loss, just add a new entry following the same pattern.

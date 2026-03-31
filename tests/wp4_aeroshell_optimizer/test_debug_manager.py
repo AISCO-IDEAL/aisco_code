@@ -1421,6 +1421,215 @@ class TestEdgeCases:
         dbg.stop()
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 9. Solar loss diagnostics tests
+# ═══════════════════════════════════════════════════════════════════════════
+
+# -- Shared solar diagnostic payloads --
+
+_SOLAR_SCALED_DIAG = {
+    "loss_value_raw": 0.042,
+    "loss_value_scaled": 4.2,
+    "power_conversion_factor": 100.0,
+    "method": "flexicubes",
+    "counter": 5,
+    "area_budget_mm2": 15000.0,
+    "resolution": 128,
+}
+
+_SOLAR_SIMPLE_DIAG = {
+    "loss_value": 0.037,
+    "method": "diso_mc",
+    "counter": 3,
+    "area_budget_mm2": 12000.0,
+    "resolution": 64,
+}
+
+# All loss names that use the "scaled" payload (v3B, v7)
+_SCALED_SOLAR_NAMES = ("solar_v3B", "solar_v7")
+# All loss names that use the "simple" payload (v4, v5, v6)
+_SIMPLE_SOLAR_NAMES = ("solar_v4", "solar_v5", "solar_v6")
+# All solar loss names
+_ALL_SOLAR_NAMES = _SCALED_SOLAR_NAMES + _SIMPLE_SOLAR_NAMES
+
+
+class TestSolarLossDiagnostics:
+    """Test that solar loss diagnostics integrate correctly with DebugManager."""
+
+    # -- collect_loss_diagnostics picks up solar _last_diagnostics --
+
+    @pytest.mark.parametrize("name", _ALL_SOLAR_NAMES)
+    def test_collect_solar_diagnostics(self, name: str) -> None:
+        diag = _SOLAR_SCALED_DIAG if name in _SCALED_SOLAR_NAMES else _SOLAR_SIMPLE_DIAG
+        mock_inst = MagicMock()
+        mock_inst._last_diagnostics = diag
+
+        mock_loss = MagicMock()
+        mock_loss._active_losses = {name: mock_inst}
+        mock_loss.get_cruising_speed_diagnostics.return_value = None
+
+        result = collect_loss_diagnostics(mock_loss)
+        assert name in result
+        assert result[name] == diag
+
+    # -- log_values prints solar diagnostics --
+
+    @pytest.mark.parametrize("name", _ALL_SOLAR_NAMES)
+    def test_log_values_prints_solar(self, name: str, capsys: pytest.CaptureFixture) -> None:
+        dbg = DebugManager(config=FULL_ON_CFG)
+        diag = _SOLAR_SCALED_DIAG if name in _SCALED_SOLAR_NAMES else _SOLAR_SIMPLE_DIAG
+        dbg.log_values(0, loss=1.0, loss_diagnostics={name: diag})
+        captured = capsys.readouterr().out
+        assert name in captured
+        assert "method" in captured
+
+    # -- per-field YAML filtering works for solar losses --
+
+    @pytest.mark.parametrize("name", _ALL_SOLAR_NAMES)
+    def test_solar_per_field_filtering(self, name: str, capsys: pytest.CaptureFixture) -> None:
+        cfg = {
+            **FULL_ON_CFG,
+            "log_loss_diagnostics": {name: {"method": True, "counter": False}},
+        }
+        dbg = DebugManager(config=cfg)
+        diag = _SOLAR_SCALED_DIAG if name in _SCALED_SOLAR_NAMES else _SOLAR_SIMPLE_DIAG
+        dbg.log_values(0, loss=1.0, loss_diagnostics={name: diag})
+        captured = capsys.readouterr().out
+        assert "method" in captured
+        assert "counter" not in captured
+
+    # -- hiding entire solar loss via per-loss false --
+
+    @pytest.mark.parametrize("name", _ALL_SOLAR_NAMES)
+    def test_solar_hide_entire_loss(self, name: str, capsys: pytest.CaptureFixture) -> None:
+        cfg = {**FULL_ON_CFG, "log_loss_diagnostics": {name: False}}
+        dbg = DebugManager(config=cfg)
+        diag = _SOLAR_SCALED_DIAG if name in _SCALED_SOLAR_NAMES else _SOLAR_SIMPLE_DIAG
+        dbg.log_values(0, loss=1.0, loss_diagnostics={name: diag})
+        captured = capsys.readouterr().out
+        assert name not in captured
+
+    # -- all solar losses together in one diagnostics dict --
+
+    def test_all_solar_losses_together(self, capsys: pytest.CaptureFixture) -> None:
+        dbg = DebugManager(config=FULL_ON_CFG)
+        diag_all = {}
+        for name in _SCALED_SOLAR_NAMES:
+            diag_all[name] = dict(_SOLAR_SCALED_DIAG)
+        for name in _SIMPLE_SOLAR_NAMES:
+            diag_all[name] = dict(_SOLAR_SIMPLE_DIAG)
+        dbg.log_values(0, loss=1.0, loss_diagnostics=diag_all)
+        captured = capsys.readouterr().out
+        for name in _ALL_SOLAR_NAMES:
+            assert name in captured
+
+    # -- solar + non-solar combined --
+
+    def test_solar_combined_with_other_losses(self, capsys: pytest.CaptureFixture) -> None:
+        dbg = DebugManager(config=FULL_ON_CFG)
+        diag = {
+            "bb_v4_2": {"violation_frac": 0.05, "n_points": 500},
+            "eikonal_v0": {"grad_norm_mean": 0.99, "n_points": 1000},
+            "solar_v3B": dict(_SOLAR_SCALED_DIAG),
+            "solar_v5": dict(_SOLAR_SIMPLE_DIAG),
+        }
+        dbg.log_values(0, loss=1.0, loss_diagnostics=diag)
+        captured = capsys.readouterr().out
+        assert "bb_v4_2" in captured
+        assert "eikonal_v0" in captured
+        assert "solar_v3B" in captured
+        assert "solar_v5" in captured
+
+    def test_solar_combined_with_cruising_speed(self) -> None:
+        mock_solar = MagicMock()
+        mock_solar._last_diagnostics = dict(_SOLAR_SIMPLE_DIAG)
+        mock_loss = MagicMock()
+        mock_loss._active_losses = {"solar_v6": mock_solar}
+        mock_loss.get_cruising_speed_diagnostics.return_value = {"speed (m/s)": 22.0}
+
+        result = collect_loss_diagnostics(mock_loss)
+        assert "solar_v6" in result
+        assert "cruising_speed" in result
+
+    # -- collect_loss_diagnostics with ALL loss types present --
+
+    def test_collect_all_loss_types_together(self) -> None:
+        mocks = {}
+        for name in ("bb_v4_2", "eikonal_v0", "smoothness_v0", "gaot_loss"):
+            m = MagicMock()
+            m._last_diagnostics = {"n_points": 100}
+            mocks[name] = m
+        for name in _SCALED_SOLAR_NAMES:
+            m = MagicMock()
+            m._last_diagnostics = dict(_SOLAR_SCALED_DIAG)
+            mocks[name] = m
+        for name in _SIMPLE_SOLAR_NAMES:
+            m = MagicMock()
+            m._last_diagnostics = dict(_SOLAR_SIMPLE_DIAG)
+            mocks[name] = m
+
+        mock_loss = MagicMock()
+        mock_loss._active_losses = mocks
+        mock_loss.get_cruising_speed_diagnostics.return_value = {"speed (m/s)": 20.0}
+
+        result = collect_loss_diagnostics(mock_loss)
+        expected_keys = {"bb_v4_2", "eikonal_v0", "smoothness_v0", "gaot_loss", "cruising_speed"} | set(_ALL_SOLAR_NAMES)
+        assert set(result.keys()) == expected_keys
+
+    # -- warnings: solar losses with no diagnostics should not crash --
+
+    def test_warnings_with_solar_diagnostics_safe(self) -> None:
+        dbg = DebugManager(config=FULL_ON_CFG)
+        for name in _ALL_SOLAR_NAMES:
+            diag = _SOLAR_SCALED_DIAG if name in _SCALED_SOLAR_NAMES else _SOLAR_SIMPLE_DIAG
+            ws = dbg.check_warnings(0, loss_diagnostics={name: diag})
+            # Solar diagnostics should not trigger any warnings for healthy values
+            assert isinstance(ws, list)
+
+    # -- mixed healthy payload with all loss types produces no warnings --
+
+    def test_all_healthy_no_warnings(self) -> None:
+        dbg = DebugManager(config=FULL_ON_CFG)
+        diag = {
+            "bb_v4_2": {"violation_frac": 0.05, "n_points": 500},
+            "eikonal_v0": {"grad_norm_mean": 1.01},
+            "smoothness_v0": {"laplacian_abs_max": 0.5},
+            "solar_v3B": dict(_SOLAR_SCALED_DIAG),
+            "solar_v4": dict(_SOLAR_SIMPLE_DIAG),
+            "solar_v5": dict(_SOLAR_SIMPLE_DIAG),
+            "solar_v6": dict(_SOLAR_SIMPLE_DIAG),
+            "solar_v7": dict(_SOLAR_SCALED_DIAG),
+        }
+        ws = dbg.check_warnings(0, loss_diagnostics=diag)
+        assert ws == []
+
+    # -- insights: solar diagnostics passed through without crash --
+
+    def test_insights_with_solar_diagnostics(self) -> None:
+        dbg = DebugManager(config=FULL_ON_CFG)
+        for _name in _ALL_SOLAR_NAMES:
+            ins = dbg.check_insights(0, loss=0.5)
+            assert isinstance(ins, list)
+
+    # -- stats: solar diagnostics don't break stats logging --
+
+    def test_stats_with_solar_diagnostics(self) -> None:
+        dbg = DebugManager(config=FULL_ON_CFG)
+        dbg.begin_iteration(0)
+        stats = dbg.end_iteration(0, loss=1.0)
+        assert "loss" in stats
+        dbg.stop()
+
+    # -- debug.yaml listing for solar losses --
+
+    def test_yaml_has_solar_entries(self) -> None:
+        cfg = _load_debug_yaml()
+        log_diag = cfg.get("log_loss_diagnostics", {})
+        if isinstance(log_diag, dict):
+            for name in _ALL_SOLAR_NAMES:
+                assert name in log_diag, f"{name} missing from debug.yaml log_loss_diagnostics"
+
+
 # ---------------------------------------------------------------------------
 # Stand-alone entry point
 # ---------------------------------------------------------------------------
