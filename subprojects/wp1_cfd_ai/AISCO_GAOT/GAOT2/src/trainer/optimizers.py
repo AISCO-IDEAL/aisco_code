@@ -157,9 +157,9 @@ class AdamOptimizer:
         elif config.scheduler == "exp":
             self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=config.scheduler_gamma)
         elif config.scheduler == "mix":
-            warmup_epochs = int(config.warmup_epochs)
-            cosine_epochs = int(0.96 * self.epoch)
-            exp_decay_epochs = self.epoch - warmup_epochs - cosine_epochs
+            warmup_epochs = int(0.1 * self.epoch)
+            exp_decay_epochs = int(0.05 * self.epoch)
+            cosine_epochs = self.epoch - warmup_epochs - exp_decay_epochs
             if warmup_epochs == 0:
                 warmup_epochs = 1
                 cosine_epochs -= 1
@@ -303,9 +303,9 @@ class AdamWOptimizer:
         elif config["scheduler"] == "exp":
             self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=config["scheduler_gamma"])
         elif config["scheduler"] == "mix":
-            warmup_epochs = config["warmup_epochs"]
-            cosine_epochs = int(0.90 * self.epoch)
-            exp_decay_epochs = self.epoch - warmup_epochs - cosine_epochs
+            warmup_epochs = int(0.1 * self.epoch)
+            exp_decay_epochs = int(0.05 * self.epoch)
+            cosine_epochs = self.epoch - warmup_epochs - exp_decay_epochs
             if warmup_epochs == 0:
                 warmup_epochs = 1
                 cosine_epochs -= 1
