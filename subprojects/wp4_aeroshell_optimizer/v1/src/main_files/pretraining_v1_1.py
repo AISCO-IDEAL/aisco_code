@@ -136,11 +136,7 @@ def pretraining(
         loss.backward()
 
         # ── Debug: compute aggregate gradient norm ───────────────
-        param_grad_norm = sum(
-            p.grad.detach().pow(2).sum().item()
-            for p in model.parameters()
-            if p.grad is not None
-        ) ** 0.5
+        param_grad_norm = sum(p.grad.detach().pow(2).sum().item() for p in model.parameters() if p.grad is not None) ** 0.5
 
         loss_val = loss.item()
         mse_val = (loss - 0.1 * eikonal).item()

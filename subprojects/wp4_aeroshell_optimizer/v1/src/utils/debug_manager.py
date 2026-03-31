@@ -14,10 +14,10 @@ Usage
 
 The four hook families mirror the YAML toggles:
 
-* **values**   – ``print_raw_values``
-* **stats**    – ``show_stats``
-* **insights** – ``generate_insights``
-* **warnings** – ``emit_warnings``
+* **values**   - ``print_raw_values``
+* **stats**    - ``show_stats``
+* **insights** - ``generate_insights``
+* **warnings** - ``emit_warnings``
 """
 
 from __future__ import annotations
@@ -28,8 +28,8 @@ import tracemalloc
 from pathlib import Path
 from typing import Any
 
+import torch
 import yaml
-
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -39,11 +39,18 @@ _SEP_THIN = "┄" * 72
 
 def _load_debug_yaml() -> dict:
     """Load the debug YAML from the canonical configs/ location."""
-    config_path = (
-        Path(__file__).resolve().parents[2] / "configs" / "debug.yaml"
-    )
+    config_path = Path(__file__).resolve().parents[2] / "configs" / "debug.yaml"
     with config_path.open() as fh:
         return yaml.safe_load(fh)
+
+
+def _fmt(v: Any) -> str:
+    """Format a value for debug printing: tensors show shape+dtype, floats use sci notation."""
+    if isinstance(v, torch.Tensor):
+        return f"Tensor shape={tuple(v.shape)} dtype={v.dtype} device={v.device}"
+    if isinstance(v, float):
+        return f"{v:.6e}"
+    return repr(v)
 
 
 # ── DebugManager ─────────────────────────────────────────────────────────────
@@ -64,10 +71,7 @@ class DebugManager:
         cfg = config if config is not None else _load_debug_yaml()
 
         # Resolve the master switch -----------------------------------------
-        if global_override is not None:
-            master = global_override
-        else:
-            master = cfg.get("GLOBAL_DEBUG")  # True / False / None
+        master: Any = global_override if global_override is not None else cfg.get("GLOBAL_DEBUG")
 
         if master is True:
             self.print_raw_values = True
@@ -94,14 +98,29 @@ class DebugManager:
         self.log_cuda_memory: bool = bool(cfg.get("log_cuda_memory", True))
         self.log_alm_state: bool = bool(cfg.get("log_alm_state", True))
         self.log_run_info: bool = bool(cfg.get("log_run_info", True))
-        self.log_loss_diagnostics: bool = bool(cfg.get("log_loss_diagnostics", True))
+        # log_loss_diagnostics can be:
+        #   True  → show all fields for all losses
+        #   False → show nothing
+        #   dict  → per-loss, optionally per-field (see debug.yaml)
+        raw_diag = cfg.get("log_loss_diagnostics", True)
+        self.log_loss_diagnostics: bool | dict = raw_diag if isinstance(raw_diag, dict) else bool(raw_diag)
 
         # Tuning knobs ------------------------------------------------------
         self.stats_log_interval: int = int(cfg.get("stats_log_interval", 1))
+        # Warning thresholds
         self.nan_threshold: float = float(cfg.get("warning_nan_threshold", 1.0e10))
         self.grad_zero_atol: float = float(cfg.get("warning_grad_zero_atol", 1.0e-12))
         self.convergence_patience: int = int(cfg.get("warning_convergence_patience", 50))
+        self.bb_violation_frac: float = float(cfg.get("warning_bb_violation_frac", 0.95))
+        self.eikonal_grad_norm_tol: float = float(cfg.get("warning_eikonal_grad_norm_tol", 0.5))
+        self.smoothness_laplacian_max: float = float(cfg.get("warning_smoothness_laplacian_max", 1.0e4))
+        self.cruising_speed_min_ms: float = float(cfg.get("warning_cruising_speed_min_ms", 5.0))
+        # Insight thresholds
         self.insight_step_shrink_ratio: float = float(cfg.get("insight_step_shrink_ratio", 0.01))
+        self.insight_grad_explosion_threshold: float = float(cfg.get("insight_grad_explosion_threshold", 1.0e6))
+        self.insight_grad_vanish_threshold: float = float(cfg.get("insight_grad_vanish_threshold", 1.0e-8))
+        self.insight_plateau_window: int = int(cfg.get("insight_plateau_window", 10))
+        self.insight_plateau_spread_ratio: float = float(cfg.get("insight_plateau_spread_ratio", 1.0e-7))
 
         # Internal bookkeeping for stats / insights -------------------------
         self._iter_start_time: float | None = None
@@ -116,12 +135,7 @@ class DebugManager:
     # ------------------------------------------------------------------
     @property
     def any_enabled(self) -> bool:
-        return (
-            self.print_raw_values
-            or self.show_stats
-            or self.generate_insights
-            or self.emit_warnings
-        )
+        return self.print_raw_values or self.show_stats or self.generate_insights or self.emit_warnings
 
     def summary(self) -> str:
         """Return a human-readable summary of what is turned on."""
@@ -139,7 +153,6 @@ class DebugManager:
             "log_cuda_memory": self.log_cuda_memory,
             "log_alm_state": self.log_alm_state,
             "log_run_info": self.log_run_info,
-            "log_loss_diagnostics": self.log_loss_diagnostics,
         }
         lines = [f"\n{_SEPARATOR}", "[DebugManager] Active toggles:", _SEPARATOR]
         for name, on in flags.items():
@@ -148,18 +161,30 @@ class DebugManager:
         lines.append("  Sub-toggles (under print_raw_values):")
         for name, on in sub_toggles.items():
             lines.append(f"    {name:<25s} = {'ON' if on else 'OFF'}")
+        # log_loss_diagnostics shown separately as it can be nested
+        if isinstance(self.log_loss_diagnostics, dict):
+            lines.append(f"    {'log_loss_diagnostics':<25s} = CUSTOM ({len(self.log_loss_diagnostics)} losses configured)")
+            for loss_name, loss_cfg in self.log_loss_diagnostics.items():
+                if isinstance(loss_cfg, dict):
+                    n_on = sum(1 for v in loss_cfg.values() if v)
+                    n_tot = len(loss_cfg)
+                    lines.append(f"      {loss_name:<23s}: {n_on}/{n_tot} fields ON")
+                else:
+                    lines.append(f"      {loss_name:<23s}: {'ON' if loss_cfg else 'OFF'}")
+        else:
+            lines.append(f"    {'log_loss_diagnostics':<25s} = {'ON' if self.log_loss_diagnostics else 'OFF'}")
         lines.append(_SEPARATOR)
         return "\n".join(lines)
 
     # ==================================================================
     # 0. RUN CONFIG  — one-time info dump at start of training
     # ==================================================================
-    def log_run_config(
+    def log_run_config(  # noqa: PLR0912
         self,
         *,
         model: Any = None,
         training_config: dict | None = None,
-        general_config: dict | None = None,
+        general_config: dict | None = None,  # noqa: ARG002
         device: str | None = None,
         num_epochs: int | None = None,
         learning_rate: float | None = None,
@@ -170,8 +195,6 @@ class DebugManager:
         """Print a one-time summary of the run configuration at training start."""
         if not self.print_raw_values or not self.log_run_info:
             return
-
-        import torch
 
         print(f"\n{'═' * 72}")
         print("[DEBUG RUN CONFIG] Training session starting")
@@ -226,7 +249,7 @@ class DebugManager:
     # ==================================================================
     # 1. VALUES  — print critical state variables / inputs / outputs
     # ==================================================================
-    def log_values(
+    def log_values(  # noqa: PLR0912, PLR0915
         self,
         iteration: int,
         *,
@@ -318,12 +341,19 @@ class DebugManager:
                 print(f"    {k:<30s}: {_fmt(v)}")
 
         # ── Per-loss diagnostics ─────────────────────────────────
-        if loss_diagnostics and self.log_loss_diagnostics:
-            print(f"  {_SEP_THIN}")
-            print("  Per-loss diagnostics:")
+        if loss_diagnostics and self.log_loss_diagnostics is not False:
+            printed_any = False
             for loss_name, diag in loss_diagnostics.items():
+                loss_cfg = _get_loss_diag_cfg(self.log_loss_diagnostics, loss_name)
+                filtered = _filter_diag_fields(diag, loss_cfg)
+                if not filtered:
+                    continue
+                if not printed_any:
+                    print(f"  {_SEP_THIN}")
+                    print("  Per-loss diagnostics:")
+                    printed_any = True
                 print(f"    ┌─ {loss_name}")
-                for k, v in diag.items():
+                for k, v in filtered.items():
                     if isinstance(v, float):
                         print(f"    │  {k:<30s}: {v:.6e}")
                     else:
@@ -341,7 +371,7 @@ class DebugManager:
     # ==================================================================
     # 2. STATS  — performance metrics
     # ==================================================================
-    def begin_iteration(self, iteration: int) -> None:
+    def begin_iteration(self, _iteration: int) -> None:
         """Call at the **start** of each optimisation iteration."""
         if not self.show_stats:
             return
@@ -400,7 +430,7 @@ class DebugManager:
     # ==================================================================
     # 3. WARNINGS  — flag anomalous behaviour
     # ==================================================================
-    def check_warnings(
+    def check_warnings(  # noqa: PLR0912, PLR0915
         self,
         iteration: int,
         *,
@@ -436,11 +466,8 @@ class DebugManager:
                     warnings_list.append(f"Iter {iteration}: loss component '{name}' is Inf!")
 
         # Zero / vanishing gradient
-        if grad_norm is not None:
-            if grad_norm < self.grad_zero_atol:
-                warnings_list.append(
-                    f"Iter {iteration}: gradient norm ({grad_norm:.3e}) is effectively zero"
-                )
+        if grad_norm is not None and grad_norm < self.grad_zero_atol:
+            warnings_list.append(f"Iter {iteration}: gradient norm ({grad_norm:.3e}) is effectively zero")
 
         # Per-loss diagnostic warnings
         if loss_diagnostics is not None:
@@ -455,50 +482,62 @@ class DebugManager:
 
                 # BB-specific: all points violating
                 vf = diag.get("violation_frac")
-                if vf is not None and vf > 0.95:
-                    warnings_list.append(
-                        f"Iter {iteration}: '{ln}' {vf*100:.1f}% of points violating bounding box!"
-                    )
+                if vf is not None and vf > self.bb_violation_frac:
+                    warnings_list.append(f"Iter {iteration}: '{ln}' {vf * 100:.1f}% of points violating bounding box!")
 
                 # Eikonal-specific: gradient norms far from 1
                 gnm = diag.get("grad_norm_mean")
-                if gnm is not None and abs(gnm - 1.0) > 0.5:
-                    warnings_list.append(
-                        f"Iter {iteration}: '{ln}' eikonal grad norm mean={gnm:.3f} (should be ~1.0)"
-                    )
+                if gnm is not None and abs(gnm - 1.0) > self.eikonal_grad_norm_tol:
+                    warnings_list.append(f"Iter {iteration}: '{ln}' eikonal grad norm mean={gnm:.3f} (should be ~1.0)")
 
                 # Smoothness: extreme curvature
                 lap_max = diag.get("laplacian_abs_max")
-                if lap_max is not None and lap_max > 1e4:
-                    warnings_list.append(
-                        f"Iter {iteration}: '{ln}' extreme curvature: max |laplacian|={lap_max:.3e}"
-                    )
+                if lap_max is not None and lap_max > self.smoothness_laplacian_max:
+                    warnings_list.append(f"Iter {iteration}: '{ln}' extreme curvature: max |laplacian|={lap_max:.3e}")
 
                 # GAOT-specific: NaN/Inf in force/drag/pressure
-                for flag_key in ("force_is_nan", "drag_is_nan", "cd_proxy_is_nan"):
-                    if diag.get(flag_key):
-                        warnings_list.append(f"Iter {iteration}: '{ln}' produced NaN output!")
-                for flag_key in ("force_is_inf", "drag_is_inf", "cd_proxy_is_inf"):
-                    if diag.get(flag_key):
-                        warnings_list.append(f"Iter {iteration}: '{ln}' produced Inf output!")
+                warnings_list.extend(
+                    f"Iter {iteration}: '{ln}' produced NaN output!"
+                    for flag_key in ("force_is_nan", "drag_is_nan", "cd_proxy_is_nan")
+                    if diag.get(flag_key)
+                )
+                warnings_list.extend(
+                    f"Iter {iteration}: '{ln}' produced Inf output!"
+                    for flag_key in ("force_is_inf", "drag_is_inf", "cd_proxy_is_inf")
+                    if diag.get(flag_key)
+                )
 
                 pf_nan = diag.get("pressure_field_nan_count", 0)
                 if pf_nan > 0:
-                    warnings_list.append(
-                        f"Iter {iteration}: '{ln}' pressure field has {pf_nan} NaN values!"
-                    )
+                    warnings_list.append(f"Iter {iteration}: '{ln}' pressure field has {pf_nan} NaN values!")
                 pf_inf = diag.get("pressure_field_inf_count", 0)
                 if pf_inf > 0:
-                    warnings_list.append(
-                        f"Iter {iteration}: '{ln}' pressure field has {pf_inf} Inf values!"
-                    )
+                    warnings_list.append(f"Iter {iteration}: '{ln}' pressure field has {pf_inf} Inf values!")
 
                 # Surface area: degenerate triangles
                 degen = diag.get("degenerate_triangles", 0)
                 if degen > 0:
-                    warnings_list.append(
-                        f"Iter {iteration}: '{ln}' has {degen} degenerate triangles (area < 1e-10)!"
-                    )
+                    warnings_list.append(f"Iter {iteration}: '{ln}' has {degen} degenerate triangles (area < 1e-10)!")
+
+                # Cruising speed solver
+                if ln == "cruising_speed":
+                    if diag.get("speed_is_nan"):
+                        warnings_list.append(f"Iter {iteration}: cruising speed solver returned NaN!")
+                    if diag.get("speed_is_inf"):
+                        warnings_list.append(f"Iter {iteration}: cruising speed solver returned Inf!")
+                    spd = diag.get("speed (m/s)")
+                    if spd is not None and not diag.get("speed_is_nan") and spd < self.cruising_speed_min_ms:
+                        warnings_list.append(f"Iter {iteration}: cruising speed very low: {spd:.2f} m/s ({spd * 3.6:.1f} km/h)")
+                    drag = diag.get("drag_force (N)")
+                    if drag is not None and drag <= 0:
+                        warnings_list.append(
+                            f"Iter {iteration}: cruising speed solver received non-positive drag force: {drag:.3e} N"
+                        )
+                    solar = diag.get("solar_power (W)")
+                    if solar is not None and solar <= 0:
+                        warnings_list.append(
+                            f"Iter {iteration}: cruising speed solver received non-positive solar power: {solar:.3e} W"
+                        )
 
         # Boundary-limit check for parameters
         if params is not None and param_bounds is not None:
@@ -513,9 +552,7 @@ class DebugManager:
             else:
                 self._stall_counter = 0
             if self._stall_counter >= self.convergence_patience:
-                warnings_list.append(
-                    f"Iter {iteration}: convergence stalled for {self._stall_counter} consecutive iterations"
-                )
+                warnings_list.append(f"Iter {iteration}: convergence stalled for {self._stall_counter} consecutive iterations")
 
         for w in warnings_list:
             print(f"  [WARNING] {w}")
@@ -549,24 +586,24 @@ class DebugManager:
                     )
 
         # Loss plateau detection
-        if loss is not None and len(self._loss_history) >= 10:
-            recent = self._loss_history[-10:]
+        if loss is not None and len(self._loss_history) >= self.insight_plateau_window:
+            recent = self._loss_history[-self.insight_plateau_window :]
             spread = max(recent) - min(recent)
-            if spread < 1e-7 * max(abs(recent[0]), 1e-30):
+            if spread < self.insight_plateau_spread_ratio * max(abs(recent[0]), 1e-30):
                 insights.append(
                     f"Iter {iteration}: Loss plateau detected over last 10 iterations "
                     f"(spread={spread:.3e}). Consider increasing learning rate or perturbing."
                 )
 
         # Gradient explosion hint
-        if grad_norm is not None and grad_norm > 1e6:
+        if grad_norm is not None and grad_norm > self.insight_grad_explosion_threshold:
             insights.append(
                 f"Iter {iteration}: Gradient norm is very large ({grad_norm:.3e}). "
                 "Consider gradient clipping or reducing learning rate."
             )
 
         # Gradient vanishing hint
-        if grad_norm is not None and 0 < grad_norm < 1e-8:
+        if grad_norm is not None and 0 < grad_norm < self.insight_grad_vanish_threshold:
             insights.append(
                 f"Iter {iteration}: Gradient norm is very small ({grad_norm:.3e}). "
                 "Model may have reached a saddle point or flat region."
@@ -591,8 +628,6 @@ class DebugManager:
 
 def collect_param_stats(model: Any) -> dict[str, dict[str, float]]:
     """Extract min/max/mean/std for every named parameter of a ``nn.Module``."""
-    import torch
-
     stats: dict[str, dict[str, float]] = {}
     for name, param in model.named_parameters():
         if not param.requires_grad:
@@ -644,8 +679,6 @@ def collect_optimizer_state(optimizer: Any) -> dict[str, Any]:
 
 def collect_cuda_memory() -> dict[str, float]:
     """Return current CUDA memory stats in MB.  Returns empty dict on CPU."""
-    import torch
-
     if not torch.cuda.is_available():
         return {}
     return {
@@ -704,28 +737,49 @@ def collect_loss_diagnostics(loss_function: Any) -> dict[str, dict[str, Any]]:
         diag = getattr(instance, "_last_diagnostics", None)
         if diag:
             result[name] = dict(diag)
+    # Cruising speed lives on TotalLoss directly (not in _active_losses)
+    cs_diag = None
+    getter = getattr(loss_function, "get_cruising_speed_diagnostics", None)
+    if callable(getter):
+        cs_diag = getter()
+    if cs_diag:
+        result["cruising_speed"] = dict(cs_diag)
     return result
 
 
 # ── Private helpers ──────────────────────────────────────────────────────────
 
 
-def _fmt(obj: Any, max_len: int = 120) -> str:
-    """Format an arbitrary object to a bounded-length string."""
-    try:
-        import torch
+def _get_loss_diag_cfg(log_cfg: bool | dict, loss_name: str) -> bool | dict:
+    """Return the effective config for one loss given the top-level log_loss_diagnostics value.
 
-        if isinstance(obj, torch.Tensor):
-            s = f"Tensor(shape={list(obj.shape)}, dtype={obj.dtype}, device={obj.device})"
-            if obj.numel() <= 8:
-                s += f" {obj.tolist()}"
-            return s
-    except ImportError:
-        pass
-    s = repr(obj)
-    if len(s) > max_len:
-        s = s[: max_len - 3] + "..."
-    return s
+    ``log_cfg`` is either:
+    * ``True``  → show everything
+    * ``False`` → show nothing
+    * ``dict``  → per-loss entries; if loss not listed, default is show-all (True)
+
+    Returns ``True``, ``False``, or a ``{field: bool}`` dict.
+    """
+    if isinstance(log_cfg, bool):
+        return log_cfg
+    # dict mode: look up the loss; default to True (show all) if not listed
+    return log_cfg.get(loss_name, True)
+
+
+def _filter_diag_fields(diag: dict, loss_cfg: bool | dict) -> dict:
+    """Return a filtered copy of ``diag`` based on ``loss_cfg``.
+
+    * ``True``            → return all fields
+    * ``False``           → return empty dict (caller skips the block)
+    * ``{field: bool}``   → keep only fields whose value is True;
+                            fields not listed in the config default to True
+    """
+    if loss_cfg is True:
+        return diag
+    if loss_cfg is False:
+        return {}
+    # dict: keep fields that are True in the config; unknown fields default True
+    return {k: v for k, v in diag.items() if loss_cfg.get(k, True)}
 
 
 def _print_stats(iteration: int, stats: dict[str, float]) -> None:
@@ -750,8 +804,7 @@ def _check_boundary(
 ) -> None:
     """Append warnings for parameters at boundary limits."""
     try:
-        import torch
-
+        params_flat: torch.Tensor | list[Any]
         if isinstance(params, torch.Tensor):
             params_flat = params.detach().cpu().view(-1)
         elif isinstance(params, list):
@@ -762,12 +815,8 @@ def _check_boundary(
         for idx, val in enumerate(params_flat):
             v = float(val)
             if v <= lo:
-                warnings_list.append(
-                    f"Iter {iteration}: param[{idx}] = {v:.4e} hit lower bound {lo}"
-                )
+                warnings_list.append(f"Iter {iteration}: param[{idx}] = {v:.4e} hit lower bound {lo}")
             elif v >= hi:
-                warnings_list.append(
-                    f"Iter {iteration}: param[{idx}] = {v:.4e} hit upper bound {hi}"
-                )
+                warnings_list.append(f"Iter {iteration}: param[{idx}] = {v:.4e} hit upper bound {hi}")
     except Exception:
         pass

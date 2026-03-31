@@ -33,13 +33,103 @@ log_optimizer_state: true       # Adam exp_avg/exp_avg_sq norms, step count, bet
 log_cuda_memory: true           # CUDA allocated/reserved/peak/free memory
 log_alm_state: true             # ALM multipliers (lambda, mu, nu) when ALM is active
 log_run_info: true              # One-time dump of model architecture, device, config at start
-log_loss_diagnostics: true      # Per-loss intermediate values (violations, grad norms, pressure stats, etc.)
+log_loss_diagnostics:
+  # ── per-loss, per-field control ─────────────────────────────────────────
+  # Each entry below can be:
+  #   true          → show ALL fields for this loss
+  #   false         → hide this loss entirely
+  #   {field: bool} → show only the fields set to true
+  #
+  # The loss name must match the key in losses_v0_config.yaml.
+  # "cruising_speed" is a synthetic key always present when CSE is active.
+  # ─────────────────────────────────────────────────────────────────────────
+  bb_v4_2:
+    n_points:                 true
+    violation_frac:           true
+    upper_violation_count:    true
+    upper_violation_max:      true
+    upper_violation_mean:     true
+    lower_violation_count:    true
+    lower_violation_max:      true
+    lower_violation_mean:     true
+    sdf_pred_min:             false
+    sdf_pred_max:             false
+    sdf_pred_mean:            false
+    sdf_inner_min:            false
+    sdf_inner_max:            false
+    sdf_outer_min:            false
+    sdf_outer_max:            false
+
+  eikonal_v0:
+    n_points:                   true
+    grad_norm_mean:             true
+    grad_norm_std:              true
+    deviation_from_1_mean:      true
+    deviation_from_1_max:       true
+    pct_grad_norm_below_0.5:    true
+    pct_grad_norm_above_1.5:    true
+    grad_norm_min:              false
+    grad_norm_max:              false
+    sdf_min:                    false
+    sdf_max:                    false
+    sdf_mean:                   false
+
+  smoothness_v0:
+    n_points:             true
+    laplacian_mean:       true
+    laplacian_abs_max:    true
+    pct_high_curvature:   true
+    laplacian_min:        false
+    laplacian_max:        false
+    laplacian_std:        false
+    sdf_min:              false
+    sdf_max:              false
+    sdf_mean:             false
+    grad_sdf_norm_mean:   false
+
+  gaot_loss:
+    drag_value:               true
+    drag_is_nan:              true
+    drag_is_inf:              true
+    pressure_field_nan_count: true
+    pressure_field_inf_count: true
+    normals_flipped_count:    true
+    n_input_vertices:         true
+    n_input_faces:            true
+    pressure_field_min:       false
+    pressure_field_max:       false
+    pressure_field_mean:      false
+    pressure_field_std:       false
+
+  cruising_speed:
+    "speed (m/s)":          true
+    "speed (km/h)":         true
+    "drag_force (N)":       true
+    "solar_power (W)":      true
+    "rolling_friction (N)": false
+    speed_is_nan:           true
+    speed_is_inf:           true
+
+  # Any loss not listed here defaults to: show ALL its fields
+  # To add a new loss, just add a new entry following the same pattern.
 
 # ---------------------------------------------------------------------------
 # Optional tuning knobs
 # ---------------------------------------------------------------------------
-stats_log_interval: 1       # Log stats every N iterations (1 = every iteration)
-warning_nan_threshold: 1.0e+10     # Values above this magnitude trigger a warning
-warning_grad_zero_atol: 1.0e-12   # Gradient norm below this is considered "zero"
+stats_log_interval: 1              # Log stats every N iterations (1 = every iteration)
+
+# ── Warning thresholds ──────────────────────────────────────────────────────
+warning_nan_threshold: 1.0e+10     # Total loss magnitude above this triggers a warning
+warning_grad_zero_atol: 1.0e-12    # Gradient norm below this is considered "zero"
 warning_convergence_patience: 50   # Flag slow convergence after this many stalled iterations
+warning_bb_violation_frac: 0.95    # BB violation fraction above this triggers a warning (0–1)
+warning_eikonal_grad_norm_tol: 0.5 # |grad_norm_mean - 1.0| above this triggers a warning
+warning_smoothness_laplacian_max: 1.0e+4  # Max |laplacian| above this triggers a warning
+warning_cruising_speed_min_ms: 5.0 # Cruising speed below this (m/s) triggers a warning
+
+# ── Insight thresholds ──────────────────────────────────────────────────────
 insight_step_shrink_ratio: 0.01    # Flag "step size shrinking too fast" below this ratio
+insight_grad_explosion_threshold: 1.0e+6   # Gradient norm above this triggers an explosion hint
+insight_grad_vanish_threshold: 1.0e-8      # Gradient norm below this triggers a vanishing hint
+insight_plateau_window: 10                 # Number of recent iterations to check for plateau
+insight_plateau_spread_ratio: 1.0e-7       # Relative spread below this is considered a plateau

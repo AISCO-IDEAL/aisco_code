@@ -132,14 +132,11 @@ class BasicMLP(BaseModel):
                 prev_grad = curr_grad
 
             # ── Debug: compute aggregate gradient norm ───────────────
-            grad_norm = sum(
-                p.grad.detach().pow(2).sum().item()
-                for p in self.parameters()
-                if p.grad is not None
-            ) ** 0.5
+            grad_norm = sum(p.grad.detach().pow(2).sum().item() for p in self.parameters() if p.grad is not None) ** 0.5
             lr = optimizer.param_groups[0]["lr"]
 
             # ── Debug: print raw values ──────────────────────────────
+            _last_cs = getattr(loss_function, "_last_cruising_speed", None)
             dbg.log_values(
                 epoch,
                 loss=total_weighted_loss,
@@ -152,11 +149,11 @@ class BasicMLP(BaseModel):
                 cuda_memory=collect_cuda_memory() if dbg.print_raw_values and dbg.log_cuda_memory else None,
                 alm_state=collect_alm_state(loss_function) if dbg.print_raw_values and dbg.log_alm_state else None,
                 loss_weights=collect_loss_weights(loss_function),
-                loss_diagnostics=collect_loss_diagnostics(loss_function) if dbg.print_raw_values and dbg.log_loss_diagnostics else None,
+                loss_diagnostics=collect_loss_diagnostics(loss_function)
+                if dbg.print_raw_values and dbg.log_loss_diagnostics
+                else None,
                 extra={
-                    "cruising_speed": loss_function._last_cruising_speed.item()
-                    if getattr(loss_function, "_last_cruising_speed", None) is not None
-                    else "N/A",
+                    "cruising_speed": _last_cs.item() if _last_cs is not None else "N/A",
                 },
             )
 

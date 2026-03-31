@@ -12,15 +12,12 @@ Or standalone::
 
 from __future__ import annotations
 
-import math
 import sys
-from io import StringIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
-import yaml
 
 # ---------------------------------------------------------------------------
 # Ensure the project root is importable
@@ -29,8 +26,10 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.debug_manager import (
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.debug_manager import (  # noqa: E402
     DebugManager,
+    _filter_diag_fields,
+    _get_loss_diag_cfg,
     _load_debug_yaml,
     collect_alm_state,
     collect_cuda_memory,
@@ -121,6 +120,11 @@ class TestConfigFile:
         ):
             assert key in cfg, f"Missing sub-toggle: {key}"
 
+    def test_log_loss_diagnostics_is_dict_in_yaml(self) -> None:
+        cfg = _load_debug_yaml()
+        # The YAML now uses nested per-field config, not a plain bool
+        assert isinstance(cfg["log_loss_diagnostics"], dict)
+
     def test_global_debug_has_valid_value(self) -> None:
         cfg = _load_debug_yaml()
         assert cfg["GLOBAL_DEBUG"] in (True, False, None)
@@ -132,7 +136,6 @@ class TestConfigFile:
 
 
 class TestGlobalOverride:
-
     def test_global_true_forces_all_on(self) -> None:
         dbg = DebugManager(config={"GLOBAL_DEBUG": True})
         assert dbg.print_raw_values is True
@@ -217,7 +220,6 @@ class TestGlobalOverride:
 
 
 class TestLogValues:
-
     def test_prints_when_enabled(self, capsys: pytest.CaptureFixture) -> None:
         dbg = DebugManager(config=FULL_ON_CFG)
         dbg.log_values(0, inputs=[1, 2, 3], outputs=[4, 5, 6], loss=0.123)
@@ -258,7 +260,6 @@ class TestLogValues:
 
 
 class TestStats:
-
     def test_end_iteration_returns_stats(self) -> None:
         dbg = DebugManager(config=FULL_ON_CFG)
         dbg.begin_iteration(0)
@@ -329,7 +330,6 @@ class TestStats:
 
 
 class TestWarnings:
-
     def test_nan_loss_warning(self, capsys: pytest.CaptureFixture) -> None:
         dbg = DebugManager(config=FULL_ON_CFG)
         ws = dbg.check_warnings(0, loss=float("nan"))
@@ -399,7 +399,6 @@ class TestWarnings:
 
 
 class TestInsights:
-
     def test_step_shrink_insight(self, capsys: pytest.CaptureFixture) -> None:
         dbg = DebugManager(config=FULL_ON_CFG)
         dbg.check_insights(0, lr=1.0)
@@ -440,7 +439,6 @@ class TestInsights:
 
 
 class TestMisc:
-
     def test_summary_contains_toggle_names(self) -> None:
         dbg = DebugManager(config=FULL_ON_CFG)
         s = dbg.summary()
@@ -588,7 +586,7 @@ class TestLogRunConfig:
         """Ensure get_device_properties uses .total_memory (not .total_mem)."""
         dbg = DebugManager(config=FULL_ON_CFG)
         fake_props = MagicMock()
-        fake_props.total_memory = 8 * 1024 ** 3  # 8 GB
+        fake_props.total_memory = 8 * 1024**3  # 8 GB
         # total_mem must NOT be accessed; only total_memory
         del fake_props.total_mem
         with (
@@ -612,7 +610,7 @@ class TestCollectHelpers:
     def test_collect_param_stats(self) -> None:
         model = torch.nn.Linear(4, 2)
         stats = collect_param_stats(model)
-        assert "weight" in list(stats.keys())[0]
+        assert "weight" in next(iter(stats.keys()))
         for v in stats.values():
             assert "min" in v and "max" in v and "mean" in v and "std" in v
 
@@ -644,17 +642,17 @@ class TestCollectHelpers:
     def test_collect_cuda_memory_uses_total_memory_attribute(self) -> None:
         """Ensure collect_cuda_memory uses .total_memory (not .total_mem)."""
         fake_props = MagicMock()
-        fake_props.total_memory = 16 * 1024 ** 2  # 16 MB in bytes
+        fake_props.total_memory = 16 * 1024**2  # 16 MB in bytes
         del fake_props.total_mem
         with (
             patch("torch.cuda.is_available", return_value=True),
             patch("torch.cuda.get_device_properties", return_value=fake_props),
-            patch("torch.cuda.memory_allocated", return_value=4 * 1024 ** 2),
-            patch("torch.cuda.memory_reserved", return_value=8 * 1024 ** 2),
-            patch("torch.cuda.max_memory_allocated", return_value=10 * 1024 ** 2),
+            patch("torch.cuda.memory_allocated", return_value=4 * 1024**2),
+            patch("torch.cuda.memory_reserved", return_value=8 * 1024**2),
+            patch("torch.cuda.max_memory_allocated", return_value=10 * 1024**2),
         ):
             mem = collect_cuda_memory()
-        assert mem["free"] == pytest.approx(12.0)   # 16 - 4 MB
+        assert mem["free"] == pytest.approx(12.0)  # 16 - 4 MB
         assert mem["allocated"] == pytest.approx(4.0)
         assert mem["reserved"] == pytest.approx(8.0)
         assert mem["max_allocated"] == pytest.approx(10.0)
@@ -752,6 +750,7 @@ class TestLossDiagnostics:
     def test_collect_loss_diagnostics_empty(self) -> None:
         mock_loss = MagicMock()
         mock_loss._active_losses = {}
+        mock_loss.get_cruising_speed_diagnostics.return_value = None
         result = collect_loss_diagnostics(mock_loss)
         assert result == {}
 
@@ -773,6 +772,7 @@ class TestLossDiagnostics:
         mock_null = MagicMock(spec=[])
         mock_loss = MagicMock()
         mock_loss._active_losses = {"null_loss": mock_null}
+        mock_loss.get_cruising_speed_diagnostics.return_value = None
         result = collect_loss_diagnostics(mock_loss)
         assert result == {}
 
@@ -798,6 +798,90 @@ class TestLossDiagnostics:
         dbg.log_values(0, loss=1.0, loss_diagnostics={"bb": {"n_points": 100}})
         captured = capsys.readouterr().out
         assert "bb" not in captured or "Per-loss diagnostics" not in captured
+
+    def test_per_field_filtering_hides_disabled_field(self, capsys: pytest.CaptureFixture) -> None:
+        cfg = {
+            **FULL_ON_CFG,
+            "log_loss_diagnostics": {
+                "my_loss": {"n_points": True, "sdf_mean": False},
+            },
+        }
+        dbg = DebugManager(config=cfg)
+        dbg.log_values(
+            0,
+            loss=1.0,
+            loss_diagnostics={
+                "my_loss": {"n_points": 100, "sdf_mean": -0.5},
+            },
+        )
+        captured = capsys.readouterr().out
+        assert "n_points" in captured
+        assert "sdf_mean" not in captured
+
+    def test_per_loss_false_hides_entire_loss(self, capsys: pytest.CaptureFixture) -> None:
+        cfg = {
+            **FULL_ON_CFG,
+            "log_loss_diagnostics": {
+                "hidden_loss": False,
+                "visible_loss": True,
+            },
+        }
+        dbg = DebugManager(config=cfg)
+        dbg.log_values(
+            0,
+            loss=1.0,
+            loss_diagnostics={
+                "hidden_loss": {"n_points": 42},
+                "visible_loss": {"n_points": 99},
+            },
+        )
+        captured = capsys.readouterr().out
+        assert "hidden_loss" not in captured
+        assert "visible_loss" in captured
+
+    def test_unlisted_loss_defaults_to_show_all(self, capsys: pytest.CaptureFixture) -> None:
+        cfg = {**FULL_ON_CFG, "log_loss_diagnostics": {"other_loss": True}}
+        dbg = DebugManager(config=cfg)
+        dbg.log_values(
+            0,
+            loss=1.0,
+            loss_diagnostics={
+                "unlisted_loss": {"some_field": 1.23},
+            },
+        )
+        captured = capsys.readouterr().out
+        assert "unlisted_loss" in captured
+        assert "some_field" in captured
+
+    # -- Helper unit tests --
+
+    def test_get_loss_diag_cfg_bool_true(self) -> None:
+        assert _get_loss_diag_cfg(True, "anything") is True
+
+    def test_get_loss_diag_cfg_bool_false(self) -> None:
+        assert _get_loss_diag_cfg(False, "anything") is False
+
+    def test_get_loss_diag_cfg_dict_hit(self) -> None:
+        cfg = {"bb_v4": {"n_points": True}}
+        assert _get_loss_diag_cfg(cfg, "bb_v4") == {"n_points": True}
+
+    def test_get_loss_diag_cfg_dict_miss_defaults_true(self) -> None:
+        assert _get_loss_diag_cfg({"other": True}, "unlisted") is True
+
+    def test_filter_diag_fields_true_returns_all(self) -> None:
+        d = {"a": 1, "b": 2}
+        assert _filter_diag_fields(d, True) == d
+
+    def test_filter_diag_fields_false_returns_empty(self) -> None:
+        assert _filter_diag_fields({"a": 1}, False) == {}
+
+    def test_filter_diag_fields_dict_filters(self) -> None:
+        d = {"a": 1, "b": 2, "c": 3}
+        result = _filter_diag_fields(d, {"a": True, "b": False})
+        assert "a" in result
+        assert "b" not in result
+        # c not in filter config → defaults True
+        assert "c" in result
 
     def test_warning_empty_mesh(self) -> None:
         dbg = DebugManager(config=FULL_ON_CFG)
@@ -851,11 +935,93 @@ class TestLossDiagnostics:
 
     def test_no_warning_for_healthy_diagnostics(self) -> None:
         dbg = DebugManager(config=FULL_ON_CFG)
-        ws = dbg.check_warnings(0, loss_diagnostics={
-            "bb": {"violation_frac": 0.05, "n_points": 500},
-            "eikonal": {"grad_norm_mean": 1.01},
-            "smoothness": {"laplacian_abs_max": 0.5},
-        })
+        ws = dbg.check_warnings(
+            0,
+            loss_diagnostics={
+                "bb": {"violation_frac": 0.05, "n_points": 500},
+                "eikonal": {"grad_norm_mean": 1.01},
+                "smoothness": {"laplacian_abs_max": 0.5},
+            },
+        )
+        assert ws == []
+
+    # -- Cruising speed diagnostics ---
+
+    def test_collect_loss_diagnostics_includes_cruising_speed(self) -> None:
+        mock_loss = MagicMock()
+        mock_loss._active_losses = {}
+        mock_loss.get_cruising_speed_diagnostics.return_value = {"speed (m/s)": 22.5, "speed_is_nan": False}
+        result = collect_loss_diagnostics(mock_loss)
+        assert "cruising_speed" in result
+        assert result["cruising_speed"]["speed (m/s)"] == 22.5
+
+    def test_collect_loss_diagnostics_omits_cruising_speed_when_none(self) -> None:
+        mock_loss = MagicMock()
+        mock_loss._active_losses = {}
+        mock_loss.get_cruising_speed_diagnostics.return_value = None
+        result = collect_loss_diagnostics(mock_loss)
+        assert "cruising_speed" not in result
+
+    def test_collect_loss_diagnostics_no_getter(self) -> None:
+        """TotalLoss instances without the getter (e.g. mocks) don't crash."""
+        mock_loss = MagicMock(spec=[])  # no attributes at all
+        result = collect_loss_diagnostics(mock_loss)
+        assert result == {}
+
+    def test_warning_cruising_speed_nan(self) -> None:
+        dbg = DebugManager(config=FULL_ON_CFG)
+        ws = dbg.check_warnings(
+            0,
+            loss_diagnostics={
+                "cruising_speed": {"speed (m/s)": float("nan"), "speed_is_nan": True, "speed_is_inf": False},
+            },
+        )
+        assert any("cruising speed" in w and "NaN" in w for w in ws)
+
+    def test_warning_cruising_speed_inf(self) -> None:
+        dbg = DebugManager(config=FULL_ON_CFG)
+        ws = dbg.check_warnings(
+            0,
+            loss_diagnostics={
+                "cruising_speed": {"speed (m/s)": float("inf"), "speed_is_nan": False, "speed_is_inf": True},
+            },
+        )
+        assert any("cruising speed" in w and "Inf" in w for w in ws)
+
+    def test_warning_cruising_speed_very_low(self) -> None:
+        dbg = DebugManager(config=FULL_ON_CFG)
+        ws = dbg.check_warnings(
+            0,
+            loss_diagnostics={
+                "cruising_speed": {"speed (m/s)": 1.2, "speed_is_nan": False, "speed_is_inf": False},
+            },
+        )
+        assert any("cruising speed very low" in w for w in ws)
+
+    def test_warning_cruising_speed_non_positive_drag(self) -> None:
+        dbg = DebugManager(config=FULL_ON_CFG)
+        ws = dbg.check_warnings(
+            0,
+            loss_diagnostics={
+                "cruising_speed": {"speed (m/s)": 20.0, "speed_is_nan": False, "speed_is_inf": False, "drag_force (N)": -5.0},
+            },
+        )
+        assert any("drag force" in w for w in ws)
+
+    def test_warning_cruising_speed_healthy(self) -> None:
+        dbg = DebugManager(config=FULL_ON_CFG)
+        ws = dbg.check_warnings(
+            0,
+            loss_diagnostics={
+                "cruising_speed": {
+                    "speed (m/s)": 22.0,
+                    "speed_is_nan": False,
+                    "speed_is_inf": False,
+                    "drag_force (N)": 10.5,
+                    "solar_power (W)": 500.0,
+                },
+            },
+        )
         assert ws == []
 
 
@@ -903,7 +1069,8 @@ class TestBasicMLPIntegration:
     """Test that DebugManager integrates correctly with the real BasicMLP model."""
 
     def _make_model(self) -> torch.nn.Module:
-        from subprojects.wp4_aeroshell_optimizer.v1.src.models.basic_MLP_v1 import BasicMLP
+        from subprojects.wp4_aeroshell_optimizer.v1.src.models.basic_MLP_v1 import BasicMLP  # noqa: PLC0415
+
         return BasicMLP(config={}, overwrite_base_init=False, in_dim=3, hidden=16, layers=2)
 
     def _make_configs(self, num_epochs: int = 3) -> tuple[dict, dict]:
@@ -1013,13 +1180,15 @@ class TestBasicMLPIntegration:
 
         model = self._make_model()
         general_config, training_config = self._make_configs(num_epochs=2)
-        dbg = DebugManager(config={
-            "GLOBAL_DEBUG": None,
-            "print_raw_values": False,
-            "show_stats": True,
-            "generate_insights": False,
-            "emit_warnings": True,
-        })
+        dbg = DebugManager(
+            config={
+                "GLOBAL_DEBUG": None,
+                "print_raw_values": False,
+                "show_stats": True,
+                "generate_insights": False,
+                "emit_warnings": True,
+            }
+        )
 
         model.optimise(
             general_config=general_config,
@@ -1055,12 +1224,12 @@ class TestPretrainingIntegration:
             },
         }
 
-        from subprojects.wp4_aeroshell_optimizer.v1.src.models.basic_MLP_v1 import BasicMLP
+        from subprojects.wp4_aeroshell_optimizer.v1.src.models.basic_MLP_v1 import BasicMLP  # noqa: PLC0415
 
         model = BasicMLP(config={}, overwrite_base_init=False, in_dim=3, hidden=16, layers=2)
         dbg = DebugManager(config={"GLOBAL_DEBUG": True})
 
-        from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
+        from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining  # noqa: PLC0415
 
         result = pretraining(model=model, debug_manager=dbg)
         assert result is not None
@@ -1082,12 +1251,12 @@ class TestPretrainingIntegration:
             },
         }
 
-        from subprojects.wp4_aeroshell_optimizer.v1.src.models.basic_MLP_v1 import BasicMLP
+        from subprojects.wp4_aeroshell_optimizer.v1.src.models.basic_MLP_v1 import BasicMLP  # noqa: PLC0415
 
         model = BasicMLP(config={}, overwrite_base_init=False, in_dim=3, hidden=16, layers=2)
         dbg = DebugManager(config={"GLOBAL_DEBUG": False})
 
-        from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
+        from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining  # noqa: PLC0415
 
         result = pretraining(model=model, debug_manager=dbg)
         assert result is not None
@@ -1111,11 +1280,11 @@ class TestPretrainingIntegration:
             },
         }
 
-        from subprojects.wp4_aeroshell_optimizer.v1.src.models.basic_MLP_v1 import BasicMLP
+        from subprojects.wp4_aeroshell_optimizer.v1.src.models.basic_MLP_v1 import BasicMLP  # noqa: PLC0415
 
         model = BasicMLP(config={}, overwrite_base_init=False, in_dim=3, hidden=16, layers=2)
 
-        from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining
+        from subprojects.wp4_aeroshell_optimizer.v1.src.main_files.pretraining_v1_1 import pretraining  # noqa: PLC0415
 
         result = pretraining(model=model)
         assert result is not None
@@ -1127,7 +1296,6 @@ class TestPretrainingIntegration:
 
 
 class TestVictorModelIntegration:
-
     @patch("subprojects.wp4_aeroshell_optimizer.v1.src.models.testvictor.TotalLoss")
     def test_optimise_with_debug_on(self, MockTotalLoss, capsys) -> None:
         mock_loss_fn = MagicMock()
@@ -1135,7 +1303,7 @@ class TestVictorModelIntegration:
         mock_loss_fn.get_total_loss.return_value = mock_loss_tensor
         MockTotalLoss.return_value = mock_loss_fn
 
-        from subprojects.wp4_aeroshell_optimizer.v1.src.models.testvictor import VictorModel
+        from subprojects.wp4_aeroshell_optimizer.v1.src.models.testvictor import VictorModel  # noqa: PLC0415
 
         model = VictorModel(in_dim=3, hidden=16, layers=2)
         dbg = DebugManager(config={"GLOBAL_DEBUG": True})
@@ -1161,7 +1329,7 @@ class TestVictorModelIntegration:
         mock_loss_fn.get_total_loss.return_value = mock_loss_tensor
         MockTotalLoss.return_value = mock_loss_fn
 
-        from subprojects.wp4_aeroshell_optimizer.v1.src.models.testvictor import VictorModel
+        from subprojects.wp4_aeroshell_optimizer.v1.src.models.testvictor import VictorModel  # noqa: PLC0415
 
         model = VictorModel(in_dim=3, hidden=16, layers=2)
         dbg = DebugManager(config={"GLOBAL_DEBUG": False})
@@ -1188,7 +1356,7 @@ class TestVictorModelIntegration:
         mock_loss_fn.get_total_loss.return_value = mock_loss_tensor
         MockTotalLoss.return_value = mock_loss_fn
 
-        from subprojects.wp4_aeroshell_optimizer.v1.src.models.testvictor import VictorModel
+        from subprojects.wp4_aeroshell_optimizer.v1.src.models.testvictor import VictorModel  # noqa: PLC0415
 
         model = VictorModel(in_dim=3, hidden=16, layers=2)
 
@@ -1210,7 +1378,6 @@ class TestVictorModelIntegration:
 
 
 class TestEdgeCases:
-
     def test_negative_loss(self) -> None:
         dbg = DebugManager(config=FULL_ON_CFG)
         ws = dbg.check_warnings(0, loss=-5.0)

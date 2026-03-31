@@ -272,7 +272,7 @@ class ModelLoader:
                 "pressure_field_inf_count": int(torch.isinf(pressure_field).sum().item()),
                 "n_input_vertices": int(mesh_verts.shape[0]),
                 "n_input_faces": int(mesh_faces.shape[0]),
-                "normals_flipped_count": getattr(self, '_normals_flipped_count', 0),
+                "normals_flipped_count": getattr(self, "_normals_flipped_count", 0),
             }
 
         print(f"Force-Value:{int_drag_f.item()}")
@@ -294,7 +294,7 @@ class ModelLoader:
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
 
         sdf_values = self.sdf_model(face_centers * 1e3 + face_normals * 50)
-        normals_flipped = (sdf_values < 0)
+        normals_flipped = sdf_values < 0
         face_normals[normals_flipped] *= -1
         self._normals_flipped_count = int(normals_flipped.sum().item())
         print("dumdidum", normals_flipped)

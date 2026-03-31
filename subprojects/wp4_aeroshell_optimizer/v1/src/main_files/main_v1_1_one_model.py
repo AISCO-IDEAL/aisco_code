@@ -177,7 +177,10 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
 
     model = model.to(device)
     model.optimise(
-        training_config=training_config, renderer_manager=renderer_manager, wandb_name=wandb_name, general_config=general_config,
+        training_config=training_config,
+        renderer_manager=renderer_manager,
+        wandb_name=wandb_name,
+        general_config=general_config,
         debug_manager=debug_manager,
     )
     if verbose:
