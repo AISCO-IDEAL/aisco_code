@@ -1,0 +1,45 @@
+# =============================================================================
+# WP4 Aeroshell Optimizer — Debug Configuration
+# =============================================================================
+#
+# GLOBAL_DEBUG controls the master behaviour:
+#   True    → overrides ALL granular toggles to ON  (full diagnostics)
+#   False   → overrides ALL granular toggles to OFF (zero overhead in production)
+#   null    → respects the individual feature toggles below ("Custom" mode)
+#
+# loaded by: DebugManager  (debug_manager.py)
+#   load_config(v="v1", cfg_name="debug.yaml")
+# =============================================================================
+
+GLOBAL_DEBUG: True  # True | False | null (Custom)
+
+# ---------------------------------------------------------------------------
+# Granular feature toggles  (only effective when GLOBAL_DEBUG is null)
+# ---------------------------------------------------------------------------
+print_raw_values: true      # Print critical state variables, inputs, outputs per iteration
+show_stats: true            # Track & log performance metrics (time, memory, convergence, delta)
+generate_insights: true     # Provide analytical context (step-size analysis, local-min detection)
+emit_warnings: true         # Flag anomalous behaviour (boundary hits, zero grads, NaN, slow convergence)
+
+# ---------------------------------------------------------------------------
+# Sub-toggles for print_raw_values  (fine-grained control over WHAT is printed)
+# These are independent of GLOBAL_DEBUG — they control which sections of the
+# values dump to include.  Set any to false to suppress that section.
+# ---------------------------------------------------------------------------
+log_loss_components: true       # Per-component weighted loss values + config weights
+log_per_component_grads: true   # Per-loss-component gradient norms (BasicMLP/WIRE)
+log_param_stats: true           # Min/max/mean/std of every trainable parameter
+log_optimizer_state: true       # Adam exp_avg/exp_avg_sq norms, step count, betas
+log_cuda_memory: true           # CUDA allocated/reserved/peak/free memory
+log_alm_state: true             # ALM multipliers (lambda, mu, nu) when ALM is active
+log_run_info: true              # One-time dump of model architecture, device, config at start
+log_loss_diagnostics: true      # Per-loss intermediate values (violations, grad norms, pressure stats, etc.)
+
+# ---------------------------------------------------------------------------
+# Optional tuning knobs
+# ---------------------------------------------------------------------------
+stats_log_interval: 1       # Log stats every N iterations (1 = every iteration)
+warning_nan_threshold: 1.0e+10     # Values above this magnitude trigger a warning
+warning_grad_zero_atol: 1.0e-12   # Gradient norm below this is considered "zero"
+warning_convergence_patience: 50   # Flag slow convergence after this many stalled iterations
+insight_step_shrink_ratio: 0.01    # Flag "step size shrinking too fast" below this ratio

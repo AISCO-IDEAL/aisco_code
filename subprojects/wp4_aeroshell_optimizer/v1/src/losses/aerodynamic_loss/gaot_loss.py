@@ -18,4 +18,7 @@ class GaotLoss(ParentLoss):
             raise ValueError(f"Gaot Loss Version {version} is not implemented")
 
     def _loss(self, model) -> torch.Tensor:
-        return self.gaot.forward(sdf_model=model, epoch_name=self.epoch_name)
+        result = self.gaot.forward(sdf_model=model, epoch_name=self.epoch_name)
+        # Propagate diagnostics from the underlying GAOT model loader
+        self._last_diagnostics = getattr(self.gaot, "_last_diagnostics", {})
+        return result
