@@ -35,7 +35,7 @@ class ModelLoader:
             bbox=[-3e3, 3e3, -3e3, 3e3, -3e3, 3e3],
             device=self.device,
             isovalue=0.0,
-            target_nr_vertices=cfd_config["mesh_resolution"],
+            target_nr_vertices=int(cfd_config["mesh_resolution"]),
             max_iters=1000,
         )
         # keep visualiser on self so we can reuse it
