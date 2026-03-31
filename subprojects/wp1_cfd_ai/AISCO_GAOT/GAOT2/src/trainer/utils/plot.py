@@ -135,7 +135,7 @@ def plot_3d_comparison_pyvista(
             plotter.close()  # Ensure plotter is closed to free memory
 
 
-def plot_3d_comparison_matplotlib(  # noqa: PLR0915
+def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
     coords: np.ndarray,
     u_gtr: np.ndarray,
     u_prd: np.ndarray,
@@ -148,6 +148,8 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915
     hide_grid: bool = False,
     equal_aspect: bool = True,  # <-- Control aspect ratio setting
     show_abs_diff: bool = False,  # absolute difference
+    show_input_shape: bool = True,
+    use_ground_truth_range: bool = False,
 ):
     """
     Generates a 3/4-panel 3D scatter plot comparison using Matplotlib...
@@ -180,25 +182,35 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915
         Defaults to True.
     show_abs_diff: bool, optional
         If True, show absolute difference subplot. Defaults to True.
+    show_input_shape: bool, optional
+        If True, include the input-shape subplot. Defaults to True.
+    use_ground_truth_range: bool, optional
+        If True, use only the GT min/max as shared color limits for GT and Pred.
+        Defaults to False.
     """
     try:
         u_diff = np.abs(u_gtr - u_prd)
-        common_min = min(np.min(u_gtr), np.min(u_prd))
-        common_max = max(np.max(u_gtr), np.max(u_prd))
+        if use_ground_truth_range:
+            common_min = float(np.min(u_gtr))
+            common_max = float(np.max(u_gtr))
+        else:
+            common_min = min(np.min(u_gtr), np.min(u_prd))
+            common_max = max(np.max(u_gtr), np.max(u_prd))
         clim_common = [common_min, common_max]
         clim_diff = [np.min(u_diff), np.max(u_diff)]
 
-        ncols = 4 if show_abs_diff else 3
+        ncols = (1 if show_input_shape else 0) + 2 + (1 if show_abs_diff else 0)
         fig = plt.figure(figsize=(6 * ncols, 6))
         axes = []
         ax_idx = 1
 
-        # Subplot 0: Input Shape
-        ax0 = fig.add_subplot(1, ncols, ax_idx, projection="3d")
-        sc0 = ax0.scatter(coords[:, 0], coords[:, 1], coords[:, 2], c="gray", s=point_size, depthshade=False)
-        ax0.set_title("Input Shape", fontsize=14)
-        axes.append(ax0)
-        ax_idx += 1
+        # Optional subplot 0: Input Shape
+        if show_input_shape:
+            ax0 = fig.add_subplot(1, ncols, ax_idx, projection="3d")
+            ax0.scatter(coords[:, 0], coords[:, 1], coords[:, 2], c="gray", s=point_size, depthshade=False)
+            ax0.set_title("Input Shape", fontsize=14)
+            axes.append(ax0)
+            ax_idx += 1
 
         # Subplot 1: Ground Truth
         ax1 = fig.add_subplot(1, ncols, ax_idx, projection="3d")
@@ -251,22 +263,19 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915
             ax3.set_title("Absolute Difference")
             axes.append(ax3)
 
-        # shared colorbar (GT and PRD)
-        cb = fig.colorbar(sc1, ax=[ax1, ax2], orientation="horizontal", fraction=0.05, pad=0.15)
-        cb.set_label(f"{variable_name}")
-        cb.ax.tick_params(labelsize=10, length=0)
-        cb.ax.xaxis.set_label_position("top")
-        cb.ax.xaxis.set_ticks_position("top")
-        cb.outline.set_visible(False)  # type: ignore[operator]
+        # Per-panel vertical colorbars (matching trainer screenshot style)
+        cb1 = fig.colorbar(sc1, ax=ax1, orientation="vertical", fraction=0.025, pad=0.04)
+        cb1.ax.tick_params(labelsize=11, length=3)
+        plt.setp(cb1.outline, linewidth=0.8)
 
-        # Difference colorbar
+        cb2 = fig.colorbar(sc2, ax=ax2, orientation="vertical", fraction=0.025, pad=0.04)
+        cb2.ax.tick_params(labelsize=11, length=3)
+        plt.setp(cb2.outline, linewidth=0.8)
+
         if show_abs_diff:
-            cb3 = fig.colorbar(sc3, ax=ax3, orientation="horizontal", fraction=0.05, pad=0.15)
-            cb3.set_label("Abs. Diff.")
-            cb3.ax.tick_params(labelsize=10, length=0)
-            cb3.ax.xaxis.set_label_position("top")
-            cb3.ax.xaxis.set_ticks_position("top")
-            cb3.outline.set_visible(False)  # type: ignore[operator]
+            cb3 = fig.colorbar(sc3, ax=ax3, orientation="vertical", fraction=0.025, pad=0.04)
+            cb3.ax.tick_params(labelsize=11, length=3)
+            plt.setp(cb3.outline, linewidth=0.8)
 
         # 统一设置
         for ax in axes:
@@ -322,6 +331,7 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915
                 except Exception:
                     pass
 
+        fig.subplots_adjust(wspace=0.2)
         plt.tight_layout()
         output_dir = os.path.dirname(save_path)
         if output_dir:

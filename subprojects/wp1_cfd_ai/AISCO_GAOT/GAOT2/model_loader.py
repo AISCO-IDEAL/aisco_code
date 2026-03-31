@@ -192,6 +192,9 @@ class ModelLoader:
                 depthshade=False,
             )
             ax.set_title(title)
+            ax.set_xlabel("X", labelpad=8)
+            ax.set_ylabel("Y", labelpad=8)
+            ax.set_zlabel("Z", labelpad=8)
             fig.colorbar(sc, ax=ax, shrink=0.5)
             ax.view_init(elev=20, azim=-120)
 

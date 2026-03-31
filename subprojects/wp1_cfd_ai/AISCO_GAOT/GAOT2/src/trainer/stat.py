@@ -4,6 +4,7 @@ import math
 import os
 import random
 import statistics
+import tempfile
 import time
 from dataclasses import asdict
 from typing import Any
@@ -30,6 +31,7 @@ from src.utils.scale import rescale, rescale_new
 
 from .base import TrainerBase
 from .utils.metric import compute_drivaernet_metric
+from .utils.plot import plot_3d_comparison_matplotlib
 
 EPSILON = 1e-10
 
@@ -735,53 +737,36 @@ class StaticTrainer3D(TrainerBase):
                 u_std = self.u_std.cpu().numpy().item() if self.u_std.numel() == 1 else 1.0
                 field_pred_dn = field_pred * u_std + u_mean
                 field_gt_dn = field_gt * u_std + u_mean
-                field_diff = np.abs(field_gt_dn - field_pred_dn)
-
-                # Use ground-truth range for colorbar so wild early predictions
-                # don't blow out the scale
-                common_min = float(np.min(field_gt_dn))
-                common_max = float(np.max(field_gt_dn))
-
-                # Equal-aspect bounds: same range on all 3 axes
-                _mid = coords.mean(axis=0)
-                _half_range = float((coords.max(axis=0) - coords.min(axis=0)).max()) / 2
-
-                fig = plt.figure(figsize=(20, 6))
-                for panel_idx, (data, title, cmap_name, vmin, vmax) in enumerate(
-                    [
-                        (field_gt_dn, "Ground Truth", "jet", common_min, common_max),
-                        (field_pred_dn, "Prediction", "jet", common_min, common_max),
-                        (field_diff, "Absolute Difference", "Reds", None, None),
-                    ]
-                ):
-                    ax = fig.add_subplot(1, 3, panel_idx + 1, projection="3d")
-                    sc = ax.scatter(
-                        coords[:, 0],
-                        coords[:, 1],
-                        coords[:, 2],
-                        c=data,
-                        cmap=cmap_name,
-                        s=2,
-                        vmin=vmin,
-                        vmax=vmax,
-                        depthshade=False,
+                with tempfile.NamedTemporaryFile(suffix=".png", prefix="pressure_field_", delete=False) as tmp_file:
+                    tmp_path = tmp_file.name
+                try:
+                    plot_3d_comparison_matplotlib(
+                        coords=coords,
+                        u_gtr=field_gt_dn,
+                        u_prd=field_pred_dn,
+                        save_path=tmp_path,
+                        variable_name="Pressure",
+                        point_size=2.0,
+                        cmap="jet",
+                        dpi=150,
+                        view_angle=(20, -120),
+                        hide_grid=False,
+                        equal_aspect=True,
+                        show_abs_diff=True,
+                        show_input_shape=False,
+                        use_ground_truth_range=True,
                     )
-                    ax.set_title(title)
-                    fig.colorbar(sc, ax=ax, shrink=0.5)
-                    ax.set_xlim(_mid[0] - _half_range, _mid[0] + _half_range)
-                    ax.set_ylim(_mid[1] - _half_range, _mid[1] + _half_range)
-                    ax.set_zlim(_mid[2] - _half_range, _mid[2] + _half_range)
-                    ax.view_init(elev=20, azim=-120)
-
-                fig.suptitle(f"Pressure Field [{split_label}] {fname} — Epoch {epoch + 1}", fontsize=13)
-                plt.tight_layout()
-                self.tracker.log_image(
-                    f"viz/{split_label}/pressure_field{suffix}",
-                    fig,
-                    step=epoch + 1,
-                    caption=f"{split_label} {fname} epoch {epoch + 1}",
-                )
-                plt.close(fig)
+                    self.tracker.log_image(
+                        f"viz/{split_label}/pressure_field{suffix}",
+                        tmp_path,
+                        step=epoch + 1,
+                        caption=f"Pressure Field [{split_label}] {fname} — Epoch {epoch + 1}",
+                    )
+                finally:
+                    try: #noqa: SIM105
+                        os.remove(tmp_path)
+                    except OSError:
+                        pass
 
         # --- Integrated pressure drag visualisation (Cp → Newtons) ---
         if isinstance(pred, dict) and "field" in pred and hasattr(batch, "face") and batch.face is not None:
