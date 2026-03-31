@@ -44,7 +44,7 @@ class MeshSDFExtractor:
         max_iters: int = 20,
         auto_isovalue_if_out_of_range: bool = True,
         warn_out_of_range: bool = True,
-        gradient_max: float = 1e10
+        gradient_max: float = 1e10,
     ):
         """
         Args:
@@ -313,8 +313,6 @@ class MeshSDFExtractor:
             vertices: (V, 3) tensor with gradients enabled
             faces: (F, 3) tensor (no gradients, topology is discrete)
         """
-        vertices: torch.tensor
-        faces: torch.tensor
         if self._dynamic_resolution:
             # Dynamic resolution adjustment to approach target vertex count
             self.dynamic_resolution_adjustment(sdf_model)
