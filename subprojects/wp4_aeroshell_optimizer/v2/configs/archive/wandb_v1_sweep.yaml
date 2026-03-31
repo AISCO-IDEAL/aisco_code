@@ -1,0 +1,20 @@
+# wandb_v0_config.yaml
+command:
+  - ${env}
+  - python3
+  - -m
+  - subprojects.wp4_aeroshell_optimizer.v2.src.main_files.main_v1_1_one_model
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v1_1_one_model.py
+method: bayes  # or 'random', or 'grid' as needed
+metric:
+  goal: minimize
+  name: total_loss
+parameters:
+  learning_rate:
+    distribution: log_uniform_values
+    min: 0.00001
+    max: 0.01
+  initial_lambda:
+    distribution: log_uniform_values
+    min: 0.001
+    max: 1.0

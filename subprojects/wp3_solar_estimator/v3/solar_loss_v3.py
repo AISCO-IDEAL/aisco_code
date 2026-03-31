@@ -22,12 +22,14 @@ import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
-from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.solar_v3_selection import SolarV3Selection
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
+from subprojects.wp4_aeroshell_optimizer import (
+    SolarV3Selection,
+    Visualiser,
+    dict_hashing,
+    load_config,
+    multi_log_in_one,
+    reformat_wandb_name,
+)
 
 
 def _cumsum(x: torch.Tensor) -> torch.Tensor:
