@@ -37,6 +37,7 @@ class ModelLoader:
             isovalue=0.0,
             target_nr_vertices=int(cfd_config["mesh_resolution"]),
             max_iters=1000,
+            gradient_max = cfd_config["gradient_max"],
         )
         # keep visualiser on self so we can reuse it
         self.visualiser = Visualiser(device=self.device)

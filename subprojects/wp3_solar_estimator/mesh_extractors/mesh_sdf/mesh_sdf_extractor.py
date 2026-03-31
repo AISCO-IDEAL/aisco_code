@@ -44,6 +44,7 @@ class MeshSDFExtractor:
         max_iters: int = 20,
         auto_isovalue_if_out_of_range: bool = True,
         warn_out_of_range: bool = True,
+        gradient_max: float = 1e10
     ):
         """
         Args:
@@ -57,6 +58,7 @@ class MeshSDFExtractor:
         self._target_nr_vertices = target_nr_vertices
         self.tolerance = tolerance
         self.max_iters = max_iters
+        self.gradient_max = gradient_max
 
         if bbox is None:
             bbox = [-5000, 5000, -5000, 5000, -5000, 5000]
@@ -373,7 +375,7 @@ class MeshSDFExtractor:
         dL_dvertices = torch.autograd.grad(
             outputs=loss, inputs=vertices_for_loss, grad_outputs=torch.ones_like(loss), create_graph=False, retain_graph=False
         )[0]
-        dL_dvertices = torch.clamp(dL_dvertices, min=-0.1, max=0.1)
+        dL_dvertices = torch.clamp(dL_dvertices, min=-self.gradient_max, max=self.gradient_max)
         # Compute gradient flow through implicit surface
         surrogate_loss = self.compute_gradient_flow(vertices=vertices, dL_dvertices=dL_dvertices, sdf_model=sdf_model)
 
