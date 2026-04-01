@@ -235,6 +235,13 @@ exclude = [
 ]
 
 [[tool.mypy.overrides]]
+# This file has a deliberate version-switch pattern (v1/v2 if/elif) that mypy
+# evaluates statically as both branches, causing spurious unused-ignore warnings
+# when checked in isolation (pre-commit pass_filenames=True).
+module = "subprojects.wp4_aeroshell_optimizer"
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
 # Use a single string with commas for multiple modules
 module = [
   "kaolin.*",

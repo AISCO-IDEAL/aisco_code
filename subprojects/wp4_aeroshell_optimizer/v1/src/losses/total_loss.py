@@ -93,6 +93,8 @@ class TotalLoss:
         self._last_weighted_losses: dict[str, torch.Tensor] = {}
         # Stores the last computed cruising speed (if CSE active) for telemetry.
         self._last_cruising_speed: torch.Tensor | None = None
+        # Stores the last cruising speed solver diagnostics for debug logging.
+        self._last_cruising_speed_diagnostics: dict | None = None
         # Rolling history for loss-competition stacked-area chart (one dict per epoch).
         self._raw_loss_history: list[dict[str, float]] = []
         self._weighted_loss_history: list[dict[str, float]] = []
@@ -308,7 +310,7 @@ class TotalLoss:
             drag: torch.Tensor = raw_losses[drag_name] * drag_pf
             solar: torch.Tensor = raw_losses[solar_name] * solar_pf
 
-            v_cruise: torch.Tensor = cruising_speed(
+            v_cruise, cs_diag = cruising_speed(
                 solar_power=solar,
                 drag_force_at_25ms=drag,
                 mass=210,
@@ -318,9 +320,11 @@ class TotalLoss:
                 tol=1e-4,
             )
             self._last_cruising_speed = v_cruise
+            self._last_cruising_speed_diagnostics = cs_diag
             self._last_weighted_losses["cse_objective"] = -v_cruise
         else:
             self._last_cruising_speed = None
+            self._last_cruising_speed_diagnostics = None
             for cat in ("aero", "solar"):
                 if cat not in self._objective_losses:
                     continue
@@ -685,6 +689,10 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # Orchestrator
     # ------------------------------------------------------------------
+    def get_cruising_speed_diagnostics(self) -> dict | None:
+        """Return diagnostics from the last cruising speed solver call, or None if CSE is inactive."""
+        return self._last_cruising_speed_diagnostics
+
     def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:
         """Initilizes unweighted losses computation, computes weighted total loss, logs to wandb, and returns the total loss tensor.
 

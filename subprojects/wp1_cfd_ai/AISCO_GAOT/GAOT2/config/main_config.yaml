@@ -68,9 +68,13 @@ model:
             node_embedding: false
             use_attn: null
             pooling: "max"
-            sampling_strategy: "ratio"  # "ratio" = fast vectorised dropout_edge; "max_neighbors" = slow Python loop
+            sampling_strategy: null       # shared fallback (null = no dropout for encoder)
             max_neighbors: null
-            sample_ratio: 0.5
+            sample_ratio: null
+            decoder_sampling_strategy: "ratio"  # dropout only on decoder edges
+            decoder_sample_ratio: 0.5
+            encoder_sampling_strategy: "ratio"  # dropout only on encoder edges
+            encoder_sample_ratio: 0.5
         transformer:
             patch_size: 2
             hidden_size: 256
@@ -123,12 +127,12 @@ dataset:
     training_strategy: "full_grid"
     uncertainty_weighting: false
     field_loss_weight: 1.0
-    use_rescale_new: true
+    use_rescale_new: false
     active_variables:
     order_file_name:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
-    subsample_nodes: 50000     # randomly sample 50k nodes per load if sample exceeds this
+    subsample_nodes: 50000     # randomly sample 30k nodes per load if sample exceeds this
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
     num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
@@ -157,7 +161,7 @@ optimizer:
         beta1: 0.95
         beta2: 0.999
         eps: 1e-6
-        loss: "relative_l2"  # options: "mse" | "l2" | "relative_l2"
+        loss: "mse"  # options: "mse" | "l2" | "relative_l2"
 
 path:
     ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/model.pt"

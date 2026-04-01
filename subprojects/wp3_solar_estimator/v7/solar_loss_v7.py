@@ -944,6 +944,8 @@ class SolarLossEstimator:
         elif method in {"mesh_sdf", "mc"}:
             bbox = self.bbox
             self.extractor = MeshSDFExtractor(
+                target_nr_vertices=2000,
+                tolerance=0.1,
                 resolution=self.resolution,
                 bbox=[
                     bbox[0][0],

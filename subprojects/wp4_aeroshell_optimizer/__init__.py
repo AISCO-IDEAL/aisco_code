@@ -15,18 +15,20 @@ if TYPE_CHECKING:
     from .v2 import *  # noqa: F403
     from .v2 import CONFIGS_DIR, SLURM_SCRIPTS_DIR, __all__
 else:
-    # Runtime: import only the selected version and forward attribute access.
-    _mod = importlib.import_module(f"{__name__}.{ACTIVE_VERSION}")
+    # Runtime: lazy-load only when attributes are requested.
+    _mod: Any | None = None
 
-    # Expose commonly used constants eagerly for tooling/import-time access.
-    CONFIGS_DIR = getattr(_mod, "CONFIGS_DIR", None)
-    SLURM_SCRIPTS_DIR = getattr(_mod, "SLURM_SCRIPTS_DIR", None)
+    def _get_mod() -> Any:
+        global _mod  # noqa: PLW0603
+        if _mod is None:
+            _mod = importlib.import_module(f"{__name__}.{ACTIVE_VERSION}")
+        return _mod
 
     def __getattr__(name: str) -> Any:  # PEP 562
-        return getattr(_mod, name)
+        return getattr(_get_mod(), name)
 
     def __dir__() -> list[str]:  # PEP 562
-        return list(getattr(_mod, "__all__", []))
+        return list(getattr(_get_mod(), "__all__", []))
 
 
 VERSION = ACTIVE_VERSION

@@ -3,7 +3,7 @@ import os
 import numpy as np
 import torch
 
-from subprojects.wp2_assembler.version3.components.nbz import call_assembly
+from subprojects.wp2_assembler.version4.components.nbz import call_assembly
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.s_d_ffrom_cad_query import SDFfromCadQuery
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import AutoVisToWandB
@@ -81,5 +81,28 @@ class BbV3(ParentLoss):
             upper_violation = torch.relu(sdf_pred - sdf_inner_t)
             lower_violation = torch.relu(sdf_outer_t - sdf_pred)
 
-            loss = (upper_violation + lower_violation).mean()  # ** 0.5
+            n_points = sdf_pred.shape[0]
+            total_violation = upper_violation + lower_violation
+            loss = total_violation.mean() if n_points > 0 else torch.tensor(0.0, device=self.device)
+
+            # Store diagnostics for DebugManager
+            with torch.no_grad():
+                self._last_diagnostics = {
+                    "n_points": n_points,
+                    "sdf_pred_min": sdf_pred.min().item(),
+                    "sdf_pred_max": sdf_pred.max().item(),
+                    "sdf_pred_mean": sdf_pred.mean().item(),
+                    "sdf_inner_min": sdf_inner_t.min().item(),
+                    "sdf_inner_max": sdf_inner_t.max().item(),
+                    "sdf_outer_min": sdf_outer_t.min().item(),
+                    "sdf_outer_max": sdf_outer_t.max().item(),
+                    "upper_violation_count": int((upper_violation > 0).sum().item()),
+                    "lower_violation_count": int((lower_violation > 0).sum().item()),
+                    "upper_violation_max": upper_violation.max().item(),
+                    "lower_violation_max": lower_violation.max().item(),
+                    "upper_violation_mean": upper_violation.mean().item() if n_points > 0 else 0.0,
+                    "lower_violation_mean": lower_violation.mean().item() if n_points > 0 else 0.0,
+                    "violation_frac": float((total_violation > 0).sum().item()) / max(n_points, 1),
+                }
+
             return loss

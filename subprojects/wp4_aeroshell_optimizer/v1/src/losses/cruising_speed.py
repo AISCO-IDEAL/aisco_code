@@ -60,7 +60,7 @@ def cruising_speed(
     rolling_friction_coefficient: float = 0.006,
     max_iter: int = 12,
     tol: float = 1e-4,
-) -> torch.Tensor:
+) -> tuple[torch.Tensor, dict]:
     """
     Combines solar power prediction and drag force prediction into
     a single physical objective: the estimated cruising speed.
@@ -73,17 +73,30 @@ def cruising_speed(
         rolling_friction_coefficient: Friction coefficient for the tires [-]
 
     Returns:
-        cruising_speed_objective: Estimated speed in [m/s]
+        (cruising_speed_objective, diagnostics):
+            cruising_speed_objective: Estimated speed in [m/s]
+            diagnostics: dict of intermediate values for debugging
     """
     # Rolling friction coefficient based on ACE experience, TODO: refine and make speed-dependent if needed
     # Power loss due to rolling friction
     rolling_friction_force = mass * 9.81 * rolling_friction_coefficient
 
     # Bias for solar charging (e.g., to account for conservative estimates or nighttime charging)
-    solar_power = 1.25 * solar_power
+    solar_power_scaled = 1.25 * solar_power
 
     # Apply the differentiable root finder to solve for cruising speed
     solver = PhysicalRootFinder.apply
-    cruising_speed_objective = solver(drag_force_at_25ms, solar_power, rolling_friction_force, c_losses, max_iter, tol)
+    cruising_speed_objective = solver(drag_force_at_25ms, solar_power_scaled, rolling_friction_force, c_losses, max_iter, tol)
 
-    return cruising_speed_objective
+    speed_val = cruising_speed_objective.item()
+    diagnostics = {
+        "speed (m/s)": speed_val,
+        "speed (km/h)": speed_val * 3.6,
+        "drag_force (N)": drag_force_at_25ms.item(),
+        "solar_power (W)": solar_power_scaled.item(),
+        "rolling_friction (N)": rolling_friction_force,
+        "speed_is_nan": bool(torch.isnan(cruising_speed_objective)),
+        "speed_is_inf": bool(torch.isinf(cruising_speed_objective)),
+    }
+
+    return cruising_speed_objective, diagnostics
