@@ -55,7 +55,7 @@ class ModelLoader:
 
     def _load_model(self) -> None:
         # ── load config YAML saved alongside the checkpoint ─────────────
-        config_path = self.model_path.replace(".pt", "_config.yaml")
+        config_path = self.model_path.replace("model.pt", "config.yaml")
         if not os.path.exists(config_path):
             raise FileNotFoundError(
                 f"Model config not found at {config_path}. Expected a _config.yaml next to the .pt checkpoint."
@@ -65,8 +65,6 @@ class ModelLoader:
             config = yaml.safe_load(f)
         
         print(config)
-        if not isinstance(config, dict):
-            raise ValueError("Config must be a dictionary")
         self._og_config = copy.deepcopy(config)
 
         if "model" in config and "args" in config["model"]:
