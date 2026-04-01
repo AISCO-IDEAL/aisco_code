@@ -10,6 +10,10 @@ from .logging_lib.image_uploads import create_and_upload_gif_from_folder, upload
 # --- losses (no circular deps) ---
 from .src.losses.cruising_speed import cruising_speed
 from .src.losses.weights import weights_alm
+from .src.models.basic_MLP_v1 import BasicMLP
+
+# --- models ) ---
+from .src.models.model_baseclass import BaseModel
 
 # --- utils (kaolin_conversions → model_baseclass → visual_wrapper — no total_loss chain) ---
 from .src.utils.config_utils import apply_sweep_overrides, get_master_config, load_config, register_all_configs
@@ -19,6 +23,8 @@ from .src.utils.kaolin_conversions import get_diff_mesh
 from .src.utils.storage_utils import allround_save_data, fetch_pretrained_model, reformat_wandb_name
 from .src.utils.visualizer import CADVisualizer
 
+# for now aldo hasn't merged SIREN
+# from .src.models.SIREN import SIREN  # noqa: ERA001
 # --- visuals (model_baseclass and utils are fully loaded by now) ---
 from .src.visuals.detached_modes.mesh_sdf_grads import MeshSDFGrads
 from .src.visuals.detached_modes.shading_modes import ShadingPenalty, ShadingVisibility
@@ -39,6 +45,10 @@ __all__ = [  # noqa: RUF022
     "ShadingPenalty",
     "ShadingVisibility",
     "SolarV3Selection",
+    # models
+    "BaseModel",
+    "BasicMLP",
+    # "SIREN",
     # utils
     "load_config",
     "register_all_configs",

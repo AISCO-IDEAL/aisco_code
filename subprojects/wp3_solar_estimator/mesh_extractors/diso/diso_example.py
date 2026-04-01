@@ -4,8 +4,7 @@ import torch
 import trimesh
 
 from AISCO_code.subprojects.wp3_solar_estimator.mesh_extractors.diso.helpers.diso_fetcher import get_diff_dmc, get_diff_mc
-from subprojects.wp4_aeroshell_optimizer import get_diff_mesh
-from subprojects.wp4_aeroshell_optimizer.v1.src.models.basic_MLP_v1 import BasicMLP
+from subprojects.wp4_aeroshell_optimizer import BaseModel, BasicMLP, get_diff_mesh
 
 
 def load_mesh(filename: str = "FlexiCubesMesh.ply") -> trimesh.Trimesh:
@@ -16,7 +15,7 @@ def load_mesh(filename: str = "FlexiCubesMesh.ply") -> trimesh.Trimesh:
     return trimesh.load_mesh(f"/cluster/work/fuge/AISCO/wp3_solar_estimator/diso_test_data/{filename}")
 
 
-def load_testing_model() -> BasicMLP:
+def load_testing_model() -> BaseModel:
     """
     Loads the fixed (!) model for the unit tests.
     Based on files in /cluster/work/fuge/AISCO/wp3_solar_estimator/diso_test_data

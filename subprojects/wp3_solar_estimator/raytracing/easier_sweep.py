@@ -13,6 +13,7 @@ from matplotlib import pyplot as plt
 import wandb
 from subprojects.wp3_solar_estimator.v7.solar_loss_v7 import SolarLossEstimator
 from subprojects.wp4_aeroshell_optimizer import (
+    BaseModel,
     allround_save_data,
     apply_sweep_overrides,
     dict_hashing,
@@ -23,7 +24,6 @@ from subprojects.wp4_aeroshell_optimizer import (
     reformat_wandb_name,
     register_all_configs,
 )
-from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
 
 
 def _extract_histogram_bins_and_counts(hist_obj: Any) -> tuple[list[float], list[float]] | None:

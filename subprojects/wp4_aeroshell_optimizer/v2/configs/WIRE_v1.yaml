@@ -1,5 +1,0 @@
-config: {}
-overwrite_base_init: False
-in_dim: 3
-hidden: 256
-layers: 3

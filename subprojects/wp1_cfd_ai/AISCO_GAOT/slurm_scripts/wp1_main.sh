@@ -70,3 +70,4 @@ echo "Total elapsed time: $SECONDS seconds"
 echo "=========================================="
 
 ## sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/wp1_main.sh
+## watch -n 1 squeue -u $USER
