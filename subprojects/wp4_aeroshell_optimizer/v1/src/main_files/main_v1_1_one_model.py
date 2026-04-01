@@ -19,6 +19,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import (
     fetch_pretrained_model,
     reformat_wandb_name,
 )
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.wandb_utils import patch_wandb_log_for_monotonic_steps
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
 
@@ -38,6 +39,15 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
             project=general_config["wandb_general"]["project_name"],
             config=general_config,
         )
+        patch_wandb_log_for_monotonic_steps()
+        # Separate axes keep training and rendering logs chronological
+        # without forcing everything onto W&B's global step.
+        wandb.define_metric("training_epoch")
+        wandb.define_metric("render_epoch")
+        wandb.define_metric("grad_memory/*", step_metric="training_epoch")
+        wandb.define_metric("renders/*", step_metric="render_epoch")
+        wandb.define_metric("animations/*", step_metric="render_epoch")
+        wandb.define_metric("images/*", step_metric="render_epoch")
 
     # ------------------------------------------------------------------
     # 3. Register all sub-configs & apply sweep overrides (if any)
