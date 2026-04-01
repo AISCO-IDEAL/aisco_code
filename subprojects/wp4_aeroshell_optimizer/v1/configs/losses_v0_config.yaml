@@ -70,7 +70,7 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     dz: 250  #
     rand: 400  #
   assembly_id: 1 # 1 for the standard one  # rendering modes only (assembly_mode.py, mesh_assembly_mode_v2.py), not bb_v3.py (which randomises 1-52)
-  render_until_blue: "False"
+  render_until_blue: False
   sdf_device: cuda  # mesh-backed BB SDF compute device
   # v4.2 specific:
   sdf_chunk_size: 4096  # query chunk size for mesh_sdf (higher can be faster but uses more memory)
@@ -86,3 +86,5 @@ cfd:
   visualisations: "True" # only works for Version 2
   v_inf: 25.0   # freestream velocity [m/s] for Cp -> Pa conversion
   rho: 1.225    # air density [kg/m³] for Cp -> Pa conversion
+  mesh_resolution: 30000
+  gradient_max: 0.1

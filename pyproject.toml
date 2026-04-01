@@ -22,7 +22,7 @@ dependencies = [
   "pre-commit>=3.0.0",
   "mypy>=1.19.1",
   "torch==2.4.0",
-  "torchvision==0.19.0",
+   # "torchvision==0.19.0", Not needed accordingto #aalthaus
   "wandb[media] >= 0.23.1",
   "types-paramiko",
   "types-pytz",
@@ -123,6 +123,7 @@ exclude = [
     "**/subprojects/fixed_renderer/**",
     "**/visuals/testing.py",
     "**/blendednet/**",      # eschaerer: Tim's sinusoidal activation function model (just inspiration, not actually used in our code)
+    "**/GINN_Playground/**", #aalthaus, experiments not relevant to main loop
 ]
 
 
@@ -229,6 +230,7 @@ exclude = [
   ".*fixed_renderer/.*", # <-- eschaerer: Fixed regex to catch it inside subprojects
   ".*/archive/.*",       # <-- eschaerer: Fixed regex typo
   ".*/blendednet/.*",     # <-- eschaerer: Tim's sinusoidal activation function model (just inspiration)
+  ".*/GINN_Playground/.*", # <-- aalthaus: GINN_Playground is not relevant to the rest and served as an experiment only
   'tests/',
 ]
 

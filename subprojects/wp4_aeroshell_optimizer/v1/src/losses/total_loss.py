@@ -53,7 +53,6 @@ import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import (
     MeshExtractor,
 )
-from subprojects.wp3_solar_estimator.validation.statistics import MeshStatistics
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.cruising_speed import cruising_speed
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.weights import weights_alm
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
@@ -181,7 +180,10 @@ class TotalLoss:
             bbox=self._mesh_extraction_config.get("bbox", [[-5000, 5000], [-5000, 5000], [-5000, 5000]]),
             resolution=self._mesh_extraction_config.get("resolution", 128),
         )
-        self._mesh_statistics: MeshStatistics = MeshStatistics(device=dev_str, use_wandb=self._use_wandb)
+        # Import locally to avoid circular import during module initialization
+        from subprojects.wp3_solar_estimator.validation.statistics import MeshStatistics  # noqa: PLC0415
+
+        self._mesh_statistics = MeshStatistics(device=dev_str, use_wandb=self._use_wandb)
 
     def _init_active_losses(self) -> None:
         """Load every loss with ``compute=True`` and classify into objective or constraint."""
