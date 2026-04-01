@@ -111,12 +111,13 @@ def allround_save_data(  # noqa: PLR0915
     if save_mesh:
         # get a model using kaolin conversions
         # Use a copy to avoid disrupting training
+        device = "cuda" if torch.cuda.is_available() else "cpu"
 
         if marching_cubes_usage != "True":
-            temp_model = copy.deepcopy(model).cpu()
+            temp_model = copy.deepcopy(model).to(device)
             grid_res = 64
             verts, faces = get_diff_mesh(
-                temp_model, grid_res=grid_res, device="cpu"
+                temp_model, grid_res=grid_res, device=device
             )  # fsanche: keeping this in case marching cubes doest work. this one is the original.
             if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
                 print(f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
@@ -130,15 +131,20 @@ def allround_save_data(  # noqa: PLR0915
 
         else:  # marching cubes is active, less reliable and faster
             # copy model once
+            temp_model = copy.deepcopy(model)
+
             def run_marching_cubes_and_save(resolution):
                 thread_label = f"[THREAD res={resolution}]"
                 start = time.time()
 
                 try:
                     print(f"{thread_label} Started worker.", flush=True)
+                    device = "cuda"
 
-                    extractor = MarchingCubesExtractor(device="cpu", verbose=False)
+                    # 2. Move to GPU and set to eval mode inside the thread                    temp_model.to(device).eval()
+                    temp_model.to(device).eval()
 
+                    extractor = MarchingCubesExtractor(device=device, verbose=False)
                     extractor.set_grid(
                         bbox=[[-5000, 5000], [-5000, 5000], [-5000, 5000]],
                         resolution=resolution,
@@ -146,11 +152,12 @@ def allround_save_data(  # noqa: PLR0915
 
                     print(f"{thread_label} Grid set. Extracting mesh...", flush=True)
 
-                    verts, faces = extractor.extract_mesh(
-                        temp_model,
-                        isovalue=0.0,
-                        batch_size=8192,
-                    )
+                    with torch.no_grad():
+                        verts, faces = extractor.extract_mesh(
+                            temp_model,
+                            isovalue=0.0,
+                            batch_size=8192,
+                        )
 
                     print(
                         f"{thread_label} Extraction done | marching_cubes: {verts.shape[0]} verts, {faces.shape[0]} faces",
@@ -165,6 +172,7 @@ def allround_save_data(  # noqa: PLR0915
 
                     print(f"{thread_label} Saving mesh...", flush=True)
 
+                    # Move verts/faces back to CPU for saving to free up GPU memory immediately
                     kaolin_to_PLY(
                         verts.clone(),
                         faces.clone(),
@@ -179,7 +187,7 @@ def allround_save_data(  # noqa: PLR0915
                 except Exception as exc:
                     print(f"{thread_label} FAILED: {exc}", flush=True)
 
-            temp_model = copy.deepcopy(model).cpu()
+            temp_model = copy.deepcopy(model)
 
             resolutions = [300]
 
