@@ -302,6 +302,6 @@ class ModelLoader:
             rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-5.0, -1.3, -1.2], [4.7, 1.7, 1.6]))
         else:
             rescale_transform = RescalePosition()
-        data = rescale_transform.forward(data)
+        data = rescale_transform(data)
 
         return Batch.from_data_list([data]).to(self.device)
