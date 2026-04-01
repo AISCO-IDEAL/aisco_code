@@ -51,6 +51,8 @@ def compute_face_normals(pos: Tensor, face: Tensor) -> Tensor:
     v1 = pos[face[1]]
     v2 = pos[face[2]]
     cross = torch.cross(v1 - v0, v2 - v0, dim=-1)
+    assert cross.norm != 0.0
+
     return cross / (cross.norm(dim=-1, keepdim=True) + 1e-12)
 
 
