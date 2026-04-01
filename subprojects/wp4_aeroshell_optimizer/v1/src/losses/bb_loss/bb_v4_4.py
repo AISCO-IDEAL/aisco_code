@@ -61,7 +61,7 @@ class BbV44(ParentLoss):
         ### random assembly ID ###
         elif self.__config["random_assembly_id"] == "True":
             max_id = max_assembly_id()
-            self.assembly_id = np.random.default_rng().integers(0, max_id + 1)
+            self.assembly_id = int(np.random.default_rng().integers(0, max_id + 1))
             if not 0 <= self.assembly_id <= max_id:
                 raise ValueError(f"assembly_id must be in range 0..{max_id}, got {self.assembly_id}")
         ### else: config error ###
