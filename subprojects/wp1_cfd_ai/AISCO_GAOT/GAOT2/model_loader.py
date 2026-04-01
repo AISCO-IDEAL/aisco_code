@@ -11,7 +11,7 @@ from torch_geometric.data import Batch, Data
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
 import wandb
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePositionNew
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePositionNew, RescalePosition
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import cp_field_to_drag
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
@@ -62,6 +62,7 @@ class ModelLoader:
 
         with open(config_path) as f:
             config = yaml.safe_load(f)
+            self._og_config = config
 
         if "model" in config and "args" in config["model"]:
             config = config["model"]["args"]
@@ -254,11 +255,15 @@ class ModelLoader:
             rho=self.rho,
         )
         print(f"Force-Value:{int_drag_f.item()}")
-        return int_drag_f
+        return int_drag_f*(-1)
 
     def _reformat_data(self, mesh_verts, mesh_faces):
         optim_verts = mesh_verts.to(self.device)
         mesh_faces = mesh_faces.to(self.device)
+
+        # ── flip geometry in x ───────────────────────────────────────────
+        optim_verts = optim_verts.clone()
+        optim_verts[:, 0] *= -1.0
 
         # ── convert vertices from mm to meters (SDF model outputs mm, GAOT expects m) ──
         optim_verts_m = optim_verts * 1e-3
@@ -283,11 +288,17 @@ class ModelLoader:
         vertex_normals = vertex_normals.index_add(0, all_idx, all_normals)
         vertex_normals = torch.nn.functional.normalize(vertex_normals, dim=-1)
 
+        # optional: also flip normals' x-component to be consistent
+        vertex_normals[:, 0] *= -1.0
+
         # ── build PyG batch ──────────────────────────────────────────────
         data = Data(pos=optim_verts_m, face=mesh_faces.T, c=vertex_normals)
 
         # ── rescale positions to [-1, 1] using physical domain in meters ──
-        rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-3.0, -3.0, -3.0], [3.0, 3.0, 3.0]))
-        data = rescale_transform(data)
+        if self._og_config["dataset"]["use_rescale_new"]:
+            rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-3.0, -3.0, -3.0], [3.0, 3.0, 3.0]))
+        else:
+            rescale_transform = RescalePosition()
+        data = rescale_transform.forward(data)
 
         return Batch.from_data_list([data]).to(self.device)
