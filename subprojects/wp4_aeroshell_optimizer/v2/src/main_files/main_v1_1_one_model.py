@@ -25,7 +25,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     # ------------------------------------------------------------------
     # 1. Load general config from YAML
     # ------------------------------------------------------------------
-    general_config = load_config(v="v1", cfg_name="general_config.yaml")
+    general_config = load_config(v="v2", cfg_name="general_config.yaml")
 
     # ------------------------------------------------------------------
     # 2. Initialise WandB (picks up sweep agent params into wandb.config)
@@ -54,7 +54,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     #    Keys that don't match any registered config name are applied
     #    to general_config as a fallback (backward compatible).
     # ------------------------------------------------------------------
-    register_all_configs(general_config, v="v1")
+    register_all_configs(general_config, v="v2")
 
     if wandb.run is not None:
         apply_sweep_overrides(dict(wandb.config))
@@ -67,7 +67,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     # ------------------------------------------------------------------
     # 4. Load model config (now sweep-aware) and instantiate model
     # ------------------------------------------------------------------
-    model_config = load_config(v="v1", cfg_name=general_config["active_configs"]["model_params"])
+    model_config = load_config(v="v2", cfg_name=general_config["active_configs"]["model_params"])
 
     model_name = general_config["model_def"]["model_name"]
     model_definition = general_config["model_def"]["model_file_path"]
@@ -85,8 +85,8 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     # ------------------------------------------------------------------
     ### load configs
     pretraining_config_name = general_config["active_configs"].get("pretraining", "pretraining_v0_config.yaml")
-    pretraining_config = load_config(v="v1", cfg_name=pretraining_config_name)
-    force_pretraining = pretraining_config.get("pretraining", {}).get("force_pretraining", False)
+    pretraining_config = load_config(v="v2", cfg_name=pretraining_config_name)
+    force_pretraining = pretraining_config["pretraining"].get("force_pretraining", False)
     run_locally = general_config["general_info"].get("run_locally", "False") == "True"
 
     ### get paths
@@ -108,6 +108,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     print(f"[DEBUG main] pretraining_model_path from config: {pretrained_path}")
 
     ### load pretrained model if exists
+    ### # aalthaus, why the hell does the fetch function get called a second time here?
     pretrained_model = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
     print(f"[DEBUG main] os.path.exists(path): {os.path.exists(pretrained_path)}")
     print(f"[DEBUG main] os.path.isfile(path): {os.path.isfile(pretrained_path)}")
@@ -116,7 +117,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     if pretrained_model is not None and not force_pretraining:
         model.load_state_dict(torch.load(pretrained_model, map_location=device))
         if verbose:
-            print(f"Loaded pretrained model from {pretrained_model}")
+            print(f"Loaded pretrained model of type {model.__class__.__name__} from {pretrained_model}")
     else:
         if verbose:
             print("No pretrained model found (or forced pretraining), proceeding by pretraining")
@@ -129,7 +130,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
             if wandb_config
             else {}
         )
-
+        print(f"Starting pretraining for model {model.__class__.__name__}")
         model = pretraining(model=model, override_config=pretraining_override)
 
         allround_save_data(
@@ -188,6 +189,8 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
         pretraining=False,
         wandb_run=wandb_name,
         epoch=training_config["training_params"].get("num_epochs", 1000),
+        resolution=64,
+        marching_cubes_usage=True,
     )
 
     # ------------------------------------------------------------------

@@ -1,6 +1,6 @@
 from typing import Any
 
-from subprojects.wp2_assembler.version3.components.nbz import call_assembly
+from subprojects.wp2_assembler.version4.components.nbz import call_assembly
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.rendering_mode_base_class import RenderingMode
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visualiser_utils import assembly_to_kaolin_mesh

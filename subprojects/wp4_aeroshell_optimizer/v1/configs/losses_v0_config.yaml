@@ -27,15 +27,17 @@ losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically
     null_loss_bb_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/null_loss_bb_v1.py"]
     bb_v3: [0, 1, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety y
     bb_v4: [0, 10, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v4.py"] # assembler version4 with ground clearance validation
-    bb_v4_2: [1, 10, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v4_2.py"] # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
+    bb_v4_2: [0, 10, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v4_2.py"] # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
+    bb_v4_3: [0, 10, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v4_3.py"] # v4.3 with improved ALM and CSE support
+    bb_v4_4: [1, 10, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/bb_v4_4.py"] # v4.4 surface-sampled BB constraints on WP2 inner/outer zero-level surfaces
     silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/bb_loss/silvretta_bb_v0.py"] # version provided by Silvretta, not working well as of 2025 12 15
 
   eikonal:
     eikonal_v0: [1, 10.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/eikonal_loss/eikonal_v0.py"]
 
   smoothness:
-    smoothness_v0: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/smoothness_loss/smoothness_v0.py"]
-
+    smoothness_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/smoothness_loss/smoothness_v0.py"]
+    null_loss_smoothness_v0: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/smoothness_loss/null_loss_smoothness_v0.py"]
   # surface_area:
   #   surface_loss_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/surface_area_loss/surface_loss_v0.py"]
 
@@ -62,19 +64,34 @@ get_points_params: # used in eikonal and smoothness loss  #  parent_loss.py: sel
   bbox_size: 10.0  #  parent_loss.py
 
 
-bb_config:  # bb_v3.py: self.losses_config["bb_config"]
+bb_config:  # bb_.py: self.losses_config["bb_config"]
   pointgrid_params:  #  bb_v3.py: self.__config["pointgrid_params"] -> passed to SDFfromCadQuery
-    dx: 250  #
-    dy: 250  #
-    dz: 250  #
+    dx: 100  #
+    dy: 100  #
+    dz: 100  #
     rand: 400  #
-  assembly_id: 1 # 1 for the standard one  # rendering modes only (assembly_mode.py, mesh_assembly_mode_v2.py), not bb_v3.py (which randomises 1-52)
+
+  ### Assembly ###:
+  "random_assembly_id": "True" # "False" for fixed assembly id (below), "True" for random
+  assembly_id: 42 # 1 for the standard one  # rendering modes only (assembly_mode.py, mesh_assembly_mode_v2.py), not bb_v3.py (which randomises 1-52)
   render_until_blue: "False"
+  #########################
   sdf_device: cuda  # mesh-backed BB SDF compute device
-  # v4.2 specific:
+  # v4.2+ specific:
   sdf_chunk_size: 4096  # query chunk size for mesh_sdf (higher can be faster but uses more memory)
   tessellation_tolerance: 2.0  # CadQuery tessellation quality for bb_v4_2 (higher is faster, lower detail)
   tessellation_angular_tolerance: 0.4  # CadQuery tessellation angular quality for bb_v4_2
+  # v4.4 surface-sampling specific:
+  surface_sampling:
+    target_point_count: 20000  # total number of zero-level surface points sampled per setup
+    inner_fraction: 0.5  # fraction of points allocated to inner surface(s); rest goes to outer
+    min_points_per_inner_mesh: 256  # minimum points for each inner solid to avoid undersampling small parts
+  # v5 analytic specific (used by bb_v5_analytic):
+  analytic_options:
+    penalty: "softplus"  # "relu" (default) or "softplus"
+    softplus_beta: 10.0  # only used when penalty="softplus"
+    inner_margin: 0.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
+    outer_margin: 0.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
   # silvretta_v0 specific:
   inner_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/inner.ply"
   outer_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/outer.ply"
@@ -85,3 +102,5 @@ cfd:
   visualisations: "True" # only works for Version 2
   v_inf: 25.0   # freestream velocity [m/s] for Cp -> Pa conversion
   rho: 1.225    # air density [kg/m³] for Cp -> Pa conversion
+  mesh_resolution: 30000
+  gradient_max: 0.1

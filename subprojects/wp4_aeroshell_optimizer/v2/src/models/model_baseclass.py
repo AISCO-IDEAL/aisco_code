@@ -20,14 +20,15 @@ class BaseModel(nn.Module):
         super().__init__()  # gets all the stuff from nn.Module
 
         self.config = config if config is not None else {}
+
+        if overwrite_base_init:
+            return  # Skip base init if overwritten in subclass, avoids creating redundant variables
+
         self.in_dim = in_dim
         self.hidden = hidden
         self.layers = layers
 
         self.visual_config: dict = {}
-
-        if overwrite_base_init:
-            return  # Skip base init if overwritten in subclass, avoids creating redundant layers
 
         # Define a simple MLP with Relu and Tanh activations
         self.model_layers = nn.ModuleList()
@@ -69,15 +70,25 @@ class BaseModel(nn.Module):
         super().eval()  # Set training attribute of inherited model to false, ensures things like e.g. dropout are disabled
         # Validation Logic TODO
 
-    def get_model_info_dict(self):
-        # Return model info as a dictionary
-        model_info = {
-            "in_dim": self.in_dim,
-            "hidden": self.hidden,
-            "layers": self.layers,
-            "total_parameters": sum(p.numel() for p in self.parameters()),
-        }
-        return model_info
+    def get_model_info_dict(self) -> dict:
+        """
+        Should return a dictionary uniquely identifying the model architecture and number of parameters, for logging and comparison purposes. Example:
+
+
+            model_info = {
+                "name": self.__class__.__name__,
+                "in_dim": self.in_dim,
+                "hidden": self.hidden,
+                "layers": self.layers,
+                "total_parameters": sum(p.numel() for p in self.parameters()),
+            }
+            return model_info
+        """
+        raise NotImplementedError(
+            "get_model_info_dict method not implemented yet. Please implement in the subclass inheriting, see "
+        )
+
+        return {}
 
     def debug_info(self):
         raise ValueError("No Debug Info implemented")

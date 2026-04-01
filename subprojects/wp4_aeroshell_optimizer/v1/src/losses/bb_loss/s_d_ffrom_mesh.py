@@ -1,7 +1,7 @@
 import torch
 import trimesh
 
-from subprojects.wp2_assembler.version3.components.nbz import bounding_box_of_assembly as _default_bbox_fn
+from subprojects.wp2_assembler.version4.components.nbz import bounding_box_of_assembly as _default_bbox_fn
 from subprojects.wp4_aeroshell_optimizer.v1.src.models.blendednet.gpu_sdf import mesh_sdf
 
 
