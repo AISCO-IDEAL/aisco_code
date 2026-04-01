@@ -11,4 +11,17 @@ class SolarV6(ParentLoss):
         self.solar_estimator = SolarLossEstimator(config=solar_cfg)
 
     def _loss(self, model):
-        return self.solar_estimator.solar_loss(model=model, epoch_name=self.epoch_name)
+        import torch  # noqa: PLC0415
+
+        loss = self.solar_estimator.solar_loss(model=model, epoch_name=self.epoch_name)
+
+        with torch.no_grad():
+            self._last_diagnostics = {
+                "loss_value": loss.item(),
+                "method": self.solar_estimator.method,
+                "counter": self.solar_estimator.counter,
+                "area_budget_mm2": self.solar_estimator.area_budget_mm2,
+                "resolution": self.solar_estimator.resolution,
+            }
+
+        return loss

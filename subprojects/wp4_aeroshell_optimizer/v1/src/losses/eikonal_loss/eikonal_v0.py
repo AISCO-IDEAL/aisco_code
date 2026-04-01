@@ -38,5 +38,25 @@ class EikonalV0(ParentLoss):
                 )[0]
 
             diff = torch.norm(grad_sdf, p=2, dim=-1) - 1.0
-            eikonal_loss = torch.pow(diff, 2).mean()  # in v0 there was no ^2 here, but it should be according to the paper
+            n_points = diff.shape[0]
+            eikonal_loss = torch.pow(diff, 2).mean() if n_points > 0 else torch.tensor(0.0, device=self.points.device)
+
+            # Store diagnostics for DebugManager
+            with torch.no_grad():
+                grad_norms = torch.norm(grad_sdf, p=2, dim=-1)
+                self._last_diagnostics = {
+                    "n_points": n_points,
+                    "grad_norm_min": grad_norms.min().item(),
+                    "grad_norm_max": grad_norms.max().item(),
+                    "grad_norm_mean": grad_norms.mean().item(),
+                    "grad_norm_std": grad_norms.std().item() if n_points > 1 else 0.0,
+                    "deviation_from_1_max": diff.abs().max().item(),
+                    "deviation_from_1_mean": diff.abs().mean().item(),
+                    "pct_grad_norm_below_0.5": float((grad_norms < 0.5).sum().item()) / max(n_points, 1) * 100,
+                    "pct_grad_norm_above_1.5": float((grad_norms > 1.5).sum().item()) / max(n_points, 1) * 100,
+                    "sdf_min": sdf.min().item(),
+                    "sdf_max": sdf.max().item(),
+                    "sdf_mean": sdf.mean().item(),
+                }
+
             return eikonal_loss

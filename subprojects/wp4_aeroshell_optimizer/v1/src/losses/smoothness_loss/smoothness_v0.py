@@ -54,4 +54,23 @@ class SmoothnessV0(ParentLoss):
                 )[0]
                 laplacian_sdf += second_deriv[:, dim]
 
-            return (laplacian_sdf**2).mean()
+            n_points = laplacian_sdf.shape[0]
+            smoothness_loss = (laplacian_sdf**2).mean() if n_points > 0 else torch.tensor(0.0, device=self.points.device)
+
+            # Store diagnostics for DebugManager
+            with torch.no_grad():
+                self._last_diagnostics = {
+                    "n_points": n_points,
+                    "laplacian_min": laplacian_sdf.min().item(),
+                    "laplacian_max": laplacian_sdf.max().item(),
+                    "laplacian_mean": laplacian_sdf.mean().item(),
+                    "laplacian_std": laplacian_sdf.std().item() if n_points > 1 else 0.0,
+                    "laplacian_abs_max": laplacian_sdf.abs().max().item(),
+                    "pct_high_curvature": float((laplacian_sdf.abs() > 1.0).sum().item()) / max(n_points, 1) * 100,
+                    "sdf_min": sdf.min().item(),
+                    "sdf_max": sdf.max().item(),
+                    "sdf_mean": sdf.mean().item(),
+                    "grad_sdf_norm_mean": torch.norm(grad_sdf, p=2, dim=-1).mean().item(),
+                }
+
+            return smoothness_loss

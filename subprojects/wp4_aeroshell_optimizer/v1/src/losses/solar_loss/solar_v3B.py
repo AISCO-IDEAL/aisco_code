@@ -13,4 +13,20 @@ class SolarV3B(ParentLoss):
         self.power_conversion_factor = solar_cfg["power_conversion_factor"]
 
     def _loss(self, model):
-        return self.solar_estimator.solar_loss(model=model, epoch_name=self.epoch_name) * self.power_conversion_factor
+        import torch  # noqa: PLC0415
+
+        raw_loss = self.solar_estimator.solar_loss(model=model, epoch_name=self.epoch_name)
+        scaled_loss = raw_loss * self.power_conversion_factor
+
+        with torch.no_grad():
+            self._last_diagnostics = {
+                "loss_value_raw": raw_loss.item(),
+                "loss_value_scaled": scaled_loss.item(),
+                "power_conversion_factor": self.power_conversion_factor,
+                "method": self.solar_estimator.method,
+                "counter": self.solar_estimator.counter,
+                "area_budget_mm2": self.solar_estimator.area_budget_mm2,
+                "resolution": self.solar_estimator.resolution,
+            }
+
+        return scaled_loss
