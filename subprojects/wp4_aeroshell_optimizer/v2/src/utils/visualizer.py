@@ -15,7 +15,7 @@ import trimesh
 from pyrender import RenderFlags
 
 import wandb
-from subprojects.wp2_assembler.version3.components.nbz import call_assembly
+from subprojects.wp2_assembler.version4.components.nbz import call_assembly
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 
