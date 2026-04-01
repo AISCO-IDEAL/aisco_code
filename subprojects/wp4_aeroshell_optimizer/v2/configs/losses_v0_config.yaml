@@ -19,8 +19,8 @@ losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically
   aero:
     # frontal_area_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/frontal_area_v0.py"]  # NOT ACTIVE (compute=0)
     # crude_estimator_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/crude_estimator_v0.py"]  # NOT ACTIVE (compute=0)
-    null_loss_aero_v1_: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
-    gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+    null_loss_aero_v1_: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
+    gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
   bb:
     # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v1.py"]
@@ -28,8 +28,8 @@ losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically
     null_loss_bb_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/null_loss_bb_v1.py"]
     bb_v3: [0, 1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety y
     bb_v4: [0, 10, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"] # assembler version4 with ground clearance validation
-    bb_v4_2: [0, 1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"] # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
-    silvretta_bb_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"] # version provided by Silvretta, not working well as of 2025 12 15
+    bb_v4_2: [1, 1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"] # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
+    silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"] # version provided by Silvretta, not working well as of 2025 12 15
 
   eikonal:
     eikonal_v0: [1, 100.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
@@ -47,12 +47,12 @@ losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically
     solar_v2: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v2.py"]
     solar_v3: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3.py"]
     #Everything above here is not really used/garbage compared to V3B and above
-    solar_v3B: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B.py"]
+    solar_v3B: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B.py"]
     solar_v4: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
     solar_v5: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
-    null_loss_solar_v1: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/null_loss_solar_v1.py"]
+    null_loss_solar_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/null_loss_solar_v1.py"]
 
   total:
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
