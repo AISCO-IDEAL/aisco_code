@@ -73,6 +73,9 @@ class ModelLoader:
         if "magno" in config:
             config["magno"]["precompute_edges"] = False
 
+        if type(config["transformer"]["norm_eps"]) is str:
+            config["transformer"]["norm_eps"] = float(config["transformer"]["norm_eps"])
+
         # ── build model from config dict ─────────────────────────────────
         self.gaot = GAOT3D(config=config).to(self.device)
         self.gaot.eval()
