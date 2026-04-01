@@ -166,6 +166,7 @@ def register_all_configs(general_config: dict, *, v: str = "v1") -> None:
         "solar_configs/solar_loss_config.yaml",
         "solar_configs/raytracing_config.yaml",
         "logging.yaml",
+        "debug.yaml",
         "solar_configs/australia.yaml",
     ]
     for cfg_name in _standalone:

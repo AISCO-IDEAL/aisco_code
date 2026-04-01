@@ -91,7 +91,16 @@ class ModelLoader:
 
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
-        _, _, loss, surrogate_loss, _ = self.extractor.extract_and_compute_loss(sdf_model=sdf_model, loss_fn=self.loss_fn)
+        verts, faces, loss, surrogate_loss, _ = self.extractor.extract_and_compute_loss(sdf_model=sdf_model, loss_fn=self.loss_fn)
+
+        # Store diagnostics for DebugManager
+        self._last_diagnostics = getattr(self, "_last_diagnostics", {})
+        self._last_diagnostics["mesh_n_vertices"] = int(verts.shape[0]) if verts is not None and verts.numel() > 0 else 0
+        self._last_diagnostics["mesh_n_faces"] = int(faces.shape[0]) if faces is not None and faces.numel() > 0 else 0
+        self._last_diagnostics["raw_loss"] = loss.item()
+        self._last_diagnostics["surrogate_loss"] = surrogate_loss.item()
+        self._last_diagnostics["mesh_empty"] = verts is None or verts.numel() == 0
+
         return loss.item() + surrogate_loss - surrogate_loss.item()
 
     def loss_fn(self, mesh_verts, mesh_faces):
@@ -107,6 +116,16 @@ class ModelLoader:
         # ── forward through GAOT3D ───────────────────────────────────────
         with torch.autograd.set_detect_anomaly(True):
             gaot_loss = self.normal_model.forward(data=batch, tokens_pos=tokens_pos)
+
+        # Store diagnostics
+        self._last_diagnostics = {
+            "force_value": gaot_loss.item(),
+            "force_is_nan": bool(torch.isnan(gaot_loss).any()),
+            "force_is_inf": bool(torch.isinf(gaot_loss).any()),
+            "n_input_vertices": int(mesh_verts.shape[0]),
+            "n_input_faces": int(mesh_faces.shape[0]),
+        }
+
         return gaot_loss
 
     def _reformat_data(self, mesh_verts, mesh_faces):

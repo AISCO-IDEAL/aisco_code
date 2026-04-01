@@ -106,4 +106,28 @@ class BbV42(ParentLoss):
             upper_violation = torch.relu(sdf_pred - sdf_inner_t)
             lower_violation = torch.relu(sdf_outer_t - sdf_pred)
 
-            return (upper_violation + lower_violation).mean()
+            n_points = sdf_pred.shape[0]
+            total_violation = upper_violation + lower_violation
+            loss = total_violation.mean() if n_points > 0 else torch.tensor(0.0, device=self.device)
+
+            # Store diagnostics for DebugManager
+            with torch.no_grad():
+                self._last_diagnostics = {
+                    "n_points": n_points,
+                    "sdf_pred_min": sdf_pred.min().item(),
+                    "sdf_pred_max": sdf_pred.max().item(),
+                    "sdf_pred_mean": sdf_pred.mean().item(),
+                    "sdf_inner_min": sdf_inner_t.min().item(),
+                    "sdf_inner_max": sdf_inner_t.max().item(),
+                    "sdf_outer_min": sdf_outer_t.min().item(),
+                    "sdf_outer_max": sdf_outer_t.max().item(),
+                    "upper_violation_count": int((upper_violation > 0).sum().item()),
+                    "lower_violation_count": int((lower_violation > 0).sum().item()),
+                    "upper_violation_max": upper_violation.max().item(),
+                    "lower_violation_max": lower_violation.max().item(),
+                    "upper_violation_mean": upper_violation.mean().item() if n_points > 0 else 0.0,
+                    "lower_violation_mean": lower_violation.mean().item() if n_points > 0 else 0.0,
+                    "violation_frac": float((total_violation > 0).sum().item()) / max(n_points, 1),
+                }
+
+            return loss

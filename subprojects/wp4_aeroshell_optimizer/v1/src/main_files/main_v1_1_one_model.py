@@ -11,6 +11,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
     load_config,
     register_all_configs,
 )
+from subprojects.wp4_aeroshell_optimizer.v1.src.utils.debug_manager import DebugManager
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import dynamic_type_loading
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import (
@@ -63,6 +64,13 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
 
     if verbose:
         print("Successfully loaded and registered all configs")
+
+    # ------------------------------------------------------------------
+    # 3b. Initialise DebugManager from configs/debug.yaml
+    # ------------------------------------------------------------------
+    debug_manager = DebugManager()
+    if verbose:
+        print(debug_manager.summary())
 
     # ------------------------------------------------------------------
     # 4. Load model config (now sweep-aware) and instantiate model
@@ -130,7 +138,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
             else {}
         )
 
-        model = pretraining(model=model, override_config=pretraining_override)
+        model = pretraining(model=model, override_config=pretraining_override, debug_manager=debug_manager)
 
         allround_save_data(
             model=model,
@@ -169,7 +177,11 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
 
     model = model.to(device)
     model.optimise(
-        training_config=training_config, renderer_manager=renderer_manager, wandb_name=wandb_name, general_config=general_config
+        training_config=training_config,
+        renderer_manager=renderer_manager,
+        wandb_name=wandb_name,
+        general_config=general_config,
+        debug_manager=debug_manager,
     )
     if verbose:
         print("Model optimisation completed.")
