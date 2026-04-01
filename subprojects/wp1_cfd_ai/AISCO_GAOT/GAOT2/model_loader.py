@@ -101,9 +101,21 @@ class ModelLoader:
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
         self.sdf_model = sdf_model
-        _, _, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
+        verts, faces, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
             sdf_model=sdf_model, loss_fn=self.loss_fn
         )
+
+        # Store diagnostics for DebugManager
+        diag = getattr(self, "_last_diagnostics", {})
+        diag["mesh_n_vertices"] = int(verts.shape[0]) if verts is not None and verts.numel() > 0 else 0
+        diag["mesh_n_faces"] = int(faces.shape[0]) if faces is not None and faces.numel() > 0 else 0
+        diag["raw_loss"] = loss.item()
+        diag["surrogate_loss"] = surrogate_loss.item()
+        diag["mesh_empty"] = verts is None or verts.numel() == 0
+        if dL_dvertices is not None and dL_dvertices.numel() > 0:
+            diag["dL_dvertices_norm"] = dL_dvertices.norm().item()
+            diag["dL_dvertices_max"] = dL_dvertices.abs().max().item()
+        self._last_diagnostics = diag
 
         self.optimization_state["vertice_grads"] = dL_dvertices
 
@@ -253,6 +265,24 @@ class ModelLoader:
             v_inf=self.v_inf,
             rho=self.rho,
         )
+
+        # Store diagnostics
+        with torch.no_grad():
+            self._last_diagnostics = {
+                "drag_value": int_drag_f.item(),
+                "drag_is_nan": bool(torch.isnan(int_drag_f).any()),
+                "drag_is_inf": bool(torch.isinf(int_drag_f).any()),
+                "pressure_field_min": pressure_field.min().item(),
+                "pressure_field_max": pressure_field.max().item(),
+                "pressure_field_mean": pressure_field.mean().item(),
+                "pressure_field_std": pressure_field.std().item(),
+                "pressure_field_nan_count": int(torch.isnan(pressure_field).sum().item()),
+                "pressure_field_inf_count": int(torch.isinf(pressure_field).sum().item()),
+                "n_input_vertices": int(mesh_verts.shape[0]),
+                "n_input_faces": int(mesh_faces.shape[0]),
+                "normals_flipped_count": getattr(self, "_normals_flipped_count", 0),
+            }
+
         print(f"Force-Value:{int_drag_f.item()}")
         return int_drag_f
 
@@ -272,8 +302,10 @@ class ModelLoader:
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
 
         sdf_values = self.sdf_model(face_centers * 1e3 + face_normals * 50)
-        face_normals[sdf_values < 0] *= -1
-        print("dumdidum", sdf_values < 0)
+        normals_flipped = sdf_values < 0
+        face_normals[normals_flipped] *= -1
+        self._normals_flipped_count = int(normals_flipped.sum().item())
+        print("dumdidum", normals_flipped)
 
         num_verts = optim_verts.shape[0]
         all_idx = mesh_faces.reshape(-1)

@@ -10,6 +10,7 @@ from torch import nn
 from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import Wrapper
 
 if TYPE_CHECKING:
+    from subprojects.wp4_aeroshell_optimizer.v1.src.utils.debug_manager import DebugManager
     from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visual_wrapper import VisualisationManager
 
 
@@ -57,6 +58,7 @@ class BaseModel(nn.Module):
         renderer_manager: VisualisationManager | None = None,  # noqa: ARG002
         renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
         wandb_name: str | None = None,  # noqa: ARG002
+        debug_manager: DebugManager | None = None,  # noqa: ARG002
     ) -> None:
         super().train()  # Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
 
