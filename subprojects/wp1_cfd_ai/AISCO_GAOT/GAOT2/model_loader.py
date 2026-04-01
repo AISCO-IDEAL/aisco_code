@@ -5,6 +5,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import copy
 import torch
 import yaml
 from torch_geometric.data import Batch, Data
@@ -62,7 +63,7 @@ class ModelLoader:
 
         with open(config_path) as f:
             config = yaml.safe_load(f)
-            self._og_config = config
+            self._og_config = copy.deepcopy(config)
 
         if "model" in config and "args" in config["model"]:
             config = config["model"]["args"]
