@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=Main_test
-#SBATCH --time=00:10:00                   # Adjust time as needed
+#SBATCH --time=03:59:00                   # No less than 4 hours as you're at the same queue acc. to Elias
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=8G                  # Total 40G memory
