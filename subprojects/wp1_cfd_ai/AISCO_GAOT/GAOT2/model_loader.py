@@ -63,7 +63,11 @@ class ModelLoader:
 
         with open(config_path) as f:
             config = yaml.safe_load(f)
-            self._og_config = copy.deepcopy(config)
+        
+        print(config)
+        if not isinstance(config, dict):
+            raise ValueError("Config must be a dictionary")
+        self._og_config = copy.deepcopy(config)
 
         if "model" in config and "args" in config["model"]:
             config = config["model"]["args"]
@@ -256,7 +260,7 @@ class ModelLoader:
             rho=self.rho,
         )
         print(f"Force-Value:{int_drag_f.item()}")
-        return int_drag_f * (-1)
+        return int_drag_f
 
     def _reformat_data(self, mesh_verts, mesh_faces):
         optim_verts = mesh_verts.to(self.device)
@@ -297,7 +301,7 @@ class ModelLoader:
 
         # ── rescale positions to [-1, 1] using physical domain in meters ──
         if self._og_config["dataset"]["use_rescale_new"]:
-            rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-3.0, -3.0, -3.0], [3.0, 3.0, 3.0]))
+            rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-5.0, -1.3, -1.2], [4.7, 1.7, 1.6]))
         else:
             rescale_transform = RescalePosition()
         data = rescale_transform.forward(data)
