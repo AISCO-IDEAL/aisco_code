@@ -150,7 +150,7 @@ def allround_save_data(  # noqa: PLR0915
                     verts, faces = extractor.extract_mesh(
                         temp_model,
                         isovalue=0.0,
-                        batch_size=8192,
+                        batch_size=2000,
                     )
 
                     print(

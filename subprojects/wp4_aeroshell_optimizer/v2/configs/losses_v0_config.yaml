@@ -1,7 +1,7 @@
 general_info:
   # config_debugging: "True"  # NOT USED — never read by any code in src/
   CSE: "True"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
-  ALM: "False"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
+  ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
   ALM_aggressive: "False" # capu version of ALM
   alm_thresholds: [0.1, 0.1, 0.1]  # thresholds for constraint losses [bb, eikonal, smoothness]
   initial_lambda: [0.01, 0.01, 0.01]  # per-constraint initial λ [bb, eikonal, smoothness] (scalar also accepted)
@@ -47,11 +47,11 @@ losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically
     solar_v2: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v2.py"]
     solar_v3: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3.py"]
     #Everything above here is not really used/garbage compared to V3B and above
-    solar_v3B: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B.py"]
+    solar_v3B: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B.py"]
     solar_v4: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
     solar_v5: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
-    solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
+    solar_v7: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
     null_loss_solar_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/null_loss_solar_v1.py"]
 
   total:
