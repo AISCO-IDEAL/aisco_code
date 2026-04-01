@@ -32,7 +32,7 @@ def pretraining(
 ):
     # Does pretraining, for now only on a sphere
 
-    config = load_config(v="v1", cfg_name=pretraining_config_name)
+    config = load_config(v="v2", cfg_name=pretraining_config_name)
     if override_config:
         # Merge override_config into config
         # Simple recursive merge or specific key override

@@ -66,6 +66,15 @@ def _magno_set(model_config, key, value):
         setattr(magno, key, value)
 
 
+def _cfg_get(cfg, key, default=None):
+    """Read a config key from dict/DictConfig/dataclass-like objects."""
+    if isinstance(cfg, dict):
+        return cfg.get(key, default)
+    if hasattr(cfg, "get"):
+        return cfg.get(key, default)
+    return getattr(cfg, key, default)
+
+
 def _build_gaot_config(model_config, input_size: int, output_size: int) -> dict[str, Any]:
     """
     Build the flat config dict that GAOT3D expects from the structured
@@ -127,6 +136,58 @@ class StaticTrainer3D(TrainerBase):
             logging.getLogger(__name__).info(
                 "Uncertainty weighting enabled: log_sigma_field and log_sigma_scalar will be learned."
             )
+
+        # Visualization consistency settings are initialized after dataset stats are available.
+        self._viz_fixed_axis_limits = None
+        self._viz_fixed_clim_common = None
+        self._viz_fixed_clim_diff = None
+
+    def _init_viz_consistency_settings(self):
+        """Build fixed axis and color ranges for cross-epoch/run comparability."""
+        # Axis limits: by default use full physical domain for stable geometry framing.
+        if _cfg_get(self.dataset_config, "viz_fixed_axes", True):
+            domain = getattr(self.metadata, "domain_x", None)
+            if domain is not None:
+                x_min, y_min, z_min = [float(v) for v in domain[0]]
+                x_max, y_max, z_max = [float(v) for v in domain[1]]
+                x_mid = 0.5 * (x_max + x_min)
+                y_mid = 0.5 * (y_max + y_min)
+                z_mid = 0.5 * (z_max + z_min)
+                max_range = max(x_max - x_min, y_max - y_min, z_max - z_min)
+                plot_radius = 0.5 * max_range * 1.1
+                self._viz_fixed_axis_limits = {
+                    "x": (x_mid - plot_radius, x_mid + plot_radius),
+                    "y": (y_mid - plot_radius, y_mid + plot_radius),
+                    "z": (z_mid - plot_radius, z_mid + plot_radius),
+                }
+
+        # Color limits: by default derive a stable field range from normalization stats.
+        if _cfg_get(self.dataset_config, "viz_fixed_colormap", True):
+            vmin = _cfg_get(self.dataset_config, "viz_field_vmin", None)
+            vmax = _cfg_get(self.dataset_config, "viz_field_vmax", None)
+
+            if (vmin is None or vmax is None) and (self.u_mean is not None and self.u_std is not None and self.u_mean.numel() == 1 and self.u_std.numel() == 1):
+                    std_mult = float(_cfg_get(self.dataset_config, "viz_field_std_multiplier", 3.0))
+                    mean_val = float(self.u_mean.item())
+                    std_val = max(float(self.u_std.item()), EPSILON)
+                    vmin = mean_val - std_mult * std_val
+                    vmax = mean_val + std_mult * std_val
+
+            if vmin is not None and vmax is not None and vmax > vmin:
+                self._viz_fixed_clim_common = (float(vmin), float(vmax))
+
+                diff_vmax = _cfg_get(self.dataset_config, "viz_abs_diff_vmax", None)
+                if diff_vmax is None:
+                    diff_vmax = float(vmax) - float(vmin)
+                diff_vmax = max(float(diff_vmax), EPSILON)
+                self._viz_fixed_clim_diff = (0.0, diff_vmax)
+
+        logging.getLogger(__name__).info(
+            "Viz consistency settings: axis_limits=%s, field_clim=%s, diff_clim=%s",
+            self._viz_fixed_axis_limits,
+            self._viz_fixed_clim_common,
+            self._viz_fixed_clim_diff,
+        )
 
     def _calculate_or_load_stats(self, dataset_config, order_file_path, data_root):
         """Calculates or loads normalization statistics.
@@ -434,6 +495,7 @@ class StaticTrainer3D(TrainerBase):
 
         # --- Calculate or Load Normalization Stats ---
         self._calculate_or_load_stats(dataset_config, order_file_path, data_root)
+        self._init_viz_consistency_settings()
 
         # --- Define Transforms ---
         if dataset_config["use_rescale_new"]:
@@ -754,7 +816,10 @@ class StaticTrainer3D(TrainerBase):
                         equal_aspect=True,
                         show_abs_diff=True,
                         show_input_shape=False,
-                        use_ground_truth_range=True,
+                        use_ground_truth_range=False,
+                        fixed_clim_common=self._viz_fixed_clim_common,
+                        fixed_clim_diff=self._viz_fixed_clim_diff,
+                        fixed_axis_limits=self._viz_fixed_axis_limits,
                     )
                     self.tracker.log_image(
                         f"viz/{split_label}/pressure_field{suffix}",

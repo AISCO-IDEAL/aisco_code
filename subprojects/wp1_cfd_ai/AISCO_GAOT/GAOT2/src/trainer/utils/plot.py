@@ -143,13 +143,16 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
     variable_name: str = "Value",
     point_size: float = 3.0,
     cmap: str = "jet",
-    dpi: int = 150,
+    dpi: int = 300,
     view_angle: tuple[float, float] = (20, -120),
     hide_grid: bool = False,
     equal_aspect: bool = True,  # <-- Control aspect ratio setting
     show_abs_diff: bool = False,  # absolute difference
     show_input_shape: bool = True,
     use_ground_truth_range: bool = False,
+    fixed_clim_common: tuple[float, float] | None = None,
+    fixed_clim_diff: tuple[float, float] | None = None,
+    fixed_axis_limits: dict[str, tuple[float, float]] | None = None,
 ):
     """
     Generates a 3/4-panel 3D scatter plot comparison using Matplotlib...
@@ -187,17 +190,29 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
     use_ground_truth_range: bool, optional
         If True, use only the GT min/max as shared color limits for GT and Pred.
         Defaults to False.
+    fixed_clim_common: Tuple[float, float] | None, optional
+        If set, force a fixed [vmin, vmax] for GT and prediction panels.
+        Overrides use_ground_truth_range.
+    fixed_clim_diff: Tuple[float, float] | None, optional
+        If set, force a fixed [vmin, vmax] for the absolute-difference panel.
+    fixed_axis_limits: Dict[str, Tuple[float, float]] | None, optional
+        If set, enforce fixed axis limits with keys: "x", "y", "z".
     """
     try:
         u_diff = np.abs(u_gtr - u_prd)
-        if use_ground_truth_range:
+        if fixed_clim_common is not None:
+            common_min, common_max = float(fixed_clim_common[0]), float(fixed_clim_common[1])
+        elif use_ground_truth_range:
             common_min = float(np.min(u_gtr))
             common_max = float(np.max(u_gtr))
         else:
             common_min = min(np.min(u_gtr), np.min(u_prd))
             common_max = max(np.max(u_gtr), np.max(u_prd))
         clim_common = [common_min, common_max]
-        clim_diff = [np.min(u_diff), np.max(u_diff)]
+        if fixed_clim_diff is not None:
+            clim_diff = [float(fixed_clim_diff[0]), float(fixed_clim_diff[1])]
+        else:
+            clim_diff = [np.min(u_diff), np.max(u_diff)]
 
         ncols = (1 if show_input_shape else 0) + 2 + (1 if show_abs_diff else 0)
         fig = plt.figure(figsize=(6 * ncols, 6))
@@ -283,7 +298,20 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
             ax.set_ylabel("Y")
             ax.set_zlabel("Z")
             ax.view_init(elev=view_angle[0], azim=view_angle[1])
-            if equal_aspect:
+            if fixed_axis_limits is not None:
+                xlims = fixed_axis_limits["x"]
+                ylims = fixed_axis_limits["y"]
+                zlims = fixed_axis_limits["z"]
+                ax.set_xlim(xlims)
+                ax.set_ylim(ylims)
+                ax.set_zlim(zlims)
+                try:
+                    ax.set_box_aspect(
+                        (1, (ylims[1] - ylims[0]) / (xlims[1] - xlims[0]), (zlims[1] - zlims[0]) / (xlims[1] - xlims[0]))
+                    )
+                except AttributeError:
+                    ax.set_aspect("auto")
+            elif equal_aspect:
                 x_min, x_max = coords[:, 0].min(), coords[:, 0].max()
                 y_min, y_max = coords[:, 1].min(), coords[:, 1].max()
                 z_min, z_max = coords[:, 2].min(), coords[:, 2].max()

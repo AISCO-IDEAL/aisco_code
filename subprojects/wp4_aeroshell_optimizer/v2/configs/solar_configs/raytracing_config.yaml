@@ -72,13 +72,14 @@ RaytracingConfigV3:
     point_chunk_size: 256
 
   mesh:
+    miss_t: 1e8
     beta: 1.0
     gamma: 20.0
     margin_factor: 8e-3
     origin_offset_eps: 1e-2
     sun_distance_factor: 1.0
-    face_chunk_size: 400 #C
-    blocker_chunk_size: 750 #K --> peak memory usage will be C*K
+    face_chunk_size: 100 #C
+    blocker_chunk_size: 100 #K --> peak memory usage will be C*K
     smoothing_mode: "soft_barycentric_transmittance" # soft_barycentric_transmittance | v2_sigmoid
     face_samples: 7 # number of deterministic barycentric sample rays per face
     sample_pattern: "barycentric_ring" # centroid | barycentric_ring

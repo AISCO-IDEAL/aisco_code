@@ -21,4 +21,4 @@ sun_generation:
 simulation:
   # Note that tweaking these 2 values to unreasonably values will cause a crash (to few points cause sampling issues)
   average_speed: 19 #in m/s (used for validation metrics and RouteV2)  # USED — WP3
-  num_points: 75  # USED — WP3
+  num_points: 50  # USED — WP3

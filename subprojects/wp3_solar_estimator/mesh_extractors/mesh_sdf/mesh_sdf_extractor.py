@@ -44,6 +44,7 @@ class MeshSDFExtractor:
         max_iters: int = 20,
         auto_isovalue_if_out_of_range: bool = True,
         warn_out_of_range: bool = True,
+        gradient_max: float | None = None,
     ):
         """
         Args:
@@ -57,6 +58,7 @@ class MeshSDFExtractor:
         self._target_nr_vertices = target_nr_vertices
         self.tolerance = tolerance
         self.max_iters = max_iters
+        self.gradient_max = gradient_max
 
         if bbox is None:
             bbox = [-5000, 5000, -5000, 5000, -5000, 5000]
@@ -350,6 +352,9 @@ class MeshSDFExtractor:
             surrogate_loss: Gradient flow term (for backward pass)
             dL_dvertices: Upstream gradients w.r.t. vertices (for visualization/debugging)
         """
+        if self._dynamic_resolution:
+            # Dynamic resolution adjustment to approach target vertex count
+            self.dynamic_resolution_adjustment(sdf_model)
         # Extract mesh
         vertices, faces = self.extract_mesh(sdf_model)
 
@@ -368,7 +373,11 @@ class MeshSDFExtractor:
         dL_dvertices = torch.autograd.grad(
             outputs=loss, inputs=vertices_for_loss, grad_outputs=torch.ones_like(loss), create_graph=False, retain_graph=False
         )[0]
-
+        if self.gradient_max is not None:
+            norms = torch.norm(dL_dvertices, dim=1, keepdim=True)
+            scale = self.gradient_max / (norms + 1e-8)
+            scale = torch.minimum(scale, torch.ones_like(scale))
+            dL_dvertices = dL_dvertices * scale
         # Compute gradient flow through implicit surface
         surrogate_loss = self.compute_gradient_flow(vertices=vertices, dL_dvertices=dL_dvertices, sdf_model=sdf_model)
 
@@ -402,9 +411,8 @@ class MeshSDFExtractor:
             if abs(v - target) <= self.tolerance * target:
                 break
 
-            factor = target / v
+            factor = (target / v) ** 0.5
             new_res = round(self._resolution * factor)
-            new_res = max(8, min(512, new_res))
 
             if new_res == self._resolution:
                 break

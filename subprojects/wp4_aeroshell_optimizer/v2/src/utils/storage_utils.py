@@ -28,6 +28,7 @@ def allround_save_data(  # noqa: PLR0915
     save_model: bool = True,  # Whether to save the model data,
     epoch: int | None = None,  # Current epoch number
     storage_path: str = "cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/bulk_storage",
+    resolution: int = 64,  # resolution for get_diff_mesh, only used if save_mesh is True and marching_cubes_usage is not active
     verbose: bool = True,
     pretraining: bool = False,
     marching_cubes_usage: bool = False,
@@ -114,7 +115,7 @@ def allround_save_data(  # noqa: PLR0915
 
         if marching_cubes_usage != "True":
             temp_model = copy.deepcopy(model).cpu()
-            grid_res = 64
+            grid_res = resolution
             verts, faces = get_diff_mesh(
                 temp_model, grid_res=grid_res, device="cpu"
             )  # fsanche: keeping this in case marching cubes doest work. this one is the original.
@@ -149,7 +150,7 @@ def allround_save_data(  # noqa: PLR0915
                     verts, faces = extractor.extract_mesh(
                         temp_model,
                         isovalue=0.0,
-                        batch_size=8192,
+                        batch_size=2000,
                     )
 
                     print(
