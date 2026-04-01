@@ -4,6 +4,9 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
+from matplotlib import cm
+from matplotlib import colors as mcolors
+from matplotlib.ticker import FormatStrFormatter
 
 
 ############################### 3D plotting   ###############################
@@ -214,6 +217,10 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
         else:
             clim_diff = [np.min(u_diff), np.max(u_diff)]
 
+        # Use one shared Normalize object so GT/Pred have exactly identical color mapping.
+        shared_norm = mcolors.Normalize(vmin=clim_common[0], vmax=clim_common[1])
+        diff_norm = mcolors.Normalize(vmin=clim_diff[0], vmax=clim_diff[1])
+
         ncols = (1 if show_input_shape else 0) + 2 + (1 if show_abs_diff else 0)
         fig = plt.figure(figsize=(6 * ncols, 6))
         axes = []
@@ -236,8 +243,7 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
             c=u_gtr,
             cmap=cmap,
             s=point_size,
-            vmin=clim_common[0],
-            vmax=clim_common[1],
+            norm=shared_norm,
             depthshade=False,
         )
         ax1.set_title("Ground-truth", fontsize=14)
@@ -253,8 +259,7 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
             c=u_prd,
             cmap=cmap,
             s=point_size,
-            vmin=clim_common[0],
-            vmax=clim_common[1],
+            norm=shared_norm,
             depthshade=False,
         )
         ax2.set_title("Model Estimate", fontsize=14)
@@ -271,25 +276,56 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
                 c=u_diff,
                 cmap="Reds",
                 s=point_size,
-                vmin=clim_diff[0],
-                vmax=clim_diff[1],
+                norm=diff_norm,
                 depthshade=False,
             )
             ax3.set_title("Absolute Difference")
             axes.append(ax3)
 
         # Per-panel vertical colorbars (matching trainer screenshot style)
-        cb1 = fig.colorbar(sc1, ax=ax1, orientation="vertical", fraction=0.025, pad=0.04)
+        # Build colorbars from explicit ScalarMappables so ranges stay fixed.
+        common_mappable = cm.ScalarMappable(norm=shared_norm, cmap=cmap)
+        common_mappable.set_array([])
+        cb1 = fig.colorbar(
+            common_mappable,
+            ax=ax1,
+            orientation="vertical",
+            fraction=0.025,
+            pad=0.04,
+            ticks=np.linspace(clim_common[0], clim_common[1], 5),
+        )
         cb1.ax.tick_params(labelsize=11, length=3)
+        cb1.ax.yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
+        cb1.ax.yaxis.get_offset_text().set_visible(False)
         plt.setp(cb1.outline, linewidth=0.8)
 
-        cb2 = fig.colorbar(sc2, ax=ax2, orientation="vertical", fraction=0.025, pad=0.04)
+        cb2 = fig.colorbar(
+            common_mappable,
+            ax=ax2,
+            orientation="vertical",
+            fraction=0.025,
+            pad=0.04,
+            ticks=np.linspace(clim_common[0], clim_common[1], 5),
+        )
         cb2.ax.tick_params(labelsize=11, length=3)
+        cb2.ax.yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
+        cb2.ax.yaxis.get_offset_text().set_visible(False)
         plt.setp(cb2.outline, linewidth=0.8)
 
         if show_abs_diff:
-            cb3 = fig.colorbar(sc3, ax=ax3, orientation="vertical", fraction=0.025, pad=0.04)
+            diff_mappable = cm.ScalarMappable(norm=diff_norm, cmap="Reds")
+            diff_mappable.set_array([])
+            cb3 = fig.colorbar(
+                diff_mappable,
+                ax=ax3,
+                orientation="vertical",
+                fraction=0.025,
+                pad=0.04,
+                ticks=np.linspace(clim_diff[0], clim_diff[1], 5),
+            )
             cb3.ax.tick_params(labelsize=11, length=3)
+            cb3.ax.yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
+            cb3.ax.yaxis.get_offset_text().set_visible(False)
             plt.setp(cb3.outline, linewidth=0.8)
 
         # 统一设置
