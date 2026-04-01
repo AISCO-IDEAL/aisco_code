@@ -79,7 +79,6 @@ class WIREV2(BaseModel):
                 bias=True,
                 omega0=first_omega_0,
                 sigma0=first_scale,
-                is_first=True,
                 train_omega=train_omega,
                 train_scale=train_scale,
             )
@@ -94,7 +93,6 @@ class WIREV2(BaseModel):
                     bias=True,
                     omega0=hidden_omega_0,
                     sigma0=hidden_scale,
-                    is_first=False,
                     train_omega=train_omega,
                     train_scale=train_scale,
                 )
@@ -109,7 +107,7 @@ class WIREV2(BaseModel):
 
         # Store model info in a dictionary for easy access and logging
         self.model_info_dict = {
-            "name": self.__class__.__name__,
+            "name": str(self.__class__.__name__),
             "in_features": in_features,
             "hidden_features": hidden_features,
             "hidden_layers": hidden_layers,
@@ -121,7 +119,7 @@ class WIREV2(BaseModel):
             "trainable_omega": train_omega,
             "trainable_scale": train_scale,
             "total_parameters": sum(p.numel() for p in self.parameters()),
-            "dtype": dtype,
+            "dtype": str(dtype),
         }
 
     def forward(self, coords: torch.Tensor) -> torch.Tensor:
