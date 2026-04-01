@@ -246,9 +246,9 @@ class MAGNOEncoder(nn.Module):
         self.k_neighbors = magno_config.get("k_neighbors", 1)
 
         # --- Store Sampling Strategy ---
-        self.sampling_strategy = magno_config.get("sampling_strategy")
-        self.max_neighbors = magno_config.get("max_neighbors")
-        self.sample_ratio = magno_config.get("sample_ratio")
+        self.sampling_strategy = magno_config.get("encoder_sampling_strategy", magno_config.get("sampling_strategy"))
+        self.max_neighbors = magno_config.get("encoder_max_neighbors", magno_config.get("max_neighbors"))
+        self.sample_ratio = magno_config.get("encoder_sample_ratio", magno_config.get("sample_ratio"))
         if self.sampling_strategy == "max_neighbors":
             print("Warning: 'max_neighbors' sampling strategy with PyG edge_index is less efficient. Consider using 'ratio'.")
 
@@ -471,9 +471,9 @@ class MAGNODecoder(nn.Module):
         self.k_neighbors = magno_config.get("k_neighbors", 1)
 
         # --- Store Sampling Strategy ---
-        self.sampling_strategy = magno_config.get("sampling_strategy")
-        self.max_neighbors = magno_config.get("max_neighbors")
-        self.sample_ratio = magno_config.get("sample_ratio")
+        self.sampling_strategy = magno_config.get("decoder_sampling_strategy", magno_config.get("sampling_strategy"))
+        self.max_neighbors = magno_config.get("decoder_max_neighbors", magno_config.get("max_neighbors"))
+        self.sample_ratio = magno_config.get("decoder_sample_ratio", magno_config.get("sample_ratio"))
         if self.sampling_strategy == "max_neighbors":
             print("Warning: 'max_neighbors' sampling strategy with PyG edge_index is less efficient. Consider using 'ratio'.")
 
