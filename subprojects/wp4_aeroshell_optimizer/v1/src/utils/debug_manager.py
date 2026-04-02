@@ -73,6 +73,11 @@ class DebugManager:
         # Resolve the master switch -----------------------------------------
         master: Any = global_override if global_override is not None else cfg.get("GLOBAL_DEBUG")
 
+        # print current time and datestamp for easier correlation with logs
+        print(f"\n{_SEPARATOR}")
+        print(f"[DebugManager] Initializing debug manager with GLOBAL_DEBUG={master}")
+        print(f"[DebugManager] Current time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+
         if master is True:
             self.print_raw_values = True
             self.show_stats = True
