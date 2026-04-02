@@ -1,4 +1,5 @@
 import ast
+import copy
 import logging
 import os
 
@@ -11,7 +12,7 @@ from torch_geometric.data import Batch, Data
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
 import wandb
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePositionNew
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import cp_field_to_drag
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
@@ -29,8 +30,15 @@ class ModelLoader:
         self.model_path = self._get_checkpoint_path(model_id)
         self.device = device
         self._load_model()
+        print("initialising Extractor")
         self.extractor = MeshSDFExtractor(
-            resolution=256, bbox=[-3e3, 3e3, -3e3, 3e3, -3e3, 3e3], device=self.device, isovalue=0.0
+            resolution=128,
+            bbox=[-3e3, 3e3, -3e3, 3e3, -3e3, 3e3],
+            device=self.device,
+            isovalue=0.0,
+            target_nr_vertices=int(cfd_config["mesh_resolution"]),
+            max_iters=1000,
+            gradient_max=cfd_config["gradient_max"],
         )
         # keep visualiser on self so we can reuse it
         self.visualiser = Visualiser(device=self.device)
@@ -47,7 +55,7 @@ class ModelLoader:
 
     def _load_model(self) -> None:
         # ── load config YAML saved alongside the checkpoint ─────────────
-        config_path = self.model_path.replace(".pt", "_config.yaml")
+        config_path = self.model_path.replace("model.pt", "config.yaml")
         if not os.path.exists(config_path):
             raise FileNotFoundError(
                 f"Model config not found at {config_path}. Expected a _config.yaml next to the .pt checkpoint."
@@ -56,11 +64,17 @@ class ModelLoader:
         with open(config_path) as f:
             config = yaml.safe_load(f)
 
+        print(config)
+        self._og_config = copy.deepcopy(config)
+
         if "model" in config and "args" in config["model"]:
             config = config["model"]["args"]
 
         if "magno" in config:
             config["magno"]["precompute_edges"] = False
+
+        if type(config["transformer"]["norm_eps"]) is str:
+            config["transformer"]["norm_eps"] = float(config["transformer"]["norm_eps"])
 
         # ── build model from config dict ─────────────────────────────────
         self.gaot = GAOT3D(config=config).to(self.device)
@@ -94,15 +108,30 @@ class ModelLoader:
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
         self.sdf_model = sdf_model
-        _, _, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
+        verts, faces, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
             sdf_model=sdf_model, loss_fn=self.loss_fn
         )
 
+        # Store diagnostics for DebugManager
+        diag = getattr(self, "_last_diagnostics", {})
+        diag["mesh_n_vertices"] = int(verts.shape[0]) if verts is not None and verts.numel() > 0 else 0
+        diag["mesh_n_faces"] = int(faces.shape[0]) if faces is not None and faces.numel() > 0 else 0
+        diag["raw_loss"] = loss.item()
+        diag["surrogate_loss"] = surrogate_loss.item()
+        diag["mesh_empty"] = verts is None or verts.numel() == 0
+        if dL_dvertices is not None and dL_dvertices.numel() > 0:
+            diag["dL_dvertices_norm"] = dL_dvertices.norm().item()
+            diag["dL_dvertices_max"] = dL_dvertices.abs().max().item()
+        self._last_diagnostics = diag
+
         self.optimization_state["vertice_grads"] = dL_dvertices
+
         if self.rendering:
             self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
 
-        return loss.item() + surrogate_loss - surrogate_loss.item()
+        cuppled_loss = loss.detach() + surrogate_loss - surrogate_loss.detach()
+        assert cuppled_loss == loss.item() + surrogate_loss - surrogate_loss.item()
+        return cuppled_loss
 
     def _visualize_pressure_field(
         self,
@@ -214,11 +243,10 @@ class ModelLoader:
         plt.close(fig)
 
     def loss_fn(self, mesh_verts, mesh_faces):
-        print(f"Number of Mesh Verts:{mesh_faces.shape[0]}")
+        wandb.log({"Aero-resolution": mesh_verts.shape[0]}, step=self.epoch_name)
         if mesh_verts is None or mesh_verts.shape[0] == 0:
             print("Fail")
             return torch.tensor(0.0, device=self.device)
-
         batch = self._reformat_data(mesh_verts, mesh_faces)
 
         # ── latent token positions (registered buffer inside the model) ──
@@ -244,12 +272,34 @@ class ModelLoader:
             v_inf=self.v_inf,
             rho=self.rho,
         )
+
+        # Store diagnostics
+        with torch.no_grad():
+            self._last_diagnostics = {
+                "drag_value": int_drag_f.item(),
+                "drag_is_nan": bool(torch.isnan(int_drag_f).any()),
+                "drag_is_inf": bool(torch.isinf(int_drag_f).any()),
+                "pressure_field_min": pressure_field.min().item(),
+                "pressure_field_max": pressure_field.max().item(),
+                "pressure_field_mean": pressure_field.mean().item(),
+                "pressure_field_std": pressure_field.std().item(),
+                "pressure_field_nan_count": int(torch.isnan(pressure_field).sum().item()),
+                "pressure_field_inf_count": int(torch.isinf(pressure_field).sum().item()),
+                "n_input_vertices": int(mesh_verts.shape[0]),
+                "n_input_faces": int(mesh_faces.shape[0]),
+                "normals_flipped_count": getattr(self, "_normals_flipped_count", 0),
+            }
+
         print(f"Force-Value:{int_drag_f.item()}")
         return int_drag_f
 
     def _reformat_data(self, mesh_verts, mesh_faces):
         optim_verts = mesh_verts.to(self.device)
         mesh_faces = mesh_faces.to(self.device)
+
+        # ── flip geometry in x ───────────────────────────────────────────
+        optim_verts = optim_verts.clone()
+        optim_verts[:, 0] *= -1.0
 
         # ── convert vertices from mm to meters (SDF model outputs mm, GAOT expects m) ──
         optim_verts_m = optim_verts * 1e-3
@@ -263,8 +313,10 @@ class ModelLoader:
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
 
         sdf_values = self.sdf_model(face_centers * 1e3 + face_normals * 50)
-        face_normals[sdf_values < 0] *= -1
-        print("dumdidum", sdf_values < 0)
+        normals_flipped = sdf_values < 0
+        face_normals[normals_flipped] *= -1
+        self._normals_flipped_count = int(normals_flipped.sum().item())
+        print("dumdidum", normals_flipped)
 
         num_verts = optim_verts.shape[0]
         all_idx = mesh_faces.reshape(-1)
@@ -274,11 +326,17 @@ class ModelLoader:
         vertex_normals = vertex_normals.index_add(0, all_idx, all_normals)
         vertex_normals = torch.nn.functional.normalize(vertex_normals, dim=-1)
 
+        # optional: also flip normals' x-component to be consistent
+        vertex_normals[:, 0] *= -1.0
+
         # ── build PyG batch ──────────────────────────────────────────────
         data = Data(pos=optim_verts_m, face=mesh_faces.T, c=vertex_normals)
 
         # ── rescale positions to [-1, 1] using physical domain in meters ──
-        rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-3.0, -3.0, -3.0], [3.0, 3.0, 3.0]))
+        if self._og_config["dataset"]["use_rescale_new"]:
+            rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-5.0, -1.3, -1.2], [4.7, 1.7, 1.6]))
+        else:
+            rescale_transform = RescalePosition()
         data = rescale_transform(data)
 
         return Batch.from_data_list([data]).to(self.device)

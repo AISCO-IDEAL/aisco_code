@@ -97,7 +97,7 @@ rendering_modes:
   # Gif of which solar cells would be selected with the dot-product approach, given a budget and soalr angle in solar_loss_config.yaml
   solar_selection_mode:  #  dynamically loaded by visual_wrapper.py
     #Mandatory
-    enabled: false
+    enabled: true
     class_path: "custom_modes.solar_selection:SolarSelectionMode"
     #config for solar selection
     config:  #  also reads SolarLossConfigV3 from solar_loss_config.yaml (area_budget_mm2, sun_dir) inside solar_selection.py
@@ -113,7 +113,7 @@ rendering_modes:
   # Gif of the solar power of each face using the dot-product approach, green is good, red is bad
   solar_power_mode:  #  dynamically loaded by visual_wrapper.py
     #Mandatory
-    enabled: False
+    enabled: true
     class_path: "custom_modes.solar_power:SolarPower"
     #config for solar selection
     config:  #  also reads SolarLossConfigV3 from solar_loss_config.yaml (sun_dir) inside solar_power.py
