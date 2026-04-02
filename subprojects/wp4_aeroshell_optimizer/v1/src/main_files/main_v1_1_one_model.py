@@ -44,6 +44,9 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
         # without forcing everything onto W&B's global step.
         wandb.define_metric("training_epoch")
         wandb.define_metric("render_epoch")
+        # Default all metrics to use training_epoch as their step metric,
+        # then override for specific prefixes as needed.
+        wandb.define_metric("*", step_metric="training_epoch")
         wandb.define_metric("grad_memory/*", step_metric="training_epoch")
         wandb.define_metric("renders/*", step_metric="render_epoch")
         wandb.define_metric("animations/*", step_metric="render_epoch")
