@@ -338,6 +338,7 @@ class TotalLoss:
 
         if self._use_alm:
             use_alm_aggressive: bool = gi.get("ALM_aggressive") == "True"
+            alm_aggressive_capu: float = float(gi.get("ALM_aggressive_capu", 0.25))
 
             # Detach for the multiplier update (no gradient through lambda/mu/nu update)
             c_for_alm: torch.Tensor = torch.stack([c.detach() for c in constraints])
@@ -355,6 +356,7 @@ class TotalLoss:
                 constrained_losses=c_for_alm,
                 thresholds=thresholds_tensor,
                 use_alm_aggressive=use_alm_aggressive,
+                alm_aggressive_capu=alm_aggressive_capu,
             )
 
             for i, cname in enumerate(constraint_names):
