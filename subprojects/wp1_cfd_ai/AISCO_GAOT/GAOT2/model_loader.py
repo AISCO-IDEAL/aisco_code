@@ -1,4 +1,5 @@
 import ast
+import copy
 import logging
 import os
 
@@ -11,7 +12,7 @@ from torch_geometric.data import Batch, Data
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
 import wandb
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePositionNew
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import cp_field_to_drag
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
@@ -54,7 +55,7 @@ class ModelLoader:
 
     def _load_model(self) -> None:
         # ── load config YAML saved alongside the checkpoint ─────────────
-        config_path = self.model_path.replace(".pt", "_config.yaml")
+        config_path = self.model_path.replace("model.pt", "config.yaml")
         if not os.path.exists(config_path):
             raise FileNotFoundError(
                 f"Model config not found at {config_path}. Expected a _config.yaml next to the .pt checkpoint."
@@ -63,11 +64,17 @@ class ModelLoader:
         with open(config_path) as f:
             config = yaml.safe_load(f)
 
+        print(config)
+        self._og_config = copy.deepcopy(config)
+
         if "model" in config and "args" in config["model"]:
             config = config["model"]["args"]
 
         if "magno" in config:
             config["magno"]["precompute_edges"] = False
+
+        if type(config["transformer"]["norm_eps"]) is str:
+            config["transformer"]["norm_eps"] = float(config["transformer"]["norm_eps"])
 
         # ── build model from config dict ─────────────────────────────────
         self.gaot = GAOT3D(config=config).to(self.device)
@@ -290,6 +297,10 @@ class ModelLoader:
         optim_verts = mesh_verts.to(self.device)
         mesh_faces = mesh_faces.to(self.device)
 
+        # ── flip geometry in x ───────────────────────────────────────────
+        optim_verts = optim_verts.clone()
+        optim_verts[:, 0] *= -1.0
+
         # ── convert vertices from mm to meters (SDF model outputs mm, GAOT expects m) ──
         optim_verts_m = optim_verts * 1e-3
         # ── per-vertex normals (fully differentiable, no in-place ops) ──
@@ -315,11 +326,17 @@ class ModelLoader:
         vertex_normals = vertex_normals.index_add(0, all_idx, all_normals)
         vertex_normals = torch.nn.functional.normalize(vertex_normals, dim=-1)
 
+        # optional: also flip normals' x-component to be consistent
+        vertex_normals[:, 0] *= -1.0
+
         # ── build PyG batch ──────────────────────────────────────────────
         data = Data(pos=optim_verts_m, face=mesh_faces.T, c=vertex_normals)
 
         # ── rescale positions to [-1, 1] using physical domain in meters ──
-        rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-3.0, -3.0, -3.0], [3.0, 3.0, 3.0]))
+        if self._og_config["dataset"]["use_rescale_new"]:
+            rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-5.0, -1.3, -1.2], [4.7, 1.7, 1.6]))
+        else:
+            rescale_transform = RescalePosition()
         data = rescale_transform(data)
 
         return Batch.from_data_list([data]).to(self.device)
