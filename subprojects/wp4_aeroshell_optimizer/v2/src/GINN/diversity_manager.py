@@ -77,13 +77,18 @@ class DiversityTrainer:
         # (e.g. contrastive mapping of SDF variations via volume discrepancy or deep features)
         return torch.tensor(0.0, device=self._device, requires_grad=True)
 
-    def _compute_per_vector_loss(self, epoch: int) -> Tensor:
+    def _compute_per_vector_loss(self, epoch: int) -> tuple[Tensor, list[torch.Tensor] | None]:
         """Compute total loss for each latent vector in the population.
 
         Returns:
-            Sum of per-vector losses (scalar tensor).
+            Tuple containing:
+                - Sum of per-vector losses (scalar tensor)
+                - List of mean constraints across population (if ALM is used), else None
         """
         total_per_vector_loss: Tensor = torch.tensor(0.0, device=self._device)
+        use_alm: bool = getattr(self._total_loss, "_use_alm", False)
+
+        all_raw_constraints: list[list[torch.Tensor]] = []
 
         # Iterate through each latent vector in the population
         for i in range(self._population_size):
@@ -91,15 +96,44 @@ class DiversityTrainer:
             self._model.set_latent_vector(z_i)
 
             # Loss accumulation for z_i
-            loss_i: Tensor = self._total_loss.get_total_loss(
-                model=self._model,
-                epoch_name=epoch,
-                skip_telemetry=True,  # Important: skip wandb logging inside inner loop
-            )
+            if use_alm:
+                loss_out, raw_constraints_dict = self._total_loss.get_total_loss(
+                    model=self._model,
+                    epoch_name=epoch,
+                    skip_telemetry=True,  # Important: skip wandb logging inside inner loop
+                )
+
+                # We extract the constraints in the same order as the alm_manager specifies
+                if self._total_loss.alm_manager is None:
+                    raise RuntimeError("TotalLoss ALM manager was not initialized but use_alm=True was set.")
+
+                constraint_tensors = [raw_constraints_dict[name] for name in self._total_loss.alm_manager.constraint_names]
+                all_raw_constraints.append(constraint_tensors)
+
+                # Independently compute the ALM penalties for this vector
+                penalties_dict = self._total_loss.alm_manager.compute_penalty(constraint_tensors)
+                loss_i = loss_out + sum(penalties_dict.values())
+            else:
+                loss_i: Tensor = self._total_loss.get_total_loss(  # type: ignore
+                    model=self._model,
+                    epoch_name=epoch,
+                    skip_telemetry=True,
+                )
+
             total_per_vector_loss = total_per_vector_loss + loss_i
 
         # Average over population
-        return total_per_vector_loss / self._population_size
+        mean_loss = total_per_vector_loss / self._population_size
+
+        mean_constraints: list[torch.Tensor] | None = None
+        if use_alm and len(all_raw_constraints) > 0:
+            # Average each constraint across the population
+            num_constraints = len(all_raw_constraints[0])
+            mean_constraints = [
+                torch.stack([pop_c[c_idx] for pop_c in all_raw_constraints]).mean() for c_idx in range(num_constraints)
+            ]
+
+        return mean_loss, mean_constraints
 
     def step(self, epoch: int = -1) -> dict[str, float]:
         """Perform one optimization step.
@@ -114,7 +148,7 @@ class DiversityTrainer:
         self._model_optimizer.zero_grad()
 
         # Compute per-vector loss
-        per_vector_loss: Tensor = self._compute_per_vector_loss(epoch)
+        per_vector_loss, mean_constraints = self._compute_per_vector_loss(epoch)
 
         # Compute diversity loss
         diversity_loss: Tensor = self._compute_diversity_loss()
@@ -124,6 +158,10 @@ class DiversityTrainer:
 
         # Backward pass
         combined_loss.backward()
+
+        # Update ALM multipliers using the mean constraints across the population
+        if mean_constraints is not None and self._total_loss.alm_manager is not None:
+            self._total_loss.alm_manager.update_multipliers(mean_constraints)
 
         # Optimizer steps
         self._model_optimizer.step()

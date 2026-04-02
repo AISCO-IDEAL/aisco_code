@@ -148,7 +148,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
         print("Pretraining and model loading complete")
 
     # Initialize TotalLoss to comput all the performance/constraint losses, for now without visualization manager
-    total_loss: TotalLoss = TotalLoss(dev=device, renderer_manager=None)
+    total_loss: TotalLoss = TotalLoss(dev=device, renderer_manager=None, external_alm=True)
     training_config = load_config(v="v2", cfg_name=general_config["active_configs"]["training"])
 
 
