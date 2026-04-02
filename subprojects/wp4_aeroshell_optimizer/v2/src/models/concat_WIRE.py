@@ -4,8 +4,7 @@ from torch import nn
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import allround_save_data
-from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager, Wrapper
+
 
 
 class RealGaborLayer(nn.Module):
@@ -139,8 +138,22 @@ class ConcatWIREV2(ConcatBaseModel):
             "dtype": str(dtype),
         }
 
-    def forward(self, coords: torch.Tensor,z: torch.Tensor) -> torch.Tensor:
-        input=torch.cat([coords/1000, z], dim=-1)
+    def forward(self, x: torch.Tensor, z: torch.Tensor | None = None) -> torch.Tensor:
+        """
+        If z is not provided in the forward pass, use the currently active latent vector set on the model via self.set_latent_vector,
+        which is what is done during training. Keeps the option to pass z here for flexibility, but the main training loop should use the set_latent_vector method to set z for each forward pass.
+        This behaviour keeps backward compatibility with all the losses/meshing utils which only pass x (the coords) to the model
+        """
+        if z is None:
+            z = self._active_z
+        if z is None:
+            raise ValueError("No latent vector provided or set on ConcatWIREV2 model.")
+
+        # Ensure z is broadcastable to x shape: [batch, z_dim]
+        if z.dim() == 1:
+            z = z.unsqueeze(0).expand(x.shape[0], -1)
+
+        input = torch.cat([x / 1000, z], dim=-1)
         return self.net(input) * 1000
 
     def get_model_info_dict(self) -> dict:

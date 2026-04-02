@@ -6,19 +6,30 @@ class ConcatBaseModel(nn.Module):
     def __init__(
         self,
         *args,
-        coords: int = 3, # Default to 3D coordinates (x, y, z) unless specified otherwise
+        coords: int = 3,  # Default to 3D coordinates (x, y, z) unless specified otherwise
         config: dict | None = None,
-        **kwargs
+        **kwargs,
     ):
         """
-        Modifies the WIREV2 architecture by concatenating a latent vector to the input coordinates
+        Modifies the architecture by tracking a latent vector to concatenate to the input coordinates
         """
-        super().__init__()  # gets all the stuff from nn.Module
-
+        super().__init__()
         self.config = config if config is not None else {}
+        self._active_z: torch.Tensor | None = None
 
+    def set_latent_vector(self, z: torch.Tensor) -> None:
+        """
+        Sets the active latent vector for subsequent forward passes.
+        """
+        self._active_z = z
 
-    def forward(self, *args) -> torch.Tensor:
+    def get_latent_vector(self) -> torch.Tensor | None:
+        """
+        Returns the currently active latent vector.
+        """
+        return self._active_z
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError("The forward method must be implemented in the subclass of ConcatBaseModel.")
 
 

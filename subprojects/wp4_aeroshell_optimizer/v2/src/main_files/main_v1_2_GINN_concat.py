@@ -11,6 +11,7 @@ import torch
 
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     apply_sweep_overrides,
@@ -25,10 +26,12 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import (
     fetch_pretrained_model,
     reformat_wandb_name,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.logging_lib import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
 
 
 def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
+    print("Starting Main file v1.2 with GINN diversity added...")
     # ------------------------------------------------------------------
     # 1. Load general config from YAML
     # ------------------------------------------------------------------
@@ -67,13 +70,14 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     model_definition = general_config["model_def"]["model_file_path"]
 
     ModelClass = dynamic_type_loading(file_path=model_definition, class_name=model_name)
-    model = ModelClass(**model_config)
+    model: ConcatBaseModel = ModelClass(**model_config)
+
     if verbose:
         print(f"Successfully initialised model: {model_name}")
 
     device: str = general_config["general_info"].get("device", "cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
-
+    model.set_latent_vector(torch.zeros(model_config["z_dim"], device=device))  # Initialize latent vector to zeros
 
     # ------------------------------------------------------------------
     # 5. Pretraining (or load pretrained model)
@@ -127,7 +131,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
         )
         print(f"Starting pretraining for model {model.__class__.__name__}")
         model = pretraining(model=model, override_config=pretraining_override)
-
+        model.to(device)  # Ensure model is on the correct device after pretraining
         allround_save_data(
             model=model,
             storage_path=pretrained_path,
@@ -136,6 +140,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
             epoch=None,
             verbose=verbose,
             pretraining=True,
+            marching_cubes_usage=True,
         )
 
     # Model Loading complete
@@ -148,11 +153,69 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
 
 
     ### LLM please replace this part withe the diversity trainer
-    optimiser = torch.optim.Adam(model.parameters(), lr=training_config["training"]["learning_rate"])
-    for epoch in range(training_config["training"]["num_epochs"]):
-        # Set to training mode, for safety at start of each epoch
+    ginn_config = load_config(v="v2", cfg_name="GINN.yaml")
+
+    from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import DiversityTrainer
+
+    # Get hyperparameters
+    learning_rate = training_config["training_params"].get("learning_rate", 1e-3)
+    num_epochs = training_config["training_params"].get("num_epochs", 1000)
+
+    trainer = DiversityTrainer(
+        model=model,
+        total_loss=total_loss,
+        population_size=ginn_config.get("population_size", 4),
+        z_dim=model_config["z_dim"],
+        device=device,
+        model_lr=learning_rate,
+        diversity_weight=ginn_config.get("diversity_weight", 0.1),
+    )
+
+    if verbose:
+        print(f"Starting GINN training loop for {num_epochs} epochs with population size {trainer._population_size}...")
+
+    for epoch in range(num_epochs):
         model.train()
-        optimiser.zero_grad()
-        .
-        .
-        .
+
+        metrics = trainer.step(epoch=epoch)
+
+        if verbose and epoch % 50 == 0:
+            print(
+                f"Epoch {epoch}/{num_epochs} | Per-Vector: {metrics['per_vector_loss']:.4f} | Diversity: {metrics['diversity_loss']:.4f} | Total: {metrics['total_loss']:.4f}"
+            )
+        if wandb.run is not None:
+            multi_log_in_one(
+                {
+                    "GINN/per_vector_loss": metrics["per_vector_loss"],
+                    "GINN/diversity_loss": metrics["diversity_loss"],
+                    "GINN/total_loss": metrics["total_loss"],
+                },
+            )
+    if verbose:
+        print("Model optimisation completed.")
+
+    # ------------------------------------------------------------------
+    # Save final model as usual without mesh rendering fluff
+    # ------------------------------------------------------------------
+    wandb_name = wandb.run.name if wandb.run is not None else None
+    model.set_latent_vector(torch.zeros(model_config["z_dim"], device=device))  # Set to zero vector for final saving
+    allround_save_data(
+        model=model,
+        storage_path=general_config["general_info"].get(
+            "storage_path", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+        ),
+        save_model=True,
+        save_mesh=False,
+        verbose=verbose,
+        pretraining=False,
+        wandb_run=wandb_name,
+        epoch=num_epochs,
+        resolution=64,
+        marching_cubes_usage=True,
+    )
+
+    print("Completed job successfully.")
+
+
+if __name__ == "__main__":
+    main()

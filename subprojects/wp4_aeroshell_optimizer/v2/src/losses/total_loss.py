@@ -685,7 +685,7 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # Orchestrator
     # ------------------------------------------------------------------
-    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:
+    def get_total_loss(self, model: BaseModel, epoch_name: int = -1, skip_telemetry: bool = False) -> torch.Tensor:
         """Initilizes unweighted losses computation, computes weighted total loss, logs to wandb, and returns the total loss tensor.
 
         After this call, ``self._last_weighted_losses`` contains per-component
@@ -701,8 +701,9 @@ class TotalLoss:
         total: torch.Tensor = self._apply_weighting(raw, device)
 
         # 3. Build logging dict and dispatch telemetry
-        loss_log: dict[str, float] = {f"raw_losses/{name}": t.item() for name, t in raw.items()}
-        loss_log["raw_losses/total_loss"] = total.item()
-        self._handle_telemetry(loss_log, epoch_name, device, model, total)
+        if not skip_telemetry:
+            loss_log: dict[str, float] = {f"raw_losses/{name}": t.item() for name, t in raw.items()}
+            loss_log["raw_losses/total_loss"] = total.item()
+            self._handle_telemetry(loss_log, epoch_name, device, model, total)
 
         return total
