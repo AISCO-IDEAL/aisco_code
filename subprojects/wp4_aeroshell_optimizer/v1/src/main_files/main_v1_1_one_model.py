@@ -44,7 +44,10 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
         # without forcing everything onto W&B's global step.
         wandb.define_metric("training_epoch")
         wandb.define_metric("render_epoch")
-        wandb.define_metric("grad_memory/*", step_metric="training_epoch")
+        # Default: bind all metrics to training_epoch so scalar curves stay
+        # aligned even when new keys are added without an explicit mapping.
+        wandb.define_metric("*", step_metric="training_epoch")
+        # Override media/render namespaces to use their own render_epoch axis.
         wandb.define_metric("renders/*", step_metric="render_epoch")
         wandb.define_metric("animations/*", step_metric="render_epoch")
         wandb.define_metric("images/*", step_metric="render_epoch")
