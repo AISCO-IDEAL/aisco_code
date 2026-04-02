@@ -177,6 +177,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     for epoch in range(num_epochs):
         model.train()
 
+        torch.autograd.set_detect_anomaly(True)
         metrics = trainer.step(epoch=epoch)
 
         if verbose and epoch % 50 == 0:

@@ -32,6 +32,7 @@ def allround_save_data(  # noqa: PLR0915
     verbose: bool = True,
     pretraining: bool = False,
     marching_cubes_usage: bool = False,
+    device: str = "cuda",
 ) -> None:
     """
     Save model data to a specified file path in JSON format, with options to save mesh and model state dictionary.
@@ -114,10 +115,10 @@ def allround_save_data(  # noqa: PLR0915
         # Use a copy to avoid disrupting training
 
         if marching_cubes_usage != "True":
-            temp_model = copy.deepcopy(model).cpu()
+            temp_model = copy.deepcopy(model).to(device)
             grid_res = resolution
             verts, faces = get_diff_mesh(
-                temp_model, grid_res=grid_res, device="cpu"
+                temp_model, grid_res=grid_res, device=device
             )  # fsanche: keeping this in case marching cubes doest work. this one is the original.
             if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
                 print(f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
@@ -138,7 +139,7 @@ def allround_save_data(  # noqa: PLR0915
                 try:
                     print(f"{thread_label} Started worker.", flush=True)
 
-                    extractor = MarchingCubesExtractor(device="cpu", verbose=False)
+                    extractor = MarchingCubesExtractor(device=device, verbose=False)
 
                     extractor.set_grid(
                         bbox=[[-5000, 5000], [-5000, 5000], [-5000, 5000]],
