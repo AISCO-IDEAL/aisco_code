@@ -1,9 +1,9 @@
 import torch
 from torch import nn
 
-import wandb
+
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import allround_save_data
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager, Wrapper
 
@@ -38,13 +38,13 @@ class RealGaborLayer(nn.Module):
         return torch.cos(self.omega_0 * wave) * torch.exp(-(self.scale_0 * decay**2))
 
 
-class ConcatWIREV2(BaseModel):
+class ConcatWIREV2(ConcatBaseModel):
     def __init__(
         self,
         z_dim: int,
         hidden_features: int,
         hidden_layers: int,
-        coords: int =2,
+        coords: int = 3,  # default to 3D coordinates (x, y, z) unless specified otherwise
         config: dict | None = None,
         out_features: int = 1,
         first_omega_0: float = 5.0,
@@ -57,10 +57,27 @@ class ConcatWIREV2(BaseModel):
     ):
         """
         Modifies the WIREV2 architecture by concatenating a latent vector to the input coordinates
+
+        Parameters:
+        - z_dim: Dimension of the latent vector to concatenate to the input coordinates
+        - hidden_features: Number of features in the hidden layers
+        - hidden_layers: Number of hidden layers
+        - coords: Number of coordinate dimensions (default is 3 for x, y, z)
+        - config: Optional configuration dictionary (not used in this implementation but can be extended for future use)
+        - out_features: Number of output features (default is 1 for scalar field)
+        - first_omega_0: Initial frequency for the first Gabor layer
+        - first_scale: Initial scale for the first Gabor layer
+        - hidden_omega_0: Initial frequency for the hidden Gabor layers
+        - hidden_scale: Initial scale for the hidden Gabor layers
+        - train_omega: If True, make the omega parameters trainable
+        - train_scale: If True, make the scale parameters trainable
+        - dtype: Data type for the final output layer (default is "float32")
+
         """
-        super().__init__(config=config, overwrite_base_init=True)  # Skip base init since we're defining our own architecture here
+        super().__init__(
+            config=config
+        )  # Skip base init since we're defining our own architecture here, creates the self.config variable
         assert hidden_layers >= 1, "There must be at least one hidden layer."
-        config = config if config is not None else {}
 
         try:
             dtype = getattr(torch, dtype)
@@ -125,103 +142,6 @@ class ConcatWIREV2(BaseModel):
     def forward(self, coords: torch.Tensor,z: torch.Tensor) -> torch.Tensor:
         input=torch.cat([coords/1000, z], dim=-1)
         return self.net(input) * 1000
-
-    def optimise(
-        self,
-        general_config,
-        training_config,
-        renderer_manager: VisualisationManager | None = None,
-        renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
-        wandb_name: str | None = None,
-    ) -> None:
-        if training_config is None:
-            raise ValueError("Training config must be provided for optimisation.")
-
-        self.train()  # Set model to training mode, i.e. things like dropout layers are active, turn off by using self.eval() or model.eval()
-
-        # Check for WandB sweep overrides for learning rate
-        if wandb.run and "learning_rate " in wandb.config:
-            learning_rate = wandb.config.learning_rate
-            print(f"Sweep: Updated learning_rate to {learning_rate}")
-        else:
-            learning_rate = training_config["training_params"].get("learning_rate", 1e-3)
-
-        optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
-        num_epochs = training_config["training_params"].get("num_epochs", 1000)
-
-        # IMPORTANT: the device the model is on at time of function call defines the device passed to the loss_class
-        # Get device from model parameters since nn.Module doesn't have a .device attribute
-        device = str(next(self.parameters()).device)
-        loss_function = TotalLoss(device, renderer_manager=renderer_manager)  # Initialise TotalLoss with the correct device
-
-        for epoch in range(num_epochs):
-            # Clear gradients
-            optimizer.zero_grad()
-
-            # Calculate loss and all logging. Individual weighted tensors are stored
-            # in loss_function._last_weighted_losses for the per-component backward below.
-            loss_function.get_total_loss(model=self, epoch_name=epoch)
-
-            # Per-component backward: each graph is freed immediately (retain_graph=False).
-            # param.grad accumulates across calls — identical to backward() on the summed total.
-            # We track the delta of param.grad before/after each component to get per-loss
-            # gradient norms without needing retain_graph=True anywhere.
-            trainable_params = [p for p in self.parameters() if p.requires_grad]
-            prev_grad = [torch.zeros_like(p) for p in trainable_params]  # accumulator at zero
-            log_grad_mem = loss_function._gradient_memory_diagnostics
-            device_str = str(next(self.parameters()).device)
-            for component_name, weighted_loss in loss_function._last_weighted_losses.items():
-                if not weighted_loss.requires_grad:
-                    continue
-                if log_grad_mem and "cuda" in device_str:
-                    mem_before = torch.cuda.memory_allocated() / 1024**2
-                weighted_loss.backward(retain_graph=False)
-                if log_grad_mem and "cuda" in device_str:
-                    mem_after = torch.cuda.memory_allocated() / 1024**2
-                    print(
-                        f"  [Epoch {epoch}] backward({component_name}): "
-                        f"{mem_before:.1f} MB → {mem_after:.1f} MB "
-                        f"(freed {mem_before - mem_after:.1f} MB)"
-                    )
-                    if wandb.run:
-                        # log memory after backward for each loss computation graph
-                        wandb.log(
-                            {f"grad_memory/{component_name}_after_mb": mem_after},
-                            step=epoch,
-                        )
-                        # log memory freed for each loss computation graph
-                        wandb.log(
-                            {f"grad_memory/{component_name}_freed_mb": mem_before - mem_after},
-                            step=epoch,
-                        )
-                curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
-                delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
-                if wandb.run:
-                    wandb.log({f"{component_name}_gradient": delta_norm}, step=epoch)
-                prev_grad = curr_grad
-
-            ###########################
-            ### save mesh and model ###
-            ###########################
-            mesh_save_interval = training_config["training_params"].get("mesh_save_interval", 50)
-            if (epoch + 1) % mesh_save_interval == 0:
-                allround_save_data(
-                    model=self,
-                    storage_path=general_config["storage_paths"].get(
-                        "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
-                    ),
-                    save_model=True,
-                    save_mesh=True,
-                    epoch=epoch + 1,
-                    verbose=general_config["general_info"].get("verbose", False),
-                    pretraining=False,
-                    wandb_run=wandb_name,
-                    marching_cubes_usage=training_config["training_params"].get("marching_cubes_usage", "False"),
-                )
-
-            # param.grad now holds the sum of all per-component gradients — same as if
-            # we had called backward() on weighted_total_loss directly.
-            optimizer.step()
 
     def get_model_info_dict(self) -> dict:
         """

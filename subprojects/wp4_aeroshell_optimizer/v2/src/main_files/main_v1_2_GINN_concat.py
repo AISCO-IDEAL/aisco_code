@@ -1,15 +1,16 @@
 """
 Our first attempt at reproducing the GINN paper for our purposes
 Attempts to do this by concatenating a latent vector to the input coordinates,
-which is then used to compute a diversity measure between the networks in the latent space 
+which is then used to compute a diversity measure between the networks in the latent space
 
 """
 import os
-from pathlib import Path
+from pathlib import Path  # noqa: F401
 
 import torch
 
 import wandb
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     apply_sweep_overrides,
@@ -70,7 +71,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     if verbose:
         print(f"Successfully initialised model: {model_name}")
 
-    device = general_config["general_info"].get("device", "cuda" if torch.cuda.is_available() else "cpu")
+    device: str = general_config["general_info"].get("device", "cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
 
@@ -137,5 +138,21 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
             pretraining=True,
         )
 
+    # Model Loading complete
+    if verbose:
+        print("Pretraining and model loading complete")
+
+    # Initialize TotalLoss to comput all the performance/constraint losses, for now without visualization manager
+    total_loss: TotalLoss = TotalLoss(dev=device, renderer_manager=None)
+    training_config = load_config(v="v2", cfg_name=general_config["active_configs"]["training"])
 
 
+    ### LLM please replace this part withe the diversity trainer
+    optimiser = torch.optim.Adam(model.parameters(), lr=training_config["training"]["learning_rate"])
+    for epoch in range(training_config["training"]["num_epochs"]):
+        # Set to training mode, for safety at start of each epoch
+        model.train()
+        optimiser.zero_grad()
+        .
+        .
+        .
