@@ -5,19 +5,25 @@ set -uo pipefail
 trap 'echo "[WARN] Script error at line $LINENO (exit $?)" >&2' ERR
 
 # ---- Config, EDIT HERE ---------------------------------------------------------------
-JOB_NAME="Ray_Debug_Sweep" # Name for the SLURM job
-TIME_LIMIT="00:45:00"  # Translates to --time below
+JOB_NAME="aisco/Bb_Sweeping/hk1uiv34" # Name for the SLURM job
+TIME_LIMIT="03:59:00"  # Translates to --time below
 
-SWEEP_ID="aisco/RTParam_Sweep/yopri7h5"   # <-- EDIT THIS
+SWEEP_ID="aisco/Bb_Sweeping/hk1uiv34"   # <-- EDIT THIS
 NUMBER_OF_GPUS=1  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
-GPU_TYPE="rtx_4090"  # Set to "" for generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
-RUNS_PER_GPU=200 # Adjust based on your needs and cluster limits --> Translates to COUNT below
+GPU_TYPE="rtx_4090"  # Set to "" for    generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
+RUNS_PER_GPU=6 # Adjust based on your needs and cluster limits --> Translates to COUNT below
 CPUS_PER_TASK=8  # Translates to --cpus-per-task below
 MEM_PER_CPU="5G"  # Translates to --mem-per-cpu below
 
 FREEZE_DIR_REL="subprojects/wp4_aeroshell_optimizer/v1/configs"
 BRANCH_PREFIX="temp-sweep-branch"
 WORKTREE_SUFFIX="_worktree"
+
+# Use a scheduler-safe name for SLURM and filesystem paths.
+SAFE_JOB_NAME="$(echo "$JOB_NAME" | tr '/[:space:]' '__' | tr -cd '[:alnum:]_.-')"
+if [ -z "$SAFE_JOB_NAME" ]; then
+    SAFE_JOB_NAME="wandb_sweep"
+fi
 
 
 # ---- Setup ---------------------------------------------------------------
@@ -63,8 +69,17 @@ else
     git commit --allow-empty --no-verify -m "snapshot: $BRANCH_NAME"
 fi
 
-# Freeze config (optional)
-read -r -p "Freeze config directory? [y/N] " freeze_reply </dev/tty
+# Freeze config (optional). In batch mode there is no TTY, default to "N"
+# unless FREEZE_CONFIG is explicitly exported (y/n).
+freeze_reply="${FREEZE_CONFIG:-}"
+if [ -z "$freeze_reply" ]; then
+    if [ -t 0 ] && [ -r /dev/tty ]; then
+        read -r -p "Freeze config directory? [y/N] " freeze_reply </dev/tty || freeze_reply="N"
+    else
+        freeze_reply="N"
+        echo "[INFO] Non-interactive session detected; skipping config freeze prompt (FREEZE_CONFIG not set)."
+    fi
+fi
 case "$freeze_reply" in
     y|Y)
         if [ ! -d "$WORKTREE_DIR/$FREEZE_DIR_REL" ]; then
@@ -92,7 +107,7 @@ LAUNCH_SCRIPT="$WORKTREE_DIR/launch_sweep_worktree.sh"
 cat > "$LAUNCH_SCRIPT" <<EOF
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=${JOB_NAME}
+#SBATCH --job-name=${SAFE_JOB_NAME}
 #SBATCH --time=${TIME_LIMIT}
 #SBATCH --ntasks=${NUMBER_OF_GPUS}
 #SBATCH --cpus-per-task=${CPUS_PER_TASK}

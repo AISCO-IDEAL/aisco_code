@@ -8,7 +8,7 @@ class PhysicalRootFinder(torch.autograd.Function):
         with torch.no_grad():
             # Initialization: Since drag and solar_power are > 0,
             # A more adaptive starting guess
-            u_0 = (solar_power - c) / (rolling_friction_force + 1e-6)
+            u_0 = (solar_power - c) / (rolling_friction_force + 1e-6) # positive power increases speed.
             u = torch.clamp(u_0, min=1.0, max=60.0)  # Keep it in a sane range
 
             # Newton's Method (5-10 iterations are typically sufficient given the monotonicity)

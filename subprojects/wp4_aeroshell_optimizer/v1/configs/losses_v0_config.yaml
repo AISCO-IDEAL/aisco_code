@@ -1,5 +1,5 @@
 general_info:
-  CSE: "False"  # Cruising Speed Estimation  # total_loss.py: self._use_cse
+  CSE: "True"  # Cruising Speed Estimation  # total_loss.py: self._use_cse
   ALM: "True"  # Augmented Lagrangian Method  # total_loss.py: self._use_alm
   ALM_aggressive: "False" # capu version of ALM
   alm_thresholds: [0.1, 0.1, 0.1]  # thresholds for constraint losses [bb, eikonal, smoothness]
@@ -48,7 +48,8 @@ losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically
     solar_v2: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v2.py"]
     solar_v3: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3.py"]
     #Everything above here is not really used/garbage compared to V3B and above
-    solar_v3B: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3B.py"]
+    solar_v3B: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3B.py"]
+    solar_v3B_2: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v3B_2.py"]
     solar_v4: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v4.py"]
     solar_v5: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v1/src/losses/solar_loss/solar_v6.py"]
@@ -72,7 +73,7 @@ bb_config:  # bb_.py: self.losses_config["bb_config"]
     rand: 400  #
 
   ### Assembly ###:
-  "random_assembly_id": "True" # "False" for fixed assembly id (below), "True" for random
+  "random_assembly_id": "False" # "False" for fixed assembly id (below), "True" for random
   assembly_id: 42 # 1 for the standard one  # rendering modes only (assembly_mode.py, mesh_assembly_mode_v2.py), not bb_v3.py (which randomises 1-52)
   render_until_blue: "False"
   #########################
