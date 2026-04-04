@@ -91,6 +91,9 @@ all = [
 ]
 
 #make a all command
+[tool.pytest.ini_options]
+addopts = "-s"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["subprojects*"]
