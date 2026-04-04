@@ -18,7 +18,7 @@ active_configs:
 
 wandb_general:
   use_wandb: True # main_v1_1_one_model.py, total_loss.py
-  project_name: "Solar_Sweeping" # DEFAULT: "temp_"  # main_v1_1_one_model.py: wandb.init(project=...)
+  project_name: "temp_" # DEFAULT: "temp_"  # main_v1_1_one_model.py: wandb.init(project=...)
   entity_name: "aisco"  # main_v1_1_one_model.py: wandb.init(entity=...)
   use_renderer: True  # total_loss.py: general_config["wandb_general"].get("use_renderer", True)
   use_neural_renderer: True  # total_loss.py, main_v1_1_one_model.py: general_config["wandb_general"].get("use_neural_renderer", False)
