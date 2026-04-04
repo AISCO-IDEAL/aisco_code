@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
 import os
+from typing import Any, cast
 
 
 def is_headless_runtime() -> bool:
@@ -19,7 +21,7 @@ def configure_headless_pyvista() -> None:
 def ensure_pyvista_headless():
     """Configure environment, import PyVista, and enable off-screen mode."""
     configure_headless_pyvista()
-    import pyvista as pv
+    pv = cast(Any, importlib.import_module("pyvista"))
 
     pv.OFF_SCREEN = True
     return pv

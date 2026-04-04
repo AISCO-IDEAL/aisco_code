@@ -5,19 +5,32 @@ Provides functions to render triangle meshes in an interactive 3D viewer.
 Supports both single-mesh and multi-mesh rendering.
 """
 
-
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import torch
+from torch import Tensor
+
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
     ensure_pyvista_headless,
     is_headless_runtime,
 )
-from torch import Tensor
 
 pv = ensure_pyvista_headless()
+
+
+@dataclass
+class MeshResult:
+    """Container for mesh extraction results with batch support."""
+
+    vertices: list[Tensor]  # List of [V, 3] vertex tensors
+    faces: list[Tensor] | None  # List of [F, 3] face tensors
+    xyz_min: tuple[float, float, float]  # Bounding box minimum
+    xyz_max: tuple[float, float, float]  # Bounding box maximum
+    batch_size: int  # Number of batch elements
+
 
 # Default color palette for multi-body rendering
 DEFAULT_COLORS = [
@@ -49,7 +62,6 @@ def _add_origin_reference(
         plane_scale: Scale factor for plane size relative to bounds (default: 0.25)
         edge_width: Line width for plane edges (default: 4)
     """
-    
 
     # Calculate plane size from bounds
     x_range = bounds[1] - bounds[0]
@@ -133,7 +145,6 @@ def _add_bounding_box(
         line_width: Line width in pixels (default: 0.5)
         opacity: Line opacity (default: 1.0)
     """
-    
 
     # 8 corners of the box
     corners = [
@@ -255,7 +266,7 @@ def render_mesh(
 
 
 def render_mesh_result(
-    mesh_result,
+    mesh_result: MeshResult,
     show: bool = True,
     color: str = "lightgrey",
     show_edges: bool = False,
@@ -264,7 +275,7 @@ def render_mesh_result(
     curves_data: list[tuple] | None = None,
     workplanes_data: list[tuple] | None = None,
     opacity: float = 1.0,
-):
+) -> Any:
     """
     Render a MeshResult object using PyVista.
 
@@ -289,9 +300,7 @@ def render_mesh_result(
     # MeshResult always contains lists (batch_size >= 1)
     # For visualization, we only render the first batch element
     if mesh_result.batch_size > 1:
-        print(
-            f"Warning: MeshResult has {mesh_result.batch_size} batches. Rendering only the first batch."
-        )
+        print(f"Warning: MeshResult has {mesh_result.batch_size} batches. Rendering only the first batch.")
 
     # Get vertices and faces from first batch
     verts = mesh_result.vertices[0]  # [V, 3]
@@ -369,9 +378,8 @@ def render_mesh_result(
     return plotter
 
 
-
 def render_meshes(
-    meshes: dict[str, tuple[Tensor, Tensor]],
+    meshes: dict[str, MeshResult],
     show: bool = True,
     colors: dict[str, str] | None = None,
     show_edges: bool = False,
@@ -380,7 +388,7 @@ def render_meshes(
     curves_data: list[tuple] | None = None,
     workplanes_data: list[tuple] | None = None,
     opacity: float = 1.0,
-):
+) -> Any:
     """
     Render multiple meshes in the same viewer with different colors.
 
@@ -417,9 +425,7 @@ def render_meshes(
         # NEW: MeshResult always contains lists (batch_size >= 1)
         # For visualization, we only render the first batch element
         if mesh_result.batch_size > 1:
-            print(
-                f"Warning: Body '{name}' has {mesh_result.batch_size} batches. Rendering only the first batch."
-            )
+            print(f"Warning: Body '{name}' has {mesh_result.batch_size} batches. Rendering only the first batch.")
 
         # Get vertices and faces from first batch
         verts = mesh_result.vertices[0]  # [V, 3]
@@ -429,10 +435,7 @@ def render_meshes(
         faces = mesh_result.faces[0]  # [F, 3]
 
         # Get color for this body
-        if colors and name in colors:
-            color = colors[name]
-        else:
-            color = DEFAULT_COLORS[idx % len(DEFAULT_COLORS)]
+        color = colors[name] if colors and name in colors else DEFAULT_COLORS[idx % len(DEFAULT_COLORS)]
 
         # Convert to numpy
         verts_np = verts.detach().cpu().numpy()
@@ -453,9 +456,7 @@ def render_meshes(
 
         # PyVista format
         n_faces = faces_np.shape[0]
-        pv_faces = np.hstack(
-            [np.full((n_faces, 1), 3, dtype=np.int64), faces_np]
-        ).flatten()
+        pv_faces = np.hstack([np.full((n_faces, 1), 3, dtype=np.int64), faces_np]).flatten()
 
         mesh = pv.PolyData(verts_np, pv_faces)
         mesh.compute_normals(inplace=True)
@@ -476,7 +477,7 @@ def render_meshes(
         bounds = (x_min, x_max, y_min, y_max, z_min, z_max)
         _add_origin_reference(plotter, bounds)
 
-    if show_bounds and bbox_min is not None:
+    if show_bounds and bbox_min is not None and bbox_max is not None:
         _add_bounding_box(
             plotter,
             bbox_min,
@@ -488,7 +489,7 @@ def render_meshes(
     if curves_data:
         _add_curves_to_plotter(plotter, curves_data)
 
-    if workplanes_data and bbox_min is not None:
+    if workplanes_data and bbox_min is not None and bbox_max is not None:
         # Use YAML bounding box (not mesh vertex bounds) for workplane sizing
         wp_bounds = (
             bbox_min[0],
@@ -616,7 +617,7 @@ def _add_workplanes_to_plotter(
         )
 
 
-def _add_sdf_slice_widget(
+def _add_sdf_slice_widget(  # noqa: PLR0915
     plotter,
     sdf_fn,
     xyz_min: tuple[float, float, float],
@@ -649,13 +650,14 @@ def _add_sdf_slice_widget(
     }
 
     if plane not in PLANE_CFG:
-        raise ValueError(
-            f"Invalid slice plane '{plane}'. Must be one of: 'xy', 'xz', 'yz'"
-        )
+        raise ValueError(f"Invalid slice plane '{plane}'. Must be one of: 'xy', 'xz', 'yz'")
 
     cfg = PLANE_CFG[plane]
-    nax = cfg["normal_axis"]
-    ax0, ax1 = cfg["grid_axes"]
+    # mypy can't infer dict value types when dict has mixed types; use explicit extraction
+    cfg_normal_axis: Any = cfg["normal_axis"]
+    cfg_grid_axes: Any = cfg["grid_axes"]
+    nax = int(cfg_normal_axis)
+    ax0, ax1 = int(cfg_grid_axes[0]), int(cfg_grid_axes[1])
 
     # Initial plane position: center of bounding box along normal axis
     center = [(xyz_min[i] + xyz_max[i]) / 2.0 for i in range(3)]
@@ -666,7 +668,7 @@ def _add_sdf_slice_widget(
     uu, vv = np.meshgrid(u, v, indexing="ij")
     n_pts = slice_resolution * slice_resolution
 
-    def on_plane_move(normal, origin):
+    def on_plane_move(normal, origin):  # noqa: ARG001
         # Clamp offset to meshing bounds
         offset = float(np.clip(origin[nax], xyz_min[nax], xyz_max[nax]))
 
@@ -683,7 +685,7 @@ def _add_sdf_slice_widget(
                 sdf_vals = sdf_vals[batch_idx]
 
         # Build StructuredGrid for display
-        coords = [None, None, None]
+        coords: list[Any] = [None, None, None]
         coords[ax0] = uu
         coords[ax1] = vv
         coords[nax] = np.full_like(uu, float(offset))
@@ -765,7 +767,7 @@ def _add_sdf_slice_widget(
 def save_mesh_ply(verts: Tensor, faces: Tensor, filename: str):
     """
     Save a mesh to PLY file (Polygon File Format).
-    
+
     PLY format is superior to STL for complex meshes as it supports
     per-vertex attributes and better preserves geometry data.
 
@@ -808,16 +810,14 @@ def save_mesh_obj(verts: Tensor, faces: Tensor, filename: str):
         f.writelines(f"v {v[0]} {v[1]} {v[2]}\n" for v in verts_np)
 
         # Write faces (OBJ uses 1-indexed vertices)
-        f.writelines(
-            f"f {face[0] + 1} {face[1] + 1} {face[2] + 1}\n" for face in faces_np
-        )
+        f.writelines(f"f {face[0] + 1} {face[1] + 1} {face[2] + 1}\n" for face in faces_np)
 
 
 def save_meshes_ply(meshes: dict[str, tuple[Tensor, Tensor]], filename: str):
     """
     Save multiple meshes to a single PLY file.
 
-    All meshes are concatenated into one file. Each body becomes part 
+    All meshes are concatenated into one file. Each body becomes part
     of the combined mesh. PLY format preserves geometry better than STL.
 
     Args:
@@ -833,7 +833,7 @@ def save_meshes_ply(meshes: dict[str, tuple[Tensor, Tensor]], filename: str):
     combined_faces = []
     vertex_offset = 0
 
-    for name, (verts, faces) in meshes.items():
+    for verts, faces in meshes.values():
         verts_np = verts.detach().cpu().numpy()
         faces_np = faces.detach().cpu().numpy()
 
@@ -845,9 +845,7 @@ def save_meshes_ply(meshes: dict[str, tuple[Tensor, Tensor]], filename: str):
     all_faces = np.vstack(combined_faces)
 
     n_faces = all_faces.shape[0]
-    pv_faces = np.hstack(
-        [np.full((n_faces, 1), 3, dtype=np.int64), all_faces]
-    ).flatten()
+    pv_faces = np.hstack([np.full((n_faces, 1), 3, dtype=np.int64), all_faces]).flatten()
 
     mesh = pv.PolyData(all_verts, pv_faces)
     mesh.save(filename)
@@ -874,7 +872,7 @@ def save_meshes_obj(meshes: dict[str, tuple[Tensor, Tensor]], filename: str):
         f.write("# TorchCAD multi-body export\n\n")
 
         # First pass: write all vertices
-        for name, (verts, faces) in meshes.items():
+        for name, (verts, _faces) in meshes.items():
             verts_np = verts.detach().cpu().numpy()
             f.write(f"# Vertices for {name}\n")
             f.writelines(f"v {v[0]} {v[1]} {v[2]}\n" for v in verts_np)
@@ -887,11 +885,10 @@ def save_meshes_obj(meshes: dict[str, tuple[Tensor, Tensor]], filename: str):
             faces_np = faces.detach().cpu().numpy()
 
             f.write(f"g {name}\n")
-            for face in faces_np:
-                # OBJ is 1-indexed, plus offset for previous bodies
-                f.write(
-                    f"f {face[0] + 1 + vertex_offset} {face[1] + 1 + vertex_offset} {face[2] + 1 + vertex_offset}\n"
-                )
+            f.writelines(
+                f"f {face[0] + 1 + vertex_offset} {face[1] + 1 + vertex_offset} {face[2] + 1 + vertex_offset}\n"
+                for face in faces_np
+            )
             f.write("\n")
 
             vertex_offset += len(verts_np)
@@ -924,10 +921,7 @@ _MULTI_BODY_PALETTE = [
 def _mesh_result_to_pv(mesh_result, np_module):
     """Convert a single MeshResult (batch 0) to PyVista PolyData + bounds."""
     if mesh_result.batch_size > 1:
-        print(
-            f"Warning: MeshResult has {mesh_result.batch_size} batches. "
-            "Rendering only the first batch."
-        )
+        print(f"Warning: MeshResult has {mesh_result.batch_size} batches. Rendering only the first batch.")
 
     verts = mesh_result.vertices[0]
     if mesh_result.faces is None:
@@ -941,9 +935,7 @@ def _mesh_result_to_pv(mesh_result, np_module):
     if n_faces == 0:
         return None, None
 
-    pv_faces = np_module.hstack(
-        [np_module.full((n_faces, 1), 3, dtype=np_module.int64), faces_np]
-    ).flatten()
+    pv_faces = np_module.hstack([np_module.full((n_faces, 1), 3, dtype=np_module.int64), faces_np]).flatten()
     pv_mesh = pv.PolyData(verts_np, pv_faces)
     pv_mesh.compute_normals(inplace=True)
 
@@ -958,9 +950,9 @@ def _mesh_result_to_pv(mesh_result, np_module):
     return pv_mesh, bounds
 
 
-def save_mesh_image(
-    mesh_result,
-    path: str,
+def save_mesh_image(  # noqa: PLR0912
+    mesh_result: MeshResult | dict[str, MeshResult],
+    path: str | Path,
     view: str = "iso",
     format: str = "png",
     color: str = "lightgrey",
@@ -996,18 +988,16 @@ def save_mesh_image(
     """
 
     if view not in VIEW_CAMERAS:
-        raise ValueError(
-            f"Unknown view '{view}'. Available views: {list(VIEW_CAMERAS.keys())}"
-        )
+        raise ValueError(f"Unknown view '{view}'. Available views: {list(VIEW_CAMERAS.keys())}")
 
     # Ensure path has correct extension
-    path = Path(path)
-    if not path.suffix:
-        path = path.with_suffix(f".{format}")
+    path_obj: Path = Path(path)
+    if not path_obj.suffix:
+        path_obj = path_obj.with_suffix(f".{format}")
 
     # Normalize to list of (name, MeshResult) pairs
     if isinstance(mesh_result, dict):
-        bodies = list(mesh_result.items())
+        bodies: list[tuple[str | None, MeshResult]] = list(mesh_result.items())
     else:
         bodies = [(None, mesh_result)]
 
@@ -1037,6 +1027,7 @@ def save_mesh_image(
     plotter = pv.Plotter(off_screen=True, window_size=window_size)
 
     for i, (name, pv_mesh) in enumerate(pv_meshes):
+        body_name: str = name if name is not None else f"body_{i}"
         if name is not None and colors and name in colors:
             body_color = colors[name]
         elif name is None:
@@ -1054,7 +1045,7 @@ def save_mesh_image(
             smooth_shading=True,
             specular=0.5,
             specular_power=15,
-            label=name,
+            label=body_name,
         )
 
     plotter.add_axes()
@@ -1075,8 +1066,8 @@ def save_mesh_image(
                     xyz_max[j] = max(xyz_max[j], mr.xyz_max[j])
             _add_bounding_box(
                 plotter,
-                tuple(xyz_min),
-                tuple(xyz_max),
+                cast(tuple[float, float, float], tuple(xyz_min)),
+                cast(tuple[float, float, float], tuple(xyz_max)),
                 color="black",
                 line_width=0.5,
             )
@@ -1093,4 +1084,4 @@ def save_mesh_image(
     plotter.camera_position = VIEW_CAMERAS[view]
 
     # Save screenshot
-    plotter.screenshot(str(path))
+    plotter.screenshot(str(path_obj))

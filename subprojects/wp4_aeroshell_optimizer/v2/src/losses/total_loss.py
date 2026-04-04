@@ -41,7 +41,7 @@ from __future__ import annotations
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -53,8 +53,9 @@ import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import (
     MeshExtractor,
 )
-from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
@@ -66,6 +67,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Vi
 # ---------------------------------------------------------------------------
 _ALM_OBJECTIVE_CATEGORIES: frozenset[str] = frozenset({"aero", "solar"})
 _ALM_CONSTRAINT_CATEGORIES: tuple[str, ...] = ("bb", "eikonal", "smoothness")  # order matters ALM
+TrainModel: TypeAlias = BaseModel | ConcatBaseModel
 
 
 class TotalLoss:
@@ -103,16 +105,15 @@ class TotalLoss:
 
         self._load_configs()
 
-        gi: dict[str, Any] = self.losses_config["general_info"]
-        self._use_alm: bool = gi.get("ALM") == "True"
-        self._use_cse: bool = gi.get("CSE") == "True"
+        general_info: dict[str, Any] = self.losses_config["general_info"]
+        self._use_alm: bool = general_info.get("ALM") == "True"
+        self._use_cse: bool = general_info.get("CSE") == "True"
 
         self._init_mesh_infrastructure()
         self._init_active_losses()  # must come before _init_alm_state (needs n_constraints)
         if self._use_alm:
             constraint_names: list[str] = [n for (n, _inst) in self._constraint_losses.values()]
-            gi: dict[str, Any] = self.losses_config["general_info"]
-            self.alm_manager = ALMManager(constraint_names, gi, self._device)
+            self.alm_manager = ALMManager(constraint_names, general_info, self._device)
 
     def _load_configs(self) -> None:
         self._general_config: dict[str, Any] = load_config()
@@ -200,7 +201,7 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # loss computation
     # ------------------------------------------------------------------
-    def _compute_raw_losses(self, model: BaseModel, epoch_name: int) -> dict[str, torch.Tensor]:
+    def _compute_raw_losses(self, model: TrainModel, epoch_name: int) -> dict[str, torch.Tensor]:
         """Evaluate every active loss instance and return raw (unweighted) tensors."""
         raw: dict[str, torch.Tensor] = {}
         for name, instance in self._active_losses.items():
@@ -247,7 +248,6 @@ class TotalLoss:
     def _apply_weighting(
         self,
         raw_losses: dict[str, torch.Tensor],
-        device: torch.device,
     ) -> torch.Tensor:
         """Weight objectives and constraints independently then sum.
 
@@ -328,7 +328,7 @@ class TotalLoss:
         loss_log: dict[str, float],
         epoch_name: int,
         device: torch.device,
-        model: BaseModel,
+        model: TrainModel,
         total_loss: torch.Tensor,
     ) -> None:
         """WandB logging, mesh rendering, gradient logging, and memory diagnostics."""
@@ -631,7 +631,7 @@ class TotalLoss:
     # Orchestrator
     # ------------------------------------------------------------------
     def get_total_loss(
-        self, model: BaseModel, epoch_name: int = -1, skip_telemetry: bool = False
+        self, model: TrainModel, epoch_name: int = -1, skip_telemetry: bool = False
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]] | torch.Tensor:
         """Initilizes unweighted losses computation, computes weighted total loss, logs to wandb, and returns the total loss tensor.
 
@@ -648,7 +648,7 @@ class TotalLoss:
         raw: dict[str, torch.Tensor] = self._compute_raw_losses(model, epoch_name)
 
         # 2. Apply weighting (populates _last_weighted_losses)
-        total: torch.Tensor = self._apply_weighting(raw, device)
+        total: torch.Tensor = self._apply_weighting(raw)
 
         # 3. Build logging dict and dispatch telemetry
         if not skip_telemetry:

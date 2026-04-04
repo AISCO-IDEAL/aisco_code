@@ -3,6 +3,7 @@ import importlib
 import torch
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.ground_truth_masks.simple_geoms import cube_gt, sphere_gt  # Added cube_gt
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 
@@ -26,7 +27,7 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
 # 2026 03 05, eschaerer:
 # look i'm not sure if the changes i made also work on the HPC. Please revert them if they don't
 def pretraining(
-    model: BaseModel | None = None,
+    model: BaseModel | ConcatBaseModel | None = None,
     pretraining_config_name: str = "pretraining_v0_config.yaml",
     override_config: dict | None = None,
 ):

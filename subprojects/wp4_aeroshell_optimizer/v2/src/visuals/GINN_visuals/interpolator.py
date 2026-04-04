@@ -10,24 +10,25 @@ All parameters are config-driven to avoid hardcoding.
 
 import os
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import torch
 from PIL import Image
-from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.tim_render import (
-    render_mesh,
-)
+from torch import Tensor
+
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
     ensure_pyvista_headless,
 )
-from torch import Tensor
+from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.tim_render import (
+    render_mesh,
+)
 
 # Import after checking availability to give helpful error message
 try:
     pv = ensure_pyvista_headless()
-except ImportError:
-    raise ImportError("PyVista is required for interpolator. Install with: pip install pyvista")
+except ImportError as exc:
+    raise ImportError("PyVista is required for interpolator. Install with: pip install pyvista") from exc
 
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import (
     MarchingCubesExtractor,
@@ -58,7 +59,7 @@ class Interpolator:
         device: torch device (cuda or cpu)
     """
 
-    def __init__(self, model, config: dict, device: torch.device):
+    def __init__(self, model, config: dict, device: torch.device | str):
         """
         Initialize interpolator with model and config.
 
@@ -69,7 +70,7 @@ class Interpolator:
         """
         self.model = model
         self.config = config
-        self.device = device
+        self.device = torch.device(device) if isinstance(device, str) else device
 
         # Initialize marching cubes extractor
         self.mc_extractor = MarchingCubesExtractor()
@@ -78,18 +79,18 @@ class Interpolator:
         self.grid_resolution = int(config.get("grid_resolution", 10))
         self.latent_range = config.get("latent_range", [-2.0, 2.0])
         self.mesh_resolution = int(config.get("mesh_resolution", 128))
-        
+
         # Extract bbox values as lists
         bbox_min_list = config.get("bbox_min", [-4000, -4000, -4000])
         bbox_max_list = config.get("bbox_max", [4000, 4000, 4000])
-        
+
         # Convert to MarchingCubesExtractor format: [[xmin,xmax], [ymin,ymax], [zmin,zmax]]
         self.bbox = [
             [bbox_min_list[0], bbox_max_list[0]],
             [bbox_min_list[1], bbox_max_list[1]],
             [bbox_min_list[2], bbox_max_list[2]],
         ]
-        
+
         self.isovalue = float(config.get("isovalue", 0.0))
         self.camera_view = config.get("camera_view", "iso")
         self.mesh_color = config.get("mesh_color", "lightgrey")
@@ -99,22 +100,24 @@ class Interpolator:
 
         # Create save directory
         self.save_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Configure the marching cubes grid (call once during init)
         self.mc_extractor.set_grid(bbox=self.bbox, resolution=self.mesh_resolution)
 
         # Get model's latent dimension (try z_dim first, then check for _active_z attribute)
-        try:
-            self.z_dim = getattr(model, "z_dim")
-        except AttributeError:
-            self.z_dim = getattr(model, "_active_z", None).shape[0] if getattr(model, "_active_z", None) is not None else None
+        self.z_dim: int | None = None
+        if hasattr(model, "z_dim"):
+            self.z_dim = model.z_dim
+        else:
+            active_z = getattr(model, "_active_z", None)
+            if active_z is not None:
+                self.z_dim = int(active_z.shape[0])
 
-        
         if self.z_dim is None:
             raise ValueError("Model must have z_dim attribute (latent vector dimension)")
 
         # Placeholder for compiled grid image
-        self._grid_image = None
+        self._grid_image: Image.Image | None = None
         self._has_logged_first_nonempty_render = False
 
         # Validate rendering backend once up front to avoid late crash mid-grid.
@@ -122,25 +125,23 @@ class Interpolator:
 
     def _run_render_preflight(self) -> None:
         """Run a tiny off-screen render probe to validate backend before main loop."""
+        probe_failed = False
         try:
             probe_plotter = pv.Plotter(off_screen=True, window_size=(128, 128))
             probe_plotter.add_mesh(pv.Sphere(radius=1.0), color="white")
             probe_image = probe_plotter.screenshot(transparent_background=False)
             probe_plotter.close()
 
-            if probe_image is None or getattr(probe_image, "size", 0) == 0:
-                raise RuntimeError("Render probe produced no image output")
-
-            print(
-                "PyVista render preflight passed "
-                f"(DISPLAY={os.environ.get('DISPLAY', '<unset>')})"
-            )
+            probe_failed = probe_image is None or getattr(probe_image, "size", 0) == 0
         except Exception as exc:
             raise RuntimeError(
                 "PyVista headless preflight failed before interpolation. "
                 f"DISPLAY={os.environ.get('DISPLAY', '<unset>')} "
                 f"PYVISTA_OFF_SCREEN={os.environ.get('PYVISTA_OFF_SCREEN', '<unset>')}"
             ) from exc
+        if probe_failed:
+            raise RuntimeError("Render probe produced no image output")
+        print(f"PyVista render preflight passed (DISPLAY={os.environ.get('DISPLAY', '<unset>')})")
 
     def generate_interpolation_grid(self) -> Image.Image:
         """
@@ -153,10 +154,7 @@ class Interpolator:
         Returns:
             PIL Image of final 2D grid layout
         """
-        print(
-            f"Generating {self.grid_resolution}x{self.grid_resolution} "
-            "interpolation grid..."
-        )
+        print(f"Generating {self.grid_resolution}x{self.grid_resolution} interpolation grid...")
 
         # Generate latent coordinate grid
         z0_values = np.linspace(self.latent_range[0], self.latent_range[1], self.grid_resolution)
@@ -169,8 +167,7 @@ class Interpolator:
         for i, z0 in enumerate(z0_values):
             row_images = []
             for j, z1 in enumerate(z1_values):
-                print(f"  Point ({i + 1}/{self.grid_resolution}, {j + 1}/{self.grid_resolution}): " 
-                      f"z=[{z0:.3f}, {z1:.3f}]")
+                print(f"  Point ({i + 1}/{self.grid_resolution}, {j + 1}/{self.grid_resolution}): z=[{z0:.3f}, {z1:.3f}]")
 
                 # Extract and render mesh at this latent point
                 image = self._extract_and_render_at_latent(z0, z1)
@@ -189,7 +186,7 @@ class Interpolator:
         print("Grid generation complete!")
         return final_grid
 
-    def _extract_and_render_at_latent(self, z0: float, z1: float) -> Optional[Image.Image]:
+    def _extract_and_render_at_latent(self, z0: float, z1: float) -> Image.Image | None:
         """
         Extract mesh at latent coordinates (z0, z1) and render to image.
 
@@ -200,6 +197,9 @@ class Interpolator:
         Returns:
             PIL Image of rendered mesh, or None if extraction failed
         """
+        if self.z_dim is None:
+            raise RuntimeError("Interpolator z_dim is not initialized")
+
         # Create latent vector: [z0, z1, 0, 0, ..., 0]
         z_vector = torch.zeros(self.z_dim, device=self.device)
         z_vector[0] = z0
@@ -229,16 +229,14 @@ class Interpolator:
             # Render to image using PyVista off-screen renderer
             try:
                 image = self._render_mesh_to_image(verts, faces)
-                if not self._has_logged_first_nonempty_render:
-                    print(
-                        "First non-empty mesh rendered successfully: "
-                        f"{len(verts)} vertices, {len(faces)} faces"
-                    )
-                    self._has_logged_first_nonempty_render = True
-                return image
             except Exception as e:
                 print(f"    Warning: Mesh rendering failed: {e}")
                 return None
+
+            if not self._has_logged_first_nonempty_render:
+                print(f"First non-empty mesh rendered successfully: {len(verts)} vertices, {len(faces)} faces")
+                self._has_logged_first_nonempty_render = True
+            return image
 
     def _render_mesh_to_image(self, verts: Tensor, faces: Tensor) -> Image.Image:
         """
@@ -282,7 +280,7 @@ class Interpolator:
         Assemble 2D grid of images into single image.
 
         Args:
-            grid_images: 2D list of PIL Images (rows × columns)
+            grid_images: 2D list of PIL Images (rows x columns)
 
         Returns:
             Single PIL Image containing all sub-images in grid layout
@@ -308,7 +306,7 @@ class Interpolator:
 
         return grid_image
 
-    def save_interpolation_grid(self, filepath: Optional[Path] = None) -> Path:
+    def save_interpolation_grid(self, filepath: Path | None = None) -> Path:
         """
         Save interpolation grid to file.
 
@@ -321,10 +319,7 @@ class Interpolator:
         if self._grid_image is None:
             raise ValueError("No grid image generated. Call generate_interpolation_grid() first.")
 
-        if filepath is None:
-            filepath = self.save_dir / "interpolation_grid.png"
-        else:
-            filepath = Path(filepath)
+        filepath = self.save_dir / "interpolation_grid.png" if filepath is None else Path(filepath)
 
         filepath.parent.mkdir(parents=True, exist_ok=True)
         self._grid_image.save(filepath)
@@ -335,7 +330,7 @@ class Interpolator:
     def upload_to_wandb(
         self,
         key: str = "latent_interpolation",
-        step: Optional[int] = None,
+        step: int | None = None,
     ) -> None:
         """
         Upload interpolation grid to WandB.
@@ -349,8 +344,6 @@ class Interpolator:
             return
 
         try:
-            import wandb
-
             if wandb.run is None:
                 print("WandB not initialized, skipping upload")
                 return
@@ -364,9 +357,6 @@ class Interpolator:
                 step=step,
             )
             print(f"Uploaded interpolation grid to WandB (key={key})")
-
-        except ImportError:
-            print("WandB not installed, skipping upload")
         except Exception as e:
             print(f"Warning: WandB upload failed: {e}")
 

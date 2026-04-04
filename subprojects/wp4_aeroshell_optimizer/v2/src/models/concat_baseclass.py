@@ -5,10 +5,10 @@ from torch import nn
 class ConcatBaseModel(nn.Module):
     def __init__(
         self,
-        *args,
-        coords: int = 3,  # Default to 3D coordinates (x, y, z) unless specified otherwise
+        *_args,
+        _coords: int = 3,  # Default to 3D coordinates (x, y, z) unless specified otherwise
         config: dict | None = None,
-        **kwargs,
+        **_kwargs,
     ):
         """
         Modifies the architecture by tracking a latent vector to concatenate to the input coordinates
@@ -31,9 +31,6 @@ class ConcatBaseModel(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError("The forward method must be implemented in the subclass of ConcatBaseModel.")
-
-
-
 
     def get_model_info_dict(self) -> dict:
         """

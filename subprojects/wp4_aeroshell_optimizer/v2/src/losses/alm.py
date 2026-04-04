@@ -7,6 +7,7 @@ for population-based training loops (like GINN).
 from __future__ import annotations
 
 from typing import Any
+
 import torch
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.weights import weights_alm

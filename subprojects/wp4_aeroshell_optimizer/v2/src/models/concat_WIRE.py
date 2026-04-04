@@ -1,10 +1,7 @@
 import torch
 from torch import nn
 
-
-from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
-
 
 
 class RealGaborLayer(nn.Module):
@@ -89,7 +86,7 @@ class ConcatWIREV2(ConcatBaseModel):
         # First layer: x,y,z, + laten vector -> hidden dim
         layers.append(
             RealGaborLayer(
-                coords+z_dim,
+                coords + z_dim,
                 hidden_features,
                 bias=True,
                 omega0=first_omega_0,

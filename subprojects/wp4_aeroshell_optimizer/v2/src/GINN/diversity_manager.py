@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import torch
-import torch.nn as nn
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
 
@@ -114,11 +111,12 @@ class DiversityTrainer:
                 penalties_dict = self._total_loss.alm_manager.compute_penalty(constraint_tensors)
                 loss_i = loss_out + sum(penalties_dict.values())
             else:
-                loss_i: Tensor = self._total_loss.get_total_loss(  # type: ignore
+                loss_out = self._total_loss.get_total_loss(
                     model=self._model,
                     epoch_name=epoch,
                     skip_telemetry=True,
                 )
+                loss_i = loss_out[0] if isinstance(loss_out, tuple) else loss_out
 
             total_per_vector_loss = total_per_vector_loss + loss_i
 

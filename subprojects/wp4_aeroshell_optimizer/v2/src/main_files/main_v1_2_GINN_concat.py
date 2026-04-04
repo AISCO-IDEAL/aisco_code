@@ -4,13 +4,16 @@ Attempts to do this by concatenating a latent vector to the input coordinates,
 which is then used to compute a diversity measure between the networks in the latent space
 
 """
+
 import os
-from pathlib import Path  # noqa: F401
+import traceback
+from pathlib import Path
 
 import torch
 
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.logging_lib import multi_log_in_one
+from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import DiversityTrainer
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
@@ -21,16 +24,16 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     register_all_configs,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import dynamic_type_loading
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
     configure_headless_pyvista,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import (
     allround_save_data,
     fetch_pretrained_model,
-    reformat_wandb_name,
 )
-from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
+from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.interpolator import (
+    Interpolator,
+)
 
 configure_headless_pyvista()
 
@@ -148,11 +151,8 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     total_loss: TotalLoss = TotalLoss(dev=device, renderer_manager=None, external_alm=True)
     training_config = load_config(v="v2", cfg_name=general_config["active_configs"]["training"])
 
-
     ### LLM please replace this part withe the diversity trainer
     ginn_config = load_config(v="v2", cfg_name="GINN.yaml")
-
-    from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import DiversityTrainer
 
     # Get hyperparameters
     learning_rate = training_config["training_params"].get("learning_rate", 1e-3)
@@ -183,7 +183,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
             )
         if wandb.run is not None:
             multi_log_in_one(
-                {
+                metrics_dict={
                     "GINN/per_vector_loss": metrics["per_vector_loss"],
                     "GINN/diversity_loss": metrics["diversity_loss"],
                     "GINN/total_loss": metrics["total_loss"],
@@ -221,10 +221,6 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
             f"PYVISTA_OFF_SCREEN={os.environ.get('PYVISTA_OFF_SCREEN', '<unset>')}"
         )
     try:
-        from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.interpolator import (
-            Interpolator,
-        )
-
         # Load interpolator config
         interp_config_name = general_config.get("postprocessing_interpolator", "postprocessing_interpolator_config.yaml")
         interp_config_dict = load_config(v="v2", cfg_name=interp_config_name)
@@ -238,7 +234,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
 
         # Generate interpolation grid
         interpolator = Interpolator(model=model, config=interp_config_dict, device=device)
-        grid_image = interpolator.generate_interpolation_grid()
+        interpolator.generate_interpolation_grid()
 
         # Save locally
         save_path = interpolator.save_interpolation_grid()
@@ -254,8 +250,6 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     except Exception as e:
         print(f"Warning: Latent space interpolation failed: {e}")
         if verbose:
-            import traceback
-
             traceback.print_exc()
 
     print("Completed job successfully.")
