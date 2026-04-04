@@ -10,9 +10,10 @@ from pathlib import Path  # noqa: F401
 import torch
 
 import wandb
+from subprojects.wp4_aeroshell_optimizer.v2.logging_lib import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import pretraining
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     apply_sweep_overrides,
     get_master_config,
@@ -21,13 +22,17 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import dynamic_type_loading
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
+    configure_headless_pyvista,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import (
     allround_save_data,
     fetch_pretrained_model,
     reformat_wandb_name,
 )
-from subprojects.wp4_aeroshell_optimizer.v2.logging_lib import multi_log_in_one
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
+
+configure_headless_pyvista()
 
 
 def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
@@ -103,15 +108,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
         print("Skipping pretrained model fetch: No path provided in config.")
         pretrained_model = None
 
-    # Dein Debug-Print kann danach kommen
-    print(f"[DEBUG main] pretraining_model_path from config: {pretrained_path}")
-
     ### load pretrained model if exists
-    ### # aalthaus, why the hell does the fetch function get called a second time here?
-    pretrained_model = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
-    print(f"[DEBUG main] os.path.exists(path): {os.path.exists(pretrained_path)}")
-    print(f"[DEBUG main] os.path.isfile(path): {os.path.isfile(pretrained_path)}")
-    print(f"[DEBUG main] os.path.isdir(path): {os.path.isdir(pretrained_path)}")
     ### pretraining if model doesn't exist
     if pretrained_model is not None and not force_pretraining:
         model.load_state_dict(torch.load(pretrained_model, map_location=device))
@@ -202,11 +199,9 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     model.set_latent_vector(torch.zeros(model_config["z_dim"], device=device))  # Set to zero vector for final saving
     allround_save_data(
         model=model,
-        storage_path=general_config["general_info"].get(
-            "storage_path", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
-        ),
+        storage_path=general_config["general_info"].get("storage_path", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/GINN"),
         save_model=True,
-        save_mesh=False,
+        save_mesh=True,
         verbose=verbose,
         pretraining=False,
         wandb_run=wandb_name,
@@ -214,6 +209,54 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
         resolution=64,
         marching_cubes_usage=True,
     )
+
+    # ------------------------------------------------------------------
+    # Postprocessing: Generate latent space interpolation grid
+    # ------------------------------------------------------------------
+    if verbose:
+        print("Generating latent space interpolation grid...")
+        print(
+            "Renderer env: "
+            f"DISPLAY={os.environ.get('DISPLAY', '<unset>')} "
+            f"PYVISTA_OFF_SCREEN={os.environ.get('PYVISTA_OFF_SCREEN', '<unset>')}"
+        )
+    try:
+        from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.interpolator import (
+            Interpolator,
+        )
+
+        # Load interpolator config
+        interp_config_name = general_config.get("postprocessing_interpolator", "postprocessing_interpolator_config.yaml")
+        interp_config_dict = load_config(v="v2", cfg_name=interp_config_name)
+
+        # Determine save directory
+        storage_path = general_config["general_info"].get(
+            "storage_path", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+        )
+        interp_save_dir = Path(storage_path) / "interpolation_grids" / str(wandb_name)
+        interp_config_dict["save_dir"] = str(interp_save_dir)
+
+        # Generate interpolation grid
+        interpolator = Interpolator(model=model, config=interp_config_dict, device=device)
+        grid_image = interpolator.generate_interpolation_grid()
+
+        # Save locally
+        save_path = interpolator.save_interpolation_grid()
+        if verbose:
+            print(f"Saved interpolation grid to {save_path}")
+
+        # Upload to WandB if enabled
+        if wandb.run is not None and interp_config_dict.get("upload_to_wandb", True):
+            interpolator.upload_to_wandb(key="latent_interpolation_grid", step=num_epochs)
+            if verbose:
+                print("Uploaded interpolation grid to WandB")
+
+    except Exception as e:
+        print(f"Warning: Latent space interpolation failed: {e}")
+        if verbose:
+            import traceback
+
+            traceback.print_exc()
 
     print("Completed job successfully.")
 

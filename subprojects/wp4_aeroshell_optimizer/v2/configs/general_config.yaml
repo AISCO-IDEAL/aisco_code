@@ -15,6 +15,7 @@ active_configs:
   model_params: "WIRE_v2.yaml"  #  main_v1_1_one_model.py: general_config["active_configs"]["model_params"]
   neural_renderer: "neural_renderer_v0.yaml"  #  visual_wrapper.py, total_loss.py
   solar: "solar_configs/solar_loss_config.yaml" # Used in all solar versions above V3s
+  postprocessing_interpolator: "postprocessing_interpolator_config.yaml"
 
 wandb_general:
   use_wandb: True # main_v1_1_one_model.py, total_loss.py
