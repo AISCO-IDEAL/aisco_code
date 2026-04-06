@@ -166,6 +166,10 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
         device=device,
         model_lr=learning_rate,
         diversity_weight=ginn_config.get("diversity_weight", 0.1),
+        diversity_num_points=ginn_config.get("diversity_num_points", 2048),
+        diversity_bbox_size=ginn_config.get("diversity_bbox_size", 10.0),
+        diversity_norm_order=ginn_config.get("diversity_norm_order", 2),
+        diversity_neighbor_agg_fn=ginn_config.get("diversity_neighbor_agg_fn", "min"),
     )
 
     if verbose:
@@ -174,7 +178,6 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     for epoch in range(num_epochs):
         model.train()
 
-        torch.autograd.set_detect_anomaly(True)
         metrics = trainer.step(epoch=epoch)
 
         if verbose and epoch % 50 == 0:
