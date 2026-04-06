@@ -227,6 +227,16 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
         except Exception as e:
             print(f"Manager finalize failed: {e}")
 
+    # ------------------------------------------------------------------
+    # 10. Finish wandb run to ensure all uploads are synced
+    # ------------------------------------------------------------------
+    if use_wandb:
+        try:
+            wandb.finish()
+            print("Wandb run finalized and synced.")
+        except Exception as e:
+            print(f"Wandb finish failed: {e}")
+
     print("Completed job successfully.")
 
 
