@@ -408,7 +408,12 @@ class TotalLoss:
 
         # individual weighted contributions
         for name, val in self._last_weighted_losses.items():
-            log_dict[f"weighted_losses/{name}"] = val.item()
+            # Negate cse_objective back to positive for physical meaning in logs
+            # (we minimize -v_cruise internally, but log +v_cruise for readability)
+            logged_val = (
+                -val.item() if name == "cse_objective" else val.item()
+            )  # the CSE is logged negatively, as we have a minimization scheme
+            log_dict[f"weighted_losses/{name}"] = logged_val
 
         # cruising speed
         if self._last_cruising_speed is not None:
