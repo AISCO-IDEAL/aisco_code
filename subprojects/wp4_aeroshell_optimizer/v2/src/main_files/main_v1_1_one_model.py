@@ -11,6 +11,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     load_config,
     register_all_configs,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import DebugManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import dynamic_type_loading
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import (
@@ -18,6 +19,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import (
     fetch_pretrained_model,
     reformat_wandb_name,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.wandb_utils import patch_wandb_log_for_monotonic_steps
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
 
 
@@ -37,6 +39,18 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
             project=general_config["wandb_general"]["project_name"],
             config=general_config,
         )
+        patch_wandb_log_for_monotonic_steps()
+        # Separate axes keep training and rendering logs chronological
+        # without forcing everything onto W&B's global step.
+        wandb.define_metric("training_epoch")
+        wandb.define_metric("render_epoch")
+        # Default: bind all metrics to training_epoch so scalar curves stay
+        # aligned even when new keys are added without an explicit mapping.
+        wandb.define_metric("*", step_metric="training_epoch")
+        # Override media/render namespaces to use their own render_epoch axis.
+        wandb.define_metric("renders/*", step_metric="render_epoch")
+        wandb.define_metric("animations/*", step_metric="render_epoch")
+        wandb.define_metric("images/*", step_metric="render_epoch")
 
     # ------------------------------------------------------------------
     # 3. Register all sub-configs & apply sweep overrides (if any)
@@ -63,6 +77,13 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
 
     if verbose:
         print("Successfully loaded and registered all configs")
+
+    # ------------------------------------------------------------------
+    # 3b. Initialise DebugManager from configs/debug.yaml
+    # ------------------------------------------------------------------
+    debug_manager = DebugManager()
+    if verbose:
+        print(debug_manager.summary())
 
     # ------------------------------------------------------------------
     # 4. Load model config (now sweep-aware) and instantiate model
@@ -131,7 +152,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
             else {}
         )
         print(f"Starting pretraining for model {model.__class__.__name__}")
-        model = pretraining(model=model, override_config=pretraining_override)
+        model = pretraining(model=model, override_config=pretraining_override, debug_manager=debug_manager)
 
         allround_save_data(
             model=model,
@@ -166,11 +187,15 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     # ------------------------------------------------------------------
     # 7. Optimise (training_config is sweep-patched via the registry)
     # ------------------------------------------------------------------
-    training_config = load_config(v="v1", cfg_name=general_config["active_configs"].get("training", None))
+    training_config = load_config(v="v2", cfg_name=general_config["active_configs"].get("training", None))
 
     model = model.to(device)
     model.optimise(
-        training_config=training_config, renderer_manager=renderer_manager, wandb_name=wandb_name, general_config=general_config
+        training_config=training_config,
+        renderer_manager=renderer_manager,
+        wandb_name=wandb_name,
+        general_config=general_config,
+        debug_manager=debug_manager,
     )
     if verbose:
         print("Model optimisation completed.")

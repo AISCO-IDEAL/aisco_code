@@ -3,6 +3,7 @@ general_info:
   CSE: "True"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
   ALM_aggressive: "False" # capu version of ALM
+  ALM_aggressive_capu: 0.25 # default: 0.25, only used when ALM_aggressive=True. # weights.py: self.use_alm_aggressive
   alm_thresholds: [0.1, 0.1, 0.1]  # thresholds for constraint losses [bb, eikonal, smoothness]
   initial_lambda: [0.01, 0.01, 0.01]  # per-constraint initial λ [bb, eikonal, smoothness] (scalar also accepted)
   initial_mu: [1.0, 1.0, 1.0]  # per-constraint initial μ [bb, eikonal, smoothness]
@@ -28,7 +29,9 @@ losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically
     null_loss_bb_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/null_loss_bb_v1.py"]
     bb_v3: [0, 1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety y
     bb_v4: [0, 10, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"] # assembler version4 with ground clearance validation
-    bb_v4_2: [1, 1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"] # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
+    bb_v4_2: [0, 1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"] # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
+    bb_v4_3: [0, 10, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"] # v4.3 with improved ALM and CSE support
+    bb_v4_4: [1, 10, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"] # v4.4 surface-sampled BB constraints on WP2 inner/outer zero-level surfaces
     silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"] # version provided by Silvretta, not working well as of 2025 12 15
 
   eikonal:
@@ -76,6 +79,17 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
   sdf_chunk_size: 4096  # query chunk size for mesh_sdf (higher can be faster but uses more memory)
   tessellation_tolerance: 2.0  # CadQuery tessellation quality for bb_v4_2 (higher is faster, lower detail)
   tessellation_angular_tolerance: 0.4  # CadQuery tessellation angular quality for bb_v4_2
+  # v4.4 surface-sampling specific:
+  surface_sampling:
+    target_point_count: 20000  # total number of zero-level surface points sampled per setup
+    inner_fraction: 0.5  # fraction of points allocated to inner surface(s); rest goes to outer
+    min_points_per_inner_mesh: 256  # minimum points for each inner solid to avoid undersampling small parts
+  # v4.3 analytic specific:
+  analytic_options:
+    penalty: "softplus"  # "relu" (default) or "softplus"
+    softplus_beta: 10.0  # only used when penalty="softplus"
+    inner_margin: 0.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
+    outer_margin: 0.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
   # silvretta_v0 specific:
   inner_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/inner.ply"
   outer_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/outer.ply"
@@ -86,3 +100,5 @@ cfd:
   visualisations: "True" # only works for Version 2
   v_inf: 25.0   # freestream velocity [m/s] for Cp -> Pa conversion
   rho: 1.225    # air density [kg/m³] for Cp -> Pa conversion
+  mesh_resolution: 30000
+  gradient_max: 0.1
