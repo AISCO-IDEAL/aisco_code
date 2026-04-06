@@ -108,10 +108,7 @@ class DiversityTrainer:
                     epoch_name=epoch,
                     skip_telemetry=True,
                 )
-                constraint_tensors = [
-                    raw_constraints_dict[name]
-                    for name in self._total_loss.alm_manager.constraint_names
-                ]
+                constraint_tensors = [raw_constraints_dict[name] for name in self._total_loss.alm_manager.constraint_names]
                 penalties_dict = self._total_loss.alm_manager.compute_penalty(constraint_tensors)
                 loss_i = loss_out + sum(penalties_dict.values())
 
@@ -133,10 +130,7 @@ class DiversityTrainer:
         mean_constraints: list[Tensor] | None = None
         if use_alm and all_raw_constraints:
             num_c = len(all_raw_constraints[0])
-            mean_constraints = [
-                torch.stack([pop[c_idx] for pop in all_raw_constraints]).mean()
-                for c_idx in range(num_c)
-            ]
+            mean_constraints = [torch.stack([pop[c_idx] for pop in all_raw_constraints]).mean() for c_idx in range(num_c)]
 
         return total_loss_val / self._population_size, mean_constraints
 
@@ -155,9 +149,7 @@ class DiversityTrainer:
             Scalar diversity loss (negative → minimize to maximize shape diversity).
         """
         # Random points covering the design domain — no grad on coordinates
-        points = (
-            torch.rand(self._diversity_num_points, 3, device=self._device) - 0.5
-        ) * self._diversity_bbox_size
+        points = (torch.rand(self._diversity_num_points, 3, device=self._device) - 0.5) * self._diversity_bbox_size
 
         field_values: list[Tensor] = []
         for i in range(self._population_size):

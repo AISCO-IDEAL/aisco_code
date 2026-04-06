@@ -17,7 +17,7 @@ def pairwise_dist_fields(y: Tensor, norm_order: int, weights: Tensor | None = No
     Returns:
         [num_fields, num_fields] symmetric matrix of pairwise distances.
     """
-    n_fields, n_points = y.shape
+    _n_fields, n_points = y.shape
     diff = y.unsqueeze(0) - y.unsqueeze(1)  # [N, N, P]
     weighted_diff = diff if weights is None else diff * weights ** (1 / norm_order)
     pairwise_dist = torch.linalg.vector_norm(weighted_diff, ord=norm_order, dim=-1)  # [N, N]
