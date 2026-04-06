@@ -331,7 +331,8 @@ class TotalLoss:
                     continue
                 name: str = self._objective_losses[cat][0]
                 w: float = self._manual_weights.get(name, 1.0)
-                self._last_weighted_losses[name] = raw_losses[name] * w
+                sign: float = -1.0 if cat == "solar" else 1.0
+                self._last_weighted_losses[name] = sign * raw_losses[name] * w
 
         # ---- Constraints -------------------------------------------------
         constraint_names: list[str] = [n for (n, _inst) in self._constraint_losses.values()]

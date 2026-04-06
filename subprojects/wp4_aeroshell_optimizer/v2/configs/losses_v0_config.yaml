@@ -18,8 +18,6 @@ general_info:
 losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically loads and instantiates all losses with compute=1
   # NOTE: that for each loss class, only one version should have compute=True
   aero:
-    # frontal_area_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/frontal_area_v0.py"]  # NOT ACTIVE (compute=0)
-    # crude_estimator_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/crude_estimator_v0.py"]  # NOT ACTIVE (compute=0)
     null_loss_aero_v1_: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
     gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
@@ -44,17 +42,11 @@ losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically
   #   surface_loss_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
 
   solar:
-    solar_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v0.py"]
-    solar_v0_brute_force: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v0_brute_force.py"]
-    solar_v1_brute_force: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v1_brute_force.py"]
-    solar_v2: [0, 100.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v2.py"]
-    solar_v3: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3.py"]
-    #Everything above here is not really used/garbage compared to V3B and above
-    solar_v3B: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B.py"]
+    solar_v3B_2: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
     solar_v4: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
     solar_v5: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
-    solar_v7: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
+    solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
     null_loss_solar_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/null_loss_solar_v1.py"]
 
   total:
