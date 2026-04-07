@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from torch import nn
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import cp_field_to_drag
 
 from ..dataloader.metadata import DATASET_METADATA
 
@@ -210,16 +211,91 @@ class TrainerBase:
         return self.loss_fn(pred, y_batch)
 
     def validate(self, loader):
+        """Validate on Cp field and compute + log drag error integrated from Cp.
+
+        Returns:
+            avg_loss (float): average Cp loss over the validation set.
+        """
         self.model.eval()
         total_loss = 0.0
+        n_batches = 0
+
+        drag_errors = []
+        drag_preds = []  # predicted integrated drag (from Cp_pred)
+        drag_gts_integrated = []  # GT integrated drag (from Cp_gt)
+        drag_gts_sim = []  # GT drag from simulation (data.drag_gt), if available
+
         with torch.no_grad():
-            for x_batch, y_batch in loader:
-                x_in = x_batch.to(self.device).squeeze(1)
-                y_in = y_batch.to(self.device).squeeze(1)
-                pred = self.model(self.rigraph, x_in)
-                loss = self.loss_fn(pred, y_in)
+            for batch in loader:
+                data = batch.to(self.device)
+
+                # Model input and GT Cp field
+                x_in = data.x
+                cp_gt = getattr(data, "cp_gt", None)
+                if cp_gt is None:
+                    cp_gt = data.y
+
+                with self.autocast_ctx:
+                    cp_pred = self.model(self.rigraph, x_in)  # predicted Cp field
+
+                # ----- Cp loss -----
+                loss = self.loss_fn(cp_pred, cp_gt)
                 total_loss += loss.item()
-        return total_loss / len(loader)
+                n_batches += 1
+
+                # ----- Integrate Cp_pred -> drag_pred -----
+                drag_pred = cp_field_to_drag(
+                    cp_field=cp_pred.squeeze(-1),
+                    normals=data.normals,
+                    face=data.face,
+                    pos=data.pos,
+                    v_inf=25.0,  # or float(data.v_inf) if available
+                    drag_direction=0,
+                )
+
+                # ----- Integrate Cp_gt -> drag_gt_from_cp -----
+                drag_gt_from_cp = cp_field_to_drag(
+                    cp_field=cp_gt.squeeze(-1),
+                    normals=data.normals,
+                    face=data.face,
+                    pos=data.pos,
+                    v_inf=25.0,  # must match value used above
+                    drag_direction=0,
+                )
+
+                # Store per-mesh drags (as scalars)
+                drag_preds.append(drag_pred.detach().cpu().item())
+                drag_gts_integrated.append(drag_gt_from_cp.detach().cpu().item())
+
+                # Optional: GT drag from simulation, if provided by dataset
+                if hasattr(data, "drag_gt"):
+                    drag_gts_sim.append(data.drag_gt.detach().cpu().item())
+                else:
+                    # Keep lengths in sync; store NaN if not available
+                    drag_gts_sim.append(float("nan"))
+
+                # ----- drag error between integrated Cp_pred and Cp_gt -----
+                drag_error = torch.abs(drag_pred - drag_gt_from_cp).view(-1)
+                drag_errors.append(drag_error)
+
+        avg_loss = total_loss / max(n_batches, 1)
+        mean_drag_error = torch.cat(drag_errors).mean().item() if drag_errors else 0.0
+
+        # Log from TrainerBase itself (rank 0 only)
+        if self.setup_config.get("rank", 0) == 0:
+            self.tracker.log_metrics(
+                {
+                    "val/loss": avg_loss,
+                    "val/drag_error": mean_drag_error,
+                    # per-mesh arrays, index = mesh index in fixed validation set
+                    "val/drag_pred_all": drag_preds,
+                    "val/drag_gt_integrated_all": drag_gts_integrated,
+                    "val/drag_gt_sim_all": drag_gts_sim,
+                }
+            )
+
+        # keep return type as float so optimizers do not need changes
+        return avg_loss
 
     def fit(self, _verbose=False):
         result = self.optimizer.optimize(self)
