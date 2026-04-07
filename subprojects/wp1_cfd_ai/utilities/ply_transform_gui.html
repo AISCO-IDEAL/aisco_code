@@ -1395,10 +1395,10 @@
                 measureGroup.add(line);
                 // Distance label
                 const dist = p1.distanceTo(p2);
+                const distM = dist / 1000;
                 let text;
-                if (dist >= 1000) text = (dist / 1000).toPrecision(4) + ' km';
-                else if (dist >= 0.01) text = dist.toPrecision(4) + ' m';
-                else text = dist.toExponential(2) + ' m';
+                if (distM >= 0.001) text = distM.toPrecision(4) + ' m';
+                else text = distM.toExponential(2) + ' m';
                 const cvs = document.createElement('canvas');
                 cvs.width = 256; cvs.height = 64;
                 const c = cvs.getContext('2d');
