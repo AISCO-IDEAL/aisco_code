@@ -1079,8 +1079,10 @@
         function updateGrid() {
             if (gridHelper) { scene.remove(gridHelper); gridHelper = null; }
             gridStep = 0;
-            if (!gridVisible || !activeMesh) return;
-            const box = new THREE.Box3().setFromObject(activeMesh);
+            const originData = meshStore.original;
+            if (!gridVisible || !originData) return;
+            const pos = originData.positions;
+            const box = new THREE.Box3().setFromArray(pos);
             const sz = box.getSize(new THREE.Vector3());
             const ctr = box.getCenter(new THREE.Vector3());
             const maxDim = Math.max(sz.x, sz.y, sz.z) || 1;
@@ -1233,7 +1235,6 @@
             if (fit) fitToMesh();
             currentMeshData = data;
             updateAxisTransform();
-            updateGrid();
             updateStatsPanel();
             updateViewIndicator();
         }
@@ -1269,8 +1270,11 @@
                 meshStore.steps = [];
                 document.getElementById('step-strip').classList.remove('visible');
                 window.clearMeasurements();
+                showMesh(data, role, fit);
+                updateGrid();
+            } else {
+                showMesh(data, role, fit);
             }
-            showMesh(data, role, fit);
         };
 
         window.resetCamera = function () { fitToMesh(); };
@@ -1392,9 +1396,9 @@
                 // Distance label
                 const dist = p1.distanceTo(p2);
                 let text;
-                if (dist >= 1000) text = (dist / 1000).toPrecision(4) + 'k';
-                else if (dist >= 0.01) text = dist.toPrecision(4);
-                else text = dist.toExponential(2);
+                if (dist >= 1000) text = (dist / 1000).toPrecision(4) + ' km';
+                else if (dist >= 0.01) text = dist.toPrecision(4) + ' m';
+                else text = dist.toExponential(2) + ' m';
                 const cvs = document.createElement('canvas');
                 cvs.width = 256; cvs.height = 64;
                 const c = cvs.getContext('2d');
