@@ -58,6 +58,7 @@ class BaseModel(nn.Module):
         renderer_manager: VisualisationManager | None = None,  # noqa: ARG002
         renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
         wandb_name: str | None = None,  # noqa: ARG002
+        debug_manager=None,  # noqa: ARG002
     ) -> None:
         super().train()  # Set training attribute of inherited model to true, ensures things like e.g. dropout work properly
 

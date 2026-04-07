@@ -7,11 +7,13 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import cast
 
 import torch
 import trimesh
 
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MarchingCubesExtractor
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing, str_hashing
@@ -22,7 +24,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.kaolin_conversions import 
 
 
 def allround_save_data(  # noqa: PLR0915
-    model: BaseModel,  # Model to save data from
+    model: BaseModel | ConcatBaseModel,  # Model to save data from
     wandb_run: str | None = None,  # Name of the wandb run to log to (e.g. "beautiful-banana-164")
     save_mesh: bool = True,  # Whether to save the mesh data
     save_model: bool = True,  # Whether to save the model data,
@@ -32,6 +34,7 @@ def allround_save_data(  # noqa: PLR0915
     verbose: bool = True,
     pretraining: bool = False,
     marching_cubes_usage: bool = False,
+    device: str = "cuda",
 ) -> None:
     """
     Save model data to a specified file path in JSON format, with options to save mesh and model state dictionary.
@@ -114,10 +117,10 @@ def allround_save_data(  # noqa: PLR0915
         # Use a copy to avoid disrupting training
 
         if marching_cubes_usage != "True":
-            temp_model = copy.deepcopy(model).cpu()
+            temp_model = copy.deepcopy(model).to(device)
             grid_res = resolution
             verts, faces = get_diff_mesh(
-                temp_model, grid_res=grid_res, device="cpu"
+                cast(BaseModel, temp_model), grid_res=grid_res, device=device
             )  # fsanche: keeping this in case marching cubes doest work. this one is the original.
             if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
                 print(f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
@@ -138,7 +141,7 @@ def allround_save_data(  # noqa: PLR0915
                 try:
                     print(f"{thread_label} Started worker.", flush=True)
 
-                    extractor = MarchingCubesExtractor(device="cpu", verbose=False)
+                    extractor = MarchingCubesExtractor(device=device, verbose=False)
 
                     extractor.set_grid(
                         bbox=[[-5000, 5000], [-5000, 5000], [-5000, 5000]],
@@ -206,7 +209,7 @@ def allround_save_data(  # noqa: PLR0915
 
 
 def fetch_pretrained_model(
-    model: BaseModel,
+    model: BaseModel | ConcatBaseModel,
     pretrained_path: str = "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_models",
     verbose: bool = True,
 ) -> None | Path:
@@ -266,7 +269,7 @@ def fetch_pretrained_model(
 
 # Not usesd as of yet. Maybe once we create different pretrained shapes
 def save_pretrained_model(
-    model: BaseModel,
+    model: BaseModel | ConcatBaseModel,
     file_path: str = "cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/pretrained_models",
     verbose: bool = True,
     shape: str = "sphere_1m",
