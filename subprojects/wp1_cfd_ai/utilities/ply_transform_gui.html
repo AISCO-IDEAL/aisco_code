@@ -749,6 +749,66 @@
         .step-wrap.selected .step-lbl {
             color: var(--ac);
         }
+
+        /* ── Stats panel ── */
+        #stats-panel {
+            position: absolute;
+            top: 50px;
+            right: 11px;
+            background: var(--tb-bg);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--bd2);
+            border-radius: 8px;
+            padding: .65rem .85rem;
+            z-index: 10;
+            font-size: .68rem;
+            color: var(--tx2);
+            line-height: 1.85;
+            display: none;
+            min-width: 210px;
+            transition: background .25s, border-color .25s;
+            font-family: 'Cascadia Code', 'Fira Mono', monospace;
+        }
+
+        #stats-panel.visible {
+            display: block;
+        }
+
+        .stat-hdr {
+            color: var(--tx);
+            font-weight: 700;
+            font-size: .72rem;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin-bottom: .15rem;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            gap: .8rem;
+        }
+
+        .stat-lbl {
+            color: var(--tx3);
+        }
+
+        .stat-val {
+            color: var(--tx);
+            font-weight: 500;
+            text-align: right;
+        }
+
+        .stat-sep {
+            border: none;
+            border-top: 1px solid var(--bd2);
+            margin: .3rem 0;
+        }
+
+        .stat-grid {
+            font-size: .62rem;
+            color: var(--tx3);
+            margin-top: .15rem;
+        }
     </style>
 </head>
 
@@ -883,11 +943,16 @@
             <label class="color-pick" title="Model color">
                 <input type="color" id="mesh-color" value="#5a70ef" oninput="setMeshColor(this.value)">
             </label>
+            <button onclick="toggleGrid()" id="grid-btn">▦ Grid</button>
+            <button onclick="toggleStats()" id="stats-btn">≡ Stats</button>
+            <button onclick="toggleMeasure()" id="measure-btn">↗ Measure</button>
+            <button onclick="clearMeasurements()" id="clear-meas-btn" style="display:none">✕ Clear</button>
         </div>
         <div id="view-indicator">
             <span class="vi-dot"></span>
             <span id="vi-text"></span>
         </div>
+        <div id="stats-panel"></div>
         <div id="vloading">
             <div class="big-spin"></div>
         </div>
@@ -929,6 +994,14 @@
         let viewRole = 'none';          // 'original' | 'preview' | 'step-N'
         let savedRole = null;
         let savedData = null;
+        let gridHelper = null;
+        let gridVisible = false;
+        let gridStep = 0;
+        let measureMode = false;
+        let pendingMeasurePoint = null;
+        const measureGroup = new THREE.Group();
+        let statsVisible = false;
+        let currentMeshData = null;
 
         /* ── Scene setup ── */
         function getSceneBg() {
@@ -1000,6 +1073,76 @@
             scene.add(axisGroup);
         }
         createAxisSystem();
+        scene.add(measureGroup);
+
+        /* ── Grid ── */
+        function updateGrid() {
+            if (gridHelper) { scene.remove(gridHelper); gridHelper = null; }
+            gridStep = 0;
+            const originData = meshStore.original;
+            if (!gridVisible || !originData) return;
+            const pos = originData.positions;
+            const box = new THREE.Box3().setFromArray(pos);
+            const sz = box.getSize(new THREE.Vector3());
+            const ctr = box.getCenter(new THREE.Vector3());
+            const maxDim = Math.max(sz.x, sz.y, sz.z) || 1;
+            const rawStep = maxDim / 5;
+            const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+            const norm = rawStep / mag;
+            const nice = norm <= 1.5 ? 1 : norm <= 3.5 ? 2 : norm <= 7.5 ? 5 : 10;
+            gridStep = nice * mag;
+            const extent = Math.ceil(maxDim * 1.5 / gridStep) * gridStep;
+            const divs = Math.round(extent / gridStep);
+            const isDark = document.documentElement.dataset.theme !== 'light';
+            gridHelper = new THREE.GridHelper(
+                extent, divs,
+                isDark ? 0x556688 : 0x8899bb,
+                isDark ? 0x2a3050 : 0xb0b8cc
+            );
+            gridHelper.rotation.x = Math.PI / 2;
+            gridHelper.position.set(
+                Math.round(ctr.x / gridStep) * gridStep,
+                Math.round(ctr.y / gridStep) * gridStep,
+                box.min.z
+            );
+            scene.add(gridHelper);
+        }
+
+        /* ── Stats ── */
+        function updateStatsPanel() {
+            const panel = document.getElementById('stats-panel');
+            if (!statsVisible || !currentMeshData) { return; }
+            const data = currentMeshData;
+            const pos = data.positions;
+            const vc = data.vertex_count;
+            let mnX = Infinity, mxX = -Infinity;
+            let mnY = Infinity, mxY = -Infinity;
+            let mnZ = Infinity, mxZ = -Infinity;
+            for (let i = 0; i < vc; i++) {
+                const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+                if (x < mnX) mnX = x; if (x > mxX) mxX = x;
+                if (y < mnY) mnY = y; if (y > mxY) mxY = y;
+                if (z < mnZ) mnZ = z; if (z > mxZ) mxZ = z;
+            }
+            const f = fmtDim;
+            let h = '<div class="stat-hdr">Model Statistics</div>';
+            h += '<div class="stat-row"><span class="stat-lbl">Vertices</span><span class="stat-val">' + vc.toLocaleString() + '</span></div>';
+            h += '<div class="stat-row"><span class="stat-lbl">Faces</span><span class="stat-val">' + data.face_count.toLocaleString() + '</span></div>';
+            h += '<hr class="stat-sep">';
+            h += '<div class="stat-row"><span class="stat-lbl">X range</span><span class="stat-val">' + f(mnX) + ' \u2026 ' + f(mxX) + '</span></div>';
+            h += '<div class="stat-row"><span class="stat-lbl">Y range</span><span class="stat-val">' + f(mnY) + ' \u2026 ' + f(mxY) + '</span></div>';
+            h += '<div class="stat-row"><span class="stat-lbl">Z range</span><span class="stat-val">' + f(mnZ) + ' \u2026 ' + f(mxZ) + '</span></div>';
+            h += '<hr class="stat-sep">';
+            h += '<div class="stat-row"><span class="stat-lbl">Size X</span><span class="stat-val">' + f(mxX - mnX) + '</span></div>';
+            h += '<div class="stat-row"><span class="stat-lbl">Size Y</span><span class="stat-val">' + f(mxY - mnY) + '</span></div>';
+            h += '<div class="stat-row"><span class="stat-lbl">Size Z</span><span class="stat-val">' + f(mxZ - mnZ) + '</span></div>';
+            h += '<hr class="stat-sep">';
+            h += '<div class="stat-row"><span class="stat-lbl">Center</span><span class="stat-val">' + f(data.center[0]) + ', ' + f(data.center[1]) + ', ' + f(data.center[2]) + '</span></div>';
+            if (gridVisible && gridStep) {
+                h += '<div class="stat-grid">Grid spacing: ' + f(gridStep) + '</div>';
+            }
+            panel.innerHTML = h;
+        }
 
         function updateAxisTransform() {
             if (!axisGroup || !activeMesh) return;
@@ -1090,7 +1233,9 @@
             document.getElementById('vplaceholder').style.display = 'none';
             updateOverlay(data);
             if (fit) fitToMesh();
+            currentMeshData = data;
             updateAxisTransform();
+            updateStatsPanel();
             updateViewIndicator();
         }
 
@@ -1124,8 +1269,12 @@
                 meshStore.current = null;
                 meshStore.steps = [];
                 document.getElementById('step-strip').classList.remove('visible');
+                window.clearMeasurements();
+                showMesh(data, role, fit);
+                updateGrid();
+            } else {
+                showMesh(data, role, fit);
             }
-            showMesh(data, role, fit);
         };
 
         window.resetCamera = function () { fitToMesh(); };
@@ -1164,7 +1313,118 @@
 
         window.setViewerTheme = function () {
             scene.background = getSceneBg();
+            if (gridVisible) updateGrid();
         };
+
+        window.toggleGrid = function () {
+            gridVisible = !gridVisible;
+            document.getElementById('grid-btn').classList.toggle('active', gridVisible);
+            updateGrid();
+            updateStatsPanel();
+        };
+
+        window.toggleStats = function () {
+            statsVisible = !statsVisible;
+            document.getElementById('stats-btn').classList.toggle('active', statsVisible);
+            document.getElementById('stats-panel').classList.toggle('visible', statsVisible);
+            if (statsVisible) updateStatsPanel();
+        };
+
+        window.toggleMeasure = function () {
+            measureMode = !measureMode;
+            document.getElementById('measure-btn').classList.toggle('active', measureMode);
+            canvas.style.cursor = measureMode ? 'crosshair' : '';
+            if (!measureMode) pendingMeasurePoint = null;
+        };
+
+        window.clearMeasurements = function () {
+            while (measureGroup.children.length) {
+                const c = measureGroup.children[0];
+                measureGroup.remove(c);
+                if (c.geometry) c.geometry.dispose();
+                if (c.material) {
+                    if (c.material.map) c.material.map.dispose();
+                    c.material.dispose();
+                }
+            }
+            pendingMeasurePoint = null;
+            document.getElementById('clear-meas-btn').style.display = 'none';
+        };
+
+        /* ── Measurement click handler ── */
+        const raycaster = new THREE.Raycaster();
+        const mouseVec = new THREE.Vector2();
+        let ptrDownPos = null;
+
+        canvas.addEventListener('pointerdown', (e) => {
+            if (measureMode) ptrDownPos = { x: e.clientX, y: e.clientY };
+        });
+
+        canvas.addEventListener('click', (e) => {
+            if (!measureMode || !activeMesh || !ptrDownPos) return;
+            const dx = e.clientX - ptrDownPos.x, dy = e.clientY - ptrDownPos.y;
+            ptrDownPos = null;
+            if (Math.hypot(dx, dy) > 5) return;
+
+            const rect = canvas.getBoundingClientRect();
+            mouseVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouseVec.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouseVec, camera);
+            const hits = raycaster.intersectObject(activeMesh);
+            if (!hits.length) return;
+
+            const pt = hits[0].point.clone();
+            const box = new THREE.Box3().setFromObject(activeMesh);
+            const maxDim = Math.max(...box.getSize(new THREE.Vector3()).toArray()) || 1;
+
+            // Sphere marker
+            const sGeo = new THREE.SphereGeometry(maxDim * 0.006, 12, 12);
+            const sMat = new THREE.MeshBasicMaterial({ color: 0xff4444, depthTest: false });
+            const sphere = new THREE.Mesh(sGeo, sMat);
+            sphere.position.copy(pt);
+            sphere.renderOrder = 999;
+            measureGroup.add(sphere);
+
+            if (pendingMeasurePoint) {
+                const p1 = pendingMeasurePoint, p2 = pt;
+                // Line
+                const lGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+                const lMat = new THREE.LineBasicMaterial({ color: 0xff4444, depthTest: false });
+                const line = new THREE.Line(lGeo, lMat);
+                line.renderOrder = 999;
+                measureGroup.add(line);
+                // Distance label
+                const dist = p1.distanceTo(p2);
+                const distM = dist / 1000;
+                let text;
+                if (distM >= 0.001) text = distM.toPrecision(4) + ' m';
+                else text = distM.toExponential(2) + ' m';
+                const cvs = document.createElement('canvas');
+                cvs.width = 256; cvs.height = 64;
+                const c = cvs.getContext('2d');
+                c.font = 'bold 28px sans-serif';
+                c.textAlign = 'center'; c.textBaseline = 'middle';
+                const tw = c.measureText(text).width + 20;
+                c.fillStyle = 'rgba(0,0,0,0.78)';
+                c.fillRect(128 - tw / 2, 6, tw, 44);
+                c.fillStyle = '#ff8888';
+                c.fillText(text, 128, 30);
+                const tex = new THREE.CanvasTexture(cvs);
+                const spMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+                const sprite = new THREE.Sprite(spMat);
+                const mid = p1.clone().add(p2).multiplyScalar(0.5);
+                mid.z += maxDim * 0.02;
+                sprite.position.copy(mid);
+                const s = maxDim * 0.12;
+                sprite.scale.set(s, s * 0.25, 1);
+                sprite.renderOrder = 1000;
+                measureGroup.add(sprite);
+                pendingMeasurePoint = null;
+            } else {
+                pendingMeasurePoint = pt;
+            }
+            document.getElementById('clear-meas-btn').style.display = '';
+        });
 
         /* ── Step thumbnails ── */
         function highlightThumb() {
