@@ -27,6 +27,7 @@ class ALMManager:
         self.gamma: float = gi.get("gamma", 0.01)
         self.gamma_aggressive: float = gi.get("gamma_aggressive", 1.1)
         self.use_alm_aggressive: bool = gi.get("ALM_aggressive") == "True"
+        self.alm_aggressive_capu: float = gi.get("ALM_aggressive_capu", 0.25)
 
         alm_thresholds = gi.get("alm_thresholds")
         self.thresholds_tensor: torch.Tensor | None = torch.tensor(alm_thresholds, device=device) if alm_thresholds else None
@@ -72,6 +73,7 @@ class ALMManager:
             constrained_losses=c_for_alm,
             thresholds=self.thresholds_tensor,
             use_alm_aggressive=self.use_alm_aggressive,
+            alm_aggressive_capu=self.alm_aggressive_capu,
         )
 
     def get_telemetry(self) -> dict[str, float]:

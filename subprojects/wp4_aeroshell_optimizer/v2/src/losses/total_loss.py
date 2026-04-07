@@ -99,6 +99,7 @@ class TotalLoss:
         self.alm_manager: ALMManager | None = None
         # Stores the last computed cruising speed (if CSE active) for telemetry.
         self._last_cruising_speed: torch.Tensor | None = None
+        self._last_cruising_speed_diagnostics: dict | None = None
         # Rolling history for loss-competition stacked-area chart (one dict per epoch).
         self._raw_loss_history: list[dict[str, float]] = []
         self._weighted_loss_history: list[dict[str, float]] = []
@@ -288,15 +289,20 @@ class TotalLoss:
                 tol=1e-4,
             )
             self._last_cruising_speed = v_cruise
+            self._last_cruising_speed_diagnostics = {
+                "cruising_speed_ms": v_cruise.item(),
+            }
             self._last_weighted_losses["cse_objective"] = -v_cruise
         else:
             self._last_cruising_speed = None
+            self._last_cruising_speed_diagnostics = None
             for cat in ("aero", "solar"):
                 if cat not in self._objective_losses:
                     continue
                 name: str = self._objective_losses[cat][0]
                 w: float = self._manual_weights.get(name, 1.0)
-                self._last_weighted_losses[name] = raw_losses[name] * w
+                sign: float = -1.0 if cat == "solar" else 1.0
+                self._last_weighted_losses[name] = sign * raw_losses[name] * w
 
         # ---- Constraints -------------------------------------------------
         constraint_names: list[str] = [n for (n, _inst) in self._constraint_losses.values()]
@@ -350,7 +356,12 @@ class TotalLoss:
 
         # individual weighted contributions
         for name, val in self._last_weighted_losses.items():
-            log_dict[f"weighted_losses/{name}"] = val.item()
+            # Negate cse_objective back to positive for physical meaning in logs
+            # (we minimize -v_cruise internally, but log +v_cruise for readability)
+            logged_val = (
+                -val.item() if name == "cse_objective" else val.item()
+            )  # the CSE is logged negatively, as we have a minimization scheme
+            log_dict[f"weighted_losses/{name}"] = logged_val
 
         # cruising speed
         if self._last_cruising_speed is not None:
@@ -630,6 +641,10 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # Orchestrator
     # ------------------------------------------------------------------
+    def get_cruising_speed_diagnostics(self) -> dict | None:
+        """Return diagnostics from the last cruising speed solver call, or None if CSE is inactive."""
+        return self._last_cruising_speed_diagnostics
+
     def get_total_loss(
         self, model: TrainModel, epoch_name: int = -1, skip_telemetry: bool = False
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]] | torch.Tensor:
