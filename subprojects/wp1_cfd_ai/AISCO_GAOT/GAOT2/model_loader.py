@@ -23,14 +23,12 @@ logger = logging.getLogger(__name__)
 
 class ModelLoader:
     def __init__(self, cfd_config: dict, device: str) -> None:
-        model_id = cfd_config["model_id"]
-        self.rendering = cfd_config["visualisations"]
-        self.v_inf = float(cfd_config.get("v_inf", 25.0))
-        self.rho = float(cfd_config.get("rho", 1.225))
-        self.model_path = self._get_checkpoint_path(model_id)
+        self.cfd_config = cfd_config
         self.device = device
+
+        self.model_path = self._get_checkpoint_path()
         self._load_model()
-        print("initialising Extractor")
+
         self.extractor = MeshSDFExtractor(
             resolution=128,
             bbox=[-3e3, 3e3, -3e3, 3e3, -3e3, 3e3],
@@ -40,21 +38,20 @@ class ModelLoader:
             max_iters=1000,
             gradient_max=cfd_config["gradient_max"],
         )
-        # keep visualiser on self so we can reuse it
+
         self.visualiser = Visualiser(device=self.device)
         self.gradlogger = MeshSDFGrads(self.visualiser, intensity=10)
 
-    def _get_checkpoint_path(self, model_id):
+    def _get_checkpoint_path(self):
         df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
         for _, row in df.iterrows():
             setup_dict = ast.literal_eval(row["setup"])
-            if str(setup_dict.get("id")) == str(model_id):
+            if str(setup_dict.get("id")) == str(self.cfd_config["model_id"]):
                 path_dict = ast.literal_eval(row["path"])
                 return path_dict.get("ckpt_path")
         raise ValueError("Wrong ID for GAOT-Model")
 
     def _load_model(self) -> None:
-        # ── load config YAML saved alongside the checkpoint ─────────────
         config_path = self.model_path.replace("model.pt", "config.yaml")
         if not os.path.exists(config_path):
             raise FileNotFoundError(
@@ -64,46 +61,15 @@ class ModelLoader:
         with open(config_path) as f:
             config = yaml.safe_load(f)
 
-        print(config)
         self._og_config = copy.deepcopy(config)
 
-        if "model" in config and "args" in config["model"]:
-            config = config["model"]["args"]
+        config = config["model"]["args"]
 
-        if "magno" in config:
-            config["magno"]["precompute_edges"] = False
+        config["magno"]["precompute_edges"] = False
+        config["transformer"]["norm_eps"] = float(config["transformer"]["norm_eps"])
 
-        if type(config["transformer"]["norm_eps"]) is str:
-            config["transformer"]["norm_eps"] = float(config["transformer"]["norm_eps"])
-
-        # ── build model from config dict ─────────────────────────────────
         self.gaot = GAOT3D(config=config).to(self.device)
         self.gaot.eval()
-
-        # ── load weights ─────────────────────────────────────────────────
-        state = torch.load(self.model_path, map_location=self.device, weights_only=False)
-        if "model" in state:
-            sd = state["model"]
-        elif "state_dict" in state:
-            sd = state["state_dict"]
-        else:
-            sd = state
-
-        # Strip "module." prefix from DDP/DataParallel checkpoints
-        sd = {k.removeprefix("module."): v for k, v in sd.items()}
-        missing, unexpected = self.gaot.load_state_dict(sd, strict=False)
-        if unexpected:
-            logger.warning(
-                "Ignoring %d unexpected key(s) in checkpoint: %s",
-                len(unexpected),
-                unexpected,
-            )
-        if missing:
-            logger.warning(
-                "Missing %d key(s) in checkpoint (using init values): %s",
-                len(missing),
-                missing,
-            )
 
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
@@ -126,12 +92,12 @@ class ModelLoader:
 
         self.optimization_state["vertice_grads"] = dL_dvertices
 
-        if self.rendering:
+        if self.cfd_config["visualisations"]:
             self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
 
         cuppled_loss = loss.detach() + surrogate_loss - surrogate_loss.detach()
         assert cuppled_loss == loss.item() + surrogate_loss - surrogate_loss.item()
-        return cuppled_loss
+        return cuppled_loss * (-1)
 
     def _visualize_pressure_field(
         self,
@@ -139,14 +105,7 @@ class ModelLoader:
         mesh_verts: torch.Tensor,
         mesh_faces: torch.Tensor,
     ) -> None:
-        """
-        Visualise the predicted pressure field in the same style as
-        StaticTrainer3D._run_viz_for_sample (field part).
-
-        Uses a temporary PyG Data object + PyGDataLoader and logs a 3-panel
-        3D scatter figure (GT, Pred, |Diff|) to self.tracker.
-        """
-        if not self.rendering:
+        if not self.cfd_config["visualisations"]:
             return
         if pressure_field is None:
             return
@@ -245,23 +204,18 @@ class ModelLoader:
     def loss_fn(self, mesh_verts, mesh_faces):
         wandb.log({"Aero-resolution": mesh_verts.shape[0]}, step=self.epoch_name)
         if mesh_verts is None or mesh_verts.shape[0] == 0:
-            print("Fail")
             return torch.tensor(0.0, device=self.device)
         batch = self._reformat_data(mesh_verts, mesh_faces)
 
-        # ── latent token positions (registered buffer inside the model) ──
         tokens_pos = self.gaot.latent_tokens
 
-        # ── forward through GAOT3D ───────────────────────────────────────
         with torch.autograd.set_detect_anomaly(True):
             gaot_loss = self.gaot.forward(batch=batch, tokens_pos=tokens_pos)
 
         self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces, "vertice_grads": []}
 
-        # predicted pressure field from GAOT (key name "field" as in your code)
         pressure_field = gaot_loss["field"]
 
-        # visualize pressure on mesh every call
         self._visualize_pressure_field(pressure_field=pressure_field, mesh_verts=mesh_verts, mesh_faces=mesh_faces)
 
         int_drag_f = cp_field_to_drag(
@@ -269,11 +223,10 @@ class ModelLoader:
             normals=batch.c,
             face=mesh_faces.T,
             pos=mesh_verts * 1e-3,
-            v_inf=self.v_inf,
-            rho=self.rho,
+            v_inf=self.cfd_config["v_inf"],
+            rho=self.cfd_config["rho"],
         )
 
-        # Store diagnostics
         with torch.no_grad():
             self._last_diagnostics = {
                 "drag_value": int_drag_f.item(),
@@ -289,21 +242,17 @@ class ModelLoader:
                 "n_input_faces": int(mesh_faces.shape[0]),
                 "normals_flipped_count": getattr(self, "_normals_flipped_count", 0),
             }
-
-        print(f"Force-Value:{int_drag_f.item()}")
         return int_drag_f
 
     def _reformat_data(self, mesh_verts, mesh_faces):
         optim_verts = mesh_verts.to(self.device)
         mesh_faces = mesh_faces.to(self.device)
 
-        # ── flip geometry in x ───────────────────────────────────────────
         optim_verts = optim_verts.clone()
         optim_verts[:, 0] *= -1.0
 
-        # ── convert vertices from mm to meters (SDF model outputs mm, GAOT expects m) ──
         optim_verts_m = optim_verts * 1e-3
-        # ── per-vertex normals (fully differentiable, no in-place ops) ──
+
         v0 = optim_verts[mesh_faces[:, 0]]
         v1 = optim_verts[mesh_faces[:, 1]]
         v2 = optim_verts[mesh_faces[:, 2]]
@@ -316,7 +265,6 @@ class ModelLoader:
         normals_flipped = sdf_values < 0
         face_normals[normals_flipped] *= -1
         self._normals_flipped_count = int(normals_flipped.sum().item())
-        print("dumdidum", normals_flipped)
 
         num_verts = optim_verts.shape[0]
         all_idx = mesh_faces.reshape(-1)
@@ -326,13 +274,10 @@ class ModelLoader:
         vertex_normals = vertex_normals.index_add(0, all_idx, all_normals)
         vertex_normals = torch.nn.functional.normalize(vertex_normals, dim=-1)
 
-        # optional: also flip normals' x-component to be consistent
         vertex_normals[:, 0] *= -1.0
 
-        # ── build PyG batch ──────────────────────────────────────────────
         data = Data(pos=optim_verts_m, face=mesh_faces.T, c=vertex_normals)
 
-        # ── rescale positions to [-1, 1] using physical domain in meters ──
         if self._og_config["dataset"]["use_rescale_new"]:
             rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-5.0, -1.3, -1.2], [4.7, 1.7, 1.6]))
         else:
