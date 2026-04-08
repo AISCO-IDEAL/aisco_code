@@ -5,6 +5,7 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+import wandb
 import torch
 import torch.distributed as dist
 from torch import nn
@@ -210,7 +211,7 @@ class TrainerBase:
         pred = self.model(self.rigraph, x_batch)
         return self.loss_fn(pred, y_batch)
 
-    def validate(self, loader):
+    def validate(self, loader, epoch_name):
         """Validate on Cp field and compute + log drag error integrated from Cp.
 
         Returns:
@@ -238,7 +239,6 @@ class TrainerBase:
                 with self.autocast_ctx:
                     cp_pred = self.model(self.rigraph, x_in)  # predicted Cp field
 
-                # ----- Cp loss -----
                 loss = self.loss_fn(cp_pred, cp_gt)
                 total_loss += loss.item()
                 n_batches += 1
@@ -249,7 +249,7 @@ class TrainerBase:
                     normals=data.normals,
                     face=data.face,
                     pos=data.pos,
-                    v_inf=25.0,  # or float(data.v_inf) if available
+                    v_inf=25.0,  
                     drag_direction=0,
                 )
 
@@ -259,42 +259,35 @@ class TrainerBase:
                     normals=data.normals,
                     face=data.face,
                     pos=data.pos,
-                    v_inf=25.0,  # must match value used above
+                    v_inf=25.0, 
                     drag_direction=0,
                 )
 
-                # Store per-mesh drags (as scalars)
                 drag_preds.append(drag_pred.detach().cpu().item())
                 drag_gts_integrated.append(drag_gt_from_cp.detach().cpu().item())
 
-                # Optional: GT drag from simulation, if provided by dataset
                 if hasattr(data, "drag_gt"):
                     drag_gts_sim.append(data.drag_gt.detach().cpu().item())
                 else:
-                    # Keep lengths in sync; store NaN if not available
                     drag_gts_sim.append(float("nan"))
 
-                # ----- drag error between integrated Cp_pred and Cp_gt -----
                 drag_error = torch.abs(drag_pred - drag_gt_from_cp).view(-1)
                 drag_errors.append(drag_error)
 
         avg_loss = total_loss / max(n_batches, 1)
         mean_drag_error = torch.cat(drag_errors).mean().item() if drag_errors else 0.0
 
-        # Log from TrainerBase itself (rank 0 only)
-        if self.setup_config.get("rank", 0) == 0:
-            self.tracker.log_metrics(
-                {
-                    "val/loss": avg_loss,
-                    "val/drag_error": mean_drag_error,
-                    # per-mesh arrays, index = mesh index in fixed validation set
-                    "val/drag_pred_all": drag_preds,
-                    "val/drag_gt_integrated_all": drag_gts_integrated,
-                    "val/drag_gt_sim_all": drag_gts_sim,
-                }
-            )
 
-        # keep return type as float so optimizers do not need changes
+        wandb.logg(
+            {
+                "val/loss": avg_loss,
+                "val/drag_error": mean_drag_error,
+                "val/drag_pred_all": drag_preds,
+                "val/drag_gt_integrated_all": drag_gts_integrated,
+                "val/drag_gt_sim_all": drag_gts_sim,
+            }, step = epoch_name
+        )
+
         return avg_loss
 
     def fit(self, _verbose=False):

@@ -473,7 +473,7 @@ class AdamWOptimizer:
                 epochs.append(epoch)
 
                 # Capture validation metrics
-                val_metrics = trainer.validate(trainer.val_loader)
+                val_metrics = trainer.validate(trainer.val_loader, epoch_name=epoch)
                 val_loss = val_metrics["loss"]
                 val_mse = val_metrics["mse"]
                 val_rel_l2 = val_metrics["rel_l2"]
