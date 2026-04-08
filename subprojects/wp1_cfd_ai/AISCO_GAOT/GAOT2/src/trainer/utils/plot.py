@@ -6,7 +6,7 @@ import numpy as np
 import pyvista as pv
 from matplotlib import cm
 from matplotlib import colors as mcolors
-from matplotlib.ticker import FormatStrFormatter
+from matplotlib.ticker import FormatStrFormatter, ScalarFormatter
 
 
 ############################### 3D plotting   ###############################
@@ -333,6 +333,13 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
             ax.set_xlabel("X")
             ax.set_ylabel("Y")
             ax.set_zlabel("Z")
+            # Show plain numeric ticks (no scientific offset text) to avoid
+            # confusion when large configured axis limits are used.
+            plain_fmt = ScalarFormatter(useOffset=False)
+            plain_fmt.set_scientific(False)
+            ax.xaxis.set_major_formatter(plain_fmt)
+            ax.yaxis.set_major_formatter(plain_fmt)
+            ax.zaxis.set_major_formatter(plain_fmt)
             ax.view_init(elev=view_angle[0], azim=view_angle[1])
             if fixed_axis_limits is not None:
                 xlims = fixed_axis_limits["x"]

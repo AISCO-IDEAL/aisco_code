@@ -138,54 +138,66 @@ class StaticTrainer3D(TrainerBase):
             )
 
         # Visualization consistency settings are initialized after dataset stats are available.
-        self._fixed_axis_limits = None
+        self._viz_fixed_axis_limits = None
         self._viz_fixed_clim_common = None
         self._viz_fixed_clim_diff = None
 
     def _init_viz_consistency_settings(self):
         """Build fixed axis and color ranges for cross-epoch/run comparability."""
-        # Axis limits: use exact physical domain bounds from metadata for accurate frame.
-        if _cfg_get(self.dataset_config, "viz_fixed_axes", True):
-            domain = getattr(self.metadata, "domain_x", None)
-            if domain is not None:
-                x_min, y_min, z_min = [float(v) for v in domain[0]]
-                x_max, y_max, z_max = [float(v) for v in domain[1]]
-                self._viz_fixed_axis_limits = {
-                    "x": (x_min, x_max),
-                    "y": (y_min, y_max),
-                    "z": (z_min, z_max),
-                }
+        # Axis limits priority:
+        # 1) dataset.viz_axis_limits.{x,y,z} from config (exactly as specified)
+        # 2) fixed fallback to [-3, 3] on each axis
+        self._viz_fixed_axis_limits = None
+        axis_cfg = _cfg_get(self.dataset_config, "viz_axis_limits", None)
+        if axis_cfg is not None:
+            parsed_limits: dict[str, tuple[float, float]] = {}
+            for axis_name in ("x", "y", "z"):
+                axis_range = _cfg_get(axis_cfg, axis_name, None)
+                if axis_range is None or len(axis_range) != 2:
+                    raise ValueError(
+                        f"dataset.viz_axis_limits.{axis_name} must be a 2-element range [min, max]."
+                    )
+                axis_min = float(axis_range[0])
+                axis_max = float(axis_range[1])
+                if axis_max <= axis_min:
+                    raise ValueError(
+                        f"Invalid dataset.viz_axis_limits.{axis_name}: min={axis_min} must be < max={axis_max}."
+                    )
+                parsed_limits[axis_name] = (axis_min, axis_max)
+            self._viz_fixed_axis_limits = parsed_limits
+        else:
+            self._viz_fixed_axis_limits = {
+                "x": (-3.0, 3.0),
+                "y": (-3.0, 3.0),
+                "z": (-3.0, 3.0),
+            }
 
-        # Color limits: enforce configured fixed ranges for stable cross-epoch comparison.
-        if _cfg_get(self.dataset_config, "viz_fixed_colormap", True):
-            vmin = _cfg_get(self.dataset_config, "viz_field_vmin", None)
-            vmax = _cfg_get(self.dataset_config, "viz_field_vmax", None)
-            diff_vmax = _cfg_get(self.dataset_config, "viz_abs_diff_vmax", None)
+        # Color limits: always enforce configured fixed ranges for stable
+        # cross-epoch/run comparison and consistent GT/Pred color mapping.
+        vmin = _cfg_get(self.dataset_config, "viz_field_vmin", None)
+        vmax = _cfg_get(self.dataset_config, "viz_field_vmax", None)
+        diff_vmax = _cfg_get(self.dataset_config, "viz_abs_diff_vmax", None)
 
-            if vmin is None or vmax is None:
-                raise ValueError(
-                    "viz_fixed_colormap=true requires dataset.viz_field_vmin and dataset.viz_field_vmax in config."
-                )
-            if diff_vmax is None:
-                raise ValueError(
-                    "viz_fixed_colormap=true requires dataset.viz_abs_diff_vmax in config."
-                )
+        if vmin is None or vmax is None:
+            raise ValueError("dataset.viz_field_vmin and dataset.viz_field_vmax are required for visualization.")
+        if diff_vmax is None:
+            raise ValueError("dataset.viz_abs_diff_vmax is required for visualization.")
 
-            vmin_f = float(vmin)
-            vmax_f = float(vmax)
-            diff_vmax_f = float(diff_vmax)
+        vmin_f = float(vmin)
+        vmax_f = float(vmax)
+        diff_vmax_f = float(diff_vmax)
 
-            if vmax_f <= vmin_f:
-                raise ValueError(
-                    f"Invalid viz field range: viz_field_vmin={vmin_f} must be < viz_field_vmax={vmax_f}."
-                )
-            if diff_vmax_f <= 0.0:
-                raise ValueError(
-                    f"Invalid viz_abs_diff_vmax={diff_vmax_f}; it must be > 0."
-                )
+        if vmax_f <= vmin_f:
+            raise ValueError(
+                f"Invalid viz field range: viz_field_vmin={vmin_f} must be < viz_field_vmax={vmax_f}."
+            )
+        if diff_vmax_f <= 0.0:
+            raise ValueError(
+                f"Invalid viz_abs_diff_vmax={diff_vmax_f}; it must be > 0."
+            )
 
-            self._viz_fixed_clim_common = (vmin_f, vmax_f)
-            self._viz_fixed_clim_diff = (0.0, diff_vmax_f)
+        self._viz_fixed_clim_common = (vmin_f, vmax_f)
+        self._viz_fixed_clim_diff = (0.0, diff_vmax_f)
 
         logging.getLogger(__name__).info(
             "Viz consistency settings: axis_limits=%s, field_clim=%s, diff_clim=%s",
@@ -790,7 +802,8 @@ class StaticTrainer3D(TrainerBase):
         with torch.no_grad():
             pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
 
-        coords = batch.pos.cpu().numpy()
+        coords_tensor = batch.pos_orig if hasattr(batch, "pos_orig") else batch.pos
+        coords = coords_tensor.cpu().numpy()
         fname = getattr(sample, "filename", split_label)
         suffix = f"_{sample_idx}" if sample_idx > 0 else ""
 

@@ -140,8 +140,12 @@ dataset:
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
     num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
-    viz_fixed_axes: true
-    viz_fixed_colormap: true
+    # Explicit 3D visualization box limits used for all GT/Pred/Error panels.
+    # Edit these ranges to control the visualized x/y/z box exactly.
+    viz_axis_limits:
+        x: [-100, 100]
+        y: [-100, 100]
+        z: [-50, 50]
     viz_field_vmin: -2.0
     viz_field_vmax: 2.0
     viz_abs_diff_vmax: 1.0
@@ -153,7 +157,7 @@ optimizer:
         weight_decay: 1e-05
         epoch: 300
         loss_scale: 1.0
-        eval_every_eps: 1
+        eval_every_eps: 1  #Visualisation frequency, Set to 0 to disable
         scheduler: "mix"
         max_lr: 0.003
         min_lr: 2e-4
