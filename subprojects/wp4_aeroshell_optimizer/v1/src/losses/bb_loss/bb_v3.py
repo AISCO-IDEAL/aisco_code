@@ -3,7 +3,7 @@ import os
 import numpy as np
 import torch
 
-from subprojects.wp2_assembler.version4.components.nbz import call_assembly
+from subprojects.wp2_assembler.version3.components.nbz import call_assembly  # stays version 3, as bb_v3.py
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.s_d_ffrom_cad_query import SDFfromCadQuery
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.visualizer import AutoVisToWandB

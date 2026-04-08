@@ -330,7 +330,11 @@ class TotalLoss:
                     continue
                 name: str = self._objective_losses[cat][0]
                 w: float = self._manual_weights.get(name, 1.0)
-                self._last_weighted_losses[name] = raw_losses[name] * w
+                # Manual objective mode minimizes weighted losses.
+                # Aero is already a minimization objective, but solar is a maximization
+                # objective (power in watts). Flip sign so minimizing total pushes power up.
+                sign: float = -1.0 if cat == "solar" else 1.0
+                self._last_weighted_losses[name] = sign * raw_losses[name] * w
 
         # ---- Constraints -------------------------------------------------
         constraint_names: list[str] = [n for (n, _inst) in self._constraint_losses.values()]
@@ -338,6 +342,7 @@ class TotalLoss:
 
         if self._use_alm:
             use_alm_aggressive: bool = gi.get("ALM_aggressive") == "True"
+            alm_aggressive_capu: float = float(gi.get("ALM_aggressive_capu", 0.25))
 
             # Detach for the multiplier update (no gradient through lambda/mu/nu update)
             c_for_alm: torch.Tensor = torch.stack([c.detach() for c in constraints])
@@ -355,6 +360,7 @@ class TotalLoss:
                 constrained_losses=c_for_alm,
                 thresholds=thresholds_tensor,
                 use_alm_aggressive=use_alm_aggressive,
+                alm_aggressive_capu=alm_aggressive_capu,
             )
 
             for i, cname in enumerate(constraint_names):

@@ -22,6 +22,7 @@ SolarLossConfigV3:
   auto_isovalue_if_out_of_range: true # fallback to mid-range level if 0.0 is outside sampled SDF range
   warn_mesh_extraction: true # keep one warning for diagnostics, avoids repetitive warning spam
   area_budget_mm2: 4000000
+  power_output_scale: 1.0 # extra scalar on top of internally computed watts for v3B_2 calibration/tuning
   power_conversion_factor: 250 #How many watts you get per square meter of projected solar area
   sun_dir: [-1.0,0.0,1.0] # Is also used for hte solar area validation stats
   device: "cuda"

@@ -73,6 +73,10 @@ class GAOT3D(nn.Module):
                 feature_names=scalar_cfg["features"],
                 latent_dim=self.node_latent_size,
                 hidden_dim=scalar_cfg.get("hidden_dim"),
+                mode=scalar_cfg.get("mode", "concat"),
+                position_aware=scalar_cfg.get("position_aware", False),
+                num_film_layers=scalar_cfg.get("num_film_layers", 2),
+                film_init_scale=scalar_cfg.get("film_init_scale", 0.1),
             )
         else:
             self.scalar_encoder = None
@@ -84,6 +88,10 @@ class GAOT3D(nn.Module):
                 feature_names=late_scalar_cfg["features"],
                 latent_dim=self.node_latent_size,
                 hidden_dim=late_scalar_cfg.get("hidden_dim"),
+                mode=late_scalar_cfg.get("mode", "concat"),
+                position_aware=late_scalar_cfg.get("position_aware", False),
+                num_film_layers=late_scalar_cfg.get("num_film_layers", 2),
+                film_init_scale=late_scalar_cfg.get("film_init_scale", 0.1),
             )
         else:
             self.late_scalar_encoder = None
@@ -268,14 +276,14 @@ class GAOT3D(nn.Module):
 
         # ── scalar conditioning (optional) ───────────────────────────────
         if self.scalar_encoder is not None:
-            rndata = self.scalar_encoder(rndata, batch)
+            rndata = self.scalar_encoder(rndata, batch, token_positions=self.latent_tokens)
 
         # ── process ──────────────────────────────────────────────────────
         rndata_proc = self.process(rndata=rndata, condition=condition)
 
         # ── late scalar conditioning (post-transformer, optional) ─────────
         if self.late_scalar_encoder is not None:
-            rndata_proc = self.late_scalar_encoder(rndata_proc, batch)
+            rndata_proc = self.late_scalar_encoder(rndata_proc, batch, token_positions=self.latent_tokens)
 
         # ── scalar path: pool → multi-head decoder ───────────────────────
         if self.decoder.head_names:

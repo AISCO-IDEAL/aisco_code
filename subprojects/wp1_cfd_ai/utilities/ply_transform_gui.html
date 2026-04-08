@@ -1,0 +1,1758 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PLY Transform Tool</title>
+    <style>
+        /* ── Theme variables ── */
+        :root,
+        [data-theme="dark"] {
+            --bg: #0a0c14;
+            --bg2: #10131e;
+            --bg3: #070910;
+            --bg-v: #050710;
+            --bd: #181b2e;
+            --bd2: #1e2133;
+            --tx: #dde0ec;
+            --tx2: #888;
+            --tx3: #555;
+            --tx4: #444;
+            --ac: #5f70ef;
+            --ac-bg: #151b3d;
+            --ac-soft: #0d1028;
+            --ac-bd: #2a3060;
+            --ok: #4ade80;
+            --er: #f87171;
+            --tb-bg: #10131ecc;
+            --tb-act: #1a1f4dcc;
+            --sb-track: #0a0c14;
+            --sb-thumb: #252840;
+        }
+
+        [data-theme="light"] {
+            --bg: #f3f4f8;
+            --bg2: #ffffff;
+            --bg3: #f0f1f5;
+            --bg-v: #e0e2ea;
+            --bd: #d0d3dc;
+            --bd2: #dfe1e8;
+            --tx: #1a1b1e;
+            --tx2: #666;
+            --tx3: #999;
+            --tx4: #bbb;
+            --ac: #4a5bff;
+            --ac-bg: #e5e8ff;
+            --ac-soft: #eff0ff;
+            --ac-bd: #b0b8e0;
+            --ok: #16a34a;
+            --er: #dc2626;
+            --tb-bg: #ffffffcc;
+            --tb-act: #e0e2ffcc;
+            --sb-track: #f3f4f8;
+            --sb-thumb: #c0c3cc;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--tx);
+            display: flex;
+            height: 100vh;
+            transition: background .25s, color .25s;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--sb-track);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--sb-thumb);
+            border-radius: 3px;
+        }
+
+        /* ── Left panel ── */
+        #ctrl {
+            width: 430px;
+            min-width: 430px;
+            height: 100%;
+            overflow-y: auto;
+            padding: 1.2rem 1.3rem;
+            border-right: 1px solid var(--bd);
+            background: var(--bg);
+            scrollbar-width: thin;
+            scrollbar-color: var(--sb-thumb) var(--sb-track);
+            display: flex;
+            flex-direction: column;
+            gap: .9rem;
+            transition: background .25s, border-color .25s;
+        }
+
+        #ctrl-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        #ctrl-header h1 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--tx);
+        }
+
+        #ctrl-header .sub {
+            color: var(--tx3);
+            font-size: .75rem;
+        }
+
+        .hdr-left {
+            flex: 1;
+        }
+
+        .theme-btn {
+            background: var(--bg2);
+            border: 1px solid var(--bd2);
+            border-radius: 7px;
+            padding: .35rem .7rem;
+            font-size: .72rem;
+            color: var(--tx2);
+            cursor: pointer;
+            transition: all .15s;
+            white-space: nowrap;
+        }
+
+        .theme-btn:hover {
+            border-color: var(--ac);
+            color: var(--tx);
+        }
+
+        .card {
+            background: var(--bg2);
+            border: 1px solid var(--bd);
+            border-radius: 10px;
+            padding: 1rem 1.1rem;
+            transition: background .25s, border-color .25s;
+        }
+
+        .card h2 {
+            font-size: .68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .1em;
+            color: var(--ac);
+            margin-bottom: .85rem;
+        }
+
+        label {
+            display: block;
+            font-size: .78rem;
+            color: var(--tx2);
+            margin-bottom: .25rem;
+        }
+
+        input[type=text],
+        input[type=number],
+        select {
+            width: 100%;
+            padding: .44rem .7rem;
+            background: var(--bg3);
+            border: 1px solid var(--bd2);
+            border-radius: 6px;
+            color: var(--tx);
+            font-size: .83rem;
+            outline: none;
+            transition: border-color .15s, background .25s, color .25s;
+        }
+
+        input:focus,
+        select:focus {
+            border-color: var(--ac);
+        }
+
+        .field {
+            margin-bottom: .7rem;
+        }
+
+        .row {
+            display: flex;
+            gap: .7rem;
+        }
+
+        .row>.field {
+            flex: 1;
+        }
+
+        .op-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: .45rem;
+            margin-bottom: .75rem;
+        }
+
+        .op-btn {
+            background: var(--bg3);
+            border: 1px solid var(--bd2);
+            border-radius: 7px;
+            padding: .45rem .2rem;
+            text-align: center;
+            cursor: pointer;
+            font-size: .72rem;
+            color: var(--tx2);
+            transition: all .15s;
+            user-select: none;
+        }
+
+        .op-btn:hover {
+            border-color: var(--ac);
+            color: var(--tx);
+        }
+
+        .op-btn.active {
+            border-color: var(--ac);
+            background: var(--ac-bg);
+            color: var(--tx);
+        }
+
+        .op-btn .icon {
+            font-size: 1.15rem;
+            display: block;
+            margin-bottom: .18rem;
+        }
+
+        .params {
+            display: none;
+        }
+
+        .params.visible {
+            display: block;
+        }
+
+        .axis-row {
+            display: flex;
+            gap: .45rem;
+        }
+
+        .axis-check {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: .35rem;
+            background: var(--bg3);
+            border: 1px solid var(--bd2);
+            border-radius: 6px;
+            padding: .42rem .65rem;
+            cursor: pointer;
+            font-size: .83rem;
+            transition: border-color .15s;
+        }
+
+        .axis-check input {
+            width: auto;
+            accent-color: var(--ac);
+        }
+
+        .axis-check:has(input:checked) {
+            border-color: var(--ac);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #4a5bff, #7c3aed);
+            border: none;
+            border-radius: 8px;
+            padding: .6rem 1.6rem;
+            font-size: .87rem;
+            font-weight: 600;
+            color: #fff;
+            cursor: pointer;
+            transition: opacity .15s, transform .1s;
+        }
+
+        .btn-primary:hover {
+            opacity: .86;
+        }
+
+        .btn-primary:active {
+            transform: scale(.97);
+        }
+
+        .btn-primary:disabled {
+            opacity: .38;
+            cursor: not-allowed;
+        }
+
+        .btn-ghost {
+            background: var(--bg2);
+            border: 1px solid var(--bd2);
+            border-radius: 7px;
+            padding: .42rem .9rem;
+            font-size: .78rem;
+            color: var(--tx2);
+            cursor: pointer;
+            transition: border-color .15s, color .15s;
+        }
+
+        .btn-ghost:hover {
+            border-color: var(--ac);
+            color: var(--tx);
+        }
+
+        .btn-add {
+            display: block;
+            width: 100%;
+            margin-top: .6rem;
+            background: var(--ac-soft);
+            border: 1px dashed var(--ac-bd);
+            border-radius: 7px;
+            padding: .5rem;
+            text-align: center;
+            font-size: .8rem;
+            color: var(--ac);
+            cursor: pointer;
+            transition: all .15s;
+        }
+
+        .btn-add:hover {
+            background: var(--ac-bg);
+            border-color: var(--ac);
+        }
+
+        .badge {
+            display: inline-block;
+            background: var(--bg3);
+            border: 1px solid var(--bd2);
+            border-radius: 4px;
+            padding: .08rem .4rem;
+            font-size: .68rem;
+            color: var(--ac);
+            margin-left: .35rem;
+        }
+
+        .spin {
+            display: none;
+            width: 13px;
+            height: 13px;
+            border: 2px solid #fff3;
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+            vertical-align: middle;
+            margin-left: .5rem;
+        }
+
+        .spin.on {
+            display: inline-block;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ── Pipeline items ── */
+        .pipe-list {
+            margin-top: .3rem;
+        }
+
+        .pipe-item {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            padding: .38rem .5rem;
+            border-bottom: 1px solid color-mix(in srgb, var(--bd) 50%, transparent);
+            font-size: .8rem;
+            transition: background .1s;
+        }
+
+        .pipe-item:hover {
+            background: color-mix(in srgb, var(--bg3) 60%, transparent);
+        }
+
+        .pipe-item:last-child {
+            border-bottom: none;
+        }
+
+        .pipe-idx {
+            color: var(--ac);
+            font-weight: 700;
+            min-width: 1.2rem;
+            text-align: center;
+            font-size: .72rem;
+        }
+
+        .pipe-icon {
+            font-size: .95rem;
+        }
+
+        .pipe-label {
+            flex: 1;
+            color: var(--tx2);
+        }
+
+        .pipe-del {
+            background: none;
+            border: none;
+            color: var(--tx4);
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 0 .3rem;
+            transition: color .12s;
+            line-height: 1;
+        }
+
+        .pipe-del:hover {
+            color: var(--er);
+        }
+
+        .pipe-empty {
+            color: var(--tx4);
+            font-size: .75rem;
+            text-align: center;
+            padding: .8rem 0;
+        }
+
+        .pipe-actions {
+            display: flex;
+            gap: .5rem;
+            align-items: center;
+            margin-top: .7rem;
+        }
+
+        /* ── Log ── */
+        #log {
+            font-family: 'Cascadia Code', 'Fira Mono', monospace;
+            font-size: .73rem;
+            background: var(--bg3);
+            border: 1px solid var(--bd);
+            border-radius: 7px;
+            padding: .75rem .9rem;
+            max-height: 180px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            color: var(--tx2);
+            line-height: 1.6;
+            transition: background .25s, border-color .25s;
+        }
+
+        .ok {
+            color: var(--ok);
+        }
+
+        .er {
+            color: var(--er);
+        }
+
+        .inf {
+            color: var(--ac);
+        }
+
+        .dim {
+            color: var(--tx4);
+        }
+
+        /* ── Right viewer ── */
+        #viewer {
+            flex: 1;
+            height: 100%;
+            position: relative;
+            background: var(--bg-v);
+            overflow: hidden;
+            transition: background .25s;
+        }
+
+        #three-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #vtoolbar {
+            position: absolute;
+            top: 11px;
+            left: 11px;
+            display: flex;
+            gap: .45rem;
+            align-items: center;
+            z-index: 10;
+            flex-wrap: wrap;
+        }
+
+        #vtoolbar button {
+            background: var(--tb-bg);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--bd);
+            border-radius: 6px;
+            padding: .3rem .72rem;
+            font-size: .73rem;
+            color: var(--tx2);
+            cursor: pointer;
+            transition: border-color .15s, color .15s;
+        }
+
+        #vtoolbar button:hover {
+            border-color: var(--ac);
+            color: var(--tx);
+        }
+
+        #vtoolbar button.active {
+            border-color: var(--ac);
+            background: var(--tb-act);
+            color: var(--tx);
+        }
+
+        #vtoolbar button:disabled {
+            opacity: .3;
+            cursor: default;
+        }
+
+        /* Color picker in toolbar */
+        .color-pick {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            background: var(--tb-bg);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--bd);
+            border-radius: 6px;
+            padding: 3px;
+            cursor: pointer;
+        }
+
+        .color-pick input[type=color] {
+            width: 22px;
+            height: 22px;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            border-radius: 4px;
+            background: none;
+        }
+
+        .color-pick input[type=color]::-webkit-color-swatch-wrapper {
+            padding: 1px;
+        }
+
+        .color-pick input[type=color]::-webkit-color-swatch {
+            border-radius: 3px;
+            border: none;
+        }
+
+        /* ── View indicator ── */
+        #view-indicator {
+            position: absolute;
+            top: 11px;
+            right: 11px;
+            z-index: 10;
+            padding: .3rem .85rem;
+            border-radius: 20px;
+            font-size: .7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .12em;
+            display: none;
+            align-items: center;
+            gap: .4rem;
+            backdrop-filter: blur(8px);
+            pointer-events: none;
+            transition: all .2s;
+        }
+
+        #view-indicator.visible {
+            display: flex;
+        }
+
+        .vi-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        #view-indicator.vi-original {
+            background: #0a2a1acc;
+            border: 2px solid #4ade80;
+            color: #4ade80;
+        }
+
+        #view-indicator.vi-original .vi-dot {
+            background: #4ade80;
+        }
+
+        #view-indicator.vi-preview {
+            background: #2a0a3acc;
+            border: 2px solid #c084fc;
+            color: #c084fc;
+        }
+
+        #view-indicator.vi-preview .vi-dot {
+            background: #c084fc;
+        }
+
+        #view-indicator.vi-step {
+            background: #0a1a3acc;
+            border: 2px solid #60a5fa;
+            color: #60a5fa;
+        }
+
+        #view-indicator.vi-step .vi-dot {
+            background: #60a5fa;
+        }
+
+        /* ── Overlay info ── */
+        #voverlay {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            background: var(--tb-bg);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--bd2);
+            border-radius: 8px;
+            padding: .6rem .85rem;
+            z-index: 10;
+            font-size: .7rem;
+            color: var(--tx2);
+            line-height: 1.8;
+            pointer-events: none;
+            display: none;
+            max-width: 340px;
+            transition: background .25s, border-color .25s;
+        }
+
+        #voverlay .vname {
+            color: var(--tx);
+            font-weight: 600;
+            font-size: .75rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #vplaceholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: .6rem;
+            color: var(--tx4);
+            font-size: .9rem;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        #vplaceholder .big {
+            font-size: 3.5rem;
+            opacity: .25;
+            line-height: 1;
+        }
+
+        #vloading {
+            display: none;
+            position: absolute;
+            inset: 0;
+            align-items: center;
+            justify-content: center;
+            background: color-mix(in srgb, var(--bg-v) 65%, transparent);
+            z-index: 20;
+        }
+
+        #vloading.on {
+            display: flex;
+        }
+
+        .big-spin {
+            width: 36px;
+            height: 36px;
+            border: 3px solid var(--bd);
+            border-top-color: var(--ac);
+            border-radius: 50%;
+            animation: spin .8s linear infinite;
+        }
+
+        /* ── Step thumbnail strip ── */
+        #step-strip {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            display: none;
+            overflow-x: auto;
+            padding: 10px 14px;
+            gap: 10px;
+            align-items: flex-start;
+            background: color-mix(in srgb, var(--bg) 92%, transparent);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid var(--bd);
+            z-index: 15;
+            scrollbar-width: thin;
+            scrollbar-color: var(--sb-thumb) transparent;
+        }
+
+        #step-strip.visible {
+            display: flex;
+        }
+
+        .step-wrap {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        .step-wrap img {
+            width: 130px;
+            height: 88px;
+            border-radius: 6px;
+            border: 2px solid var(--bd);
+            object-fit: contain;
+            transition: border-color .15s;
+        }
+
+        .step-wrap:hover img {
+            border-color: var(--ac);
+        }
+
+        .step-wrap.selected img {
+            border-color: var(--ac);
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--ac) 30%, transparent);
+        }
+
+        .step-lbl {
+            font-size: .62rem;
+            color: var(--tx3);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+        }
+
+        .step-wrap.selected .step-lbl {
+            color: var(--ac);
+        }
+
+        /* ── Stats panel ── */
+        #stats-panel {
+            position: absolute;
+            top: 50px;
+            right: 11px;
+            background: var(--tb-bg);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--bd2);
+            border-radius: 8px;
+            padding: .65rem .85rem;
+            z-index: 10;
+            font-size: .68rem;
+            color: var(--tx2);
+            line-height: 1.85;
+            display: none;
+            min-width: 210px;
+            transition: background .25s, border-color .25s;
+            font-family: 'Cascadia Code', 'Fira Mono', monospace;
+        }
+
+        #stats-panel.visible {
+            display: block;
+        }
+
+        .stat-hdr {
+            color: var(--tx);
+            font-weight: 700;
+            font-size: .72rem;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin-bottom: .15rem;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            gap: .8rem;
+        }
+
+        .stat-lbl {
+            color: var(--tx3);
+        }
+
+        .stat-val {
+            color: var(--tx);
+            font-weight: 500;
+            text-align: right;
+        }
+
+        .stat-sep {
+            border: none;
+            border-top: 1px solid var(--bd2);
+            margin: .3rem 0;
+        }
+
+        .stat-grid {
+            font-size: .62rem;
+            color: var(--tx3);
+            margin-top: .15rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ──────────── Controls ──────────── -->
+    <div id="ctrl">
+        <div id="ctrl-header">
+            <div class="hdr-left">
+                <h1>PLY Transform Tool</h1>
+                <p class="sub">Scale · Rotate · Mirror — chain transforms with live 3D preview</p>
+            </div>
+            <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀ Light</button>
+        </div>
+
+        <!-- File -->
+        <div class="card">
+            <h2>Input File</h2>
+            <div class="field">
+                <label>Path to .ply file</label>
+                <input type="text" id="inputFile" placeholder="/cluster/work/…/mesh.ply"
+                    onkeydown="if(event.key==='Enter') loadFile()">
+            </div>
+            <div class="field">
+                <label>Output directory <span class="badge">blank = same folder</span></label>
+                <input type="text" id="outputDir" placeholder="(same as input)">
+            </div>
+            <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">
+                <button class="btn-ghost" onclick="loadFile()">Load &amp; preview</button>
+                <span id="fileInfo" style="font-size:.73rem;color:var(--tx3)"></span>
+            </div>
+        </div>
+
+        <!-- Transform builder -->
+        <div class="card">
+            <h2>Transform Builder</h2>
+            <div class="op-grid">
+                <div class="op-btn active" id="op-scale-uniform" onclick="selectOp('scale-uniform')">
+                    <span class="icon">⟺</span>Uniform
+                </div>
+                <div class="op-btn" id="op-scale-axis" onclick="selectOp('scale-axis')">
+                    <span class="icon">↔</span>Per-axis
+                </div>
+                <div class="op-btn" id="op-rotate" onclick="selectOp('rotate')">
+                    <span class="icon">↻</span>Rotate
+                </div>
+                <div class="op-btn" id="op-mirror" onclick="selectOp('mirror')">
+                    <span class="icon">⇆</span>Mirror
+                </div>
+            </div>
+
+            <div class="params visible" id="params-scale-uniform">
+                <div class="field">
+                    <label>Scale factor <span class="badge">0.1 = 10× smaller · 2 = 2× larger</span></label>
+                    <input type="number" id="su-factor" value="0.1" step="any">
+                </div>
+            </div>
+            <div class="params" id="params-scale-axis">
+                <div class="row">
+                    <div class="field"><label>X</label><input type="number" id="sa-x" value="1" step="any"></div>
+                    <div class="field"><label>Y</label><input type="number" id="sa-y" value="1" step="any"></div>
+                    <div class="field"><label>Z</label><input type="number" id="sa-z" value="1" step="any"></div>
+                </div>
+            </div>
+            <div class="params" id="params-rotate">
+                <div class="row">
+                    <div class="field" style="flex:0 0 105px">
+                        <label>Axis</label>
+                        <select id="rot-axis">
+                            <option value="x">X</option>
+                            <option value="y">Y</option>
+                            <option value="z" selected>Z</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Degrees / step <span class="badge">+ = CCW</span></label>
+                        <input type="number" id="rot-deg" value="90" step="any">
+                    </div>
+                </div>
+            </div>
+            <div class="params" id="params-mirror">
+                <label style="margin-bottom:.5rem">Axes to flip</label>
+                <div class="axis-row">
+                    <label class="axis-check"><input type="checkbox" id="mir-x"> X</label>
+                    <label class="axis-check"><input type="checkbox" id="mir-y" checked> Y</label>
+                    <label class="axis-check"><input type="checkbox" id="mir-z"> Z</label>
+                </div>
+            </div>
+
+            <div class="btn-add" onclick="addToPipeline()">+ Add to pipeline</div>
+        </div>
+
+        <!-- Pipeline -->
+        <div class="card">
+            <h2>Pipeline</h2>
+            <div class="pipe-list" id="pipeline-list">
+                <div class="pipe-empty">No transforms queued — add one above</div>
+            </div>
+            <div class="pipe-actions">
+                <button class="btn-ghost" onclick="previewPipeline()" id="previewBtn">Preview</button>
+                <button class="btn-ghost" onclick="clearPipeline()"
+                    style="margin-left:auto;font-size:.72rem;color:var(--tx3);border-color:var(--bd)">Clear all</button>
+            </div>
+        </div>
+
+        <!-- Execute -->
+        <div class="card">
+            <h2>Execute</h2>
+            <div class="field" style="max-width:190px">
+                <label>Repeat steps <span class="badge">one file per step</span></label>
+                <input type="number" id="repeat" value="1" min="1" step="1">
+            </div>
+            <button class="btn-primary" id="runBtn" onclick="runTransform()">
+                Run &amp; save <span class="spin" id="spin"></span>
+            </button>
+        </div>
+
+        <!-- Log -->
+        <div class="card">
+            <h2>Log</h2>
+            <div id="log"><span class="dim">Output will appear here…</span></div>
+        </div>
+    </div>
+
+    <!-- ──────────── 3D Viewer ──────────── -->
+    <div id="viewer">
+        <div id="vtoolbar">
+            <button onclick="resetCamera()">⌖ Fit</button>
+            <button onclick="toggleWireframe()" id="wire-btn">⬡ Wireframe</button>
+            <button onclick="toggleAxisLabels()" id="axis-btn">⊞ Axes</button>
+            <button onclick="toggleView()" id="view-btn" disabled>⇄ Before / After</button>
+            <label class="color-pick" title="Model color">
+                <input type="color" id="mesh-color" value="#5a70ef" oninput="setMeshColor(this.value)">
+            </label>
+            <button onclick="toggleGrid()" id="grid-btn">▦ Grid</button>
+            <button onclick="toggleStats()" id="stats-btn">≡ Stats</button>
+            <button onclick="toggleMeasure()" id="measure-btn">↗ Measure</button>
+            <button onclick="clearMeasurements()" id="clear-meas-btn" style="display:none">✕ Clear</button>
+        </div>
+        <div id="view-indicator">
+            <span class="vi-dot"></span>
+            <span id="vi-text"></span>
+        </div>
+        <div id="stats-panel"></div>
+        <div id="vloading">
+            <div class="big-spin"></div>
+        </div>
+        <div id="vplaceholder">
+            <span class="big">⬡</span>
+            Load a .ply file to see the 3D preview
+        </div>
+        <div id="voverlay">
+            <div class="vname" id="vname"></div>
+            <div id="vcounts"></div>
+            <div id="vextents"></div>
+        </div>
+        <div id="step-strip"></div>
+        <canvas id="three-canvas"></canvas>
+    </div>
+
+    <!-- ──────────── Three.js ──────────── -->
+    <script type="importmap">
+{
+  "imports": {
+    "three":         "https://cdn.jsdelivr.net/npm/three@0.167/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.167/examples/jsm/"
+  }
+}
+</script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        /* ── State ── */
+        let scene, camera, renderer, controls;
+        let activeMesh = null;
+        let wireframeOn = false;
+        let axisVisible = false;
+        let axisGroup = null;
+        let meshColor = 0x5a70ef;
+        const meshStore = { original: null, current: null, steps: [] };
+        let viewRole = 'none';          // 'original' | 'preview' | 'step-N'
+        let savedRole = null;
+        let savedData = null;
+        let gridHelper = null;
+        let gridVisible = false;
+        let gridStep = 0;
+        let measureMode = false;
+        let pendingMeasurePoint = null;
+        const measureGroup = new THREE.Group();
+        let statsVisible = false;
+        let currentMeshData = null;
+
+        /* ── Scene setup ── */
+        function getSceneBg() {
+            const s = getComputedStyle(document.documentElement).getPropertyValue('--bg-v').trim();
+            return new THREE.Color(s);
+        }
+
+        const canvas = document.getElementById('three-canvas');
+        scene = new THREE.Scene();
+        scene.background = getSceneBg();
+        camera = new THREE.PerspectiveCamera(45, 2, 0.001, 1e9);
+        camera.up.set(0, 0, 1);  // Z-up
+        camera.position.set(0, -5, 2);
+        renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.06;
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+        sun.position.set(1, 2.5, 2); scene.add(sun);
+        const fill = new THREE.DirectionalLight(0x6688ff, 0.4);
+        fill.position.set(-2, -1.5, -1); scene.add(fill);
+        scene.add(new THREE.DirectionalLight(0xffffff, 0.25).translateZ(-2));
+
+        function resize() {
+            const p = document.getElementById('viewer');
+            const w = p.clientWidth, h = p.clientHeight;
+            if (!w || !h) return;
+            renderer.setSize(w, h);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+        }
+        resize();
+        window.addEventListener('resize', resize);
+        (function loop() {
+            requestAnimationFrame(loop);
+            controls.update();
+            renderer.render(scene, camera);
+        })();
+
+        /* ── Axis labels ── */
+        function createAxisSystem() {
+            axisGroup = new THREE.Group();
+            const axes = new THREE.AxesHelper(1);
+            axisGroup.add(axes);
+            const labels = [
+                ['X', '#ff4444', [1.2, 0, 0]],
+                ['Y', '#44cc44', [0, 1.2, 0]],
+                ['Z', '#4488ff', [0, 0, 1.2]],
+            ];
+            for (const [lbl, clr, pos] of labels) {
+                const cvs = document.createElement('canvas');
+                cvs.width = 64; cvs.height = 64;
+                const c = cvs.getContext('2d');
+                c.font = 'bold 48px sans-serif';
+                c.textAlign = 'center'; c.textBaseline = 'middle';
+                c.fillStyle = clr; c.fillText(lbl, 32, 32);
+                const tex = new THREE.CanvasTexture(cvs);
+                const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+                const sprite = new THREE.Sprite(mat);
+                sprite.position.set(...pos);
+                sprite.scale.set(0.25, 0.25, 1);
+                axisGroup.add(sprite);
+            }
+            axisGroup.visible = axisVisible;
+            scene.add(axisGroup);
+        }
+        createAxisSystem();
+        scene.add(measureGroup);
+
+        /* ── Grid ── */
+        function updateGrid() {
+            if (gridHelper) { scene.remove(gridHelper); gridHelper = null; }
+            gridStep = 0;
+            const originData = meshStore.original;
+            if (!gridVisible || !originData) return;
+            const pos = originData.positions;
+            const box = new THREE.Box3().setFromArray(pos);
+            const sz = box.getSize(new THREE.Vector3());
+            const ctr = box.getCenter(new THREE.Vector3());
+            const maxDim = Math.max(sz.x, sz.y, sz.z) || 1;
+            const rawStep = maxDim / 5;
+            const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+            const norm = rawStep / mag;
+            const nice = norm <= 1.5 ? 1 : norm <= 3.5 ? 2 : norm <= 7.5 ? 5 : 10;
+            gridStep = nice * mag;
+            const extent = Math.ceil(maxDim * 1.5 / gridStep) * gridStep;
+            const divs = Math.round(extent / gridStep);
+            const isDark = document.documentElement.dataset.theme !== 'light';
+            gridHelper = new THREE.GridHelper(
+                extent, divs,
+                isDark ? 0x556688 : 0x8899bb,
+                isDark ? 0x2a3050 : 0xb0b8cc
+            );
+            gridHelper.rotation.x = Math.PI / 2;
+            gridHelper.position.set(
+                Math.round(ctr.x / gridStep) * gridStep,
+                Math.round(ctr.y / gridStep) * gridStep,
+                box.min.z
+            );
+            scene.add(gridHelper);
+        }
+
+        /* ── Stats ── */
+        function updateStatsPanel() {
+            const panel = document.getElementById('stats-panel');
+            if (!statsVisible || !currentMeshData) { return; }
+            const data = currentMeshData;
+            const pos = data.positions;
+            const vc = data.vertex_count;
+            let mnX = Infinity, mxX = -Infinity;
+            let mnY = Infinity, mxY = -Infinity;
+            let mnZ = Infinity, mxZ = -Infinity;
+            for (let i = 0; i < vc; i++) {
+                const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+                if (x < mnX) mnX = x; if (x > mxX) mxX = x;
+                if (y < mnY) mnY = y; if (y > mxY) mxY = y;
+                if (z < mnZ) mnZ = z; if (z > mxZ) mxZ = z;
+            }
+            const f = fmtDim;
+            let h = '<div class="stat-hdr">Model Statistics</div>';
+            h += '<div class="stat-row"><span class="stat-lbl">Vertices</span><span class="stat-val">' + vc.toLocaleString() + '</span></div>';
+            h += '<div class="stat-row"><span class="stat-lbl">Faces</span><span class="stat-val">' + data.face_count.toLocaleString() + '</span></div>';
+            h += '<hr class="stat-sep">';
+            h += '<div class="stat-row"><span class="stat-lbl">X range</span><span class="stat-val">' + f(mnX) + ' \u2026 ' + f(mxX) + '</span></div>';
+            h += '<div class="stat-row"><span class="stat-lbl">Y range</span><span class="stat-val">' + f(mnY) + ' \u2026 ' + f(mxY) + '</span></div>';
+            h += '<div class="stat-row"><span class="stat-lbl">Z range</span><span class="stat-val">' + f(mnZ) + ' \u2026 ' + f(mxZ) + '</span></div>';
+            h += '<hr class="stat-sep">';
+            h += '<div class="stat-row"><span class="stat-lbl">Size X</span><span class="stat-val">' + f(mxX - mnX) + '</span></div>';
+            h += '<div class="stat-row"><span class="stat-lbl">Size Y</span><span class="stat-val">' + f(mxY - mnY) + '</span></div>';
+            h += '<div class="stat-row"><span class="stat-lbl">Size Z</span><span class="stat-val">' + f(mxZ - mnZ) + '</span></div>';
+            h += '<hr class="stat-sep">';
+            h += '<div class="stat-row"><span class="stat-lbl">Center</span><span class="stat-val">' + f(data.center[0]) + ', ' + f(data.center[1]) + ', ' + f(data.center[2]) + '</span></div>';
+            if (gridVisible && gridStep) {
+                h += '<div class="stat-grid">Grid spacing: ' + f(gridStep) + '</div>';
+            }
+            panel.innerHTML = h;
+        }
+
+        function updateAxisTransform() {
+            if (!axisGroup || !activeMesh) return;
+            const box = new THREE.Box3().setFromObject(activeMesh);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const scale = Math.max(size.x, size.y, size.z) * 0.4;
+            axisGroup.position.copy(center);
+            axisGroup.scale.setScalar(scale || 1);
+        }
+
+        /* ── Mesh management ── */
+        function removeMesh() {
+            if (activeMesh) {
+                scene.remove(activeMesh);
+                activeMesh.geometry.dispose();
+                activeMesh.material.dispose();
+                activeMesh = null;
+            }
+        }
+
+        function fitToMesh(mesh) {
+            const m = mesh || activeMesh;
+            if (!m) return;
+            const box = new THREE.Box3().setFromObject(m);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z) || 1;
+            const dist = (maxDim / 2) / Math.tan(camera.fov * Math.PI / 360) * 1.8;
+            controls.target.copy(center);
+            camera.position.copy(center).addScaledVector(new THREE.Vector3(0.2, -1, 0.35).normalize(), dist);
+            camera.near = maxDim * 0.0001;
+            camera.far = maxDim * 2000;
+            camera.updateProjectionMatrix();
+            controls.update();
+        }
+
+        function fmtDim(v) {
+            if (Math.abs(v) >= 1000) return (v / 1000).toPrecision(4) + ' k';
+            if (Math.abs(v) >= 1) return v.toPrecision(4);
+            return v.toExponential(3);
+        }
+
+        function updateOverlay(data) {
+            document.getElementById('vname').textContent = data.name || '';
+            document.getElementById('vcounts').textContent =
+                `${data.vertex_count.toLocaleString()} verts  ·  ${data.face_count.toLocaleString()} faces`;
+            const e = data.extents;
+            document.getElementById('vextents').textContent =
+                `X ${fmtDim(e[0])}   Y ${fmtDim(e[1])}   Z ${fmtDim(e[2])}`;
+            document.getElementById('voverlay').style.display = '';
+        }
+
+        function updateViewIndicator() {
+            const el = document.getElementById('view-indicator');
+            const txt = document.getElementById('vi-text');
+            el.classList.remove('visible', 'vi-original', 'vi-preview', 'vi-step');
+            if (viewRole === 'none') return;
+            el.classList.add('visible');
+            if (viewRole === 'original') {
+                el.classList.add('vi-original'); txt.textContent = 'ORIGINAL';
+            } else if (viewRole === 'preview') {
+                el.classList.add('vi-preview'); txt.textContent = 'PREVIEW';
+            } else if (viewRole.startsWith('step-')) {
+                el.classList.add('vi-step');
+                txt.textContent = 'STEP ' + (parseInt(viewRole.split('-')[1]) + 1);
+            }
+            document.getElementById('view-btn').disabled =
+                !(meshStore.original && (meshStore.current || meshStore.steps.length));
+        }
+
+        function buildAndShow(data, fit) {
+            removeMesh();
+            const geo = new THREE.BufferGeometry();
+            const pos = (data.positions instanceof Float32Array) ? data.positions : new Float32Array(data.positions);
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            if (data.indices && data.indices.length) {
+                const idx = (data.indices instanceof Uint32Array) ? data.indices : new Uint32Array(data.indices);
+                geo.setIndex(new THREE.BufferAttribute(idx, 1));
+            }
+            geo.computeVertexNormals();
+            const mat = new THREE.MeshStandardMaterial({
+                color: meshColor, roughness: 0.52, metalness: 0.08,
+                side: THREE.DoubleSide, wireframe: wireframeOn,
+            });
+            activeMesh = new THREE.Mesh(geo, mat);
+            scene.add(activeMesh);
+            document.getElementById('vplaceholder').style.display = 'none';
+            updateOverlay(data);
+            if (fit) fitToMesh();
+            currentMeshData = data;
+            updateAxisTransform();
+            updateStatsPanel();
+            updateViewIndicator();
+        }
+
+        function showMesh(data, role, fit) {
+            viewRole = role;
+            if (role === 'original') {
+                /* don't change meshStore.current */
+            } else {
+                meshStore.current = data;
+            }
+            buildAndShow(data, fit);
+            highlightThumb();
+        }
+
+        window.showMesh = showMesh;
+
+        window.viewerShowSteps = function (steps, lastName) {
+            meshStore.steps = steps;
+            const last = steps[steps.length - 1];
+            if (lastName) last.name = lastName;
+            meshStore.current = last;
+            const role = steps.length === 1 ? 'preview' : `step-${steps.length - 1}`;
+            showMesh(last, role, false);
+            window.renderStepThumbnails(steps);
+        };
+
+        /* ── Public API ── */
+        window.viewerLoadMesh = function (data, role, fit) {
+            if (role === 'original') {
+                meshStore.original = data;
+                meshStore.current = null;
+                meshStore.steps = [];
+                document.getElementById('step-strip').classList.remove('visible');
+                window.clearMeasurements();
+                showMesh(data, role, fit);
+                updateGrid();
+            } else {
+                showMesh(data, role, fit);
+            }
+        };
+
+        window.resetCamera = function () { fitToMesh(); };
+
+        window.toggleWireframe = function () {
+            wireframeOn = !wireframeOn;
+            if (activeMesh) activeMesh.material.wireframe = wireframeOn;
+            document.getElementById('wire-btn').classList.toggle('active', wireframeOn);
+        };
+
+        window.toggleAxisLabels = function () {
+            axisVisible = !axisVisible;
+            if (axisGroup) axisGroup.visible = axisVisible;
+            document.getElementById('axis-btn').classList.toggle('active', axisVisible);
+        };
+
+        window.setMeshColor = function (hex) {
+            meshColor = new THREE.Color(hex).getHex();
+            if (activeMesh) activeMesh.material.color.set(meshColor);
+        };
+
+        window.toggleView = function () {
+            if (!meshStore.original) return;
+            const hasAlt = meshStore.current || meshStore.steps.length;
+            if (!hasAlt) return;
+            if (viewRole === 'original') {
+                const d = savedData || meshStore.current || meshStore.steps[meshStore.steps.length - 1];
+                const r = savedRole || (meshStore.current ? 'preview' : `step-${meshStore.steps.length - 1}`);
+                showMesh(d, r, false);
+            } else {
+                savedData = meshStore.current;
+                savedRole = viewRole;
+                showMesh(meshStore.original, 'original', false);
+            }
+        };
+
+        window.setViewerTheme = function () {
+            scene.background = getSceneBg();
+            if (gridVisible) updateGrid();
+        };
+
+        window.toggleGrid = function () {
+            gridVisible = !gridVisible;
+            document.getElementById('grid-btn').classList.toggle('active', gridVisible);
+            updateGrid();
+            updateStatsPanel();
+        };
+
+        window.toggleStats = function () {
+            statsVisible = !statsVisible;
+            document.getElementById('stats-btn').classList.toggle('active', statsVisible);
+            document.getElementById('stats-panel').classList.toggle('visible', statsVisible);
+            if (statsVisible) updateStatsPanel();
+        };
+
+        window.toggleMeasure = function () {
+            measureMode = !measureMode;
+            document.getElementById('measure-btn').classList.toggle('active', measureMode);
+            canvas.style.cursor = measureMode ? 'crosshair' : '';
+            if (!measureMode) pendingMeasurePoint = null;
+        };
+
+        window.clearMeasurements = function () {
+            while (measureGroup.children.length) {
+                const c = measureGroup.children[0];
+                measureGroup.remove(c);
+                if (c.geometry) c.geometry.dispose();
+                if (c.material) {
+                    if (c.material.map) c.material.map.dispose();
+                    c.material.dispose();
+                }
+            }
+            pendingMeasurePoint = null;
+            document.getElementById('clear-meas-btn').style.display = 'none';
+        };
+
+        /* ── Measurement click handler ── */
+        const raycaster = new THREE.Raycaster();
+        const mouseVec = new THREE.Vector2();
+        let ptrDownPos = null;
+
+        canvas.addEventListener('pointerdown', (e) => {
+            if (measureMode) ptrDownPos = { x: e.clientX, y: e.clientY };
+        });
+
+        canvas.addEventListener('click', (e) => {
+            if (!measureMode || !activeMesh || !ptrDownPos) return;
+            const dx = e.clientX - ptrDownPos.x, dy = e.clientY - ptrDownPos.y;
+            ptrDownPos = null;
+            if (Math.hypot(dx, dy) > 5) return;
+
+            const rect = canvas.getBoundingClientRect();
+            mouseVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouseVec.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouseVec, camera);
+            const hits = raycaster.intersectObject(activeMesh);
+            if (!hits.length) return;
+
+            const pt = hits[0].point.clone();
+            const box = new THREE.Box3().setFromObject(activeMesh);
+            const maxDim = Math.max(...box.getSize(new THREE.Vector3()).toArray()) || 1;
+
+            // Sphere marker
+            const sGeo = new THREE.SphereGeometry(maxDim * 0.006, 12, 12);
+            const sMat = new THREE.MeshBasicMaterial({ color: 0xff4444, depthTest: false });
+            const sphere = new THREE.Mesh(sGeo, sMat);
+            sphere.position.copy(pt);
+            sphere.renderOrder = 999;
+            measureGroup.add(sphere);
+
+            if (pendingMeasurePoint) {
+                const p1 = pendingMeasurePoint, p2 = pt;
+                // Line
+                const lGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+                const lMat = new THREE.LineBasicMaterial({ color: 0xff4444, depthTest: false });
+                const line = new THREE.Line(lGeo, lMat);
+                line.renderOrder = 999;
+                measureGroup.add(line);
+                // Distance label
+                const dist = p1.distanceTo(p2);
+                const distM = dist / 1000;
+                let text;
+                if (distM >= 0.001) text = distM.toPrecision(4) + ' m';
+                else text = distM.toExponential(2) + ' m';
+                const cvs = document.createElement('canvas');
+                cvs.width = 256; cvs.height = 64;
+                const c = cvs.getContext('2d');
+                c.font = 'bold 28px sans-serif';
+                c.textAlign = 'center'; c.textBaseline = 'middle';
+                const tw = c.measureText(text).width + 20;
+                c.fillStyle = 'rgba(0,0,0,0.78)';
+                c.fillRect(128 - tw / 2, 6, tw, 44);
+                c.fillStyle = '#ff8888';
+                c.fillText(text, 128, 30);
+                const tex = new THREE.CanvasTexture(cvs);
+                const spMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+                const sprite = new THREE.Sprite(spMat);
+                const mid = p1.clone().add(p2).multiplyScalar(0.5);
+                mid.z += maxDim * 0.02;
+                sprite.position.copy(mid);
+                const s = maxDim * 0.12;
+                sprite.scale.set(s, s * 0.25, 1);
+                sprite.renderOrder = 1000;
+                measureGroup.add(sprite);
+                pendingMeasurePoint = null;
+            } else {
+                pendingMeasurePoint = pt;
+            }
+            document.getElementById('clear-meas-btn').style.display = '';
+        });
+
+        /* ── Step thumbnails ── */
+        function highlightThumb() {
+            document.querySelectorAll('.step-wrap').forEach(el => {
+                el.classList.toggle('selected', el.dataset.role === viewRole);
+            });
+        }
+
+        window.renderStepThumbnails = function (stepMeshes) {
+            meshStore.steps = stepMeshes;
+            const strip = document.getElementById('step-strip');
+            strip.innerHTML = '';
+            const allMeshes = [meshStore.original, ...stepMeshes];
+            if (allMeshes.length < 2) { strip.classList.remove('visible'); return; }
+
+            // Uniform camera distance from max extent across all meshes
+            let maxExt = 0;
+            for (const m of allMeshes) maxExt = Math.max(maxExt, ...m.extents);
+            const fov = 45;
+            const universalDist = (maxExt / 2) / Math.tan(fov * Math.PI / 360) * 2.2;
+
+            const W = 130, H = 88;
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = W; offCanvas.height = H;
+            const offR = new THREE.WebGLRenderer({ canvas: offCanvas, antialias: true, preserveDrawingBuffer: true });
+            offR.setSize(W, H);
+            offR.outputColorSpace = THREE.SRGBColorSpace;
+            const offScene = new THREE.Scene();
+            offScene.background = getSceneBg();
+            offScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const offSun = new THREE.DirectionalLight(0xffffff, 1.0);
+            offSun.position.set(1, 2, 2.5); offScene.add(offSun);
+            const offCam = new THREE.PerspectiveCamera(fov, W / H, 0.001, 1e9);
+            offCam.up.set(0, 0, 1);  // Z-up
+            const viewDir = new THREE.Vector3(0.2, -1, 0.35).normalize();
+
+            const labels = ['Original', ...stepMeshes.map((_, i) => `Step ${i + 1}`)];
+            const roles = ['original', ...stepMeshes.map((_, i) => `step-${i}`)];
+
+            for (let i = 0; i < allMeshes.length; i++) {
+                const data = allMeshes[i];
+                // Build geometry
+                const geo = new THREE.BufferGeometry();
+                const pos = (data.positions instanceof Float32Array) ? data.positions : new Float32Array(data.positions);
+                geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+                if (data.indices && data.indices.length) {
+                    const idx = (data.indices instanceof Uint32Array) ? data.indices : new Uint32Array(data.indices);
+                    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+                }
+                geo.computeVertexNormals();
+                const mat = new THREE.MeshStandardMaterial({
+                    color: meshColor, roughness: 0.52, metalness: 0.08, side: THREE.DoubleSide,
+                });
+                const mesh = new THREE.Mesh(geo, mat);
+                offScene.add(mesh);
+
+                const cx = data.center[0], cy = data.center[1], cz = data.center[2];
+                const ct = new THREE.Vector3(cx, cy, cz);
+                offCam.position.copy(ct).addScaledVector(viewDir, universalDist);
+                offCam.lookAt(ct);
+                offCam.near = maxExt * 0.0001; offCam.far = maxExt * 2000;
+                offCam.updateProjectionMatrix();
+                offR.render(offScene, offCam);
+
+                const wrap = document.createElement('div');
+                wrap.className = 'step-wrap';
+                wrap.dataset.role = roles[i];
+                wrap.onclick = ((idx, role) => () => {
+                    const d = idx === 0 ? meshStore.original : meshStore.steps[idx - 1];
+                    showMesh(d, role, false);
+                })(i, roles[i]);
+
+                const img = document.createElement('img');
+                img.src = offCanvas.toDataURL();
+                const lbl = document.createElement('span');
+                lbl.className = 'step-lbl';
+                lbl.textContent = labels[i];
+                wrap.appendChild(img);
+                wrap.appendChild(lbl);
+                strip.appendChild(wrap);
+
+                offScene.remove(mesh);
+                geo.dispose(); mat.dispose();
+            }
+            offR.dispose();
+            strip.classList.add('visible');
+            highlightThumb();
+        };
+    </script>
+
+    <!-- ──────────── Control logic ──────────── -->
+    <script>
+        let currentOp = 'scale-uniform';
+        let pipeline = [];
+        const OP_ICONS = {
+            'scale-uniform': '\u27fa', 'scale-axis': '\u2194',
+            'rotate': '\u21bb', 'mirror': '\u21c6'
+        };
+
+        function selectOp(op) {
+            document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.params').forEach(p => p.classList.remove('visible'));
+            document.getElementById('op-' + op).classList.add('active');
+            document.getElementById('params-' + op).classList.add('visible');
+            currentOp = op;
+        }
+
+        function logLine(html) {
+            const el = document.getElementById('log');
+            if (el.innerHTML.includes('Output will appear here')) el.innerHTML = '';
+            el.innerHTML += html + '\n';
+            el.scrollTop = el.scrollHeight;
+        }
+        function clearLog() { document.getElementById('log').innerHTML = ''; }
+        function setViewerLoading(on) { document.getElementById('vloading').classList.toggle('on', on); }
+
+        /* ── Theme toggle ── */
+        function toggleTheme() {
+            const html = document.documentElement;
+            const next = html.dataset.theme === 'dark' ? 'light' : 'dark';
+            html.dataset.theme = next;
+            document.getElementById('themeBtn').textContent = next === 'dark' ? '☀ Light' : '🌙 Dark';
+            window.setViewerTheme();
+        }
+
+        /* ── Binary parsing ── */
+        function parseMeshBinary(buf) {
+            const h = new DataView(buf, 0, 32);
+            const vc = h.getUint32(0, true), tc = h.getUint32(4, true);
+            return {
+                vertex_count: vc, face_count: tc,
+                extents: [h.getFloat32(8, true), h.getFloat32(12, true), h.getFloat32(16, true)],
+                center: [h.getFloat32(20, true), h.getFloat32(24, true), h.getFloat32(28, true)],
+                positions: new Float32Array(buf, 32, vc * 3),
+                indices: tc > 0 ? new Uint32Array(buf, 32 + vc * 12, tc * 3) : new Uint32Array(0),
+            };
+        }
+
+        function parseMultiStepBinary(buf) {
+            const view = new DataView(buf);
+            const numSteps = view.getUint32(0, true);
+            let offset = 4;
+            const steps = [];
+            for (let i = 0; i < numSteps; i++) {
+                const size = view.getUint32(offset, true);
+                offset += 4;
+                const stepBuf = buf.slice(offset, offset + size);
+                steps.push(parseMeshBinary(stepBuf));
+                offset += size;
+            }
+            return steps;
+        }
+
+        async function fetchBinary(url, body) {
+            const r = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (r.headers.get('content-type')?.includes('json')) {
+                const err = await r.json();
+                throw new Error(err.error || 'Server error');
+            }
+            return r.arrayBuffer();
+        }
+
+        /* ── File loading ── */
+        async function loadFile() {
+            const path = document.getElementById('inputFile').value.trim();
+            if (!path) { alert('Enter a file path first.'); return; }
+            const res = await fetch('/api/inspect', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path }),
+            });
+            const d = await res.json();
+            const info = document.getElementById('fileInfo');
+            if (d.ok) {
+                info.textContent = `${d.vertices.toLocaleString()} verts \u00b7 ${d.faces.toLocaleString()} faces \u00b7 ${d.format}`;
+                info.style.color = 'var(--ok)';
+                logLine(`<span class="inf">Loaded:</span> <span class="ok">${path}</span>`);
+                logLine(`<span class="dim">  ${d.vertices.toLocaleString()} vertices, ${d.faces.toLocaleString()} faces</span>`);
+                setViewerLoading(true);
+                try {
+                    const mesh = parseMeshBinary(await fetchBinary('/api/mesh_bin', { path }));
+                    mesh.name = path.split('/').pop();
+                    window.viewerLoadMesh(mesh, 'original', true);
+                } catch (e) { logLine(`<span class="er">Viewer: ${e}</span>`); }
+                finally { setViewerLoading(false); }
+            } else {
+                info.textContent = d.error; info.style.color = 'var(--er)';
+                logLine(`<span class="er">Error: ${d.error}</span>`);
+            }
+        }
+
+        /* ── Pipeline management ── */
+        function getCurrentOpConfig() {
+            const config = { op: currentOp };
+            if (currentOp === 'scale-uniform') {
+                config.factor = parseFloat(document.getElementById('su-factor').value);
+                config.label = `Scale \u00d7${config.factor}`;
+            } else if (currentOp === 'scale-axis') {
+                config.sx = parseFloat(document.getElementById('sa-x').value);
+                config.sy = parseFloat(document.getElementById('sa-y').value);
+                config.sz = parseFloat(document.getElementById('sa-z').value);
+                config.label = `Scale X\u00d7${config.sx} Y\u00d7${config.sy} Z\u00d7${config.sz}`;
+            } else if (currentOp === 'rotate') {
+                config.axis = document.getElementById('rot-axis').value;
+                config.deg = parseFloat(document.getElementById('rot-deg').value);
+                config.label = `Rotate ${config.axis.toUpperCase()} ${config.deg}\u00b0`;
+            } else if (currentOp === 'mirror') {
+                config.axes = ['x', 'y', 'z'].filter(a => document.getElementById('mir-' + a).checked);
+                config.label = `Mirror ${config.axes.join('').toUpperCase()}`;
+            }
+            return config;
+        }
+
+        function addToPipeline() {
+            const config = getCurrentOpConfig();
+            if (config.op === 'mirror' && (!config.axes || !config.axes.length)) {
+                alert('Select at least one axis to mirror.'); return;
+            }
+            pipeline.push(config);
+            renderPipeline();
+        }
+
+        function removePipelineItem(index) {
+            pipeline.splice(index, 1);
+            renderPipeline();
+        }
+
+        function clearPipeline() {
+            pipeline = [];
+            renderPipeline();
+        }
+
+        function renderPipeline() {
+            const el = document.getElementById('pipeline-list');
+            if (!pipeline.length) {
+                el.innerHTML = '<div class="pipe-empty">No transforms queued \u2014 add one above</div>';
+                return;
+            }
+            el.innerHTML = pipeline.map((p, i) => `
+    <div class="pipe-item">
+      <span class="pipe-idx">${i + 1}</span>
+      <span class="pipe-icon">${OP_ICONS[p.op] || '?'}</span>
+      <span class="pipe-label">${p.label}</span>
+      <button class="pipe-del" onclick="removePipelineItem(${i})">\u00d7</button>
+    </div>
+  `).join('');
+        }
+
+        function stripLabels(pipe) {
+            return pipe.map(({ label, ...rest }) => rest);
+        }
+
+        /* ── Preview ── */
+        async function previewPipeline() {
+            const path = document.getElementById('inputFile').value.trim();
+            if (!path) { alert('Load a file first.'); return; }
+            if (!pipeline.length) { alert('Add transforms to the pipeline first.'); return; }
+            const repeat = parseInt(document.getElementById('repeat').value) || 1;
+            setViewerLoading(true);
+            logLine(`<span class="inf">Previewing pipeline (${pipeline.length} transform${pipeline.length > 1 ? 's' : ''}) \u00d7 ${repeat} step(s)…</span>`);
+            try {
+                const buf = await fetchBinary('/api/preview_steps', { path, pipeline: stripLabels(pipeline), repeat });
+                const steps = parseMultiStepBinary(buf);
+                window.viewerShowSteps(steps, path.split('/').pop() + ' (preview)');
+                logLine(`<span class="ok">Preview ready</span> <span class="dim">\u2014 click thumbnails or \u21c4 to compare</span>`);
+            } catch (e) {
+                logLine(`<span class="er">Preview failed: ${e}</span>`);
+            } finally {
+                setViewerLoading(false);
+            }
+        }
+
+        /* ── Run transform ── */
+        async function runTransform() {
+            const path = document.getElementById('inputFile').value.trim();
+            if (!path) { alert('Enter a file path first.'); return; }
+            if (!pipeline.length) { alert('Add transforms to the pipeline first.'); return; }
+
+            const repeat = parseInt(document.getElementById('repeat').value) || 1;
+            const params = {
+                path,
+                pipeline: stripLabels(pipeline),
+                repeat,
+            };
+            const outDir = document.getElementById('outputDir').value.trim();
+            if (outDir) params.output_dir = outDir;
+
+            const btn = document.getElementById('runBtn');
+            const spin = document.getElementById('spin');
+            btn.disabled = true; spin.classList.add('on');
+            clearLog();
+            logLine(`<span class="inf">Running pipeline (${pipeline.length} transforms) \u00d7 ${repeat} step(s)…</span>`);
+
+            try {
+                const res = await fetch('/api/transform', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(params),
+                });
+                const d = await res.json();
+                if (d.ok) {
+                    d.files.forEach(f => {
+                        logLine(`<span class="ok">  \u2713 ${f.info}</span>`);
+                        logLine(`<span class="dim">       \u2192 ${f.path}</span>`);
+                    });
+                    logLine(`<span class="inf">Done \u2014 ${d.files.length} file(s) saved.</span>`);
+                    // Fetch step meshes for thumbnails
+                    setViewerLoading(true);
+                    try {
+                        const buf = await fetchBinary('/api/preview_steps', { path, pipeline: stripLabels(pipeline), repeat });
+                        const steps = parseMultiStepBinary(buf);
+                        window.viewerShowSteps(steps, d.files[d.files.length - 1].path.split('/').pop());
+                    } catch (e) { logLine(`<span class="er">Viewer: ${e}</span>`); }
+                    finally { setViewerLoading(false); }
+                } else {
+                    logLine(`<span class="er">Error: ${d.error}</span>`);
+                }
+            } catch (e) {
+                logLine(`<span class="er">Request failed: ${e}</span>`);
+            } finally {
+                btn.disabled = false; spin.classList.remove('on');
+            }
+        }
+
+
+    </script>
+</body>
+
+</html>

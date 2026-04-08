@@ -1,0 +1,42 @@
+# Postprocessing Configuration for Latent Space Interpolator
+# Generates 2D grid visualizations showing how SDF mesh evolves through latent space
+
+interpolator:
+  # Grid resolution: creates grid_resolution x grid_resolution mesh samples
+  # Higher = more detailed interpolation but slower (10 = 100 samples total)
+  grid_resolution: 10
+
+  # Latent space range: bounds for z[0] and z[1] sweeping
+  # Typical range: -2.0 to 2.0 (adjust based on your model's latent distribution)
+  latent_range: [-1.0, 1.0]
+
+  # Marching cubes extraction resolution
+  # Higher = better mesh quality but slower (128 = 128³ SDF evaluation grid)
+  mesh_resolution: 128
+
+  # SDF evaluation box bounds (change to match your geometry scale)
+  # Keep these consistent with your training mesh extraction bounds
+  bbox_min: [-4000, -4000, -4000]
+  bbox_max: [4000, 4000, 4000]
+
+  # SDF level-set value (typically 0.0 for implicit surface)
+  isovalue: 0.0
+
+  # Camera view angle for rendering
+  # Options: "iso", "front", "back", "left", "right", "top", "bottom"
+  camera_view: "iso"
+
+  # Mesh color in rendered images
+  # PyVista colors: "lightgrey", "steelblue", "coral", "mediumseagreen", etc.
+  mesh_color: "lightgrey"
+
+  # Rendered image dimensions (width, height) in pixels
+  # Larger = higher quality but slower to render
+  window_size: [800, 600]
+
+  # Directory for saving intermediate/final images
+  # If null, uses default output directory from allround_save_data
+  save_dir: null
+
+  # Whether to upload final grid to WandB
+  upload_to_wandb: true
