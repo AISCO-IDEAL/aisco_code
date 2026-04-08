@@ -71,7 +71,21 @@ class ModelLoader:
         self.gaot = GAOT3D(config=config).to(self.device)
         self.gaot.eval()
 
+        # ── load weights ─────────────────────────────────────────────────
+        state = torch.load(self.model_path, map_location=self.device, weights_only=False)
+        if "model" in state:
+            sd = state["model"]
+        elif "state_dict" in state:
+            sd = state["state_dict"]
+        else:
+            sd = state
+
+        # Strip "module." prefix from DDP/DataParallel checkpoints
+        sd = {k.removeprefix("module."): v for k, v in sd.items()}
+        missing, unexpected = self.gaot.load_state_dict(sd, strict=False)
+
     def forward(self, sdf_model, epoch_name):
+        print("HHHHHHHHHHHHHHHHHHHHHHHHHH", epoch_name)
         self.epoch_name = epoch_name
         self.sdf_model = sdf_model
         verts, faces, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
@@ -274,7 +288,7 @@ class ModelLoader:
         vertex_normals = vertex_normals.index_add(0, all_idx, all_normals)
         vertex_normals = torch.nn.functional.normalize(vertex_normals, dim=-1)
 
-        vertex_normals[:, 0] *= -1.0
+        # vertex_normals[:, 0] *= -1.0
 
         data = Data(pos=optim_verts_m, face=mesh_faces.T, c=vertex_normals)
 
