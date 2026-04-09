@@ -85,7 +85,6 @@ class ModelLoader:
         missing, unexpected = self.gaot.load_state_dict(sd, strict=False)
 
     def forward(self, sdf_model, epoch_name):
-        print("HHHHHHHHHHHHHHHHHHHHHHHHHH", epoch_name)
         self.epoch_name = epoch_name
         self.sdf_model = sdf_model
         verts, faces, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
@@ -137,7 +136,7 @@ class ModelLoader:
 
         # coordinates for scatter plot  (DETACH before numpy)
         coords = batch.pos.detach().cpu().numpy()
-        fname = getattr(self, "epoch_name", "mesh")
+        fname = self.epoch_name
 
         # predicted field is passed in as pressure_field (node-wise GAOT output)
         if pressure_field.dim() == 2 and pressure_field.size(-1) == 1:
@@ -197,21 +196,17 @@ class ModelLoader:
             fig.colorbar(sc, ax=ax, shrink=0.5)
             ax.view_init(elev=20, azim=-120)
 
-        # we don't have a numeric epoch here, only a name
-        title_epoch = getattr(self, "epoch_name", "opt_step")
-        fig.suptitle(f"Pressure Field [opt] {fname} — {title_epoch}", fontsize=13)
+        fig.suptitle(f"Pressure Field [opt] {fname} — {self.epoch_name}", fontsize=13)
         plt.tight_layout()
-
-        step_val = int(self.epoch_name)
 
         wandb.log(
             {
                 "Pressure-Field visualisation": wandb.Image(
                     fig,
-                    caption=f"opt {fname} {title_epoch}",
+                    caption=f"opt {fname} {self.epoch_name}",
                 )
             },
-            step=step_val,
+            step=int(self.epoch_name),
         )
         plt.close(fig)
 
