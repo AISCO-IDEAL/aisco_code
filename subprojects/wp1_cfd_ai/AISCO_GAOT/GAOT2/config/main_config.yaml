@@ -131,7 +131,7 @@ dataset:
     training_strategy: "full_grid"
     uncertainty_weighting: false
     field_loss_weight: 1.0
-    use_rescale_new: false
+    use_rescale_new: true
     active_variables:
     order_file_name:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
@@ -146,7 +146,7 @@ optimizer:
     args:
         lr: 6e-4
         weight_decay: 1e-05
-        epoch: 300
+        epoch: 100
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"

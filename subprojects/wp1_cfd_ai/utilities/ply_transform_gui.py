@@ -212,12 +212,19 @@ def _parse_faces_for_viewer(raw_fdata, face_el, fmt):
         offset = 0
         data = bytes(raw_fdata) if not isinstance(raw_fdata, (bytes, bytearray)) else raw_fdata
         for _ in range(face_el["count"]):
-            n = struct.unpack_from(cfmt, data, offset)[0]
-            offset += cs
-            face_verts = [struct.unpack_from(vfmt, data, offset + i * vs)[0] for i in range(n)]
-            offset += n * vs
-            for i in range(1, n - 1):
-                indices.extend([face_verts[0], face_verts[i], face_verts[i + 1]])
+            for prop in face_el["properties"]:
+                if prop["kind"] == "scalar":
+                    offset += PLY_TYPES[prop["type"]][1]
+                elif prop["kind"] == "list":
+                    p_cf, p_cs = PLY_TYPES[prop["count_type"]]
+                    p_vs = PLY_TYPES[prop["value_type"]][1]
+                    n = struct.unpack_from(endian + p_cf, data, offset)[0]
+                    offset += p_cs
+                    if prop is list_prop:
+                        face_verts = [struct.unpack_from(vfmt, data, offset + i * vs)[0] for i in range(n)]
+                        for i in range(1, n - 1):
+                            indices.extend([face_verts[0], face_verts[i], face_verts[i + 1]])
+                    offset += n * p_vs
         return indices
 
 

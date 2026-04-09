@@ -204,9 +204,7 @@ class StaticTrainer3D(TrainerBase):
                 all_x.append(batch.x.cpu())
             elif hasattr(batch, "y") and batch.y is not None:
                 all_x.append(batch.y.cpu())
-            if hasattr(batch, "c") and batch.c is not None:
-                all_c.append(batch.c.cpu())
-                has_c_field = True
+            # Normals (c) are kept as-is (unit normals); no z-score normalization applied.
 
         # Compute per-head stats for multi-head model
         per_head_stats = {}
@@ -447,12 +445,9 @@ class StaticTrainer3D(TrainerBase):
             mean_for_norm = self.u_mean
             std_for_norm = self.u_std
 
-        # Prepare c normalization stats if they exist
+        # Normals (c) are not normalized — they are already unit normals.
         c_mean_for_norm = None
         c_std_for_norm = None
-        if self.c_mean is not None and self.c_std is not None:
-            c_mean_for_norm = self.c_mean
-            c_std_for_norm = self.c_std
 
         # If active_heads is set, filter per_head_stats to only those heads
         active_per_head_stats = self.per_head_stats if hasattr(self, "per_head_stats") else None
@@ -1014,7 +1009,7 @@ class StaticTrainer3D(TrainerBase):
             loss = loss + field_weight * field_loss
         return loss
 
-    def validate(self, loader: DataLoader):  # noqa: PLR0912, PLR0915
+    def validate(self, loader: DataLoader, epoch_name=None):  # noqa: PLR0912, PLR0915
         self.model.eval()
         total_loss = 0.0
         total_mse = 0.0
