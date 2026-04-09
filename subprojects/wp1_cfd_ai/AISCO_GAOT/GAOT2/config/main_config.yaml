@@ -140,15 +140,15 @@ dataset:
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
     num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
-    # Explicit 3D visualization box limits used for all GT/Pred/Error panels.
+
     # Edit these ranges to control the visualized x/y/z box exactly.
     viz_axis_limits:
         x: [-1.5, 2]
         y: [-1, 1]
         z: [-1, 1]
-    viz_field_vmin: -1.5
-    viz_field_vmax: 1.5
-    viz_abs_diff_vmax: 1.0
+    viz_field_vmin: -1.5        # min on pressure bar
+    viz_field_vmax: 1.5         # max on pressure bar
+    viz_abs_diff_vmax: 1.0      # max on error bar (min always 0)
 
 optimizer:
     name: "adamw" # the option "adam" hasen't been adopted yet to the new config-style

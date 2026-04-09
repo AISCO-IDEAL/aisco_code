@@ -185,7 +185,7 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
         Whether to show the background grid and axis.
     equal_aspect: bool, optional
         If True, attempts to set axis limits to achieve visually equal scaling.
-        Defaults to True.
+        Defaults to True.  # Set to False to control the visualised grid
     show_abs_diff: bool, optional
         If True, show absolute difference subplot. Defaults to True.
     show_input_shape: bool, optional
