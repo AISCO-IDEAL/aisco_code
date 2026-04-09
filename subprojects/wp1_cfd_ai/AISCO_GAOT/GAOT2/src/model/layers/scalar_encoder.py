@@ -19,10 +19,10 @@ from torch_geometric.data import Batch
 # Extend this dict when introducing new scalar features.
 SCALAR_FEATURE_DIMS: dict[str, int] = {
     "scale_factors": 3,  # per-axis physical extent [x, y, z]
-    "bbox_min": 3,       # per-axis min coord in physical space (metres)
-    "bbox_max": 3,       # per-axis max coord in physical space (metres)
-    "bbox_center": 3,    # per-axis center coord in physical space (metres)
-    "v_inf": 1,          # freestream velocity (scalar)
+    "bbox_min": 3,  # per-axis min coord in physical space (metres)
+    "bbox_max": 3,  # per-axis max coord in physical space (metres)
+    "bbox_center": 3,  # per-axis center coord in physical space (metres)
+    "v_inf": 1,  # freestream velocity (scalar)
 }
 
 
@@ -167,7 +167,7 @@ class ScalarEncoder(nn.Module):
                 }
 
         if self.mode == "concat":
-            encoded = self.encoder(scalars)                         # [B, C]
+            encoded = self.encoder(scalars)  # [B, C]
             encoded_broadcast = encoded.unsqueeze(1).expand(-1, M, -1)
             with torch.no_grad():
                 self._last_token_norm = token_features.norm(dim=-1).mean().item()
@@ -178,23 +178,22 @@ class ScalarEncoder(nn.Module):
         # ── FiLM path ────────────────────────────────────────────────────
         if self.position_aware:
             assert token_positions is not None, (
-                "ScalarEncoder(position_aware=True) requires token_positions "
-                "to be passed; got None."
+                "ScalarEncoder(position_aware=True) requires token_positions to be passed; got None."
             )
             # token_positions: [M, 3] -> broadcast to [B, M, 3]
-            tp = token_positions.unsqueeze(0).expand(B, -1, -1)     # [B, M, 3]
+            tp = token_positions.unsqueeze(0).expand(B, -1, -1)  # [B, M, 3]
             # scalars: [B, S] -> [B, M, S]
             sc = scalars.unsqueeze(1).expand(-1, M, -1)
-            film_in = torch.cat([sc, tp], dim=-1)                    # [B, M, S+3]
-            film_in = self.film_input_norm(film_in)                  # normalise to O(1)
-            trunk_out = self.film_trunk(film_in)                     # [B, M, H]
-            gamma = 1.0 + torch.tanh(self.gamma_head(trunk_out))     # [B, M, C] ∈ (0, 2)
-            beta = self.beta_head(trunk_out)                         # [B, M, C]
+            film_in = torch.cat([sc, tp], dim=-1)  # [B, M, S+3]
+            film_in = self.film_input_norm(film_in)  # normalise to O(1)
+            trunk_out = self.film_trunk(film_in)  # [B, M, H]
+            gamma = 1.0 + torch.tanh(self.gamma_head(trunk_out))  # [B, M, C] ∈ (0, 2)
+            beta = self.beta_head(trunk_out)  # [B, M, C]
         else:
-            film_in = self.film_input_norm(scalars)                  # normalise to O(1)
-            trunk_out = self.film_trunk(film_in)                     # [B, H]
+            film_in = self.film_input_norm(scalars)  # normalise to O(1)
+            trunk_out = self.film_trunk(film_in)  # [B, H]
             gamma = (1.0 + torch.tanh(self.gamma_head(trunk_out))).unsqueeze(1)  # [B, 1, C] ∈ (0, 2)
-            beta = self.beta_head(trunk_out).unsqueeze(1)            # [B, 1, C]
+            beta = self.beta_head(trunk_out).unsqueeze(1)  # [B, 1, C]
 
         with torch.no_grad():
             self._last_token_norm = token_features.norm(dim=-1).mean().item()
