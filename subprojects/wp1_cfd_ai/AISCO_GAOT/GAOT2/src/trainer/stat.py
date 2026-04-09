@@ -807,7 +807,7 @@ class StaticTrainer3D(TrainerBase):
         fname = getattr(sample, "filename", split_label)
         suffix = f"_{sample_idx}" if sample_idx > 0 else ""
 
-        # --- Field visualisation ---
+        # --- Field visualisation --- test xyz
         if isinstance(pred, dict) and "field" in pred:
             field_pred = pred["field"].cpu().numpy().squeeze()
             field_gt = batch.x.cpu().numpy().squeeze() if batch.x is not None else None
