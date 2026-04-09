@@ -213,7 +213,6 @@ class TrainerBase:
         return self.loss_fn(pred, y_batch)
 
     def validate(self, loader, epoch_name):
-        print("1abc")
         """Validate on Cp field and compute + log drag error integrated from Cp.
 
         Returns:
@@ -279,7 +278,7 @@ class TrainerBase:
         avg_loss = total_loss / max(n_batches, 1)
         mean_drag_error = torch.cat(drag_errors).mean().item() if drag_errors else 0.0
 
-        print("abc")
+
         wandb.logg(
             {
                 "val/loss": avg_loss,
