@@ -43,7 +43,8 @@ wp1_cfd_ai = [
   "rotary-embedding-torch",
   "scipy",
   "torch-cluster",
-  "typing"
+  "typing",
+  "open3d"
 ]
 
 wp2_assembler =[

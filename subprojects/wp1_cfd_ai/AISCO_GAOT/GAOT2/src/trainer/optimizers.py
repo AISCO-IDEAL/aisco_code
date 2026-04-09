@@ -430,9 +430,7 @@ class AdamWOptimizer:
                     if mode == "concat":
                         sc_n = getattr(sc_enc, "_last_scalar_norm", 0.0)
                         ratio = sc_n / tok_n if tok_n > 0 else 0.0
-                        epoch_grad_norms[f"{prefix}/fusion_ratio"] = (
-                            epoch_grad_norms.get(f"{prefix}/fusion_ratio", 0.0) + ratio
-                        )
+                        epoch_grad_norms[f"{prefix}/fusion_ratio"] = epoch_grad_norms.get(f"{prefix}/fusion_ratio", 0.0) + ratio
                     elif mode == "film":
                         # gamma mean: should hover near 1.0.  Drift away -> FiLM dominates.
                         gamma_mean = getattr(sc_enc, "_last_gamma_mean", 1.0)
@@ -455,21 +453,15 @@ class AdamWOptimizer:
                         epoch_grad_norms[f"{prefix}/film_perturbation"] = (
                             epoch_grad_norms.get(f"{prefix}/film_perturbation", 0.0) + pert
                         )
-                    epoch_grad_norms[f"{prefix}/token_norm"] = (
-                        epoch_grad_norms.get(f"{prefix}/token_norm", 0.0) + tok_n
-                    )
+                    epoch_grad_norms[f"{prefix}/token_norm"] = epoch_grad_norms.get(f"{prefix}/token_norm", 0.0) + tok_n
 
                 # Scale-factor batch stats (from first available encoder's last batch)
                 sc_enc_any = getattr(raw_model, "scalar_encoder", None) or getattr(raw_model, "late_scalar_encoder", None)
                 if sc_enc_any is not None:
                     sf = getattr(sc_enc_any, "_last_sf", None)
                     if sf is not None:
-                        epoch_grad_norms["scalar_enc/sf_mean"] = (
-                            epoch_grad_norms.get("scalar_enc/sf_mean", 0.0) + sf["mean"]
-                        )
-                        epoch_grad_norms["scalar_enc/sf_std"] = (
-                            epoch_grad_norms.get("scalar_enc/sf_std", 0.0) + sf["std"]
-                        )
+                        epoch_grad_norms["scalar_enc/sf_mean"] = epoch_grad_norms.get("scalar_enc/sf_mean", 0.0) + sf["mean"]
+                        epoch_grad_norms["scalar_enc/sf_std"] = epoch_grad_norms.get("scalar_enc/sf_std", 0.0) + sf["std"]
                         epoch_grad_norms["scalar_enc/sf_min"] = min(
                             epoch_grad_norms.get("scalar_enc/sf_min", float("inf")), sf["min"]
                         )
