@@ -143,11 +143,11 @@ dataset:
     # Explicit 3D visualization box limits used for all GT/Pred/Error panels.
     # Edit these ranges to control the visualized x/y/z box exactly.
     viz_axis_limits:
-        x: [-100, 100]
-        y: [-100, 100]
-        z: [-50, 50]
-    viz_field_vmin: -2.0
-    viz_field_vmax: 2.0
+        x: [-1.5, 2]
+        y: [-1, 1]
+        z: [-1, 1]
+    viz_field_vmin: -1.5
+    viz_field_vmax: 1.5
     viz_abs_diff_vmax: 1.0
 
 optimizer:

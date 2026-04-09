@@ -137,11 +137,6 @@ class StaticTrainer3D(TrainerBase):
                 "Uncertainty weighting enabled: log_sigma_field and log_sigma_scalar will be learned."
             )
 
-        # Visualization consistency settings are initialized after dataset stats are available.
-        self._viz_fixed_axis_limits = None
-        self._viz_fixed_clim_common = None
-        self._viz_fixed_clim_diff = None
-
     def _init_viz_consistency_settings(self):
         """Build fixed axis and color ranges for cross-epoch/run comparability."""
         # Axis limits priority:
