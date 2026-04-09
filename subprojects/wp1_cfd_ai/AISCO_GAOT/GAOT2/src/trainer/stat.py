@@ -831,7 +831,7 @@ class StaticTrainer3D(TrainerBase):
                         dpi=150,
                         view_angle=(20, -120),
                         hide_grid=False,
-                        equal_aspect=True,
+                        equal_aspect=False,
                         show_abs_diff=True,
                         show_input_shape=False,
                         use_ground_truth_range=False,
