@@ -92,11 +92,20 @@ class Interpolator:
         ]
 
         self.isovalue = float(config.get("isovalue", 0.0))
-        self.camera_view = config.get("camera_view", "iso")
+
+        raw_camera_view = config.get("camera_view", "iso")
+        if isinstance(raw_camera_view, list):
+            # Convert list of lists to tuple of tuples for PyVista camera_position
+            # Format as tuple in shape: ( (cam_x, cam_y, cam_z), (focal_x, focal_y, focal_z), (up_x, up_y, up_z) )
+            self.camera_view = tuple(tuple(float(v) for v in x) for x in raw_camera_view)
+        else:
+            self.camera_view = raw_camera_view
+
         self.mesh_color = config.get("mesh_color", "lightgrey")
         self.window_size = tuple(config.get("window_size", [800, 600]))
         self.save_dir = Path(config.get("save_dir", "./interpolation_output"))
         self.upload = config.get("upload_to_wandb", True)
+        self.verbose = config.get("verbose", False)
 
         # Create save directory
         self.save_dir.mkdir(parents=True, exist_ok=True)
@@ -167,7 +176,8 @@ class Interpolator:
         for i, z0 in enumerate(z0_values):
             row_images = []
             for j, z1 in enumerate(z1_values):
-                print(f"  Point ({i + 1}/{self.grid_resolution}, {j + 1}/{self.grid_resolution}): z=[{z0:.3f}, {z1:.3f}]")
+                if self.verbose:
+                    print(f"  Point ({i + 1}/{self.grid_resolution}, {j + 1}/{self.grid_resolution}): z=[{z0:.3f}, {z1:.3f}]")
 
                 # Extract and render mesh at this latent point
                 image = self._extract_and_render_at_latent(z0, z1)
@@ -185,6 +195,10 @@ class Interpolator:
 
         print("Grid generation complete!")
         return final_grid
+
+    def clear_image_cache(self) -> None:
+        """Clear any cached images to free memory."""
+        self._grid_image = None
 
     def _extract_and_render_at_latent(self, z0: float, z1: float) -> Image.Image | None:
         """
@@ -306,7 +320,7 @@ class Interpolator:
 
         return grid_image
 
-    def save_interpolation_grid(self, filepath: Path | None = None) -> Path:
+    def save_interpolation_grid(self, filepath: Path | None = None, clear_cache: bool = False) -> Path:
         """
         Save interpolation grid to file.
 
@@ -324,13 +338,14 @@ class Interpolator:
         filepath.parent.mkdir(parents=True, exist_ok=True)
         self._grid_image.save(filepath)
         print(f"Saved interpolation grid to {filepath}")
-
+        if clear_cache:
+            self.clear_image_cache()
         return filepath
 
     def upload_to_wandb(
         self,
         key: str = "latent_interpolation",
-        step: int | None = None,
+        clear_cache: bool = True,
     ) -> None:
         """
         Upload interpolation grid to WandB.
@@ -352,13 +367,14 @@ class Interpolator:
             image_array = np.array(self._grid_image)
 
             # Log to wandb
-            wandb.log(
-                {key: wandb.Image(image_array, caption="Latent Space Interpolation Grid")},
-                step=step,
-            )
+            # We don't pass `step` explicitly to wandb.log because it can conflict with
+            # the internal global step tracking if multi_log_in_one is also used.
+            wandb.log({key: wandb.Image(image_array, caption="Latent Space Interpolation Grid")})
             print(f"Uploaded interpolation grid to WandB (key={key})")
         except Exception as e:
             print(f"Warning: WandB upload failed: {e}")
+        if clear_cache:
+            self.clear_image_cache()
 
     def cleanup(self) -> None:
         """Clean up resources."""

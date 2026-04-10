@@ -43,7 +43,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     # ------------------------------------------------------------------
     # 1. Load general config from YAML
     # ------------------------------------------------------------------
-    general_config = load_config(v="v2", cfg_name="general_config.yaml")
+    general_config: dict = load_config(v="v2", cfg_name="general_config.yaml")
     # ------------------------------------------------------------------
     # 2. Initialise WandB (picks up sweep agent params into wandb.config)
     # ------------------------------------------------------------------
@@ -151,8 +151,48 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     total_loss: TotalLoss = TotalLoss(dev=device, renderer_manager=None, external_alm=True)
     training_config = load_config(v="v2", cfg_name=general_config["active_configs"]["training"])
 
-    ### LLM please replace this part withe the diversity trainer
+    # GINN trainer + utils initialisation
     ginn_config = load_config(v="v2", cfg_name="GINN.yaml")
+
+    wandb_name = wandb.run.name if wandb.run is not None else "local_run"
+
+    try:
+        if verbose:
+            print(
+                "Configuring Interpolator env: "
+                f"DISPLAY={os.environ.get('DISPLAY', '<unset>')} "
+                f"PYVISTA_OFF_SCREEN={os.environ.get('PYVISTA_OFF_SCREEN', '<unset>')}"
+            )
+        interp_config_name = general_config.get("postprocessing_interpolator", "postprocessing_interpolator_config.yaml")
+        interp_config_dict = load_config(v="v2", cfg_name=interp_config_name)["interpolator"]
+
+        storage_path = general_config["storage_paths"].get(
+            "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+        )
+        interp_save_dir = Path(storage_path) / "interpolation_grids" / str(wandb_name)
+        interp_config_dict["save_dir"] = str(interp_save_dir)
+
+        interpolator = Interpolator(model=model, config=interp_config_dict, device=device)
+
+        if verbose:
+            print("Generating initial latent space interpolation grid (epoch 0)...")
+        interpolator.generate_interpolation_grid()
+        save_path = interpolator.save_interpolation_grid(filepath=interp_save_dir / "interpolation_grid_epoch0.png")
+        if verbose:
+            print(f"Saved initial interpolation grid to {save_path}")
+
+        if wandb.run is not None and interp_config_dict.get("upload_to_wandb", True):
+            interpolator.upload_to_wandb(key="latent_interpolation_grid")
+            if verbose:
+                print("Uploaded initial interpolation grid to WandB")
+
+    except Exception as e:
+        print(f"Warning: Initial latent space interpolation setup failed: {e}")
+        interpolator = None
+        interp_config_dict = {}
+        interp_save_dir = Path(".")
+        if verbose:
+            traceback.print_exc()
 
     # Get hyperparameters
     learning_rate = training_config["training_params"].get("learning_rate", 1e-3)
@@ -192,13 +232,30 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
                     "GINN/total_loss": metrics["total_loss"],
                 },
             )
+
+        if interpolator is not None and interp_config_dict.get("render_during_training", False):
+            render_freq = interp_config_dict.get("render_frequency", 10)
+            if epoch > 0 and epoch % render_freq == 0:
+                if verbose:
+                    print(f"Generating interpolation grid for epoch {epoch}...")
+                try:
+                    interpolator.generate_interpolation_grid()
+                    save_path = interpolator.save_interpolation_grid(
+                        filepath=interp_save_dir / f"interpolation_grid_epoch{epoch}.png"
+                    )
+                    if verbose:
+                        print(f"Saved epoch {epoch} interpolation grid to {save_path}")
+                    if wandb.run is not None and interp_config_dict.get("upload_to_wandb", True):
+                        interpolator.upload_to_wandb(key="latent_interpolation_grid")
+                except Exception as e:
+                    print(f"Warning: Latent space interpolation failed at epoch {epoch}: {e}")
+
     if verbose:
         print("Model optimisation completed.")
 
     # ------------------------------------------------------------------
     # Save final model as usual without mesh rendering fluff
     # ------------------------------------------------------------------
-    wandb_name = wandb.run.name if wandb.run is not None else None
     model.set_latent_vector(torch.zeros(model_config["z_dim"], device=device))  # Set to zero vector for final saving
     allround_save_data(
         model=model,
@@ -214,46 +271,29 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
     )
 
     # ------------------------------------------------------------------
-    # Postprocessing: Generate latent space interpolation grid
+    # Postprocessing: Generate final latent space interpolation grid
     # ------------------------------------------------------------------
-    if verbose:
-        print("Generating latent space interpolation grid...")
-        print(
-            "Renderer env: "
-            f"DISPLAY={os.environ.get('DISPLAY', '<unset>')} "
-            f"PYVISTA_OFF_SCREEN={os.environ.get('PYVISTA_OFF_SCREEN', '<unset>')}"
-        )
-    try:
-        # Load interpolator config
-        interp_config_name = general_config.get("postprocessing_interpolator", "postprocessing_interpolator_config.yaml")
-        interp_config_dict = load_config(v="v2", cfg_name=interp_config_name)
-
-        # Determine save directory
-        storage_path = general_config["general_info"].get(
-            "storage_path", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
-        )
-        interp_save_dir = Path(storage_path) / "interpolation_grids" / str(wandb_name)
-        interp_config_dict["save_dir"] = str(interp_save_dir)
-
-        # Generate interpolation grid
-        interpolator = Interpolator(model=model, config=interp_config_dict, device=device)
-        interpolator.generate_interpolation_grid()
-
-        # Save locally
-        save_path = interpolator.save_interpolation_grid()
+    if interpolator is not None:
         if verbose:
-            print(f"Saved interpolation grid to {save_path}")
+            print("Generating final latent space interpolation grid...")
+        try:
+            interpolator.generate_interpolation_grid()
 
-        # Upload to WandB if enabled
-        if wandb.run is not None and interp_config_dict.get("upload_to_wandb", True):
-            interpolator.upload_to_wandb(key="latent_interpolation_grid", step=num_epochs)
+            # Save locally
+            save_path = interpolator.save_interpolation_grid(filepath=interp_save_dir / "interpolation_grid_final.png")
             if verbose:
-                print("Uploaded interpolation grid to WandB")
+                print(f"Saved final interpolation grid to {save_path}")
 
-    except Exception as e:
-        print(f"Warning: Latent space interpolation failed: {e}")
-        if verbose:
-            traceback.print_exc()
+            # Upload to WandB if enabled
+            if wandb.run is not None and interp_config_dict.get("upload_to_wandb", True):
+                interpolator.upload_to_wandb(key="latent_interpolation_grid")
+                if verbose:
+                    print("Uploaded final interpolation grid to WandB")
+
+        except Exception as e:
+            print(f"Warning: Final latent space interpolation failed: {e}")
+            if verbose:
+                traceback.print_exc()
 
     print("Completed job successfully.")
 
