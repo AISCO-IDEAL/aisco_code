@@ -2,7 +2,7 @@ import ast
 import copy
 import logging
 import os
-
+import warnings
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -12,9 +12,11 @@ from torch_geometric.data import Batch, Data
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
 import wandb
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.metadata import DATASET_METADATA
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import cp_field_to_drag
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.scale import rescale, rescale_new
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer import MeshSDFGrads, Visualiser
 
@@ -55,23 +57,37 @@ class ModelLoader:
         config_path = self.model_path.replace("model.pt", "config.yaml")
         if not os.path.exists(config_path):
             raise FileNotFoundError(
-                f"Model config not found at {config_path}. Expected a _config.yaml next to the .pt checkpoint."
+                f"Model config not found at {config_path}. Expected config.yaml next to model.pt."
             )
 
         with open(config_path) as f:
             config = yaml.safe_load(f)
 
+        if not isinstance(config, dict):
+            raise TypeError("Loaded config must be a dictionary.")
+
         self._og_config = copy.deepcopy(config)
 
-        config = config["model"]["args"]
+        if "model" not in config or "args" not in config["model"]:
+            raise KeyError("Expected config['model']['args'] in saved config.")
 
-        config["magno"]["precompute_edges"] = False
-        config["transformer"]["norm_eps"] = float(config["transformer"]["norm_eps"])
+        model_args = config["model"]["args"]
 
-        self.gaot = GAOT3D(config=config).to(self.device)
+        if "magno" not in model_args:
+            raise KeyError("Expected 'magno' section in model args.")
+        if "transformer" not in model_args:
+            raise KeyError("Expected 'transformer' section in model args.")
+
+        model_args["magno"]["precompute_edges"] = False
+
+        norm_eps = model_args["transformer"].get("norm_eps")
+        if norm_eps is None:
+            raise KeyError("Expected transformer.norm_eps in model args.")
+        model_args["transformer"]["norm_eps"] = float(norm_eps)
+
+        self.gaot = GAOT3D(config=model_args).to(self.device)
         self.gaot.eval()
 
-        # ── load weights ─────────────────────────────────────────────────
         state = torch.load(self.model_path, map_location=self.device, weights_only=False)
         if "model" in state:
             sd = state["model"]
@@ -80,9 +96,50 @@ class ModelLoader:
         else:
             sd = state
 
-        # Strip "module." prefix from DDP/DataParallel checkpoints
         sd = {k.removeprefix("module."): v for k, v in sd.items()}
         missing, unexpected = self.gaot.load_state_dict(sd, strict=False)
+        if missing or unexpected:
+            warnings.warn(
+                f"Checkpoint/state_dict mismatch. Missing keys: {missing}. Unexpected keys: {unexpected}."
+            )
+
+        # Reconstruct latent tokens from training context instead of using self.gaot.latent_tokens
+        dataset_cfg = self._og_config.get("dataset", {})
+        self._use_rescale_new = dataset_cfg.get("use_rescale_new", False)
+
+        metaname = dataset_cfg.get("metaname")
+        if metaname and metaname in DATASET_METADATA:
+            self._metadata = DATASET_METADATA[metaname]
+            self._phy_domain = self._metadata.domain_x
+        else:
+            norm_domain = model_args.get("norm_domain")
+            if norm_domain is None:
+                raise KeyError(
+                    "Could not determine physical domain. Expected dataset.metaname in DATASET_METADATA "
+                    "or model.args.norm_domain."
+                )
+            self._metadata = None
+            self._phy_domain = norm_domain
+
+        latent_token_size = model_args.get("latent_tokens")
+        if latent_token_size is None:
+            raise KeyError("Expected model.args.latent_tokens in saved config.")
+
+        x_min, y_min, z_min = self._phy_domain[0]
+        x_max, y_max, z_max = self._phy_domain[1]
+
+        meshgrid = torch.meshgrid(
+            torch.linspace(x_min, x_max, latent_token_size[0]),
+            torch.linspace(y_min, y_max, latent_token_size[1]),
+            torch.linspace(z_min, z_max, latent_token_size[2]),
+            indexing="ij",
+        )
+        latent_queries = torch.stack(meshgrid, dim=-1).reshape(-1, 3)
+
+        if self._use_rescale_new:
+            self._latent_tokens = rescale_new(latent_queries, (-1, 1), self._phy_domain).to(self.device)
+        else:
+            self._latent_tokens = rescale(latent_queries, (-1, 1)).to(self.device)
 
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
@@ -91,7 +148,6 @@ class ModelLoader:
             sdf_model=sdf_model, loss_fn=self.loss_fn
         )
 
-        # Store diagnostics for DebugManager
         diag = getattr(self, "_last_diagnostics", {})
         diag["mesh_n_vertices"] = int(verts.shape[0]) if verts is not None and verts.numel() > 0 else 0
         diag["mesh_n_faces"] = int(faces.shape[0]) if faces is not None and faces.numel() > 0 else 0
@@ -108,9 +164,10 @@ class ModelLoader:
         if self.cfd_config["visualisations"]:
             self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
 
+        # Fix 1: keep objective sign consistent with Variant A
         cuppled_loss = loss.detach() + surrogate_loss - surrogate_loss.detach()
         assert cuppled_loss == loss.item() + surrogate_loss - surrogate_loss.item()
-        return cuppled_loss * (-1)
+        return cuppled_loss
 
     def _visualize_pressure_field(
         self,
@@ -123,31 +180,25 @@ class ModelLoader:
         if pressure_field is None:
             return
 
-        # ---- build a synthetic "sample" compatible with trainer logic ----
-        # vertices are in mm from SDF pipeline; convert to m as in GAOT training
         sample = Data(
-            pos=mesh_verts.detach() * 1e-3,  # mm -> m
-            x=None,  # no GT field on this mesh
+            pos=mesh_verts.detach() * 1e-3,
+            x=None,
             face=mesh_faces.detach().T,
         )
 
         loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
         batch = next(iter(loader)).to(self.device)
 
-        # coordinates for scatter plot  (DETACH before numpy)
         coords = batch.pos.detach().cpu().numpy()
         fname = self.epoch_name
 
-        # predicted field is passed in as pressure_field (node-wise GAOT output)
         if pressure_field.dim() == 2 and pressure_field.size(-1) == 1:
             pressure_field = pressure_field.squeeze(-1)
 
         field_pred = pressure_field.detach().cpu().numpy().squeeze()
-        field_gt = None  # no GT available on optimization mesh
+        field_gt = None
 
-        # if you *do* have GT on this mesh in future, set batch.x and use it here
         if field_gt is not None:
-            # optional: same denorm as StaticTrainer3D if you store stats on ModelLoader
             u_mean = getattr(self, "u_mean", torch.tensor(0.0, device=self.device))
             u_std = getattr(self, "u_std", torch.tensor(1.0, device=self.device))
             if isinstance(u_mean, torch.Tensor):
@@ -162,14 +213,11 @@ class ModelLoader:
             common_min = float(np.min(field_gt_dn))
             common_max = float(np.max(field_gt_dn))
         else:
-            # no GT: just plot the prediction with its own range
             field_pred_dn = field_pred
             field_gt_dn = None
             field_diff = None
             common_min = float(np.min(field_pred_dn))
             common_max = float(np.max(field_pred_dn))
-
-        # ---- build matplotlib figure in same style as trainer ------------
 
         panels = []
         if field_gt_dn is not None:
@@ -214,9 +262,11 @@ class ModelLoader:
         wandb.log({"Aero-resolution": mesh_verts.shape[0]}, step=self.epoch_name)
         if mesh_verts is None or mesh_verts.shape[0] == 0:
             return torch.tensor(0.0, device=self.device)
+
         batch = self._reformat_data(mesh_verts, mesh_faces)
 
-        tokens_pos = self.gaot.latent_tokens
+        # Fix 5: use reconstructed latent tokens from training context
+        tokens_pos = self._latent_tokens
 
         with torch.autograd.set_detect_anomaly(True):
             gaot_loss = self.gaot.forward(batch=batch, tokens_pos=tokens_pos)
@@ -227,9 +277,12 @@ class ModelLoader:
 
         self._visualize_pressure_field(pressure_field=pressure_field, mesh_verts=mesh_verts, mesh_faces=mesh_faces)
 
+        # Fix 4: use physical/raw normals for drag integration
+        integration_normals = batch.c_raw if hasattr(batch, "c_raw") and batch.c_raw is not None else batch.c
+
         int_drag_f = cp_field_to_drag(
             cp_field=pressure_field,
-            normals=batch.c,
+            normals=integration_normals,
             face=mesh_faces.T,
             pos=mesh_verts * 1e-3,
             v_inf=self.cfd_config["v_inf"],
@@ -251,17 +304,20 @@ class ModelLoader:
                 "n_input_faces": int(mesh_faces.shape[0]),
                 "normals_flipped_count": getattr(self, "_normals_flipped_count", 0),
             }
+
         return int_drag_f
 
     def _reformat_data(self, mesh_verts, mesh_faces):
+        # Fixes 2, 3, 4:
+        # - keep physical/original frame for normal computation and SDF probing
+        # - do not introduce the *1e3 bug in SDF probing
+        # - preserve raw normals for drag integration
+        # - only flip x for model input frame
+
         optim_verts = mesh_verts.to(self.device)
         mesh_faces = mesh_faces.to(self.device)
 
-        optim_verts = optim_verts.clone()
-        optim_verts[:, 0] *= -1.0
-
-        optim_verts_m = optim_verts * 1e-3
-
+        # Compute normals in the original/native SDF frame
         v0 = optim_verts[mesh_faces[:, 0]]
         v1 = optim_verts[mesh_faces[:, 1]]
         v2 = optim_verts[mesh_faces[:, 2]]
@@ -270,7 +326,8 @@ class ModelLoader:
         face_normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
 
-        sdf_values = self.sdf_model(face_centers * 1e3 + face_normals * 50)
+        # Fix 3: no erroneous *1e3 here; SDF probe stays in native mesh/SDF units
+        sdf_values = self.sdf_model(face_centers + face_normals * 50)
         normals_flipped = sdf_values < 0
         face_normals[normals_flipped] *= -1
         self._normals_flipped_count = int(normals_flipped.sum().item())
@@ -283,14 +340,29 @@ class ModelLoader:
         vertex_normals = vertex_normals.index_add(0, all_idx, all_normals)
         vertex_normals = torch.nn.functional.normalize(vertex_normals, dim=-1)
 
-        # vertex_normals[:, 0] *= -1.0
+        # Fix 4: preserve physical normals for force integration
+        raw_vertex_normals = vertex_normals.clone()
 
-        data = Data(pos=optim_verts_m, face=mesh_faces.T, c=vertex_normals)
+        # Fix 2: convert to model/training frame only for network input
+        model_vertex_normals = vertex_normals.clone()
+        model_vertex_normals[:, 0] *= -1.0
+
+        model_verts_m = optim_verts.clone() * 1e-3
+        model_verts_m[:, 0] *= -1.0
+
+        data = Data(
+            pos=model_verts_m,
+            face=mesh_faces.T,
+            c=model_vertex_normals,
+            c_raw=raw_vertex_normals,
+        )
 
         if self._og_config["dataset"]["use_rescale_new"]:
-            rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-5.0, -1.3, -1.2], [4.7, 1.7, 1.6]))
+            data = RescalePositionNew(
+                lims=(-1.0, 1.0),
+                phy_domain=self._phy_domain,
+            )(data)
         else:
-            rescale_transform = RescalePosition()
-        data = rescale_transform(data)
+            data = RescalePosition()(data)
 
         return Batch.from_data_list([data]).to(self.device)
