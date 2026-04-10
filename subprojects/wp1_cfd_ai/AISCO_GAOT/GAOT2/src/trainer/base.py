@@ -5,17 +5,18 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-import wandb
 import torch
 import torch.distributed as dist
 from torch import nn
+
+import wandb
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import cp_field_to_drag
 
 from ..dataloader.metadata import DATASET_METADATA
 
 # Import the new W&B Tracker
 from .logger import WandbTracker
-from .optimizers import AdamOptimizer, AdamWOptimizer, build_loss_fn
+from .optimizers import AdamWOptimizer, build_loss_fn
 from .utils.setup import load_ckpt, manual_seed, save_ckpt
 
 
@@ -34,7 +35,7 @@ class TrainerBase:
     val_loader: Any
     test_loader: Any
     rigraph: Any
-    optimizer: AdamOptimizer | AdamWOptimizer
+    optimizer: AdamWOptimizer
 
     def __init__(self, args):
         # Config setup
@@ -118,7 +119,7 @@ class TrainerBase:
 
     def init_optimizer(self, _optimizer_config):
         ### Initialize the optimizer
-        self.optimizer = {"adam": AdamOptimizer, "adamw": AdamWOptimizer}[self.optimizer_config["name"]](  # type: ignore[assignment]
+        self.optimizer = {"adamw": AdamWOptimizer}[self.optimizer_config["name"]](
             self.model.parameters(), self.optimizer_config["args"]
         )
 
@@ -249,7 +250,7 @@ class TrainerBase:
                     normals=data.normals,
                     face=data.face,
                     pos=data.pos,
-                    v_inf=25.0,  
+                    v_inf=25.0,
                     drag_direction=0,
                 )
 
@@ -259,7 +260,7 @@ class TrainerBase:
                     normals=data.normals,
                     face=data.face,
                     pos=data.pos,
-                    v_inf=25.0, 
+                    v_inf=25.0,
                     drag_direction=0,
                 )
 
@@ -277,15 +278,15 @@ class TrainerBase:
         avg_loss = total_loss / max(n_batches, 1)
         mean_drag_error = torch.cat(drag_errors).mean().item() if drag_errors else 0.0
 
-
-        wandb.logg(
+        wandb.log(
             {
                 "val/loss": avg_loss,
                 "val/drag_error": mean_drag_error,
                 "val/drag_pred_all": drag_preds,
                 "val/drag_gt_integrated_all": drag_gts_integrated,
                 "val/drag_gt_sim_all": drag_gts_sim,
-            }, step = epoch_name
+            },
+            step=epoch_name,
         )
 
         return avg_loss

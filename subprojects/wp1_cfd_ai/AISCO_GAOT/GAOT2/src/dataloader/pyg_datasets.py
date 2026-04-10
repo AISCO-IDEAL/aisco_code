@@ -1,11 +1,190 @@
 import os
+from collections.abc import Callable
 
 import numpy as np
 import torch
+from scipy.spatial import cKDTree
 from torch_geometric.data import Data, Dataset
+
+try:
+    from torch_geometric.nn.pool import fps as _fps_fn
+except ImportError:
+    _fps_fn = None
 
 # Shape dimension constants
 EXPECTED_DATA_SHAPE_DIMS = 3
+
+# ---------------------------------------------------------------------------
+# Subsampling strategies
+# ---------------------------------------------------------------------------
+
+
+def _subsample_random(pos: torch.Tensor, n_target: int) -> torch.Tensor:
+    """Random uniform subsampling (original behaviour).
+
+    Uses an independent RNG so results vary across epochs even when
+    DataLoader workers are re-seeded with the same ``torch.manual_seed``.
+    """
+    _gen = torch.Generator()
+    _gen.manual_seed(int.from_bytes(os.urandom(8), "big"))
+    return torch.randperm(pos.shape[0], generator=_gen)[:n_target]
+
+
+def _subsample_voxel(pos: torch.Tensor, n_target: int, tol: float = 0.10) -> torch.Tensor:
+    """Voxel-grid subsampling: keep one random point per voxel.
+
+    Ensures spatially uniform coverage regardless of local mesh density.
+    The voxel size is found via binary search starting from an analytical
+    estimate so the number of occupied voxels is within ``tol`` of
+    ``n_target`` (default 10%).  Typically converges in 2-4 iterations.
+
+    Uses an independent RNG (seeded from ``os.urandom``) so that results
+    vary across epochs even when DataLoader workers are re-seeded with the
+    same ``torch.manual_seed``.
+    """
+    # Independent generator — NOT affected by torch.manual_seed()
+    _gen = torch.Generator()
+    _gen.manual_seed(int.from_bytes(os.urandom(8), "big"))
+
+    pos_min = pos.min(dim=0).values
+    pos_max = pos.max(dim=0).values
+    extent = (pos_max - pos_min).clamp(min=1e-8)
+
+    def _count(voxel_size: float) -> tuple[int, torch.Tensor]:
+        vc = ((pos - pos_min) / voxel_size).long()
+        dims = vc.max(dim=0).values + 1
+        flat = vc[:, 0] * (dims[1] * dims[2]) + vc[:, 1] * dims[2] + vc[:, 2]
+        perm = torch.randperm(pos.shape[0], generator=_gen)
+        flat_perm = flat[perm]
+        sorted_vals, sorted_local = flat_perm.sort()
+        mask = torch.cat([torch.tensor([True]), sorted_vals[1:] != sorted_vals[:-1]])
+        kept = perm[sorted_local[mask]]
+        return len(kept), kept
+
+    # Analytical starting estimate: n_target occupied voxels ≈ volume / v^3
+    volume = extent[0].item() * extent[1].item() * extent[2].item()
+    v_init = max((volume / n_target) ** (1.0 / 3.0), 1e-8)
+
+    lo = 0.0
+    hi = extent.max().item()
+    best_idx = None
+
+    # Evaluate analytical estimate first, then binary search with early exit
+    mid = v_init
+    for _ in range(10):
+        n, idx = _count(mid)
+        best_idx = idx
+        if abs(n - n_target) / n_target <= tol:
+            break
+        if n < n_target:
+            hi = mid  # fewer voxels than wanted → smaller voxels
+        else:
+            lo = mid  # more voxels than wanted → larger voxels
+        mid = (lo + hi) / 2.0
+
+    assert best_idx is not None
+    return best_idx
+
+
+def _subsample_fps(pos: torch.Tensor, n_target: int) -> torch.Tensor:
+    """Farthest-point sampling: iteratively pick the point farthest from the
+    already-selected set.  Gives excellent spatial coverage but is slower
+    than random or voxel (~40 s for 135 K → 50 K on CPU).
+
+    Uses ``torch_geometric.nn.pool.fps`` when available, otherwise falls
+    back to a pure-PyTorch implementation.
+    """
+    ratio = min(n_target / pos.shape[0], 1.0)
+    if _fps_fn is not None:
+        batch_idx = torch.zeros(pos.shape[0], dtype=torch.long, device=pos.device)
+        idx = _fps_fn(pos, batch_idx, ratio=ratio)
+    else:
+        # Pure-Python fallback (slow but correct)
+        n = pos.shape[0]
+        selected: list[int] = [int(torch.randint(n, (1,)).item())]
+        dists = torch.full((n,), float("inf"))
+        for _ in range(min(n_target, n) - 1):
+            last = pos[selected[-1]].unsqueeze(0)
+            d = (pos - last).pow(2).sum(dim=-1)
+            dists = torch.min(dists, d)
+            selected.append(int(dists.argmax().item()))
+        idx = torch.tensor(selected, dtype=torch.long)
+
+    return idx[:n_target]
+
+
+def _subsample_poisson_disk(pos: torch.Tensor, n_target: int) -> torch.Tensor:
+    """Poisson-disk sampling: greedily accept points only if they are at least
+    ``r`` away from all already-accepted points.  Uses a spatial hash (voxel
+    grid with cell size = r / √3) for O(1) neighbour checks.
+
+    The radius ``r`` is estimated to achieve approximately ``n_target`` points
+    and refined via a few coarse iterations if the first guess under- or over-
+    shoots by more than 10 %.
+
+    Quality is between voxel (fast, slightly clustered) and FPS (optimal but
+    slow).  Speed is ~0.3-0.8 s for 135 K → 50 K.
+    """
+    n = pos.shape[0]
+    pos_np = pos.detach().cpu().numpy()
+
+    # Estimate radius: for N points uniformly filling a surface,
+    # n_target ≈ A / (π r²) where A is total surface area.  We don't know A,
+    # so use a heuristic based on k=1 nearest-neighbour distances.
+    tree = cKDTree(pos_np)
+    d1, _ = tree.query(pos_np, k=2, workers=-1)  # k=2 because self is always 0
+    median_nn = float(np.median(d1[:, 1]))
+    # Scale factor: if all n points have spacing median_nn, then after
+    # Poisson disk at radius r we keep n * (median_nn / r)^2 points
+    r_est = median_nn * (n / n_target) ** 0.5
+
+    # Use os.urandom so the shuffle varies across epochs even when
+    # DataLoader workers are re-seeded with the same torch.manual_seed.
+    rng = np.random.default_rng(int.from_bytes(os.urandom(8), "big"))
+
+    def _run(r: float) -> np.ndarray:
+        """Single pass of greedy Poisson-disk acceptance."""
+        cell = r / (3.0**0.5)
+        inv_cell = 1.0 / cell
+        grid: dict[tuple[int, int, int], bool] = {}
+        order = rng.permutation(n)
+        accepted = []
+
+        for i in order:
+            p = pos_np[i]
+            gx, gy, gz = int(p[0] * inv_cell), int(p[1] * inv_cell), int(p[2] * inv_cell)
+
+            # Check 3x3x3 neighbourhood in the grid
+            too_close = False
+            for dx in (-1, 0, 1):
+                if too_close:
+                    break
+                for dy in (-1, 0, 1):
+                    if too_close:
+                        break
+                    for dz in (-1, 0, 1):
+                        nbr = (gx + dx, gy + dy, gz + dz)
+                        if nbr in grid:
+                            too_close = True
+                            break
+
+            if not too_close:
+                accepted.append(i)
+                grid[(gx, gy, gz)] = True
+
+        return np.array(accepted, dtype=np.int64)
+
+    # Adaptive radius: try a few times to hit close to n_target
+    r = r_est
+    for _ in range(5):
+        idx = _run(r)
+        ratio = len(idx) / n_target
+        if 0.9 <= ratio <= 1.1:
+            break
+        # Adjust: more points → increase r, fewer → decrease r
+        r *= ratio**0.5
+
+    return torch.from_numpy(idx).long()
 
 
 class EnrichedData(Data):
@@ -59,6 +238,10 @@ class VTKMeshDataset(Dataset):
         self.active_variables = dataset_config["active_variables"]  # None
         self.drop_pressure = dataset_config.get("drop_pressure", False)
         self.subsample_nodes = dataset_config.get("subsample_nodes", None)
+        self.subsample_strategy = dataset_config.get("subsample_strategy", "random")
+        _valid = {"random", "voxel", "fps", "poisson_disk"}
+        if self.subsample_strategy not in _valid:
+            raise ValueError(f"subsample_strategy must be one of {_valid}, got '{self.subsample_strategy}'")
         # Assuming processed files are stored in root/processed/
         super().__init__(root, transform, pre_transform, pre_filter)
         # Load indices after processing ensures processed files are available
@@ -155,13 +338,22 @@ class VTKMeshDataset(Dataset):
             if self.subsample_nodes is not None and hasattr(data, "face"):
                 del data.face
 
-            # Random node subsampling: if sample has more nodes than subsample_nodes,
-            # pick a fresh random subset each time this sample is loaded
+            # Node subsampling: if sample has more nodes than subsample_nodes,
+            # select a subset according to the configured strategy.
             if self.subsample_nodes is not None and data.num_nodes > self.subsample_nodes:
                 # Capture num_nodes BEFORE modifying any attribute — PyG recomputes
                 # data.num_nodes dynamically, so it would shrink mid-loop otherwise
                 original_num_nodes = data.num_nodes
-                perm = torch.randperm(original_num_nodes)[: self.subsample_nodes]
+
+                _subsample_fns: dict[str, Callable[[torch.Tensor, int], torch.Tensor]] = {
+                    "random": _subsample_random,
+                    "voxel": _subsample_voxel,
+                    "fps": _subsample_fps,
+                    "poisson_disk": _subsample_poisson_disk,
+                }
+                _strategy_fn = _subsample_fns[self.subsample_strategy]
+                perm = _strategy_fn(data.pos, self.subsample_nodes)
+
                 # Apply permutation to every per-node tensor
                 for attr in list(data.keys()):
                     val = data[attr]
