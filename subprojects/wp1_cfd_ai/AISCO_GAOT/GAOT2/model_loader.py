@@ -162,7 +162,6 @@ class ModelLoader:
         if self.cfd_config["visualisations"]:
             self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
 
-        # Fix 1: keep objective sign consistent with Variant A
         cuppled_loss = loss.detach() + surrogate_loss - surrogate_loss.detach()
         assert cuppled_loss == loss.item() + surrogate_loss - surrogate_loss.item()
         return cuppled_loss
@@ -306,12 +305,6 @@ class ModelLoader:
         return int_drag_f
 
     def _reformat_data(self, mesh_verts, mesh_faces):
-        # Fixes 2, 3, 4:
-        # - keep physical/original frame for normal computation and SDF probing
-        # - do not introduce the *1e3 bug in SDF probing
-        # - preserve raw normals for drag integration
-        # - only flip x for model input frame
-
         optim_verts = mesh_verts.to(self.device)
         mesh_faces = mesh_faces.to(self.device)
 
@@ -324,7 +317,6 @@ class ModelLoader:
         face_normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
 
-        # Fix 3: no erroneous *1e3 here; SDF probe stays in native mesh/SDF units
         sdf_values = self.sdf_model(face_centers + face_normals * 50)
         normals_flipped = sdf_values < 0
         face_normals[normals_flipped] *= -1
@@ -338,10 +330,8 @@ class ModelLoader:
         vertex_normals = vertex_normals.index_add(0, all_idx, all_normals)
         vertex_normals = torch.nn.functional.normalize(vertex_normals, dim=-1)
 
-        # Fix 4: preserve physical normals for force integration
         raw_vertex_normals = vertex_normals.clone()
 
-        # Fix 2: convert to model/training frame only for network input
         model_vertex_normals = vertex_normals.clone()
         model_vertex_normals[:, 0] *= -1.0
 
