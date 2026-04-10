@@ -139,7 +139,7 @@ dataset:
     subsample_nodes: 50000     # randomly sample 30k nodes per load if sample exceeds this
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
-    num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
+    num_viz_samples: 0         # number of random viz samples per split (train/val); 0 = disable viz
 
 optimizer:
     name: "adamw" # the option "adam" hasen't been adopted yet to the new config-style
