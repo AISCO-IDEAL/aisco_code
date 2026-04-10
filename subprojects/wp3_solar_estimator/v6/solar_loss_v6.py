@@ -711,7 +711,13 @@ class SolarLossEstimator:
         """
         Compute the solar loss for the given model.
         """
-        if self.rendering and not disable_rendering and self.enable_wandb_logging and not disable_logging and self.model_hash is None:
+        if (
+            self.rendering
+            and not disable_rendering
+            and self.enable_wandb_logging
+            and not disable_logging
+            and self.model_hash is None
+        ):
             self.model_hash = dict_hashing(model.get_model_info_dict())
             if self.wandb_run_name is not None:
                 self.rendering_dir = (

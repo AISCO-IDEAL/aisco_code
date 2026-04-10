@@ -38,6 +38,7 @@ configurable prefactor before being fed to the cruising-speed solver::
 
 from __future__ import annotations
 
+import inspect
 import time
 from collections import OrderedDict
 from pathlib import Path
@@ -204,7 +205,6 @@ class TotalLoss:
     # ------------------------------------------------------------------
     def _compute_raw_losses(self, model: TrainModel, epoch_name: int, skip_telemetry: bool = False) -> dict[str, torch.Tensor]:
         """Evaluate every active loss instance and return raw (unweighted) tensors."""
-        import inspect
         raw: dict[str, torch.Tensor] = {}
         for name, instance in self._active_losses.items():
             sig = inspect.signature(instance.get_loss)

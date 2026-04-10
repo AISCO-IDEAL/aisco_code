@@ -8,6 +8,8 @@ Overwrite the following methods:
 - _loss()
 """
 
+import inspect
+
 import torch
 
 import wandb
@@ -61,7 +63,6 @@ class ParentLoss:
         if self.__weight[0] == 0.0:
             return torch.tensor(0.0, device=self.device)
         else:
-            import inspect
             # store context for gradient logging
             self.epoch_name = epoch_name
             self._last_model = model
@@ -72,13 +73,13 @@ class ParentLoss:
             )
 
             if accepts_skip_telemetry:
-                self._last_loss = self._loss(model, skip_telemetry=skip_telemetry)
+                self._last_loss = self._loss(model, skip_telemetry=skip_telemetry)  # type: ignore[call-arg]
             else:
                 self._last_loss = self._loss(model)
 
             return self._last_loss
 
-    def _loss(self, model, skip_telemetry=False) -> torch.Tensor:  # noqa: ARG002
+    def _loss(self, model) -> torch.Tensor:  # noqa: ARG002
         return torch.tensor(0.0, device=self.device)
 
     def log_gradients(self, epoch_name) -> None:

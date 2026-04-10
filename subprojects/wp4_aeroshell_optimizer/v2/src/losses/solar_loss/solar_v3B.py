@@ -12,10 +12,5 @@ class SolarV3B(ParentLoss):
         self.solar_estimator = SolarLossEstimator(config=solar_cfg)
         self.power_conversion_factor = solar_cfg["power_conversion_factor"]
 
-    def _loss(self, model, skip_telemetry=False):
-        return (
-            self.solar_estimator.solar_loss(
-                model=model, epoch_name=self.epoch_name, disable_logging=skip_telemetry, disable_rendering=skip_telemetry
-            )
-            * self.power_conversion_factor
-        )
+    def _loss(self, model):
+        return self.solar_estimator.solar_loss(model=model, epoch_name=self.epoch_name) * self.power_conversion_factor

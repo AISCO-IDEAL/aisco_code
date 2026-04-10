@@ -15,7 +15,7 @@ class SolarV3B(ParentLoss):
     def _loss(self, model):
         import torch  # noqa: PLC0415
 
-        raw_loss = self.solar_estimator.solar_loss(disable_logging=skip_telemetry, disable_rendering=skip_telemetry, model=model, epoch_name=self.epoch_name)
+        raw_loss = self.solar_estimator.solar_loss(model=model, epoch_name=self.epoch_name)
         scaled_loss = raw_loss * self.power_conversion_factor
 
         with torch.no_grad():
