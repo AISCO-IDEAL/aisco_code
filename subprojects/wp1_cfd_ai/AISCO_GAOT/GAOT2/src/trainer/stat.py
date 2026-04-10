@@ -1105,7 +1105,7 @@ class StaticTrainer3D(TrainerBase):
                         face_cpu,
                         pos_cpu,
                         v_inf=25.0,
-                        rho=1.125,
+                        rho=1.225,
                     )
 
                     self._val_data[f"mesh{i1}.{i2}"] = {
@@ -1172,7 +1172,7 @@ class StaticTrainer3D(TrainerBase):
                                     mesh["faces"],  # stored faces (tensor)
                                     mesh["vertices"],  # stored vertices (tensor)
                                     v_inf=25.0,
-                                    rho=1.125,
+                                    rho=1.225,
                                 )
 
                                 mesh["predicted_cd_field"] = cd_pred_g
@@ -1189,7 +1189,7 @@ class StaticTrainer3D(TrainerBase):
                                 mesh["faces"],
                                 mesh["vertices"],
                                 v_inf=25.0,
-                                rho=1.125,
+                                rho=1.225,
                             )
                             mesh["predicted_cd_field"] = cd_pred_g
                             mesh["predicted_integrated_drag"] = drag_pred
