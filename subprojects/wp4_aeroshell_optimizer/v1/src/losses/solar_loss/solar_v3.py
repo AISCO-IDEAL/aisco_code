@@ -9,4 +9,4 @@ class SolarV3(ParentLoss):
         self.solar_estimator = SolarLossEstimator(config=cfg["SolarLossConfigV3"])
 
     def _loss(self, model):
-        return self.solar_estimator.solar_loss(model=model, epoch_name=self.epoch_name)
+        return self.solar_estimator.solar_loss(disable_logging=skip_telemetry, disable_rendering=skip_telemetry, model=model, epoch_name=self.epoch_name)

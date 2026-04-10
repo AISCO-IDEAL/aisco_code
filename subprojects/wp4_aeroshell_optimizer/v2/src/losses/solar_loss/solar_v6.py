@@ -10,5 +10,5 @@ class SolarV6(ParentLoss):
         solar_cfg = load_config(v="v1", cfg_name=cfg_path)["SolarLossConfigV6"]
         self.solar_estimator = SolarLossEstimator(config=solar_cfg)
 
-    def _loss(self, model):
-        return self.solar_estimator.solar_loss(model=model, epoch_name=self.epoch_name)
+    def _loss(self, model, skip_telemetry=False):
+        return self.solar_estimator.solar_loss(model=model, epoch_name=self.epoch_name, disable_logging=skip_telemetry, disable_rendering=skip_telemetry)

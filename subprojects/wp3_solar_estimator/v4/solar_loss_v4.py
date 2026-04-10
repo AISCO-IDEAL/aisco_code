@@ -481,7 +481,13 @@ class SolarLossEstimator:
 
         raise ValueError(f"Unknown method: {self.method}")
 
-    def solar_loss(self, model: Any, epoch_name: int | None = None) -> torch.Tensor:
+    def solar_loss(
+        self,
+        model: Any,
+        epoch_name: int | None = None,
+        disable_logging: bool = False,
+        disable_rendering: bool = False,
+    ) -> torch.Tensor:
         """
         Compute the solar loss for the given model.
 
@@ -516,7 +522,7 @@ class SolarLossEstimator:
                     ):
                         run_sim = True
 
-                    if run_sim:
+                    if run_sim and not disable_rendering:
                         self.simulator.run(vertices, faces, output_dir=self.rendering_dir, epoch_name=epoch_name)
 
                         if (
@@ -542,8 +548,8 @@ class SolarLossEstimator:
                     epsilon=self.eps,
                     epoch_name=epoch_name,
                     log_group_name=self.log_group_name,
-                    enable_wandb_logging=self.enable_wandb_logging,
-                    rendering=self.rendering,
+                    enable_wandb_logging=self.enable_wandb_logging and not disable_logging,
+                    rendering=self.rendering and not disable_rendering,
                     counter=self.counter,
                     output_dir=self.rendering_dir,
                     num_epochs=self.number_epochs,
@@ -568,6 +574,7 @@ class SolarLossEstimator:
                 )
                 if (
                     self.enable_wandb_logging
+                    and not disable_logging
                     and self.number_epochs is not None
                     and self.counter == self.number_epochs
                     and self.rendering_dir is not None
@@ -584,7 +591,7 @@ class SolarLossEstimator:
                 ):
                     run_sim = True
 
-                if run_sim:
+                if run_sim and not disable_rendering:
                     self.simulator.run(vertices, faces, output_dir=self.rendering_dir, epoch_name=epoch_name)
 
                     if self.number_epochs is not None and self.counter == self.number_epochs and self.rendering_dir is not None:
@@ -608,8 +615,8 @@ class SolarLossEstimator:
                 epsilon=self.eps,
                 epoch_name=epoch_name,
                 log_group_name=self.log_group_name,
-                enable_wandb_logging=self.enable_wandb_logging,
-                rendering=self.rendering,
+                enable_wandb_logging=self.enable_wandb_logging and not disable_logging,
+                rendering=self.rendering and not disable_rendering,
                 counter=self.counter,
                 output_dir=self.rendering_dir,
                 num_epochs=self.number_epochs,

@@ -75,6 +75,7 @@ class DiversityTrainer:
 
         # Fixed population of latent vectors — not trained, serve as diverse condition anchors
         self._Z: Tensor = torch.randn(population_size, z_dim, device=self._device, dtype=torch.float32)
+        self._Z[0] = torch.zeros(z_dim, device=self._device, dtype=torch.float32)
 
         self._model_optimizer: Optimizer = torch.optim.Adam(self._model.parameters(), lr=model_lr)
 
@@ -82,7 +83,7 @@ class DiversityTrainer:
     # Phase 1 — per-vector backward (one expensive graph at a time)
     # ------------------------------------------------------------------
 
-    def _per_vector_backward(self, epoch: int) -> tuple[float, list[Tensor] | None]:
+    def _per_vector_backward(self, epoch: int) -> tuple[float, list[Tensor] | None, dict[str, float]]:
         """Iterate over the population and immediately backward each z's loss.
 
         Keeps only 1 expensive computation graph (CFD + raytracing) in VRAM at a time.
@@ -91,10 +92,14 @@ class DiversityTrainer:
         Returns:
             - Mean per-vector loss value (float, for logging — no graph retained).
             - List of mean constraint tensors across population (detached), or None if no ALM.
+            - Dict of averaged raw metrics across the population.
         """
         use_alm: bool = getattr(self._total_loss, "_use_alm", False)
         all_raw_constraints: list[list[Tensor]] = []
         total_loss_val: float = 0.0
+
+        summed_raw_metrics: dict[str, float] = {}
+        summed_weighted_metrics: dict[str, float] = {}
 
         for i in range(self._population_size):
             self._model.set_latent_vector(self._Z[i])
@@ -124,6 +129,12 @@ class DiversityTrainer:
 
             total_loss_val += loss_i.item()
 
+            # Accumulate metrics for telemetry
+            for k, v in self._total_loss.latest_raw_metrics.items():
+                summed_raw_metrics[k] = summed_raw_metrics.get(k, 0.0) + v.item()
+            for k, v in self._total_loss._last_weighted_losses.items():
+                summed_weighted_metrics[k] = summed_weighted_metrics.get(k, 0.0) + v.item()
+
             # Immediately backward — frees this z's graph before the next iteration
             (loss_i / self._population_size).backward()
 
@@ -132,7 +143,29 @@ class DiversityTrainer:
             num_c = len(all_raw_constraints[0])
             mean_constraints = [torch.stack([pop[c_idx] for pop in all_raw_constraints]).mean() for c_idx in range(num_c)]
 
-        return total_loss_val / self._population_size, mean_constraints
+        avg_raw_metrics = {k: v / self._population_size for k, v in summed_raw_metrics.items()}
+        avg_weighted_metrics = {k: v / self._population_size for k, v in summed_weighted_metrics.items()}
+        avg_total_loss = total_loss_val / self._population_size
+
+        # Manually overwrite and trigger telemetry
+        self._model.set_latent_vector(self._Z[0])
+
+        loss_log = {f"raw_losses/{k}": v for k, v in avg_raw_metrics.items()}
+        loss_log["raw_losses/total_loss"] = avg_total_loss
+
+        self._total_loss._last_weighted_losses = {
+            k: torch.tensor(v, device=self._device) for k, v in avg_weighted_metrics.items()
+        }
+        self._total_loss._handle_telemetry(
+            loss_log=loss_log,
+            epoch_name=epoch,
+            device=self._device,
+            model=self._model,
+            total_loss=torch.tensor(avg_total_loss, device=self._device),
+            skip_gradients=True,
+        )
+
+        return avg_total_loss, mean_constraints, avg_raw_metrics
 
     # ------------------------------------------------------------------
     # Phase 2 — diversity backward (cheap WIRE-only, all N graphs together)
@@ -185,7 +218,7 @@ class DiversityTrainer:
         self._model_optimizer.zero_grad()
 
         # Phase 1 — per-vector: expensive, sequential, 1 graph at a time
-        per_vector_loss_val, mean_constraints = self._per_vector_backward(epoch)
+        per_vector_loss_val, mean_constraints, avg_raw_metrics = self._per_vector_backward(epoch)
 
         # Update ALM multipliers using mean constraints across population
         if mean_constraints is not None and self._total_loss.alm_manager is not None:
@@ -200,11 +233,13 @@ class DiversityTrainer:
 
         self._model_optimizer.step()
 
-        return {
+        metrics = {
             "per_vector_loss": per_vector_loss_val,
             "diversity_loss": diversity_loss_val,
             "total_loss": per_vector_loss_val + self._diversity_weight * diversity_loss_val,
         }
+        metrics.update(avg_raw_metrics)
+        return metrics
 
     def get_population(self) -> Tensor:
         """Retrieve current population of latent vectors (detached copy)."""
