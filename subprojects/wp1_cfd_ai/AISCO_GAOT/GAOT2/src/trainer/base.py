@@ -278,8 +278,7 @@ class TrainerBase:
         avg_loss = total_loss / max(n_batches, 1)
         mean_drag_error = torch.cat(drag_errors).mean().item() if drag_errors else 0.0
 
-
-        wandb.logg(
+        wandb.log(
             {
                 "val/loss": avg_loss,
                 "val/drag_error": mean_drag_error,

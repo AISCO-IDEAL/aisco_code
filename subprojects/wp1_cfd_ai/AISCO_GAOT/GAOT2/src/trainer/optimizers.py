@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import logging
 import os
-import time
 from copy import deepcopy
 from typing import TYPE_CHECKING
 

@@ -5,15 +5,14 @@ import os
 import random
 import statistics
 import time
-import open3d as o3d
 from dataclasses import asdict
-from typing import Any, Optional
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+import open3d as o3d
 import torch
 import torch_geometric as pyg
-import wandb
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
@@ -22,6 +21,7 @@ from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch_geometric.transforms import Compose
 from tqdm import tqdm
 
+import wandb
 from src.dataloader.collate_functions import create_collate_function
 from src.dataloader.pyg_datasets import EnrichedData, VTKMeshDataset
 from src.dataloader.pyg_transforms import NormalizeFeatures, RescalePosition, RescalePositionNew
@@ -34,8 +34,6 @@ from .base import TrainerBase
 from .utils.metric import compute_drivaernet_metric
 
 EPSILON = 1e-10
-import open3d as o3d
-
 
 
 def verts_to_faces(verts: torch.Tensor, depth=8):
@@ -54,17 +52,11 @@ def verts_to_faces(verts: torch.Tensor, depth=8):
     pcd.points = o3d.utility.Vector3dVector(verts_np)
 
     # Better normal estimation
-    pcd.estimate_normals(
-        search_param=o3d.geometry.KDTreeSearchParamHybrid(
-            radius=0.1, max_nn=30
-        )
-    )
+    pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
     pcd.orient_normals_consistent_tangent_plane(50)
 
     # --- Try Poisson ---
-    mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
-        pcd, depth=depth
-    )
+    mesh, _ = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=depth)
 
     if mesh is None:
         print("⚠️ Poisson failed, falling back to Ball Pivoting")
@@ -1118,15 +1110,15 @@ class StaticTrainer3D(TrainerBase):
 
                     self._val_data[f"mesh{i1}.{i2}"] = {
                         # store tensors needed for drag re-computation if ever required
-                        "vertices": pos_cpu,          # tensor
-                        "faces": face_cpu,            # tensor
-                        "normals": c_cpu,             # tensor
-                        "cd_field": x_cpu,            # tensor (normalised cp)
-                        "force": force_cpu,           # tensor
+                        "vertices": pos_cpu,  # tensor
+                        "faces": face_cpu,  # tensor
+                        "normals": c_cpu,  # tensor
+                        "cd_field": x_cpu,  # tensor (normalised cp)
+                        "force": force_cpu,  # tensor
                         "integrated_drag": integrated_drag,  # tensor
                         # prediction slots; will be filled every validate() call
-                        "predicted_cd_field": None,           # tensor or None
-                        "predicted_integrated_drag": None,    # tensor or None
+                        "predicted_cd_field": None,  # tensor or None
+                        "predicted_integrated_drag": None,  # tensor or None
                     }
 
         # ------------------------------------------------------------------
@@ -1175,10 +1167,10 @@ class StaticTrainer3D(TrainerBase):
                                 mesh = self._val_data[key]
                                 # recompute integrated drag for this prediction using stored GT geometry
                                 drag_pred = cp_field_to_drag(
-                                    cd_pred_g,            # denormalized cp_pred (tensor)
-                                    mesh["normals"],      # stored normals (tensor)
-                                    mesh["faces"],        # stored faces (tensor)
-                                    mesh["vertices"],     # stored vertices (tensor)
+                                    cd_pred_g,  # denormalized cp_pred (tensor)
+                                    mesh["normals"],  # stored normals (tensor)
+                                    mesh["faces"],  # stored faces (tensor)
+                                    mesh["vertices"],  # stored vertices (tensor)
                                     v_inf=25.0,
                                     rho=1.125,
                                 )
@@ -1281,7 +1273,7 @@ class StaticTrainer3D(TrainerBase):
             result[f"head_{h}"] = v / num_batches
 
         # integrated drag error, using values cached in self._val_data$
-        avg_error = 0.0
+        avg_error = torch.tensor(0.0)
         for i1 in range(len(self._val_size)):
             for i2 in range(self._val_size[i1]):
                 key = f"mesh{i1}.{i2}"
@@ -1296,15 +1288,12 @@ class StaticTrainer3D(TrainerBase):
                     step=epoch_name,
                 )
                 if epoch_name == 0:
-                    print(
-                        f"error between Force GT and integrated drag GT for {key}: "
-                        f"{(force_gt - integrated_drag_gt).item()} N"
-                    )
-                avg_error += ((integrated_drag_pred - integrated_drag_gt)**2)**0.5
+                    print(f"error between Force GT and integrated drag GT for {key}: {(force_gt - integrated_drag_gt).item()} N")
+                avg_error += ((integrated_drag_pred - integrated_drag_gt) ** 2) ** 0.5
         num_meshes = 0
         num_meshes += sum(self._val_size[i] for i in range(num_batches))
         wandb.log(
-            {f"val/average_integrated/integrated_drag_error": avg_error.item()/num_meshes},
+            {"val/average_integrated/integrated_drag_error": avg_error.item() / num_meshes},
             step=epoch_name,
         )
         return result

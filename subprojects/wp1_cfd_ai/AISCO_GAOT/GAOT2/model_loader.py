@@ -3,6 +3,7 @@ import copy
 import logging
 import os
 import warnings
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -53,12 +54,10 @@ class ModelLoader:
                 return path_dict.get("ckpt_path")
         raise ValueError("Wrong ID for GAOT-Model")
 
-    def _load_model(self) -> None:
+    def _load_model(self) -> None:  # Noqa: PLR0912, PLR0915
         config_path = self.model_path.replace("model.pt", "config.yaml")
         if not os.path.exists(config_path):
-            raise FileNotFoundError(
-                f"Model config not found at {config_path}. Expected config.yaml next to model.pt."
-            )
+            raise FileNotFoundError(f"Model config not found at {config_path}. Expected config.yaml next to model.pt.")
 
         with open(config_path) as f:
             config = yaml.safe_load(f)
@@ -100,7 +99,7 @@ class ModelLoader:
         missing, unexpected = self.gaot.load_state_dict(sd, strict=False)
         if missing or unexpected:
             warnings.warn(
-                f"Checkpoint/state_dict mismatch. Missing keys: {missing}. Unexpected keys: {unexpected}."
+                f"Checkpoint/state_dict mismatch. Missing keys: {missing}. Unexpected keys: {unexpected}.", stacklevel=2
             )
 
         # Reconstruct latent tokens from training context instead of using self.gaot.latent_tokens
@@ -118,7 +117,6 @@ class ModelLoader:
                     "Could not determine physical domain. Expected dataset.metaname in DATASET_METADATA "
                     "or model.args.norm_domain."
                 )
-            self._metadata = None
             self._phy_domain = norm_domain
 
         latent_token_size = model_args.get("latent_tokens")
