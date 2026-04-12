@@ -210,6 +210,8 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
         diversity_bbox_size=ginn_config.get("diversity_bbox_size", 10.0),
         diversity_norm_order=ginn_config.get("diversity_norm_order", 2),
         diversity_neighbor_agg_fn=ginn_config.get("diversity_neighbor_agg_fn", "min"),
+        force_z0_to_origin=ginn_config.get("force_z0_to_origin", False),
+        z_resample_cadence=ginn_config.get("z_resample_cadence", 0),
     )
 
     if verbose:
@@ -226,11 +228,13 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
             )
         if wandb.run is not None:
             multi_log_in_one(
+                metric_name="GINN",
                 metrics_dict={
-                    "GINN/per_vector_loss": metrics["per_vector_loss"],
-                    "GINN/diversity_loss": metrics["diversity_loss"],
-                    "GINN/total_loss": metrics["total_loss"],
+                    "per_vector_loss": metrics["per_vector_loss"],
+                    "diversity_loss": metrics["diversity_loss"],
+                    "total_loss": metrics["total_loss"],
                 },
+                step=epoch,
             )
 
         if interpolator is not None and interp_config_dict.get("render_during_training", False):

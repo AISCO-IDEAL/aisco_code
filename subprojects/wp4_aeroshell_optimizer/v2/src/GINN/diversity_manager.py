@@ -41,6 +41,8 @@ class DiversityTrainer:
         diversity_bbox_size: float = 10.0,
         diversity_norm_order: int = 2,
         diversity_neighbor_agg_fn: str = "min",
+        force_z0_to_origin: bool = True,
+        z_resample_cadence: int = 0,
     ) -> None:
         """Initialize the diversity trainer.
 
@@ -59,6 +61,8 @@ class DiversityTrainer:
             diversity_norm_order: p for L^p field distance between SDF fields.
             diversity_neighbor_agg_fn: Aggregation over inter-shape distances:
                 'min' (nearest-neighbor, matches GINN paper), 'mean', or 'sum'.
+            force_z0_to_origin: If True, z[0] is always pinned to the origin.
+            z_resample_cadence: Resample latent vectors every N epochs (0 disables resampling).
         """
         self._device: torch.device = torch.device(device) if isinstance(device, str) else device
         self._model: ConcatBaseModel = model.to(self._device)
@@ -72,12 +76,46 @@ class DiversityTrainer:
         self._diversity_bbox_size: float = diversity_bbox_size
         self._diversity_norm_order: int = diversity_norm_order
         self._diversity_neighbor_agg_fn: str = diversity_neighbor_agg_fn
+        self._force_z0_to_origin: bool = force_z0_to_origin
+        self._z_resample_cadence: int = max(0, int(z_resample_cadence))
+
+        generator_device = self._device.type if self._device.type in {"cpu", "cuda"} else "cpu"
+        self._resample_generator = torch.Generator(device=generator_device)
 
         # Fixed population of latent vectors — not trained, serve as diverse condition anchors
         self._Z: Tensor = torch.randn(population_size, z_dim, device=self._device, dtype=torch.float32)
-        self._Z[0] = torch.zeros(z_dim, device=self._device, dtype=torch.float32)
+        if self._force_z0_to_origin and self._population_size > 0:
+            self._Z[0] = torch.zeros(z_dim, device=self._device, dtype=torch.float32)
 
         self._model_optimizer: Optimizer = torch.optim.Adam(self._model.parameters(), lr=model_lr)
+
+    def _resample_population(self, epoch: int) -> None:
+        """Resample latent population using a local generator to avoid global RNG side effects."""
+        if self._population_size <= 0:
+            return
+
+        if self._z_resample_cadence <= 0:
+            return
+
+        start_idx = 1 if self._force_z0_to_origin else 0
+        if start_idx >= self._population_size:
+            if self._force_z0_to_origin:
+                self._Z[0] = torch.zeros(self._z_dim, device=self._device, dtype=torch.float32)
+            return
+
+        resample_step = epoch // self._z_resample_cadence
+        self._resample_generator.manual_seed(resample_step)
+
+        self._Z[start_idx:] = torch.randn(
+            self._population_size - start_idx,
+            self._z_dim,
+            device=self._device,
+            dtype=torch.float32,
+            generator=self._resample_generator,
+        )
+
+        if self._force_z0_to_origin:
+            self._Z[0] = torch.zeros(self._z_dim, device=self._device, dtype=torch.float32)
 
     # ------------------------------------------------------------------
     # Phase 1 — per-vector backward (one expensive graph at a time)
@@ -95,6 +133,7 @@ class DiversityTrainer:
             - Dict of averaged raw metrics across the population.
         """
         use_alm: bool = getattr(self._total_loss, "_use_alm", False)
+        external_alm: bool = bool(getattr(self._total_loss, "_external_alm", False))
         all_raw_constraints: list[list[Tensor]] = []
         total_loss_val: float = 0.0
 
@@ -103,6 +142,7 @@ class DiversityTrainer:
 
         for i in range(self._population_size):
             self._model.set_latent_vector(self._Z[i])
+            penalties_dict: dict[str, Tensor] = {}
 
             if use_alm:
                 if self._total_loss.alm_manager is None:
@@ -134,6 +174,9 @@ class DiversityTrainer:
                 summed_raw_metrics[k] = summed_raw_metrics.get(k, 0.0) + v.item()
             for k, v in self._total_loss._last_weighted_losses.items():
                 summed_weighted_metrics[k] = summed_weighted_metrics.get(k, 0.0) + v.item()
+            if external_alm:
+                for k, v in penalties_dict.items():
+                    summed_weighted_metrics[k] = summed_weighted_metrics.get(k, 0.0) + v.item()
 
             # Immediately backward — frees this z's graph before the next iteration
             (loss_i / self._population_size).backward()
@@ -215,6 +258,9 @@ class DiversityTrainer:
         Returns:
             Dict with 'per_vector_loss', 'diversity_loss', 'total_loss'.
         """
+        if self._z_resample_cadence > 0 and epoch > 0 and epoch % self._z_resample_cadence == 0:
+            self._resample_population(epoch)
+
         self._model_optimizer.zero_grad()
 
         # Phase 1 — per-vector: expensive, sequential, 1 graph at a time

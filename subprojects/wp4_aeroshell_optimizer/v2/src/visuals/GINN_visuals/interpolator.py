@@ -20,9 +20,13 @@ import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
     ensure_pyvista_headless,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.custom_modes.mesh_assembly_mode_v2 import (
+    MeshAssemblyModeV2,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.tim_render import (
     render_mesh,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visualiser import Visualiser
 
 # Import after checking availability to give helpful error message
 try:
@@ -56,6 +60,9 @@ class Interpolator:
             - window_size: (width, height) tuple for rendered images
             - save_dir: Path for saving intermediate/final images
             - upload_to_wandb: bool, whether to upload grid to WandB
+            - render_backend: "pyvista" (default) or "mesh_assembly_mode_v2"
+            - mesh_assembly_mode_config: optional dict passed to MeshAssemblyModeV2
+            - mesh_visualiser: optional dict used for Visualiser(...) kwargs
         device: torch device (cuda or cpu)
     """
 
@@ -106,6 +113,12 @@ class Interpolator:
         self.save_dir = Path(config.get("save_dir", "./interpolation_output"))
         self.upload = config.get("upload_to_wandb", True)
         self.verbose = config.get("verbose", False)
+        self.render_backend = str(config.get("render_backend", "pyvista")).strip().lower()
+        self._pyvista_preflight_done = False
+
+        # Optional mesh-assembly mode backend state
+        self._mesh_assembly_mode: MeshAssemblyModeV2 | None = None
+        self._mesh_mode_iteration = 0
 
         # Create save directory
         self.save_dir.mkdir(parents=True, exist_ok=True)
@@ -129,8 +142,28 @@ class Interpolator:
         self._grid_image: Image.Image | None = None
         self._has_logged_first_nonempty_render = False
 
-        # Validate rendering backend once up front to avoid late crash mid-grid.
-        self._run_render_preflight()
+        self._configure_render_backend()
+
+    def _configure_render_backend(self) -> None:
+        """Initialize the selected render backend and run required preflight checks."""
+        if self.render_backend == "mesh_assembly_mode_v2":
+            self._init_mesh_assembly_backend()
+
+        if self.render_backend == "pyvista":
+            self._ensure_pyvista_ready()
+
+    def _ensure_pyvista_ready(self) -> None:
+        """Run the PyVista preflight once."""
+        if not self._pyvista_preflight_done:
+            self._run_render_preflight()
+            self._pyvista_preflight_done = True
+
+    def _disable_mesh_backend(self, reason: str) -> None:
+        """Downgrade to PyVista backend after a mesh-backend failure."""
+        print(f"Warning: {reason}. Falling back to PyVista backend.")
+        self._mesh_assembly_mode = None
+        self.render_backend = "pyvista"
+        self._ensure_pyvista_ready()
 
     def _run_render_preflight(self) -> None:
         """Run a tiny off-screen render probe to validate backend before main loop."""
@@ -151,6 +184,40 @@ class Interpolator:
         if probe_failed:
             raise RuntimeError("Render probe produced no image output")
         print(f"PyVista render preflight passed (DISPLAY={os.environ.get('DISPLAY', '<unset>')})")
+
+    def _init_mesh_assembly_backend(self) -> None:
+        """Initialize mesh_assembly_mode_v2 rendering backend."""
+        try:
+            mode_config = dict(self.config.get("mesh_assembly_mode_config", {}))
+
+            # Derive camera defaults from existing interpolator camera config if possible.
+            camera_position, look_at = self._resolve_mode_camera_defaults()
+            mode_config.setdefault("camera_position", camera_position)
+            mode_config.setdefault("look_at", look_at)
+            mode_config.setdefault("render_mode", "rgb")
+            mode_config.setdefault("render_interval", 1)
+            mode_config.setdefault("make_gif", False)
+
+            visualiser_kwargs = dict(self.config.get("mesh_visualiser", {}))
+            visualiser_kwargs.setdefault("device", str(self.device))
+            visualiser_kwargs.setdefault("image_size", int(min(self.window_size)))
+
+            visualiser = Visualiser(**visualiser_kwargs)
+            self._mesh_assembly_mode = MeshAssemblyModeV2(visualiser=visualiser, config=mode_config)
+            print("Interpolator mesh assembly backend initialized")
+        except Exception as exc:
+            self._disable_mesh_backend(f"Failed to initialize mesh assembly backend: {exc}")
+
+    def _resolve_mode_camera_defaults(self) -> tuple[list[float], list[float]]:
+        """Resolve camera defaults for mode-based rendering from interpolator config."""
+        if (
+            isinstance(self.camera_view, tuple)
+            and len(self.camera_view) == 3
+            and all(isinstance(v, tuple) and len(v) == 3 for v in self.camera_view)
+        ):
+            return [float(x) for x in self.camera_view[0]], [float(x) for x in self.camera_view[1]]
+
+        return [5000.0, 5000.0, 5000.0], [0.0, 0.0, 0.0]
 
     def generate_interpolation_grid(self) -> Image.Image:
         """
@@ -219,50 +286,100 @@ class Interpolator:
         z_vector[0] = z0
         z_vector[1] = z1
 
-        # Set model's latent vector
+        mesh_data: tuple[Tensor, Tensor] | None
         with torch.no_grad():
             self.model.set_latent_vector(z_vector)
+            mesh_data = self._extract_mesh()
 
-            # Extract mesh using marching cubes
-            # Grid was already configured in __init__, just call extract_mesh
-            try:
-                verts, faces = self.mc_extractor.extract_mesh(
-                    model=self.model,
-                    isovalue=self.isovalue,
-                    batch_size=8192,
-                )
-            except Exception as e:
-                print(f"    Warning: Mesh extraction failed: {e}")
-                return None
+        if mesh_data is None:
+            return None
 
-            # Check if we got valid mesh data
-            if verts is None or faces is None or len(verts) == 0 or len(faces) == 0:
-                print("    Warning: Empty mesh returned from extractor")
-                return None
+        verts, faces = mesh_data
+        image = self._render_mesh_to_image(verts, faces)
+        if image is None:
+            return None
 
-            # Render to image using PyVista off-screen renderer
-            try:
-                image = self._render_mesh_to_image(verts, faces)
-            except Exception as e:
-                print(f"    Warning: Mesh rendering failed: {e}")
-                return None
+        if not self._has_logged_first_nonempty_render:
+            print(f"First non-empty mesh rendered successfully: {len(verts)} vertices, {len(faces)} faces")
+            self._has_logged_first_nonempty_render = True
+        return image
 
-            if not self._has_logged_first_nonempty_render:
-                print(f"First non-empty mesh rendered successfully: {len(verts)} vertices, {len(faces)} faces")
-                self._has_logged_first_nonempty_render = True
-            return image
+    def _extract_mesh(self) -> tuple[Tensor, Tensor] | None:
+        """Extract a mesh from the current model state."""
+        try:
+            verts, faces = self.mc_extractor.extract_mesh(
+                model=self.model,
+                isovalue=self.isovalue,
+                batch_size=8192,
+            )
+        except Exception as exc:
+            print(f"    Warning: Mesh extraction failed: {exc}")
+            return None
 
-    def _render_mesh_to_image(self, verts: Tensor, faces: Tensor) -> Image.Image:
+        if verts is None or faces is None or len(verts) == 0 or len(faces) == 0:
+            print("    Warning: Empty mesh returned from extractor")
+            return None
+
+        return verts, faces
+
+    def _render_mesh_to_image(self, verts: Tensor, faces: Tensor) -> Image.Image | None:
         """
-        Render mesh to image using PyVista via tim_render helper.
+        Render mesh to image using selected backend.
 
         Args:
             verts: [V, 3] vertex tensor
             faces: [F, 3] face index tensor
 
         Returns:
-            PIL Image of rendered mesh
+            PIL Image of rendered mesh, or None if rendering failed
         """
+        if self.render_backend == "mesh_assembly_mode_v2" and self._mesh_assembly_mode is not None:
+            try:
+                return self._resize_to_window(self._render_mesh_to_image_with_mesh_assembly(verts, faces))
+            except Exception as exc:
+                self._disable_mesh_backend(f"mesh_assembly_mode_v2 render failed: {exc}")
+
+        try:
+            return self._render_mesh_to_image_with_pyvista(verts, faces)
+        except Exception as exc:
+            print(f"    Warning: PyVista rendering failed: {exc}")
+            return None
+
+    def _resize_to_window(self, image: Image.Image) -> Image.Image:
+        """Resize image to target window size if needed."""
+        if image.size == self.window_size:
+            return image
+
+        return image.resize(self.window_size, resample=Image.BILINEAR)
+
+    def _render_mesh_to_image_with_mesh_assembly(self, verts: Tensor, faces: Tensor) -> Image.Image:
+        """Render one mesh with MeshAssemblyModeV2 and convert to PIL image."""
+        if self._mesh_assembly_mode is None:
+            raise RuntimeError("mesh_assembly_mode_v2 backend is not initialized")
+
+        optimization_state = {
+            "iteration": self._mesh_mode_iteration,
+            "vertices": verts.detach(),
+            "faces": faces.detach(),
+        }
+
+        self._mesh_assembly_mode.update(optimization_state)
+        self._mesh_mode_iteration += 1
+
+        if not self._mesh_assembly_mode.frame_storage:
+            raise RuntimeError("mesh_assembly_mode_v2 did not produce a frame")
+
+        frame = self._mesh_assembly_mode.frame_storage[-1]
+        frame_uint8 = (np.clip(frame, 0.0, 1.0) * 255.0).astype(np.uint8)
+        if frame_uint8.ndim == 3 and frame_uint8.shape[-1] == 1:
+            frame_uint8 = np.repeat(frame_uint8, 3, axis=-1)
+
+        # We only need a single frame per interpolation point.
+        self._mesh_assembly_mode.clear_frames()
+        return Image.fromarray(frame_uint8, mode="RGB")
+
+    def _render_mesh_to_image_with_pyvista(self, verts: Tensor, faces: Tensor) -> Image.Image:
+        """Render mesh to image using PyVista via tim_render helper."""
         plotter = render_mesh(
             verts=verts,
             faces=faces,
