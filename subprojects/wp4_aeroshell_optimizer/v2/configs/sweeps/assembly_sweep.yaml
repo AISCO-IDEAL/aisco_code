@@ -1,0 +1,17 @@
+# ============================================================================
+# Wandb Sweep Config — Sweep over different Assembly IDs
+# ============================================================================
+# Parameter naming: <config_filename_without_yaml>.<nested.path.to.value>
+# See wandb_sweep_v1_50_meshes.yaml for full documentation.
+# ============================================================================
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v1_1_one_model.py
+entity: aisco
+project: Alex_Sweeps
+
+method: grid
+
+parameters:
+  losses_v0_config.bb_config.assembly_id:
+    distribution: int_uniform
+    min: 1
+    max: 50

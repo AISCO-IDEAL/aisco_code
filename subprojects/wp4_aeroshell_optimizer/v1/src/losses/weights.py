@@ -17,6 +17,7 @@ def weights_alm(
     constrained_losses: torch.Tensor,
     thresholds: torch.Tensor | None = None,
     use_alm_aggressive: bool = False,
+    alm_aggressive_capu: float = 0.25,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     epsilon = 1e-16
 
@@ -31,7 +32,7 @@ def weights_alm(
 
     if use_alm_aggressive:
         # --- CAPU LOGIK ---
-        eta = 0.25
+        eta = alm_aggressive_capu
         # 1. Update Mu nur wenn nötig (Sufficient Decrease Condition)
         update_mask = torch.abs(closs) > (eta * ns)
         ms[update_mask] *= gamma_aggressive

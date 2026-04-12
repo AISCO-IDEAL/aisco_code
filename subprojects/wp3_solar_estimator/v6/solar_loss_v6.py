@@ -26,16 +26,16 @@ from subprojects.wp3_solar_estimator.raytracing.diffable.version1.sdf_ray_visibi
 from subprojects.wp3_solar_estimator.raytracing.diffable.version2.mesh_ray_visibility_v2 import mesh_visibility_v2
 from subprojects.wp3_solar_estimator.raytracing.diffable.version2.sdf_ray_visibility_v2 import sdf_visibility_v2
 from subprojects.wp3_solar_estimator.utils.solar_utils import averaging_solar_quality
-from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import multi_log_in_one
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import reformat_wandb_name
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.shading_modes import (
+from subprojects.wp4_aeroshell_optimizer import (
     ShadingPenalty,
     ShadingVisibility,
+    SolarV3Selection,
+    Visualiser,
+    dict_hashing,
+    load_config,
+    multi_log_in_one,
+    reformat_wandb_name,
 )
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.detached_modes.solar_v3_selection import SolarV3Selection
-from subprojects.wp4_aeroshell_optimizer.v1.src.visuals.visualiser import Visualiser
 
 
 def _efficient_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
@@ -742,9 +742,7 @@ class SolarLossEstimator:
                             and self.counter == self.number_epochs
                             and self.rendering_dir is not None
                         ):
-                            from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (  # noqa: PLC0415
-                                create_and_upload_gif_from_folder,
-                            )
+                            from subprojects.wp4_aeroshell_optimizer import create_and_upload_gif_from_folder  # noqa: PLC0415
 
                             create_and_upload_gif_from_folder(
                                 self.rendering_dir / "sim_renders", pattern="simulation_results_*.png", step=self.counter, fps=10
@@ -803,9 +801,7 @@ class SolarLossEstimator:
                     self.simulator.run(vertices, faces, output_dir=self.rendering_dir, epoch_name=epoch_name)
 
                     if self.number_epochs is not None and self.counter == self.number_epochs and self.rendering_dir is not None:
-                        from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.image_uploads import (  # noqa: PLC0415
-                            create_and_upload_gif_from_folder,
-                        )
+                        from subprojects.wp4_aeroshell_optimizer import create_and_upload_gif_from_folder  # noqa: PLC0415
 
                         create_and_upload_gif_from_folder(self.rendering_dir / "sim_renders", step=self.counter, fps=10)
 

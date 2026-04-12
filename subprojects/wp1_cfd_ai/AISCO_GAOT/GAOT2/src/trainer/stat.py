@@ -10,6 +10,7 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+import open3d as o3d
 import torch
 import torch_geometric as pyg
 from omegaconf import OmegaConf
@@ -20,18 +21,64 @@ from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch_geometric.transforms import Compose
 from tqdm import tqdm
 
+import wandb
 from src.dataloader.collate_functions import create_collate_function
 from src.dataloader.pyg_datasets import EnrichedData, VTKMeshDataset
 from src.dataloader.pyg_transforms import NormalizeFeatures, RescalePosition, RescalePositionNew
 from src.model.gaot_3d import GAOT3D, masked_multi_head_loss
 from src.model.layers.magno import get_neighbor_strategy, parse_neighbor_strategy
-from src.utils.pressure_integration import cp_field_to_drag
 from src.utils.scale import rescale, rescale_new
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import cp_field_to_drag
 
 from .base import TrainerBase
 from .utils.metric import compute_drivaernet_metric
 
 EPSILON = 1e-10
+
+
+def verts_to_faces(verts: torch.Tensor, depth=8):
+    verts_np = verts.detach().cpu().numpy()
+
+    if verts_np.shape[0] < 100:
+        raise ValueError("Too few vertices for reconstruction")
+
+    # Normalize scale (important!)
+    center = verts_np.mean(axis=0)
+    scale = np.linalg.norm(verts_np - center).max()
+    verts_np = (verts_np - center) / scale
+
+    # Point cloud
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(verts_np)
+
+    # Better normal estimation
+    pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+    pcd.orient_normals_consistent_tangent_plane(50)
+
+    # --- Try Poisson ---
+    mesh, _ = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=depth)
+
+    if mesh is None:
+        print("⚠️ Poisson failed, falling back to Ball Pivoting")
+
+        # Estimate distances for radius
+        distances = pcd.compute_nearest_neighbor_distance()
+        avg_dist = np.mean(distances)
+
+        radii = [avg_dist, avg_dist * 2]
+
+        mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
+            pcd,
+            o3d.utility.DoubleVector(radii),
+        )
+
+        if mesh is None:
+            raise RuntimeError("Both Poisson and Ball Pivoting failed")
+
+    # Extract faces
+    faces = torch.from_numpy(np.asarray(mesh.triangles)).long()
+
+    return faces
 
 
 def move_to_device(data, device):
@@ -95,6 +142,8 @@ class StaticTrainer3D(TrainerBase):
     Trainer for static problems, i.e. problems that do not depend on time.
     """
 
+    epoch_name: int
+
     def __init__(self, args):
         super().__init__(args)
         if self.dataset_config["training_strategy"] == "neural_field":
@@ -125,6 +174,7 @@ class StaticTrainer3D(TrainerBase):
             logging.getLogger(__name__).info(
                 "Uncertainty weighting enabled: log_sigma_field and log_sigma_scalar will be learned."
             )
+        self._val_data: dict[str, Any] = {"exists": "No"}
 
     def _calculate_or_load_stats(self, dataset_config, order_file_path, data_root):
         """Calculates or loads normalization statistics.
@@ -513,7 +563,6 @@ class StaticTrainer3D(TrainerBase):
         )
 
         encoder_feature_attr = list(_magno_get(self.model_config, "encoder_feature_attr", "x"))
-        print(test_ds[0], encoder_feature_attr)
         if isinstance(encoder_feature_attr, list):
             self.num_input_channels = 0
             for attr_name in encoder_feature_attr:
@@ -1014,7 +1063,67 @@ class StaticTrainer3D(TrainerBase):
             loss = loss + field_weight * field_loss
         return loss
 
-    def validate(self, loader: DataLoader):  # noqa: PLR0912, PLR0915
+    def validate(self, loader: DataLoader, epoch_name):  # noqa: PLR0912, PLR0915
+        # ------------------------------------------------------------------
+        # 1) Initialization pass: build self._val_data once from GT / geometry
+        # ------------------------------------------------------------------
+        if self._val_data["exists"] == "No":
+            self._val_size = []
+            self._val_data["exists"] = "Yeah"
+
+            for i1, b in enumerate(loader):
+                batch_list = b.to_data_list() if hasattr(b, "to_data_list") else [b]
+                self._val_size.append(len(batch_list))
+
+                for i2, batch in enumerate(batch_list):
+                    # Hard assertions: these must exist and not be None
+                    if not hasattr(batch, "x") or batch.x is None:
+                        raise RuntimeError(f"Validation sample {i1}.{i2} has no 'x' (cd_field) attribute.")
+                    if not hasattr(batch, "force") or batch.force is None:
+                        raise RuntimeError(f"Validation sample {i1}.{i2} has no 'force' attribute.")
+                    if not hasattr(batch, "pos") or batch.pos is None:
+                        raise RuntimeError(f"Validation sample {i1}.{i2} has no 'pos' attribute.")
+
+                    # Move required tensors to CPU
+                    x_cpu = batch.x.cpu()
+                    force_cpu = batch.force.cpu()
+                    pos_cpu = batch.pos.cpu()
+                    face_cpu = verts_to_faces(pos_cpu).cpu()
+
+                    # normals
+                    if hasattr(batch, "c"):
+                        if batch.c is None:
+                            raise RuntimeError(f"Validation sample {i1}.{i2} has attribute 'c' but it is None.")
+                        c_cpu = batch.c.cpu()
+                    else:
+                        c_cpu = torch.zeros_like(x_cpu)
+
+                    # GT integrated drag (tensor in normalised space)
+                    integrated_drag = cp_field_to_drag(
+                        x_cpu,
+                        c_cpu,
+                        face_cpu,
+                        pos_cpu,
+                        v_inf=25.0,
+                        rho=1.225,
+                    )
+
+                    self._val_data[f"mesh{i1}.{i2}"] = {
+                        # store tensors needed for drag re-computation if ever required
+                        "vertices": pos_cpu,  # tensor
+                        "faces": face_cpu,  # tensor
+                        "normals": c_cpu,  # tensor
+                        "cd_field": x_cpu,  # tensor (normalised cp)
+                        "force": force_cpu,  # tensor
+                        "integrated_drag": integrated_drag,  # tensor
+                        # prediction slots; will be filled every validate() call
+                        "predicted_cd_field": None,  # tensor or None
+                        "predicted_integrated_drag": None,  # tensor or None
+                    }
+
+        # ------------------------------------------------------------------
+        # 2) Evaluation pass: run model, update predictions, aggregate metrics
+        # ------------------------------------------------------------------
         self.model.eval()
         total_loss = 0.0
         total_mse = 0.0
@@ -1023,14 +1132,71 @@ class StaticTrainer3D(TrainerBase):
         num_batches = len(loader)
         _mse_fn = torch.nn.MSELoss()
 
+        # helper: map (batch_idx, local_graph_idx) -> key in _val_data
+        def _mesh_key(batch_idx: int, graph_idx: int) -> str:
+            return f"mesh{batch_idx}.{graph_idx}"
+
         with torch.no_grad():
-            for batch_raw in loader:
+            for batch_idx, batch_raw in enumerate(loader):
                 batch = batch_raw.to(self.device)
                 latent_tokens_dev = self.latent_tokens.to(self.device)
                 pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
 
+                # ---- Update predicted field (denormalized) + integrated drag in _val_data ----
+                if isinstance(pred, dict) and "field" in pred and hasattr(batch, "x") and batch.x is not None:
+                    # denormalize using global u_mean/u_std
+                    u_mean_dev = self.u_mean.to(self.device)
+                    u_std_dev = self.u_std.to(self.device)
+                    field_pred_norm = pred["field"]
+                    field_pred_dn = field_pred_norm * u_std_dev + u_mean_dev  # [Nnodes,1] or [Nnodes,D]
+
+                    # move to cpu
+                    field_pred_dn_cpu = field_pred_dn.detach().cpu()
+
+                    # map nodes -> per-graph using ptr
+                    if hasattr(batch, "ptr"):
+                        ptr = batch.ptr.cpu()
+                        n_graphs = batch.num_graphs
+                        for g_idx in range(n_graphs):
+                            start = ptr[g_idx].item()
+                            end = ptr[g_idx + 1].item()
+                            cd_pred_g = field_pred_dn_cpu[start:end]
+
+                            key = _mesh_key(batch_idx, g_idx)
+                            if key in self._val_data:
+                                mesh = self._val_data[key]
+                                # recompute integrated drag for this prediction using stored GT geometry
+                                drag_pred = cp_field_to_drag(
+                                    cd_pred_g,  # denormalized cp_pred (tensor)
+                                    mesh["normals"],  # stored normals (tensor)
+                                    mesh["faces"],  # stored faces (tensor)
+                                    mesh["vertices"],  # stored vertices (tensor)
+                                    v_inf=25.0,
+                                    rho=1.225,
+                                )
+
+                                mesh["predicted_cd_field"] = cd_pred_g
+                                mesh["predicted_integrated_drag"] = drag_pred
+                    else:
+                        # single-graph batch
+                        cd_pred_g = field_pred_dn_cpu
+                        key = _mesh_key(batch_idx, 0)
+                        if key in self._val_data:
+                            mesh = self._val_data[key]
+                            drag_pred = cp_field_to_drag(
+                                cd_pred_g,
+                                mesh["normals"],
+                                mesh["faces"],
+                                mesh["vertices"],
+                                v_inf=25.0,
+                                rho=1.225,
+                            )
+                            mesh["predicted_cd_field"] = cd_pred_g
+                            mesh["predicted_integrated_drag"] = drag_pred
+                # ---- END field prediction update block ----
+
+                # ---- Standard scalar / field losses on the current batch ----
                 if isinstance(pred, dict):
-                    # --- Scalar loss ---
                     targets = {"force": batch.force, "cd": batch.cd}
                     if self.active_heads is not None:
                         targets = {k: v for k, v in targets.items() if k in self.active_heads}
@@ -1038,7 +1204,7 @@ class StaticTrainer3D(TrainerBase):
                     loss = masked_multi_head_loss(pred, targets, loss_fn=self.loss_fn)
                     mse = masked_multi_head_loss(pred, targets, loss_fn=_mse_fn)
 
-                    # --- Per-head scalar MSE ---
+                    # per-head scalar MSE
                     loss_fn_none = torch.nn.MSELoss(reduction="none")
                     for head_name, gt_raw in targets.items():
                         if head_name not in pred or gt_raw is None:
@@ -1049,7 +1215,7 @@ class StaticTrainer3D(TrainerBase):
                             head_mse = loss_fn_none(pred[head_name][valid], gt_head[valid]).mean().item()
                             head_losses[head_name] = head_losses.get(head_name, 0.0) + head_mse
 
-                    # For Relative L2: use primary scalar head, or fall back to field
+                    # Relative L2 over primary head or field
                     if targets:
                         primary_key = self.active_heads[0] if self.active_heads else next(iter(targets.keys()))
                         p = pred[primary_key]
@@ -1059,11 +1225,10 @@ class StaticTrainer3D(TrainerBase):
                         t = batch.x.to(self.device)
                     else:
                         p = next(iter(pred.values()))
-                        t = p.detach()  # no target available, rel_l2 = 0
+                        t = p.detach()
 
-                    # --- Field loss ---
+                    # field loss + contribution to mse
                     loss = self._add_field_loss(batch, pred, loss, head_losses)
-                    # Always track MSE for the field component too
                     if "field" in pred and hasattr(batch, "x") and batch.x is not None:
                         ft = batch.x.to(self.device)
                         fv = ~torch.isnan(ft)
@@ -1079,27 +1244,21 @@ class StaticTrainer3D(TrainerBase):
                 total_loss += loss.item()
                 total_mse += mse.item()
 
-                # 2. Calculate Relative L2 Error with NaN Masking
-                # We must mask NaNs before taking the norm, otherwise the result is NaN
                 valid_mask = ~torch.isnan(t)
                 if valid_mask.any():
                     p_valid = p[valid_mask]
                     t_valid = t[valid_mask]
-
                     diff_norm = torch.linalg.norm(p_valid - t_valid)
                     target_norm = torch.linalg.norm(t_valid)
-
-                    # Add small epsilon to prevent division by zero
                     rel_l2 = diff_norm / (target_norm + 1e-10)
                     total_rel_l2 += rel_l2.item()
-                else:
-                    # If no valid targets in this batch, we don't add to total_rel_l2
-                    pass
 
-        # Global reduction across ranks for DDP
+        # ------------------------------------------------------------------
+        # 3) Aggregate and log metrics (including integrated drag from _val_data)
+        # ------------------------------------------------------------------
         local_metrics = torch.tensor([total_loss, total_mse, total_rel_l2], dtype=torch.float64, device=self.device)
         world_size = 1
-        if self.setup_config["distributed"]:  # False
+        if self.setup_config["distributed"]:
             torch.distributed.all_reduce(local_metrics, op=torch.distributed.ReduceOp.SUM)
             world_size = torch.distributed.get_world_size()
 
@@ -1112,6 +1271,31 @@ class StaticTrainer3D(TrainerBase):
         }
         for h, v in head_losses.items():
             result[f"head_{h}"] = v / num_batches
+
+        # integrated drag error, using values cached in self._val_data$
+        avg_error = torch.tensor(0.0)
+        for i1 in range(len(self._val_size)):
+            for i2 in range(self._val_size[i1]):
+                key = f"mesh{i1}.{i2}"
+                mesh = self._val_data[key]
+                integrated_drag_gt = mesh["integrated_drag"]
+                integrated_drag_pred = mesh["predicted_integrated_drag"]
+                force_gt = mesh["force"]
+
+                # both GT and pred are tensors here
+                wandb.log(
+                    {f"integration_val/{key}/integrated_drag_error": (integrated_drag_pred - integrated_drag_gt).item()},
+                    step=epoch_name,
+                )
+                if epoch_name == 0:
+                    print(f"error between Force GT and integrated drag GT for {key}: {(force_gt - integrated_drag_gt).item()} N")
+                avg_error += ((integrated_drag_pred - integrated_drag_gt) ** 2) ** 0.5
+        num_meshes = 0
+        num_meshes += sum(self._val_size[i] for i in range(num_batches))
+        wandb.log(
+            {"val/average_integrated/integrated_drag_error": avg_error.item() / num_meshes},
+            step=epoch_name,
+        )
         return result
 
     def test(self):  # noqa: PLR0912, PLR0915

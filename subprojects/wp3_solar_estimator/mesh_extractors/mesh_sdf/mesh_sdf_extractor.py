@@ -4,6 +4,9 @@ MeshSDF: Differentiable mesh extraction using Marching Cubes with gradient flow.
 Based on the MeshSDF paper (CVPR 2020): https://github.com/cvlab-epfl/MeshSDF
 Core idea: Make standard Marching Cubes differentiable by deriving analytical
 gradient flow from mesh vertices back to SDF parameters via the implicit surface constraint.
+
+Dynamic resolution is active, if target_nr_vertices > 0, and will iteratively adjust the grid resolution to approach in max_iters iterations the target vertex count within the specified tolerance.
+If target_nr_vertices <= 0, the resolution is fixed and no dynamic adjustment is performed, and the resolution specified in the constructor is used for all extractions.
 """
 
 import typing
@@ -36,8 +39,12 @@ class MeshSDFExtractor:
         bbox: list | None = None,
         isovalue: float = 0.0,
         device: str = "cuda",
+        target_nr_vertices: int = -1,
+        tolerance: float = 0.1,
+        max_iters: int = 20,
         auto_isovalue_if_out_of_range: bool = True,
         warn_out_of_range: bool = True,
+        gradient_max: float | None = None,
     ):
         """
         Args:
@@ -45,10 +52,16 @@ class MeshSDFExtractor:
             bbox: Bounding box [x_min, x_max, y_min, y_max, z_min, z_max]
             isovalue: Isosurface level to extract (typically 0.0 for zero-level set)
             device: Device for computation
+            target_nr_vertices: Optional for dynamic resolution adjustement
         """
+        self._dynamic_resolution = target_nr_vertices > 0
+        self._target_nr_vertices = target_nr_vertices
+        self.tolerance = tolerance
+        self.max_iters = max_iters
+        self.gradient_max = gradient_max
+
         if bbox is None:
             bbox = [-5000, 5000, -5000, 5000, -5000, 5000]
-        self.resolution = resolution
         self.bbox = bbox
         self.isovalue = isovalue
         self.device = device
@@ -58,7 +71,7 @@ class MeshSDFExtractor:
 
         # Fixed grid support (to align with DISO/FC wrappers)
         self._grid_points: torch.Tensor | None = None
-        self._resolution: int | None = None
+        self._resolution: int = resolution
 
     def _to_nested_bbox(self, bbox: list) -> list[list[float]]:
         """
@@ -69,7 +82,7 @@ class MeshSDFExtractor:
             return [[bbox[0], bbox[1]], [bbox[2], bbox[3]], [bbox[4], bbox[5]]]
         return bbox
 
-    def set_grid(self, bbox: list, resolution: int):
+    def set_grid(self, bbox: list, resolution: int = -1):
         """
         Prepare a fixed sampling grid for SDF evaluation (similar to DISO/FC APIs).
 
@@ -77,6 +90,8 @@ class MeshSDFExtractor:
             bbox: [[xmin,xmax],[ymin,ymax],[zmin,zmax]] or flat [xmin,xmax,ymin,ymax,zmin,zmax]
             resolution: integer grid resolution per axis
         """
+        if resolution != -1:
+            self._resolution = resolution
         bbox_nested = self._to_nested_bbox(bbox)
         # Store bbox in flat form for spacing and vertex offset computation
 
@@ -88,12 +103,11 @@ class MeshSDFExtractor:
             bbox_nested[2][0],
             bbox_nested[2][1],
         ]
-        self._resolution = resolution
 
         # Create meshgrid in requested bbox on device
-        x = torch.linspace(bbox_nested[0][0], bbox_nested[0][1], resolution, device=self.device)
-        y = torch.linspace(bbox_nested[1][0], bbox_nested[1][1], resolution, device=self.device)
-        z = torch.linspace(bbox_nested[2][0], bbox_nested[2][1], resolution, device=self.device)
+        x = torch.linspace(bbox_nested[0][0], bbox_nested[0][1], self._resolution, device=self.device)
+        y = torch.linspace(bbox_nested[1][0], bbox_nested[1][1], self._resolution, device=self.device)
+        z = torch.linspace(bbox_nested[2][0], bbox_nested[2][1], self._resolution, device=self.device)
         grid_x, grid_y, grid_z = torch.meshgrid(x, y, z, indexing="ij")
         grid = torch.stack([grid_x, grid_y, grid_z], dim=-1).reshape(-1, 3)
 
@@ -115,15 +129,13 @@ class MeshSDFExtractor:
         # Use fixed grid if provided, else create on-the-fly
         if self._grid_points is not None and self._resolution is not None:
             points_tensor = self._grid_points
-            res = self._resolution
         else:
             # Create sampling grid on-the-fly (fallback)
-            x = torch.linspace(self.bbox[0], self.bbox[1], self.resolution, device=self.device)
-            y = torch.linspace(self.bbox[2], self.bbox[3], self.resolution, device=self.device)
-            z = torch.linspace(self.bbox[4], self.bbox[5], self.resolution, device=self.device)
+            x = torch.linspace(self.bbox[0], self.bbox[1], self._resolution, device=self.device)
+            y = torch.linspace(self.bbox[2], self.bbox[3], self._resolution, device=self.device)
+            z = torch.linspace(self.bbox[4], self.bbox[5], self._resolution, device=self.device)
             grid_x, grid_y, grid_z = torch.meshgrid(x, y, z, indexing="ij")
             points_tensor = torch.stack([grid_x, grid_y, grid_z], dim=-1).reshape(-1, 3)
-            res = self.resolution
 
         # Evaluate SDF in batches to avoid OOM
         batch_size = 2048
@@ -136,7 +148,7 @@ class MeshSDFExtractor:
                 sdf_batches.append(sdf_batch.cpu())
 
         sdf_combined = torch.cat(sdf_batches, dim=0).cpu().numpy()
-        sdf_grid = sdf_combined.reshape(res, res, res)
+        sdf_grid = sdf_combined.reshape(self._resolution, self._resolution, self._resolution)
 
         sdf_min = float(np.min(sdf_grid))
         sdf_max = float(np.max(sdf_grid))
@@ -172,9 +184,9 @@ class MeshSDFExtractor:
                 sdf_grid,
                 level=level,
                 spacing=(
-                    (self.bbox[1] - self.bbox[0]) / (res - 1),
-                    (self.bbox[3] - self.bbox[2]) / (res - 1),
-                    (self.bbox[5] - self.bbox[4]) / (res - 1),
+                    (self.bbox[1] - self.bbox[0]) / (self._resolution - 1),
+                    (self.bbox[3] - self.bbox[2]) / (self._resolution - 1),
+                    (self.bbox[5] - self.bbox[4]) / (self._resolution - 1),
                 ),
             )
 
@@ -301,17 +313,20 @@ class MeshSDFExtractor:
             vertices: (V, 3) tensor with gradients enabled
             faces: (F, 3) tensor (no gradients, topology is discrete)
         """
-        if enable_grad:
-            # Extract mesh (this uses torch.no_grad internally)
+        if self._dynamic_resolution:
+            # Dynamic resolution adjustment to approach target vertex count
+            self.dynamic_resolution_adjustment(sdf_model)
+            vertices, faces = self.extract_mesh(sdf_model)
+        else:
+            # No dynamic resolution: single extraction
             vertices, faces = self.extract_mesh(sdf_model)
 
-            # Re-evaluate vertices with gradient tracking
-            # This creates a computation graph for gradient flow
-            vertices_differentiable = vertices.detach().requires_grad_(True)
+        if not enable_grad:
+            return vertices, faces
 
-            return vertices_differentiable, faces
-        else:
-            return self.extract_mesh(sdf_model)
+        # Re-evaluate vertices with gradient tracking
+        vertices_differentiable = vertices.detach().requires_grad_(True)
+        return vertices_differentiable, faces
 
     def extract_and_compute_loss(
         self, sdf_model: nn.Module, loss_fn: Callable, enable_backward: bool = True
@@ -337,6 +352,9 @@ class MeshSDFExtractor:
             surrogate_loss: Gradient flow term (for backward pass)
             dL_dvertices: Upstream gradients w.r.t. vertices (for visualization/debugging)
         """
+        if self._dynamic_resolution:
+            # Dynamic resolution adjustment to approach target vertex count
+            self.dynamic_resolution_adjustment(sdf_model)
         # Extract mesh
         vertices, faces = self.extract_mesh(sdf_model)
 
@@ -355,8 +373,48 @@ class MeshSDFExtractor:
         dL_dvertices = torch.autograd.grad(
             outputs=loss, inputs=vertices_for_loss, grad_outputs=torch.ones_like(loss), create_graph=False, retain_graph=False
         )[0]
-
+        if self.gradient_max is not None:
+            norms = torch.norm(dL_dvertices, dim=1, keepdim=True)
+            scale = self.gradient_max / (norms + 1e-8)
+            scale = torch.minimum(scale, torch.ones_like(scale))
+            dL_dvertices = dL_dvertices * scale
         # Compute gradient flow through implicit surface
         surrogate_loss = self.compute_gradient_flow(vertices=vertices, dL_dvertices=dL_dvertices, sdf_model=sdf_model)
 
         return vertices, faces, loss, surrogate_loss, dL_dvertices
+
+    def dynamic_resolution_adjustment(self, sdf_model: nn.Module):
+        """
+        Adjust grid resolution dynamically to approach target vertex count.
+
+        This is a heuristic approach that iteratively refines the resolution
+        based on the number of vertices extracted until it is within a specified
+        tolerance of the target.
+
+        Args:
+            sdf_model: SDF evaluation module
+        """
+        if not self._dynamic_resolution:
+            return  # No dynamic adjustment needed
+
+        target = float(self._target_nr_vertices)
+
+        for _ in range(self.max_iters):
+            self.set_grid(self.bbox)
+            vertices, _ = self.extract_mesh(sdf_model)
+            v = vertices.shape[0]
+
+            if v == 0:
+                self._resolution = max(self._resolution * 2, self._resolution + 1)
+                continue
+
+            if abs(v - target) <= self.tolerance * target:
+                break
+
+            factor = (target / v) ** 0.5
+            new_res = round(self._resolution * factor)
+
+            if new_res == self._resolution:
+                break
+
+            self._resolution = new_res

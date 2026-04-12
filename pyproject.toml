@@ -22,7 +22,7 @@ dependencies = [
   "pre-commit>=3.0.0",
   "mypy>=1.19.1",
   "torch==2.4.0",
-  "torchvision==0.19.0",
+   # "torchvision==0.19.0", Not needed accordingto #aalthaus
   "wandb[media] >= 0.23.1",
   "types-paramiko",
   "types-pytz",
@@ -43,7 +43,8 @@ wp1_cfd_ai = [
   "rotary-embedding-torch",
   "scipy",
   "torch-cluster",
-  "typing"
+  "typing",
+  "open3d"
 ]
 
 wp2_assembler =[
@@ -123,6 +124,7 @@ exclude = [
     "**/subprojects/fixed_renderer/**",
     "**/visuals/testing.py",
     "**/blendednet/**",      # eschaerer: Tim's sinusoidal activation function model (just inspiration, not actually used in our code)
+    "**/GINN_Playground/**", #aalthaus, experiments not relevant to main loop
 ]
 
 
@@ -229,8 +231,16 @@ exclude = [
   ".*fixed_renderer/.*", # <-- eschaerer: Fixed regex to catch it inside subprojects
   ".*/archive/.*",       # <-- eschaerer: Fixed regex typo
   ".*/blendednet/.*",     # <-- eschaerer: Tim's sinusoidal activation function model (just inspiration)
+  ".*/GINN_Playground/.*", # <-- aalthaus: GINN_Playground is not relevant to the rest and served as an experiment only
   'tests/',
 ]
+
+[[tool.mypy.overrides]]
+# This file has a deliberate version-switch pattern (v1/v2 if/elif) that mypy
+# evaluates statically as both branches, causing spurious unused-ignore warnings
+# when checked in isolation (pre-commit pass_filenames=True).
+module = "subprojects.wp4_aeroshell_optimizer"
+warn_unused_ignores = false
 
 [[tool.mypy.overrides]]
 # Use a single string with commas for multiple modules

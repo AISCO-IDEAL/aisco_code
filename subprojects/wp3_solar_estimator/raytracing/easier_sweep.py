@@ -12,19 +12,17 @@ from matplotlib import pyplot as plt
 
 import wandb
 from subprojects.wp3_solar_estimator.v7.solar_loss_v7 import SolarLossEstimator
-from subprojects.wp4_aeroshell_optimizer.v1.src.models.model_baseclass import BaseModel
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import (
+from subprojects.wp4_aeroshell_optimizer import (
+    BaseModel,
+    allround_save_data,
     apply_sweep_overrides,
+    dict_hashing,
+    dynamic_type_loading,
+    fetch_pretrained_model,
     get_master_config,
     load_config,
-    register_all_configs,
-)
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.dynamic_loading import dynamic_type_loading
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.hashing import dict_hashing
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.storage_utils import (
-    allround_save_data,
-    fetch_pretrained_model,
     reformat_wandb_name,
+    register_all_configs,
 )
 
 

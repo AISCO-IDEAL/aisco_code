@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import logging
 import os
-import time
 from copy import deepcopy
 from typing import TYPE_CHECKING
 
@@ -108,154 +107,6 @@ class CustomLRScheduler(_LRScheduler):
         return [lr for _ in self.optimizer.param_groups]
 
 
-###############
-# Optimizer
-###############
-class AdamOptimizer:
-    optimizer: torch.optim.Adam
-    scheduler: (
-        torch.optim.lr_scheduler.StepLR
-        | torch.optim.lr_scheduler.CosineAnnealingLR
-        | torch.optim.lr_scheduler.ExponentialLR
-        | CustomLRScheduler
-        | None
-    )
-    epoch: int
-    batch_size: int
-    lr: float
-    loss_scale: float
-    eval_every_eps: int
-
-    def __init__(self, params, config):
-        # New: allow overriding betas / eps from config, with stable defaults
-        betas = (config["beta1"], config["beta2"])
-        eps = getattr(config, "eps", 1e-6)
-
-        self.optimizer = torch.optim.Adam(
-            params,
-            lr=config.lr,
-            betas=betas,
-            eps=eps,
-        )
-        self.epoch = config.epoch
-        self.lr = config.lr
-        self.loss_scale = config.loss_scale
-        self.eval_every_eps = config.eval_every_eps
-        self.early_save_metric = config.early_save_metric.lower()
-
-        if self.early_save_metric not in ["train", "val"]:
-            raise ValueError("`early_save_metric` must be either 'train' or 'val'.")
-
-        if config.scheduler == "step":
-            self.scheduler = torch.optim.lr_scheduler.StepLR(
-                self.optimizer, step_size=config.scheduler_step_size, gamma=config.scheduler_gamma
-            )
-        elif config.scheduler == "cos":
-            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                self.optimizer, T_max=config.scheduler_t_max, eta_min=config.scheduler_eta_min
-            )
-        elif config.scheduler == "exp":
-            self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=config.scheduler_gamma)
-        elif config.scheduler == "mix":
-            warmup_epochs = int(config.warmup_epochs)
-            cosine_epochs = int(0.96 * self.epoch)
-            exp_decay_epochs = self.epoch - warmup_epochs - cosine_epochs
-            if warmup_epochs == 0:
-                warmup_epochs = 1
-                cosine_epochs -= 1
-            if exp_decay_epochs == 0:
-                exp_decay_epochs = 1
-                cosine_epochs -= 1
-            self.scheduler = CustomLRScheduler(
-                optimizer=self.optimizer,
-                total_epochs=self.epoch,
-                warmup_epochs=warmup_epochs,
-                cosine_epochs=cosine_epochs,
-                exp_decay_epochs=exp_decay_epochs,
-                initial_lr=self.lr,
-                max_lr=config.max_lr,
-                min_lr=config.min_lr,
-                final_lr=config.final_lr,
-            )
-        else:
-            self.scheduler = None
-
-    def optimize(self, trainer: TrainerBase, description: str = "AdamOptimizer", color: str = "blue"):
-        time_total = 0.0
-        best_loss, best_epoch, best_state = np.inf, -1, None
-        losses = []
-        epochs = []
-        val_epochs = []
-        val_losses = []
-
-        # Only rank 0 should display progress bar
-        disable_pbar = trainer.setup_config.get("rank", 0) != 0
-        pbar = tqdm(total=self.epoch, desc=description, colour=color, disable=disable_pbar)
-        for epoch in range(self.epoch):
-            # Ensure DistributedSampler shuffles differently each epoch
-            train_sampler = getattr(trainer.train_loader, "sampler", None)
-            if hasattr(train_sampler, "set_epoch"):
-                train_sampler.set_epoch(epoch)  # type: ignore[union-attr]
-            trainer.model.train()
-            total_loss = 0.0
-            for batch in trainer.train_loader:
-                start_time = time.time()
-                self.optimizer.zero_grad()
-                with trainer.autocast_ctx:
-                    train_loss = trainer.train_step(batch)
-                train_loss.backward()
-                self.optimizer.step()
-                total_loss += train_loss.item()
-                if isinstance(trainer.device, torch.device) and trainer.device.type == "cuda":
-                    torch.cuda.synchronize()
-                time_total += time.time() - start_time
-
-            if self.scheduler is not None:
-                self.scheduler.step()
-
-            pbar.update(1)
-
-            if (epoch + 1) % self.eval_every_eps == 0:
-                train_loss = total_loss / len(trainer.train_loader)
-                losses.append(train_loss)
-                epochs.append(epoch)
-                val_metrics = trainer.validate(trainer.val_loader)
-                val_loss = val_metrics["loss"]
-                if not disable_pbar:
-                    pbar.set_postfix({"loss": train_loss, "val_loss": val_loss})
-                val_losses.append(val_loss)
-                val_epochs.append(epoch)
-
-                current_loss = val_loss if self.early_save_metric == "val" else train_loss
-
-                if current_loss < best_loss:
-                    best_loss = current_loss
-                    best_epoch = epoch
-                    best_state = deepcopy(trainer.model.state_dict())
-
-        if best_state is not None:
-            trainer.model.load_state_dict(best_state)
-
-        if not disable_pbar:
-            pbar.close()
-
-        return {
-            "train": {
-                "loss": losses,
-                "epoch": epochs,
-            },
-            "valid": {
-                "loss": val_losses,
-                "epoch": val_epochs,
-            },
-            "best": {
-                "epoch": best_epoch,
-                "loss": best_loss,
-            },
-            "time": time_total,
-        }
-
-
 class AdamWOptimizer:
     optimizer: torch.optim.AdamW
     scheduler: (
@@ -303,9 +154,9 @@ class AdamWOptimizer:
         elif config["scheduler"] == "exp":
             self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=config["scheduler_gamma"])
         elif config["scheduler"] == "mix":
-            warmup_epochs = config["warmup_epochs"]
-            cosine_epochs = int(0.90 * self.epoch)
-            exp_decay_epochs = self.epoch - warmup_epochs - cosine_epochs
+            warmup_epochs = int(0.1 * self.epoch)
+            exp_decay_epochs = int(0.05 * self.epoch)
+            cosine_epochs = self.epoch - warmup_epochs - exp_decay_epochs
             if warmup_epochs == 0:
                 warmup_epochs = 1
                 cosine_epochs -= 1
@@ -395,7 +246,7 @@ class AdamWOptimizer:
 
                 # Accumulate individual head MSEs for logging
                 for h, val in head_losses.items():
-                    # sigma_* values are point-in-time (not cumulative MSE) — use last value
+                    # sigma_* values are point-in-time (not cumulative MSE) - use last value
                     if h.startswith("sigma_"):
                         key = f"train/{h}"
                         epoch_grad_norms[key] = val  # overwrite: take latest batch value
@@ -419,30 +270,54 @@ class AdamWOptimizer:
                         epoch_grad_norms.setdefault(k, 0.0)
                         epoch_grad_norms[k] += v
 
-                # Scalar encoder diagnostics (fusion ratio + scale factor stats)
+                # Scalar encoder diagnostics (fusion ratio + FiLM stats + scale factor stats)
                 raw_model = trainer.model.module if hasattr(trainer.model, "module") else trainer.model
-                sc_enc = getattr(raw_model, "scalar_encoder", None)
-                if sc_enc is not None:
+                for enc_attr, prefix in [("scalar_encoder", "scalar_enc"), ("late_scalar_encoder", "late_scalar_enc")]:
+                    sc_enc = getattr(raw_model, enc_attr, None)
+                    if sc_enc is None:
+                        continue
+                    mode = getattr(sc_enc, "mode", "concat")
                     tok_n = getattr(sc_enc, "_last_token_norm", 0.0)
-                    sc_n = getattr(sc_enc, "_last_scalar_norm", 0.0)
-                    ratio = sc_n / tok_n if tok_n > 0 else 0.0
-                    epoch_grad_norms["scalar_encoder/fusion_ratio"] = (
-                        epoch_grad_norms.get("scalar_encoder/fusion_ratio", 0.0) + ratio
-                    )
-                    sf = getattr(batch, "scale_factors", None)
+                    if mode == "concat":
+                        sc_n = getattr(sc_enc, "_last_scalar_norm", 0.0)
+                        ratio = sc_n / tok_n if tok_n > 0 else 0.0
+                        epoch_grad_norms[f"{prefix}/fusion_ratio"] = epoch_grad_norms.get(f"{prefix}/fusion_ratio", 0.0) + ratio
+                    elif mode == "film":
+                        # gamma mean: should hover near 1.0.  Drift away -> FiLM dominates.
+                        gamma_mean = getattr(sc_enc, "_last_gamma_mean", 1.0)
+                        # beta mean: should stay near 0.0.  Large values -> strong shift.
+                        beta_mean = getattr(sc_enc, "_last_beta_mean", 0.0)
+                        # gamma spread: std of gamma across tokens/channels (position_aware only meaningful here)
+                        gamma_std = getattr(sc_enc, "_last_gamma_std", 0.0)
+                        # Effective modulation magnitude: how much FiLM changes the tokens
+                        # = |(gamma-1)*tokens + beta| / |tokens|  ~= relative perturbation
+                        pert = getattr(sc_enc, "_last_film_perturbation", 0.0)
+                        epoch_grad_norms[f"{prefix}/film_gamma_mean"] = (
+                            epoch_grad_norms.get(f"{prefix}/film_gamma_mean", 0.0) + gamma_mean
+                        )
+                        epoch_grad_norms[f"{prefix}/film_beta_mean"] = (
+                            epoch_grad_norms.get(f"{prefix}/film_beta_mean", 0.0) + beta_mean
+                        )
+                        epoch_grad_norms[f"{prefix}/film_gamma_std"] = (
+                            epoch_grad_norms.get(f"{prefix}/film_gamma_std", 0.0) + gamma_std
+                        )
+                        epoch_grad_norms[f"{prefix}/film_perturbation"] = (
+                            epoch_grad_norms.get(f"{prefix}/film_perturbation", 0.0) + pert
+                        )
+                    epoch_grad_norms[f"{prefix}/token_norm"] = epoch_grad_norms.get(f"{prefix}/token_norm", 0.0) + tok_n
+
+                # Scale-factor batch stats (from first available encoder's last batch)
+                sc_enc_any = getattr(raw_model, "scalar_encoder", None) or getattr(raw_model, "late_scalar_encoder", None)
+                if sc_enc_any is not None:
+                    sf = getattr(sc_enc_any, "_last_sf", None)
                     if sf is not None:
-                        sf_flat = sf.detach().float()
-                        epoch_grad_norms["scalar_encoder/sf_mean"] = (
-                            epoch_grad_norms.get("scalar_encoder/sf_mean", 0.0) + sf_flat.mean().item()
+                        epoch_grad_norms["scalar_enc/sf_mean"] = epoch_grad_norms.get("scalar_enc/sf_mean", 0.0) + sf["mean"]
+                        epoch_grad_norms["scalar_enc/sf_std"] = epoch_grad_norms.get("scalar_enc/sf_std", 0.0) + sf["std"]
+                        epoch_grad_norms["scalar_enc/sf_min"] = min(
+                            epoch_grad_norms.get("scalar_enc/sf_min", float("inf")), sf["min"]
                         )
-                        epoch_grad_norms["scalar_encoder/sf_std"] = (
-                            epoch_grad_norms.get("scalar_encoder/sf_std", 0.0) + sf_flat.std().item()
-                        )
-                        epoch_grad_norms["scalar_encoder/sf_min"] = min(
-                            epoch_grad_norms.get("scalar_encoder/sf_min", float("inf")), sf_flat.min().item()
-                        )
-                        epoch_grad_norms["scalar_encoder/sf_max"] = max(
-                            epoch_grad_norms.get("scalar_encoder/sf_max", float("-inf")), sf_flat.max().item()
+                        epoch_grad_norms["scalar_enc/sf_max"] = max(
+                            epoch_grad_norms.get("scalar_enc/sf_max", float("-inf")), sf["max"]
                         )
 
                 num_batches += 1
@@ -472,8 +347,7 @@ class AdamWOptimizer:
                 losses.append(avg_train_loss)
                 epochs.append(epoch)
 
-                # Capture validation metrics
-                val_metrics = trainer.validate(trainer.val_loader)
+                val_metrics = trainer.validate(trainer.val_loader, epoch_name=epoch)
                 val_loss = val_metrics["loss"]
                 val_mse = val_metrics["mse"]
                 val_rel_l2 = val_metrics["rel_l2"]
@@ -501,9 +375,11 @@ class AdamWOptimizer:
                 if epoch_grad_norms and num_batches > 0:
                     train_mse_sum = 0.0
                     train_mse_count = 0
+                    # Keys that are min/max (not sums) -> log as-is, no averaging
+                    _no_avg_suffixes = ("/sf_min", "/sf_max")
+                    # sigma_ keys are last-batch point-in-time values -> no averaging
                     for k, v in epoch_grad_norms.items():
-                        # sigma values and sf_min/sf_max are point-in-time, not accumulated sums
-                        if "sigma_" in k or k.endswith(("/sf_min", "/sf_max")):
+                        if "sigma_" in k or any(k.endswith(s) for s in _no_avg_suffixes):
                             metrics[k] = v
                         else:
                             metrics[k] = v / num_batches

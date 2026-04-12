@@ -66,7 +66,23 @@ class SurfaceLossV0(ParentLoss):
         area_mm2 = 0.5 * torch.norm(cross, dim=1).sum()  # scalar, mm²
         area_m2 = area_mm2 * self.MM2_TO_M2  # scalar, m²
 
-        return F.softplus(self.SOFTPLUS_K * (area_m2 - self.TARGET_AREA_M2))
+        loss = F.softplus(self.SOFTPLUS_K * (area_m2 - self.TARGET_AREA_M2))
+
+        # Store diagnostics for DebugManager
+        with torch.no_grad():
+            per_tri_area = 0.5 * torch.norm(cross, dim=1)  # (F,) in mm²
+            self._last_diagnostics = {
+                "area_m2": area_m2.item(),
+                "target_area_m2": self.TARGET_AREA_M2,
+                "area_minus_target": (area_m2 - self.TARGET_AREA_M2).item(),
+                "n_faces": int(faces.shape[0]),
+                "n_vertices": int(vertices.shape[0]),
+                "min_triangle_area_mm2": per_tri_area.min().item() if per_tri_area.numel() > 0 else 0.0,
+                "max_triangle_area_mm2": per_tri_area.max().item() if per_tri_area.numel() > 0 else 0.0,
+                "degenerate_triangles": int((per_tri_area < 1e-10).sum().item()),
+            }
+
+        return loss
 
     def _loss(self, model) -> torch.Tensor:
         """Extract mesh and return MeshSDF surrogate loss with gradient flow.
@@ -82,4 +98,12 @@ class SurfaceLossV0(ParentLoss):
             loss_fn=self._area_loss_fn,
             enable_backward=True,
         )
+
+        # Enrich diagnostics with mesh extraction info
+        diag = getattr(self, "_last_diagnostics", {})
+        diag["surrogate_loss"] = surrogate_loss.item()
+        diag["area_loss_raw"] = _area_loss.item()
+        diag["mesh_empty"] = _vertices is None or _vertices.numel() == 0
+        self._last_diagnostics = diag
+
         return surrogate_loss

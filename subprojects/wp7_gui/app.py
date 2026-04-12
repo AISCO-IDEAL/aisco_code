@@ -16,6 +16,9 @@ from urllib.parse import parse_qs, unquote, urlparse
 import imageio.v2 as imageio
 import yaml
 
+from subprojects.wp4_aeroshell_optimizer import CONFIGS_DIR as _WP4_CONFIGS_DIR
+from subprojects.wp4_aeroshell_optimizer import SLURM_SCRIPTS_DIR as _WP4_SLURM_DIR
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 LOGGER = logging.getLogger(__name__)
@@ -24,9 +27,10 @@ timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GUI_ROOT = Path(__file__).resolve().parent
-RUN_LOCAL_SCRIPT = REPO_ROOT / "wp4_aeroshell_optimizer" / "v1" / "slurm_scripts" / "run_local.sh"
+
+RUN_LOCAL_SCRIPT = _WP4_SLURM_DIR / "run_local.sh"
 RUN_LOCAL_LOG = GUI_ROOT / "logs" / f"run_local_{timestamp}.log"
-GENERAL_CONFIG_PATH = REPO_ROOT / "wp4_aeroshell_optimizer" / "v1" / "configs" / "general_config.yaml"
+GENERAL_CONFIG_PATH = _WP4_CONFIGS_DIR / "general_config.yaml"
 DEFAULT_LOCAL_STORAGE_DIR = REPO_ROOT.parent / "local_storage_dir"
 DEFAULT_BULK_STORAGE_DIR = Path("/cluster/work/fuge/AISCO/bulk_storage")
 SLOW_GIF_CACHE_DIR = GUI_ROOT / "cache"
@@ -401,12 +405,12 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
 
     def _get_num_epochs_from_training_config(self) -> int:
         try:
-            general_config_path = REPO_ROOT / "wp4_aeroshell_optimizer" / "v1" / "configs" / "general_config.yaml"
+            general_config_path = _WP4_CONFIGS_DIR / "general_config.yaml"
             with general_config_path.open(encoding="utf-8") as f:
                 general_cfg = yaml.safe_load(f) or {}
 
             training_cfg_name = general_cfg.get("active_configs", {}).get("training", "training_v0_config.yaml")
-            training_cfg_path = REPO_ROOT / "wp4_aeroshell_optimizer" / "v1" / "configs" / training_cfg_name
+            training_cfg_path = _WP4_CONFIGS_DIR / training_cfg_name
             with training_cfg_path.open(encoding="utf-8") as f:
                 training_cfg = yaml.safe_load(f) or {}
 

@@ -1,0 +1,160 @@
+# to be cleaned up
+# This is the authoritative solar config loaded by solar_v4.py:
+#   load_config(v="v1", cfg_name="solar_configs/solar_loss_config.yaml")["SolarLossConfigV4"]
+# # The entire SolarLossConfigV4 dict is passed to WP3's SolarLossEstimator.
+
+# general_info:
+#   version: 3.0  # NOT USED — never read by any code
+#   last_updated: 2026-01-19  # NOT USED — never read by any code
+#   description: "Configuration file for solar loss functions."  # NOT USED — never read by any code
+
+# NOT USED — ENTIRE SECTION: general_config is never read by any code
+general_config:
+  # replaced in SolarLossConfigV3: solar_angle: [0.0,1.0,1.0] # This is the direction in which a perfect solar cell should point, i.e. [0,0,1] if the sun shines from above
+  area_budget: 4000000 #in mm^3
+
+# USED !!!
+SolarLossConfigV3:
+  method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
+  bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
+  resolution: 128 # has to be a power of 2 for sparse sdf
+  isovalue: 0.0 # target level-set for marching cubes
+  auto_isovalue_if_out_of_range: true # fallback to mid-range level if 0.0 is outside sampled SDF range
+  warn_mesh_extraction: true # keep one warning for diagnostics, avoids repetitive warning spam
+  area_budget_mm2: 4000000
+  power_conversion_factor: 250 #How many watts you get per square meter of projected solar area
+  sun_dir: [-1.0,0.0,1.0] # Is also used for hte solar area validation stats
+  device: "cuda"
+  batch_size: 2048
+  eps: 1e-12
+  sigmoid_sharpness: 10.0
+  budget_penalty_weight: 0.1
+  wandb_logging: True
+  soft_mask_selection_threshold: 0.5 # This is the threshold for selecting points in the soft mask for the loss computation. Points with a soft mask value above this threshold will be considered for the loss computation.
+  soft_mask_full_selection_threshold: 0.95 # This is the threshold for fully selecting points in the soft mask (i.e., all points with a value above this threshold are fully selected).
+  rendering: True
+  selection_threshold_render: 0.05 # 0 for no threshold, i.e. clean color gradient. This is the threshold for selecting points in the soft mask for rendering. Points with a soft mask value above this threshold will be rendered as selected (e.g., highlighted in the visualization).
+  log_group_name: "solar_loss_metrics" # This is the name of the log group in wandb where solar loss metrics will be logged. You can use this to organize your logs and make it easier to analyze the results in wandb.
+
+# USED — solar_v4.py: cfg["SolarLossConfigV4"] -> entire dict passed to SolarLossEstimator (WP3)
+# All keys below are consumed by WP3's SolarLossEstimator class
+SolarLossConfigV4:
+  australia_cfg: "solar_configs/australia.yaml" #path to australian sun/route config
+  validation_sim: True #whether to use validation sim
+  validation_interval: 10 # every N epochs validation sim is run, for 0 only at the end it is run
+  method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf
+  bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
+  resolution: 200
+  area_budget_mm2: 6000000
+  device: "cuda"
+  batch_size: 2048
+  eps: 1e-12
+  sigmoid_sharpness: 10.0
+  budget_penalty_weight: 0.1
+  wandb_logging: True
+  soft_mask_selection_threshold: 0.5 # This is the threshold for selecting points in the soft mask for the loss computation. Points with a soft mask value above this threshold will be considered for the loss computation.
+  soft_mask_full_selection_threshold: 0.95 # This is the threshold for fully selecting points in the soft mask (i.e., all points with a value above this threshold are fully selected).
+  rendering: True
+  selection_threshold_render: 0.05 # 0 for no threshold, i.e. gradient. This is the threshold for selecting points in the soft mask for rendering. Points with a soft mask value above this threshold will be rendered as selected (e.g., highlighted in the visualization).
+  log_group_name: "solar_loss_metrics" # This is the name of the log group in wandb where solar loss metrics will be logged. You can use this to organize your logs and make it easier to analyze the results in wandb.
+
+SolarLossConfigV5:
+  australia_cfg: "solar_configs/australia.yaml" #path to australian sun/route config
+  validation_sim: True #whether to use validation sim
+  validation_interval: 5 # every N epochs validation sim is run, for 0 only at the end it is run
+  method: "mesh_sdf" # should be either diso_mc/diso_dmc/flexicubes or mesh_sdf  # USED — WP3
+  bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]  # USED — WP3
+  resolution: 128  # USED — WP3
+  area_budget_mm2: 6000000  # USED — WP3
+  device: "cuda"  # USED — WP3
+  batch_size: 2048  # USED — WP3
+  eps: 1e-12  # USED — WP3
+  sigmoid_sharpness: 10.0  # USED — WP3
+  budget_penalty_weight: 0.1  # USED — WP3
+  wandb_logging: True  # USED — WP3
+  soft_mask_selection_threshold: 0.5  # USED — WP3
+  soft_mask_full_selection_threshold: 0.95  # USED — WP3
+  rendering: True  # USED — WP3
+  selection_threshold_render: 0.05  # USED — WP3
+  log_group_name: "solar_loss_metrics"  # USED — WP3
+
+# USED — solar_v6.py: cfg["SolarLossConfigV6"] -> entire dict passed to WP3's SolarLossEstimator (v6)
+SolarLossConfigV6:
+  australia_cfg: "solar_configs/australia.yaml"
+  raytracing_version: "v2"
+  route_version: "v2" # v1 or v2
+  sun_vector_source: "fixed" # route | fixed
+  fixed_sun_dir: [-1,0,1.5] # [x, y, z] when sun_vector_source=fixed
+  method: "diso_mc" # diso_mc/diso_dmc/flexicubes or mesh_sdf
+  bbox: [[-5000.0, 5000.0], [-5000.0, 5000.0], [-5000.0, 5000.0]]
+  resolution: 100
+  area_budget_mm2: 6000000
+  device: "cuda"
+  batch_size: 100
+  eps: 1e-12
+  sigmoid_sharpness: 8.0
+  budget_penalty_weight: 0.1
+  shading_penalty_weight: 1.0
+  use_visibility_multiplier: True
+  use_shading_penalty: True
+  wandb_logging: True
+  soft_mask_selection_threshold: 0.5
+  soft_mask_full_selection_threshold: 0.95
+  rendering: True
+  selection_threshold_render: 0.03
+  log_group_name: "solar_loss_metrics"
+  shading:
+    sun_batch_size: 1
+    sun_subsample_fraction: 0.8 # 0..1 fraction of sun vectors to use
+    sun_subsample_min: 1 # minimum sun vectors to keep
+    sun_subsample_mode: "random" # random | first
+    shading_render_interval: 1 # render every N epochs
+
+
+
+# USED — solar_v7.py: cfg["SolarLossConfigV7"] -> entire dict passed to WP3's SolarLossEstimator (v7)
+SolarLossConfigV7:
+  australia_cfg: "solar_configs/australia.yaml"
+  raytracing_version: "v3" # v1, v2 or v3
+  route_version: "v2" # v1 or v2
+  sun_vector_source: "fixed" # route | fixed
+  fixed_sun_dir: [-1.0,1.0,0.8] # [x, y, z] when sun_vector_source=fixed
+  method: "mesh_sdf" # diso_mc/diso_dmc/flexicubes or mesh_sdf
+  bbox: [[-4000.0, 4000.0], [-4000.0, 4000.0], [-4000.0, 4000.0]]
+  resolution: 64
+  area_budget_mm2: 6000000
+  power_conversion_factor: 250 #How many watts you get per square meter of projected solar area
+  device: "cuda"
+  batch_size: 10
+  sigmoid_sharpness: 8.0 # for soft budget selection
+  budget_penalty_weight: 0.1
+  ### Dot product Quality modified by softplus or no? I.e. soft clamp quality to be > 0 so shading at bottom never produced penalty gradients
+  apply_softplus: False #Whether to apply softplus to qualities (used to influence weighting/shading penalties)
+  softplus_beta: 5.2 #best value to keep quality values between 0 and 1
+
+  # Loss formula parameters
+  lambda: 1.0
+  kappa: 1.0
+  epsilon: 0.0005 # 0.0005 recommended value
+  #####
+
+
+  sun_batching:
+    sun_batch_size: 1
+    sun_subsample_fraction: 0.6 # 0..1 fraction of sun vectors to use
+    sun_subsample_min: 1 # minimum sun vectors to keep
+    sun_subsample_mode: "random" # random | first
+    use_activation_checkpointing: True # recompute per-sun activations in backward to reduce peak VRAM
+    shading_render_interval: 1 # render every N epochs
+    memory_safe_mode: True # enables conservative memory defaults in solar loss loop
+    memory_safe_max_sun_vectors: 256 # hard cap as emergency fallback for very large routes
+    log_visibility_histograms: False # avoid per-sun wandb histogram materialisation
+    visibility_histogram_interval: 0 # 0 disables per-sun visibility histogram logging
+
+
+  wandb_logging: True
+  soft_mask_selection_threshold: 0.5
+  soft_mask_full_selection_threshold: 0.95
+  rendering: True
+  selection_threshold_render: 0.0005
+  log_group_name: "solar_loss_metrics"
