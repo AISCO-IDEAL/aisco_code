@@ -2,9 +2,8 @@ import ast
 import copy
 import logging
 import os
+import tempfile
 
-import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import torch
 import yaml
@@ -14,6 +13,7 @@ from torch_geometric.loader import DataLoader as PyGDataLoader
 import wandb
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.trainer.utils.plot import plot_3d_comparison_matplotlib
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import cp_field_to_drag
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer import MeshSDFGrads, Visualiser
@@ -71,6 +71,49 @@ class ModelLoader:
         self.gaot = GAOT3D(config=config).to(self.device)
         self.gaot.eval()
 
+        self._load_visualization_settings()
+
+    def _load_visualization_settings(self) -> None:
+        dataset_config = self._og_config.get("dataset", {})
+
+        self.u_mean = torch.tensor(0.0, device=self.device)
+        self.u_std = torch.tensor(1.0, device=self.device)
+
+        base_path = dataset_config.get("base_path")
+        dataset_name = dataset_config.get("name")
+        if base_path and dataset_name:
+            stats_file = os.path.join(base_path, f"{dataset_name}_norm_stats.pt")
+            if os.path.isfile(stats_file):
+                stats = torch.load(stats_file, weights_only=False)
+                self.u_mean = stats["mean"].to(self.device)
+                self.u_std = stats["std"].to(self.device)
+            else:
+                logger.warning(
+                    "Normalization stats not found at %s; visualization will use raw model outputs.",
+                    stats_file,
+                )
+
+        axis_limits = dataset_config.get("viz_axis_limits")
+        if axis_limits and all(axis_name in axis_limits for axis_name in ("x", "y", "z")):
+            self._viz_fixed_axis_limits = {
+                axis_name: (float(axis_limits[axis_name][0]), float(axis_limits[axis_name][1]))
+                for axis_name in ("x", "y", "z")
+            }
+        else:
+            self._viz_fixed_axis_limits = {
+                "x": (-3.0, 3.0),
+                "y": (-3.0, 3.0),
+                "z": (-3.0, 3.0),
+            }
+
+        vmin = dataset_config.get("viz_field_vmin")
+        vmax = dataset_config.get("viz_field_vmax")
+        self._viz_fixed_clim_common: tuple[float, float] | None
+        if vmin is not None and vmax is not None:
+            self._viz_fixed_clim_common = (float(vmin), float(vmax))
+        else:
+            self._viz_fixed_clim_common = None
+
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
         self.sdf_model = sdf_model
@@ -121,8 +164,8 @@ class ModelLoader:
         loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
         batch = next(iter(loader)).to(self.device)
 
-        # coordinates for scatter plot  (DETACH before numpy)
-        coords = batch.pos.detach().cpu().numpy()
+        coords_tensor = batch.pos_orig if hasattr(batch, "pos_orig") else batch.pos
+        coords = coords_tensor.detach().cpu().numpy()
         fname = getattr(self, "epoch_name", "mesh")
 
         # predicted field is passed in as pressure_field (node-wise GAOT output)
@@ -130,79 +173,55 @@ class ModelLoader:
             pressure_field = pressure_field.squeeze(-1)
 
         field_pred = pressure_field.detach().cpu().numpy().squeeze()
-        field_gt = None  # no GT available on optimization mesh
-
-        # if you *do* have GT on this mesh in future, set batch.x and use it here
-        if field_gt is not None:
-            # optional: same denorm as StaticTrainer3D if you store stats on ModelLoader
-            u_mean = getattr(self, "u_mean", torch.tensor(0.0, device=self.device))
-            u_std = getattr(self, "u_std", torch.tensor(1.0, device=self.device))
-            if isinstance(u_mean, torch.Tensor):
-                u_mean = u_mean.detach().cpu().numpy().item() if u_mean.numel() == 1 else 0.0
-            if isinstance(u_std, torch.Tensor):
-                u_std = u_std.detach().cpu().numpy().item() if u_std.numel() == 1 else 1.0
-
-            field_pred_dn = field_pred * u_std + u_mean
-            field_gt_dn = field_gt * u_std + u_mean
-            field_diff = np.abs(field_gt_dn - field_pred_dn)
-
-            common_min = float(np.min(field_gt_dn))
-            common_max = float(np.max(field_gt_dn))
+        if isinstance(self.u_mean, torch.Tensor):
+            u_mean = float(self.u_mean.detach().cpu().item()) if self.u_mean.numel() == 1 else 0.0
         else:
-            # no GT: just plot the prediction with its own range
-            field_pred_dn = field_pred
-            field_gt_dn = None
-            field_diff = None
-            common_min = float(np.min(field_pred_dn))
-            common_max = float(np.max(field_pred_dn))
+            u_mean = float(self.u_mean)
+        if isinstance(self.u_std, torch.Tensor):
+            u_std = float(self.u_std.detach().cpu().item()) if self.u_std.numel() == 1 else 1.0
+        else:
+            u_std = float(self.u_std)
 
-        # ---- build matplotlib figure in same style as trainer ------------
-
-        panels = []
-        if field_gt_dn is not None:
-            panels.append((field_gt_dn, "Ground Truth", "jet", common_min, common_max))
-        panels.append((field_pred_dn, "Prediction", "jet", common_min, common_max))
-        if field_diff is not None:
-            panels.append((field_diff, "Absolute Difference", "Reds", None, None))
-
-        fig = plt.figure(figsize=(20, 6))
-        for panel_idx, (data, title, cmap_name, vmin, vmax) in enumerate(panels):
-            ax = fig.add_subplot(1, len(panels), panel_idx + 1, projection="3d")
-            sc = ax.scatter(
-                coords[:, 0],
-                coords[:, 1],
-                coords[:, 2],
-                c=data,
-                cmap=cmap_name,
-                s=2,
-                vmin=vmin,
-                vmax=vmax,
-                depthshade=False,
-            )
-            ax.set_title(title)
-            ax.set_xlabel("X", labelpad=8)
-            ax.set_ylabel("Y", labelpad=8)
-            ax.set_zlabel("Z", labelpad=8)
-            fig.colorbar(sc, ax=ax, shrink=0.5)
-            ax.view_init(elev=20, azim=-120)
+        field_pred_dn = field_pred * u_std + u_mean
 
         # we don't have a numeric epoch here, only a name
         title_epoch = getattr(self, "epoch_name", "opt_step")
-        fig.suptitle(f"Pressure Field [opt] {fname} — {title_epoch}", fontsize=13)
-        plt.tight_layout()
+        with tempfile.NamedTemporaryFile(suffix=".png", prefix="pressure_field_", delete=False) as tmp_file:
+            tmp_path = tmp_file.name
 
         step_val = int(self.epoch_name)
-
-        wandb.log(
-            {
-                "Pressure-Field visualisation": wandb.Image(
-                    fig,
-                    caption=f"opt {fname} {title_epoch}",
-                )
-            },
-            step=step_val,
-        )
-        plt.close(fig)
+        try:
+            plot_3d_comparison_matplotlib(
+                coords=coords,
+                u_gtr=None,
+                u_prd=field_pred_dn,
+                save_path=tmp_path,
+                variable_name="Pressure",
+                point_size=2.0,
+                cmap="jet",
+                dpi=150,
+                view_angle=(20, -120),
+                hide_grid=False,
+                equal_aspect=False,
+                show_abs_diff=False,
+                show_input_shape=False,
+                fixed_clim_common=self._viz_fixed_clim_common,
+                fixed_axis_limits=self._viz_fixed_axis_limits,
+            )
+            wandb.log(
+                {
+                    "Pressure-Field visualisation": wandb.Image(
+                        tmp_path,
+                        caption=f"opt {fname} {title_epoch}",
+                    )
+                },
+                step=step_val,
+            )
+        finally:
+            try:    #noqa: SIM105
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
     def loss_fn(self, mesh_verts, mesh_faces):
         wandb.log({"Aero-resolution": mesh_verts.shape[0]}, step=self.epoch_name)
