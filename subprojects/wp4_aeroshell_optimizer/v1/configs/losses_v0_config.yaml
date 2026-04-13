@@ -1,5 +1,5 @@
 general_info:
-  CSE: "False"  # Cruising Speed Estimation  # total_loss.py: self._use_cse
+  CSE: "True"  # Cruising Speed Estimation  # total_loss.py: self._use_cse
   ALM: "True"  # Augmented Lagrangian Method  # total_loss.py: self._use_alm
   ALM_aggressive: "False" # capu version of ALM # weights.py: self._use_alm_aggressive
   ALM_aggressive_capu: 0.25 # default: 0.25, only used when ALM_aggressive=True. # weights.py: self.use_alm_aggressive
@@ -99,8 +99,8 @@ bb_config:  # bb_.py: self.losses_config["bb_config"]
   outer_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/outer.ply"
 
 cfd:
-  model_id: 62745163
-  version: 2
+  model_id: "gold3"
+  version: 1
   visualisations: "True" # only works for Version 2
   v_inf: 25.0   # freestream velocity [m/s] for Cp -> Pa conversion
   rho: 1.225    # air density [kg/m³] for Cp -> Pa conversion
