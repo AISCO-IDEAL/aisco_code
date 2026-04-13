@@ -139,15 +139,14 @@ dataset:
     subsample_nodes: 50000     # randomly sample 30k nodes per load if sample exceeds this
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
-    num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
+    num_viz_samples: 0         # number of random viz samples per split (train/val); 0 = disable viz
 
-    # Edit these ranges to control the visualized x/y/z box exactly.
-    viz_axis_limits:
-        x: [-1.5, 2]
-        y: [-1, 1]
-        z: [-1, 1]
-    viz_field_vmin: -1.5        # min on pressure bar
-    viz_field_vmax: 1.5         # max on pressure bar
+    viz_axis_limits:            # Edit these ranges to control the visualized x/y/z box exactly, default is outer bounding box
+        x: [-3, 3]
+        y: [-1.5, 1.5]
+        z: [-0.5, 2]
+    viz_field_vmin: -1        # min on pressure bar
+    viz_field_vmax: 1         # max on pressure bar
     viz_abs_diff_vmax: 1.0      # max on error bar (min always 0)
 
 optimizer:
