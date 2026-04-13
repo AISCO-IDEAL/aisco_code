@@ -4,12 +4,12 @@ pretraining_shape: "sphere" # "sphere" or "cube"  #  pretraining_v1_1.py: config
 pretraining:
   use_pretrained: True # True or False possible  # NOT USED — never read by any code (main checks fetch_pretrained_model result instead)
   force_pretraining: False  # USED — main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("force_pretraining", False)
-  pretraining_model_path: ""  # USED — main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("pretraining_model_path", "path/to/pretrained/model.pth")  # note: pretraining_v0_model.pth is the basic MLP sphere or ellipsoid
-  local_pretraining_model_path: ""
+  pretraining_model_path: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset/id_42_mlp/2_quiet-sweep_epoch0490.pth"  # USED — main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("pretraining_model_path", "path/to/pretrained/model.pth")  # note: pretraining_v0_model.pth is the basic MLP sphere or ellipsoid
+  local_pretraining_model_path: "/home/eschaerer/AISCO_code/local_pretrained_dir/bb489749d1/bb489749d1_pretrained.pth"
   username: ${USER} # for windows users: %USERNAME%  # NOT USED — never read by any code in the optimisation loop
 
-model: "WIRE" #Class name of model  # pretraining_v1_1.py: config["model"] (only in dynamic_model_loading, not used when model is passed in)
-model_filename: "WIRE" #Name of file where model is defined  # pretraining_v1_1.py: config["model_filename"] (only in dynamic_model_loading, not used when model is passed in)
+model: "WIREV2" #Class name of model  # pretraining_v1_1.py: config["model"] (only in dynamic_model_loading, not used when model is passed in)
+model_filename: "WIRE_v2" #Name of file where model is defined  # pretraining_v1_1.py: config["model_filename"] (only in dynamic_model_loading, not used when model is passed in)
 
 training_loop:
   epochs: 2000  # pretraining_v1_1.py: config["training_loop"]["epochs"]
