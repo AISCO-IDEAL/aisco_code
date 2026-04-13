@@ -52,21 +52,6 @@ echo "Verifying GPU access..."
 nvidia-smi
 echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 #------------------------------------------------------------------------------
-
-# Set Hugging Face environment variables (not used for now)
-#------------------------------------------------------------------------------
-# export HF_HOME="$SCRATCH/hf_models"
-# export HF_DATASETS_CACHE="$SCRATCH/hf_datasets"
-# export HF_TOKEN="HuggingFace_TOKEN"  # Replace with your actual Huggingface token, create in Settings, Access Tokens, Read
-#------------------------------------------------------------------------------
-# Log GPU/CPU info to the same log directory
-#------------------------------------------------------------------------------
-
-##echo "GPU Info:" >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
-##nvidia-smi >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
-##echo "CPU Info:" >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
-##lscpu >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
-#------------------------------------------------------------------------------
 # Run the Relevant script
 #------------------------------------------------------------------------------
 export PYTHONUNBUFFERED=TRUE
