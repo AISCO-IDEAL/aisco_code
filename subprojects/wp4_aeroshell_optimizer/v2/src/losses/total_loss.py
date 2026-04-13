@@ -41,7 +41,7 @@ from __future__ import annotations
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -53,8 +53,9 @@ import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import (
     MeshExtractor,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
-from subprojects.wp4_aeroshell_optimizer.v2.src.losses.weights import weights_alm
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
@@ -66,6 +67,8 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Vi
 # ---------------------------------------------------------------------------
 _ALM_OBJECTIVE_CATEGORIES: frozenset[str] = frozenset({"aero", "solar"})
 _ALM_CONSTRAINT_CATEGORIES: tuple[str, ...] = ("bb", "eikonal", "smoothness", "developability")  # order matters ALM
+
+TrainModel: TypeAlias = BaseModel | ConcatBaseModel
 
 
 class TotalLoss:
@@ -84,29 +87,35 @@ class TotalLoss:
         self,
         dev: str | torch.device = "cuda",
         renderer_manager: VisualisationManager | None = None,
+        external_alm: bool = False,  # Whether to do the ALM updates inside the loop or leave them to an external manager (like GINN's diversity manager)
     ) -> None:
         self._device: torch.device = torch.device(dev) if isinstance(dev, str) else dev
         self._renderer_manager: VisualisationManager | None = renderer_manager
+        self._external_alm: bool = external_alm
 
         # Populated each call to get_total_loss(); maps component name → weighted
         # live tensor.  The training loop calls .backward() per entry.
         self._last_weighted_losses: dict[str, torch.Tensor] = {}
+        # External ALM manager for ALM state
+        self.alm_manager: ALMManager | None = None
         # Stores the last computed cruising speed (if CSE active) for telemetry.
         self._last_cruising_speed: torch.Tensor | None = None
+        self._last_cruising_speed_diagnostics: dict | None = None
         # Rolling history for loss-competition stacked-area chart (one dict per epoch).
         self._raw_loss_history: list[dict[str, float]] = []
         self._weighted_loss_history: list[dict[str, float]] = []
 
         self._load_configs()
 
-        gi: dict[str, Any] = self.losses_config["general_info"]
-        self._use_alm: bool = gi.get("ALM") == "True"
-        self._use_cse: bool = gi.get("CSE") == "True"
+        general_info: dict[str, Any] = self.losses_config["general_info"]
+        self._use_alm: bool = general_info.get("ALM") == "True"
+        self._use_cse: bool = general_info.get("CSE") == "True"
 
         self._init_mesh_infrastructure()
         self._init_active_losses()  # must come before _init_alm_state (needs n_constraints)
         if self._use_alm:
-            self._init_alm_state()
+            constraint_names: list[str] = [n for (n, _inst) in self._constraint_losses.values()]
+            self.alm_manager = ALMManager(constraint_names, general_info, self._device)
 
     def _load_configs(self) -> None:
         self._general_config: dict[str, Any] = load_config()
@@ -127,42 +136,6 @@ class TotalLoss:
         self._memory_diagnostics: bool = _log_cfg.get("memory_diagnostics", False)
         self._mesh_statistics_enabled: bool = _log_cfg.get("mesh_statistics", False)
         self._gradient_memory_diagnostics: bool = _log_cfg.get("gradient_memory_diagnostics", False)
-
-    # ---- helpers for per-constraint list / scalar config values --------
-    @staticmethod
-    def _as_list(val: float | list[float], n: int, name: str) -> list[float]:
-        """Accept a scalar (broadcast) or a list of length *n*."""
-        if isinstance(val, (list, tuple)):
-            if len(val) != n:
-                msg = f"{name}: expected {n} values, got {len(val)}"
-                raise ValueError(msg)
-            return [float(v) for v in val]
-        return [float(val)] * n
-
-    def _init_alm_state(self) -> None:
-        """Initialise λ, μ, ν tensors and scalar hyper-parameters for ALM.
-
-        ``initial_lambda``, ``initial_mu`` and ``initial_nu`` may be a single
-        scalar (broadcast to all constraints) or a list of length
-        *n_constraints* for per-constraint control.
-        """  # noqa: RUF002
-        gi: dict[str, Any] = self.losses_config["general_info"]
-        dev = self._device
-        nc: int = len(self._constraint_losses)  # typically 3
-
-        lam_list = self._as_list(gi.get("initial_lambda", 0.01), nc, "initial_lambda")
-        mu_list = self._as_list(gi.get("initial_mu", 1.0), nc, "initial_mu")
-        nu_list = self._as_list(gi.get("initial_nu", 1.0), nc, "initial_nu")
-
-        self.alpha: float = gi.get("alpha", 0.99)
-        self.gamma: float = gi.get("gamma", 0.01)
-        self.gamma_aggressive: float = gi.get("gamma_aggressive", 1.1)
-
-        # Shape [nc, 1] to match weights_alm's internal broadcasting logic.
-        self.lamdas: torch.Tensor = torch.tensor(lam_list, device=dev, dtype=torch.float32).unsqueeze(1)
-        self.mus: torch.Tensor = torch.tensor(mu_list, device=dev, dtype=torch.float32).unsqueeze(1)
-        self.nus: torch.Tensor = torch.tensor(nu_list, device=dev, dtype=torch.float32).unsqueeze(1)
-        self.alphas: torch.Tensor = torch.full((nc, 1), self.alpha, device=dev)
 
     def _init_mesh_infrastructure(self) -> None:
         dev_str = str(self._device)
@@ -230,7 +203,7 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # loss computation
     # ------------------------------------------------------------------
-    def _compute_raw_losses(self, model: BaseModel, epoch_name: int) -> dict[str, torch.Tensor]:
+    def _compute_raw_losses(self, model: TrainModel, epoch_name: int) -> dict[str, torch.Tensor]:
         """Evaluate every active loss instance and return raw (unweighted) tensors."""
         raw: dict[str, torch.Tensor] = {}
         for name, instance in self._active_losses.items():
@@ -277,7 +250,6 @@ class TotalLoss:
     def _apply_weighting(
         self,
         raw_losses: dict[str, torch.Tensor],
-        device: torch.device,
     ) -> torch.Tensor:
         """Weight objectives and constraints independently then sum.
 
@@ -318,46 +290,30 @@ class TotalLoss:
                 tol=1e-4,
             )
             self._last_cruising_speed = v_cruise
+            self._last_cruising_speed_diagnostics = {
+                "cruising_speed_ms": v_cruise.item(),
+            }
             self._last_weighted_losses["cse_objective"] = -v_cruise
         else:
             self._last_cruising_speed = None
+            self._last_cruising_speed_diagnostics = None
             for cat in ("aero", "solar"):
                 if cat not in self._objective_losses:
                     continue
                 name: str = self._objective_losses[cat][0]
                 w: float = self._manual_weights.get(name, 1.0)
-                self._last_weighted_losses[name] = raw_losses[name] * w
+                sign: float = -1.0 if cat == "solar" else 1.0
+                self._last_weighted_losses[name] = sign * raw_losses[name] * w
 
         # ---- Constraints -------------------------------------------------
         constraint_names: list[str] = [n for (n, _inst) in self._constraint_losses.values()]
         constraints: list[torch.Tensor] = [raw_losses[n] for n in constraint_names]
 
         if self._use_alm:
-            use_alm_aggressive: bool = gi.get("ALM_aggressive") == "True"
-
-            # Detach for the multiplier update (no gradient through lambda/mu/nu update)
-            c_for_alm: torch.Tensor = torch.stack([c.detach() for c in constraints])
-
-            alm_thresholds = gi.get("alm_thresholds")
-            thresholds_tensor: torch.Tensor | None = torch.tensor(alm_thresholds, device=device) if alm_thresholds else None
-
-            self.lamdas, self.mus, self.nus = weights_alm(
-                lamdas=self.lamdas,
-                mus=self.mus,
-                nus=self.nus,
-                alphas=self.alphas,
-                gamma=self.gamma,
-                gamma_aggressive=self.gamma_aggressive,
-                constrained_losses=c_for_alm,
-                thresholds=thresholds_tensor,
-                use_alm_aggressive=use_alm_aggressive,
-            )
-
-            for i, cname in enumerate(constraint_names):
-                ci: torch.Tensor = constraints[i]
-                lam_i: torch.Tensor = self.lamdas[i].detach()
-                mu_i: torch.Tensor = self.mus[i].detach()
-                self._last_weighted_losses[f"alm_{cname}"] = lam_i * ci + 0.5 * mu_i * ci**2
+            if not self._external_alm and self.alm_manager is not None:
+                self.alm_manager.update_multipliers(constraints)
+                alm_penalties = self.alm_manager.compute_penalty(constraints)
+                self._last_weighted_losses.update(alm_penalties)
         else:
             for cname, raw_t in zip(constraint_names, constraints, strict=True):
                 w_c: float = self._manual_weights.get(cname, 1.0)
@@ -379,7 +335,7 @@ class TotalLoss:
         loss_log: dict[str, float],
         epoch_name: int,
         device: torch.device,
-        model: BaseModel,
+        model: TrainModel,
         total_loss: torch.Tensor,
     ) -> None:
         """WandB logging, mesh rendering, gradient logging, and memory diagnostics."""
@@ -401,19 +357,20 @@ class TotalLoss:
 
         # individual weighted contributions
         for name, val in self._last_weighted_losses.items():
-            log_dict[f"weighted_losses/{name}"] = val.item()
+            # Negate cse_objective back to positive for physical meaning in logs
+            # (we minimize -v_cruise internally, but log +v_cruise for readability)
+            logged_val = (
+                -val.item() if name == "cse_objective" else val.item()
+            )  # the CSE is logged negatively, as we have a minimization scheme
+            log_dict[f"weighted_losses/{name}"] = logged_val
 
         # cruising speed
         if self._last_cruising_speed is not None:
             log_dict["cruising_speed_ms"] = self._last_cruising_speed.item()
 
         # ALM multipliers (only in ALM mode)
-        if self._use_alm:
-            constraint_names: list[str] = [name for (name, _inst) in self._constraint_losses.values()]
-            for i, cname in enumerate(constraint_names):
-                log_dict[f"alm_params/lambda_{cname}"] = self.lamdas[i].item()
-                log_dict[f"alm_params/mu_{cname}"] = self.mus[i].item()
-                log_dict[f"alm_params/nu_{cname}"] = self.nus[i].item()
+        if self._use_alm and self.alm_manager is not None:
+            log_dict.update(self.alm_manager.get_telemetry())
 
         wandb.log(log_dict, step=epoch_name)  # ein riesen log
 
@@ -685,10 +642,19 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # Orchestrator
     # ------------------------------------------------------------------
-    def get_total_loss(self, model: BaseModel, epoch_name: int = -1) -> torch.Tensor:
+    def get_cruising_speed_diagnostics(self) -> dict | None:
+        """Return diagnostics from the last cruising speed solver call, or None if CSE is inactive."""
+        return self._last_cruising_speed_diagnostics
+
+    def get_total_loss(
+        self, model: TrainModel, epoch_name: int = -1, skip_telemetry: bool = False
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]] | torch.Tensor:
         """Initilizes unweighted losses computation, computes weighted total loss, logs to wandb, and returns the total loss tensor.
 
-        After this call, ``self._last_weighted_losses`` contains per-component
+        If self._external_alm is True, returns a tuple of (weighted_objectives, raw_constraints_dict) so the caller
+        can manually manage multiplier states across populations.
+
+        After this call (for external_alm=False), ``self._last_weighted_losses`` contains per-component
         tensors with independent computation graphs suitable for individual
         ``.backward(retain_graph=False)`` calls.
         """
@@ -698,11 +664,17 @@ class TotalLoss:
         raw: dict[str, torch.Tensor] = self._compute_raw_losses(model, epoch_name)
 
         # 2. Apply weighting (populates _last_weighted_losses)
-        total: torch.Tensor = self._apply_weighting(raw, device)
+        total: torch.Tensor = self._apply_weighting(raw)
 
         # 3. Build logging dict and dispatch telemetry
-        loss_log: dict[str, float] = {f"raw_losses/{name}": t.item() for name, t in raw.items()}
-        loss_log["raw_losses/total_loss"] = total.item()
-        self._handle_telemetry(loss_log, epoch_name, device, model, total)
+        if not skip_telemetry:
+            loss_log: dict[str, float] = {f"raw_losses/{name}": t.item() for name, t in raw.items()}
+            loss_log["raw_losses/total_loss"] = total.item()
+            self._handle_telemetry(loss_log, epoch_name, device, model, total)
+
+        if self._external_alm:
+            constraint_names: list[str] = [n for (n, _inst) in self._constraint_losses.values()]
+            raw_constraints_dict = {name: raw[name] for name in constraint_names}
+            return total, raw_constraints_dict
 
         return total

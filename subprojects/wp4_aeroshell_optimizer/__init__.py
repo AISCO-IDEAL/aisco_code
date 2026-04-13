@@ -6,7 +6,7 @@ Change ACTIVE_VERSION below to switch all callers between v1 and v2.
 import importlib
 from typing import TYPE_CHECKING, Any
 
-ACTIVE_VERSION = "v2"  # change to "v2" to switch globally
+ACTIVE_VERSION = "v1"  # change to "v2" to switch globally
 
 # For static type checking, import the chosen version so mypy
 # sees a single consistent API. Use TYPE_CHECKING so only a

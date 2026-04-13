@@ -105,9 +105,13 @@ model:
                 force: 1
                 cd: 1
         scalar_encoder:
-            enabled: false              # set true to inject per-sample scaling factors
-            features: ["scale_factors"] # extend with e.g. "v_inf" later
-            hidden_dim: 32              # encoder MLP hidden width (matches lifting_channels)
+            enabled: true              # set true to inject per-sample scaling factors
+            features: ["scale_factors","bbox_center"] # extend with e.g. "bbox_min", "bbox_max", "bbox_center", "v_inf"
+            hidden_dim: 128             # encoder MLP hidden width
+            mode: "film"              # "concat" (original) or "film" (FiLM conditioning)
+            position_aware: true       # if true + film: γ/β vary per token grid position
+            num_film_layers: 3          # depth of FiLM generator MLP (film mode only)
+            film_init_scale: 0.01       # reduced from 0.1 — perturbation hit 1.0 at epoch 80
 
 dataset:
     name: "euler_pressure_field_new"
@@ -135,7 +139,7 @@ dataset:
     subsample_nodes: 50000     # randomly sample 30k nodes per load if sample exceeds this
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
-    num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
+    num_viz_samples: 0         # number of random viz samples per split (train/val); 0 = disable viz
 
 optimizer:
     name: "adamw" # the option "adam" hasen't been adopted yet to the new config-style

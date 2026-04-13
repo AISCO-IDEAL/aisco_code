@@ -5,6 +5,16 @@ import torch
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
+    DebugManager,
+    collect_alm_state,
+    collect_cuda_memory,
+    collect_loss_components,
+    collect_loss_diagnostics,
+    collect_loss_weights,
+    collect_optimizer_state,
+    collect_param_stats,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import allround_save_data
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager, Wrapper
 
@@ -27,11 +37,15 @@ class BasicMLP(BaseModel):
         renderer_manager: VisualisationManager | None = None,
         renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
         wandb_name: str | None = None,
+        debug_manager: DebugManager | None = None,
     ) -> None:
         if training_config is None:
             raise ValueError("Training config must be provided for optimisation.")
 
         self.train()  # Set model to training mode, i.e. things like dropout layers are active, turn off by using self.eval() or model.eval()
+
+        # Initialise a no-op DebugManager if none was provided
+        dbg = debug_manager if debug_manager is not None else DebugManager(config={"GLOBAL_DEBUG": False})
 
         # Check for WandB sweep overrides for learning rate
         if wandb.run and "learning_rate " in wandb.config:
@@ -48,7 +62,26 @@ class BasicMLP(BaseModel):
         device = str(next(self.parameters()).device)
         loss_function = TotalLoss(device, renderer_manager=renderer_manager)  # Initialise TotalLoss with the correct device
 
+        # ── Debug: one-time run config dump ──────────────────────
+        dbg.log_run_config(
+            model=self,
+            training_config=training_config,
+            general_config=general_config,
+            device=device,
+            num_epochs=num_epochs,
+            learning_rate=learning_rate,
+            optimizer_type="Adam",
+            loss_config={
+                "use_alm": getattr(loss_function, "_use_alm", False),
+                "use_cse": getattr(loss_function, "_use_cse", False),
+                "manual_weights": collect_loss_weights(loss_function),
+            },
+        )
+
         for epoch in range(num_epochs):
+            # ── Debug: start-of-iteration stats tracking ─────────────
+            dbg.begin_iteration(epoch)
+
             # Clear gradients
             optimizer.zero_grad()
 
@@ -64,9 +97,12 @@ class BasicMLP(BaseModel):
             prev_grad = [torch.zeros_like(p) for p in trainable_params]  # accumulator at zero
             log_grad_mem = loss_function._gradient_memory_diagnostics
             device_str = str(next(self.parameters()).device)
+            total_weighted_loss = 0.0
+            per_component_grad_norms: dict[str, float] = {}
             for component_name, weighted_loss in loss_function._last_weighted_losses.items():
                 if not weighted_loss.requires_grad:
                     continue
+                total_weighted_loss += weighted_loss.item()
                 if log_grad_mem and "cuda" in device_str:
                     mem_before = torch.cuda.memory_allocated() / 1024**2
                 weighted_loss.backward(retain_graph=False)
@@ -90,9 +126,53 @@ class BasicMLP(BaseModel):
                         )
                 curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
                 delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
+                per_component_grad_norms[component_name] = delta_norm
                 if wandb.run:
                     wandb.log({f"{component_name}_gradient": delta_norm}, step=epoch)
                 prev_grad = curr_grad
+
+            # ── Debug: compute aggregate gradient norm ───────────────
+            grad_norm = sum(p.grad.detach().pow(2).sum().item() for p in self.parameters() if p.grad is not None) ** 0.5
+            lr = optimizer.param_groups[0]["lr"]
+
+            # ── Debug: print raw values ──────────────────────────────
+            _last_cs = getattr(loss_function, "_last_cruising_speed", None)
+            dbg.log_values(
+                epoch,
+                loss=total_weighted_loss,
+                loss_components=collect_loss_components(loss_function),
+                per_component_grad_norms=per_component_grad_norms,
+                grad_norm=grad_norm,
+                lr=lr,
+                param_stats=collect_param_stats(self) if dbg.print_raw_values and dbg.log_param_stats else None,
+                optimizer_state=collect_optimizer_state(optimizer) if dbg.print_raw_values and dbg.log_optimizer_state else None,
+                cuda_memory=collect_cuda_memory() if dbg.print_raw_values and dbg.log_cuda_memory else None,
+                alm_state=collect_alm_state(loss_function) if dbg.print_raw_values and dbg.log_alm_state else None,
+                loss_weights=collect_loss_weights(loss_function),
+                loss_diagnostics=collect_loss_diagnostics(loss_function)
+                if dbg.print_raw_values and dbg.log_loss_diagnostics
+                else None,
+                extra={
+                    "cruising_speed": _last_cs.item() if _last_cs is not None else "N/A",
+                },
+            )
+
+            # ── Debug: check warnings (NaN, zero grad, stall) ───────
+            dbg.check_warnings(
+                epoch,
+                loss=total_weighted_loss,
+                grad_norm=grad_norm,
+                loss_components=collect_loss_components(loss_function),
+                loss_diagnostics=collect_loss_diagnostics(loss_function) if dbg.emit_warnings else None,
+            )
+
+            # ── Debug: generate insights ─────────────────────────────
+            dbg.check_insights(
+                epoch,
+                loss=total_weighted_loss,
+                lr=lr,
+                grad_norm=grad_norm,
+            )
 
             ###########################
             ### save mesh and model ###
@@ -116,6 +196,17 @@ class BasicMLP(BaseModel):
             # param.grad now holds the sum of all per-component gradients — same as if
             # we had called backward() on weighted_total_loss directly.
             optimizer.step()
+
+            # ── Debug: end-of-iteration stats (time, memory, convergence) ──
+            dbg.end_iteration(
+                epoch,
+                loss=total_weighted_loss,
+                grad_norm=grad_norm,
+                lr=lr,
+            )
+
+        # ── Debug: cleanup ───────────────────────────────────────────
+        dbg.stop()
 
     def get_model_info_dict(self):
         # Return model info as a dictionary

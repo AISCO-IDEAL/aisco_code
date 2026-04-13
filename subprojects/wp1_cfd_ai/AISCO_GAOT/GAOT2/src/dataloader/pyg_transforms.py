@@ -26,7 +26,10 @@ class RescalePosition(BaseTransform):
             # Per-axis physical extent *before* normalisation (differentiable).
             # Shape [1, D] so PyG batches correctly to [B, D].
             # Divide by 1000 to convert from mm to metres.
-            data.scale_factors = (pos.max(dim=0).values - pos.min(dim=0).values).unsqueeze(0) / 1000.0
+            pos_min = pos.min(dim=0).values
+            pos_max = pos.max(dim=0).values
+            data.scale_factors = (pos_max - pos_min).unsqueeze(0) / 1000.0
+            data.bbox_center = ((pos_max + pos_min) / 2.0).unsqueeze(0) / 1000.0
             data.pos = rescale(pos, lims=self.lims)
         else:
             print("Warning: RescalePosition transform called but data has no 'pos' attribute.")
@@ -58,7 +61,10 @@ class RescalePositionNew(BaseTransform):
             pos = data.pos
             # Shape [1, D] so PyG batches correctly to [B, D].
             # Divide by 1000 to convert from mm to metres.
-            data.scale_factors = (pos.max(dim=0).values - pos.min(dim=0).values).unsqueeze(0) / 1000.0
+            pos_min = pos.min(dim=0).values
+            pos_max = pos.max(dim=0).values
+            data.scale_factors = (pos_max - pos_min).unsqueeze(0) / 1000.0
+            data.bbox_center = ((pos_max + pos_min) / 2.0).unsqueeze(0) / 1000.0
             data.pos = rescale_new(pos, lims=self.lims, phys_domain=self.phy_domain)
         else:
             print("Warning: RescalePosition transform called but data has no 'pos' attribute.")
