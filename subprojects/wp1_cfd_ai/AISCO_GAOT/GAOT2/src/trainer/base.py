@@ -119,7 +119,7 @@ class TrainerBase:
 
     def init_optimizer(self, _optimizer_config):
         ### Initialize the optimizer
-        self.optimizer = {"adamw": AdamWOptimizer}[self.optimizer_config["name"]](  # type: ignore[assignment]
+        self.optimizer = {"adamw": AdamWOptimizer}[self.optimizer_config["name"]](
             self.model.parameters(), self.optimizer_config["args"]
         )
 

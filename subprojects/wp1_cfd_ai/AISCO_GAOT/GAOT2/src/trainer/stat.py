@@ -4,6 +4,7 @@ import math
 import os
 import random
 import statistics
+import tempfile
 import time
 from dataclasses import asdict
 from typing import Any
@@ -32,6 +33,7 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration impo
 
 from .base import TrainerBase
 from .utils.metric import compute_drivaernet_metric
+from .utils.plot import plot_3d_comparison_matplotlib
 
 EPSILON = 1e-10
 
@@ -111,6 +113,15 @@ def _magno_set(model_config, key, value):
         setattr(magno, key, value)
 
 
+def _cfg_get(cfg, key, default=None):
+    """Read a config key from dict/DictConfig/dataclass-like objects."""
+    if isinstance(cfg, dict):
+        return cfg.get(key, default)
+    if hasattr(cfg, "get"):
+        return cfg.get(key, default)
+    return getattr(cfg, key, default)
+
+
 def _build_gaot_config(model_config, input_size: int, output_size: int) -> dict[str, Any]:
     """
     Build the flat config dict that GAOT3D expects from the structured
@@ -175,6 +186,70 @@ class StaticTrainer3D(TrainerBase):
                 "Uncertainty weighting enabled: log_sigma_field and log_sigma_scalar will be learned."
             )
         self._val_data: dict[str, Any] = {"exists": "No"}
+
+    def _init_viz_consistency_settings(self):
+        """Build fixed axis and color ranges for cross-epoch/run comparability."""
+        # Axis limits priority:
+        # 1) dataset.viz_axis_limits.{x,y,z} from config (exactly as specified)
+        # 2) fixed fallback to [-3, 3] on each axis
+        self._viz_fixed_axis_limits = None
+        axis_cfg = _cfg_get(self.dataset_config, "viz_axis_limits", None)
+        if axis_cfg is not None:
+            parsed_limits: dict[str, tuple[float, float]] = {}
+            for axis_name in ("x", "y", "z"):
+                axis_range = _cfg_get(axis_cfg, axis_name, None)
+                if axis_range is None or len(axis_range) != 2:
+                    raise ValueError(
+                        f"dataset.viz_axis_limits.{axis_name} must be a 2-element range [min, max]."
+                    )
+                axis_min = float(axis_range[0])
+                axis_max = float(axis_range[1])
+                if axis_max <= axis_min:
+                    raise ValueError(
+                        f"Invalid dataset.viz_axis_limits.{axis_name}: min={axis_min} must be < max={axis_max}."
+                    )
+                parsed_limits[axis_name] = (axis_min, axis_max)
+            self._viz_fixed_axis_limits = parsed_limits
+        else:
+            self._viz_fixed_axis_limits = {
+                "x": (-3.0, 3.0),
+                "y": (-3.0, 3.0),
+                "z": (-3.0, 3.0),
+            }
+
+        # Color limits: always enforce configured fixed ranges for stable
+        # cross-epoch/run comparison and consistent GT/Pred color mapping.
+        vmin = _cfg_get(self.dataset_config, "viz_field_vmin", None)
+        vmax = _cfg_get(self.dataset_config, "viz_field_vmax", None)
+        diff_vmax = _cfg_get(self.dataset_config, "viz_abs_diff_vmax", None)
+
+        if vmin is None or vmax is None:
+            raise ValueError("dataset.viz_field_vmin and dataset.viz_field_vmax are required for visualization.")
+        if diff_vmax is None:
+            raise ValueError("dataset.viz_abs_diff_vmax is required for visualization.")
+
+        vmin_f = float(vmin)
+        vmax_f = float(vmax)
+        diff_vmax_f = float(diff_vmax)
+
+        if vmax_f <= vmin_f:
+            raise ValueError(
+                f"Invalid viz field range: viz_field_vmin={vmin_f} must be < viz_field_vmax={vmax_f}."
+            )
+        if diff_vmax_f <= 0.0:
+            raise ValueError(
+                f"Invalid viz_abs_diff_vmax={diff_vmax_f}; it must be > 0."
+            )
+
+        self._viz_fixed_clim_common = (vmin_f, vmax_f)
+        self._viz_fixed_clim_diff = (0.0, diff_vmax_f)
+
+        logging.getLogger(__name__).info(
+            "Viz consistency settings: axis_limits=%s, field_clim=%s, diff_clim=%s",
+            self._viz_fixed_axis_limits,
+            self._viz_fixed_clim_common,
+            self._viz_fixed_clim_diff,
+        )
 
     def _calculate_or_load_stats(self, dataset_config, order_file_path, data_root):
         """Calculates or loads normalization statistics.
@@ -482,6 +557,7 @@ class StaticTrainer3D(TrainerBase):
 
         # --- Calculate or Load Normalization Stats ---
         self._calculate_or_load_stats(dataset_config, order_file_path, data_root)
+        self._init_viz_consistency_settings()
 
         # --- Define Transforms ---
         if dataset_config["use_rescale_new"]:
@@ -770,11 +846,12 @@ class StaticTrainer3D(TrainerBase):
         with torch.no_grad():
             pred = self.model(batch=batch, tokens_pos=latent_tokens_dev)
 
-        coords = batch.pos.cpu().numpy()
+        coords_tensor = batch.pos_orig if hasattr(batch, "pos_orig") else batch.pos
+        coords = coords_tensor.cpu().numpy()
         fname = getattr(sample, "filename", split_label)
         suffix = f"_{sample_idx}" if sample_idx > 0 else ""
 
-        # --- Field visualisation ---
+        # --- Field visualisation --- test xyz
         if isinstance(pred, dict) and "field" in pred:
             field_pred = pred["field"].cpu().numpy().squeeze()
             field_gt = batch.x.cpu().numpy().squeeze() if batch.x is not None else None
@@ -784,53 +861,39 @@ class StaticTrainer3D(TrainerBase):
                 u_std = self.u_std.cpu().numpy().item() if self.u_std.numel() == 1 else 1.0
                 field_pred_dn = field_pred * u_std + u_mean
                 field_gt_dn = field_gt * u_std + u_mean
-                field_diff = np.abs(field_gt_dn - field_pred_dn)
-
-                # Use ground-truth range for colorbar so wild early predictions
-                # don't blow out the scale
-                common_min = float(np.min(field_gt_dn))
-                common_max = float(np.max(field_gt_dn))
-
-                # Equal-aspect bounds: same range on all 3 axes
-                _mid = coords.mean(axis=0)
-                _half_range = float((coords.max(axis=0) - coords.min(axis=0)).max()) / 2
-
-                fig = plt.figure(figsize=(20, 6))
-                for panel_idx, (data, title, cmap_name, vmin, vmax) in enumerate(
-                    [
-                        (field_gt_dn, "Ground Truth", "jet", common_min, common_max),
-                        (field_pred_dn, "Prediction", "jet", common_min, common_max),
-                        (field_diff, "Absolute Difference", "Reds", None, None),
-                    ]
-                ):
-                    ax = fig.add_subplot(1, 3, panel_idx + 1, projection="3d")
-                    sc = ax.scatter(
-                        coords[:, 0],
-                        coords[:, 1],
-                        coords[:, 2],
-                        c=data,
-                        cmap=cmap_name,
-                        s=2,
-                        vmin=vmin,
-                        vmax=vmax,
-                        depthshade=False,
+                with tempfile.NamedTemporaryFile(suffix=".png", prefix="pressure_field_", delete=False) as tmp_file:
+                    tmp_path = tmp_file.name
+                try:
+                    plot_3d_comparison_matplotlib(
+                        coords=coords,
+                        u_gtr=field_gt_dn,
+                        u_prd=field_pred_dn,
+                        save_path=tmp_path,
+                        variable_name="Pressure",
+                        point_size=2.0,
+                        cmap="jet",
+                        dpi=150,
+                        view_angle=(20, -120),
+                        hide_grid=False,
+                        equal_aspect=False,
+                        show_abs_diff=True,
+                        show_input_shape=False,
+                        use_ground_truth_range=False,
+                        fixed_clim_common=self._viz_fixed_clim_common,
+                        fixed_clim_diff=self._viz_fixed_clim_diff,
+                        fixed_axis_limits=self._viz_fixed_axis_limits,
                     )
-                    ax.set_title(title)
-                    fig.colorbar(sc, ax=ax, shrink=0.5)
-                    ax.set_xlim(_mid[0] - _half_range, _mid[0] + _half_range)
-                    ax.set_ylim(_mid[1] - _half_range, _mid[1] + _half_range)
-                    ax.set_zlim(_mid[2] - _half_range, _mid[2] + _half_range)
-                    ax.view_init(elev=20, azim=-120)
-
-                fig.suptitle(f"Pressure Field [{split_label}] {fname} — Epoch {epoch + 1}", fontsize=13)
-                plt.tight_layout()
-                self.tracker.log_image(
-                    f"viz/{split_label}/pressure_field{suffix}",
-                    fig,
-                    step=epoch + 1,
-                    caption=f"{split_label} {fname} epoch {epoch + 1}",
-                )
-                plt.close(fig)
+                    self.tracker.log_image(
+                        f"viz/{split_label}/pressure_field{suffix}",
+                        tmp_path,
+                        step=epoch + 1,
+                        caption=f"Pressure Field [{split_label}] {fname} — Epoch {epoch + 1}",
+                    )
+                finally:
+                    try: #noqa: SIM105
+                        os.remove(tmp_path)
+                    except OSError:
+                        pass
 
         # --- Integrated pressure drag visualisation (Cp → Newtons) ---
         if isinstance(pred, dict) and "field" in pred and hasattr(batch, "face") and batch.face is not None:

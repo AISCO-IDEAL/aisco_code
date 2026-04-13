@@ -23,6 +23,7 @@ class RescalePosition(BaseTransform):
     def _rescale(self, data: Data) -> Data:
         if hasattr(data, "pos") and data.pos is not None:
             pos = data.pos
+            data.pos_orig = pos.clone()
             # Per-axis physical extent *before* normalisation (differentiable).
             # Shape [1, D] so PyG batches correctly to [B, D].
             # Divide by 1000 to convert from mm to metres.
@@ -59,6 +60,7 @@ class RescalePositionNew(BaseTransform):
     def _rescale(self, data: Data) -> Data:
         if hasattr(data, "pos") and data.pos is not None:
             pos = data.pos
+            data.pos_orig = pos.clone()
             # Shape [1, D] so PyG batches correctly to [B, D].
             # Divide by 1000 to convert from mm to metres.
             pos_min = pos.min(dim=0).values

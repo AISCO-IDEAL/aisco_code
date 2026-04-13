@@ -141,6 +141,14 @@ dataset:
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
     num_viz_samples: 0         # number of random viz samples per split (train/val); 0 = disable viz
 
+    viz_axis_limits:            # Edit these ranges to control the visualized x/y/z box exactly, default is outer bounding box
+        x: [-3, 3]
+        y: [-1.5, 1.5]
+        z: [-0.5, 2]
+    viz_field_vmin: -1        # min on pressure bar
+    viz_field_vmax: 1         # max on pressure bar
+    viz_abs_diff_vmax: 1.0      # max on error bar (min always 0)
+
 optimizer:
     name: "adamw" # the option "adam" hasen't been adopted yet to the new config-style
     args:
@@ -148,7 +156,7 @@ optimizer:
         weight_decay: 1e-05
         epoch: 300
         loss_scale: 1.0
-        eval_every_eps: 1
+        eval_every_eps: 1  #Visualisation frequency, Set to 0 to disable
         scheduler: "mix"
         max_lr: 0.003
         min_lr: 2e-4
