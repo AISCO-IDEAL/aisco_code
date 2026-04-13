@@ -328,6 +328,12 @@ def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, out
 
     vertex_shear = _interpolate_face_to_vertex(face_shear, face_nodes, global_to_local, n_vertices)  # [N, 3]
 
+    # Fluent stores SV_WALL_SHEAR as a skin-friction coefficient Cf = tau / (0.5 * rho * V_inf^2)
+    # because the case was set up with reference-velocity = 1 m/s.  Multiply by q_inf to
+    # recover the physical wall shear stress in Pa.
+    q_inf = 0.5 * AIR_DENSITY * V_INF_EULER**2
+    vertex_shear = vertex_shear * q_inf
+
     # ---- 7. Parse force report ----
     force_val = float("nan")
     cd_val = float("nan")
@@ -336,7 +342,9 @@ def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, out
         if force_parsed is not None:
             force_val = -force_parsed
         if cd_parsed is not None:
-            cd_val = cd_parsed
+            # Fluent computed Cd with reference-velocity = 1 m/s and reference-area = 1 m^2.
+            # Recompute using the actual freestream dynamic pressure so Cd is physically correct.
+            cd_val = force_val / q_inf  # F_drag [N] / q_inf [Pa] / A_ref [1 m^2]
 
     pressure_tensor = torch.tensor(vertex_pressure, dtype=torch.float32).unsqueeze(-1)
     cp_tensor = compute_pressure_coefficient(pressure_tensor, V_INF_EULER, AIR_DENSITY)

@@ -272,7 +272,7 @@ class ModelLoader:
         loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
         batch = next(iter(loader)).to(self.device)
 
-        coords_tensor = batch.pos_orig if hasattr(batch, "pos_orig") else batch.pos
+        coords_tensor = batch.pos_raw if hasattr(batch, "pos_raw") else batch.pos
         coords = coords_tensor.detach().cpu().numpy()
         fname = getattr(self, "epoch_name", "mesh")
 
