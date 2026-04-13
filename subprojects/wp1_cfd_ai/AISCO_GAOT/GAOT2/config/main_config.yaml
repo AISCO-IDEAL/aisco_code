@@ -144,8 +144,8 @@ dataset:
         x: [-3, 3]
         y: [-1.5, 1.5]
         z: [-0.5, 2]
-    viz_field_vmin: -1        # min on pressure bar
-    viz_field_vmax: 1         # max on pressure bar
+    viz_field_vmin: -2.2        # min on pressure bar
+    viz_field_vmax: 0.95         # max on pressure bar
     viz_abs_diff_vmax: 1.0      # max on error bar (min always 0)
 
 optimizer:
@@ -155,7 +155,9 @@ optimizer:
         weight_decay: 1e-05
         epoch: 500
         loss_scale: 1.0
-        eval_every_eps: 1  #Visualisation frequency, Set to 0 to disable
+        eval_every_eps: 1
+        viz_every_eps: 1   # visualize every N epochs; defaults to eval_every_eps if omitted
+        viz_warmup_epochs: 0  # also visualize every epoch for the first X epochs (0 = disabled)
         scheduler: "mix"
         max_lr: 0.003
         min_lr: 2e-4

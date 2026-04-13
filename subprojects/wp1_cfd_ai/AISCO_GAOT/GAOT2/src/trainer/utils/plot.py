@@ -323,6 +323,9 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
         cb2.ax.yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
         cb2.ax.yaxis.get_offset_text().set_visible(False)
         plt.setp(cb2.outline, linewidth=0.8)
+        if clim_common[0] < 0.0 < clim_common[1]:
+            cb2.ax.axhline(y=0.0, color="black", linewidth=1.2, linestyle="--")
+            cb2.ax.text(1.05, 0.0, "0", transform=cb2.ax.get_yaxis_transform(), fontsize=9, va="center", color="black")
 
         if has_ground_truth:
             cb1 = fig.colorbar(
@@ -337,6 +340,9 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
             cb1.ax.yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
             cb1.ax.yaxis.get_offset_text().set_visible(False)
             plt.setp(cb1.outline, linewidth=0.8)
+            if clim_common[0] < 0.0 < clim_common[1]:
+                cb1.ax.axhline(y=0.0, color="black", linewidth=1.2, linestyle="--")
+                cb1.ax.text(1.05, 0.0, "0", transform=cb1.ax.get_yaxis_transform(), fontsize=9, va="center", color="black")
 
         if has_ground_truth and show_abs_diff:
             diff_mappable = cm.ScalarMappable(norm=diff_norm, cmap="Reds")
