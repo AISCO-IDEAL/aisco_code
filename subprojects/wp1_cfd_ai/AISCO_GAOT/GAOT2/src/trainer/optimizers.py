@@ -121,6 +121,8 @@ class AdamWOptimizer:
     lr: float
     loss_scale: float
     eval_every_eps: int
+    viz_every_eps: int
+    viz_warmup_epochs: int
 
     def __init__(self, params, config: dict):
         # New: configurable betas / eps with stable defaults
@@ -138,6 +140,8 @@ class AdamWOptimizer:
         self.lr = config["lr"]
         self.loss_scale = config["loss_scale"]
         self.eval_every_eps = config["eval_every_eps"]
+        self.viz_every_eps = config.get("viz_every_eps", self.eval_every_eps)
+        self.viz_warmup_epochs = config.get("viz_warmup_epochs", 0)
         self.early_save_metric = config["early_save_metric"].lower()
 
         if self.early_save_metric not in ["train", "val"]:
@@ -394,7 +398,8 @@ class AdamWOptimizer:
                 val_epochs.append(epoch)
 
                 # Per-epoch visualization logging
-                if hasattr(trainer, "visualize_sample"):
+                _do_viz = epoch < self.viz_warmup_epochs or (self.viz_every_eps > 0 and (epoch + 1) % self.viz_every_eps == 0)
+                if _do_viz and hasattr(trainer, "visualize_sample"):
                     try:
                         trainer.visualize_sample(epoch)
                     except Exception as e:

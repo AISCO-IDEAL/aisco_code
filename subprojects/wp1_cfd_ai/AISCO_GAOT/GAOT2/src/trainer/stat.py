@@ -853,10 +853,9 @@ class StaticTrainer3D(TrainerBase):
             field_gt = batch.x.cpu().numpy().squeeze() if batch.x is not None else None
 
             if field_gt is not None:
-                u_mean = self.u_mean.cpu().numpy().item() if self.u_mean.numel() == 1 else 0.0
-                u_std = self.u_std.cpu().numpy().item() if self.u_std.numel() == 1 else 1.0
-                field_pred_dn = field_pred * u_std + u_mean
-                field_gt_dn = field_gt * u_std + u_mean
+                # Cp field is NOT normalized — pass through directly
+                field_pred_dn = field_pred
+                field_gt_dn = field_gt
                 with tempfile.NamedTemporaryFile(suffix=".png", prefix="pressure_field_", delete=False) as tmp_file:
                     tmp_path = tmp_file.name
                 try:
