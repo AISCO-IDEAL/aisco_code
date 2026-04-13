@@ -129,7 +129,7 @@ dataset:
     training_strategy: "full_grid"
     uncertainty_weighting: false
     field_loss_weight: 1.0
-    use_rescale_new: true
+    use_rescale_new: false
     active_variables:
     order_file_name:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
