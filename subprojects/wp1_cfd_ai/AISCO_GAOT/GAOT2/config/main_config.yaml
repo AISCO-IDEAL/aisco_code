@@ -72,7 +72,7 @@ model:
             max_neighbors: null
             sample_ratio: null
             decoder_sampling_strategy: "ratio"  # dropout only on decoder edges
-            decoder_sample_ratio: 0.8
+            decoder_sample_ratio: 0.65
         transformer:
             patch_size: 2
             hidden_size: 256
@@ -134,18 +134,18 @@ dataset:
     order_file_name:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
-    subsample_nodes: 120000     # randomly sample 30k nodes per load if sample exceeds this
-    subsample_strategy: "voxel"  # "random" | "voxel" | "poisson_disk" | "fps"
+    subsample_nodes: 50000     # randomly sample 30k nodes per load if sample exceeds this
+    subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
-    num_viz_samples: 0         # number of random viz samples per split (train/val); 0 = disable viz
+    num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
 
 optimizer:
     name: "adamw" # the option "adam" hasen't been adopted yet to the new config-style
     args:
         lr: 6e-4
         weight_decay: 1e-05
-        epoch: 500
+        epoch: 1000
         loss_scale: 1.0
         eval_every_eps: 1
         scheduler: "mix"
