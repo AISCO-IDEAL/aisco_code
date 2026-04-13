@@ -223,15 +223,11 @@ class StaticTrainer3D(TrainerBase):
             for axis_name in ("x", "y", "z"):
                 axis_range = _cfg_get(axis_cfg, axis_name, None)
                 if axis_range is None or len(axis_range) != 2:
-                    raise ValueError(
-                        f"dataset.viz_axis_limits.{axis_name} must be a 2-element range [min, max]."
-                    )
+                    raise ValueError(f"dataset.viz_axis_limits.{axis_name} must be a 2-element range [min, max].")
                 axis_min = float(axis_range[0])
                 axis_max = float(axis_range[1])
                 if axis_max <= axis_min:
-                    raise ValueError(
-                        f"Invalid dataset.viz_axis_limits.{axis_name}: min={axis_min} must be < max={axis_max}."
-                    )
+                    raise ValueError(f"Invalid dataset.viz_axis_limits.{axis_name}: min={axis_min} must be < max={axis_max}.")
                 parsed_limits[axis_name] = (axis_min, axis_max)
             self._viz_fixed_axis_limits = parsed_limits
         else:
@@ -257,13 +253,9 @@ class StaticTrainer3D(TrainerBase):
         diff_vmax_f = float(diff_vmax)
 
         if vmax_f <= vmin_f:
-            raise ValueError(
-                f"Invalid viz field range: viz_field_vmin={vmin_f} must be < viz_field_vmax={vmax_f}."
-            )
+            raise ValueError(f"Invalid viz field range: viz_field_vmin={vmin_f} must be < viz_field_vmax={vmax_f}.")
         if diff_vmax_f <= 0.0:
-            raise ValueError(
-                f"Invalid viz_abs_diff_vmax={diff_vmax_f}; it must be > 0."
-            )
+            raise ValueError(f"Invalid viz_abs_diff_vmax={diff_vmax_f}; it must be > 0.")
 
         self._viz_fixed_clim_common = (vmin_f, vmax_f)
         self._viz_fixed_clim_diff = (0.0, diff_vmax_f)
@@ -894,7 +886,7 @@ class StaticTrainer3D(TrainerBase):
                         caption=f"Pressure Field [{split_label}] {fname} — Epoch {epoch + 1}",
                     )
                 finally:
-                    try: #noqa: SIM105
+                    try:  # noqa: SIM105
                         os.remove(tmp_path)
                     except OSError:
                         pass

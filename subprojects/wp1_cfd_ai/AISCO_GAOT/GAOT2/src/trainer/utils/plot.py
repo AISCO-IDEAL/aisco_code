@@ -242,7 +242,9 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
         shared_norm = mcolors.Normalize(vmin=clim_common[0], vmax=clim_common[1])
         diff_norm = mcolors.Normalize(vmin=clim_diff[0], vmax=clim_diff[1]) if has_ground_truth else None
 
-        ncols = (1 if show_input_shape else 0) + 1 + (1 if has_ground_truth else 0) + (1 if has_ground_truth and show_abs_diff else 0)
+        ncols = (
+            (1 if show_input_shape else 0) + 1 + (1 if has_ground_truth else 0) + (1 if has_ground_truth and show_abs_diff else 0)
+        )
         fig = plt.figure(figsize=(6 * ncols, 6))
         axes = []
         ax_idx = 1
