@@ -37,6 +37,7 @@ except ImportError as exc:
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import (
     MarchingCubesExtractor,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
 
 
 class Interpolator:
@@ -66,7 +67,7 @@ class Interpolator:
         device: torch device (cuda or cpu)
     """
 
-    def __init__(self, model, config: dict, device: torch.device | str):
+    def __init__(self, model: SupportsLatentConcat, config: dict, device: torch.device | str):
         """
         Initialize interpolator with model and config.
 
@@ -75,7 +76,7 @@ class Interpolator:
             config: Configuration dict (see class docstring for keys)
             device: torch device
         """
-        self.model = model
+        self.model: SupportsLatentConcat = model
         self.config = config
         self.device = torch.device(device) if isinstance(device, str) else device
 

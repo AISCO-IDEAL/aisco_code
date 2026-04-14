@@ -8,7 +8,7 @@ from torch.optim.optimizer import Optimizer
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_loss import field_diversity_loss
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
 
 
 class DiversityTrainer:
@@ -30,7 +30,7 @@ class DiversityTrainer:
 
     def __init__(
         self,
-        model: ConcatBaseModel,
+        model: SupportsLatentConcat,
         total_loss: TotalLoss,
         population_size: int,
         z_dim: int,
@@ -65,7 +65,7 @@ class DiversityTrainer:
             z_resample_cadence: Resample latent vectors every N epochs (0 disables resampling).
         """
         self._device: torch.device = torch.device(device) if isinstance(device, str) else device
-        self._model: ConcatBaseModel = model.to(self._device)
+        self._model: SupportsLatentConcat = model.to(self._device)
         self._total_loss: TotalLoss = total_loss
 
         self._population_size: int = population_size

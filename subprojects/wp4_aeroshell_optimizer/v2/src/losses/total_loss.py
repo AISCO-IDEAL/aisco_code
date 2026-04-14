@@ -56,8 +56,7 @@ from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cub
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
@@ -68,7 +67,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Vi
 # ---------------------------------------------------------------------------
 _ALM_OBJECTIVE_CATEGORIES: frozenset[str] = frozenset({"aero", "solar"})
 _ALM_CONSTRAINT_CATEGORIES: tuple[str, ...] = ("bb", "eikonal", "smoothness")  # order matters ALM
-TrainModel: TypeAlias = BaseModel | ConcatBaseModel
+TrainModel: TypeAlias = SupportsModelContract
 
 
 class TotalLoss:

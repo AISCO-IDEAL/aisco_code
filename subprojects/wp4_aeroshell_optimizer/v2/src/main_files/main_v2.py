@@ -8,7 +8,7 @@ import torch
 
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import pretraining
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat, SupportsOptimise
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     apply_sweep_overrides,
     get_master_config,
@@ -92,6 +92,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     has_optimise: bool = settings[
         "has_optimise"
     ]  # whether model is old and thus relies on .optimise() member function instead of a separate trainer class
+    if has_optimise and not isinstance(model, SupportsOptimise):
+        raise TypeError(
+            "Model is marked with has_optimise=True but does not implement optimise(). "
+            "Check models.json and the model implementation."
+        )
 
     # 3b. Handle pretraining if needed.
     pretraining_config_name = general_config["active_configs"].get("pretraining", "pretraining_v0_config.yaml")
@@ -132,13 +137,20 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
         print(f"Starting pretraining for model {model.__class__.__name__}")
         if uses_diversity:
-            # proper type allocation using class name
-            assert issubclass(model.__class__, ConcatBaseModel), (
-                "Model must be a subclass of ConcatBaseModel to use diversity training, check your json settings and model definition"
-            )
-            model.set_latent_vector(
-                torch.zeros(torch.numel(model._active_z))
-            )  # set active latent vector to zeros before pretraining, will be updated properly during training using set_latent_vector method
+            if not isinstance(model, SupportsLatentConcat):
+                raise TypeError(
+                    "Model must support latent-vector methods to use diversity training. "
+                    "Check uses_diversity in models.json and the model implementation."
+                )
+
+            active_latent = model.get_latent_vector()
+            if active_latent is None or active_latent.numel() == 0:
+                raise ValueError(
+                    "Latent vector is not initialized. Ensure the model initializes a non-empty latent vector before pretraining."
+                )
+
+            # Reset active latent vector to zeros before pretraining.
+            model.set_latent_vector(torch.zeros_like(active_latent))
 
         model = pretraining(model=model, debug_manager=debug_manager)
 
@@ -156,7 +168,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         print(f"Detailed settings: {[f'{key}: {value}' for key, value in settings.items()]}")
     # 4. Initialise whatever we need to run the main training loop, e.g. trainer, loss function, etc.
 
-    _dummy=has_optimise
     # 5. Run main training loop
 
     # 6. Saving of files and postprocessing

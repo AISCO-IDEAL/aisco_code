@@ -3,6 +3,7 @@ import importlib
 import torch
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.ground_truth_masks.simple_geoms import cube_gt, sphere_gt  # Added cube_gt
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     DebugManager,
@@ -12,7 +13,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
 )
 
 
-def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
+def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml") -> SupportsModelContract:
     """
     Dynamically loads the model architecture based on the configuration file.
     I.e. imports only from the relevant file, not all the models
@@ -31,10 +32,10 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
 # 2026 03 05, eschaerer:
 # look i'm not sure if the changes i made also work on the HPC. Please revert them if they don't
 def pretraining(
-    model: torch.nn.Module | None = None,
+    model: SupportsModelContract | None = None,
     pretraining_config_name: str = "pretraining_v0_config.yaml",
     debug_manager: DebugManager | None = None,
-):
+) -> SupportsModelContract:
     # Does pretraining, for now only on a sphere
 
     config = load_config(v="v2", cfg_name=pretraining_config_name)

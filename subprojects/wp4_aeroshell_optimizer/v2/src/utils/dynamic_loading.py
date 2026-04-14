@@ -4,15 +4,15 @@ import json
 import sys
 import warnings
 from pathlib import Path
+from typing import Any
 
-from torch.nn import Module
-
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 
 
 def dynamic_type_loading(
     file_path: str, class_name: str
-) -> Module:  # Returns <class 'type'> object, i.e. not an instance but a callable instead
+) -> type[Any]:  # Returns <class 'type'> object, i.e. not an instance but a callable instead
     """
     Dynamically returns a class type from a given file path and corresponding class name.
     I.e. not an instance but a callable instead
@@ -37,7 +37,7 @@ def dynamic_type_loading(
 
     # 3. Import and return
     module = importlib.import_module(file_path)
-    ObjectType: Module = getattr(module, class_name)
+    ObjectType: type[Any] = getattr(module, class_name)
     return ObjectType
 
 
@@ -110,7 +110,7 @@ def _load_models_inventory() -> dict:
     return inventory
 
 
-def smart_model_init(model_name: str, version: str = "v2") -> tuple[Module, str, str, dict[str, bool]]:
+def smart_model_init(model_name: str, version: str = "v2") -> tuple[SupportsModelContract, str, str, dict[str, bool]]:
     """
     Dynamically initialize a model from the inventory with its config and metadata.
 
@@ -156,8 +156,8 @@ def smart_model_init(model_name: str, version: str = "v2") -> tuple[Module, str,
     model_file_path = model_entry.get("file_path")
     config_file_name = model_entry.get("config_file")
     settings: dict[str, bool] = {}
-    settings["uses_diversity"] = model_entry.get("uses_diversity")
-    settings["has_optimise"] = model_entry.get("has_optimise")
+    settings["uses_diversity"] = bool(model_entry.get("uses_diversity", False))
+    settings["has_optimise"] = bool(model_entry.get("has_optimise", False))
     if not all([model_class_name, expected_parent_class, model_file_path, config_file_name]):
         raise ValueError(
             f"Incomplete model entry for '{model_name}'. Required fields: model_class, parent_class, file_path, config_file"
@@ -198,6 +198,12 @@ def smart_model_init(model_name: str, version: str = "v2") -> tuple[Module, str,
         model_instance = model_class(**model_config)
     except Exception as e:
         raise ValueError(f"Failed to instantiate model '{model_name}' with config: {e}") from e
+
+    if not isinstance(model_instance, SupportsModelContract):
+        raise TypeError(
+            f"Model '{model_name}' does not satisfy the required model contract. "
+            "Expected methods: get_model_info_dict/state_dict/load_state_dict/to/cpu/parameters."
+        )
 
     return model_instance, actual_parent_class, model_class_name, settings
 
@@ -253,7 +259,7 @@ def validate_inventory(version: str = "v2", verbose: bool = True) -> dict:
 
             # Validate parent class matches
             if hasattr(model_class, "__bases__") and model_class.__bases__:
-                actual_parent_class = model_class.__bases__.__name__
+                actual_parent_class = model_class.__bases__[0].__name__
             else:
                 warnings.warn(
                     f"Model '{model_name}' has no parent class. This may indicate an incomplete model definition.",
