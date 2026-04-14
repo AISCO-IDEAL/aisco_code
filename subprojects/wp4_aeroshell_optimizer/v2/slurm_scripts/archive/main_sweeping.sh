@@ -13,6 +13,10 @@
 #------------------------------------------------------------------------------
 umask 0002 # ensure group write permissions for logs and models
 
+# Allow W&B to route through the cluster proxy (eth_proxy sets no_proxy which blocks api.wandb.ai)
+export no_proxy=$(echo "$no_proxy" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
+export NO_PROXY=$(echo "$NO_PROXY" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
+
 echo "=========================================="
 echo "Job started on: $(date)"
 echo "Job ID: $SLURM_JOB_ID"
