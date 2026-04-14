@@ -1,6 +1,5 @@
 [build-system]
-
-requires = ["setuptools>=74.0.0"]
+requires = ["setuptools>=74.0.0", "pybind11>=3.0.2", "cmake>=3.16"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -76,6 +75,11 @@ wp4_aeroshell_optimizer = [
   "types-Pillow",
 ]
 
+pydevelopability = [
+  "pybind11>=3.0.2",
+  "cmake>=3.16",
+]
+
 wp7_gui = [
   "PyQt6 == 6.10.0",
   "pyvista == 0.46.4",
@@ -88,7 +92,7 @@ testing = [
   ]
 
 all = [
-  "AISCO_code[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer,wp7_gui,testing]"
+  "AISCO_code[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer,wp7_gui,testing,pydevelopability]"
 ]
 
 #make a all command
