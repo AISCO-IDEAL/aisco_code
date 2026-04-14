@@ -99,7 +99,7 @@ bb_config:  # bb_.py: self.losses_config["bb_config"]
   outer_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/outer.ply"
 
 cfd:
-  model_id: 63434665
+  model_id: 63435761
   version: 2
   visualisations: false # only works for Version 2, use true or false not as string
   v_inf: 25.0   # freestream velocity [m/s] for Cp -> Pa conversion
