@@ -14,6 +14,9 @@
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
 umask 0002 # ensure group write permissions for logs and models
+# Allow W&B to route through the cluster proxy (eth_proxy sets no_proxy which blocks api.wandb.ai)
+export no_proxy=$(echo "$no_proxy" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
+export NO_PROXY=$(echo "$NO_PROXY" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 
 module purge
 module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
@@ -51,21 +54,6 @@ source "$VENV_DIR/bin/activate"
 echo "Verifying GPU access..."
 nvidia-smi
 echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
-#------------------------------------------------------------------------------
-
-# Set Hugging Face environment variables (not used for now)
-#------------------------------------------------------------------------------
-# export HF_HOME="$SCRATCH/hf_models"
-# export HF_DATASETS_CACHE="$SCRATCH/hf_datasets"
-# export HF_TOKEN="HuggingFace_TOKEN"  # Replace with your actual Huggingface token, create in Settings, Access Tokens, Read
-#------------------------------------------------------------------------------
-# Log GPU/CPU info to the same log directory
-#------------------------------------------------------------------------------
-
-##echo "GPU Info:" >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
-##nvidia-smi >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
-##echo "CPU Info:" >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
-##lscpu >> "$LOG_DIR/AISCO_TEST_${SLURM_JOB_ID}.out"
 #------------------------------------------------------------------------------
 # Run the Relevant script
 #------------------------------------------------------------------------------
