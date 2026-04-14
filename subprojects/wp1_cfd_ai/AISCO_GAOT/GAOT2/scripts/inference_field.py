@@ -155,12 +155,7 @@ def build_transforms_and_stats(cfg, data_root: str):
 
     u_mean = stats["mean"].float()
     u_std = stats["std"].float()
-    c_mean = stats.get("c_mean")
-    c_std = stats.get("c_std")
-    if c_mean is not None:
-        c_mean = c_mean.float()
-    if c_std is not None:
-        c_std = c_std.float()
+    # NOTE: c_mean/c_std are no longer used — normals must NOT be normalized.
     per_head_stats = stats.get("per_head_stats", {})
 
     use_rescale_new_flag = getattr(cfg.dataset, "use_rescale_new", False)
@@ -174,8 +169,6 @@ def build_transforms_and_stats(cfg, data_root: str):
     normalize_transform = NormalizeFeatures(
         mean=u_mean,
         std=u_std,
-        c_mean=c_mean,
-        c_std=c_std,
         per_head_stats=per_head_stats,
     )
     composed = Compose([rescale_transform, normalize_transform])

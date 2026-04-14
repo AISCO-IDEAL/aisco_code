@@ -23,6 +23,8 @@ class RescalePosition(BaseTransform):
     def _rescale(self, data: Data) -> Data:
         if hasattr(data, "pos") and data.pos is not None:
             pos = data.pos
+            # Store original positions for pressure integration (physical units)
+            data.pos_raw = pos.clone()
             # Per-axis physical extent *before* normalisation (differentiable).
             # Shape [1, D] so PyG batches correctly to [B, D].
             # Divide by 1000 to convert from mm to metres.
@@ -59,6 +61,8 @@ class RescalePositionNew(BaseTransform):
     def _rescale(self, data: Data) -> Data:
         if hasattr(data, "pos") and data.pos is not None:
             pos = data.pos
+            # Store original positions for pressure integration (physical units)
+            data.pos_raw = pos.clone()
             # Shape [1, D] so PyG batches correctly to [B, D].
             # Divide by 1000 to convert from mm to metres.
             pos_min = pos.min(dim=0).values
@@ -87,15 +91,17 @@ class NormalizeFeatures(BaseTransform):
         self,
         mean: torch.Tensor,
         std: torch.Tensor,
-        c_mean: torch.Tensor | None = None,
-        c_std: torch.Tensor | None = None,
+        c_mean: torch.Tensor | None = None,  # noqa: ARG002 — kept for API compatibility
+        c_std: torch.Tensor | None = None,  # noqa: ARG002 — kept for API compatibility
         per_head_stats: dict | None = None,
     ):
         self.mean = mean.detach()
         self.std = std.detach()
 
-        self.c_mean = c_mean.detach() if c_mean is not None else None
-        self.c_std = c_std.detach() if c_std is not None else None
+        # c_mean / c_std are accepted for backwards compatibility but ignored.
+        # Normals must NOT be normalized (they are unit vectors with geometric meaning).
+        self.c_mean = None
+        self.c_std = None
 
         # Per-head stats for multi-head format (keys: "force", "cd")
         self.per_head_stats = per_head_stats or {}
@@ -127,11 +133,7 @@ class NormalizeFeatures(BaseTransform):
         return data
 
     def _normalize_c(self, data: Data) -> Data:
-        """Normalize 'c' features if stats are available."""
-        if hasattr(data, "c") and data.c is not None and self.c_mean is not None and self.c_std is not None:
-            c_mean_dev = self.c_mean.to(data.c.device)
-            c_std_dev = self.c_std.to(data.c.device)
-            data.c = (data.c - c_mean_dev) / (c_std_dev + EPSILON)
+        """No-op: normals must NOT be normalized (they are unit vectors with geometric meaning)."""
         return data
 
     def forward(self, data: Data) -> Data:

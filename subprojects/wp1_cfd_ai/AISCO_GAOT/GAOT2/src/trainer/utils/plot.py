@@ -4,6 +4,9 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
+from matplotlib import cm
+from matplotlib import colors as mcolors
+from matplotlib.ticker import FormatStrFormatter, ScalarFormatter
 
 
 ############################### 3D plotting   ###############################
@@ -135,23 +138,28 @@ def plot_3d_comparison_pyvista(
             plotter.close()  # Ensure plotter is closed to free memory
 
 
-def plot_3d_comparison_matplotlib(  # noqa: PLR0915
+def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
     coords: np.ndarray,
-    u_gtr: np.ndarray,
+    u_gtr: np.ndarray | None,
     u_prd: np.ndarray,
     save_path: str,
     variable_name: str = "Value",
     point_size: float = 3.0,
     cmap: str = "jet",
-    dpi: int = 150,
+    dpi: int = 300,
     view_angle: tuple[float, float] = (20, -120),
     hide_grid: bool = False,
     equal_aspect: bool = True,  # <-- Control aspect ratio setting
     show_abs_diff: bool = False,  # absolute difference
+    show_input_shape: bool = True,
+    use_ground_truth_range: bool = False,
+    fixed_clim_common: tuple[float, float] | None = None,
+    fixed_clim_diff: tuple[float, float] | None = None,
+    fixed_axis_limits: dict[str, tuple[float, float]] | None = None,
 ):
     """
-    Generates a 3/4-panel 3D scatter plot comparison using Matplotlib...
-    Adds option for equal aspect ratio and input shape display.
+    Generates a 3/4-panel 3D scatter plot comparison using Matplotlib.
+    When ``u_gtr`` is ``None``, only the prediction panel is shown.
 
     Parameters:
     coords : np.ndarray
@@ -177,47 +185,97 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915
         Whether to show the background grid and axis.
     equal_aspect: bool, optional
         If True, attempts to set axis limits to achieve visually equal scaling.
-        Defaults to True.
+        Defaults to True.  # Set to False to control the visualised grid
     show_abs_diff: bool, optional
         If True, show absolute difference subplot. Defaults to True.
+    show_input_shape: bool, optional
+        If True, include the input-shape subplot. Defaults to True.
+    use_ground_truth_range: bool, optional
+        If True, use only the GT min/max as shared color limits for GT and Pred.
+        Defaults to False.
+    fixed_clim_common: Tuple[float, float] | None, optional
+        If set, force a fixed [vmin, vmax] for GT and prediction panels.
+        Overrides use_ground_truth_range.
+    fixed_clim_diff: Tuple[float, float] | None, optional
+        If set, force a fixed [vmin, vmax] for the absolute-difference panel.
+    fixed_axis_limits: Dict[str, Tuple[float, float]] | None, optional
+        If set, enforce fixed axis limits with keys: "x", "y", "z".
     """
     try:
-        u_diff = np.abs(u_gtr - u_prd)
-        common_min = min(np.min(u_gtr), np.min(u_prd))
-        common_max = max(np.max(u_gtr), np.max(u_prd))
-        clim_common = [common_min, common_max]
-        clim_diff = [np.min(u_diff), np.max(u_diff)]
+        coords = np.asarray(coords)
+        u_prd = np.asarray(u_prd).squeeze()
+        has_ground_truth = u_gtr is not None
+        if has_ground_truth:
+            u_gtr = np.asarray(u_gtr).squeeze()
+            assert u_gtr.ndim == 1, "Ground truth data must be 1D"
+        assert u_prd.ndim == 1, "Predicted data must be 1D"
+        if has_ground_truth:
+            assert u_gtr is not None
+            assert coords.shape[0] == u_gtr.shape[0] == u_prd.shape[0], "Shapes mismatch"
+        else:
+            assert coords.shape[0] == u_prd.shape[0], "Shapes mismatch"
+        assert coords.shape[1] == 3, "Coordinates must be 3D"
 
-        ncols = 4 if show_abs_diff else 3
+        u_diff = np.abs(u_gtr - u_prd) if u_gtr is not None else None
+        if fixed_clim_common is not None:
+            common_min, common_max = float(fixed_clim_common[0]), float(fixed_clim_common[1])
+        elif has_ground_truth and use_ground_truth_range:
+            assert u_gtr is not None
+            common_min = float(np.min(u_gtr))
+            common_max = float(np.max(u_gtr))
+        elif has_ground_truth:
+            assert u_gtr is not None
+            common_min = min(np.min(u_gtr), np.min(u_prd))
+            common_max = max(np.max(u_gtr), np.max(u_prd))
+        else:
+            common_min = float(np.min(u_prd))
+            common_max = float(np.max(u_prd))
+        clim_common = [common_min, common_max]
+        if fixed_clim_diff is not None:
+            clim_diff = [float(fixed_clim_diff[0]), float(fixed_clim_diff[1])]
+        elif has_ground_truth and u_diff is not None:
+            clim_diff = [np.min(u_diff), np.max(u_diff)]
+        else:
+            clim_diff = [0.0, 0.0]
+
+        # Use one shared Normalize object so GT/Pred have exactly identical color mapping.
+        shared_norm = mcolors.Normalize(vmin=clim_common[0], vmax=clim_common[1])
+        diff_norm = mcolors.Normalize(vmin=clim_diff[0], vmax=clim_diff[1]) if has_ground_truth else None
+
+        ncols = (
+            (1 if show_input_shape else 0) + 1 + (1 if has_ground_truth else 0) + (1 if has_ground_truth and show_abs_diff else 0)
+        )
         fig = plt.figure(figsize=(6 * ncols, 6))
         axes = []
         ax_idx = 1
 
-        # Subplot 0: Input Shape
-        ax0 = fig.add_subplot(1, ncols, ax_idx, projection="3d")
-        sc0 = ax0.scatter(coords[:, 0], coords[:, 1], coords[:, 2], c="gray", s=point_size, depthshade=False)
-        ax0.set_title("Input Shape", fontsize=14)
-        axes.append(ax0)
-        ax_idx += 1
+        # Optional subplot 0: Input Shape
+        if show_input_shape:
+            ax0 = fig.add_subplot(1, ncols, ax_idx, projection="3d")
+            ax0.scatter(coords[:, 0], coords[:, 1], coords[:, 2], c="gray", s=point_size, depthshade=False)
+            ax0.set_title("Input Shape", fontsize=14)
+            axes.append(ax0)
+            ax_idx += 1
 
-        # Subplot 1: Ground Truth
-        ax1 = fig.add_subplot(1, ncols, ax_idx, projection="3d")
-        sc1 = ax1.scatter(
-            coords[:, 0],
-            coords[:, 1],
-            coords[:, 2],
-            c=u_gtr,
-            cmap=cmap,
-            s=point_size,
-            vmin=clim_common[0],
-            vmax=clim_common[1],
-            depthshade=False,
-        )
-        ax1.set_title("Ground-truth", fontsize=14)
-        axes.append(ax1)
-        ax_idx += 1
+        ax_gtr = None
+        if has_ground_truth:
+            # Subplot 1: Ground Truth
+            ax_gtr = fig.add_subplot(1, ncols, ax_idx, projection="3d")
+            sc1 = ax_gtr.scatter(
+                coords[:, 0],
+                coords[:, 1],
+                coords[:, 2],
+                c=u_gtr,
+                cmap=cmap,
+                s=point_size,
+                norm=shared_norm,
+                depthshade=False,
+            )
+            ax_gtr.set_title("Ground-truth", fontsize=14)
+            axes.append(ax_gtr)
+            ax_idx += 1
 
-        # Subplot 2: Prediction
+        # Prediction panel
         ax2 = fig.add_subplot(1, ncols, ax_idx, projection="3d")
         sc2 = ax2.scatter(
             coords[:, 0],
@@ -226,16 +284,15 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915
             c=u_prd,
             cmap=cmap,
             s=point_size,
-            vmin=clim_common[0],
-            vmax=clim_common[1],
+            norm=shared_norm,
             depthshade=False,
         )
-        ax2.set_title("Model Estimate", fontsize=14)
+        ax2.set_title("Model Estimate" if has_ground_truth else "Prediction", fontsize=14)
         axes.append(ax2)
         ax_idx += 1
 
         # Subplot 3: Difference (optional)
-        if show_abs_diff:
+        if has_ground_truth and show_abs_diff:
             ax3 = fig.add_subplot(1, ncols, ax_idx, projection="3d")
             sc3 = ax3.scatter(
                 coords[:, 0],
@@ -244,37 +301,92 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915
                 c=u_diff,
                 cmap="Reds",
                 s=point_size,
-                vmin=clim_diff[0],
-                vmax=clim_diff[1],
+                norm=diff_norm,
                 depthshade=False,
             )
             ax3.set_title("Absolute Difference")
             axes.append(ax3)
 
-        # shared colorbar (GT and PRD)
-        cb = fig.colorbar(sc1, ax=[ax1, ax2], orientation="horizontal", fraction=0.05, pad=0.15)
-        cb.set_label(f"{variable_name}")
-        cb.ax.tick_params(labelsize=10, length=0)
-        cb.ax.xaxis.set_label_position("top")
-        cb.ax.xaxis.set_ticks_position("top")
-        cb.outline.set_visible(False)  # type: ignore[operator]
+        # Per-panel vertical colorbars (matching trainer screenshot style)
+        # Build colorbars from explicit ScalarMappables so ranges stay fixed.
+        common_mappable = cm.ScalarMappable(norm=shared_norm, cmap=cmap)
+        common_mappable.set_array([])
+        cb2 = fig.colorbar(
+            common_mappable,
+            ax=ax2,
+            orientation="vertical",
+            fraction=0.025,
+            pad=0.04,
+            ticks=np.linspace(clim_common[0], clim_common[1], 5),
+        )
+        cb2.ax.tick_params(labelsize=11, length=3)
+        cb2.ax.yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
+        cb2.ax.yaxis.get_offset_text().set_visible(False)
+        plt.setp(cb2.outline, linewidth=0.8)
+        if clim_common[0] < 0.0 < clim_common[1]:
+            cb2.ax.axhline(y=0.0, color="black", linewidth=1.2, linestyle="--")
+            cb2.ax.text(1.05, 0.0, "0", transform=cb2.ax.get_yaxis_transform(), fontsize=9, va="center", color="black")
 
-        # Difference colorbar
-        if show_abs_diff:
-            cb3 = fig.colorbar(sc3, ax=ax3, orientation="horizontal", fraction=0.05, pad=0.15)
-            cb3.set_label("Abs. Diff.")
-            cb3.ax.tick_params(labelsize=10, length=0)
-            cb3.ax.xaxis.set_label_position("top")
-            cb3.ax.xaxis.set_ticks_position("top")
-            cb3.outline.set_visible(False)  # type: ignore[operator]
+        if has_ground_truth:
+            cb1 = fig.colorbar(
+                common_mappable,
+                ax=ax_gtr,
+                orientation="vertical",
+                fraction=0.025,
+                pad=0.04,
+                ticks=np.linspace(clim_common[0], clim_common[1], 5),
+            )
+            cb1.ax.tick_params(labelsize=11, length=3)
+            cb1.ax.yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
+            cb1.ax.yaxis.get_offset_text().set_visible(False)
+            plt.setp(cb1.outline, linewidth=0.8)
+            if clim_common[0] < 0.0 < clim_common[1]:
+                cb1.ax.axhline(y=0.0, color="black", linewidth=1.2, linestyle="--")
+                cb1.ax.text(1.05, 0.0, "0", transform=cb1.ax.get_yaxis_transform(), fontsize=9, va="center", color="black")
+
+        if has_ground_truth and show_abs_diff:
+            diff_mappable = cm.ScalarMappable(norm=diff_norm, cmap="Reds")
+            diff_mappable.set_array([])
+            cb3 = fig.colorbar(
+                diff_mappable,
+                ax=ax3,
+                orientation="vertical",
+                fraction=0.025,
+                pad=0.04,
+                ticks=np.linspace(clim_diff[0], clim_diff[1], 5),
+            )
+            cb3.ax.tick_params(labelsize=11, length=3)
+            cb3.ax.yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
+            cb3.ax.yaxis.get_offset_text().set_visible(False)
+            plt.setp(cb3.outline, linewidth=0.8)
 
         # 统一设置
         for ax in axes:
             ax.set_xlabel("X")
             ax.set_ylabel("Y")
             ax.set_zlabel("Z")
+            # Show plain numeric ticks (no scientific offset text) to avoid
+            # confusion when large configured axis limits are used.
+            plain_fmt = ScalarFormatter(useOffset=False)
+            plain_fmt.set_scientific(False)
+            ax.xaxis.set_major_formatter(plain_fmt)
+            ax.yaxis.set_major_formatter(plain_fmt)
+            ax.zaxis.set_major_formatter(plain_fmt)
             ax.view_init(elev=view_angle[0], azim=view_angle[1])
-            if equal_aspect:
+            if fixed_axis_limits is not None:
+                xlims = fixed_axis_limits["x"]
+                ylims = fixed_axis_limits["y"]
+                zlims = fixed_axis_limits["z"]
+                ax.set_xlim(xlims)
+                ax.set_ylim(ylims)
+                ax.set_zlim(zlims)
+                try:
+                    ax.set_box_aspect(
+                        (1, (ylims[1] - ylims[0]) / (xlims[1] - xlims[0]), (zlims[1] - zlims[0]) / (xlims[1] - xlims[0]))
+                    )
+                except AttributeError:
+                    ax.set_aspect("auto")
+            elif equal_aspect:
                 x_min, x_max = coords[:, 0].min(), coords[:, 0].max()
                 y_min, y_max = coords[:, 1].min(), coords[:, 1].max()
                 z_min, z_max = coords[:, 2].min(), coords[:, 2].max()
@@ -322,6 +434,7 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915
                 except Exception:
                     pass
 
+        fig.subplots_adjust(wspace=0.2)
         plt.tight_layout()
         output_dir = os.path.dirname(save_path)
         if output_dir:

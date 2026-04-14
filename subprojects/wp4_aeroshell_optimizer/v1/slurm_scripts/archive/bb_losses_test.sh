@@ -17,6 +17,10 @@
 #------------------------------------------------------------------------------
 umask 0002 # ensure group write permissions for logs and models
 
+# Allow W&B to route through the cluster proxy (eth_proxy sets no_proxy which blocks api.wandb.ai)
+export no_proxy=$(echo "$no_proxy" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
+export NO_PROXY=$(echo "$NO_PROXY" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
+
 USERNAME=$(whoami)
 LOG_DIR="/cluster/home/$USERNAME/AISCO_code/subprojects/wp4_aeroshell_optimizer/logs"
 mkdir -p "$LOG_DIR"  # Ensure the log directory exists
