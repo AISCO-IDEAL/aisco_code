@@ -118,7 +118,6 @@ class Interpolator:
 
         # Optional mesh-assembly mode backend state
         self._mesh_assembly_mode: MeshAssemblyModeV2 | None = None
-        self._mesh_mode_iteration = 0
 
         # Create save directory
         self.save_dir.mkdir(parents=True, exist_ok=True)
@@ -219,13 +218,16 @@ class Interpolator:
 
         return [5000.0, 5000.0, 5000.0], [0.0, 0.0, 0.0]
 
-    def generate_interpolation_grid(self) -> Image.Image:
+    def generate_interpolation_grid(self, epoch: int = 0) -> Image.Image:
         """
         Generate 2D grid of mesh visualizations interpolating through latent space.
 
         Sweeps through z[0] and z[1] coordinates in a grid pattern, extracting
         and rendering a mesh at each point. Intermediate images saved to disk,
         only final grid image returned.
+
+        Args:
+            epoch: Current training epoch, used to label frames in mesh_assembly_mode_v2
 
         Returns:
             PIL Image of final 2D grid layout
@@ -247,7 +249,7 @@ class Interpolator:
                     print(f"  Point ({i + 1}/{self.grid_resolution}, {j + 1}/{self.grid_resolution}): z=[{z0:.3f}, {z1:.3f}]")
 
                 # Extract and render mesh at this latent point
-                image = self._extract_and_render_at_latent(z0, z1)
+                image = self._extract_and_render_at_latent(z0, z1, epoch)
                 if image is not None:
                     row_images.append(image)
                 else:
@@ -267,13 +269,14 @@ class Interpolator:
         """Clear any cached images to free memory."""
         self._grid_image = None
 
-    def _extract_and_render_at_latent(self, z0: float, z1: float) -> Image.Image | None:
+    def _extract_and_render_at_latent(self, z0: float, z1: float, epoch: int = 0) -> Image.Image | None:
         """
         Extract mesh at latent coordinates (z0, z1) and render to image.
 
         Args:
             z0: First latent coordinate value
             z1: Second latent coordinate value
+            epoch: Current training epoch, forwarded to the render backend for labelling
 
         Returns:
             PIL Image of rendered mesh, or None if extraction failed
@@ -295,7 +298,7 @@ class Interpolator:
             return None
 
         verts, faces = mesh_data
-        image = self._render_mesh_to_image(verts, faces)
+        image = self._render_mesh_to_image(verts, faces, epoch)
         if image is None:
             return None
 
@@ -322,20 +325,21 @@ class Interpolator:
 
         return verts, faces
 
-    def _render_mesh_to_image(self, verts: Tensor, faces: Tensor) -> Image.Image | None:
+    def _render_mesh_to_image(self, verts: Tensor, faces: Tensor, epoch: int = 0) -> Image.Image | None:
         """
         Render mesh to image using selected backend.
 
         Args:
             verts: [V, 3] vertex tensor
             faces: [F, 3] face index tensor
+            epoch: Current training epoch, forwarded to mesh_assembly_mode_v2 for labelling
 
         Returns:
             PIL Image of rendered mesh, or None if rendering failed
         """
         if self.render_backend == "mesh_assembly_mode_v2" and self._mesh_assembly_mode is not None:
             try:
-                return self._resize_to_window(self._render_mesh_to_image_with_mesh_assembly(verts, faces))
+                return self._resize_to_window(self._render_mesh_to_image_with_mesh_assembly(verts, faces, epoch))
             except Exception as exc:
                 self._disable_mesh_backend(f"mesh_assembly_mode_v2 render failed: {exc}")
 
@@ -352,19 +356,18 @@ class Interpolator:
 
         return image.resize(self.window_size, resample=Image.BILINEAR)
 
-    def _render_mesh_to_image_with_mesh_assembly(self, verts: Tensor, faces: Tensor) -> Image.Image:
+    def _render_mesh_to_image_with_mesh_assembly(self, verts: Tensor, faces: Tensor, epoch: int = 0) -> Image.Image:
         """Render one mesh with MeshAssemblyModeV2 and convert to PIL image."""
         if self._mesh_assembly_mode is None:
             raise RuntimeError("mesh_assembly_mode_v2 backend is not initialized")
 
         optimization_state = {
-            "iteration": self._mesh_mode_iteration,
+            "iteration": epoch,
             "vertices": verts.detach(),
             "faces": faces.detach(),
         }
 
         self._mesh_assembly_mode.update(optimization_state)
-        self._mesh_mode_iteration += 1
 
         if not self._mesh_assembly_mode.frame_storage:
             raise RuntimeError("mesh_assembly_mode_v2 did not produce a frame")

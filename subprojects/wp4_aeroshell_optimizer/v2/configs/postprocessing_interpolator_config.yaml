@@ -49,3 +49,26 @@ interpolator:
 
   # Print detailed point extraction progress during rendering
   verbose: false
+
+  # Rendering backend:
+  # - "pyvista" (default): existing behavior
+  # - "mesh_assembly_mode_v2": uses existing assembly renderer pipeline
+  render_backend: "mesh_assembly_mode_v2"
+
+  # Optional config forwarded to MeshAssemblyModeV2 when using
+  # render_backend: "mesh_assembly_mode_v2"
+  mesh_assembly_mode_config:
+    # Required by RenderingMode base class
+    camera_position: [5000, 5000, 5000]
+    look_at: [0, 0, 0]
+    render_mode: "rgb"
+
+    # MeshAssemblyModeV2 options
+    render_interval: 1
+    make_gif: false
+    mesh_alpha: 0.5
+    outer_alpha: 0.2
+
+  # Optional Visualiser overrides for mesh_assembly_mode_v2 backend.
+  # If omitted, interpolator uses sensible defaults and current device.
+  mesh_visualiser: {}

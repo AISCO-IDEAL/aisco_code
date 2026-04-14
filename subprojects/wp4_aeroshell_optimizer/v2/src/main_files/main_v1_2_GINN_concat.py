@@ -176,7 +176,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
 
         if verbose:
             print("Generating initial latent space interpolation grid (epoch 0)...")
-        interpolator.generate_interpolation_grid()
+        interpolator.generate_interpolation_grid(epoch=0)
         save_path = interpolator.save_interpolation_grid(filepath=interp_save_dir / "interpolation_grid_epoch0.png")
         if verbose:
             print(f"Saved initial interpolation grid to {save_path}")
@@ -243,7 +243,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
                 if verbose:
                     print(f"Generating interpolation grid for epoch {epoch}...")
                 try:
-                    interpolator.generate_interpolation_grid()
+                    interpolator.generate_interpolation_grid(epoch=epoch)
                     save_path = interpolator.save_interpolation_grid(
                         filepath=interp_save_dir / f"interpolation_grid_epoch{epoch}.png"
                     )
@@ -281,7 +281,7 @@ def main(verbose: bool = True) -> None:  # noqa: PLR0912, PLR0915
         if verbose:
             print("Generating final latent space interpolation grid...")
         try:
-            interpolator.generate_interpolation_grid()
+            interpolator.generate_interpolation_grid(epoch=num_epochs)
 
             # Save locally
             save_path = interpolator.save_interpolation_grid(filepath=interp_save_dir / "interpolation_grid_final.png")
