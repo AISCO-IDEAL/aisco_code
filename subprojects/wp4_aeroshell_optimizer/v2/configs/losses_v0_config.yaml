@@ -111,5 +111,5 @@ developability_config:
   post_opt_linesearch: 1    # 0=NONE, 1=OVERTON, 2=BACKTRACK
   post_opt_step_type: 1     # 0=GRADDESC, 1=LBFGS
   post_opt_num_steps: 100
-  post_opt_subdivisions: 0  # Number of Loop subdivisions (0=disabled, saves mesh at each level)
+  post_opt_subdivisions: 2  # Number of Loop subdivisions (0=disabled, saves mesh at each level)
   post_opt_output_dir: "postprocessed_meshes"  # Relative to storage_dir from general_config
