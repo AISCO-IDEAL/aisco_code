@@ -343,7 +343,7 @@ class SolarLossEstimator:
             "rendering": False,
             "selection_threshold_render": 0.5,
             "log_group_name": "solar_loss_metrics",
-        }
+        }  # ONLY USED IF NOTHING ELSE SPECIFIED
 
         general_config = load_config(v="v1", cfg_name="general_config.yaml")
         cfg: dict[str, Any] = defaults if config is None else config

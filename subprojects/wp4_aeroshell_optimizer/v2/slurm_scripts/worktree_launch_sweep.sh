@@ -21,6 +21,10 @@ WORKTREE_SUFFIX="_worktree"
 
 
 # ---- Setup ---------------------------------------------------------------
+# Allow W&B to route through the cluster proxy (eth_proxy sets no_proxy which blocks api.wandb.ai)
+export no_proxy=$(echo "$no_proxy" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
+export NO_PROXY=$(echo "$NO_PROXY" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
+
 USERNAME="$(whoami)"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT"
