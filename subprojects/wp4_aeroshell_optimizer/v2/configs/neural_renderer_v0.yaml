@@ -128,7 +128,7 @@ rendering_modes:
 detached_modes:
   enabled: true
   MeshSDF_grads:
-    enabled: False
+    enabled: True
     class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
     config:
       camera_position: [-2000,0,7000] # [0, -7500, 3250]

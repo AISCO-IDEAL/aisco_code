@@ -2,6 +2,8 @@
 This should be the final main file we use for the Project. It should be modular and easily extendible
 """
 
+import os
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -17,14 +19,17 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import DebugManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
     configure_headless_pyvista,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import (
     allround_save_data,
     fetch_pretrained_model,
+    reformat_wandb_name,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.wandb_utils import patch_wandb_log_for_monotonic_steps
+from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
 
 configure_headless_pyvista()
 
@@ -36,6 +41,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     general_config: dict[str, Any] = load_config(v="v2", cfg_name="general_config.yaml")
     verbose: bool = general_config.get("general_info", {}).get("verbose", True)
     device: str = general_config.get("general_info", {}).get("device", "cuda" if torch.cuda.is_available() else "cpu")
+    if str(device).startswith("cuda") and not torch.cuda.is_available():
+        print(f"Configured device '{device}' is unavailable. Falling back to CPU.")
+        device = "cpu"
 
     # Init Elias' debug manager NOT WORKING PROPERLY ATM, PLEASE CHECK
     debug_cfg = load_config(v="v2", cfg_name="debug.yaml")
@@ -163,15 +171,78 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             verbose=verbose,
             pretraining=True,
         )
+
+    # Keep model parameters/buffers on the runtime device expected by losses and data tensors.
+    model = model.to(device)
+
     if verbose:
         print(f"Pretraining complete for model: {model_class_name} with Parent class: {parent_class_name}")
         print(f"Detailed settings: {[f'{key}: {value}' for key, value in settings.items()]}")
+
     # 4. Initialise whatever we need to run the main training loop, e.g. trainer, loss function, etc.
+
+    training_config = load_config(v="v2", cfg_name=general_config["active_configs"].get("training", None))
 
     # 5. Run main training loop
 
-    # 6. Saving of files and postprocessing
+    if has_optimise:
+        assert isinstance(model, SupportsOptimise), (
+            "Model is marked with has_optimise=True but does not adhere to SupportsOptimise contract."
+        )
 
+        model_hash = dict_hashing(model.get_model_info_dict())
+        wandb_name = wandb.run.name if wandb.run is not None else None
+        rendering_dir = None
+        if wandb_name is not None:
+            # set rendering dir inside wandb log dir
+            if general_config["general_info"].get("run_locally", False):
+                run_locally = general_config["general_info"].get("run_locally", "False") == "True"
+
+            if run_locally:
+                rendering_dir = (
+                    Path(general_config["storage_paths"]["local_storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
+                )
+
+            else:
+                rendering_dir = (
+                    Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
+                )
+            os.makedirs(rendering_dir, exist_ok=True)
+
+        renderer_manager = VisualisationManager(verbose=verbose, output_dir=rendering_dir)
+        print("Model has legacy optimise() method, assuming single batch optimisation is desired. \n Starting training...")
+        model.optimise(
+            training_config=training_config,
+            renderer_manager=renderer_manager,
+            wandb_name=wandb_name,
+            general_config=general_config,
+            debug_manager=debug_manager,
+        )
+
+        # ------------------------------------------------------------------
+        # 9. Finalize renderers
+        # ------------------------------------------------------------------
+        if use_wandb and general_config["wandb_general"].get("use_neural_renderer", False):
+            try:
+                renderer_manager.finalize()
+            except Exception as e:
+                print(f"Manager finalize failed: {e}")
+
+    # 6. Saving of files and postprocessing
+    allround_save_data(
+        model=model,
+        storage_path=general_config["general_info"].get(
+            "storage_path", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+        ),
+        save_model=True,
+        save_mesh=True,
+        verbose=verbose,
+        pretraining=False,
+        wandb_run=wandb_name,
+        epoch=training_config["training_params"].get("num_epochs", 1000),
+        resolution=64,
+        marching_cubes_usage=True,
+    )
     print("Completed job successfully.")
 
 
