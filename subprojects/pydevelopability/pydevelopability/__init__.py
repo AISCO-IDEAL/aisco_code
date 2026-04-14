@@ -2,7 +2,7 @@
 pydevelopability: Python/PyTorch bindings for "Developability of Triangle Meshes"
 """
 
-from pydevelopability._devcore import (
+from subprojects.pydevelopability.pydevelopability._devcore import (
     EnergyType,
     FixedTopologyProblem,
     Linesearch,

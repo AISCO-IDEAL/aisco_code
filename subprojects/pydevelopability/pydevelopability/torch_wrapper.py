@@ -11,10 +11,10 @@ Usage:
 
 import numpy as np
 import torch
-from pydevelopability._devcore import (
+from subprojects.pydevelopability.pydevelopability._devcore import (
     build_problem,
 )
-from pydevelopability._devcore import (
+from subprojects.pydevelopability.pydevelopability._devcore import (
     evaluate_energy_and_grad as _cpp_eval,
 )
 

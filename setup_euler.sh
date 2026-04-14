@@ -147,6 +147,7 @@ if [[ "$build_pydevelopability" == "y" ]]; then
     cp _devcore.cpython-311-x86_64-linux-gnu.so ../pydevelopability/
 
     cd ../../..
+    python3 -m pip install -e .
     echo "✅ pydevelopability build complete."
 else
     echo "⏭️ Skipping pydevelopability build (using pre-built .so)."

@@ -29,10 +29,10 @@ from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import (
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 
+_pdev_module: Any
 CachedDevelopabilityEnergy: Any
 try:
-    import pydevelopability as _pdev_module
-
+    import subprojects.pydevelopability.pydevelopability as _pdev_module
     from subprojects.pydevelopability.pydevelopability.torch_wrapper import (
         CachedDevelopabilityEnergy,
     )
