@@ -15,7 +15,9 @@ class ConcatBaseModel(nn.Module):
         """
         super().__init__()
         self.config = config if config is not None else {}
-        self._active_z: torch.Tensor | None = None
+        self._active_z: torch.Tensor = torch.zeros(
+            0
+        )  # Initialize active latent vector to an empty tensor, will be set properly during training using set_latent_vector method
 
     def set_latent_vector(self, z: torch.Tensor) -> None:
         """
