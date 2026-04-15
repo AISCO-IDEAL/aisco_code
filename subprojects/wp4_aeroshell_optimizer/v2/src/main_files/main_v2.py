@@ -9,6 +9,13 @@ from typing import Any
 import torch
 
 import wandb
+from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
+from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import (
+    DiversityTrainer,
+    default_field_diversity_loss,
+)
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat, SupportsOptimise
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
@@ -183,31 +190,25 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     training_config = load_config(v="v2", cfg_name=general_config["active_configs"].get("training", None))
 
+    # Shared rendering-dir logic (used by both legacy and diversity paths)
+    model_hash = dict_hashing(model.get_model_info_dict())
+    wandb_name = wandb.run.name if wandb.run is not None else None
+    rendering_dir: Path | None = None
+    if wandb_name is not None:
+        if run_locally:
+            rendering_dir = (
+                Path(general_config["storage_paths"]["local_storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
+            )
+        else:
+            rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
+        os.makedirs(rendering_dir, exist_ok=True)
+
     # 5. Run main training loop
 
     if has_optimise:
         assert isinstance(model, SupportsOptimise), (
             "Model is marked with has_optimise=True but does not adhere to SupportsOptimise contract."
         )
-
-        model_hash = dict_hashing(model.get_model_info_dict())
-        wandb_name = wandb.run.name if wandb.run is not None else None
-        rendering_dir = None
-        if wandb_name is not None:
-            # set rendering dir inside wandb log dir
-            if general_config["general_info"].get("run_locally", False):
-                run_locally = general_config["general_info"].get("run_locally", "False") == "True"
-
-            if run_locally:
-                rendering_dir = (
-                    Path(general_config["storage_paths"]["local_storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
-                )
-
-            else:
-                rendering_dir = (
-                    Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
-                )
-            os.makedirs(rendering_dir, exist_ok=True)
 
         renderer_manager = VisualisationManager(verbose=verbose, output_dir=rendering_dir)
         print("Model has legacy optimise() method, assuming single batch optimisation is desired. \n Starting training...")
@@ -223,6 +224,106 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         # 9. Finalize renderers
         # ------------------------------------------------------------------
         if use_wandb and general_config["wandb_general"].get("use_neural_renderer", False):
+            try:
+                renderer_manager.finalize()
+            except Exception as e:
+                print(f"Manager finalize failed: {e}")
+
+    elif uses_diversity:
+        # New path: TotalLossV2 + optional ALM + DiversityTrainer.
+        # Covers both single-model (population_size=1, diversity_loss_fn=None) and
+        # population-based GINN training through the same trainer.
+        if not isinstance(model, SupportsLatentConcat):
+            raise TypeError(
+                "Non-legacy models must implement SupportsLatentConcat (set_latent_vector / "
+                "get_latent_vector) to use the TotalLossV2 + DiversityTrainer pipeline."
+            )
+
+        losses_config = load_config(v="v2", cfg_name=general_config["active_configs"]["losses"])
+        wandb_cfg: dict[str, Any] = general_config.get("wandb_general", {})
+
+        total_loss = TotalLossV2(device=device)
+        use_alm: bool = losses_config["general_info"].get("ALM") == "True"
+        alm_manager: ALMManager | None = (
+            ALMManager(total_loss.constraint_names, losses_config["general_info"], torch.device(device)) if use_alm else None
+        )
+
+        # Mesh extractor + optional renderer (only used if rendering_freq is set)
+        renderer_cfg = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")
+        mesh_extraction_config: dict[str, Any] = renderer_cfg.get("mesh_extraction", {})
+        mesh_extractor = MeshExtractor(
+            algorithm=mesh_extraction_config.get("algorithm", "mc"),
+            device=mesh_extraction_config.get("device", str(device)),
+            verbose=mesh_extraction_config.get("verbose", False),
+        )
+        mesh_extractor.set_grid(
+            bbox=mesh_extraction_config.get("bbox", [[-5000, 5000], [-5000, 5000], [-5000, 5000]]),
+            resolution=mesh_extraction_config.get("resolution", 128),
+        )
+        renderer_manager = VisualisationManager(verbose=verbose, output_dir=rendering_dir)
+
+        # GINN / diversity config — absent or uses_diversity=False collapses to single-model mode
+        ginn_config: dict[str, Any] = {}
+        try:
+            ginn_config = load_config(v="v2", cfg_name="GINN.yaml")
+        except Exception as e:
+            if uses_diversity:
+                raise
+            print(f"GINN config not found (ok for single-model training): {e}")
+
+        training_params: dict[str, Any] = training_config["training_params"]
+        learning_rate: float = training_params.get("learning_rate", 1e-3)
+        num_epochs: int = training_params.get("num_epochs", 1000)
+
+        if uses_diversity:  # double checks for diversity again, but serves as potential control split once we develop further
+            population_size = ginn_config.get("population_size", 4)
+            z_dim = model.get_model_info_dict()["z_dim"]
+            diversity_loss_fn = default_field_diversity_loss  # TODO: make this configurable and add more options
+        else:
+            population_size = 1
+            latent_vec = model.get_latent_vector()
+            z_dim = int(latent_vec.numel()) if latent_vec is not None else 0
+            diversity_loss_fn = None
+
+        trainer = DiversityTrainer(
+            model=model,
+            total_loss=total_loss,
+            alm_manager=alm_manager,
+            population_size=population_size,
+            z_dim=z_dim,
+            device=device,
+            model_lr=learning_rate,
+            diversity_loss_fn=diversity_loss_fn,
+            diversity_weight=ginn_config.get("diversity_weight", 0.1),
+            diversity_num_points=ginn_config.get("diversity_num_points", 2048),
+            diversity_bbox_size=ginn_config.get("diversity_bbox_size", 10.0),
+            diversity_norm_order=ginn_config.get("diversity_norm_order", 2),
+            diversity_neighbor_agg_fn=ginn_config.get("diversity_neighbor_agg_fn", "min"),
+            force_z0_to_origin=ginn_config.get("force_z0_to_origin", True),
+            z_resample_cadence=ginn_config.get("z_resample_cadence", 0),
+            mesh_extractor=mesh_extractor,
+            mesh_extraction_config=mesh_extraction_config,
+            renderer_manager=renderer_manager,
+            rendering_freq=wandb_cfg.get("rendering_frequency"),
+            use_neural_renderer=wandb_cfg.get("use_neural_renderer", False),
+            use_wandb=use_wandb,
+            log_dir=rendering_dir,
+        )
+
+        if verbose:
+            mode = f"diversity (N={population_size})" if uses_diversity else "single-model"
+            print(f"Starting {mode} training loop for {num_epochs} epochs...")
+
+        for epoch in range(num_epochs):
+            model.train()
+            metrics = trainer.step(epoch=epoch)
+            if verbose and epoch % 50 == 0:
+                print(
+                    f"Epoch {epoch}/{num_epochs} | per_vector={metrics['per_vector_loss']:.4f} | "
+                    f"diversity={metrics['diversity_loss']:.4f} | total={metrics['total_loss']:.4f}"
+                )
+
+        if use_wandb and wandb_cfg.get("use_neural_renderer", False):
             try:
                 renderer_manager.finalize()
             except Exception as e:

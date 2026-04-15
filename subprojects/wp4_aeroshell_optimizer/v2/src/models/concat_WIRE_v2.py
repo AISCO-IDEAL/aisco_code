@@ -116,8 +116,8 @@ class ConcatWIREV2(ConcatBaseModel):
         layers.append(nn.Linear(hidden_features, out_features, dtype=dtype))
         self.net = nn.Sequential(*layers)
 
-        self._active_z: torch.Tensor = torch.zeros(
-            z_dim
+        self.register_buffer(
+            "_active_z", torch.zeros(z_dim)
         )  # Initialize active latent vector to zeros, will be set properly during training using set_latent_vector method
 
         # Store model info in a dictionary for easy access and logging
