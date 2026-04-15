@@ -128,9 +128,9 @@ class ConcatWIREV2(ConcatBaseModel):
         layers.append(nn.Linear(hidden_features, out_features, dtype=dtype))
         self.net = nn.Sequential(*layers)
 
-        self.register_buffer(
-            "_active_z", torch.zeros(z_dim)
-        )  # Initialize active latent vector to zeros, will be set properly during training using set_latent_vector method
+        # Keep _active_z as a runtime-only (non-persistent) buffer from ConcatBaseModel,
+        # and only update its expected shape for this model.
+        self._active_z = torch.zeros(z_dim)
 
         # Store model info in a dictionary for easy access and logging
         self.model_info_dict = {
