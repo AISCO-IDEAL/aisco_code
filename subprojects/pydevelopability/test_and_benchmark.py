@@ -46,6 +46,7 @@ except ImportError:
 def load_mesh(path):
     """Load a PLY or OBJ mesh, return (V, F) as numpy arrays."""
     mesh = trimesh.load(path, process=False)
+    assert isinstance(mesh, trimesh.Trimesh), f"Expected Trimesh, got {type(mesh)}"
     V = np.array(mesh.vertices, dtype=np.float64)
     F = np.array(mesh.faces, dtype=np.int32)
     return V, F

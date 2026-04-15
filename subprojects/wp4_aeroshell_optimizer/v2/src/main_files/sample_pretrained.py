@@ -3,7 +3,7 @@
 Sample a mesh from any SDF model and save as PLY.
 
 Usage:
-    python -m subprojects.wp4_aeroshell_optimizer.v2.src.main_files.sample_pretrained
+    python -m subprojects.wp4_aeroshell_optimizer.v2.src.main_files.sample_pretrained.py
         --model /cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset/bunny_pretrained.pth
         --out /cluster/work/fuge/AISCO/pretraining_output_sampled/bunny_sampled2.ply
         --res 64

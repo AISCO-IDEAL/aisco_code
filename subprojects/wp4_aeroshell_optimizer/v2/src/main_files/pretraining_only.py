@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """
 Standalone PLY pretraining script.
-Usage: python run_ply_pretraining.py
+Usage:
+    python /cluster/home/kdiehl/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_only.py
 """
 
 import torch
@@ -17,7 +18,7 @@ model = WIREV2(**model_config)
 # Run pretraining with a ply file
 override = {
     "pretraining_shape": "ply",
-    "pretraining_ply_path": "/cluster/work/fuge/AISCO/00_meshes_to_keep/amoebe.ply",
+    "pretraining_ply_path": "/cluster/work/fuge/AISCO/concentrate_curvature/DevelopabilityOfTriangleMeshes/assets/bunny.ply",
     "pretraining_ply_scale": 1000.0,
     "training_loop.epochs": 1000,
     "training_loop.random_batch_size": 2048,
@@ -27,6 +28,6 @@ override = {
 trained = pretraining(model=model, override_config=override)
 
 # Save the model
-save_path = "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset/amoebe_pretrained.pth"
+save_path = "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset/bunny_pretrained3.pth"
 torch.save(trained.state_dict(), save_path)
 print(f"✓ Saved pretrained model to {save_path}")
