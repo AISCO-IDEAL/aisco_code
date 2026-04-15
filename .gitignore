@@ -27,6 +27,7 @@
 !tests/**/
 !.github/
 !.github/**/
+!subprojects/wp7_gui/templates
 # Blacklist data folder
 subprojects/**/data/
 tests/**/data/

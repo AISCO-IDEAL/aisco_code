@@ -2,6 +2,7 @@ import numpy as np
 import torch
 
 from subprojects.wp2_assembler.version4.components.nbz import bounding_box_of_assembly, call_assembly, max_assembly_id
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.assembly_id_utils import resolve_bb_assembly_id
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.s_d_ffrom_cad_query import SDFfromCadQuery
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
 
@@ -10,7 +11,10 @@ class BbV4(ParentLoss):
     def _setup(self) -> None:
         self.__config = self.losses_config["bb_config"]
         rng = np.random.default_rng()
-        self.assembly_id = int(rng.integers(0, max_assembly_id() + 1))
+        self.assembly_id = resolve_bb_assembly_id(self.__config, lambda: int(rng.integers(0, max_assembly_id() + 1)))
+        max_id = max_assembly_id()
+        if not 0 <= self.assembly_id <= max_id:
+            raise ValueError(f"assembly_id must be in range 0..{max_id}, got {self.assembly_id}")
         # Create SDFs for inner and outer boxes
         inner_box, outer_box, __ = call_assembly(id_number=self.assembly_id)
         inner_solids_list = inner_box.toCompound().Solids()
