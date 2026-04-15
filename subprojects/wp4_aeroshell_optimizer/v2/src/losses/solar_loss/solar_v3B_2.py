@@ -5,6 +5,8 @@ Returns positive power in watts.
 For mesh_sdf extraction, gradients are preserved through surrogate backprop.
 """
 
+import torch
+
 from subprojects.wp3_solar_estimator.v3B_2.solar_loss_v3B_2 import SolarLossEstimator
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
@@ -20,11 +22,14 @@ class SolarV3B2(ParentLoss):
         solar_cfg = load_config(v="v1", cfg_name=cfg_path)["SolarLossConfigV3"]
         self.solar_estimator = SolarLossEstimator(config=solar_cfg)
 
-    def _loss(self, model):
-        import torch  # noqa: PLC0415
-
+    def _loss(self, model, skip_telemetry=False):
         # raw_loss is power in watts
-        raw_loss = self.solar_estimator.solar_loss(model=model, epoch_name=self.epoch_name)
+        raw_loss = self.solar_estimator.solar_loss(
+            model=model,
+            epoch_name=self.epoch_name,
+            disable_logging=skip_telemetry,
+            disable_rendering=skip_telemetry,
+        )
         scaled_loss = raw_loss
 
         with torch.no_grad():

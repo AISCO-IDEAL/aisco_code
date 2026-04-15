@@ -1,211 +1,510 @@
-"""Diversity-aware population-based trainer for latent vector optimization."""
+"""Diversity-aware population-based trainer for latent vector optimization.
+
+Owns:
+* The per-vector training step (compute -> weight -> backward in VRAM-friendly order)
+* External ALM multiplier updates across the population
+* All logging (wandb scalars + competition charts)
+* Optional mesh rendering
+
+Does NOT own loss definitions (TotalLossV2) or ALM state (ALMManager is passed in).
+With ``diversity_loss_fn=None`` and ``population_size=1`` it degrades into a plain
+single-z trainer with no diversity phase — useful for non-GINN diversity-capable models.
+"""
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
+import trimesh
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
 
+import wandb
+from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
 from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_loss import field_diversity_loss
-from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
+from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
+
+# Callback signature for pluggable diversity losses. Must be backpropable through the
+# model's parameters; receives the full population and trainer-level sampling params so
+# implementations can choose their own sampling strategy.
+DiversityLossFn = Callable[
+    [SupportsLatentConcat, Tensor, int, float, int, str],
+    Tensor,
+]
+
+
+def default_field_diversity_loss(
+    model: SupportsLatentConcat,
+    Z: Tensor,
+    num_points: int,
+    bbox_size: float,
+    norm_order: int,
+    neighbor_agg_fn: str,
+) -> Tensor:
+    """GINN-paper field diversity on random domain points — WIRE-only forward pass.
+
+    N small computation graphs held simultaneously; cheap compared to Phase-1 graphs.
+    """
+    points = (torch.rand(num_points, 3, device=Z.device) - 0.5) * bbox_size
+    field_values: list[Tensor] = []
+    for i in range(Z.shape[0]):
+        model.set_latent_vector(Z[i])
+        y_i = model(points)
+        if isinstance(y_i, tuple):
+            y_i = y_i[0]
+        field_values.append(y_i.squeeze(-1))
+    Y = torch.stack(field_values, dim=0)
+    return field_diversity_loss(Y, norm_order=norm_order, neighbor_agg_fn=neighbor_agg_fn)
 
 
 class DiversityTrainer:
-    """Population-based trainer that optimizes a shared SDF model over multiple latent vectors.
+    """Two-phase memory-efficient trainer for population-of-latents SDF optimization.
 
-    Training is split into two memory-efficient phases each step:
-
-    Phase 1 — Per-vector backward (expensive):
-        For each z_i, compute TotalLoss (CFD, raytracing, constraints) and immediately
-        call backward(). Only 1 expensive computation graph lives in VRAM at a time.
-        Gradients accumulate in model.parameters().grad across the loop.
-
-    Phase 2 — Diversity backward (cheap):
-        After all expensive graphs are freed, do N lightweight WIRE-only forward passes
-        (no CFD, no raytracing) at a shared set of random domain points.
-        All N small graphs are held simultaneously — they are negligible in VRAM.
-        A single backward() injects the diversity gradient signal.
+    Phase 1 — sequential per-vector expensive backward (CFD, raytracing, constraints).
+              One expensive autograd graph in VRAM at a time; gradients accumulate.
+    Phase 2 — cheap WIRE-only diversity backward (all N small graphs held together).
     """
 
     def __init__(
         self,
-        model: ConcatBaseModel,
-        total_loss: TotalLoss,
+        model: SupportsLatentConcat,
+        total_loss: TotalLossV2,
+        alm_manager: ALMManager | None,
         population_size: int,
         z_dim: int,
         device: torch.device | str = "cuda",
         model_lr: float = 1e-4,
+        diversity_loss_fn: DiversityLossFn | None = None,
         diversity_weight: float = 0.1,
         diversity_num_points: int = 2048,
         diversity_bbox_size: float = 10.0,
         diversity_norm_order: int = 2,
         diversity_neighbor_agg_fn: str = "min",
+        force_z0_to_origin: bool = True,
+        z_resample_cadence: int = 0,
+        mesh_extractor: MeshExtractor | None = None,
+        mesh_extraction_config: dict[str, Any] | None = None,
+        renderer_manager: VisualisationManager | None = None,
+        rendering_freq: int | None = None,
+        use_neural_renderer: bool = False,
+        use_wandb: bool = False,
+        log_dir: Path | None = None,
     ) -> None:
-        """Initialize the diversity trainer.
-
+        """
         Args:
-            model: The SDF network (e.g. ConcatWIREV2).
-            total_loss: TotalLoss instance managing all loss components.
-            population_size: Number of latent vectors in the population (N).
+            model: SDF network supporting set_latent_vector / get_latent_vector.
+            total_loss: Pure-computation loss manager (TotalLossV2).
+            alm_manager: External ALM state manager. ``None`` -> manual constraint weights.
+            population_size: Number of latents (N). Set to 1 for single-model training.
             z_dim: Dimensionality of each latent vector.
             device: Compute device.
-            model_lr: Learning rate for the model optimizer.
-            diversity_weight: Weight for the diversity loss term (λ_div).
-            diversity_num_points: Number of random points for SDF field sampling in diversity loss.
-                With 20 GB VRAM and WIRE-only passes, 2048-8192 points are all cheap.
-            diversity_bbox_size: Side length of the cubic sampling domain for diversity points.
-                Should match the scale used in other losses (e.g. get_points_params.bbox_size).
-            diversity_norm_order: p for L^p field distance between SDF fields.
-            diversity_neighbor_agg_fn: Aggregation over inter-shape distances:
-                'min' (nearest-neighbor, matches GINN paper), 'mean', or 'sum'.
+            model_lr: Adam learning rate for model parameters.
+            diversity_loss_fn: Callback (model, Z, num_points, bbox_size, norm_order, agg) -> scalar.
+                Set to ``None`` to skip Phase 2 entirely (single-model / no-diversity use).
+            diversity_weight: λ_div multiplier on the diversity loss before backward.
+            diversity_num_points / bbox_size / norm_order / neighbor_agg_fn: trainer-level
+                sampling params passed to ``diversity_loss_fn``.
+            force_z0_to_origin: pin Z[0] at the origin (reference shape in GINN).
+            z_resample_cadence: resample Z every N epochs (0 disables resampling).
+            mesh_extractor + mesh_extraction_config + renderer_manager + rendering_freq +
+                use_neural_renderer: rendering wiring. All None/default -> no rendering.
+            use_wandb: if False, logging is silently skipped.
+            log_dir: directory for transient STL/PNG renders when falling back to CAD vis.
         """
         self._device: torch.device = torch.device(device) if isinstance(device, str) else device
-        self._model: ConcatBaseModel = model.to(self._device)
-        self._total_loss: TotalLoss = total_loss
+        self._model: SupportsLatentConcat = model.to(self._device)
+        self._total_loss: TotalLossV2 = total_loss
+        self._alm_manager: ALMManager | None = alm_manager
 
         self._population_size: int = population_size
         self._z_dim: int = z_dim
-        self._diversity_weight: float = diversity_weight
 
+        self._diversity_loss_fn: DiversityLossFn | None = diversity_loss_fn
+        self._diversity_weight: float = diversity_weight
         self._diversity_num_points: int = diversity_num_points
         self._diversity_bbox_size: float = diversity_bbox_size
         self._diversity_norm_order: int = diversity_norm_order
         self._diversity_neighbor_agg_fn: str = diversity_neighbor_agg_fn
 
-        # Fixed population of latent vectors — not trained, serve as diverse condition anchors
+        self._force_z0_to_origin: bool = force_z0_to_origin
+        self._z_resample_cadence: int = max(0, int(z_resample_cadence))
+
+        self._mesh_extractor: MeshExtractor | None = mesh_extractor
+        self._mesh_extraction_config: dict[str, Any] = mesh_extraction_config or {}
+        self._renderer_manager: VisualisationManager | None = renderer_manager
+        self._rendering_freq: int | None = rendering_freq
+        self._use_neural_renderer: bool = use_neural_renderer
+
+        self._use_wandb: bool = use_wandb
+        self._log_dir: Path = log_dir or Path("subprojects/wp4_aeroshell_optimizer/v2/logs")
+
+        generator_device = self._device.type if self._device.type in {"cpu", "cuda"} else "cpu"
+        self._resample_generator = torch.Generator(device=generator_device)
+
+        # Fixed population of latent vectors (not trained). Z[0] optionally pinned to origin.
         self._Z: Tensor = torch.randn(population_size, z_dim, device=self._device, dtype=torch.float32)
+        if self._force_z0_to_origin and self._population_size > 0:
+            self._Z[0] = torch.zeros(z_dim, device=self._device, dtype=torch.float32)
 
         self._model_optimizer: Optimizer = torch.optim.Adam(self._model.parameters(), lr=model_lr)
 
-    # ------------------------------------------------------------------
-    # Phase 1 — per-vector backward (one expensive graph at a time)
-    # ------------------------------------------------------------------
+        # Rolling history for the stacked-area competition chart
+        self._raw_loss_history: list[dict[str, float]] = []
+        self._weighted_loss_history: list[dict[str, float]] = []
 
-    def _per_vector_backward(self, epoch: int) -> tuple[float, list[Tensor] | None]:
+    # ------------------------------------------------------------------
+    # Latent resampling
+    # ------------------------------------------------------------------
+    def _resample_population(self, epoch: int) -> None:
+        """Resample latents with a local generator to avoid global RNG side effects."""
+        if self._population_size <= 0 or self._z_resample_cadence <= 0:
+            return
+
+        start_idx = 1 if self._force_z0_to_origin else 0
+        if start_idx >= self._population_size:
+            if self._force_z0_to_origin:
+                self._Z[0] = torch.zeros(self._z_dim, device=self._device, dtype=torch.float32)
+            return
+
+        self._resample_generator.manual_seed(epoch // self._z_resample_cadence)
+        self._Z[start_idx:] = torch.randn(
+            self._population_size - start_idx,
+            self._z_dim,
+            device=self._device,
+            dtype=torch.float32,
+            generator=self._resample_generator,
+        )
+        if self._force_z0_to_origin:
+            self._Z[0] = torch.zeros(self._z_dim, device=self._device, dtype=torch.float32)
+
+    # ------------------------------------------------------------------
+    # Phase 1 — per-vector backward
+    # ------------------------------------------------------------------
+    def _per_vector_backward(self, epoch: int) -> tuple[float, list[Tensor] | None, dict[str, float]]:
         """Iterate over the population and immediately backward each z's loss.
 
-        Keeps only 1 expensive computation graph (CFD + raytracing) in VRAM at a time.
-        Gradients accumulate in model.parameters().grad across iterations.
-
-        Returns:
-            - Mean per-vector loss value (float, for logging — no graph retained).
-            - List of mean constraint tensors across population (detached), or None if no ALM.
+        Returns mean scalar loss (for metrics), averaged mean constraints across the
+        population (for ALM update; None if no ALM), and the averaged log_data dict.
         """
-        use_alm: bool = getattr(self._total_loss, "_use_alm", False)
+        use_alm: bool = self._alm_manager is not None
         all_raw_constraints: list[list[Tensor]] = []
+        summed_log_data: dict[str, float] = {}
         total_loss_val: float = 0.0
+
+        constraint_cats: list[str] = self._total_loss.constraint_category_order
 
         for i in range(self._population_size):
             self._model.set_latent_vector(self._Z[i])
 
+            bundle = self._total_loss.compute(self._model, epoch_name=epoch)
+            result = self._total_loss.weight(bundle, alm_manager=self._alm_manager)
+
+            # Detach constraints before backward — graph will be freed
             if use_alm:
-                if self._total_loss.alm_manager is None:
-                    raise RuntimeError("TotalLoss ALM manager not initialized but use_alm=True.")
+                all_raw_constraints.append([bundle.constraints[cat].detach() for cat in constraint_cats])
 
-                loss_out, raw_constraints_dict = self._total_loss.get_total_loss(
-                    model=self._model,
-                    epoch_name=epoch,
-                    skip_telemetry=True,
-                )
-                constraint_tensors = [raw_constraints_dict[name] for name in self._total_loss.alm_manager.constraint_names]
-                penalties_dict = self._total_loss.alm_manager.compute_penalty(constraint_tensors)
-                loss_i = loss_out + sum(penalties_dict.values())
+            total_loss_val += result.log_data.get("raw_losses/total_loss", result.scalar.item())
+            for k, v in result.log_data.items():
+                summed_log_data[k] = summed_log_data.get(k, 0.0) + v
 
-                # Detach before storing — graph will be freed after backward()
-                all_raw_constraints.append([c.detach() for c in constraint_tensors])
-            else:
-                loss_out = self._total_loss.get_total_loss(
-                    model=self._model,
-                    epoch_name=epoch,
-                    skip_telemetry=True,
-                )
-                loss_i = loss_out[0] if isinstance(loss_out, tuple) else loss_out
-
-            total_loss_val += loss_i.item()
-
-            # Immediately backward — frees this z's graph before the next iteration
-            (loss_i / self._population_size).backward()
+            # Immediately backward — frees this z's expensive graph before the next iteration
+            (result.scalar / self._population_size).backward()
 
         mean_constraints: list[Tensor] | None = None
         if use_alm and all_raw_constraints:
             num_c = len(all_raw_constraints[0])
             mean_constraints = [torch.stack([pop[c_idx] for pop in all_raw_constraints]).mean() for c_idx in range(num_c)]
 
-        return total_loss_val / self._population_size, mean_constraints
+        avg_log_data = {k: v / self._population_size for k, v in summed_log_data.items()}
+        avg_total_loss = total_loss_val / self._population_size
+        return avg_total_loss, mean_constraints, avg_log_data
 
     # ------------------------------------------------------------------
-    # Phase 2 — diversity backward (cheap WIRE-only, all N graphs together)
+    # Main step
     # ------------------------------------------------------------------
-
-    def _compute_diversity_loss(self) -> Tensor:
-        """Evaluate SDF fields for all z_i and compute the field-based diversity loss.
-
-        Only the WIRE backbone is called here — TotalLoss (CFD, raytracing, etc.) is NOT
-        invoked. All N small computation graphs are held simultaneously, but they are
-        negligible in VRAM compared to the expensive per-vector graphs freed in Phase 1.
-
-        Returns:
-            Scalar diversity loss (negative → minimize to maximize shape diversity).
-        """
-        # Random points covering the design domain — no grad on coordinates
-        points = (torch.rand(self._diversity_num_points, 3, device=self._device) - 0.5) * self._diversity_bbox_size
-
-        field_values: list[Tensor] = []
-        for i in range(self._population_size):
-            self._model.set_latent_vector(self._Z[i])
-            y_i = self._model(points)  # WIRE-only forward pass — cheap
-            if isinstance(y_i, tuple):
-                y_i = y_i[0]
-            field_values.append(y_i.squeeze(-1))  # [N_pts]
-
-        Y = torch.stack(field_values, dim=0)  # [population_size, N_pts]
-        return field_diversity_loss(
-            Y,
-            norm_order=self._diversity_norm_order,
-            neighbor_agg_fn=self._diversity_neighbor_agg_fn,
-        )
-
-    # ------------------------------------------------------------------
-    # Main training step
-    # ------------------------------------------------------------------
-
     def step(self, epoch: int = -1) -> dict[str, float]:
-        """Perform one memory-efficient optimization step.
-
-        Phase 1: sequential per-z expensive backward (1 graph alive at a time).
-        Phase 2: diversity backward using cheap WIRE-only passes (N small graphs).
-
-        Args:
-            epoch: Current epoch number (passed to TotalLoss for telemetry).
-
-        Returns:
-            Dict with 'per_vector_loss', 'diversity_loss', 'total_loss'.
         """
+        One full optimization step: Phase 1 -> ALM update -> Phase 2 -> opt.step -> log/render.
+        Returns: dict of metrics for the caller (stripped prefix for convenience), containing:
+            * "per_vector_loss": the average unweighted loss across the population (for tracking the main optimization objective)
+            * "diversity_loss": the raw diversity loss (for tracking diversity independently of its weight)
+            * "total_loss": the combined weighted loss (for tracking overall optimization progress)
+            * any metric in avg_log_data with "raw_losses/" prefix, stripped in the returned dict for convenience (e.g. "chamfer", "constraint1", etc.)
+
+
+        """
+        if self._z_resample_cadence > 0 and epoch > 0 and epoch % self._z_resample_cadence == 0:
+            self._resample_population(epoch)
+
         self._model_optimizer.zero_grad()
 
-        # Phase 1 — per-vector: expensive, sequential, 1 graph at a time
-        per_vector_loss_val, mean_constraints = self._per_vector_backward(epoch)
+        # Phase 1 — per-vector expensive backward
+        per_vector_loss_val, mean_constraints, avg_log_data = self._per_vector_backward(epoch)
 
-        # Update ALM multipliers using mean constraints across population
-        if mean_constraints is not None and self._total_loss.alm_manager is not None:
-            self._total_loss.alm_manager.update_multipliers(mean_constraints)
+        # External ALM update
+        if mean_constraints is not None and self._alm_manager is not None:
+            self._alm_manager.update_multipliers(mean_constraints)
 
-        # Phase 2 — diversity: cheap WIRE-only, all N small graphs, then backward
+        # Phase 2 — cheap diversity backward
         diversity_loss_val: float = 0.0
-        if self._diversity_weight > 0.0:
-            diversity_loss = self._compute_diversity_loss()
+        if self._diversity_loss_fn is not None and self._diversity_weight > 0.0 and self._population_size > 1:
+            diversity_loss = self._diversity_loss_fn(
+                self._model,
+                self._Z,
+                self._diversity_num_points,
+                self._diversity_bbox_size,
+                self._diversity_norm_order,
+                self._diversity_neighbor_agg_fn,
+            )
             (self._diversity_weight * diversity_loss).backward()
             diversity_loss_val = diversity_loss.item()
 
         self._model_optimizer.step()
 
-        return {
+        # Render (reference shape = Z[0])
+        if self._population_size > 0:
+            self._model.set_latent_vector(self._Z[0])
+        self._render(epoch, per_vector_loss_val)
+
+        # Log once per epoch
+        self._log(avg_log_data, diversity_loss_val, epoch)
+
+        metrics: dict[str, float] = {
             "per_vector_loss": per_vector_loss_val,
             "diversity_loss": diversity_loss_val,
             "total_loss": per_vector_loss_val + self._diversity_weight * diversity_loss_val,
         }
+        # Surface averaged raw metrics for the caller (stripped prefix for convenience)
+        for k, v in avg_log_data.items():
+            if k.startswith("raw_losses/"):
+                metrics[k.removeprefix("raw_losses/")] = v
+        return metrics
 
     def get_population(self) -> Tensor:
-        """Retrieve current population of latent vectors (detached copy)."""
         return self._Z.detach().clone()
+
+    # ------------------------------------------------------------------
+    # Logging
+    # ------------------------------------------------------------------
+    def _log(self, avg_log_data: dict[str, float], diversity_loss_val: float, epoch: int) -> None:
+        """Single wandb.log call with all averaged scalars + ALM multipliers + diversity."""
+        if not self._use_wandb or wandb.run is None:
+            return
+
+        log_dict: dict[str, float] = dict(avg_log_data)
+        if self._alm_manager is not None:
+            log_dict.update(self._alm_manager.get_telemetry())
+        if self._diversity_loss_fn is not None:
+            log_dict["diversity/loss"] = diversity_loss_val
+            log_dict["diversity/weighted_loss"] = self._diversity_weight * diversity_loss_val
+        wandb.log(log_dict, step=epoch)
+
+        # Competition charts (avg-of-population)
+        raw_floats: dict[str, float] = {
+            k.removeprefix("raw_losses/"): abs(v)
+            for k, v in avg_log_data.items()
+            if k.startswith("raw_losses/") and k != "raw_losses/total_loss"
+        }
+        weighted_floats: dict[str, float] = {
+            k.removeprefix("weighted_losses/"): abs(v) for k, v in avg_log_data.items() if k.startswith("weighted_losses/")
+        }
+        self._log_competition_charts(raw_floats, weighted_floats, epoch)
+
+    def _log_competition_charts(  # noqa: PLR0915
+        self,
+        raw_floats: dict[str, float],
+        weighted_floats: dict[str, float],
+        epoch: int,
+    ) -> None:
+        """Generate pie/bar/radar/stacked-area charts of loss shares; log under loss_competition/."""
+        if not self._use_wandb or wandb.run is None:
+            return
+        matplotlib.use("Agg")
+        self._raw_loss_history.append(dict(raw_floats))
+        self._weighted_loss_history.append(dict(weighted_floats))
+
+        competition_log: dict[str, Any] = {}
+
+        def _safe_pie(values: list[float], labels: list[str], title: str) -> plt.Figure:
+            fig, ax = plt.subplots(figsize=(6, 6))
+            total = sum(values)
+            if total == 0 or len(values) == 0:
+                ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
+            else:
+                ax.pie(values, labels=labels, autopct="%1.1f%%", startangle=90)
+            ax.set_title(title)
+            return fig
+
+        def _safe_hbar(values: list[float], labels: list[str], title: str) -> plt.Figure:
+            fig, ax = plt.subplots(figsize=(8, 1.8))
+            total = sum(values)
+            if total == 0 or len(values) == 0:
+                ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
+            else:
+                pcts = [v / total * 100 for v in values]
+                left = 0.0
+                colors = matplotlib.colormaps["tab10"].colors  # type: ignore[attr-defined]
+                for i, (pct, lbl) in enumerate(zip(pcts, labels, strict=True)):
+                    ax.barh(0, pct, left=left, color=colors[i % len(colors)], edgecolor="white")
+                    if pct > 3:
+                        ax.text(
+                            left + pct / 2,
+                            0,
+                            f"{lbl}\n{pct:.1f}%",
+                            ha="center",
+                            va="center",
+                            fontsize=8,
+                            color="white",
+                            fontweight="bold",
+                        )
+                    left += pct
+            ax.set_xlim(0, 100)
+            ax.set_xlabel("% of total")
+            ax.set_yticks([])
+            ax.set_title(title)
+            fig.tight_layout()
+            return fig
+
+        raw_labels = list(raw_floats.keys())
+        raw_vals = [raw_floats[k] for k in raw_labels]
+        w_labels = list(weighted_floats.keys())
+        w_vals = [weighted_floats[k] for k in w_labels]
+
+        fig_a = _safe_pie(raw_vals, raw_labels, f"Raw Losses (epoch {epoch})")
+        competition_log["loss_competition/raw_pie"] = wandb.Image(fig_a)
+        plt.close(fig_a)
+        fig_b = _safe_pie(w_vals, w_labels, f"Weighted Losses (epoch {epoch})")
+        competition_log["loss_competition/weighted_pie"] = wandb.Image(fig_b)
+        plt.close(fig_b)
+        fig_c = _safe_hbar(raw_vals, raw_labels, f"Raw Loss Shares % (epoch {epoch})")
+        competition_log["loss_competition/raw_bar"] = wandb.Image(fig_c)
+        plt.close(fig_c)
+        fig_d = _safe_hbar(w_vals, w_labels, f"Weighted Loss Shares % (epoch {epoch})")
+        competition_log["loss_competition/weighted_bar"] = wandb.Image(fig_d)
+        plt.close(fig_d)
+
+        # Radar: union of keys, each series normalized to its own max for comparable angles
+        all_keys = list(dict.fromkeys(list(raw_floats.keys()) + list(weighted_floats.keys())))
+        if len(all_keys) >= 2:
+            angles = np.linspace(0, 2 * np.pi, len(all_keys), endpoint=False).tolist()
+            angles += angles[:1]
+            raw_vals_r = [raw_floats.get(k, 0.0) for k in all_keys]
+            w_vals_r = [weighted_floats.get(k, 0.0) for k in all_keys]
+            raw_max = max(raw_vals_r) or 1.0
+            w_max = max(w_vals_r) or 1.0
+            raw_norm = [v / raw_max for v in raw_vals_r] + [raw_vals_r[0] / raw_max]
+            w_norm = [v / w_max for v in w_vals_r] + [w_vals_r[0] / w_max]
+
+            fig_e, ax_e = plt.subplots(figsize=(6, 6), subplot_kw={"polar": True})
+            ax_e.plot(angles, raw_norm, "o--", color="steelblue", linewidth=1.5, label="raw (norm)")
+            ax_e.fill(angles, raw_norm, color="steelblue", alpha=0.15)
+            ax_e.plot(angles, w_norm, "o-", color="tomato", linewidth=2, label="weighted (norm)")
+            ax_e.fill(angles, w_norm, color="tomato", alpha=0.15)
+            ax_e.set_xticks(angles[:-1])
+            ax_e.set_xticklabels(all_keys, fontsize=9)
+            ax_e.set_title(f"Loss Radar (epoch {epoch})", pad=15)
+            ax_e.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1))
+            fig_e.tight_layout()
+            competition_log["loss_competition/radar"] = wandb.Image(fig_e)
+            plt.close(fig_e)
+
+        if len(self._raw_loss_history) >= 2:
+            epochs_so_far = list(range(len(self._raw_loss_history)))
+
+            def _stacked_area(history: list[dict[str, float]], ax: plt.Axes, title: str) -> None:
+                all_k = list(dict.fromkeys(k for d in history for k in d))
+                matrix = np.array([[d.get(k, 0.0) for k in all_k] for d in history])
+                row_sums = matrix.sum(axis=1, keepdims=True)
+                row_sums[row_sums == 0] = 1.0
+                matrix_pct = matrix / row_sums * 100
+                tab_colors = matplotlib.colormaps["tab10"].colors  # type: ignore[attr-defined]
+                ax.stackplot(
+                    epochs_so_far,
+                    matrix_pct.T,
+                    labels=all_k,
+                    colors=[tab_colors[i % len(tab_colors)] for i in range(len(all_k))],
+                    alpha=0.85,
+                )
+                ax.set_ylabel("% share")
+                ax.set_title(title)
+                ax.legend(loc="upper left", fontsize=8, ncol=2)
+                ax.set_ylim(0, 100)
+
+            fig_f, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+            _stacked_area(self._raw_loss_history, ax_top, "Raw Loss Competition Over Training")
+            _stacked_area(self._weighted_loss_history, ax_bot, "Weighted Loss Competition Over Training")
+            ax_bot.set_xlabel("Epoch")
+            fig_f.tight_layout()
+            competition_log["loss_competition/stacked_area"] = wandb.Image(fig_f)
+            plt.close(fig_f)
+
+        wandb.log(competition_log, step=epoch)
+
+    # ------------------------------------------------------------------
+    # Rendering
+    # ------------------------------------------------------------------
+    def _render(self, epoch: int, total_loss_val: float) -> None:
+        """Extract mesh from Z[0] and forward to either VisualisationManager or CAD fallback."""
+        if self._mesh_extractor is None:
+            return
+        if self._rendering_freq is None or epoch % self._rendering_freq != 0:
+            return
+
+        cfg = self._mesh_extraction_config
+        verts, faces = self._mesh_extractor.extract_mesh(
+            model=self._model,
+            isovalue=cfg.get("isovalue", 0.0),
+            batch_size=cfg.get("batch_size", 8192),
+        )
+
+        if self._use_neural_renderer and self._renderer_manager is not None:
+            try:
+                self._renderer_manager.update(
+                    {
+                        "model": self._model,
+                        "iteration": epoch,
+                        "loss": total_loss_val,
+                        "vertices": verts,
+                        "faces": faces,
+                        "assembly_id": None,
+                        "bb_assembly_id": None,
+                    }
+                )
+            except Exception as e:
+                print(f"Renderer wrapper update failed: {e}")
+        else:
+            self._run_cad_vis(verts, faces, epoch)
+
+    def _run_cad_vis(self, verts: Any, faces: Any, epoch: int) -> None:
+        """CAD rendering fallback: export STL, render to PNG via CADVisualizer, upload to wandb."""
+        if not self._use_wandb or wandb.run is None:
+            return
+
+        verts_np = verts.detach().cpu().numpy() if torch.is_tensor(verts) else verts
+        faces_np = faces.detach().cpu().numpy() if torch.is_tensor(faces) else faces
+        mesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np)
+
+        self._log_dir.mkdir(parents=True, exist_ok=True)
+        stl_path = self._log_dir / f"mesh_epoch_{epoch}.stl"
+        image_path = self._log_dir / f"render_epoch_{epoch}.png"
+        mesh.export(str(stl_path))
+
+        visualizer = CADVisualizer(stl_path=str(stl_path), out_image_path=str(image_path))
+        visualizer.render_until_blue_detected()
+
+        if stl_path.exists():
+            wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch)
+            stl_path.unlink()
+        if image_path.exists():
+            wandb.log({"render_image": wandb.Image(str(image_path))}, step=epoch, commit=True)
+            image_path.unlink()

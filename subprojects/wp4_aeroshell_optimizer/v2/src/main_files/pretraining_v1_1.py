@@ -3,8 +3,7 @@ import importlib
 import torch
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.ground_truth_masks.simple_geoms import cube_gt, sphere_gt  # Added cube_gt
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     DebugManager,
@@ -14,7 +13,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
 )
 
 
-def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
+def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml") -> SupportsModelContract:
     """
     Dynamically loads the model architecture based on the configuration file.
     I.e. imports only from the relevant file, not all the models
@@ -33,33 +32,18 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml"):
 # 2026 03 05, eschaerer:
 # look i'm not sure if the changes i made also work on the HPC. Please revert them if they don't
 def pretraining(
-    model: BaseModel | ConcatBaseModel | None = None,
+    model: SupportsModelContract | None = None,
     pretraining_config_name: str = "pretraining_v0_config.yaml",
-    override_config: dict | None = None,
     debug_manager: DebugManager | None = None,
-):
+) -> SupportsModelContract:
     # Does pretraining, for now only on a sphere
 
     config = load_config(v="v2", cfg_name=pretraining_config_name)
-    if override_config:
-        # Merge override_config into config
-        # Simple recursive merge or specific key override
-        for k, v in override_config.items():
-            if k in config:
-                if isinstance(config[k], dict) and isinstance(v, dict):
-                    config[k].update(v)
-                else:
-                    config[k] = v
-            # Also check if it's a flat wandb param that should go into nested dict
-            # e.g. "training_loop.learning_rate" -> config["training_loop"]["learning_rate"]
-            elif "." in k:
-                parts = k.split(".")
-                if parts[0] in config and isinstance(config[parts[0]], dict):
-                    config[parts[0]][parts[1]] = v
 
     # Try to use GPU if available
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if model is None:
+        print("Careful: No model provided, dynamically loading model based on config...")
         model = dynamic_model_loading(config_name=pretraining_config_name)
     model = model.to(device)
 

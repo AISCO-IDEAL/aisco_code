@@ -11,7 +11,7 @@
 #   load_config(v="v1", cfg_name="debug.yaml")
 # =============================================================================
 
-GLOBAL_DEBUG: True  # True | False | null (Custom)
+GLOBAL_DEBUG: False  # True | False | null (Custom)
 
 # ---------------------------------------------------------------------------
 # Granular feature toggles  (only effective when GLOBAL_DEBUG is null)
