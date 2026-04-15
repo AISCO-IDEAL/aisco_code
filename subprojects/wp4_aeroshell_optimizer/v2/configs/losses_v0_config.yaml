@@ -86,10 +86,10 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
   outer_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/outer.ply"
 
 cfd:
-  model_id: "gold3"
-  version: 1
-  visualisations: "True" # only works for Version 2
+  model_id: 63435761
+  version: 2
+  visualisations: false # only works for Version 2, use true or false not as string
   v_inf: 25.0   # freestream velocity [m/s] for Cp -> Pa conversion
   rho: 1.225    # air density [kg/m³] for Cp -> Pa conversion
-  mesh_resolution: 30000
+  mesh_resolution: 50000
   gradient_max: 0.1
