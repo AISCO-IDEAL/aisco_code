@@ -26,7 +26,7 @@ def allround_save_data(  # noqa: PLR0915
     save_mesh: bool = True,  # Whether to save the mesh data
     save_model: bool = True,  # Whether to save the model data,
     epoch: int | None = None,  # Current epoch number
-    storage_path: str = "cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/bulk_storage",
+    storage_path: str = "",
     resolution: int = 64,  # resolution for get_diff_mesh, only used if save_mesh is True and marching_cubes_usage is not active
     verbose: bool = True,
     pretraining: bool = False,
@@ -58,7 +58,7 @@ def allround_save_data(  # noqa: PLR0915
     model_hash_value = dict_hashing(model_data)
     # If storage_path is provided in the function arguments, use it
     # Otherwise fallback to general_config paths
-    if storage_path == "cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/bulk_storage" or not storage_path:
+    if not storage_path:
         run_locally = general_config["general_info"].get("run_locally", "False") == "True"
         if run_locally:
             storage_path = general_config["storage_paths"]["local_storage_dir"]
