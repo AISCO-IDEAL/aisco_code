@@ -349,6 +349,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 print(f"Manager finalize failed: {e}")
 
     # 6. Saving of files and postprocessing
+
+    # Reset latent vector to zeros before saving final model.
+    if uses_diversity and isinstance(model, SupportsLatentConcat):
+        model.set_latent_vector(torch.zeros_like(model.get_latent_vector()))
+
     allround_save_data(
         model=model,
         storage_path=general_config["general_info"].get(

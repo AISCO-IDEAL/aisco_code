@@ -25,7 +25,7 @@ class ConcatBaseModel(nn.Module):
         """
         self._active_z = z
 
-    def get_latent_vector(self) -> torch.Tensor | None:
+    def get_latent_vector(self) -> torch.Tensor:
         """
         Returns the currently active latent vector.
         """
