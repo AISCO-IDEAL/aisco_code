@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Standalone bunny PLY pretraining script.
+Standalone PLY pretraining script.
 Usage: python run_ply_pretraining.py
 """
 
