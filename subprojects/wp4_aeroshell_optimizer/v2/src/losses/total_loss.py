@@ -38,6 +38,7 @@ configurable prefactor before being fed to the cruising-speed solver::
 
 from __future__ import annotations
 
+import inspect
 import time
 from collections import OrderedDict
 from pathlib import Path
@@ -55,8 +56,7 @@ from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cub
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
@@ -67,7 +67,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Vi
 # ---------------------------------------------------------------------------
 _ALM_OBJECTIVE_CATEGORIES: frozenset[str] = frozenset({"aero", "solar"})
 _ALM_CONSTRAINT_CATEGORIES: tuple[str, ...] = ("bb", "eikonal", "smoothness")  # order matters ALM
-TrainModel: TypeAlias = BaseModel | ConcatBaseModel
+TrainModel: TypeAlias = SupportsModelContract
 
 
 class TotalLoss:
@@ -172,7 +172,10 @@ class TotalLoss:
         for category, lossnames in losses_block.items():
             if category == "total":
                 continue
-            for loss_name, (compute, weight, path) in lossnames.items():
+            for loss_name, entry in lossnames.items():
+                if not isinstance(entry, list) or len(entry) < 3:
+                    continue  # skip metadata keys like _role, _sign
+                compute, weight, path = entry[0], entry[1], entry[2]
                 if not compute:
                     continue
                 abs_path: Path = project_root / Path(path)
@@ -202,11 +205,16 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # loss computation
     # ------------------------------------------------------------------
-    def _compute_raw_losses(self, model: TrainModel, epoch_name: int) -> dict[str, torch.Tensor]:
+    def _compute_raw_losses(self, model: TrainModel, epoch_name: int, skip_telemetry: bool = False) -> dict[str, torch.Tensor]:
         """Evaluate every active loss instance and return raw (unweighted) tensors."""
         raw: dict[str, torch.Tensor] = {}
         for name, instance in self._active_losses.items():
-            raw[name] = instance.get_loss(model, epoch_name)
+            sig = inspect.signature(instance.get_loss)
+            if "skip_telemetry" in sig.parameters:
+                raw[name] = instance.get_loss(model, epoch_name, skip_telemetry=skip_telemetry)
+            else:
+                raw[name] = instance.get_loss(model, epoch_name)
+        self.latest_raw_metrics = raw
         return raw
 
     def _extract_assembly_id_from_instance(self, instance: Any) -> int | None:
@@ -336,12 +344,14 @@ class TotalLoss:
         device: torch.device,
         model: TrainModel,
         total_loss: torch.Tensor,
+        skip_gradients: bool = False,
     ) -> None:
         """WandB logging, mesh rendering, gradient logging, and memory diagnostics."""
         if not self._use_wandb:
-            # Still log gradients (they print to stdout when wandb is off)
-            for inst in self._active_losses.values():
-                inst.log_gradients(epoch_name)
+            if not skip_gradients:
+                # Still log gradients (they print to stdout when wandb is off)
+                for inst in self._active_losses.values():
+                    inst.log_gradients(epoch_name)
             self._log_memory_diagnostics(epoch_name, device)
             return
 
@@ -418,8 +428,9 @@ class TotalLoss:
             print(f"Skipping rendering at epoch {epoch_name} due to rendering frequency setting.")
 
         # --- Gradient logging for each loss component ---------------------
-        for inst in self._active_losses.values():
-            inst.log_gradients(epoch_name)
+        if not skip_gradients:
+            for inst in self._active_losses.values():
+                inst.log_gradients(epoch_name)
 
         # --- GPU memory diagnostics ---------------------------------------
         self._log_memory_diagnostics(epoch_name, device)
@@ -444,7 +455,7 @@ class TotalLoss:
         visualizer.render_until_blue_detected()
 
         if stl_path.exists():
-            wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name, commit=True)
+            wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name)
             time.sleep(2)
             stl_path.unlink()
         if image_path.exists():
@@ -660,10 +671,11 @@ class TotalLoss:
         device: torch.device = next(iter(model.parameters())).device
 
         # 1. Evaluate all active loss instances
-        raw: dict[str, torch.Tensor] = self._compute_raw_losses(model, epoch_name)
+        raw: dict[str, torch.Tensor] = self._compute_raw_losses(model, epoch_name, skip_telemetry=skip_telemetry)
 
         # 2. Apply weighting (populates _last_weighted_losses)
         total: torch.Tensor = self._apply_weighting(raw)
+        self.latest_weighted_metrics = self._last_weighted_losses
 
         # 3. Build logging dict and dispatch telemetry
         if not skip_telemetry:
