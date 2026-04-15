@@ -31,7 +31,8 @@ echo "=========================================="
 echo "Verifying GPU access..."
 nvidia-smi
 echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
-
+export no_proxy=$(echo "$no_proxy" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
+export NO_PROXY=$(echo "$NO_PROXY" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export PYTHONUNBUFFERED=TRUE
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
 export WANDB_CACHE_DIR="/cluster/scratch/$USERNAME/wandb_cache"
