@@ -466,6 +466,7 @@ class Interpolator:
     def upload_to_wandb(
         self,
         key: str = "latent_interpolation",
+        step: int | None = None,
         clear_cache: bool = True,
     ) -> None:
         """
@@ -488,9 +489,11 @@ class Interpolator:
             image_array = np.array(self._grid_image)
 
             # Log to wandb
-            # We don't pass `step` explicitly to wandb.log because it can conflict with
-            # the internal global step tracking if multi_log_in_one is also used.
-            wandb.log({key: wandb.Image(image_array, caption="Latent Space Interpolation Grid")})
+            log_payload = {key: wandb.Image(image_array, caption="Latent Space Interpolation Grid")}
+            if step is None:
+                wandb.log(log_payload)
+            else:
+                wandb.log(log_payload, step=step)
             print(f"Uploaded interpolation grid to WandB (key={key})")
         except Exception as e:
             print(f"Warning: WandB upload failed: {e}")

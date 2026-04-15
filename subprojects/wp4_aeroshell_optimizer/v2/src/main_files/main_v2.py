@@ -36,6 +36,11 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import (
     reformat_wandb_name,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.wandb_utils import patch_wandb_log_for_monotonic_steps
+from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.ginn_visuals_utils import (
+    cleanup_latent_interpolator,
+    run_latent_interpolation,
+    setup_latent_interpolator,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
 
 configure_headless_pyvista()
@@ -310,6 +315,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             log_dir=rendering_dir,
         )
 
+        interpolation_state = setup_latent_interpolator(
+            model=model,
+            device=device,
+            general_config=general_config,
+            run_locally=run_locally,
+            rendering_dir=rendering_dir,
+            verbose=verbose,
+        )
+        run_latent_interpolation(state=interpolation_state, epoch=0, stage="initial", verbose=verbose)
+
         if verbose:
             mode = f"diversity (N={population_size})" if uses_diversity else "single-model"
             print(f"Starting {mode} training loop for {num_epochs} epochs...")
@@ -317,11 +332,15 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         for epoch in range(num_epochs):
             model.train()
             metrics = trainer.step(epoch=epoch)
+            run_latent_interpolation(state=interpolation_state, epoch=epoch, stage="periodic", verbose=verbose)
             if verbose and epoch % 50 == 0:
                 print(
                     f"Epoch {epoch}/{num_epochs} | per_vector={metrics['per_vector_loss']:.4f} | "
                     f"diversity={metrics['diversity_loss']:.4f} | total={metrics['total_loss']:.4f}"
                 )
+
+        run_latent_interpolation(state=interpolation_state, epoch=num_epochs, stage="final", verbose=verbose)
+        cleanup_latent_interpolator(interpolation_state)
 
         if use_wandb and wandb_cfg.get("use_neural_renderer", False):
             try:

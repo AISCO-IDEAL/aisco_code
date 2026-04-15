@@ -119,9 +119,7 @@ class TotalLossV2:
             if category == "total":
                 continue
             if not isinstance(block, dict):
-                raise TypeError(
-                    f"Invalid category '{category}': expected a dictionary block with _role and loss entries."
-                )
+                raise TypeError(f"Invalid category '{category}': expected a dictionary block with _role and loss entries.")
 
             role: str | None = block.get("_role")
             if role is None:
@@ -152,9 +150,7 @@ class TotalLossV2:
                         )
                     is_enabled = bool(compute)
                 else:
-                    raise TypeError(
-                        f"Invalid compute flag for '{category}.{loss_name}': expected 0/1 or bool, got {compute!r}."
-                    )
+                    raise TypeError(f"Invalid compute flag for '{category}.{loss_name}': expected 0/1 or bool, got {compute!r}.")
 
                 try:
                     weight_float = float(weight)
@@ -164,9 +160,7 @@ class TotalLossV2:
                     ) from exc
 
                 if not isinstance(path, str) or not path.strip():
-                    raise ValueError(
-                        f"Invalid path for '{category}.{loss_name}': expected non-empty string, got {path!r}."
-                    )
+                    raise ValueError(f"Invalid path for '{category}.{loss_name}': expected non-empty string, got {path!r}.")
 
                 if not is_enabled:
                     continue
@@ -174,9 +168,7 @@ class TotalLossV2:
                 enabled_entries.append((loss_name, weight_float, path))
 
             if not enabled_entries:
-                raise ValueError(
-                    f"No enabled loss entry for category '{category}'. Set exactly one entry to compute=1."
-                )
+                raise ValueError(f"No enabled loss entry for category '{category}'. Set exactly one entry to compute=1.")
             if len(enabled_entries) > 1:
                 enabled_names = [name for name, _w, _p in enabled_entries]
                 raise ValueError(
