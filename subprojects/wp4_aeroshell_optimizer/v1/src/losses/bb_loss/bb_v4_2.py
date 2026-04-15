@@ -1,10 +1,9 @@
-import os
-
 import numpy as np
 import torch
 import trimesh
 
 from subprojects.wp2_assembler.version4.components.nbz import bounding_box_of_assembly, call_assembly, max_assembly_id
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.assembly_id_utils import resolve_bb_assembly_id
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.s_d_ffrom_mesh import SDFfromMesh
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
 
@@ -33,17 +32,8 @@ class BbV42(ParentLoss):
 
     def _setup(self) -> None:
         self.__config = self.losses_config["bb_config"]
-
-        env_assembly_id = os.getenv("AISCO_ASSEMBLY_ID", "").strip()
-        configured_assembly_id = self.__config.get("assembly_id")
-
-        if env_assembly_id:
-            self.assembly_id = int(env_assembly_id)
-        elif configured_assembly_id is not None:
-            self.assembly_id = int(configured_assembly_id)
-        else:
-            rng = np.random.default_rng()
-            self.assembly_id = int(rng.integers(0, max_assembly_id() + 1))
+        rng = np.random.default_rng()
+        self.assembly_id = resolve_bb_assembly_id(self.__config, lambda: int(rng.integers(0, max_assembly_id() + 1)))
 
         max_id = max_assembly_id()
         if not 0 <= self.assembly_id <= max_id:

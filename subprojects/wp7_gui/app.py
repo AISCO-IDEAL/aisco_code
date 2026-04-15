@@ -88,17 +88,12 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/run-local/slow-gif":
             self.handle_slow_gif(parsed)
             return
-        if parsed.path == "/run-local/gif-first-frame":
-            self.handle_gif_first_frame(parsed)
-            return
 
         super().do_GET()
 
     def do_POST(self) -> None:
         if self.path == "/run-local":
             self.handle_run_local()
-        elif self.path == "/run-command":
-            self.handle_run_command()
         else:
             self._send_json(404, {"message": "Endpoint not found"})
 
@@ -240,45 +235,6 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             },
         )
 
-    def handle_run_command(self) -> None:
-        body_data = self._read_json_body()
-        command = str(body_data.get("command", "")).strip()
-
-        if not command:
-            self._send_json(400, {"message": "Command is empty"})
-            return
-
-        try:
-            completed = subprocess.run(
-                ["bash", "-lc", command],
-                cwd=str(REPO_ROOT.parent),
-                capture_output=True,
-                text=True,
-                timeout=300,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            self._send_json(408, {"message": "Command timed out after 300 seconds"})
-            return
-        except Exception as error:
-            self._send_json(500, {"message": f"Failed to execute command: {error}"})
-            return
-
-        max_chars = 60000
-        stdout = completed.stdout[-max_chars:]
-        stderr = completed.stderr[-max_chars:]
-
-        self._send_json(
-            200,
-            {
-                "message": "Command executed",
-                "command": command,
-                "return_code": completed.returncode,
-                "stdout": stdout,
-                "stderr": stderr,
-            },
-        )
-
     def handle_run_local_artifacts(self) -> None:
         storage_root = self._get_storage_root()
         run_dir = self._detect_current_run_dir()
@@ -296,10 +252,9 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             )
             return
 
-        mesh_assembly_dir = run_dir / "mesh_assembly_mode"
+        mesh_assembly_dir = run_dir / "mesh_assembly_mode_v2"
         solar_loss_dir = run_dir / "solar_loss_rendering"
         mesh_dir = run_dir / "meshes"
-        mesh_steps_dir = run_dir / "solar_loss_rendering" / "sim_renders"
 
         gifs = []
         if mesh_assembly_dir.exists():
@@ -311,7 +266,6 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                         "rel_path": rel_path,
                         "url": f"/run-local/artifact-file?path={rel_path}",
                         "slow_url": f"/run-local/slow-gif?path={rel_path}&factor=2.5",
-                        "first_frame_url": f"/run-local/gif-first-frame?path={rel_path}",
                     }
                 )
 
@@ -325,7 +279,6 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                         "rel_path": rel_path,
                         "url": f"/run-local/artifact-file?path={rel_path}",
                         "slow_url": f"/run-local/slow-gif?path={rel_path}&factor=2.5",
-                        "first_frame_url": f"/run-local/gif-first-frame?path={rel_path}",
                     }
                 )
 
@@ -346,22 +299,6 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
 
             meshes.sort(key=lambda item: item["epoch"] if item["epoch"] is not None else -1)
 
-        mesh_step_images = []
-        if mesh_steps_dir.exists():
-            for image_path in sorted(mesh_steps_dir.glob("mesh_selection_side_*.png")):
-                rel_path = image_path.resolve().relative_to(storage_root.resolve()).as_posix()
-                epoch = self._extract_epoch(image_path.name)
-                mesh_step_images.append(
-                    {
-                        "name": image_path.name,
-                        "rel_path": rel_path,
-                        "url": f"/run-local/artifact-file?path={rel_path}",
-                        "epoch": epoch,
-                    }
-                )
-
-            mesh_step_images.sort(key=lambda item: item["epoch"] if item["epoch"] is not None else -1)
-
         self._send_json(
             200,
             {
@@ -370,7 +307,6 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                 "mesh_assembly_gifs": gifs,
                 "solar_loss_gifs": solar_loss_gifs,
                 "meshes": meshes,
-                "mesh_step_images": mesh_step_images,
                 "message": "Artifacts loaded",
             },
         )
@@ -396,62 +332,6 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
         content = requested.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", mime_type)
-        self.send_header("Content-Length", str(len(content)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(content)
-
-    def handle_gif_first_frame(self, parsed) -> None:
-        error_status: int | None = None
-        error_message: str | None = None
-
-        query = parse_qs(parsed.query)
-        raw_path = query.get("path", [""])[0]
-        rel_path = unquote(raw_path).lstrip("/")
-        requested: Path | None = None
-        if not rel_path:
-            error_status = 400
-            error_message = "Missing path query parameter"
-        else:
-            requested = self._resolve_storage_file(rel_path)
-            if requested is None:
-                error_status = 400
-                error_message = "Invalid artifact path"
-            elif not requested.exists() or not requested.is_file():
-                error_status = 404
-                error_message = "Artifact file not found"
-            elif requested.suffix.lower() != ".gif":
-                error_status = 400
-                error_message = "Only GIF files are supported"
-
-        if error_status is not None:
-            self._send_json(error_status, {"message": error_message})
-            return
-
-        assert requested is not None
-
-        cache_key = hashlib.sha1(f"{requested.resolve()}|{requested.stat().st_mtime_ns}|first_frame".encode()).hexdigest()
-        SLOW_GIF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        cached_path = SLOW_GIF_CACHE_DIR / f"first_{cache_key}.png"
-
-        if not cached_path.exists():
-            if imageio is None:
-                self._send_json(500, {"message": "imageio is required for GIF preview generation"})
-                return
-            try:
-                frames = imageio.mimread(requested)
-                if not frames:
-                    self._send_json(500, {"message": "Failed to decode GIF frames"})
-                    return
-
-                imageio.imwrite(cached_path, cast(Any, frames[0]))
-            except Exception as error:
-                self._send_json(500, {"message": f"Failed to extract first frame: {error}"})
-                return
-
-        content = cached_path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", "image/png")
         self.send_header("Content-Length", str(len(content)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()

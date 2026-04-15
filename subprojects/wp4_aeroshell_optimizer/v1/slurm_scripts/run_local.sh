@@ -57,7 +57,9 @@ export PYTHONUNBUFFERED=TRUE
 export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 export AISCO_CODE_PATH="$PROJECT_ROOT"
 cd "$PROJECT_ROOT"
-
+# Allow W&B to route through the cluster proxy (eth_proxy sets no_proxy which blocks api.wandb.ai)
+export no_proxy=$(echo "$no_proxy" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
+export NO_PROXY=$(echo "$NO_PROXY" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 # Run the python command
 python3 subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py \
     --save_model \
