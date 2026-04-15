@@ -13,14 +13,30 @@ general_info:
   cse_prefactors:  # prefactors applied to objectives before feeding into CSE
     drag: 1.0
     solar: 1.0
+  cse_params:  # physical constants for CSE; also picks which category is drag/solar
+    drag_category: "aero"
+    solar_category: "solar"
+    mass: 210
+    c_losses: 20
+    rolling_friction_coefficient: 0.006
+    max_iter: 12
+    tol: 1.0e-4
 
-losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically loads and instantiates all losses with compute=1
+# Each category block gets a `_role` metadata field: "objective", "constraint", or "aux".
+# `_sign: maximize` flips the sign of an objective in manual (non-CSE) mode. Keys starting
+# with `_` are metadata and are NOT loaded as losses. Constraint ordering for ALM follows
+# the category order in the YAML (aero < bb < eikonal < smoothness < solar here, with
+# only constraint-role blocks entering the ALM vector).
+losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically loads all losses with compute=1
   # NOTE: that for each loss class, only one version should have compute=True
   aero:
-    null_loss_aero_v1_: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
-    gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+    _role: objective
+    _sign: minimize
+    null_loss_aero_v1_: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
+    gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
   bb:
+    _role: constraint
     # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v1.py"]
     # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15
     null_loss_bb_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/null_loss_bb_v1.py"]
@@ -32,21 +48,26 @@ losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically
     silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"] # version provided by Silvretta, not working well as of 2025 12 15
 
   eikonal:
+    _role: constraint
     eikonal_v0: [1, 100.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
 
   smoothness:
+    _role: constraint
     smoothness_v0: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
 
   # surface_area:
+  #   _role: aux
   #   surface_loss_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
 
   solar:
-    solar_v3B_2: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
+    _role: objective
+    _sign: maximize
+    solar_v3B_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
     solar_v4: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
     solar_v5: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
-    null_loss_solar_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/null_loss_solar_v1.py"]
+    null_loss_solar_v1: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/null_loss_solar_v1.py"]
 
   total:
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
@@ -63,7 +84,7 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     dy: 250  #
     dz: 250  #
     rand: 400  #
-  assembly_id: 1 # 1 for the standard one  # rendering modes only (assembly_mode.py, mesh_assembly_mode_v2.py), not bb_v3.py (which randomises 1-52)
+  assembly_id: 2 # 1 for the standard one  # rendering modes only (assembly_mode.py, mesh_assembly_mode_v2.py), not bb_v3.py (which randomises 1-52)
   render_until_blue: "False"
   sdf_device: cuda  # mesh-backed BB SDF compute device
   # v4.2 specific:

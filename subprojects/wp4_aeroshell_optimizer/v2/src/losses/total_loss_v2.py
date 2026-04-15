@@ -2,25 +2,25 @@
 
 Responsibilities are strictly limited to loss computation and weighting:
 
-* ``compute(model)``                                      - evaluate all active loss instances
-* ``weight(bundle, alm_manager=None)`` - CSE/manual objectives + ALM/manual constraints + manual aux
+* compute(model): evaluate all active loss instances.
+* weight(bundle, alm_manager=None): CSE/manual objectives + ALM/manual constraints + manual aux.
 
-NO wandb, NO mesh extraction, NO matplotlib, NO ALM state here. The caller (e.g. DiversityTrainer)
-owns logging, rendering, ALM multiplier updates, and any other telemetry.
+No wandb, no mesh extraction, no matplotlib, and no ALM state updates happen here.
+The caller (for example DiversityTrainer) owns logging, rendering, ALM multiplier
+updates, and any other telemetry.
 
-Role classification is driven from YAML via a ``_role`` metadata key per category block
-(``objective``, ``constraint``, ``aux``). ``_sign: maximize`` flips the sign of an objective
-in manual (non-CSE) mode. Keys starting with ``_`` are metadata and never loaded as losses.
-Constraint ordering for ALM follows the YAML category order.
+Role classification is driven from YAML via a _role metadata key per category
+block (objective, constraint, aux). _sign: maximize flips the sign of an objective
+in manual (non-CSE) mode. Keys starting with "_" are metadata and never loaded as
+losses. Constraint ordering for ALM follows YAML category order.
 """
 
 from __future__ import annotations
 
 import inspect
-from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeAlias
+from typing import Any
 
 import torch
 
@@ -29,14 +29,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cru
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
-
-TrainModel: TypeAlias = SupportsModelContract
-
-_ROLE_OBJECTIVE = "objective"
-_ROLE_CONSTRAINT = "constraint"
-_ROLE_AUX = "aux"
-_VALID_ROLES = frozenset({_ROLE_OBJECTIVE, _ROLE_CONSTRAINT, _ROLE_AUX})
-_METADATA_PREFIX = "_"
 
 
 @dataclass
@@ -52,7 +44,7 @@ class RawLossBundle:
     """
 
     objectives: dict[str, torch.Tensor] = field(default_factory=dict)
-    constraints: OrderedDict[str, torch.Tensor] = field(default_factory=OrderedDict)
+    constraints: dict[str, torch.Tensor] = field(default_factory=dict)
     aux: dict[str, torch.Tensor] = field(default_factory=dict)
     side_data: dict[str, Any] = field(default_factory=dict)
 
@@ -83,7 +75,7 @@ class TotalLossV2:
         )
 
         gi: dict[str, Any] = self.losses_config["general_info"]
-        self._use_cse: bool = gi.get("CSE") == "True"
+        self.use_cse: bool = gi.get("CSE") == "True"
 
         # CSE physical constants — defaults match historical hardcoded values
         cse_params: dict[str, Any] = gi.get("cse_params", {})
@@ -98,15 +90,28 @@ class TotalLossV2:
 
         self._init_active_losses()
 
-    def _init_active_losses(self) -> None:  # noqa: PLR0912
-        """Instantiate the active loss of every category and classify by ``_role``."""
-        project_root: Path = Path.cwd()
-        losses_block: dict[str, Any] = self.losses_config.get("losses", {})
+    def _init_active_losses(self) -> None:  # noqa: PLR0912, PLR0915
+        """Instantiate active losses and build role-grouped internal lookup maps.
 
-        # Category -> (loss_name, instance); OrderedDict preserves YAML order for ALM alignment
-        self._objective_by_category: OrderedDict[str, tuple[str, Any]] = OrderedDict()
-        self._constraint_by_category: OrderedDict[str, tuple[str, Any]] = OrderedDict()
-        self._aux_by_category: OrderedDict[str, tuple[str, Any]] = OrderedDict()
+        Sets up `_objective_by_category`, `_constraint_by_category`, `_aux_by_category`,
+        `_objective_signs`, and `_manual_weights` from the configured YAML loss blocks.
+
+        Validation is strict: every non-"total" category must define a valid `_role`
+        and exactly one enabled loss entry (`compute=1`) with a valid
+        `[compute, weight, path]` structure.
+        """
+        project_root: Path = Path.cwd()
+        losses_block_raw: Any = self.losses_config.get("losses")
+        if not isinstance(losses_block_raw, dict):
+            raise TypeError("Invalid losses config: expected top-level 'losses' to be a dictionary.")
+        losses_block: dict[str, Any] = losses_block_raw
+        if not losses_block:
+            raise ValueError("Invalid losses config: no categories defined under 'losses'.")
+
+        # Category -> (loss_name, instance); dict preserves insertion order on Python 3.7+
+        self._objective_by_category: dict[str, tuple[str, Any]] = {}
+        self._constraint_by_category: dict[str, tuple[str, Any]] = {}
+        self._aux_by_category: dict[str, tuple[str, Any]] = {}
         self._objective_signs: dict[str, int] = {}  # only used in manual (non-CSE) objective mode
         self._manual_weights: dict[str, float] = {}  # loss_name -> weight from YAML [compute, weight, path]
 
@@ -114,46 +119,88 @@ class TotalLossV2:
             if category == "total":
                 continue
             if not isinstance(block, dict):
-                continue
+                raise TypeError(
+                    f"Invalid category '{category}': expected a dictionary block with _role and loss entries."
+                )
 
             role: str | None = block.get("_role")
             if role is None:
-                continue  # category without _role: silently skip (legacy/commented blocks)
-            if role not in _VALID_ROLES:
-                raise ValueError(f"Invalid _role '{role}' for category '{category}'. Expected one of {sorted(_VALID_ROLES)}.")
+                raise ValueError(f"Missing _role for category '{category}'. Expected one of ['objective', 'constraint', 'aux'].")
+            if role not in {"objective", "constraint", "aux"}:
+                raise ValueError(
+                    f"Invalid _role '{role}' for category '{category}'. Expected one of ['aux', 'constraint', 'objective']."
+                )
 
             sign_val: int = -1 if block.get("_sign", "minimize") == "maximize" else 1
 
-            # Find the single active loss in this category (first entry with compute=1)
-            active_entry: tuple[str, Any] | None = None
+            # Find exactly one active loss in this category (compute=1)
+            enabled_entries: list[tuple[str, float, str]] = []
             for loss_name, entry in block.items():
-                if loss_name.startswith(_METADATA_PREFIX):
+                if loss_name.startswith("_"):
                     continue
                 if not isinstance(entry, list) or len(entry) < 3:
-                    continue
+                    raise ValueError(
+                        f"Invalid entry for '{category}.{loss_name}': expected [compute, weight, path], got {entry!r}."
+                    )
                 compute, weight, path = entry[0], entry[1], entry[2]
-                if not compute:
+                if isinstance(compute, bool):
+                    is_enabled = compute
+                elif isinstance(compute, int):
+                    if compute not in {0, 1}:
+                        raise ValueError(
+                            f"Invalid compute flag for '{category}.{loss_name}': expected 0/1 or bool, got {compute!r}."
+                        )
+                    is_enabled = bool(compute)
+                else:
+                    raise TypeError(
+                        f"Invalid compute flag for '{category}.{loss_name}': expected 0/1 or bool, got {compute!r}."
+                    )
+
+                try:
+                    weight_float = float(weight)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        f"Invalid weight for '{category}.{loss_name}': expected numeric value, got {weight!r}."
+                    ) from exc
+
+                if not isinstance(path, str) or not path.strip():
+                    raise ValueError(
+                        f"Invalid path for '{category}.{loss_name}': expected non-empty string, got {path!r}."
+                    )
+
+                if not is_enabled:
                     continue
 
-                abs_path: Path = project_root / Path(path)
-                family: str = Path(path).stem.title().replace("_", "")
-                loss_cls = load_class_from_path(str(abs_path), family)
-                instance = loss_cls(
-                    device=str(self._device),
-                    loss_name=loss_name,
-                    losses_config=self.losses_config,
+                enabled_entries.append((loss_name, weight_float, path))
+
+            if not enabled_entries:
+                raise ValueError(
+                    f"No enabled loss entry for category '{category}'. Set exactly one entry to compute=1."
                 )
-                self._manual_weights[loss_name] = float(weight)
-                active_entry = (loss_name, instance)
-                break
+            if len(enabled_entries) > 1:
+                enabled_names = [name for name, _w, _p in enabled_entries]
+                raise ValueError(
+                    f"Multiple enabled loss entries for category '{category}': {enabled_names}. "
+                    "Set exactly one entry to compute=1."
+                )
 
-            if active_entry is None:
-                continue
+            loss_name, weight_float, path = enabled_entries[0]
 
-            if role == _ROLE_OBJECTIVE:
+            abs_path: Path = project_root / Path(path)
+            family: str = Path(path).stem.title().replace("_", "")
+            loss_cls = load_class_from_path(str(abs_path), family)
+            instance = loss_cls(
+                device=str(self._device),
+                loss_name=loss_name,
+                losses_config=self.losses_config,
+            )
+            self._manual_weights[loss_name] = weight_float
+            active_entry = (loss_name, instance)
+
+            if role == "objective":
                 self._objective_by_category[category] = active_entry
                 self._objective_signs[category] = sign_val
-            elif role == _ROLE_CONSTRAINT:
+            elif role == "constraint":
                 self._constraint_by_category[category] = active_entry
             else:  # aux
                 self._aux_by_category[category] = active_entry
@@ -161,10 +208,6 @@ class TotalLossV2:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    @property
-    def use_cse(self) -> bool:
-        return self._use_cse
-
     @property
     def constraint_names(self) -> list[str]:
         """Active constraint loss names, in YAML category order (= ALM vector order)."""
@@ -175,23 +218,37 @@ class TotalLossV2:
         """Category names for active constraints, in YAML order."""
         return list(self._constraint_by_category.keys())
 
-    def compute(self, model: TrainModel, epoch_name: int = 0) -> RawLossBundle:
-        """Evaluate every active loss instance and return raw (unweighted) tensors."""
+    def compute(self, model: SupportsModelContract, epoch_name: int = 0) -> RawLossBundle:
+        """Evaluate every active loss instance and return raw (unweighted) tensors.
+
+        Args:
+            model: The trainable model passed to each active loss instance.
+            epoch_name: Training step/epoch identifier forwarded to each loss call.
+
+        Returns:
+            RawLossBundle with unweighted objective, constraint, and aux tensors
+            grouped by category.
+        """
         bundle = RawLossBundle()
         for category, (_loss_name, instance) in self._objective_by_category.items():
-            bundle.objectives[category] = self._call_loss(instance, model, epoch_name)
+            sig = inspect.signature(instance.get_loss)
+            if "skip_telemetry" in sig.parameters:
+                bundle.objectives[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+            else:
+                bundle.objectives[category] = instance.get_loss(model, epoch_name)
         for category, (_loss_name, instance) in self._constraint_by_category.items():
-            bundle.constraints[category] = self._call_loss(instance, model, epoch_name)
+            sig = inspect.signature(instance.get_loss)
+            if "skip_telemetry" in sig.parameters:
+                bundle.constraints[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+            else:
+                bundle.constraints[category] = instance.get_loss(model, epoch_name)
         for category, (_loss_name, instance) in self._aux_by_category.items():
-            bundle.aux[category] = self._call_loss(instance, model, epoch_name)
+            sig = inspect.signature(instance.get_loss)
+            if "skip_telemetry" in sig.parameters:
+                bundle.aux[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+            else:
+                bundle.aux[category] = instance.get_loss(model, epoch_name)
         return bundle
-
-    @staticmethod
-    def _call_loss(instance: Any, model: TrainModel, epoch_name: int) -> torch.Tensor:
-        sig = inspect.signature(instance.get_loss)
-        if "skip_telemetry" in sig.parameters:
-            return instance.get_loss(model, epoch_name, skip_telemetry=True)
-        return instance.get_loss(model, epoch_name)
 
     def weight(  # noqa: PLR0912
         self,
@@ -204,7 +261,15 @@ class TotalLossV2:
         * Constraints: ALM ``lambda*c + 0.5*mu*c^2`` if ``alm_manager`` is given, else manual weights.
         * Auxiliaries: always manual weights.
 
-        ALM multiplier updates are NOT performed here — the caller owns that lifecycle.
+        Args:
+            bundle: Raw unweighted losses grouped by role/category from `compute`.
+            alm_manager: Optional ALM manager for constraint penalty weighting.
+
+        Returns:
+            WeightedLossResult where `scalar` is used for backward and `log_data`
+            contains detached numeric values for telemetry.
+
+        ALM multiplier updates are NOT performed here; the caller owns that lifecycle.
         """
         log_data: dict[str, float] = {}
         weighted_components: dict[str, torch.Tensor] = {}
@@ -218,7 +283,7 @@ class TotalLossV2:
             log_data[f"raw_losses/{self._aux_by_category[category][0]}"] = t.item()
 
         # --- Objectives ---------------------------------------------------
-        if self._use_cse:
+        if self.use_cse:
             if self._cse_drag_category not in bundle.objectives:
                 raise KeyError(
                     f"CSE active but drag category '{self._cse_drag_category}' is not an active objective. "
