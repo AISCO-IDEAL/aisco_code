@@ -48,7 +48,7 @@ class BaseModel(nn.Module):
         x = x / 1000.0  # Scale input to meters
         for layer in self.model_layers:
             x = layer(x)
-        output = x.squeeze(-1)
+            output = x
         return output * 1000.0
 
     def optimise(
