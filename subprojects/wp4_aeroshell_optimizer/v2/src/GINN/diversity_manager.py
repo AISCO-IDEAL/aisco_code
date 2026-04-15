@@ -233,7 +233,16 @@ class DiversityTrainer:
     # Main step
     # ------------------------------------------------------------------
     def step(self, epoch: int = -1) -> dict[str, float]:
-        """One full optimization step: Phase 1 -> ALM update -> Phase 2 -> opt.step -> log/render."""
+        """
+        One full optimization step: Phase 1 -> ALM update -> Phase 2 -> opt.step -> log/render.
+        Returns: dict of metrics for the caller (stripped prefix for convenience), containing:
+            * "per_vector_loss": the average unweighted loss across the population (for tracking the main optimization objective)
+            * "diversity_loss": the raw diversity loss (for tracking diversity independently of its weight)
+            * "total_loss": the combined weighted loss (for tracking overall optimization progress)
+            * any metric in avg_log_data with "raw_losses/" prefix, stripped in the returned dict for convenience (e.g. "chamfer", "constraint1", etc.)
+
+
+        """
         if self._z_resample_cadence > 0 and epoch > 0 and epoch % self._z_resample_cadence == 0:
             self._resample_population(epoch)
 

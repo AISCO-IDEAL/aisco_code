@@ -172,7 +172,10 @@ class TotalLoss:
         for category, lossnames in losses_block.items():
             if category == "total":
                 continue
-            for loss_name, (compute, weight, path) in lossnames.items():
+            for loss_name, entry in lossnames.items():
+                if not isinstance(entry, list) or len(entry) < 3:
+                    continue  # skip metadata keys like _role, _sign
+                compute, weight, path = entry[0], entry[1], entry[2]
                 if not compute:
                     continue
                 abs_path: Path = project_root / Path(path)

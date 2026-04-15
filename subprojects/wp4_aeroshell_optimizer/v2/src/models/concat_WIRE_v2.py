@@ -18,12 +18,22 @@ class RealGaborLayer(nn.Module):
         scale: Scaling of Gabor Gaussian term
     """
 
-    def __init__(self, in_features, out_features, bias=True, omega0=10.0, sigma0=10.0, train_omega=False, train_scale=False):
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        bias=True,
+        omega0=10.0,
+        sigma0=10.0,
+        train_omega=False,
+        train_scale=False,
+        dtype=torch.float32,
+    ):
         # Inherit from torch.nn.Module
         super().__init__()
 
-        self.omega_0 = omega0 if not train_omega else nn.Parameter(torch.tensor(omega0))
-        self.scale_0 = sigma0 if not train_scale else nn.Parameter(torch.tensor(sigma0))
+        self.omega_0 = omega0 if not train_omega else nn.Parameter(torch.tensor(omega0, dtype=dtype))
+        self.scale_0 = sigma0 if not train_scale else nn.Parameter(torch.tensor(sigma0, dtype=dtype))
 
         self.in_features = in_features
         self.splitter = nn.Linear(in_features, 2 * out_features, bias=bias)
@@ -93,6 +103,7 @@ class ConcatWIREV2(ConcatBaseModel):
                 sigma0=first_scale,
                 train_omega=train_omega,
                 train_scale=train_scale,
+                dtype=dtype,
             )
         )
 
@@ -107,6 +118,7 @@ class ConcatWIREV2(ConcatBaseModel):
                     sigma0=hidden_scale,
                     train_omega=train_omega,
                     train_scale=train_scale,
+                    dtype=dtype,
                 )
                 for _ in range(hidden_layers)
             ]
