@@ -1,7 +1,7 @@
 """Head-to-head benchmark: OLD uniform MeshSDF vs NEW adaptive WP5 extractor.
 Measures extraction time, gradient-flow time, peak GPU memory, vertex count.
 Run via SLURM on RTX 4090 or locally with:
-    python tests/wp5/benchmark_old_vs_new_extractor.py [--resolution 128]
+    python tests/wp5/src/benchmark_old_vs_new_extractor.py [--resolution 128]
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import sys
 import time
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -20,14 +21,19 @@ from torch import nn
 
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor as OldExtractor
 
+_NEW_EXTRACTOR_CLS: Any | None
+_NEW_EXTRACTOR_LOAD_CONFIG: Any | None
+
 try:
     from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor as NewExtractor
     from subprojects.wp5.unified_mesh_extraction import load_mesh_extraction_config
 
+    _NEW_EXTRACTOR_CLS = NewExtractor
+    _NEW_EXTRACTOR_LOAD_CONFIG = load_mesh_extraction_config
     _NEW_EXTRACTOR_IMPORT_ERROR: Exception | None = None
 except Exception as exc:
-    NewExtractor = None
-    load_mesh_extraction_config = None
+    _NEW_EXTRACTOR_CLS = None
+    _NEW_EXTRACTOR_LOAD_CONFIG = None
     _NEW_EXTRACTOR_IMPORT_ERROR = exc
 
 
@@ -181,7 +187,7 @@ def _run_new_extractor(
 ) -> BenchResult:
     _reset_cuda()
     error_msg = ""
-    if NewExtractor is None or load_mesh_extraction_config is None:
+    if _NEW_EXTRACTOR_CLS is None or _NEW_EXTRACTOR_LOAD_CONFIG is None:
         return BenchResult(
             label="new_adaptive",
             resolution=base_resolution,
@@ -197,7 +203,7 @@ def _run_new_extractor(
             success=False,
             error=f"ImportError: {_NEW_EXTRACTOR_IMPORT_ERROR}",
         )
-    cfg = load_mesh_extraction_config()
+    cfg = _NEW_EXTRACTOR_LOAD_CONFIG()
     cfg = replace(
         cfg,
         device=device,
@@ -206,7 +212,7 @@ def _run_new_extractor(
         max_refine_levels=max_refine_levels,
         leaf_cell_resolution=leaf_cell_resolution,
     )
-    ext = NewExtractor(config=cfg)
+    ext = _NEW_EXTRACTOR_CLS(config=cfg)
     try:
         t0 = time.perf_counter()
         vertices, faces = ext.extract_mesh(model)

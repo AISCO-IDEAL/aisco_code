@@ -1,8 +1,8 @@
 # Mesh Benchmark Tool
 Purpose: compare runtime and memory usage of mesh extraction methods with identical main-file execution flow.
 ## Files
-1. tests/wp5/mesh_benchmark_runner.py
-2. tests/wp5/mesh_benchmark_scenarios.yaml
+1. tests/wp5/src/mesh_benchmark_runner.py
+2. tests/wp5/configs/mesh_benchmark_scenarios.yaml
 ## Supported Main Targets (preconfigured)
 1. subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py
 2. subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v1_2_GINN_concat.py
@@ -19,7 +19,7 @@ Note: add rtx5090 later by extending gpu_profiles in the scenario yaml.
 6. Restores original config files after each case.
 ## Run Example
 source /cluster/home/eschaerer/AISCO_code/aisco_env/bin/activate
-PYTHONPATH=/cluster/home/eschaerer/AISCO_code python /cluster/home/eschaerer/AISCO_code/tests/wp5/mesh_benchmark_runner.py --scenario /cluster/home/eschaerer/AISCO_code/tests/wp5/mesh_benchmark_scenarios.yaml
+PYTHONPATH=/cluster/home/eschaerer/AISCO_code python /cluster/home/eschaerer/AISCO_code/tests/wp5/src/mesh_benchmark_runner.py --scenario /cluster/home/eschaerer/AISCO_code/tests/wp5/configs/mesh_benchmark_scenarios.yaml
 ## Useful Filters
 1. --only-runs v1_main_v1_1_one_model
 2. --only-cases mesh_sdf diso_mc

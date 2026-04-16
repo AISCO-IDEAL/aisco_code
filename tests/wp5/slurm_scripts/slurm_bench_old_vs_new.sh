@@ -7,7 +7,7 @@
 #SBATCH --mem-per-cpu=5120
 #SBATCH --gpus=rtx_3090:1
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
-## Usage: sbatch ~/AISCO_code/tests/wp5/slurm_bench_old_vs_new.sh
+## Usage: sbatch ~/AISCO_code/tests/wp5/slurm_scripts/slurm_bench_old_vs_new.sh
 umask 0002
 export no_proxy=$(echo "${no_proxy:-}" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export NO_PROXY=$(echo "${NO_PROXY:-}" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
@@ -27,7 +27,7 @@ source "$VENV_DIR/bin/activate"
 nvidia-smi
 cd /cluster/home/$USERNAME/AISCO_code
 export WANDB_MODE=disabled
-python tests/wp5/benchmark_old_vs_new_extractor.py \
+python tests/wp5/src/benchmark_old_vs_new_extractor.py \
     --resolutions 64 128 256 \
     --new-base-res 32 \
     --new-refine-levels 3 4 5 \
