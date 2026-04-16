@@ -295,7 +295,6 @@ class WIREV2(BaseModel):
                     verbose=general_config["general_info"].get("verbose", False),
                     pretraining=False,
                     wandb_run=wandb_name,
-                    marching_cubes_usage=training_config["training_params"].get("marching_cubes_usage", "False"),
                 )
 
             # param.grad now holds the sum of all per-component gradients — same as if

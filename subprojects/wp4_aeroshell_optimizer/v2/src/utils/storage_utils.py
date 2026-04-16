@@ -4,23 +4,18 @@ import datetime
 import glob
 import json
 import os
-import time
-from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
-from typing import cast
 
 import torch
 import trimesh
 
-from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MarchingCubesExtractor
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing, str_hashing
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.kaolin_conversions import (
-    get_diff_mesh,
-    kaolin_to_PLY,
-)
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.kaolin_conversions import kaolin_to_PLY
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 
 def allround_save_data(  # noqa: PLR0915
@@ -30,11 +25,10 @@ def allround_save_data(  # noqa: PLR0915
     save_model: bool = True,  # Whether to save the model data,
     epoch: int | None = None,  # Current epoch number
     storage_path: str = "cluster/work/fuge/AISCO/wp4_aeroshell_optimizer/bulk_storage",
-    resolution: int = 64,  # resolution for get_diff_mesh, only used if save_mesh is True and marching_cubes_usage is not active
+    resolution: int | None = None,
     verbose: bool = True,
     pretraining: bool = False,
-    marching_cubes_usage: bool = False,
-    device: str = "cuda",
+    device: str | None = None,
 ) -> None:
     """
     Save model data to a specified file path in JSON format, with options to save mesh and model state dictionary.
@@ -113,86 +107,27 @@ def allround_save_data(  # noqa: PLR0915
     ### save the mesh ###
     #####################
     if save_mesh:
-        # get a model using kaolin conversions
-        # Use a copy to avoid disrupting training
+        mesh_config = load_mesh_extraction_config()
+        if resolution is not None:
+            mesh_config = replace(mesh_config, base_resolution=resolution)
+        if device is not None:
+            mesh_config = replace(mesh_config, device=device)
 
-        if marching_cubes_usage != "True":
-            temp_model = copy.deepcopy(model).to(device)
-            grid_res = resolution
-            verts, faces = get_diff_mesh(
-                cast(BaseModel, temp_model), grid_res=grid_res, device=device
-            )  # fsanche: keeping this in case marching cubes doest work. this one is the original.
-            if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
-                print(f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
-            kaolin_to_PLY(
-                verts,
-                faces,
-                filename=f"{wandb_run}_{epoch_str}_get_diff_mesh_GridRes_{grid_res}.ply",
-                mesh_dir=mesh_dir,
-                verbose=verbose,
-            )
+        temp_model = copy.deepcopy(model).to(mesh_config.device)
+        extractor = MeshSDFExtractor(config=mesh_config)
+        extractor.set_grid(bbox=mesh_config.bbox, resolution=mesh_config.base_resolution)
+        verts, faces = extractor.extract_mesh(temp_model)
 
-        else:  # marching cubes is active, less reliable and faster
-            # copy model once
-            def run_marching_cubes_and_save(resolution):
-                thread_label = f"[THREAD res={resolution}]"
-                start = time.time()
-
-                try:
-                    print(f"{thread_label} Started worker.", flush=True)
-
-                    extractor = MarchingCubesExtractor(device=device, verbose=False)
-
-                    extractor.set_grid(
-                        bbox=[[-5000, 5000], [-5000, 5000], [-5000, 5000]],
-                        resolution=resolution,
-                    )
-
-                    print(f"{thread_label} Grid set. Extracting mesh...", flush=True)
-
-                    verts, faces = extractor.extract_mesh(
-                        temp_model,
-                        isovalue=0.0,
-                        batch_size=2000,
-                    )
-
-                    print(
-                        f"{thread_label} Extraction done | marching_cubes: {verts.shape[0]} verts, {faces.shape[0]} faces",
-                        flush=True,
-                    )
-
-                    filename = f"{wandb_run}_{epoch_str}__marching_cubes_GridRes_{resolution}.ply"
-                    output_path = mesh_dir / filename
-
-                    if output_path.exists():
-                        print(f"{thread_label} Overwriting {output_path}", flush=True)
-
-                    print(f"{thread_label} Saving mesh...", flush=True)
-
-                    kaolin_to_PLY(
-                        verts.clone(),
-                        faces.clone(),
-                        filename=filename,
-                        mesh_dir=mesh_dir,
-                        verbose=verbose,
-                    )
-
-                    end = time.time()
-                    print(f"{thread_label} Done in {end - start:.3f}s", flush=True)
-
-                except Exception as exc:
-                    print(f"{thread_label} FAILED: {exc}", flush=True)
-
-            temp_model = copy.deepcopy(model).cpu()
-
-            resolutions = [300]
-
-            # limit to max 20 concurrent threads
-            executor = ThreadPoolExecutor(max_workers=20)
-
-            for res in resolutions:
-                executor.submit(run_marching_cubes_and_save, res)
-                print(f"[MAIN] Submitted job for res={res}", flush=True)
+        filename = f"{wandb_run}_{epoch_str}_adaptive_mesh_res_{mesh_config.base_resolution}.ply"
+        if (mesh_dir / filename).exists():
+            print(f"Warning: Overwriting existing mesh at {mesh_dir / filename}")
+        kaolin_to_PLY(
+            verts,
+            faces,
+            filename=filename,
+            mesh_dir=mesh_dir,
+            verbose=verbose,
+        )
 
     ######################
     ### save the model ###
