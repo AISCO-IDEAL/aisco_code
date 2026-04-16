@@ -1,5 +1,6 @@
 import logging
 import os
+from dataclasses import replace as _replace
 
 import torch
 import torch.nn as nn  # noqa: PLR0402
@@ -8,7 +9,7 @@ from torch_geometric.data import Batch, Data
 
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.dataloader.pyg_transforms import RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.src.model.gaot_3d import GAOT3D
-from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +29,14 @@ class ModelLoader:
         self.model_path = model_dict[model_id]
         self.device = device
         self._load_model()
-        self.extractor = MeshSDFExtractor(
-            resolution=128, bbox=[-5e3, 5e3, -5e3, 5e3, -5e3, 5e3], device=self.device, isovalue=0.0
+        mesh_cfg = load_mesh_extraction_config()
+        mesh_cfg = _replace(
+            mesh_cfg,
+            device=self.device,
+            bbox=[[-5e3, 5e3], [-5e3, 5e3], [-5e3, 5e3]],
+            isovalue=0.0,
         )
+        self.extractor = MeshSDFExtractor(config=mesh_cfg)
 
     def _load_model(self) -> None:
         # ── load config YAML saved alongside the checkpoint ─────────────
