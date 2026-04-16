@@ -4,6 +4,7 @@ import logging
 import os
 import tempfile
 import warnings
+from dataclasses import replace as _replace
 
 import pandas as pd
 import torch
@@ -18,8 +19,8 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.trainer.utils.plot import plot_3d_comparison_matplotlib
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import cp_field_to_drag
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.scale import rescale, rescale_new
-from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer import MeshSDFGrads, Visualiser
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +43,14 @@ class ModelLoader:
         self.model_path = self._get_checkpoint_path()
         self._load_model()
 
-        self.extractor = MeshSDFExtractor(
-            resolution=128,
-            bbox=[-3e3, 3e3, -3e3, 3e3, -3e3, 3e3],
+        mesh_cfg = load_mesh_extraction_config()
+        mesh_cfg = _replace(
+            mesh_cfg,
             device=self.device,
+            bbox=[[-3e3, 3e3], [-3e3, 3e3], [-3e3, 3e3]],
             isovalue=0.0,
-            target_nr_vertices=int(cfd_config["mesh_resolution"]),
-            max_iters=1000,
-            gradient_max=cfd_config["gradient_max"],
         )
+        self.extractor = MeshSDFExtractor(config=mesh_cfg)
 
         self.visualiser = Visualiser(device=self.device)
         self.gradlogger = MeshSDFGrads(self.visualiser, intensity=10)
