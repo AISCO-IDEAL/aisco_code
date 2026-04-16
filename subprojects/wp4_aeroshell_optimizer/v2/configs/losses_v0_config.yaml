@@ -17,13 +17,13 @@ general_info:
 losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically loads and instantiates all losses with compute=1
   # NOTE: that for each loss class, only one version should have compute=True
   aero:
-    null_loss_aero_v1_: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
+    null_loss_aero_v1_: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
     gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
   bb:
     # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v1.py"]
     # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15
-    null_loss_bb_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/null_loss_bb_v1.py"]
+    null_loss_bb_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/null_loss_bb_v1.py"]
     bb_v3: [0, 1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety y
     bb_v4: [0, 10, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"] # assembler version4 with ground clearance validation
     bb_v4_2: [0, 1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"] # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
@@ -46,7 +46,7 @@ losses: # [compute: bool, weight: float, path: str]  # total_loss.py dynamically
     solar_v5: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
-    null_loss_solar_v1: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/null_loss_solar_v1.py"]
+    null_loss_solar_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/null_loss_solar_v1.py"]
 
   total:
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
@@ -86,8 +86,8 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
   outer_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/outer.ply"
 
 cfd:
-  model_id: "gold3"
-  version: 1
+  model_id: 63435761 # "gold3" for version 1 and 63435761 for version 2
+  version: 2 # 1 or 2
   visualisations: "True" # only works for Version 2
   v_inf: 25.0   # freestream velocity [m/s] for Cp -> Pa conversion
   rho: 1.225    # air density [kg/m³] for Cp -> Pa conversion
