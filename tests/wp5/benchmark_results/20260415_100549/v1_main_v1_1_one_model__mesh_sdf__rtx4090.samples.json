@@ -1,0 +1,254 @@
+[
+  {
+    "timestamp": 1776240350.1846285,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240351.405363,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240352.5420055,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240353.6459286,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240354.7810767,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240355.8831525,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240356.991255,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240358.1140945,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240359.2796965,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240360.4117432,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240361.5392623,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240362.6821368,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240363.8096735,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240364.9473522,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240366.0636606,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240367.193391,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240368.3598714,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240369.5008483,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240370.6600695,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240371.7826972,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240372.8946211,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240374.0633132,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240375.1621687,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240376.3232079,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240377.4715965,
+    "proc_used_mb": null,
+    "gpu_used_mb": 1.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240378.6399481,
+    "proc_used_mb": 646.0,
+    "gpu_used_mb": 656.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240379.7031465,
+    "proc_used_mb": 646.0,
+    "gpu_used_mb": 656.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240380.8128757,
+    "proc_used_mb": 646.0,
+    "gpu_used_mb": 656.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240381.8794777,
+    "proc_used_mb": 698.0,
+    "gpu_used_mb": 708.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240383.0089037,
+    "proc_used_mb": 742.0,
+    "gpu_used_mb": 752.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240384.1390102,
+    "proc_used_mb": 876.0,
+    "gpu_used_mb": 886.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240385.2368944,
+    "proc_used_mb": 876.0,
+    "gpu_used_mb": 922.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240386.378615,
+    "proc_used_mb": 1380.0,
+    "gpu_used_mb": 1430.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240387.4978852,
+    "proc_used_mb": 1646.0,
+    "gpu_used_mb": 1656.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240388.6588986,
+    "proc_used_mb": 2142.0,
+    "gpu_used_mb": 2152.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  },
+  {
+    "timestamp": 1776240389.819177,
+    "proc_used_mb": 2014.0,
+    "gpu_used_mb": 2024.0,
+    "gpu_total_mb": 24564.0,
+    "gpu_name": "NVIDIA GeForce RTX 4090"
+  }
+]

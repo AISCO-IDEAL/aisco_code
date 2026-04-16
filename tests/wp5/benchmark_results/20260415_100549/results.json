@@ -1,0 +1,20 @@
+[
+  {
+    "run_name": "v1_main_v1_1_one_model",
+    "case_name": "mesh_sdf",
+    "gpu_name": "rtx4090",
+    "gpu_label": "NVIDIA GeForce RTX 4090",
+    "cuda_visible_devices": "0",
+    "gpu_query_index": 0,
+    "main_file": "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py",
+    "return_code": 1,
+    "timed_out": false,
+    "success": false,
+    "elapsed_sec": 40.54008913040161,
+    "peak_process_mem_mb": 2142.0,
+    "peak_gpu_used_mb": 2152.0,
+    "gpu_total_mb": 24564.0,
+    "log_file": "/cluster/home/eschaerer/AISCO_code/tests/wp5/benchmark_results/20260415_100549/v1_main_v1_1_one_model__mesh_sdf__rtx4090.log",
+    "samples_file": "/cluster/home/eschaerer/AISCO_code/tests/wp5/benchmark_results/20260415_100549/v1_main_v1_1_one_model__mesh_sdf__rtx4090.samples.json"
+  }
+]
