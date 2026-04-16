@@ -366,7 +366,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         wandb_run=wandb_name,
         epoch=training_config["training_params"].get("num_epochs", 1000),
         resolution=64,
-        marching_cubes_usage=True,
     )
     print("Completed job successfully.")
 

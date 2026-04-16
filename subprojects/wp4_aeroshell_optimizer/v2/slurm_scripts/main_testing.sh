@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=Main_v1.1_newMesh
-#SBATCH --time=06:00:00                   # Extended for adaptive mesh extraction (L=4)
+#SBATCH --job-name=Main_v2
+#SBATCH --time=03:59:00                   # Extended for adaptive mesh extraction (L=4)
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=8G                  # Total 40G memory
@@ -78,11 +78,6 @@ export PYTHONUNBUFFERED=TRUE
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
 cd /cluster/home/$USERNAME/AISCO_code/
 
-# Ensure v1.1 model config (WIREV2) regardless of shared general_config.yaml state
-CONFIG_FILE="subprojects/wp4_aeroshell_optimizer/v2/configs/general_config.yaml"
-sed -i 's/model_name: "ConcatWIREV2"/model_name: "WIREV2"/' "$CONFIG_FILE"
-sed -i 's|model_file_path: "subprojects/wp4_aeroshell_optimizer/v2/src/models/concat_WIRE_v2.py"|model_file_path: "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v2.py"|' "$CONFIG_FILE"
-sed -i 's/model_params: "concat_WIRE_v2.yaml"/model_params: "WIRE_v2.yaml"/' "$CONFIG_FILE"
 
 #python -m src.main
 

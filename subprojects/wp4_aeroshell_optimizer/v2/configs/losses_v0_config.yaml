@@ -32,8 +32,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   aero:
     _role: objective
     _sign: minimize
-    null_loss_aero_v1_: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
-    gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+    null_loss_aero_v1_: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
+    gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
   bb:
     _role: constraint
@@ -62,12 +62,12 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   solar:
     _role: objective
     _sign: maximize
-    solar_v3B_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
+    solar_v3B_2: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
     solar_v4: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
     solar_v5: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
-    null_loss_solar_v1: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/null_loss_solar_v1.py"]
+    null_loss_solar_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/null_loss_solar_v1.py"]
 
   total:
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
