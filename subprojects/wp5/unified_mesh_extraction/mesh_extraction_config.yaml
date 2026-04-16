@@ -1,0 +1,15 @@
+method: "adaptive_active_cell_marching_cubes"
+device: "cuda"
+isovalue: 0.0
+bbox:
+  - [-5000.0, 5000.0]
+  - [-5000.0, 5000.0]
+  - [-5000.0, 5000.0]
+base_resolution: 64
+subdivision_factor: 2
+max_refine_levels: 0
+leaf_cell_resolution: 3
+sign_epsilon: 1.0e-06
+batch_size: 65536
+surface_area_tolerance: 0.05
+merge_vertices: true
