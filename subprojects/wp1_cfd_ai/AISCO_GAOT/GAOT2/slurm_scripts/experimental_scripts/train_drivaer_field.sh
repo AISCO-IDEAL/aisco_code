@@ -57,4 +57,4 @@ echo "Finished: $(date)"
 echo "Total elapsed: $SECONDS seconds"
 echo "=========================================="
 
-## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/train_drivaer_field.sh
+## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/train_drivaer_field.sh

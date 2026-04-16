@@ -1,22 +1,23 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=Ablation_BothFusion
+#SBATCH --job-name=Ablation_SF_h64
 #SBATCH --time=4:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem-per-cpu=4G
 #SBATCH --gpus=rtx_4090:1
-#SBATCH --output=/cluster/scratch/%u/scratch_logs/Ablation_BothFusion_%j.out
-#SBATCH --error=/cluster/scratch/%u/scratch_logs/Ablation_BothFusion_%j.err
+#SBATCH --output=/cluster/scratch/%u/scratch_logs/Ablation_SF_h64_%j.out
+#SBATCH --error=/cluster/scratch/%u/scratch_logs/Ablation_SF_h64_%j.err
 
-# Ablation E: Both fusion — scale_factors injected before AND after the transformer.
-# Tests whether dual conditioning outperforms either early or late fusion alone.
+# Ablation C: Early scalar fusion, hidden_dim=64.
+# scale_factors injected before the transformer (early fusion).
+# hidden_dim=64 is 2x lifting_channels — tests whether more capacity helps.
 #
 # Launch:
-#   sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/experimental_scripts/ablation/ablation_both_fusion.sh
+#   sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/experimental_scripts/ablation/ablation_scale_factors_hidden64.sh
 
-BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/experimental_configs/ablation/ablation_both_fusion.yaml"
+BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/experimental_configs/ablation/ablation_scale_factors_hidden64.yaml"
 
 module purge
 module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6 eth_proxy
@@ -26,7 +27,7 @@ VENV_DIR="/cluster/home/$USERNAME/AISCO_code/aisco_env"
 source "$VENV_DIR/bin/activate"
 
 echo "=========================================="
-echo "Ablation E: Both early + late scalar fusion"
+echo "Ablation C: Early scalar fusion (hidden_dim=64)"
 echo "Config     : $BASE_CONFIG"
 echo "Job ID     : $SLURM_JOB_ID"
 echo "Started    : $(date)"
@@ -54,7 +55,7 @@ RUN_NAME=$(grep "name:" "$BASE_CONFIG" | head -1 | awk '{print $2}' | tr -d '"')
 RESULTS_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/results"
 mkdir -p "$RESULTS_DIR"
 
-TEMP_CONFIG="/tmp/ablation_both_fusion_${SLURM_JOB_ID}.yaml"
+TEMP_CONFIG="/tmp/ablation_sf_h64_${SLURM_JOB_ID}.yaml"
 sed "s/_RUN_ID_/${SLURM_JOB_ID}/g;
      s/_NAME_/${RUN_NAME}/g" \
     "$BASE_CONFIG" > "$TEMP_CONFIG"

@@ -9,6 +9,8 @@
 #SBATCH --output=/cluster/scratch/%u/scratch_logs/GAOT2_CP_new_%j.out
 #SBATCH --error=/cluster/scratch/%u/scratch_logs/GAOT2_CP_new_%j.err
 
+#RUN COMMAND: sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/wp1_main.sh
+
 module purge
 module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6 eth_proxy
 
@@ -69,6 +71,3 @@ echo "=========================================="
 echo "Job ended on: $(date)"
 echo "Total elapsed time: $SECONDS seconds"
 echo "=========================================="
-
-## sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/wp1_main.sh
-## watch -n 1 squeue -u $USER

@@ -59,7 +59,7 @@ fi
 #   cd /cluster/home/$USERNAME/AISCO_code
 #   wandb sweep $SWEEP_CONFIG
 #   # Note the generated SWEEP_ID (e.g. aisco/WP1_drag/abcd1234)
-#   SWEEP_ID="aisco/WP1_drag/abcd1234" sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/WP1_sweeping.sh
+#   SWEEP_ID="aisco/WP1_drag/abcd1234" sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/WP1_sweeping.sh
 
 if [ -z "$SWEEP_ID" ]; then
     echo "ERROR: SWEEP_ID is not set."
@@ -67,7 +67,7 @@ if [ -z "$SWEEP_ID" ]; then
     echo "  cd /cluster/home/$USERNAME/AISCO_code"
     echo "  wandb sweep $SWEEP_CONFIG"
     echo "Then submit this job with:"
-    echo "  SWEEP_ID=\"entity/project/xxxx\" sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/WP1_sweeping.sh"
+    echo "  SWEEP_ID=\"entity/project/xxxx\" sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/WP1_sweeping.sh"
     exit 1
 fi
 
