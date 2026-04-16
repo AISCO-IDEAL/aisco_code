@@ -24,7 +24,9 @@ interpolator:
 
   # Camera view angle for rendering
   # Options: "iso", "front", "back", "left", "right", "top", "bottom"
-  camera_view: "iso"
+  # Alternately, use explicit coordinates to prevent auto-zooming on small meshes.
+  # Format: [ [cam_X, cam_Y, cam_Z], [focal_X, focal_Y, focal_Z], [up_X, up_Y, up_Z] ]
+  camera_view: [[5000, 5000, 5000], [0, 0, 0], [0, 0, 1]]
 
   # Mesh color in rendered images
   # PyVista colors: "lightgrey", "steelblue", "coral", "mediumseagreen", etc.
@@ -35,8 +37,38 @@ interpolator:
   window_size: [800, 600]
 
   # Directory for saving intermediate/final images
-  # If null, uses default output directory from allround_save_data
+  # If null, uses default output directory from allround_save_data (needs fixing, still not working correctly though!)
   save_dir: null
 
   # Whether to upload final grid to WandB
-  upload_to_wandb: true
+  upload_to_wandb: True
+
+  # Render interpolation grids periodically during the training loop
+  render_during_training: true
+  render_frequency: 10
+
+  # Print detailed point extraction progress during rendering
+  verbose: false
+
+  # Rendering backend:
+  # - "pyvista" (default): existing behavior
+  # - "mesh_assembly_mode_v2": uses existing assembly renderer pipeline
+  render_backend: "mesh_assembly_mode_v2"
+
+  # Optional config forwarded to MeshAssemblyModeV2 when using
+  # render_backend: "mesh_assembly_mode_v2"
+  mesh_assembly_mode_config:
+    # Required by RenderingMode base class
+    camera_position: [5000, 5000, 5000]
+    look_at: [0, 0, 0]
+    render_mode: "rgb"
+
+    # MeshAssemblyModeV2 options
+    render_interval: 1
+    make_gif: false
+    mesh_alpha: 0.5
+    outer_alpha: 0.2
+
+  # Optional Visualiser overrides for mesh_assembly_mode_v2 backend.
+  # If omitted, interpolator uses sensible defaults and current device.
+  mesh_visualiser: {}

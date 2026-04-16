@@ -86,7 +86,7 @@ sed -i 's/model_params: "concat_WIRE_v2.yaml"/model_params: "WIRE_v2.yaml"/' "$C
 
 #python -m src.main
 
-python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v1_1_one_model.py \
+python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py \
     --save_model \
     --problem_id="AISCO_WP4_Test1"  2>&1
 #------------------------------------------------------------------------------

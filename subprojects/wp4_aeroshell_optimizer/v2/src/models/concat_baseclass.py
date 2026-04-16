@@ -15,7 +15,9 @@ class ConcatBaseModel(nn.Module):
         """
         super().__init__()
         self.config = config if config is not None else {}
-        self._active_z: torch.Tensor | None = None
+        # Initialize active latent vector to an empty tensor, will be set properly during training using set_latent_vector method
+        # Register buffer means that this tensor is affected by model.to(device) calls, but is not a trainable parameter. Can be accessed just like normal (self._active_z)
+        self.register_buffer("_active_z", torch.zeros(0), persistent=False)
 
     def set_latent_vector(self, z: torch.Tensor) -> None:
         """
@@ -23,7 +25,7 @@ class ConcatBaseModel(nn.Module):
         """
         self._active_z = z
 
-    def get_latent_vector(self) -> torch.Tensor | None:
+    def get_latent_vector(self) -> torch.Tensor:
         """
         Returns the currently active latent vector.
         """

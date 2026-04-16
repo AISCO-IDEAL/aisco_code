@@ -11,7 +11,7 @@ from kaolin.ops.conversions import (
     voxelgrids_to_trianglemeshes,
 )
 
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 
 ####################### eschaerer #################
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"  # or ":16:8"
@@ -21,7 +21,7 @@ os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"  # or ":16:8"
 
 
 def get_diff_mesh(
-    model: BaseModel,
+    model: SupportsModelContract,
     grid_res: list[int] | int = 128,
     box_dim: list[int] | None = None,
     device: str = "cuda",
@@ -109,7 +109,7 @@ def get_diff_mesh(
 
 
 def marching_tetrahedra(
-    model: BaseModel,
+    model: SupportsModelContract,
     grid_res: list[int] | int = 32,
     origin: float = 0.0,
     box_size: float = 12000.0,
@@ -142,7 +142,7 @@ def marching_tetrahedra(
         init_res=grid_res,
         upsampling_steps=upsampling,
     )
-    model.cuda()  # necessary?
+    model.to(dev)
     # move to GPU
     grid = grid.to(dev)
 
