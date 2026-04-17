@@ -25,7 +25,7 @@
 #   Checkpoints : /cluster/work/fuge/AISCO/wp1_cfd_ai/results/lr_sweep_*/
 #
 # Launch:
-#   sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/experimental_scripts/lr_sweep.sh
+#   sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/experimental_scripts/lr_sweep.sh
 
 # --------------------------------------------------------------------------
 CONFIGS=(

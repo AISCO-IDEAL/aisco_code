@@ -46,4 +46,4 @@ echo "=========================================="
 echo "Job ended on: $(date)"
 echo "=========================================="
 
-## sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/vram_profile.sh
+## sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/vram_profile.sh

@@ -1,24 +1,24 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=Main_test
-#SBATCH --time=02:00:00                   # Adjust time as needed
+#SBATCH --job-name=SalimetStöck
+#SBATCH --time=4:00:00          # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
-#SBATCH --mem-per-cpu=4G                  # Total 40G memory
+#SBATCH --mem-per-cpu=4G
 #SBATCH --gpus=rtx_4090:1
-#SBATCH --output=/cluster/home/clhuber/logs/Clemens_TEST_%j.out 
-##SBATCH --mail-type=END,FAIL
-##SBATCH --mail-user=%u@ethz.ch
-## run this command: sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/experimental_scripts/clemens_wp4_testing.sh
+#SBATCH --output=/cluster/scratch/roarnold/scratch_logs/Robin_TEST_%j.out
+#SBATCH --error=/cluster/scratch/roarnold/scratch_logs/Robin_TEST_%j.err
+
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
-umask 0002
+
 module purge
 module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6  eth_proxy
 
-USERNAME=$(whoami)
-LOG_DIR="/cluster/home/$USERNAME/logs"
+
+USERNAME="roarnold"
+LOG_DIR="/cluster/scratch/roarnold/scratch_logs"  # Define a log directory for GPU/CPU info
 ##mkdir -p "$LOG_DIR"  # Ensure the log directory exists
 #------------------------------------------------------------------------------
 # Print job information
@@ -68,14 +68,18 @@ echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 # Run the Relevant script
 #------------------------------------------------------------------------------
 export PYTHONUNBUFFERED=TRUE
-## export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True # Allow PyTorch to expand GPU memory allocation as needed
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
+export WANDB_CACHE_DIR="/cluster/scratch/$USERNAME/wandb_cache"
 cd /cluster/home/$USERNAME/AISCO_code/
 #python -m src.main
 
-python subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py \
-    --save_model \
-    --problem_id="AISCO_WP4_Test1"  2>&1
+ulimit -n 65536
+
+# --- NEW STEP: Calculate Drag Forces ---
+
+python /cluster/home/$USERNAME/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT_working/dataset/ahmed/process_ahmed_drag_params.py
+
+
 #------------------------------------------------------------------------------
 # Print job end information
 #------------------------------------------------------------------------------
@@ -84,4 +88,6 @@ echo "Job ended on: $(date)"
 echo "Total elapsed time: $SECONDS seconds"
 echo "=========================================="
 
-
+## chmod +x ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/robin_drag_params.sh
+## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/robin_drag_params.sh
+## watch -n 1.0 squeue -u roarnold
