@@ -402,37 +402,45 @@ class _ResidualBlock(nn.Module):
 
 
 def masked_multi_head_loss(
-    batch,
-    predictions: dict[str, torch.Tensor],
-    targets: dict[str, torch.Tensor],
+    batch_or_predictions,
+    predictions_or_targets: dict[str, torch.Tensor],
+    targets: dict[str, torch.Tensor] | None = None,
     loss_fn: nn.Module | None = None,
     weights: dict[str, float] | None = None,
     w_force: float = 0.0,
 ) -> torch.Tensor:
     """Loss over multiple heads, masking NaN targets per sample."""
+    if targets is None:
+        batch = None
+        predictions = batch_or_predictions
+        targets = predictions_or_targets
+    else:
+        batch = batch_or_predictions
+        predictions = predictions_or_targets
+
     if loss_fn is None:
         loss_fn = nn.MSELoss(reduction="none")
     if weights is None:
         weights = {}
 
-    integrated_drag_pred = []
-    for data in batch.to_data_list():
-        cp_pred = predictions["field"][data.ptr[:-1]]  # [N_i, field_output_size]
-        pos = data.pos  # [N_i, 3]
-        drag = cp_field_to_drag_pointcloud(
-            cp_pred,
-            pos,
-        )
-        integrated_drag_pred.append(drag)
-
-    avg_force_error = torch.tensor(0.0, device=next(iter(predictions.values())).device)
-    for i in range(len(integrated_drag_pred)):
-        force_gt = targets["force"][i]  # [1]
-        force_error = torch.abs(integrated_drag_pred[i] - force_gt)
-        avg_force_error += force_error
-    avg_force_error = avg_force_error / len(integrated_drag_pred)
-
     device = next(iter(predictions.values())).device
+    avg_force_error = torch.tensor(0.0, device=device)
+    if w_force and batch is not None and "field" in predictions and "force" in targets:
+        integrated_drag_pred = []
+        offset = 0
+        for data in batch.to_data_list():
+            num_nodes = data.pos.shape[0]
+            cp_pred = predictions["field"][offset : offset + num_nodes]
+            pos = data.pos
+            offset += num_nodes
+            drag = cp_field_to_drag_pointcloud(cp_pred, pos)
+            integrated_drag_pred.append(drag)
+
+        for i, drag in enumerate(integrated_drag_pred):
+            force_gt = targets["force"][i]
+            avg_force_error += torch.abs(drag - force_gt)
+        avg_force_error = avg_force_error / max(len(integrated_drag_pred), 1)
+
     total = torch.tensor(0.0, device=device)
     n_active = 0
 
