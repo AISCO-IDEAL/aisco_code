@@ -96,9 +96,10 @@ class TotalLossV2:
         Sets up `_objective_by_category`, `_constraint_by_category`, `_aux_by_category`,
         `_objective_signs`, and `_manual_weights` from the configured YAML loss blocks.
 
-        Validation is strict: every non-"total" category must define a valid `_role`
-        and exactly one enabled loss entry (`compute=1`) with a valid
-        `[compute, weight, path]` structure.
+        Validation is strict: every non-"total" category must define a valid `_role`.
+        Roles objective/constraint/aux must each have exactly one enabled loss entry
+        (`compute=1`) with a valid `[compute, weight, path]` structure. Additional
+        roles (for example diversity) are ignored by TotalLossV2.
         """
         project_root: Path = Path.cwd()
         losses_block_raw: Any = self.losses_config.get("losses")
@@ -124,10 +125,12 @@ class TotalLossV2:
             role: str | None = block.get("_role")
             if role is None:
                 raise ValueError(f"Missing _role for category '{category}'. Expected one of ['objective', 'constraint', 'aux'].")
-            if role not in {"objective", "constraint", "aux"}:
+            if role not in {"objective", "constraint", "aux", "diversity"}:
                 raise ValueError(
-                    f"Invalid _role '{role}' for category '{category}'. Expected one of ['aux', 'constraint', 'objective']."
+                    f"Invalid _role '{role}' for category '{category}'. Expected one of ['aux', 'constraint', 'diversity', 'objective']."
                 )
+            if role == "diversity":  # we skip diversity role in this class, it's handled separately in DiversityLossManager
+                continue
 
             sign_val: int = -1 if block.get("_sign", "minimize") == "maximize" else 1
 
