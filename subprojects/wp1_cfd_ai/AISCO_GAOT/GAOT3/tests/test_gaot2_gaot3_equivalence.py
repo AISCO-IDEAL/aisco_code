@@ -330,14 +330,26 @@ def _write_normal_training_dataset(data_root: Path, processed_folder: str) -> No
         torch.save(_synthetic_training_sample(idx, num_latent_nodes=num_latent_nodes), processed_dir / f"{name}.pt")
 
 
+def _load_main_config(version: str) -> dict:
+    config_path = REPO_ROOT / "subprojects" / "wp1_cfd_ai" / "AISCO_GAOT" / version / "config" / "main_config.yaml"
+    with config_path.open(encoding="utf-8") as handle:
+        config = yaml.safe_load(handle)
+    if not isinstance(config, dict):
+        raise TypeError(f"Expected mapping in {config_path}, got {type(config).__name__}")
+    return config
+
+
 def _normal_training_config(version: str, root: Path, train_epochs: int, device_name: str) -> dict:
     data_root = root / "data"
     results_root = root / "results"
     processed_folder = "processed"
     _write_normal_training_dataset(data_root, processed_folder)
 
-    return {
-        "setup": {
+    config = _load_main_config(version)
+
+    config.setdefault("setup", {})
+    config["setup"].update(
+        {
             "name": f"{version.lower()}_normal_equivalence",
             "id": "normal_equivalence",
             "seed": 12345,
@@ -359,13 +371,15 @@ def _normal_training_config(version: str, root: Path, train_epochs: int, device_
             "wandb_watch_model": False,
             "wandb_notes": "Synthetic GAOT2/GAOT3 full-pipeline equivalence check",
             "test_during_training": False,
-        },
-        "model": {
-            "name": "gaot_3d",
-            "use_conditional_norm": False,
-            "args": _normal_training_model_config(),
-        },
-        "dataset": {
+        }
+    )
+
+    config.setdefault("model", {})
+    config["model"].update({"name": "gaot_3d", "use_conditional_norm": False, "args": _normal_training_model_config()})
+
+    config.setdefault("dataset", {})
+    config["dataset"].update(
+        {
             "name": f"{version.lower()}_synthetic_equivalence",
             "metaname": "incompressible_fluids/euler_pressure",
             "base_path": str(data_root),
@@ -393,32 +407,38 @@ def _normal_training_config(version: str, root: Path, train_epochs: int, device_
             "v_inf": 25.0,
             "rho": 1.225,
             "num_viz_samples": 0,
-        },
-        "optimizer": {
-            "name": "adamw",
-            "args": {
-                "lr": 1e-3,
-                "weight_decay": 0.0,
-                "epoch": train_epochs,
-                "loss_scale": 1.0,
-                "eval_every_eps": 1,
-                "viz_every_eps": 0,
-                "viz_warmup_epochs": 0,
-                "scheduler": None,
-                "save_every_epochs": 0,
-                "save_every_steps": 0,
-                "early_save_metric": "train",
-                "loss": "mse",
-            },
-        },
-        "path": {
-            "ckpt_path": str(results_root / "model.pt"),
-            "loss_path": str(results_root / "loss.png"),
-            "result_path": str(results_root / "results.png"),
-            "config_save_path": str(results_root / "config.yaml"),
-            "database_path": str(results_root / "metrics.csv"),
-        },
+        }
+    )
+
+    config.setdefault("optimizer", {})
+    config["optimizer"]["name"] = "adamw"
+    config["optimizer"].setdefault("args", {})
+    config["optimizer"]["args"].update(
+        {
+            "lr": 1e-3,
+            "weight_decay": 0.0,
+            "epoch": train_epochs,
+            "loss_scale": 1.0,
+            "eval_every_eps": 1,
+            "viz_every_eps": 0,
+            "viz_warmup_epochs": 0,
+            "scheduler": None,
+            "save_every_epochs": 0,
+            "save_every_steps": 0,
+            "early_save_metric": "train",
+            "loss": "mse",
+        }
+    )
+
+    config["path"] = {
+        "ckpt_path": str(results_root / "model.pt"),
+        "loss_path": str(results_root / "loss.png"),
+        "result_path": str(results_root / "results.png"),
+        "config_save_path": str(results_root / "config.yaml"),
+        "database_path": str(results_root / "metrics.csv"),
     }
+
+    return config
 
 
 def _run_normal_training(version: str, root: Path, train_epochs: int, device_name: str) -> dict:
