@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """Run GAOT2 and GAOT3 through their real entrypoints and configs.
 
-This deliberately does not import model internals, synthesize data, or rewrite
-YAML. It answers the practical question: do both versions execute from the
-same public surface, ``python main.py -c config/main_config.yaml``?
+This deliberately does not import model internals or synthesize data. It answers
+the practical question: do both versions execute from the same public surface,
+``python main.py -c config/main_config.yaml``?
 """
 
 from __future__ import annotations
@@ -16,12 +16,16 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
 GAOT_ROOT = REPO_ROOT / "subprojects" / "wp1_cfd_ai" / "AISCO_GAOT"
 DEFAULT_GAOT2_CONFIG = Path("subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/main_config.yaml")
 DEFAULT_GAOT3_CONFIG = Path("subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml")
 DEFAULT_LOG_DIR = Path(tempfile.gettempdir()) / "gaot2_gaot3_main_equivalence"
+EQUIVALENCE_EPOCHS = 3
+EQUIVALENCE_SUBSAMPLING_SEED = 42
 
 
 @dataclass(frozen=True)
@@ -70,6 +74,36 @@ def _repo_relative(path: Path) -> Path:
         except ValueError:
             return path
     return path
+
+
+def _write_equivalence_config(version: str, source_config: Path, log_dir: Path) -> Path:
+    """Write a temporary config with deterministic subsampling and short training."""
+    source_config = _repo_path(source_config).resolve()
+    with source_config.open(encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    if not isinstance(cfg, dict):
+        raise TypeError(f"Expected config mapping in {source_config}, got {type(cfg).__name__}")
+
+    dataset = cfg.setdefault("dataset", {})
+    if not isinstance(dataset, dict):
+        raise TypeError(f"Expected dataset mapping in {source_config}")
+    dataset["deterministic_subsampling"] = True
+    dataset["subsampling_seed"] = EQUIVALENCE_SUBSAMPLING_SEED
+
+    optimizer = cfg.setdefault("optimizer", {})
+    if not isinstance(optimizer, dict):
+        raise TypeError(f"Expected optimizer mapping in {source_config}")
+    optimizer_args = optimizer.setdefault("args", {})
+    if not isinstance(optimizer_args, dict):
+        raise TypeError(f"Expected optimizer.args mapping in {source_config}")
+    optimizer_args["epoch"] = EQUIVALENCE_EPOCHS
+
+    effective_dir = log_dir / "effective_configs"
+    effective_dir.mkdir(parents=True, exist_ok=True)
+    effective_config = effective_dir / f"{version.lower()}_equivalence_config.yaml"
+    with effective_config.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(cfg, f, sort_keys=False)
+    return effective_config
 
 
 def _run_main(version: str, config_path: Path, log_dir: Path, timeout: int | None) -> MainRun:
@@ -148,10 +182,22 @@ def run_gaot_main_equivalence(
     timeout: int | None = None,
 ) -> None:
     """Execute both real GAOT main/config pairs and require both to succeed."""
-    config_paths = {
+    source_config_paths = {
         "GAOT2": gaot2_config or DEFAULT_GAOT2_CONFIG,
         "GAOT3": gaot3_config or DEFAULT_GAOT3_CONFIG,
     }
+    log_dir.mkdir(parents=True, exist_ok=True)
+    config_paths = {
+        version: _write_equivalence_config(version, source_config, log_dir)
+        for version, source_config in source_config_paths.items()
+    }
+
+    print(
+        "\nEquivalence overrides: "
+        f"dataset.deterministic_subsampling=True, "
+        f"dataset.subsampling_seed={EQUIVALENCE_SUBSAMPLING_SEED}, "
+        f"optimizer.args.epoch={EQUIVALENCE_EPOCHS}"
+    )
 
     runs = [_run_main(version, config_paths[version], log_dir, timeout) for version in ("GAOT2", "GAOT3")]
     failed = [run for run in runs if run.returncode != 0]
