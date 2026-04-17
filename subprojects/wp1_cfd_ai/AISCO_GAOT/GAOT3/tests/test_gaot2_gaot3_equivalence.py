@@ -312,7 +312,7 @@ def _normal_training_model_config() -> dict:
     config = copy.deepcopy(_tiny_model_config())
     config["input_size"] = 1
     config["output_size"] = 2
-    config["field_output_size"] = 0
+    config["field_output_size"] = 1
     config["magno"]["encoder_feature_attr"] = "x"
     config["magno"]["precompute_edges"] = True
     config["magno"]["asynchronous_graph_building"] = False
@@ -396,7 +396,7 @@ def _normal_training_config(version: str, root: Path, train_epochs: int, device_
             "update_pt_files_with_edges": False,
             "training_strategy": "full_grid",
             "uncertainty_weighting": False,
-            "field_loss_weight": 0.0,
+            "field_loss_weight": 1.0,
             "use_rescale_new": False,
             "active_variables": None,
             "order_file_name": None,
