@@ -19,22 +19,21 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
 GAOT_ROOT = REPO_ROOT / "subprojects" / "wp1_cfd_ai" / "AISCO_GAOT"
+DEFAULT_GAOT2_CONFIG = Path("subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/main_config.yaml")
+DEFAULT_GAOT3_CONFIG = Path("subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml")
 DEFAULT_LOG_DIR = Path(tempfile.gettempdir()) / "gaot2_gaot3_main_equivalence"
 
 
 @dataclass(frozen=True)
 class MainRun:
     version: str
-    main_dir: Path
+    cwd: Path
+    command: list[str]
     config_path: Path
     stdout_path: Path
     stderr_path: Path
     returncode: int
     timed_out: bool
-
-    @property
-    def command(self) -> list[str]:
-        return [sys.executable, "main.py", "-c", str(self.config_path)]
 
 
 def _tail(path: Path, max_chars: int = 5000) -> str:
@@ -58,9 +57,26 @@ def _env_for(version_dir: Path) -> dict[str, str]:
     return env
 
 
+def _repo_path(path: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return REPO_ROOT / path
+
+
+def _repo_relative(path: Path) -> Path:
+    if path.is_absolute():
+        try:
+            return path.relative_to(REPO_ROOT)
+        except ValueError:
+            return path
+    return path
+
+
 def _run_main(version: str, config_path: Path, log_dir: Path, timeout: int | None) -> MainRun:
     version_dir = GAOT_ROOT / version
     main_path = version_dir / "main.py"
+    config_arg = _repo_relative(config_path)
+    config_path = _repo_path(config_arg).resolve()
     if not main_path.exists():
         raise FileNotFoundError(f"{version} main.py not found: {main_path}")
     if not config_path.exists():
@@ -69,11 +85,11 @@ def _run_main(version: str, config_path: Path, log_dir: Path, timeout: int | Non
     log_dir.mkdir(parents=True, exist_ok=True)
     stdout_path = log_dir / f"{version.lower()}_stdout.log"
     stderr_path = log_dir / f"{version.lower()}_stderr.log"
-    command = [sys.executable, "main.py", "-c", str(config_path)]
+    command = [sys.executable, str(main_path.relative_to(REPO_ROOT)), "-c", str(config_arg)]
 
     print(f"\n[{version}]")
-    print(f"cwd: {version_dir}")
-    print(f"config: {config_path}")
+    print(f"cwd: {REPO_ROOT}")
+    print(f"config: {config_arg}")
     print(f"command: {' '.join(command)}")
     print(f"stdout: {stdout_path}")
     print(f"stderr: {stderr_path}")
@@ -83,7 +99,7 @@ def _run_main(version: str, config_path: Path, log_dir: Path, timeout: int | Non
         try:
             completed = subprocess.run(
                 command,
-                cwd=version_dir,
+                cwd=REPO_ROOT,
                 env=_env_for(version_dir),
                 stdout=stdout,
                 stderr=stderr,
@@ -99,7 +115,8 @@ def _run_main(version: str, config_path: Path, log_dir: Path, timeout: int | Non
     print(f"{version} return code: {returncode}")
     return MainRun(
         version=version,
-        main_dir=version_dir,
+        cwd=REPO_ROOT,
+        command=command,
         config_path=config_path,
         stdout_path=stdout_path,
         stderr_path=stderr_path,
@@ -132,8 +149,8 @@ def run_gaot_main_equivalence(
 ) -> None:
     """Execute both real GAOT main/config pairs and require both to succeed."""
     config_paths = {
-        "GAOT2": gaot2_config or GAOT_ROOT / "GAOT2" / "config" / "main_config.yaml",
-        "GAOT3": gaot3_config or GAOT_ROOT / "GAOT3" / "config" / "main_config.yaml",
+        "GAOT2": gaot2_config or DEFAULT_GAOT2_CONFIG,
+        "GAOT3": gaot3_config or DEFAULT_GAOT3_CONFIG,
     }
 
     runs = [_run_main(version, config_paths[version], log_dir, timeout) for version in ("GAOT2", "GAOT3")]
@@ -166,8 +183,8 @@ def test_gaot2_gaot3_main_configs_execute() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Execute GAOT2 and GAOT3 main.py with their real configs.")
-    parser.add_argument("--gaot2-config", type=Path, default=None, help="GAOT2 config path. Defaults to GAOT2/config/main_config.yaml.")
-    parser.add_argument("--gaot3-config", type=Path, default=None, help="GAOT3 config path. Defaults to GAOT3/config/main_config.yaml.")
+    parser.add_argument("--gaot2-config", type=Path, default=None, help=f"GAOT2 config path. Defaults to {DEFAULT_GAOT2_CONFIG.as_posix()}.")
+    parser.add_argument("--gaot3-config", type=Path, default=None, help=f"GAOT3 config path. Defaults to {DEFAULT_GAOT3_CONFIG.as_posix()}.")
     parser.add_argument("--log-dir", type=Path, default=DEFAULT_LOG_DIR, help="Directory for stdout/stderr logs.")
     parser.add_argument("--timeout", type=int, default=None, help="Optional timeout per main.py run, in seconds.")
     args = parser.parse_args()
