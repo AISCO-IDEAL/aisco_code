@@ -13,7 +13,7 @@
 #   sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/slurm_scripts/test_gaot2_gaot3_equivalence.sh
 #
 # Optional:
-#   DEVICE=cuda:0 ATOL=1e-5 RTOL=1e-5 TRAIN_EPOCHS=5 KEEP_ARTIFACTS=1 sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/slurm_scripts/test_gaot2_gaot3_equivalence.sh
+#   TIMEOUT_SECONDS=7200 sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/slurm_scripts/test_gaot2_gaot3_equivalence.sh
 
 set -euo pipefail
 
@@ -42,35 +42,33 @@ export WANDB_DISABLED=true
 
 cd "$REPO_DIR"
 
-DEVICE="${DEVICE:-cpu}"
-ATOL="${ATOL:-1e-6}"
-RTOL="${RTOL:-1e-6}"
-TRAIN_EPOCHS="${TRAIN_EPOCHS:-5}"
-LR="${LR:-1e-3}"
-SKIP_NORMAL_TRAINING="${SKIP_NORMAL_TRAINING:-0}"
-KEEP_ARTIFACTS="${KEEP_ARTIFACTS:-0}"
 TEST_SCRIPT="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/tests/test_gaot2_gaot3_equivalence.py"
+GAOT2_CONFIG="${GAOT2_CONFIG:-subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/main_config.yaml}"
+GAOT3_CONFIG="${GAOT3_CONFIG:-subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml}"
+LOG_DIR="${LOG_DIR:-/cluster/home/$USERNAME/logs/gaot2_gaot3_equivalence_${SLURM_JOB_ID:-local}}"
+TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-}"
 
 if [ ! -f "$TEST_SCRIPT" ]; then
     echo "Test script not found: $TEST_SCRIPT"
     exit 1
 fi
 
-echo "Running GAOT2/GAOT3 equivalence check"
-echo "Device: $DEVICE"
-echo "Tolerance: atol=$ATOL rtol=$RTOL"
-echo "Training check: epochs=$TRAIN_EPOCHS lr=$LR"
-echo "Full main.py training check: skip=$SKIP_NORMAL_TRAINING keep_artifacts=$KEEP_ARTIFACTS"
+echo "Running GAOT2/GAOT3 main/config execution check"
+echo "GAOT2 config: $GAOT2_CONFIG"
+echo "GAOT3 config: $GAOT3_CONFIG"
+echo "Log directory: $LOG_DIR"
+echo "Timeout per run: ${TIMEOUT_SECONDS:-none}"
 
 EXTRA_ARGS=()
-if [ "$SKIP_NORMAL_TRAINING" = "1" ]; then
-    EXTRA_ARGS+=("--skip-normal-training")
-fi
-if [ "$KEEP_ARTIFACTS" = "1" ]; then
-    EXTRA_ARGS+=("--keep-normal-training-artifacts")
+if [ -n "$TIMEOUT_SECONDS" ]; then
+    EXTRA_ARGS+=("--timeout" "$TIMEOUT_SECONDS")
 fi
 
-python "$TEST_SCRIPT" --device "$DEVICE" --atol "$ATOL" --rtol "$RTOL" --train-epochs "$TRAIN_EPOCHS" --lr "$LR" "${EXTRA_ARGS[@]}"
+python "$TEST_SCRIPT" \
+    --gaot2-config "$GAOT2_CONFIG" \
+    --gaot3-config "$GAOT3_CONFIG" \
+    --log-dir "$LOG_DIR" \
+    "${EXTRA_ARGS[@]}"
 
 echo "=========================================="
 echo "Job ended on: $(date)"
