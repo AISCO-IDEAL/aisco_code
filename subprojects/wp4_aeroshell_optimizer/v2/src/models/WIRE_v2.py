@@ -147,7 +147,7 @@ class WIREV2(BaseModel):
     def forward(self, coords: torch.Tensor) -> torch.Tensor:
         return self.net(coords / 1000) * 1000
 
-    def optimise(
+    def optimise(  # noqa: PLR0912, PLR0915
         self,
         general_config,
         training_config,
@@ -324,6 +324,27 @@ class WIREV2(BaseModel):
 
         # ── Debug: cleanup ───────────────────────────────────────────
         dbg.stop()
+
+        # ── Post-optimization (developability) ──────────────────────────
+        dev_entry = loss_function._constraint_losses.get("developability")
+        if dev_entry is not None:
+            _dev_name, dev_instance = dev_entry
+            if dev_instance.post_opt_enabled:
+                verts, faces = dev_instance.mesh_extractor.extract_mesh(
+                    model=self,
+                    isovalue=dev_instance.mesh_isovalue,
+                    batch_size=dev_instance.mesh_batch_size,
+                )
+                run_name = wandb_name or (wandb.run.name if wandb.run else "run")
+                storage_dir = general_config["storage_paths"].get(
+                    "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+                )
+                dev_instance.post_optimize(
+                    vertices=verts.detach().cpu().numpy().astype("float64"),
+                    faces=faces.detach().cpu().numpy().astype("int32"),
+                    run_name=run_name,
+                    storage_dir=storage_dir,
+                )
 
     def get_model_info_dict(self) -> dict:
         """

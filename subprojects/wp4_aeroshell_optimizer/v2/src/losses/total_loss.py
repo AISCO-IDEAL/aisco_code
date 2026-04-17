@@ -66,7 +66,8 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Vi
 # Category → role mapping (used to classify losses from the YAML config)
 # ---------------------------------------------------------------------------
 _ALM_OBJECTIVE_CATEGORIES: frozenset[str] = frozenset({"aero", "solar"})
-_ALM_CONSTRAINT_CATEGORIES: tuple[str, ...] = ("bb", "eikonal", "smoothness")  # order matters ALM
+_ALM_CONSTRAINT_CATEGORIES: tuple[str, ...] = ("bb", "eikonal", "smoothness", "developability")  # order matters ALM
+
 TrainModel: TypeAlias = SupportsModelContract
 
 
