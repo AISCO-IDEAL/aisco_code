@@ -1,0 +1,24 @@
+# WIRE v3 — Log-spaced Gabor filterbank
+#
+# Standard WIRE architecture (RealGaborLayer stack) where each neuron is assigned a distinct
+# omega and scale, spread log-uniformly across [min, max]. This gives every layer a built-in
+# frequency filterbank rather than all neurons being biased to the same frequency.
+# Setting min == max for any pair recovers the original uniform WIRE behaviour.
+# When train_omega / train_scale is True, the values are initialised log-spaced but then
+# learned during training, allowing the network to adapt the filterbank to the data.
+
+in_features: 3
+hidden_features: 128
+hidden_layers: 4
+out_features: 1
+first_omega_min: 0.5
+first_omega_max: 10.0
+first_scale_min: 5.0
+first_scale_max: 20.0
+hidden_omega_min: 0.5
+hidden_omega_max: 10.0
+hidden_scale_min: 5.0
+hidden_scale_max: 20.0
+train_omega: True
+train_scale: False
+dtype: "float32" # Insert here something that works with torch.{dtype}, e.g. "float32", "float64", "float16"

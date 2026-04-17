@@ -1,5 +1,50 @@
 {
   "models": {
+    "WIREV3": {
+      "model_class": "WIREV3",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v3.py",
+      "config_file": "models/WIRE_v3.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+
+    "WIREV4": {
+      "model_class": "WIREV4",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v4.py",
+      "config_file": "models/WIRE_v4.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+
+    "WIREV5": {
+      "model_class": "WIREV5",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v5.py",
+      "config_file": "models/WIRE_v5.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+
+    "WIREV6": {
+      "model_class": "WIREV6",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v6.py",
+      "config_file": "models/WIRE_v6.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+
+    "WIREV7": {
+      "model_class": "WIREV7",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v7.py",
+      "config_file": "models/WIRE_v7.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+
     "WIREV2": {
       "model_class": "WIREV2",
       "parent_class": "BaseModel",

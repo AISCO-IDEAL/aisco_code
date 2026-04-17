@@ -1,0 +1,20 @@
+# WIRE v4 — Multi-scale parallel branches
+#
+# N independent WIRE stacks run in parallel, each with its own fixed omega and scale.
+# All branches receive the same input coordinates; their outputs are concatenated and
+# mixed by a final linear layer. This gives explicit multi-scale coverage: each branch
+# specialises in a different frequency band, and the output layer learns how to blend them.
+# More expensive than v3 (parameter count ≈ num_branches × single-branch cost), but the
+# frequency coverage is directly controlled by branch_omegas rather than relying on
+# initialisation spread or training.
+
+in_features: 3
+hidden_features: 64       # width per branch; total concat dim = num_branches * hidden_features
+hidden_layers: 4
+out_features: 1
+num_branches: 4
+branch_omegas: [0.5, 2.0, 8.0, 32.0]   # one omega per branch, spanning ~2 decades
+branch_scales: [10.0, 10.0, 10.0, 10.0]
+train_omega: False
+train_scale: False
+dtype: "float32" # Insert here something that works with torch.{dtype}, e.g. "float32", "float64", "float16"

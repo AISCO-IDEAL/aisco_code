@@ -1,0 +1,18 @@
+# WIRE v6 — Per-layer omega progression
+#
+# Each layer in the network is assigned a distinct omega, log-spaced from omega_start
+# to omega_end across all Gabor layers. This gives the network a natural coarse-to-fine
+# (or fine-to-coarse) inductive bias: early layers specialise in large-scale structure,
+# later layers in fine detail, or vice versa depending on your start/end choice.
+# Same parameter count as standard WIRE — the only cost is choosing the omega schedule.
+
+in_features: 3
+hidden_features: 128
+hidden_layers: 4
+out_features: 1
+omega_start: 0.3    # omega for the first Gabor layer
+omega_end: 30.0     # omega for the last Gabor layer (log-spaced between all layers)
+scale: 10.0         # Gaussian envelope scale, shared across all layers
+train_omega: False
+train_scale: False
+dtype: "float32" # Insert here something that works with torch.{dtype}, e.g. "float32", "float64", "float16"

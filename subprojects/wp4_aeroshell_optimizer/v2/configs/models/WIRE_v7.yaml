@@ -1,0 +1,26 @@
+# WIRE v7 — FFE front-end + per-layer omega progression (combination of v5 and v6)
+#
+# Attacks the narrow frequency bias from both ends:
+#   - Input side: Fourier Feature Embedding (v5) encodes coordinates across a wide frequency
+#     range before the network even sees them, removing the need for the backbone to discover
+#     what frequencies exist.
+#   - Network side: per-layer omega progression (v6) gives each Gabor layer a different
+#     spectral sensitivity, so depth maps to scale rather than all layers competing for
+#     the same frequency band.
+# Most expressive of the WIRE variants; slightly higher memory cost than v5 or v6 alone
+# due to the larger backbone input (2 * num_fourier_features).
+
+in_features: 3
+num_fourier_features: 128           # encoded input dim = 2 * num_fourier_features = 256
+fourier_scale_min: 0.1
+fourier_scale_max: 100.0
+fourier_seed: 42
+hidden_features: 128
+hidden_layers: 4
+out_features: 1
+omega_start: 0.3    # omega for the first Gabor backbone layer
+omega_end: 30.0     # omega for the last Gabor backbone layer
+scale: 10.0         # Gaussian envelope scale, shared across all backbone layers
+train_omega: False
+train_scale: False
+dtype: "float32" # Insert here something that works with torch.{dtype}, e.g. "float32", "float64", "float16"

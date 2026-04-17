@@ -1,0 +1,23 @@
+# WIRE v5 — Fourier Feature Embedding (FFE) front-end
+#
+# Input coordinates are first encoded as [sin(2π·B·x), cos(2π·B·x)] where B is a fixed
+# random projection matrix whose columns are scaled log-uniformly across
+# [fourier_scale_min, fourier_scale_max]. This explicitly bakes a wide frequency range
+# into the input representation, decoupling multi-scale coverage from the Gabor backbone.
+# The backbone then operates on a 2*num_fourier_features-dimensional input and can use
+# a moderate, uniform omega since the FFE already handles frequency diversity.
+# fourier_seed fixes B for reproducibility; changing it gives a different random filterbank.
+
+in_features: 3
+num_fourier_features: 128           # encoded input dim = 2 * num_fourier_features = 256
+fourier_scale_min: 0.1              # lowest frequency scale in B (in normalised coord units)
+fourier_scale_max: 100.0            # highest frequency scale in B
+fourier_seed: 42
+hidden_features: 128
+hidden_layers: 4
+out_features: 1
+hidden_omega_0: 1.0                 # shared omega for all Gabor backbone layers
+hidden_scale: 10.0
+train_omega: False
+train_scale: False
+dtype: "float32" # Insert here something that works with torch.{dtype}, e.g. "float32", "float64", "float16"
