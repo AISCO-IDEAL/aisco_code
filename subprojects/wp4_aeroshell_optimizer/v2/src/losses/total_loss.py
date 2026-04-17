@@ -172,6 +172,9 @@ class TotalLoss:
         for category, lossnames in losses_block.items():
             if category == "total":
                 continue
+            if isinstance(lossnames, dict) and lossnames.get("_role") == "diversity":
+                # Diversity is handled by the population trainer path, not legacy TotalLoss.
+                continue
             for loss_name, entry in lossnames.items():
                 if not isinstance(entry, list) or len(entry) < 3:
                     continue  # skip metadata keys like _role, _sign
