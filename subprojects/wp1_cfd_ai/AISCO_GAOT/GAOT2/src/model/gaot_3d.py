@@ -6,6 +6,9 @@ from .layers.attn import Transformer
 from .layers.magno import MAGNODecoder, MAGNOEncoder
 from .layers.scalar_encoder import ScalarEncoder
 
+# from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.trainer.stat import verts_to_faces
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import cp_field_to_drag, cp_field_to_drag_pointcloud
+
 
 class GAOT3D(nn.Module):
     """
@@ -399,16 +402,35 @@ class _ResidualBlock(nn.Module):
 
 
 def masked_multi_head_loss(
+    batch,
     predictions: dict[str, torch.Tensor],
     targets: dict[str, torch.Tensor],
     loss_fn: nn.Module | None = None,
     weights: dict[str, float] | None = None,
+    w_force: float = 0.0,
 ) -> torch.Tensor:
     """Loss over multiple heads, masking NaN targets per sample."""
     if loss_fn is None:
         loss_fn = nn.MSELoss(reduction="none")
     if weights is None:
         weights = {}
+
+    integrated_drag_pred = []
+    for data in batch.to_data_list():
+        cp_pred = predictions["field"][data.ptr[:-1]]  # [N_i, field_output_size]
+        pos = data.pos  # [N_i, 3]
+        drag = cp_field_to_drag_pointcloud(
+            cp_pred,
+            pos,
+        )
+        integrated_drag_pred.append(drag)
+
+    avg_force_error = torch.tensor(0.0, device=next(iter(predictions.values())).device)
+    for i in range(len(integrated_drag_pred)):
+        force_gt = targets["force"][i]  # [1]
+        force_error = torch.abs(integrated_drag_pred[i] - force_gt)
+        avg_force_error += force_error
+    avg_force_error = avg_force_error / len(integrated_drag_pred)
 
     device = next(iter(predictions.values())).device
     total = torch.tensor(0.0, device=device)
@@ -426,4 +448,4 @@ def masked_multi_head_loss(
         total = total + w * loss_fn(pred[valid], gt[valid]).mean()
         n_active += 1
 
-    return total / max(n_active, 1)
+    return total / max(n_active, 1) + w_force * avg_force_error
