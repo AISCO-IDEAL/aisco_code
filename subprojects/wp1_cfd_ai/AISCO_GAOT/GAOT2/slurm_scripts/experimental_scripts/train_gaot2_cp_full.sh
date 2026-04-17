@@ -69,4 +69,4 @@ echo "Job ended on: $(date)"
 echo "Total elapsed time: $SECONDS seconds"
 echo "=========================================="
 
-## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/train_gaot2_cp_full.sh
+## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/train_gaot2_cp_full.sh

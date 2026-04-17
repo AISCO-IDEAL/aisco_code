@@ -14,8 +14,8 @@
 # GAOT Field Inference — runs on a single GPU
 #
 # Usage:
-#   sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/robin_inference.sh                          # defaults
-#   sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/robin_inference.sh /path/to/checkpoint.pt   # custom ckpt
+#   sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/robin_inference.sh                          # defaults
+#   sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/robin_inference.sh /path/to/checkpoint.pt   # custom ckpt
 # ----------------------------------------------------------------
 
 module purge

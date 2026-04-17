@@ -15,7 +15,7 @@
 # effect of scalar conditioning on Cp field prediction.
 #
 # Launch:
-#   sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/experimental_scripts/ablation/ablation_no_scalar.sh
+#   sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/experimental_scripts/ablation/ablation_no_scalar.sh
 
 BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/experimental_configs/ablation/ablation_no_scalar.yaml"
 
