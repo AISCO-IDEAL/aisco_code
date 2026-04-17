@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import logging
 import os
-import time
 from copy import deepcopy
 from typing import TYPE_CHECKING
 
@@ -108,154 +107,6 @@ class CustomLRScheduler(_LRScheduler):
         return [lr for _ in self.optimizer.param_groups]
 
 
-###############
-# Optimizer
-###############
-class AdamOptimizer:
-    optimizer: torch.optim.Adam
-    scheduler: (
-        torch.optim.lr_scheduler.StepLR
-        | torch.optim.lr_scheduler.CosineAnnealingLR
-        | torch.optim.lr_scheduler.ExponentialLR
-        | CustomLRScheduler
-        | None
-    )
-    epoch: int
-    batch_size: int
-    lr: float
-    loss_scale: float
-    eval_every_eps: int
-
-    def __init__(self, params, config):
-        # New: allow overriding betas / eps from config, with stable defaults
-        betas = (config["beta1"], config["beta2"])
-        eps = getattr(config, "eps", 1e-6)
-
-        self.optimizer = torch.optim.Adam(
-            params,
-            lr=config.lr,
-            betas=betas,
-            eps=eps,
-        )
-        self.epoch = config.epoch
-        self.lr = config.lr
-        self.loss_scale = config.loss_scale
-        self.eval_every_eps = config.eval_every_eps
-        self.early_save_metric = config.early_save_metric.lower()
-
-        if self.early_save_metric not in ["train", "val"]:
-            raise ValueError("`early_save_metric` must be either 'train' or 'val'.")
-
-        if config.scheduler == "step":
-            self.scheduler = torch.optim.lr_scheduler.StepLR(
-                self.optimizer, step_size=config.scheduler_step_size, gamma=config.scheduler_gamma
-            )
-        elif config.scheduler == "cos":
-            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                self.optimizer, T_max=config.scheduler_t_max, eta_min=config.scheduler_eta_min
-            )
-        elif config.scheduler == "exp":
-            self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=config.scheduler_gamma)
-        elif config.scheduler == "mix":
-            warmup_epochs = int(0.1 * self.epoch)
-            exp_decay_epochs = int(0.05 * self.epoch)
-            cosine_epochs = self.epoch - warmup_epochs - exp_decay_epochs
-            if warmup_epochs == 0:
-                warmup_epochs = 1
-                cosine_epochs -= 1
-            if exp_decay_epochs == 0:
-                exp_decay_epochs = 1
-                cosine_epochs -= 1
-            self.scheduler = CustomLRScheduler(
-                optimizer=self.optimizer,
-                total_epochs=self.epoch,
-                warmup_epochs=warmup_epochs,
-                cosine_epochs=cosine_epochs,
-                exp_decay_epochs=exp_decay_epochs,
-                initial_lr=self.lr,
-                max_lr=config.max_lr,
-                min_lr=config.min_lr,
-                final_lr=config.final_lr,
-            )
-        else:
-            self.scheduler = None
-
-    def optimize(self, trainer: TrainerBase, description: str = "AdamOptimizer", color: str = "blue"):
-        time_total = 0.0
-        best_loss, best_epoch, best_state = np.inf, -1, None
-        losses = []
-        epochs = []
-        val_epochs = []
-        val_losses = []
-
-        # Only rank 0 should display progress bar
-        disable_pbar = trainer.setup_config.get("rank", 0) != 0
-        pbar = tqdm(total=self.epoch, desc=description, colour=color, disable=disable_pbar)
-        for epoch in range(self.epoch):
-            # Ensure DistributedSampler shuffles differently each epoch
-            train_sampler = getattr(trainer.train_loader, "sampler", None)
-            if hasattr(train_sampler, "set_epoch"):
-                train_sampler.set_epoch(epoch)  # type: ignore[union-attr]
-            trainer.model.train()
-            total_loss = 0.0
-            for batch in trainer.train_loader:
-                start_time = time.time()
-                self.optimizer.zero_grad()
-                with trainer.autocast_ctx:
-                    train_loss = trainer.train_step(batch)
-                train_loss.backward()
-                self.optimizer.step()
-                total_loss += train_loss.item()
-                if isinstance(trainer.device, torch.device) and trainer.device.type == "cuda":
-                    torch.cuda.synchronize()
-                time_total += time.time() - start_time
-
-            if self.scheduler is not None:
-                self.scheduler.step()
-
-            pbar.update(1)
-
-            if (epoch + 1) % self.eval_every_eps == 0:
-                train_loss = total_loss / len(trainer.train_loader)
-                losses.append(train_loss)
-                epochs.append(epoch)
-                val_metrics = trainer.validate(trainer.val_loader)
-                val_loss = val_metrics["loss"]
-                if not disable_pbar:
-                    pbar.set_postfix({"loss": train_loss, "val_loss": val_loss})
-                val_losses.append(val_loss)
-                val_epochs.append(epoch)
-
-                current_loss = val_loss if self.early_save_metric == "val" else train_loss
-
-                if current_loss < best_loss:
-                    best_loss = current_loss
-                    best_epoch = epoch
-                    best_state = deepcopy(trainer.model.state_dict())
-
-        if best_state is not None:
-            trainer.model.load_state_dict(best_state)
-
-        if not disable_pbar:
-            pbar.close()
-
-        return {
-            "train": {
-                "loss": losses,
-                "epoch": epochs,
-            },
-            "valid": {
-                "loss": val_losses,
-                "epoch": val_epochs,
-            },
-            "best": {
-                "epoch": best_epoch,
-                "loss": best_loss,
-            },
-            "time": time_total,
-        }
-
-
 class AdamWOptimizer:
     optimizer: torch.optim.AdamW
     scheduler: (
@@ -270,6 +121,8 @@ class AdamWOptimizer:
     lr: float
     loss_scale: float
     eval_every_eps: int
+    viz_every_eps: int
+    viz_warmup_epochs: int
 
     def __init__(self, params, config: dict):
         # New: configurable betas / eps with stable defaults
@@ -287,6 +140,8 @@ class AdamWOptimizer:
         self.lr = config["lr"]
         self.loss_scale = config["loss_scale"]
         self.eval_every_eps = config["eval_every_eps"]
+        self.viz_every_eps = config.get("viz_every_eps", self.eval_every_eps)
+        self.viz_warmup_epochs = config.get("viz_warmup_epochs", 0)
         self.early_save_metric = config["early_save_metric"].lower()
 
         if self.early_save_metric not in ["train", "val"]:
@@ -496,8 +351,7 @@ class AdamWOptimizer:
                 losses.append(avg_train_loss)
                 epochs.append(epoch)
 
-                # Capture validation metrics
-                val_metrics = trainer.validate(trainer.val_loader)
+                val_metrics = trainer.validate(trainer.val_loader, epoch_name=epoch)
                 val_loss = val_metrics["loss"]
                 val_mse = val_metrics["mse"]
                 val_rel_l2 = val_metrics["rel_l2"]
@@ -544,7 +398,8 @@ class AdamWOptimizer:
                 val_epochs.append(epoch)
 
                 # Per-epoch visualization logging
-                if hasattr(trainer, "visualize_sample"):
+                _do_viz = epoch < self.viz_warmup_epochs or (self.viz_every_eps > 0 and (epoch + 1) % self.viz_every_eps == 0)
+                if _do_viz and hasattr(trainer, "visualize_sample"):
                     try:
                         trainer.visualize_sample(epoch)
                     except Exception as e:

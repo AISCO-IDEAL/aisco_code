@@ -1,4 +1,5 @@
 import torch
+from scipy.spatial import cKDTree
 from torch import Tensor
 
 # Default flow constants (match common_preprocessing.py)
@@ -165,6 +166,70 @@ def pressure_shear_to_drag(
     friction_drag = (-tau_dir * face_areas).sum()
 
     return pressure_drag + friction_drag
+
+
+def pressure_to_drag_pointcloud(
+    pred_pressure: Tensor,
+    normals: Tensor,
+    pos: Tensor,
+    drag_direction: int = 0,
+    k: int = 16,
+) -> Tensor:
+    """Integrate pressure to drag using only point-cloud data — no face connectivity.
+
+    Per-vertex surface area is estimated via the k-nearest-neighbour Voronoi
+    approximation.  For a locally-uniform point cloud with surface density rho
+    pts/m^2, the k-th nearest-neighbour distance satisfies rho*pi*d_k^2 approx k, so
+    the area associated with each vertex is:
+
+        A_i  ≈  π · d_k² / k
+
+    This is the 2-D Poisson-process Voronoi-cell area formula.  It is
+    equivalent to the face-based integral in the limit of a dense, uniform
+    mesh; for sparse or subsampled point clouds it gives a first-order
+    correct estimate suitable for a training-time validation metric.
+
+    Args:
+        pred_pressure: [N] or [N, 1] pressure in Pascals.
+        normals:       [N, 3] outward unit surface normals.
+        pos:           [N, 3] vertex positions (metres).
+        drag_direction: axis index — 0=x, 1=y, 2=z.
+        k:             number of nearest neighbours for area estimation.
+
+    Returns:
+        Scalar drag force in Newtons.
+    """
+    p = pred_pressure.squeeze(-1) if pred_pressure.dim() > 1 else pred_pressure
+
+    pos_np = pos.detach().cpu().numpy()
+    tree = cKDTree(pos_np)
+    # k+1 because the query includes the query point itself (distance 0)
+    dists, _ = tree.query(pos_np, k=k + 1, workers=-1)
+    d_k = torch.from_numpy(dists[:, k]).to(dtype=pos.dtype, device=pos.device)
+
+    # Voronoi area: A_i ≈ π * d_k² / k
+    vertex_areas = torch.pi * d_k.pow(2) / k
+
+    n_drag = normals[:, drag_direction]
+    return (-p * n_drag * vertex_areas).sum()
+
+
+def cp_field_to_drag_pointcloud(
+    cp_field: Tensor,
+    normals: Tensor,
+    pos: Tensor,
+    v_inf: float,
+    rho: float = DEFAULT_RHO,
+    drag_direction: int = 0,
+    k: int = 16,
+) -> Tensor:
+    """Point-cloud variant of :func:`cp_field_to_drag` — no face connectivity needed.
+
+    Converts Cp → pressure (Pa) then delegates to
+    :func:`pressure_to_drag_pointcloud`.
+    """
+    pressure_pa = cp_to_pressure(cp_field, v_inf=v_inf, rho=rho)
+    return pressure_to_drag_pointcloud(pressure_pa, normals, pos, drag_direction=drag_direction, k=k)
 
 
 def drag_to_cd(

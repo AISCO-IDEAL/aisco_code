@@ -2,9 +2,9 @@ import ast
 import copy
 import logging
 import os
+import tempfile
+import warnings
 
-import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import torch
 import yaml
@@ -12,9 +12,12 @@ from torch_geometric.data import Batch, Data
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
 import wandb
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.metadata import DATASET_METADATA
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.model.gaot_3d import GAOT3D
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.trainer.utils.plot import plot_3d_comparison_matplotlib
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.pressure_integration import cp_field_to_drag
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.scale import rescale, rescale_new
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer import MeshSDFGrads, Visualiser
 
@@ -22,9 +25,19 @@ logger = logging.getLogger(__name__)
 
 
 class ModelLoader:
+    optimization_state: dict[str, object]
+    _DEFAULT_MAIN_CONFIG_PATH = "subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml"
+
     def __init__(self, cfd_config: dict, device: str) -> None:
         self.cfd_config = cfd_config
         self.device = device
+        self._init_viz_consistency_settings()
+
+        self.optimization_state = {
+            "vertices": None,
+            "faces": None,
+            "vertice_grads": None,
+        }
 
         self.model_path = self._get_checkpoint_path()
         self._load_model()
@@ -42,6 +55,81 @@ class ModelLoader:
         self.visualiser = Visualiser(device=self.device)
         self.gradlogger = MeshSDFGrads(self.visualiser, intensity=10)
 
+    def _get_dataset_viz_config(self) -> dict:
+        dataset_cfg = self.cfd_config.get("dataset", {}) if isinstance(self.cfd_config.get("dataset", {}), dict) else None
+        if isinstance(dataset_cfg, dict) and dataset_cfg:
+            return dataset_cfg
+
+        main_config_path = self.cfd_config.get("main_config_path", self._DEFAULT_MAIN_CONFIG_PATH)
+        if not os.path.isabs(main_config_path):
+            main_config_path = os.path.join(os.getcwd(), main_config_path)
+        if not os.path.exists(main_config_path):
+            raise FileNotFoundError(
+                "Could not resolve dataset visualization settings. "
+                f"Expected cfd_config['dataset'] or main config at {main_config_path}."
+            )
+
+        with open(main_config_path) as f:
+            cfg = yaml.safe_load(f)
+        if not isinstance(cfg, dict):
+            raise TypeError(f"Main config at {main_config_path} must be a dictionary.")
+
+        loaded_dataset_cfg = cfg.get("dataset", {})
+        if not isinstance(loaded_dataset_cfg, dict):
+            raise TypeError(f"Expected 'dataset' section in {main_config_path} to be a dictionary.")
+        return loaded_dataset_cfg
+
+    def _init_viz_consistency_settings(self):
+        """Build fixed axis and color ranges exactly like GAOT3 trainer/stat.py."""
+        dataset_cfg = self._get_dataset_viz_config()
+
+        axis_cfg = dataset_cfg.get("viz_axis_limits")
+        if axis_cfg is not None:
+            parsed_limits: dict[str, tuple[float, float]] = {}
+            for axis_name in ("x", "y", "z"):
+                axis_range = axis_cfg.get(axis_name) if isinstance(axis_cfg, dict) else None
+                if axis_range is None or len(axis_range) != 2:
+                    raise ValueError(f"dataset.viz_axis_limits.{axis_name} must be a 2-element range [min, max].")
+                axis_min = float(axis_range[0])
+                axis_max = float(axis_range[1])
+                if axis_max <= axis_min:
+                    raise ValueError(f"Invalid dataset.viz_axis_limits.{axis_name}: min={axis_min} must be < max={axis_max}.")
+                parsed_limits[axis_name] = (axis_min, axis_max)
+            self._viz_fixed_axis_limits = parsed_limits
+        else:
+            self._viz_fixed_axis_limits = {
+                "x": (-3.0, 3.0),
+                "y": (-3.0, 3.0),
+                "z": (-3.0, 3.0),
+            }
+
+        vmin = dataset_cfg.get("viz_field_vmin")
+        vmax = dataset_cfg.get("viz_field_vmax")
+        diff_vmax = dataset_cfg.get("viz_abs_diff_vmax")
+
+        if vmin is None or vmax is None:
+            raise ValueError("dataset.viz_field_vmin and dataset.viz_field_vmax are required for visualization.")
+        if diff_vmax is None:
+            raise ValueError("dataset.viz_abs_diff_vmax is required for visualization.")
+
+        vmin_f = float(vmin)
+        vmax_f = float(vmax)
+        diff_vmax_f = float(diff_vmax)
+        if vmax_f <= vmin_f:
+            raise ValueError(f"Invalid viz field range: viz_field_vmin={vmin_f} must be < viz_field_vmax={vmax_f}.")
+        if diff_vmax_f <= 0.0:
+            raise ValueError(f"Invalid viz_abs_diff_vmax={diff_vmax_f}; it must be > 0.")
+
+        self._viz_fixed_clim_common = (vmin_f, vmax_f)
+        self._viz_fixed_clim_diff = (0.0, diff_vmax_f)
+
+    @staticmethod
+    def _to_wandb_step(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
     def _get_checkpoint_path(self):
         df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
         for _, row in df.iterrows():
@@ -51,25 +139,90 @@ class ModelLoader:
                 return path_dict.get("ckpt_path")
         raise ValueError("Wrong ID for GAOT-Model")
 
-    def _load_model(self) -> None:
+    def _load_model(self) -> None:  # Noqa: PLR0912, PLR0915
         config_path = self.model_path.replace("model.pt", "config.yaml")
         if not os.path.exists(config_path):
-            raise FileNotFoundError(
-                f"Model config not found at {config_path}. Expected a _config.yaml next to the .pt checkpoint."
-            )
+            raise FileNotFoundError(f"Model config not found at {config_path}. Expected config.yaml next to model.pt.")
 
         with open(config_path) as f:
             config = yaml.safe_load(f)
 
+        if not isinstance(config, dict):
+            raise TypeError("Loaded config must be a dictionary.")
+
         self._og_config = copy.deepcopy(config)
 
-        config = config["model"]["args"]
+        if "model" not in config or "args" not in config["model"]:
+            raise KeyError("Expected config['model']['args'] in saved config.")
 
-        config["magno"]["precompute_edges"] = False
-        config["transformer"]["norm_eps"] = float(config["transformer"]["norm_eps"])
+        model_args = config["model"]["args"]
 
-        self.gaot = GAOT3D(config=config).to(self.device)
+        if "magno" not in model_args:
+            raise KeyError("Expected 'magno' section in model args.")
+        if "transformer" not in model_args:
+            raise KeyError("Expected 'transformer' section in model args.")
+
+        model_args["magno"]["precompute_edges"] = False
+
+        norm_eps = model_args["transformer"].get("norm_eps")
+        if norm_eps is None:
+            raise KeyError("Expected transformer.norm_eps in model args.")
+        model_args["transformer"]["norm_eps"] = float(norm_eps)
+
+        self.gaot = GAOT3D(config=model_args).to(self.device)
         self.gaot.eval()
+
+        state = torch.load(self.model_path, map_location=self.device, weights_only=False)
+        if "model" in state:
+            sd = state["model"]
+        elif "state_dict" in state:
+            sd = state["state_dict"]
+        else:
+            sd = state
+
+        sd = {k.removeprefix("module."): v for k, v in sd.items()}
+        missing, unexpected = self.gaot.load_state_dict(sd, strict=False)
+        if missing or unexpected:
+            warnings.warn(
+                f"Checkpoint/state_dict mismatch. Missing keys: {missing}. Unexpected keys: {unexpected}.", stacklevel=2
+            )
+
+        # Reconstruct latent tokens from training context instead of using self.gaot.latent_tokens
+        dataset_cfg = self._og_config.get("dataset", {})
+        self._use_rescale_new = dataset_cfg.get("use_rescale_new", False)
+
+        metaname = dataset_cfg.get("metaname")
+        if metaname and metaname in DATASET_METADATA:
+            self._metadata = DATASET_METADATA[metaname]
+            self._phy_domain = self._metadata.domain_x
+        else:
+            norm_domain = model_args.get("norm_domain")
+            if norm_domain is None:
+                raise KeyError(
+                    "Could not determine physical domain. Expected dataset.metaname in DATASET_METADATA "
+                    "or model.args.norm_domain."
+                )
+            self._phy_domain = norm_domain
+
+        latent_token_size = model_args.get("latent_tokens")
+        if latent_token_size is None:
+            raise KeyError("Expected model.args.latent_tokens in saved config.")
+
+        x_min, y_min, z_min = self._phy_domain[0]
+        x_max, y_max, z_max = self._phy_domain[1]
+
+        meshgrid = torch.meshgrid(
+            torch.linspace(x_min, x_max, latent_token_size[0]),
+            torch.linspace(y_min, y_max, latent_token_size[1]),
+            torch.linspace(z_min, z_max, latent_token_size[2]),
+            indexing="ij",
+        )
+        latent_queries = torch.stack(meshgrid, dim=-1).reshape(-1, 3)
+
+        if self._use_rescale_new:
+            self._latent_tokens = rescale_new(latent_queries, (-1, 1), self._phy_domain).to(self.device)
+        else:
+            self._latent_tokens = rescale(latent_queries, (-1, 1)).to(self.device)
 
     def forward(self, sdf_model, epoch_name):
         self.epoch_name = epoch_name
@@ -78,7 +231,6 @@ class ModelLoader:
             sdf_model=sdf_model, loss_fn=self.loss_fn
         )
 
-        # Store diagnostics for DebugManager
         diag = getattr(self, "_last_diagnostics", {})
         diag["mesh_n_vertices"] = int(verts.shape[0]) if verts is not None and verts.numel() > 0 else 0
         diag["mesh_n_faces"] = int(faces.shape[0]) if faces is not None and faces.numel() > 0 else 0
@@ -97,130 +249,124 @@ class ModelLoader:
 
         cuppled_loss = loss.detach() + surrogate_loss - surrogate_loss.detach()
         assert cuppled_loss == loss.item() + surrogate_loss - surrogate_loss.item()
-        return cuppled_loss * (-1)
+        return cuppled_loss
 
     def _visualize_pressure_field(
         self,
         pressure_field: torch.Tensor,
         mesh_verts: torch.Tensor,
         mesh_faces: torch.Tensor,
+        reference_field: torch.Tensor | None = None,
     ) -> None:
         if not self.cfd_config["visualisations"]:
             return
         if pressure_field is None:
             return
 
-        # ---- build a synthetic "sample" compatible with trainer logic ----
-        # vertices are in mm from SDF pipeline; convert to m as in GAOT training
         sample = Data(
-            pos=mesh_verts.detach() * 1e-3,  # mm -> m
-            x=None,  # no GT field on this mesh
+            pos=mesh_verts.detach() * 1e-3,
+            x=None,
             face=mesh_faces.detach().T,
         )
 
         loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
         batch = next(iter(loader)).to(self.device)
 
-        # coordinates for scatter plot  (DETACH before numpy)
-        coords = batch.pos.detach().cpu().numpy()
+        coords_tensor = batch.pos_raw if hasattr(batch, "pos_raw") else batch.pos
+        coords = coords_tensor.detach().cpu().numpy()
         fname = getattr(self, "epoch_name", "mesh")
 
-        # predicted field is passed in as pressure_field (node-wise GAOT output)
         if pressure_field.dim() == 2 and pressure_field.size(-1) == 1:
             pressure_field = pressure_field.squeeze(-1)
+        if reference_field is not None and reference_field.dim() == 2 and reference_field.size(-1) == 1:
+            reference_field = reference_field.squeeze(-1)
 
         field_pred = pressure_field.detach().cpu().numpy().squeeze()
-        field_gt = None  # no GT available on optimization mesh
-
-        # if you *do* have GT on this mesh in future, set batch.x and use it here
-        if field_gt is not None:
-            # optional: same denorm as StaticTrainer3D if you store stats on ModelLoader
-            u_mean = getattr(self, "u_mean", torch.tensor(0.0, device=self.device))
-            u_std = getattr(self, "u_std", torch.tensor(1.0, device=self.device))
-            if isinstance(u_mean, torch.Tensor):
-                u_mean = u_mean.detach().cpu().numpy().item() if u_mean.numel() == 1 else 0.0
-            if isinstance(u_std, torch.Tensor):
-                u_std = u_std.detach().cpu().numpy().item() if u_std.numel() == 1 else 1.0
-
-            field_pred_dn = field_pred * u_std + u_mean
-            field_gt_dn = field_gt * u_std + u_mean
-            field_diff = np.abs(field_gt_dn - field_pred_dn)
-
-            common_min = float(np.min(field_gt_dn))
-            common_max = float(np.max(field_gt_dn))
-        else:
-            # no GT: just plot the prediction with its own range
-            field_pred_dn = field_pred
-            field_gt_dn = None
-            field_diff = None
-            common_min = float(np.min(field_pred_dn))
-            common_max = float(np.max(field_pred_dn))
-
-        # ---- build matplotlib figure in same style as trainer ------------
-
-        panels = []
-        if field_gt_dn is not None:
-            panels.append((field_gt_dn, "Ground Truth", "jet", common_min, common_max))
-        panels.append((field_pred_dn, "Prediction", "jet", common_min, common_max))
-        if field_diff is not None:
-            panels.append((field_diff, "Absolute Difference", "Reds", None, None))
-
-        fig = plt.figure(figsize=(20, 6))
-        for panel_idx, (data, title, cmap_name, vmin, vmax) in enumerate(panels):
-            ax = fig.add_subplot(1, len(panels), panel_idx + 1, projection="3d")
-            sc = ax.scatter(
-                coords[:, 0],
-                coords[:, 1],
-                coords[:, 2],
-                c=data,
-                cmap=cmap_name,
-                s=2,
-                vmin=vmin,
-                vmax=vmax,
-                depthshade=False,
-            )
-            ax.set_title(title)
-            fig.colorbar(sc, ax=ax, shrink=0.5)
-            ax.view_init(elev=20, azim=-120)
+        field_ref = None if reference_field is None else reference_field.detach().cpu().numpy().squeeze()
 
         # we don't have a numeric epoch here, only a name
         title_epoch = getattr(self, "epoch_name", "opt_step")
-        fig.suptitle(f"Pressure Field [opt] {fname} — {title_epoch}", fontsize=13)
-        plt.tight_layout()
+        with tempfile.NamedTemporaryFile(suffix=".png", prefix="pressure_field_", delete=False) as tmp_file:
+            tmp_path = tmp_file.name
 
-        step_val = int(self.epoch_name)
-
-        wandb.log(
-            {
+        step_val = self._to_wandb_step(self.epoch_name)
+        try:
+            plot_3d_comparison_matplotlib(
+                coords=coords,
+                u_gtr=field_ref,
+                u_prd=field_pred,
+                save_path=tmp_path,
+                variable_name="Pressure",
+                point_size=2.0,
+                cmap="jet",
+                dpi=150,
+                view_angle=(20, -120),
+                hide_grid=False,
+                equal_aspect=False,
+                show_abs_diff=field_ref is not None,
+                show_input_shape=False,
+                fixed_clim_common=self._viz_fixed_clim_common,
+                fixed_clim_diff=self._viz_fixed_clim_diff,
+                fixed_axis_limits=self._viz_fixed_axis_limits,
+            )
+            wandb_payload = {
                 "Pressure-Field visualisation": wandb.Image(
-                    fig,
+                    tmp_path,
                     caption=f"opt {fname} {title_epoch}",
                 )
-            },
-            step=step_val,
-        )
-        plt.close(fig)
+            }
+            if step_val is None:
+                wandb.log(wandb_payload)
+            else:
+                wandb.log(wandb_payload, step=step_val)
+        finally:
+            try:  # noqa: SIM105
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
     def loss_fn(self, mesh_verts, mesh_faces):
-        wandb.log({"Aero-resolution": mesh_verts.shape[0]}, step=self.epoch_name)
         if mesh_verts is None or mesh_verts.shape[0] == 0:
             return torch.tensor(0.0, device=self.device)
+
+        step_val = self._to_wandb_step(self.epoch_name)
+        if step_val is None:
+            wandb.log({"Aero-resolution": mesh_verts.shape[0]})
+        else:
+            wandb.log({"Aero-resolution": mesh_verts.shape[0]}, step=step_val)
+
         batch = self._reformat_data(mesh_verts, mesh_faces)
 
-        tokens_pos = self.gaot.latent_tokens
+        # Fix 5: use reconstructed latent tokens from training context
+        tokens_pos = self._latent_tokens
 
         with torch.autograd.set_detect_anomaly(True):
             gaot_loss = self.gaot.forward(batch=batch, tokens_pos=tokens_pos)
 
-        self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces, "vertice_grads": []}
+        self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces, "vertice_grads": None}
 
         pressure_field = gaot_loss["field"]
 
-        self._visualize_pressure_field(pressure_field=pressure_field, mesh_verts=mesh_verts, mesh_faces=mesh_faces)
+        reference_field = None
+        if isinstance(gaot_loss, dict):
+            for key in ("field_target", "field_gt", "target_field", "gt_field"):
+                if key in gaot_loss and gaot_loss[key] is not None:
+                    reference_field = gaot_loss[key]
+                    break
+
+        self._visualize_pressure_field(
+            pressure_field=pressure_field,
+            mesh_verts=mesh_verts,
+            mesh_faces=mesh_faces,
+            reference_field=reference_field,
+        )
+
+        # Fix 4: use physical/raw normals for drag integration
+        integration_normals = batch.c_raw if hasattr(batch, "c_raw") and batch.c_raw is not None else batch.c
 
         int_drag_f = cp_field_to_drag(
             cp_field=pressure_field,
-            normals=batch.c,
+            normals=integration_normals,
             face=mesh_faces.T,
             pos=mesh_verts * 1e-3,
             v_inf=self.cfd_config["v_inf"],
@@ -242,17 +388,14 @@ class ModelLoader:
                 "n_input_faces": int(mesh_faces.shape[0]),
                 "normals_flipped_count": getattr(self, "_normals_flipped_count", 0),
             }
+
         return int_drag_f
 
     def _reformat_data(self, mesh_verts, mesh_faces):
         optim_verts = mesh_verts.to(self.device)
         mesh_faces = mesh_faces.to(self.device)
 
-        optim_verts = optim_verts.clone()
-        optim_verts[:, 0] *= -1.0
-
-        optim_verts_m = optim_verts * 1e-3
-
+        # Compute normals in the original/native SDF frame
         v0 = optim_verts[mesh_faces[:, 0]]
         v1 = optim_verts[mesh_faces[:, 1]]
         v2 = optim_verts[mesh_faces[:, 2]]
@@ -261,7 +404,7 @@ class ModelLoader:
         face_normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
 
-        sdf_values = self.sdf_model(face_centers * 1e3 + face_normals * 50)
+        sdf_values = self.sdf_model(face_centers + face_normals * 50).squeeze(-1)
         normals_flipped = sdf_values < 0
         face_normals[normals_flipped] *= -1
         self._normals_flipped_count = int(normals_flipped.sum().item())
@@ -274,14 +417,27 @@ class ModelLoader:
         vertex_normals = vertex_normals.index_add(0, all_idx, all_normals)
         vertex_normals = torch.nn.functional.normalize(vertex_normals, dim=-1)
 
-        vertex_normals[:, 0] *= -1.0
+        raw_vertex_normals = vertex_normals.clone()
 
-        data = Data(pos=optim_verts_m, face=mesh_faces.T, c=vertex_normals)
+        model_vertex_normals = vertex_normals.clone()
+        model_vertex_normals[:, 0] *= -1.0
+
+        model_verts_m = optim_verts.clone() * 1e-3
+        model_verts_m[:, 0] *= -1.0
+
+        data = Data(
+            pos=model_verts_m,
+            face=mesh_faces.T,
+            c=model_vertex_normals,
+            c_raw=raw_vertex_normals,
+        )
 
         if self._og_config["dataset"]["use_rescale_new"]:
-            rescale_transform = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=([-5.0, -1.3, -1.2], [4.7, 1.7, 1.6]))
+            data = RescalePositionNew(
+                lims=(-1.0, 1.0),
+                phy_domain=self._phy_domain,
+            )(data)
         else:
-            rescale_transform = RescalePosition()
-        data = rescale_transform(data)
+            data = RescalePosition()(data)
 
         return Batch.from_data_list([data]).to(self.device)

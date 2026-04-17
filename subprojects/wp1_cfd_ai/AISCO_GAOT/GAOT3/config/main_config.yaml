@@ -72,9 +72,7 @@ model:
             max_neighbors: null
             sample_ratio: null
             decoder_sampling_strategy: "ratio"  # dropout only on decoder edges
-            decoder_sample_ratio: 0.5
-            encoder_sampling_strategy: "ratio"  # dropout only on encoder edges
-            encoder_sample_ratio: 0.5
+            decoder_sample_ratio: 0.65
         transformer:
             patch_size: 2
             hidden_size: 256
@@ -137,18 +135,29 @@ dataset:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
     subsample_nodes: 50000     # randomly sample 30k nodes per load if sample exceeds this
+    subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
     num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
+
+    viz_axis_limits:            # Edit these ranges to control the visualized x/y/z box exactly, default is outer bounding box
+        x: [-3, 3]
+        y: [-1.5, 1.5]
+        z: [-0.5, 2]
+    viz_field_vmin: -2.2        # min on pressure bar
+    viz_field_vmax: 0.95         # max on pressure bar
+    viz_abs_diff_vmax: 1.0      # max on error bar (min always 0)
 
 optimizer:
     name: "adamw" # the option "adam" hasen't been adopted yet to the new config-style
     args:
         lr: 6e-4
         weight_decay: 1e-05
-        epoch: 300
+        epoch: 500
         loss_scale: 1.0
         eval_every_eps: 1
+        viz_every_eps: 1   # visualize every N epochs; defaults to eval_every_eps if omitted
+        viz_warmup_epochs: 0  # also visualize every epoch for the first X epochs (0 = disabled)
         scheduler: "mix"
         max_lr: 0.003
         min_lr: 2e-4
