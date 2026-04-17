@@ -6,9 +6,6 @@ from .layers.attn import Transformer
 from .layers.magno import MAGNODecoder, MAGNOEncoder
 from .layers.scalar_encoder import ScalarEncoder
 
-# from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.trainer.stat import verts_to_faces
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.pressure_integration import cp_field_to_drag, cp_field_to_drag_pointcloud
-
 
 class GAOT3D(nn.Module):
     """
@@ -402,45 +399,18 @@ class _ResidualBlock(nn.Module):
 
 
 def masked_multi_head_loss(
-    batch_or_predictions,
-    predictions_or_targets: dict[str, torch.Tensor],
-    targets: dict[str, torch.Tensor] | None = None,
+    predictions: dict[str, torch.Tensor],
+    targets: dict[str, torch.Tensor],
     loss_fn: nn.Module | None = None,
     weights: dict[str, float] | None = None,
-    w_force: float = 0.0,
 ) -> torch.Tensor:
     """Loss over multiple heads, masking NaN targets per sample."""
-    if targets is None:
-        batch = None
-        predictions = batch_or_predictions
-        targets = predictions_or_targets
-    else:
-        batch = batch_or_predictions
-        predictions = predictions_or_targets
-
     if loss_fn is None:
         loss_fn = nn.MSELoss(reduction="none")
     if weights is None:
         weights = {}
 
     device = next(iter(predictions.values())).device
-    avg_force_error = torch.tensor(0.0, device=device)
-    if w_force and batch is not None and "field" in predictions and "force" in targets:
-        integrated_drag_pred = []
-        offset = 0
-        for data in batch.to_data_list():
-            num_nodes = data.pos.shape[0]
-            cp_pred = predictions["field"][offset : offset + num_nodes]
-            pos = data.pos
-            offset += num_nodes
-            drag = cp_field_to_drag_pointcloud(cp_pred, pos)
-            integrated_drag_pred.append(drag)
-
-        for i, drag in enumerate(integrated_drag_pred):
-            force_gt = targets["force"][i]
-            avg_force_error += torch.abs(drag - force_gt)
-        avg_force_error = avg_force_error / max(len(integrated_drag_pred), 1)
-
     total = torch.tensor(0.0, device=device)
     n_active = 0
 
@@ -456,4 +426,4 @@ def masked_multi_head_loss(
         total = total + w * loss_fn(pred[valid], gt[valid]).mean()
         n_active += 1
 
-    return total / max(n_active, 1) + w_force * avg_force_error
+    return total / max(n_active, 1)
