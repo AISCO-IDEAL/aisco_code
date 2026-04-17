@@ -113,7 +113,7 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
 cfd:
   model_id: "gold3"
   version: 1
-  visualisations: "True" # only works for Version 2
+  visualisations: "False" # only works for Version 2
   v_inf: 25.0   # freestream velocity [m/s] for Cp -> Pa conversion
   rho: 1.225    # air density [kg/m³] for Cp -> Pa conversion
   mesh_resolution: 30000

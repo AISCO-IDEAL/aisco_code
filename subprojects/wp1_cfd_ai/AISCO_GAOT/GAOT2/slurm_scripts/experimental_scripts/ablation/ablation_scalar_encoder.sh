@@ -29,7 +29,7 @@
 #   Per-epoch CSV: <result_path>_epoch_metrics.csv  (one per run)
 #
 # Launch:
-#   sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/experimental_scripts/ablation/ablation_scalar_encoder.sh
+#   sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/experimental_scripts/ablation/ablation_scalar_encoder.sh
 
 # --------------------------------------------------------------------------
 CONFIGS=(

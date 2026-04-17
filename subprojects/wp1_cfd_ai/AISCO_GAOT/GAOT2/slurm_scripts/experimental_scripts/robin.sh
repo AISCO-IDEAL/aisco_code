@@ -105,6 +105,6 @@ echo "Job ended on: $(date)"
 echo "Total elapsed time: $SECONDS seconds"
 echo "=========================================="
 
-## chmod +x ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/robin.sh
-## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/slurm_scripts/robin.sh
+## chmod +x ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/robin.sh
+## sbatch ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/robin.sh
 ## watch -n 1.0 squeue -u roarnold
