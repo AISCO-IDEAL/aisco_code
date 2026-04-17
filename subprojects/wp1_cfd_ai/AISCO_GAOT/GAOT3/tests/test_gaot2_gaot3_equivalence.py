@@ -9,6 +9,8 @@ the practical question: do both versions execute from the same public surface,
 from __future__ import annotations
 
 import argparse
+import csv
+import math
 import os
 import subprocess
 import sys
@@ -26,6 +28,8 @@ DEFAULT_GAOT3_CONFIG = Path("subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main
 DEFAULT_LOG_DIR = Path(tempfile.gettempdir()) / "gaot2_gaot3_main_equivalence"
 EQUIVALENCE_EPOCHS = 3
 EQUIVALENCE_SUBSAMPLING_SEED = 42
+INFERENCE_ATOL = 1e-6
+INFERENCE_RTOL = 1e-6
 
 
 @dataclass(frozen=True)
@@ -98,12 +102,90 @@ def _write_equivalence_config(version: str, source_config: Path, log_dir: Path) 
         raise TypeError(f"Expected optimizer.args mapping in {source_config}")
     optimizer_args["epoch"] = EQUIVALENCE_EPOCHS
 
+    paths = cfg.setdefault("path", {})
+    if not isinstance(paths, dict):
+        raise TypeError(f"Expected path mapping in {source_config}")
+    artifact_dir = (log_dir / "artifacts" / version.lower()).resolve()
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    paths["ckpt_path"] = str(artifact_dir / "model.pt")
+    paths["loss_path"] = str(artifact_dir / "loss.png")
+    paths["result_path"] = str(artifact_dir / "results.png")
+    paths["config_save_path"] = str(artifact_dir / "config.yaml")
+    paths["database_path"] = str(artifact_dir / "metrics.csv")
+
     effective_dir = log_dir / "effective_configs"
     effective_dir.mkdir(parents=True, exist_ok=True)
     effective_config = effective_dir / f"{version.lower()}_equivalence_config.yaml"
     with effective_config.open("w", encoding="utf-8") as f:
         yaml.safe_dump(cfg, f, sort_keys=False)
     return effective_config
+
+
+def _prediction_csv_path(config_path: Path) -> Path:
+    with config_path.open(encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    if not isinstance(cfg, dict):
+        raise TypeError(f"Expected config mapping in {config_path}, got {type(cfg).__name__}")
+    path_cfg = cfg.get("path")
+    if not isinstance(path_cfg, dict):
+        raise TypeError(f"Expected path mapping in {config_path}")
+    result_path = path_cfg.get("result_path")
+    if not isinstance(result_path, str):
+        raise TypeError(f"Expected path.result_path string in {config_path}")
+    return Path(result_path).with_name(Path(result_path).stem + "_predictions.csv")
+
+
+def _try_float(value: str) -> float | None:
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def _read_prediction_csv(path: Path) -> tuple[list[str], list[list[str]]]:
+    if not path.exists():
+        raise AssertionError(f"Expected inference prediction CSV was not created: {path}")
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+    if not rows:
+        raise AssertionError(f"Inference prediction CSV is empty: {path}")
+    return rows[0], rows[1:]
+
+
+def _assert_prediction_csvs_equal(gaot2_csv: Path, gaot3_csv: Path) -> None:
+    header2, rows2 = _read_prediction_csv(gaot2_csv)
+    header3, rows3 = _read_prediction_csv(gaot3_csv)
+
+    if header2 != header3:
+        raise AssertionError(f"Inference CSV headers differ:\nGAOT2 {header2}\nGAOT3 {header3}")
+    if len(rows2) != len(rows3):
+        raise AssertionError(f"Inference CSV row counts differ: GAOT2={len(rows2)} GAOT3={len(rows3)}")
+
+    for row_idx, (row2, row3) in enumerate(zip(rows2, rows3, strict=True), start=2):
+        if len(row2) != len(row3):
+            raise AssertionError(f"Inference CSV column count differs at row {row_idx}: GAOT2={len(row2)} GAOT3={len(row3)}")
+        for col_idx, (value2, value3) in enumerate(zip(row2, row3, strict=True), start=1):
+            num2 = _try_float(value2)
+            num3 = _try_float(value3)
+            if num2 is None or num3 is None:
+                if value2 != value3:
+                    column = header2[col_idx - 1] if col_idx <= len(header2) else f"column_{col_idx}"
+                    raise AssertionError(
+                        f"Inference CSV text differs at row {row_idx}, {column}: GAOT2={value2!r} GAOT3={value3!r}"
+                    )
+                continue
+            if math.isnan(num2) and math.isnan(num3):
+                continue
+            if not math.isclose(num2, num3, rel_tol=INFERENCE_RTOL, abs_tol=INFERENCE_ATOL):
+                column = header2[col_idx - 1] if col_idx <= len(header2) else f"column_{col_idx}"
+                raise AssertionError(
+                    f"Inference CSV numeric value differs at row {row_idx}, {column}: "
+                    f"GAOT2={num2:.12g} GAOT3={num3:.12g} "
+                    f"(atol={INFERENCE_ATOL}, rtol={INFERENCE_RTOL})"
+                )
+
+    print(f"\nInference outputs match: {gaot2_csv} == {gaot3_csv}")
 
 
 def _run_main(version: str, config_path: Path, log_dir: Path, timeout: int | None) -> MainRun:
@@ -204,6 +286,11 @@ def run_gaot_main_equivalence(
     if failed:
         _print_failure_report(runs)
         raise AssertionError("At least one GAOT main/config pair failed to execute.")
+
+    _assert_prediction_csvs_equal(
+        _prediction_csv_path(config_paths["GAOT2"]),
+        _prediction_csv_path(config_paths["GAOT3"]),
+    )
 
     print("\nBoth GAOT main/config pairs executed successfully.")
     for run in runs:
