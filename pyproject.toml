@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "AISCO_code"
-version = "0.1.0"
+version = "0.4.0"
 description = "Monorepo for all AISCO code"
 authors = [
     {name = "Kolja Diehl", email = "kdiehl@ethz.ch"}

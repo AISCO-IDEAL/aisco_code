@@ -104,7 +104,44 @@
             display: flex;
             flex-direction: column;
             gap: .9rem;
-            transition: background .25s, border-color .25s;
+            transition: background .25s, border-color .25s, width .2s, min-width .2s, padding .2s;
+        }
+
+        #ctrl.collapsed {
+            width: 36px;
+            min-width: 36px;
+            padding: .6rem 0;
+            overflow: hidden;
+        }
+
+        #ctrl.collapsed>*:not(#collapse-btn-wrap) {
+            display: none !important;
+        }
+
+        #collapse-btn-wrap {
+            display: flex;
+            justify-content: center;
+        }
+
+        #ctrl.collapsed #collapse-btn-wrap {
+            padding-top: .4rem;
+        }
+
+        .collapse-btn {
+            background: var(--bg2);
+            border: 1px solid var(--bd2);
+            border-radius: 6px;
+            padding: .3rem .55rem;
+            font-size: .8rem;
+            color: var(--tx3);
+            cursor: pointer;
+            transition: all .15s;
+            flex-shrink: 0;
+        }
+
+        .collapse-btn:hover {
+            border-color: var(--ac);
+            color: var(--tx);
         }
 
         #ctrl-header {
@@ -477,12 +514,67 @@
             background: var(--bg-v);
             overflow: hidden;
             transition: background .25s;
+            display: flex;
+        }
+
+        #viewer-single {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            height: 100%;
+        }
+
+        #viewer-compare {
+            display: none;
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            height: 100%;
+        }
+
+        #viewer.compare-mode #viewer-single {
+            flex: 1;
+        }
+
+        #viewer.compare-mode #viewer-compare {
+            display: block;
+            flex: 1;
+            border-left: 2px solid var(--ac-bd);
         }
 
         #three-canvas {
             display: block;
             width: 100%;
             height: 100%;
+        }
+
+        #three-canvas-compare {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .compare-label {
+            position: absolute;
+            top: 11px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            padding: .28rem .9rem;
+            border-radius: 20px;
+            font-size: .7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .1em;
+            background: var(--tb-bg);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--bd);
+            color: var(--tx2);
+            pointer-events: none;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: calc(100% - 22px);
         }
 
         #vtoolbar {
@@ -750,6 +842,94 @@
             color: var(--ac);
         }
 
+        /* ── Mode tabs ── */
+        .mode-tabs {
+            display: flex;
+            gap: .3rem;
+            padding: .2rem;
+            background: var(--bg3);
+            border: 1px solid var(--bd);
+            border-radius: 8px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: .42rem .5rem;
+            font-size: .74rem;
+            font-weight: 600;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--tx3);
+            cursor: pointer;
+            transition: all .15s;
+        }
+
+        .tab-btn.active {
+            background: var(--ac-bg);
+            color: var(--ac);
+            border-color: var(--ac-bd);
+        }
+
+        .tab-btn:hover:not(.active) {
+            color: var(--tx);
+        }
+
+        /* ── Dataset viewer panel ── */
+        .ds-run-nav {
+            display: flex;
+            align-items: center;
+            gap: .4rem;
+            margin-top: .5rem;
+        }
+
+        .ds-run-nav button {
+            width: 28px;
+            height: 28px;
+            border: 1px solid var(--bd2);
+            border-radius: 5px;
+            background: var(--bg3);
+            color: var(--tx2);
+            cursor: pointer;
+            font-size: 1rem;
+            line-height: 1;
+            transition: all .12s;
+            flex-shrink: 0;
+        }
+
+        .ds-run-nav button:hover:not(:disabled) {
+            border-color: var(--ac);
+            color: var(--tx);
+        }
+
+        .ds-run-nav button:disabled {
+            opacity: .3;
+            cursor: default;
+        }
+
+        .ds-run-counter {
+            flex: 1;
+            text-align: center;
+            font-size: .74rem;
+            color: var(--tx2);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .ds-run-info {
+            margin-top: .45rem;
+            font-size: .7rem;
+            color: var(--tx3);
+            line-height: 1.75;
+            min-height: 2.4rem;
+        }
+
+        .ds-run-name {
+            color: var(--tx2);
+            font-weight: 600;
+        }
+
         /* ── Dataset thumbnail strip ── */
         #ds-thumb-strip {
             position: absolute;
@@ -773,219 +953,83 @@
             display: flex;
         }
 
-        /* ── Audit badges on run select options ── */
-        .audit-keep {
-            color: #22c55e;
-        }
-
-        .audit-reject {
-            color: #ef4444;
-        }
-
-        #ds-audit-badge {
-            display: inline-block;
-            padding: .1rem .45rem;
-            border-radius: 999px;
-            font-size: .7rem;
-            font-weight: 700;
-            margin-left: .4rem;
-        }
-
-        #ds-audit-badge.keep {
-            background: rgba(34, 197, 94, .18);
-            color: #22c55e;
-        }
-
-        #ds-audit-badge.reject {
-            background: rgba(239, 68, 68, .18);
-            color: #ef4444;
-        }
-
-        #stats-panel {
+        /* ── Scalar color bar ── */
+        #scalar-bar {
+            display: none;
             position: absolute;
-            top: 50px;
-            right: 11px;
+            top: 52px;
+            right: 16px;
+            bottom: auto;
+            left: auto;
+            transform: none;
+            z-index: 10;
             background: var(--tb-bg);
             backdrop-filter: blur(8px);
             border: 1px solid var(--bd2);
             border-radius: 8px;
-            padding: .65rem .85rem;
-            z-index: 10;
-            font-size: .68rem;
-            color: var(--tx2);
-            line-height: 1.85;
-            display: none;
-            min-width: 210px;
-            transition: background .25s, border-color .25s;
-            font-family: 'Cascadia Code', 'Fira Mono', monospace;
+            padding: .55rem .65rem;
+            min-width: auto;
+            pointer-events: none;
         }
 
-        #stats-panel.visible {
+        #scalar-bar.visible {
             display: block;
         }
 
-        .stat-hdr {
-            color: var(--tx);
-            font-weight: 700;
-            font-size: .72rem;
-            font-family: 'Segoe UI', system-ui, sans-serif;
-            margin-bottom: .15rem;
-        }
-
-        .stat-row {
-            display: flex;
-            justify-content: space-between;
-            gap: .8rem;
-        }
-
-        .stat-lbl {
+        .sbar-title {
+            font-size: .63rem;
             color: var(--tx3);
-        }
-
-        .stat-val {
-            color: var(--tx);
-            font-weight: 500;
-            text-align: right;
-        }
-
-        .stat-sep {
-            border: none;
-            border-top: 1px solid var(--bd2);
-            margin: .3rem 0;
-        }
-
-        .stat-grid {
-            font-size: .62rem;
-            color: var(--tx3);
-            margin-top: .15rem;
-        }
-
-        /* ── Mode tabs ── */
-        #mode-tabs {
-            display: flex;
-            gap: .35rem;
-            margin-bottom: .3rem;
-        }
-
-        .mode-tab {
-            flex: 1;
-            background: var(--bg3);
-            border: 1px solid var(--bd2);
-            border-radius: 7px;
-            padding: .5rem .3rem;
-            text-align: center;
-            cursor: pointer;
-            font-size: .78rem;
-            color: var(--tx2);
-            transition: all .15s;
+            text-align: left;
+            margin-bottom: .45rem;
             font-weight: 600;
-        }
-
-        .mode-tab:hover {
-            border-color: var(--ac);
-            color: var(--tx);
-        }
-
-        .mode-tab.active {
-            border-color: var(--ac);
-            background: var(--ac-bg);
-            color: var(--tx);
-        }
-
-        #mode-transform,
-        #mode-dataset {
-            display: flex;
-            flex-direction: column;
-            gap: .9rem;
-        }
-
-        /* ── Colorbar ── */
-        #colorbar {
-            position: absolute;
-            right: 1.2rem;
-            bottom: 1.2rem;
-            width: 28px;
-            display: none;
-            z-index: 20;
-            pointer-events: none;
-        }
-
-        #colorbar.visible {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        #colorbar-label {
-            font-size: .62rem;
-            color: var(--tx2);
-            margin-bottom: .25rem;
             text-transform: uppercase;
             letter-spacing: .08em;
-            white-space: nowrap;
         }
 
-        #colorbar-max,
-        #colorbar-min {
-            font-size: .62rem;
-            color: var(--tx2);
-            white-space: nowrap;
+        .sbar-body {
+            display: flex;
+            align-items: stretch;
+            gap: .5rem;
         }
 
-        #colorbar-max {
-            margin-bottom: .15rem;
-        }
-
-        #colorbar-min {
-            margin-top: .15rem;
-        }
-
-        #colorbar-gradient {
-            width: 18px;
-            height: 180px;
-            border-radius: 3px;
-            border: 1px solid var(--bd2);
-            position: relative;
-        }
-
-        /* Zero-line tick on the colorbar */
-        #colorbar-zero {
-            position: absolute;
-            left: -20px;
-            right: -20px;
-            height: 0;
-            display: none;
-            pointer-events: none;
-        }
-
-        #colorbar-zero::before {
-            content: '';
-            position: absolute;
-            left: 17px;
-            right: 0;
-            top: -1px;
-            height: 2px;
-            background: rgba(255, 255, 255, 0.9);
-            box-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
-        }
-
-        #colorbar-zero-label {
-            position: absolute;
-            right: 22px;
-            top: -7px;
-            font-size: .58rem;
-            color: rgba(255, 255, 255, 0.85);
-            white-space: nowrap;
-            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-        }
-
-        #colorbar-zero-swatch {
+        .sbar-gradient {
             width: 12px;
-            height: 12px;
-            border-radius: 50%;
+            height: 170px;
+            border-radius: 4px;
+            background: linear-gradient(to top, #000080, #0000ff, #0080ff, #00ffff, #80ff80, #ffff00, #ff8000, #ff0000, #800000);
+        }
+
+        .sbar-labels {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: flex-start;
+            font-size: .6rem;
+            color: var(--tx3);
+            min-height: 170px;
+        }
+
+        /* ── Camera sync button ── */
+        .sync-btn {
+            background: var(--bg2);
             border: 1px solid var(--bd2);
-            margin-top: .3rem;
-            display: none;
+            border-radius: 7px;
+            padding: .38rem .75rem;
+            font-size: .74rem;
+            color: var(--tx2);
+            cursor: pointer;
+            transition: all .15s;
+        }
+
+        .sync-btn.active {
+            border-color: var(--ac);
+            background: var(--ac-bg);
+            color: var(--ac);
+        }
+
+        .sync-btn:hover:not(.active) {
+            border-color: var(--ac);
+            color: var(--tx);
         }
     </style>
 </head>
@@ -1002,18 +1046,41 @@
             <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀ Light</button>
         </div>
 
-        <div id="mode-tabs">
-            <button class="mode-tab active" data-mode="transform" onclick="switchMode('transform')">PLY
-                Transform</button>
-            <button class="mode-tab" data-mode="dataset" onclick="switchMode('dataset')">Dataset Viewer</button>
+        <div id="collapse-btn-wrap">
+            <button class="collapse-btn" id="collapseBtn" onclick="togglePanelCollapse()"
+                title="Collapse panel">‹</button>
         </div>
 
-        <div id="mode-transform">
+        <!-- Mode tabs -->
+        <div class="mode-tabs">
+            <button class="tab-btn active" id="tab-ply" onclick="setMode('ply')">PLY Transform</button>
+            <button class="tab-btn" id="tab-ds" onclick="setMode('dataset')">⊞ Dataset Viewer</button>
+        </div>
+
+        <div id="ply-panel">
+
             <!-- File -->
             <div class="card">
                 <h2>Input File</h2>
+
+                <!-- Browse directory -->
+                <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.35rem">
+                    <input type="text" id="ply-browse-dir" placeholder="Directory to scan for .ply files"
+                        style="flex:1;min-width:0" onkeydown="if(event.key==='Enter') plyBrowse()">
+                    <button class="btn-ghost" onclick="plyBrowse()">Scan <span class="spin"
+                            id="ply-browse-spin"></span></button>
+                </div>
+                <div id="ply-browse-field" style="display:none;margin-bottom:.55rem">
+                    <select id="ply-browse-sel" style="width:100%"></select>
+                    <div style="display:flex;gap:.5rem;margin-top:.35rem">
+                        <button class="btn-ghost" onclick="plyBrowseOpen()">Open selected</button>
+                        <span id="ply-browse-info" style="font-size:.73rem;color:var(--tx3);align-self:center"></span>
+                    </div>
+                </div>
+
+                <!-- Manual path -->
                 <div class="field">
-                    <label>Path to .ply file <span class="badge">or folder for browse mode</span></label>
+                    <label>Path to .ply file</label>
                     <input type="text" id="inputFile" placeholder="/cluster/work/…/mesh.ply"
                         onkeydown="if(event.key==='Enter') loadFile()">
                 </div>
@@ -1021,57 +1088,113 @@
                     <label>Output directory <span class="badge">blank = same folder</span></label>
                     <input type="text" id="outputDir" placeholder="(same as input)">
                 </div>
-                <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">
-                    <button class="btn-ghost" onclick="loadFile()">Load &amp; preview</button>
-                    <button class="btn-ghost" onclick="plyBrowseFolder()">Browse folder</button>
-                    <span id="fileInfo" style="font-size:.73rem;color:var(--tx3)"></span>
-                </div>
-                <!-- Folder browser nav (hidden until Browse folder) -->
-                <div id="ply-browse-bar" style="display:none;margin-top:.5rem">
-                    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
-                        <button class="btn-ghost" onclick="plyBrowseNav(-1)" id="ply-prev-btn" disabled>◀ Prev</button>
-                        <select id="ply-browse-sel" onchange="plyBrowseJump()" style="flex:1;min-width:180px"></select>
-                        <button class="btn-ghost" onclick="plyBrowseNav(1)" id="ply-next-btn" disabled>Next ▶</button>
-                        <span class="badge" id="ply-browse-counter"></span>
+
+                <!-- Load row -->
+                <div style="display:flex;align-items:flex-end;gap:.7rem;flex-wrap:wrap;margin-bottom:.45rem">
+                    <div class="field" style="max-width:160px;margin:0">
+                        <label>Max points <span class="badge">0=full</span></label>
+                        <input type="number" id="ply-downsample" value="0" min="0" step="10000">
                     </div>
+                    <button class="btn-ghost" onclick="loadFile()">Load &amp; preview</button>
+                    <span id="fileInfo" style="font-size:.73rem;color:var(--tx3);align-self:center"></span>
+                </div>
+
+                <!-- Subsample & save row -->
+                <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+                    <button class="btn-ghost" onclick="plySaveSubsampled()">↓ Save subsampled <span class="spin"
+                            id="ply-save-spin"></span></button>
+                    <label style="font-size:.78rem;display:flex;align-items:center;gap:.35rem;cursor:pointer">
+                        <input type="checkbox" id="ply-overwrite"> overwrite original
+                    </label>
+                    <span id="ply-save-info" style="font-size:.73rem;color:var(--tx3)"></span>
                 </div>
             </div>
 
-            <!-- Mesh operations -->
+            <!-- Mesh Tools -->
             <div class="card">
-                <h2>Mesh Operations</h2>
-                <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.5rem">
-                    <button class="btn-ghost" onclick="plySubdivide()">Subdivide</button>
-                    <div class="field" style="margin:0;max-width:80px">
-                        <input type="number" id="subdiv-iters" value="1" min="1" max="4" step="1"
-                            title="Number of subdivision iterations">
+                <h2>Mesh Tools</h2>
+
+                <!-- Subdivide -->
+                <div style="margin-bottom:.7rem">
+                    <div style="font-size:.78rem;font-weight:600;color:var(--tx2);margin-bottom:.35rem">Subdivide
+                        (Open3D Loop / midpoint fallback)</div>
+                    <div style="display:flex;align-items:flex-end;gap:.6rem;flex-wrap:wrap">
+                        <div class="field" style="max-width:110px;margin:0">
+                            <label>Iterations</label>
+                            <input type="number" id="subdiv-iter" value="1" min="1" max="4" step="1">
+                        </div>
+                        <button class="btn-ghost" onclick="runSubdivide()">Subdivide <span class="spin"
+                                id="subdiv-spin"></span></button>
+                        <button class="btn-ghost" id="subdiv-save-btn" style="display:none"
+                            onclick="saveSubdivide()">Save (overwrite) <span class="spin"
+                                id="subdiv-save-spin"></span></button>
                     </div>
-                    <span style="font-size:.7rem;color:var(--tx3)">iterations</span>
                     <span id="subdiv-info" style="font-size:.73rem;color:var(--tx3)"></span>
                 </div>
-                <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.5rem">
-                    <button class="btn-ghost" onclick="plyDecimate()">Decimate</button>
-                    <div class="field" style="margin:0;max-width:80px">
-                        <input type="number" id="decimate-ratio" value="0.5" min="0.01" max="1" step="0.05"
-                            title="Fraction of faces to keep (0–1)">
+
+                <!-- Decimate -->
+                <div>
+                    <div style="font-size:.78rem;font-weight:600;color:var(--tx2);margin-bottom:.35rem">Decimate
+                        (quadric edge-collapse)</div>
+                    <div style="display:flex;align-items:flex-end;gap:.6rem;flex-wrap:wrap">
+                        <div class="field" style="max-width:110px;margin:0">
+                            <label>Keep ratio</label>
+                            <input type="number" id="decim-ratio" value="0.5" min="0.01" max="1" step="0.05">
+                        </div>
+                        <div class="field" style="max-width:110px;margin:0">
+                            <label>Save as <span class="badge">blank=preview</span></label>
+                            <input type="text" id="decim-save" placeholder="out.ply">
+                        </div>
+                        <button class="btn-ghost" onclick="runDecimate()">Decimate <span class="spin"
+                                id="decim-spin"></span></button>
                     </div>
-                    <span id="decimate-info" style="font-size:.73rem;color:var(--tx3)"></span>
+                    <span id="decim-info" style="font-size:.73rem;color:var(--tx3)"></span>
                 </div>
-                <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.5rem">
-                    <label
-                        style="display:flex;align-items:center;gap:.3rem;font-size:.78rem;color:var(--tx2);cursor:pointer">
-                        <input type="checkbox" id="ply-replace-original"> Replace original file on save
-                    </label>
+            </div>
+
+            <!-- Batch Subdivide Review -->
+            <div class="card" id="batch-card">
+                <h2>Batch Subdivide Review</h2>
+                <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.6rem">
+                    <input type="text" id="batch-dir" placeholder="/path/to/folder with .ply files" style="flex:1"
+                        onkeydown="if(event.key==='Enter') batchScan()">
+                    <button class="btn-ghost" onclick="batchScan()">Scan <span class="spin"
+                            id="batch-scan-spin"></span></button>
                 </div>
-                <!-- Save result row — shown after a subdivide/decimate preview -->
-                <div id="ply-meshop-save-row"
-                    style="display:none;gap:.5rem;align-items:center;flex-wrap:wrap;border-top:1px solid var(--bd);padding-top:.5rem;margin-top:.25rem">
-                    <span style="font-size:.73rem;color:var(--tx2)">Save as:</span>
-                    <input type="text" id="ply-meshop-save-path" style="flex:1;min-width:200px"
-                        placeholder="(leave blank to auto-name next to original)">
-                    <button class="btn-primary" onclick="plyMeshOpSave()">Save result <span class="spin"
-                            id="ply-meshop-spin"></span></button>
-                    <span id="ply-meshop-save-info" style="font-size:.73rem;color:var(--tx3)"></span>
+                <div id="batch-status" style="display:none">
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.3rem">
+                        <span id="batch-progress" style="font-size:.88rem;font-weight:600;color:var(--tx1)"></span>
+                        <span id="batch-counter" style="font-size:.75rem;color:var(--tx3)"></span>
+                    </div>
+                    <div id="batch-verts"
+                        style="font-size:.8rem;color:var(--tx2);margin-bottom:.55rem;min-height:1.2em"></div>
+                    <div
+                        style="font-size:.72rem;color:var(--tx3);background:var(--bg);padding:.45rem .7rem;border-radius:6px;line-height:2">
+                        <b style="color:var(--tx2)">Keyboard shortcuts (active when batch is running):</b><br>
+                        <kbd
+                            style="background:var(--bd);border:1px solid var(--bd2);border-radius:3px;padding:.05rem .3rem">1</kbd>–<kbd
+                            style="background:var(--bd);border:1px solid var(--bd2);border-radius:3px;padding:.05rem .3rem">4</kbd>
+                        Preview N×subdivision &nbsp;·&nbsp;
+                        <kbd
+                            style="background:var(--bd);border:1px solid var(--bd2);border-radius:3px;padding:.05rem .3rem">0</kbd>
+                        Reset to original &nbsp;·&nbsp;
+                        <kbd
+                            style="background:var(--bd);border:1px solid var(--bd2);border-radius:3px;padding:.05rem .3rem">N</kbd>
+                        <b>Save &amp; next</b> (overwrite) &nbsp;·&nbsp;
+                        <kbd
+                            style="background:var(--bd);border:1px solid var(--bd2);border-radius:3px;padding:.05rem .3rem">S</kbd>
+                        Skip (no save)
+                    </div>
+                    <div style="display:flex;gap:.5rem;margin-top:.6rem;flex-wrap:wrap">
+                        <button class="btn-ghost" onclick="batchKey('0')">Reset (0)</button>
+                        <button class="btn-ghost" onclick="batchKey('1')">Subdiv ×1</button>
+                        <button class="btn-ghost" onclick="batchKey('2')">Subdiv ×2</button>
+                        <button class="btn-ghost" onclick="batchKey('3')">Subdiv ×3</button>
+                        <button class="btn-ghost" onclick="batchKey('4')">Subdiv ×4</button>
+                        <button class="btn-ghost" style="color:var(--ok)" onclick="batchKey('n')">Save &amp; Next
+                            (N)</button>
+                        <button class="btn-ghost" onclick="batchKey('s')">Skip (S)</button>
+                    </div>
                 </div>
             </div>
 
@@ -1160,196 +1283,251 @@
                 </button>
             </div>
 
-            <!-- Log -->
-            <div class="card">
-                <h2>Log</h2>
-                <div id="log"><span class="dim">Output will appear here…</span></div>
-            </div>
-        </div><!-- /mode-transform -->
+        </div><!-- end ply-panel -->
 
-        <div id="mode-dataset" style="display:none">
-            <!-- Dataset selection -->
+        <!-- ── Dataset Viewer panel ── -->
+        <div id="ds-panel" style="display:none">
+
+            <!-- Browse -->
             <div class="card">
-                <h2>Dataset</h2>
+                <h2>Browse</h2>
                 <div class="field">
                     <label>Base directory</label>
                     <input type="text" id="ds-basedir" value="/cluster/work/fuge/AISCO/wp1_cfd_ai/"
-                        onkeydown="if(event.key==='Enter') scanDatasets()">
+                        onkeydown="if(event.key==='Enter') dsScanDatasets()">
                 </div>
-                <div style="margin-bottom:.7rem">
-                    <button class="btn-ghost" onclick="scanDatasets()">Scan</button>
-                    <span class="spin" id="ds-scan-spin"></span>
+                <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-bottom:.5rem">
+                    <button class="btn-ghost" onclick="dsScanDatasets()">Scan <span class="spin"
+                            id="ds-scan-spin"></span></button>
+                    <span id="ds-scan-info" style="font-size:.73rem;color:var(--tx3)"></span>
                 </div>
-                <div class="field">
-                    <label>Dataset</label>
-                    <select id="ds-dataset" onchange="loadDatasetRuns()">
+                <div class="field" id="ds-browse-field" style="display:none">
+                    <label>Discovered datasets</label>
+                    <select id="ds-browse-sel" size="5" style="height:auto">
                         <option value="">— scan first —</option>
                     </select>
                 </div>
+                <div id="ds-browse-actions" style="display:none;gap:.5rem;margin-top:.4rem;flex-wrap:wrap">
+                    <button class="btn-ghost" onclick="dsBrowseAssign('A')" style="flex:1">→ Set as A</button>
+                    <button class="btn-ghost" onclick="dsBrowseAssign('B')" style="flex:1">→ Set as B</button>
+                </div>
             </div>
 
-            <!-- Display options -->
+            <!-- Dataset A -->
             <div class="card">
-                <h2>Display Options</h2>
+                <h2>Dataset A <span class="badge" style="color:var(--ac)">left pane</span></h2>
                 <div class="field">
-                    <label>Downsample to N points <span class="badge">0 = all</span></label>
-                    <input type="number" id="ds-downsample" value="200000" min="0" step="10000">
+                    <label>Dataset directory</label>
+                    <input type="text" id="ds-path-A" placeholder="/cluster/work/…/processed_euler_cp_full"
+                        onkeydown="if(event.key==='Enter') dsLoadRuns('A')">
                 </div>
+                <div class="row">
+                    <div class="field">
+                        <label>Field</label>
+                        <select id="ds-field-A" onchange="dsState.A.field=this.value">
+                            <option value="cp" selected>Cp</option>
+                            <option value="pressure">Pressure</option>
+                            <option value="wall_shear_mag">Wall shear mag</option>
+                            <option value="x">x (generic)</option>
+                            <option value="none">None (geometry)</option>
+                        </select>
+                    </div>
+                    <div class="field" style="max-width:95px">
+                        <label>Downsample <span class="badge">0=full</span></label>
+                        <input type="number" id="ds-downsample-A" value="0" min="0" step="1000">
+                    </div>
+                </div>
+                <button class="btn-primary" id="ds-load-btn-A" onclick="dsLoadRuns('A')">
+                    Load <span class="spin" id="ds-spin-A"></span>
+                </button>
+                <div class="ds-run-nav">
+                    <button id="ds-prev-A" onclick="dsNavigate('A',-1)" disabled>‹</button>
+                    <span class="ds-run-counter" id="ds-counter-A">No runs loaded</span>
+                    <button id="ds-next-A" onclick="dsNavigate('A',1)" disabled>›</button>
+                </div>
+                <select id="ds-run-sel-A" style="width:100%;margin-top:.35rem;display:none"
+                    onchange="dsLoadRun('A',this.selectedIndex)"></select>
+                <div style="display:flex;align-items:center;gap:.5rem;margin-top:.3rem">
+                    <button class="btn-ghost" id="ds-autorange-slot-btn-A" onclick="dsAutoRangeSlot('A')"
+                        style="font-size:.76rem;padding:.25rem .6rem">Auto Cp range <span class="spin"
+                            id="ds-autorange-slot-spin-A"></span></button>
+                    <span id="ds-autorange-slot-display-A" style="font-size:.72rem;color:var(--tx3)"></span>
+                </div>
+                <div class="ds-run-info" id="ds-info-A"></div>
+                <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-top:.4rem">
+                    <button class="btn-ghost" onclick="generateCacheForSlot('A')" id="ds-cache-btn-A"
+                        style="font-size:.76rem;padding:.25rem .6rem">Cache missing <span class="spin"
+                            id="ds-cache-spin-A"></span></button>
+                    <span id="ds-cache-status-A" style="font-size:.73rem;color:var(--tx3)"></span>
+                </div>
+                <div id="ds-cache-progress-wrap-A" style="display:none;margin-top:.3rem">
+                    <progress id="ds-cache-progress-A" value="0" max="1" style="width:100%;height:6px"></progress>
+                    <span id="ds-cache-pct-A" style="font-size:.72rem;color:var(--tx3)"></span>
+                </div>
+                <span id="ds-cache-info-A" style="font-size:.73rem;color:var(--tx3)"></span>
+                <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-top:.3rem">
+                    <button class="btn-ghost" onclick="generateThumbnailsForSlot('A')" id="ds-thumb-btn-A"
+                        style="font-size:.76rem;padding:.25rem .6rem">Thumbnails <span class="spin"
+                            id="ds-thumb-spin-A"></span></button>
+                    <span id="ds-thumb-info-A" style="font-size:.73rem;color:var(--tx3)"></span>
+                </div>
+            </div>
+
+            <!-- Dataset B -->
+            <div class="card">
+                <h2>Dataset B <span class="badge" style="color:#ef7a5a">right pane</span></h2>
                 <div class="field">
-                    <label>Color by field</label>
-                    <select id="ds-field" onchange="onFieldChange()">
-                        <option value="cp">Cp (pressure coefficient)</option>
-                        <option value="pressure">Pressure</option>
-                        <option value="wall_shear_mag">Wall shear magnitude</option>
-                        <option value="x">x (input feature)</option>
-                        <option value="">None (solid color)</option>
-                    </select>
+                    <label>Dataset directory</label>
+                    <input type="text" id="ds-path-B" placeholder="/cluster/work/…/processed_euler_openfoam_cp_full"
+                        onkeydown="if(event.key==='Enter') dsLoadRuns('B')">
                 </div>
-                <div class="row" id="ds-range-row">
-                    <div class="field"><label>Color min</label><input type="number" id="ds-cmin" value="-4" step="0.1">
+                <div class="row">
+                    <div class="field">
+                        <label>Field</label>
+                        <select id="ds-field-B" onchange="dsState.B.field=this.value">
+                            <option value="cp" selected>Cp</option>
+                            <option value="pressure">Pressure</option>
+                            <option value="wall_shear_mag">Wall shear mag</option>
+                            <option value="x">x (generic)</option>
+                            <option value="none">None (geometry)</option>
+                        </select>
                     </div>
-                    <div class="field"><label>Color max</label><input type="number" id="ds-cmax" value="1.1" step="0.1">
-                    </div>
-                    <div class="field" style="flex:0 0 auto;align-self:flex-end;margin-bottom:.7rem">
-                        <button class="btn-ghost" onclick="computeFieldRange()" id="ds-range-btn"
-                            title="Compute global range from all runs">Auto</button>
+                    <div class="field" style="max-width:95px">
+                        <label>Downsample <span class="badge">0=full</span></label>
+                        <input type="number" id="ds-downsample-B" value="0" min="0" step="1000">
                     </div>
                 </div>
-            </div>
-
-            <!-- Browse runs -->
-            <div class="card">
-                <h2>Browse Runs <span class="badge" id="ds-run-counter"></span><span id="ds-audit-badge"
-                        style="display:none"></span></h2>
-                <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.6rem">
-                    <button class="btn-ghost" id="ds-prev-btn" onclick="dsNav(-1)" disabled>◀ Prev</button>
-                    <select id="ds-run" onchange="dsJump()" style="flex:1">
-                        <option value="">— select dataset first —</option>
-                    </select>
-                    <button class="btn-ghost" id="ds-next-btn" onclick="dsNav(1)" disabled>Next ▶</button>
+                <button class="btn-primary" id="ds-load-btn-B" onclick="dsLoadRuns('B')">
+                    Load <span class="spin" id="ds-spin-B"></span>
+                </button>
+                <div class="ds-run-nav">
+                    <button id="ds-prev-B" onclick="dsNavigate('B',-1)" disabled>‹</button>
+                    <span class="ds-run-counter" id="ds-counter-B">No runs loaded</span>
+                    <button id="ds-next-B" onclick="dsNavigate('B',1)" disabled>›</button>
                 </div>
-                <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">
-                    <button class="btn-primary" id="ds-load-btn" onclick="loadDatasetMesh()">
-                        Load &amp; Display <span class="spin" id="ds-spin"></span>
-                    </button>
-                    <label style="font-size:.78rem;color:var(--tx2);display:flex;align-items:center;gap:.35rem">
-                        <input type="checkbox" id="ds-autoload" checked style="width:auto;accent-color:var(--ac)">
-                        Auto-load on navigate
-                    </label>
+                <select id="ds-run-sel-B" style="width:100%;margin-top:.35rem;display:none"
+                    onchange="dsLoadRun('B',this.selectedIndex)"></select>
+                <div style="display:flex;align-items:center;gap:.5rem;margin-top:.3rem">
+                    <button class="btn-ghost" id="ds-autorange-slot-btn-B" onclick="dsAutoRangeSlot('B')"
+                        style="font-size:.76rem;padding:.25rem .6rem">Auto Cp range <span class="spin"
+                            id="ds-autorange-slot-spin-B"></span></button>
+                    <span id="ds-autorange-slot-display-B" style="font-size:.72rem;color:var(--tx3)"></span>
                 </div>
-                <span id="ds-run-info" style="font-size:.73rem;color:var(--tx3);margin-top:.4rem;display:block"></span>
-            </div>
-
-            <!-- Audit mode -->
-            <div class="card">
-                <h2>Audit Mode</h2>
-                <div style="display:flex;gap:.5rem;margin-bottom:.6rem">
-                    <button class="btn-ghost" id="ds-keep-btn" onclick="dsAudit('keep')"
-                        style="flex:1;border-color:#22c55e;color:#22c55e" disabled>✔ Keep</button>
-                    <button class="btn-ghost" id="ds-reject-btn" onclick="dsAudit('reject')"
-                        style="flex:1;border-color:#ef4444;color:#ef4444" disabled>✘ Reject</button>
-                    <button class="btn-ghost" onclick="dsAudit('unset')" title="Clear decision for this run"
-                        style="flex:0 0 auto" disabled id="ds-unset-btn">↺</button>
+                <div class="ds-run-info" id="ds-info-B"></div>
+                <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-top:.4rem">
+                    <button class="btn-ghost" onclick="generateCacheForSlot('B')" id="ds-cache-btn-B"
+                        style="font-size:.76rem;padding:.25rem .6rem">Cache missing <span class="spin"
+                            id="ds-cache-spin-B"></span></button>
+                    <span id="ds-cache-status-B" style="font-size:.73rem;color:var(--tx3)"></span>
                 </div>
-                <div id="ds-audit-summary" style="font-size:.73rem;color:var(--tx3);margin-bottom:.4rem"></div>
-                <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-                    <button class="btn-ghost" onclick="dsAuditClear()" style="font-size:.72rem">Clear all</button>
-                    <button class="btn-ghost" onclick="dsAuditExportLists()" style="font-size:.72rem">Export
-                        lists…</button>
-                    <button class="btn-ghost" onclick="document.getElementById('ds-audit-file').click()"
-                        style="font-size:.72rem">Load audit…</button>
-                    <input type="file" id="ds-audit-file" accept=".txt" style="display:none"
-                        onchange="dsAuditLoad(this)">
-                    <span id="ds-audit-load-info" style="font-size:.72rem;color:var(--tx3)"></span>
+                <div id="ds-cache-progress-wrap-B" style="display:none;margin-top:.3rem">
+                    <progress id="ds-cache-progress-B" value="0" max="1" style="width:100%;height:6px"></progress>
+                    <span id="ds-cache-pct-B" style="font-size:.72rem;color:var(--tx3)"></span>
                 </div>
-            </div>
-            <div class="card">
-                <h2>Dataset Overview</h2>
-                <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-bottom:.4rem">
-                    <button class="btn-ghost" onclick="generateCache()" id="ds-cache-btn">
-                        Cache missing runs <span class="spin" id="ds-cache-spin"></span>
-                    </button>
-                    <span id="ds-cache-status" style="font-size:.73rem;color:var(--tx3)"></span>
-                </div>
-                <div id="ds-cache-progress-wrap" style="display:none;margin-bottom:.4rem">
-                    <progress id="ds-cache-progress" value="0" max="1" style="width:100%;height:6px"></progress>
-                    <span id="ds-cache-pct" style="font-size:.72rem;color:var(--tx3)"></span>
-                </div>
-                <span id="ds-cache-info" style="font-size:.73rem;color:var(--tx3)"></span>
-                <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">
-                    <button class="btn-ghost" onclick="generateThumbnails()" id="ds-thumb-btn">
-                        Generate thumbnails <span class="spin" id="ds-thumb-spin"></span>
-                    </button>
-                    <span id="ds-thumb-info" style="font-size:.73rem;color:var(--tx3)"></span>
+                <span id="ds-cache-info-B" style="font-size:.73rem;color:var(--tx3)"></span>
+                <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-top:.3rem">
+                    <button class="btn-ghost" onclick="generateThumbnailsForSlot('B')" id="ds-thumb-btn-B"
+                        style="font-size:.76rem;padding:.25rem .6rem">Thumbnails <span class="spin"
+                            id="ds-thumb-spin-B"></span></button>
+                    <span id="ds-thumb-info-B" style="font-size:.73rem;color:var(--tx3)"></span>
                 </div>
             </div>
 
-            <!-- Export curated dataset -->
-            <div class="card" id="ds-export-card" style="display:none">
-                <h2>Export Curated Dataset</h2>
-                <div class="field"><label>Destination path</label>
-                    <input type="text" id="ds-export-path" placeholder="/cluster/work/.../processed_curated">
+            <!-- View options -->
+            <div class="card">
+                <h2>View Options</h2>
+                <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.5rem">
+                    <button class="sync-btn" id="ds-view-mode-btn" onclick="dsToggleViewMode()">⊞ Compare</button>
+                    <button class="sync-btn" id="ds-sync-btn" onclick="dsToggleSync()">⇄ Sync cameras</button>
+                    <button class="btn-ghost" onclick="window.dsSyncCameras?.()">↻ Snap now</button>
                 </div>
-                <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-                    <button class="btn-primary" onclick="dsExportCurated()" id="ds-export-btn">
-                        Create dataset <span class="spin" id="ds-export-spin"></span>
-                    </button>
-                    <span id="ds-export-info" style="font-size:.73rem;color:var(--tx3)"></span>
+                <div style="display:flex;align-items:flex-end;gap:.6rem;flex-wrap:wrap">
+                    <div class="field" style="margin-bottom:0;max-width:145px">
+                        <label>Auto range percentile <span class="badge">symmetric</span></label>
+                        <input type="number" id="ds-autorange-pct" value="99" min="50" max="100" step="0.5">
+                    </div>
+                    <button class="btn-ghost" id="ds-autorange-btn" onclick="dsAutoRangeBoth()">▦ Auto range both <span
+                            class="spin" id="ds-autorange-spin"></span></button>
+                    <span id="ds-range-display" style="font-size:.72rem;color:var(--tx3)"></span>
                 </div>
             </div>
 
-            <!-- Log -->
-            <div class="card">
-                <h2>Log</h2>
-                <div id="ds-log"><span class="dim">Output will appear here…</span></div>
-            </div>
-        </div><!-- /mode-dataset -->
+        </div><!-- end ds-panel -->
+
+        <!-- Log (shared; always visible) -->
+        <div class="card">
+            <h2>Log</h2>
+            <div id="log"><span class="dim">Output will appear here…</span></div>
+        </div>
     </div>
 
     <!-- ──────────── 3D Viewer ──────────── -->
     <div id="viewer">
-        <div id="vtoolbar">
-            <button onclick="resetCamera()">⌖ Fit</button>
-            <button onclick="toggleWireframe()" id="wire-btn">⬡ Wireframe</button>
-            <button onclick="toggleAxisLabels()" id="axis-btn">⊞ Axes</button>
-            <button onclick="toggleView()" id="view-btn" disabled>⇄ Before / After</button>
-            <label class="color-pick" title="Model color">
-                <input type="color" id="mesh-color" value="#5a70ef" oninput="setMeshColor(this.value)">
-            </label>
-            <button onclick="toggleGrid()" id="grid-btn">▦ Grid</button>
-            <button onclick="toggleStats()" id="stats-btn">≡ Stats</button>
-            <button onclick="toggleMeasure()" id="measure-btn">↗ Measure</button>
-            <button onclick="clearMeasurements()" id="clear-meas-btn" style="display:none">✕ Clear</button>
-        </div>
-        <div id="view-indicator">
-            <span class="vi-dot"></span>
-            <span id="vi-text"></span>
-        </div>
-        <div id="stats-panel"></div>
-        <div id="vloading">
-            <div class="big-spin"></div>
-        </div>
-        <div id="vplaceholder">
-            <span class="big">⬡</span>
-            Load a .ply file to see the 3D preview
-        </div>
-        <div id="voverlay">
-            <div class="vname" id="vname"></div>
-            <div id="vcounts"></div>
-            <div id="vextents"></div>
-        </div>
-        <div id="step-strip"></div>
-        <div id="ds-thumb-strip"></div>
-        <div id="colorbar">
-            <span id="colorbar-label"></span>
-            <span id="colorbar-max"></span>
-            <div id="colorbar-gradient">
-                <div id="colorbar-zero"><span id="colorbar-zero-label">0</span></div>
+
+        <!-- Scalar colour bar (visible in dataset mode) -->
+        <div id="scalar-bar">
+            <div class="sbar-title" id="sbar-field">Cp</div>
+            <div class="sbar-body">
+                <div class="sbar-gradient"></div>
+                <div class="sbar-labels">
+                    <span id="sbar-max">1.000</span>
+                    <span id="sbar-min">−1.000</span>
+                </div>
             </div>
-            <div id="colorbar-zero-swatch" title="Color at zero"></div>
-            <span id="colorbar-min"></span>
         </div>
-        <canvas id="three-canvas"></canvas>
+
+        <!-- Primary viewer pane -->
+        <div id="viewer-single">
+            <div class="compare-label" id="compare-label-a" style="display:none">Dataset A</div>
+            <div id="vtoolbar">
+                <button onclick="resetCamera()">⌖ Fit</button>
+                <button onclick="toggleWireframe()" id="wire-btn">⬡ Wireframe</button>
+                <button onclick="toggleAxisLabels()" id="axis-btn">⊞ Axes</button>
+                <button onclick="toggleView()" id="view-btn" disabled>⇄ Before / After</button>
+                <label class="color-pick" title="Model color">
+                    <input type="color" id="mesh-color" value="#5a70ef" oninput="setMeshColor(this.value)">
+                </label>
+            </div>
+            <div id="view-indicator">
+                <span class="vi-dot"></span>
+                <span id="vi-text"></span>
+            </div>
+            <div id="vloading">
+                <div class="big-spin"></div>
+            </div>
+            <div id="vplaceholder">
+                <span class="big">⬡</span>
+                Load a .ply file to see the 3D preview
+            </div>
+            <div id="voverlay">
+                <div class="vname" id="vname"></div>
+                <div id="vcounts"></div>
+                <div id="vextents"></div>
+            </div>
+            <div id="step-strip"></div>
+            <div id="ds-thumb-strip"></div>
+            <canvas id="three-canvas"></canvas>
+        </div>
+        <!-- Comparison viewer pane -->
+        <div id="viewer-compare">
+            <div class="compare-label" id="compare-label-b">Dataset B</div>
+            <div id="vloading-cmp"
+                style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;background:color-mix(in srgb,var(--bg-v) 65%,transparent);z-index:20;">
+                <div class="big-spin"></div>
+            </div>
+            <div id="vplaceholder-cmp"
+                style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.6rem;color:var(--tx4);font-size:.9rem;pointer-events:none;z-index:5;">
+                <span style="font-size:3.5rem;opacity:.25;line-height:1">⬡</span>
+                Load Dataset B to compare
+            </div>
+            <div id="voverlay-cmp"
+                style="display:none;position:absolute;bottom:12px;left:12px;background:var(--tb-bg);backdrop-filter:blur(8px);border:1px solid var(--bd2);border-radius:8px;padding:.6rem .85rem;z-index:10;font-size:.7rem;color:var(--tx2);line-height:1.8;pointer-events:none;max-width:340px;">
+                <div class="vname" id="vname-cmp"></div>
+                <div id="vcounts-cmp"></div>
+                <div id="vextents-cmp"></div>
+            </div>
+            <canvas id="three-canvas-compare"></canvas>
+        </div>
     </div>
 
     <!-- ──────────── Three.js ──────────── -->
@@ -1377,14 +1555,6 @@
         let viewRole = 'none';          // 'original' | 'preview' | 'step-N'
         let savedRole = null;
         let savedData = null;
-        let gridHelper = null;
-        let gridVisible = false;
-        let gridStep = 0;
-        let measureMode = false;
-        let pendingMeasurePoint = null;
-        const measureGroup = new THREE.Group();
-        let statsVisible = false;
-        let currentMeshData = null;
 
         /* ── Scene setup ── */
         function getSceneBg() {
@@ -1396,7 +1566,7 @@
         scene = new THREE.Scene();
         scene.background = getSceneBg();
         camera = new THREE.PerspectiveCamera(45, 2, 0.001, 1e9);
-        camera.up.set(0, 0, 1);  // Z-up
+        camera.up.set(0, 0, 1);
         camera.position.set(0, -5, 2);
         renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -1404,16 +1574,17 @@
         controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.06;
+        controls.screenSpacePanning = false;
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.6));
         const sun = new THREE.DirectionalLight(0xffffff, 1.1);
-        sun.position.set(1, 2.5, 2); scene.add(sun);
+        sun.position.set(1, 2, 2.5); scene.add(sun);
         const fill = new THREE.DirectionalLight(0x6688ff, 0.4);
-        fill.position.set(-2, -1.5, -1); scene.add(fill);
-        scene.add(new THREE.DirectionalLight(0xffffff, 0.25).translateZ(-2));
+        fill.position.set(-2, -1, -1.5); scene.add(fill);
+        scene.add(new THREE.DirectionalLight(0xffffff, 0.25).translateY(-2));
 
         function resize() {
-            const p = document.getElementById('viewer');
+            const p = document.getElementById('viewer-single');
             const w = p.clientWidth, h = p.clientHeight;
             if (!w || !h) return;
             renderer.setSize(w, h);
@@ -1456,76 +1627,6 @@
             scene.add(axisGroup);
         }
         createAxisSystem();
-        scene.add(measureGroup);
-
-        /* ── Grid ── */
-        function updateGrid() {
-            if (gridHelper) { scene.remove(gridHelper); gridHelper = null; }
-            gridStep = 0;
-            const originData = meshStore.original;
-            if (!gridVisible || !originData) return;
-            const pos = originData.positions;
-            const box = new THREE.Box3().setFromArray(pos);
-            const sz = box.getSize(new THREE.Vector3());
-            const ctr = box.getCenter(new THREE.Vector3());
-            const maxDim = Math.max(sz.x, sz.y, sz.z) || 1;
-            const rawStep = maxDim / 5;
-            const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
-            const norm = rawStep / mag;
-            const nice = norm <= 1.5 ? 1 : norm <= 3.5 ? 2 : norm <= 7.5 ? 5 : 10;
-            gridStep = nice * mag;
-            const extent = Math.ceil(maxDim * 1.5 / gridStep) * gridStep;
-            const divs = Math.round(extent / gridStep);
-            const isDark = document.documentElement.dataset.theme !== 'light';
-            gridHelper = new THREE.GridHelper(
-                extent, divs,
-                isDark ? 0x556688 : 0x8899bb,
-                isDark ? 0x2a3050 : 0xb0b8cc
-            );
-            gridHelper.rotation.x = Math.PI / 2;
-            gridHelper.position.set(
-                Math.round(ctr.x / gridStep) * gridStep,
-                Math.round(ctr.y / gridStep) * gridStep,
-                box.min.z
-            );
-            scene.add(gridHelper);
-        }
-
-        /* ── Stats ── */
-        function updateStatsPanel() {
-            const panel = document.getElementById('stats-panel');
-            if (!statsVisible || !currentMeshData) { return; }
-            const data = currentMeshData;
-            const pos = data.positions;
-            const vc = data.vertex_count;
-            let mnX = Infinity, mxX = -Infinity;
-            let mnY = Infinity, mxY = -Infinity;
-            let mnZ = Infinity, mxZ = -Infinity;
-            for (let i = 0; i < vc; i++) {
-                const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
-                if (x < mnX) mnX = x; if (x > mxX) mxX = x;
-                if (y < mnY) mnY = y; if (y > mxY) mxY = y;
-                if (z < mnZ) mnZ = z; if (z > mxZ) mxZ = z;
-            }
-            const f = fmtDim;
-            let h = '<div class="stat-hdr">Model Statistics</div>';
-            h += '<div class="stat-row"><span class="stat-lbl">Vertices</span><span class="stat-val">' + vc.toLocaleString() + '</span></div>';
-            h += '<div class="stat-row"><span class="stat-lbl">Faces</span><span class="stat-val">' + data.face_count.toLocaleString() + '</span></div>';
-            h += '<hr class="stat-sep">';
-            h += '<div class="stat-row"><span class="stat-lbl">X range</span><span class="stat-val">' + f(mnX) + ' \u2026 ' + f(mxX) + '</span></div>';
-            h += '<div class="stat-row"><span class="stat-lbl">Y range</span><span class="stat-val">' + f(mnY) + ' \u2026 ' + f(mxY) + '</span></div>';
-            h += '<div class="stat-row"><span class="stat-lbl">Z range</span><span class="stat-val">' + f(mnZ) + ' \u2026 ' + f(mxZ) + '</span></div>';
-            h += '<hr class="stat-sep">';
-            h += '<div class="stat-row"><span class="stat-lbl">Size X</span><span class="stat-val">' + f(mxX - mnX) + '</span></div>';
-            h += '<div class="stat-row"><span class="stat-lbl">Size Y</span><span class="stat-val">' + f(mxY - mnY) + '</span></div>';
-            h += '<div class="stat-row"><span class="stat-lbl">Size Z</span><span class="stat-val">' + f(mxZ - mnZ) + '</span></div>';
-            h += '<hr class="stat-sep">';
-            h += '<div class="stat-row"><span class="stat-lbl">Center</span><span class="stat-val">' + f(data.center[0]) + ', ' + f(data.center[1]) + ', ' + f(data.center[2]) + '</span></div>';
-            if (gridVisible && gridStep) {
-                h += '<div class="stat-grid">Grid spacing: ' + f(gridStep) + '</div>';
-            }
-            panel.innerHTML = h;
-        }
 
         function updateAxisTransform() {
             if (!axisGroup || !activeMesh) return;
@@ -1616,9 +1717,7 @@
             document.getElementById('vplaceholder').style.display = 'none';
             updateOverlay(data);
             if (fit) fitToMesh();
-            currentMeshData = data;
             updateAxisTransform();
-            updateStatsPanel();
             updateViewIndicator();
         }
 
@@ -1652,12 +1751,8 @@
                 meshStore.current = null;
                 meshStore.steps = [];
                 document.getElementById('step-strip').classList.remove('visible');
-                window.clearMeasurements();
-                showMesh(data, role, fit);
-                updateGrid();
-            } else {
-                showMesh(data, role, fit);
             }
+            showMesh(data, role, fit);
         };
 
         window.resetCamera = function () { fitToMesh(); };
@@ -1696,117 +1791,285 @@
 
         window.setViewerTheme = function () {
             scene.background = getSceneBg();
-            if (gridVisible) updateGrid();
+            if (cmpRenderer) cmpScene.background = getSceneBg();
         };
 
-        window.toggleGrid = function () {
-            gridVisible = !gridVisible;
-            document.getElementById('grid-btn').classList.toggle('active', gridVisible);
-            updateGrid();
-            updateStatsPanel();
-        };
+        /* ── Compare viewer ── */
+        let cmpRenderer = null, cmpScene = null, cmpCamera = null, cmpControls = null, cmpMesh = null;
+        let resizeCmp = null;   // hoisted so loadCompareMesh can call it
 
-        window.toggleStats = function () {
-            statsVisible = !statsVisible;
-            document.getElementById('stats-btn').classList.toggle('active', statsVisible);
-            document.getElementById('stats-panel').classList.toggle('visible', statsVisible);
-            if (statsVisible) updateStatsPanel();
-        };
+        function initCompareRenderer() {
+            if (cmpRenderer) return;
+            const canvas2 = document.getElementById('three-canvas-compare');
+            cmpScene = new THREE.Scene();
+            cmpScene.background = getSceneBg();
+            cmpCamera = new THREE.PerspectiveCamera(45, 2, 0.001, 1e9);
+            cmpCamera.up.set(0, 0, 1);
+            cmpCamera.position.set(0, -5, 2);
+            cmpRenderer = new THREE.WebGLRenderer({ canvas: canvas2, antialias: true });
+            cmpRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            cmpRenderer.outputColorSpace = THREE.SRGBColorSpace;
+            cmpControls = new OrbitControls(cmpCamera, cmpRenderer.domElement);
+            cmpControls.enableDamping = true;
+            cmpControls.dampingFactor = 0.06;
+            cmpControls.screenSpacePanning = false;
+            cmpScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const s = new THREE.DirectionalLight(0xffffff, 1.1);
+            s.position.set(1, 2, 2.5); cmpScene.add(s);
+            const f = new THREE.DirectionalLight(0x6688ff, 0.4);
+            f.position.set(-2, -1, -1.5); cmpScene.add(f);
 
-        window.toggleMeasure = function () {
-            measureMode = !measureMode;
-            document.getElementById('measure-btn').classList.toggle('active', measureMode);
-            canvas.style.cursor = measureMode ? 'crosshair' : '';
-            if (!measureMode) pendingMeasurePoint = null;
-        };
+            resizeCmp = function () {
+                const pane = document.getElementById('viewer-compare');
+                const w = pane.clientWidth, h = pane.clientHeight;
+                if (!w || !h) return;
+                cmpRenderer.setSize(w, h);
+                cmpCamera.aspect = w / h;
+                cmpCamera.updateProjectionMatrix();
+            };
+            resizeCmp();
+            window.addEventListener('resize', resizeCmp);
 
-        window.clearMeasurements = function () {
-            while (measureGroup.children.length) {
-                const c = measureGroup.children[0];
-                measureGroup.remove(c);
-                if (c.geometry) c.geometry.dispose();
-                if (c.material) {
-                    if (c.material.map) c.material.map.dispose();
-                    c.material.dispose();
-                }
+            (function cmpLoop() {
+                requestAnimationFrame(cmpLoop);
+                cmpControls.update();
+                cmpRenderer.render(cmpScene, cmpCamera);
+            })();
+        }
+
+        window.loadCompareMesh = function (data, label) {
+            initCompareRenderer();
+            if (cmpMesh) { cmpScene.remove(cmpMesh); cmpMesh.geometry.dispose(); cmpMesh.material.dispose(); cmpMesh = null; }
+            const geo = new THREE.BufferGeometry();
+            const pos = (data.positions instanceof Float32Array) ? data.positions : new Float32Array(data.positions);
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            if (data.indices && data.indices.length) {
+                const idx = (data.indices instanceof Uint32Array) ? data.indices : new Uint32Array(data.indices);
+                geo.setIndex(new THREE.BufferAttribute(idx, 1));
             }
-            pendingMeasurePoint = null;
-            document.getElementById('clear-meas-btn').style.display = 'none';
+            geo.computeVertexNormals();
+            const mat = new THREE.MeshStandardMaterial({ color: 0xef7a5a, roughness: 0.52, metalness: 0.08, side: THREE.DoubleSide });
+            cmpMesh = new THREE.Mesh(geo, mat);
+            cmpScene.add(cmpMesh);
+
+            // Fit compare camera
+            const box = new THREE.Box3().setFromObject(cmpMesh);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z) || 1;
+            const dist = (maxDim / 2) / Math.tan(cmpCamera.fov * Math.PI / 360) * 1.8;
+            cmpControls.target.copy(center);
+            cmpCamera.position.copy(center).addScaledVector(new THREE.Vector3(0.2, -1, 0.35).normalize(), dist);
+            cmpCamera.near = maxDim * 0.0001; cmpCamera.far = maxDim * 2000;
+            cmpCamera.updateProjectionMatrix();
+            cmpControls.update();
+
+            // Update overlay
+            const e = data.extents;
+            document.getElementById('vname-cmp').textContent = label || (data.name || '');
+            document.getElementById('vcounts-cmp').textContent = `${data.vertex_count.toLocaleString()} verts  ·  ${data.face_count.toLocaleString()} faces`;
+            document.getElementById('vextents-cmp').textContent = `X ${fmtDim(e[0])}   Y ${fmtDim(e[1])}   Z ${fmtDim(e[2])}`;
+            document.getElementById('voverlay-cmp').style.display = '';
+            document.getElementById('vplaceholder-cmp').style.display = 'none';
+
+            if (resizeCmp) resizeCmp();
         };
 
-        /* ── Measurement click handler ── */
-        const raycaster = new THREE.Raycaster();
-        const mouseVec = new THREE.Vector2();
-        let ptrDownPos = null;
+        /* ── Dataset viewer: scalar coloring + run loading ── */
 
-        canvas.addEventListener('pointerdown', (e) => {
-            if (measureMode) ptrDownPos = { x: e.clientX, y: e.clientY };
-        });
+        function jet(t) {
+            t = Math.max(0, Math.min(1, t));
+            return [
+                Math.min(1, Math.max(0, 1.5 - Math.abs(t * 4 - 3))),
+                Math.min(1, Math.max(0, 1.5 - Math.abs(t * 4 - 2))),
+                Math.min(1, Math.max(0, 1.5 - Math.abs(t * 4 - 1)))
+            ];
+        }
 
-        canvas.addEventListener('click', (e) => {
-            if (!measureMode || !activeMesh || !ptrDownPos) return;
-            const dx = e.clientX - ptrDownPos.x, dy = e.clientY - ptrDownPos.y;
-            ptrDownPos = null;
-            if (Math.hypot(dx, dy) > 5) return;
+        function addVertexColors(geo, scalars, sMin, sMax) {
+            const n = scalars.length;
+            const colors = new Float32Array(n * 3);
+            const range = sMax - sMin;
+            for (let i = 0; i < n; i++) {
+                const t = range > 1e-9 ? (scalars[i] - sMin) / range : 0.5;
+                const [r, g, b] = jet(t);
+                colors[i * 3] = r; colors[i * 3 + 1] = g; colors[i * 3 + 2] = b;
+            }
+            geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        }
 
-            const rect = canvas.getBoundingClientRect();
-            mouseVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-            mouseVec.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-            raycaster.setFromCamera(mouseVec, camera);
-            const hits = raycaster.intersectObject(activeMesh);
-            if (!hits.length) return;
+        function buildDatasetObject(data, fallbackColor) {
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
+            const hasIdx = data.indices && data.indices.length > 0;
+            if (hasIdx) geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
+            const hasSca = data.scalars != null;
+            if (hasSca) addVertexColors(geo, data.scalars, data.s_min, data.s_max);
+            if (hasIdx) geo.computeVertexNormals();
+            if (hasIdx) {
+                return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+                    roughness: 0.5, metalness: 0.05, side: THREE.DoubleSide,
+                    vertexColors: hasSca, color: hasSca ? 0xffffff : fallbackColor,
+                }));
+            }
+            return new THREE.Points(geo, new THREE.PointsMaterial({
+                size: 0.003, sizeAttenuation: true,
+                vertexColors: hasSca, color: hasSca ? 0xffffff : fallbackColor,
+            }));
+        }
 
-            const pt = hits[0].point.clone();
-            const box = new THREE.Box3().setFromObject(activeMesh);
-            const maxDim = Math.max(...box.getSize(new THREE.Vector3()).toArray()) || 1;
+        function fitObjectToCamera(obj, cam, ctls) {
+            const box = new THREE.Box3().setFromObject(obj);
+            const ctr = box.getCenter(new THREE.Vector3());
+            const sz = box.getSize(new THREE.Vector3());
+            const md = Math.max(sz.x, sz.y, sz.z) || 1;
+            const dist = (md / 2) / Math.tan(cam.fov * Math.PI / 360) * 1.8;
+            ctls.target.copy(ctr);
+            cam.position.copy(ctr).addScaledVector(new THREE.Vector3(0.2, -1, 0.35).normalize(), dist);
+            cam.near = md * 0.0001; cam.far = md * 2000;
+            cam.updateProjectionMatrix();
+            ctls.update();
+        }
 
-            // Sphere marker
-            const sGeo = new THREE.SphereGeometry(maxDim * 0.006, 12, 12);
-            const sMat = new THREE.MeshBasicMaterial({ color: 0xff4444, depthTest: false });
-            const sphere = new THREE.Mesh(sGeo, sMat);
-            sphere.position.copy(pt);
-            sphere.renderOrder = 999;
-            measureGroup.add(sphere);
-
-            if (pendingMeasurePoint) {
-                const p1 = pendingMeasurePoint, p2 = pt;
-                // Line
-                const lGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-                const lMat = new THREE.LineBasicMaterial({ color: 0xff4444, depthTest: false });
-                const line = new THREE.Line(lGeo, lMat);
-                line.renderOrder = 999;
-                measureGroup.add(line);
-                // Distance label
-                const dist = p1.distanceTo(p2);
-                let text;
-                if (dist >= 0.001) text = dist.toPrecision(4) + ' m';
-                else text = dist.toExponential(2) + ' m';
-                const cvs = document.createElement('canvas');
-                cvs.width = 256; cvs.height = 64;
-                const c = cvs.getContext('2d');
-                c.font = 'bold 28px sans-serif';
-                c.textAlign = 'center'; c.textBaseline = 'middle';
-                const tw = c.measureText(text).width + 20;
-                c.fillStyle = 'rgba(0,0,0,0.78)';
-                c.fillRect(128 - tw / 2, 6, tw, 44);
-                c.fillStyle = '#ff8888';
-                c.fillText(text, 128, 30);
-                const tex = new THREE.CanvasTexture(cvs);
-                const spMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
-                const sprite = new THREE.Sprite(spMat);
-                const mid = p1.clone().add(p2).multiplyScalar(0.5);
-                mid.z += maxDim * 0.02;
-                sprite.position.copy(mid);
-                const s = maxDim * 0.12;
-                sprite.scale.set(s, s * 0.25, 1);
-                sprite.renderOrder = 1000;
-                measureGroup.add(sprite);
-                pendingMeasurePoint = null;
+        window.viewerLoadDatasetRun = function (data, pane) {
+            const hasSca = data.scalars != null;
+            if (pane === 'A') {
+                removeMesh();
+                activeMesh = buildDatasetObject(data, meshColor);
+                scene.add(activeMesh);
+                document.getElementById('vplaceholder').style.display = 'none';
+                updateOverlay(data);
+                fitToMesh();
+                updateAxisTransform();
+                viewRole = 'original';
+                updateViewIndicator();
             } else {
-                pendingMeasurePoint = pt;
+                // Auto-enable compare mode when B is loaded
+                if (dsViewMode === 'single') dsToggleViewMode();
+                initCompareRenderer();
+                if (cmpMesh) {
+                    cmpScene.remove(cmpMesh);
+                    cmpMesh.geometry.dispose();
+                    cmpMesh.material.dispose();
+                    cmpMesh = null;
+                }
+                cmpMesh = buildDatasetObject(data, 0xef7a5a);
+                cmpScene.add(cmpMesh);
+                fitObjectToCamera(cmpMesh, cmpCamera, cmpControls);
+                const e = data.extents;
+                document.getElementById('vname-cmp').textContent = data.name || '';
+                document.getElementById('vcounts-cmp').textContent =
+                    `${data.vertex_count.toLocaleString()} verts  ·  ${data.face_count.toLocaleString()} faces`;
+                document.getElementById('vextents-cmp').textContent =
+                    `X ${fmtDim(e[0])}   Y ${fmtDim(e[1])}   Z ${fmtDim(e[2])}`;
+                document.getElementById('voverlay-cmp').style.display = '';
+                document.getElementById('vplaceholder-cmp').style.display = 'none';
+                if (resizeCmp) resizeCmp();
             }
-            document.getElementById('clear-meas-btn').style.display = '';
-        });
+            // Update scalar bar with consistent range
+            if (hasSca) {
+                document.getElementById('sbar-field').textContent = data.field_name || 'Scalar';
+                document.getElementById('sbar-min').textContent = data.s_min.toFixed(3);
+                document.getElementById('sbar-max').textContent = data.s_max.toFixed(3);
+                document.getElementById('scalar-bar').classList.add('visible');
+            }
+        };
+
+        // Mirror primary camera state into the compare pane
+        window.dsSyncCameras = function () {
+            if (!cmpControls || !controls) return;
+            cmpControls.target.copy(controls.target);
+            cmpCamera.position.copy(camera.position);
+            cmpCamera.up.copy(camera.up);
+            cmpCamera.near = camera.near;
+            cmpCamera.far = camera.far;
+            cmpCamera.updateProjectionMatrix();
+            cmpControls.update();
+        };
+
+        /* ── Dataset thumbnail strip rendering ── */
+        window.renderDatasetThumbnails = function (thumbRuns, scalarMin, scalarMax, selectedIdx) {
+            const strip = document.getElementById('ds-thumb-strip');
+            strip.innerHTML = '';
+            if (!thumbRuns || thumbRuns.length === 0) { strip.classList.remove('visible'); return; }
+
+            const W = 100, H = 68;
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = W; offCanvas.height = H;
+            const offR = new THREE.WebGLRenderer({ canvas: offCanvas, antialias: true, preserveDrawingBuffer: true });
+            offR.setSize(W, H);
+            offR.outputColorSpace = THREE.SRGBColorSpace;
+            const offScene = new THREE.Scene();
+            offScene.background = getSceneBg();
+            offScene.add(new THREE.AmbientLight(0xffffff, 0.8));
+            const offSun = new THREE.DirectionalLight(0xffffff, 0.8);
+            offSun.position.set(1, 2, 2.5); offScene.add(offSun);
+            const offCam = new THREE.PerspectiveCamera(45, W / H, 0.001, 1e9);
+            offCam.up.set(0, 0, 1);
+            const viewDir = new THREE.Vector3(0.2, -1, 0.35).normalize();
+
+            let maxExt = 0;
+            for (const tr of thumbRuns) {
+                const pos = tr.positions;
+                let mx = 0;
+                for (let i = 0; i < pos.length; i += 3)
+                    mx = Math.max(mx, Math.abs(pos[i]), Math.abs(pos[i + 1]), Math.abs(pos[i + 2]));
+                maxExt = Math.max(maxExt, mx * 2);
+            }
+            const dist = (maxExt / 2) / Math.tan(22.5 * Math.PI / 180) * 1.5;
+            const range = scalarMax - scalarMin;
+
+            for (let ri = 0; ri < thumbRuns.length; ri++) {
+                const tr = thumbRuns[ri];
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.BufferAttribute(tr.positions, 3));
+                if (tr.scalars && range > 0) {
+                    const colors = new Float32Array(tr.n * 3);
+                    for (let i = 0; i < tr.n; i++) {
+                        const t = Math.max(0, Math.min(1, (tr.scalars[i] - scalarMin) / range));
+                        const [r, g, b] = jet(t);
+                        colors[i * 3] = r; colors[i * 3 + 1] = g; colors[i * 3 + 2] = b;
+                    }
+                    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                }
+                const mat = new THREE.PointsMaterial({
+                    size: maxExt * 0.008, sizeAttenuation: true,
+                    vertexColors: !!tr.scalars, color: tr.scalars ? 0xffffff : meshColor,
+                });
+                const pts = new THREE.Points(geo, mat);
+                offScene.add(pts);
+
+                const box = new THREE.Box3().setFromBufferAttribute(geo.attributes.position);
+                const ct = box.getCenter(new THREE.Vector3());
+                offCam.position.copy(ct).addScaledVector(viewDir, dist);
+                offCam.lookAt(ct);
+                offCam.near = maxExt * 0.0001; offCam.far = maxExt * 2000;
+                offCam.updateProjectionMatrix();
+                offR.render(offScene, offCam);
+
+                const wrap = document.createElement('div');
+                wrap.className = 'step-wrap' + (ri === selectedIdx ? ' selected' : '');
+                wrap.dataset.dsIdx = ri;
+                wrap.onclick = ((idx) => () => {
+                    if (typeof window.dsThumbClick === 'function') window.dsThumbClick(idx);
+                })(ri);
+                const img = document.createElement('img'); img.src = offCanvas.toDataURL();
+                const lbl = document.createElement('span'); lbl.className = 'step-lbl'; lbl.textContent = tr.name;
+                wrap.appendChild(img); wrap.appendChild(lbl);
+                strip.appendChild(wrap);
+                offScene.remove(pts); geo.dispose(); mat.dispose();
+            }
+            offR.dispose();
+            strip.classList.add('visible');
+        };
+
+        window.dsHighlightThumb = function (idx) {
+            document.querySelectorAll('#ds-thumb-strip .step-wrap').forEach((el, i) => {
+                el.classList.toggle('selected', i === idx);
+            });
+            const el = document.querySelectorAll('#ds-thumb-strip .step-wrap')[idx];
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        };
 
         /* ── Step thumbnails ── */
         function highlightThumb() {
@@ -1840,7 +2103,7 @@
             const offSun = new THREE.DirectionalLight(0xffffff, 1.0);
             offSun.position.set(1, 2, 2.5); offScene.add(offSun);
             const offCam = new THREE.PerspectiveCamera(fov, W / H, 0.001, 1e9);
-            offCam.up.set(0, 0, 1);  // Z-up
+            offCam.up.set(0, 0, 1);
             const viewDir = new THREE.Vector3(0.2, -1, 0.35).normalize();
 
             const labels = ['Original', ...stepMeshes.map((_, i) => `Step ${i + 1}`)];
@@ -1895,231 +2158,6 @@
             strip.classList.add('visible');
             highlightThumb();
         };
-
-        /* ── Colormap (jet) ── */
-        function jet(t) {
-            t = Math.max(0, Math.min(1, t));
-            return [
-                Math.min(1, Math.max(0, 1.5 - Math.abs(t * 4 - 3))),
-                Math.min(1, Math.max(0, 1.5 - Math.abs(t * 4 - 2))),
-                Math.min(1, Math.max(0, 1.5 - Math.abs(t * 4 - 1)))
-            ];
-        }
-
-        function showColorbar(fieldName, sMin, sMax) {
-            const cb = document.getElementById('colorbar');
-            document.getElementById('colorbar-label').textContent = fieldName;
-            document.getElementById('colorbar-max').textContent = sMax.toPrecision(4);
-            document.getElementById('colorbar-min').textContent = sMin.toPrecision(4);
-            // Build gradient
-            const stops = [];
-            for (let i = 0; i <= 8; i++) {
-                const t = i / 8;
-                const [r, g, b] = jet(1 - t); // top=max, bottom=min
-                stops.push(`rgb(${(r * 255) | 0},${(g * 255) | 0},${(b * 255) | 0}) ${(t * 100).toFixed(0)}%`);
-            }
-            document.getElementById('colorbar-gradient').style.background =
-                `linear-gradient(to bottom, ${stops.join(', ')})`;
-            // Zero indicator
-            const zeroEl = document.getElementById('colorbar-zero');
-            const swatchEl = document.getElementById('colorbar-zero-swatch');
-            if (sMin < 0 && sMax > 0) {
-                // position from top: t=1 is max (top), t=0 is min (bottom)
-                const tZero = (0 - sMin) / (sMax - sMin); // fraction from bottom
-                const pct = (1 - tZero) * 100; // percent from top
-                zeroEl.style.top = pct.toFixed(2) + '%';
-                zeroEl.style.display = 'block';
-                const [zr, zg, zb] = jet(tZero);
-                const zCol = `rgb(${(zr * 255) | 0},${(zg * 255) | 0},${(zb * 255) | 0})`;
-                swatchEl.style.background = zCol;
-                swatchEl.style.display = 'block';
-                swatchEl.title = `Color at 0 (${zCol})`;
-            } else {
-                zeroEl.style.display = 'none';
-                swatchEl.style.display = 'none';
-            }
-            cb.classList.add('visible');
-        }
-
-        function hideColorbar() {
-            document.getElementById('colorbar').classList.remove('visible');
-        }
-
-        /* ── Dataset mesh loader ── */
-        window.viewerLoadDatasetMesh = function (data) {
-            removeMesh();
-            meshStore.original = null;
-            meshStore.current = null;
-            meshStore.steps = [];
-            document.getElementById('step-strip').classList.remove('visible');
-            window.clearMeasurements();
-
-            const geo = new THREE.BufferGeometry();
-            const pos = (data.positions instanceof Float32Array) ? data.positions : new Float32Array(data.positions);
-            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-
-            if (data.indices && data.indices.length) {
-                const idx = (data.indices instanceof Uint32Array) ? data.indices : new Uint32Array(data.indices);
-                geo.setIndex(new THREE.BufferAttribute(idx, 1));
-            }
-
-            let useVertexColors = false;
-            if (data.scalars) {
-                const colors = new Float32Array(data.vertex_count * 3);
-                const range = data.scalarMax - data.scalarMin;
-                for (let i = 0; i < data.vertex_count; i++) {
-                    const t = range > 0 ? (data.scalars[i] - data.scalarMin) / range : 0.5;
-                    const [r, g, b] = jet(t);
-                    colors[i * 3] = r;
-                    colors[i * 3 + 1] = g;
-                    colors[i * 3 + 2] = b;
-                }
-                geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-                useVertexColors = true;
-                showColorbar(data.fieldName || '', data.scalarMin, data.scalarMax);
-            } else {
-                hideColorbar();
-            }
-
-            if (data.face_count > 0) {
-                geo.computeVertexNormals();
-                const mat = new THREE.MeshStandardMaterial({
-                    vertexColors: useVertexColors,
-                    color: useVertexColors ? 0xffffff : meshColor,
-                    roughness: 0.52, metalness: 0.08,
-                    side: THREE.DoubleSide, wireframe: wireframeOn,
-                });
-                activeMesh = new THREE.Mesh(geo, mat);
-            } else {
-                const box = new THREE.Box3();
-                box.setFromBufferAttribute(geo.attributes.position);
-                const maxDim = Math.max(...box.getSize(new THREE.Vector3()).toArray()) || 1;
-                const mat = new THREE.PointsMaterial({
-                    size: maxDim * 0.003,
-                    vertexColors: useVertexColors,
-                    color: useVertexColors ? 0xffffff : meshColor,
-                    sizeAttenuation: true,
-                });
-                activeMesh = new THREE.Points(geo, mat);
-            }
-
-            scene.add(activeMesh);
-            document.getElementById('vplaceholder').style.display = 'none';
-            document.getElementById('voverlay').style.display = '';
-            document.getElementById('vname').textContent = data.name || '';
-            document.getElementById('vcounts').textContent =
-                `${data.vertex_count.toLocaleString()} verts  ·  ${data.face_count.toLocaleString()} faces`;
-            const e = data.extents;
-            document.getElementById('vextents').textContent =
-                `X ${fmtDim(e[0])}   Y ${fmtDim(e[1])}   Z ${fmtDim(e[2])}`;
-
-            fitToMesh();
-            currentMeshData = data;
-            viewRole = 'dataset';
-            updateAxisTransform();
-            updateStatsPanel();
-            document.getElementById('view-indicator').classList.remove('visible');
-            document.getElementById('view-btn').disabled = true;
-        };
-
-        /* ── Dataset thumbnail rendering ── */
-        window.renderDatasetThumbnails = function (thumbRuns, scalarMin, scalarMax, selectedIdx) {
-            const strip = document.getElementById('ds-thumb-strip');
-            strip.innerHTML = '';
-            if (!thumbRuns || thumbRuns.length === 0) { strip.classList.remove('visible'); return; }
-
-            const W = 100, H = 68;
-            const offCanvas = document.createElement('canvas');
-            offCanvas.width = W; offCanvas.height = H;
-            const offR = new THREE.WebGLRenderer({ canvas: offCanvas, antialias: true, preserveDrawingBuffer: true });
-            offR.setSize(W, H);
-            offR.outputColorSpace = THREE.SRGBColorSpace;
-            const offScene = new THREE.Scene();
-            offScene.background = getSceneBg();
-            offScene.add(new THREE.AmbientLight(0xffffff, 0.8));
-            const offSun = new THREE.DirectionalLight(0xffffff, 0.8);
-            offSun.position.set(1, 2, 2.5); offScene.add(offSun);
-            const offCam = new THREE.PerspectiveCamera(45, W / H, 0.001, 1e9);
-            offCam.up.set(0, 0, 1);
-            const viewDir = new THREE.Vector3(0.2, -1, 0.35).normalize();
-
-            // Compute uniform camera distance
-            let maxExt = 0;
-            for (const tr of thumbRuns) {
-                const pos = tr.positions;
-                let mx = 0;
-                for (let i = 0; i < pos.length; i += 3) {
-                    mx = Math.max(mx, Math.abs(pos[i]), Math.abs(pos[i + 1]), Math.abs(pos[i + 2]));
-                }
-                maxExt = Math.max(maxExt, mx * 2);
-            }
-            const dist = (maxExt / 2) / Math.tan(22.5 * Math.PI / 180) * 1.5;
-
-            const range = scalarMax - scalarMin;
-            for (let ri = 0; ri < thumbRuns.length; ri++) {
-                const tr = thumbRuns[ri];
-                const geo = new THREE.BufferGeometry();
-                geo.setAttribute('position', new THREE.BufferAttribute(tr.positions, 3));
-
-                if (tr.scalars && range > 0) {
-                    const colors = new Float32Array(tr.n * 3);
-                    for (let i = 0; i < tr.n; i++) {
-                        const t = Math.max(0, Math.min(1, (tr.scalars[i] - scalarMin) / range));
-                        const [r, g, b] = jet(t);
-                        colors[i * 3] = r; colors[i * 3 + 1] = g; colors[i * 3 + 2] = b;
-                    }
-                    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-                }
-
-                const mat = new THREE.PointsMaterial({
-                    size: maxExt * 0.008,
-                    vertexColors: !!tr.scalars,
-                    color: tr.scalars ? 0xffffff : meshColor,
-                    sizeAttenuation: true,
-                });
-                const pts = new THREE.Points(geo, mat);
-                offScene.add(pts);
-
-                // Center camera on this run's center
-                const box = new THREE.Box3().setFromBufferAttribute(geo.attributes.position);
-                const ct = box.getCenter(new THREE.Vector3());
-                offCam.position.copy(ct).addScaledVector(viewDir, dist);
-                offCam.lookAt(ct);
-                offCam.near = maxExt * 0.0001; offCam.far = maxExt * 2000;
-                offCam.updateProjectionMatrix();
-                offR.render(offScene, offCam);
-
-                const wrap = document.createElement('div');
-                wrap.className = 'step-wrap' + (ri === selectedIdx ? ' selected' : '');
-                wrap.dataset.dsIdx = ri;
-                wrap.onclick = ((idx) => () => {
-                    if (typeof window.dsThumbClick === 'function') window.dsThumbClick(idx);
-                })(ri);
-
-                const img = document.createElement('img');
-                img.src = offCanvas.toDataURL();
-                const lbl = document.createElement('span');
-                lbl.className = 'step-lbl';
-                lbl.textContent = tr.name;
-                wrap.appendChild(img);
-                wrap.appendChild(lbl);
-                strip.appendChild(wrap);
-
-                offScene.remove(pts);
-                geo.dispose(); mat.dispose();
-            }
-            offR.dispose();
-            strip.classList.add('visible');
-        };
-
-        window.dsHighlightThumb = function (idx) {
-            document.querySelectorAll('#ds-thumb-strip .step-wrap').forEach((el, i) => {
-                el.classList.toggle('selected', i === idx);
-            });
-            // Scroll into view
-            const el = document.querySelectorAll('#ds-thumb-strip .step-wrap')[idx];
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-        };
     </script>
 
     <!-- ──────────── Control logic ──────────── -->
@@ -2147,6 +2185,11 @@
         }
         function clearLog() { document.getElementById('log').innerHTML = ''; }
         function setViewerLoading(on) { document.getElementById('vloading').classList.toggle('on', on); }
+
+        /* ── HTML escaping ── */
+        function escHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
 
         /* ── Theme toggle ── */
         function toggleTheme() {
@@ -2199,6 +2242,306 @@
         }
 
         /* ── File loading ── */
+        /* ── Subdivide ── */
+        let _subdivideState = null; // { path, iterations } remembered for Save
+
+        async function runSubdivide() {
+            const path = document.getElementById('inputFile').value.trim();
+            if (!path) { alert('Load a file first.'); return; }
+            const iterations = parseInt(document.getElementById('subdiv-iter').value) || 1;
+            const spin = document.getElementById('subdiv-spin');
+            const info = document.getElementById('subdiv-info');
+            document.getElementById('subdiv-save-btn').style.display = 'none';
+            _subdivideState = null;
+            spin.classList.add('on'); info.textContent = 'Running…';
+            try {
+                const res = await fetch('/api/subdivide', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path, iterations, save_path: '' }),
+                });
+                if (res.headers.get('content-type')?.includes('json')) {
+                    const err = await res.json(); throw new Error(err.error || 'Failed');
+                }
+                const buf = await res.arrayBuffer();
+                const nv = res.headers.get('X-Vertices');
+                const nf = res.headers.get('X-Faces');
+                const method = res.headers.get('X-Method') || 'unknown';
+                const mesh = parseMeshBinary(buf);
+                mesh.name = (path.split('/').pop() || 'subdivided') + ` (subdiv×${iterations})`;
+                window.viewerLoadMesh(mesh, 'original', true);
+                info.style.color = 'var(--ok)';
+                info.textContent = `${parseInt(nv).toLocaleString()} verts · ${parseInt(nf).toLocaleString()} faces (${method})`;
+                logLine(`<span class="ok">Subdivide×${iterations} (${method}):</span> ${parseInt(nv).toLocaleString()} verts, ${parseInt(nf).toLocaleString()} faces`);
+                _subdivideState = { path, iterations };
+                document.getElementById('subdiv-save-btn').style.display = '';
+            } catch (e) {
+                info.style.color = 'var(--er)'; info.textContent = String(e);
+                logLine(`<span class="er">Subdivide: ${escHtml(String(e))}</span>`);
+            } finally { spin.classList.remove('on'); }
+        }
+
+        async function saveSubdivide() {
+            if (!_subdivideState) return;
+            const { path, iterations } = _subdivideState;
+            const spin = document.getElementById('subdiv-save-spin');
+            const info = document.getElementById('subdiv-info');
+            spin.classList.add('on');
+            try {
+                const res = await fetch('/api/subdivide', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path, iterations, save_path: path }),
+                });
+                if (res.headers.get('content-type')?.includes('json')) {
+                    const err = await res.json(); throw new Error(err.error || 'Save failed');
+                }
+                await res.arrayBuffer(); // consume body
+                info.textContent += ' — saved ✓';
+                logLine(`<span class="ok">Saved (overwrite):</span> <span class="dim">${escHtml(path)}</span>`);
+                document.getElementById('subdiv-save-btn').style.display = 'none';
+                _subdivideState = null;
+            } catch (e) {
+                info.style.color = 'var(--er)'; info.textContent = String(e);
+                logLine(`<span class="er">Save failed: ${escHtml(String(e))}</span>`);
+            } finally { spin.classList.remove('on'); }
+        }
+
+        /* ══════════════════════════════════════════════════════
+           Batch Subdivide Review
+           ══════════════════════════════════════════════════════ */
+        let batchFiles = [];
+        let batchIdx = 0;
+        let batchActive = false;
+        let batchPendingSubdiv = 0; // 0 = original shown, N = N-iter subdivide previewed
+
+        async function batchScan() {
+            const dir = document.getElementById('batch-dir').value.trim();
+            if (!dir) { alert('Enter a directory path.'); return; }
+            const spin = document.getElementById('batch-scan-spin');
+            spin.classList.add('on');
+            try {
+                const res = await fetch('/api/list_ply', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folder: dir }),
+                });
+                const d = await res.json();
+                if (!d.ok) { alert(d.error || 'Scan failed'); return; }
+                if (!d.files.length) { alert('No .ply files found in that folder.'); return; }
+                batchFiles = d.files.map(f => d.folder.replace(/\/$/, '') + '/' + f);
+                batchIdx = 0;
+                batchActive = true;
+                document.getElementById('batch-status').style.display = '';
+                await _batchLoad();
+            } catch (e) {
+                alert('Scan error: ' + e);
+            } finally { spin.classList.remove('on'); }
+        }
+
+        async function _batchLoad() {
+            if (batchIdx >= batchFiles.length) {
+                batchActive = false;
+                document.getElementById('batch-progress').textContent = '✓ All files reviewed!';
+                document.getElementById('batch-counter').textContent = '';
+                document.getElementById('batch-verts').textContent = '';
+                return;
+            }
+            batchPendingSubdiv = 0;
+            const path = batchFiles[batchIdx];
+            const name = path.split('/').pop();
+            document.getElementById('batch-progress').textContent = name;
+            document.getElementById('batch-counter').textContent = `${batchIdx + 1} / ${batchFiles.length}`;
+            document.getElementById('batch-verts').textContent = 'Loading…';
+            document.getElementById('inputFile').value = path;
+            setViewerLoading(true);
+            try {
+                const [inspRes, meshBuf] = await Promise.all([
+                    fetch('/api/inspect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) }).then(r => r.json()),
+                    fetchBinary('/api/mesh_bin', { path, downsample: 0 }),
+                ]);
+                const mesh = parseMeshBinary(meshBuf);
+                mesh.name = name;
+                window.viewerLoadMesh(mesh, 'original', true);
+                const vStr = inspRes.ok
+                    ? `Original: ${inspRes.vertices.toLocaleString()} verts · ${inspRes.faces.toLocaleString()} faces`
+                    : 'Loaded';
+                document.getElementById('batch-verts').textContent = vStr;
+            } catch (e) {
+                document.getElementById('batch-verts').textContent = `Error: ${e}`;
+            } finally { setViewerLoading(false); }
+        }
+
+        async function _batchPreview(iterations) {
+            if (!batchActive) return;
+            const path = batchFiles[batchIdx];
+            document.getElementById('batch-verts').textContent = `Subdividing ×${iterations}…`;
+            setViewerLoading(true);
+            try {
+                const res = await fetch('/api/subdivide', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path, iterations, save_path: '' }),
+                });
+                if (res.headers.get('content-type')?.includes('json')) {
+                    const err = await res.json(); throw new Error(err.error || 'Failed');
+                }
+                const buf = await res.arrayBuffer();
+                const nv = parseInt(res.headers.get('X-Vertices'));
+                const nf = parseInt(res.headers.get('X-Faces'));
+                const method = res.headers.get('X-Method') || '?';
+                const mesh = parseMeshBinary(buf);
+                mesh.name = path.split('/').pop() + ` (×${iterations})`;
+                window.viewerLoadMesh(mesh, 'original', true);
+                batchPendingSubdiv = iterations;
+                document.getElementById('batch-verts').textContent =
+                    `Subdiv ×${iterations} (${method}): ${nv.toLocaleString()} verts · ${nf.toLocaleString()} faces  ← N to save, S to skip`;
+            } catch (e) {
+                document.getElementById('batch-verts').textContent = `Error: ${e}`;
+            } finally { setViewerLoading(false); }
+        }
+
+        async function _batchSaveAndNext() {
+            if (!batchActive) return;
+            const path = batchFiles[batchIdx];
+            if (batchPendingSubdiv > 0) {
+                document.getElementById('batch-verts').textContent = 'Saving…';
+                try {
+                    const res = await fetch('/api/subdivide', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path, iterations: batchPendingSubdiv, save_path: path }),
+                    });
+                    if (res.headers.get('content-type')?.includes('json')) {
+                        const err = await res.json(); throw new Error(err.error || 'Save failed');
+                    }
+                    await res.arrayBuffer();
+                    logLine(`<span class="ok">Saved ×${batchPendingSubdiv}:</span> <span class="dim">${escHtml(path)}</span>`);
+                } catch (e) {
+                    logLine(`<span class="er">Save failed: ${escHtml(String(e))}</span>`);
+                    return; // don't advance on error so user can retry
+                }
+            }
+            batchIdx++;
+            await _batchLoad();
+        }
+
+        async function _batchSkip() {
+            if (!batchActive) return;
+            logLine(`<span class="dim">Skipped:</span> ${escHtml(batchFiles[batchIdx])}`);
+            batchIdx++;
+            await _batchLoad();
+        }
+
+        // Called by both buttons and keyboard handler
+        function batchKey(key) {
+            if (!batchActive) return;
+            if (key === 'n') { _batchSaveAndNext(); return; }
+            if (key === 's') { _batchSkip(); return; }
+            if (key === '0') { _batchLoad(); return; }
+            const n = parseInt(key);
+            if (n >= 1 && n <= 4) { _batchPreview(n); }
+        }
+
+        // Global keydown — only fires when no text input is focused
+        document.addEventListener('keydown', function (e) {
+            if (!batchActive) return;
+            const tag = (document.activeElement?.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+            const k = e.key.toLowerCase();
+            if (['0', '1', '2', '3', '4', 'n', 's'].includes(k)) {
+                e.preventDefault();
+                batchKey(k);
+            }
+        });
+
+        /* ── Decimate ── */
+        async function runDecimate() {
+            const path = document.getElementById('inputFile').value.trim();
+            if (!path) { alert('Load a file first.'); return; }
+            const ratio = parseFloat(document.getElementById('decim-ratio').value) || 0.5;
+            const rawSave = document.getElementById('decim-save').value.trim();
+            const savePath = rawSave
+                ? (rawSave.includes('/') ? rawSave : path.substring(0, path.lastIndexOf('/') + 1) + rawSave)
+                : '';
+            const spin = document.getElementById('decim-spin');
+            const info = document.getElementById('decim-info');
+            spin.classList.add('on'); info.textContent = 'Running…';
+            try {
+                const res = await fetch('/api/decimate', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path, ratio, save_path: savePath }),
+                });
+                if (res.headers.get('content-type')?.includes('json')) {
+                    const err = await res.json(); throw new Error(err.error || 'Failed');
+                }
+                const buf = await res.arrayBuffer();
+                const nv = res.headers.get('X-Vertices');
+                const nf = res.headers.get('X-Faces');
+                const mesh = parseMeshBinary(buf);
+                mesh.name = (path.split('/').pop() || 'decimated') + ` (decim ${ratio})`;
+                window.viewerLoadMesh(mesh, 'original', true);
+                info.style.color = 'var(--ok)';
+                info.textContent = `${parseInt(nv).toLocaleString()} verts · ${parseInt(nf).toLocaleString()} faces`
+                    + (savePath ? ` — saved` : '');
+                logLine(`<span class="ok">Decimate (ratio ${ratio}):</span> ${parseInt(nv).toLocaleString()} verts, ${parseInt(nf).toLocaleString()} faces`
+                    + (savePath ? ` — <span class="dim">${escHtml(savePath)}</span>` : ''));
+            } catch (e) {
+                info.style.color = 'var(--er)'; info.textContent = String(e);
+                logLine(`<span class="er">Decimate: ${escHtml(String(e))}</span>`);
+            } finally { spin.classList.remove('on'); }
+        }
+
+        /* ── PLY browse ── */
+        async function plyBrowse() {
+            const dir = document.getElementById('ply-browse-dir').value.trim();
+            if (!dir) { alert('Enter a directory path first.'); return; }
+            const spin = document.getElementById('ply-browse-spin');
+            spin.classList.add('on');
+            try {
+                const r = await fetch('/api/list_ply', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folder: dir }),
+                });
+                const d = await r.json();
+                if (!d.ok) { alert(d.error); return; }
+                const sel = document.getElementById('ply-browse-sel');
+                const info = document.getElementById('ply-browse-info');
+                sel.innerHTML = d.files.map(f => `<option value="${escHtml(dir.replace(/\/$/, '') + '/' + f)}">${escHtml(f)}</option>`).join('');
+                info.textContent = `${d.files.length} file${d.files.length !== 1 ? 's' : ''} found`;
+                document.getElementById('ply-browse-field').style.display = d.files.length ? '' : 'none';
+                if (!d.files.length) info.textContent = 'No .ply files found';
+            } catch (e) { alert(String(e)); }
+            finally { spin.classList.remove('on'); }
+        }
+
+        function plyBrowseOpen() {
+            const val = document.getElementById('ply-browse-sel').value;
+            if (!val) return;
+            document.getElementById('inputFile').value = val;
+            loadFile();
+        }
+
+        /* ── Subsample & save ── */
+        async function plySaveSubsampled() {
+            const path = document.getElementById('inputFile').value.trim();
+            if (!path) { alert('Load a file first.'); return; }
+            const n_target = parseInt(document.getElementById('ply-downsample').value) || 0;
+            if (n_target <= 0) { alert('Set Max points > 0 to define the target size.'); return; }
+            const overwrite = document.getElementById('ply-overwrite').checked;
+            const spin = document.getElementById('ply-save-spin');
+            const info = document.getElementById('ply-save-info');
+            spin.classList.add('on'); info.textContent = 'Saving…';
+            try {
+                const r = await fetch('/api/subsample_save', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path, n_target, overwrite }),
+                });
+                const d = await r.json();
+                if (!d.ok) { info.style.color = 'var(--er)'; info.textContent = d.error; return; }
+                info.style.color = 'var(--ok)';
+                info.textContent = `Saved: ${d.n_saved.toLocaleString()} pts → ${escHtml(d.path.split('/').pop())}`;
+                logLine(`<span class="ok">Subsampled:</span> ${d.n_original.toLocaleString()} → ${d.n_saved.toLocaleString()} pts — <span class="dim">${escHtml(d.path)}</span>`);
+            } catch (e) {
+                info.style.color = 'var(--er)'; info.textContent = String(e);
+            } finally { spin.classList.remove('on'); }
+        }
+
         async function loadFile() {
             const path = document.getElementById('inputFile').value.trim();
             if (!path) { alert('Enter a file path first.'); return; }
@@ -2211,11 +2554,12 @@
             if (d.ok) {
                 info.textContent = `${d.vertices.toLocaleString()} verts \u00b7 ${d.faces.toLocaleString()} faces \u00b7 ${d.format}`;
                 info.style.color = 'var(--ok)';
-                logLine(`<span class="inf">Loaded:</span> <span class="ok">${path}</span>`);
+                logLine(`<span class="inf">Loaded:</span> <span class="ok">${escHtml(path)}</span>`);
                 logLine(`<span class="dim">  ${d.vertices.toLocaleString()} vertices, ${d.faces.toLocaleString()} faces</span>`);
                 setViewerLoading(true);
                 try {
-                    const mesh = parseMeshBinary(await fetchBinary('/api/mesh_bin', { path }));
+                    const downsample = parseInt(document.getElementById('ply-downsample').value) || 0;
+                    const mesh = parseMeshBinary(await fetchBinary('/api/mesh_bin', { path, downsample }));
                     mesh.name = path.split('/').pop();
                     window.viewerLoadMesh(mesh, 'original', true);
                 } catch (e) { logLine(`<span class="er">Viewer: ${e}</span>`); }
@@ -2358,422 +2702,472 @@
             }
         }
 
-        /* ══════════════════════════════════════════════════
-           PLY FOLDER BROWSER
-        ══════════════════════════════════════════════════ */
-        let plyFileList = [];   // string[] of filenames
-        let plyBrowseDir = '';  // current folder
-        let plyBrowseIdx = -1;
 
-        async function plyBrowseFolder() {
-            let input = document.getElementById('inputFile').value.trim();
-            // If it's a file path, take its parent directory
-            if (input.toLowerCase().endsWith('.ply')) {
-                input = input.substring(0, input.lastIndexOf('/'));
+        /* ══════════════════════════════════════════════════════
+           Mode switching
+           ══════════════════════════════════════════════════════ */
+        let dsViewMode = 'single';  // 'single' | 'compare'
+
+        function dsRefreshViewLayout() {
+            requestAnimationFrame(() => {
+                resize();
+                if (dsViewMode === 'compare' && resizeCmp) resizeCmp();
+                if (activeMesh) fitToMesh(activeMesh);
+                if (dsViewMode === 'compare' && cmpMesh && !dsState.syncCam) {
+                    fitObjectToCamera(cmpMesh, cmpCamera, cmpControls);
+                }
+                if (dsViewMode === 'compare' && dsState.syncCam) {
+                    window.dsSyncCameras?.();
+                }
+            });
+        }
+
+        function dsToggleViewMode() {
+            dsViewMode = dsViewMode === 'single' ? 'compare' : 'single';
+            const viewer = document.getElementById('viewer');
+            const vcmp = document.getElementById('viewer-compare');
+            const btn = document.getElementById('ds-view-mode-btn');
+            if (dsViewMode === 'compare') {
+                viewer.classList.add('compare-mode');
+                vcmp.style.display = '';
+                btn.classList.add('active');
+                btn.textContent = '⊟ Single';
+            } else {
+                viewer.classList.remove('compare-mode');
+                vcmp.style.display = 'none';
+                btn.classList.remove('active');
+                btn.textContent = '⊞ Compare';
             }
-            if (!input) { alert('Enter a folder path (or a .ply path) first.'); return; }
-            try {
-                const res = await fetch('/api/list_ply', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ folder: input }),
-                });
-                const d = await res.json();
-                if (!d.ok) { logLine(`<span class="er">${d.error}</span>`); return; }
-                plyFileList = d.files;
-                plyBrowseDir = d.folder;
-                if (!plyFileList.length) { logLine('<span class="er">No .ply files found</span>'); return; }
-                const sel = document.getElementById('ply-browse-sel');
-                sel.innerHTML = '';
-                plyFileList.forEach((f, i) => {
-                    const opt = document.createElement('option');
-                    opt.value = i; opt.textContent = f;
-                    sel.appendChild(opt);
-                });
-                // Try to match current file
-                const curName = document.getElementById('inputFile').value.split('/').pop();
-                const matchIdx = plyFileList.indexOf(curName);
-                plyBrowseIdx = matchIdx >= 0 ? matchIdx : 0;
-                sel.value = String(plyBrowseIdx);
-                document.getElementById('ply-browse-bar').style.display = '';
-                plyBrowseUpdateNav();
-                // Load first file
-                document.getElementById('inputFile').value = plyBrowseDir + '/' + plyFileList[plyBrowseIdx];
-                loadFile();
-                logLine(`<span class="inf">${plyFileList.length} .ply files in folder</span>`);
-            } catch (e) { logLine(`<span class="er">${e}</span>`); }
+            dsRefreshViewLayout();
         }
 
-        function plyBrowseUpdateNav() {
-            const total = plyFileList.length;
-            document.getElementById('ply-prev-btn').disabled = plyBrowseIdx <= 0;
-            document.getElementById('ply-next-btn').disabled = plyBrowseIdx >= total - 1;
-            document.getElementById('ply-browse-counter').textContent = total > 0 ? `${plyBrowseIdx + 1} / ${total}` : '';
-        }
+        function setMode(mode) {
+            const plyPanel = document.getElementById('ply-panel');
+            const dsPanel = document.getElementById('ds-panel');
+            const viewer = document.getElementById('viewer');
+            const vcmp = document.getElementById('viewer-compare');
+            const scalarBar = document.getElementById('scalar-bar');
 
-        function plyBrowseNav(delta) {
-            const newIdx = plyBrowseIdx + delta;
-            if (newIdx < 0 || newIdx >= plyFileList.length) return;
-            plyBrowseIdx = newIdx;
-            document.getElementById('ply-browse-sel').value = String(newIdx);
-            plyBrowseUpdateNav();
-            document.getElementById('inputFile').value = plyBrowseDir + '/' + plyFileList[plyBrowseIdx];
-            loadFile();
-        }
+            plyPanel.style.display = mode === 'ply' ? '' : 'none';
+            dsPanel.style.display = mode === 'dataset' ? '' : 'none';
+            document.getElementById('tab-ply').classList.toggle('active', mode === 'ply');
+            document.getElementById('tab-ds').classList.toggle('active', mode === 'dataset');
 
-        function plyBrowseJump() {
-            plyBrowseIdx = parseInt(document.getElementById('ply-browse-sel').value);
-            plyBrowseUpdateNav();
-            document.getElementById('inputFile').value = plyBrowseDir + '/' + plyFileList[plyBrowseIdx];
-            loadFile();
-        }
-
-        /* ══════════════════════════════════════════════════
-           SUBDIVIDE / DECIMATE
-        ══════════════════════════════════════════════════ */
-        let lastMeshOp = null; // { type, path, iterations?, ratio? }
-
-        function _plyShowSaveRow(op) {
-            lastMeshOp = op;
-            // Pre-fill save path with an auto-named suggestion
-            const dir = op.path.substring(0, op.path.lastIndexOf('/'));
-            const base = op.path.split('/').pop().replace(/\.ply$/i, '');
-            const suffix = op.type === 'subdivide' ? `_subdiv${op.iterations}x` : `_decim${Math.round(op.ratio * 100)}pct`;
-            document.getElementById('ply-meshop-save-path').value = `${dir}/${base}${suffix}.ply`;
-            document.getElementById('ply-meshop-save-row').style.display = 'flex';
-            document.getElementById('ply-meshop-save-info').textContent = '';
-        }
-
-        async function plySubdivide() {
-            const path = document.getElementById('inputFile').value.trim();
-            if (!path) { alert('Load a file first.'); return; }
-            const iterations = parseInt(document.getElementById('subdiv-iters').value) || 1;
-            const info = document.getElementById('subdiv-info');
-            info.textContent = `Subdividing (${iterations}×)…`;
-            setViewerLoading(true);
-            try {
-                const res = await fetch('/api/subdivide', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path, save_path: '', iterations }),
-                });
-                if (res.headers.get('content-type')?.includes('json')) {
-                    const err = await res.json();
-                    throw new Error(err.error || 'Subdivide failed');
+            if (mode === 'dataset') {
+                // Default to single view — user can switch to compare with the button
+                viewer.classList.remove('compare-mode');
+                vcmp.style.display = 'none';
+                dsViewMode = 'single';
+                const vmBtn = document.getElementById('ds-view-mode-btn');
+                if (vmBtn) { vmBtn.classList.remove('active'); vmBtn.textContent = '⊞ Compare'; }
+                // Hide PLY compare labels that may still be visible
+                document.getElementById('compare-label-a').style.display = 'none';
+                document.getElementById('cmpCloseBtn').style.display = 'none';
+            } else {
+                // Restore PLY mode — hide compare pane unless PLY compare is active
+                if (document.getElementById('cmpCloseBtn').style.display === 'none') {
+                    viewer.classList.remove('compare-mode');
+                    vcmp.style.display = 'none';
                 }
-                const nv = res.headers.get('X-Vertices');
-                const nf = res.headers.get('X-Faces');
-                const method = res.headers.get('X-Method') || '?';
-                const mesh = parseMeshBinary(await res.arrayBuffer());
-                mesh.name = path.split('/').pop() + ' (subdivided)';
-                window.viewerLoadMesh(mesh, 'original', true);
-                info.textContent = `${Number(nv).toLocaleString()} verts · ${Number(nf).toLocaleString()} faces (${method})`;
-                logLine(`<span class="ok">Subdivided (${method}, ${iterations}×) → ${nv} verts, ${nf} faces</span>`);
-                document.getElementById('fileInfo').textContent = info.textContent;
-                _plyShowSaveRow({ type: 'subdivide', path, iterations });
-            } catch (e) {
-                info.textContent = String(e);
-                logLine(`<span class="er">${e}</span>`);
-            } finally { setViewerLoading(false); }
+                scalarBar.classList.remove('visible');
+            }
         }
 
-        async function plyDecimate() {
-            const path = document.getElementById('inputFile').value.trim();
-            if (!path) { alert('Load a file first.'); return; }
-            const ratio = parseFloat(document.getElementById('decimate-ratio').value) || 0.5;
-            const info = document.getElementById('decimate-info');
-            info.textContent = `Decimating to ${Math.round(ratio * 100)}%…`;
-            setViewerLoading(true);
-            try {
-                const res = await fetch('/api/decimate', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path, ratio, save_path: '' }),
-                });
-                if (res.headers.get('content-type')?.includes('json')) {
-                    const err = await res.json();
-                    throw new Error(err.error || 'Decimate failed');
-                }
-                const nv = res.headers.get('X-Vertices');
-                const nf = res.headers.get('X-Faces');
-                const mesh = parseMeshBinary(await res.arrayBuffer());
-                mesh.name = path.split('/').pop() + ' (decimated)';
-                window.viewerLoadMesh(mesh, 'original', true);
-                info.textContent = `${Number(nv).toLocaleString()} verts · ${Number(nf).toLocaleString()} faces`;
-                logLine(`<span class="ok">Decimated → ${nv} verts, ${nf} faces</span>`);
-                document.getElementById('fileInfo').textContent = info.textContent;
-                _plyShowSaveRow({ type: 'decimate', path, ratio });
-            } catch (e) {
-                info.textContent = String(e);
-                logLine(`<span class="er">${e}</span>`);
-            } finally { setViewerLoading(false); }
+        /* ══════════════════════════════════════════════════════
+           Dataset Viewer — state + helpers
+           ══════════════════════════════════════════════════════ */
+        const dsState = {
+            A: { path: '', field: 'cp', runs: [], idx: -1, globalMin: null, globalMax: null },
+            B: { path: '', field: 'cp', runs: [], idx: -1, globalMin: null, globalMax: null },
+            syncCam: false,
+        };
+
+        // Parse the binary response from /api/dataset/load
+        function parseDatasetBinary(buf) {
+            const dv = new DataView(buf);
+            const n = dv.getUint32(0, true);   // vertex count
+            const nf = dv.getUint32(4, true);   // face count
+            const ex = [dv.getFloat32(8, true), dv.getFloat32(12, true), dv.getFloat32(16, true)];
+            const cx = [dv.getFloat32(20, true), dv.getFloat32(24, true), dv.getFloat32(28, true)];
+            const hasS = dv.getUint32(32, true);
+            const sMin = dv.getFloat32(36, true);
+            const sMax = dv.getFloat32(40, true);
+            let off = 44;
+            const pos = new Float32Array(buf.slice(off, off + n * 12)); off += n * 12;
+            let faces = null;
+            if (nf > 0) { faces = new Uint32Array(buf.slice(off, off + nf * 12)); off += nf * 12; }
+            let scalars = null;
+            if (hasS) scalars = new Float32Array(buf.slice(off, off + n * 4));
+            return {
+                vertex_count: n, face_count: nf, extents: ex, center: cx,
+                positions: pos, indices: faces, scalars, s_min: sMin, s_max: sMax
+            };
         }
 
-        async function plyMeshOpSave() {
-            if (!lastMeshOp) return;
-            const replaceOrig = document.getElementById('ply-replace-original').checked;
-            const savePath = replaceOrig
-                ? lastMeshOp.path
-                : document.getElementById('ply-meshop-save-path').value.trim();
-            if (!savePath) { alert('Enter a save path.'); return; }
-            const btn = document.querySelector('#ply-meshop-save-row .btn-primary');
-            const spin = document.getElementById('ply-meshop-spin');
-            const saveInfo = document.getElementById('ply-meshop-save-info');
-            btn.disabled = true; spin.classList.add('on');
-            saveInfo.textContent = 'Saving…';
-            try {
-                const body = lastMeshOp.type === 'subdivide'
-                    ? { path: lastMeshOp.path, save_path: savePath, iterations: lastMeshOp.iterations }
-                    : { path: lastMeshOp.path, save_path: savePath, ratio: lastMeshOp.ratio };
-                const endpoint = lastMeshOp.type === 'subdivide' ? '/api/subdivide' : '/api/decimate';
-                const res = await fetch(endpoint, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
-                });
-                if (res.headers.get('content-type')?.includes('json')) {
-                    const err = await res.json(); throw new Error(err.error);
-                }
-                await res.arrayBuffer(); // consume body
-                saveInfo.textContent = '✔ Saved';
-                logLine(`<span class="ok">Saved → ${savePath}</span>`);
-            } catch (e) {
-                saveInfo.textContent = String(e);
-                logLine(`<span class="er">${e}</span>`);
-            } finally { btn.disabled = false; spin.classList.remove('on'); }
-        }
-
-        /* ── Mode switching ── */
-        function switchMode(mode) {
-            document.getElementById('mode-transform').style.display = mode === 'transform' ? '' : 'none';
-            document.getElementById('mode-dataset').style.display = mode === 'dataset' ? '' : 'none';
-            document.querySelectorAll('.mode-tab').forEach(t =>
-                t.classList.toggle('active', t.dataset.mode === mode));
-        }
-
-        /* ── Dataset viewer logic ── */
-        let dsRunList = [];  // [{name, path}, ...]
-        let dsCurrentIdx = -1;
-
-        function dsLog(html) {
-            const el = document.getElementById('ds-log');
+        function dsLog(msg) {
+            const el = document.getElementById('log');
             if (el.innerHTML.includes('Output will appear here')) el.innerHTML = '';
-            el.innerHTML += html + '\n';
+            el.innerHTML += msg + '\n';
             el.scrollTop = el.scrollHeight;
         }
 
-        function dsUpdateNav() {
-            const sel = document.getElementById('ds-run');
-            const total = dsRunList.length;
-            const idx = dsCurrentIdx;
-            document.getElementById('ds-prev-btn').disabled = idx <= 0;
-            document.getElementById('ds-next-btn').disabled = idx >= total - 1 || total === 0;
-            document.getElementById('ds-run-counter').textContent = total > 0 ? `${idx + 1} / ${total}` : '';
-            if (typeof dsAuditUpdateUI === 'function') dsAuditUpdateUI();
+        function dsSetBtnLoading(slot, on) {
+            const btn = document.getElementById(`ds-load-btn-${slot}`);
+            const spin = document.getElementById(`ds-spin-${slot}`);
+            btn.disabled = on;
+            spin.classList.toggle('on', on);
         }
 
-        async function scanDatasets() {
+        function dsUpdateCounter(slot) {
+            const st = dsState[slot];
+            const el = document.getElementById(`ds-counter-${slot}`);
+            const sel = document.getElementById(`ds-run-sel-${slot}`);
+            if (!st.runs.length) {
+                el.textContent = 'No runs loaded';
+                if (sel) sel.style.display = 'none';
+                return;
+            }
+            const name = st.runs[st.idx]?.name ?? '';
+            el.textContent = `${st.idx + 1} / ${st.runs.length}  —  ${name}`;
+            document.getElementById(`ds-prev-${slot}`).disabled = st.idx <= 0;
+            document.getElementById(`ds-next-${slot}`).disabled = st.idx >= st.runs.length - 1;
+            // Populate / sync run picker dropdown
+            if (sel) {
+                if (sel.options.length !== st.runs.length) {
+                    sel.innerHTML = '';
+                    st.runs.forEach((r, i) => {
+                        const opt = document.createElement('option');
+                        opt.value = i;
+                        opt.textContent = r.name;
+                        sel.appendChild(opt);
+                    });
+                    sel.style.display = '';
+                }
+                sel.selectedIndex = st.idx;
+            }
+        }
+
+        /* ── Per-slot auto Cp range ── */
+        async function dsAutoRangeSlot(slot) {
+            const st = dsState[slot];
+            if (!st.path || !st.runs.length) { alert('Load a dataset first.'); return; }
+            const [lowerPct, upperPct] = dsResolveAutoRangePercentiles();
+            const btn = document.getElementById(`ds-autorange-slot-btn-${slot}`);
+            const spin = document.getElementById(`ds-autorange-slot-spin-${slot}`);
+            const display = document.getElementById(`ds-autorange-slot-display-${slot}`);
+            btn.disabled = true; spin.classList.add('on');
+            display.textContent = 'Computing…';
+            try {
+                let slotMin, slotMax;
+                if (st.currentScalars && st.currentScalars.length > 0) {
+                    slotMin = arrayPct(st.currentScalars, lowerPct);
+                    slotMax = arrayPct(st.currentScalars, upperPct);
+                } else {
+                    await dsComputeRange(slot);
+                    slotMin = st.globalMin;
+                    slotMax = st.globalMax;
+                }
+                if (slotMin == null) { display.textContent = 'No scalar data'; return; }
+                st.globalMin = slotMin;
+                st.globalMax = slotMax;
+                display.textContent = `${slotMin.toFixed(3)} … ${slotMax.toFixed(3)}`;
+                dsLog(`<span class="ok">[DS-${slot}] Auto Cp range p${Number(lowerPct.toFixed(1))}/p${Number(upperPct.toFixed(1))}: ${slotMin.toFixed(3)} … ${slotMax.toFixed(3)} — reloading…</span>`);
+                await dsLoadRun(slot, st.idx);
+            } catch (e) {
+                display.textContent = String(e);
+                dsLog(`<span class="er">[DS-${slot}] Auto range: ${escHtml(String(e))}</span>`);
+            } finally {
+                btn.disabled = false; spin.classList.remove('on');
+            }
+        }
+
+        function dsUpdateRunInfo(slot, info, runName) {
+            const el = document.getElementById(`ds-info-${slot}`);
+            if (!info || !info.ok) { el.innerHTML = ''; return; }
+            const cd = info.cd != null ? `<br>Cd: <b>${Number(info.cd).toFixed(4)}</b>` : '';
+            const name = escHtml(info.filename || runName || '');
+            el.innerHTML = `<span class="ds-run-name">${name}</span><br>`
+                + `${(info.vertices ?? 0).toLocaleString()} verts · ${(info.faces ?? 0).toLocaleString()} faces${cd}`;
+        }
+
+        async function dsComputeRange(slot) {
+            const st = dsState[slot];
+            if (!st.field || st.field === 'none') { st.globalMin = null; st.globalMax = null; return; }
+            try {
+                const r = await fetch('/api/dataset/field_range', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dataset_path: st.path, field: st.field }),
+                });
+                const d = await r.json();
+                if (d.ok) { st.globalMin = d.min; st.globalMax = d.max; }
+                else { st.globalMin = null; st.globalMax = null; }
+            } catch (_) { st.globalMin = null; st.globalMax = null; }
+        }
+
+        async function dsLoadRuns(slot) {
+            const st = dsState[slot];
+            st.path = document.getElementById(`ds-path-${slot}`).value.trim();
+            st.field = document.getElementById(`ds-field-${slot}`).value;
+            if (!st.path) { alert('Enter a dataset directory path.'); return; }
+            dsSetBtnLoading(slot, true);
+            dsLog(`<span class="inf">[DS-${slot}] Scanning: ${escHtml(st.path)}…</span>`);
+            try {
+                const r = await fetch('/api/dataset/runs', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dataset_path: st.path }),
+                });
+                const d = await r.json();
+                if (!d.ok) { dsLog(`<span class="er">[DS-${slot}] ${escHtml(d.error)}</span>`); return; }
+                st.runs = d.runs;
+                st.idx = d.runs.length > 0 ? 0 : -1;
+                dsUpdateCounter(slot);
+                dsUpdateRunInfo(slot, null, null);
+                dsLog(`<span class="ok">[DS-${slot}] ${d.runs.length} runs found</span>`);
+                if (d.runs.length > 0) {
+                    dsLog(`<span class="dim">[DS-${slot}] Computing field range (${st.field})…</span>`);
+                    await dsComputeRange(slot);
+                    if (st.globalMin != null)
+                        dsLog(`<span class="dim">[DS-${slot}] Range: ${st.globalMin.toFixed(3)} … ${st.globalMax.toFixed(3)}</span>`);
+                    await dsLoadRun(slot, 0);
+                    updateCacheStatusForSlot(slot);
+                }
+            } catch (e) {
+                dsLog(`<span class="er">[DS-${slot}] Request failed: ${escHtml(String(e))}</span>`);
+            } finally {
+                dsSetBtnLoading(slot, false);
+            }
+        }
+
+        async function dsLoadRun(slot, idx) {
+            const st = dsState[slot];
+            if (idx < 0 || idx >= st.runs.length) return;
+            st.idx = idx;
+            dsUpdateCounter(slot);
+            const run = st.runs[idx];
+            const downsample = parseInt(document.getElementById(`ds-downsample-${slot}`).value) || 0;
+            const sclRange = (st.globalMin != null && st.globalMax != null)
+                ? [st.globalMin, st.globalMax] : null;
+
+            // Show pane-specific loading indicator
+            if (slot === 'A') setViewerLoading(true);
+            else document.getElementById('vloading-cmp').style.display = 'flex';
+
+            try {
+                const [infoRes, dataRes] = await Promise.all([
+                    fetch('/api/dataset/info', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: run.path }),
+                    }),
+                    fetch('/api/dataset/load', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            path: run.path,
+                            field: st.field !== 'none' ? st.field : '',
+                            downsample,
+                            scalar_range: sclRange,
+                        }),
+                    }),
+                ]);
+
+                const info = await infoRes.json();
+                if (dataRes.headers.get('content-type')?.includes('json')) {
+                    const err = await dataRes.json();
+                    throw new Error(err.error || 'Load failed');
+                }
+                const buf = await dataRes.arrayBuffer();
+                const data = parseDatasetBinary(buf);
+                data.name = run.name;
+                data.field_name = st.field;
+                // Apply consistent global range so both panes share the same colour scale
+                if (sclRange) { data.s_min = sclRange[0]; data.s_max = sclRange[1]; }
+                // Cache scalar array for joint percentile range computation
+                st.currentScalars = data.scalars;
+                window.viewerLoadDatasetRun(data, slot);
+                dsUpdateRunInfo(slot, info, run.name);
+                if (dsState.syncCam && slot === 'A') setTimeout(() => window.dsSyncCameras?.(), 80);
+                if (dsThumbSlot === slot) window.dsHighlightThumb?.(st.idx);
+            } catch (e) {
+                dsLog(`<span class="er">[DS-${slot}] ${escHtml(String(e))}</span>`);
+            } finally {
+                if (slot === 'A') setViewerLoading(false);
+                else document.getElementById('vloading-cmp').style.display = 'none';
+            }
+        }
+
+        function dsNavigate(slot, delta) {
+            const st = dsState[slot];
+            const ni = st.idx + delta;
+            if (ni < 0 || ni >= st.runs.length) return;
+            dsLoadRun(slot, ni);
+        }
+
+        function dsToggleSync() {
+            dsState.syncCam = !dsState.syncCam;
+            document.getElementById('ds-sync-btn').classList.toggle('active', dsState.syncCam);
+            if (dsState.syncCam) window.dsSyncCameras?.();
+        }
+
+        /* percentile helper — works on Float32Array or Array */
+        function arrayPct(arr, p) {
+            const sorted = Array.from(arr).sort((a, b) => a - b);
+            const idx = Math.max(0, Math.floor((p / 100) * (sorted.length - 1)));
+            return sorted[idx];
+        }
+
+        function dsResolveAutoRangePercentiles() {
+            const input = document.getElementById('ds-autorange-pct');
+            const raw = Number.parseFloat(input?.value ?? '99');
+            const upperPct = Number.isFinite(raw) ? Math.min(100, Math.max(50, raw)) : 99;
+            const lowerPct = Math.max(0, 100 - upperPct);
+            if (input) input.value = String(Number(upperPct.toFixed(1)));
+            return [lowerPct, upperPct];
+        }
+
+        /* ── Joint range across both datasets ── */
+        async function dsAutoRangeBoth() {
+            const slotsToDo = ['A', 'B'].filter(s => dsState[s].path && dsState[s].runs.length > 0);
+            if (!slotsToDo.length) { alert('Load at least one dataset first.'); return; }
+            const [lowerPct, upperPct] = dsResolveAutoRangePercentiles();
+            const btn = document.getElementById('ds-autorange-btn');
+            const spin = document.getElementById('ds-autorange-spin');
+            const display = document.getElementById('ds-range-display');
+            btn.disabled = true; spin.classList.add('on');
+            display.textContent = 'Computing…';
+            try {
+                // Prefer computing from the scalar arrays already on screen (p1/p99 of
+                // the current runs combined).  Fall back to field_range API if nothing
+                // is loaded yet.
+                const scalarArrays = slotsToDo
+                    .map(s => dsState[s].currentScalars)
+                    .filter(a => a && a.length > 0);
+
+                let jointMin, jointMax;
+                if (scalarArrays.length > 0) {
+                    // Merge all on-screen scalar arrays, then compute the selected symmetric percentile range.
+                    const total = scalarArrays.reduce((acc, a) => acc + a.length, 0);
+                    const combined = new Float32Array(total);
+                    let off = 0;
+                    for (const a of scalarArrays) { combined.set(a, off); off += a.length; }
+                    jointMin = arrayPct(combined, lowerPct);
+                    jointMax = arrayPct(combined, upperPct);
+                } else {
+                    // Nothing loaded yet — fall back to whole-dataset field range
+                    await Promise.all(slotsToDo.map(s => dsComputeRange(s)));
+                    const mins = slotsToDo.map(s => dsState[s].globalMin).filter(v => v != null);
+                    const maxs = slotsToDo.map(s => dsState[s].globalMax).filter(v => v != null);
+                    if (!mins.length) { display.textContent = 'No scalar data'; return; }
+                    jointMin = Math.min(...mins);
+                    jointMax = Math.max(...maxs);
+                }
+
+                // Apply joint range to all loaded slots and reload
+                for (const s of slotsToDo) {
+                    dsState[s].globalMin = jointMin;
+                    dsState[s].globalMax = jointMax;
+                }
+                display.textContent = `${jointMin.toFixed(3)} … ${jointMax.toFixed(3)}`;
+                dsLog(`<span class="ok">[Range] Joint p${Number(lowerPct.toFixed(1))}/p${Number(upperPct.toFixed(1))}: ${jointMin.toFixed(3)} … ${jointMax.toFixed(3)} (from ${slotsToDo.join('+')} on-screen scalars) — reloading…</span>`);
+                await Promise.all(slotsToDo.map(s => dsLoadRun(s, dsState[s].idx)));
+            } catch (e) {
+                display.textContent = String(e);
+                dsLog(`<span class="er">[Range] ${escHtml(String(e))}</span>`);
+            } finally {
+                btn.disabled = false; spin.classList.remove('on');
+            }
+        }
+
+        /* ── Panel collapse ── */
+        function togglePanelCollapse() {
+            const ctrl = document.getElementById('ctrl');
+            const btn = document.getElementById('collapseBtn');
+            const collapsed = ctrl.classList.toggle('collapsed');
+            btn.textContent = collapsed ? '›' : '‹';
+            btn.title = collapsed ? 'Expand panel' : 'Collapse panel';
+            // Let the viewer resize after transition
+            setTimeout(() => {
+                window.dispatchEvent(new Event('resize'));
+            }, 220);
+        }
+
+        /* ── Dataset browse / scan ── */
+        async function dsScanDatasets() {
             const base = document.getElementById('ds-basedir').value.trim();
             if (!base) { alert('Enter a base directory.'); return; }
             const spin = document.getElementById('ds-scan-spin');
-            spin.classList.add('on');
+            const info = document.getElementById('ds-scan-info');
+            spin.classList.add('on'); info.textContent = '';
             try {
                 const res = await fetch('/api/dataset/scan', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ base_dir: base }),
                 });
                 const d = await res.json();
-                const sel = document.getElementById('ds-dataset');
-                sel.innerHTML = '<option value="">— select —</option>';
-                document.getElementById('ds-run').innerHTML = '<option value="">— select dataset —</option>';
-                dsRunList = []; dsCurrentIdx = -1; dsUpdateNav();
-                if (d.ok) {
+                const sel = document.getElementById('ds-browse-sel');
+                sel.innerHTML = '';
+                if (d.ok && d.datasets.length > 0) {
                     d.datasets.forEach(ds => {
                         const opt = document.createElement('option');
                         opt.value = ds.path;
-                        opt.textContent = `${ds.name} (${ds.num_runs} runs)`;
+                        opt.textContent = `${ds.name}  (${ds.num_runs} runs)`;
                         sel.appendChild(opt);
                     });
-                    dsLog(`<span class="ok">Found ${d.datasets.length} datasets</span>`);
+                    document.getElementById('ds-browse-field').style.display = '';
+                    document.getElementById('ds-browse-actions').style.display = 'flex';
+                    info.textContent = `${d.datasets.length} dataset${d.datasets.length !== 1 ? 's' : ''} found`;
+                    dsLog(`<span class="ok">Scan: ${d.datasets.length} datasets found</span>`);
                 } else {
-                    dsLog(`<span class="er">${d.error}</span>`);
+                    const msg = d.ok ? 'No datasets found' : escHtml(d.error);
+                    info.textContent = msg;
+                    dsLog(`<span class="er">Scan: ${msg}</span>`);
                 }
-            } catch (e) { dsLog(`<span class="er">${e}</span>`); }
-            finally { spin.classList.remove('on'); }
-        }
-
-        async function loadDatasetRuns() {
-            const dsPath = document.getElementById('ds-dataset').value;
-            const sel = document.getElementById('ds-run');
-            sel.innerHTML = '<option value="">— loading —</option>';
-            document.getElementById('ds-run-info').textContent = '';
-            dsRunList = []; dsCurrentIdx = -1; dsUpdateNav();
-            if (!dsPath) { sel.innerHTML = '<option value="">— select dataset —</option>'; return; }
-            try {
-                const res = await fetch('/api/dataset/runs', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ dataset_path: dsPath }),
-                });
-                const d = await res.json();
-                sel.innerHTML = '';
-                if (d.ok) {
-                    dsRunList = d.runs;
-                    d.runs.forEach((r, i) => {
-                        const opt = document.createElement('option');
-                        opt.value = i;
-                        opt.textContent = r.name;
-                        sel.appendChild(opt);
-                    });
-                    dsLog(`<span class="inf">${d.runs.length} runs available</span>`);
-                    if (d.runs.length > 0) {
-                        dsCurrentIdx = 0;
-                        sel.value = '0';
-                        dsUpdateNav();
-                    }
-                } else {
-                    dsLog(`<span class="er">${d.error}</span>`);
-                }
-            } catch (e) { dsLog(`<span class="er">${e}</span>`); }
-            updateCacheStatus();
-        }
-
-        function dsJump() {
-            const sel = document.getElementById('ds-run');
-            dsCurrentIdx = parseInt(sel.value);
-            dsUpdateNav();
-            if (document.getElementById('ds-autoload').checked) loadDatasetMesh();
-        }
-
-        function dsNav(delta) {
-            const newIdx = dsCurrentIdx + delta;
-            if (newIdx < 0 || newIdx >= dsRunList.length) return;
-            dsCurrentIdx = newIdx;
-            document.getElementById('ds-run').value = String(newIdx);
-            dsUpdateNav();
-            if (document.getElementById('ds-autoload').checked) loadDatasetMesh();
-        }
-
-        // Keyboard navigation
-        document.addEventListener('keydown', (e) => {
-            if (document.getElementById('mode-dataset').style.display === 'none') return;
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-            if (e.key === 'ArrowLeft' || e.key === 'a') dsNav(-1);
-            else if (e.key === 'ArrowRight' || e.key === 'd') dsNav(1);
-        });
-
-        function parseDatasetBinary(buf) {
-            const view = new DataView(buf);
-            const vc = view.getUint32(0, true);
-            const fc = view.getUint32(4, true);
-            const extents = [view.getFloat32(8, true), view.getFloat32(12, true), view.getFloat32(16, true)];
-            const center = [view.getFloat32(20, true), view.getFloat32(24, true), view.getFloat32(28, true)];
-            const hasScalar = view.getUint32(32, true);
-            const scalarMin = view.getFloat32(36, true);
-            const scalarMax = view.getFloat32(40, true);
-            let off = 44;
-            const positions = new Float32Array(buf, off, vc * 3); off += vc * 12;
-            const indices = fc > 0 ? new Uint32Array(buf, off, fc * 3) : new Uint32Array(0); off += fc * 12;
-            const scalars = hasScalar ? new Float32Array(buf, off, vc) : null;
-            return { vertex_count: vc, face_count: fc, extents, center, positions, indices, scalars, scalarMin, scalarMax };
-        }
-
-        async function loadDatasetMesh() {
-            if (dsCurrentIdx < 0 || dsCurrentIdx >= dsRunList.length) { alert('Select a run first.'); return; }
-            const path = dsRunList[dsCurrentIdx].path;
-            const downsample = parseInt(document.getElementById('ds-downsample').value) || 0;
-            const field = document.getElementById('ds-field').value;
-            // Read fixed scalar range from inputs
-            const cmin = parseFloat(document.getElementById('ds-cmin').value);
-            const cmax = parseFloat(document.getElementById('ds-cmax').value);
-            const scalarRange = (field && !isNaN(cmin) && !isNaN(cmax) && cmin < cmax) ? [cmin, cmax] : null;
-            const btn = document.getElementById('ds-load-btn');
-            const spin = document.getElementById('ds-spin');
-            btn.disabled = true; spin.classList.add('on');
-            setViewerLoading(true);
-            const runName = dsRunList[dsCurrentIdx].name;
-            document.getElementById('ds-run-info').textContent = `Loading ${runName}…`;
-            document.getElementById('ds-run-info').style.color = 'var(--tx3)';
-            try {
-                const body = { path, downsample, field };
-                if (scalarRange) body.scalar_range = scalarRange;
-                const r = await fetch('/api/dataset/load', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
-                });
-                if (r.headers.get('content-type')?.includes('json')) {
-                    const err = await r.json();
-                    throw new Error(err.error || 'Server error');
-                }
-                const buf = await r.arrayBuffer();
-                const data = parseDatasetBinary(buf);
-                data.name = `${runName}` + (downsample > 0 ? ` (${downsample.toLocaleString()} pts)` : '');
-                data.fieldName = field;
-                window.viewerLoadDatasetMesh(data);
-                const info = document.getElementById('ds-run-info');
-                info.textContent = `${data.vertex_count.toLocaleString()} verts · ${data.face_count.toLocaleString()} faces`;
-                info.style.color = 'var(--ok)';
-                dsLog(`<span class="ok">${runName}: ${data.vertex_count.toLocaleString()} verts, ${data.face_count.toLocaleString()} faces</span>`);
-                // Highlight in thumbnails if visible
-                window.dsHighlightThumb(dsCurrentIdx);
             } catch (e) {
-                dsLog(`<span class="er">${e}</span>`);
-                document.getElementById('ds-run-info').textContent = String(e);
-                document.getElementById('ds-run-info').style.color = 'var(--er)';
-            } finally {
-                btn.disabled = false; spin.classList.remove('on');
-                setViewerLoading(false);
-            }
+                const msg = escHtml(String(e));
+                info.textContent = msg;
+                dsLog(`<span class="er">Scan error: ${msg}</span>`);
+            } finally { spin.classList.remove('on'); }
         }
 
-        /* ── Compute global field range (Auto button) ── */
-        async function computeFieldRange() {
-            const dsPath = document.getElementById('ds-dataset').value;
-            const field = document.getElementById('ds-field').value;
-            if (!dsPath) { alert('Select a dataset first.'); return; }
-            if (!field) { alert('Select a scalar field first.'); return; }
-            const btn = document.getElementById('ds-range-btn');
-            btn.disabled = true; btn.textContent = '…';
-            dsLog(`<span class="inf">Computing ${field} range across all runs…</span>`);
-            try {
-                const res = await fetch('/api/dataset/field_range', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ dataset_path: dsPath, field }),
-                });
-                const d = await res.json();
-                if (d.ok) {
-                    document.getElementById('ds-cmin').value = d.min.toFixed(3);
-                    document.getElementById('ds-cmax').value = d.max.toFixed(3);
-                    dsLog(`<span class="ok">${field} range: [${d.min.toFixed(3)}, ${d.max.toFixed(3)}] from ${d.num_runs} runs (p1–p99 per run)</span>`);
-                } else {
-                    dsLog(`<span class="er">${d.error}</span>`);
-                }
-            } catch (e) { dsLog(`<span class="er">${e}</span>`); }
-            finally { btn.disabled = false; btn.textContent = 'Auto'; }
+        function dsBrowseAssign(slot) {
+            const sel = document.getElementById('ds-browse-sel');
+            const path = sel.value;
+            if (!path) return;
+            document.getElementById(`ds-path-${slot}`).value = path;
+            dsLoadRuns(slot);
         }
 
-        /* ── Generate cache for all runs (parallel) ── */
-        async function generateCache() {
-            const dsPath = document.getElementById('ds-dataset').value;
-            const field = document.getElementById('ds-field').value;
-            if (!dsPath) { alert('Select a dataset first.'); return; }
-            const btn = document.getElementById('ds-cache-btn');
-            const spin = document.getElementById('ds-cache-spin');
-            const info = document.getElementById('ds-cache-info');
-            const progWrap = document.getElementById('ds-cache-progress-wrap');
-            const prog = document.getElementById('ds-cache-progress');
-            const pct = document.getElementById('ds-cache-pct');
+        /* ── Dataset cache & thumbnail utilities ── */
+        let dsThumbSlot = 'A';  // which slot the thumbnail strip currently shows
+
+        window.dsThumbClick = function (idx) {
+            const st = dsState[dsThumbSlot];
+            if (idx < 0 || idx >= st.runs.length) return;
+            dsLoadRun(dsThumbSlot, idx);
+        };
+
+        async function generateCacheForSlot(slot) {
+            const st = dsState[slot];
+            if (!st.path) { alert('Load a dataset first.'); return; }
+            const btn = document.getElementById(`ds-cache-btn-${slot}`);
+            const spin = document.getElementById(`ds-cache-spin-${slot}`);
+            const info = document.getElementById(`ds-cache-info-${slot}`);
+            const progWrap = document.getElementById(`ds-cache-progress-wrap-${slot}`);
+            const prog = document.getElementById(`ds-cache-progress-${slot}`);
+            const pct = document.getElementById(`ds-cache-pct-${slot}`);
             btn.disabled = true; spin.classList.add('on');
-            info.textContent = 'Starting cache generation…';
-            dsLog(`<span class="inf">Generating caches for field "${field || 'none'}"…</span>`);
+            info.textContent = 'Starting…';
+            dsLog(`<span class="inf">[DS-${slot}] Generating caches for field "${escHtml(st.field || 'none')}"…</span>`);
             try {
                 const res = await fetch('/api/dataset/generate_cache', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ dataset_path: dsPath, field }),
+                    body: JSON.stringify({ dataset_path: st.path, field: st.field }),
                 });
                 const d = await res.json();
-                if (!d.ok) { info.textContent = d.error; dsLog(`<span class="er">${d.error}</span>`); return; }
+                if (!d.ok) { info.textContent = d.error; dsLog(`<span class="er">[DS-${slot}] ${escHtml(d.error)}</span>`); return; }
                 if (d.finished) {
                     info.textContent = d.message || `All ${d.skipped} runs already cached`;
-                    updateCacheStatus();
+                    updateCacheStatusForSlot(slot);
                     return;
                 }
-                // Poll progress
                 const jobId = d.job_id;
                 const total = d.total;
                 progWrap.style.display = '';
@@ -2787,63 +3181,55 @@
                     prog.value = done;
                     pct.textContent = `${done} / ${total} · ${Math.round(100 * done / total)}%`;
                     if (p.finished) {
-                        info.textContent = `${p.done} generated, ${p.skipped} already cached` + (p.errors > 0 ? `, ${p.errors} errors` : '');
-                        dsLog(`<span class="ok">Cache done: ${p.done} generated, ${p.skipped} already cached</span>`);
-                        if (p.errors > 0) dsLog(`<span class="er">${p.errors} errors: ${(p.error_details || []).slice(0, 5).join(', ')}</span>`);
+                        info.textContent = `${p.done} generated, ${p.skipped} already cached` +
+                            (p.errors > 0 ? `, ${p.errors} errors` : '');
+                        dsLog(`<span class="ok">[DS-${slot}] Cache done: ${p.done} generated, ${p.skipped} already cached</span>`);
+                        if (p.errors > 0)
+                            dsLog(`<span class="er">[DS-${slot}] ${p.errors} errors: ${(p.error_details || []).slice(0, 5).map(escHtml).join(', ')}</span>`);
                         progWrap.style.display = 'none';
-                        updateCacheStatus();
+                        updateCacheStatusForSlot(slot);
                         break;
                     }
                 }
             } catch (e) {
-                dsLog(`<span class="er">${e}</span>`);
+                dsLog(`<span class="er">[DS-${slot}] ${escHtml(String(e))}</span>`);
                 info.textContent = String(e);
             } finally {
                 btn.disabled = false; spin.classList.remove('on');
             }
         }
 
-        async function updateCacheStatus() {
-            const dsPath = document.getElementById('ds-dataset').value;
-            const field = document.getElementById('ds-field').value;
-            const statusEl = document.getElementById('ds-cache-status');
-            if (!dsPath) { statusEl.textContent = ''; return; }
+        async function updateCacheStatusForSlot(slot) {
+            const st = dsState[slot];
+            const statusEl = document.getElementById(`ds-cache-status-${slot}`);
+            if (!st.path) { statusEl.textContent = ''; return; }
             try {
                 const res = await fetch('/api/dataset/cache_status', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ dataset_path: dsPath, field }),
+                    body: JSON.stringify({ dataset_path: st.path, field: st.field }),
                 });
                 const d = await res.json();
                 if (d.ok) {
-                    if (d.missing === 0) {
-                        statusEl.innerHTML = `<span style="color:#22c55e">✔ all ${d.total} cached</span>`;
-                    } else {
-                        statusEl.innerHTML = `${d.cached}/${d.total} cached · <span style="color:#f59e0b">${d.missing} missing</span>`;
-                    }
+                    statusEl.innerHTML = d.missing === 0
+                        ? `<span style="color:#22c55e">✔ all ${d.total} cached</span>`
+                        : `${d.cached}/${d.total} cached · <span style="color:#f59e0b">${d.missing} missing</span>`;
                 }
             } catch { statusEl.textContent = ''; }
         }
 
-        function onFieldChange() {
-            updateCacheStatus();
-            if (document.getElementById('ds-autoload').checked && dsCurrentIdx >= 0) loadDatasetMesh();
-        }
-
-        /* ── Generate thumbnails for dataset overview ── */
-        async function generateThumbnails() {
-            const dsPath = document.getElementById('ds-dataset').value;
-            const field = document.getElementById('ds-field').value;
-            if (!dsPath) { alert('Select a dataset first.'); return; }
-            const btn = document.getElementById('ds-thumb-btn');
-            const spin = document.getElementById('ds-thumb-spin');
-            const info = document.getElementById('ds-thumb-info');
+        async function generateThumbnailsForSlot(slot) {
+            const st = dsState[slot];
+            if (!st.path) { alert('Load a dataset first.'); return; }
+            const btn = document.getElementById(`ds-thumb-btn-${slot}`);
+            const spin = document.getElementById(`ds-thumb-spin-${slot}`);
+            const info = document.getElementById(`ds-thumb-info-${slot}`);
             btn.disabled = true; spin.classList.add('on');
-            info.textContent = 'Loading point clouds…';
-            dsLog(`<span class="inf">Generating thumbnails (field: ${field || 'none'})…</span>`);
+            info.textContent = 'Loading…';
+            dsLog(`<span class="inf">[DS-${slot}] Generating thumbnails (field: ${escHtml(st.field || 'none')})…</span>`);
             try {
                 const res = await fetch('/api/dataset/thumbnails', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ dataset_path: dsPath, field, thumb_points: 3000 }),
+                    body: JSON.stringify({ dataset_path: st.path, field: st.field, thumb_points: 3000 }),
                 });
                 if (res.headers.get('content-type')?.includes('json')) {
                     const err = await res.json();
@@ -2851,19 +3237,16 @@
                 }
                 const buf = await res.arrayBuffer();
                 const thumbRuns = parseThumbBinary(buf);
-                // Use color range from inputs
-                const cmin = parseFloat(document.getElementById('ds-cmin').value);
-                const cmax = parseFloat(document.getElementById('ds-cmax').value);
-                const sMin = (!isNaN(cmin)) ? cmin : -4;
-                const sMax = (!isNaN(cmax)) ? cmax : 1.1;
-                info.textContent = `Rendering ${thumbRuns.length} thumbnails…`;
-                // Let browser paint before heavy render
+                const sMin = st.globalMin ?? -4;
+                const sMax = st.globalMax ?? 1.1;
+                info.textContent = `Rendering ${thumbRuns.length}…`;
                 await new Promise(r => setTimeout(r, 50));
-                window.renderDatasetThumbnails(thumbRuns, sMin, sMax, dsCurrentIdx);
+                dsThumbSlot = slot;
+                window.renderDatasetThumbnails(thumbRuns, sMin, sMax, st.idx);
                 info.textContent = `${thumbRuns.length} thumbnails`;
-                dsLog(`<span class="ok">${thumbRuns.length} thumbnails generated</span>`);
+                dsLog(`<span class="ok">[DS-${slot}] ${thumbRuns.length} thumbnails generated</span>`);
             } catch (e) {
-                dsLog(`<span class="er">${e}</span>`);
+                dsLog(`<span class="er">[DS-${slot}] ${escHtml(String(e))}</span>`);
                 info.textContent = String(e);
             } finally {
                 btn.disabled = false; spin.classList.remove('on');
@@ -2883,196 +3266,14 @@
                 const hasScalar = view.getUint8(off); off += 1;
                 const positions = new Float32Array(buf.slice(off, off + nPoints * 12)); off += nPoints * 12;
                 let scalars = null;
-                if (hasScalar) {
-                    scalars = new Float32Array(buf.slice(off, off + nPoints * 4)); off += nPoints * 4;
-                }
+                if (hasScalar) { scalars = new Float32Array(buf.slice(off, off + nPoints * 4)); off += nPoints * 4; }
                 runs.push({ name, n: nPoints, positions, scalars });
             }
             return runs;
         }
 
-        /* ── Thumbnail click handler ── */
-        window.dsThumbClick = function (idx) {
-            if (idx < 0 || idx >= dsRunList.length) return;
-            dsCurrentIdx = idx;
-            document.getElementById('ds-run').value = String(idx);
-            dsUpdateNav();
-            window.dsHighlightThumb(idx);
-            if (document.getElementById('ds-autoload').checked) loadDatasetMesh();
-        };
-
-        /* ══════════════════════════════════════════════════
-           AUDIT MODE
-           dsAuditMap: { runName -> 'keep' | 'reject' }
-        ══════════════════════════════════════════════════ */
-        let dsAuditMap = {};
-
-        function dsAuditUpdateUI() {
-            const runName = dsCurrentIdx >= 0 ? dsRunList[dsCurrentIdx]?.name : null;
-            const decision = runName ? dsAuditMap[runName] : null;
-            const badge = document.getElementById('ds-audit-badge');
-            const keepBtn = document.getElementById('ds-keep-btn');
-            const rejectBtn = document.getElementById('ds-reject-btn');
-            const unsetBtn = document.getElementById('ds-unset-btn');
-
-            if (decision === 'keep') {
-                badge.textContent = '✔ Keep'; badge.className = 'keep'; badge.style.display = '';
-                keepBtn.style.fontWeight = '700'; rejectBtn.style.fontWeight = '';
-            } else if (decision === 'reject') {
-                badge.textContent = '✘ Reject'; badge.className = 'reject'; badge.style.display = '';
-                keepBtn.style.fontWeight = ''; rejectBtn.style.fontWeight = '700';
-            } else {
-                badge.style.display = 'none';
-                keepBtn.style.fontWeight = ''; rejectBtn.style.fontWeight = '';
-            }
-
-            const hasRuns = dsRunList.length > 0;
-            keepBtn.disabled = !hasRuns;
-            rejectBtn.disabled = !hasRuns;
-            unsetBtn.disabled = !hasRuns || !decision;
-
-            // Summary
-            const nKeep = Object.values(dsAuditMap).filter(v => v === 'keep').length;
-            const nReject = Object.values(dsAuditMap).filter(v => v === 'reject').length;
-            const nTotal = dsRunList.length;
-            document.getElementById('ds-audit-summary').innerHTML =
-                `<span class="audit-keep">✔ ${nKeep} keep</span>  ·  ` +
-                `<span class="audit-reject">✘ ${nReject} reject</span>  ·  ` +
-                `${nTotal - nKeep - nReject} undecided`;
-
-            // Show export card if anything decided
-            document.getElementById('ds-export-card').style.display =
-                (nKeep + nReject > 0) ? '' : 'none';
-
-            // Update run dropdown option labels
-            const sel = document.getElementById('ds-run');
-            Array.from(sel.options).forEach((opt, i) => {
-                const name = dsRunList[i]?.name;
-                const d = name ? dsAuditMap[name] : null;
-                const prefix = d === 'keep' ? '✔ ' : d === 'reject' ? '✘ ' : '';
-                opt.textContent = prefix + name;
-            });
-
-            // Update highlighted thumbnail borders
-            document.querySelectorAll('#ds-thumb-strip .step-wrap').forEach((el, i) => {
-                const name = dsRunList[i]?.name;
-                const d = name ? dsAuditMap[name] : null;
-                el.style.outline = d === 'keep' ? '2px solid #22c55e'
-                    : d === 'reject' ? '2px solid #ef4444' : '';
-            });
-        }
-
-        function dsAudit(decision) {
-            if (dsCurrentIdx < 0 || dsCurrentIdx >= dsRunList.length) return;
-            const name = dsRunList[dsCurrentIdx].name;
-            if (decision === 'unset') {
-                delete dsAuditMap[name];
-            } else {
-                dsAuditMap[name] = decision;
-                // Auto-advance to next undecided
-                if (document.getElementById('ds-autoload').checked) {
-                    let next = dsCurrentIdx + 1;
-                    while (next < dsRunList.length && dsAuditMap[dsRunList[next].name]) next++;
-                    if (next < dsRunList.length) { dsNav(next - dsCurrentIdx); }
-                }
-            }
-            dsAuditUpdateUI();
-        }
-
-        function dsAuditClear() {
-            if (!confirm('Clear all audit decisions?')) return;
-            dsAuditMap = {};
-            dsAuditUpdateUI();
-        }
-
-        function dsAuditLoad(input) {
-            const file = input.files[0];
-            if (!file) return;
-            const info = document.getElementById('ds-audit-load-info');
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const txt = e.target.result;
-                let section = null;
-                let nKeep = 0, nReject = 0, nUnknown = 0;
-                for (const raw of txt.split(/\r?\n/)) {
-                    const line = raw.trim();
-                    if (!line) continue;
-                    if (line.startsWith('# KEEP')) { section = 'keep'; continue; }
-                    if (line.startsWith('# REJECT')) { section = 'reject'; continue; }
-                    if (line.startsWith('#')) continue;
-                    if (!section) continue;
-                    // Only apply to runs present in the current dataset
-                    if (dsRunList.some(r => r.name === line)) {
-                        dsAuditMap[line] = section;
-                        if (section === 'keep') nKeep++; else nReject++;
-                    } else {
-                        nUnknown++;
-                    }
-                }
-                dsAuditUpdateUI();
-                info.textContent = `Loaded: ${nKeep} keep, ${nReject} reject` +
-                    (nUnknown > 0 ? `, ${nUnknown} not in dataset` : '');
-                // Reset file input so the same file can be reloaded
-                input.value = '';
-            };
-            reader.readAsText(file);
-        }
-
-        function dsAuditExportLists() {
-            const keep = dsRunList.filter(r => dsAuditMap[r.name] === 'keep').map(r => r.name);
-            const reject = dsRunList.filter(r => dsAuditMap[r.name] === 'reject').map(r => r.name);
-            const txt = `# KEEP (${keep.length})\n${keep.join('\n')}\n\n# REJECT (${reject.length})\n${reject.join('\n')}`;
-            const blob = new Blob([txt], { type: 'text/plain' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'audit_lists.txt';
-            a.click();
-        }
-
-        async function dsExportCurated() {
-            const dsPath = document.getElementById('ds-dataset').value;
-            const dstPath = document.getElementById('ds-export-path').value.trim();
-            if (!dsPath) { alert('Select a source dataset first.'); return; }
-            if (!dstPath) { alert('Enter a destination path.'); return; }
-            const keep = dsRunList.filter(r => dsAuditMap[r.name] === 'keep').map(r => r.name);
-            const reject = dsRunList.filter(r => dsAuditMap[r.name] === 'reject').map(r => r.name);
-            if (!keep.length) { alert('No runs marked as keep.'); return; }
-            if (!confirm(`Create new dataset at:\n${dstPath}\n\nWith ${keep.length} kept runs?`)) return;
-            const btn = document.getElementById('ds-export-btn');
-            const spin = document.getElementById('ds-export-spin');
-            const info = document.getElementById('ds-export-info');
-            btn.disabled = true; spin.classList.add('on');
-            info.textContent = 'Copying…';
-            try {
-                const res = await fetch('/api/dataset/export_curated', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ src_path: dsPath, dst_path: dstPath, keep_runs: keep, reject_runs: reject }),
-                });
-                const d = await res.json();
-                if (d.ok) {
-                    info.textContent = d.message;
-                    dsLog(`<span class="ok">${d.message}</span>`);
-                } else {
-                    info.textContent = d.error;
-                    dsLog(`<span class="er">${d.error}</span>`);
-                }
-            } catch (e) {
-                info.textContent = String(e);
-                dsLog(`<span class="er">${e}</span>`);
-            } finally {
-                btn.disabled = false; spin.classList.remove('on');
-            }
-        }
-
-        // Keyboard shortcut: K = keep, X = reject
-        document.addEventListener('keydown', (e) => {
-            if (document.getElementById('mode-dataset').style.display === 'none') return;
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-            if (e.key === 'k' || e.key === 'K') dsAudit('keep');
-            else if (e.key === 'x' || e.key === 'X') dsAudit('reject');
-        });
-
     </script>
+
 </body>
 
 </html>

@@ -791,18 +791,21 @@ class StaticTrainer3D(TrainerBase):
                 data_i.x = full_x_i[input_perm]
 
             # Copy scalar attributes (force, cd) to sampled data
-            for attr in ["force", "cd", "filename", "num_latent_nodes", "scale_factors", "bbox_min", "bbox_max", "bbox_center", "v_inf"]:
+            for attr in [
+                "force",
+                "cd",
+                "filename",
+                "num_latent_nodes",
+                "scale_factors",
+                "bbox_min",
+                "bbox_max",
+                "bbox_center",
+                "v_inf",
+            ]:
                 if hasattr(batch, attr) and getattr(batch, attr) is not None:
                     attr_value = getattr(batch, attr)
                     if isinstance(attr_value, list) or (attr_value.dim() > 0 and len(attr_value) == batch.num_graphs):
-                        # Use slice [i:i+1] for multi-dim tensors to preserve the leading
-                        # dimension (e.g. [1, 3] per sample).  Plain indexing [i] would
-                        # drop that dim, causing PyG to concatenate [3]-shaped tensors
-                        # into [B*3] instead of [B, 3] after re-collation.
-                        if not isinstance(attr_value, list) and attr_value.dim() > 1:
-                            setattr(data_i, attr, attr_value[i:i+1])
-                        else:
-                            setattr(data_i, attr, attr_value[i])
+                        setattr(data_i, attr, attr_value[i])
 
             sampled_data_list.append(data_i)
 
@@ -843,27 +846,6 @@ class StaticTrainer3D(TrainerBase):
 
     def _run_viz_for_sample(self, sample, split_label: str, epoch: int, sample_idx: int = 0):  # noqa: PLR0912,PLR0915
         """Run inference on a single sample and log field + scalar + integrated-drag images to W&B."""
-        # Subsample to the same resolution used during training so GT and pred are consistent.
-        strategy = self.dataset_config["training_strategy"]
-        n_nodes = sample.pos.shape[0]
-        if strategy == "neural_field":
-            n_target = self.dataset_config["neural_field_input_nodes"]
-        else:
-            n_target = self.dataset_config.get("subsample_nodes")
-        if n_target is not None and n_nodes > n_target:
-            perm = torch.randperm(n_nodes)[:n_target]
-            sub = Data(pos=sample.pos[perm])
-            for attr in ["x", "c", "pos_raw"]:
-                val = getattr(sample, attr, None)
-                if val is not None:
-                    setattr(sub, attr, val[perm])
-            for attr in ["force", "cd", "filename", "num_latent_nodes",
-                         "scale_factors", "bbox_center", "bbox_min", "bbox_max", "v_inf"]:
-                val = getattr(sample, attr, None)
-                if val is not None:
-                    setattr(sub, attr, val)
-            sample = sub
-
         loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
         batch = next(iter(loader)).to(self.device)
         latent_tokens_dev = self.latent_tokens.to(self.device)
