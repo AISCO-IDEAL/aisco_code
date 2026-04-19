@@ -20,7 +20,6 @@ from pathlib import Path
 
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parents[5]
 GAOT_ROOT = REPO_ROOT / "subprojects" / "wp1_cfd_ai" / "AISCO_GAOT"
 DEFAULT_GAOT2_CONFIG = Path("subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/main_config.yaml")
