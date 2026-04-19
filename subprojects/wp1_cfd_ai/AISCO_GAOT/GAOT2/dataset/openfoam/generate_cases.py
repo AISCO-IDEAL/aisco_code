@@ -40,8 +40,8 @@ _BOI_LATERAL = 0.3
 _BOI_VERTICAL = 0.3
 
 # Default MPI tasks for decomposition
-_MESH_NPROCS = 16
-_SOLVE_NPROCS = 128
+# Mesh and solve use the same proc count to avoid decomposeParDict swap.
+_NPROCS = 128
 
 # Freestream velocity for Euler (AISCO) cases.  Ahmed cases use V_INF_AHMED=1.
 _DEFAULT_V_INF = 25.0
@@ -180,7 +180,7 @@ def instantiate_case(
     template_dir: Path,
     output_dir: Path,
     v_inf: float = _DEFAULT_V_INF,
-    solve_nprocs: int = _SOLVE_NPROCS,
+    nprocs: int = _NPROCS,
 ) -> dict:
     """Create a complete OpenFOAM case directory for one run.
 
@@ -193,7 +193,7 @@ def instantiate_case(
         output_dir: Parent directory for case directories.
         v_inf: Freestream speed in m/s.  Controls U, k, omega BCs and
             the forceCoeffs magUInf.  Defaults to 25.0 (Euler dataset).
-        solve_nprocs: Number of MPI processes for solving decomposition.
+        nprocs: Number of MPI processes for both meshing and solving.
 
     Returns:
         Dict with run_id, case_path, status.
@@ -262,7 +262,7 @@ def instantiate_case(
         "K_INLET": f"{k_inlet:.6e}",
         "OMEGA_INLET": f"{omega_inlet:.6g}",
         # decomposeParDict
-        "NPROCS": solve_nprocs,
+        "NPROCS": nprocs,
     }
 
     # Replace placeholders in all text files

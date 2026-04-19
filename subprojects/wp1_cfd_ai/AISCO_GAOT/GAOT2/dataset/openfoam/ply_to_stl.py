@@ -27,7 +27,7 @@ _MM_THRESHOLD = 20.0
 _GROUND_CLEARANCE_M = 0.1
 
 # Default paths on Euler
-_DEFAULT_INPUT_DIR = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/GEOMETRY")
+_DEFAULT_INPUT_DIR = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/openfoam_geometry")
 _DEFAULT_OUTPUT_DIR = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/GEOMETRY")
 _DEFAULT_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/geometry_manifest.json")
 

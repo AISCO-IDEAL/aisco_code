@@ -75,11 +75,10 @@ cd "$CASE_DIR"
 
 echo "=== Solving RUN_${RUN_ID} at $(date) ==="
 
-# 1. Restore solve decomposeParDict (128 procs) — mesh script swaps back after meshing
-# Remove old processor dirs if they exist
+# 1. Remove old processor dirs if they exist (mesh script already cleaned)
 rm -rf processor* > /dev/null 2>&1
 
-# 2. Decompose for parallel (solve uses 128 ranks)
+# 2. Decompose for parallel (128 ranks, same as meshing)
 echo "Decomposing for 128 processes..."
 decomposePar -force > log.decomposePar 2>&1
 

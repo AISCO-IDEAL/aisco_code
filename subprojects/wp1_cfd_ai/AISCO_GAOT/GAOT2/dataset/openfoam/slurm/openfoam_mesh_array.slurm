@@ -14,9 +14,9 @@
 #SBATCH --account=es_fuge
 #SBATCH --time=02:00:00
 #SBATCH --nodes=1
-#SBATCH --ntasks=16
+#SBATCH --ntasks=128
 #SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=4G
+#SBATCH --mem-per-cpu=1900M
 #SBATCH --array=1-223%20
 #SBATCH --output=/cluster/scratch/elihuber/scratch_logs/OF_Mesh_%A_%a.out
 #SBATCH --error=/cluster/scratch/elihuber/scratch_logs/OF_Mesh_%A_%a.err
@@ -65,26 +65,45 @@ blockMesh > log.blockMesh 2>&1
 echo "Running surfaceFeatureExtract..."
 surfaceFeatureExtract > log.surfaceFeatureExtract 2>&1
 
-# 3. Decompose for parallel snappyHexMesh (16 procs, separate from solve's 32)
-echo "Decomposing for 16 processes..."
+# 3. Decompose for parallel snappyHexMesh (128 procs, same as solve)
+echo "Decomposing for 128 processes..."
 rm -rf processor*
-cp system/decomposeParDict system/decomposeParDict.solve
-cp system/decomposeParDict.mesh system/decomposeParDict
 decomposePar -force > log.decomposePar_mesh 2>&1
 
-# 4. Parallel snappyHexMesh (decomposeParDict still has 16 procs)
-echo "Running snappyHexMesh (16 MPI ranks)..."
-mpirun -np 16 snappyHexMesh -parallel -overwrite > log.snappyHexMesh 2>&1
+# 4. Parallel snappyHexMesh
+echo "Running snappyHexMesh (128 MPI ranks)..."
+mpirun -np 128 snappyHexMesh -parallel -overwrite > log.snappyHexMesh 2>&1
 
-# 5. Reconstruct mesh
+# 5. Reconstruct mesh (tolerate spurious SIGSEGV on exit — OpenFOAM 2306 known issue)
+#    Also tolerate FOAM FATAL ERROR when mesh files were written before the crash
+#    (Bug 8: polyMeshAdder fails with high proc counts but mesh is already valid)
 echo "Reconstructing mesh..."
-reconstructParMesh -constant > log.reconstructParMesh 2>&1
+reconstructParMesh -constant > log.reconstructParMesh 2>&1 || {
+    if tail -5 log.reconstructParMesh | grep -q "^End"; then
+        echo "WARNING: reconstructParMesh exited non-zero but log shows End. Continuing."
+    elif [[ -f constant/polyMesh/owner ]]; then
+        echo "WARNING: reconstructParMesh crashed but mesh files exist. Verifying..."
+        checkMesh > log.checkMesh_verify 2>&1
+        if grep -q "Mesh OK" log.checkMesh_verify; then
+            echo "WARNING: Mesh verified OK despite reconstructParMesh failure. Continuing."
+        else
+            echo "ERROR: reconstructParMesh failed AND mesh verification failed for RUN_${RUN_ID}" >&2
+            exit 1
+        fi
+    else
+        echo "ERROR: reconstructParMesh failed for RUN_${RUN_ID}" >&2
+        exit 1
+    fi
+}
 
-# 6. Restore solve decomposeParDict (32 procs) now that meshing is done
-cp system/decomposeParDict.solve system/decomposeParDict
-
-# 7. Clean processor directories from meshing
-rm -rf processor*
+# 6. Clean processor directories from meshing
+# Tolerate "Stale file handle" errors on parallel filesystems (Lustre/GPFS)
+rm -rf processor* 2>/dev/null || true
+# Retry once after a brief pause if stale handles linger
+if ls -d processor* >/dev/null 2>&1; then
+    sleep 5
+    rm -rf processor* 2>/dev/null || true
+fi
 
 # 7. Check mesh quality
 echo "Running checkMesh..."

@@ -22,6 +22,7 @@ import json
 import logging
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ _SLURM_DIR = _OPENFOAM_DIR / "slurm"
 _SUBMIT_SCRIPT = _SLURM_DIR / "submit_pipeline.sh"
 _EXTRACT_SLURM = _SLURM_DIR / "openfoam_extract_pt.slurm"
 
-_DEFAULT_PLY_INPUT = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/GEOMETRY")
+_DEFAULT_PLY_INPUT = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/openfoam_geometry")
 _DEFAULT_STL_OUTPUT = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/GEOMETRY")
 _DEFAULT_GEO_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/geometry_manifest.json")
 _DEFAULT_CASES_DIR = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3")
@@ -42,6 +43,23 @@ _DEFAULT_DATASET_DIR = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler
 
 _DEFAULT_MAX_PARALLEL = 20
 _DEFAULT_VINF = 25.0
+
+
+def _unique_run_list_path(cases_dir: Path, mode: str) -> Path:
+    """Generate a unique run-list filename using a timestamp.
+
+    Prevents concurrent pipeline submissions from overwriting each other's
+    run-list files (Bug 2 from analysis 054).
+
+    Args:
+        cases_dir: Parent directory for run-list files.
+        mode: Pipeline mode name (full, append, rerun).
+
+    Returns:
+        Path like ``cases_dir / run_list_full_20260601T143022.txt``.
+    """
+    stamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S")
+    return cases_dir / f"run_list_{mode}_{stamp}.txt"
 
 
 def write_run_list(run_ids: list[int], output_path: Path) -> Path:
@@ -243,7 +261,7 @@ def run_full(args: argparse.Namespace) -> None:
         return
 
     # Step 4: Write run-list and submit
-    run_list = args.cases_dir / "run_list_full.txt"
+    run_list = _unique_run_list_path(args.cases_dir, "full")
     write_run_list(all_ids, run_list)
 
     _submit_pipeline(run_list, max_parallel=args.max_parallel)
@@ -306,7 +324,7 @@ def run_append(args: argparse.Namespace) -> None:
     )
 
     # Step 3: Write run-list for new IDs only and submit
-    run_list = args.cases_dir / "run_list_append.txt"
+    run_list = _unique_run_list_path(args.cases_dir, "append")
     write_run_list(new_ids, run_list)
     _submit_pipeline(run_list, max_parallel=args.max_parallel)
 
@@ -334,7 +352,7 @@ def run_rerun(args: argparse.Namespace) -> None:
         )
 
     # Write run-list and submit
-    run_list = args.cases_dir / "run_list_rerun.txt"
+    run_list = _unique_run_list_path(args.cases_dir, "rerun")
     write_run_list(args.run_ids, run_list)
     _submit_pipeline(run_list, max_parallel=args.max_parallel)
 
