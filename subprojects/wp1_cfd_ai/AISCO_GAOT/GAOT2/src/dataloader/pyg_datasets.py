@@ -346,7 +346,7 @@ class VTKMeshDataset(Dataset):
     def len(self):
         return len(self.split_filenames)
 
-    def get(self, idx):
+    def get(self, idx):  # noqa: PLR0912
         filepath = os.path.join(self.processed_dir, self.split_filenames[idx])
         # Also support subdirectory layout: euler_run_1/data.pt
         if not os.path.isfile(filepath):
