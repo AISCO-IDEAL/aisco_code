@@ -219,10 +219,19 @@ def batch_convert(
         result = convert_single_ply(ply_path, output_dir)
         results.append(result)
 
-    # Write manifest
+    # Append-safe manifest: merge new results with any existing entries
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    existing: list[dict] = []
+    if manifest_path.exists():
+        with open(manifest_path) as f:
+            existing = json.load(f)
+    # Index existing by run_id for merge
+    merged = {e["run_id"]: e for e in existing}
+    for r in results:
+        merged[r["run_id"]] = r  # new results overwrite matching run_ids
+    all_entries = list(merged.values())
     with open(manifest_path, "w") as f:
-        json.dump(results, f, indent=2)
+        json.dump(all_entries, f, indent=2)
 
     converted = sum(1 for r in results if r["status"] == "converted")
     excluded = sum(1 for r in results if r["status"] == "excluded")

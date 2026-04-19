@@ -13,15 +13,15 @@ TEMPLATE_DIR = Path(__file__).parents[1] / "case_template"
 
 class TestTemplateBoundaryConditions:
     def test_inlet_velocity(self) -> None:
-        """Inlet U is -25 m/s in the x-direction."""
+        """Inlet U uses __VINF__ placeholder for velocity."""
         content = (TEMPLATE_DIR / "0" / "U").read_text()
-        assert "uniform (-25 0 0)" in content
+        assert "uniform (-__VINF__ 0 0)" in content
 
     def test_ground_moving_wall_velocity(self) -> None:
-        """Ground is a moving wall at -25 m/s (matching inlet)."""
+        """Ground is a moving wall using __VINF__ placeholder."""
         content = (TEMPLATE_DIR / "0" / "U").read_text()
         assert "movingWallVelocity" in content
-        assert "uniform (-25 0 0)" in content
+        assert "uniform (-__VINF__ 0 0)" in content
 
     def test_car_surface_no_slip(self) -> None:
         """car_surface patch has noSlip BC for velocity."""
@@ -29,14 +29,14 @@ class TestTemplateBoundaryConditions:
         assert "noSlip" in content
 
     def test_k_inlet_value(self) -> None:
-        """Turbulent kinetic energy inlet is 6.25e-4 m²/s²."""
+        """Turbulent kinetic energy inlet uses __K_INLET__ placeholder."""
         content = (TEMPLATE_DIR / "0" / "k").read_text()
-        assert "6.25e-4" in content
+        assert "__K_INLET__" in content
 
     def test_omega_inlet_value(self) -> None:
-        """Specific dissipation rate inlet is 25 s⁻¹."""
+        """Specific dissipation rate inlet uses __OMEGA_INLET__ placeholder."""
         content = (TEMPLATE_DIR / "0" / "omega").read_text()
-        assert "uniform 25" in content
+        assert "__OMEGA_INLET__" in content
 
     def test_car_surface_k_wall_function(self) -> None:
         """car_surface uses kqRWallFunction for k."""

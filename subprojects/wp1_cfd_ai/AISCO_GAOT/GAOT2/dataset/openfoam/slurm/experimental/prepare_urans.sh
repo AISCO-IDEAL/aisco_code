@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # =============================================================================
-# prepare_urans_batch.sh — Copy RANS cases to _urans and apply 3 config patches
+# EXPERIMENTAL — Not integrated into main pipeline. Manual invocation only.
+# =============================================================================
+# prepare_urans.sh — Copy RANS cases to _urans and apply 3 config patches
 #
 # For each requested run ID:
-#   1. Copy CASES_V2/RUN_XXX → CASES_V2/RUN_XXX_urans  (skip if already done)
+#   1. Copy CASES_v3/RUN_XXX → CASES_v3/RUN_XXX_urans  (skip if already done)
 #   2. Patch system/controlDict  (simpleFoam→pimpleFoam, deltaT, endTime, writes)
 #   3. Patch system/fvSchemes    (steadyState→Euler)
 #   4. Replace system/fvSolution (SIMPLE→PIMPLE block)
@@ -17,7 +19,7 @@
 # =============================================================================
 set -euo pipefail
 
-CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_V2"
+CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3"
 URANS_END_OFFSET=5.0   # seconds of physical time beyond RANS endTime
 
 # ---- argument parsing -------------------------------------------------------

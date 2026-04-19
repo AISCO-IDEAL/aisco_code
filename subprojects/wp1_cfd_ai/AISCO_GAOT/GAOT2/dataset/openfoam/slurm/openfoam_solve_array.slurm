@@ -7,7 +7,7 @@
 #
 # Submit with --dependency=aftercorr:<mesh_job_id> to only solve
 # cases where meshing succeeded.
-# v040: cases in CASES_V2, target 3000 iterations, 8 BL layers.
+# v050: cases in CASES_v3, target 3000 iterations, 8 BL layers.
 # =============================================================================
 
 #SBATCH --job-name=OF_Solve
@@ -46,9 +46,20 @@ if ! [[ "$ITERATION_LOG_INTERVAL" =~ ^[1-9][0-9]*$ ]]; then
     exit 1
 fi
 
-# Determine case directory from array task ID
-RUN_ID=$(printf "%03d" "$SLURM_ARRAY_TASK_ID")
-CASE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_V2/RUN_${RUN_ID}"
+# Determine case directory from run-list file or array task ID
+if [[ -n "${RUN_LIST:-}" && -f "${RUN_LIST}" ]]; then
+    # Run-list mode: read RUN_ID from file by line number
+    RUN_ID=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$RUN_LIST")
+    if [[ -z "$RUN_ID" ]]; then
+        echo "ERROR: No RUN_ID at line ${SLURM_ARRAY_TASK_ID} in ${RUN_LIST}" >&2
+        exit 1
+    fi
+    # Use 10# prefix to force decimal — bash printf treats leading-zero strings as octal
+    RUN_ID=$(printf "%03d" "$((10#${RUN_ID}))")
+else
+    RUN_ID=$(printf "%03d" "$SLURM_ARRAY_TASK_ID")
+fi
+CASE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3/RUN_${RUN_ID}"
 
 if [[ ! -d "$CASE_DIR" ]]; then
     echo "ERROR: Case directory $CASE_DIR does not exist. Skipping."
@@ -64,30 +75,15 @@ cd "$CASE_DIR"
 
 echo "=== Solving RUN_${RUN_ID} at $(date) ==="
 
-# 1. Regenerate decomposeParDict for 128 processes (mesh only had 16)
+# 1. Restore solve decomposeParDict (128 procs) — mesh script swaps back after meshing
 # Remove old processor dirs if they exist
 rm -rf processor* > /dev/null 2>&1
-
-cat > system/decomposeParDict << 'EOF'
-FoamFile
-{
-    version     2.0;
-    format      ascii;
-    class       dictionary;
-    location    "system";
-    object      decomposeParDict;
-}
-
-numberOfSubdomains 128;
-
-method          scotch;
-EOF
 
 # 2. Decompose for parallel (solve uses 128 ranks)
 echo "Decomposing for 128 processes..."
 decomposePar -force > log.decomposePar 2>&1
 
-# 2. Run simpleFoam (up to 3000 iterations, steady RANS k-omega SST, 8 BL layers)
+# 3. Run simpleFoam (up to 3000 iterations, steady RANS k-omega SST, 8 BL layers)
 echo "Running simpleFoam (up to 3000 iterations, 128 MPI ranks)..."
 if [[ "$SHOW_ITERATIONS" == "1" ]]; then
     echo "Streaming 'Time =' progress lines to SLURM stdout every ${ITERATION_LOG_INTERVAL} iteration(s)."

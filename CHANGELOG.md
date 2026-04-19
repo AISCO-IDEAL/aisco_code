@@ -2,6 +2,27 @@
 
 All notable changes to AISCO_code will be documented in this file.
 
+## [0.5.0] — 2026-04-18
+
+### Changed
+- `case_template/0/U`: fixed malformed `dimensions` line (missing spaces), `uniform(` → `uniform (` for correct OpenFOAM parsing
+- Directory migration: `CASES_V2` → `CASES_v3`, `processed_euler_openfoam_cp_v040` → `processed_euler_openfoam_cp_v050`; old directories preserved as v0.4.0 baseline
+- `ply_to_stl.py` and `generate_cases.py`: manifest writes are now append-safe (merge by `run_id` key, preserving existing entries)
+- `test_case_template.py`: updated to check `__VINF__`/`__K_INLET__`/`__OMEGA_INLET__` placeholders (template uses placeholders, not hardcoded values)
+
+### Added
+- `convergence_qa.py`: 8-test convergence quality gate (T1–T8) classifying runs as PASS/WARN/FAIL; default T5 Cd CoV threshold 2.0%, strict mode 0.5%
+- `tests/test_convergence_qa.py`: 12 unit tests for convergence QA logic
+- `run_pipeline.py`: Python orchestrator with 4 modes (`full`, `append`, `rerun`, `extract-only`)
+- `tests/test_run_pipeline.py`: 6 unit tests for run-list generation and append-safe manifests
+- `slurm/submit_pipeline.sh`: run-list-based SLURM submission with `aftercorr` per-task dependency (mesh[N] → solve[N])
+- SLURM scripts (`openfoam_mesh_array.slurm`, `openfoam_solve_array.slurm`): run-list mode via `$RUN_LIST` env var, falling back to legacy array-ID mode
+- `openfoam_extract_pt.slurm`: integrated convergence QA step after extraction
+- URANS experimental scripts isolated to `slurm/experimental/` with EXPERIMENTAL headers
+
+### Removed
+- `resubmit_pipeline.slurm`, `urans_ready_cases.txt`, `slurm/submit_all.sh`: superseded by `run_pipeline.py` + `submit_pipeline.sh`
+
 ## [0.4.0] — 2026-04-17
 
 ### Changed

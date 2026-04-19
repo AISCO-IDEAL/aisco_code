@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# =============================================================================
+# EXPERIMENTAL — Not integrated into main pipeline. Manual invocation only.
+# =============================================================================
 """RANS vs URANS force coefficient comparison.
 
 Reads time-averaged Cd/Cl from a completed URANS pimpleFoam run and compares
@@ -9,7 +12,7 @@ Usage:
     python3 compare_rans_urans.py
     python3 compare_rans_urans.py --run-id RUN_010
 
-    # all cases in CASES_V2
+    # all cases in CASES_v3
     python3 compare_rans_urans.py --all-cases
     python3 compare_rans_urans.py --all-cases --output results/urans_batch.csv
 
@@ -41,8 +44,8 @@ import numpy as np
 # Paths
 # ---------------------------------------------------------------------------
 
-CASES_V2 = pathlib.Path(
-    "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_V2"
+CASES_DIR = pathlib.Path(
+    "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3"
 )
 
 # Batch output
@@ -349,7 +352,7 @@ def _row(
 
 
 def run_all_cases(output_csv: pathlib.Path) -> int:
-    """Run comparison for all *_urans dirs found in CASES_V2.
+    """Run comparison for all *_urans dirs found in CASES_DIR.
 
     Args:
         output_csv: Path to write the consolidated results CSV.
@@ -358,20 +361,20 @@ def run_all_cases(output_csv: pathlib.Path) -> int:
         0 on success, 1 if any case is DIVERGED or INCOMPLETE.
     """
     urans_dirs = sorted(
-        d for d in CASES_V2.iterdir()
+        d for d in CASES_DIR.iterdir()
         if d.is_dir() and d.name.endswith("_urans")
     )
 
     if not urans_dirs:
-        print(f"ERROR: No *_urans directories found in {CASES_V2}", file=sys.stderr)
+        print(f"ERROR: No *_urans directories found in {CASES_DIR}", file=sys.stderr)
         return 1
 
-    print(f"Found {len(urans_dirs)} URANS case(s) in {CASES_V2}")
+    print(f"Found {len(urans_dirs)} URANS case(s) in {CASES_DIR}")
 
     rows = []
     for urans_dir in urans_dirs:
         run_id = urans_dir.name[: -len("_urans")]
-        rans_dir = CASES_V2 / run_id
+        rans_dir = CASES_DIR / run_id
         if not rans_dir.exists():
             print(f"  SKIP {run_id}: RANS dir {rans_dir} not found")
             continue
@@ -435,8 +438,8 @@ def run_single_case(run_id: str) -> int:
     Returns:
         0 on success, 1 on error.
     """
-    rans_case = CASES_V2 / run_id
-    urans_case = CASES_V2 / f"{run_id}_urans"
+    rans_case = CASES_DIR / run_id
+    urans_case = CASES_DIR / f"{run_id}_urans"
 
     row = analyse_case(run_id, rans_case, urans_case, verbose=True)
 
@@ -501,7 +504,7 @@ def main() -> int:
     parser.add_argument(
         "--all-cases",
         action="store_true",
-        help="Analyse all *_urans directories in CASES_V2",
+        help="Analyse all *_urans directories in CASES_v3",
     )
     parser.add_argument(
         "--output",

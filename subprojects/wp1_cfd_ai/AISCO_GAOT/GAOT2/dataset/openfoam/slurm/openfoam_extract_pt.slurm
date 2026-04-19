@@ -28,8 +28,8 @@ source /cluster/home/elihuber/AISCO_code/aisco_env/bin/activate
 
 SCRIPT_DIR="/cluster/home/elihuber/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset/openfoam"
 DATASET_DIR="/cluster/home/elihuber/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset"
-CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_V2"
-OUTPUT_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_v040"
+CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3"
+OUTPUT_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_v050"
 
 # common_preprocessing lives in dataset/, one level up from openfoam/
 export PYTHONPATH="${DATASET_DIR}:${PYTHONPATH:-}"
@@ -42,3 +42,12 @@ python "${SCRIPT_DIR}/process_openfoam_pressure.py" \
     --verbose
 
 echo "=== Extraction complete at $(date) ==="
+
+# ---- Convergence QA gate ----
+echo "=== Running convergence QA at $(date) ==="
+python "${SCRIPT_DIR}/convergence_qa.py" \
+    --dataset-dir "${OUTPUT_DIR}" \
+    --output-dir "${OUTPUT_DIR}/qa" \
+    --verbose
+
+echo "=== Convergence QA complete at $(date) ==="

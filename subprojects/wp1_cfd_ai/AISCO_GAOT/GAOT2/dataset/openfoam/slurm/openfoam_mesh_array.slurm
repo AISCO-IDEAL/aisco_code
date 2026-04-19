@@ -5,8 +5,8 @@
 # Runs blockMesh + surfaceFeatureExtract + snappyHexMesh + checkMesh
 # for each case in parallel via SLURM array.
 #
-# v040: 8 BL layers, expansionRatio 1.15, input geometry from openfoam_geometry.
-# Cases live in CASES_V2 (old CASES kept for reference).
+# v050: 8 BL layers, expansionRatio 1.15, input geometry from openfoam_geometry.
+# Cases live in CASES_v3 (CASES_V2 preserved as v0.4.0 baseline).
 # =============================================================================
 
 #SBATCH --job-name=OF_Mesh
@@ -30,9 +30,23 @@ module purge
 module load stack/2024-06 gcc/12.2.0 openmpi/4.1.6
 module load openfoam/2306
 
-# Determine case directory from array task ID
-RUN_ID=$(printf "%03d" "$SLURM_ARRAY_TASK_ID")
-CASE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_V2/RUN_${RUN_ID}"
+# Determine case directory from run-list file or array task ID
+if [[ -n "${RUN_LIST:-}" && -f "${RUN_LIST}" ]]; then
+    # Run-list mode: read RUN_ID from file by line number
+    RUN_ID=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$RUN_LIST")
+    if [[ -z "$RUN_ID" ]]; then
+        echo "ERROR: No RUN_ID at line ${SLURM_ARRAY_TASK_ID} in ${RUN_LIST}" >&2
+        exit 1
+    fi
+    # Ensure 3-digit zero-padded format
+    # Use 10# prefix to force decimal — bash printf treats leading-zero strings as octal
+    # (e.g. "010" octal = 8 decimal, producing RUN_008 instead of RUN_010)
+    RUN_ID=$(printf "%03d" "$((10#${RUN_ID}))")
+else
+    # Legacy mode: use array task ID directly as run number
+    RUN_ID=$(printf "%03d" "$SLURM_ARRAY_TASK_ID")
+fi
+CASE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3/RUN_${RUN_ID}"
 
 if [[ ! -d "$CASE_DIR" ]]; then
     echo "ERROR: Case directory $CASE_DIR does not exist. Skipping."

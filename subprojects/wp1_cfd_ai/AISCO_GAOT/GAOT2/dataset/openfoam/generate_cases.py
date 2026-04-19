@@ -60,7 +60,7 @@ _V_REF = 25.0
 # Default paths on Euler
 _DEFAULT_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/geometry_manifest.json")
 _DEFAULT_TEMPLATE = Path(__file__).resolve().parent / "case_template"
-_DEFAULT_OUTPUT = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES")
+_DEFAULT_OUTPUT = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3")
 _DEFAULT_CASES_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/cases_manifest.json")
 
 
@@ -332,12 +332,20 @@ def generate_all_cases(
         )
         results.append(result)
 
-    # Write cases manifest
+    # Append-safe manifest: merge new results with any existing entries
     if cases_manifest_path is None:
         cases_manifest_path = output_dir.parent / "cases_manifest.json"
     cases_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    existing: list[dict] = []
+    if cases_manifest_path.exists():
+        with open(cases_manifest_path) as f:
+            existing = json.load(f)
+    merged = {e["run_id"]: e for e in existing}
+    for r in results:
+        merged[r["run_id"]] = r
+    all_entries = list(merged.values())
     with open(cases_manifest_path, "w") as f:
-        json.dump(results, f, indent=2)
+        json.dump(all_entries, f, indent=2)
 
     logger.info("Generated %d cases, manifest at %s", len(results), cases_manifest_path)
     return results

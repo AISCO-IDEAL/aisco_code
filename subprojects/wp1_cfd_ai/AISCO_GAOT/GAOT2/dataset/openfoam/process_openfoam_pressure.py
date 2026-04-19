@@ -53,9 +53,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 #  Constants
 # ---------------------------------------------------------------------------
-# v040 paths — old CASES / processed_euler_openfoam_cp_full are kept as-is for reference.
-CASES_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_V2"
-OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_v040"
+# v050 paths — CASES_V2 / processed_euler_openfoam_cp_v040 preserved as v0.4.0 baseline.
+CASES_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3"
+OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_v050"
 NUM_WORKERS = 4
 DEFAULT_TIME_STEP = 3000
 

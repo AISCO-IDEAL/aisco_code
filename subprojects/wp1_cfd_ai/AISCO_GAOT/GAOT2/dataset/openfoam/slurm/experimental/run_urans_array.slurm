@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
-# run_urans_batch_array.slurm — URANS overnight array job (all prepared cases)
+# EXPERIMENTAL — Not integrated into main pipeline. Manual invocation only.
+# =============================================================================
+# run_urans_array.slurm — URANS overnight array job (all prepared cases)
 #
 # Maps each SLURM array task ID to a line in urans_ready_cases.txt.
 # Each task: decomposePar -force → pimpleFoam -parallel → reconstructPar → cleanup
@@ -28,7 +30,7 @@ set -euo pipefail
 module load stack/2024-06 gcc/12.2.0 openmpi/4.1.6
 module load openfoam/2306
 
-CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_V2"
+CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3"
 READY_LIST="/cluster/home/elihuber/AISCO_code/urans_ready_cases.txt"
 
 # Map task ID to run_id
