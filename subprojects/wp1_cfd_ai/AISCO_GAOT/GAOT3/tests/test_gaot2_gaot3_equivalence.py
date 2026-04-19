@@ -20,7 +20,6 @@ from pathlib import Path
 
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parents[5]
 GAOT_ROOT = REPO_ROOT / "subprojects" / "wp1_cfd_ai" / "AISCO_GAOT"
 DEFAULT_GAOT2_CONFIG = Path("subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/main_config.yaml")
@@ -305,7 +304,7 @@ def test_gaot2_gaot3_main_configs_execute() -> None:
     """
     if os.environ.get("RUN_GAOT_MAIN_EQUIVALENCE") != "1":
         try:
-            import pytest
+            import pytest  # noqa: PLC0415
         except ImportError as exc:  # pragma: no cover - pytest is expected here
             raise RuntimeError("pytest is required to skip this integration test") from exc
         pytest.skip("Set RUN_GAOT_MAIN_EQUIVALENCE=1 to execute real GAOT main configs.")
