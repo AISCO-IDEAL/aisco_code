@@ -315,8 +315,12 @@ def test_gaot2_gaot3_main_configs_execute() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Execute GAOT2 and GAOT3 main.py with their real configs.")
-    parser.add_argument("--gaot2-config", type=Path, default=None, help=f"GAOT2 config path. Defaults to {DEFAULT_GAOT2_CONFIG.as_posix()}.")
-    parser.add_argument("--gaot3-config", type=Path, default=None, help=f"GAOT3 config path. Defaults to {DEFAULT_GAOT3_CONFIG.as_posix()}.")
+    parser.add_argument(
+        "--gaot2-config", type=Path, default=None, help=f"GAOT2 config path. Defaults to {DEFAULT_GAOT2_CONFIG.as_posix()}."
+    )
+    parser.add_argument(
+        "--gaot3-config", type=Path, default=None, help=f"GAOT3 config path. Defaults to {DEFAULT_GAOT3_CONFIG.as_posix()}."
+    )
     parser.add_argument("--log-dir", type=Path, default=DEFAULT_LOG_DIR, help="Directory for stdout/stderr logs.")
     parser.add_argument("--timeout", type=int, default=None, help="Optional timeout per main.py run, in seconds.")
     args = parser.parse_args()
