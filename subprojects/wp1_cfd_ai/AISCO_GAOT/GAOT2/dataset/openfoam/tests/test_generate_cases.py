@@ -11,6 +11,7 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.dataset.openfoam.generate_cases imp
     compute_domain_extents,
     generate_all_cases,
     instantiate_case,
+    _MIN_UPSTREAM_EXTENT,
 )
 
 # Path to the case template in the repo
@@ -114,6 +115,42 @@ class TestComputeDomainExtents:
         assert domain["yCells"] > 0
         assert domain["zCells"] > 0
 
+    def test_minimum_upstream_floor_applied_for_small_geometry(self) -> None:
+        """Small geometries get at least _MIN_UPSTREAM_EXTENT upstream (not just 2×car_length).
+
+        Regression test for analysis 062: geometries shorter than 0.75m had
+        proportional upstream extents so short that locationInMesh fell outside
+        the blockMesh domain, crashing snappyHexMesh.
+        """
+        # RUN_220 archetype: 0.216m cube (the smallest real failing case)
+        bmin = [-0.108, 0.042, 0.1]
+        bmax = [0.108, 0.258, 0.316]
+        car_length = bmax[0] - bmin[0]  # 0.216m — well below 0.75m threshold
+        proportional_upstream = 2.0 * car_length  # 0.432m
+        assert proportional_upstream < _MIN_UPSTREAM_EXTENT, (
+            "Test precondition: proportional upstream must be less than minimum floor"
+        )
+        domain = compute_domain_extents(bmin, bmax)
+        actual_upstream = bmin[0] - domain["xMin"]
+        assert actual_upstream >= _MIN_UPSTREAM_EXTENT, (
+            f"Upstream extent {actual_upstream:.4f}m is below the minimum "
+            f"{_MIN_UPSTREAM_EXTENT}m floor for a {car_length:.3f}m car"
+        )
+
+    def test_normal_geometry_uses_proportional_upstream(self) -> None:
+        """Standard-size geometries use proportional upstream (floor does not activate)."""
+        # Typical solar car: 3.5m long
+        bmin = [-1.75, -0.9, 0.0]
+        bmax = [1.75, 0.9, 1.5]
+        car_length = bmax[0] - bmin[0]  # 3.5m
+        proportional_upstream = 2.0 * car_length  # 7.0m — well above floor
+        domain = compute_domain_extents(bmin, bmax)
+        actual_upstream = bmin[0] - domain["xMin"]
+        assert abs(actual_upstream - proportional_upstream) < 0.001, (
+            f"Normal geometry should use proportional upstream {proportional_upstream:.3f}m, "
+            f"got {actual_upstream:.4f}m"
+        )
+
 
 # ---------------------------------------------------------------------------
 #  compute_boi_box
@@ -204,6 +241,111 @@ class TestInstantiateCase:
         shmd = Path(result["case_path"]) / "system" / "snappyHexMeshDict"
         content = shmd.read_text()
         assert "__" not in content, f"Unreplaced placeholders in snappyHexMeshDict: {content}"
+
+    def test_location_in_mesh_not_on_cell_face_for_symmetric_geometry(
+        self, temp_dirs: dict[str, Path]
+    ) -> None:
+        """locationInMesh y-coordinate must not coincide with a blockMesh cell face.
+
+        Regression test for RUN_018: symmetric geometry (y_center=0) caused
+        locationInMesh to land exactly on cell boundary, triggering snappyHexMesh
+        FOAM FATAL ERROR: 'Point is not inside the mesh'.
+        """
+        from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.dataset.openfoam.generate_cases import (
+            _CELL_SIZE,
+            compute_domain_extents,
+        )
+
+        geom_dir = temp_dirs["geometry"]
+        box = trimesh.creation.box(extents=[3.5, 1.2374, 1.6371])
+        stl_path = geom_dir / "RUN_018.stl"
+        box.export(str(stl_path))
+
+        # Symmetric geometry: bounds symmetric about y=0 (solar car-like)
+        bounds_min = [-1.7917, -0.6137, 0.1]
+        bounds_max = [1.7329, 0.6249, 1.7371]
+
+        result = instantiate_case(
+            run_id="RUN_018",
+            stl_path=stl_path,
+            bounds_min=bounds_min,
+            bounds_max=bounds_max,
+            template_dir=_TEMPLATE_DIR,
+            output_dir=temp_dirs["output"],
+        )
+
+        shmd = Path(result["case_path"]) / "system" / "snappyHexMeshDict"
+        content = shmd.read_text()
+
+        # Extract locationInMesh y value from the dict
+        import re
+
+        m = re.search(r"locationInMesh\s+\(\s*[-\d.]+\s+([-\d.]+)\s+[-\d.]+\s*\)", content)
+        assert m is not None, "Could not find locationInMesh in snappyHexMeshDict"
+        loc_y = float(m.group(1))
+
+        # Verify the y point is not on a cell face boundary
+        domain = compute_domain_extents(bounds_min, bounds_max)
+        y_offset_from_min = loc_y - domain["yMin"]
+        cell_fraction = (y_offset_from_min / _CELL_SIZE) % 1.0
+        # Must be at least 10% of a cell away from any face
+        assert cell_fraction > 0.1 and cell_fraction < 0.9, (
+            f"locationInMesh y={loc_y} is too close to a cell face boundary "
+            f"(cell_fraction={cell_fraction:.4f}). snappyHexMesh will fail."
+        )
+
+    def test_location_in_mesh_inside_domain_for_small_geometry(
+        self, temp_dirs: dict[str, Path]
+    ) -> None:
+        """locationInMesh x-coordinate is inside the domain for small geometries.
+
+        Regression test for analysis 062 / Bug F: geometries shorter than 0.5m
+        had loc_x = bounds_min[0] - 1.0 which fell outside the blockMesh domain
+        (domain xMin = bounds_min[0] - 2*car_length), crashing snappyHexMesh.
+        With Option B the domain has a minimum upstream floor and loc_x is
+        derived as the midpoint between domain["xMin"] and bounds_min[0].
+        """
+        import re
+
+        geom_dir = temp_dirs["geometry"]
+        # RUN_220 archetype: 0.216m cube — the worst failing case
+        box = trimesh.creation.box(extents=[0.216, 0.216, 0.216])
+        stl_path = geom_dir / "RUN_SMALL.stl"
+        box.export(str(stl_path))
+        bounds_min = [-0.108, 0.042, 0.1]
+        bounds_max = [0.108, 0.258, 0.316]
+
+        result = instantiate_case(
+            run_id="RUN_SMALL",
+            stl_path=stl_path,
+            bounds_min=bounds_min,
+            bounds_max=bounds_max,
+            template_dir=_TEMPLATE_DIR,
+            output_dir=temp_dirs["output"],
+        )
+
+        shmd = Path(result["case_path"]) / "system" / "snappyHexMeshDict"
+        snappy_content = shmd.read_text()
+        bmd = Path(result["case_path"]) / "system" / "blockMeshDict"
+        bmd_content = bmd.read_text()
+
+        # Extract domain xMin from blockMeshDict
+        m_xmin = re.search(r"xMin\s+([\-\d.]+)", bmd_content)
+        assert m_xmin is not None
+        domain_xmin = float(m_xmin.group(1))
+
+        # Extract locationInMesh x from snappyHexMeshDict
+        m_loc = re.search(r"locationInMesh\s+\(\s*([\-\d.]+)", snappy_content)
+        assert m_loc is not None
+        loc_x = float(m_loc.group(1))
+
+        assert loc_x > domain_xmin, (
+            f"locationInMesh x={loc_x} is outside domain xMin={domain_xmin} "
+            "for small geometry. snappyHexMesh will crash."
+        )
+        assert loc_x < bounds_min[0], (
+            f"locationInMesh x={loc_x} must be upstream of geometry (bounds_min[0]={bounds_min[0]})"
+        )
 
 
 # ---------------------------------------------------------------------------

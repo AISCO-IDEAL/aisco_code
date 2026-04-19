@@ -39,7 +39,8 @@ import torch
 from torch_geometric.data import Data
 from tqdm import tqdm
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+sys.path.append(str(Path(__file__).resolve().parents[1]))  # GAOT2/dataset/ → common_preprocessing
+sys.path.append(str(Path(__file__).resolve().parents[2]))  # GAOT2/ → src.*
 
 from common_preprocessing import (
     AIR_DENSITY,
@@ -47,6 +48,7 @@ from common_preprocessing import (
     compute_geom_conditioning,
     compute_pressure_coefficient,
 )
+from src.utils.pressure_integration import compute_frontal_area
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,7 @@ logger = logging.getLogger(__name__)
 CASES_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3"
 OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_v050"
 NUM_WORKERS = 4
-DEFAULT_TIME_STEP = 3000
+DEFAULT_TIME_STEP = 4500
 
 # Boundary edge ratio below which a VTK mesh is treated as effectively closed.
 # snappyHexMesh produces minor boundary edges at domain boundaries (typically
@@ -597,16 +599,12 @@ def process_single_run(
     normals_np = _compute_vertex_normals(pos_np, faces_np)
 
     # Parse forces
-    cd_val, force_val = parse_openfoam_forces(case_dir)
-    if cd_val is None:
-        cd_val = float("nan")
+    _cd_coeff_dat, force_val = parse_openfoam_forces(case_dir)
     if force_val is None:
         force_val = float("nan")
 
-    # Cd stability stats over last 50 iterations
+    # Cd stability stats over last 50 iterations (rescaled below after aref_scale is known)
     cd_mean50_val, cd_std50_val = parse_cd_stats(case_dir)
-    cd_mean50_float = cd_mean50_val if cd_mean50_val is not None else float("nan")
-    cd_std50_float = cd_std50_val if cd_std50_val is not None else float("nan")
 
     # Compute Cp.
     # simpleFoam stores kinematic pressure p_kin = p_static / rho  [m²/s²].
@@ -617,27 +615,38 @@ def process_single_run(
     cp_tensor = compute_pressure_coefficient(pressure_tensor, V_INF_EULER, rho=1.0)
 
     pos_tensor = torch.tensor(pos_np, dtype=torch.float32)
+    face_tensor = torch.tensor(faces_np.T, dtype=torch.long)  # [3, F]
+    normals_tensor = torch.tensor(normals_np, dtype=torch.float32)
     geom_extent, geom_aspect, conditioning = compute_geom_conditioning(pos_tensor, V_INF_EULER)
 
-    # Sanity-check: force / (Q_inf * frontal_area) should match Cd from coefficient.dat.
-    # geom_extent = [x_range, y_range, z_range]; frontal area = y_range * z_range.
-    if not (np.isnan(cd_val) or np.isnan(force_val)):
-        q_inf = 0.5 * AIR_DENSITY * V_INF_EULER**2
-        aref = float(geom_extent[1]) * float(geom_extent[2])  # Y x Z frontal area
-        if aref > 0:
-            cd_from_force = force_val / (q_inf * aref)
-            rel_err = abs(cd_from_force - cd_val) / (abs(cd_val) + 1e-12)
-            if rel_err > 0.02:
-                logger.warning(
-                    "RUN_%03d: force/Cd sanity check failed — "
-                    "force=%.4f N, cd=%.5f, cd_from_force=%.5f (%.1f%% off). "
-                    "Check parse_openfoam_forces column mapping.",
-                    run_id,
-                    force_val,
-                    cd_val,
-                    cd_from_force,
-                    rel_err * 100,
-                )
+    # Compute Cd using projected frontal area (standard aerodynamic definition).
+    # coefficient.dat uses the bounding-box approximation (car_width × car_height);
+    # compute_frontal_area sums front-facing triangle projections onto the YZ plane,
+    # which is the correct reference and matches integrate_pressure_field.py.
+    q_inf = 0.5 * AIR_DENSITY * V_INF_EULER**2
+    projected_aref = compute_frontal_area(pos_tensor, face_tensor, normals_tensor, drag_direction=0)
+    if not np.isnan(force_val) and projected_aref > 0:
+        cd_val = force_val / (q_inf * projected_aref)
+    else:
+        cd_val = float("nan")
+
+    # Rescale cd_mean50 / cd_std50 from coefficient.dat basis (bbox Aref) to
+    # projected-Aref basis so CoV is preserved and absolute values are consistent.
+    bbox_aref = float(geom_extent[1]) * float(geom_extent[2])  # Y × Z bounding box
+    aref_scale = bbox_aref / projected_aref if projected_aref > 0 else 1.0
+
+    # Rescale cd_mean50 / cd_std50 from coefficient.dat basis (bbox Aref) to projected-Aref basis.
+    cd_mean50_float = cd_mean50_val * aref_scale if cd_mean50_val is not None else float("nan")
+    cd_std50_float = cd_std50_val * aref_scale if cd_std50_val is not None else float("nan")
+
+    # Sanity-check: force should be positive (drag in flow direction).
+    if not np.isnan(force_val) and force_val <= 0:
+        logger.warning(
+            "RUN_%03d: non-physical force=%.4f N <= 0 — "
+            "check parse_openfoam_forces column mapping.",
+            run_id,
+            force_val,
+        )
 
     # -----------------------------------------------------------------------
     #  Extraction quality telemetry (M2)
@@ -680,8 +689,8 @@ def process_single_run(
     data = Data(
         pos=pos_tensor,
         x=cp_tensor,
-        c=torch.tensor(normals_np, dtype=torch.float32),
-        face=torch.tensor(faces_np.T, dtype=torch.long),  # [3, F]
+        c=normals_tensor,
+        face=face_tensor,  # [3, F]
         wall_shear=torch.tensor(wall_shear_np, dtype=torch.float32),
         force=torch.tensor([force_val], dtype=torch.float32),
         cd=torch.tensor([cd_val], dtype=torch.float32),

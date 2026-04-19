@@ -22,7 +22,36 @@ import shutil
 from collections.abc import Mapping
 from pathlib import Path
 
+import numpy as np
+import pyvista as pv
+
 logger = logging.getLogger(__name__)
+
+
+def _compute_stl_frontal_area(stl_path: Path) -> float:
+    """Compute projected frontal area from STL geometry (standard aerodynamic Aref).
+
+    Sums the x-projected area of all front-facing triangles (normal pointing
+    in +x / flow direction), which is the correct reference area definition
+    consistent with ``compute_frontal_area`` in pressure_integration.py.
+
+    Uses the STL mesh directly; the final snappyHexMesh surface will differ
+    slightly but this is a far better approximation than bounding-box width*height.
+
+    Args:
+        stl_path: Path to the STL file.
+
+    Returns:
+        Projected frontal area in m².
+    """
+    mesh = pv.read(str(stl_path)).triangulate().clean()
+    pts = np.array(mesh.points, dtype=np.float64)
+    faces = mesh.faces.reshape(-1, 4)[:, 1:4]
+    v0, v1, v2 = pts[faces[:, 0]], pts[faces[:, 1]], pts[faces[:, 2]]
+    cross = np.cross(v1 - v0, v2 - v0)  # [F, 3] — area-weighted normals
+    proj_x = cross[:, 0] * 0.5  # x-component = area projected onto YZ plane
+    return float(proj_x[proj_x > 0].sum())
+
 
 # Background cell size matching Fluent HexMaxCellLength
 _CELL_SIZE = 0.164
@@ -32,6 +61,13 @@ _UPSTREAM_LENGTHS = 2.0
 _DOWNSTREAM_LENGTHS = 5.0
 _LATERAL_WIDTHS = 2.0
 _VERTICAL_HEIGHTS = 3.0
+
+# Minimum absolute upstream extent (meters).
+# Small geometries (<0.75m long) would otherwise get proportional upstream
+# extents so short that the locationInMesh point and BOI box fall outside
+# the blockMesh domain (see analysis 062).  The floor ensures at least
+# 1.5m upstream tunnel regardless of car length.
+_MIN_UPSTREAM_EXTENT = 1.5
 
 # BOI box padding (meters)
 _BOI_UPSTREAM = 0.5
@@ -71,10 +107,13 @@ def compute_domain_extents(
     """Compute wind tunnel domain extents from geometry bounds.
 
     Domain extends:
-    - Upstream (-x): ~2 car-lengths before geometry min
+    - Upstream (-x): max(2 × car-length, _MIN_UPSTREAM_EXTENT) before geometry min
     - Downstream (+x): ~5 car-lengths after geometry max
     - Lateral (y): ±2 car-widths from geometry center
     - Vertical (z): 0 (ground) to ~3 car heights
+
+    The minimum upstream floor ensures small geometries get a usable wind
+    tunnel even when the proportional extent would be too short (see _MIN_UPSTREAM_EXTENT).
 
     Args:
         bounds_min: [x, y, z] minimum bounds of geometry (meters).
@@ -87,7 +126,8 @@ def compute_domain_extents(
     car_width = bounds_max[1] - bounds_min[1]
     car_height = bounds_max[2] - bounds_min[2]
 
-    x_min = bounds_min[0] - _UPSTREAM_LENGTHS * car_length
+    upstream_extent = max(_UPSTREAM_LENGTHS * car_length, _MIN_UPSTREAM_EXTENT)
+    x_min = bounds_min[0] - upstream_extent
     x_max = bounds_max[0] + _DOWNSTREAM_LENGTHS * car_length
     y_min = bounds_min[1] - _LATERAL_WIDTHS * car_width
     y_max = bounds_max[1] + _LATERAL_WIDTHS * car_width
@@ -217,16 +257,25 @@ def instantiate_case(
 
     # Geometry extents for reference area/length in controlDict
     car_length = bounds_max[0] - bounds_min[0]
-    car_width = bounds_max[1] - bounds_min[1]
-    car_height = bounds_max[2] - bounds_min[2]
-    # Frontal area approximation (width x height)
-    a_ref = round(car_width * car_height, 4)
     l_ref = round(car_length, 4)
+    # Projected frontal area from STL (standard Aref, consistent with
+    # pressure_integration.compute_frontal_area used during extraction).
+    a_ref = round(_compute_stl_frontal_area(stl_path), 4)
 
-    # locationInMesh: a point inside the domain but outside the car
-    # Place it upstream of the geometry, at mid-height
-    loc_x = round(bounds_min[0] - 1.0, 4)
-    loc_y = round((bounds_min[1] + bounds_max[1]) / 2.0, 4)
+    # locationInMesh: a point inside the domain but outside the car.
+    # Place it upstream of the geometry, at mid-height.
+    # Add half a background cell size as a y-offset so the point never coincides
+    # with a blockMesh cell face — symmetric geometries (y_center ≈ 0) would
+    # otherwise land exactly on cell boundary 19, causing snappyHexMesh
+    # FOAM FATAL ERROR: "Point is not inside the mesh".
+    #
+    # loc_x is the midpoint between domain["xMin"] and bounds_min[0], which
+    # guarantees it is always strictly inside the domain regardless of whether
+    # the proportional or minimum upstream floor determined domain["xMin"].
+    # A fixed offset (e.g. 1.0m) fails for geometries shorter than 0.5m
+    # (loc_x lands outside domain; see analysis 062).
+    loc_x = round((domain["xMin"] + bounds_min[0]) / 2.0, 4)
+    loc_y = round((bounds_min[1] + bounds_max[1]) / 2.0 + _CELL_SIZE / 2.0, 4)
     loc_z = round((bounds_min[2] + bounds_max[2]) / 2.0, 4)
 
     # Turbulence inlet BCs scaled from reference v_inf=25 values

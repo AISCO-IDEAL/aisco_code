@@ -41,7 +41,7 @@ _DEFAULT_CASES_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/cas
 _DEFAULT_TEMPLATE = _OPENFOAM_DIR / "case_template"
 _DEFAULT_DATASET_DIR = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_v050")
 
-_DEFAULT_MAX_PARALLEL = 20
+_DEFAULT_MAX_PARALLEL = 25
 _DEFAULT_VINF = 25.0
 
 

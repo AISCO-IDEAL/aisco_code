@@ -37,7 +37,7 @@ export PYTHONPATH="${DATASET_DIR}:${PYTHONPATH:-}"
 python "${SCRIPT_DIR}/process_openfoam_pressure.py" \
     --cases-dir "${CASES_DIR}" \
     --output-dir "${OUTPUT_DIR}" \
-    --time-step 3000 \
+    --time-step 4500 \
     --workers 16 \
     --verbose
 
