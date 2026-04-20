@@ -7,7 +7,7 @@
 ##########################################################################
 
 setup:
-    name: "euler_field_cp_full"
+    name: "blended_wing_cp_full"
     id: "_RUN_ID_"
     seed: 42
     device: "cuda:0"
@@ -22,9 +22,9 @@ setup:
     wandb: true
     wandb_run_name: "_NAME___RUN_ID_"
 
-    wandb_project: "WP1_default"
+    wandb_project: "WP1_finetuning"
     wandb_entity: aisco
-    wandb_group: euler_field_cp_full
+    wandb_group: blended_wing_cp_full
     wandb_mode: online
     wandb_tags: ["field", "pressure", "euler", "multi_head", "gaot", "cp_full", "oom_investigation"]
     wandb_watch_model: false
@@ -112,15 +112,15 @@ model:
             film_init_scale: 0.01       # reduced from 0.1 — perturbation hit 1.0 at epoch 80
 
 dataset:
-    name: "euler_pressure_field_new"
-    metaname: "incompressible_fluids/euler_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_cp_full"
+    name: "blended_wing"
+    metaname: "incompressible_fluids/blended_wing"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing_cp_full"
     processed_folder: ""
     force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
-    train_size: 110
-    val_size: 23
-    test_size: 20
+    train_size: 1000
+    val_size: 100
+    test_size: 100
     batch_size: 6  # reduced from 12 to avoid OOM on larger CP-full meshes
     num_workers: 4
     shuffle: true
@@ -141,9 +141,9 @@ dataset:
     num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
 
     viz_axis_limits:            # Edit these ranges to control the visualized x/y/z box exactly, default is outer bounding box
-        x: [-3, 3]
+        x: [-1.5, 1.5]
         y: [-1.5, 1.5]
-        z: [-0.5, 2]
+        z: [-0.5, 1]
     viz_field_vmin: -2.2        # min on pressure bar
     viz_field_vmax: 0.95         # max on pressure bar
     viz_abs_diff_vmax: 1.0      # max on error bar (min always 0)
