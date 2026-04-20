@@ -13,7 +13,7 @@ set -euo pipefail
 
 source /cluster/home/elihuber/AISCO_code/aisco_env/bin/activate
 
-CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_V2"
+CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3"
 RANS_CASE="${CASES_DIR}/RUN_010"
 TEST_CASE="${CASES_DIR}/RUN_010_urans_test"
 LOGS_DIR="/cluster/scratch/elihuber/scratch_logs"

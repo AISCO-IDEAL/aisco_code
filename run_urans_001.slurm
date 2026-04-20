@@ -21,7 +21,7 @@
 
 set -euo pipefail
 
-CASE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_V2/RUN_001_urans"
+CASE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3/RUN_001_urans"
 
 echo "=== URANS RUN_001 started on $(hostname) at $(date) ==="
 echo "Case: $CASE_DIR"

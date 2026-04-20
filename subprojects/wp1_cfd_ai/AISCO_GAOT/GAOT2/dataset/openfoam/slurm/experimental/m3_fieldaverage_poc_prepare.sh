@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES"
+CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3"
 POC_RUNS=(010 021 058)
 
 # fieldAverage block to append inside the functions{} section

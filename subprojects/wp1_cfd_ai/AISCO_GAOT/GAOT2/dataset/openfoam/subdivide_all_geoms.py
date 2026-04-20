@@ -52,12 +52,40 @@ def compute_iterations(num_verts: int, target: int) -> int:
     return max(n, 0)
 
 
+def check_mesh_quality(mesh: o3d.geometry.TriangleMesh) -> dict[str, bool]:
+    """Check mesh quality for CFD meshing readiness.
+
+    Runs watertightness and manifold checks that are required for
+    snappyHexMesh to succeed.
+
+    Args:
+        mesh: Open3D triangle mesh to inspect.
+
+    Returns:
+        Dict with boolean fields: watertight, edge_manifold, vertex_manifold,
+        and a composite 'ok' that is True only when all checks pass.
+    """
+    watertight = mesh.is_watertight()
+    edge_manifold = mesh.is_edge_manifold(allow_boundary_edges=False)
+    vertex_manifold = mesh.is_vertex_manifold()
+    return {
+        "watertight": watertight,
+        "edge_manifold": edge_manifold,
+        "vertex_manifold": vertex_manifold,
+        "ok": watertight and edge_manifold and vertex_manifold,
+    }
+
+
 def subdivide_ply(
     input_path: Path,
     output_path: Path,
     target_verts: int,
-) -> dict[str, int | str]:
+) -> dict[str, int | str | dict[str, bool]]:
     """Apply adaptive Loop subdivision to a single PLY file.
+
+    Skips meshes that fail watertightness or manifold checks on the input.
+    Also validates the output mesh and removes the written file if the
+    subdivision introduced quality regressions.
 
     Args:
         input_path: Path to input PLY.
@@ -65,13 +93,29 @@ def subdivide_ply(
         target_verts: Target vertex count (will not exceed).
 
     Returns:
-        Dict with run_id, input/output vertex/face counts, iterations, and status.
+        Dict with run_id, input/output vertex/face counts, iterations, and
+        status ('ok', 'skipped', or 'error').
     """
     run_id = input_path.stem
     try:
         mesh = o3d.io.read_triangle_mesh(str(input_path))
         if mesh.is_empty():
             return {"run_id": run_id, "status": "error", "message": "empty mesh"}
+
+        # --- Input quality gate ---
+        input_quality = check_mesh_quality(mesh)
+        if not input_quality["ok"]:
+            reasons = [
+                key
+                for key in ("watertight", "edge_manifold", "vertex_manifold")
+                if not input_quality[key]
+            ]
+            return {
+                "run_id": run_id,
+                "status": "skipped",
+                "message": f"input mesh failed quality checks: {', '.join(reasons)}",
+                "quality": input_quality,
+            }
 
         verts_in = len(np.asarray(mesh.vertices))
         faces_in = len(np.asarray(mesh.triangles))
@@ -80,6 +124,21 @@ def subdivide_ply(
 
         if iterations > 0:
             mesh = mesh.subdivide_loop(number_of_iterations=iterations)
+
+        # --- Output quality gate ---
+        output_quality = check_mesh_quality(mesh)
+        if not output_quality["ok"]:
+            reasons = [
+                key
+                for key in ("watertight", "edge_manifold", "vertex_manifold")
+                if not output_quality[key]
+            ]
+            return {
+                "run_id": run_id,
+                "status": "error",
+                "message": f"subdivided mesh failed quality checks: {', '.join(reasons)}",
+                "quality": output_quality,
+            }
 
         verts_out = len(np.asarray(mesh.vertices))
         faces_out = len(np.asarray(mesh.triangles))
@@ -152,8 +211,9 @@ def main() -> None:
         args.workers,
     )
 
-    results: list[dict[str, int | str]] = []
-    errors: list[dict[str, int | str]] = []
+    results: list[dict[str, int | str | dict[str, bool]]] = []
+    skipped: list[dict[str, int | str | dict[str, bool]]] = []
+    errors: list[dict[str, int | str | dict[str, bool]]] = []
 
     with ProcessPoolExecutor(max_workers=args.workers) as executor:
         futures = {}
@@ -175,6 +235,13 @@ def main() -> None:
                     result["faces_in"],
                     result["faces_out"],
                 )
+            elif result["status"] == "skipped":
+                skipped.append(result)
+                logger.warning(
+                    "%s: SKIPPED — %s",
+                    result["run_id"],
+                    result.get("message", "unknown"),
+                )
             else:
                 errors.append(result)
                 logger.error(
@@ -184,12 +251,22 @@ def main() -> None:
                 )
 
     logger.info("=== SUMMARY ===")
-    logger.info("Success: %d / %d", len(results), len(ply_files))
+    logger.info(
+        "Success: %d  Skipped (bad mesh): %d  Errors: %d  /  Total: %d",
+        len(results),
+        len(skipped),
+        len(errors),
+        len(ply_files),
+    )
+    if skipped:
+        logger.warning("Skipped (failed quality checks):")
+        for s in skipped:
+            logger.warning("  %s: %s", s["run_id"], s.get("message", "unknown"))
     if errors:
-        logger.warning("Failures: %d", len(errors))
+        logger.warning("Failures:")
         for e in errors:
             logger.warning("  %s: %s", e["run_id"], e.get("message", "unknown"))
-    else:
+    if not skipped and not errors:
         logger.info("All files subdivided successfully.")
 
 

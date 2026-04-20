@@ -36,7 +36,7 @@ _DATASET_CONFIGS: dict[str, dict[str, str | Path]] = {
         "layout": "subdir",
     },
     "euler_openfoam": {
-        "dir": _DATA_ROOT / "processed_euler_openfoam_cp_full",
+        "dir": _DATA_ROOT / "processed_euler_openfoam_cp_v050",
         "sample": "euler_run_1",
         "layout": "subdir",
     },

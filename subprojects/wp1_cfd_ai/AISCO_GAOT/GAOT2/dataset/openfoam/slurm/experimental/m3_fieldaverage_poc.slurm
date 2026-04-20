@@ -26,7 +26,7 @@ module load stack/2024-06 gcc/12.2.0 openmpi/4.1.6
 module load openfoam/2306
 
 RUN_ID=$(printf "%03d" "$SLURM_ARRAY_TASK_ID")
-CASE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES/RUN_${RUN_ID}"
+CASE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3/RUN_${RUN_ID}"
 
 if [[ ! -d "$CASE_DIR" ]]; then
     echo "ERROR: Case directory $CASE_DIR does not exist."

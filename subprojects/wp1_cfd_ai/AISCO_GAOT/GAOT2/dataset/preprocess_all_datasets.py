@@ -21,7 +21,7 @@ def _resolve_output_dir(output_root: str | None, dataset_name: str) -> str:
     return os.path.join(output_root, os.path.basename(default_dir))
 
 
-_EULER_OPENFOAM_DEFAULT_OUTPUT = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_full"
+_EULER_OPENFOAM_DEFAULT_OUTPUT = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_v050"
 
 
 def run_datasets(
@@ -38,7 +38,7 @@ def run_datasets(
             out = (
                 _EULER_OPENFOAM_DEFAULT_OUTPUT
                 if output_root is None
-                else os.path.join(output_root, "processed_euler_openfoam_cp_full")
+                else os.path.join(output_root, "processed_euler_openfoam_cp_v050")
             )
             print(f"\n=== Processing {dataset_name} into {out} ===")
             process_euler_openfoam_runs(output_dir=out, num_workers=euler_openfoam_workers)
