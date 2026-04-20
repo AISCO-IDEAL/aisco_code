@@ -10,11 +10,9 @@ import torch
 
 import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
-from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import (
-    DiversityTrainer,
-    default_field_diversity_loss,
-)
+from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import DiversityTrainer
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat, SupportsOptimise
@@ -235,9 +233,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 print(f"Manager finalize failed: {e}")
 
     elif uses_diversity:
-        # New path: TotalLossV2 + optional ALM + DiversityTrainer.
-        # Covers both single-model (population_size=1, diversity_loss_fn=None) and
-        # population-based GINN training through the same trainer.
+        # New path: TotalLossV2 + optional ALM + optional DiversityLossManager + DiversityTrainer.
         if not isinstance(model, SupportsLatentConcat):
             raise TypeError(
                 "Non-legacy models must implement SupportsLatentConcat (set_latent_vector / "
@@ -248,6 +244,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         wandb_cfg: dict[str, Any] = general_config.get("wandb_general", {})
 
         total_loss = TotalLossV2(device=device)
+        diversity_loss_manager = DiversityLossManager(losses_config=losses_config, device=device)
         use_alm: bool = losses_config["general_info"].get("ALM") == "True"
         alm_manager: ALMManager | None = (
             ALMManager(total_loss.constraint_names, losses_config["general_info"], torch.device(device)) if use_alm else None
@@ -283,12 +280,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         if uses_diversity:  # double checks for diversity again, but serves as potential control split once we develop further
             population_size = ginn_config.get("population_size", 4)
             z_dim = model.get_model_info_dict()["z_dim"]
-            diversity_loss_fn = default_field_diversity_loss  # TODO: make this configurable and add more options
         else:
             population_size = 1
             latent_vec = model.get_latent_vector()
             z_dim = int(latent_vec.numel()) if latent_vec is not None else 0
-            diversity_loss_fn = None
 
         trainer = DiversityTrainer(
             model=model,
@@ -298,8 +293,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             z_dim=z_dim,
             device=device,
             model_lr=learning_rate,
-            diversity_loss_fn=diversity_loss_fn,
-            diversity_weight=ginn_config.get("diversity_weight", 0.1),
+            diversity_manager=diversity_loss_manager,
             diversity_num_points=ginn_config.get("diversity_num_points", 2048),
             diversity_bbox_size=ginn_config.get("diversity_bbox_size", 10.0),
             diversity_norm_order=ginn_config.get("diversity_norm_order", 2),

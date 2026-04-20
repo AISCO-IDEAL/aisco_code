@@ -73,6 +73,8 @@ echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 #------------------------------------------------------------------------------
 # Run the Relevant script
 #------------------------------------------------------------------------------
+export no_proxy=$(echo "$no_proxy" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
+export NO_PROXY=$(echo "$NO_PROXY" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export PYTHONUNBUFFERED=TRUE
 ## export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True # Allow PyTorch to expand GPU memory allocation as needed
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
