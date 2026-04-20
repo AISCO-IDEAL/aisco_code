@@ -253,9 +253,24 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         # Mesh extractor + optional renderer (only used if rendering_freq is set)
         renderer_cfg = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")
         mesh_extraction_config: dict[str, Any] = renderer_cfg.get("mesh_extraction", {})
+        configured_mesh_device = mesh_extraction_config.get("device")
+        if configured_mesh_device is not None:
+            config_device_str = str(configured_mesh_device)
+            runtime_device_str = str(device)
+            try:
+                config_device_str = str(torch.device(config_device_str))
+                runtime_device_str = str(torch.device(runtime_device_str))
+            except (TypeError, ValueError):
+                pass
+            if config_device_str != runtime_device_str and verbose:
+                print(
+                    "Mesh extractor config device "
+                    f"'{configured_mesh_device}' differs from runtime device '{device}'. "
+                    "Overriding extractor to runtime device."
+                )
         mesh_extractor = MeshExtractor(
             algorithm=mesh_extraction_config.get("algorithm", "mc"),
-            device=mesh_extraction_config.get("device", str(device)),
+            device=str(device),
             verbose=mesh_extraction_config.get("verbose", False),
         )
         mesh_extractor.set_grid(
@@ -361,6 +376,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         epoch=training_config["training_params"].get("num_epochs", 1000),
         resolution=64,
         marching_cubes_usage=True,
+        device=str(device),
     )
     print("Completed job successfully.")
 
