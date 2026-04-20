@@ -126,9 +126,7 @@ dataset:
     shuffle: true
     metric_suite: "general"
     update_pt_files_with_edges: false
-    training_strategy: "neural_field"  # "neural_field" | "supervised"
-    neural_field_input_nodes: 50000        # nodes the encoder sees
-    neural_field_query_nodes_train: 50000  # nodes where field is decoded + supervised
+    training_strategy: "full_grid"
     uncertainty_weighting: false
     field_loss_weight: 1.0
     use_rescale_new: false
@@ -136,11 +134,11 @@ dataset:
     order_file_name:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
-    subsample_nodes: null     # randomly sample 30k nodes per load if sample exceeds this
+    subsample_nodes: 50000     # randomly sample 30k nodes per load if sample exceeds this
     subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
-    num_viz_samples: 2         # number of random viz samples per split (train/val); 0 = disable viz
+    num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
 
     viz_axis_limits:            # Edit these ranges to control the visualized x/y/z box exactly, default is outer bounding box
         x: [-3, 3]
@@ -157,8 +155,8 @@ optimizer:
         weight_decay: 1e-05
         epoch: 500
         loss_scale: 1.0
-        eval_every_eps: 10
-        viz_every_eps: 20   # visualize every N epochs; defaults to eval_every_eps if omitted
+        eval_every_eps: 1
+        viz_every_eps: 1   # visualize every N epochs; defaults to eval_every_eps if omitted
         viz_warmup_epochs: 0  # also visualize every epoch for the first X epochs (0 = disabled)
         scheduler: "mix"
         max_lr: 0.003
