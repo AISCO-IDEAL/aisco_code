@@ -175,6 +175,13 @@ def prepare_arg(arg):
 
 def run_arg(arg):  # noqa: PLR0912, PLR0915
     arg = prepare_arg(arg)
+    if arg.setup["run_local"] == True:
+        print("Running in local mode with config overrides:")
+        arg.path["ckpt_path"] = arg.local_path["ckpt_path"]
+        arg.path["loss_path"] = arg.local_path["loss_path"]
+        arg.path["result_path"] = arg.local_path["result_path"]
+        arg.path["config_save_path"] = arg.local_path["config_save_path"]
+        arg.dataset["base_path"] = arg.local_path["dataset"]
     log_level = os.environ.get("LOG_LEVEL", "INFO")
     log_file = os.environ.get("LOG_FILE", None) or arg.path.get("log_path", None)
     setup_logging(level=log_level, log_file=log_file)
