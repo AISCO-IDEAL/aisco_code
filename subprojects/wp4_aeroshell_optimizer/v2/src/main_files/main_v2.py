@@ -341,6 +341,22 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         for epoch in range(num_epochs):
             model.train()
             metrics = trainer.step(epoch=epoch)
+
+            mesh_save_interval = training_config["training_params"].get("mesh_save_interval", 50)
+            if (epoch + 1) % mesh_save_interval == 0:
+                allround_save_data(
+                    model=model,
+                    storage_path=general_config["storage_paths"]["storage_dir"],
+                    save_model=True,
+                    save_mesh=True,
+                    epoch=epoch + 1,
+                    verbose=general_config["general_info"].get("verbose", False),
+                    pretraining=False,
+                    wandb_run=wandb_name,
+                    marching_cubes_usage=training_config["training_params"].get("marching_cubes_usage", "False"),
+                    device=str(device),
+                )
+
             run_latent_interpolation(state=interpolation_state, epoch=epoch, stage="periodic", verbose=verbose)
             if verbose and epoch % 50 == 0:
                 print(
