@@ -5,7 +5,7 @@
 #------------------------------------------------------------------------------
 # Local execution for WP1 GAOT2 on native Linux
 ###########################################################################
-# bash ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scriptswp1_main_local.sh
+# bash ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/wp1_main_local.sh
 ###########################################################################
 
 umask 0002 # ensure group write permissions for logs and models
