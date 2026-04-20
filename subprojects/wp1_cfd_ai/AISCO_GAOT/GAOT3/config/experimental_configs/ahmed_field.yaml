@@ -1,0 +1,115 @@
+##########################################################################
+#  GAOT — Ahmed dataset: combined scalar (cd) + pressure field
+#
+#  500 samples, ~1.1M vertices each.
+#  Ahmed body: force column is NaN (only Cd available from CSV).
+#  Uses neural_field strategy with 40K vertex subsampling.
+##########################################################################
+
+setup:
+    wandb_run_name: "ahmed_field__RUN_ID_"
+    seed: 42
+    device: "cuda:0"
+    dtype: "torch.float32"
+    trainer_name: "static3d"
+    train: true
+    test: true
+    ckpt: false
+    use_variance_test: false
+    distributed: true
+
+    wandb: true
+    wandb_project: "WP1_drag"
+    wandb_entity: aisco
+    wandb_group: ahmed_field
+    wandb_mode: online
+    wandb_tags: ["field", "pressure", "ahmed", "multi_head", "gaot"]
+    wandb_watch_model: false
+
+    test_during_training: false
+
+model:
+    name: "gaot_3d"
+    use_conditional_norm: false
+    args:
+        latent_tokens: [64,64,32]
+        field_output_size: 1
+        magno:
+            use_gno: true
+            gno_coord_dim: 3
+            neighbor_strategy: "bidirectional"
+            projection_channels: 256
+            in_gno_channel_mlp_hidden_layers: [64,64,64]
+            out_gno_channel_mlp_hidden_layers: [64,64]
+            lifting_channels: 32
+            gno_radius: 0.033
+            gno_use_torch_cluster: true
+            attention_type: "cosine"
+            use_geoembed: [true, false]
+            embedding_method: "statistical"
+            encoder_feature_attr: ["pos","c"]
+            mlp_type: "linear"
+            precompute_edges: false
+            asynchronous_graph_building: true
+            scales: [1.0]
+            use_scale_weights: false
+            k_neighbors: 1
+        transformer:
+            patch_size: 2
+            hidden_size: 256
+            use_attn_norm: true
+            use_ffn_norm: true
+            norm_eps: 1e-06
+            num_layers: 10
+            positional_embedding: "rope"
+            use_long_range_skip: true
+            attn_config:
+                hidden_size: 256
+                num_heads: 8
+                num_kv_heads: 8
+                use_conditional_norm: false
+                cond_norm_hidden_size: 4
+            ffn_config:
+                hidden_size: 1024
+                use_conditional_norm: false
+                cond_norm_hidden_size: 4
+
+dataset:
+    name: "ahmed_pressure_field"
+    metaname: "incompressible_fluids/ahmed_pressure"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_ahmed_cp_full"
+    processed_folder: ""
+    force_recompute_stats: true
+    rand_dataset: true
+    train_size: 400
+    val_size: 50
+    test_size: 50
+    batch_size: 1
+    num_workers: 4
+    shuffle: true
+    metric_suite: "general"
+    update_pt_files_with_edges: false
+    training_strategy: "neural_field"
+    neural_field_input_nodes: 40000
+    neural_field_query_nodes_train: 40000
+    field_loss_weight: 1.0
+
+optimizer:
+    name: "adamw"
+    args:
+        lr: 3e-4
+        weight_decay: 1e-05
+        epoch: 300
+        loss_scale: 1.0
+        eval_every_eps: 1
+        scheduler: "mix"
+        max_lr: 5e-4
+        min_lr: 1e-4
+        final_lr: 1e-5
+        save_every_epochs: 10
+
+path:
+    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/ckpt/ahmed_field__RUN_ID_.pt"
+    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/loss/ahmed_field__RUN_ID_.png"
+    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/results/ahmed_field__RUN_ID_.png"
+    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/drivaer_drag_results/database/ahmed_field_metrics.csv"

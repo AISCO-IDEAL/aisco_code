@@ -1,0 +1,152 @@
+# src/trainer/utils/pyg_transforms.py
+
+import torch
+from torch_geometric.data import Data
+from torch_geometric.transforms import BaseTransform
+
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.scale import rescale, rescale_new
+
+EPSILON = 1e-10
+
+
+class RescalePosition(BaseTransform):
+    """Rescales node positions 'pos' to a specified range (default: [-1, 1]).
+
+    Also computes per-sample ``scale_factors`` (physical extent per axis)
+    and stores them on ``data.scale_factors`` so the model can learn
+    size-dependent behaviour.
+    """
+
+    def __init__(self, lims=(-1.0, 1.0)):
+        self.lims = lims
+
+    def _rescale(self, data: Data) -> Data:
+        if hasattr(data, "pos") and data.pos is not None:
+            pos = data.pos
+            # Store original positions for pressure integration (physical units)
+            data.pos_raw = pos.clone()
+            # Per-axis physical extent *before* normalisation (differentiable).
+            # Shape [1, D] so PyG batches correctly to [B, D].
+            # Divide by 1000 to convert from mm to metres.
+            pos_min = pos.min(dim=0).values
+            pos_max = pos.max(dim=0).values
+            data.scale_factors = (pos_max - pos_min).unsqueeze(0) / 1000.0
+            data.bbox_center = ((pos_max + pos_min) / 2.0).unsqueeze(0) / 1000.0
+            data.pos = rescale(pos, lims=self.lims)
+        else:
+            print("Warning: RescalePosition transform called but data has no 'pos' attribute.")
+        return data
+
+    def forward(self, data: Data) -> Data:
+        return self._rescale(data)
+
+    def __call__(self, data: Data) -> Data:
+        return self._rescale(data)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(lims={self.lims})"
+
+
+class RescalePositionNew(BaseTransform):
+    """Rescales node positions 'pos' using fixed physical domain bounds.
+
+    Also computes per-sample ``scale_factors`` (physical extent per axis)
+    and stores them on ``data.scale_factors``.
+    """
+
+    def __init__(self, lims=(-1.0, 1.0), phy_domain=([-3e3, -3e3, -3e3], [3e3, 3e3, 3e3])):
+        self.lims = lims
+        self.phy_domain = phy_domain
+
+    def _rescale(self, data: Data) -> Data:
+        if hasattr(data, "pos") and data.pos is not None:
+            pos = data.pos
+            # Store original positions for pressure integration (physical units)
+            data.pos_raw = pos.clone()
+            # Shape [1, D] so PyG batches correctly to [B, D].
+            # Divide by 1000 to convert from mm to metres.
+            pos_min = pos.min(dim=0).values
+            pos_max = pos.max(dim=0).values
+            data.scale_factors = (pos_max - pos_min).unsqueeze(0) / 1000.0
+            data.bbox_center = ((pos_max + pos_min) / 2.0).unsqueeze(0) / 1000.0
+            data.pos = rescale_new(pos, lims=self.lims, phys_domain=self.phy_domain)
+        else:
+            print("Warning: RescalePosition transform called but data has no 'pos' attribute.")
+        return data
+
+    def forward(self, data: Data) -> Data:
+        return self._rescale(data)
+
+    def __call__(self, data: Data) -> Data:
+        return self._rescale(data)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(lims={self.lims})"
+
+
+class NormalizeFeatures(BaseTransform):
+    """Normalizes node features 'y' (or per-head 'force'/'cd') and optionally 'c' using pre-computed mean and std."""
+
+    def __init__(
+        self,
+        mean: torch.Tensor,
+        std: torch.Tensor,
+        c_mean: torch.Tensor | None = None,  # noqa: ARG002 — kept for API compatibility
+        c_std: torch.Tensor | None = None,  # noqa: ARG002 — kept for API compatibility
+        per_head_stats: dict | None = None,
+    ):
+        self.mean = mean.detach()
+        self.std = std.detach()
+
+        # c_mean / c_std are accepted for backwards compatibility but ignored.
+        # Normals must NOT be normalized (they are unit vectors with geometric meaning).
+        self.c_mean = None
+        self.c_std = None
+
+        # Per-head stats for multi-head format (keys: "force", "cd")
+        self.per_head_stats = per_head_stats or {}
+
+    def _normalize_targets(self, data: Data) -> Data:
+        """Normalize target values: either data.y (old format) or data.force/data.cd (multi-head)."""
+        if hasattr(data, "y") and data.y is not None:
+            mean_dev = self.mean.to(data.y.device)
+            std_dev = self.std.to(data.y.device)
+            data.y = (data.y - mean_dev) / (std_dev + EPSILON)
+        else:
+            # Multi-head format: normalize force and cd separately using per-head stats
+            if hasattr(data, "force") and data.force is not None and "force" in self.per_head_stats:
+                f_mean = self.per_head_stats["force"]["mean"].to(data.force.device)
+                f_std = self.per_head_stats["force"]["std"].to(data.force.device)
+                # Only normalize non-NaN values
+                valid = ~torch.isnan(data.force)
+                if valid.any():
+                    data.force = data.force.clone()
+                    data.force[valid] = (data.force[valid] - f_mean) / (f_std + EPSILON)
+
+            if hasattr(data, "cd") and data.cd is not None and "cd" in self.per_head_stats:
+                cd_mean = self.per_head_stats["cd"]["mean"].to(data.cd.device)
+                cd_std = self.per_head_stats["cd"]["std"].to(data.cd.device)
+                valid = ~torch.isnan(data.cd)
+                if valid.any():
+                    data.cd = data.cd.clone()
+                    data.cd[valid] = (data.cd[valid] - cd_mean) / (cd_std + EPSILON)
+        return data
+
+    def _normalize_c(self, data: Data) -> Data:
+        """No-op: normals must NOT be normalized (they are unit vectors with geometric meaning)."""
+        return data
+
+    def forward(self, data: Data) -> Data:
+        data = self._normalize_targets(data)
+        data = self._normalize_c(data)
+        return data
+
+    def __call__(self, data: Data) -> Data:
+        data = self._normalize_targets(data)
+        data = self._normalize_c(data)
+        return data
+
+    def __repr__(self) -> str:
+        has_c = self.c_mean is not None and self.c_std is not None
+        heads = list(self.per_head_stats.keys()) if self.per_head_stats else []
+        return f"{self.__class__.__name__}(mean=..., std=..., has_c_norm={has_c}, heads={heads})"
