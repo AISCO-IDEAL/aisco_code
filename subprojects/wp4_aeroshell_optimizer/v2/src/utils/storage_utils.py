@@ -31,7 +31,7 @@ def allround_save_data(  # noqa: PLR0915
     verbose: bool = True,
     pretraining: bool = False,
     marching_cubes_usage: bool = False,
-    device: str = "cuda",
+    device: str | None = None,
 ) -> None:
     """
     Save model data to a specified file path in JSON format, with options to save mesh and model state dictionary.
@@ -113,14 +113,34 @@ def allround_save_data(  # noqa: PLR0915
     ### save the mesh ###
     #####################
     if save_mesh:
+        model_device: str | None = None
+        try:
+            model_device = str(next(model.parameters()).device)
+        except (StopIteration, AttributeError):
+            model_device = None
+
+        requested_device = str(device) if device is not None else model_device
+        if requested_device is None:
+            requested_device = "cpu"
+
+        runtime_device = requested_device
+        if model_device is not None and requested_device != model_device:
+            print(
+                "Warning: allround_save_data received device='"
+                f"{requested_device}' but model is on '{model_device}'. "
+                "Auto-syncing extraction to model device.",
+                flush=True,
+            )
+            runtime_device = model_device
+
         # get a model using kaolin conversions
         # Use a copy to avoid disrupting training
 
         if marching_cubes_usage != "True":
-            temp_model = copy.deepcopy(model).to(device)
+            temp_model = copy.deepcopy(model).to(runtime_device)
             grid_res = resolution
             verts, faces = get_diff_mesh(
-                temp_model, grid_res=grid_res, device=device
+                temp_model, grid_res=grid_res, device=runtime_device
             )  # fsanche: keeping this in case marching cubes doest work. this one is the original.
             if (mesh_dir / f"{wandb_run}_{epoch_str}.ply").exists():
                 print(f"Warning: Overwriting existing mesh at {mesh_dir / f'{wandb_run}_{epoch_str}.ply'}")
@@ -141,7 +161,7 @@ def allround_save_data(  # noqa: PLR0915
                 try:
                     print(f"{thread_label} Started worker.", flush=True)
 
-                    extractor = MarchingCubesExtractor(device=device, verbose=False)
+                    extractor = MarchingCubesExtractor(device=runtime_device, verbose=False)
 
                     extractor.set_grid(
                         bbox=[[-5000, 5000], [-5000, 5000], [-5000, 5000]],
@@ -183,7 +203,7 @@ def allround_save_data(  # noqa: PLR0915
                 except Exception as exc:
                     print(f"{thread_label} FAILED: {exc}", flush=True)
 
-            temp_model = copy.deepcopy(model).cpu()
+            temp_model = copy.deepcopy(model).to(runtime_device)
 
             resolutions = [300]
 
