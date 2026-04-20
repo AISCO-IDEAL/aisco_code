@@ -101,15 +101,15 @@ class TestTemplateControlDict:
         assert "pitchAxis       (0 1 0);" in content
         assert "libs            (fieldFunctionObjects);" in content
 
-    def test_end_time_3000(self) -> None:
-        """endTime is 3000 to ensure all cases converge (residualControl stops easy ones early)."""
+    def test_end_time_4500(self) -> None:
+        """endTime is 4500 iterations (updated from 3000; residualControl stops easy ones early)."""
         content = (TEMPLATE_DIR / "system" / "controlDict").read_text()
-        assert "endTime         3000;" in content
+        assert "endTime         4500;" in content
 
-    def test_write_interval_3000(self) -> None:
-        """writeInterval is 3000 so only the final converged state is written by default."""
+    def test_write_interval_4500(self) -> None:
+        """writeInterval is 4500 so only the final converged state is written."""
         content = (TEMPLATE_DIR / "system" / "controlDict").read_text()
-        assert "writeInterval   3000;" in content
+        assert "writeInterval   4500;" in content
 
     def test_force_coeffs_function_object(self) -> None:
         """forceCoeffs function object is defined for Cd extraction."""

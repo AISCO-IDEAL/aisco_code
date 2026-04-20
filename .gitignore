@@ -27,6 +27,11 @@
 !tests/**/
 !.github/
 !.github/**/
+# Whitelist OpenFOAM case template (extensionless dict files have no extension, so
+# the file-type whitelist below does not cover them)
+!subprojects/**/case_template/**
+# Whitelist OpenFOAM case template (extensionless dict files not covered by file-type patterns below)
+!subprojects/**/case_template/**
 # Blacklist data folder
 subprojects/**/data/
 tests/**/data/
