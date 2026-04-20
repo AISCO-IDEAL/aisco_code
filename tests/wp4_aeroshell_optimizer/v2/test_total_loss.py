@@ -284,6 +284,40 @@ class TestInit:
         finally:
             cleanup()
 
+    def test_constraint_order_includes_connectedness(self, make_total_loss):
+        cfg = _make_losses_config()
+        cfg["general_info"]["alm_thresholds"] = [0.1, 0.1, 0.1, 0.1]
+        cfg["general_info"]["initial_lambda"] = [0.01, 0.01, 0.01, 0.01]
+        cfg["general_info"]["initial_mu"] = [1.0, 1.0, 1.0, 1.0]
+        cfg["general_info"]["initial_nu"] = [1.0, 1.0, 1.0, 1.0]
+        cfg["losses"]["connectedness"] = {
+            "connectedness_v1": [
+                1,
+                1.0,
+                "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py",
+            ]
+        }
+
+        tl, _m, cleanup = make_total_loss(
+            losses_cfg=cfg,
+            loss_values={
+                "gaot_loss": 2.0,
+                "bb_v3": 0.5,
+                "eikonal_v0": 0.3,
+                "smoothness_v0": 0.1,
+                "connectedness_v1": 0.2,
+                "surface_loss_v0": 1.0,
+                "solar_v3B": 100.0,
+            },
+        )
+        try:
+            assert list(tl._constraint_losses.keys()) == ["bb", "eikonal", "smoothness", "connectedness"]
+            assert tl.lamdas.shape == (4, 1)
+            assert tl.mus.shape == (4, 1)
+            assert tl.nus.shape == (4, 1)
+        finally:
+            cleanup()
+
     def test_manual_mode_no_alm_state(self, make_total_loss):
         """ALM='False' → manual mode: no lamdas/mus/nus attributes."""
         tl, _m, cleanup = make_total_loss(losses_cfg=_make_losses_config(alm="False"))
