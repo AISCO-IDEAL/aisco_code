@@ -110,15 +110,27 @@ get_points_params: # used in eikonal and smoothness loss  #  parent_loss.py: sel
 
 
 connectedness_config:
-  warmup_epochs: 10  # skip PH connectedness loss until this epoch
+  warmup_epochs: 50  # skip PH connectedness loss until this epoch
   eval_period: 1  # evaluate PH loss every N epochs after warmup
   return_cached_on_skip: "False"  # if True, reuse last computed scalar on skipped epochs
   grid_dim: 3
-  grid_resolution: 40
-  bbox: [[-5000, 5000], [-5000, 5000], [-5000, 5000]] # [mm] placeholder, same as default mesh bbox
+  grid_resolution: 128
+  bbox: [[-4000, 4000], [-3000, 3000], [-1000, 5000]] # [mm] placeholder, same as default mesh bbox
   iso_level: 0.0
   target_betti_dim0: 1  # enforce one connected component
   maxdim: 0  # start with H0-only connectedness enforcement
+  # Stabilization after first successful connection:
+  persistence_min_lifetime: 0.02  # ignore tiny/noisy H0 components below this persistence
+  max_extra_components: 8  # top-k extra components (sorted by lifetime) to penalize
+  ph_smoothing_kernel: 3  # odd kernel; 1 disables smoothing on PH grid
+  penalty_mode: "huber"  # quadratic | huber
+  huber_delta: 0.1
+  violation_cap: null  # null/none disables per-point violation cap
+  normalize_mode: "mean"  # sum | mean | sqrt
+  hysteresis_enabled: "True"
+  success_patience_evals: 5  # freeze after this many consecutive PH evals below freeze threshold
+  freeze_loss_threshold: 1.0e-3
+  reactivate_loss_threshold: 5.0e-3  # must be > freeze threshold
 
 
 bb_config:  # bb_v3.py: self.losses_config["bb_config"]
