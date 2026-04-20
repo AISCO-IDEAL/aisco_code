@@ -100,7 +100,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: diversity
     field_diversity_v0: [1, 0.1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
 
-  total: # Unused with the implementation of TotalLossV2 and main_v2.py?
+  total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
     artifact_every: 10  # save model+mesh checkpoint artifact to wandb every N epochs
 
