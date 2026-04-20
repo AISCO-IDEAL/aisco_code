@@ -21,12 +21,14 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.universal_null_losses import (  # noqa: E402
-    NullLossAeroV1,
-    NullLossBbV1,
-    NullLossDevelopabilityV0,
-    NullLossEikonalV0,
-    NullLossSmoothnessV0,
-    NullLossSolarV1,
+    NullLossAero,
+    NullLossBB,
+    NullLossConnectedness,
+    NullLossDevelopability,
+    NullLossDiversity,
+    NullLossEikonal,
+    NullLossSmoothness,
+    NullLossSolar,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config  # noqa: E402
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import (  # noqa: E402
@@ -69,12 +71,14 @@ class TestDirectInstantiation:
     @pytest.mark.parametrize(
         "loss_class,loss_name",
         [
-            (NullLossAeroV1, "null_loss_aero_v1"),
-            (NullLossSolarV1, "null_loss_solar_v1"),
-            (NullLossBbV1, "null_loss_bb_v1"),
-            (NullLossDevelopabilityV0, "null_loss_developability_v0"),
-            (NullLossEikonalV0, "null_loss_eikonal_v0"),
-            (NullLossSmoothnessV0, "null_loss_smoothness_v0"),
+            (NullLossAero, "null_loss_aero"),
+            (NullLossSolar, "null_loss_solar"),
+            (NullLossBB, "null_loss_bb"),
+            (NullLossDevelopability, "null_loss_developability"),
+            (NullLossEikonal, "null_loss_eikonal"),
+            (NullLossSmoothness, "null_loss_smoothness"),
+            (NullLossDiversity, "null_loss_diversity"),
+            (NullLossConnectedness, "null_loss_connectedness"),
         ],
     )
     def test_instantiation(self, loss_class, loss_name, device, losses_config):
@@ -96,12 +100,14 @@ class TestZeroReturn:
     @pytest.mark.parametrize(
         "loss_class,loss_name",
         [
-            (NullLossAeroV1, "null_loss_aero_v1"),
-            (NullLossSolarV1, "null_loss_solar_v1"),
-            (NullLossBbV1, "null_loss_bb_v1"),
-            (NullLossDevelopabilityV0, "null_loss_developability_v0"),
-            (NullLossEikonalV0, "null_loss_eikonal_v0"),
-            (NullLossSmoothnessV0, "null_loss_smoothness_v0"),
+            (NullLossAero, "null_loss_aero"),
+            (NullLossSolar, "null_loss_solar"),
+            (NullLossBB, "null_loss_bb"),
+            (NullLossDevelopability, "null_loss_developability"),
+            (NullLossEikonal, "null_loss_eikonal"),
+            (NullLossSmoothness, "null_loss_smoothness"),
+            (NullLossConnectedness, "null_loss_connectedness"),
+            (NullLossDiversity, "null_loss_diversity"),
         ],
     )
     def test_returns_zero(self, loss_class, loss_name, device, losses_config, mock_model):
@@ -127,10 +133,14 @@ class TestGradientTracking:
     @pytest.mark.parametrize(
         "loss_class,loss_name",
         [
-            (NullLossAeroV1, "null_loss_aero_v1"),
-            (NullLossSolarV1, "null_loss_solar_v1"),
-            (NullLossBbV1, "null_loss_bb_v1"),
-            (NullLossDevelopabilityV0, "null_loss_developability_v0"),
+            (NullLossAero, "null_loss_aero"),
+            (NullLossSolar, "null_loss_solar"),
+            (NullLossBB, "null_loss_bb"),
+            (NullLossDevelopability, "null_loss_developability"),
+            (NullLossEikonal, "null_loss_eikonal"),
+            (NullLossSmoothness, "null_loss_smoothness"),
+            (NullLossConnectedness, "null_loss_connectedness"),
+            (NullLossDiversity, "null_loss_diversity"),
         ],
     )
     def test_no_gradient_tracking(self, loss_class, loss_name, device, losses_config, mock_model):
@@ -154,9 +164,9 @@ class TestTensorCaching:
 
     def test_cached_tensor_reuse(self, device, losses_config):
         """Test that the same tensor is returned on multiple calls."""
-        loss = NullLossSolarV1(
+        loss = NullLossSolar(
             device=device,
-            loss_name="null_loss_solar_v1",
+            loss_name="null_loss_solar",
             losses_config=losses_config,
             weight=[1.0, 1.0],
         )
@@ -178,12 +188,14 @@ class TestDynamicLoading:
     @pytest.mark.parametrize(
         "loss_name,class_name",
         [
-            ("null_loss_aero_v1", "NullLossAeroV1"),
-            ("null_loss_solar_v1", "NullLossSolarV1"),
-            ("null_loss_bb_v1", "NullLossBbV1"),
-            ("null_loss_developability_v0", "NullLossDevelopabilityV0"),
-            ("null_loss_eikonal_v0", "NullLossEikonalV0"),
-            ("null_loss_smoothness_v0", "NullLossSmoothnessV0"),
+            ("null_loss_aero", "NullLossAero"),
+            ("null_loss_solar", "NullLossSolar"),
+            ("null_loss_bb", "NullLossBB"),
+            ("null_loss_developability", "NullLossDevelopability"),
+            ("null_loss_eikonal", "NullLossEikonal"),
+            ("null_loss_smoothness", "NullLossSmoothness"),
+            ("null_loss_connectedness", "NullLossConnectedness"),
+            ("null_loss_diversity", "NullLossDiversity"),
         ],
     )
     def test_dynamic_loading(self, loss_name, class_name):  # noqa: ARG002
@@ -208,9 +220,9 @@ class TestEarlyReturn:
 
     def test_weight_zero_early_return(self, device, losses_config, mock_model):
         """Test that weight=0 causes early return without computation."""
-        loss = NullLossSolarV1(
+        loss = NullLossSolar(
             device=device,
-            loss_name="null_loss_solar_v1",
+            loss_name="null_loss_solar",
             losses_config=losses_config,
             weight=[0.0, 0.0],  # Disabled
         )
@@ -229,27 +241,33 @@ class TestALMCompatibility:
         """Test that constraint nulllosses work with ALM system."""
         # Create constraint nulllosses (bb, eikonal, smoothness, developability)
         constraint_losses = [
-            NullLossBbV1(
+            NullLossBB(
                 device=device,
-                loss_name="null_loss_bb_v1",
+                loss_name="null_loss_bb",
                 losses_config=losses_config,
                 weight=[1.0, 1.0],
             ),
-            NullLossEikonalV0(
+            NullLossEikonal(
                 device=device,
-                loss_name="null_loss_eikonal_v0",
+                loss_name="null_loss_eikonal",
                 losses_config=losses_config,
                 weight=[1.0, 1.0],
             ),
-            NullLossSmoothnessV0(
+            NullLossSmoothness(
                 device=device,
-                loss_name="null_loss_smoothness_v0",
+                loss_name="null_loss_smoothness",
                 losses_config=losses_config,
                 weight=[1.0, 1.0],
             ),
-            NullLossDevelopabilityV0(
+            NullLossDevelopability(
                 device=device,
-                loss_name="null_loss_developability_v0",
+                loss_name="null_loss_developability",
+                losses_config=losses_config,
+                weight=[1.0, 1.0],
+            ),
+            NullLossConnectedness(
+                device=device,
+                loss_name="null_loss_connectedness",
                 losses_config=losses_config,
                 weight=[1.0, 1.0],
             ),
@@ -265,8 +283,8 @@ class TestALMCompatibility:
         constraint_vector = torch.tensor(constraint_values, device=device)
 
         # With all zeros, ALM penalty should be zero
-        alm_lambda = torch.tensor([0.01, 0.01, 0.01, 0.01], device=device)
-        alm_mu = torch.tensor([1.0, 1.0, 1.0, 1.0], device=device)
+        alm_lambda = torch.tensor([0.01, 0.01, 0.01, 0.01, 0.01], device=device)
+        alm_mu = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0], device=device)
 
         # ALM penalty: sum(lambda * c + 0.5 * mu * c^2)
         alm_penalty = torch.sum(alm_lambda * constraint_vector + 0.5 * alm_mu * constraint_vector**2)
@@ -281,21 +299,21 @@ class TestMultipleNulllosses:
     def test_multiple_active_nulllosses(self, device, losses_config, mock_model):
         """Test that multiple nulllosses can coexist."""
         losses = {
-            "aero": NullLossAeroV1(
+            "aero": NullLossAero(
                 device=device,
-                loss_name="null_loss_aero_v1",
+                loss_name="null_loss_aero",
                 losses_config=losses_config,
                 weight=[1.0, 1.0],
             ),
-            "solar": NullLossSolarV1(
+            "solar": NullLossSolar(
                 device=device,
-                loss_name="null_loss_solar_v1",
+                loss_name="null_loss_solar",
                 losses_config=losses_config,
                 weight=[1.0, 1.0],
             ),
-            "bb": NullLossBbV1(
+            "bb": NullLossBB(
                 device=device,
-                loss_name="null_loss_bb_v1",
+                loss_name="null_loss_bb",
                 losses_config=losses_config,
                 weight=[1.0, 1.0],
             ),
@@ -317,12 +335,14 @@ class TestTypeDistinctness:
     def test_distinct_types(self):
         """Test that each nullloss class is distinct."""
         classes = [
-            NullLossAeroV1,
-            NullLossSolarV1,
-            NullLossBbV1,
-            NullLossDevelopabilityV0,
-            NullLossEikonalV0,
-            NullLossSmoothnessV0,
+            NullLossAero,
+            NullLossSolar,
+            NullLossBB,
+            NullLossDevelopability,
+            NullLossEikonal,
+            NullLossSmoothness,
+            NullLossConnectedness,
+            NullLossDiversity,
         ]
 
         # All classes should be distinct

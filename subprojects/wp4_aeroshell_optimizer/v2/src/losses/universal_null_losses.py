@@ -63,19 +63,19 @@ class _BaseNullLoss(ParentLoss):
 # ============================================================================
 
 
-class NullLossSolarV1(_BaseNullLoss):
+class NullLossSolar(_BaseNullLoss):
     """Null loss for solar energy objectives."""
 
 
-class NullLossAeroV1(_BaseNullLoss):
+class NullLossAero(_BaseNullLoss):
     """Null loss for aerodynamic objectives."""
 
 
-class NullLossBbV1(_BaseNullLoss):
+class NullLossBB(_BaseNullLoss):
     """Null loss for bounding box constraints."""
 
 
-class NullLossDevelopabilityV0(_BaseNullLoss):
+class NullLossDevelopability(_BaseNullLoss):
     """Null loss for developability constraints.
 
     Note: Sets post_opt_enabled=False to skip post-optimization in WIRE_v2.
@@ -90,17 +90,21 @@ class NullLossDevelopabilityV0(_BaseNullLoss):
         self.post_opt_enabled = False
 
 
-class NullLossEikonalV0(_BaseNullLoss):
+class NullLossEikonal(_BaseNullLoss):
     """Null loss for eikonal equation constraints."""
 
 
-class NullLossSmoothnessV0(_BaseNullLoss):
+class NullLossSmoothness(_BaseNullLoss):
     """Null loss for smoothness constraints."""
 
 
-class NullLossDiversityV0(_BaseNullLoss):
+class NullLossDiversity(_BaseNullLoss):
     """Null loss for diversity objectives."""
 
 
-class NullLossSurfaceAreaV0(_BaseNullLoss):
+class NullLossSurfaceArea(_BaseNullLoss):
     """Null loss for surface area auxiliary losses."""
+
+
+class NullLossConnectedness(_BaseNullLoss):
+    """Null loss for connectedness constraints."""
