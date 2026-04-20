@@ -304,6 +304,7 @@ class DiversityTrainer:
 
         def _safe_pie(values: list[float], labels: list[str], title: str) -> plt.Figure:
             fig, ax = plt.subplots(figsize=(6, 6))
+            values = [abs(v) for v in values]
             total = sum(values)
             if total == 0 or len(values) == 0:
                 ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)

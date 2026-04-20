@@ -3,10 +3,19 @@ general_info:
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
   ALM_aggressive: "False" # capu version of ALM
   ALM_aggressive_capu: 0.25 # has constraint decreased sufficiently threshold, only used when ALM_aggressive=True. # weights.py: self.use_alm_aggressive
-  alm_thresholds: [0.1, 0.1, 0.1, 0.1]  # thresholds for constraint losses [bb, eikonal, smoothness, developability], ensures ever increasing weights. only used if ALM_aggressive=True
-  initial_lambda: [0.01, 0.01, 0.01, 0.01]  # per-constraint initial λ [bb, eikonal, smoothness, developability] (scalar also accepted)
-  initial_mu: [1.0, 1.0, 1.0, 1.0]  # per-constraint initial μ [bb, eikonal, smoothness, developability]
-  initial_nu: [1.0, 1.0, 1.0, 1.0]  # per-constraint initial ν [bb, eikonal, smoothness, developability]
+  # ALM parameter mapping order:
+  # - Arrays are supported and can be provided in either format:
+  #   (a) ACTIVE constraint order (only currently enabled constraints), or
+  #   (b) FULL configured constraint-category order below.
+  # - Full configured constraint-category order in this file:
+  #   [bb, eikonal, smoothness, connectedness, developability]
+  # - When a middle category is disabled, its slot is skipped automatically.
+
+  # Again, the ooder here corresponds to the order of the constraints in this config further below
+  alm_thresholds: [0.1, 0.1, 0.1, 0.1, 0.1]  # per-constraint threshold(s)
+  initial_lambda: [0.01, 0.01, 0.01, 0.01, 0.01]  # per-constraint initial lambda(s)
+  initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial mu(s)
+  initial_nu: [1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial nu(s)
   alpha: 0.99  # EMA decay factor for ν update
   gamma: 0.01  # parameter for ALM penalty update
   gamma_aggressive: 1.1  # multiplicative increase factor for μ in aggressive CAPU mode
@@ -22,11 +31,21 @@ general_info:
     max_iter: 12
     tol: 1.0e-4
 
-# Each category block gets a `_role` metadata field: "objective", "constraint", or "aux".
-# `_sign: maximize` flips the sign of an objective in manual (non-CSE) mode. Keys starting
-# with `_` are metadata and are NOT loaded as losses. Constraint ordering for ALM follows
-# the category order in the YAML (aero < bb < eikonal < smoothness < solar here, with
-# only constraint-role blocks entering the ALM vector).
+# Dynamic loading rules (TotalLoss V1 and V2):
+# 1) Every category block should define `_role`: objective|constraint|aux|diversity.
+# 2) Keep exactly one active loss variant (`compute=1`) per non-diversity category.
+# 3) Keys starting with `_` are metadata and are not treated as losses.
+# 4) Constraint ordering for ALM is the YAML category order of active `_role: constraint` blocks.
+#
+# How to add a new constraint without code changes:
+# - Add a new category block under `losses`, set `_role: constraint`.
+# - Add your loss variant as: name: [1, weight, "path/to/file.py"].
+# - Optionally set old variant(s) to compute=0 in the same category.
+# - No TotalLoss code edits required.
+#
+# How to add a new objective:
+# - Add category with `_role: objective` and optional `_sign: maximize|minimize`.
+# - For CSE mode, update `general_info.cse_params.drag_category` / `solar_category` if needed.
 losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically loads all losses with compute=1
   # NOTE: that for each loss class, only one version should have compute=True
   aero:
@@ -57,6 +76,10 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     null_loss_smoothness_v0: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     smoothness_v0: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
 
+  connectedness:
+    _role: constraint
+    connectedness_v1: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
+
   developability:
     _role: constraint
     null_loss_developability_v0: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
@@ -80,13 +103,37 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: diversity
     field_diversity_v0: [1, 0.1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
 
-  total:
+  total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
     artifact_every: 10  # save model+mesh checkpoint artifact to wandb every N epochs
 
 get_points_params: # used in eikonal and smoothness loss  #  parent_loss.py: self.losses_config["get_points_params"]["num_points"] and ["bbox_size"]
   num_points: 1000  #  parent_loss.py
   bbox_size: 10.0  #  parent_loss.py
+
+
+connectedness_config:
+  warmup_epochs: 50  # skip PH connectedness loss until this epoch
+  eval_period: 1  # evaluate PH loss every N epochs after warmup
+  return_cached_on_skip: "False"  # if True, reuse last computed scalar on skipped epochs
+  grid_dim: 3
+  grid_resolution: 128
+  bbox: [[-4000, 4000], [-3000, 3000], [-1000, 5000]] # [mm] placeholder, same as default mesh bbox
+  iso_level: 0.0
+  target_betti_dim0: 1  # enforce one connected component
+  maxdim: 0  # start with H0-only connectedness enforcement
+  # Stabilization after first successful connection:
+  persistence_min_lifetime: 0.02  # ignore tiny/noisy H0 components below this persistence
+  max_extra_components: 8  # top-k extra components (sorted by lifetime) to penalize
+  ph_smoothing_kernel: 3  # odd kernel; 1 disables smoothing on PH grid
+  penalty_mode: "huber"  # quadratic | huber
+  huber_delta: 0.1
+  violation_cap: null  # null/none disables per-point violation cap
+  normalize_mode: "mean"  # sum | mean | sqrt
+  hysteresis_enabled: "True"
+  success_patience_evals: 5  # freeze after this many consecutive PH evals below freeze threshold
+  freeze_loss_threshold: 1.0e-3
+  reactivate_loss_threshold: 5.0e-3  # must be > freeze threshold
 
 
 bb_config:  # bb_v3.py: self.losses_config["bb_config"]

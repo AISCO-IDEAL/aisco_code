@@ -1,0 +1,33 @@
+program: subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/main.py
+
+# Base arguments for main.py
+command:
+  - ${env}
+  - python
+  - ${program}
+  - -c
+  - subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml
+  - ${args}
+
+# Optimization setup
+method: bayes  # or "random" if you prefer
+metric:
+  name: val/loss   # adapt to your logged metric name
+  goal: minimize
+
+# Global sweep info (matches your project)
+project: WP1_drag
+entity: aisco
+name: "wp1_gaot_optimiser_sweep"
+
+parameters:
+  # ========== OPTIMIZER / LR-RELATED ONLY ==========
+  optimizer.args.beta1:
+    distribution: uniform
+    min: 0.85
+    max: 1
+
+  optimizer.args.eps:
+    distribution: log_uniform_values
+    min: 1e-9
+    max: 1e-4
