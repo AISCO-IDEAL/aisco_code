@@ -13,7 +13,13 @@
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
+set -euo pipefail
+
 umask 0002 # ensure group write permissions for logs and models
+
+ts() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
 
 # Allow W&B to route through the cluster proxy (eth_proxy sets no_proxy which blocks api.wandb.ai)
 export no_proxy=$(echo "$no_proxy" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
@@ -49,12 +55,17 @@ echo "=========================================="
 #------------------------------------------------------------------------------
 VENV_DIR="/cluster/home/$USERNAME/AISCO_code/aisco_env"
 source "$VENV_DIR/bin/activate"
+PYTHON_BIN="$VENV_DIR/bin/python"
+ts "Checkpoint: virtualenv activated ($VENV_DIR)"
+ts "Checkpoint: python executable = $PYTHON_BIN"
+"$PYTHON_BIN" --version
 #------------------------------------------------------------------------------
 # Verify GPU access
 #------------------------------------------------------------------------------
 echo "Verifying GPU access..."
 nvidia-smi
 echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
+ts "Checkpoint: GPU visibility check completed"
 #------------------------------------------------------------------------------
 
 # Set Hugging Face environment variables (not used for now)
@@ -79,13 +90,42 @@ export PYTHONUNBUFFERED=TRUE
 ## export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True # Allow PyTorch to expand GPU memory allocation as needed
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
 cd /cluster/home/$USERNAME/AISCO_code/
+ts "Checkpoint: changed directory to $(pwd)"
+
+ts "Checkpoint: starting import preflight (60s timeout)"
+if timeout 60s "$PYTHON_BIN" -u - <<'PY'
+print('preflight: interpreter ok', flush=True)
+import torch
+print(f'preflight: torch {torch.__version__}', flush=True)
+import subprojects.wp4_aeroshell_optimizer.v2.src.main_files.main_v2 as _m
+print('preflight: main_v2 import ok', flush=True)
+PY
+then
+    ts "Checkpoint: import preflight passed"
+else
+    rc=$?
+    ts "ERROR: import preflight failed or timed out (rc=$rc)"
+    exit "$rc"
+fi
 
 
 #python -m src.main
 
-python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py \
+ts "Checkpoint: launching main_v2.py with hard timeout"
+if timeout --signal=TERM --kill-after=30s 13800s "$PYTHON_BIN" -u subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py \
     --save_model \
     --problem_id="AISCO_WP4_Test1"  2>&1
+then
+    ts "Checkpoint: main_v2.py finished successfully"
+else
+    rc=$?
+    if [ "$rc" -eq 124 ]; then
+        ts "ERROR: main_v2.py hit timeout (13800s)"
+    else
+        ts "ERROR: main_v2.py exited non-zero (rc=$rc)"
+    fi
+    exit "$rc"
+fi
 #------------------------------------------------------------------------------
 # Print job end information
 #------------------------------------------------------------------------------

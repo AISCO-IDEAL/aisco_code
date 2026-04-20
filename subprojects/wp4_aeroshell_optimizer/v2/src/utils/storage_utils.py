@@ -114,7 +114,14 @@ def allround_save_data(  # noqa: PLR0915
         if device is not None:
             mesh_config = replace(mesh_config, device=device)
 
-        temp_model = copy.deepcopy(model).to(mesh_config.device)
+        mesh_device = str(mesh_config.device)
+        if mesh_device.startswith("cuda") and not torch.cuda.is_available():
+            if verbose:
+                print(f"Configured mesh save device '{mesh_device}' unavailable. Falling back to CPU.")
+            mesh_device = "cpu"
+            mesh_config = replace(mesh_config, device=mesh_device)
+
+        temp_model = copy.deepcopy(model).to(mesh_device)
         extractor = MeshSDFExtractor(config=mesh_config)
         extractor.set_grid(bbox=mesh_config.bbox, resolution=mesh_config.base_resolution)
         verts, faces = extractor.extract_mesh(temp_model)

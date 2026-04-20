@@ -17,6 +17,7 @@ Post-optimization (after training):
 
 from __future__ import annotations
 
+from dataclasses import replace as _replace
 from pathlib import Path
 from typing import Any
 
@@ -24,10 +25,8 @@ import numpy as np
 import torch
 import trimesh
 
-from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import (
-    DISOExtractor,
-)
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 _pdev_module: Any
 CachedDevelopabilityEnergy: Any
@@ -90,12 +89,10 @@ class DevelopabilityV0(ParentLoss):
         self.post_opt_subdivisions = cfg.get("post_opt_subdivisions", 0)
         self.post_opt_output_dir = cfg.get("post_opt_output_dir", "postprocessed_meshes")
 
-        # DISO mesh extractor (differentiable)
-        self.mesh_extractor = DISOExtractor(
-            extractor_type="DiffMC",
-            dtype="float32",
-            device=self.device,
-        )
+        # Unified WP5 mesh extractor (non-differentiable MC + surrogate gradient flow)
+        mesh_config = load_mesh_extraction_config()
+        mesh_config = _replace(mesh_config, device=self.device, isovalue=float(self.mesh_isovalue))
+        self.mesh_extractor = MeshSDFExtractor(config=mesh_config)
         self.mesh_extractor.set_grid(
             bbox=self.mesh_bbox,
             resolution=self.mesh_resolution,
@@ -105,20 +102,17 @@ class DevelopabilityV0(ParentLoss):
         self.energy_fn = CachedDevelopabilityEnergy(energy_type=self.energy_type)
 
     def _loss(self, model) -> torch.Tensor:
-        # Extract mesh from SDF via DISO (differentiable)
-        verts, faces = self.mesh_extractor.extract_mesh(
-            model=model,
-            isovalue=self.mesh_isovalue,
-            batch_size=self.mesh_batch_size,
+        def _developability_loss_fn(vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
+            if vertices.shape[0] == 0:
+                return torch.tensor(0.0, device=self.device)
+            return self.energy_fn(vertices.double(), faces).to(dtype=torch.float32)
+
+        _verts, _faces, _raw_loss, surrogate_loss, _ = self.mesh_extractor.extract_and_compute_loss(
+            sdf_model=model,
+            loss_fn=_developability_loss_fn,
+            enable_backward=True,
         )
-
-        if verts.shape[0] == 0:
-            return torch.tensor(0.0, device=self.device)
-
-        # Compute developability energy (C++ backend, analytical gradient)
-        loss = self.energy_fn(verts.double(), faces)
-
-        return loss.to(dtype=torch.float32)
+        return surrogate_loss
 
     def post_optimize(
         self,

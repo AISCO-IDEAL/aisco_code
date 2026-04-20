@@ -14,6 +14,7 @@ Supported methods:
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from collections.abc import Callable
@@ -357,6 +358,9 @@ class SolarLossEstimator:
         self.resolution = int(cfg["resolution"])
         self.area_budget_mm2 = float(cfg["area_budget_mm2"])
         self.device = cfg["device"]
+        if str(self.device).startswith("cuda") and not torch.cuda.is_available():
+            print(f"Configured solar estimator device '{self.device}' unavailable. Falling back to CPU.")
+            self.device = "cpu"
         self.batch_size = int(cfg["batch_size"])
         self.eps = float(cfg["eps"])
         self.log_group_name = str(cfg["log_group_name"])
@@ -381,6 +385,9 @@ class SolarLossEstimator:
             self.simulator = SimulationV1(cfg_path=australia_cfg, area_budget_mm2=self.area_budget_mm2)
 
         self.rendering = bool(cfg["rendering"])
+        if self.rendering and not str(self.device).startswith("cuda"):
+            print("Solar estimator rendering disabled because current device is CPU.")
+            self.rendering = False
         self.visualiser: Visualiser | None
         self.renderSolar: SolarV3Selection | None
         self.render_grads: MeshSDFGrads | None
@@ -474,7 +481,7 @@ class SolarLossEstimator:
             return self.extractor.extract_mesh(model)
         raise ValueError(f"Unknown method: {self.method}")
 
-    def solar_loss(  # noqa: PLR0915
+    def solar_loss(  # noqa: PLR0915, PLR0912
         self,
         model: Any,
         epoch_name: int | None = None,
@@ -568,18 +575,26 @@ class SolarLossEstimator:
                 return loss
 
             assert isinstance(self.extractor, MeshSDFExtractor)  # Get mypy to shut up, confirm we are using MeshSDF
-            torch.cuda.synchronize()
+            if str(self.device).startswith("cuda") and torch.cuda.is_available():
+                torch.cuda.synchronize()
             _t0 = time.perf_counter()
             vertices, faces, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
                 sdf_model=model,
                 loss_fn=wrapper_solar_loss,
                 enable_backward=True,
             )
-            torch.cuda.synchronize()
-            _t1 = time.perf_counter()
-            print(f"[TIMING] extract_and_compute_loss: {_t1 - _t0:.2f}s  (vertices={vertices.shape[0]}, faces={faces.shape[0]})")
-            if self.rendering and self.render_grads is not None and vertices.shape[0] > 1:
+            if str(self.device).startswith("cuda") and torch.cuda.is_available():
                 torch.cuda.synchronize()
+            _t1 = time.perf_counter()
+            logging.getLogger("sdf2mesh").debug(
+                "extract_and_compute_loss: %.2fs (vertices=%d, faces=%d)",
+                _t1 - _t0,
+                int(vertices.shape[0]),
+                int(faces.shape[0]),
+            )
+            if self.rendering and self.render_grads is not None and vertices.shape[0] > 1:
+                if str(self.device).startswith("cuda") and torch.cuda.is_available():
+                    torch.cuda.synchronize()
                 _t2 = time.perf_counter()
                 self.render_grads.update(
                     optimization_state={
@@ -595,9 +610,10 @@ class SolarLossEstimator:
                     and self.rendering_dir is not None
                 ):
                     self.render_grads.finalize(output_dir=self.rendering_dir, file_name="mesh_sdf_grads.gif")
-                torch.cuda.synchronize()
+                if str(self.device).startswith("cuda") and torch.cuda.is_available():
+                    torch.cuda.synchronize()
                 _t3 = time.perf_counter()
-                print(f"[TIMING] render_grads: {_t3 - _t2:.2f}s")
+                logging.getLogger("sdf2mesh").debug("render_grads: %.2fs", _t3 - _t2)
 
         else:
             vertices, faces = self.extract_mesh(model)

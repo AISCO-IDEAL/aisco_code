@@ -349,6 +349,9 @@ class SolarLossEstimator:
         self.resolution = int(cfg["resolution"])
         self.area_budget_mm2 = float(cfg["area_budget_mm2"])
         self.device = cfg["device"]
+        if str(self.device).startswith("cuda") and not torch.cuda.is_available():
+            print(f"Configured solar estimator device '{self.device}' unavailable. Falling back to CPU.")
+            self.device = "cpu"
         self.batch_size = int(cfg["batch_size"])
         self.eps = float(cfg["eps"])
         self.log_group_name = str(cfg["log_group_name"])

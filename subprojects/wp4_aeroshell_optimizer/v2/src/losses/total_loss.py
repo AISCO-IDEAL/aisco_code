@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import inspect
 import time
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from pathlib import Path
 from typing import Any, TypeAlias
 
@@ -61,6 +61,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_c
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor
 
 # ---------------------------------------------------------------------------
 # Category → role mapping (used to classify losses from the YAML config)
@@ -207,17 +208,87 @@ class TotalLoss:
         )
 
     # ------------------------------------------------------------------
+    # mesh extraction sharing
+    # ------------------------------------------------------------------
+    def _find_mesh_extractors(self) -> dict[str, MeshSDFExtractor]:
+        """Discover MeshSDFExtractor instances on active loss objects (up to 1 level deep)."""
+        extractors: dict[str, MeshSDFExtractor] = {}
+        _check_attrs = ("mesh_extractor", "extractor")
+        for name, instance in self._active_losses.items():
+            # Direct check on loss instance
+            for attr in _check_attrs:
+                obj = getattr(instance, attr, None)
+                if isinstance(obj, MeshSDFExtractor):
+                    extractors[name] = obj
+                    break
+            else:
+                # One level deeper: check public instance attributes for nested extractors
+                for attr_name, attr_val in vars(instance).items():
+                    if attr_name.startswith("_") or attr_val is None:
+                        continue
+                    for inner_attr in _check_attrs:
+                        obj = getattr(attr_val, inner_attr, None)
+                        if isinstance(obj, MeshSDFExtractor):
+                            extractors[name] = obj
+                            break
+                    if name in extractors:
+                        break
+        return extractors
+
+    def _inject_shared_meshes(self, model: TrainModel) -> None:
+        """Pre-extract meshes for groups of losses that share the same extraction config.
+
+        For each unique extraction key, one extractor performs the extraction and the
+        result is injected into all other extractors in the group so they skip extraction.
+        """
+        extractors = self._find_mesh_extractors()
+        print(f"[mesh-sharing] Found {len(extractors)} extractors: {list(extractors.keys())}")
+        if len(extractors) < 2:
+            return  # nothing to share
+
+        # Group by extraction key
+        groups: dict[tuple, list[tuple[str, MeshSDFExtractor]]] = defaultdict(list)
+        for loss_name, ext in extractors.items():
+            groups[ext.extraction_key()].append((loss_name, ext))
+
+        for members in groups.values():
+            if len(members) < 2:
+                continue  # unique config, no sharing needed
+
+            # Extract with the first extractor and inject into the rest
+            primary_name, primary_ext = members[0]
+            vertices, faces = primary_ext.extract_mesh(model)
+            print(
+                f"[mesh-sharing] Extracted {vertices.shape[0]} vertices via '{primary_name}', "
+                f"sharing with {[n for n, _ in members[1:]]}"
+            )
+            for _name, ext in members[1:]:
+                ext.set_shared_mesh(vertices, faces)
+
+        self._shared_mesh_extractors = extractors
+
+    def _clear_shared_meshes(self) -> None:
+        """Clear all injected shared meshes after the loss computation loop."""
+        for ext in getattr(self, "_shared_mesh_extractors", {}).values():
+            ext.clear_shared_mesh()
+        self._shared_mesh_extractors = {}
+
+    # ------------------------------------------------------------------
     # loss computation
     # ------------------------------------------------------------------
     def _compute_raw_losses(self, model: TrainModel, epoch_name: int, skip_telemetry: bool = False) -> dict[str, torch.Tensor]:
         """Evaluate every active loss instance and return raw (unweighted) tensors."""
+        self._inject_shared_meshes(model)
         raw: dict[str, torch.Tensor] = {}
-        for name, instance in self._active_losses.items():
-            sig = inspect.signature(instance.get_loss)
-            if "skip_telemetry" in sig.parameters:
-                raw[name] = instance.get_loss(model, epoch_name, skip_telemetry=skip_telemetry)
-            else:
-                raw[name] = instance.get_loss(model, epoch_name)
+        try:
+            for name, instance in self._active_losses.items():
+                sig = inspect.signature(instance.get_loss)
+                if "skip_telemetry" in sig.parameters:
+                    raw[name] = instance.get_loss(model, epoch_name, skip_telemetry=skip_telemetry)
+                else:
+                    raw[name] = instance.get_loss(model, epoch_name)
+        finally:
+            self._clear_shared_meshes()
         self.latest_raw_metrics = raw
         return raw
 

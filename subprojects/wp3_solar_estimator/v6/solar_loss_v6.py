@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from dataclasses import replace as _replace
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,6 @@ from subprojects.wp3_solar_estimator.australia.route_v1 import RouteV1
 from subprojects.wp3_solar_estimator.australia.route_v2 import RouteV2
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
-from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp3_solar_estimator.raytracing.diffable.version1.mesh_ray_visibility_v1 import mesh_visibility_v1
 from subprojects.wp3_solar_estimator.raytracing.diffable.version1.sdf_ray_visibility_v1 import sdf_visibility_v1
 from subprojects.wp3_solar_estimator.raytracing.diffable.version2.mesh_ray_visibility_v2 import mesh_visibility_v2
@@ -36,6 +36,7 @@ from subprojects.wp4_aeroshell_optimizer import (
     multi_log_in_one,
     reformat_wandb_name,
 )
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 
 def _efficient_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
@@ -487,6 +488,9 @@ class SolarLossEstimator:
         self.resolution = int(cfg["resolution"])
         self.area_budget_mm2 = float(cfg["area_budget_mm2"])
         self.device = cfg["device"]
+        if str(self.device).startswith("cuda") and not torch.cuda.is_available():
+            print(f"Configured solar estimator device '{self.device}' unavailable. Falling back to CPU.")
+            self.device = "cpu"
         self.batch_size = int(cfg["batch_size"])
         self.eps = float(cfg["eps"])
         self.log_group_name = str(cfg["log_group_name"])
@@ -670,21 +674,15 @@ class SolarLossEstimator:
             )
             self.extractor.set_grid(self.bbox, self.resolution)
         elif method in {"mesh_sdf", "mc"}:
-            bbox = self.bbox
-            self.extractor = MeshSDFExtractor(
-                resolution=self.resolution,
-                bbox=[
-                    bbox[0][0],
-                    bbox[0][1],
-                    bbox[1][0],
-                    bbox[1][1],
-                    bbox[2][0],
-                    bbox[2][1],
-                ],
-                isovalue=0.0,
+            mesh_cfg = load_mesh_extraction_config()
+            mesh_cfg = _replace(
+                mesh_cfg,
                 device=self.device,
+                bbox=self.bbox,
+                isovalue=float(self.config.get("isovalue", 0.0)),
             )
-            self.extractor.set_grid(self.bbox, self.resolution)
+            self.extractor = MeshSDFExtractor(config=mesh_cfg)
+            self.extractor.set_grid(self.bbox, mesh_cfg.base_resolution)
         else:
             raise ValueError(f"Unknown method: {method}")
 

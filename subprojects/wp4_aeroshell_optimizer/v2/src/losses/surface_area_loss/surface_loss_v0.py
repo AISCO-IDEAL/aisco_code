@@ -2,6 +2,8 @@
 # SDF coordinates are in mm; surface area is converted to m² before applying the activation.
 """
 
+from dataclasses import replace as _dc_replace
+
 import torch
 import torch.nn.functional as F  # noqa: N812 is standard alias for torch.nn.functional
 
@@ -29,8 +31,8 @@ class SurfaceLossV0(ParentLoss):
 
     def _setup(self) -> None:
         mesh_config = load_mesh_extraction_config()
+        mesh_config = _dc_replace(mesh_config, device=self.device)
         self.mesh_extractor = MeshSDFExtractor(config=mesh_config)
-        mesh_config.device = self.device
         self.mesh_extractor.set_grid(bbox=mesh_config.bbox, resolution=mesh_config.base_resolution)
 
     def _area_loss_fn(self, vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:

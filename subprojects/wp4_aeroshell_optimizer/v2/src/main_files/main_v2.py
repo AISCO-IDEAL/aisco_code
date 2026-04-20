@@ -253,9 +253,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         # Mesh extractor + optional renderer (only used if rendering_freq is set)
         renderer_cfg = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")
         mesh_extraction_config: dict[str, Any] = renderer_cfg.get("mesh_extraction", {})
+        mesh_extractor_device = mesh_extraction_config.get("device", str(device))
+        if str(mesh_extractor_device).startswith("cuda") and not torch.cuda.is_available():
+            print(f"Configured mesh extractor device '{mesh_extractor_device}' unavailable. Falling back to CPU.")
+            mesh_extractor_device = "cpu"
         mesh_extractor = MeshExtractor(
             algorithm=mesh_extraction_config.get("algorithm", "mc"),
-            device=mesh_extraction_config.get("device", str(device)),
+            device=mesh_extractor_device,
             verbose=mesh_extraction_config.get("verbose", False),
         )
         mesh_extractor.set_grid(
