@@ -10,10 +10,10 @@
 
 #SBATCH --job-name=OF_URANS_001
 #SBATCH --partition=normal.4h
-#SBATCH --account=es_fuge
+#SBATCH --account=public
 #SBATCH --time=04:00:00
 #SBATCH --nodes=1
-#SBATCH --ntasks=128
+#SBATCH --ntasks=32
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1900M
 #SBATCH --output=/cluster/scratch/elihuber/scratch_logs/OF_URANS_001_%j.out

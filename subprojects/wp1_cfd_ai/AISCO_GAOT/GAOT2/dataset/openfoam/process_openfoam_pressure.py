@@ -48,6 +48,7 @@ from common_preprocessing import (
     compute_geom_conditioning,
     compute_pressure_coefficient,
 )
+
 from src.utils.pressure_integration import compute_frontal_area
 
 logger = logging.getLogger(__name__)
@@ -107,7 +108,7 @@ def _recover_surface_mesh(case_dir: Path, source_mesh: pv.PolyData) -> pv.PolyDa
     coarse input STL when boundary-edge ratio exceeded a threshold.  That
     approach was removed because:
 
-    1. The input STL is the *coarsest* geometry source (90× fewer triangles
+    1. The input STL is the *coarsest* geometry source (90x fewer triangles
        than the VTK patch), so sampling onto it discards resolution.
     2. PyVista ``PolyData.sample()`` from 2-D onto 2-D topology returns
        all-zero pressure fields for this geometry class (verified).
@@ -143,8 +144,7 @@ def _recover_surface_mesh(case_dir: Path, source_mesh: pv.PolyData) -> pv.PolyDa
         )
     else:
         logger.info(
-            "%s: VTK patch has %d boundary edges (%.3f%% of %d faces) — "
-            "below %.1f%% threshold, normal snappyHexMesh artifact",
+            "%s: VTK patch has %d boundary edges (%.3f%% of %d faces) — below %.1f%% threshold, normal snappyHexMesh artifact",
             case_dir.name,
             boundary_edge_count,
             boundary_ratio * 100,
@@ -199,11 +199,13 @@ def _compute_stl_quality_metrics(case_dir: Path) -> dict[str, float | int]:
         if stl.n_cells > 0:
             faces = stl.faces.reshape(-1, 4)[:, 1:]
             v0, v1, v2 = pos[faces[:, 0]], pos[faces[:, 1]], pos[faces[:, 2]]
-            edge_lengths = np.concatenate([
-                np.linalg.norm(v1 - v0, axis=1),
-                np.linalg.norm(v2 - v1, axis=1),
-                np.linalg.norm(v0 - v2, axis=1),
-            ])
+            edge_lengths = np.concatenate(
+                [
+                    np.linalg.norm(v1 - v0, axis=1),
+                    np.linalg.norm(v2 - v1, axis=1),
+                    np.linalg.norm(v0 - v2, axis=1),
+                ]
+            )
             median_edge_mm = float(np.median(edge_lengths) * 1000.0)
 
             # Count distinct normal directions (0.01 rad tolerance)
@@ -213,7 +215,7 @@ def _compute_stl_quality_metrics(case_dir: Path) -> dict[str, float | int]:
             unit_normals = face_normals / norms
             # Round to 2 decimal places to cluster similar normals
             rounded = np.round(unit_normals, 2)
-            distinct_dirs = int(len(np.unique(rounded, axis=0)))
+            distinct_dirs = len(np.unique(rounded, axis=0))
         else:
             median_edge_mm = -1.0
             distinct_dirs = -1
@@ -592,7 +594,7 @@ def _compute_vertex_normals(pos: np.ndarray, triangles: np.ndarray) -> np.ndarra
 # ---------------------------------------------------------------------------
 #  Single-run processor
 # ---------------------------------------------------------------------------
-def process_single_run(
+def process_single_run(  # noqa: PLR0915 — single cohesive extraction unit; splitting would scatter tightly-coupled pressure/force logic
     run_id: int,
     cases_dir: str = CASES_DIR,
     output_dir: str = OUTPUT_DIR,
@@ -657,10 +659,7 @@ def process_single_run(
     # Aref was written into forceCoeffsDict.
     q_inf = 0.5 * AIR_DENSITY * V_INF_EULER**2
     projected_aref = compute_frontal_area(pos_tensor, face_tensor, normals_tensor, drag_direction=0)
-    if not np.isnan(force_val) and projected_aref > 0:
-        cd_val = force_val / (q_inf * projected_aref)
-    else:
-        cd_val = float("nan")
+    cd_val = force_val / (q_inf * projected_aref) if not np.isnan(force_val) and projected_aref > 0 else float("nan")
 
     # Rescale cd_mean50 / cd_std50 from coefficient.dat's own Aref basis to the
     # projected-Aref basis used by data.cd, so absolute values are consistent.
@@ -668,10 +667,7 @@ def process_single_run(
     # rather than assuming bbox, so this is correct for both old cases (bbox Aref
     # in forceCoeffsDict) and future cases (projected Aref in forceCoeffsDict).
     coeff_aref = _parse_coeff_aref(case_dir)
-    if coeff_aref is not None and projected_aref > 0:
-        aref_scale = coeff_aref / projected_aref
-    else:
-        aref_scale = 1.0
+    aref_scale = coeff_aref / projected_aref if coeff_aref is not None and projected_aref > 0 else 1.0
 
     cd_mean50_float = cd_mean50_val * aref_scale if cd_mean50_val is not None else float("nan")
     cd_std50_float = cd_std50_val * aref_scale if cd_std50_val is not None else float("nan")
@@ -679,8 +675,7 @@ def process_single_run(
     # Sanity-check: force should be positive (drag in flow direction).
     if not np.isnan(force_val) and force_val <= 0:
         logger.warning(
-            "RUN_%03d: non-physical force=%.4f N <= 0 — "
-            "check parse_openfoam_forces column mapping.",
+            "RUN_%03d: non-physical force=%.4f N <= 0 — check parse_openfoam_forces column mapping.",
             run_id,
             force_val,
         )
@@ -699,8 +694,7 @@ def process_single_run(
     )
     if isinstance(n_stl_pts, int) and n_stl_pts < _STL_QUALITY_WARN_THRESHOLD:
         logger.warning(
-            "RUN_%03d: geometry_quality_low n_stl_pts=%d < threshold=%d — "
-            "coarse input geometry; surface faceting expected",
+            "RUN_%03d: geometry_quality_low n_stl_pts=%d < threshold=%d — coarse input geometry; surface faceting expected",
             run_id,
             n_stl_pts,
             _STL_QUALITY_WARN_THRESHOLD,
@@ -716,8 +710,7 @@ def process_single_run(
     )
     if p_validity["p_zero_frac"] > 0.5:
         logger.error(
-            "RUN_%03d: pressure_all_zero p_zero_frac=%.4f > 0.5 — "
-            "likely sampling failure; .pt will contain invalid Cp fields",
+            "RUN_%03d: pressure_all_zero p_zero_frac=%.4f > 0.5 — likely sampling failure; .pt will contain invalid Cp fields",
             run_id,
             p_validity["p_zero_frac"],
         )

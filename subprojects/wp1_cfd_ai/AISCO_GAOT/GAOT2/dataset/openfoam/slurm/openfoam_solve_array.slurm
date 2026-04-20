@@ -21,10 +21,10 @@
 #SBATCH --account=es_fuge
 #SBATCH --time=04:00:00
 #SBATCH --nodes=1
-#SBATCH --ntasks=128
+#SBATCH --ntasks=64
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1900M
-#SBATCH --array=1-234%25
+#SBATCH --array=1-234%2
 #SBATCH --output=/cluster/scratch/elihuber/scratch_logs/OF_Solve_%A_%a.out
 #SBATCH --error=/cluster/scratch/elihuber/scratch_logs/OF_Solve_%A_%a.err
 

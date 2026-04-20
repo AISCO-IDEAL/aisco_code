@@ -90,7 +90,7 @@ class TestSubmitPipelineScript:
         # Must use a numeric regex to validate $2 before using it as MAX_PARALLEL
         assert "^[0-9]+$" in content
         # Must detect --no-extract via loop before reading $2
-        assert '--no-extract' in content
+        assert "--no-extract" in content
         assert "SKIP_EXTRACT=1" in content
 
     def test_extract_dependency_is_afterany(self) -> None:

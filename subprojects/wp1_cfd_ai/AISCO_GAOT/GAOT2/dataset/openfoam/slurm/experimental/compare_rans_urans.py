@@ -44,17 +44,15 @@ import numpy as np
 # Paths
 # ---------------------------------------------------------------------------
 
-CASES_DIR = pathlib.Path(
-    "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3"
-)
+CASES_DIR = pathlib.Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3")
 
 # Batch output
 RESULTS_DIR = pathlib.Path(__file__).resolve().parent / "results"
 
 # URANS timing constants (shared — all cases restarted from RANS endTime=3000)
-T_START_DEFAULT = 3000.0     # latestTime restart
-T_TRANSIENT_FRAC = 0.5       # discard first 50% of run as transient
-N_PLANNED_STEPS = 5000       # 2.0 s / 4e-4 deltaT
+T_START_DEFAULT = 3000.0  # latestTime restart
+T_TRANSIENT_FRAC = 0.5  # discard first 50% of run as transient
+N_PLANNED_STEPS = 5000  # 2.0 s / 4e-4 deltaT
 
 
 # ---------------------------------------------------------------------------
@@ -176,8 +174,7 @@ def load_rans_values(rans_case: pathlib.Path) -> tuple[float, float]:
         except Exception as exc:
             print(f"  WARN: Could not parse RANS forceCoeffs ({exc})")
     raise FileNotFoundError(
-        f"No readable RANS forceCoeffs found in {rans_case}. "
-        "Run simpleFoam first or ensure postProcessing/forceCoeffs/ exists."
+        f"No readable RANS forceCoeffs found in {rans_case}. Run simpleFoam first or ensure postProcessing/forceCoeffs/ exists."
     )
 
 
@@ -205,7 +202,7 @@ def analyse_case(  # noqa: PLR0912  # sequential URANS outcome checks require ma
         Dict with keys matching the CSV column names.
     """
     if verbose:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Analysing {run_id}")
         print(f"  RANS:  {rans_case}")
         print(f"  URANS: {urans_case}")
@@ -225,8 +222,7 @@ def analyse_case(  # noqa: PLR0912  # sequential URANS outcome checks require ma
     if fc_path is None:
         if verbose:
             print(f"  ERROR: No forceCoeffs file in {urans_case}")
-        return _row(run_id, rans_cd, rans_cl, float("nan"), float("nan"),
-                    float("nan"), 0.0, 0, "INCOMPLETE")
+        return _row(run_id, rans_cd, rans_cl, float("nan"), float("nan"), float("nan"), 0.0, 0, "INCOMPLETE")
 
     if verbose:
         print(f"  forceCoeffs: {fc_path}")
@@ -234,14 +230,12 @@ def analyse_case(  # noqa: PLR0912  # sequential URANS outcome checks require ma
     t, cd, cl = _parse_forcecoeffs(fc_path)
 
     if len(t) == 0:
-        return _row(run_id, rans_cd, rans_cl, float("nan"), float("nan"),
-                    float("nan"), 0.0, 0, "DIVERGED")
+        return _row(run_id, rans_cd, rans_cl, float("nan"), float("nan"), float("nan"), 0.0, 0, "DIVERGED")
 
     if np.any(np.isnan(cd)) or np.any(np.isnan(cl)):
         if verbose:
             print("  ERROR: NaN detected — solver diverged.")
-        return _row(run_id, rans_cd, rans_cl, float("nan"), float("nan"),
-                    float("nan"), float(t[-1]), len(t), "DIVERGED")
+        return _row(run_id, rans_cd, rans_cl, float("nan"), float("nan"), float("nan"), float(t[-1]), len(t), "DIVERGED")
 
     n_steps = len(t)
     t_sim = float(t[-1] - T_START_DEFAULT)
@@ -253,8 +247,7 @@ def analyse_case(  # noqa: PLR0912  # sequential URANS outcome checks require ma
             pct = n_steps / N_PLANNED_STEPS * 100
             print(f"  WARN: {n_steps}/{N_PLANNED_STEPS} steps ({pct:.0f}%) — INCOMPLETE")
         cd_mean, cl_mean, cd_std = _window_stats(t, cd, cl)
-        return _row(run_id, rans_cd, rans_cl, cd_mean, cl_mean, cd_std,
-                    t_sim, n_steps, "INCOMPLETE")
+        return _row(run_id, rans_cd, rans_cl, cd_mean, cl_mean, cd_std, t_sim, n_steps, "INCOMPLETE")
 
     # Time-averaged statistics
     cd_mean, cl_mean, cd_std = _window_stats(t, cd, cl)
@@ -278,8 +271,7 @@ def analyse_case(  # noqa: PLR0912  # sequential URANS outcome checks require ma
             delta = (cd_mean - rans_cd) / abs(rans_cd) * 100
             print(f"  RANS→URANS Δ Cd = {delta:+.2f}%")
 
-    return _row(run_id, rans_cd, rans_cl, cd_mean, cl_mean, cd_std,
-                t_sim, n_steps, outcome)
+    return _row(run_id, rans_cd, rans_cl, cd_mean, cl_mean, cd_std, t_sim, n_steps, outcome)
 
 
 def _window_stats(
@@ -330,6 +322,7 @@ def _row(
     Returns:
         Dict with string-formatted numeric values.
     """
+
     def _fmt(v: float) -> str:
         return f"{v:.6f}" if not (math.isnan(v) or math.isinf(v)) else "NaN"
 
@@ -360,10 +353,7 @@ def run_all_cases(output_csv: pathlib.Path) -> int:
     Returns:
         0 on success, 1 if any case is DIVERGED or INCOMPLETE.
     """
-    urans_dirs = sorted(
-        d for d in CASES_DIR.iterdir()
-        if d.is_dir() and d.name.endswith("_urans")
-    )
+    urans_dirs = sorted(d for d in CASES_DIR.iterdir() if d.is_dir() and d.name.endswith("_urans"))
 
     if not urans_dirs:
         print(f"ERROR: No *_urans directories found in {CASES_DIR}", file=sys.stderr)
@@ -388,9 +378,15 @@ def run_all_cases(output_csv: pathlib.Path) -> int:
     # Write consolidated CSV
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
-        "run_id", "rans_Cd", "rans_Cl",
-        "urans_Cd_mean", "urans_Cl_mean", "urans_Cd_std",
-        "t_sim", "n_timesteps", "outcome",
+        "run_id",
+        "rans_Cd",
+        "rans_Cl",
+        "urans_Cd_mean",
+        "urans_Cl_mean",
+        "urans_Cd_std",
+        "t_sim",
+        "n_timesteps",
+        "outcome",
     ]
     with output_csv.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -407,14 +403,10 @@ def run_all_cases(output_csv: pathlib.Path) -> int:
     print(f"  {'TOTAL':<15s}: {len(rows)}")
 
     # Numeric stats for converged/not-converged cases
-    numeric_rows = [
-        r for r in rows
-        if r["urans_Cd_mean"] != "NaN" and r["rans_Cd"] != "NaN"
-    ]
+    numeric_rows = [r for r in rows if r["urans_Cd_mean"] != "NaN" and r["rans_Cd"] != "NaN"]
     if numeric_rows:
         deltas = [
-            (float(str(r["urans_Cd_mean"])) - float(str(r["rans_Cd"])))
-            / abs(float(str(r["rans_Cd"]))) * 100
+            (float(str(r["urans_Cd_mean"])) - float(str(r["rans_Cd"]))) / abs(float(str(r["rans_Cd"]))) * 100
             for r in numeric_rows
         ]
         print(f"\n  Mean RANS→URANS ΔCd: {np.mean(deltas):+.2f}%")
@@ -448,9 +440,15 @@ def run_single_case(run_id: str) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     csv_path = out_dir / "comparison_result.csv"
     fieldnames = [
-        "run_id", "rans_Cd", "rans_Cl",
-        "urans_Cd_mean", "urans_Cl_mean", "urans_Cd_std",
-        "t_sim", "n_timesteps", "outcome",
+        "run_id",
+        "rans_Cd",
+        "rans_Cl",
+        "urans_Cd_mean",
+        "urans_Cl_mean",
+        "urans_Cd_std",
+        "t_sim",
+        "n_timesteps",
+        "outcome",
     ]
     with csv_path.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -493,9 +491,7 @@ def main() -> int:
     Returns:
         0 on success, non-zero on error.
     """
-    parser = argparse.ArgumentParser(
-        description="Compare RANS vs URANS force coefficients"
-    )
+    parser = argparse.ArgumentParser(description="Compare RANS vs URANS force coefficients")
     parser.add_argument(
         "--run-id",
         default="RUN_001",

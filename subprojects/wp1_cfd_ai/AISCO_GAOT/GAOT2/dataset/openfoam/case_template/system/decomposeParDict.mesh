@@ -8,7 +8,7 @@ FoamFile
 
 // Mesh-only decomposition: 32 procs optimises snappyHexMesh
 // (~47K cells/rank at 1.5M cells vs ~12K at 128 procs).
-// The solve step uses system/decomposeParDict (128 procs).
+// The solve step uses system/decomposeParDict (64 procs).
 numberOfSubdomains 32;
 
 method scotch;

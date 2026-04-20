@@ -14,7 +14,7 @@
 
 #SBATCH --job-name=OF_Pipeline
 #SBATCH --partition=normal.4h
-#SBATCH --account=es_fuge
+#SBATCH --account=public
 #SBATCH --time=01:00:00
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8

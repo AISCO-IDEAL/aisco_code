@@ -1,17 +1,19 @@
 """Tests for generate_cases.py — OpenFOAM case instantiation."""
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 import trimesh
 
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.dataset.openfoam.generate_cases import (
+    _CELL_SIZE,
+    _MIN_UPSTREAM_EXTENT,
     compute_boi_box,
     compute_domain_extents,
     generate_all_cases,
     instantiate_case,
-    _MIN_UPSTREAM_EXTENT,
 )
 
 # Path to the case template in the repo
@@ -116,7 +118,7 @@ class TestComputeDomainExtents:
         assert domain["zCells"] > 0
 
     def test_minimum_upstream_floor_applied_for_small_geometry(self) -> None:
-        """Small geometries get at least _MIN_UPSTREAM_EXTENT upstream (not just 2×car_length).
+        """Small geometries get at least _MIN_UPSTREAM_EXTENT upstream (not just 2x car_length).
 
         Regression test for analysis 062: geometries shorter than 0.75m had
         proportional upstream extents so short that locationInMesh fell outside
@@ -147,8 +149,7 @@ class TestComputeDomainExtents:
         domain = compute_domain_extents(bmin, bmax)
         actual_upstream = bmin[0] - domain["xMin"]
         assert abs(actual_upstream - proportional_upstream) < 0.001, (
-            f"Normal geometry should use proportional upstream {proportional_upstream:.3f}m, "
-            f"got {actual_upstream:.4f}m"
+            f"Normal geometry should use proportional upstream {proportional_upstream:.3f}m, got {actual_upstream:.4f}m"
         )
 
 
@@ -242,20 +243,13 @@ class TestInstantiateCase:
         content = shmd.read_text()
         assert "__" not in content, f"Unreplaced placeholders in snappyHexMeshDict: {content}"
 
-    def test_location_in_mesh_not_on_cell_face_for_symmetric_geometry(
-        self, temp_dirs: dict[str, Path]
-    ) -> None:
+    def test_location_in_mesh_not_on_cell_face_for_symmetric_geometry(self, temp_dirs: dict[str, Path]) -> None:
         """locationInMesh y-coordinate must not coincide with a blockMesh cell face.
 
         Regression test for RUN_018: symmetric geometry (y_center=0) caused
         locationInMesh to land exactly on cell boundary, triggering snappyHexMesh
         FOAM FATAL ERROR: 'Point is not inside the mesh'.
         """
-        from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.dataset.openfoam.generate_cases import (
-            _CELL_SIZE,
-            compute_domain_extents,
-        )
-
         geom_dir = temp_dirs["geometry"]
         box = trimesh.creation.box(extents=[3.5, 1.2374, 1.6371])
         stl_path = geom_dir / "RUN_018.stl"
@@ -278,8 +272,6 @@ class TestInstantiateCase:
         content = shmd.read_text()
 
         # Extract locationInMesh y value from the dict
-        import re
-
         m = re.search(r"locationInMesh\s+\(\s*[-\d.]+\s+([-\d.]+)\s+[-\d.]+\s*\)", content)
         assert m is not None, "Could not find locationInMesh in snappyHexMeshDict"
         loc_y = float(m.group(1))
@@ -294,9 +286,7 @@ class TestInstantiateCase:
             f"(cell_fraction={cell_fraction:.4f}). snappyHexMesh will fail."
         )
 
-    def test_location_in_mesh_inside_domain_for_small_geometry(
-        self, temp_dirs: dict[str, Path]
-    ) -> None:
+    def test_location_in_mesh_inside_domain_for_small_geometry(self, temp_dirs: dict[str, Path]) -> None:
         """locationInMesh x-coordinate is inside the domain for small geometries.
 
         Regression test for analysis 062 / Bug F: geometries shorter than 0.5m
@@ -305,8 +295,6 @@ class TestInstantiateCase:
         With Option B the domain has a minimum upstream floor and loc_x is
         derived as the midpoint between domain["xMin"] and bounds_min[0].
         """
-        import re
-
         geom_dir = temp_dirs["geometry"]
         # RUN_220 archetype: 0.216m cube — the worst failing case
         box = trimesh.creation.box(extents=[0.216, 0.216, 0.216])
@@ -340,12 +328,9 @@ class TestInstantiateCase:
         loc_x = float(m_loc.group(1))
 
         assert loc_x > domain_xmin, (
-            f"locationInMesh x={loc_x} is outside domain xMin={domain_xmin} "
-            "for small geometry. snappyHexMesh will crash."
+            f"locationInMesh x={loc_x} is outside domain xMin={domain_xmin} for small geometry. snappyHexMesh will crash."
         )
-        assert loc_x < bounds_min[0], (
-            f"locationInMesh x={loc_x} must be upstream of geometry (bounds_min[0]={bounds_min[0]})"
-        )
+        assert loc_x < bounds_min[0], f"locationInMesh x={loc_x} must be upstream of geometry (bounds_min[0]={bounds_min[0]})"
 
 
 # ---------------------------------------------------------------------------

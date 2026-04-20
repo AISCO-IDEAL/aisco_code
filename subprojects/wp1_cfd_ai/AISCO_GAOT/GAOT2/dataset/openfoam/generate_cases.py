@@ -75,9 +75,9 @@ _BOI_DOWNSTREAM = 1.5
 _BOI_LATERAL = 0.3
 _BOI_VERTICAL = 0.3
 
-# Default MPI tasks for decomposition
-# Mesh and solve use the same proc count to avoid decomposeParDict swap.
-_NPROCS = 128
+# Default MPI tasks for decomposition (solve only).
+# Mesh uses a separate decomposeParDict.mesh hardcoded to 32 procs.
+_NPROCS = 64
 
 # Freestream velocity for Euler (AISCO) cases.  Ahmed cases use V_INF_AHMED=1.
 _DEFAULT_V_INF = 25.0
@@ -107,7 +107,7 @@ def compute_domain_extents(
     """Compute wind tunnel domain extents from geometry bounds.
 
     Domain extends:
-    - Upstream (-x): max(2 × car-length, _MIN_UPSTREAM_EXTENT) before geometry min
+    - Upstream (-x): max(2 x car-length, _MIN_UPSTREAM_EXTENT) before geometry min
     - Downstream (+x): ~5 car-lengths after geometry max
     - Lateral (y): ±2 car-widths from geometry center
     - Vertical (z): 0 (ground) to ~3 car heights

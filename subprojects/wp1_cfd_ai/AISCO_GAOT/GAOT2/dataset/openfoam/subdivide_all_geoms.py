@@ -89,7 +89,9 @@ def subdivide_ply(
 
         # Write PLY (binary for compactness)
         o3d.io.write_triangle_mesh(str(output_path), mesh, write_ascii=False)
-
+    except Exception as e:
+        return {"run_id": run_id, "status": "error", "message": str(e)}
+    else:
         return {
             "run_id": run_id,
             "status": "ok",
@@ -99,8 +101,6 @@ def subdivide_ply(
             "verts_out": verts_out,
             "faces_out": faces_out,
         }
-    except Exception as e:
-        return {"run_id": run_id, "status": "error", "message": str(e)}
 
 
 def main() -> None:
@@ -133,8 +133,7 @@ def main() -> None:
 
     if not args.input_dir.is_dir():
         logger.error(
-            "Input directory does not exist: %s. "
-            "Provide a valid --input-dir path.",
+            "Input directory does not exist: %s. Provide a valid --input-dir path.",
             args.input_dir,
         )
         sys.exit(1)

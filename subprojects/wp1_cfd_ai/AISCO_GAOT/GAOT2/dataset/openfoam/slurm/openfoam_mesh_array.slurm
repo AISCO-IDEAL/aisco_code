@@ -23,7 +23,7 @@
 #SBATCH --ntasks=32
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1900M
-#SBATCH --array=1-234%25
+#SBATCH --array=1-234%2
 #SBATCH --output=/cluster/scratch/elihuber/scratch_logs/OF_Mesh_%A_%a.out
 #SBATCH --error=/cluster/scratch/elihuber/scratch_logs/OF_Mesh_%A_%a.err
 

@@ -523,12 +523,9 @@ def api_subsample_save():
             )
         sel = _spatial_subsample(pos, n_target)
         sel_pos = pos[sel]
-        if overwrite:
-            out_path = path
-        else:
-            out_path = str(Path(path).parent / f"{Path(path).stem}_sub{len(sel)}.ply")
+        out_path = path if overwrite else str(Path(path).parent / f"{Path(path).stem}_sub{len(sel)}.ply")
         _write_ply_points(out_path, sel_pos)
-        return jsonify(ok=True, path=out_path, n_original=n_verts, n_saved=int(len(sel)))
+        return jsonify(ok=True, path=out_path, n_original=n_verts, n_saved=len(sel))
     except Exception as e:
         return jsonify(ok=False, error=str(e))
 

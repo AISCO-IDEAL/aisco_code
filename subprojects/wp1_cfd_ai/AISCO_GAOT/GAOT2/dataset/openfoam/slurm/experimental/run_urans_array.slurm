@@ -17,8 +17,8 @@
 # =============================================================================
 #SBATCH --job-name=OF_URANS_BATCH
 #SBATCH --partition=normal.24h
-#SBATCH --account=es_fuge
-#SBATCH --ntasks=128
+#SBATCH --account=public
+#SBATCH --ntasks=32
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1900M
 #SBATCH --time=08:00:00

@@ -11,7 +11,7 @@
 
 #SBATCH --job-name=OF_Extract
 #SBATCH --partition=normal.4h
-#SBATCH --account=es_fuge
+#SBATCH --account=public
 #SBATCH --time=02:00:00
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=16
