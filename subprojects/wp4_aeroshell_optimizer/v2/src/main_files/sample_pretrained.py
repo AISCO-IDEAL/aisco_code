@@ -3,11 +3,7 @@
 Sample a mesh from any SDF model and save as PLY.
 
 Usage:
-    python -m subprojects.wp4_aeroshell_optimizer.v2.src.main_files.sample_pretrained.py
-        --model /cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset/bunny_pretrained.pth
-        --out /cluster/work/fuge/AISCO/pretraining_output_sampled/bunny_sampled2.ply
-        --res 64
-        --box 1000
+    python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/sample_pretrained.py
 """
 
 import argparse
@@ -46,13 +42,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model",
-        default="/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset/bunny_pretrained3.pth",
+        default="/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/pretrained_dataset/silvretta_pretrained1.pth",
         help="Path to .pth checkpoint",
     )  # required=True,
     parser.add_argument(
-        "--out", default="/cluster/work/fuge/AISCO/pretraining_output_sampled/bunny_sampled3.ply", help="Output PLY path"
+        "--out", default="/cluster/work/fuge/AISCO/pretraining_output_sampled/silvretta_sampled1.ply", help="Output PLY path"
     )
     parser.add_argument("--res", type=int, default=64, help="Grid resolution (FlexiCubes)")
-    parser.add_argument("--box", type=int, default=1000, help="Bounding box half-size in mm")
+    parser.add_argument("--box", type=int, default=5000, help="Bounding box half-size in mm")
     args = parser.parse_args()
     sample(args.model, args.out, args.res, args.box)
