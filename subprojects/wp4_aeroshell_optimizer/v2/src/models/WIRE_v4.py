@@ -28,8 +28,8 @@ class WIREV4(BaseModel):
         config: dict | None = None,
         out_features: int = 1,
         num_branches: int = 4,
-        branch_omegas: list[float] = None,
-        branch_scales: list[float] = None,
+        branch_omegas: list[float] | None = None,
+        branch_scales: list[float] | None = None,
         train_omega: bool = False,
         train_scale: bool = False,
         dtype: str = "float32",
@@ -60,7 +60,7 @@ class WIREV4(BaseModel):
             raise ValueError(f"Invalid dtype given: {dtype}") from None
 
         self.branches = nn.ModuleList()
-        for branch_omega, branch_scale in zip(branch_omegas, branch_scales):
+        for branch_omega, branch_scale in zip(branch_omegas, branch_scales, strict=False):
             branch_layers: list[nn.Module] = [
                 RealGaborLayer(
                     in_features,

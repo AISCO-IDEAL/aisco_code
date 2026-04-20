@@ -45,6 +45,15 @@
       "has_optimise": true
     },
 
+    "WIREV8": {
+      "model_class": "WIREV8",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v8.py",
+      "config_file": "models/WIRE_v8.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+
     "WIREV2": {
       "model_class": "WIREV2",
       "parent_class": "BaseModel",
@@ -52,6 +61,15 @@
       "config_file": "models/WIRE_v2.yaml",
       "uses_diversity" : false,
       "has_optimise": true
+    },
+
+    "ConcatWIREV3": {
+      "model_class": "ConcatWIREV3",
+      "parent_class": "ConcatBaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/concat_WIRE_v3.py",
+      "config_file": "models/concat_WIRE_v3.yaml",
+      "uses_diversity": true,
+      "has_optimise": false
     },
 
     "ConcatWIREV2": {
