@@ -1,8 +1,14 @@
 import importlib
 
+import numpy as np
 import torch
+import trimesh
 
-from subprojects.wp4_aeroshell_optimizer.v2.src.losses.ground_truth_masks.simple_geoms import cube_gt, sphere_gt  # Added cube_gt
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.ground_truth_masks.simple_geoms import (
+    cube_gt,
+    ply_gt,
+    sphere_gt,
+)  # Added cube_gt
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
@@ -29,16 +35,80 @@ def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml") -> Su
     return model
 
 
+def _apply_override_config(config: dict, override_config: dict) -> dict:
+    for k, v in override_config.items():
+        if k in config:
+            if isinstance(config[k], dict) and isinstance(v, dict):
+                config[k].update(v)
+            else:
+                config[k] = v
+        elif "." in k:
+            parts = k.split(".")
+            if parts[0] in config and isinstance(config[parts[0]], dict):
+                config[parts[0]][parts[1]] = v
+    return config
+
+
+def _load_ply_mesh(config: dict, device: str) -> tuple[torch.Tensor, torch.Tensor]:
+    ply_path = config.get("pretraining_ply_path")
+    if not ply_path:
+        raise ValueError("pretraining_shape='ply' requires 'pretraining_ply_path' in pretraining config")
+    ply_scale = float(config.get("pretraining_ply_scale", 1000.0))
+    raw_mesh = trimesh.load(ply_path)
+    assert isinstance(raw_mesh, trimesh.Trimesh), f"Expected Trimesh, got {type(raw_mesh)}"
+    ply_verts_t = torch.tensor(np.array(raw_mesh.vertices, dtype="float32") * ply_scale, device=device)
+    ply_faces_t = torch.tensor(np.array(raw_mesh.faces, dtype="int64"), device=device)
+    print(
+        f"[pretraining] Loaded PLY '{ply_path}' | scale={ply_scale} | vertices={ply_verts_t.shape[0]} faces={ply_faces_t.shape[0]}"
+    )
+    return ply_verts_t, ply_faces_t
+
+
+def _compute_gt_target(
+    pretraining_shape: str,
+    input_data: torch.Tensor,
+    ply_verts_t: torch.Tensor | None,
+    ply_faces_t: torch.Tensor | None,
+) -> torch.Tensor:
+    if pretraining_shape == "cube":
+        return cube_gt(input_data, side_length=2000.0)
+    if pretraining_shape == "ply":
+        assert ply_verts_t is not None and ply_faces_t is not None
+        return ply_gt(input_data, ply_verts_t, ply_faces_t)
+    return sphere_gt(input_data)
+
+
+def _compute_eikonal(model, input_data: torch.Tensor, device: str) -> torch.Tensor:
+    input_m = (input_data / 1000.0).detach().requires_grad_(True)
+    input_mm_for_model = input_m * 1000.0
+    sdf_m = (model(input_mm_for_model).squeeze()) / 1000.0
+    grad = torch.autograd.grad(
+        outputs=sdf_m,
+        inputs=input_m,
+        grad_outputs=torch.ones_like(sdf_m),
+        create_graph=True,
+        retain_graph=True,
+        allow_unused=True,
+    )[0]
+    if grad is not None:
+        return ((grad.norm(dim=-1) - 1.0) ** 2).mean()
+    print("WARNING: Gradient is still None. Check model connectivity.")
+    return torch.tensor(0.0, device=device)
+
+
 # 2026 03 05, eschaerer:
 # look i'm not sure if the changes i made also work on the HPC. Please revert them if they don't
 def pretraining(
     model: SupportsModelContract | None = None,
     pretraining_config_name: str = "pretraining_v0_config.yaml",
+    override_config: dict | None = None,
     debug_manager: DebugManager | None = None,
 ) -> SupportsModelContract:
     # Does pretraining, for now only on a sphere
 
     config = load_config(v="v2", cfg_name=pretraining_config_name)
+    if override_config:
+        config = _apply_override_config(config, override_config)
 
     # Try to use GPU if available
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -48,6 +118,11 @@ def pretraining(
     model = model.to(device)
 
     pretraining_shape = config.get("pretraining_shape", "sphere")
+
+    # Pre-load PLY mesh once so mesh_sdf can be called efficiently each batch
+    ply_verts_t = ply_faces_t = None
+    if pretraining_shape == "ply":
+        ply_verts_t, ply_faces_t = _load_ply_mesh(config, device)
 
     # Initialise a no-op DebugManager if none was provided
     dbg = debug_manager if debug_manager is not None else DebugManager(config={"GLOBAL_DEBUG": False})
@@ -83,39 +158,9 @@ def pretraining(
         input_data = (torch.rand(config["training_loop"]["random_batch_size"], 3, device=device) - 0.5) * 5000.0
 
         output = model(input_data)
+        target = _compute_gt_target(pretraining_shape, input_data, ply_verts_t, ply_faces_t)
+        eikonal = _compute_eikonal(model, input_data, device)
 
-        # Dummy target data, replace with actual target generation
-        target = cube_gt(input_data, side_length=2000.0) if pretraining_shape == "cube" else sphere_gt(input_data)
-
-        # Eikonal regularization: ||∇f(x)|| = 1 in meters
-
-        # 1. Start the 'chain' here
-        input_m = (input_data / 1000.0).detach().requires_grad_(True)
-
-        # 2. Re-scale for the model (assuming model wants mm)
-        # By multiplying input_m, we keep the grad history alive
-        input_mm_for_model = input_m * 1000.0
-
-        # 3. PASS THE NEW TENSOR TO THE MODEL
-        sdf_m = (model(input_mm_for_model).squeeze()) / 1000.0
-
-        # 4. Now 'grad' will actually contain values
-        grad = torch.autograd.grad(
-            outputs=sdf_m,
-            inputs=input_m,
-            grad_outputs=torch.ones_like(sdf_m),
-            create_graph=True,
-            retain_graph=True,
-            allow_unused=True,
-        )[0]
-
-        # Add a safety check for the norm
-        if grad is not None:
-            eikonal = ((grad.norm(dim=-1) - 1.0) ** 2).mean()
-        else:
-            print("WARNING: Gradient is still None. Check model connectivity.")
-            eikonal = torch.tensor(0.0, device=input_data.device)
-        # eikonal = torch.tensor(0.0, device=device)  # Placeholder if Eikonal is disabled # noqa: ERA001
         loss = torch.nn.MSELoss()((target / 1000).squeeze(), (output / 1000).squeeze()) + 0.1 * eikonal
 
         loss.backward()

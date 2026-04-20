@@ -1,5 +1,4 @@
 population_size: 6
-diversity_weight: 0.5
 
 # Diversity loss sampling config
 # Points are used for cheap WIRE-only forward passes (no CFD/raytracing).

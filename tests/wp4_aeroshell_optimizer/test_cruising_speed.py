@@ -124,6 +124,28 @@ class TestCruisingSpeedForward:
         u = cruising_speed(solar, drag, mass=210.0, c_losses=25.0)
         assert (u > 0).all()
 
+    def test_strictly_nonzero_with_all_nonzero_inputs(self):
+        """When all inputs are positive and 1.25*solar > c_losses, result is strictly > 0.
+
+        Physical argument (IVT): f(0) = c - 1.25*P < 0, and f(u) -> +inf,
+        so the unique positive root u* > 0.
+        """
+        solar = torch.tensor([700.0])
+        drag = torch.tensor([110.0])
+        mass = 210.0
+        c = 25.0
+        mu = 0.006
+
+        # Precondition: net power is strictly positive
+        assert 1.25 * solar.item() > c, "test precondition: net power must be positive"
+
+        u = cruising_speed(solar, drag, mass, c, mu)
+        print("CSE calculated", u.item())
+
+        # Root is strictly positive, not just clamped to the floor
+        assert u.item() > 1e-3, f"Expected u > 1e-3, got {u.item()}"
+        assert torch.isfinite(u).all()
+
 
 # ---------------------------------------------------------------------------
 # Gradient correctness
