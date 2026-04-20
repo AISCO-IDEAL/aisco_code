@@ -32,12 +32,22 @@ class RealGaborLayer(nn.Module):
         scale: Scaling of Gabor Gaussian term
     """
 
-    def __init__(self, in_features, out_features, bias=True, omega0=10.0, sigma0=10.0, train_omega=False, train_scale=False):
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        bias=True,
+        omega0=10.0,
+        sigma0=10.0,
+        train_omega=False,
+        train_scale=False,
+        dtype=torch.float32,
+    ):
         # Inherit from torch.nn.Module
         super().__init__()
 
-        self.omega_0 = omega0 if not train_omega else nn.Parameter(torch.tensor(omega0))
-        self.scale_0 = sigma0 if not train_scale else nn.Parameter(torch.tensor(sigma0))
+        self.omega_0 = omega0 if not train_omega else nn.Parameter(torch.tensor(omega0, dtype=dtype))
+        self.scale_0 = sigma0 if not train_scale else nn.Parameter(torch.tensor(sigma0, dtype=dtype))
 
         self.in_features = in_features
         self.splitter = nn.Linear(in_features, 2 * out_features, bias=bias)
@@ -91,6 +101,7 @@ class WIREV2(BaseModel):
                 sigma0=first_scale,
                 train_omega=train_omega,
                 train_scale=train_scale,
+                dtype=dtype,
             )
         )
 
@@ -105,6 +116,7 @@ class WIREV2(BaseModel):
                     sigma0=hidden_scale,
                     train_omega=train_omega,
                     train_scale=train_scale,
+                    dtype=dtype,
                 )
                 for _ in range(hidden_layers)
             ]
@@ -135,7 +147,7 @@ class WIREV2(BaseModel):
     def forward(self, coords: torch.Tensor) -> torch.Tensor:
         return self.net(coords / 1000) * 1000
 
-    def optimise(
+    def optimise(  # noqa: PLR0912, PLR0915
         self,
         general_config,
         training_config,
@@ -312,6 +324,27 @@ class WIREV2(BaseModel):
 
         # ── Debug: cleanup ───────────────────────────────────────────
         dbg.stop()
+
+        # ── Post-optimization (developability) ──────────────────────────
+        dev_entry = loss_function._constraint_losses.get("developability")
+        if dev_entry is not None:
+            _dev_name, dev_instance = dev_entry
+            if dev_instance.post_opt_enabled:
+                verts, faces = dev_instance.mesh_extractor.extract_mesh(
+                    model=self,
+                    isovalue=dev_instance.mesh_isovalue,
+                    batch_size=dev_instance.mesh_batch_size,
+                )
+                run_name = wandb_name or (wandb.run.name if wandb.run else "run")
+                storage_dir = general_config["storage_paths"].get(
+                    "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+                )
+                dev_instance.post_optimize(
+                    vertices=verts.detach().cpu().numpy().astype("float64"),
+                    faces=faces.detach().cpu().numpy().astype("int32"),
+                    run_name=run_name,
+                    storage_dir=storage_dir,
+                )
 
     def get_model_info_dict(self) -> dict:
         """

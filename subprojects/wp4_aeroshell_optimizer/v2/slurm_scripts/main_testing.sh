@@ -73,13 +73,15 @@ echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 #------------------------------------------------------------------------------
 # Run the Relevant script
 #------------------------------------------------------------------------------
+export no_proxy=$(echo "$no_proxy" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
+export NO_PROXY=$(echo "$NO_PROXY" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export PYTHONUNBUFFERED=TRUE
 ## export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True # Allow PyTorch to expand GPU memory allocation as needed
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
 cd /cluster/home/$USERNAME/AISCO_code/
 #python -m src.main
 
-python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v1_1_one_model.py \
+python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py \
     --save_model \
     --problem_id="AISCO_WP4_Test1"  2>&1
 #------------------------------------------------------------------------------

@@ -26,20 +26,21 @@ configurable prefactor before being fed to the cruising-speed solver::
       solar: 1.0
 
 **Per-constraint ALM initial values**: ``initial_lambda``, ``initial_mu`` and
-``initial_nu`` are lists of length *n_constraints* (one entry per constraint in
-`[bb, eikonal, smoothness]` order).  A single scalar is broadcast to all.
+``initial_nu`` are lists of length *n_constraints* (one entry per active constraint in
+`[bb, eikonal, smoothness, connectedness, developability]` order). A single scalar is
+broadcast to all.
 
 **Category convention**:
 
 * ``aero``, ``solar``                → *objective* losses
-* ``bb``, ``eikonal``, ``smoothness`` → *constraint* losses
+* ``bb``, ``eikonal``, ``smoothness``, ``connectedness``, ``developability`` → *constraint* losses
 * everything else                    → *auxiliary* losses (always manual-weighted)
 """
 
 from __future__ import annotations
 
+import inspect
 import time
-from collections import OrderedDict
 from pathlib import Path
 from typing import Any, TypeAlias
 
@@ -55,19 +56,13 @@ from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cub
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
 
-# ---------------------------------------------------------------------------
-# Category → role mapping (used to classify losses from the YAML config)
-# ---------------------------------------------------------------------------
-_ALM_OBJECTIVE_CATEGORIES: frozenset[str] = frozenset({"aero", "solar"})
-_ALM_CONSTRAINT_CATEGORIES: tuple[str, ...] = ("bb", "eikonal", "smoothness")  # order matters ALM
-TrainModel: TypeAlias = BaseModel | ConcatBaseModel
+TrainModel: TypeAlias = SupportsModelContract
 
 
 class TotalLoss:
@@ -109,12 +104,26 @@ class TotalLoss:
         general_info: dict[str, Any] = self.losses_config["general_info"]
         self._use_alm: bool = general_info.get("ALM") == "True"
         self._use_cse: bool = general_info.get("CSE") == "True"
+        cse_params: dict[str, Any] = general_info.get("cse_params", {})
+        self._cse_drag_category: str = cse_params.get("drag_category", "aero")
+        self._cse_solar_category: str = cse_params.get("solar_category", "solar")
+        self._cse_mass: float = float(cse_params.get("mass", 210))
+        self._cse_c_losses: float = float(cse_params.get("c_losses", 20))
+        self._cse_rolling_friction: float = float(cse_params.get("rolling_friction_coefficient", 0.006))
+        self._cse_max_iter: int = int(cse_params.get("max_iter", 12))
+        self._cse_tol: float = float(cse_params.get("tol", 1.0e-4))
 
         self._init_mesh_infrastructure()
         self._init_active_losses()  # must come before _init_alm_state (needs n_constraints)
         if self._use_alm:
             constraint_names: list[str] = [n for (n, _inst) in self._constraint_losses.values()]
-            self.alm_manager = ALMManager(constraint_names, general_info, self._device)
+            self.alm_manager = ALMManager(
+                constraint_names,
+                general_info,
+                self._device,
+                active_constraint_categories=list(self._constraint_losses.keys()),
+                configured_constraint_categories=self._configured_constraint_categories,
+            )
 
     def _load_configs(self) -> None:
         self._general_config: dict[str, Any] = load_config()
@@ -156,7 +165,10 @@ class TotalLoss:
         self._mesh_statistics = MeshStatistics(device=dev_str, use_wandb=self._use_wandb)
 
     def _init_active_losses(self) -> None:
-        """Load every loss with ``compute=True`` and classify into objective or constraint."""
+        """Load every active loss and classify by YAML role metadata.
+
+        Constraint ordering for ALM is the YAML category order.
+        """
         project_root: Path = Path.cwd()
         losses_block: dict[str, Any] = self.losses_config.get("losses", {})
 
@@ -165,14 +177,29 @@ class TotalLoss:
         # Manual weights from config (second element of [compute, weight, path] tuple)
         self._manual_weights: dict[str, float] = {}
         # Role-classified subsets (references into _active_losses values)
-        self._objective_losses: dict[str, tuple[str, Any]] = {}  # category → (loss_name, instance)
-        self._constraint_losses: OrderedDict[str, tuple[str, Any]] = OrderedDict()  # bb → eikonal → smoothness
+        self._objective_losses: dict[str, tuple[str, Any]] = {}  # category -> (loss_name, instance)
+        self._constraint_losses: dict[str, tuple[str, Any]] = {}  # category -> (loss_name, instance)
+        self._configured_constraint_categories: list[str] = []
+        self._objective_signs: dict[str, int] = {}  # category -> sign for manual objective mode
         self._auxiliary_losses: dict[str, Any] = {}  # name → instance
 
-        for category, lossnames in losses_block.items():
+        for category, block in losses_block.items():
             if category == "total":
                 continue
-            for loss_name, (compute, weight, path) in lossnames.items():
+            if not isinstance(block, dict):
+                continue
+            role: str = block.get("_role", "aux")
+            if role == "diversity":
+                continue
+            if role == "constraint":
+                self._configured_constraint_categories.append(category)
+            sign_val: int = -1 if block.get("_sign", "minimize") == "maximize" else 1
+            for loss_name, entry in block.items():
+                if loss_name.startswith("_"):
+                    continue
+                if not isinstance(entry, list) or len(entry) < 3:
+                    continue  # skip non-loss metadata
+                compute, weight, path = entry[0], entry[1], entry[2]
                 if not compute:
                     continue
                 abs_path: Path = project_root / Path(path)
@@ -187,26 +214,27 @@ class TotalLoss:
                 self._manual_weights[loss_name] = float(weight)
 
                 # Classify by category
-                if category in _ALM_OBJECTIVE_CATEGORIES:
+                if role == "objective":
                     self._objective_losses[category] = (loss_name, instance)
-                elif category in _ALM_CONSTRAINT_CATEGORIES:
+                    self._objective_signs[category] = sign_val
+                elif role == "constraint":
                     self._constraint_losses[category] = (loss_name, instance)
                 else:
                     self._auxiliary_losses[loss_name] = instance
 
-        # Ensure constraint ordering matches the λ/μ/ν vector order #noqa: RUF003
-        self._constraint_losses = OrderedDict(
-            (cat, self._constraint_losses[cat]) for cat in _ALM_CONSTRAINT_CATEGORIES if cat in self._constraint_losses
-        )
-
     # ------------------------------------------------------------------
     # loss computation
     # ------------------------------------------------------------------
-    def _compute_raw_losses(self, model: TrainModel, epoch_name: int) -> dict[str, torch.Tensor]:
+    def _compute_raw_losses(self, model: TrainModel, epoch_name: int, skip_telemetry: bool = False) -> dict[str, torch.Tensor]:
         """Evaluate every active loss instance and return raw (unweighted) tensors."""
         raw: dict[str, torch.Tensor] = {}
         for name, instance in self._active_losses.items():
-            raw[name] = instance.get_loss(model, epoch_name)
+            sig = inspect.signature(instance.get_loss)
+            if "skip_telemetry" in sig.parameters:
+                raw[name] = instance.get_loss(model, epoch_name, skip_telemetry=skip_telemetry)
+            else:
+                raw[name] = instance.get_loss(model, epoch_name)
+        self.latest_raw_metrics = raw
         return raw
 
     def _extract_assembly_id_from_instance(self, instance: Any) -> int | None:
@@ -272,8 +300,19 @@ class TotalLoss:
         # ---- Objectives --------------------------------------------------
         if self._use_cse:
             prefactors: dict[str, float] = gi.get("cse_prefactors", {})
-            drag_name: str = self._objective_losses["aero"][0]
-            solar_name: str = self._objective_losses["solar"][0]
+            if self._cse_drag_category not in self._objective_losses:
+                raise KeyError(
+                    f"CSE enabled but drag objective category '{self._cse_drag_category}' is not active. "
+                    f"Active objective categories: {list(self._objective_losses.keys())}"
+                )
+            if self._cse_solar_category not in self._objective_losses:
+                raise KeyError(
+                    f"CSE enabled but solar objective category '{self._cse_solar_category}' is not active. "
+                    f"Active objective categories: {list(self._objective_losses.keys())}"
+                )
+
+            drag_name: str = self._objective_losses[self._cse_drag_category][0]
+            solar_name: str = self._objective_losses[self._cse_solar_category][0]
             drag_pf: float = float(prefactors.get("drag", 1.0))
             solar_pf: float = float(prefactors.get("solar", 1.0))
             drag: torch.Tensor = raw_losses[drag_name] * drag_pf
@@ -282,11 +321,11 @@ class TotalLoss:
             v_cruise: torch.Tensor = cruising_speed(
                 solar_power=solar,
                 drag_force_at_25ms=drag,
-                mass=210,
-                c_losses=20,
-                rolling_friction_coefficient=0.006,
-                max_iter=12,
-                tol=1e-4,
+                mass=self._cse_mass,
+                c_losses=self._cse_c_losses,
+                rolling_friction_coefficient=self._cse_rolling_friction,
+                max_iter=self._cse_max_iter,
+                tol=self._cse_tol,
             )
             self._last_cruising_speed = v_cruise
             self._last_cruising_speed_diagnostics = {
@@ -296,12 +335,9 @@ class TotalLoss:
         else:
             self._last_cruising_speed = None
             self._last_cruising_speed_diagnostics = None
-            for cat in ("aero", "solar"):
-                if cat not in self._objective_losses:
-                    continue
-                name: str = self._objective_losses[cat][0]
+            for cat, (name, _instance) in self._objective_losses.items():
                 w: float = self._manual_weights.get(name, 1.0)
-                sign: float = -1.0 if cat == "solar" else 1.0
+                sign: float = float(self._objective_signs.get(cat, 1))
                 self._last_weighted_losses[name] = sign * raw_losses[name] * w
 
         # ---- Constraints -------------------------------------------------
@@ -336,12 +372,14 @@ class TotalLoss:
         device: torch.device,
         model: TrainModel,
         total_loss: torch.Tensor,
+        skip_gradients: bool = False,
     ) -> None:
         """WandB logging, mesh rendering, gradient logging, and memory diagnostics."""
         if not self._use_wandb:
-            # Still log gradients (they print to stdout when wandb is off)
-            for inst in self._active_losses.values():
-                inst.log_gradients(epoch_name)
+            if not skip_gradients:
+                # Still log gradients (they print to stdout when wandb is off)
+                for inst in self._active_losses.values():
+                    inst.log_gradients(epoch_name)
             self._log_memory_diagnostics(epoch_name, device)
             return
 
@@ -418,8 +456,9 @@ class TotalLoss:
             print(f"Skipping rendering at epoch {epoch_name} due to rendering frequency setting.")
 
         # --- Gradient logging for each loss component ---------------------
-        for inst in self._active_losses.values():
-            inst.log_gradients(epoch_name)
+        if not skip_gradients:
+            for inst in self._active_losses.values():
+                inst.log_gradients(epoch_name)
 
         # --- GPU memory diagnostics ---------------------------------------
         self._log_memory_diagnostics(epoch_name, device)
@@ -444,7 +483,7 @@ class TotalLoss:
         visualizer.render_until_blue_detected()
 
         if stl_path.exists():
-            wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name, commit=True)
+            wandb.log({"mesh_3d": wandb.Object3D(str(stl_path))}, step=epoch_name)
             time.sleep(2)
             stl_path.unlink()
         if image_path.exists():
@@ -660,10 +699,11 @@ class TotalLoss:
         device: torch.device = next(iter(model.parameters())).device
 
         # 1. Evaluate all active loss instances
-        raw: dict[str, torch.Tensor] = self._compute_raw_losses(model, epoch_name)
+        raw: dict[str, torch.Tensor] = self._compute_raw_losses(model, epoch_name, skip_telemetry=skip_telemetry)
 
         # 2. Apply weighting (populates _last_weighted_losses)
         total: torch.Tensor = self._apply_weighting(raw)
+        self.latest_weighted_metrics = self._last_weighted_losses
 
         # 3. Build logging dict and dispatch telemetry
         if not skip_telemetry:

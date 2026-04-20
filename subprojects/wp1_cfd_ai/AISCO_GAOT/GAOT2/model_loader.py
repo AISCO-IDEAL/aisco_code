@@ -404,7 +404,7 @@ class ModelLoader:
         face_normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
 
-        sdf_values = self.sdf_model(face_centers + face_normals * 50)
+        sdf_values = self.sdf_model(face_centers + face_normals * 50).squeeze(-1)
         normals_flipped = sdf_values < 0
         face_normals[normals_flipped] *= -1
         self._normals_flipped_count = int(normals_flipped.sum().item())

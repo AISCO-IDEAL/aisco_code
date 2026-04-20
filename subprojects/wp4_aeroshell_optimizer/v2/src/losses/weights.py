@@ -50,6 +50,10 @@ def weights_alm(
 
         if thresholds is not None:
             ts = thresholds.view(-1)
+            if ts.numel() != new_mus.numel():
+                raise ValueError(
+                    f"ALM thresholds size mismatch: expected {new_mus.numel()} values for active constraints, got {ts.numel()}."
+                )
             min_mu = gamma / (ts + epsilon)
             new_mus = torch.max(new_mus, min_mu)
 

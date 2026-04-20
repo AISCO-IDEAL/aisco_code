@@ -127,6 +127,32 @@ if [[ "$install_diso" == "y" ]]; then
     echo "✅ DISO installation complete."
 fi
 
+## Build pydevelopability C++ extension
+read -p "Do you want to build pydevelopability C++ extension? [y/n]: " build_pydevelopability
+if [[ "$build_pydevelopability" == "y" ]]; then
+    echo "🔨 Building pydevelopability C++ extension..."
+    cd subprojects/pydevelopability
+
+    # Create build directory if it doesn't exist
+    if [ ! -d build_manual ]; then
+        mkdir build_manual
+    fi
+
+    cd build_manual
+    # Use the global Python and build tools (no local pyproject needed)
+    cmake .. -DCMAKE_BUILD_TYPE=Release
+    make -j4
+
+    # Copy .so to package
+    cp _devcore.cpython-311-x86_64-linux-gnu.so ../pydevelopability/
+
+    cd ../../..
+    python3 -m pip install -e .
+    echo "✅ pydevelopability build complete."
+else
+    echo "⏭️ Skipping pydevelopability build (using pre-built .so)."
+fi
+
 echo ""
 ##############################################################
 echo ""

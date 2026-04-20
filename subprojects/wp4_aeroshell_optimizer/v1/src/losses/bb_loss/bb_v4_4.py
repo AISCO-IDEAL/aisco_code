@@ -3,6 +3,7 @@ import torch
 import trimesh
 
 from subprojects.wp2_assembler.version4.components.nbz import call_assembly, max_assembly_id
+from subprojects.wp4_aeroshell_optimizer.v1.src.losses.bb_loss.assembly_id_utils import resolve_bb_assembly_id
 from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
 
 
@@ -54,21 +55,12 @@ class BbV44(ParentLoss):
         self.__config = self.losses_config["bb_config"]
         self.__analytic_cfg = self.__config.get("analytic_options", {})
         self.__surface_cfg = self.__config.get("surface_sampling", {})
+        rng = np.random.default_rng()
+        self.assembly_id = resolve_bb_assembly_id(self.__config, lambda: int(rng.integers(0, max_assembly_id() + 1)))
 
-        ### fixed assembly ID ###
-        if self.__config.get("random_assembly_id", "False") == "False":
-            self.assembly_id = int(self.__config.get("assembly_id", 1))
-        ### random assembly ID ###
-        elif self.__config["random_assembly_id"] == "True":
-            max_id = max_assembly_id()
-            self.assembly_id = int(np.random.default_rng().integers(0, max_id + 1))
-            if not 0 <= self.assembly_id <= max_id:
-                raise ValueError(f"assembly_id must be in range 0..{max_id}, got {self.assembly_id}")
-        ### else: config error ###
-        else:
-            raise ValueError(
-                f"Invalid value for random_assembly_id: {self.__config['random_assembly_id']} (expected 'True' or 'False')"
-            )
+        max_id = max_assembly_id()
+        if not 0 <= self.assembly_id <= max_id:
+            raise ValueError(f"assembly_id must be in range 0..{max_id}, got {self.assembly_id}")
 
         print(f"[BbV43] Using assembly_id={self.assembly_id}")
 
