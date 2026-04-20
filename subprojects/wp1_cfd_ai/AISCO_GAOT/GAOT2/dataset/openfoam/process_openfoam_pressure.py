@@ -381,6 +381,38 @@ def parse_cd_stats(case_dir: Path) -> tuple[float | None, float | None]:
     return mean_val, std_val
 
 
+def _parse_coeff_aref(case_dir: Path) -> float | None:
+    """Return the Aref value written in the forceCoeffs coefficient.dat header.
+
+    OpenFOAM writes ``# Aref : X.XXXXX`` in the coefficient file header.
+    Parsing this directly means the cd_mean50/cd_std50 rescaling is correct
+    regardless of whether the case was generated with the old bounding-box Aref
+    or the new projected frontal area Aref.
+
+    Args:
+        case_dir: Path to the OpenFOAM case directory.
+
+    Returns:
+        Aref in m² as written by OF, or None if the header line is absent.
+    """
+    coeff_file = _find_postprocessing_file(
+        case_dir / "postProcessing" / "forceCoeffs",
+        serial_name="coefficient.dat",
+        parallel_name="coefficient_0.dat",
+    )
+    if coeff_file is None or not coeff_file.exists():
+        return None
+    with open(coeff_file) as fh:
+        for raw_line in fh:
+            stripped = raw_line.strip()
+            if not stripped.startswith("#"):
+                break  # header is at the top; stop at first data line
+            m = re.match(r"#\s*Aref\s*:\s*([0-9eE.+\-]+)", stripped)
+            if m:
+                return float(m.group(1))
+    return None
+
+
 def parse_openfoam_forces(case_dir: Path) -> tuple[float | None, float | None]:
     """Parse drag coefficient and drag force from OpenFOAM postProcessing.
 
@@ -620,9 +652,9 @@ def process_single_run(
     geom_extent, geom_aspect, conditioning = compute_geom_conditioning(pos_tensor, V_INF_EULER)
 
     # Compute Cd using projected frontal area (standard aerodynamic definition).
-    # coefficient.dat uses the bounding-box approximation (car_width × car_height);
-    # compute_frontal_area sums front-facing triangle projections onto the YZ plane,
-    # which is the correct reference and matches integrate_pressure_field.py.
+    # compute_frontal_area sums front-facing triangle projections onto the YZ plane;
+    # this matches integrate_pressure_field.py and is independent of whatever
+    # Aref was written into forceCoeffsDict.
     q_inf = 0.5 * AIR_DENSITY * V_INF_EULER**2
     projected_aref = compute_frontal_area(pos_tensor, face_tensor, normals_tensor, drag_direction=0)
     if not np.isnan(force_val) and projected_aref > 0:
@@ -630,12 +662,17 @@ def process_single_run(
     else:
         cd_val = float("nan")
 
-    # Rescale cd_mean50 / cd_std50 from coefficient.dat basis (bbox Aref) to
-    # projected-Aref basis so CoV is preserved and absolute values are consistent.
-    bbox_aref = float(geom_extent[1]) * float(geom_extent[2])  # Y × Z bounding box
-    aref_scale = bbox_aref / projected_aref if projected_aref > 0 else 1.0
+    # Rescale cd_mean50 / cd_std50 from coefficient.dat's own Aref basis to the
+    # projected-Aref basis used by data.cd, so absolute values are consistent.
+    # We read the actual Aref from the coefficient.dat header ("# Aref : X.XXXX")
+    # rather than assuming bbox, so this is correct for both old cases (bbox Aref
+    # in forceCoeffsDict) and future cases (projected Aref in forceCoeffsDict).
+    coeff_aref = _parse_coeff_aref(case_dir)
+    if coeff_aref is not None and projected_aref > 0:
+        aref_scale = coeff_aref / projected_aref
+    else:
+        aref_scale = 1.0
 
-    # Rescale cd_mean50 / cd_std50 from coefficient.dat basis (bbox Aref) to projected-Aref basis.
     cd_mean50_float = cd_mean50_val * aref_scale if cd_mean50_val is not None else float("nan")
     cd_std50_float = cd_std50_val * aref_scale if cd_std50_val is not None else float("nan")
 
