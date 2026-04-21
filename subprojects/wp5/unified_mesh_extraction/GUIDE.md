@@ -1,5 +1,10 @@
 # Unified Mesh Extraction — Quick Guide
-Module: [subprojects/wp5/unified_mesh_extraction/sdf2mesh.py](subprojects/wp5/unified_mesh_extraction/sdf2mesh.py)
+Modules:
+- `sdf2mesh.py` — `MeshSDFExtractor` (extraction, gradient flow, decimation)
+- `utils.py` — `MeshExtractionConfig`, `load_mesh_extraction_config`, `compute_surface_area`, bbox/version helpers
+- `cache.py` — `_MESH_CACHE`, `clear_mesh_cache`
+- `ply_export.py` — `extract_sdf_to_temp_ply`
+
 Config: [subprojects/wp5/unified_mesh_extraction/mesh_extraction_config.yaml](subprojects/wp5/unified_mesh_extraction/mesh_extraction_config.yaml)
 ## Usage
 Load defaults from YAML and build an extractor:
