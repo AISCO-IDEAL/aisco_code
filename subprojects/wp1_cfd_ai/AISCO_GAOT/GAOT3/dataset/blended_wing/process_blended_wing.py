@@ -74,12 +74,15 @@ def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
         if mesh.n_points == 0:
             return None
 
-        # Always triangulate before extracting faces so the saved graph has a stable face layout.
-        mesh = mesh.triangulate()
         faces = None
-        if hasattr(mesh, "faces") and mesh.faces is not None and mesh.faces.size > 0:
-            faces_raw = mesh.faces.reshape(-1, 4)
-            faces = torch.tensor(faces_raw[:, 1:], dtype=torch.long).t().contiguous()
+        if hasattr(mesh, 'faces') and mesh.faces is not None and mesh.faces.size > 0:
+            try:
+                faces_raw = mesh.faces.reshape(-1, 4)
+                faces = torch.tensor(faces_raw[:, 1:], dtype=torch.long).t().contiguous()
+            except ValueError:
+                mesh = mesh.triangulate()
+                faces_raw = mesh.faces.reshape(-1, 4)
+                faces = torch.tensor(faces_raw[:, 1:], dtype=torch.long).t().contiguous()
 
         mesh = mesh.compute_normals(cell_normals=False, point_normals=True, auto_orient_normals=True)
 
