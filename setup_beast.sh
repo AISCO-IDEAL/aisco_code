@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Run from project root with:
+#   chmod +x ./setup_beast.sh && PYTHON_BIN="$(command -v python3.11)" ./setup_beast.sh
+# If Python was built without _ctypes, this script can install required Ubuntu build deps,
+# then instruct (or optionally auto-run) a Python 3.11.6 rebuild via pyenv.
 # Setup script for AISCO_code on a local Ubuntu machine with RTX 5090.
 # This script is intentionally strict and only supports RTX 5090 (sm_120).
 
@@ -7,6 +11,22 @@ set -euo pipefail
 ENV_NAME="${ENV_NAME:-aisco_env}"
 REQUIRED_PYTHON_VERSION="3.11.6"
 PYTHON_BIN="${PYTHON_BIN:-python3.11}"
+AUTO_INSTALL_SYSTEM_DEPS="${AUTO_INSTALL_SYSTEM_DEPS:-1}"
+AUTO_REBUILD_PYTHON="${AUTO_REBUILD_PYTHON:-0}"
+SYSTEM_DEPS_ATTEMPTED="${SYSTEM_DEPS_ATTEMPTED:-0}"
+
+APT_BUILD_DEPS=(
+    libffi-dev
+    build-essential
+    zlib1g-dev
+    libssl-dev
+    libbz2-dev
+    libreadline-dev
+    libsqlite3-dev
+    liblzma-dev
+    tk-dev
+    uuid-dev
+)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
@@ -21,6 +41,122 @@ require_cmd() {
         echo "Error: required command '$cmd' was not found."
         exit 1
     fi
+}
+
+install_python_build_deps_ubuntu() {
+    if [[ "$SYSTEM_DEPS_ATTEMPTED" == "1" ]]; then
+        return 0
+    fi
+
+    SYSTEM_DEPS_ATTEMPTED="1"
+
+    if [[ "$AUTO_INSTALL_SYSTEM_DEPS" != "1" ]]; then
+        return 0
+    fi
+
+    if ! command -v apt-get >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local sudo_prefix=""
+    if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+        if command -v sudo >/dev/null 2>&1; then
+            sudo_prefix="sudo"
+        else
+            echo "Warning: apt-get detected but sudo is unavailable; skipping system dependency install."
+            return 0
+        fi
+    fi
+
+    echo "Installing Python build dependencies (Ubuntu/Debian)..."
+    if ! $sudo_prefix apt-get update; then
+        echo "Warning: apt-get update failed. Continuing with existing environment."
+        return 0
+    fi
+
+    if ! $sudo_prefix apt-get install -y "${APT_BUILD_DEPS[@]}"; then
+        echo "Warning: apt-get install failed. Continuing with existing environment."
+        return 0
+    fi
+}
+
+print_python_rebuild_help() {
+    local pyenv_hint=""
+    if ! command -v pyenv >/dev/null 2>&1; then
+        pyenv_hint=$(cat <<'EOF'
+pyenv is not installed in this shell.
+
+Install pyenv, then rebuild Python:
+
+  curl https://pyenv.run | bash
+  export PYENV_ROOT="$HOME/.pyenv"
+  export PATH="$PYENV_ROOT/bin:$PATH"
+  eval "$(pyenv init -)"
+EOF
+)
+    fi
+
+    cat <<EOF
+Python $REQUIRED_PYTHON_VERSION was found, but _ctypes is missing.
+
+Run the following commands, then rerun this setup script:
+
+  sudo apt update
+  sudo apt install -y ${APT_BUILD_DEPS[*]}
+  pyenv install $REQUIRED_PYTHON_VERSION -f
+  pyenv shell $REQUIRED_PYTHON_VERSION
+  python -c "import _ctypes; print('ctypes ok')"
+  cd "$PROJECT_ROOT"
+    PYTHON_BIN="\$(which python)" ./setup_beast.sh
+
+$pyenv_hint
+
+Alternative without pyenv (manual source build):
+
+    cd /tmp
+    wget -q https://www.python.org/ftp/python/$REQUIRED_PYTHON_VERSION/Python-$REQUIRED_PYTHON_VERSION.tgz
+    tar -xzf Python-$REQUIRED_PYTHON_VERSION.tgz
+    cd Python-$REQUIRED_PYTHON_VERSION
+    ./configure --prefix="\$HOME/.local/python-$REQUIRED_PYTHON_VERSION" --enable-optimizations --with-system-ffi
+    make -j"\$(nproc)"
+    make install
+    "\$HOME/.local/python-$REQUIRED_PYTHON_VERSION/bin/python3.11" -c "import _ctypes; print('ctypes ok')"
+    cd "$PROJECT_ROOT"
+    PYTHON_BIN="\$HOME/.local/python-$REQUIRED_PYTHON_VERSION/bin/python3.11" ./setup_beast.sh
+
+Optional: set AUTO_REBUILD_PYTHON=1 to let this script auto-run the pyenv rebuild step.
+EOF
+}
+
+try_pyenv_rebuild_python() {
+    if [[ "$AUTO_REBUILD_PYTHON" != "1" ]]; then
+        return 1
+    fi
+
+    if ! command -v pyenv >/dev/null 2>&1; then
+        echo "AUTO_REBUILD_PYTHON=1 was set, but pyenv is not installed."
+        return 1
+    fi
+
+    echo "AUTO_REBUILD_PYTHON=1 set. Rebuilding Python $REQUIRED_PYTHON_VERSION via pyenv..."
+    pyenv install "$REQUIRED_PYTHON_VERSION" -f
+    pyenv shell "$REQUIRED_PYTHON_VERSION"
+
+    local rebuilt_bin
+    rebuilt_bin="$(command -v python)"
+    if [[ -z "$rebuilt_bin" ]]; then
+        echo "Error: pyenv rebuild completed but no python executable found in PATH."
+        return 1
+    fi
+
+    if ! "$rebuilt_bin" -c "import _ctypes" >/dev/null 2>&1; then
+        echo "Error: rebuilt Python still missing _ctypes."
+        return 1
+    fi
+
+    PYTHON_BIN="$rebuilt_bin"
+    echo "Using rebuilt Python: $PYTHON_BIN"
+    return 0
 }
 
 check_python() {
@@ -39,8 +175,19 @@ check_python() {
     fi
 
     if ! "$PYTHON_BIN" -c "import _ctypes" >/dev/null 2>&1; then
-        echo "Error: Python is missing _ctypes. Install libffi-dev and rebuild Python."
-        exit 1
+        echo "Python is missing _ctypes."
+        install_python_build_deps_ubuntu
+
+        if try_pyenv_rebuild_python; then
+            if ! "$PYTHON_BIN" -c "import _ctypes" >/dev/null 2>&1; then
+                echo "Error: _ctypes still missing after attempted rebuild."
+                print_python_rebuild_help
+                exit 1
+            fi
+        else
+            print_python_rebuild_help
+            exit 1
+        fi
     fi
 }
 
@@ -147,6 +294,7 @@ PY
 echo "Starting RTX 5090-only setup..."
 require_cmd awk
 require_cmd sed
+install_python_build_deps_ubuntu
 check_python
 check_gpu_5090
 detect_cuda_home
