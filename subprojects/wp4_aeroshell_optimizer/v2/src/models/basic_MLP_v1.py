@@ -32,7 +32,7 @@ class BasicMLP(BaseModel):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return super().forward(x)
 
-    def optimise(
+    def optimise(  # noqa: PLR0912, PLR0915
         self,
         general_config,
         training_config,
@@ -104,7 +104,7 @@ class BasicMLP(BaseModel):
             total_weighted_loss = 0.0
             per_component_grad_norms: dict[str, float] = {}
             capture_conflict = conflict_tracker is not None and conflict_cadence > 0 and epoch % conflict_cadence == 0
-            per_component_grad_vectors: dict[str, torch.Tensor] = {}
+            per_component_grad_vectors: dict[str, np.ndarray] = {}
             for component_name, weighted_loss in loss_function._last_weighted_losses.items():
                 if not weighted_loss.requires_grad:
                     continue

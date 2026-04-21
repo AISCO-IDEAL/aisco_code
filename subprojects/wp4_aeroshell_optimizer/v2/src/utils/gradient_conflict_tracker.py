@@ -54,7 +54,7 @@ class GradientConflictTracker:
 
             grad_vec = np.concatenate([
                 (g.detach().cpu().numpy().flatten() if g is not None else np.zeros(p.numel(), dtype=np.float32))
-                for g, p in zip(grads, trainable_params)
+                for g, p in zip(grads, trainable_params, strict=True)
             ])
             grad_vectors[loss_name] = grad_vec
             per_component_grads[loss_name] = grads
@@ -128,8 +128,8 @@ class GradientConflictTracker:
         n = len(loss_names)
         cos_sim = np.zeros((n, n), dtype=np.float32)
 
-        for i, (name_i, vec_i) in enumerate(grad_vectors.items()):
-            for j, (name_j, vec_j) in enumerate(grad_vectors.items()):
+        for i, (_name_i, vec_i) in enumerate(grad_vectors.items()):
+            for j, (_name_j, vec_j) in enumerate(grad_vectors.items()):
                 if i == j:
                     cos_sim[i, j] = 1.0
                 else:
@@ -185,10 +185,7 @@ class GradientConflictTracker:
                     continue
                 g = grads[param_idx]
                 if g is not None:
-                    if accumulated is None:
-                        accumulated = g.detach().clone()
-                    else:
-                        accumulated = accumulated + g.detach()
+                    accumulated = g.detach().clone() if accumulated is None else accumulated + g.detach()
 
             if accumulated is not None:
                 param.grad = accumulated

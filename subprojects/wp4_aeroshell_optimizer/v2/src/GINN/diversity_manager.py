@@ -198,7 +198,7 @@ class DiversityTrainer:
                 summed_log_data[k] = summed_log_data.get(k, 0.0) + v
 
             # Gradient conflict tracking or normal backward
-            if capture_components and result.components:
+            if capture_components and result.components and self._conflict_tracker is not None:
                 trainable_params = [p for p in self._model.parameters() if p.requires_grad]
                 self._conflict_tracker.capture_vectors(
                     result.components,
@@ -266,7 +266,7 @@ class DiversityTrainer:
                 norm_order=self._diversity_norm_order,
                 neighbor_agg_fn=self._diversity_neighbor_agg_fn,
             )
-            if capture_conflict:
+            if capture_conflict and self._conflict_tracker is not None:
                 trainable_params = [p for p in self._model.parameters() if p.requires_grad]
                 diversity_grads = torch.autograd.grad(
                     diversity_result.weighted,
@@ -289,7 +289,7 @@ class DiversityTrainer:
             diversity_weighted_loss_val = float(diversity_result.weighted.detach().item())
             diversity_log_data = self._diversity_manager.build_log_data(diversity_loss_val)
 
-        if capture_conflict:
+        if capture_conflict and self._conflict_tracker is not None:
             self._conflict_tracker.finalize_epoch(epoch)
 
         self._model_optimizer.step()

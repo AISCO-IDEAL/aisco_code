@@ -221,7 +221,7 @@ class WIREV2(BaseModel):
             total_weighted_loss = 0.0
             per_component_grad_norms: dict[str, float] = {}
             capture_conflict = conflict_tracker is not None and conflict_cadence > 0 and epoch % conflict_cadence == 0
-            per_component_grad_vectors: dict[str, torch.Tensor] = {}
+            per_component_grad_vectors: dict[str, np.ndarray] = {}
             for component_name, weighted_loss in loss_function._last_weighted_losses.items():
                 if not weighted_loss.requires_grad:
                     continue

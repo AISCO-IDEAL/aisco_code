@@ -111,7 +111,7 @@ def plot_chord_diagram(  # noqa: PLR0915
 
     for i in range(n):
         chord_width_i = 0.02 + norm_for_width(grad_norms[i]) * 0.08  # angular width of each chord slot at node i
-        others = sorted(range(n), key=lambda j, i=i: (angles[j] - angles[i]) % (2 * np.pi), reverse=True)
+        others = sorted(range(n), key=lambda j, i=i: (angles[j] - angles[i]) % (2 * np.pi), reverse=True)  # type: ignore
         others = [j for j in others if j != i]
 
         n_chords = len(others)
@@ -133,7 +133,7 @@ def plot_chord_diagram(  # noqa: PLR0915
             chord_slots[(i, j)] = (left, right)
 
     # ── Draw tapered chord ribbons using pre-computed slots ──
-    ribbon_codes = [
+    ribbon_codes = [  # type: ignore
         patches.Path.MOVETO,
         patches.Path.CURVE3,
         patches.Path.CURVE3,
@@ -168,7 +168,7 @@ def plot_chord_diagram(  # noqa: PLR0915
             # p_ir -> ctrl -> p_jl (one curved edge), then p_jr -> ctrl -> p_il (other edge)
             ribbon_verts = [p_ir, ctrl, p_jl, p_jr, ctrl, p_il]
             ax.add_patch(patches.PathPatch(
-                patches.Path(ribbon_verts, ribbon_codes),
+                patches.Path(ribbon_verts, ribbon_codes),  # type: ignore
                 facecolor=color,
                 edgecolor="none",
                 alpha=alpha,
