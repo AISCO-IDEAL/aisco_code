@@ -7,7 +7,6 @@
 ##########################################################################
 
 setup:
-    run_local: true
     name: "euler_field_cp_full"
     id: "_RUN_ID_"
     seed: 42
@@ -137,8 +136,6 @@ dataset:
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
     subsample_nodes: 50000     # randomly sample 30k nodes per load if sample exceeds this
     subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"
-    deterministic_subsampling: false  # false keeps fresh random subsets on every load
-    subsampling_seed: 42        # used only when deterministic_subsampling is true
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
     num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
@@ -180,11 +177,3 @@ path:
     result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/results.png"
     config_save_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/config.yaml"
     database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv"
-
-local_path:
-    ckpt_path: "/home/clhuber/results/_NAME___RUN_ID_/model.pt"
-    loss_path: "/home/clhuber/results/_NAME___RUN_ID_/loss.png"
-    result_path: "/home/clhuber/results/_NAME___RUN_ID_/results.png"
-    config_save_path: "/home/clhuber/results/_NAME___RUN_ID_/config.yaml"
-    database_path: "/home/clhuber/results/metrics.csv"
-    dataset: "/home/clhuber/datasets/processed_euler_cp_full"  # local path to dataset (overrides base_path when run_local=true)
