@@ -7,13 +7,12 @@ Owns:
 * Optional mesh rendering
 
 Does NOT own loss definitions (TotalLossV2) or ALM state (ALMManager is passed in).
-With ``diversity_loss_fn=None`` and ``population_size=1`` it degrades into a plain
-single-z trainer with no diversity phase — useful for non-GINN diversity-capable models.
+With ``diversity_manager=None`` and ``population_size=1`` it degrades into a plain
+single-z trainer with no diversity phase.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -27,44 +26,12 @@ from torch.optim.optimizer import Optimizer
 
 import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
-from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_loss import field_diversity_loss
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
-
-# Callback signature for pluggable diversity losses. Must be backpropable through the
-# model's parameters; receives the full population and trainer-level sampling params so
-# implementations can choose their own sampling strategy.
-DiversityLossFn = Callable[
-    [SupportsLatentConcat, Tensor, int, float, int, str],
-    Tensor,
-]
-
-
-def default_field_diversity_loss(
-    model: SupportsLatentConcat,
-    Z: Tensor,
-    num_points: int,
-    bbox_size: float,
-    norm_order: int,
-    neighbor_agg_fn: str,
-) -> Tensor:
-    """GINN-paper field diversity on random domain points — WIRE-only forward pass.
-
-    N small computation graphs held simultaneously; cheap compared to Phase-1 graphs.
-    """
-    points = (torch.rand(num_points, 3, device=Z.device) - 0.5) * bbox_size
-    field_values: list[Tensor] = []
-    for i in range(Z.shape[0]):
-        model.set_latent_vector(Z[i])
-        y_i = model(points)
-        if isinstance(y_i, tuple):
-            y_i = y_i[0]
-        field_values.append(y_i.squeeze(-1))
-    Y = torch.stack(field_values, dim=0)
-    return field_diversity_loss(Y, norm_order=norm_order, neighbor_agg_fn=neighbor_agg_fn)
 
 
 class DiversityTrainer:
@@ -84,8 +51,7 @@ class DiversityTrainer:
         z_dim: int,
         device: torch.device | str = "cuda",
         model_lr: float = 1e-4,
-        diversity_loss_fn: DiversityLossFn | None = None,
-        diversity_weight: float = 0.1,
+        diversity_manager: DiversityLossManager | None = None,
         diversity_num_points: int = 2048,
         diversity_bbox_size: float = 10.0,
         diversity_norm_order: int = 2,
@@ -109,11 +75,10 @@ class DiversityTrainer:
             z_dim: Dimensionality of each latent vector.
             device: Compute device.
             model_lr: Adam learning rate for model parameters.
-            diversity_loss_fn: Callback (model, Z, num_points, bbox_size, norm_order, agg) -> scalar.
-                Set to ``None`` to skip Phase 2 entirely (single-model / no-diversity use).
-            diversity_weight: λ_div multiplier on the diversity loss before backward.
+            diversity_manager: Optional population-level diversity manager. Set to
+                ``None`` to skip Phase 2 entirely.
             diversity_num_points / bbox_size / norm_order / neighbor_agg_fn: trainer-level
-                sampling params passed to ``diversity_loss_fn``.
+                sampling params passed to the diversity manager compute call.
             force_z0_to_origin: pin Z[0] at the origin (reference shape in GINN).
             z_resample_cadence: resample Z every N epochs (0 disables resampling).
             mesh_extractor + mesh_extraction_config + renderer_manager + rendering_freq +
@@ -129,8 +94,7 @@ class DiversityTrainer:
         self._population_size: int = population_size
         self._z_dim: int = z_dim
 
-        self._diversity_loss_fn: DiversityLossFn | None = diversity_loss_fn
-        self._diversity_weight: float = diversity_weight
+        self._diversity_manager: DiversityLossManager | None = diversity_manager
         self._diversity_num_points: int = diversity_num_points
         self._diversity_bbox_size: float = diversity_bbox_size
         self._diversity_norm_order: int = diversity_norm_order
@@ -257,17 +221,21 @@ class DiversityTrainer:
 
         # Phase 2 — cheap diversity backward
         diversity_loss_val: float = 0.0
-        if self._diversity_loss_fn is not None and self._diversity_weight > 0.0 and self._population_size > 1:
-            diversity_loss = self._diversity_loss_fn(
+        diversity_weighted_loss_val: float = 0.0
+        diversity_log_data: dict[str, float] = {}
+        if self._diversity_manager is not None and self._diversity_manager.should_compute(self._population_size):
+            diversity_result = self._diversity_manager.compute(
                 self._model,
                 self._Z,
-                self._diversity_num_points,
-                self._diversity_bbox_size,
-                self._diversity_norm_order,
-                self._diversity_neighbor_agg_fn,
+                num_points=self._diversity_num_points,
+                bbox_size=self._diversity_bbox_size,
+                norm_order=self._diversity_norm_order,
+                neighbor_agg_fn=self._diversity_neighbor_agg_fn,
             )
-            (self._diversity_weight * diversity_loss).backward()
-            diversity_loss_val = diversity_loss.item()
+            diversity_result.weighted.backward()
+            diversity_loss_val = float(diversity_result.raw.detach().item())
+            diversity_weighted_loss_val = float(diversity_result.weighted.detach().item())
+            diversity_log_data = self._diversity_manager.build_log_data(diversity_loss_val)
 
         self._model_optimizer.step()
 
@@ -277,12 +245,13 @@ class DiversityTrainer:
         self._render(epoch, per_vector_loss_val)
 
         # Log once per epoch
-        self._log(avg_log_data, diversity_loss_val, epoch)
+        self._log(avg_log_data, diversity_log_data, epoch)
 
         metrics: dict[str, float] = {
             "per_vector_loss": per_vector_loss_val,
             "diversity_loss": diversity_loss_val,
-            "total_loss": per_vector_loss_val + self._diversity_weight * diversity_loss_val,
+            "diversity_weighted_loss": diversity_weighted_loss_val,
+            "total_loss": per_vector_loss_val + diversity_weighted_loss_val,
         }
         # Surface averaged raw metrics for the caller (stripped prefix for convenience)
         for k, v in avg_log_data.items():
@@ -296,7 +265,7 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     # Logging
     # ------------------------------------------------------------------
-    def _log(self, avg_log_data: dict[str, float], diversity_loss_val: float, epoch: int) -> None:
+    def _log(self, avg_log_data: dict[str, float], diversity_log_data: dict[str, float], epoch: int) -> None:
         """Single wandb.log call with all averaged scalars + ALM multipliers + diversity."""
         if not self._use_wandb or wandb.run is None:
             return
@@ -304,19 +273,17 @@ class DiversityTrainer:
         log_dict: dict[str, float] = dict(avg_log_data)
         if self._alm_manager is not None:
             log_dict.update(self._alm_manager.get_telemetry())
-        if self._diversity_loss_fn is not None:
-            log_dict["diversity/loss"] = diversity_loss_val
-            log_dict["diversity/weighted_loss"] = self._diversity_weight * diversity_loss_val
+        log_dict.update(diversity_log_data)
         wandb.log(log_dict, step=epoch)
 
         # Competition charts (avg-of-population)
         raw_floats: dict[str, float] = {
             k.removeprefix("raw_losses/"): abs(v)
-            for k, v in avg_log_data.items()
+            for k, v in log_dict.items()
             if k.startswith("raw_losses/") and k != "raw_losses/total_loss"
         }
         weighted_floats: dict[str, float] = {
-            k.removeprefix("weighted_losses/"): abs(v) for k, v in avg_log_data.items() if k.startswith("weighted_losses/")
+            k.removeprefix("weighted_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("weighted_losses/")
         }
         self._log_competition_charts(raw_floats, weighted_floats, epoch)
 
@@ -337,6 +304,7 @@ class DiversityTrainer:
 
         def _safe_pie(values: list[float], labels: list[str], title: str) -> plt.Figure:
             fig, ax = plt.subplots(figsize=(6, 6))
+            values = [abs(v) for v in values]
             total = sum(values)
             if total == 0 or len(values) == 0:
                 ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
