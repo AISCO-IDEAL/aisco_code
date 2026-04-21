@@ -402,7 +402,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         verbose=verbose,
         pretraining=False,
         wandb_run=wandb_name,
-        epoch=training_config["training_params"].get("num_epochs", 420420), #Use 420420 to avoid default value that is misleading
+        epoch=training_config["training_params"].get(
+            "num_epochs", 420420
+        ),  # Use 420420 to avoid default value that is misleading
         resolution=128,
         marching_cubes_usage=True,
         device=str(device),
