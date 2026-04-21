@@ -102,6 +102,14 @@ class FileParser:
                 self.kwargs = apply_overrides(self.kwargs, overrides)
         else:
             raise NotImplementedError(f"File type {filename} not supported, currently only toml and json are supported.")
+        if self.kwargs["setup"]["run_local"]:
+            print("Running in local mode with config overrides:")
+            self.kwargs["path"]["ckpt_path"] = self.kwargs["local_path"]["ckpt_path"]
+            self.kwargs["path"]["loss_path"] = self.kwargs["local_path"]["loss_path"]
+            self.kwargs["path"]["result_path"] = self.kwargs["local_path"]["result_path"]
+            self.kwargs["path"]["config_save_path"] = self.kwargs["local_path"]["config_save_path"]
+            self.kwargs["path"]["database_path"] = self.kwargs["local_path"]["database_path"]
+            self.kwargs["dataset"]["base_path"] = self.kwargs["local_path"]["dataset"]
 
     def add_argument(self, *args, **kwargs):
         for raw_arg in args:
@@ -175,7 +183,7 @@ def prepare_arg(arg):
 
 def run_arg(arg):  # noqa: PLR0912, PLR0915
     arg = prepare_arg(arg)
-    if arg.setup["run_local"] == True:
+    if arg.setup["run_local"]:
         print("Running in local mode with config overrides:")
         arg.path["ckpt_path"] = arg.local_path["ckpt_path"]
         arg.path["loss_path"] = arg.local_path["loss_path"]
@@ -291,7 +299,7 @@ def run_arg_files(arg_files, is_debug, num_works_per_device=3, overrides=None): 
         for arg_file in arg_files:
             print("\n")
             print(arg_file, end="\n\n\n")
-            run_arg(FileParser(arg_file, overrides=overrides).parse_args())
+        run_arg(FileParser(arg_file, overrides=overrides).parse_args())
     elif platform.system() == "Windows":
         processes: list[Process] = []
         for arg_file in arg_files:
