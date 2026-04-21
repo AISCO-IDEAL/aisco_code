@@ -40,6 +40,7 @@ broadcast to all.
 from __future__ import annotations
 
 import inspect
+import math
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -625,6 +626,16 @@ class TotalLoss:
         # ----------------------------------------------------------------
         def _safe_pie(values: list[float], labels: list[str], title: str) -> plt.Figure:
             fig, ax = plt.subplots(figsize=(6, 6))
+            # Filter non-finite and non-positive values (pie can't handle NaN/Inf/neg).
+            filtered = [
+                (v, lbl) for v, lbl in zip(values, labels, strict=True)
+                if isinstance(v, (int, float)) and math.isfinite(v) and v > 0
+            ]
+            if filtered:
+                values = [v for v, _ in filtered]
+                labels = [lbl for _, lbl in filtered]
+            else:
+                values, labels = [], []
             total = sum(values)
             if total == 0 or len(values) == 0:
                 ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
@@ -635,6 +646,15 @@ class TotalLoss:
 
         def _safe_hbar(values: list[float], labels: list[str], title: str) -> plt.Figure:
             fig, ax = plt.subplots(figsize=(8, 1.8))
+            filtered = [
+                (v, lbl) for v, lbl in zip(values, labels, strict=True)
+                if isinstance(v, (int, float)) and math.isfinite(v) and v > 0
+            ]
+            if filtered:
+                values = [v for v, _ in filtered]
+                labels = [lbl for _, lbl in filtered]
+            else:
+                values, labels = [], []
             total = sum(values)
             if total == 0 or len(values) == 0:
                 ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
