@@ -9,4 +9,4 @@ class NullLossSolarV1(ParentLoss):
         return
 
     def _loss(self, model) -> torch.Tensor:  # noqa: ARG002
-        return torch.tensor(700.0, device=self.device) # defaults to 700 Watts
+        return torch.tensor(700.0, device=self.device)  # defaults to 700 Watts

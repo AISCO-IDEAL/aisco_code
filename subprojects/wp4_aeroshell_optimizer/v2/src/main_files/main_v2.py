@@ -129,9 +129,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     if run_locally:
         pretrained_path = pretraining_config["pretraining"].get("local_pretraining_model_path", "")
         if not pretrained_path:  # check if empty path given in pretraining config, if so fallback to general config path
-            pretrained_path = (
-                general_config["storage_paths"].get("beast_storage_dir")
-                or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+            pretrained_path = general_config["storage_paths"].get("beast_storage_dir") or general_config["storage_paths"].get(
+                "local_storage_dir", "./local_storage_dir"
             )
     else:
         pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", "")
@@ -209,7 +208,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 Path(
                     general_config["storage_paths"].get("beast_storage_dir")
                     or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
-                ) / model_hash / reformat_wandb_name(wandb_name)
+                )
+                / model_hash
+                / reformat_wandb_name(wandb_name)
             )
         else:
             rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
@@ -360,7 +361,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                     storage_path=(
                         general_config["storage_paths"].get("beast_storage_dir")
                         or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
-                    ) if run_locally else general_config["storage_paths"]["storage_dir"],
+                    )
+                    if run_locally
+                    else general_config["storage_paths"]["storage_dir"],
                     save_model=True,
                     save_mesh=True,
                     epoch=epoch + 1,
@@ -397,9 +400,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         storage_path=(
             general_config["storage_paths"].get("beast_storage_dir")
             or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
-        ) if run_locally else general_config["storage_paths"].get(
-            "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
-        ),
+        )
+        if run_locally
+        else general_config["storage_paths"].get("storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"),
         save_model=True,
         save_mesh=True,
         verbose=verbose,

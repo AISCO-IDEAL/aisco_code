@@ -9,4 +9,4 @@ class NullLossAeroV1(ParentLoss):
         return
 
     def _loss(self, _model) -> torch.Tensor:
-        return torch.tensor(50.0, device=self.device) # defaults to 50 Newtons
+        return torch.tensor(50.0, device=self.device)  # defaults to 50 Newtons

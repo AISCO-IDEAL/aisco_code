@@ -334,9 +334,8 @@ class WIREV2(BaseModel):
                 _storage_paths = general_config.get("storage_paths", {})
                 _run_locally = general_config.get("general_info", {}).get("run_locally", "False") == "True"
                 if _run_locally:
-                    storage_dir = (
-                        _storage_paths.get("beast_storage_dir")
-                        or _storage_paths.get("local_storage_dir", "./local_storage_dir")
+                    storage_dir = _storage_paths.get("beast_storage_dir") or _storage_paths.get(
+                        "local_storage_dir", "./local_storage_dir"
                     )
                 else:
                     storage_dir = _storage_paths.get(

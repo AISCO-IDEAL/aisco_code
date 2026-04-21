@@ -166,12 +166,13 @@ class ModelLoader:
                         if str(candidate_id) != str(self.cfd_config["model_id"]):
                             logger.warning(
                                 "GAOT model_id %s not found in %s; falling back to local_model_id %s.",
-                                self.cfd_config["model_id"], csv_path, candidate_id,
+                                self.cfd_config["model_id"],
+                                csv_path,
+                                candidate_id,
                             )
                         return ckpt
         raise ValueError(
-            f"No valid GAOT checkpoint for model_id={self.cfd_config['model_id']} "
-            f"(local_model_id={local_id}) in {csv_path}."
+            f"No valid GAOT checkpoint for model_id={self.cfd_config['model_id']} (local_model_id={local_id}) in {csv_path}."
         )
 
     def _load_model(self) -> None:  # Noqa: PLR0912, PLR0915
