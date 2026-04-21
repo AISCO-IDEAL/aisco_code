@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import patches
 from matplotlib.colors import LinearSegmentedColormap, Normalize
+from matplotlib.patches import Path as MplPath  # type: ignore[attr-defined]
 
 
 def plot_chord_diagram(  # noqa: PLR0915
@@ -111,7 +112,7 @@ def plot_chord_diagram(  # noqa: PLR0915
 
     for i in range(n):
         chord_width_i = 0.02 + norm_for_width(grad_norms[i]) * 0.08  # angular width of each chord slot at node i
-        others = sorted(range(n), key=lambda j, i=i: (angles[j] - angles[i]) % (2 * np.pi), reverse=True)  # type: ignore
+        others = sorted(range(n), key=lambda j: (angles[j] - angles[i]) % (2 * np.pi), reverse=True)
         others = [j for j in others if j != i]
 
         n_chords = len(others)
@@ -133,13 +134,13 @@ def plot_chord_diagram(  # noqa: PLR0915
             chord_slots[(i, j)] = (left, right)
 
     # ── Draw tapered chord ribbons using pre-computed slots ──
-    ribbon_codes = [  # type: ignore
-        patches.Path.MOVETO,
-        patches.Path.CURVE3,
-        patches.Path.CURVE3,
-        patches.Path.LINETO,
-        patches.Path.CURVE3,
-        patches.Path.CURVE3,
+    ribbon_codes = [
+        MplPath.MOVETO,
+        MplPath.CURVE3,
+        MplPath.CURVE3,
+        MplPath.LINETO,
+        MplPath.CURVE3,
+        MplPath.CURVE3,
     ]
 
     for i in range(n):
@@ -152,9 +153,9 @@ def plot_chord_diagram(  # noqa: PLR0915
             left_j, right_j = chord_slots[(j, i)]
 
             # Four arc-face points: two at each end of the ribbon
-            p_il = (chord_r * np.cos(left_i),  chord_r * np.sin(left_i))
+            p_il = (chord_r * np.cos(left_i), chord_r * np.sin(left_i))
             p_ir = (chord_r * np.cos(right_i), chord_r * np.sin(right_i))
-            p_jl = (chord_r * np.cos(left_j),  chord_r * np.sin(left_j))
+            p_jl = (chord_r * np.cos(left_j), chord_r * np.sin(left_j))
             p_jr = (chord_r * np.cos(right_j), chord_r * np.sin(right_j))
 
             # Bezier control point — bows inward, flatter for strong conflict/alignment
@@ -167,19 +168,22 @@ def plot_chord_diagram(  # noqa: PLR0915
 
             # p_ir -> ctrl -> p_jl (one curved edge), then p_jr -> ctrl -> p_il (other edge)
             ribbon_verts = [p_ir, ctrl, p_jl, p_jr, ctrl, p_il]
-            ax.add_patch(patches.PathPatch(
-                patches.Path(ribbon_verts, ribbon_codes),  # type: ignore
-                facecolor=color,
-                edgecolor="none",
-                alpha=alpha,
-                zorder=1,
-            ))
+            ax.add_patch(
+                patches.PathPatch(
+                    MplPath(ribbon_verts, ribbon_codes),
+                    facecolor=color,
+                    edgecolor="none",
+                    alpha=alpha,
+                    zorder=1,
+                )
+            )
 
             # Numeric cos_sim label at chord midpoint
             mid_x = (p_ir[0] + p_jl[0]) / 2 * 0.7 + ctrl[0] * 0.3
             mid_y = (p_ir[1] + p_jl[1]) / 2 * 0.7 + ctrl[1] * 0.3
             ax.text(
-                mid_x, mid_y,
+                mid_x,
+                mid_y,
                 f"{cos_sim:.2f}",
                 fontsize=8,
                 ha="center",
@@ -196,12 +200,10 @@ def plot_chord_diagram(  # noqa: PLR0915
     cbar.ax.tick_params(labelsize=9)
 
     # ── Legend for visual encoding ──
-    legend_text = (
-        "Chord width  →  gradient magnitude\n"
-        "Chord opacity  →  |cosine similarity|"
-    )
+    legend_text = "Chord width  →  gradient magnitude\nChord opacity  →  |cosine similarity|"
     ax.text(
-        -1.55, -1.5,
+        -1.55,
+        -1.5,
         legend_text,
         fontsize=9,
         va="bottom",

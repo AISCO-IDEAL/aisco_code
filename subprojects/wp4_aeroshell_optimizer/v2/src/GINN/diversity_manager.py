@@ -248,9 +248,7 @@ class DiversityTrainer:
             self._alm_manager.update_multipliers(mean_constraints)
 
         capture_conflict = (
-            self._conflict_tracker is not None
-            and self._conflict_cadence > 0
-            and epoch % self._conflict_cadence == 0
+            self._conflict_tracker is not None and self._conflict_cadence > 0 and epoch % self._conflict_cadence == 0
         )
 
         # Phase 2 — cheap diversity backward
@@ -275,10 +273,12 @@ class DiversityTrainer:
                     create_graph=False,
                     allow_unused=True,
                 )
-                diversity_grad_vec = np.concatenate([
-                    (g.detach().cpu().numpy().flatten() if g is not None else np.zeros(p.numel(), dtype=np.float32))
-                    for g, p in zip(diversity_grads, trainable_params, strict=True)
-                ])
+                diversity_grad_vec = np.concatenate(
+                    [
+                        (g.detach().cpu().numpy().flatten() if g is not None else np.zeros(p.numel(), dtype=np.float32))
+                        for g, p in zip(diversity_grads, trainable_params, strict=True)
+                    ]
+                )
                 self._conflict_tracker.add_named_vector(epoch, "diversity", diversity_grad_vec)
                 for param, g in zip(trainable_params, diversity_grads, strict=True):
                     if g is not None:

@@ -17,7 +17,7 @@ class GradientConflictTracker:
         named_components: dict[str, torch.Tensor],
         trainable_params: list[torch.nn.Parameter],
         epoch: int,
-    ) -> dict[str, np.ndarray]:
+    ) -> dict[int, np.ndarray]:
         """
         Computes per-component gradients via torch.autograd.grad() and stores them in
         _pending_vectors[epoch]. Does NOT save to disk — call finalize_epoch() after
@@ -52,10 +52,12 @@ class GradientConflictTracker:
                 print(f"Warning: autograd.grad failed for {loss_name}: {e}")
                 continue
 
-            grad_vec = np.concatenate([
-                (g.detach().cpu().numpy().flatten() if g is not None else np.zeros(p.numel(), dtype=np.float32))
-                for g, p in zip(grads, trainable_params, strict=True)
-            ])
+            grad_vec = np.concatenate(
+                [
+                    (g.detach().cpu().numpy().flatten() if g is not None else np.zeros(p.numel(), dtype=np.float32))
+                    for g, p in zip(grads, trainable_params, strict=True)
+                ]
+            )
             grad_vectors[loss_name] = grad_vec
             per_component_grads[loss_name] = grads
 
@@ -168,14 +170,14 @@ class GradientConflictTracker:
         per_component_grads: dict[str, tuple],
         trainable_params: list[torch.nn.Parameter],
         loss_names: list[str],
-    ) -> dict[str, np.ndarray]:
+    ) -> dict[int, np.ndarray]:
         """
         Accumulates per-component gradient tuples into param.grad attributes
         (mathematically equivalent to summing component losses and calling .backward()).
 
-        Returns dict mapping param→grad for inspection if needed.
+        Returns dict mapping param id→grad for inspection if needed.
         """
-        param_to_grad = {}
+        param_to_grad: dict[int, np.ndarray] = {}
 
         for param_idx, param in enumerate(trainable_params):
             accumulated = None

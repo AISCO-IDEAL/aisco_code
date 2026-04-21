@@ -253,10 +253,9 @@ class WIREV2(BaseModel):
                 if wandb.run:
                     wandb.log({f"{component_name}_gradient": delta_norm}, step=epoch)
                 if capture_conflict:
-                    delta_grad = torch.cat([
-                        (c - pv).detach().cpu().flatten()
-                        for c, pv in zip(curr_grad, prev_grad, strict=False)
-                    ])
+                    delta_grad = torch.cat(
+                        [(c - pv).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
+                    )
                     per_component_grad_vectors[component_name] = delta_grad.numpy()
                 prev_grad = curr_grad
 

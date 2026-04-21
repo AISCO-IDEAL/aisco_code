@@ -59,7 +59,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create conflict GIF from .npz files")
     parser.add_argument("conflict_dir", type=Path, help="Directory containing epoch_*.npz files")
     parser.add_argument("--fps", type=int, default=5, help="Frames per second for GIF")
-    parser.add_argument("--output", type=Path, default=None, help="Output GIF path (default: <conflict_dir>/conflict_evolution.gif)")
+    parser.add_argument(
+        "--output", type=Path, default=None, help="Output GIF path (default: <conflict_dir>/conflict_evolution.gif)"
+    )
 
     args = parser.parse_args()
     output = args.output or (args.conflict_dir / "conflict_evolution.gif")
