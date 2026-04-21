@@ -19,6 +19,7 @@ Usage (full run):
 """
 
 import argparse
+import json
 import math
 import sys
 from pathlib import Path
@@ -26,6 +27,8 @@ from pathlib import Path
 import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
+import wandb
+from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MarchingCubesExtractor
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
     _apply_override_config,
     _compute_eikonal,
@@ -33,12 +36,14 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 impo
     _load_ply_mesh,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.kaolin_conversions import (
-    get_diff_mesh,
-    kaolin_to_PLY,
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
+    apply_sweep_overrides,
+    get_master_config,
+    load_config,
+    register_all_configs,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.kaolin_conversions import kaolin_to_PLY
 
 
 def _extract_mesh(model: SupportsModelContract, pth_path: Path, device: str, mesh_res: int, mesh_box: int) -> None:
@@ -58,15 +63,12 @@ def _extract_mesh(model: SupportsModelContract, pth_path: Path, device: str, mes
     """
     ply_path = pth_path.with_suffix(".ply")
     print(f"[mesh] Starting post-training mesh extraction (res={mesh_res}, box=\u00b1{mesh_box}mm) ...")
-    box_dim = [
-        -mesh_box,
-        mesh_box,
-        -mesh_box,
-        mesh_box,
-        -mesh_box,
-        mesh_box,
-    ]
-    verts, faces = get_diff_mesh(model, grid_res=mesh_res, box_dim=box_dim, device=device)
+    extractor = MarchingCubesExtractor(device=device, verbose=True)
+    extractor.set_grid(
+        bbox=[[-mesh_box, mesh_box], [-mesh_box, mesh_box], [-mesh_box, mesh_box]],
+        resolution=mesh_res,
+    )
+    verts, faces = extractor.extract_mesh(model, isovalue=0.0, batch_size=8192)
     n_verts = verts.shape[0]
     print(f"[mesh] Extracted: {n_verts} vertices, {faces.shape[0]} faces")
     if n_verts == 0:
@@ -76,7 +78,7 @@ def _extract_mesh(model: SupportsModelContract, pth_path: Path, device: str, mes
         print(f"\u2713 Saved mesh to {ply_path}")
 
 
-def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # noqa: PLR0915 — training loop matches pretraining_v3.py structure; extracting sub-functions would obscure the linear flow
+def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # noqa: PLR0912, PLR0915 — training loop matches pretraining_v3.py structure; extracting sub-functions would obscure the linear flow
     """
     Run dynamic pretraining: load model via models.json, save checkpoint, optionally extract mesh.
 
@@ -93,7 +95,32 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
         None. Saves a .pth checkpoint on success.
         If no_mesh is False, also saves a .ply to the same directory.
     """
-    # ── Load config and model ────────────────────────────────────────────────
+    # ── Register configs + wandb init + sweep overrides ─────────────────────
+    # All model configs must be registered before apply_sweep_overrides so that
+    # sweep params targeting e.g. models/WIRE_v3.hidden_features are patchable,
+    # and smart_model_init's load_config call returns the patched version.
+    models_json_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / "v2" / "configs" / "models.json"
+    models_inventory = json.loads(models_json_path.read_text())
+    active_configs: dict[str, str] = {"pretraining_v4": "pretraining_v4_config.yaml"}
+    for model_info in models_inventory["models"].values():
+        cfg_file: str | None = model_info.get("config_file")
+        if cfg_file:
+            active_configs[Path(cfg_file).stem] = cfg_file
+    register_all_configs({"active_configs": active_configs}, v="v2")
+
+    pt_cfg_for_wandb = load_config(v="v2", cfg_name="pretraining_v4_config.yaml")
+    use_wandb: bool = pt_cfg_for_wandb.get("wandb", {}).get("use_wandb", False)
+    if use_wandb:
+        wandb.init(
+            entity=pt_cfg_for_wandb["wandb"]["entity_name"],
+            project=pt_cfg_for_wandb["wandb"]["project_name"],
+        )
+
+    if wandb.run is not None:
+        apply_sweep_overrides(dict(wandb.config))
+        wandb.config.update(get_master_config(), allow_val_change=True)
+
+    # ── Load config and model after registry is done──────────────────────────
     config = load_config(v="v2", cfg_name="pretraining_v4_config.yaml")
     model_name: str = config["model_name"]
     model, _, _, _ = smart_model_init(model_name)
@@ -162,6 +189,17 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
         optimizer.step()
         scheduler.step()
 
+        if use_wandb and wandb.run is not None:
+            wandb.log(
+                {
+                    "pretraining/total_loss": total_loss.item(),
+                    "pretraining/mse_loss": mse_loss.item(),
+                    "pretraining/eikonal_loss": eikonal.item(),
+                    "pretraining/lr": scheduler.get_last_lr()[0],
+                },
+                step=epoch,
+            )
+
         if epoch % print_interval == 0:
             lr_now = scheduler.get_last_lr()[0]
             print(
@@ -172,8 +210,8 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
             )
 
     # ── Save checkpoint ──────────────────────────────────────────────────────
-    # torch.save(model.state_dict(), checkpoint_path)
-    # print(f"\u2713 Saved {model_name} pretrained model to {checkpoint_path}")
+    # torch.save(model.state_dict(), checkpoint_path)  # noqa: ERA001
+    # print(f"\u2713 Saved {model_name} pretrained model to {checkpoint_path}")  # noqa: ERA001
 
     # ── Optional post-training mesh extraction ───────────────────────────────
     if no_mesh:

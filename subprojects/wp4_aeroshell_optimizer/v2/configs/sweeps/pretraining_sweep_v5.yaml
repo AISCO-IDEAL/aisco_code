@@ -1,0 +1,32 @@
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v4.py
+entity: aisco
+project: WIRE-Fitting
+
+method: grid
+metric:
+  goal: minimize
+  name: pretraining/total_loss
+
+parameters:
+  pretraining_v4_config.model_name:
+    value: "WIREV5"
+
+  # WIRE v5 — FFE front-end (random Fourier features encode input before Gabor backbone)
+  models/WIRE_v5.hidden_features:
+    values: [64, 128, 256]
+  models/WIRE_v5.hidden_layers:
+    values: [3, 4, 6]
+  models/WIRE_v5.num_fourier_features:
+    values: [64, 128, 256]
+  models/WIRE_v5.fourier_scale_min:
+    values: [0.01, 0.1, 1.0]
+  models/WIRE_v5.fourier_scale_max:
+    values: [10.0, 100.0, 1000.0]
+  models/WIRE_v5.hidden_omega_0:
+    values: [0.5, 1.0, 2.0]
+
+  # Training
+  pretraining_v4_config.training_loop.learning_rate:
+    values: [0.0001, 0.0005, 0.001]
+  pretraining_v4_config.training_loop.eikonal_weight:
+    values: [0.05, 0.1, 0.2]

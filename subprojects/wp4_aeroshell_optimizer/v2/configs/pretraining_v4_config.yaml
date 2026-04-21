@@ -25,3 +25,8 @@ output:
   checkpoint_path: "/cluster/work/fuge/AISCO/WIRE_fitting_alex/bunny/"
   mesh_resolution: 128   # marching-cubes grid resolution for post-training PLY extraction
   mesh_box_mm: 1000     # half-extent of the marching-cubes bounding box in mm
+
+wandb:
+  use_wandb: false
+  project_name: "WIRE-Fitting"
+  entity_name: "aisco"

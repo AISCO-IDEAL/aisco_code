@@ -1,0 +1,28 @@
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v4.py
+entity: aisco
+project: WIRE-Fitting
+
+method: grid
+metric:
+  goal: minimize
+  name: pretraining/total_loss
+
+parameters:
+  pretraining_v4_config.model_name:
+    value: "WIREV4"
+
+  # WIRE v4 — multi-scale parallel branches (each branch covers a distinct frequency band)
+  # Note: branch_omegas is a list and can't be swept directly here; adjust WIRE_v4.yaml manually
+  # to change the branch frequency schedule before running this sweep.
+  models/WIRE_v4.hidden_features:
+    values: [32, 64, 128]
+  models/WIRE_v4.hidden_layers:
+    values: [3, 4, 6]
+  models/WIRE_v4.num_branches:
+    values: [2, 4, 6]
+
+  # Training
+  pretraining_v4_config.training_loop.learning_rate:
+    values: [0.0001, 0.0005, 0.001]
+  pretraining_v4_config.training_loop.eikonal_weight:
+    values: [0.05, 0.1, 0.2]

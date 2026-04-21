@@ -1,0 +1,30 @@
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v4.py
+entity: aisco
+project: WIRE-Fitting
+
+method: grid
+metric:
+  goal: minimize
+  name: pretraining/total_loss
+
+parameters:
+  pretraining_v4_config.model_name:
+    value: "WIREV6"
+
+  # WIRE v6 — per-layer omega progression (coarse-to-fine inductive bias across depth)
+  models/WIRE_v6.hidden_features:
+    values: [64, 128, 256]
+  models/WIRE_v6.hidden_layers:
+    values: [3, 4, 6]
+  models/WIRE_v6.omega_start:
+    values: [0.1, 0.3, 1.0]
+  models/WIRE_v6.omega_end:
+    values: [10.0, 30.0, 100.0]
+  models/WIRE_v6.scale:
+    values: [5.0, 10.0, 20.0]
+
+  # Training
+  pretraining_v4_config.training_loop.learning_rate:
+    values: [0.0001, 0.0005, 0.001]
+  pretraining_v4_config.training_loop.eikonal_weight:
+    values: [0.05, 0.1, 0.2]
