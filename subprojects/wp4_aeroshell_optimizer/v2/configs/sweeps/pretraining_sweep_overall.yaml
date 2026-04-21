@@ -1,0 +1,12 @@
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v4.py
+entity: aisco
+project: WIRE-Fitting
+
+method: random
+metric:
+  goal: minimize
+  name: pretraining/total_loss
+
+parameters:
+  pretraining_v4_config.model_name:
+    values: ["WIREV2","WIREV3","WIREV4","WIREV5","WIREV6","WIREV7","WIREV8"]

@@ -122,6 +122,7 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
 
     # ── Load config and model after registry is done──────────────────────────
     config = load_config(v="v2", cfg_name="pretraining_v4_config.yaml")
+    torch.manual_seed(config["random_seed"])  # Set random seed to ensure reproducibility of pretraining runs
     model_name: str = config["model_name"]
     model, _, _, _ = smart_model_init(model_name)
     print(f"[v4] Loaded model: {model.__class__.__name__} (model_name={model_name!r})")
@@ -153,7 +154,11 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
 
     # ── Output settings ──────────────────────────────────────────────────────
     output_cfg: dict = config["output"]
-    checkpoint_path: str = output_cfg["checkpoint_path"]
+    base_output_dir = Path(output_cfg["checkpoint_path"])
+    run_name = wandb.run.name if wandb.run is not None else None
+    run_dir = base_output_dir / model_name / run_name if run_name else base_output_dir / model_name
+    run_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_pth = run_dir / f"{model_name}.pth"
     mesh_res: int = output_cfg["mesh_resolution"]
     mesh_box: int = output_cfg["mesh_box_mm"]
 
@@ -210,8 +215,8 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
             )
 
     # ── Save checkpoint ──────────────────────────────────────────────────────
-    # torch.save(model.state_dict(), checkpoint_path)  # noqa: ERA001
-    # print(f"\u2713 Saved {model_name} pretrained model to {checkpoint_path}")  # noqa: ERA001
+    torch.save(model.state_dict(), checkpoint_pth)
+    print(f"\u2713 Saved {model_name} pretrained model to {checkpoint_pth}")
 
     # ── Optional post-training mesh extraction ───────────────────────────────
     if no_mesh:
@@ -219,10 +224,10 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
     else:
         try:
             model.eval()
-            _extract_mesh(model, Path(checkpoint_path), device, mesh_res=mesh_res, mesh_box=mesh_box)
+            _extract_mesh(model, checkpoint_pth, device, mesh_res=mesh_res, mesh_box=mesh_box)
         except Exception as exc:
             print(
-                f"[mesh] ERROR: {exc}. Checkpoint is intact at {checkpoint_path}.",
+                f"[mesh] ERROR: {exc}. Checkpoint is intact at {checkpoint_pth}.",
                 file=sys.stderr,
             )
             raise
@@ -242,5 +247,5 @@ if __name__ == "__main__":
         dest="no_mesh",
         help="Skip post-training PLY mesh extraction.",
     )
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()  # ignore wandb sweep flags passed as CLI args
     main(epochs_override=args.epochs, no_mesh=args.no_mesh)
