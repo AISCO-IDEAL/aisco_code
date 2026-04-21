@@ -1,15 +1,15 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=GAOT3_CP_new
-#SBATCH --time=4:00:00
+#SBATCH --job-name=GAOT2_CP_new
+#SBATCH --time=04:00:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=32
-#SBATCH --mem-per-cpu=4G
+#SBATCH --cpus-per-task=16
+#SBATCH --mem-per-cpu=8G
 #SBATCH --gpus=rtx_4090:1
-#SBATCH --output=/cluster/scratch/%u/scratch_logs/GAOT3_CP_new_%j.out
-#SBATCH --error=/cluster/scratch/%u/scratch_logs/GAOT3_CP_new_%j.err
+#SBATCH --output=/cluster/scratch/%u/scratch_logs/GAOT2_CP_new_%j.out
+#SBATCH --error=/cluster/scratch/%u/scratch_logs/GAOT2_CP_new_%j.err
 
-#RUN COMMAND: sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/slurm_scripts/wp1_main.sh
+#RUN COMMAND: sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/slurm_scripts/wp1_main.sh
 
 module purge
 module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6 eth_proxy
@@ -45,7 +45,7 @@ cd /cluster/home/$USERNAME/AISCO_code/
 umask 0002
 ulimit -n 65536
 
-BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml"
+BASE_CONFIG="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/main_config.yaml"
 
 if [ ! -f "$BASE_CONFIG" ]; then
     echo "Base config file not found: $BASE_CONFIG"
@@ -63,7 +63,7 @@ sed "s|_NAME_|${RUN_NAME}|g; s|_RUN_ID_|${SLURM_JOB_ID}|g" $BASE_CONFIG > $TEMP_
 echo "Contents of the temporary config file:"
 cat $TEMP_CONFIG
 
-python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/main.py \
+python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/main.py \
     -c $TEMP_CONFIG \
     2>&1
 

@@ -40,7 +40,7 @@ from common_preprocessing import A_SEA_LEVEL, compute_geom_conditioning
 DATA_ROOT = "/cluster/work/fuge/AISCO/wp1_cfd_ai/blended_wing/train"
 VTK_DIR = os.path.join(DATA_ROOT, "vtk")
 CASE_DATA = os.path.join(DATA_ROOT, "case_data.dat")
-OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing_cp_full"
+OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing_cp_full_2"
 
 NUM_WORKERS = 8
 
@@ -75,20 +75,34 @@ def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
         if mesh.n_points == 0:
             return None
 
+        faces = None
+        if hasattr(mesh, 'faces') and mesh.faces is not None and mesh.faces.size > 0:
+            try:
+                faces_raw = mesh.faces.reshape(-1, 4)
+                faces = torch.tensor(faces_raw[:, 1:], dtype=torch.long).t().contiguous()
+            except ValueError:
+                mesh = mesh.triangulate()
+                faces_raw = mesh.faces.reshape(-1, 4)
+                faces = torch.tensor(faces_raw[:, 1:], dtype=torch.long).t().contiguous()
+
         mesh = mesh.compute_normals(cell_normals=False, point_normals=True, auto_orient_normals=True)
+
         pos = torch.tensor(mesh.points, dtype=torch.float32)  # (N,3)
-        c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32)
+        c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32) # (N,3)
         cp = torch.tensor(mesh.point_data["cp"], dtype=torch.float32).unsqueeze(1)  # (N,1)
-    except Exception:
+
+    except Exception as e:
+        print(f"Error processing {vtk_file}: {e}")
         return None
 
     aero = case_lookup[case_name]
     v_inf = float(aero["M_inf"]) * A_SEA_LEVEL
 
-    data = Data(pos=pos, c=c)
-    data.x = cp  # per-vertex Cp field
+    data = Data(pos=pos, c=c, x=cp, face=faces)
+
     data.cd = torch.tensor([aero["CD"]], dtype=torch.float32)
-    data.force = torch.tensor([float("nan")], dtype=torch.float32)  # no absolute force
+    data.force = torch.tensor([float("nan")], dtype=torch.float32)
+
     geom_extent, geom_aspect, conditioning = compute_geom_conditioning(pos, v_inf)
     data.v_inf = torch.tensor([v_inf], dtype=torch.float32)
     data.geom_extent = geom_extent
@@ -98,7 +112,6 @@ def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
 
     torch.save(data, os.path.join(output_dir, f"{case_name}.pt"))
     return case_name
-
 
 def _process_chunk(chunk, case_lookup, output_dir, num_workers):
     """
