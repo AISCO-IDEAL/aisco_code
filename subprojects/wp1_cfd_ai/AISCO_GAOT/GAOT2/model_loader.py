@@ -133,13 +133,46 @@ class ModelLoader:
             return None
 
     def _get_checkpoint_path(self):
-        df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
-        for _, row in df.iterrows():
-            setup_dict = ast.literal_eval(row["setup"])
-            if str(setup_dict.get("id")) == str(self.cfd_config["model_id"]):
-                path_dict = ast.literal_eval(row["path"])
-                return path_dict.get("ckpt_path")
-        raise ValueError("Wrong ID for GAOT-Model")
+        # Resolve metrics.csv: explicit config override > cluster default > local fallback.
+        candidate_paths = []
+        cfg_path = self.cfd_config.get("metrics_csv_path")
+        if cfg_path:
+            candidate_paths.append(cfg_path)
+        candidate_paths.append("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
+        local_fallback = os.path.expanduser("~/results/metrics.csv")
+        candidate_paths.append(local_fallback)
+
+        csv_path = next((p for p in candidate_paths if os.path.isfile(p)), None)
+        if csv_path is None:
+            raise FileNotFoundError(
+                f"Could not locate GAOT metrics.csv. Tried: {candidate_paths}. "
+                "Set cfd_config['metrics_csv_path'] in losses config."
+            )
+        df = pd.read_csv(csv_path)
+
+        # Try requested model_id, then optional local_model_id fallback.
+        ids_to_try = [self.cfd_config["model_id"]]
+        local_id = self.cfd_config.get("local_model_id")
+        if local_id is not None:
+            ids_to_try.append(local_id)
+
+        for candidate_id in ids_to_try:
+            for _, row in df.iterrows():
+                setup_dict = ast.literal_eval(row["setup"])
+                if str(setup_dict.get("id")) == str(candidate_id):
+                    path_dict = ast.literal_eval(row["path"])
+                    ckpt = path_dict.get("ckpt_path")
+                    if ckpt and os.path.isfile(ckpt):
+                        if str(candidate_id) != str(self.cfd_config["model_id"]):
+                            logger.warning(
+                                "GAOT model_id %s not found in %s; falling back to local_model_id %s.",
+                                self.cfd_config["model_id"], csv_path, candidate_id,
+                            )
+                        return ckpt
+        raise ValueError(
+            f"No valid GAOT checkpoint for model_id={self.cfd_config['model_id']} "
+            f"(local_model_id={local_id}) in {csv_path}."
+        )
 
     def _load_model(self) -> None:  # Noqa: PLR0912, PLR0915
         config_path = self.model_path.replace("model.pt", "config.yaml")
