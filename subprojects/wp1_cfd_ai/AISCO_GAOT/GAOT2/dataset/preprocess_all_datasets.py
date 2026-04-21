@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from blended_wing.process_blended_wing import process_blended_wing
 from common_preprocessing import DEFAULT_OUTPUT_DIRS
 from euler.process_fluent_pressure import process_all_runs as process_euler_runs
+from openfoam.process_openfoam_pressure import process_all_runs as process_euler_openfoam_runs
 from process_vtp_pressure import process_all as process_vtp_runs
 
 
@@ -20,6 +21,9 @@ def _resolve_output_dir(output_root: str | None, dataset_name: str) -> str:
     return os.path.join(output_root, os.path.basename(default_dir))
 
 
+_EULER_OPENFOAM_DEFAULT_OUTPUT = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_v050"
+
+
 def run_datasets(
     datasets: list[str],
     output_root: str | None,
@@ -27,8 +31,18 @@ def run_datasets(
     drivaer_workers: int,
     ahmed_workers: int,
     blended_wing_workers: int,
+    euler_openfoam_workers: int,
 ) -> None:
     for dataset_name in datasets:
+        if dataset_name == "euler_openfoam":
+            out = (
+                _EULER_OPENFOAM_DEFAULT_OUTPUT
+                if output_root is None
+                else os.path.join(output_root, "processed_euler_openfoam_cp_v050")
+            )
+            print(f"\n=== Processing {dataset_name} into {out} ===")
+            process_euler_openfoam_runs(output_dir=out, num_workers=euler_openfoam_workers)
+            continue
         output_dir = _resolve_output_dir(output_root, dataset_name)
         print(f"\n=== Processing {dataset_name} into {output_dir} ===")
         if dataset_name == "euler":
@@ -49,7 +63,7 @@ def main() -> None:
         "--datasets",
         nargs="+",
         default=["all"],
-        choices=["all", "euler", "drivaer", "ahmed", "blended_wing"],
+        choices=["all", "euler", "euler_openfoam", "drivaer", "ahmed", "blended_wing"],
         help="Datasets to process. Use 'all' to run all four.",
     )
     parser.add_argument("--output-root", default=None, help="Optional root overriding the default processed_* output paths.")
@@ -57,6 +71,7 @@ def main() -> None:
     parser.add_argument("--drivaer-workers", type=int, default=2)
     parser.add_argument("--ahmed-workers", type=int, default=2)
     parser.add_argument("--blended-wing-workers", type=int, default=8)
+    parser.add_argument("--euler-openfoam-workers", type=int, default=4)
     args = parser.parse_args()
 
     datasets = ["euler", "drivaer", "ahmed", "blended_wing"] if "all" in args.datasets else args.datasets
@@ -67,6 +82,7 @@ def main() -> None:
         drivaer_workers=args.drivaer_workers,
         ahmed_workers=args.ahmed_workers,
         blended_wing_workers=args.blended_wing_workers,
+        euler_openfoam_workers=args.euler_openfoam_workers,
     )
 
 

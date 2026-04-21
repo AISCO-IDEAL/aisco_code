@@ -1,0 +1,136 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      snappyHexMeshDict;
+}
+
+castellatedMesh true;
+snap            true;
+addLayers       true;
+
+geometry
+{
+    car_surface.stl
+    {
+        type    triSurfaceMesh;
+        name    car_surface;
+    }
+
+    refinementBox
+    {
+        type    searchableBox;
+        min     (__BOI_XMIN__ __BOI_YMIN__ __BOI_ZMIN__);
+        max     (__BOI_XMAX__ __BOI_YMAX__ __BOI_ZMAX__);
+    }
+}
+
+castellatedMeshControls
+{
+    maxLocalCells           1000000;
+    maxGlobalCells          10000000;
+    minRefinementCells      10;
+    maxLoadUnbalance        0.10;
+    nCellsBetweenLevels     3;
+    resolveFeatureAngle     30;
+    allowFreeStandingZoneFaces true;
+
+    features
+    (
+        {
+            file    "car_surface.eMesh";
+            level   5;
+        }
+    );
+
+    refinementSurfaces
+    {
+        car_surface
+        {
+            level   (4 5);
+            patchInfo
+            {
+                type wall;
+            }
+        }
+    }
+
+    refinementRegions
+    {
+        refinementBox
+        {
+            mode    inside;
+            levels  ((1E15 2));
+        }
+    }
+
+    locationInMesh  (__LOCATION_IN_MESH_X__ __LOCATION_IN_MESH_Y__ __LOCATION_IN_MESH_Z__);
+}
+
+snapControls
+{
+    nSmoothPatch        3;
+    tolerance           2.0;
+    nSolveIter          100;
+    nRelaxIter          5;
+    nFeatureSnapIter    10;
+    implicitFeatureSnap false;
+    explicitFeatureSnap true;
+    multiRegionFeatureSnap false;
+}
+
+addLayersControls
+{
+    relativeSizes   false;
+
+    layers
+    {
+        "car_surface.*"
+        {
+            nSurfaceLayers  8;
+        }
+        ground
+        {
+            nSurfaceLayers  8;
+        }
+    }
+
+    expansionRatio              1.15;
+    firstLayerThickness         0.002;
+    minThickness                0.0005;
+    nGrow                       0;
+    featureAngle                130;
+    slipFeatureAngle            30;
+    nRelaxIter                  5;
+    nSmoothSurfaceNormals       1;
+    nSmoothNormals              3;
+    nSmoothThickness            10;
+    maxFaceThicknessRatio       0.5;
+    maxThicknessToMedialRatio   0.3;
+    minMedialAxisAngle          90;
+    nBufferCellsNoExtrude       0;
+    nLayerIter                  50;
+}
+
+meshQualityControls
+{
+    maxNonOrtho             65;
+    maxBoundarySkewness     20;
+    maxInternalSkewness     4;
+    maxConcave              80;
+    minVol                  1e-13;
+    minTetQuality           -1e30;
+    minArea                 -1;
+    minTwist                0.02;
+    minDeterminant          0.001;
+    minFaceWeight           0.05;
+    minVolRatio             0.01;
+    minTriangleTwist        -1;
+
+    nSmoothScale            4;
+    errorReduction          0.75;
+}
+
+debug           0;
+mergeTolerance  1e-6;
