@@ -329,11 +329,7 @@ class WIREV2(BaseModel):
         if dev_entry is not None:
             _dev_name, dev_instance = dev_entry
             if dev_instance.post_opt_enabled:
-                verts, faces = dev_instance.mesh_extractor.extract_mesh(
-                    model=self,
-                    isovalue=dev_instance.mesh_isovalue,
-                    batch_size=dev_instance.mesh_batch_size,
-                )
+                verts, faces = dev_instance.mesh_extractor.extract_mesh(sdf_model=self)
                 run_name = wandb_name or (wandb.run.name if wandb.run else "run")
                 storage_dir = general_config["storage_paths"].get(
                     "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
