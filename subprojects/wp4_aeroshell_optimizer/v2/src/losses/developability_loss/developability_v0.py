@@ -91,7 +91,12 @@ class DevelopabilityV0(ParentLoss):
 
         # Unified WP5 mesh extractor (non-differentiable MC + surrogate gradient flow)
         mesh_config = load_mesh_extraction_config()
-        mesh_config = _replace(mesh_config, device=self.device, isovalue=float(self.mesh_isovalue))
+        mesh_config = _replace(
+            mesh_config,
+            device=self.device,
+            isovalue=float(self.mesh_isovalue),
+            batch_size=int(self.mesh_batch_size),
+        )
         self.mesh_extractor = MeshSDFExtractor(config=mesh_config)
         self.mesh_extractor.set_grid(
             bbox=self.mesh_bbox,
