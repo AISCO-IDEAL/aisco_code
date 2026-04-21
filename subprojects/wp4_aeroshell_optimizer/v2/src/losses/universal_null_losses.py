@@ -92,16 +92,38 @@ class NullLossBb(_BaseNullLoss):
 class NullLossDevelopability(_BaseNullLoss):
     """Null loss for developability constraints.
 
-    Note: Sets post_opt_enabled=False to skip post-optimization in WIRE_v2.
-    Null losses should not trigger expensive mesh optimization.
+    Returns a constant (zero gradient) during training. Optionally delegates
+    post-optimization to a real DevelopabilityV0 instance when
+    `developability_config.post_opt_enabled: True` is set in the losses config.
     """
 
     def _setup(self) -> None:
-        """Initialize null loss with cached constant tensor and disabled post-optimization."""
+        """Initialize null loss with post-opt delegation if configured."""
         super()._setup()
-        # WIRE_v2 checks this attribute to decide whether to run C++ mesh optimization
-        # Set to False for null losses to skip post-processing entirely
-        self.post_opt_enabled = False
+        dev_cfg = self.losses_config.get("developability_config", {})
+        self.post_opt_enabled: bool = bool(dev_cfg.get("post_opt_enabled", False))
+
+        if self.post_opt_enabled:
+            from subprojects.wp4_aeroshell_optimizer.v2.src.losses.developability_loss.developability_v0 import (  # noqa: PLC0415
+                DevelopabilityV0,
+            )
+
+            # Read the real weight from config; force compute=1 to bypass parent_loss early-return
+            dev_entry = self.losses_config.get("losses", {}).get("developability", {}).get("developability_v0", [0, 1.0])
+            delegate_weight = [1, float(dev_entry[1]) if len(dev_entry) >= 2 else 1.0]
+            self._delegate = DevelopabilityV0(
+                device=self.device,
+                loss_name="developability_v0",
+                losses_config=self.losses_config,
+                weight=delegate_weight,
+            )
+            self.mesh_extractor = self._delegate.mesh_extractor
+            self.mesh_isovalue = self._delegate.mesh_isovalue
+            self.mesh_batch_size = self._delegate.mesh_batch_size
+
+    def post_optimize(self, vertices, faces, run_name: str, storage_dir: str) -> dict:
+        """Delegate post-optimization to DevelopabilityV0."""
+        return self._delegate.post_optimize(vertices, faces, run_name, storage_dir)
 
 
 class NullLossEikonal(_BaseNullLoss):
