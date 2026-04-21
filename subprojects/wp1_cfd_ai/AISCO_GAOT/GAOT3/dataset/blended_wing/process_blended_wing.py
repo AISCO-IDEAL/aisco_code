@@ -21,7 +21,6 @@ Saved Data fields:
   filename str          -- case identifier, e.g. "case_0000"
 """
 
-import glob
 import os
 import sys
 from concurrent.futures import BrokenExecutor, ProcessPoolExecutor, as_completed
@@ -39,8 +38,8 @@ from common_preprocessing import A_SEA_LEVEL, compute_geom_conditioning
 
 DATA_ROOT = "/cluster/work/fuge/AISCO/wp1_cfd_ai/blended_wing/train"
 VTK_DIR = os.path.join(DATA_ROOT, "vtk")
-CASE_DATA = os.path.join(DATA_ROOT, "case_data.dat")
-OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing_cp_full_2"
+CASE_DATA = os.path.join(DATA_ROOT, "case_data_solar.dat")
+OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing_cp_full_filtered"
 
 NUM_WORKERS = 8
 
@@ -75,15 +74,12 @@ def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
         if mesh.n_points == 0:
             return None
 
+        # Always triangulate before extracting faces so the saved graph has a stable face layout.
+        mesh = mesh.triangulate()
         faces = None
-        if hasattr(mesh, 'faces') and mesh.faces is not None and mesh.faces.size > 0:
-            try:
-                faces_raw = mesh.faces.reshape(-1, 4)
-                faces = torch.tensor(faces_raw[:, 1:], dtype=torch.long).t().contiguous()
-            except ValueError:
-                mesh = mesh.triangulate()
-                faces_raw = mesh.faces.reshape(-1, 4)
-                faces = torch.tensor(faces_raw[:, 1:], dtype=torch.long).t().contiguous()
+        if hasattr(mesh, "faces") and mesh.faces is not None and mesh.faces.size > 0:
+            faces_raw = mesh.faces.reshape(-1, 4)
+            faces = torch.tensor(faces_raw[:, 1:], dtype=torch.long).t().contiguous()
 
         mesh = mesh.compute_normals(cell_normals=False, point_normals=True, auto_orient_normals=True)
 
@@ -144,8 +140,13 @@ def process_blended_wing(vtk_dir=VTK_DIR, case_data_path=CASE_DATA, output_dir=O
     case_lookup = load_case_data(case_data_path)
     print(f"Loaded {len(case_lookup)} cases from case_data.dat")
 
-    vtk_files = sorted(glob.glob(os.path.join(vtk_dir, "case_*.vtk")))
-    print(f"Found {len(vtk_files)} VTK files. Processing with {num_workers} workers...")
+    vtk_files = [os.path.join(vtk_dir, f"{case_name}.vtk") for case_name in case_lookup]
+    missing_vtk = [os.path.basename(vtk_file).replace(".vtk", "") for vtk_file in vtk_files if not os.path.exists(vtk_file)]
+    vtk_files = [vtk_file for vtk_file in vtk_files if os.path.exists(vtk_file)]
+
+    print(f"Found {len(vtk_files)} VTK files listed in case_data.dat. Processing with {num_workers} workers...")
+    if missing_vtk:
+        print(f"  Warning: {len(missing_vtk)} cases from case_data.dat have no matching VTK file and will be skipped.")
 
     # Skip already-processed files (safe to resume after crash)
     vtk_todo = [f for f in vtk_files if not os.path.exists(os.path.join(output_dir, os.path.basename(f).replace(".vtk", ".pt")))]
@@ -183,10 +184,21 @@ def process_blended_wing(vtk_dir=VTK_DIR, case_data_path=CASE_DATA, output_dir=O
 
     pbar.close()
 
-    # Build order_.txt from everything in the output dir
-    all_pt = sorted(os.path.basename(f).replace(".pt", "") for f in glob.glob(os.path.join(output_dir, "case_*.pt")))
+    order_path = os.path.join(output_dir, "order_.txt")
+    existing_order = []
+    if os.path.exists(order_path):
+        with open(order_path) as f:
+            existing_order = [line.strip() for line in f if line.strip()]
 
-    with open(os.path.join(output_dir, "order_.txt"), "w") as f:
+    current_order = [case_name for case_name in case_lookup if os.path.exists(os.path.join(output_dir, f"{case_name}.pt"))]
+    all_pt = existing_order[:]
+    seen = set(existing_order)
+    for case_name in current_order:
+        if case_name not in seen:
+            all_pt.append(case_name)
+            seen.add(case_name)
+
+    with open(order_path, "w") as f:
         f.writelines(f"{name}\n" for name in all_pt)
 
     print(f"\nThis run:  {len(order_list)} processed, {skipped_corrupt} corrupt/skipped.")

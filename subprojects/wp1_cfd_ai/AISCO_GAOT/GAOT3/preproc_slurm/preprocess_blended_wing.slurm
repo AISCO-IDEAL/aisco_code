@@ -21,7 +21,7 @@ source /cluster/home/roarnold/AISCO_code/aisco_env/bin/activate
 SCRIPT_PATH=/cluster/home/roarnold/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/dataset/preprocess_all_datasets.py
 
 OUTPUT_ROOT=/cluster/work/fuge/AISCO/wp1_cfd_ai
-echo "=== Processing canonical Blended Wing dataset into $OUTPUT_ROOT/processed_blended_wing_cp_full_2 ==="
+echo "=== Processing canonical Blended Wing dataset into $OUTPUT_ROOT/processed_blended_wing_cp_full_filtered ==="
 
 python "$SCRIPT_PATH" \
     --datasets blended_wing \

@@ -12,7 +12,7 @@ DEFAULT_OUTPUT_DIRS = {
     "euler": "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_cp_full",
     "drivaer": "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_cp_full",
     "ahmed": "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_ahmed_cp_full",
-    "blended_wing": "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing_cp_full_2",
+    "blended_wing": "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing_cp_full_filtered",
 }
 
 
