@@ -9,16 +9,11 @@ from pathlib import Path
 from tempfile import mkdtemp
 from typing import Any
 
+import mcubes as _mcubes
 import numpy as np
 import torch
 import trimesh
 import yaml
-from skimage import measure
-
-try:
-    import mcubes as _mcubes
-except Exception:  # pragma: no cover
-    _mcubes = None
 
 try:
     from fast_simplification import simplify as _fast_simplify
@@ -408,20 +403,17 @@ class MeshSDFExtractor:
         return self._eval_points(sdf_model, pts).cpu().numpy().reshape(res, res, res)
 
     def _marching_cubes(self, volume: np.ndarray, res: int) -> tuple[torch.Tensor, torch.Tensor]:
-        """Run marching cubes on a volume and lift vertices to world coordinates.
+        """Run PyMCubes marching cubes on a volume and lift vertices to world coordinates.
 
         Steps:
           1) Reject volumes whose value range does not bracket the isovalue
              (nothing to extract). Return an empty mesh.
           2) Compute per-axis `spacing` so each cell has physical size
              (extent / (res - 1)).
-          3) Prefer the fast PyMCubes C++ backend when available; otherwise
-             fall back to `skimage.measure.marching_cubes`.
-          4) PyMCubes returns vertices in index space: rescale by `spacing`
-             and shift by the bbox origin to obtain world coordinates.
-          5) skimage already applies `spacing`, so only the origin shift is
-             needed.
-          6) Convert to torch tensors on `self.device`.
+          3) Run the PyMCubes C++ backend; vertices come back in index space.
+          4) Rescale vertices by `spacing` and shift by the bbox origin to
+             obtain world coordinates.
+          5) Convert to torch tensors on `self.device`.
         """
         mn, mx = float(volume.min()), float(volume.max())
         if not (mn <= self.isovalue <= mx):
@@ -430,20 +422,12 @@ class MeshSDFExtractor:
         bbox = self.bbox
         spacing = tuple((bbox[a][1] - bbox[a][0]) / (res - 1) for a in range(3))
         origin = (bbox[0][0], bbox[1][0], bbox[2][0])
-        if _mcubes is not None:
-            v, f = _mcubes.marching_cubes(volume, self.isovalue)
-            v = np.asarray(v, dtype=np.float32)
-            f = np.asarray(f, dtype=np.int64)
-            v[:, 0] = v[:, 0] * spacing[0] + origin[0]
-            v[:, 1] = v[:, 1] * spacing[1] + origin[1]
-            v[:, 2] = v[:, 2] * spacing[2] + origin[2]
-        else:
-            v, f, _, _ = measure.marching_cubes(volume, level=self.isovalue, spacing=spacing)
-            v = np.ascontiguousarray(v, dtype=np.float32)
-            v[:, 0] += origin[0]
-            v[:, 1] += origin[1]
-            v[:, 2] += origin[2]
-            f = np.ascontiguousarray(f, dtype=np.int64)
+        v, f = _mcubes.marching_cubes(volume, self.isovalue)
+        v = np.asarray(v, dtype=np.float32)
+        f = np.asarray(f, dtype=np.int64)
+        v[:, 0] = v[:, 0] * spacing[0] + origin[0]
+        v[:, 1] = v[:, 1] * spacing[1] + origin[1]
+        v[:, 2] = v[:, 2] * spacing[2] + origin[2]
         return torch.from_numpy(v).to(self.device), torch.from_numpy(f).to(self.device)
 
     def _extract(self, sdf_model: SDFModel, res: int) -> tuple[torch.Tensor, torch.Tensor]:

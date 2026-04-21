@@ -8,11 +8,19 @@ import torch
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 
-cripser: Any = importlib.import_module("cripser")
-
 
 class ConnectednessV1(ParentLoss):
     def _setup(self) -> None:
+        try:
+            self._cripser: Any = importlib.import_module("cripser")
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "ConnectednessV1 requires the optional Python package 'cripser'. "
+                "Either install 'cripser' in the active environment or disable "
+                "losses.connectedness.connectedness_v1 in "
+                "subprojects/wp4_aeroshell_optimizer/v2/configs/losses_v0_config.yaml."
+            ) from exc
+
         connectedness_config: dict[str, Any] = self.losses_config.get("connectedness_config", {})
         get_points_config: dict[str, Any] = self.losses_config.get("get_points_params", {})
 
@@ -93,7 +101,7 @@ class ConnectednessV1(ParentLoss):
                 field_for_ph = grid_t.reshape(-1)
             field_np = field_for_ph.detach().cpu().numpy().reshape(self.grid_shape)
 
-        ph: np.ndarray = cripser.computePH(field_np, maxdim=self.maxdim)
+        ph: np.ndarray = self._cripser.computePH(field_np, maxdim=self.maxdim)
         critical_linear_indices = self._extract_dim0_death_indices(ph)
         if critical_linear_indices.size == 0:
             self._cached_loss = torch.tensor(0.0, device=self.grid_points.device)
