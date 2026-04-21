@@ -95,7 +95,7 @@ class MeshSDFExtractor:
              `set_shared_mesh`, return it verbatim (zero re-extraction).
           2) Move the model to `self.device` if it is an `nn.Module`.
           3) Build a cache key from `(id(model), param_version, bbox, resolution,
-             isovalue, target vertex count, tolerance)`.
+             isovalue, target vertex count, tolerance, device)`.
           4) Return immediately on cache hit.
           5) On miss, purge stale entries for the same model whose param
              version has bumped (keeps the cache small and coherent).
@@ -120,6 +120,7 @@ class MeshSDFExtractor:
             self.isovalue,
             self.target_num_vertices,
             round(self.vertex_count_tolerance, 4),
+            str(torch.device(self.device)),
         )
         hit = _MESH_CACHE.get(key)
         if hit is not None:

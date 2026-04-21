@@ -59,6 +59,9 @@ tests/**/data/
 # Blacklist specific files of a whitelisted file type
 pip-log.txt
 pip-delete-this-directory.txt
+subprojects/fixed_renderer/cuda/create_texture_image.cpython-311-x86_64-linux-gnu.so
+subprojects/pydevelopability/build_manual/
+tests/wp5/benchmark_results/
 
 local_settings.py
 ipython_config.py
