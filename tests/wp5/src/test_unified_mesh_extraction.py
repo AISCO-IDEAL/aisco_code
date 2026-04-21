@@ -53,9 +53,7 @@ def _dense_baseline_surface_area(
 def test_load_mesh_extraction_config() -> None:
     config = load_mesh_extraction_config()
 
-    assert config.method == "adaptive_active_cell_marching_cubes"
     assert config.base_resolution >= 2
-    assert config.leaf_cell_resolution >= 2
     assert len(config.bbox) == 3
 
 
@@ -66,7 +64,6 @@ def test_active_cell_extraction_surface_area_stays_close_to_dense_baseline() -> 
         device="cpu",
         base_resolution=16,
         max_refine_levels=3,
-        leaf_cell_resolution=3,
         batch_size=1024,
     )
     extractor = MeshSDFExtractor(config=test_config)

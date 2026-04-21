@@ -71,21 +71,15 @@ def _normalise_bbox(bbox: Any) -> list[list[float]]:
 class MeshExtractionConfig:
     """Config for SDF mesh extraction. Constructed via `load_mesh_extraction_config`."""
 
-    method: str
     device: str
     isovalue: float
     bbox: list[list[float]]
     base_resolution: int
     subdivision_factor: int
     max_refine_levels: int
-    leaf_cell_resolution: int
-    sign_epsilon: float
     batch_size: int
-    surface_area_tolerance: float
-    merge_vertices: bool
     target_num_vertices: int | None = None
     vertex_count_tolerance: float = 0.1
-    verbose: bool = False
 
 
 def _default_config_path() -> Path:
@@ -107,21 +101,15 @@ def load_mesh_extraction_config(config_path: Path | None = None) -> MeshExtracti
     if not isinstance(p, dict):
         raise TypeError(f"Mesh extraction config must be a mapping, got {type(p).__name__}.")
     return MeshExtractionConfig(
-        method=str(p.get("method", "marching_cubes")),
         device=str(p.get("device", "cuda")),
         isovalue=float(p.get("isovalue", 0.0)),
         bbox=_normalise_bbox(p["bbox"]),
         base_resolution=int(p["base_resolution"]),
         subdivision_factor=int(p.get("subdivision_factor", 2)),
         max_refine_levels=int(p.get("max_refine_levels", 0)),
-        leaf_cell_resolution=int(p.get("leaf_cell_resolution", 3)),
-        sign_epsilon=float(p.get("sign_epsilon", 1e-6)),
         batch_size=int(p.get("batch_size", 65536)),
-        surface_area_tolerance=float(p.get("surface_area_tolerance", 0.05)),
-        merge_vertices=bool(p.get("merge_vertices", True)),
         target_num_vertices=int(p["target_num_vertices"]) if p.get("target_num_vertices") is not None else None,
         vertex_count_tolerance=float(p.get("vertex_count_tolerance", 0.1)),
-        verbose=bool(p.get("verbose", False)),
     )
 
 
@@ -292,9 +280,7 @@ class MeshSDFExtractor:
         surrogate = self.compute_gradient_flow(verts, dL_dv, sdf_model)
         return verts, faces, loss, surrogate, dL_dv
 
-    def compute_gradient_flow(
-        self, vertices: torch.Tensor, dL_dvertices: torch.Tensor, sdf_model: SDFModel
-    ) -> torch.Tensor:
+    def compute_gradient_flow(self, vertices: torch.Tensor, dL_dvertices: torch.Tensor, sdf_model: SDFModel) -> torch.Tensor:
         """Build a scalar whose grad w.r.t. SDF params equals the normal-direction projection of dL/dv.
 
         Background: for an implicit surface {s(x; theta)=c}, moving vertex v
@@ -503,9 +489,7 @@ class MeshSDFExtractor:
             return self._empty()
         shifted = coarse - self.isovalue
         c = coarse_res - 1
-        corners = np.stack(
-            [shifted[dx : c + dx, dy : c + dy, dz : c + dz] for dx in (0, 1) for dy in (0, 1) for dz in (0, 1)]
-        )
+        corners = np.stack([shifted[dx : c + dx, dy : c + dy, dz : c + dz] for dx in (0, 1) for dy in (0, 1) for dz in (0, 1)])
         active = (corners.min(axis=0) < 0) & (corners.max(axis=0) > 0)
         padded = np.pad(active, 1)
         dilated = np.zeros_like(active)
@@ -533,9 +517,7 @@ class MeshSDFExtractor:
         sx = (bbox[0][1] - bbox[0][0]) / (fine_res - 1)
         sy = (bbox[1][1] - bbox[1][0]) / (fine_res - 1)
         sz = (bbox[2][1] - bbox[2][0]) / (fine_res - 1)
-        pts = torch.stack(
-            [bbox[0][0] + ix.float() * sx, bbox[1][0] + iy.float() * sy, bbox[2][0] + iz.float() * sz], dim=1
-        )
+        pts = torch.stack([bbox[0][0] + ix.float() * sx, bbox[1][0] + iy.float() * sy, bbox[2][0] + iz.float() * sz], dim=1)
         vol.ravel()[flat_idx] = self._eval_points(sdf_model, pts).cpu().numpy()
         return self._marching_cubes(vol, fine_res)
 
@@ -639,7 +621,5 @@ def extract_sdf_to_temp_ply(
     ext = MeshSDFExtractor(config=config)
     v, f = ext.extract_mesh(sdf_model)
     path = Path(mkdtemp(prefix="mesh_sdf_")) / output_name
-    trimesh.Trimesh(
-        vertices=v.detach().cpu().numpy(), faces=f.detach().cpu().numpy(), process=False
-    ).export(path)
+    trimesh.Trimesh(vertices=v.detach().cpu().numpy(), faces=f.detach().cpu().numpy(), process=False).export(path)
     return str(path)

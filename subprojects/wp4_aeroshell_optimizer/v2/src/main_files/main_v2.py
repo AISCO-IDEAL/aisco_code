@@ -246,8 +246,21 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         total_loss = TotalLossV2(device=device)
         diversity_loss_manager = DiversityLossManager(losses_config=losses_config, device=device)
         use_alm: bool = losses_config["general_info"].get("ALM") == "True"
+        configured_constraint_categories: list[str] = [
+            category
+            for category, block in losses_config.get("losses", {}).items()
+            if isinstance(block, dict) and block.get("_role") == "constraint"
+        ]
         alm_manager: ALMManager | None = (
-            ALMManager(total_loss.constraint_names, losses_config["general_info"], torch.device(device)) if use_alm else None
+            ALMManager(
+                total_loss.constraint_names,
+                losses_config["general_info"],
+                torch.device(device),
+                active_constraint_categories=total_loss.constraint_category_order,
+                configured_constraint_categories=configured_constraint_categories,
+            )
+            if use_alm
+            else None
         )
 
         # Mesh extractor + optional renderer (only used if rendering_freq is set)
@@ -330,6 +343,21 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         for epoch in range(num_epochs):
             model.train()
             metrics = trainer.step(epoch=epoch)
+
+            mesh_save_interval = training_config["training_params"].get("mesh_save_interval", 50)
+            if (epoch + 1) % mesh_save_interval == 0:
+                allround_save_data(
+                    model=model,
+                    storage_path=general_config["storage_paths"]["storage_dir"],
+                    save_model=True,
+                    save_mesh=True,
+                    epoch=epoch + 1,
+                    verbose=general_config["general_info"].get("verbose", False),
+                    pretraining=False,
+                    wandb_run=wandb_name,
+                    device=str(device),
+                )
+
             run_latent_interpolation(state=interpolation_state, epoch=epoch, stage="periodic", verbose=verbose)
             if verbose and epoch % 50 == 0:
                 print(
@@ -362,8 +390,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         verbose=verbose,
         pretraining=False,
         wandb_run=wandb_name,
-        epoch=training_config["training_params"].get("num_epochs", 1000),
-        resolution=64,
+        epoch=training_config["training_params"].get(
+            "num_epochs", 420420
+        ),  # Use 420420 to avoid default value that is misleading
+        resolution=128,
+        device=str(device),
     )
     print("Completed job successfully.")
 

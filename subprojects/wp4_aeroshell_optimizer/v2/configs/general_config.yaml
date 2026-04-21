@@ -1,12 +1,11 @@
 general_info:
-  version: "v2"  #  total_loss.py, parent_loss.py: load_config(v=general_config["general_info"]["version"], ...)
-  device: "cuda"  #  main_v1_1_one_model.py: general_config["general_info"].get("device", ...)
-  run_locally: "False" # automatically detected, don't touch  #  main_v1_1_one_model.py, storage_utils.py (auto-detected & overwritten by config_utils.py)
+  version: "v2"  #  OUTDATED Comment: total_loss.py, parent_loss.py: load_config(v=general_config["general_info"]["version"], ...)
+  device: "cuda"  #  main_v2
+  run_locally: "False" # automatically detected, don't touch
   verbose: "True"  #  basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
 
 model_def:
-  model_name: "ConcatWIREV2"  # Options: ["WIREV2", "ConcatWIREV2", "BasicMLP"] main_v1_1_one_model.py: general_config["model_def"]["model_name"] # WIREV2 or ConcatWIREV2
-  # model_file_path: "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v2.py"  #  main_v1_1_one_model.py: general_config["model_def"]["model_file_path"] # WIRE_v2.py or concat_WIRE_v2.py
+  model_name: "WIREV2"  #  main_v2.py, dynamic model selection, should refer to models.json
 
 active_configs:
   losses: "losses_v0_config.yaml"  #  total_loss.py, parent_loss.py, visual modes (assembly_mode, mesh_assembly_mode_v2)

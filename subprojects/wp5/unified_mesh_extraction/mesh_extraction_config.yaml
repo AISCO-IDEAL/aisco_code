@@ -1,4 +1,3 @@
-method: "adaptive_active_cell_marching_cubes"
 device: "cuda"
 isovalue: 0.0
 bbox:
@@ -8,11 +7,6 @@ bbox:
 base_resolution: 64
 subdivision_factor: 2
 max_refine_levels: 0
-leaf_cell_resolution: 3
-sign_epsilon: 1.0e-06
 batch_size: 65536
-surface_area_tolerance: 0.05
-merge_vertices: true
-target_num_vertices: null  # set to an integer to decimate after extraction (opt-in)
+target_num_vertices: null  # set to an integer to hit a specific vertex count (opt-in)
 vertex_count_tolerance: 0.1  # fraction tolerance around target_num_vertices (0.1 = ±10%)
-verbose: false  # log vertex count on every mesh extraction
