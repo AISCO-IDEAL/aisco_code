@@ -163,6 +163,15 @@ def smart_model_init(model_name: str, version: str = "v2") -> tuple[SupportsMode
             f"Incomplete model entry for '{model_name}'. Required fields: model_class, parent_class, file_path, config_file"
         )
 
+    if not isinstance(model_class_name, str):
+        raise TypeError(f"Invalid type for model_class in model '{model_name}': expected str")
+    if not isinstance(expected_parent_class, str):
+        raise TypeError(f"Invalid type for parent_class in model '{model_name}': expected str")
+    if not isinstance(model_file_path, str):
+        raise TypeError(f"Invalid type for file_path in model '{model_name}': expected str")
+    if not isinstance(config_file_name, str):
+        raise TypeError(f"Invalid type for config_file in model '{model_name}': expected str")
+
     try:
         # Load model configuration
         model_config = load_config(v=version, cfg_name=config_file_name)
@@ -184,7 +193,9 @@ def smart_model_init(model_name: str, version: str = "v2") -> tuple[SupportsMode
             UserWarning,
             stacklevel=2,
         )
-        actual_parent_class = None
+        raise AssertionError(
+            f"Model '{model_name}' has no parent class. This may indicate a broken model hierarchy or outdated inventory."
+        )
 
     # Validate parent class matches expected from inventory
     assert actual_parent_class == expected_parent_class, (

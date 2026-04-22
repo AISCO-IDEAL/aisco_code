@@ -14,8 +14,11 @@ Supported methods:
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 from collections.abc import Callable
+from dataclasses import replace as _replace
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +27,6 @@ import torch
 import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
-from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.sparse_dmc.sparse_dmc_extractor import SparseDMCExtractor
 from subprojects.wp4_aeroshell_optimizer import (
     MeshSDFGrads,
@@ -35,6 +37,7 @@ from subprojects.wp4_aeroshell_optimizer import (
     multi_log_in_one,
     reformat_wandb_name,
 )
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 
 def _deterministic_cumsum_legacy(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
@@ -355,6 +358,8 @@ class SolarLossEstimator:
         self.resolution = int(cfg["resolution"])
         self.area_budget_mm2 = float(cfg["area_budget_mm2"])
         self.device = cfg["device"]
+        if str(self.device).startswith("cuda"):
+            assert torch.cuda.is_available(), f"CUDA requested for solar estimator (device='{self.device}') but not available."
         self.batch_size = int(cfg["batch_size"])
         self.eps = float(cfg["eps"])
         self.log_group_name = str(cfg["log_group_name"])
@@ -379,6 +384,9 @@ class SolarLossEstimator:
             self.simulator = SimulationV1(cfg_path=australia_cfg, area_budget_mm2=self.area_budget_mm2)
 
         self.rendering = bool(cfg["rendering"])
+        if self.rendering and not str(self.device).startswith("cuda"):
+            print("Solar estimator rendering disabled because current device is CPU.")
+            self.rendering = False
         self.visualiser: Visualiser | None
         self.renderSolar: SolarV3Selection | None
         self.render_grads: MeshSDFGrads | None
@@ -442,26 +450,15 @@ class SolarLossEstimator:
             )
             self.extractor.set_grid(self.bbox, self.resolution)
         elif method in {"mesh_sdf", "mc"}:
-            bbox = self.bbox
-            isovalue = float(self.config.get("isovalue", 0.0))
-            auto_iso = bool(self.config.get("auto_isovalue_if_out_of_range", True))
-            warn_out_of_range = bool(self.config.get("warn_mesh_extraction", True))
-            self.extractor = MeshSDFExtractor(
-                resolution=self.resolution,
-                bbox=[
-                    bbox[0][0],
-                    bbox[0][1],
-                    bbox[1][0],
-                    bbox[1][1],
-                    bbox[2][0],
-                    bbox[2][1],
-                ],
-                isovalue=isovalue,
+            mesh_cfg = load_mesh_extraction_config()
+            mesh_cfg = _replace(
+                mesh_cfg,
                 device=self.device,
-                auto_isovalue_if_out_of_range=auto_iso,
-                warn_out_of_range=warn_out_of_range,
+                bbox=self.bbox,
+                isovalue=float(self.config.get("isovalue", 0.0)),
             )
-            self.extractor.set_grid(self.bbox, self.resolution)
+            self.extractor = MeshSDFExtractor(config=mesh_cfg)
+            self.extractor.set_grid(self.bbox, mesh_cfg.base_resolution)
         elif method == "sparse_dmc":
             self.extractor = SparseDMCExtractor(bbox=self.bbox, resolution=self.resolution, device=self.device)
             self.extractor.set_grid(self.bbox, self.resolution)
@@ -483,7 +480,7 @@ class SolarLossEstimator:
             return self.extractor.extract_mesh(model)
         raise ValueError(f"Unknown method: {self.method}")
 
-    def solar_loss(
+    def solar_loss(  # noqa: PLR0915, PLR0912
         self,
         model: Any,
         epoch_name: int | None = None,
@@ -577,12 +574,27 @@ class SolarLossEstimator:
                 return loss
 
             assert isinstance(self.extractor, MeshSDFExtractor)  # Get mypy to shut up, confirm we are using MeshSDF
+            if str(self.device).startswith("cuda") and torch.cuda.is_available():
+                torch.cuda.synchronize()
+            _t0 = time.perf_counter()
             vertices, faces, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
                 sdf_model=model,
                 loss_fn=wrapper_solar_loss,
                 enable_backward=True,
             )
-            if self.rendering and self.render_grads is not None:
+            if str(self.device).startswith("cuda") and torch.cuda.is_available():
+                torch.cuda.synchronize()
+            _t1 = time.perf_counter()
+            logging.getLogger("sdf2mesh").debug(
+                "extract_and_compute_loss: %.2fs (vertices=%d, faces=%d)",
+                _t1 - _t0,
+                int(vertices.shape[0]),
+                int(faces.shape[0]),
+            )
+            if self.rendering and self.render_grads is not None and vertices.shape[0] > 1:
+                if str(self.device).startswith("cuda") and torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                _t2 = time.perf_counter()
                 self.render_grads.update(
                     optimization_state={
                         "vertices": vertices,
@@ -597,6 +609,10 @@ class SolarLossEstimator:
                     and self.rendering_dir is not None
                 ):
                     self.render_grads.finalize(output_dir=self.rendering_dir, file_name="mesh_sdf_grads.gif")
+                if str(self.device).startswith("cuda") and torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                _t3 = time.perf_counter()
+                logging.getLogger("sdf2mesh").debug("render_grads: %.2fs", _t3 - _t2)
 
         else:
             vertices, faces = self.extract_mesh(model)

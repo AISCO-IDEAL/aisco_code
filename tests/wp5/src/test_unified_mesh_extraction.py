@@ -1,0 +1,81 @@
+from __future__ import annotations
+
+import math
+from dataclasses import replace
+
+import numpy as np
+import torch
+from skimage import measure
+
+from subprojects.wp5.unified_mesh_extraction import (
+    MeshSDFExtractor,
+    compute_surface_area,
+    load_mesh_extraction_config,
+)
+
+
+class SphereSDF(torch.nn.Module):
+    def __init__(self, radius: float) -> None:
+        super().__init__()
+        self.radius = radius
+
+    def forward(self, points: torch.Tensor) -> torch.Tensor:
+        return torch.linalg.norm(points, dim=-1) - self.radius
+
+
+def _dense_baseline_surface_area(
+    sdf_model: torch.nn.Module,
+    bbox: list[list[float]],
+    resolution: int,
+    isovalue: float,
+) -> float:
+    axes = [np.linspace(bbox[index][0], bbox[index][1], resolution, dtype=np.float32) for index in range(3)]
+    grid_x, grid_y, grid_z = np.meshgrid(*axes, indexing="ij")
+    points = np.stack([grid_x, grid_y, grid_z], axis=-1).reshape(-1, 3)
+    with torch.no_grad():
+        sdf_values = sdf_model(torch.from_numpy(points)).reshape(resolution, resolution, resolution).cpu().numpy()
+
+    vertices, faces, _, _ = measure.marching_cubes(
+        sdf_values,
+        level=isovalue,
+        spacing=(
+            (bbox[0][1] - bbox[0][0]) / float(resolution - 1),
+            (bbox[1][1] - bbox[1][0]) / float(resolution - 1),
+            (bbox[2][1] - bbox[2][0]) / float(resolution - 1),
+        ),
+    )
+    vertices[:, 0] += bbox[0][0]
+    vertices[:, 1] += bbox[1][0]
+    vertices[:, 2] += bbox[2][0]
+    return compute_surface_area(torch.from_numpy(vertices.astype(np.float32)), torch.from_numpy(faces.astype(np.int64))).item()
+
+
+def test_load_mesh_extraction_config() -> None:
+    config = load_mesh_extraction_config()
+
+    assert config.base_resolution >= 2
+    assert len(config.bbox) == 3
+
+
+def test_active_cell_extraction_surface_area_stays_close_to_dense_baseline() -> None:
+    base_config = load_mesh_extraction_config()
+    test_config = replace(
+        base_config,
+        device="cpu",
+        base_resolution=16,
+        max_refine_levels=3,
+        batch_size=1024,
+    )
+    extractor = MeshSDFExtractor(config=test_config)
+    extractor.set_grid(bbox=test_config.bbox, resolution=test_config.base_resolution)
+
+    model = SphereSDF(radius=1500.0)
+    vertices, faces = extractor.extract_mesh(model)
+
+    adaptive_area = compute_surface_area(vertices, faces).item()
+    dense_area = _dense_baseline_surface_area(model, test_config.bbox, resolution=48, isovalue=test_config.isovalue)
+
+    assert vertices.shape[0] > 0
+    assert faces.shape[0] > 0
+    assert math.isfinite(adaptive_area)
+    assert abs(adaptive_area - dense_area) / dense_area < 0.05

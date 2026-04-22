@@ -1,13 +1,14 @@
-# Aims to reduce surface area, with a softplus activation that weakens near TARGET_AREA_M2.
+"""Aims to reduce surface area, with a softplus activation that weakens near TARGET_AREA_M2.
 # SDF coordinates are in mm; surface area is converted to m² before applying the activation.
+"""
 
-from typing import ClassVar
+from dataclasses import replace as _dc_replace
 
 import torch
 import torch.nn.functional as F  # noqa: N812 is standard alias for torch.nn.functional
 
-from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 
 class SurfaceLossV0(ParentLoss):
@@ -28,25 +29,11 @@ class SurfaceLossV0(ParentLoss):
     MM2_TO_M2: float = 1e-6  # unit conversion: mm² → m²
     SOFTPLUS_K: float = 1.0  # sharpness; 1.0 gives ~1 m² transition width
 
-    # MeshSDF extractor settings (hard-coded for speed/quality balance)
-    _RESOLUTION: int = 64
-    # in mm, covers typical aeroshell
-    _BBOX: ClassVar[list[float]] = [
-        -5000,
-        5000,
-        -5000,
-        5000,
-        -5000,
-        5000,
-    ]  # not sure what the ClassVar does, ruff complains otherwise
-
     def _setup(self) -> None:
-        self.mesh_extractor = MeshSDFExtractor(
-            resolution=self._RESOLUTION,
-            bbox=self._BBOX,
-            isovalue=0.0,
-            device=self.device,
-        )
+        mesh_config = load_mesh_extraction_config()
+        mesh_config = _dc_replace(mesh_config, device=self.device)
+        self.mesh_extractor = MeshSDFExtractor(config=mesh_config)
+        self.mesh_extractor.set_grid(bbox=mesh_config.bbox, resolution=mesh_config.base_resolution)
 
     def _area_loss_fn(self, vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
         """Compute softplus-activated surface area loss from mesh geometry.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run from project root with:
-#   chmod +x ./setup_beast.sh && PYTHON_BIN="$(command -v python3.11)" ./setup_beast.sh
+#   chmod +x ./setup_beast.sh && PYTHON_BIN="/home/clhuber/.pyenv/versions/3.11.6/bin/python" ./setup_beast.sh
 # If Python was built without _ctypes, this script can install required Ubuntu build deps,
 # then instruct (or optionally auto-run) a Python 3.11.6 rebuild via pyenv.
 # Setup script for AISCO_code on a local Ubuntu machine with RTX 5090.
@@ -14,6 +14,10 @@ PYTHON_BIN="${PYTHON_BIN:-python3.11}"
 AUTO_INSTALL_SYSTEM_DEPS="${AUTO_INSTALL_SYSTEM_DEPS:-1}"
 AUTO_REBUILD_PYTHON="${AUTO_REBUILD_PYTHON:-0}"
 SYSTEM_DEPS_ATTEMPTED="${SYSTEM_DEPS_ATTEMPTED:-0}"
+INSTALL_KAOLIN="${INSTALL_KAOLIN:-1}"
+INSTALL_DISO="${INSTALL_DISO:-1}"
+BUILD_PYDEVELOPABILITY="${BUILD_PYDEVELOPABILITY:-1}"
+PYDEVELOPABILITY_STRICT="${PYDEVELOPABILITY_STRICT:-0}"
 
 APT_BUILD_DEPS=(
     libffi-dev
@@ -246,11 +250,173 @@ install_dependencies() {
 
     # Beast path (RTX 5090): install a CUDA 12.8 torch build with sm_120 support.
     "$VENV_PYTHON" -m pip install --upgrade --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0+cu128
+    "$VENV_PYTHON" -m pip install --upgrade --index-url https://download.pytorch.org/whl/cu128 torchvision==0.23.0+cu128
 
-    # Install project dependencies and editable package.
+    # Install base project dependencies.
     "$VENV_PYTHON" -m pip install -e .
 
+    # Install all optional dependency groups defined in pyproject.toml.
+    "$VENV_PYTHON" -m pip install \
+        '.[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer,wp7_gui,testing,pydevelopability]'
+
     "$VENV_PYTHON" -m pre_commit install || true
+}
+
+install_kaolin() {
+    if [[ "$INSTALL_KAOLIN" != "1" ]]; then
+        echo "Skipping Kaolin install (INSTALL_KAOLIN=$INSTALL_KAOLIN)."
+        return 0
+    fi
+
+    local torch_version
+    local cuda_version
+    torch_version="$($VENV_PYTHON - <<'PY'
+import torch
+print(torch.__version__.split('+')[0])
+PY
+)"
+    cuda_version="$($VENV_PYTHON - <<'PY'
+import torch
+v = torch.version.cuda
+print(v.replace('.', '') if v else '')
+PY
+)"
+
+    if [[ -z "$torch_version" || -z "$cuda_version" ]]; then
+        echo "Error: could not determine torch/cuda versions for Kaolin installation."
+        echo "       torch='$torch_version' cuda='$cuda_version'"
+        exit 1
+    fi
+
+    local kaolin_index
+    kaolin_index="https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-${torch_version}_cu${cuda_version}.html"
+
+    echo "Installing Kaolin using index: $kaolin_index"
+    if ! "$VENV_PYTHON" -m pip install -f "$kaolin_index" kaolin; then
+        echo ""
+        echo "Error: Kaolin installation failed for the current torch build."
+        echo "       Torch version: $torch_version"
+        echo "       CUDA version:  $cuda_version"
+        echo "       Attempted URL: $kaolin_index"
+        echo ""
+        echo "This usually means NVIDIA does not provide a Kaolin wheel for this exact torch/CUDA combo."
+        echo "Use a supported torch build for Kaolin, or rerun setup with INSTALL_KAOLIN=0 if you intentionally want to skip it."
+        echo "Note: WP4 requires Kaolin and will fail at import time without it."
+        exit 1
+    fi
+}
+
+install_diso() {
+    if [[ "$INSTALL_DISO" != "1" ]]; then
+        echo "Skipping DISO install (INSTALL_DISO=$INSTALL_DISO)."
+        return 0
+    fi
+
+    echo "Installing DISO..."
+    "$VENV_PYTHON" -m pip install diso --no-build-isolation
+}
+
+build_pydevelopability_cpp() {
+    if [[ "$BUILD_PYDEVELOPABILITY" != "1" ]]; then
+        echo "Skipping pydevelopability C++ build (BUILD_PYDEVELOPABILITY=$BUILD_PYDEVELOPABILITY)."
+        return 0
+    fi
+
+    require_cmd cmake
+    require_cmd make
+
+    local pydev_root
+    pydev_root="$PROJECT_ROOT/subprojects/pydevelopability"
+    local pydev_build
+    pydev_build="$pydev_root/build_manual"
+    local pybind11_dir
+    local cc_root
+    local dev_repo
+    local libigl_include
+
+    cc_root="${CC_ROOT:-$PROJECT_ROOT/subprojects/concentrate_curvature}"
+    dev_repo="${DEV_REPO:-$cc_root/DevelopabilityOfTriangleMeshes}"
+    libigl_include="${LIBIGL_INCLUDE:-$cc_root/libigl-modern/include}"
+
+    pybind11_dir="$($VENV_PYTHON -m pybind11 --cmakedir 2>/dev/null || true)"
+    if [[ -z "$pybind11_dir" || ! -d "$pybind11_dir" ]]; then
+        echo "Warning: pybind11 CMake config directory was not found in this venv."
+        echo "         Install pybind11 into $ENV_NAME to build pydevelopability."
+        echo "         Example: $VENV_PYTHON -m pip install pybind11"
+        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
+            exit 1
+        fi
+        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
+        return 0
+    fi
+
+    if [[ ! -f "$dev_repo/include/developableflow/fixed_topology_core.cpp" ]]; then
+        echo "Warning: required developability source not found: $dev_repo/include/developableflow/fixed_topology_core.cpp"
+        echo "         Set DEV_REPO (or CC_ROOT) to your concentrate_curvature checkout."
+        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
+            exit 1
+        fi
+        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
+        return 0
+    fi
+
+    if [[ ! -f "$libigl_include/igl/is_border_vertex.h" ]]; then
+        echo "Warning: required libigl header not found: $libigl_include/igl/is_border_vertex.h"
+        echo "         Set LIBIGL_INCLUDE (or CC_ROOT) to your libigl include directory."
+        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
+            exit 1
+        fi
+        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
+        return 0
+    fi
+
+    echo "Building pydevelopability C++ extension..."
+    # Reset stale CMake cache to avoid source-dir mismatch after moving/copying repos.
+    rm -rf "$pydev_build"
+    mkdir -p "$pydev_build"
+    pushd "$pydev_build" >/dev/null
+    if ! cmake .. \
+        -DCMAKE_BUILD_TYPE=Release \
+        -Dpybind11_DIR="$pybind11_dir" \
+        -DCC_ROOT="$cc_root" \
+        -DDEV_REPO="$dev_repo" \
+        -DLIBIGL_INCLUDE="$libigl_include"
+    then
+        popd >/dev/null
+        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
+            echo "Error: pydevelopability CMake configure failed in strict mode."
+            exit 1
+        fi
+        echo "Warning: pydevelopability CMake configure failed; continuing without C++ extension."
+        return 0
+    fi
+
+    if ! make -j"$(nproc)"; then
+        popd >/dev/null
+        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
+            echo "Error: pydevelopability build failed in strict mode."
+            exit 1
+        fi
+        echo "Warning: pydevelopability build failed; continuing without C++ extension."
+        return 0
+    fi
+
+    local built_so
+    built_so="$(find . -name '_devcore*.so' | head -n1 || true)"
+    if [[ -z "$built_so" ]]; then
+        popd >/dev/null
+        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
+            echo "Error: pydevelopability build finished but no _devcore*.so artifact was produced."
+            exit 1
+        fi
+        echo "Warning: pydevelopability did not produce _devcore*.so; continuing without C++ extension."
+        return 0
+    fi
+
+    cp "$built_so" "$pydev_root/pydevelopability/"
+    popd >/dev/null
+
+    "$VENV_PYTHON" -m pip install -e .
 }
 
 verify_torch_cuda_5090() {
@@ -300,6 +466,9 @@ check_gpu_5090
 detect_cuda_home
 create_or_reuse_venv
 install_dependencies
+install_kaolin
+install_diso
+build_pydevelopability_cpp
 verify_torch_cuda_5090
 
 echo ""
