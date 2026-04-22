@@ -8,8 +8,8 @@ trap 'echo "[WARN] Script error at line $LINENO (exit $?)" >&2' ERR
 JOB_NAME="Fitting_Sweep" # Name for the SLURM job
 TIME_LIMIT="03:00:00"  # Translates to --time below
 SWEEP_ID="aisco/WIRE-Fitting/y5qofl3m"   # <-- EDIT THIS
-NUMBER_OF_GPUS=2  # Adjust based on your needs and cluster limits --> Translates to ntasks and gpus below
-GPU_TYPE=""  # Set to "" for generic allocation, "rtx_4090" for specific gpu--> Translates to gpus below
+NUMBER_OF_GPUS=1  # Keep low to avoid QOSGrpGRES contention; increase when quota allows
+GPU_TYPE=""  # Matches the known-working benchmark profile
 RUNS_PER_GPU=160 # Adjust based on your needs and cluster limits --> Translates to COUNT below
 CPUS_PER_TASK=2  # Translates to --cpus-per-task below
 MEM_PER_CPU="3G"  # Translates to --mem-per-cpu below
@@ -37,6 +37,11 @@ print_sbatch_hint() {
     if echo "$scheduler_output" | grep -q "QOSGrpMemLimit"; then
         echo "[HINT] SLURM rejected the job due to group memory policy (QOSGrpMemLimit)." >&2
         echo "[HINT] Try reducing NUMBER_OF_GPUS, CPUS_PER_TASK, or MEM_PER_CPU, or wait for other jobs in the same account/QOS to finish." >&2
+    fi
+
+    if echo "$scheduler_output" | grep -q "QOSGrpGRES"; then
+        echo "[HINT] SLURM rejected the job due to group GPU/GRES quota (QOSGrpGRES)." >&2
+        echo "[HINT] Try NUMBER_OF_GPUS=1 and a specific GPU type (for example rtx_4090), or wait for group GPU usage to drop." >&2
     fi
 
     if echo "$scheduler_output" | grep -qi "invalid account\|invalid account or account\/partition combination"; then
