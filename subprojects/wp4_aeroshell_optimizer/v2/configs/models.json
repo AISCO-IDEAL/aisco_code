@@ -40,13 +40,12 @@
       "uses_diversity": true,
       "has_optimise": false
     },
-
     "BasicMLP": {
       "model_class": "BasicMLP",
       "parent_class": "BaseModel",
       "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/basic_MLP_v1.py",
       "config_file": "models/basic_MLP_v1.yaml",
-      "uses_diversity" : false,
+      "uses_diversity": false,
       "has_optimise": true
     }
   }
