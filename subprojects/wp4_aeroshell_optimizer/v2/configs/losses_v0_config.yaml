@@ -51,14 +51,14 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   aero:
     _role: objective
     _sign: minimize
-    null_loss_aero_v1_: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/null_loss_aero_v1.py"]
+    null_loss_aero: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
   bb:
     _role: constraint
     # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v1.py"]
     # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15
-    null_loss_bb_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/null_loss_bb_v1.py"]
+    null_loss_bb: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     bb_v3: [0, 1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety y
     bb_v4: [0, 10, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"] # assembler version4 with ground clearance validation
     bb_v4_2: [0, 1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"] # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
@@ -68,19 +68,23 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   eikonal:
     _role: constraint
+    null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     eikonal_v0: [1, 100.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
 
   smoothness:
     _role: constraint
+    null_loss_smoothness: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     smoothness_v0: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
 
   connectedness:
     _role: constraint
-    connectedness_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]  # optional: requires 'cripser' in the runtime environment
+    null_loss_connectedness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    connectedness_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
 
   developability:
     _role: constraint
-    developability_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/developability_loss/developability_v0.py"]  # disabled by default (compute=0)
+    null_loss_developability: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    developability_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/developability_loss/developability_v0.py"]  # disabled by default (compute=0)
 
   # surface_area:
   #   _role: aux
@@ -94,11 +98,12 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     solar_v5: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
-    null_loss_solar_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/null_loss_solar_v1.py"]
+    null_loss_solar: [0, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
 
   diversity:
     _role: diversity
-    field_diversity_v0: [1, 0.1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+    null_loss_diversity: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    field_diversity_v0: [0, 0.1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
 
   total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
