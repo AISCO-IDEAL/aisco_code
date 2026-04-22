@@ -24,6 +24,9 @@ class MeshSDFGrads(RenderingMode):
             vertice_grads: (V, 3) tensor of gradients of the loss w.r.t. vertex positions, ideally extracted from the MeshSDF loss component
         """
 
+        if not torch.cuda.is_available():
+            return
+
         vertices = optimization_state["vertices"].detach()
         faces = optimization_state["faces"].detach()
         vertice_grads = optimization_state["vertice_grads"].detach()
@@ -33,7 +36,11 @@ class MeshSDFGrads(RenderingMode):
             return
 
         # compute unit normals for each VERTEX by averaging face normals of adjacent faces
-        face_normals = torch.cross(vertices[faces][:, 1] - vertices[faces][:, 0], vertices[faces][:, 2] - vertices[faces][:, 0])
+        face_normals = torch.cross(
+            vertices[faces][:, 1] - vertices[faces][:, 0],
+            vertices[faces][:, 2] - vertices[faces][:, 0],
+            dim=-1,
+        )
         face_normals = face_normals / (face_normals.norm(dim=-1, keepdim=True) + 1e-8)
         vertex_normals = torch.zeros_like(vertices)
         for i in range(faces.shape[0]):
@@ -111,6 +118,8 @@ class MeshSDFGrads(RenderingMode):
     def log_single_image_to_wandb(self, optimization_state: dict, epoch_name: int) -> None:
         try:
             self.update(optimization_state)
+            if not self.frame_storage:
+                return
             wandb.log({"epoch": epoch_name, "Aero-Gradients": wandb.Image(self.frame_storage[-1])}, step=int(epoch_name))
         except Exception as e:
             print(f"Couldnt produce Gradient-immage in Epoch {epoch_name} for Reason {e}")
