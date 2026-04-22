@@ -1,0 +1,32 @@
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v4.py
+entity: aisco
+project: WIRE-Fitting
+
+method: grid
+metric:
+  goal: minimize
+  name: pretraining/total_loss
+
+parameters:
+  pretraining_v4_config.model_name:
+    value: "WIREV3"
+
+  # WIRE v3 — log-spaced Gabor filterbank (each neuron gets a distinct omega from [min, max])
+  models/WIRE_v3.hidden_features:
+    values: [64, 128, 256]
+  models/WIRE_v3.hidden_layers:
+    values: [3, 4, 6]
+  models/WIRE_v3.first_omega_min:
+    values: [0.3, 0.5, 1.0]
+  models/WIRE_v3.first_omega_max:
+    values: [5.0, 10.0, 20.0]
+  models/WIRE_v3.hidden_omega_min:
+    values: [0.3, 0.5, 1.0]
+  models/WIRE_v3.hidden_omega_max:
+    values: [5.0, 10.0, 20.0]
+
+  # Training
+  pretraining_v4_config.training_loop.learning_rate:
+    values: [0.0001, 0.0005, 0.001]
+  pretraining_v4_config.training_loop.eikonal_weight:
+    values: [0.05, 0.1, 0.2]

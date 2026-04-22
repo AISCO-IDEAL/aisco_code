@@ -1,0 +1,33 @@
+# Pretraining configuration for the dynamic model loading entry point (pretraining_v4.py).
+# used for the WIRE Fitting benchmark, works for .optimise() models
+# Valid model_name values are defined in v2/configs/models.json.
+model_name: "WIREV3"  # Key passed to smart_model_init — change to any registered model name.
+
+pretraining_shape: "ply"  # "sphere", "cube", or "ply"
+pretraining_ply_path: "/cluster/work/fuge/AISCO/concentrate_curvature/DevelopabilityOfTriangleMeshes/assets/bunny.ply"
+pretraining_ply_scale: 1000.0  # Scale ply vertices to mm (bunny.ply is unit-scale → ×1000, silvretta is in mm though so it needs a factor 1.0)
+random_seed: 42
+
+pretraining:
+  use_pretrained: True
+  force_pretraining: False
+  pretraining_model_path: ""
+  local_pretraining_model_path: ""
+  username: ${USER}
+
+training_loop:
+  epochs: 1750
+  learning_rate: 0.0001
+  random_batch_size: 2048
+  print_interval: 50
+  eikonal_weight: 0.1
+
+output:
+  checkpoint_path: "/cluster/work/fuge/AISCO/WIRE_fitting_alex/bunny/"
+  mesh_resolution: 128   # marching-cubes grid resolution for post-training PLY extraction
+  mesh_box_mm: 1000     # half-extent of the marching-cubes bounding box in mm
+
+wandb:
+  use_wandb: true
+  project_name: "WIRE-Fitting"
+  entity_name: "aisco"
