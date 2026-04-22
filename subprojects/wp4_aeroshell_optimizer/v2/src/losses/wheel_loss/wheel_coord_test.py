@@ -1,23 +1,38 @@
-import ocp_vscode as ocp
-from ocp_vscode.comms import set_port
+import math
+from pathlib import Path
 
-from subprojects.wp2_assembler.version4.components.nbz import call_assembly
+import torch
+import yaml
+
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 
 
 def main_test():
-    set_port(49152)
-    inner_assembly, __, __ = call_assembly(2)
-    # get coordinates of wheel interfaces (assuming at least 3 wheels exist)
-    # inner_solids[0] is the seat; inner_solids[1+] are wheel solids
-    inner_solids = inner_assembly.toCompound().Solids()
-    ocp.show(inner_assembly)
-    wheels: list[list] = [[], []]  # list of [solid, coordinates]
-    for solid in inner_solids[1:]:
-        wheels[0].append(solid)
-        # get coordinates of each wheel
-        wheels[1].append(solid.BoundingBox().center)
+    id_number = 2
+    assembly_map_path = Path(__file__).parents[6] / "subprojects/wp2_assembler/version4/config/assembly_map.yaml"
+    with assembly_map_path.open("r") as f:
+        assembly_map = yaml.safe_load(f) or {}
+    params = assembly_map[id_number]
 
-    print(wheels)
+    # get wheel coordinates (extends width/2 in +y/-y, radius in +z)
+    wheel_coords = [(p["x"], p["y"], p["z"]) for key, p in params.items() if key.startswith("wheel_")]
+    width = get_regulation("wheel.tire_width")
+    radius = get_regulation("wheel.tire_diameter") / 2
+    gc = get_regulation("no_build_zones.outer_prism.ground_clearance")
+    C = radius - gc - 1
+    L = math.sqrt(radius**2 - C**2)
+
+    # points to evaluate
+    sampling_density = 2  # points per edge of the rectangle
+    points = [
+        [
+            (wx + dx * L, wy + dy * width / 2, wz - C)
+            for dx in torch.linspace(-1, 1, sampling_density)
+            for dy in torch.linspace(-1, 1, sampling_density)
+        ]
+        for wx, wy, wz in wheel_coords
+    ]
+    print(points)
 
 
 if __name__ == "__main__":
