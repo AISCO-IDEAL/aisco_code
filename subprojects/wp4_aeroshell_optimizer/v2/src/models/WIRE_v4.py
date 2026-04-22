@@ -1,4 +1,3 @@
-
 import torch
 from torch import nn
 
@@ -62,9 +61,11 @@ class WIREV4(BaseModel):
         config = config if config is not None else {}
 
         try:
-            dtype = getattr(torch, dtype)
+            torch_dtype = getattr(torch, dtype)
         except AttributeError:
             raise ValueError(f"Invalid dtype given: {dtype}") from None
+        if not isinstance(torch_dtype, torch.dtype):
+            raise TypeError(f"Invalid dtype given: {dtype}")
 
         self.skip_layer_idx = skip_layer_idx
         self.in_features = in_features
@@ -95,11 +96,11 @@ class WIREV4(BaseModel):
                     scale_max=scale_max,
                     train_omega=train_omega,
                     train_scale=train_scale,
-                    dtype=dtype,
+                    dtype=torch_dtype,
                 )
             )
 
-        self.output_layer = nn.Linear(hidden_features, out_features, dtype=dtype)
+        self.output_layer = nn.Linear(hidden_features, out_features, dtype=torch_dtype)
 
         self.model_info_dict = {
             "name": str(self.__class__.__name__),
@@ -119,7 +120,7 @@ class WIREV4(BaseModel):
             "trainable_omega": train_omega,
             "trainable_scale": train_scale,
             "total_parameters": sum(p.numel() for p in self.parameters()),
-            "dtype": str(dtype),
+            "dtype": str(torch_dtype),
         }
 
     def forward(self, coords: torch.Tensor) -> torch.Tensor:

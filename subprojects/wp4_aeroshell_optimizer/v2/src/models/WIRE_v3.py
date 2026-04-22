@@ -93,9 +93,11 @@ class WIREV3(BaseModel):
         config = config if config is not None else {}
 
         try:
-            dtype = getattr(torch, dtype)
+            torch_dtype = getattr(torch, dtype)
         except AttributeError:
             raise ValueError(f"Invalid dtype given: {dtype}") from None
+        if not isinstance(torch_dtype, torch.dtype):
+            raise TypeError(f"Invalid dtype given: {dtype}")
 
         layers: list[nn.Module] = []
 
@@ -110,7 +112,7 @@ class WIREV3(BaseModel):
                 scale_max=first_scale_max,
                 train_omega=train_omega,
                 train_scale=train_scale,
-                dtype=dtype,
+                dtype=torch_dtype,
             )
         )
 
@@ -126,13 +128,13 @@ class WIREV3(BaseModel):
                     scale_max=hidden_scale_max,
                     train_omega=train_omega,
                     train_scale=train_scale,
-                    dtype=dtype,
+                    dtype=torch_dtype,
                 )
                 for _ in range(hidden_layers)
             ]
         )
 
-        layers.append(nn.Linear(hidden_features, out_features, dtype=dtype))
+        layers.append(nn.Linear(hidden_features, out_features, dtype=torch_dtype))
 
         self.net = nn.Sequential(*layers)
 
@@ -153,7 +155,7 @@ class WIREV3(BaseModel):
             "trainable_omega": train_omega,
             "trainable_scale": train_scale,
             "total_parameters": sum(p.numel() for p in self.parameters()),
-            "dtype": str(dtype),
+            "dtype": str(torch_dtype),
         }
 
     def forward(self, coords: torch.Tensor) -> torch.Tensor:

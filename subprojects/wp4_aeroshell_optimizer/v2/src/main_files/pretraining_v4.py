@@ -172,6 +172,7 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
     mesh_res: int = output_cfg["mesh_resolution"]
     mesh_box: int = output_cfg["mesh_box_mm"]
     if pretraining_shape == "ply":
+        assert bb_half_extent is not None
         # scale extraction box 10% larger than the fitted mesh region
         mesh_box = int(bb_half_extent * 1.1)
 
@@ -187,6 +188,7 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
         optimizer.zero_grad()
 
         if pretraining_shape == "ply":
+            assert bb_center is not None and bb_half_extent is not None and ply_verts_t is not None
             n_surface = batch_size // 2
             n_uniform = batch_size - n_surface
             uniform_pts = bb_center + (torch.rand(n_uniform, 3, device=device) - 0.5) * (2 * bb_half_extent)
