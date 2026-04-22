@@ -5,7 +5,7 @@ model_name: "WIREV3"  # Key passed to smart_model_init — change to any registe
 
 pretraining_shape: "ply"  # "sphere", "cube", or "ply"
 pretraining_ply_path: "/cluster/work/fuge/AISCO/concentrate_curvature/DevelopabilityOfTriangleMeshes/assets/bunny.ply"
-pretraining_ply_scale: 1000.0  # Scale ply vertices to mm (bunny.ply is unit-scale → ×1000)
+pretraining_ply_scale: 1000.0  # Scale ply vertices to mm (bunny.ply is unit-scale → ×1000, silvretta is in mm though so it needs a factor 1.0)
 random_seed: 42
 
 pretraining:
@@ -16,8 +16,8 @@ pretraining:
   username: ${USER}
 
 training_loop:
-  epochs: 1500
-  learning_rate: 0.001
+  epochs: 1750
+  learning_rate: 0.0001
   random_batch_size: 2048
   print_interval: 50
   eikonal_weight: 0.1

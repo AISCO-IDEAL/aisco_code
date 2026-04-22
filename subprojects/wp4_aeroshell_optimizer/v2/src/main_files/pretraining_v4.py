@@ -142,8 +142,15 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
     # ── Pre-load PLY mesh ────────────────────────────────────────────────────
     pretraining_shape = config.get("pretraining_shape", "sphere")
     ply_verts_t = ply_faces_t = None
+    bb_center = bb_half_extent = None
     if pretraining_shape == "ply":
         ply_verts_t, ply_faces_t = _load_ply_mesh(config, device)
+        bb_min = ply_verts_t.min(dim=0).values
+        bb_max = ply_verts_t.max(dim=0).values
+        bb_center = (bb_min + bb_max) / 2.0
+        # isotropic half-extent with 1.5x padding so near-surface samples stay well inside the box
+        bb_half_extent = ((bb_max - bb_min) * 0.5 * 1.5).max()
+        print(f"[v4] PLY bbox: {bb_min.tolist()} → {bb_max.tolist()}, sampling half-extent ±{bb_half_extent.item():.0f} mm")
 
     # ── Training hyperparameters ─────────────────────────────────────────────
     learning_rate: float = config["training_loop"]["learning_rate"]
@@ -155,12 +162,18 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
     # ── Output settings ──────────────────────────────────────────────────────
     output_cfg: dict = config["output"]
     base_output_dir = Path(output_cfg["checkpoint_path"])
-    run_name = wandb.run.name if wandb.run is not None else None
-    run_dir = base_output_dir / model_name / run_name if run_name else base_output_dir / model_name
+    if wandb.run is not None:
+        prefix = wandb.run.sweep_id if wandb.run.sweep_id is not None else ""
+        run_dir = base_output_dir / prefix / wandb.run.name if prefix else base_output_dir / wandb.run.name
+    else:
+        run_dir = base_output_dir / model_name
     run_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_pth = run_dir / f"{model_name}.pth"
     mesh_res: int = output_cfg["mesh_resolution"]
     mesh_box: int = output_cfg["mesh_box_mm"]
+    if pretraining_shape == "ply":
+        # scale extraction box 10% larger than the fitted mesh region
+        mesh_box = int(bb_half_extent * 1.1)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs)
@@ -173,7 +186,16 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
     for epoch in range(num_epochs):
         optimizer.zero_grad()
 
-        input_data = (torch.rand(batch_size, 3, device=device) - 0.5) * 5000.0
+        if pretraining_shape == "ply":
+            n_surface = batch_size // 2
+            n_uniform = batch_size - n_surface
+            uniform_pts = bb_center + (torch.rand(n_uniform, 3, device=device) - 0.5) * (2 * bb_half_extent)
+            surf_idx = torch.randint(0, ply_verts_t.shape[0], (n_surface,), device=device)
+            # sigma = 5% of half-extent concentrates samples in the near-surface band where SDF varies fastest
+            surface_pts = ply_verts_t[surf_idx] + torch.randn(n_surface, 3, device=device) * (bb_half_extent * 0.05)
+            input_data = torch.cat([uniform_pts, surface_pts], dim=0)
+        else:
+            input_data = (torch.rand(batch_size, 3, device=device) - 0.5) * 5000.0
 
         output = model(input_data)
         target = _compute_gt_target(pretraining_shape, input_data, ply_verts_t, ply_faces_t)
