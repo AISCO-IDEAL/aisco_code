@@ -91,6 +91,7 @@ TORCH_CONSTRAINTS_FILE="$ENV_NAME/torch-euler-constraints.txt"
 cat > "$TORCH_CONSTRAINTS_FILE" <<EOF
 torch==$TORCH_VERSION
 EOF
+export TORCH_VERSION TORCH_INDEX_URL TORCH_CONSTRAINTS_FILE
 
 python3 -m pip install --upgrade --index-url "$TORCH_INDEX_URL" "torch==$TORCH_VERSION"
 
