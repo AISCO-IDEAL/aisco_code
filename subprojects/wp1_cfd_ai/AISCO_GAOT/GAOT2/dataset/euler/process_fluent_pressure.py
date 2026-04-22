@@ -61,6 +61,28 @@ NUM_WORKERS = 4  # HDF5 reads + numpy heavy → moderate parallelism
 MIN_FORCE_COLS = 3  # minimum columns in a valid force report line
 
 
+def apply_surface_orientation(
+    pos: np.ndarray,
+    normals: np.ndarray,
+    canonicalize_orientation: bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Apply the Fluent surface orientation convention.
+
+    Args:
+        pos: Vertex positions with shape ``[N, 3]``.
+        normals: Vertex normals with shape ``[N, 3]``.
+        canonicalize_orientation: Whether to mirror the surface across the
+            yz-plane to match the canonical Euler Fluent dataset orientation.
+
+    Returns:
+        Tuple of oriented ``(pos, normals)`` arrays.
+    """
+    if canonicalize_orientation:
+        pos[:, 0] = -pos[:, 0]
+        normals[:, 0] = -normals[:, 0]
+    return pos, normals
+
+
 # ---------------------------------------------------------------------------
 #  Force report parser (reused from process_my_euler.py)
 # ---------------------------------------------------------------------------
@@ -272,7 +294,14 @@ def _interpolate_face_to_vertex(values_per_face, face_nodes, global_to_local, n_
 # ---------------------------------------------------------------------------
 #  Single-run processor
 # ---------------------------------------------------------------------------
-def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, output_dir=OUTPUT_DIR):  # noqa: PLR0915
+def process_single_run(  # noqa: PLR0915
+    run_id,
+    results_dir=RESULTS_DIR,
+    force_dir=FORCE_DIR,
+    output_dir=OUTPUT_DIR,
+    air_density=AIR_DENSITY,
+    canonicalize_orientation: bool = True,
+):
     """
     Process one Fluent run into a GAOT-compatible .pt file with pressure field.
 
@@ -311,9 +340,11 @@ def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, out
     # ---- 5. Compute vertex normals ----
     normals_np = _compute_vertex_normals(pos_np, triangles)  # [N, 3]
 
-    # Canonicalize Euler orientation to match the rest of the pipeline.
-    pos_np[:, 0] = -pos_np[:, 0]
-    normals_np[:, 0] = -normals_np[:, 0]
+    pos_np, normals_np = apply_surface_orientation(
+        pos_np,
+        normals_np,
+        canonicalize_orientation=canonicalize_orientation,
+    )
 
     # ---- 6. Extract face-center pressure & interpolate to vertices ----
     with h5py.File(dat_path, "r") as dat:
@@ -328,10 +359,10 @@ def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, out
 
     vertex_shear = _interpolate_face_to_vertex(face_shear, face_nodes, global_to_local, n_vertices)  # [N, 3]
 
-    # Fluent stores SV_WALL_SHEAR as a skin-friction coefficient Cf = tau / (0.5 * rho * V_inf^2)
-    # because the case was set up with reference-velocity = 1 m/s.  Multiply by q_inf to
-    # recover the physical wall shear stress in Pa.
-    q_inf = 0.5 * AIR_DENSITY * V_INF_EULER**2
+    # Fluent stores SV_WALL_SHEAR as a skin-friction coefficient Cf = tau / (0.5 * rho_ref * v_ref^2)
+    # where rho_ref and v_ref are the Fluent Reference Values set for the case.
+    # Multiply by q_ref to recover the physical wall shear stress in Pa.
+    q_inf = 0.5 * air_density * V_INF_EULER**2
     vertex_shear = vertex_shear * q_inf
 
     # ---- 7. Parse force report ----
@@ -342,12 +373,12 @@ def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, out
         if force_parsed is not None:
             force_val = -force_parsed
         if cd_parsed is not None:
-            # Fluent computed Cd with reference-velocity = 1 m/s and reference-area = 1 m^2.
-            # Recompute using the actual freestream dynamic pressure so Cd is physically correct.
+            # Fluent computed Cd using its reference values.  Recompute from the drag force
+            # using the actual freestream dynamic pressure so Cd is physically correct.
             cd_val = force_val / q_inf  # F_drag [N] / q_inf [Pa] / A_ref [1 m^2]
 
     pressure_tensor = torch.tensor(vertex_pressure, dtype=torch.float32).unsqueeze(-1)
-    cp_tensor = compute_pressure_coefficient(pressure_tensor, V_INF_EULER, AIR_DENSITY)
+    cp_tensor = compute_pressure_coefficient(pressure_tensor, V_INF_EULER, air_density)
     pos_tensor = torch.tensor(pos_np, dtype=torch.float32)
     geom_extent, geom_aspect, conditioning = compute_geom_conditioning(pos_tensor, V_INF_EULER)
 
@@ -381,7 +412,14 @@ def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, out
 #  Batch processing
 # ---------------------------------------------------------------------------
 def process_all_runs(
-    results_dir=RESULTS_DIR, force_dir=FORCE_DIR, output_dir=OUTPUT_DIR, run_ids=None, max_runs=None, num_workers=NUM_WORKERS
+    results_dir=RESULTS_DIR,
+    force_dir=FORCE_DIR,
+    output_dir=OUTPUT_DIR,
+    run_ids=None,
+    max_runs=None,
+    num_workers=NUM_WORKERS,
+    air_density=AIR_DENSITY,
+    canonicalize_orientation: bool = True,
 ):
     """
     Process all (or selected) Fluent runs into .pt files.
@@ -411,16 +449,25 @@ def process_all_runs(
         run_ids = run_ids[:max_runs]
 
     print(f"Processing {len(run_ids)} Fluent runs with {num_workers} workers...")
-    print(f"  Results: {results_dir}")
-    print(f"  Force:   {force_dir}")
-    print(f"  Output:  {output_dir}")
+    print(f"  Results:     {results_dir}")
+    print(f"  Force:       {force_dir}")
+    print(f"  Output:      {output_dir}")
+    print(f"  air_density: {air_density} kg/m³  v_inf: {V_INF_EULER} m/s")
+    print(f"  canonicalize_orientation: {canonicalize_orientation}")
 
     order_list = []
 
     if num_workers <= 1:
         for rid in tqdm(run_ids, desc="Processing runs"):
             try:
-                result = process_single_run(rid, results_dir, force_dir, output_dir)
+                result = process_single_run(
+                    rid,
+                    results_dir,
+                    force_dir,
+                    output_dir,
+                    air_density,
+                    canonicalize_orientation,
+                )
                 if result is not None:
                     order_list.append(result)
             except Exception as e:
@@ -428,7 +475,18 @@ def process_all_runs(
                 traceback.print_exc()
     else:
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            futures = {executor.submit(process_single_run, rid, results_dir, force_dir, output_dir): rid for rid in run_ids}
+            futures = {
+                executor.submit(
+                    process_single_run,
+                    rid,
+                    results_dir,
+                    force_dir,
+                    output_dir,
+                    air_density,
+                    canonicalize_orientation,
+                ): rid
+                for rid in run_ids
+            }
             for future in tqdm(as_completed(futures), total=len(futures), desc="Processing runs"):
                 rid = futures[future]
                 try:
@@ -463,6 +521,20 @@ def main():
     parser.add_argument("--run_ids", nargs="+", type=int, default=None, help="Specific run IDs to process (e.g., 1 2 3)")
     parser.add_argument("--max_runs", type=int, default=None, help="Process at most N runs")
     parser.add_argument("--workers", type=int, default=NUM_WORKERS, help="Number of parallel workers (default: 4)")
+    parser.add_argument(
+        "--air-density",
+        type=float,
+        default=AIR_DENSITY,
+        help=(
+            f"Air density in kg/m³ used for Cp, wall-shear recovery, and Cd (default: {AIR_DENSITY}). "
+            "Set to 1.2041 for runs where the Fluent reference density was changed."
+        ),
+    )
+    parser.add_argument(
+        "--preserve-orientation",
+        action="store_true",
+        help="Keep the original Fluent surface frame instead of canonicalizing x.",
+    )
     args = parser.parse_args()
 
     process_all_runs(
@@ -472,6 +544,8 @@ def main():
         run_ids=args.run_ids,
         max_runs=args.max_runs,
         num_workers=args.workers,
+        air_density=args.air_density,
+        canonicalize_orientation=not args.preserve_orientation,
     )
 
 
