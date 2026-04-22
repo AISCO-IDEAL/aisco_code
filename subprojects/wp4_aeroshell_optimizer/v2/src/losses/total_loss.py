@@ -206,7 +206,12 @@ class TotalLoss:
                 if not compute:
                     continue
                 abs_path: Path = project_root / Path(path)
-                family: str = Path(path).stem.title().replace("_", "")
+
+                # Derive class name from loss_name (config key), not filename
+                # This allows multiple losses to be defined in the same file (e.g., universal_null_losses.py)
+                # Transform: "null_loss_solar_v1" → "NullLossSolarV1"
+                family: str = loss_name.title().replace("_", "")
+
                 loss_cls = load_class_from_path(str(abs_path), family)
                 instance = loss_cls(
                     device=str(self._device),
