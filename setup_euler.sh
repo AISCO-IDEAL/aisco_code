@@ -9,8 +9,6 @@
 ######set -e  # Exit on any error
 
 ENV_NAME="aisco_env"
-TORCH_VERSION="2.4.0+cu121"
-TORCH_INDEX_URL="https://download.pytorch.org/whl/cu121"
 
 # 1. Load the required Python module (adjust as needed for your cluster)
 echo "🔍 Loading Python module..."
@@ -82,34 +80,7 @@ fi
 # 5. Upgrade pip and install standard dependencies in editable mode
 echo "📦 Upgrading pip and installing standard dependencies from pyproject.toml..."
 python3 -m pip install --upgrade pip setuptools wheel build
-
-# Euler path (RTX 4090): install the CUDA 12.1 torch build explicitly.
-#
-# pyproject.toml allows torch>=2.4,<2.9, so constrain the editable install too;
-# otherwise pip may later upgrade this environment to torch 2.8.
-TORCH_CONSTRAINTS_FILE="$ENV_NAME/torch-euler-constraints.txt"
-cat > "$TORCH_CONSTRAINTS_FILE" <<EOF
-torch==$TORCH_VERSION
-EOF
-export TORCH_VERSION TORCH_INDEX_URL TORCH_CONSTRAINTS_FILE
-
-python3 -m pip install --upgrade --index-url "$TORCH_INDEX_URL" "torch==$TORCH_VERSION"
-
-python3 -m pip install -e . --constraint "$TORCH_CONSTRAINTS_FILE" --extra-index-url "$TORCH_INDEX_URL"
-
-python3 - <<'PY'
-import sys
-import torch
-
-expected = "2.4.0+cu121"
-print("torch", torch.__version__)
-print("torch.version.cuda", torch.version.cuda)
-print("torch.cuda.is_available", torch.cuda.is_available())
-
-if torch.__version__ != expected:
-    print(f"ERROR: expected torch {expected}, got {torch.__version__}", file=sys.stderr)
-    sys.exit(1)
-PY
+python3 -m pip install -e .
 
 echo "🪝 Setting up Pre-commit Hooks..."
 pre-commit install
@@ -119,21 +90,19 @@ echo ""
 echo "✅ Standard dependencies installed."
 echo ""
 echo "📌 Optional dependencies can be installed manually:"
-echo "   Add this to optional pip installs to keep the RTX 4090 torch build:"
-echo "       --constraint $TORCH_CONSTRAINTS_FILE --extra-index-url $TORCH_INDEX_URL"
-echo "   - Workpackage 1 (WP1_WP1_CFD_AI):                  python3 -m pip install '.[wp1_cfd_ai]' --constraint $TORCH_CONSTRAINTS_FILE --extra-index-url $TORCH_INDEX_URL"
-echo "   - Workpackage 2 (wp2_assembler):                   python3 -m pip install '.[wp2_assembler]' --constraint $TORCH_CONSTRAINTS_FILE --extra-index-url $TORCH_INDEX_URL"
-echo "   - Workpackage 3 (WP_3_Solarestimator):             python3 -m pip install '.[WP3_Solarestimator]' --constraint $TORCH_CONSTRAINTS_FILE --extra-index-url $TORCH_INDEX_URL"
-echo "   - Workpackage 4 (WP_4_Aeroshell_optimizer):        python3 -m pip install '.[wp4_aeroshell_optimizer]' --constraint $TORCH_CONSTRAINTS_FILE --extra-index-url $TORCH_INDEX_URL"
-echo "   - testing dependencies:                            python3 -m pip install '.[testing]' --constraint $TORCH_CONSTRAINTS_FILE --extra-index-url $TORCH_INDEX_URL"
-echo "   - All optional dependencies:                       python3 -m pip install '.[all]' --constraint $TORCH_CONSTRAINTS_FILE --extra-index-url $TORCH_INDEX_URL"
+echo "   - Workpackage 1 (WP1_WP1_CFD_AI):                  python3 -m pip install '.[wp1_cfd_ai]'"
+echo "   - Workpackage 2 (wp2_assembler):                   python3 -m pip install '.[wp2_assembler]'"
+echo "   - Workpackage 3 (WP_3_Solarestimator):             python3 -m pip install '.[WP3_Solarestimator]'"
+echo "   - Workpackage 4 (WP_4_Aeroshell_optimizer):        python3 -m pip install '.[wp4_aeroshell_optimizer]'"
+echo "   - testing dependencies:                            python3 -m pip install '.[testing]'"
+echo "   - All optional dependencies:                       python3 -m pip install '.[all]'"
 echo ""
 ############# eschaerer addition for kaolin install #############
 echo "🔍 Checking if Kaolin should be installed..."
 read -p "Do you want to install Kaolin (GPU/CUDA-dependent)? [y/n]: " install_kaolin
 if [[ "$install_kaolin" == "y" ]]; then
     echo "🐍 Installing Kaolin from NVIDIA link..."
-    python3 -m pip install -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.4.0_cu121.html kaolin==0.18.0 --constraint "$TORCH_CONSTRAINTS_FILE" --extra-index-url "$TORCH_INDEX_URL"
+    python3 -m pip install -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.4.0_cu121.html kaolin==0.18.0
     echo "✅ Kaolin installation complete."
 else
     echo "⏭️ Skipping Kaolin installation."
@@ -154,7 +123,7 @@ fi
 read -p "Do you want to install DISO (GPU/CUDA-dependent)? [y/n]: " install_diso
 if [[ "$install_diso" == "y" ]]; then
     echo "🐍 Installing DISO from GitHub..."
-    python3 -m pip install diso --no-build-isolation --constraint "$TORCH_CONSTRAINTS_FILE" --extra-index-url "$TORCH_INDEX_URL"
+    python3 -m pip install diso --no-build-isolation
     echo "✅ DISO installation complete."
 fi
 
@@ -178,7 +147,7 @@ if [[ "$build_pydevelopability" == "y" ]]; then
     cp _devcore.cpython-311-x86_64-linux-gnu.so ../pydevelopability/
 
     cd ../../..
-    python3 -m pip install -e . --no-deps
+    python3 -m pip install -e .
     echo "✅ pydevelopability build complete."
 else
     echo "⏭️ Skipping pydevelopability build (using pre-built .so)."
