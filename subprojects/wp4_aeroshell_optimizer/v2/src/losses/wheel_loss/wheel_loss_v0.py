@@ -3,8 +3,9 @@ from pathlib import Path
 
 import torch
 import yaml
-from AISCO_code.subprojects.wp2_assembler.version3.utils.reg_imp import get_regulation
-from AISCO_code.subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
+
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 
 
 class WheelLossV0(ParentLoss):
@@ -28,22 +29,27 @@ class WheelLossV0(ParentLoss):
 
         # points to evaluate
         sampling_density = self.__config.get("sampling_density", 10)  # points per edge of the rectangle
-        self.points = [
-            (
-                (wx + dx * L, wy + dy * width / 2, wz - C)
-                for dx in torch.linspace(-1, 1, sampling_density)
-                for dy in torch.linspace(-1, 1, sampling_density)
-            )
-            for wx, wy, wz in wheel_coords
-        ]
+        dx_vals = torch.linspace(-1, 1, sampling_density)
+        dy_vals = torch.linspace(-1, 1, sampling_density)
+        grid_dx, grid_dy = torch.meshgrid(dx_vals, dy_vals, indexing="ij")
+        grid_dx = grid_dx.flatten()  # (sampling_density^2,)
+        grid_dy = grid_dy.flatten()  # (sampling_density^2,)
 
-        print(self.points)
+        wheel_point_grids = []
+        for wx, wy, wz in wheel_coords:
+            xs = wx + grid_dx * L
+            ys = wy + grid_dy * (width / 2)
+            zs = torch.full_like(xs, wz - C)
+            wheel_point_grids.append(torch.stack([xs, ys, zs], dim=-1))  # (sampling_density^2, 3)
+
+        # shape of points: (num_wheels * sampling_density^2, 3)
+        self.points = torch.cat(wheel_point_grids, dim=0).to(self.device).requires_grad_(True)
 
     def _loss(self, model) -> torch.Tensor:
-        """Sample points on the wheel interface rectangle and compute loss based on sdf_model values at those points. SDF in this are has to be 0."""
+        """Sample points on the wheel interface rectangle and compute loss based on sdf_model values at those points. SDF in this area has to be 0."""
         # Sample points on SDF
-        samples = model(self.points)  # shape: (num_wheels, sampling_density^2, 3)
+        samples = model(self.points)  # shape: (num_wheels * sampling_density^2,)
 
         # Calculate loss as mean squared value of SDF at sampled points
-        loss = torch.mean(torch.abs(samples))
+        loss = torch.sqrt(torch.mean(torch.square(samples)))
         return loss
