@@ -4,7 +4,6 @@ import logging
 import os
 import tempfile
 import warnings
-from dataclasses import replace as _replace
 
 import pandas as pd
 import torch
@@ -19,8 +18,8 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.trainer.utils.plot import plot_3d_comparison_matplotlib
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import cp_field_to_drag
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.scale import rescale, rescale_new
+from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer import MeshSDFGrads, Visualiser
-from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 logger = logging.getLogger(__name__)
 
@@ -43,16 +42,15 @@ class ModelLoader:
         self.model_path = self._get_checkpoint_path()
         self._load_model()
 
-        mesh_cfg = load_mesh_extraction_config()
-        mesh_cfg = _replace(
-            mesh_cfg,
+        self.extractor = MeshSDFExtractor(
+            resolution=128,
+            bbox=[-3e3, 3e3, -3e3, 3e3, -3e3, 3e3],
             device=self.device,
-            bbox=[[-3e3, 3e3], [-3e3, 3e3], [-3e3, 3e3]],
             isovalue=0.0,
-            target_num_vertices=int(cfd_config["mesh_resolution"]),
-            vertex_count_tolerance=float(cfd_config.get("mesh_resolution_tolerance", 0.1)),
+            target_nr_vertices=int(cfd_config["mesh_resolution"]),
+            max_iters=1000,
+            gradient_max=cfd_config["gradient_max"],
         )
-        self.extractor = MeshSDFExtractor(config=mesh_cfg)
 
         self.visualiser = Visualiser(device=self.device)
         self.gradlogger = MeshSDFGrads(self.visualiser, intensity=10)
@@ -133,47 +131,13 @@ class ModelLoader:
             return None
 
     def _get_checkpoint_path(self):
-        # Resolve metrics.csv: explicit config override > cluster default > local fallback.
-        candidate_paths = []
-        cfg_path = self.cfd_config.get("metrics_csv_path")
-        if cfg_path:
-            candidate_paths.append(cfg_path)
-        candidate_paths.append("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
-        local_fallback = os.path.expanduser("~/results/metrics.csv")
-        candidate_paths.append(local_fallback)
-
-        csv_path = next((p for p in candidate_paths if os.path.isfile(p)), None)
-        if csv_path is None:
-            raise FileNotFoundError(
-                f"Could not locate GAOT metrics.csv. Tried: {candidate_paths}. "
-                "Set cfd_config['metrics_csv_path'] in losses config."
-            )
-        df = pd.read_csv(csv_path)
-
-        # Try requested model_id, then optional local_model_id fallback.
-        ids_to_try = [self.cfd_config["model_id"]]
-        local_id = self.cfd_config.get("local_model_id")
-        if local_id is not None:
-            ids_to_try.append(local_id)
-
-        for candidate_id in ids_to_try:
-            for _, row in df.iterrows():
-                setup_dict = ast.literal_eval(row["setup"])
-                if str(setup_dict.get("id")) == str(candidate_id):
-                    path_dict = ast.literal_eval(row["path"])
-                    ckpt = path_dict.get("ckpt_path")
-                    if ckpt and os.path.isfile(ckpt):
-                        if str(candidate_id) != str(self.cfd_config["model_id"]):
-                            logger.warning(
-                                "GAOT model_id %s not found in %s; falling back to local_model_id %s.",
-                                self.cfd_config["model_id"],
-                                csv_path,
-                                candidate_id,
-                            )
-                        return ckpt
-        raise ValueError(
-            f"No valid GAOT checkpoint for model_id={self.cfd_config['model_id']} (local_model_id={local_id}) in {csv_path}."
-        )
+        df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
+        for _, row in df.iterrows():
+            setup_dict = ast.literal_eval(row["setup"])
+            if str(setup_dict.get("id")) == str(self.cfd_config["model_id"]):
+                path_dict = ast.literal_eval(row["path"])
+                return path_dict.get("ckpt_path")
+        raise ValueError("Wrong ID for GAOT-Model")
 
     def _load_model(self) -> None:  # Noqa: PLR0912, PLR0915
         config_path = self.model_path.replace("model.pt", "config.yaml")
@@ -440,9 +404,7 @@ class ModelLoader:
         face_normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
 
-        sdf_values = self.sdf_model(face_centers + face_normals * 50)
-        if sdf_values.dim() > 1:
-            sdf_values = sdf_values.squeeze(-1)
+        sdf_values = self.sdf_model(face_centers + face_normals * 50).squeeze(-1)
         normals_flipped = sdf_values < 0
         face_normals[normals_flipped] *= -1
         self._normals_flipped_count = int(normals_flipped.sum().item())
