@@ -131,7 +131,10 @@ class ModelLoader:
             return None
 
     def _get_checkpoint_path(self):
-        df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
+        try:
+            df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
+        except FileNotFoundError:
+            df = pd.read_csv("/home/clhuber/results/metrics.csv")
         for _, row in df.iterrows():
             setup_dict = ast.literal_eval(row["setup"])
             if str(setup_dict.get("id")) == str(self.cfd_config["model_id"]):

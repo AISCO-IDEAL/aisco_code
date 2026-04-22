@@ -168,6 +168,7 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
 
 cfd:
   model_id: 63435761      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2 or a key for Version 1
+  local_model_id: local_1776771256  # fallback id used when running off-cluster (present in ~/results/metrics.csv)
   version: 2              # Options: 1, 2         Recomendation: 2
   visualisations: false   # Options: true, false  Recomendation: false
   v_inf: 25.0             # Default: 25.0         Recomendation: Has to Match the Value used during respective GAOT-Training

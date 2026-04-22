@@ -1,0 +1,84 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      blockMeshDict;
+}
+
+// Domain extents — PLACEHOLDERS replaced by generate_cases.py
+// Computed per-run from normalized PLY bounding box
+xMin    __XMIN__;
+xMax    __XMAX__;
+yMin    __YMIN__;
+yMax    __YMAX__;
+zMin    0;          // ground plane always at z=0
+zMax    __ZMAX__;
+
+// Background cell size ~0.164m (matching Fluent HexMaxCellLength)
+// Cell counts computed from domain extents / 0.164
+xCells  __XCELLS__;
+yCells  __YCELLS__;
+zCells  __ZCELLS__;
+
+vertices
+(
+    ($xMin $yMin $zMin)
+    ($xMax $yMin $zMin)
+    ($xMax $yMax $zMin)
+    ($xMin $yMax $zMin)
+    ($xMin $yMin $zMax)
+    ($xMax $yMin $zMax)
+    ($xMax $yMax $zMax)
+    ($xMin $yMax $zMax)
+);
+
+blocks
+(
+    hex (0 1 2 3 4 5 6 7) ($xCells $yCells $zCells) simpleGrading (1 1 1)
+);
+
+boundary
+(
+    inlet
+    {
+        type patch;
+        faces
+        (
+            (0 4 7 3)
+        );
+    }
+    outlet
+    {
+        type patch;
+        faces
+        (
+            (1 2 6 5)
+        );
+    }
+    ground
+    {
+        type wall;
+        faces
+        (
+            (0 1 2 3)
+        );
+    }
+    top
+    {
+        type symmetry;
+        faces
+        (
+            (4 5 6 7)
+        );
+    }
+    sides
+    {
+        type symmetry;
+        faces
+        (
+            (0 1 5 4)
+            (3 7 6 2)
+        );
+    }
+);

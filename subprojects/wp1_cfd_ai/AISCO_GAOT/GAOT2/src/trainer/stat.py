@@ -14,6 +14,7 @@ import numpy as np
 import open3d as o3d
 import torch
 import torch_geometric as pyg
+import wandb
 from omegaconf import OmegaConf
 from scipy.spatial import cKDTree
 from torch.utils.data import DataLoader
@@ -23,7 +24,6 @@ from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch_geometric.transforms import Compose
 from tqdm import tqdm
 
-import wandb
 from src.dataloader.collate_functions import create_collate_function
 from src.dataloader.pyg_datasets import EnrichedData, VTKMeshDataset
 from src.dataloader.pyg_transforms import NormalizeFeatures, RescalePosition, RescalePositionNew
@@ -791,7 +791,17 @@ class StaticTrainer3D(TrainerBase):
                 data_i.x = full_x_i[input_perm]
 
             # Copy scalar attributes (force, cd) to sampled data
-            for attr in ["force", "cd", "filename", "num_latent_nodes"]:
+            for attr in [
+                "force",
+                "cd",
+                "filename",
+                "num_latent_nodes",
+                "scale_factors",
+                "bbox_min",
+                "bbox_max",
+                "bbox_center",
+                "v_inf",
+            ]:
                 if hasattr(batch, attr) and getattr(batch, attr) is not None:
                     attr_value = getattr(batch, attr)
                     if isinstance(attr_value, list) or (attr_value.dim() > 0 and len(attr_value) == batch.num_graphs):

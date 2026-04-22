@@ -5,25 +5,23 @@
       "parent_class": "BaseModel",
       "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v2.py",
       "config_file": "models/WIRE_v2.yaml",
-      "uses_diversity" : false,
+      "uses_diversity": false,
       "has_optimise": true
     },
-
     "ConcatWIREV2": {
       "model_class": "ConcatWIREV2",
       "parent_class": "ConcatBaseModel",
       "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/concat_WIRE_v2.py",
       "config_file": "models/concat_WIRE_v2.yaml",
-      "uses_diversity" : true,
+      "uses_diversity": true,
       "has_optimise": false
     },
-
     "BasicMLP": {
       "model_class": "BasicMLP",
       "parent_class": "BaseModel",
       "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/basic_MLP_v1.py",
       "config_file": "models/basic_MLP_v1.yaml",
-      "uses_diversity" : false,
+      "uses_diversity": false,
       "has_optimise": true
     }
   }

@@ -18,6 +18,12 @@ Paper: **"Geometry Aware Operator Transformer as an efficient and accurate neura
 2. Update the config files and add the wandb for easily tracking the experiments.
 3. Add the asychronous online-graph building strategy.
 
+***15/04/2026 — OpenFOAM Pipeline (v0.2.0)***
+1. Replaced Ansys Fluent with OpenFOAM v2306 for CFD data generation.
+2. New headless Euler pipeline: PLY → STL → snappyHexMesh → simpleFoam → .pt
+3. Added `dataset/openfoam/` module with `ply_to_stl.py`, `generate_cases.py`, `process_openfoam_pressure.py`.
+4. SLURM array jobs for parallel batch processing of all 223+ geometries.
+5. New `euler_openfoam` dataset option in `preprocess_all_datasets.py`.
 
 ***13/09/2025***
 
