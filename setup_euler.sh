@@ -80,10 +80,6 @@ fi
 # 5. Upgrade pip and install standard dependencies in editable mode
 echo "📦 Upgrading pip and installing standard dependencies from pyproject.toml..."
 python3 -m pip install --upgrade pip setuptools wheel build
-
-# Euler path (RTX 4090): install the CUDA 12.1 torch build explicitly.
-python3 -m pip install --upgrade --index-url https://download.pytorch.org/whl/cu121 torch==2.4.0+cu121
-
 python3 -m pip install -e .
 
 echo "🪝 Setting up Pre-commit Hooks..."
