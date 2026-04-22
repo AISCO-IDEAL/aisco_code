@@ -261,7 +261,6 @@ class MeshSDFExtractor:
         """No-op retained for API compat with the older timing-heavy extractor."""
         return None
 
-
     def _empty(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Return (empty vertices, empty faces) tensors on the correct device."""
         return (
