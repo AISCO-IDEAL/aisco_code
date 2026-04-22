@@ -1,0 +1,191 @@
+##########################################################################
+#  GAOT — Euler CP-full dataset: OOM investigation
+#
+#  Same as main_config.yaml but points to /processed_euler_cp_full/.
+#  The full CP meshes are larger → hits CUDA OOM with batch_size=12.
+#  Reduce batch_size and/or use smaller model to investigate.
+##########################################################################
+
+setup:
+    run_local: false
+    name: "drivaer_cp_full"
+    id: "_RUN_ID_"
+    seed: 42
+    device: "cuda:0"
+    dtype: "bfloat16"  # options: "torch.float32" | "bfloat16"
+    trainer_name: "static3d"
+    train: true
+    test: true
+    ckpt: false
+    use_variance_test: false
+    distributed: false
+
+    wandb: true
+    wandb_run_name: "_NAME___RUN_ID_"
+
+    wandb_project: "WP1_finetuning"
+    wandb_entity: aisco
+    wandb_group: drivaer_cp_full
+    wandb_mode: online
+    wandb_tags: ["field", "pressure", "drivaer", "multi_head", "gaot", "cp_full", "oom_investigation"]
+    wandb_watch_model: false
+    wandb_notes: "OOM investigation on CP-full dataset — reduce batch_size/model if needed"
+
+    test_during_training: false
+
+model:
+    name: "gaot_3d"
+    use_conditional_norm: false
+    args:
+        input_size: 6
+        output_size: 1
+        latent_tokens: [32, 32, 16]
+        field_output_size: 1
+        norm_domain: [[-1, -1, -1], [1, 1, 1]]
+        magno:
+            use_gno: true
+            gno_coord_dim: 3
+            neighbor_strategy: "bidirectional"
+            projection_channels: 256
+            in_gno_channel_mlp_hidden_layers: [64, 64, 64]
+            out_gno_channel_mlp_hidden_layers: [64, 64]
+            lifting_channels: 32
+            gno_radius: 0.066
+            gno_use_torch_cluster: true
+            attention_type: "cosine"
+            use_geoembed: [true, false]
+            embedding_method: "statistical"
+            encoder_feature_attr: ["pos", "c"]
+            mlp_type: "linear"
+            precompute_edges: false
+            asynchronous_graph_building: false
+            scales: [1.0]
+            use_scale_weights: false
+            k_neighbors: 1
+            in_gno_transform_type: "linear"
+            out_gno_transform_type: "linear"
+            use_graph_cache: true
+            gno_use_torch_scatter: true
+            node_embedding: false
+            use_attn: null
+            pooling: "max"
+            sampling_strategy: null       # shared fallback (null = no dropout for encoder)
+            max_neighbors: null
+            sample_ratio: null
+            decoder_sampling_strategy: "ratio"  # dropout only on decoder edges
+            decoder_sample_ratio: 0.65
+        transformer:
+            patch_size: 2
+            hidden_size: 256
+            use_attn_norm: true
+            use_ffn_norm: true
+            norm_eps: 1e-06
+            num_layers: 10
+            positional_embedding: "rope"
+            use_long_range_skip: true
+
+            attn_config:
+                hidden_size: 256
+                num_heads: 8
+                num_kv_heads: 8
+                use_conditional_norm: false
+                cond_norm_hidden_size: 4
+                atten_dropout: 0.1
+                positional_embedding: "rope"
+
+            ffn_config:
+                hidden_size: 1024
+                use_conditional_norm: false
+                cond_norm_hidden_size: 4
+        decoder:
+            hidden_features: 256
+            num_shared_layers: 3
+            output_heads:
+                force: 1
+                cd: 1
+        scalar_encoder:
+            enabled: true              # set true to inject per-sample scaling factors
+            features: ["scale_factors","bbox_center"] # extend with e.g. "bbox_min", "bbox_max", "bbox_center", "v_inf"
+            hidden_dim: 128             # encoder MLP hidden width
+            mode: "film"              # "concat" (original) or "film" (FiLM conditioning)
+            position_aware: true       # if true + film: γ/β vary per token grid position
+            num_film_layers: 3          # depth of FiLM generator MLP (film mode only)
+            film_init_scale: 0.01       # reduced from 0.1 — perturbation hit 1.0 at epoch 80
+
+dataset:
+    name: "drivaer_cp_full"
+    metaname: "incompressible_fluids/drivaernet_pressure"
+    base_path: "/home/eschaerer/AISCO_code/data/processed_drivaer_cp_full"
+    processed_folder: ""
+    force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
+    rand_dataset: true
+    train_size: 380
+    val_size: 50
+    test_size: 50
+    batch_size: 6  # reduced from 12 to avoid OOM on larger CP-full meshes
+    num_workers: 8
+    shuffle: true
+    metric_suite: "general"
+    update_pt_files_with_edges: false
+    training_strategy: "full_grid"
+    uncertainty_weighting: false
+    field_loss_weight: 1.0
+    use_rescale_new: false
+    active_variables:
+    order_file_name:
+    active_heads: []  # empty = field-only (disable force/cd scalar heads)
+    drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
+    subsample_nodes: 25000     # randomly sample 30k nodes per load if sample exceeds this
+    subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"
+    deterministic_subsampling: false  # false keeps fresh random subsets on every load
+    subsampling_seed: 42        # used only when deterministic_subsampling is true
+    v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
+    rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
+    num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
+
+    viz_axis_limits:            # Edit these ranges to control the visualized x/y/z box exactly, default is outer bounding box
+        x: [-0.5, 1.5]
+        y: [-0.5, 1.5]
+        z: [-0.5, 0.5]
+    viz_field_vmin: -2.2        # min on pressure bar
+    viz_field_vmax: 0.95         # max on pressure bar
+    viz_abs_diff_vmax: 1.0      # max on error bar (min always 0)
+
+optimizer:
+    name: "adamw" # the option "adam" hasen't been adopted yet to the new config-style
+    args:
+        lr: 6e-4
+        weight_decay: 1e-05
+        epoch: 500
+        loss_scale: 1.0
+        eval_every_eps: 1
+        viz_every_eps: 25  # visualize every N epochs; defaults to eval_every_eps if omitted
+        viz_warmup_epochs: 0  # also visualize every epoch for the first X epochs (0 = disabled)
+        scheduler: "mix"
+        max_lr: 0.003
+        min_lr: 2e-4
+        final_lr: 2e-5
+        save_every_epochs: 10
+        save_every_steps: 0
+        early_save_metric: "val"
+        warmup_epochs: 30  # not needed anymore, set to 10% of total epochs
+        beta1: 0.95
+        beta2: 0.999
+        eps: 1e-6
+        loss: "mse"  # options: "mse" | "l2" | "relative_l2"
+
+path:
+    ckpt_path: "/home/eschaerer/AISCO_code/local_storage_dir/wp1_goat/_NAME___RUN_ID_/model.pt"
+    loss_path: "/home/eschaerer/AISCO_code/local_storage_dir/wp1_goat/_NAME___RUN_ID_/loss.png"
+    result_path: "/home/eschaerer/AISCO_code/local_storage_dir/wp1_goat/_NAME___RUN_ID_/results.png"
+    config_save_path: "/home/eschaerer/AISCO_code/local_storage_dir/wp1_goat/_NAME___RUN_ID_/config.yaml"
+    database_path: "/home/eschaerer/AISCO_code/local_storage_dir/wp1_goat/metrics.csv"
+    
+
+local_path:
+    ckpt_path: "/home/clhuber/results/_NAME___RUN_ID_/model.pt"
+    loss_path: "/home/clhuber/results/_NAME___RUN_ID_/loss.png"
+    result_path: "/home/clhuber/results/_NAME___RUN_ID_/results.png"
+    config_save_path: "/home/clhuber/results/_NAME___RUN_ID_/config.yaml"
+    database_path: "/home/clhuber/results/metrics.csv"
+    dataset: "/home/clhuber/datasets/processed_euler_cp_full"  # local path to dataset (overrides base_path when run_local=true)
