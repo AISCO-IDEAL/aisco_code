@@ -114,13 +114,13 @@ model:
 dataset:
     name: "blended_wing"
     metaname: "incompressible_fluids/blended_wing"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing_cp_full_2"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing_cp_full_filtered"
     processed_folder: ""
     force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
-    train_size: 223
-    val_size: 28
-    test_size: 28
+    train_size: 167
+    val_size: 56
+    test_size: 56
     batch_size: 6  # reduced from 12 to avoid OOM on larger CP-full meshes
     num_workers: 8
     shuffle: true

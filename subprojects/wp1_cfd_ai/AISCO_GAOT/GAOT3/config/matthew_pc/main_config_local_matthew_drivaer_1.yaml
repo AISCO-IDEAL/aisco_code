@@ -147,8 +147,8 @@ dataset:
         x: [-1.0, 4.5]
         y: [-1.5, 1.5]
         z: [-0.5, 1.5]
-    viz_field_vmin: -0.5       # min on pressure bar
-    viz_field_vmax: 0.5          # max on pressure bar
+    viz_field_vmin: -2.2        # min on pressure bar
+    viz_field_vmax: 0.95         # max on pressure bar
     viz_abs_diff_vmax: 1.0      # max on error bar (min always 0)
 
 optimizer:
