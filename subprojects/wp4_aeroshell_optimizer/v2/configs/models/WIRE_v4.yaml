@@ -8,8 +8,8 @@
 # hidden_features + in_features inputs; all other layers are unchanged from V3.
 
 in_features: 3
-hidden_features: 128
-hidden_layers: 4
+hidden_features: 256
+hidden_layers: 6
 out_features: 1
 skip_layer_idx: 2           # inject after the 3rd Gabor layer (0-indexed); valid range [0, hidden_layers-1]
 first_omega_min: 10.0

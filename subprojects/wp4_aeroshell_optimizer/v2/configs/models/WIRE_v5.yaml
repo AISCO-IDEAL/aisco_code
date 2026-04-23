@@ -10,7 +10,7 @@
 # 2. Coarse-to-fine frequency schedule:
 #    - Hidden layers are tiled log-uniformly across [hidden_omega_min, hidden_omega_max].
 #    - Layer j covers its own frequency band, starting coarse (layer 0) and ending fine (last layer).
-#    - For this to be useful, set hidden_omega_max > hidden_omega_min.
+#    - For this to be useful, set hidden_omega_max >> hidden_omega_min (e.g., 5→150).
 #    - Scale is tiled the same direction: low omega gets wide Gaussians, high omega gets narrow.
 #
 # 3. Geometry-aware normalisation:
@@ -19,27 +19,28 @@
 #    - Use actual geometry bounds: bbox_center=centroid, bbox_half_extent=half of longest axis.
 
 in_features: 3
-hidden_features: 128
-hidden_layers: 4
+hidden_features: 256
+hidden_layers: 5
 out_features: 1
 skip_layer_idx: 2
 
-# First layer: same range as V4, acts as a wide-band feature extractor.
+# First layer: V4 range. Acts as a wide-band feature extractor.
 first_omega_min: 10.0
 first_omega_max: 30.0
 first_scale_min: 5.0
 first_scale_max: 10.0
 
-# Hidden layers: V4-compatible range [1, 5] applied coarse-to-fine.
-# Each layer j gets a log-uniform sub-band, so layer 0 handles ~1 Hz and
-# the last layer handles ~5 Hz — same overall range as V4 but structured.
+# Hidden layers: V4-compatible range [1, 5] applied coarse-to-fine per layer.
+# Layer j gets a log-uniform sub-band; earlier layers handle lower frequencies.
+# omega/scale are trainable — with the log floor at 0, both stay ≥ 1 during
+# optimisation so neither collapses (see GaborLayerV5.forward clamp).
 hidden_omega_min: 1.0
 hidden_omega_max: 5.0
 hidden_scale_min: 1.0
 hidden_scale_max: 10.0
 
 train_omega: False
-train_scale: True
+train_scale: False
 
 # Geometry-aware normalisation (backward-compatible default = /1000 from V4)
 # Default [center=[0,0,0], extent=1000] is equivalent to WIREV4's coords/1000.

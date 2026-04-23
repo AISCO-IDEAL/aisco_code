@@ -111,7 +111,9 @@ class WIREV6(BaseModel):
         if not isinstance(torch_dtype, torch.dtype):
             raise TypeError(f"Invalid dtype given: {dtype}")
 
-        center = torch.zeros(in_features, dtype=torch_dtype) if bbox_center is None else torch.tensor(bbox_center, dtype=torch_dtype)
+        center = (
+            torch.zeros(in_features, dtype=torch_dtype) if bbox_center is None else torch.tensor(bbox_center, dtype=torch_dtype)
+        )
         self.register_buffer("bbox_center", center)
         self.register_buffer("bbox_half_extent", torch.tensor(bbox_half_extent, dtype=torch_dtype))
 

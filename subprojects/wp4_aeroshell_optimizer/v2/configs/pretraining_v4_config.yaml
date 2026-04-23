@@ -1,11 +1,11 @@
 # Pretraining configuration for the dynamic model loading entry point (pretraining_v4.py).
 # used for the WIRE Fitting benchmark, works for .optimise() models
 # Valid model_name values are defined in v2/configs/models.json.
-model_name: "WIREV6"  # Key passed to smart_model_init — change to any registered model name.
+model_name: "WIREV5"  # Key passed to smart_model_init — change to any registered model name.
 
-pretraining_shape: "sphere"  # "sphere", "cube", or "ply"
-pretraining_ply_path: "/cluster/work/fuge/AISCO/concentrate_curvature/DevelopabilityOfTriangleMeshes/assets/bunny.ply"
-pretraining_ply_scale: 1000.0  # Scale ply vertices to mm (bunny.ply is unit-scale → x1000, silvretta is in mm though so it needs a factor x1.0)
+pretraining_shape: "ply"  # "sphere", "cube", or "ply"
+pretraining_ply_path: "/cluster/work/fuge/AISCO/concentrate_curvature/DevelopabilityOfTriangleMeshes/assets/original_silvretta.ply"
+pretraining_ply_scale: 1.0  # Scale ply vertices to mm (bunny.ply is unit-scale → x1000, silvretta is in mm though so it needs a factor x1.0)
 random_seed: 42
 
 pretraining:
@@ -16,7 +16,7 @@ pretraining:
   username: ${USER}
 
 training_loop:
-  epochs: 1500
+  epochs: 500
   learning_rate: 0.00005
   random_batch_size: 2048
   print_interval: 50

@@ -77,6 +77,19 @@ def _extract_mesh(model: SupportsModelContract, pth_path: Path, device: str, mes
         kaolin_to_PLY(verts, faces, filename=ply_path.name, mesh_dir=ply_path.parent)
         print(f"\u2713 Saved mesh to {ply_path}")
 
+def log_model_stats(model: SupportsModelContract, epoch: int) -> None:
+    if wandb.run is not None:
+        layer_omegas = {}
+        for name, param in model.named_parameters():
+            if "omega" in name:
+                layer_omegas[name] = param.detach().cpu().numpy()
+        wandb.log({"pretraining/layer_omegas": wandb.Histogram(layer_omegas)}, step=epoch)
+
+        layer_scales = {}
+        for name, param in model.named_parameters():
+            if "scale" in name:
+                layer_scales[name] = param.detach().cpu().numpy()
+        wandb.log({"pretraining/layer_scales": wandb.Histogram(layer_scales)}, step=epoch)
 
 def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # noqa: PLR0912, PLR0915 — training loop matches pretraining_v3.py structure; extracting sub-functions would obscure the linear flow
     """
@@ -183,6 +196,9 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
         f"[v4] Starting pretraining: epochs={num_epochs}, batch={batch_size}, lr={learning_rate}, eikonal_weight={eikonal_weight}"
     )
 
+    # basic logging of model stats
+    # log_model_stats(model, epoch=0)
+
     # ── Training loop ────────────────────────────────────────────────────────
     for epoch in range(num_epochs):
         optimizer.zero_grad()
@@ -230,6 +246,7 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
             )
 
         if epoch % print_interval == 0:
+            # log_model_stats(model, epoch=epoch)
             lr_now = scheduler.get_last_lr()[0]
             print(
                 f"Epoch {epoch:5d} | total={total_loss.item():.6f} "

@@ -39,14 +39,23 @@ first_omega_max: 30.0
 first_scale_min: 5.0
 first_scale_max: 10.0
 
-# Same as V5: V4-compatible range applied coarse-to-fine across hidden layers.
+# First layer: V4 range. Acts as a wide-band feature extractor.
+first_omega_min: 10.0
+first_omega_max: 30.0
+first_scale_min: 5.0
+first_scale_max: 10.0
+
+# Hidden layers: V4-compatible range [1, 5] applied coarse-to-fine per layer.
+# Layer j gets a log-uniform sub-band; earlier layers handle lower frequencies.
+# omega/scale are trainable — with the log floor at 0, both stay ≥ 1 during
+# optimisation so neither collapses (see GaborLayerV5.forward clamp).
 hidden_omega_min: 1.0
 hidden_omega_max: 5.0
 hidden_scale_min: 1.0
 hidden_scale_max: 10.0
 
 train_omega: False
-train_scale: True
+train_scale: False
 
 # Geometry-aware normalisation (backward-compatible default = /1000 from V4)
 # Default [center=[0,0,0], extent=1000] is equivalent to WIREV4's coords/1000.

@@ -75,8 +75,8 @@ class GaborLayerV5(nn.Module):
         self.decay_proj = nn.Linear(in_features, out_features, bias=bias, dtype=dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        omega = torch.exp(torch.clamp(self.log_omega, min=-5.0, max=5.0))
-        scale = torch.exp(torch.clamp(self.log_scale, min=-5.0, max=5.0))
+        omega = torch.exp(torch.clamp(self.log_omega, min=0.0, max=5.0))
+        scale = torch.exp(torch.clamp(self.log_scale, min=0.0, max=5.0))
         return torch.cos(omega * self.wave_proj(x)) * torch.exp(-(scale * self.decay_proj(x) ** 2))
 
 
@@ -143,7 +143,9 @@ class WIREV5(BaseModel):
         if not isinstance(torch_dtype, torch.dtype):
             raise TypeError(f"Invalid dtype given: {dtype}")
 
-        center = torch.zeros(in_features, dtype=torch_dtype) if bbox_center is None else torch.tensor(bbox_center, dtype=torch_dtype)
+        center = (
+            torch.zeros(in_features, dtype=torch_dtype) if bbox_center is None else torch.tensor(bbox_center, dtype=torch_dtype)
+        )
         self.register_buffer("bbox_center", center)
         self.register_buffer("bbox_half_extent", torch.tensor(bbox_half_extent, dtype=torch_dtype))
 
