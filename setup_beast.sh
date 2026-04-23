@@ -247,8 +247,10 @@ install_dependencies() {
     # Beast path (RTX 5090): install a CUDA 12.8 torch build with sm_120 support.
     "$VENV_PYTHON" -m pip install --upgrade --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0+cu128
 
-    # Install project dependencies and editable package.
-    "$VENV_PYTHON" -m pip install -e .
+
+    "$VENV_PYTHON" -m pip install --no-build-isolation -e ".[all]"
+
+    "$VENV_PYTHON" -m pip install --upgrade --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0+cu128
 
     "$VENV_PYTHON" -m pre_commit install || true
 }
