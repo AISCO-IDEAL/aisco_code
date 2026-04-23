@@ -246,13 +246,13 @@ install_dependencies() {
     # shellcheck disable=SC1091
     source "$VENV_DIR/bin/activate"
 
+        "$VENV_PYTHON" -m pip install --upgrade --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0+cu128
+    "$VENV_PYTHON" -m pip install --upgrade --index-url https://download.pytorch.org/whl/cu128 torchvision==0.23.0+cu128
+
     "$VENV_PYTHON" -m pip install --upgrade pip setuptools wheel build
 
         # Install project dependencies and editable package.
     "$VENV_PYTHON" -m pip install -e .
-
-
-    "$VENV_PYTHON" -m pip install --upgrade --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0+cu128
 
     # Install all optional dependency groups defined in pyproject.toml.
     "$VENV_PYTHON" -m pip install \
