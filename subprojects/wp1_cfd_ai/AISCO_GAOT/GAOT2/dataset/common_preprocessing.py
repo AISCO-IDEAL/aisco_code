@@ -13,6 +13,7 @@ DEFAULT_OUTPUT_DIRS = {
     "drivaer": "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_cp_full",
     "ahmed": "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_ahmed_cp_full",
     "blended_wing": "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing_cp_full",
+    "ahmed_openfoam": "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_openfoam_ahmed_cp_v040",
 }
 
 

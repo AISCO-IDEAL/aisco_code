@@ -51,6 +51,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     # 1. Load and register configs
     general_config: dict[str, Any] = load_config(v="v2", cfg_name="general_config.yaml")
+    # Auto-detect environment: override run_locally if /cluster is not accessible
+    if not os.path.isdir("/cluster"):
+        general_config["general_info"]["run_locally"] = "True"
     verbose: bool = general_config.get("general_info", {}).get("verbose", True)
     device: str = general_config.get("general_info", {}).get("device", "cuda" if torch.cuda.is_available() else "cpu")
     if str(device).startswith("cuda") and not torch.cuda.is_available():
@@ -128,7 +131,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     if run_locally:
         pretrained_path = pretraining_config["pretraining"].get("local_pretraining_model_path", "")
         if not pretrained_path:  # check if empty path given in pretraining config, if so fallback to general config path
-            pretrained_path = general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+            pretrained_path = general_config["storage_paths"].get("beast_storage_dir") or general_config["storage_paths"].get(
+                "local_storage_dir", "./local_storage_dir"
+            )
     else:
         pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", "")
         if not pretrained_path:  # check if empty path given in pretraining config, if so fallback to general config path
@@ -202,7 +207,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     if wandb_name is not None:
         if run_locally:
             rendering_dir = (
-                Path(general_config["storage_paths"]["local_storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
+                Path(
+                    general_config["storage_paths"].get("beast_storage_dir")
+                    or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+                )
+                / model_hash
+                / reformat_wandb_name(wandb_name)
             )
         else:
             rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
@@ -291,9 +301,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         # Mesh extractor + optional renderer (only used if rendering_freq is set)
         renderer_cfg = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")
         mesh_extraction_config: dict[str, Any] = renderer_cfg.get("mesh_extraction", {})
+        mesh_extractor_device = mesh_extraction_config.get("device", str(device))
+        if str(mesh_extractor_device).startswith("cuda") and not torch.cuda.is_available():
+            print(f"Configured mesh extractor device '{mesh_extractor_device}' unavailable. Falling back to CPU.")
+            mesh_extractor_device = "cpu"
         mesh_extractor = MeshExtractor(
             algorithm=mesh_extraction_config.get("algorithm", "mc"),
-            device=mesh_extraction_config.get("device", str(device)),
+            device=mesh_extractor_device,
             verbose=mesh_extraction_config.get("verbose", False),
         )
         mesh_extractor.set_grid(
@@ -366,6 +380,26 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         for epoch in range(num_epochs):
             model.train()
             metrics = trainer.step(epoch=epoch)
+
+            mesh_save_interval = training_config["training_params"].get("mesh_save_interval", 50)
+            if (epoch + 1) % mesh_save_interval == 0:
+                allround_save_data(
+                    model=model,
+                    storage_path=(
+                        general_config["storage_paths"].get("beast_storage_dir")
+                        or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+                    )
+                    if run_locally
+                    else general_config["storage_paths"]["storage_dir"],
+                    save_model=True,
+                    save_mesh=True,
+                    epoch=epoch + 1,
+                    verbose=general_config["general_info"].get("verbose", False),
+                    pretraining=False,
+                    wandb_run=wandb_name,
+                    device=str(device),
+                )
+
             run_latent_interpolation(state=interpolation_state, epoch=epoch, stage="periodic", verbose=verbose)
             if verbose and epoch % 50 == 0:  # arbitray number, adjust as needed
                 print(
@@ -400,9 +434,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     allround_save_data(
         model=model,
-        storage_path=general_config["general_info"].get(
-            "storage_path", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
-        ),
+        storage_path=(
+            general_config["storage_paths"].get("beast_storage_dir")
+            or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+        )
+        if run_locally
+        else general_config["storage_paths"].get("storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"),
         save_model=True,
         save_mesh=True,
         verbose=verbose,
@@ -412,7 +449,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             "num_epochs", 420420
         ),  # Use 420420 to avoid default value that is misleading
         resolution=128,
-        marching_cubes_usage=True,
+        device=str(device),
     )
     print("Completed job successfully.")
 

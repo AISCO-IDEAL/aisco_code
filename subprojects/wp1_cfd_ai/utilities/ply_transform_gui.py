@@ -364,12 +364,18 @@ def api_mesh():
 def api_mesh_bin():
     data = request.get_json(force=True)
     path = data.get("path", "")
+    downsample = int(data.get("downsample", 0))
     if not os.path.isfile(path):
         return jsonify(ok=False, error=f"File not found: {path}")
     try:
         verts, _raw_vdata, raw_fdata, _header_bytes, fmt, elements = read_ply(path)
         face_el = next((e for e in elements if e["name"] == "face"), None)
         indices = _parse_faces_for_viewer(raw_fdata, face_el, fmt)
+        if downsample > 0 and len(verts) > downsample:
+            pos_arr = np.array(verts, dtype=np.float32)
+            sel = _spatial_subsample(pos_arr, downsample)
+            verts = [verts[int(i)] for i in sel]
+            indices = []  # point-cloud render when downsampled
         return Response(_build_mesh_binary(verts, indices), mimetype="application/octet-stream")
     except Exception as e:
         return jsonify(ok=False, error=str(e))
@@ -475,6 +481,53 @@ def api_transform():
         return jsonify(ok=False, error=str(e))
 
     return jsonify(ok=True, files=created)
+
+
+def _write_ply_points(filepath: str, pos: "np.ndarray") -> None:
+    """Write a binary little-endian PLY containing only xyz float32 positions."""
+    n = pos.shape[0]
+    header = (
+        f"ply\nformat binary_little_endian 1.0\n"
+        f"element vertex {n}\n"
+        "property float x\nproperty float y\nproperty float z\nend_header\n"
+    ).encode("ascii")
+    with open(filepath, "wb") as f:
+        f.write(header)
+        f.write(pos.astype(np.float32).tobytes())
+
+
+@app.route("/api/subsample_save", methods=["POST"])
+def api_subsample_save():
+    """Spatially subsample a PLY to n_target points and write it.
+
+    Writes a point-cloud PLY (no faces) with only xyz float32 properties.
+    If overwrite=True, replaces the source file; otherwise writes
+    <stem>_sub<N>.ply in the same directory.
+    """
+    data = request.get_json(force=True)
+    path = data.get("path", "").strip()
+    n_target = int(data.get("n_target", 0))
+    overwrite = bool(data.get("overwrite", False))
+    if not os.path.isfile(path):
+        return jsonify(ok=False, error=f"File not found: {path}")
+    if n_target <= 0:
+        return jsonify(ok=False, error="n_target must be > 0")
+    try:
+        verts, _rv, _rf, _hb, _fmt, _el = read_ply(path)
+        pos = np.array(verts, dtype=np.float32)
+        n_verts = pos.shape[0]
+        if n_target >= n_verts:
+            return jsonify(
+                ok=False,
+                error=f"n_target ({n_target:,}) ≥ vertex count ({n_verts:,}) — nothing to subsample",
+            )
+        sel = _spatial_subsample(pos, n_target)
+        sel_pos = pos[sel]
+        out_path = path if overwrite else str(Path(path).parent / f"{Path(path).stem}_sub{len(sel)}.ply")
+        _write_ply_points(out_path, sel_pos)
+        return jsonify(ok=True, path=out_path, n_original=n_verts, n_saved=len(sel))
+    except Exception as e:
+        return jsonify(ok=False, error=str(e))
 
 
 @app.route("/api/list_ply", methods=["POST"])

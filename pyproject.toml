@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "AISCO_code"
-version = "0.1.0"
+version = "0.5.0"
 description = "Monorepo for all AISCO code"
 authors = [
     {name = "Kolja Diehl", email = "kdiehl@ethz.ch"}
@@ -20,6 +20,7 @@ dependencies = [
   "ruff>=0.1.0",
   "pre-commit>=3.0.0",
   "mypy>=1.19.1",
+  "fast-simplification>=0.1.13", # used for unified mesh extraction in wp5
   "torch==2.4.0",
    # "torchvision==0.19.0", Not needed accordingto #aalthaus
   "wandb[media] >= 0.23.1",

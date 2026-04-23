@@ -322,7 +322,6 @@ class WIREV2(BaseModel):
                     verbose=general_config["general_info"].get("verbose", False),
                     pretraining=False,
                     wandb_run=wandb_name,
-                    marching_cubes_usage=training_config["training_params"].get("marching_cubes_usage", "False"),
                 )
 
             # param.grad now holds the sum of all per-component gradients — same as if
@@ -345,15 +344,18 @@ class WIREV2(BaseModel):
         if dev_entry is not None:
             _dev_name, dev_instance = dev_entry
             if dev_instance.post_opt_enabled:
-                verts, faces = dev_instance.mesh_extractor.extract_mesh(
-                    model=self,
-                    isovalue=dev_instance.mesh_isovalue,
-                    batch_size=dev_instance.mesh_batch_size,
-                )
+                verts, faces = dev_instance.mesh_extractor.extract_mesh(sdf_model=self)
                 run_name = wandb_name or (wandb.run.name if wandb.run else "run")
-                storage_dir = general_config["storage_paths"].get(
-                    "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
-                )
+                _storage_paths = general_config.get("storage_paths", {})
+                _run_locally = general_config.get("general_info", {}).get("run_locally", "False") == "True"
+                if _run_locally:
+                    storage_dir = _storage_paths.get("beast_storage_dir") or _storage_paths.get(
+                        "local_storage_dir", "./local_storage_dir"
+                    )
+                else:
+                    storage_dir = _storage_paths.get(
+                        "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+                    )
                 dev_instance.post_optimize(
                     vertices=verts.detach().cpu().numpy().astype("float64"),
                     faces=faces.detach().cpu().numpy().astype("int32"),

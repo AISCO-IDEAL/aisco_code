@@ -1,4 +1,5 @@
 import importlib
+import os
 
 import numpy as np
 import torch
@@ -53,6 +54,15 @@ def _load_ply_mesh(config: dict, device: str) -> tuple[torch.Tensor, torch.Tenso
     ply_path = config.get("pretraining_ply_path")
     if not ply_path:
         raise ValueError("pretraining_shape='ply' requires 'pretraining_ply_path' in pretraining config")
+    if not os.path.isfile(ply_path):
+        fallback = config.get("beast_pretraining_ply_path", "")
+        if fallback and os.path.isfile(fallback):
+            print(f"[pretraining] '{ply_path}' not found, falling back to beast_pretraining_ply_path: '{fallback}'")
+            ply_path = fallback
+        else:
+            raise ValueError(
+                f"PLY file not found: '{ply_path}'. Set 'beast_pretraining_ply_path' in pretraining config for local runs."
+            )
     ply_scale = float(config.get("pretraining_ply_scale", 1000.0))
     raw_mesh = trimesh.load(ply_path)
     assert isinstance(raw_mesh, trimesh.Trimesh), f"Expected Trimesh, got {type(raw_mesh)}"

@@ -791,7 +791,17 @@ class StaticTrainer3D(TrainerBase):
                 data_i.x = full_x_i[input_perm]
 
             # Copy scalar attributes (force, cd) to sampled data
-            for attr in ["force", "cd", "filename", "num_latent_nodes"]:
+            for attr in [
+                "force",
+                "cd",
+                "filename",
+                "num_latent_nodes",
+                "scale_factors",
+                "bbox_min",
+                "bbox_max",
+                "bbox_center",
+                "v_inf",
+            ]:
                 if hasattr(batch, attr) and getattr(batch, attr) is not None:
                     attr_value = getattr(batch, attr)
                     if isinstance(attr_value, list) or (attr_value.dim() > 0 and len(attr_value) == batch.num_graphs):

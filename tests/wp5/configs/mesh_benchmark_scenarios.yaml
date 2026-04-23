@@ -1,0 +1,80 @@
+repo_root: /cluster/home/eschaerer/AISCO_code
+output_dir: tests/wp5/benchmark_results
+gpu_profiles:
+  rtx2080:
+    label: RTX 2080
+    cuda_visible_devices: "0"
+    gpu_query_index: 0
+  rtx4090:
+    label: RTX 4090
+    cuda_visible_devices: "1"
+    gpu_query_index: 0
+runs:
+  - name: v1_main_v1_1_one_model
+    main_file: subprojects/wp4_aeroshell_optimizer/v1/src/main_files/main_v1_1_one_model.py
+    working_directory: .
+    timeout_sec: 5400
+    args: []
+    base_env:
+      WANDB_MODE: disabled
+    base_patches:
+      - file: subprojects/wp4_aeroshell_optimizer/v1/configs/general_config.yaml
+        updates:
+          wandb_general.use_wandb: false
+          general_info.verbose: "False"
+      - file: subprojects/wp4_aeroshell_optimizer/v1/configs/training_v0_config.yaml
+        updates:
+          training_params.num_epochs: 5
+          training_params.mesh_save_interval: 1000
+  - name: v2_main_v1_2_GINN_concat
+    main_file: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v1_2_GINN_concat.py
+    working_directory: .
+    timeout_sec: 5400
+    args: []
+    base_env:
+      WANDB_MODE: disabled
+    base_patches:
+      - file: subprojects/wp4_aeroshell_optimizer/v2/configs/general_config.yaml
+        updates:
+          wandb_general.use_wandb: false
+          general_info.verbose: "False"
+      - file: subprojects/wp4_aeroshell_optimizer/v2/configs/training_v0_config.yaml
+        updates:
+          training_params.num_epochs: 5
+          training_params.mesh_save_interval: 1000
+      - file: subprojects/wp4_aeroshell_optimizer/v2/configs/GINN.yaml
+        updates:
+          population_size: 2
+cases:
+  - name: mesh_sdf
+    description: MeshSDF extraction path.
+    patches:
+      - file: subprojects/wp4_aeroshell_optimizer/v1/configs/solar_configs/solar_loss_config.yaml
+        updates:
+          SolarLossConfigV3.method: mesh_sdf
+          SolarLossConfigV3.resolution: 128
+          SolarLossConfigV3.batch_size: 1024
+  - name: diso_mc
+    description: DISO marching cubes extraction path.
+    patches:
+      - file: subprojects/wp4_aeroshell_optimizer/v1/configs/solar_configs/solar_loss_config.yaml
+        updates:
+          SolarLossConfigV3.method: diso_mc
+          SolarLossConfigV3.resolution: 128
+          SolarLossConfigV3.batch_size: 1024
+  - name: diso_dmc
+    description: DISO dual marching cubes extraction path.
+    patches:
+      - file: subprojects/wp4_aeroshell_optimizer/v1/configs/solar_configs/solar_loss_config.yaml
+        updates:
+          SolarLossConfigV3.method: diso_dmc
+          SolarLossConfigV3.resolution: 128
+          SolarLossConfigV3.batch_size: 1024
+  - name: flexicubes
+    description: Kaolin FlexiCubes extraction path.
+    patches:
+      - file: subprojects/wp4_aeroshell_optimizer/v1/configs/solar_configs/solar_loss_config.yaml
+        updates:
+          SolarLossConfigV3.method: flexicubes
+          SolarLossConfigV3.resolution: 128
+          SolarLossConfigV3.batch_size: 1024

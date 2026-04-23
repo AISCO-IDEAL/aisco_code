@@ -18,6 +18,8 @@ losses. Constraint ordering for ALM follows YAML category order.
 from __future__ import annotations
 
 import inspect
+import logging
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,9 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cru
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor
+
+_LOGGER = logging.getLogger("total_loss_v2")
 
 
 @dataclass
@@ -184,7 +189,12 @@ class TotalLossV2:
             loss_name, weight_float, path = enabled_entries[0]
 
             abs_path: Path = project_root / Path(path)
-            family: str = Path(path).stem.title().replace("_", "")
+
+            # Derive class name from loss_name (config key), not filename
+            # This allows multiple losses to be defined in the same file (e.g., universal_null_losses.py)
+            # Transform: "null_loss_solar_v1" → "NullLossSolarV1"
+            family: str = loss_name.title().replace("_", "")
+
             loss_cls = load_class_from_path(str(abs_path), family)
             instance = loss_cls(
                 device=str(self._device),
@@ -201,6 +211,90 @@ class TotalLossV2:
                 self._constraint_by_category[category] = active_entry
             else:  # aux
                 self._aux_by_category[category] = active_entry
+
+    # ------------------------------------------------------------------
+    # Mesh extraction sharing
+    # ------------------------------------------------------------------
+    def _all_loss_instances(self) -> dict[str, Any]:
+        """Flat view of all active loss instances keyed by loss_name."""
+        out: dict[str, Any] = {}
+        out.update(dict(self._objective_by_category.values()))
+        out.update(dict(self._constraint_by_category.values()))
+        out.update(dict(self._aux_by_category.values()))
+        return out
+
+    def _find_mesh_extractors(self) -> dict[str, MeshSDFExtractor]:
+        """Discover MeshSDFExtractor instances on active loss objects (up to 1 level deep)."""
+        extractors: dict[str, MeshSDFExtractor] = {}
+        _check_attrs = ("mesh_extractor", "extractor")
+        for name, instance in self._all_loss_instances().items():
+            # Direct check on loss instance
+            for attr in _check_attrs:
+                obj = getattr(instance, attr, None)
+                if isinstance(obj, MeshSDFExtractor):
+                    extractors[name] = obj
+                    break
+            else:
+                # One level deeper: check public instance attributes for nested extractors
+                for attr_name, attr_val in vars(instance).items():
+                    if attr_name.startswith("_") or attr_val is None:
+                        continue
+                    for inner_attr in _check_attrs:
+                        obj = getattr(attr_val, inner_attr, None)
+                        if isinstance(obj, MeshSDFExtractor):
+                            extractors[name] = obj
+                            break
+                    if name in extractors:
+                        break
+        return extractors
+
+    def _inject_shared_meshes(self, model: SupportsModelContract) -> None:
+        """Pre-extract meshes for groups of losses that share the same extraction config."""
+        extractors = self._find_mesh_extractors()
+        if len(extractors) < 2:
+            return
+
+        groups: dict[tuple, list[tuple[str, MeshSDFExtractor]]] = defaultdict(list)
+        for loss_name, ext in extractors.items():
+            groups[ext.extraction_key()].append((loss_name, ext))
+
+        for members in groups.values():
+            if len(members) < 2:
+                continue
+            primary_name, primary_ext = members[0]
+            vertices, faces = primary_ext.extract_mesh(model)
+            _LOGGER.debug(
+                "mesh-sharing: %d vertices via '%s', sharing with %s",
+                int(vertices.shape[0]),
+                primary_name,
+                [n for n, _ in members[1:]],
+            )
+            for _name, ext in members[1:]:
+                ext.set_shared_mesh(vertices, faces)
+
+        self._shared_mesh_extractors = extractors
+
+    def _clear_shared_meshes(self) -> None:
+        """Clear all injected shared meshes after the loss computation loop."""
+        for ext in getattr(self, "_shared_mesh_extractors", {}).values():
+            ext.clear_shared_mesh()
+        self._shared_mesh_extractors = {}
+
+    def finalize_epoch_mesh_stats(self) -> None:
+        """Emit one compact mesh-extraction summary per epoch and reset counters."""
+        seen: set[int] = set()
+        for ext in self._find_mesh_extractors().values():
+            ext_id = id(ext)
+            if ext_id in seen:
+                continue
+            seen.add(ext_id)
+
+            stats = ext.get_stats()
+            if int(stats.get("calls", 0)) == 0:
+                continue
+
+            ext.log_stats_summary(level=logging.INFO)
+            ext.reset_stats()
 
     # ------------------------------------------------------------------
     # Public API
@@ -226,25 +320,29 @@ class TotalLossV2:
             RawLossBundle with unweighted objective, constraint, and aux tensors
             grouped by category.
         """
+        self._inject_shared_meshes(model)
         bundle = RawLossBundle()
-        for category, (_loss_name, instance) in self._objective_by_category.items():
-            sig = inspect.signature(instance.get_loss)
-            if "skip_telemetry" in sig.parameters:
-                bundle.objectives[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
-            else:
-                bundle.objectives[category] = instance.get_loss(model, epoch_name)
-        for category, (_loss_name, instance) in self._constraint_by_category.items():
-            sig = inspect.signature(instance.get_loss)
-            if "skip_telemetry" in sig.parameters:
-                bundle.constraints[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
-            else:
-                bundle.constraints[category] = instance.get_loss(model, epoch_name)
-        for category, (_loss_name, instance) in self._aux_by_category.items():
-            sig = inspect.signature(instance.get_loss)
-            if "skip_telemetry" in sig.parameters:
-                bundle.aux[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
-            else:
-                bundle.aux[category] = instance.get_loss(model, epoch_name)
+        try:
+            for category, (_loss_name, instance) in self._objective_by_category.items():
+                sig = inspect.signature(instance.get_loss)
+                if "skip_telemetry" in sig.parameters:
+                    bundle.objectives[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+                else:
+                    bundle.objectives[category] = instance.get_loss(model, epoch_name)
+            for category, (_loss_name, instance) in self._constraint_by_category.items():
+                sig = inspect.signature(instance.get_loss)
+                if "skip_telemetry" in sig.parameters:
+                    bundle.constraints[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+                else:
+                    bundle.constraints[category] = instance.get_loss(model, epoch_name)
+            for category, (_loss_name, instance) in self._aux_by_category.items():
+                sig = inspect.signature(instance.get_loss)
+                if "skip_telemetry" in sig.parameters:
+                    bundle.aux[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+                else:
+                    bundle.aux[category] = instance.get_loss(model, epoch_name)
+        finally:
+            self._clear_shared_meshes()
         return bundle
 
     def weight(  # noqa: PLR0912
