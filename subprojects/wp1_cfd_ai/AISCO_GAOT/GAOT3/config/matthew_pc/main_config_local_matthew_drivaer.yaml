@@ -115,7 +115,7 @@ model:
 dataset:
     name: "drivaer_cp_full"
     metaname: "incompressible_fluids/drivaernet_pressure"
-    base_path: "/home/eschaerer/AISCO_code/data/processed_drivaer_cp_full"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_drivaer_cp_downsampled"
     processed_folder: ""
     force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
@@ -144,9 +144,9 @@ dataset:
     num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
 
     viz_axis_limits:            # Edit these ranges to control the visualized x/y/z box exactly, default is outer bounding box
-        x: [-0.5, 1.5]
-        y: [-0.5, 1.5]
-        z: [-0.5, 0.5]
+        x: [-1.0, 4.5]
+        y: [-1.5, 1.5]
+        z: [-0.5, 1.5]
     viz_field_vmin: -2.2        # min on pressure bar
     viz_field_vmax: 0.95         # max on pressure bar
     viz_abs_diff_vmax: 1.0      # max on error bar (min always 0)
@@ -175,12 +175,12 @@ optimizer:
         loss: "mse"  # options: "mse" | "l2" | "relative_l2"
 
 path:
-    ckpt_path: "/home/eschaerer/AISCO_code/local_storage_dir/wp1_goat/_NAME___RUN_ID_/model.pt"
-    loss_path: "/home/eschaerer/AISCO_code/local_storage_dir/wp1_goat/_NAME___RUN_ID_/loss.png"
-    result_path: "/home/eschaerer/AISCO_code/local_storage_dir/wp1_goat/_NAME___RUN_ID_/results.png"
-    config_save_path: "/home/eschaerer/AISCO_code/local_storage_dir/wp1_goat/_NAME___RUN_ID_/config.yaml"
-    database_path: "/home/eschaerer/AISCO_code/local_storage_dir/wp1_goat/metrics.csv"
-    
+    ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/model.pt"
+    loss_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/loss.png"
+    result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/results.png"
+    config_save_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/config.yaml"
+    database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv"
+
 
 local_path:
     ckpt_path: "/home/clhuber/results/_NAME___RUN_ID_/model.pt"
