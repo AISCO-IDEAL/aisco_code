@@ -19,6 +19,7 @@ import torch
 import trimesh
 from torch import Tensor
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from tqdm import tqdm
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
     _compute_eikonal_latent,
@@ -130,6 +131,8 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     model: SupportsLatentConcat,
     config: dict[str, Any],
     device: str,
+    *,
+    use_wandb: bool = False,
 ) -> tuple[SupportsLatentConcat, Tensor]:
     """Run latent-population pretraining for a SupportsLatentConcat model.
 
@@ -156,9 +159,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         SystemExit: If NaN/Inf loss is detected during training.
     """
     if not isinstance(model, SupportsLatentConcat):
-        raise TypeError(
-            f"Model {type(model).__name__} does not implement SupportsLatentConcat. "
-        )
+        raise TypeError(f"Model {type(model).__name__} does not implement SupportsLatentConcat. ")
 
     ckpt_path = _resolve_checkpoint_path(config, model)
     force: bool = bool(config.get("force_pretraining", True))
@@ -219,11 +220,12 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
 
     print(
         f"[latent_pretrain] Starting: N={num_shapes} shapes, epochs={epochs}, "
-        f"lr={lr}, batch_size_per_shape={batch_size_per_shape}, device={device}"
+        f"lr={lr}, batch_size_per_shape={batch_size_per_shape}, device={device}",
+        flush=True,
     )
 
     # --- Training loop ---
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs), desc="latent_pretrain", unit="ep"):
         model.train()
         optimizer.zero_grad()
 
@@ -285,11 +287,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 (i for i, v in enumerate(slot_losses) if not math.isfinite(v)),
                 "unknown",
             )
-            shape_name = (
-                shapes[nan_slot]["shape_type"]
-                if isinstance(nan_slot, int)
-                else "unknown"
-            )
+            shape_name = shapes[nan_slot]["shape_type"] if isinstance(nan_slot, int) else "unknown"
             print(
                 f"[latent_pretrain] NaN/Inf detected at epoch {epoch}, "
                 f"shape slot {nan_slot} ({shape_name}). "
@@ -306,11 +304,23 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
 
         if epoch % print_interval == 0:
             lr_now = scheduler.get_last_lr()[0]
-            print(
+            tqdm.write(
                 f"[latent_pretrain] Epoch {epoch:5d} | total={total_loss.item():.6f} "
                 f"| slot_losses={[f'{v:.4f}' for v in slot_losses]} "
                 f"| eikonal={eikonal.item():.6f} | lr={lr_now:.2e}"
             )
+            if use_wandb:
+                import wandb  # noqa: PLC0415
+
+                wandb.log(
+                    {
+                        "total_loss": total_loss.item(),
+                        "eikonal": eikonal.item(),
+                        "lr": lr_now,
+                        **{f"slot_{i}_loss": v for i, v in enumerate(slot_losses)},
+                    },
+                    step=epoch,
+                )
 
     # --- Save checkpoint ---
     ckpt_path.parent.mkdir(parents=True, exist_ok=True)
