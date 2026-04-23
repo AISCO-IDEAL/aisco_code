@@ -14,9 +14,9 @@ PYTHON_BIN="${PYTHON_BIN:-python3.11}"
 AUTO_INSTALL_SYSTEM_DEPS="${AUTO_INSTALL_SYSTEM_DEPS:-1}"
 AUTO_REBUILD_PYTHON="${AUTO_REBUILD_PYTHON:-0}"
 SYSTEM_DEPS_ATTEMPTED="${SYSTEM_DEPS_ATTEMPTED:-0}"
-INSTALL_KAOLIN="${INSTALL_KAOLIN:-1}"
-INSTALL_DISO="${INSTALL_DISO:-1}"
-BUILD_PYDEVELOPABILITY="${BUILD_PYDEVELOPABILITY:-1}"
+INSTALL_KAOLIN="${INSTALL_KAOLIN:-}"
+INSTALL_DISO="${INSTALL_DISO:-}"
+BUILD_PYDEVELOPABILITY="${BUILD_PYDEVELOPABILITY:-}"
 PYDEVELOPABILITY_STRICT="${PYDEVELOPABILITY_STRICT:-0}"
 
 APT_BUILD_DEPS=(
@@ -255,11 +255,55 @@ install_dependencies() {
     # Install base project dependencies.
     "$VENV_PYTHON" -m pip install -e .
 
-    # Install all optional dependency groups defined in pyproject.toml.
-    "$VENV_PYTHON" -m pip install \
-        '.[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer,wp7_gui,testing,pydevelopability]'
-
     "$VENV_PYTHON" -m pre_commit install || true
+
+    echo ""
+    echo "Standard dependencies installed."
+    echo ""
+    echo "Optional dependencies can be installed manually:"
+    echo "   - Workpackage 1 (wp1_cfd_ai):                  $VENV_PYTHON -m pip install '.[wp1_cfd_ai]'"
+    echo "   - Workpackage 2 (wp2_assembler):               $VENV_PYTHON -m pip install '.[wp2_assembler]'"
+    echo "   - Workpackage 3 (wp3_solar_estimator):         $VENV_PYTHON -m pip install '.[wp3_solar_estimator]'"
+    echo "   - Workpackage 4 (wp4_aeroshell_optimizer):     $VENV_PYTHON -m pip install '.[wp4_aeroshell_optimizer]'"
+    echo "   - Workpackage 7 GUI (wp7_gui):                 $VENV_PYTHON -m pip install '.[wp7_gui]'"
+    echo "   - Testing dependencies:                        $VENV_PYTHON -m pip install '.[testing]'"
+    echo "   - pydevelopability build dependencies:         $VENV_PYTHON -m pip install '.[pydevelopability]'"
+    echo "   - All optional dependencies:                   $VENV_PYTHON -m pip install '.[all]'"
+    echo ""
+}
+
+ask_yes_no() {
+    local prompt="$1"
+    local answer
+
+    read -r -p "$prompt [y/n]: " answer
+    [[ "$answer" == "y" || "$answer" == "Y" ]]
+}
+
+configure_optional_steps() {
+    if [[ -z "$INSTALL_KAOLIN" ]]; then
+        if ask_yes_no "Do you want to install Kaolin (GPU/CUDA-dependent)?"; then
+            INSTALL_KAOLIN="1"
+        else
+            INSTALL_KAOLIN="0"
+        fi
+    fi
+
+    if [[ -z "$INSTALL_DISO" ]]; then
+        if ask_yes_no "Do you want to install DISO (GPU/CUDA-dependent)?"; then
+            INSTALL_DISO="1"
+        else
+            INSTALL_DISO="0"
+        fi
+    fi
+
+    if [[ -z "$BUILD_PYDEVELOPABILITY" ]]; then
+        if ask_yes_no "Do you want to build pydevelopability C++ extension?"; then
+            BUILD_PYDEVELOPABILITY="1"
+        else
+            BUILD_PYDEVELOPABILITY="0"
+        fi
+    fi
 }
 
 install_kaolin() {
@@ -466,6 +510,7 @@ check_gpu_5090
 detect_cuda_home
 create_or_reuse_venv
 install_dependencies
+configure_optional_steps
 install_kaolin
 install_diso
 build_pydevelopability_cpp
