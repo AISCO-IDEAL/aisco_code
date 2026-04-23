@@ -11,7 +11,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import Parent
 class WheelLossV0(ParentLoss):
     def _setup(self) -> None:
         self.__config = self.losses_config["wheel_loss_config"]
-        self.assembly_id = int(self.losses_config["wheel_loss_config"].get("assembly_id", 1))
+        self.assembly_id = int(self.losses_config["bb_config"].get("assembly_id", 1))
 
         assembly_map_path = Path(__file__).parents[6] / "subprojects/wp2_assembler/version4/config/assembly_map.yaml"
         with assembly_map_path.open("r") as f:
@@ -39,17 +39,17 @@ class WheelLossV0(ParentLoss):
         for wx, wy, wz in wheel_coords:
             xs = wx + grid_dx * L
             ys = wy + grid_dy * (width / 2)
-            zs = torch.full_like(xs, wz - C)
+            zs = torch.full_like(xs, wz + radius - C)
             wheel_point_grids.append(torch.stack([xs, ys, zs], dim=-1))  # (sampling_density^2, 3)
 
         # shape of points: (num_wheels * sampling_density^2, 3)
-        self.points = torch.cat(wheel_point_grids, dim=0).to(self.device).requires_grad_(True)
+        self.points = torch.cat(wheel_point_grids, dim=0).to(self.device)
 
     def _loss(self, model) -> torch.Tensor:
         """Sample points on the wheel interface rectangle and compute loss based on sdf_model values at those points. SDF in this area has to be 0."""
         # Sample points on SDF
         samples = model(self.points)  # shape: (num_wheels * sampling_density^2,)
 
-        # Calculate loss as mean squared value of SDF at sampled points
+        # Calculate loss as RMS of SDF at sampled points (RMSE is the correct constraint
         loss = torch.sqrt(torch.mean(torch.square(samples)))
         return loss

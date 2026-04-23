@@ -5,7 +5,7 @@ general_info:
   verbose: "True"  #  basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
 
 model_def:
-  model_name: "WIREV2"  #  main_v2.py, dynamic model selection, should refer to models.json
+  model_name: "BasicMLP"  #  main_v2.py, dynamic model selection, should refer to models.json
 
 active_configs:
   losses: "losses_v0_config.yaml"  #  total_loss.py, parent_loss.py, visual modes (assembly_mode, mesh_assembly_mode_v2)
@@ -18,7 +18,7 @@ active_configs:
 
 wandb_general:
   use_wandb: True # main_v1_1_one_model.py, total_loss.py
-  project_name: "temp_" # DEFAULT: "WP4_default"  # main_v1_1_one_model.py: wandb.init(project=...)
+  project_name: "WP4_wheel_loss" # DEFAULT: "WP4_default"  # main_v1_1_one_model.py: wandb.init(project=...)
   entity_name: "aisco"  # main_v1_1_one_model.py: wandb.init(entity=...)
   use_renderer: True  # total_loss.py: general_config["wandb_general"].get("use_renderer", True)
   use_neural_renderer: True  # total_loss.py, main_v1_1_one_model.py: general_config["wandb_general"].get("use_neural_renderer", False)
