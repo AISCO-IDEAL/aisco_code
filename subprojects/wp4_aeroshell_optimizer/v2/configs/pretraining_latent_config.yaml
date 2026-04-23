@@ -7,41 +7,48 @@ force_pretraining: false
 # shape_type: "sphere" | "cube" | "ply"
 # All keys must be present (set unused keys to null).
 latent_population:
-  - name: "sphere_slot_0"
+  # you can add as many shapes as you want
+  - name: "sphere_slot_0" #arbitray name
     shape_type: "sphere"
-    radius: 1000.0
-    side_length: null
-    ply_path: null
+    radius: 1000.0        # iff shape_type == "sphere"
+    side_length: null     # iff shape_type == "cube"
+    ply_path: null        # iff shape_type == "ply"
 
-  - name: "sphere_slot_1"
-    shape_type: "sphere"
-    radius: 1000.0
-    side_length: null
-    ply_path: null
-
-  - name: "sphere_slot_2"
-    shape_type: "sphere"
-    radius: 1000.0
-    side_length: null
-    ply_path: null
-
-  - name: "cube_slot_3"
-    shape_type: "cube"
-    side_length: 2000.0
+  - name: "simple_bullet_blunt"
+    shape_type: "ply"
     radius: null
-    ply_path: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_bullet_blunt.ply"
 
-  - name: "cube_slot_4"
-    shape_type: "cube"
-    side_length: 2000.0
+  - name: "simple_bullet_pointy"
+    shape_type: "ply"
     radius: null
-    ply_path: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_bullet_pointy.ply"
 
-  - name: "cube_slot_5"
-    shape_type: "cube"
-    side_length: 2000.0
+  - name: "simple_catamaran"
+    shape_type: "ply"
     radius: null
-    ply_path: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_catamaran.ply"
+
+  - name: "simple_cuboid"
+    shape_type: "ply"
+    radius: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_cuboid.ply"
+
+  - name: "simple_trimaran"
+    shape_type: "ply"
+    radius: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_trimaran.ply"
+
+  - name: "simple_solarcar"
+    shape_type: "ply"
+    radius: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_solarcar.ply"
 
 training_loop:
   epochs: 1000
