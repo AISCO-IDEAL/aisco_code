@@ -5,13 +5,13 @@
 #------------------------------------------------------------------------------
 # Local execution for WP1 GAOT3 on native Linux
 ###########################################################################
-# bash ~/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/slurm_scripts/wp1_main_local.sh
+# bash ~/Documents/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/slurm_scripts/wp1_main_local.sh
 ###########################################################################
 
 umask 0002 # ensure group write permissions for logs and models
 
 USERNAME=$(whoami)
-PROJECT_ROOT="$HOME/AISCO_code"
+PROJECT_ROOT="$HOME/Documents/AISCO_code"
 VENV_DIR="$PROJECT_ROOT/aisco_env"
 
 #------------------------------------------------------------------------------
