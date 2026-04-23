@@ -24,7 +24,7 @@ training_loop:
 
 output:
   checkpoint_path: "/cluster/work/fuge/AISCO/WIRE_fitting_alex/silvretta/"
-  mesh_resolution: 128   # marching-cubes grid resolution for post-training PLY extraction
+  mesh_resolution: 300   # marching-cubes grid resolution for post-training PLY extraction
   mesh_box_mm: 1000     # half-extent of the marching-cubes bounding box in mm
 
 wandb:

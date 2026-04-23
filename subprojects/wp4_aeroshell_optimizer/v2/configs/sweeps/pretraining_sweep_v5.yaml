@@ -12,28 +12,28 @@ parameters:
     value: "WIREV5"
 
 
-  models/WIRE_v4.hidden_features:
+  models/WIRE_v5.hidden_features:
     values: [128, 256, 512]
-  models/WIRE_v4.hidden_layers:
+  models/WIRE_v5.hidden_layers:
     values: [3, 6, 8, 12]
-  models/WIRE_v4.skip_layer_idx:
+  models/WIRE_v5.skip_layer_idx:
     values: [1, 2]
 
-  models/WIRE_v4.first_omega_min:
+  models/WIRE_v5.first_omega_min:
     distribution: uniform
     min: 1.0
     max: 5.0
-  models/WIRE_v4.first_omega_max:
+  models/WIRE_v5.first_omega_max:
     distribution: uniform
     min: 5.0
     max: 30.0
 
 
-  models/WIRE_v4.hidden_omega_min:
+  models/WIRE_v5.hidden_omega_min:
     distribution: uniform
     min: 1.0
     max: 5.0
-  models/WIRE_v4.hidden_omega_max:
+  models/WIRE_v5.hidden_omega_max:
     distribution: uniform
     min: 5.0
     max: 30.0
