@@ -158,7 +158,6 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     if not isinstance(model, SupportsLatentConcat):
         raise TypeError(
             f"Model {type(model).__name__} does not implement SupportsLatentConcat. "
-            "Only ConcatWIREV2 (and similar latent-concat models) support latent pretraining."
         )
 
     ckpt_path = _resolve_checkpoint_path(config, model)

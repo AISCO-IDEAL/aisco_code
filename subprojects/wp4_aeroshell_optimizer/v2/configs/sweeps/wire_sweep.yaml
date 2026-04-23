@@ -1,0 +1,15 @@
+
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py
+entity: aisco
+project: WIRE-Testing
+
+method: grid
+metric:
+  goal: minimize
+  name: raw_losses/bb_v4_4
+
+
+
+parameters:
+  general_config.model_def.model_name:
+    values: ["WIREV2", "WIREV3", "WIREV4"]
