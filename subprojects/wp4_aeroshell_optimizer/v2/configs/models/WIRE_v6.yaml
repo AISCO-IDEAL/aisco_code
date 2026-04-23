@@ -1,0 +1,58 @@
+# WIRE V6: V5 + Fourier feature encoding
+#
+# Extends WIRE V5 with fixed multi-scale sinusoidal coordinate encoding applied before
+# the Gabor stack. This directly addresses spectral bias by pre-computing a multi-scale
+# basis that the Gabor layers can selectively attend to.
+#
+# The encoding maps each coordinate axis x_k to:
+#   [sin(2^0 π x_k), cos(2^0 π x_k), ..., sin(2^(K-1) π x_k), cos(2^(K-1) π x_k)]
+#
+# For K=6, this produces 36 features (2*6*3). Band k resolves spatial features at
+# scale 2/2^k in normalised coordinates. Increase K to capture finer details, but note
+# each increment doubles the first Gabor layer's input dimension.
+#
+# Combined with the coarse-to-fine omega schedule from V5, this provides:
+#  - Input: multi-scale Fourier features (fixed, no learning burden)
+#  - Processing: coarse-to-fine Gabor layers (spatial adaptation)
+#  - Output: multi-scale geometry representation (bunny + car aerodynamics)
+
+in_features: 3
+hidden_features: 256
+hidden_layers: 5
+out_features: 1
+skip_layer_idx: 2
+
+# Fourier feature bands (new in V6)
+# Band k resolves features at spatial scale 2/2^k in normalised space.
+# For bbox_half_extent=2500mm and num_fourier_bands=6:
+#   - Band 0: 5000mm (full box)
+#   - Band 1: 2500mm
+#   - Band 2: 1250mm
+#   - Band 3: 625mm
+#   - Band 4: 312mm
+#   - Band 5: 156mm
+# Increase to 7-8 for finer geometry, but trades off parameter count.
+num_fourier_bands: 3
+
+first_omega_min: 10.0
+first_omega_max: 30.0
+first_scale_min: 5.0
+first_scale_max: 10.0
+
+# Same as V5: V4-compatible range applied coarse-to-fine across hidden layers.
+hidden_omega_min: 1.0
+hidden_omega_max: 5.0
+hidden_scale_min: 1.0
+hidden_scale_max: 10.0
+
+train_omega: False
+train_scale: True
+
+# Geometry-aware normalisation (backward-compatible default = /1000 from V4)
+# Default [center=[0,0,0], extent=1000] is equivalent to WIREV4's coords/1000.
+# Override only if your geometry has different bounds. Example: 5m car centered at z=1000mm
+# would use bbox_center=[0, 0, 1000], bbox_half_extent=2500.0
+bbox_center: [0.0, 0.0, 0.0]
+bbox_half_extent: 1000.0
+
+dtype: "float32"
