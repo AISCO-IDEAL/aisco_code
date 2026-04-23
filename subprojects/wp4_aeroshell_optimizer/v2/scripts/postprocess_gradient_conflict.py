@@ -54,6 +54,10 @@ def build_conflict_gif(conflict_dir: Path, output_path: Path, fps: int = 5) -> N
     imageio.mimsave(output_path, images, fps=fps)
     print(f"Saved GIF to {output_path}")
 
+    for npz_file in npz_files:
+        npz_file.unlink()
+    print(f"Deleted {len(npz_files)} .npz files")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create conflict GIF from .npz files")
