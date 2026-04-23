@@ -30,6 +30,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
 
@@ -65,6 +66,8 @@ class DiversityTrainer:
         use_neural_renderer: bool = False,
         use_wandb: bool = False,
         log_dir: Path | None = None,
+        conflict_tracker: GradientConflictTracker | None = None,
+        conflict_cadence: int = 0,
     ) -> None:
         """
         Args:
@@ -93,6 +96,9 @@ class DiversityTrainer:
 
         self._population_size: int = population_size
         self._z_dim: int = z_dim
+
+        self._conflict_tracker: GradientConflictTracker | None = conflict_tracker
+        self._conflict_cadence: int = max(0, int(conflict_cadence))
 
         self._diversity_manager: DiversityLossManager | None = diversity_manager
         self._diversity_num_points: int = diversity_num_points
@@ -171,7 +177,17 @@ class DiversityTrainer:
             self._model.set_latent_vector(self._Z[i])
 
             bundle = self._total_loss.compute(self._model, epoch_name=epoch)
-            result = self._total_loss.weight(bundle, alm_manager=self._alm_manager)
+            capture_components = (
+                self._conflict_tracker is not None
+                and self._conflict_cadence > 0
+                and epoch % self._conflict_cadence == 0
+                and i == 0
+            )
+            result = self._total_loss.weight(
+                bundle,
+                alm_manager=self._alm_manager,
+                return_components=capture_components,
+            )
 
             # Detach constraints before backward — graph will be freed
             if use_alm:
@@ -181,8 +197,20 @@ class DiversityTrainer:
             for k, v in result.log_data.items():
                 summed_log_data[k] = summed_log_data.get(k, 0.0) + v
 
-            # Immediately backward — frees this z's expensive graph before the next iteration
-            (result.scalar / self._population_size).backward()
+            # Gradient conflict tracking or normal backward
+            if capture_components and result.components and self._conflict_tracker is not None:
+                trainable_params = [p for p in self._model.parameters() if p.requires_grad]
+                self._conflict_tracker.capture_vectors(
+                    result.components,
+                    trainable_params,
+                    epoch,
+                )
+                for param in trainable_params:
+                    if param.grad is not None:
+                        param.grad = param.grad / self._population_size
+            else:
+                # Immediately backward — frees this z's expensive graph before the next iteration
+                (result.scalar / self._population_size).backward()
 
         mean_constraints: list[Tensor] | None = None
         if use_alm and all_raw_constraints:
@@ -219,6 +247,10 @@ class DiversityTrainer:
         if mean_constraints is not None and self._alm_manager is not None:
             self._alm_manager.update_multipliers(mean_constraints)
 
+        capture_conflict = (
+            self._conflict_tracker is not None and self._conflict_cadence > 0 and epoch % self._conflict_cadence == 0
+        )
+
         # Phase 2 — cheap diversity backward
         diversity_loss_val: float = 0.0
         diversity_weighted_loss_val: float = 0.0
@@ -232,10 +264,33 @@ class DiversityTrainer:
                 norm_order=self._diversity_norm_order,
                 neighbor_agg_fn=self._diversity_neighbor_agg_fn,
             )
-            diversity_result.weighted.backward()
+            if capture_conflict and self._conflict_tracker is not None:
+                trainable_params = [p for p in self._model.parameters() if p.requires_grad]
+                diversity_grads = torch.autograd.grad(
+                    diversity_result.weighted,
+                    trainable_params,
+                    retain_graph=False,
+                    create_graph=False,
+                    allow_unused=True,
+                )
+                diversity_grad_vec = np.concatenate(
+                    [
+                        (g.detach().cpu().numpy().flatten() if g is not None else np.zeros(p.numel(), dtype=np.float32))
+                        for g, p in zip(diversity_grads, trainable_params, strict=True)
+                    ]
+                )
+                self._conflict_tracker.add_named_vector(epoch, "diversity", diversity_grad_vec)
+                for param, g in zip(trainable_params, diversity_grads, strict=True):
+                    if g is not None:
+                        param.grad = (param.grad + g.detach()) if param.grad is not None else g.detach()
+            else:
+                diversity_result.weighted.backward()
             diversity_loss_val = float(diversity_result.raw.detach().item())
             diversity_weighted_loss_val = float(diversity_result.weighted.detach().item())
             diversity_log_data = self._diversity_manager.build_log_data(diversity_loss_val)
+
+        if capture_conflict and self._conflict_tracker is not None:
+            self._conflict_tracker.finalize_epoch(epoch)
 
         self._model_optimizer.step()
 
