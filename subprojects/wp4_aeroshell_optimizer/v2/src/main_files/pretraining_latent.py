@@ -27,6 +27,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 impo
     _sample_points_for_shape,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization import SamplingVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
 
@@ -133,6 +134,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     device: str,
     *,
     use_wandb: bool = False,
+    vis_sampling: bool = False,
 ) -> tuple[SupportsLatentConcat, Tensor]:
     """Run latent-population pretraining for a SupportsLatentConcat model.
 
@@ -351,4 +353,63 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                     "Skipping mesh output — checkpoint is still valid."
                 )
 
+    # --- Optional sampling visualization (post-training) ---
+    if vis_sampling:
+        _visualize_pretraining_sampling(
+            shapes=shapes,
+            ply_cache=ply_cache,
+            device=device,
+            output_dir=ckpt_path.parent / "sampling_vis",
+            batch_size_per_shape=batch_size_per_shape,
+        )
+
     return model, Z
+
+
+def _visualize_pretraining_sampling(
+    shapes: list[dict[str, Any]],
+    ply_cache: dict[int, tuple[Tensor, Tensor, float]],
+    device: str,
+    output_dir: Path,
+    batch_size_per_shape: int,
+) -> None:
+    """Write sampling visualizations for each pretraining slot after training.
+
+    For each slot, produces a PLY file showing:
+    - The **target mesh** (dark blue) — original PLY, or absent for sphere/cube.
+    - The **sampled points** (red) used during training.
+
+    Files are written to ``output_dir``.
+    """
+    print(f"[latent_pretrain] Writing sampling visualization → {output_dir}")
+    vis = SamplingVisualizer(output_dir=output_dir, is_static=False)
+
+    for slot_idx, shape in enumerate(shapes):
+        slot_name = shape.get("name", str(slot_idx))
+        shape_type: str = shape["shape_type"]
+
+        # --- Sample points for this slot (one representative batch) ---
+        shape_params = _build_shape_params(shape, ply_cache, slot_idx)
+        try:
+            pts, _ = _sample_points_for_shape(shape_type, shape_params, batch_size_per_shape, device)
+        except Exception as exc:  # visualization is non-critical
+            print(f"[latent_pretrain] WARNING: sampling failed for slot {slot_idx} ({slot_name}): {exc}")
+            continue
+
+        # --- Target mesh (PLY slots only) ---
+        mesh_verts: np.ndarray | None = None
+        mesh_faces: np.ndarray | None = None
+        if shape_type == "ply" and slot_idx in ply_cache:
+            ply_verts_t, ply_faces_t, _ = ply_cache[slot_idx]
+            mesh_verts = ply_verts_t.cpu().numpy()
+            mesh_faces = ply_faces_t.cpu().numpy()
+
+        try:
+            vis.save_snapshot(
+                points_mm=pts,
+                mesh_verts=mesh_verts,
+                mesh_faces=mesh_faces,
+                name=f"slot{slot_idx:02d}_{slot_name}_{shape_type}",
+            )
+        except Exception as exc:  # visualization is non-critical
+            print(f"[latent_pretrain] WARNING: visualization failed for slot {slot_idx} ({slot_name}): {exc}")

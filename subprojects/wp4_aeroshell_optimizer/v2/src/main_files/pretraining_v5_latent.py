@@ -65,6 +65,12 @@ def _parse_args() -> argparse.Namespace:
         dest="wandb_project",
         help="W&B project name (only used with --wandb).",
     )
+    parser.add_argument(
+        "--vis-sampling",
+        action="store_true",
+        dest="vis_sampling",
+        help="Write sampling visualizations (points + mesh PLY) after training.",
+    )
     return parser.parse_args()
 
 
@@ -127,7 +133,7 @@ def main() -> None:
             print("[pretraining_v5_latent] W&B initialized, but no run URL found.")
 
     # Run pretraining
-    model, Z = pretraining_latent(model, config, device, use_wandb=use_wandb)
+    model, Z = pretraining_latent(model, config, device, use_wandb=use_wandb, vis_sampling=args.vis_sampling)
 
     if use_wandb:
         import wandb  # noqa: PLC0415
