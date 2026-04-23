@@ -47,6 +47,23 @@ require_cmd() {
     fi
 }
 
+find_executable() {
+    local cmd="$1"
+    local candidate=""
+
+    if candidate="$(command -v "$cmd" 2>/dev/null)"; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+
+    if [[ -n "${VENV_DIR:-}" && -x "$VENV_DIR/bin/$cmd" ]]; then
+        printf '%s\n' "$VENV_DIR/bin/$cmd"
+        return 0
+    fi
+
+    return 1
+}
+
 install_python_build_deps_ubuntu() {
     if [[ "$SYSTEM_DEPS_ATTEMPTED" == "1" ]]; then
         return 0
@@ -366,9 +383,6 @@ build_pydevelopability_cpp() {
         return 0
     fi
 
-    require_cmd cmake
-    require_cmd make
-
     local pydev_root
     pydev_root="$PROJECT_ROOT/subprojects/pydevelopability"
     local pydev_build
@@ -377,10 +391,42 @@ build_pydevelopability_cpp() {
     local cc_root
     local dev_repo
     local libigl_include
+    local cmake_bin
+    local make_bin
 
     cc_root="${CC_ROOT:-$PROJECT_ROOT/subprojects/concentrate_curvature}"
     dev_repo="${DEV_REPO:-$cc_root/DevelopabilityOfTriangleMeshes}"
     libigl_include="${LIBIGL_INCLUDE:-$cc_root/libigl-modern/include}"
+
+    echo "Ensuring pydevelopability build tools are available in the venv..."
+    if ! "$VENV_PYTHON" -m pip install --upgrade pybind11 cmake; then
+        echo "Warning: could not install pybind11/cmake into $ENV_NAME."
+        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
+            exit 1
+        fi
+        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
+        return 0
+    fi
+
+    if ! cmake_bin="$(find_executable cmake)"; then
+        echo "Warning: cmake was not found, even after installing the Python cmake package."
+        echo "         This step is only needed for the optional pydevelopability C++ extension."
+        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
+            exit 1
+        fi
+        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
+        return 0
+    fi
+
+    if ! make_bin="$(find_executable make)"; then
+        echo "Warning: make was not found."
+        echo "         Install build-essential/make on the target Linux machine to build pydevelopability."
+        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
+            exit 1
+        fi
+        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
+        return 0
+    fi
 
     pybind11_dir="$($VENV_PYTHON -m pybind11 --cmakedir 2>/dev/null || true)"
     if [[ -z "$pybind11_dir" || ! -d "$pybind11_dir" ]]; then
@@ -419,7 +465,7 @@ build_pydevelopability_cpp() {
     rm -rf "$pydev_build"
     mkdir -p "$pydev_build"
     pushd "$pydev_build" >/dev/null
-    if ! cmake .. \
+    if ! "$cmake_bin" .. \
         -DCMAKE_BUILD_TYPE=Release \
         -Dpybind11_DIR="$pybind11_dir" \
         -DCC_ROOT="$cc_root" \
@@ -435,7 +481,7 @@ build_pydevelopability_cpp() {
         return 0
     fi
 
-    if ! make -j"$(nproc)"; then
+    if ! "$make_bin" -j"$(nproc)"; then
         popd >/dev/null
         if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
             echo "Error: pydevelopability build failed in strict mode."
