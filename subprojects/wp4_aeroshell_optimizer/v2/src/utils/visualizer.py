@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import cadquery as cq
@@ -16,8 +17,8 @@ from pyrender import RenderFlags
 
 import wandb
 from subprojects.wp2_assembler.version4.components.nbz import call_assembly
-from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 # Constants for numerical thresholds
 _MIN_EDGE_LENGTH = 1e-6
@@ -432,36 +433,32 @@ class AutoVisToWandB:
     def extract_sdf_to_temp_ply(
         self,
         sdf_model: torch.nn.Module,
-        resolution: int = 64,
+        resolution: int | None = None,
         bbox: list | None = None,
-        isovalue: float = 0.0,
-        device: str = "cuda",
+        isovalue: float | None = None,
+        device: str | None = None,
     ) -> str:
         """
-        Calls MeshSDFExtractor with the given sdf_model and writes a PLY file
-        to a temporary directory. Returns the PLY file path.
+        Calls the WP5 mesh extractor and writes a PLY file to a temporary directory.
         """
-        if bbox is None:
-            # Example: cube centered at origin with side length 2
-            bbox = [-1.0, 1.0, -1.0, 1.0, -1.0, 1.0]
+        mesh_config = load_mesh_extraction_config()
+        if resolution is not None:
+            mesh_config = replace(mesh_config, base_resolution=resolution)
+        if bbox is not None:
+            if len(bbox) == 6 and not isinstance(bbox[0], list):
+                bbox = [[bbox[0], bbox[1]], [bbox[2], bbox[3]], [bbox[4], bbox[5]]]
+            mesh_config = replace(mesh_config, bbox=bbox)
+        if isovalue is not None:
+            mesh_config = replace(mesh_config, isovalue=isovalue)
+        if device is not None:
+            mesh_config = replace(mesh_config, device=device)
 
-        # Move model to device and set eval mode
-        sdf_model = sdf_model.to(device)
+        sdf_model = sdf_model.to(mesh_config.device)
         sdf_model.eval()
 
-        extractor = MeshSDFExtractor(
-            resolution=resolution,
-            bbox=bbox,
-            isovalue=isovalue,
-            device=device,
-        )
-
-        # Optional: pre-set grid (not strictly required, but explicit)
-        extractor.set_grid(bbox=bbox, resolution=resolution)
-
-        # Extract mesh (non-differentiable path is fine for exporting)
-        with torch.no_grad():
-            vertices, faces = extractor.extract_mesh(sdf_model)
+        extractor = MeshSDFExtractor(config=mesh_config)
+        extractor.set_grid(bbox=mesh_config.bbox, resolution=mesh_config.base_resolution)
+        vertices, faces = extractor.extract_mesh(sdf_model)
 
         # Create temporary directory and file path
         tmp_dir = tempfile.mkdtemp(prefix="mesh_sdf_")

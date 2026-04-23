@@ -83,7 +83,7 @@ export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/:$PYTHONPATH"
 ################################################################################
 # Run wp5 test_outside
 ################################################################################
-python3 -m tests.wp5.test_wp5\
+python3 -m tests.wp5.src.test_wp5\
     --save_model \
     --problem_id="AISCO_WP5_test" 2>&1 # 2>&1 leitet alle Fehler (stderr) in die .out-Datei um, sodass du siehst, was schiefgeht
 #------------------------------------------------------------------------------
