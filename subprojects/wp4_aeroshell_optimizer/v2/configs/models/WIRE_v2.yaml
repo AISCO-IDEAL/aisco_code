@@ -8,4 +8,4 @@ hidden_omega_0:  0.8
 hidden_scale:  10.0
 train_omega:  True
 train_scale:  False
-dtype:  "float32" # Insert here something that works with torch.{dtype}, e.g. "float32", "float64", "float16"
+dtype:  "float32" #  "float32", "float64", "float16"

@@ -246,6 +246,7 @@ class DiversityTrainer:
 
         # Log once per epoch
         self._log(avg_log_data, diversity_log_data, epoch)
+        self._total_loss.finalize_epoch_mesh_stats()
 
         metrics: dict[str, float] = {
             "per_vector_loss": per_vector_loss_val,
