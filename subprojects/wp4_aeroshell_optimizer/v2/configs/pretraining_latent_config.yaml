@@ -1,0 +1,58 @@
+model_name: "ConcatWIREV2"
+z_placement: "unit_circle"
+z_radius: 1.0
+force_pretraining: false
+
+# One entry per latent slot.  Slot 0 maps to z₀ = origin.
+# shape_type: "sphere" | "cube" | "ply"
+# All keys must be present (set unused keys to null).
+latent_population:
+  - name: "sphere_slot_0"
+    shape_type: "sphere"
+    radius: 1000.0
+    side_length: null
+    ply_path: null
+
+  - name: "sphere_slot_1"
+    shape_type: "sphere"
+    radius: 1000.0
+    side_length: null
+    ply_path: null
+
+  - name: "sphere_slot_2"
+    shape_type: "sphere"
+    radius: 1000.0
+    side_length: null
+    ply_path: null
+
+  - name: "cube_slot_3"
+    shape_type: "cube"
+    side_length: 2000.0
+    radius: null
+    ply_path: null
+
+  - name: "cube_slot_4"
+    shape_type: "cube"
+    side_length: 2000.0
+    radius: null
+    ply_path: null
+
+  - name: "cube_slot_5"
+    shape_type: "cube"
+    side_length: 2000.0
+    radius: null
+    ply_path: null
+
+training_loop:
+  epochs: 1000
+  learning_rate: 0.0005
+  batch_size_per_shape: 512
+  print_interval: 25
+  eikonal_weight: 0.1
+
+output:
+  # Must live in a directory NOT scanned by fetch_pretrained_model
+  # (which scans the standard pretrained_path directory).
+  checkpoint_path: "/cluster/work/fuge/AISCO/latent_pretraining/pretrained_latent.pth"
+  mesh_resolution: 64
+  mesh_box_mm: 1500
