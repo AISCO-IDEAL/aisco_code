@@ -1,17 +1,16 @@
 #!/bin/bash
 
-# Pfad zu deinen Skripten
+# Path to the scripts
 BASE_PATH="/home/eschaerer/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/slurm_scripts/matthew_pc"
 
-# Pfad, in dem die Logs gespeichert werden sollen
+# Paths for the logs
 LOG_PATH="/home/eschaerer/AISCO_code/logs"
 
-# Erstelle den Log-Ordner, falls er noch nicht existiert
 mkdir -p "$LOG_PATH"
 
 
 # ==============================================================================
-# AUSFÜHRUNG
+# RUN COMMAND: bash /home/eschaerer/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/slurm_scripts/matthew_pc/run_all.sh
 # ==============================================================================
 
 echo "--- Starting batch processing at $(date) ---"
