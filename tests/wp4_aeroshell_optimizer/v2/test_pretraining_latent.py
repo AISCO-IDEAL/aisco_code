@@ -226,9 +226,11 @@ class TestSamplePointsForShape:
         """Spot-check: exact surface points should have |SDF|=0."""
         _sample_points_for_shape = _import(PRETRAIN_V1_1, "_sample_points_for_shape")
         torch.manual_seed(42)
-        pts, gt = _sample_points_for_shape("sphere", {"radius": 500.0}, 600, "cpu")
-        # GT is defined as norm(pts) - radius; spot check a sample
-        expected_gt = pts.norm(dim=-1) - 500.0
+        radius = 500.0
+        pts, gt = _sample_points_for_shape("sphere", {"radius": radius}, 600, "cpu")
+        # Sphere is now centered at (0, 0, 100+radius) and grounded at Z=100
+        sphere_center = torch.tensor([0.0, 0.0, 100.0 + radius])
+        expected_gt = (pts - sphere_center).norm(dim=-1) - radius
         assert torch.allclose(gt, expected_gt, atol=1.0), "SDF formula mismatch for sphere"
 
 

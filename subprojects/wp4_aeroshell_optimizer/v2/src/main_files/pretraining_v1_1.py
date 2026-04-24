@@ -172,9 +172,9 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
     """Sample a surface-concentrated batch of 3D points and ground-truth SDF values.
 
     Sampling mixture (approximate):
-      * sphere: 50 % domain (+-2 x radius), 30 % exact surface, 20 % near-surface
-      * cube:   50 % domain (±side_length), 30 % face-uniform, 20 % near-surface
-      * ply:    50 % domain (±bbox_extent), 50 % trimesh surface + Gaussian jitter
+      * sphere: 50 % domain (outer_prism cuboid), 30 % exact surface, 20 % near-surface
+      * cube:   50 % domain (outer_prism cuboid), 30 % face-uniform, 20 % near-surface
+      * ply:    50 % domain (outer_prism cuboid), 50 % trimesh surface + Gaussian jitter
 
     Args:
         shape_type: ``"sphere"``, ``"cube"``, or ``"ply"``.
@@ -198,20 +198,26 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
         n_surface = int(batch_size * 0.30)
         n_near = batch_size - n_domain - n_surface
 
-        # 50 % uniform domain in +-2*radius box
-        domain_pts = (torch.rand(n_domain, 3, device=device) - 0.5) * (4.0 * radius)
-        domain_gt = sphere_gt(domain_pts, radius=radius)
+        # Sphere center: X=0 (centered), Y=0 (centered), Z=100+radius (grounded)
+        sphere_center = torch.tensor([0.0, 0.0, 100.0 + radius], dtype=torch.float32, device=device)
 
-        # 30 % exact surface (direction * radius)
+        # 50 % uniform domain in outer_prism cuboid (shared across all pretraining shapes)
+        prism = get_outer_prism_bounds_mm()
+        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z_sampling"][0]], dtype=torch.float32, device=device)
+        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z_sampling"][1]], dtype=torch.float32, device=device)
+        domain_pts = lo + torch.rand(n_domain, 3, device=device) * (hi - lo)
+        domain_gt = sphere_gt(domain_pts, coordinates=sphere_center, radius=radius)
+
+        # 30 % exact surface (center + direction * radius)
         rand_dirs = torch.randn(n_surface, 3, device=device)
         rand_dirs = rand_dirs / rand_dirs.norm(dim=-1, keepdim=True).clamp(min=1e-8)
-        surface_pts = rand_dirs * radius
-        surface_gt = sphere_gt(surface_pts, radius=radius)
+        surface_pts = sphere_center + rand_dirs * radius
+        surface_gt = sphere_gt(surface_pts, coordinates=sphere_center, radius=radius)
 
-        # 20 % near-surface band (|SDF| < 0.3 * radius)
+        # 20 % near-surface band (|SDF| < 0.3 * radius, sampled from outer_prism)
         threshold = 0.3 * radius
-        cand_pts = (torch.rand(n_near * 20, 3, device=device) - 0.5) * (4.0 * radius)
-        cand_gt = sphere_gt(cand_pts, radius=radius)
+        cand_pts = lo + torch.rand(n_near * 20, 3, device=device) * (hi - lo)
+        cand_gt = sphere_gt(cand_pts, coordinates=sphere_center, radius=radius)
         mask = cand_gt.abs() < threshold
         near_pts_all = cand_pts[mask][:n_near]
         near_gt_all = cand_gt[mask][:n_near]
@@ -221,9 +227,9 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
         if deficit > 0:
             pad_dirs = torch.randn(deficit, 3, device=device)
             pad_dirs = pad_dirs / pad_dirs.norm(dim=-1, keepdim=True).clamp(min=1e-8)
-            pad_pts = pad_dirs * radius
+            pad_pts = sphere_center + pad_dirs * radius
             near_pts_all = torch.cat([near_pts_all, pad_pts], dim=0)
-            near_gt_all = torch.cat([near_gt_all, sphere_gt(pad_pts, radius=radius)], dim=0)
+            near_gt_all = torch.cat([near_gt_all, sphere_gt(pad_pts, coordinates=sphere_center, radius=radius)], dim=0)
 
         pts = torch.cat([domain_pts, surface_pts, near_pts_all], dim=0)
         gt = torch.cat([domain_gt, surface_gt, near_gt_all], dim=0)
@@ -235,11 +241,17 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
         n_face = int(batch_size * 0.30)
         n_near = batch_size - n_domain - n_face
 
-        # 50 % uniform domain in ±side box
-        domain_pts = (torch.rand(n_domain, 3, device=device) - 0.5) * (2.0 * side)
-        domain_gt = cube_gt(domain_pts, side_length=side)
+        # Cube center: X=0 (centered), Y=0 (centered), Z=100+half (grounded)
+        cube_center = torch.tensor([0.0, 0.0, 100.0 + half], dtype=torch.float32, device=device)
 
-        # 30 % uniform on 6 faces
+        # 50 % uniform domain in outer_prism cuboid (shared across all pretraining shapes)
+        prism = get_outer_prism_bounds_mm()
+        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z_sampling"][0]], dtype=torch.float32, device=device)
+        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z_sampling"][1]], dtype=torch.float32, device=device)
+        domain_pts = lo + torch.rand(n_domain, 3, device=device) * (hi - lo)
+        domain_gt = cube_gt(domain_pts, coordinates=cube_center, side_length=side)
+
+        # 30 % uniform on 6 faces (centered around cube_center)
         face_idx = torch.randint(0, 6, (n_face,), device=device)
         face_pts = torch.rand(n_face, 3, device=device) * side - half
         # Snap each point to its designated face
@@ -249,12 +261,14 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
         face_pts[face_idx == 3, 1] = -half
         face_pts[face_idx == 4, 2] = half
         face_pts[face_idx == 5, 2] = -half
-        face_gt = cube_gt(face_pts, side_length=side)
+        # Translate face points to cube center
+        face_pts = face_pts + cube_center
+        face_gt = cube_gt(face_pts, coordinates=cube_center, side_length=side)
 
-        # 20 % near-surface band (|SDF| < 0.15 * side)
+        # 20 % near-surface band (|SDF| < 0.15 * side, sampled from outer_prism)
         threshold = 0.15 * side
-        cand_pts = (torch.rand(n_near * 20, 3, device=device) - 0.5) * (2.0 * side)
-        cand_gt = cube_gt(cand_pts, side_length=side)
+        cand_pts = lo + torch.rand(n_near * 20, 3, device=device) * (hi - lo)
+        cand_gt = cube_gt(cand_pts, coordinates=cube_center, side_length=side)
         mask = cand_gt.abs() < threshold
         near_pts_all = cand_pts[mask][:n_near]
         near_gt_all = cand_gt[mask][:n_near]
@@ -270,8 +284,10 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
             pad_pts[pad_face_idx == 3, 1] = -half
             pad_pts[pad_face_idx == 4, 2] = half
             pad_pts[pad_face_idx == 5, 2] = -half
+            # Translate pad points to cube center
+            pad_pts = pad_pts + cube_center
             near_pts_all = torch.cat([near_pts_all, pad_pts], dim=0)
-            near_gt_all = torch.cat([near_gt_all, cube_gt(pad_pts, side_length=side)], dim=0)
+            near_gt_all = torch.cat([near_gt_all, cube_gt(pad_pts, coordinates=cube_center, side_length=side)], dim=0)
 
         pts = torch.cat([domain_pts, face_pts, near_pts_all], dim=0)
         gt = torch.cat([domain_gt, face_gt, near_gt_all], dim=0)

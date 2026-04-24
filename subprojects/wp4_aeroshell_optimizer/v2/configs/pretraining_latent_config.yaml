@@ -18,7 +18,7 @@ latent_population:
   # you can add as many shapes as you want
   - name: "sphere_slot_0" #arbitray name
     shape_type: "sphere"
-    radius: 1000.0        # iff shape_type == "sphere"
+    radius: 500.0         # iff shape_type == "sphere"
     side_length: null     # iff shape_type == "cube"
     ply_path: null        # iff shape_type == "ply"
 
@@ -71,7 +71,7 @@ latent_population:
     surface_noise_sigma_factor: 0.005
 
 training_loop:
-  epochs: 12
+  epochs: 13
   learning_rate: 0.0005
   batch_size_per_shape: 4096 #8192
   print_interval: 25
