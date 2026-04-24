@@ -7,7 +7,7 @@
 ##########################################################################
 
 setup:
-    run_local: true
+    run_local: false
     name: "euler_field_cp_full"
     id: "_RUN_ID_"
     seed: 42
@@ -141,7 +141,7 @@ dataset:
     subsampling_seed: 42        # used only when deterministic_subsampling is true
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
-    num_viz_samples: 0         # number of random viz samples per split (train/val); 0 = disable viz
+    num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
 
     viz_axis_limits:            # Edit these ranges to control the visualized x/y/z box exactly, default is outer bounding box
         x: [-3, 3]

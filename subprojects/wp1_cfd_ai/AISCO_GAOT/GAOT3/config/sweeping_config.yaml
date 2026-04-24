@@ -22,12 +22,12 @@ name: "wp1_gaot_optimiser_sweep"
 
 parameters:
   # ========== OPTIMIZER / LR-RELATED ONLY ==========
-  optimizer.args.beta1:
-    distribution: uniform
-    min: 0.85
-    max: 1
+  dataset.subsample_nodes:
+    distribution: int_uniform
+    min: 1000
+    max: 100000
 
-  optimizer.args.eps:
+  optimizer.args.max_lr:
     distribution: log_uniform_values
-    min: 1e-9
-    max: 1e-4
+    min: 0.0003
+    max: 0.03
