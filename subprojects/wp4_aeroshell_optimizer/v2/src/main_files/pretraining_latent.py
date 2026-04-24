@@ -122,22 +122,30 @@ def _compute_pretrain_config_hash(config: dict[str, Any], model: SupportsLatentC
 
 
 def _resolve_checkpoint_path(config: dict[str, Any], model: SupportsLatentConcat) -> Path:
-    """Return a hash-tagged checkpoint path derived from the base path in config.
+    """Return a hash-tagged checkpoint path with clean folder structure.
 
-    For example, if config specifies ``pretrained_latent.pth``, the resolved path
-    is ``pretrained_latent_<hash>.pth`` in the same directory. Different configs
-    resolve to different files; identical configs resolve to the same file.
+    All outputs for a run go into a single hash-named folder:
+      <base_dir>/<hash>/
+        pretrained_latent.pth
+        sampling_vis/
+        mesh_extracted/
+
+    For example, if config specifies ``/path/to/pretrained_latent.pth``, the
+    resolved checkpoint is ``/path/to/<hash>/pretrained_latent.pth``.
+    Different configs resolve to different hash folders; identical configs
+    resolve to the same folder.
 
     Args:
         config: Dict matching the pretraining_latent_config.yaml schema.
         model: Model whose architecture is included in the hash.
 
     Returns:
-        Path with the config hash embedded in the stem.
+        Path to checkpoint inside hash-named directory.
     """
     base = Path(config["output"]["checkpoint_path"])
     config_hash = _compute_pretrain_config_hash(config, model)
-    return base.parent / f"{base.stem}_{config_hash}{base.suffix}"
+    # New structure: /path/to/<hash>/pretrained_latent.pth
+    return base.parent / config_hash / base.name
 
 
 def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsically sequential; decomposition would obscure control flow
@@ -234,7 +242,8 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
 
     # --- Output / visualisation config (read once, shared between loop and post-training) ---
     output_cfg: dict[str, Any] = config.get("output", {})
-    vis_dir: Path = ckpt_path.parent / f"sampling_vis_{config_hash}"
+    run_dir: Path = ckpt_path.parent  # Hash-named folder containing all outputs
+    vis_dir: Path = run_dir / "sampling_vis"
     vis_cadence: int = int(output_cfg.get("vis_cadence", 0))  # 0 = disabled
     vis_mesh_res: int = int(output_cfg.get("mesh_resolution", 64))
     vis_mesh_box: int = int(output_cfg.get("mesh_box_mm", 2000))
@@ -424,6 +433,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     ckpt_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"model_state_dict": model.state_dict(), "z_pretrained": Z}, ckpt_path)
     print(f"[latent_pretrain] Saved checkpoint to '{ckpt_path}' (model_state_dict + z_pretrained shape={tuple(Z.shape)})")
+    print(f"[latent_pretrain] All outputs → {run_dir}/")
 
     # --- Log Z spread ---
     pairwise = [(Z[i] - Z[j]).norm().item() for i in range(num_shapes) for j in range(i + 1, num_shapes)]
@@ -435,7 +445,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     mesh_res = output_cfg.get("mesh_resolution")
     mesh_box = output_cfg.get("mesh_box_mm")
     if mesh_res and mesh_box:
-        mesh_dir = ckpt_path.parent / f"mesh_extracted_{config_hash}"
+        mesh_dir = run_dir / "mesh_extracted"
         mesh_dir.mkdir(parents=True, exist_ok=True)
         for slot_idx in range(num_shapes):
             slot_name = shapes[slot_idx].get("name", str(slot_idx))

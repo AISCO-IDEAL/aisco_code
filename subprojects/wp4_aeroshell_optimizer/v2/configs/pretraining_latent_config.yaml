@@ -86,5 +86,5 @@ output:
   mesh_resolution: 64
   mesh_box_mm: 1700
   vis_cadence: 300 # at what interval to visualize the sampling
-  vis_eikonal_pts: true   # hide grey domain points (default: true)
-  vis_mesh_display_mode: "face_centers"   # "vertices" | "face_centers"
+  vis_eikonal_pts: true   # visualize sampled points for eikonal loss (default: true)
+  vis_mesh_display_mode: "faces"   # "vertices" | "face_centers"
