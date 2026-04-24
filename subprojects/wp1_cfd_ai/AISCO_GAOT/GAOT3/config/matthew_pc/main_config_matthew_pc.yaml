@@ -23,7 +23,7 @@ setup:
     wandb: true
     wandb_run_name: "_NAME___RUN_ID_"
 
-    wandb_project: "WP1_united"
+    wandb_project: "WP1_finetuning"
     wandb_entity: aisco
     wandb_group: united_datasets_cp
     wandb_mode: online
@@ -119,9 +119,9 @@ dataset:
     processed_folder: ""
     force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
-    train_size: 300
-    val_size: 100
-    test_size: 100
+    train_size: 550
+    val_size: 183
+    test_size: 183
     batch_size: 6  # reduced from 12 to avoid OOM on larger CP-full meshes
     num_workers: 4
     shuffle: true
@@ -135,7 +135,7 @@ dataset:
     order_file_name:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
-    subsample_nodes: 25000     # randomly sample 30k nodes per load if sample exceeds this
+    subsample_nodes: 50000     # randomly sample 30k nodes per load if sample exceeds this
     subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"
     deterministic_subsampling: false  # false keeps fresh random subsets on every load
     subsampling_seed: 42        # used only when deterministic_subsampling is true
@@ -156,7 +156,7 @@ optimizer:
     args:
         lr: 6e-4
         weight_decay: 1e-05
-        epoch: 500
+        epoch: 1000
         loss_scale: 1.0
         eval_every_eps: 1
         viz_every_eps: 25   # visualize every N epochs; defaults to eval_every_eps if omitted
