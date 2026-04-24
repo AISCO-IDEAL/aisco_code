@@ -31,7 +31,10 @@ DATASET_METADATA = {
         group_c=None,
         group_x="x",
         type="gaot",
-        domain_x=([-4.996915340423584, -1.3060903549194336, -1.1929689645767212], [4.699999809265137, 1.6555274724960327, 2.0490450859069824]),  # x=flow, y=lateral, z=vertical (meters)
+        domain_x=(
+            [-4.996915340423584, -1.3060903549194336, -1.1929689645767212],
+            [4.699999809265137, 1.6555274724960327, 2.0490450859069824],
+        ),  # x=flow, y=lateral, z=vertical (meters)
         domain_t=None,
         fix_x=False,
         active_variables=None,

@@ -361,7 +361,9 @@ class VTKMeshDataset(Dataset):
                     "poisson_disk": _subsample_poisson_disk,
                 }
 
-                _strategy_fn = cast(Callable[[torch.Tensor, int, int | None], torch.Tensor], _subsample_fns[self.subsample_strategy])
+                _strategy_fn = cast(
+                    Callable[[torch.Tensor, int, int | None], torch.Tensor], _subsample_fns[self.subsample_strategy]
+                )
                 subsample_seed = None
                 if self.deterministic_subsampling:
                     subsample_seed = _stable_seed(self.subsampling_seed, self.split, idx, self.subsample_strategy)

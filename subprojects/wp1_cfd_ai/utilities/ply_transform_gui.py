@@ -27,6 +27,7 @@ from flask import Flask, Response, jsonify, request
 
 # Background job tracker for cache generation (job_id -> progress dict)
 _cache_jobs: dict = {}
+_GUI_CACHE_VERSION = "v2"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PLY I/O  (binary + ascii)
@@ -730,6 +731,78 @@ def _natural_sort_key(s):
     return [int(c) if c.isdigit() else c.lower() for c in re.split(r"(\d+)", s)]
 
 
+def _is_valid_data_pt(filepath: str) -> bool:
+    """Check if a .pt file contains valid field data (pos, cp, pressure, x, wall_shear, or face).
+
+    Returns True only if the file is loadable and contains at least 'pos'.
+    Returns False for model files or incompatible data.
+    """
+    if not os.path.isfile(filepath):
+        return False
+    try:
+        import torch  # noqa: PLC0415
+
+        d = torch.load(filepath, weights_only=False, map_location="cpu")
+        # Require geometry plus at least one displayable attribute.
+        if not hasattr(d, "pos"):
+            return False
+        # Additional check: pos should be a tensor with shape [N, 3]
+        if not hasattr(d.pos, "shape") or len(d.pos.shape) != 2 or d.pos.shape[1] != 3:
+            return False
+        has_scalar_or_face = any(
+            hasattr(d, k) and getattr(d, k) is not None for k in ("x", "cp", "pressure", "wall_shear", "face")
+        )
+        if not has_scalar_or_face:
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def _to_node_scalar(x):
+    """Convert tensor-like per-node data to a [N] float32 array.
+
+    If x is [N, C], use the first channel to keep one scalar per node.
+    """
+    arr = x.numpy()
+    if arr.ndim == 1:
+        return arr.astype(np.float32)
+    if arr.ndim >= 2:
+        return arr[:, 0].astype(np.float32)
+    return arr.reshape(-1).astype(np.float32)
+
+
+def _extract_scalars(d, field):
+    """Extract requested scalar field with graceful fallback.
+
+    Returns tuple: (scalars_or_none, effective_field_name_or_none).
+    """
+
+    def _get(name):
+        if name == "cp" and hasattr(d, "cp") and d.cp is not None:
+            return _to_node_scalar(d.cp)
+        if name == "pressure" and hasattr(d, "pressure") and d.pressure is not None:
+            return _to_node_scalar(d.pressure)
+        if name == "wall_shear_mag" and hasattr(d, "wall_shear") and d.wall_shear is not None:
+            return np.linalg.norm(d.wall_shear.numpy(), axis=1).astype(np.float32)
+        if name == "x" and hasattr(d, "x") and d.x is not None:
+            return _to_node_scalar(d.x)
+        return None
+
+    # 1) Try requested field exactly.
+    requested = _get(field)
+    if requested is not None:
+        return requested, field
+
+    # 2) Fallback order for coloring if requested field is missing.
+    for alt in ("x", "cp", "pressure", "wall_shear_mag"):
+        vals = _get(alt)
+        if vals is not None:
+            return vals, alt
+
+    return None, None
+
+
 def _spatial_subsample(pos, n_target):
     """Voxel-grid downsampling for uniform spatial coverage.
 
@@ -772,6 +845,40 @@ def _spatial_subsample(pos, n_target):
     return np.sort(best_idx)
 
 
+def _get_dataset_runs(dataset_path: str) -> list:
+    """Get all valid run paths in a dataset, supporting both flat and nested structures.
+
+    Returns list of tuples: (run_name, run_pt_path)
+    - Flat: (sample_100001, /path/to/dataset/sample_100001.pt)
+    - Nested: (run_1, /path/to/dataset/run_1/data.pt)
+    """
+    entries = sorted(os.listdir(dataset_path), key=_natural_sort_key)
+    runs = []
+
+    # Detect structure
+    has_flat = False
+    has_nested = False
+
+    for e in entries:
+        if e.endswith(".pt") and _is_valid_data_pt(os.path.join(dataset_path, e)):
+            has_flat = True
+        elif "." not in e and os.path.isfile(os.path.join(dataset_path, e, "data.pt")):
+            has_nested = True
+
+    # Collect runs based on detected structure
+    for e in entries:
+        if has_flat and e.endswith(".pt"):
+            if _is_valid_data_pt(os.path.join(dataset_path, e)):
+                run_name = e[:-3]  # remove .pt
+                runs.append((run_name, os.path.join(dataset_path, e)))
+        if has_nested and "." not in e:
+            nested_pt = os.path.join(dataset_path, e, "data.pt")
+            if os.path.isfile(nested_pt):
+                runs.append((e, nested_pt))
+
+    return runs
+
+
 @app.route("/api/dataset/scan", methods=["POST"])
 def api_dataset_scan():
     data = request.get_json(force=True)
@@ -783,13 +890,14 @@ def api_dataset_scan():
         datasets = []
         for e in entries:
             full = os.path.join(base_dir, e)
-            if os.path.isdir(full) and "processed" in e.lower():
-                # Quick count: just count subdirectories (avoid slow stat on each data.pt)
-                try:
-                    subs = [r for r in os.listdir(full) if not r.endswith((".pt", ".json", ".csv", ".txt"))]
-                except OSError:
-                    subs = []
-                datasets.append({"name": e, "path": full, "num_runs": len(subs)})
+            if not os.path.isdir(full):
+                continue
+            try:
+                runs = _get_dataset_runs(full)
+            except OSError:
+                runs = []
+            if runs:
+                datasets.append({"name": e, "path": full, "num_runs": len(runs)})
         return jsonify(ok=True, datasets=datasets)
     except Exception as e:
         return jsonify(ok=False, error=str(e))
@@ -802,14 +910,7 @@ def api_dataset_runs():
     if not dataset_path or not os.path.isdir(dataset_path):
         return jsonify(ok=False, error=f"Directory not found: {dataset_path}")
     try:
-        entries = sorted(os.listdir(dataset_path), key=_natural_sort_key)
-        runs = []
-        for e in entries:
-            pt = os.path.join(dataset_path, e, "data.pt")
-            # Skip non-directory entries by extension heuristic (avoids stat)
-            if "." in e:
-                continue
-            runs.append({"name": e, "path": pt})
+        runs = [{"name": run_name, "path": run_pt_path} for run_name, run_pt_path in _get_dataset_runs(dataset_path)]
         return jsonify(ok=True, runs=runs)
     except Exception as e:
         return jsonify(ok=False, error=str(e))
@@ -856,12 +957,24 @@ def _load_run_cached(run_pt_path, field):
 
     Returns (pos [N,3] float32, scalars [N] float32 or None, face [3,F] int32 or None).
     On first call, creates a compact cache file; subsequent calls load from cache (~100x faster).
+    Supports both nested (run_dir/data.pt) and flat (sample_123.pt) structures.
     """
-    # Cache lives next to the data.pt file
+    # Determine structure: if run_pt_path is data.pt in a subdirectory (nested),
+    # or a direct .pt file in the dataset (flat)
     run_dir = os.path.dirname(run_pt_path)
-    ds_dir = os.path.dirname(run_dir)
+    run_name = os.path.basename(run_pt_path)[:-3]  # remove .pt extension
+
+    # For nested structure (run_1/data.pt), ds_dir is parent of run_dir
+    # For flat structure (sample_123.pt in dataset), ds_dir is run_dir
+    if os.path.basename(run_pt_path) == "data.pt":
+        # Nested structure: data.pt in subdirectory
+        ds_dir = os.path.dirname(run_dir)
+        run_name = os.path.basename(run_dir)
+    else:
+        # Flat structure: direct .pt file in dataset directory
+        ds_dir = run_dir
+
     cache_dir = os.path.join(ds_dir, ".gui_cache", "runs")
-    run_name = os.path.basename(run_dir)
     cache_file = os.path.join(cache_dir, f"{run_name}_{field or 'none'}.bin")
 
     if os.path.isfile(cache_file):
@@ -873,22 +986,16 @@ def _load_run_cached(run_pt_path, field):
             pos = np.frombuffer(fh.read(n * 12), dtype=np.float32).reshape(n, 3).copy()
             face = np.frombuffer(fh.read(nf * 12), dtype=np.int32).reshape(nf, 3).T.copy() if nf > 0 else None
             scalars = np.frombuffer(fh.read(n * 4), dtype=np.float32).copy() if has_s else None
-        return pos, scalars, face
+        # Recover from stale no-scalar caches by reloading source and applying fallback.
+        if scalars is not None:
+            return pos, scalars, face
 
     torch = _ensure_torch()
     d = torch.load(run_pt_path, weights_only=False, map_location="cpu")
     pos = d.pos.numpy().astype(np.float32)
     n = pos.shape[0]
 
-    scalars = None
-    if field == "cp" and hasattr(d, "cp") and d.cp is not None:
-        scalars = d.cp.numpy().ravel().astype(np.float32)
-    elif field == "pressure" and hasattr(d, "pressure") and d.pressure is not None:
-        scalars = d.pressure.numpy().ravel().astype(np.float32)
-    elif field == "wall_shear_mag" and hasattr(d, "wall_shear") and d.wall_shear is not None:
-        scalars = np.linalg.norm(d.wall_shear.numpy(), axis=1).astype(np.float32)
-    elif field == "x" and hasattr(d, "x") and d.x is not None:
-        scalars = d.x.numpy().ravel().astype(np.float32)
+    scalars, _effective_field = _extract_scalars(d, field)
 
     face = None
     if hasattr(d, "face") and d.face is not None:
@@ -980,17 +1087,26 @@ def api_dataset_load():
 def _cache_worker(args):
     """Worker for parallel cache generation. Must be top-level for pickling."""
     run_pt_path, field = args
+    # Extract run name: for nested (run_1/data.pt) use dir name, for flat (sample_123.pt) use file name
+    if os.path.basename(run_pt_path) == "data.pt":
+        run_name = os.path.basename(os.path.dirname(run_pt_path))
+    else:
+        run_name = os.path.basename(run_pt_path)[:-3]  # remove .pt
     try:
         _load_run_cached(run_pt_path, field)
-        return (os.path.basename(os.path.dirname(run_pt_path)), True, None)
+        return (run_name, True, None)
     except Exception as e:
-        return (os.path.basename(os.path.dirname(run_pt_path)), False, str(e))
+        return (run_name, False, str(e))
 
 
 def _thumb_worker(args):
     """Worker for parallel thumbnail generation. Must be top-level for pickling."""
     run_pt_path, field, thumb_points = args
-    run_name = os.path.basename(os.path.dirname(run_pt_path))
+    # Extract run name: for nested (run_1/data.pt) use dir name, for flat (sample_123.pt) use file name
+    if os.path.basename(run_pt_path) == "data.pt":
+        run_name = os.path.basename(os.path.dirname(run_pt_path))
+    else:
+        run_name = os.path.basename(run_pt_path)[:-3]  # remove .pt
     try:
         pos, scalars, _ = _load_run_cached(run_pt_path, field)
         n = pos.shape[0]
@@ -1013,10 +1129,9 @@ def api_dataset_cache_status():
     field = data.get("field", "cp")
     if not dataset_path or not os.path.isdir(dataset_path):
         return jsonify(ok=False, error=f"Not found: {dataset_path}")
-    entries = sorted(os.listdir(dataset_path), key=_natural_sort_key)
-    runs = [e for e in entries if "." not in e and os.path.isfile(os.path.join(dataset_path, e, "data.pt"))]
+    runs = _get_dataset_runs(dataset_path)
     cache_dir = os.path.join(dataset_path, ".gui_cache", "runs")
-    cached = sum(1 for r in runs if os.path.isfile(os.path.join(cache_dir, f"{r}_{field or 'none'}.bin")))
+    cached = sum(1 for run_name, _ in runs if os.path.isfile(os.path.join(cache_dir, f"{run_name}_{field or 'none'}.bin")))
     return jsonify(ok=True, total=len(runs), cached=cached, missing=len(runs) - cached)
 
 
@@ -1030,13 +1145,11 @@ def api_dataset_generate_cache():
         return jsonify(ok=False, error=f"Not found: {dataset_path}")
 
     try:
-        entries = sorted(os.listdir(dataset_path), key=_natural_sort_key)
-        runs = [e for e in entries if "." not in e]
+        runs = _get_dataset_runs(dataset_path)
         tasks = []
         skipped = 0
         cache_dir = os.path.join(dataset_path, ".gui_cache", "runs")
-        for run_name in runs:
-            pt = os.path.join(dataset_path, run_name, "data.pt")
+        for run_name, pt in runs:
             cache_file = os.path.join(cache_dir, f"{run_name}_{field or 'none'}.bin")
             if os.path.isfile(cache_file):
                 skipped += 1
@@ -1048,7 +1161,7 @@ def api_dataset_generate_cache():
             return jsonify(
                 ok=True,
                 job_id=None,
-                total=skipped,
+                total=len(runs),
                 skipped=skipped,
                 done=0,
                 finished=True,
@@ -1102,7 +1215,7 @@ def api_dataset_field_range():
         return jsonify(ok=False, error=f"Not found: {dataset_path}")
 
     cache_dir = os.path.join(dataset_path, ".gui_cache")
-    cache_file = os.path.join(cache_dir, f"field_range_{field}.json")
+    cache_file = os.path.join(cache_dir, f"field_range_{field}_{_GUI_CACHE_VERSION}.json")
     if os.path.isfile(cache_file):
         with open(cache_file) as f:
             cached = json_mod.load(f)
@@ -1111,15 +1224,9 @@ def api_dataset_field_range():
             return jsonify(ok=True, **cached)
 
     try:
-        entries = sorted(os.listdir(dataset_path), key=_natural_sort_key)
         global_min, global_max = float("inf"), float("-inf")
         count = 0
-        for e in entries:
-            if "." in e:
-                continue
-            pt = os.path.join(dataset_path, e, "data.pt")
-            if not os.path.isfile(pt):
-                continue
+        for _run_name, pt in _get_dataset_runs(dataset_path):
             _, scalars, _ = _load_run_cached(pt, field)
             if scalars is None:
                 continue
@@ -1160,19 +1267,16 @@ def api_dataset_thumbnails():
         return jsonify(ok=False, error=f"Not found: {dataset_path}")
 
     cache_dir = os.path.join(dataset_path, ".gui_cache")
-    cache_file = os.path.join(cache_dir, f"thumbs_{field}_{thumb_points}.bin")
+    cache_file = os.path.join(cache_dir, f"thumbs_{field}_{thumb_points}_{_GUI_CACHE_VERSION}.bin")
     if os.path.isfile(cache_file):
         with open(cache_file, "rb") as f:
             return Response(f.read(), mimetype="application/octet-stream")
 
     try:
-        entries = sorted(os.listdir(dataset_path), key=_natural_sort_key)
-        runs = [e for e in entries if "." not in e]
-        tasks = [
-            (os.path.join(dataset_path, run_name, "data.pt"), field, thumb_points)
-            for run_name in runs
-            if os.path.isfile(os.path.join(dataset_path, run_name, "data.pt"))
-        ]
+        tasks = [(run_pt_path, field, thumb_points) for _, run_pt_path in _get_dataset_runs(dataset_path)]
+
+        if not tasks:
+            return jsonify(ok=False, error="No valid dataset .pt files found")
 
         with Pool(processes=min(8, len(tasks))) as pool:
             results = pool.map(_thumb_worker, tasks)
