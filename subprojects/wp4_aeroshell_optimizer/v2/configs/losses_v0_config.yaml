@@ -58,13 +58,13 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: constraint
     # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v1.py"]
     # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v2.py"] # not working as of 2025 12 15
-    null_loss_bb: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    null_loss_bb: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     bb_v3: [0, 1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"] # new version with random assembly_id for more variety y
     bb_v4: [0, 10, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"] # assembler version4 with ground clearance validation
     bb_v4_2: [0, 1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"] # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
     bb_v4_3: [0, 10, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"] # v4.3 with improved ALM and CSE support
     bb_v4_4: [0, 10, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"] # v4.4 surface-sampled BB constraints on WP2 inner/outer zero-level surfaces
-    bb_v4_5: [1, 10, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_5.py"] # v4.5 with option to select either inner or outer nbz
+    bb_v4_5: [0, 10, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_5.py"] # v4.5 with option to select either inner or outer nbz
     silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"] # version provided by Silvretta, not working well as of 2025 12 15
 
   eikonal:

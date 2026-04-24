@@ -52,7 +52,7 @@ rendering_modes:
     config:
       store_wandb: true
       render_mode: "rgb"
-      camera_position_1: [-6000, -200, 300]
+      camera_position_1: [-6000, -200, 0]
       camera_position_2: [-3000, 3000, 3000]
       look_at: [0, 0, 0]
       fps: 10

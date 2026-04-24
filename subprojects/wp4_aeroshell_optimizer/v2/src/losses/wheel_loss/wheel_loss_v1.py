@@ -39,7 +39,7 @@ class WheelLossV1(ParentLoss):
         for wx, wy, wz in wheel_coords:
             xs = wx + grid_dx * L
             ys = wy + grid_dy * (width / 2)
-            zs = torch.full_like(xs, wz + radius - C)
+            zs = torch.full_like(xs, wz + radius - C)  # testing if the wz position is affecting the loss in first place
             wheel_point_grids.append(torch.stack([xs, ys, zs], dim=-1))  # (sampling_density^2, 3)
 
         # shape of points: (num_wheels * sampling_density^2, 3)
@@ -50,6 +50,6 @@ class WheelLossV1(ParentLoss):
         # Sample points on SDF
         samples = model(self.points)  # shape: (num_wheels * sampling_density^2,)
 
-        # Calculate loss as MSE of SDF at sampled points (MSE is the correct constraint)
-        loss = torch.mean(torch.square(samples))
+        # Calculate loss as ME of SDF at sampled points
+        loss = torch.mean(torch.abs(samples))
         return loss
