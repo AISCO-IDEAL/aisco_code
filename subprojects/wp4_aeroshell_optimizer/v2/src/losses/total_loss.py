@@ -107,6 +107,7 @@ class TotalLoss:
         general_info: dict[str, Any] = self.losses_config["general_info"]
         self._use_alm: bool = general_info.get("ALM") == "True"
         self._use_cse: bool = general_info.get("CSE") == "True"
+        self._deactivate_scheduler_mode: str = general_info["deactivate_scheduler_mode"]
         cse_params: dict[str, Any] = general_info.get("cse_params", {})
         self._cse_drag_category: str = cse_params.get("drag_category", "aero")
         self._cse_solar_category: str = cse_params.get("solar_category", "solar")
@@ -115,6 +116,9 @@ class TotalLoss:
         self._cse_rolling_friction: float = float(cse_params.get("rolling_friction_coefficient", 0.006))
         self._cse_max_iter: int = int(cse_params.get("max_iter", 12))
         self._cse_tol: float = float(cse_params.get("tol", 1.0e-4))
+        # Last-known raw (pre-prefactor) value per CSE objective category, used when that category
+        # is scheduled out so the other objective can still run CSE with a meaningful partner value.
+        self._cse_objective_cache: dict[str, torch.Tensor] = {}
 
         self._init_mesh_infrastructure()
         self._init_active_losses()  # must come before _init_alm_state (needs n_constraints)
@@ -185,6 +189,10 @@ class TotalLoss:
         self._configured_constraint_categories: list[str] = []
         self._objective_signs: dict[str, int] = {}  # category -> sign for manual objective mode
         self._auxiliary_losses: dict[str, Any] = {}  # name → instance
+        # category -> list of (start, end) inclusive epoch ranges where the loss is DISABLED
+        self._disabled_epochs: dict[str, list[tuple[int, int]]] = {}
+        # loss_name -> category (reverse map for scheduling in _compute_raw_losses)
+        self._loss_name_to_category: dict[str, str] = {}
 
         for category, block in losses_block.items():
             if category == "total":
@@ -229,6 +237,17 @@ class TotalLoss:
                     self._constraint_losses[category] = (loss_name, instance)
                 else:
                     self._auxiliary_losses[loss_name] = instance
+
+                self._loss_name_to_category[loss_name] = category
+
+            disabled_raw = block.get("_disabled_epochs", [])
+            self._disabled_epochs[category] = [(int(s), int(e)) for s, e in disabled_raw]
+
+    def _is_category_active(self, category: str, epoch: int) -> bool:
+        for start, end in self._disabled_epochs.get(category, []):
+            if start <= epoch and (end == -1 or epoch <= end):
+                return False
+        return True
 
     # ------------------------------------------------------------------
     # mesh extraction sharing
@@ -300,14 +319,33 @@ class TotalLoss:
     # loss computation
     # ------------------------------------------------------------------
     def _compute_raw_losses(self, model: TrainModel, epoch_name: int, skip_telemetry: bool = False) -> dict[str, torch.Tensor]:
-        """Evaluate every active loss instance and return raw (unweighted) tensors."""
+        """Evaluate every active loss instance and return raw (unweighted) tensors.
+
+        Losses in a disabled epoch range are handled according to self._deactivate_scheduler_mode:
+          "skip": not computed; tracked in self._skipped_categories for 0-logging.
+          "zero_weighted": computed and included in raw; tracked in self._zero_weighted_categories.
+        """
+        self._skipped_categories: set[str] = set()
+        self._zero_weighted_categories: set[str] = set()
         self._inject_shared_meshes(model)
         raw: dict[str, torch.Tensor] = {}
         try:
             for name, instance in self._active_losses.items():
+                category = self._loss_name_to_category.get(name, "")
+                if not self._is_category_active(category, epoch_name):
+                    if self._deactivate_scheduler_mode == "zero_weighted":
+                        self._zero_weighted_categories.add(category)
+                        sig = inspect.signature(instance.get_loss)
+                        if "skip_telemetry" in sig.parameters:
+                            raw[name] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+                        else:
+                            raw[name] = instance.get_loss(model, epoch_name)
+                    else:
+                        self._skipped_categories.add(category)
+                    continue
                 sig = inspect.signature(instance.get_loss)
                 if "skip_telemetry" in sig.parameters:
-                    raw[name] = instance.get_loss(model, epoch_name, skip_telemetry=skip_telemetry)
+                    raw[name] = instance.get_loss(model, epoch_name, skip_telemetry=True)
                 else:
                     raw[name] = instance.get_loss(model, epoch_name)
         finally:
@@ -376,6 +414,9 @@ class TotalLoss:
         self._last_weighted_losses = {}
 
         # ---- Objectives --------------------------------------------------
+        skipped_cats: set[str] = getattr(self, "_skipped_categories", set())
+        zero_weighted_cats: set[str] = getattr(self, "_zero_weighted_categories", set())
+
         if self._use_cse:
             prefactors: dict[str, float] = gi.get("cse_prefactors", {})
             if self._cse_drag_category not in self._objective_losses:
@@ -393,12 +434,34 @@ class TotalLoss:
             solar_name: str = self._objective_losses[self._cse_solar_category][0]
             drag_pf: float = float(prefactors.get("drag", 1.0))
             solar_pf: float = float(prefactors.get("solar", 1.0))
-            drag: torch.Tensor = raw_losses[drag_name] * drag_pf
-            solar: torch.Tensor = raw_losses[solar_name] * solar_pf
+            inactive_obj_cats: set[str] = skipped_cats | zero_weighted_cats
+
+            # Update cache for objectives that were computed this epoch (live or zero_weighted).
+            # Zero_weighted: raw value exists in raw_losses but should not contribute gradient through CSE.
+            if self._cse_drag_category not in skipped_cats:
+                self._cse_objective_cache[self._cse_drag_category] = raw_losses[drag_name].detach().clone()
+            if self._cse_solar_category not in skipped_cats:
+                self._cse_objective_cache[self._cse_solar_category] = raw_losses[solar_name].detach().clone()
+
+            # Resolve the tensor each CSE input will use.
+            # Active: live tensor (gradient flows). Inactive: cached detached value (no gradient).
+            # Cold-start fallback (cache empty, already off at epoch 0): zeros, like a weight-0 null loss.
+            drag_is_live: bool = self._cse_drag_category not in inactive_obj_cats
+            solar_is_live: bool = self._cse_solar_category not in inactive_obj_cats
+            drag_raw: torch.Tensor = (
+                raw_losses[drag_name]
+                if drag_is_live
+                else self._cse_objective_cache.get(self._cse_drag_category, torch.zeros(1, device=self._device))
+            )
+            solar_raw: torch.Tensor = (
+                raw_losses[solar_name]
+                if solar_is_live
+                else self._cse_objective_cache.get(self._cse_solar_category, torch.zeros(1, device=self._device))
+            )
 
             v_cruise: torch.Tensor = cruising_speed(
-                solar_power=solar,
-                drag_force_at_25ms=drag,
+                solar_power=solar_raw * solar_pf,
+                drag_force_at_25ms=drag_raw * drag_pf,
                 mass=self._cse_mass,
                 c_losses=self._cse_c_losses,
                 rolling_friction_coefficient=self._cse_rolling_friction,
@@ -406,34 +469,65 @@ class TotalLoss:
                 tol=self._cse_tol,
             )
             self._last_cruising_speed = v_cruise
-            self._last_cruising_speed_diagnostics = {
-                "cruising_speed_ms": v_cruise.item(),
-            }
-            self._last_weighted_losses["cse_objective"] = -v_cruise
+            self._last_cruising_speed_diagnostics = {"cruising_speed_ms": v_cruise.item()}
+            # Only backprop if at least one input is live; both-cached → v_cruise has no grad.
+            if drag_is_live or solar_is_live:
+                self._last_weighted_losses["cse_objective"] = -v_cruise
         else:
             self._last_cruising_speed = None
             self._last_cruising_speed_diagnostics = None
             for cat, (name, _instance) in self._objective_losses.items():
+                if cat in skipped_cats:
+                    continue
+                if cat in zero_weighted_cats:
+                    self._last_weighted_losses[name] = torch.zeros((), device=self._device)
+                    continue
                 w: float = self._manual_weights.get(name, 1.0)
                 sign: float = float(self._objective_signs.get(cat, 1))
                 self._last_weighted_losses[name] = sign * raw_losses[name] * w
 
         # ---- Constraints -------------------------------------------------
-        constraint_names: list[str] = [n for (n, _inst) in self._constraint_losses.values()]
-        constraints: list[torch.Tensor] = [raw_losses[n] for n in constraint_names]
+        # Inactive (skipped or zero_weighted) categories are excluded from ALM updates
+        # so their multipliers are frozen while the loss is disabled.
+        inactive_cats: set[str] = getattr(self, "_skipped_categories", set()) | getattr(self, "_zero_weighted_categories", set())
+        all_constraint_cats: list[str] = list(self._constraint_losses.keys())
+        active_constraint_cats: list[str] = [cat for cat in all_constraint_cats if cat not in inactive_cats]
+        active_constraint_indices: list[int] = [i for i, cat in enumerate(all_constraint_cats) if cat not in inactive_cats]
+        active_constraint_names: list[str] = [self._constraint_losses[cat][0] for cat in active_constraint_cats]
+        active_constraint_tensors: list[torch.Tensor] = [raw_losses[n] for n in active_constraint_names]
 
         if self._use_alm:
             if not self._external_alm and self.alm_manager is not None:
-                self.alm_manager.update_multipliers(constraints)
-                alm_penalties = self.alm_manager.compute_penalty(constraints)
+                self.alm_manager.update_multipliers(active_constraint_tensors, active_indices=active_constraint_indices)
+                alm_penalties = self.alm_manager.compute_penalty(
+                    active_constraint_tensors, active_indices=active_constraint_indices
+                )
                 self._last_weighted_losses.update(alm_penalties)
+                # zero_weighted constraints: overwrite with 0 so no gradient flows
+                for cat in getattr(self, "_zero_weighted_categories", set()):
+                    if cat in self._constraint_losses:
+                        cname = self._constraint_losses[cat][0]
+                        self._last_weighted_losses[f"alm_{cname}"] = torch.zeros(
+                            1, device=str(self._device), requires_grad=False
+                        ).squeeze()
         else:
-            for cname, raw_t in zip(constraint_names, constraints, strict=True):
+            for cat, (cname, _) in self._constraint_losses.items():
+                if cat in getattr(self, "_skipped_categories", set()):
+                    continue  # skip entirely: no gradient, no entry in weighted losses
                 w_c: float = self._manual_weights.get(cname, 1.0)
-                self._last_weighted_losses[cname] = raw_t * w_c
+                if cat in getattr(self, "_zero_weighted_categories", set()):
+                    self._last_weighted_losses[cname] = torch.zeros((), device=self._device)
+                    continue
+                self._last_weighted_losses[cname] = raw_losses[cname] * w_c
 
         # ---- Auxiliary (always manual-weighted) --------------------------
         for aux_name in self._auxiliary_losses:
+            aux_cat: str = self._loss_name_to_category.get(aux_name, "")
+            if aux_cat in getattr(self, "_skipped_categories", set()):
+                continue
+            if aux_cat in getattr(self, "_zero_weighted_categories", set()):
+                self._last_weighted_losses[aux_name] = torch.zeros((), device=self._device)
+                continue
             w_a: float = self._manual_weights.get(aux_name, 1.0)
             self._last_weighted_losses[aux_name] = raw_losses[aux_name] * w_a
 
@@ -450,15 +544,10 @@ class TotalLoss:
         device: torch.device,
         model: TrainModel,
         total_loss: torch.Tensor,
-        skip_gradients: bool = False,
     ) -> None:
-        """WandB logging, mesh rendering, gradient logging, and memory diagnostics."""
+        """WandB logging, mesh rendering, and memory diagnostics."""
         if not self._use_wandb:
-            if not skip_gradients:
-                # Still log gradients (they print to stdout when wandb is off)
-                for inst in self._active_losses.values():
-                    inst.log_gradients(epoch_name)
-            self._log_memory_diagnostics(epoch_name, device)
+            self._print_memory_diagnostics(epoch_name, device)
             return
 
         # --- Build ONE log dict for all scalar metrics, then call wandb.log ONCE.
@@ -487,8 +576,6 @@ class TotalLoss:
         if self._use_alm and self.alm_manager is not None:
             log_dict.update(self.alm_manager.get_telemetry())
 
-        wandb.log(log_dict, step=epoch_name)  # ein riesen log
-
         # --- Loss competition charts -------------------------------------
         # raw_floats: strip prefix, exclude total, take abs (handles negative cse_objective)
         raw_floats: dict[str, float] = {
@@ -498,7 +585,25 @@ class TotalLoss:
         # When CSE is active, _last_weighted_losses contains cse_objective instead of
         # drag/solar, so the weighted charts naturally show cruising-speed competition.
         weighted_floats: dict[str, float] = {k: abs(v.item()) for k, v in self._last_weighted_losses.items()}
-        self._log_loss_competition_charts(raw_floats, weighted_floats, epoch_name)
+        competition_log = self._log_loss_competition_charts(raw_floats, weighted_floats, epoch_name)
+
+        # Merge competition charts into single log call to avoid WandB step corruption
+        log_dict.update(competition_log)
+
+        # --- GPU memory diagnostics (add to log_dict before single wandb.log call) -------
+        if self._memory_diagnostics and device.type == "cuda":
+            allocated_mb: float = torch.cuda.memory_allocated(device) / 1024**2
+            reserved_mb: float = torch.cuda.memory_reserved(device) / 1024**2
+            peak_mb: float = torch.cuda.max_memory_allocated(device) / 1024**2
+            free_cached_mb: float = reserved_mb - allocated_mb
+            log_dict["memory_stats/allocated_mb"] = allocated_mb
+            log_dict["memory_stats/reserved_mb"] = reserved_mb
+            log_dict["memory_stats/peak_allocated_mb"] = peak_mb
+            log_dict["memory_stats/free_cached_mb"] = free_cached_mb
+
+        # Defer the actual wandb.log call — model_baseclass.py will merge gradient metrics
+        # into this dict and fire a single wandb.log per epoch after backward passes complete.
+        self._pending_wandb_log: dict = log_dict
 
         # --- Mesh extraction & rendering ----------------------------------
         if self._use_renderer and self._renderer_manager is not None:
@@ -533,13 +638,8 @@ class TotalLoss:
         else:
             print(f"Skipping rendering at epoch {epoch_name} due to rendering frequency setting.")
 
-        # --- Gradient logging for each loss component ---------------------
-        if not skip_gradients:
-            for inst in self._active_losses.values():
-                inst.log_gradients(epoch_name)
-
-        # --- GPU memory diagnostics ---------------------------------------
-        self._log_memory_diagnostics(epoch_name, device)
+        # --- GPU memory diagnostics (print only; logging is merged in _handle_telemetry) ----
+        self._print_memory_diagnostics(epoch_name, device)
 
     def _run_cad_vis(
         self,
@@ -569,8 +669,8 @@ class TotalLoss:
             time.sleep(2)
             image_path.unlink()
 
-    def _log_memory_diagnostics(self, epoch_name: int, device: torch.device) -> None:
-        """Print and optionally log GPU memory stats (toggled by logging.yaml)."""
+    def _print_memory_diagnostics(self, epoch_name: int, device: torch.device) -> None:
+        """Print GPU memory stats to stdout (toggled by logging.yaml). WandB logging is handled in _handle_telemetry."""
         if not self._memory_diagnostics:
             return
         if device.type != "cuda":
@@ -586,16 +686,6 @@ class TotalLoss:
             f"Peak: {peak_mb:.1f} MB | "
             f"Free (cached): {free_cached_mb:.1f} MB"
         )
-        if self._use_wandb:
-            wandb.log(
-                {
-                    "memory_stats/allocated_mb": allocated_mb,
-                    "memory_stats/reserved_mb": reserved_mb,
-                    "memory_stats/peak_allocated_mb": peak_mb,
-                    "memory_stats/free_cached_mb": free_cached_mb,
-                },
-                step=epoch_name,
-            )
 
     # ------------------------------------------------------------------
     # Loss competition charts
@@ -605,9 +695,10 @@ class TotalLoss:
         raw_floats: dict[str, float],
         weighted_floats: dict[str, float],
         epoch_name: int,
-    ) -> None:
-        """Generate 6 loss-competition visualizations and log to WandB under loss_competition/.
+    ) -> dict[str, Any]:
+        """Generate 6 loss-competition visualizations and return as dict for WandB.
 
+        Returns dict with keys under loss_competition/ containing wandb.Image objects:
         (a) raw_pie          - pie chart of raw loss shares
         (b) weighted_pie     - pie chart of weighted loss shares
         (c) raw_bar          - normalized horizontal stacked bar, raw
@@ -774,7 +865,7 @@ class TotalLoss:
             competition_log["loss_competition/stacked_area"] = wandb.Image(fig_f)
             plt.close(fig_f)
 
-        wandb.log(competition_log, step=epoch_name)
+        return competition_log
 
     # ------------------------------------------------------------------
     # Orchestrator
@@ -807,7 +898,14 @@ class TotalLoss:
         # 3. Build logging dict and dispatch telemetry
         if not skip_telemetry:
             loss_log: dict[str, float] = {f"raw_losses/{name}": t.item() for name, t in raw.items()}
-            loss_log["raw_losses/total_loss"] = total.item()
+            # Add 0 entries for skipped losses
+            for cat in getattr(self, "_skipped_categories", set()):
+                for role_dict in (self._objective_losses, self._constraint_losses):
+                    if cat in role_dict:
+                        loss_log[f"raw_losses/{role_dict[cat][0]}"] = 0.0
+                if cat in self._auxiliary_losses:
+                    loss_log[f"raw_losses/{cat}"] = 0.0
+            loss_log["raw_losses/total_loss"] = sum(value for key, value in loss_log.items() if key.startswith("raw_losses/"))
             self._handle_telemetry(loss_log, epoch_name, device, model, total)
 
         if self._external_alm:

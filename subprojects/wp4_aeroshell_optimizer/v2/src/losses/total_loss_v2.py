@@ -43,6 +43,10 @@ class RawLossBundle:
     Keys are category names (the YAML block names: "aero", "bb", ...). Each category
     has exactly one active loss (the one with compute=1 in its block).
 
+    ``zero_weighted`` holds tensors for losses that are scheduled-inactive but still
+    computed (deactivate_scheduler_mode="zero_weighted"). They are logged at their real value
+    but contribute 0 to the gradient.
+
     ``side_data`` is a forward-compat slot: individual losses may write extra
     rendering/telemetry data here. TotalLossV2 does not populate or read it today;
     the caller decides whether to consume it.
@@ -51,6 +55,7 @@ class RawLossBundle:
     objectives: dict[str, torch.Tensor] = field(default_factory=dict)
     constraints: dict[str, torch.Tensor] = field(default_factory=dict)
     aux: dict[str, torch.Tensor] = field(default_factory=dict)
+    zero_weighted: dict[str, torch.Tensor] = field(default_factory=dict)
     side_data: dict[str, Any] = field(default_factory=dict)
 
 
@@ -83,6 +88,7 @@ class TotalLossV2:
 
         gi: dict[str, Any] = self.losses_config["general_info"]
         self.use_cse: bool = gi.get("CSE") == "True"
+        self._deactivate_scheduler_mode: str = gi["deactivate_scheduler_mode"]
 
         # CSE physical constants — defaults match historical hardcoded values
         cse_params: dict[str, Any] = gi.get("cse_params", {})
@@ -93,6 +99,9 @@ class TotalLossV2:
         self._cse_rolling_friction: float = float(cse_params.get("rolling_friction_coefficient", 0.006))
         self._cse_max_iter: int = int(cse_params.get("max_iter", 12))
         self._cse_tol: float = float(cse_params.get("tol", 1e-4))
+        # Last-known raw (pre-prefactor) value per CSE objective category, used when that category
+        # is scheduled out so the other objective can still run CSE with a meaningful partner value.
+        self._cse_objective_cache: dict[str, torch.Tensor] = {}
         self._cse_prefactors: dict[str, float] = gi.get("cse_prefactors", {})
 
         self._init_active_losses()
@@ -122,6 +131,8 @@ class TotalLossV2:
         self._aux_by_category: dict[str, tuple[str, Any]] = {}
         self._objective_signs: dict[str, int] = {}  # only used in manual (non-CSE) objective mode
         self._manual_weights: dict[str, float] = {}  # loss_name -> weight from YAML [compute, weight, path]
+        # category -> list of (start, end) inclusive epoch ranges where the loss is DISABLED
+        self._disabled_epochs: dict[str, list[tuple[int, int]]] = {}
 
         for category, block in losses_block.items():
             if category == "total":
@@ -211,6 +222,14 @@ class TotalLossV2:
                 self._constraint_by_category[category] = active_entry
             else:  # aux
                 self._aux_by_category[category] = active_entry
+
+            disabled_raw = block.get("_disabled_epochs", [])
+            self._disabled_epochs[category] = [(int(s), int(e)) for s, e in disabled_raw]
+
+    def _is_category_active(self, category: str, epoch: int) -> bool:
+        return all(
+            not (start <= epoch and (end == -1 or epoch <= end)) for start, end in self._disabled_epochs.get(category, [])
+        )  # Ruff mumbo jumbo instead of for loop here
 
     # ------------------------------------------------------------------
     # Mesh extraction sharing
@@ -322,30 +341,34 @@ class TotalLossV2:
         """
         self._inject_shared_meshes(model)
         bundle = RawLossBundle()
+        self._skipped_log_zeros: dict[str, float] = {}
         try:
-            for category, (_loss_name, instance) in self._objective_by_category.items():
-                sig = inspect.signature(instance.get_loss)
-                if "skip_telemetry" in sig.parameters:
-                    bundle.objectives[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
-                else:
-                    bundle.objectives[category] = instance.get_loss(model, epoch_name)
-            for category, (_loss_name, instance) in self._constraint_by_category.items():
-                sig = inspect.signature(instance.get_loss)
-                if "skip_telemetry" in sig.parameters:
-                    bundle.constraints[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
-                else:
-                    bundle.constraints[category] = instance.get_loss(model, epoch_name)
-            for category, (_loss_name, instance) in self._aux_by_category.items():
-                sig = inspect.signature(instance.get_loss)
-                if "skip_telemetry" in sig.parameters:
-                    bundle.aux[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
-                else:
-                    bundle.aux[category] = instance.get_loss(model, epoch_name)
+            for role_dict, target_dict in (
+                (self._objective_by_category, bundle.objectives),
+                (self._constraint_by_category, bundle.constraints),
+                (self._aux_by_category, bundle.aux),
+            ):
+                for category, (loss_name, instance) in role_dict.items():
+                    if not self._is_category_active(category, epoch_name):
+                        if self._deactivate_scheduler_mode == "zero_weighted":
+                            sig = inspect.signature(instance.get_loss)
+                            if "skip_telemetry" in sig.parameters:
+                                bundle.zero_weighted[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+                            else:
+                                bundle.zero_weighted[category] = instance.get_loss(model, epoch_name)
+                        else:
+                            self._skipped_log_zeros[f"raw_losses/{loss_name}"] = 0.0
+                        continue
+                    sig = inspect.signature(instance.get_loss)
+                    if "skip_telemetry" in sig.parameters:
+                        target_dict[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+                    else:
+                        target_dict[category] = instance.get_loss(model, epoch_name)
         finally:
             self._clear_shared_meshes()
         return bundle
 
-    def weight(  # noqa: PLR0912
+    def weight(  # noqa: PLR0912, PLR0915
         self,
         bundle: RawLossBundle,
         alm_manager: ALMManager | None = None,
@@ -372,45 +395,83 @@ class TotalLossV2:
         log_data: dict[str, float] = {}
         weighted_components: dict[str, torch.Tensor] = {}
 
-        # Raw logging (all active losses, by loss_name)
+        # Raw logging — active losses by loss_name, zero_weighted at real value, skipped as 0
         for category, t in bundle.objectives.items():
             log_data[f"raw_losses/{self._objective_by_category[category][0]}"] = t.item()
         for category, t in bundle.constraints.items():
             log_data[f"raw_losses/{self._constraint_by_category[category][0]}"] = t.item()
         for category, t in bundle.aux.items():
             log_data[f"raw_losses/{self._aux_by_category[category][0]}"] = t.item()
+        for category, t in bundle.zero_weighted.items():
+            lookup = (
+                self._objective_by_category.get(category)
+                or self._constraint_by_category.get(category)
+                or self._aux_by_category.get(category)
+            )
+            log_data[f"raw_losses/{lookup[0]}"] = t.item()
+            log_data[f"weighted_losses/{lookup[0]}"] = 0.0
+        log_data.update(getattr(self, "_skipped_log_zeros", {}))
 
         # --- Objectives ---------------------------------------------------
         if self.use_cse:
-            if self._cse_drag_category not in bundle.objectives:
+            if self._cse_drag_category not in self._objective_by_category:
                 raise KeyError(
-                    f"CSE active but drag category '{self._cse_drag_category}' is not an active objective. "
-                    f"Available objective categories: {list(bundle.objectives.keys())}"
+                    f"CSE active but drag category '{self._cse_drag_category}' is not configured. "
+                    f"Configured objective categories: {list(self._objective_by_category.keys())}"
                 )
-            if self._cse_solar_category not in bundle.objectives:
+            if self._cse_solar_category not in self._objective_by_category:
                 raise KeyError(
-                    f"CSE active but solar category '{self._cse_solar_category}' is not an active objective. "
-                    f"Available objective categories: {list(bundle.objectives.keys())}"
+                    f"CSE active but solar category '{self._cse_solar_category}' is not configured. "
+                    f"Configured objective categories: {list(self._objective_by_category.keys())}"
                 )
+            drag_cat = self._cse_drag_category
+            solar_cat = self._cse_solar_category
             drag_pf: float = float(self._cse_prefactors.get("drag", 1.0))
             solar_pf: float = float(self._cse_prefactors.get("solar", 1.0))
-            drag: torch.Tensor = bundle.objectives[self._cse_drag_category] * drag_pf
-            solar: torch.Tensor = bundle.objectives[self._cse_solar_category] * solar_pf
+
+            # Update cache for objectives that were computed this epoch (live or zero_weighted).
+            # Zero_weighted objectives exist in bundle.zero_weighted — cache their value but use the
+            # cached (detached) version so no gradient flows through CSE from a zero_weighted input.
+            if drag_cat not in bundle.objectives and drag_cat in bundle.zero_weighted:
+                self._cse_objective_cache[drag_cat] = bundle.zero_weighted[drag_cat].detach().clone()
+            elif drag_cat in bundle.objectives:
+                self._cse_objective_cache[drag_cat] = bundle.objectives[drag_cat].detach().clone()
+            if solar_cat not in bundle.objectives and solar_cat in bundle.zero_weighted:
+                self._cse_objective_cache[solar_cat] = bundle.zero_weighted[solar_cat].detach().clone()
+            elif solar_cat in bundle.objectives:
+                self._cse_objective_cache[solar_cat] = bundle.objectives[solar_cat].detach().clone()
+
+            # Resolve the tensor each CSE input will use.
+            # Active: live tensor (gradient flows). Inactive: cached detached value (no gradient).
+            # Cold-start fallback (cache empty, already off at epoch 0): zeros, like a weight-0 null loss.
+            drag_is_live: bool = drag_cat in bundle.objectives
+            solar_is_live: bool = solar_cat in bundle.objectives
+            drag_raw: torch.Tensor = (
+                bundle.objectives[drag_cat]
+                if drag_is_live
+                else self._cse_objective_cache.get(drag_cat, torch.zeros(1, device=self._device))
+            )
+            solar_raw: torch.Tensor = (
+                bundle.objectives[solar_cat]
+                if solar_is_live
+                else self._cse_objective_cache.get(solar_cat, torch.zeros(1, device=self._device))
+            )
 
             v_cruise: torch.Tensor = cruising_speed(
-                solar_power=solar,
-                drag_force_at_25ms=drag,
+                solar_power=solar_raw * solar_pf,
+                drag_force_at_25ms=drag_raw * drag_pf,
                 mass=self._cse_mass,
                 c_losses=self._cse_c_losses,
                 rolling_friction_coefficient=self._cse_rolling_friction,
                 max_iter=self._cse_max_iter,
                 tol=self._cse_tol,
             )
-            # Minimize -v_cruise to maximize physical speed
-            weighted_components["cse_objective"] = -v_cruise
-            # Log positive v_cruise for readability (matches legacy dashboards)
             log_data["cruising_speed_ms"] = v_cruise.item()
-            log_data["weighted_losses/cse_objective"] = v_cruise.item()
+            # Only backprop if at least one input is live; both-cached → v_cruise has no grad.
+            if drag_is_live or solar_is_live:
+                # Minimize -v_cruise to maximize physical speed
+                weighted_components["cse_objective"] = -v_cruise
+                log_data["weighted_losses/cse_objective"] = v_cruise.item()
         else:
             for category, t in bundle.objectives.items():
                 name: str = self._objective_by_category[category][0]
@@ -421,10 +482,17 @@ class TotalLossV2:
                 log_data[f"weighted_losses/{name}"] = wt.item()
 
         # --- Constraints --------------------------------------------------
+        # Derive active constraint indices relative to the full YAML-ordered constraint list,
+        # so that ALM multipliers for inactive (scheduled-out) constraints are frozen.
+        all_constraint_cats = self.constraint_category_order
+        active_constraint_cats = [cat for cat in all_constraint_cats if cat in bundle.constraints]
+        active_constraint_indices = [i for i, cat in enumerate(all_constraint_cats) if cat in bundle.constraints]
+        active_constraint_tensors = [bundle.constraints[cat] for cat in active_constraint_cats]
+
         if alm_manager is not None:
-            # Order matches alm_manager.constraint_names (both come from YAML order)
-            constraint_tensors: list[torch.Tensor] = list(bundle.constraints.values())
-            penalties: dict[str, torch.Tensor] = alm_manager.compute_penalty(constraint_tensors)
+            penalties: dict[str, torch.Tensor] = alm_manager.compute_penalty(
+                active_constraint_tensors, active_indices=active_constraint_indices
+            )
             for key, t in penalties.items():
                 weighted_components[key] = t
                 log_data[f"weighted_losses/{key}"] = t.item()
@@ -449,7 +517,11 @@ class TotalLossV2:
             scalar: torch.Tensor = sum(weighted_components.values())  # type: ignore[assignment]
         else:
             scalar = torch.tensor(0.0, device=self._device)
-        log_data["raw_losses/total_loss"] = scalar.item()
+
+        raw_total = 0.0
+        for source in (bundle.objectives, bundle.constraints, bundle.aux, bundle.zero_weighted):
+            raw_total += sum(float(t.detach().item()) for t in source.values())
+        log_data["raw_losses/total_loss"] = raw_total
 
         return WeightedLossResult(
             scalar=scalar,

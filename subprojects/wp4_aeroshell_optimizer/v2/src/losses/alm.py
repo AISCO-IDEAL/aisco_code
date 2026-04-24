@@ -119,37 +119,59 @@ class ALMManager:
             return values[:n]
         return [float(val)] * n
 
-    def compute_penalty(self, constraints: list[torch.Tensor]) -> dict[str, torch.Tensor]:
+    def compute_penalty(
+        self, constraints: list[torch.Tensor], active_indices: list[int] | None = None
+    ) -> dict[str, torch.Tensor]:
         """
         Compute the ALM penalty independently per constraint without updating state.
         Formula: lambda * c + 0.5 * mu * c^2
+
+        Args:
+            constraints: One tensor per active constraint, in the order of active_indices.
+            active_indices: Indices into self.constraint_names that are currently active.
+                If None, all constraints are assumed active and constraints must have length self.nc.
         """
+        indices = active_indices if active_indices is not None else list(range(self.nc))
         penalties: dict[str, torch.Tensor] = {}
-        for i, cname in enumerate(self.constraint_names):
-            ci: torch.Tensor = constraints[i]
+        for j, i in enumerate(indices):
+            cname = self.constraint_names[i]
+            ci: torch.Tensor = constraints[j]
             lam_i: torch.Tensor = self.lamdas[i].detach().clone()
             mu_i: torch.Tensor = self.mus[i].detach().clone()
             penalties[f"alm_{cname}"] = lam_i * ci + 0.5 * mu_i * ci**2
         return penalties
 
-    def update_multipliers(self, constraints: list[torch.Tensor]) -> None:
+    def update_multipliers(self, constraints: list[torch.Tensor], active_indices: list[int] | None = None) -> None:
         """
         Update the ALM multipliers (lambda, mu, nu) based on the supplied constraints.
+        Multipliers for indices not in active_indices are frozen (not updated).
         Constraints should be detached before passing.
+
+        Args:
+            constraints: One tensor per active constraint, in the order of active_indices.
+            active_indices: Indices into self.constraint_names to update.
+                If None, all constraints are updated and constraints must have length self.nc.
         """
+        indices = active_indices if active_indices is not None else list(range(self.nc))
+        if not indices:
+            return
         c_for_alm: torch.Tensor = torch.stack([c.detach() for c in constraints])
-        self.lamdas, self.mus, self.nus = weights_alm(
-            lamdas=self.lamdas,
-            mus=self.mus,
-            nus=self.nus,
-            alphas=self.alphas,
+        new_lam, new_mu, new_nu = weights_alm(
+            lamdas=self.lamdas[indices],
+            mus=self.mus[indices],
+            nus=self.nus[indices],
+            alphas=self.alphas[indices],
             gamma=self.gamma,
             gamma_aggressive=self.gamma_aggressive,
             constrained_losses=c_for_alm,
-            thresholds=self.thresholds_tensor,
+            thresholds=self.thresholds_tensor[indices] if self.thresholds_tensor is not None else None,
             use_alm_aggressive=self.use_alm_aggressive,
             alm_aggressive_capu=self.alm_aggressive_capu,
         )
+        for j, i in enumerate(indices):
+            self.lamdas[i] = new_lam[j]
+            self.mus[i] = new_mu[j]
+            self.nus[i] = new_nu[j]
 
     def get_telemetry(self) -> dict[str, float]:
         """Return a dictionary of the current multipliers suitable for logging."""
