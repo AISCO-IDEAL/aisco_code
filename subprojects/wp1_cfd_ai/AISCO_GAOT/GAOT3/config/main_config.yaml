@@ -7,7 +7,7 @@
 ##########################################################################
 
 setup:
-    run_local: false
+    run_local: true
     name: "euler_field_cp_full"
     id: "_RUN_ID_"
     seed: 42
@@ -29,7 +29,7 @@ setup:
     wandb_mode: online
     wandb_tags: ["field", "pressure", "euler", "multi_head", "gaot", "cp_full", "oom_investigation"]
     wandb_watch_model: false
-    wandb_notes: "OOM investigation on CP-full dataset — reduce batch_size/model if needed"
+    wandb_notes: "Default Note"
 
     test_during_training: false
 
