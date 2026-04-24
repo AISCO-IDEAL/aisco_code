@@ -180,6 +180,10 @@ class WIREV6(BaseModel):
             "dtype": str(torch_dtype),
         }
 
+        raise NotImplementedError(
+            "This model version is not ready yet. It is not stable due to yet unknown reasons and WIP. Stay tuned for WIREV6!"
+        )
+
     @property
     def bbox_center_tensor(self) -> torch.Tensor:
         return cast(torch.Tensor, self.bbox_center)

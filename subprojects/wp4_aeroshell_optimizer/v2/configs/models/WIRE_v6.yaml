@@ -17,10 +17,10 @@
 #  - Output: multi-scale geometry representation (bunny + car aerodynamics)
 
 in_features: 3
-hidden_features: 256
-hidden_layers: 5
+hidden_features: 512
+hidden_layers: 4
 out_features: 1
-skip_layer_idx: 2
+skip_layer_idx: 1
 
 # Fourier feature bands (new in V6)
 # Band k resolves features at spatial scale 2/2^k in normalised space.
@@ -32,27 +32,22 @@ skip_layer_idx: 2
 #   - Band 4: 312mm
 #   - Band 5: 156mm
 # Increase to 7-8 for finer geometry, but trades off parameter count.
-num_fourier_bands: 3
+num_fourier_bands: 2
 
-first_omega_min: 10.0
-first_omega_max: 30.0
-first_scale_min: 5.0
-first_scale_max: 10.0
+# First layer: Acts as a wide-band feature extractor.
+first_omega_min: 1.0
+first_omega_max: 20.0
+first_scale_min: 1.25
+first_scale_max: 50
 
-# First layer: V4 range. Acts as a wide-band feature extractor.
-first_omega_min: 10.0
-first_omega_max: 30.0
-first_scale_min: 5.0
-first_scale_max: 10.0
-
-# Hidden layers: V4-compatible range [1, 5] applied coarse-to-fine per layer.
+# Hidden layers: Frequencies applied coarse-to-fine per layer.
 # Layer j gets a log-uniform sub-band; earlier layers handle lower frequencies.
 # omega/scale are trainable — with the log floor at 0, both stay ≥ 1 during
 # optimisation so neither collapses (see GaborLayerV5.forward clamp).
 hidden_omega_min: 1.0
-hidden_omega_max: 5.0
+hidden_omega_max: 8.0
 hidden_scale_min: 1.0
-hidden_scale_max: 10.0
+hidden_scale_max: 35.0
 
 train_omega: False
 train_scale: False

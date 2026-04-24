@@ -24,13 +24,13 @@ hidden_layers: 4
 out_features: 1
 skip_layer_idx: 1
 
-# First layer: V4 range. Acts as a wide-band feature extractor.
+# First layer: Acts as a wide-band feature extractor.
 first_omega_min: 1.0
 first_omega_max: 20.0
 first_scale_min: 1.25
 first_scale_max: 50
 
-# Hidden layers: V4-compatible range [1, 5] applied coarse-to-fine per layer.
+# Hidden layers: Frequencies applied coarse-to-fine per layer.
 # Layer j gets a log-uniform sub-band; earlier layers handle lower frequencies.
 # omega/scale are trainable — with the log floor at 0, both stay ≥ 1 during
 # optimisation so neither collapses (see GaborLayerV5.forward clamp).

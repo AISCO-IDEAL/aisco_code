@@ -66,9 +66,9 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   aero:
     _role: objective
     _sign: minimize
-    _disabled_epochs: [[0,50]]
-    null_loss_aero: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+    _disabled_epochs: [[0,100]]
+    null_loss_aero: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
   bb:
     _role: constraint
@@ -95,7 +95,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   connectedness:
     _role: constraint
-    #also provides a key "warmup_epochs in its own config below"
+    #also provides a key "warmup_epochs" in its own config below
     _disabled_epochs: []
     null_loss_connectedness: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     connectedness_v1: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
@@ -113,7 +113,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   solar:
     _role: objective
     _sign: maximize
-    _disabled_epochs:  [[0,50]]
+    _disabled_epochs:  [[0,100]]
     solar_v3B_2: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
     solar_v4: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
     solar_v5: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
@@ -128,7 +128,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
-    artifact_every: 10  # save model+mesh checkpoint artifact to wandb every N epochs
+    artifact_every: 10  # NOT WORKING PROPERLY IT SEEMS: save model+mesh checkpoint artifact to wandb every N epochs
 
 get_points_params: # used in eikonal and smoothness loss  #  parent_loss.py: self.losses_config["get_points_params"]["num_points"] and ["bbox_size"]
   num_points: 1000  #  parent_loss.py
