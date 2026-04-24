@@ -262,7 +262,7 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
         ply_verts: torch.Tensor = shape_params["ply_verts"]
         ply_faces: torch.Tensor = shape_params["ply_faces"]
         bbox_extent: float = float(shape_params["bbox_extent"])
-        noise_sigma = 0.05 * bbox_extent
+        noise_sigma = float(shape_params.get("surface_noise_sigma_factor", 0.05)) * bbox_extent
 
         n_domain = batch_size // 2
         n_surface = batch_size - n_domain

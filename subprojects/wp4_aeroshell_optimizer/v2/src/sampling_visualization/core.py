@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import torch
@@ -69,6 +69,7 @@ class SamplingVisualizer:
         secondary_points_mm: torch.Tensor | np.ndarray | None = None,
         points_colour: tuple[int, int, int] = _POINT_COLOUR_GREEN,
         secondary_colour: tuple[int, int, int] = _POINT_COLOUR_WHITE,
+        mesh_display_mode: Literal["vertices", "face_centers"] = "vertices",
         max_points: int = 8192,
     ) -> Path | None:
         """Write a combined PLY file with coloured mesh and sampled points.
@@ -85,6 +86,12 @@ class SamplingVisualizer:
                 grey).  ``None`` to omit.
             points_colour: RGB tuple for primary points (default forest green).
             secondary_colour: RGB tuple for secondary points (default light grey).
+            mesh_display_mode: ``"vertices"`` renders blue dots at each mesh vertex
+                (sparse on flat surfaces, dense at curved areas).
+                ``"face_centers"`` renders one blue dot at the centroid of each
+                triangle face, giving uniform coverage regardless of vertex density.
+                The companion ``*_mesh_only.ply`` always contains the full triangle
+                mesh regardless of this setting.
             max_points: Cap on number of points written per group.  Random
                 subsampling is applied when the input exceeds this limit.
 
@@ -115,23 +122,33 @@ class SamplingVisualizer:
         tri_mesh: o3d.geometry.TriangleMesh | None = None
 
         # --- Mesh component (dark blue) ---
+        # The point-cloud representation of the mesh (blue dots) is computed
+        # purely in numpy — no open3d needed for the dot positions.
+        # open3d is only needed for writing the *_mesh_only.ply companion file.
         has_mesh = mesh_verts is not None and mesh_faces is not None
         if has_mesh:
+            verts_arr = np.asarray(mesh_verts, dtype=np.float64)
+            faces_arr = np.asarray(mesh_faces, dtype=np.int64)
+            if mesh_display_mode == "face_centers":
+                # One dot per triangle at the centroid — uniform surface coverage.
+                mesh_display_pts = (verts_arr[faces_arr[:, 0]] + verts_arr[faces_arr[:, 1]] + verts_arr[faces_arr[:, 2]]) / 3.0
+            else:  # "vertices"
+                mesh_display_pts = verts_arr
+            mesh_colour = np.tile(
+                np.array(_MESH_COLOUR_DARK_BLUE, dtype=np.float64) / 255.0,
+                (mesh_display_pts.shape[0], 1),
+            )
+            all_verts.append(mesh_display_pts)
+            all_colours.append(mesh_colour)
+            # Build triangle mesh for *_mesh_only.ply (always triangle mesh, best-effort)
             try:
                 tri_mesh = _build_o3d_mesh(mesh_verts, mesh_faces)
-                mesh_verts_np = np.asarray(tri_mesh.vertices, dtype=np.float64)
-                mesh_colour = np.tile(
-                    np.array(_MESH_COLOUR_DARK_BLUE, dtype=np.float64) / 255.0,
-                    (mesh_verts_np.shape[0], 1),
-                )
-                all_verts.append(mesh_verts_np)
-                all_colours.append(mesh_colour)
-            except Exception as exc:  # mesh build failure is non-fatal
+            except Exception as exc:  # mesh build failure only affects *_mesh_only.ply
                 warnings.warn(
-                    f"[SamplingVisualizer] Mesh build failed for '{name}': {exc}. Writing points-only PLY.",
+                    f"[SamplingVisualizer] Mesh build failed for '{name}': {exc}. Skipping *_mesh_only.ply.",
                     stacklevel=2,
                 )
-                has_mesh = False
+                tri_mesh = None
 
         # --- Point component ---
         pt_colour = np.tile(

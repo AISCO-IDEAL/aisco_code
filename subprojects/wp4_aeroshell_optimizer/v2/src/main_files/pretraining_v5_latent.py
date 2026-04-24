@@ -3,7 +3,7 @@
 
 Usage (from AISCO_code repo root with aisco_env active):
 
-    python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v5_latent.py --wandb --wandb-project AISCO-latent-pretraining --vis-sampling #recommended
+    python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v5_latent.py --wandb --vis-sampling #recommended
     python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v5_latent.py \\
         --config pretraining_latent_config.yaml \\
         --epochs 2000 \\

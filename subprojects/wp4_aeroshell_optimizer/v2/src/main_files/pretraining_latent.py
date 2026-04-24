@@ -28,20 +28,26 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 impo
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization import SamplingVisualizer
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.core import _POINT_COLOUR_RED
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
 
 
-def _load_ply_tensors(ply_path: str, device: str) -> tuple[Tensor, Tensor, float]:
+def _load_ply_tensors(ply_path: str, device: str, ply_scale: float = 1.0) -> tuple[Tensor, Tensor, float]:
     """Load a PLY mesh and return (verts, faces, bbox_extent).
 
     Args:
         ply_path: Absolute path to the PLY file.
         device: Target device string.
+        ply_scale: Multiplicative scale applied to raw vertex coordinates.  Use
+            ``1000.0`` when the PLY is stored in metres and the training
+            coordinate system is millimetres (the AISCO default).  Use ``1.0``
+            when the PLY is already in mm.
 
     Returns:
         Tuple of (ply_verts, ply_faces, bbox_extent) where bbox_extent is the
-        diagonal of the mesh bounding box in mm.
+        diagonal of the mesh bounding box **after scaling** (i.e. in mm when
+        ``ply_scale=1000.0``).
     """
     raw_mesh = trimesh.load(ply_path)
     if not isinstance(raw_mesh, trimesh.Trimesh):
@@ -49,7 +55,7 @@ def _load_ply_tensors(ply_path: str, device: str) -> tuple[Tensor, Tensor, float
             f"Expected a Trimesh object when loading '{ply_path}', got {type(raw_mesh)}. "
             "Ensure the PLY file contains a single solid mesh."
         )
-    verts_np = np.array(raw_mesh.vertices, dtype="float32")
+    verts_np = np.array(raw_mesh.vertices, dtype="float32") * ply_scale
     faces_np = np.array(raw_mesh.faces, dtype="int64")
     bbox_diag = float(np.linalg.norm(verts_np.max(axis=0) - verts_np.min(axis=0)))
     ply_verts = torch.tensor(verts_np, device=device)
@@ -79,7 +85,13 @@ def _build_shape_params(
         return {"side_length": float(shape["side_length"])}
     if shape_type == "ply":
         ply_verts, ply_faces, bbox_extent = ply_cache[slot_idx]
-        return {"ply_verts": ply_verts, "ply_faces": ply_faces, "bbox_extent": bbox_extent}
+        sigma_factor: float = float(shape.get("surface_noise_sigma_factor", 0.05))
+        return {
+            "ply_verts": ply_verts,
+            "ply_faces": ply_faces,
+            "bbox_extent": bbox_extent,
+            "surface_noise_sigma_factor": sigma_factor,
+        }
     raise ValueError(
         f"Unknown shape_type '{shape_type}' in latent_population slot {slot_idx}. Valid values: 'sphere', 'cube', 'ply'."
     )
@@ -200,8 +212,9 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     ply_cache: dict[int, tuple[Tensor, Tensor, float]] = {}
     for slot_idx, shape in enumerate(shapes):
         if shape["shape_type"] == "ply":
-            ply_cache[slot_idx] = _load_ply_tensors(str(shape["ply_path"]), device)
-            print(f"[latent_pretrain] Slot {slot_idx}: loaded PLY '{shape['ply_path']}'")
+            ply_scale: float = float(shape.get("ply_scale", 1.0))
+            ply_cache[slot_idx] = _load_ply_tensors(str(shape["ply_path"]), device, ply_scale)
+            print(f"[latent_pretrain] Slot {slot_idx}: loaded PLY '{shape['ply_path']}' scale={ply_scale}")
 
     # --- Build unit-circle Z ---
     z_dim: int = model.get_model_info_dict()["z_dim"]
@@ -215,6 +228,9 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     batch_size_per_shape: int = int(loop_cfg["batch_size_per_shape"])
     print_interval: int = int(loop_cfg["print_interval"])
     eikonal_weight: float = float(loop_cfg["eikonal_weight"])
+    # 0 = static surface cache (DeepSDF-style: sample once, reuse forever)
+    # N > 0 = refresh surface cache every N epochs
+    surface_resample_cadence: int = int(loop_cfg.get("surface_resample_cadence", 0))
 
     # --- Output / visualisation config (read once, shared between loop and post-training) ---
     output_cfg: dict[str, Any] = config.get("output", {})
@@ -223,15 +239,36 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     vis_mesh_res: int = int(output_cfg.get("mesh_resolution", 64))
     vis_mesh_box: int = int(output_cfg.get("mesh_box_mm", 2000))
     vis_eikonal_pts: bool = bool(output_cfg.get("vis_eikonal_pts", True))
+    # "vertices": blue dot per mesh vertex (sparse on flat surfaces)
+    # "face_centers": blue dot per triangle centroid (uniform coverage)
+    vis_mesh_display_mode: str = output_cfg.get("vis_mesh_display_mode", "vertices")
 
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = CosineAnnealingLR(optimizer, T_max=max(epochs, 1))
     mse_fn = torch.nn.MSELoss()
 
+    # --- Build initial surface sample cache (near-surface Gaussian-perturbed pts for MSE) ---
+    # Split convention (matches _sample_points_for_shape): domain = pts[:n_dom], surface = pts[n_dom:]
+    n_dom: int = batch_size_per_shape // 2
+    n_surf: int = batch_size_per_shape - n_dom
+    resample_label = (
+        "static (DeepSDF-style: sampled once, reused all epochs)"
+        if surface_resample_cadence == 0
+        else f"refreshed every {surface_resample_cadence} epochs"
+    )
+    print(
+        f"[latent_pretrain] Surface cache: {resample_label}. MSE uses surface cache, eikonal uses fresh domain pts.", flush=True
+    )
+    cached_surface: list[tuple[Tensor, Tensor]] = []
+    for slot_idx, shape in enumerate(shapes):
+        shape_params = _build_shape_params(shape, ply_cache, slot_idx)
+        pts_i, gt_i = _sample_points_for_shape(shape["shape_type"], shape_params, batch_size_per_shape, device)
+        cached_surface.append((pts_i[n_dom:], gt_i[n_dom:]))  # surface = second half
+
     print(
         f"[latent_pretrain] Starting: N={num_shapes} shapes, epochs={epochs}, "
-        f"lr={lr}, batch_size_per_shape={batch_size_per_shape}, device={device}",
+        f"lr={lr}, batch_size_per_shape={batch_size_per_shape} (n_surf={n_surf}, n_dom={n_dom}), device={device}",
         flush=True,
     )
 
@@ -239,6 +276,9 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     epoch_vis: SamplingVisualizer | None = None
     if vis_sampling and vis_cadence > 0:
         epoch_vis = SamplingVisualizer(output_dir=vis_dir, is_static=False)
+        epoch_vis.write_legend(
+            _make_vis_legend(config_hash, vis_cadence, vis_eikonal_pts, surface_resample_cadence, vis_mesh_display_mode)
+        )
         print(
             f"[latent_pretrain] Per-epoch vis enabled: cadence={vis_cadence}, mesh_res={vis_mesh_res}, mesh_box=±{vis_mesh_box} mm → {vis_dir}"
         )
@@ -248,31 +288,51 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         model.train()
         optimizer.zero_grad()
 
-        # Assemble parallel batch: all N shapes in one forward pass
-        all_pts: list[Tensor] = []
-        all_gt: list[Tensor] = []
-        all_z: list[Tensor] = []
+        # Optionally refresh surface cache at the requested cadence
+        if surface_resample_cadence > 0 and epoch > 0 and epoch % surface_resample_cadence == 0:
+            for slot_idx, shape in enumerate(shapes):
+                shape_params = _build_shape_params(shape, ply_cache, slot_idx)
+                pts_i, gt_i = _sample_points_for_shape(shape["shape_type"], shape_params, batch_size_per_shape, device)
+                cached_surface[slot_idx] = (pts_i[n_dom:], gt_i[n_dom:])
+
+        # Sample fresh domain pts (uniform bbox) for eikonal — every epoch
+        all_domain_pts: list[Tensor] = []
+        all_domain_z: list[Tensor] = []
+        all_surface_pts: list[Tensor] = []
+        all_surface_gt: list[Tensor] = []
+        all_surface_z: list[Tensor] = []
 
         for slot_idx, shape in enumerate(shapes):
             shape_params = _build_shape_params(shape, ply_cache, slot_idx)
-            pts_i, gt_i = _sample_points_for_shape(shape["shape_type"], shape_params, batch_size_per_shape, device)
-            all_pts.append(pts_i)
-            all_gt.append(gt_i)
-            all_z.append(Z[slot_idx].unsqueeze(0).expand(batch_size_per_shape, -1))
+            # Domain pts: always fresh (we discard the gt for domain — eikonal does not need it)
+            pts_i, _ = _sample_points_for_shape(shape["shape_type"], shape_params, batch_size_per_shape, device)
+            domain_pts_i = pts_i[:n_dom]
+            # Surface pts: from cache (or refreshed above)
+            surf_pts_i, surf_gt_i = cached_surface[slot_idx]
+            all_domain_pts.append(domain_pts_i)
+            all_domain_z.append(Z[slot_idx].unsqueeze(0).expand(n_dom, -1))
+            all_surface_pts.append(surf_pts_i)
+            all_surface_gt.append(surf_gt_i)
+            all_surface_z.append(Z[slot_idx].unsqueeze(0).expand(n_surf, -1))
 
-        pts = torch.cat(all_pts, dim=0)  # (N*B, 3)
-        gt = torch.cat(all_gt, dim=0)  # (N*B,)
-        z_expanded = torch.cat(all_z, dim=0)  # (N*B, z_dim)
+        # Concatenate: surface first, then domain (so pred[:N*n_surf] = surface predictions)
+        surface_pts = torch.cat(all_surface_pts, dim=0)  # (N*n_surf, 3)
+        surface_gt = torch.cat(all_surface_gt, dim=0)  # (N*n_surf,)
+        surface_z = torch.cat(all_surface_z, dim=0)  # (N*n_surf, z_dim)
+        domain_pts = torch.cat(all_domain_pts, dim=0)  # (N*n_dom, 3)
+        domain_z = torch.cat(all_domain_z, dim=0)  # (N*n_dom, z_dim)
 
-        # Single parallel forward pass
-        pred = model(pts, z=z_expanded).squeeze()  # (N*B,)
+        all_pts_combined = torch.cat([surface_pts, domain_pts], dim=0)
+        all_z_combined = torch.cat([surface_z, domain_z], dim=0)
+
+        # Single parallel forward pass (surface + domain together for NaN detection)
+        pred = model(all_pts_combined, z=all_z_combined).squeeze()  # (N*(n_surf+n_dom),)
+        pred_surface = pred[: num_shapes * n_surf]  # surface slice for MSE
 
         # Early NaN check — exit before trying autograd.grad on a broken graph
         if not math.isfinite(pred.sum().item() if pred.numel() > 0 else 0.0):
             nan_slots = [
-                i
-                for i in range(num_shapes)
-                if not math.isfinite(pred[i * batch_size_per_shape : (i + 1) * batch_size_per_shape].sum().item())
+                i for i in range(num_shapes) if not math.isfinite(pred_surface[i * n_surf : (i + 1) * n_surf].sum().item())
             ]
             print(
                 f"[latent_pretrain] NaN/Inf in model output at epoch {epoch}, "
@@ -284,20 +344,21 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             )
             sys.exit(1)
 
-        # Per-slot MSE (normalised to metres to avoid scale issues)
+        # Per-slot MSE on near-surface points only (normalised to metres)
         slot_losses: list[float] = []
         total_mse = torch.zeros(1, device=device).squeeze()
         for slot_idx in range(num_shapes):
-            start = slot_idx * batch_size_per_shape
-            end = start + batch_size_per_shape
+            start = slot_idx * n_surf
+            end = start + n_surf
             slot_mse = mse_fn(
-                pred[start:end] / 1000.0,
-                gt[start:end] / 1000.0,
+                pred_surface[start:end] / 1000.0,
+                surface_gt[start:end] / 1000.0,
             )
             slot_losses.append(slot_mse.item())
             total_mse = total_mse + slot_mse
 
-        eikonal = _compute_eikonal_latent(model, pts, z_expanded, device)
+        # Eikonal on domain pts only (uniform bbox — enforces |∇SDF|=1 in bulk of space)
+        eikonal = _compute_eikonal_latent(model, domain_pts, domain_z, device)
         total_loss = total_mse / num_shapes + eikonal_weight * eikonal
 
         # NaN guard — halt before writing checkpoint
@@ -327,13 +388,14 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 model=model,
                 Z=Z,
                 shapes=shapes,
-                ply_cache=ply_cache,
+                cached_surface=cached_surface,
+                domain_pts_per_slot=all_domain_pts,
                 epoch=epoch,
                 mesh_res=vis_mesh_res,
                 mesh_box=vis_mesh_box,
                 device=device,
                 vis=epoch_vis,
-                batch_size_per_shape=batch_size_per_shape,
+                mesh_display_mode=vis_mesh_display_mode,
                 show_domain_pts=vis_eikonal_pts,
             )
             model.train()  # restore after eval inside snapshot
@@ -386,11 +448,13 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                     "Skipping mesh output — checkpoint is still valid."
                 )
 
-    # --- Optional sampling visualization (a): target mesh + representative sample ---
+    # --- Optional sampling visualization (a): target mesh + the actual MSE surface cache ---
     if vis_sampling:
         if epoch_vis is None:  # no per-epoch vis created yet (vis_cadence == 0)
             static_vis = SamplingVisualizer(output_dir=vis_dir, is_static=False)
-            static_vis.write_legend(_make_vis_legend(config_hash, vis_cadence, vis_eikonal_pts))
+            static_vis.write_legend(
+                _make_vis_legend(config_hash, vis_cadence, vis_eikonal_pts, surface_resample_cadence, vis_mesh_display_mode)
+            )
         else:
             static_vis = epoch_vis  # re-use same dir and legend already written
         _visualize_pretraining_sampling(
@@ -398,7 +462,9 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             ply_cache=ply_cache,
             device=device,
             vis=static_vis,
+            cached_surface=cached_surface,
             batch_size_per_shape=batch_size_per_shape,
+            mesh_display_mode=vis_mesh_display_mode,
             show_domain_pts=vis_eikonal_pts,
         )
 
@@ -410,30 +476,39 @@ def _visualize_pretraining_sampling(
     ply_cache: dict[int, tuple[Tensor, Tensor, float]],
     device: str,
     vis: SamplingVisualizer,
+    cached_surface: list[tuple[Tensor, Tensor]],
     batch_size_per_shape: int,
     *,
+    mesh_display_mode: str = "vertices",
     show_domain_pts: bool = True,
 ) -> None:
     """Write target-shape visualizations for each pretraining slot after training.
 
-    For each slot, produces a PLY file showing:
-    - The **target mesh** (dark blue) — original PLY vertices, or absent for sphere/cube.
-    - The **surface sample points** (forest green) — surface-concentrated sub-population.
-    - The **domain sample points** (light grey) — uniform bounding-box sub-population,
+    Shows the ACTUAL points used during training, not a fresh re-sample:
+    - **Target mesh** (dark blue, vertices or face-centers per ``mesh_display_mode``).
+    - **Surface cache pts** (forest green) — the exact near-surface pts used for MSE.
+    - **Fresh domain pts** (light grey) — representative domain sample for context;
       only written when ``show_domain_pts=True``.
     """
     print(f"[latent_pretrain] Writing target sampling visualization → {vis.output_dir}")
+    n_dom = batch_size_per_shape // 2
 
     for slot_idx, shape in enumerate(shapes):
         slot_name = shape.get("name", str(slot_idx))
         shape_type: str = shape["shape_type"]
-        shape_params = _build_shape_params(shape, ply_cache, slot_idx)
 
-        try:
-            surface_pts, domain_pts = _vis_split_sample(shape_type, shape_params, batch_size_per_shape, device)
-        except Exception as exc:  # visualization is non-critical
-            print(f"[latent_pretrain] WARNING: sampling failed for slot {slot_idx} ({slot_name}): {exc}")
-            continue
+        # Surface pts from the actual training cache (green)
+        surf_pts_i, _ = cached_surface[slot_idx]
+
+        # Domain pts: sample once for visualization (grey) — not cached, representative only
+        domain_pts_i: Tensor | None = None
+        if show_domain_pts:
+            try:
+                shape_params = _build_shape_params(shape, ply_cache, slot_idx)
+                pts_i, _ = _sample_points_for_shape(shape_type, shape_params, batch_size_per_shape, device)
+                domain_pts_i = pts_i[:n_dom]
+            except Exception as exc:
+                print(f"[latent_pretrain] WARNING: domain sampling failed for slot {slot_idx} ({slot_name}): {exc}")
 
         # --- Target mesh (PLY slots only) ---
         mesh_verts: np.ndarray | None = None
@@ -445,11 +520,12 @@ def _visualize_pretraining_sampling(
 
         try:
             vis.save_snapshot(
-                points_mm=surface_pts,
+                points_mm=surf_pts_i,
                 mesh_verts=mesh_verts,
                 mesh_faces=mesh_faces,
                 name=f"slot{slot_idx:02d}_{slot_name}_{shape_type}_target",
-                secondary_points_mm=domain_pts if show_domain_pts else None,
+                secondary_points_mm=domain_pts_i,
+                mesh_display_mode=mesh_display_mode,
             )
         except Exception as exc:  # visualization is non-critical
             print(f"[latent_pretrain] WARNING: visualization failed for slot {slot_idx} ({slot_name}): {exc}")
@@ -494,36 +570,34 @@ def _write_epoch_vis_snapshot(
     model: SupportsLatentConcat,
     Z: Tensor,
     shapes: list[dict[str, Any]],
-    ply_cache: dict[int, tuple[Tensor, Tensor, float]],
+    cached_surface: list[tuple[Tensor, Tensor]],
+    domain_pts_per_slot: list[Tensor],
     epoch: int,
     mesh_res: int,
     mesh_box: int,
     device: str,
     vis: SamplingVisualizer,
-    batch_size_per_shape: int,
     *,
+    mesh_display_mode: str = "vertices",
     show_domain_pts: bool = True,
 ) -> None:
-    """Write one epoch snapshot: current trained mesh + current loss sample points.
+    """Write one epoch snapshot: current trained mesh + the ACTUAL training point sets.
 
-    For each slot, extracts the current SDF mesh via marching cubes and pairs it
-    with a fresh sample batch split by sub-population:
-    - **Forest green** (primary): surface-concentrated samples (quality-of-fit region).
-    - **Light grey** (secondary, optional): domain / bounding-box uniform samples
-      that also feed the eikonal term; omitted when ``show_domain_pts=False``.
+    Uses the exact same point sets that were passed to the loss functions at this
+    epoch — not a re-sample.  This gives a faithful view of what the model saw.
+
+    - **Forest green**: surface cache pts (near-surface perturbed, used for MSE).
+    - **Red** (optional): domain pts from this epoch (used for eikonal). Shows the
+      exact fresh-sampled uniform bbox points that were passed to eikonal loss.
+    - **Dark blue**: current trained SDF mesh (marching cubes).
 
     The caller must call ``model.train()`` after this function returns.
     """
     for slot_idx, shape in enumerate(shapes):
         slot_name = shape.get("name", str(slot_idx))
-        shape_type: str = shape["shape_type"]
-        shape_params = _build_shape_params(shape, ply_cache, slot_idx)
 
-        try:
-            surface_pts, domain_pts = _vis_split_sample(shape_type, shape_params, batch_size_per_shape, device)
-        except Exception as exc:
-            print(f"[latent_pretrain] WARNING: epoch vis sampling failed for slot {slot_idx} ({slot_name}): {exc}")
-            continue
+        surf_pts_i, _ = cached_surface[slot_idx]
+        domain_pts_i = domain_pts_per_slot[slot_idx] if show_domain_pts else None
 
         mesh_arrays = _extract_current_mesh_arrays(model, Z[slot_idx], mesh_res, mesh_box, device)
         mesh_verts_ep = mesh_arrays[0] if mesh_arrays is not None else None
@@ -531,107 +605,128 @@ def _write_epoch_vis_snapshot(
 
         try:
             vis.save_snapshot(
-                points_mm=surface_pts,
+                points_mm=surf_pts_i,
                 mesh_verts=mesh_verts_ep,
                 mesh_faces=mesh_faces_ep,
                 name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
-                secondary_points_mm=domain_pts if show_domain_pts else None,
+                secondary_points_mm=domain_pts_i,
+                points_colour=_POINT_COLOUR_RED,
+                mesh_display_mode=mesh_display_mode,
             )
         except Exception as exc:
             print(f"[latent_pretrain] WARNING: epoch vis save failed for slot {slot_idx} ({slot_name}): {exc}")
 
 
-def _vis_split_sample(
-    shape_type: str,
-    shape_params: dict[str, Any],
-    batch_size: int,
-    device: str,
-) -> tuple[Tensor, Tensor]:
-    """Sample for visualization, returning ``(surface_pts, domain_pts)`` separately.
-
-    Calls ``_sample_points_for_shape`` and splits by the known sub-population
-    boundary: the first ``n_domain`` rows are always uniform domain points; the
-    remainder are surface-concentrated (surface ± jitter for PLY, face-uniform +
-    near-surface for sphere/cube).
-
-    Returns:
-        ``(surface_pts, domain_pts)`` each as ``(K, 3)`` Tensor.
-    """
-    pts, _ = _sample_points_for_shape(shape_type, shape_params, batch_size, device)
-    n_domain = batch_size // 2 if shape_type == "ply" else int(batch_size * 0.50)
-    domain_pts = pts[:n_domain]
-    surface_pts = pts[n_domain:]
-    return surface_pts, domain_pts
-
-
-def _make_vis_legend(config_hash: str, vis_cadence: int, vis_eikonal_pts: bool) -> str:
+def _make_vis_legend(
+    config_hash: str,
+    vis_cadence: int,
+    vis_eikonal_pts: bool,
+    surface_resample_cadence: int,
+    vis_mesh_display_mode: str,
+) -> str:
     """Build the legend.txt content for a sampling_vis directory."""
     eikonal_note = (
-        "  Light grey (220, 220, 220): Domain sample points (bounding-box uniform, 50 % of batch).\n"
-        "      Contribute to BOTH the MSE loss and the eikonal loss.\n"
-        "      Shown because vis_eikonal_pts: true in config."
+        "  Light grey (220, 220, 220): Domain sample points (bounding-box uniform, ~50% of batch).\n"
+        "      Used ONLY for the eikonal loss (|∇SDF| = 1 in bulk of space).\n"
+        "      NOT used for the MSE loss.\n"
+        "      Shown in BOTH target and epoch PLYs because vis_eikonal_pts: true."
         if vis_eikonal_pts
         else "  Domain points (light grey): HIDDEN because vis_eikonal_pts: false in config."
     )
     cadence_note = f"every {vis_cadence} epochs" if vis_cadence > 0 else "disabled (vis_cadence: 0)"
+    surface_note = (
+        "static for all epochs (DeepSDF-style: sampled once at training start, reused every epoch)."
+        "\n      Config: training_loop.surface_resample_cadence: 0"
+        if surface_resample_cadence == 0
+        else f"refreshed every {surface_resample_cadence} epochs.\n      Config: training_loop.surface_resample_cadence: {surface_resample_cadence}"
+    )
+    mesh_note = (
+        "one dot per MESH VERTEX (sparse on flat surfaces, dense at curved areas like bumpers/headlights)."
+        if vis_mesh_display_mode == "vertices"
+        else "one dot per TRIANGLE FACE CENTROID (uniform coverage independent of vertex density)."
+    )
     return f"""Sampling Visualization Legend
 ==============================
-Config hash : {config_hash}
+Config hash   : {config_hash}
+Mesh display  : {vis_mesh_display_mode}  ({mesh_note})
 
 File naming
 -----------
   slot{{N:02d}}_{{name}}_{{shape_type}}_target.ply
       Written once after training.
-      Shows the original target shape and a representative training sample.
+      Shows the original target shape + the actual MSE surface cache (green)
+      + a representative domain sample (grey).
+      The green points shown here ARE the exact points the MSE loss saw
+      during training.
 
   slot{{N:02d}}_{{name}}_epoch{{E:05d}}.ply
       Written {cadence_note}.
-      Shows the CURRENT trained SDF mesh and a fresh training sample at that epoch.
+      Shows the CURRENT trained SDF mesh (blue) + the actual surface cache
+      pts used for MSE at that epoch (green) + the domain pts used for
+      eikonal at that epoch (grey).
 
 Companion files (*_mesh_only.ply)
 ---------------------------------
-  Each entry above has a companion *_mesh_only.ply (pure triangle mesh, no
-  point cloud).  Open this in MeshLab / CloudCompare to see full mesh geometry.
-  The combined .ply is a point cloud; mesh vertices appear as blue dots.
+  Each entry has a companion *_mesh_only.ply (pure triangle mesh, no point
+  cloud).  Open this in MeshLab / CloudCompare to see full mesh geometry.
+  The combined .ply is a point cloud; mesh is shown as coloured dots only.
 
 Colour coding
 -------------
-  Dark blue  (0,   0,   139): Mesh vertices.
-      - target PLYs : vertices of the original target PLY file.
+  Dark blue  (0,   0,   139): Mesh representation.
+      - target PLYs : {mesh_note}
+        Dots only at front/back of a car = CORRECT (high curvature → dense
+        triangulation → many vertices / face centroids there).
       - epoch PLYs  : current trained SDF mesh (marching cubes at that epoch).
-      NOTE: mesh vertices are rendered as POINTS in the combined .ply file.
-            Open the companion *_mesh_only.ply for the full triangle mesh view.
-            Blue dots only at front/back of a car model is CORRECT: those
-            regions have denser triangulation (more curvature), hence more vertices.
+      TIP: Open the companion *_mesh_only.ply for the full triangle mesh view.
 
-  Forest green (34, 139, 34): Surface-concentrated sample points.
-      - For PLY targets : 50 % of batch — trimesh.sample.sample_surface() +
-                          Gaussian jitter (sigma = 0.05 x bbox_extent).
-      - For sphere/cube : 50 % of batch — exact surface (30 %) +
-                          near-surface band (20 %, |SDF| < 0.15-0.3 x scale).
-      Role: primary quality-of-fit region for the MSE loss.
+  Forest green (34, 139, 34): MSE surface cache — in TARGET (*_target.ply) files.
+      Points are near the target mesh (Gaussian-perturbed from surface).
+      These are the EXACT points used for MSE loss during training.
+
+  Red (220, 30, 30): MSE surface cache — in EPOCH (*_epochNNNNN.ply) files.
+      Same semantic as green above; colour changed to distinguish from the
+      blue trained mesh at a glance.  Green (target) and red (epoch) are
+      drawn from the SAME cached_surface tensor.
+
+      - For PLY targets : trimesh.sample.sample_surface() perturbed with
+                          Gaussian noise (sigma = surface_noise_sigma_factor x
+                          bbox_extent).  Points are NOT on the surface —
+                          they are near the surface with non-zero GT SDF values.
+      - For sphere/cube : exact surface (30 %) + near-surface band (20 %,
+                          |SDF| < 0.15-0.3 x scale).
+      Role: ONLY these points are passed to the MSE loss.
+      Surface cache : {surface_note}
 
 {eikonal_note}
 
 Loss terms in pretraining
 --------------------------
-  1. MSE loss (quality of fit): L2 between predicted SDF and ground-truth SDF,
-     normalised to metres.  All sample points (green + grey) contribute.
-     GT SDF computed by: mesh_sdf (GPU) for PLY; analytic for sphere/cube.
+  1. MSE loss (quality of fit): L2( predicted_SDF / 1000, gt_SDF / 1000 ).
+     Uses GREEN/RED (near-surface) points ONLY.
+     GT SDF: mesh_sdf (GPU BVH) for PLY; analytic for sphere/cube.
+     NOTE: points ARE Gaussian-perturbed from surface (not exact surface),
+     so GT SDF != 0.  Pure GT=0 sampling would be degenerate (f=0 everywhere
+     achieves zero MSE; eikonal alone cannot fix this).
 
-  2. Eikonal loss: penalises |grad SDF| != 1.  Uses the SAME sample batch as
-     the MSE loss (green + grey points together).  There is no separate
-     eikonal-specific point set in the current implementation.
-     Toggle grey points off with vis_eikonal_pts: false in config.output.
+  2. Eikonal loss: penalises |∇SDF| != 1.
+     Uses GREY (domain/bounding-box uniform) points ONLY.
+     Enforces correct gradient magnitude in the bulk of the sampling space.
+     Note: eikonal near the surface is NOT explicitly constrained — the
+     near-surface MSE gradient implicitly constrains it there.
 
-  NO smoothness loss in pretraining.  Smoothness is applied only in the
-  main aeroshell optimizer loop, not here.
+  NO smoothness loss in pretraining.  Smoothness applies in the main
+  aeroshell optimizer loop only.
 
 DeepSDF vs AISCO sampling (reference)
 ---------------------------------------
-  DeepSDF uses TWO near-surface Gaussian scales (sigma_1=0.0025,
-  sigma_2=0.00025 in normalised [-1,1] space) + unit-sphere uniform samples,
-  pre-computed offline.  AISCO uses ONE scale (0.05 x bbox_extent) + uniform
-  domain, computed online per epoch.  The tighter DeepSDF sigma_2 band
-  provides higher SDF accuracy very close to the surface.
+  DeepSDF pre-samples TWO Gaussian bands from surface
+  (sigma_1 = 0.005, sigma_2 = 0.0005 normalised [-1,1] space) and
+  uniform sphere points, stored offline.  During training the same
+  pre-computed dataset is reused every epoch (equivalent to
+  surface_resample_cadence: 0 here).
+  AISCO uses ONE Gaussian band (sigma = 0.05 x bbox_extent) + domain
+  uniform, computed online.  The tighter DeepSDF sigma_2 gives higher
+  accuracy very close to the surface; consider reducing noise_sigma in
+  _sample_points_for_shape if fine surface detail is needed.
 """

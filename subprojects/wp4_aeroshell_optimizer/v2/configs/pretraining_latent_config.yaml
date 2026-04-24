@@ -6,6 +6,14 @@ force_pretraining: true # iff false, a hashed pretraining will be used if applic
 # One entry per latent slot.  Slot 0 maps to z₀ = origin.
 # shape_type: "sphere" | "cube" | "ply"
 # All keys must be present (set unused keys to null).
+#
+# PLY-specific keys:
+#   ply_scale: multiplies raw vertex coordinates → mm.
+#     1000.0  if PLY is stored in metres (AISCO default for pretraining shapes)
+#     1.0     if PLY is already in mm
+#   surface_noise_sigma_factor: σ = factor × bbox_extent_mm.
+#     0.005   ≈ DeepSDF tight band (σ ≈ 25mm at car scale)
+#     0.05    wider band (σ ≈ 250mm at car scale, default)
 latent_population:
   # you can add as many shapes as you want
   - name: "sphere_slot_0" #arbitray name
@@ -19,49 +27,64 @@ latent_population:
     radius: null
     side_length: null
     ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_bullet_blunt.ply"
+    ply_scale: 1000.0                  # PLY stored in metres → convert to mm
+    surface_noise_sigma_factor: 0.05   # σ = 5% of bbox diagonal
 
   - name: "simple_bullet_pointy"
     shape_type: "ply"
     radius: null
     side_length: null
     ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_bullet_pointy.ply"
+    ply_scale: 1000.0
+    surface_noise_sigma_factor: 0.05
 
   - name: "simple_catamaran"
     shape_type: "ply"
     radius: null
     side_length: null
     ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_catamaran.ply"
+    ply_scale: 1000.0
+    surface_noise_sigma_factor: 0.05
 
   - name: "simple_cuboid"
     shape_type: "ply"
     radius: null
     side_length: null
     ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_cuboid.ply"
+    ply_scale: 1000.0
+    surface_noise_sigma_factor: 0.05
 
   - name: "simple_trimaran"
     shape_type: "ply"
     radius: null
     side_length: null
     ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_trimaran.ply"
+    ply_scale: 1000.0
+    surface_noise_sigma_factor: 0.05
 
   - name: "simple_solarcar"
     shape_type: "ply"
     radius: null
     side_length: null
     ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_solarcar.ply"
+    ply_scale: 1000.0
+    surface_noise_sigma_factor: 0.05
 
 training_loop:
-  epochs: 1000
+  epochs: 601
   learning_rate: 0.0005
   batch_size_per_shape: 4096 #8192
   print_interval: 25
   eikonal_weight: 0.1
+  surface_resample_cadence: 0   # 0 = static (DeepSDF-style, default) 
+                                # N = refresh near-surface cache every N epochs
 
 output:
   # Must live in a directory NOT scanned by fetch_pretrained_model
   # (which scans the standard pretrained_path directory).
   checkpoint_path: "/cluster/work/fuge/AISCO/latent_pretraining/pretrained_latent.pth"
   mesh_resolution: 64
-  mesh_box_mm: 1500
+  mesh_box_mm: 1700
   vis_cadence: 300 # at what interval to visualize the sampling
   vis_eikonal_pts: false   # hide grey domain points (default: true)
+  vis_mesh_display_mode: "face_centers"   # "vertices" | "face_centers"
