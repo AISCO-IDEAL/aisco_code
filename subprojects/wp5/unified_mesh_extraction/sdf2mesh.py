@@ -40,7 +40,7 @@ class MeshSDFExtractor:
     target vertex count) lets multiple losses share the same extraction.
     """
 
-    def __init__(self, config: MeshExtractionConfig | None = None, gradient_max: None|float = None) -> None:
+    def __init__(self, config: MeshExtractionConfig | None = None, gradient_max: None | float = None) -> None:
         """Initialise an extractor bound to a fixed bbox/resolution.
 
         Steps:
