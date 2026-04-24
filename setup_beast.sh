@@ -10,6 +10,7 @@ TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
 TORCH_VERSION="${TORCH_VERSION:-2.8.0+cu128}"
 TORCHVISION_VERSION="${TORCHVISION_VERSION:-0.23.0+cu128}"
 CUDA_HOME_DEFAULT="${CUDA_HOME_DEFAULT:-/usr/local/cuda-12.8}"
+TORCH_CUDA_ARCH_LIST_DEFAULT="${TORCH_CUDA_ARCH_LIST_DEFAULT:-12.0}"
 INSTALL_KAOLIN="${INSTALL_KAOLIN:-0}"
 BUILD_RENDERER="${BUILD_RENDERER:-1}"
 INSTALL_DISO="${INSTALL_DISO:-0}"
@@ -97,17 +98,23 @@ if [[ ! -d "$VENV_DIR" ]]; then
     "$PYTHON_BIN" -m venv "$VENV_DIR"
 fi
 
+# Match the working Euler workflow more closely for editable installs and extension builds.
+# This avoids setuptools/PEP 660 edge cases during local CUDA extension compilation.
+source "$VENV_DIR/bin/activate"
+export SETUPTOOLS_ENABLE_FEATURES="legacy-editable"
+export TORCH_CUDA_ARCH_LIST="$TORCH_CUDA_ARCH_LIST_DEFAULT"
+
 echo "Installing base tooling..."
-"$VENV_PYTHON" -m pip install --upgrade pip setuptools wheel build
+python -m pip install --upgrade pip setuptools wheel build
 
 echo "Installing PyTorch for CUDA 12.8 / RTX 5090..."
-"$VENV_PYTHON" -m pip install --upgrade --index-url "$TORCH_INDEX_URL" \
+python -m pip install --upgrade --index-url "$TORCH_INDEX_URL" \
     "torch==$TORCH_VERSION" \
     "torchvision==$TORCHVISION_VERSION"
 
 echo "Installing project dependencies..."
-"$VENV_PYTHON" -m pip install --no-deps -e .
-"$VENV_PYTHON" -m pip install \
+python -m pip install --no-deps -e .
+python -m pip install \
     "gymnasium>=1.0.0" \
     "pandas>=2.2.3" \
     "matplotlib>=3.9.3" \
@@ -121,7 +128,7 @@ echo "Installing project dependencies..."
     "types-pytz" \
     "types-requests" \
     "types-PyYAML"
-"$VENV_PYTHON" -m pre_commit install || true
+pre-commit install || true
 
 confirm_env_flag INSTALL_KAOLIN "Install Kaolin?" "n"
 confirm_env_flag BUILD_RENDERER "Build fixed_renderer for RTX 5090?" "y"
@@ -129,32 +136,31 @@ confirm_env_flag INSTALL_DISO "Install DISO?" "n"
 confirm_env_flag BUILD_PYDEVELOPABILITY "Build pydevelopability C++ extension?" "n"
 
 if [[ "$INSTALL_KAOLIN" == "1" ]]; then
-    TORCH_PLAIN_VERSION="$("$VENV_PYTHON" - <<'PY'
+    TORCH_PLAIN_VERSION="$(python - <<'PY'
 import torch
 print(torch.__version__.split("+")[0])
 PY
 )"
-    CUDA_TAG="$("$VENV_PYTHON" - <<'PY'
+    CUDA_TAG="$(python - <<'PY'
 import torch
 print((torch.version.cuda or "").replace(".", ""))
 PY
 )"
     KAOLIN_INDEX="https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-${TORCH_PLAIN_VERSION}_cu${CUDA_TAG}.html"
     echo "Installing Kaolin from $KAOLIN_INDEX"
-    "$VENV_PYTHON" -m pip uninstall -y kaolin >/dev/null 2>&1 || true
-    "$VENV_PYTHON" -m pip install -f "$KAOLIN_INDEX" kaolin
+    python -m pip uninstall -y kaolin >/dev/null 2>&1 || true
+    python -m pip install -f "$KAOLIN_INDEX" kaolin
 fi
 
 if [[ "$BUILD_RENDERER" == "1" ]]; then
-    echo "Building fixed_renderer with TORCH_CUDA_ARCH_LIST=12.0..."
+    echo "Building fixed_renderer with TORCH_CUDA_ARCH_LIST=$TORCH_CUDA_ARCH_LIST..."
     (
         cd "$RENDERER_DIR"
-        export TORCH_CUDA_ARCH_LIST=12.0
-        "$VENV_PYTHON" setup.py build_ext --inplace --force
+        python setup.py build_ext --inplace
     )
 
     echo "Verifying fixed_renderer imports..."
-    PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV_PYTHON" - <<'PY'
+    PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}" python - <<'PY'
 import importlib
 for name in (
     "subprojects.fixed_renderer.cuda.load_textures",
@@ -168,18 +174,18 @@ fi
 
 if [[ "$INSTALL_DISO" == "1" ]]; then
     echo "Installing DISO..."
-    "$VENV_PYTHON" -m pip install diso --no-build-isolation
+    python -m pip install diso --no-build-isolation
 fi
 
 if [[ "$BUILD_PYDEVELOPABILITY" == "1" ]]; then
     echo "Building pydevelopability..."
-    "$VENV_PYTHON" -m pip install --upgrade pybind11 cmake
+    python -m pip install --upgrade pybind11 cmake
     PYDEV_ROOT="$PROJECT_ROOT/subprojects/pydevelopability"
     BUILD_DIR="$PYDEV_ROOT/build_manual"
     CC_ROOT="${CC_ROOT:-$PROJECT_ROOT/subprojects/concentrate_curvature}"
     DEV_REPO="${DEV_REPO:-$CC_ROOT/DevelopabilityOfTriangleMeshes}"
     LIBIGL_INCLUDE="${LIBIGL_INCLUDE:-$CC_ROOT/libigl-modern/include}"
-    PYBIND11_DIR="$("$VENV_PYTHON" -m pybind11 --cmakedir 2>/dev/null || true)"
+    PYBIND11_DIR="$(python -m pybind11 --cmakedir 2>/dev/null || true)"
 
     if [[ ! -d "$PYBIND11_DIR" || ! -f "$DEV_REPO/include/developableflow/fixed_topology_core.cpp" || ! -f "$LIBIGL_INCLUDE/igl/is_border_vertex.h" ]]; then
         if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
@@ -201,12 +207,12 @@ if [[ "$BUILD_PYDEVELOPABILITY" == "1" ]]; then
             make -j"$(nproc)"
             cp "$(find . -name '_devcore*.so' | head -n1)" "$PYDEV_ROOT/pydevelopability/"
         )
-        "$VENV_PYTHON" -m pip install --no-deps -e .
+        python -m pip install --no-deps -e .
     fi
 fi
 
 echo "Verifying PyTorch CUDA support..."
-"$VENV_PYTHON" - <<'PY'
+python - <<'PY'
 import sys
 import torch
 
