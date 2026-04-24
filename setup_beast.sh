@@ -5,12 +5,13 @@ set -euo pipefail
 
 ENV_NAME="${ENV_NAME:-aisco_env}"
 PYTHON_BIN="${PYTHON_BIN:-python3.11}"
-PYTHON_VERSION_REQUIRED="3.11.6"
+PYTHON_VERSION_REQUIRED="${PYTHON_VERSION_REQUIRED:-3.11.6}"
 TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
 TORCH_VERSION="${TORCH_VERSION:-2.8.0+cu128}"
 TORCHVISION_VERSION="${TORCHVISION_VERSION:-0.23.0+cu128}"
 CUDA_HOME_DEFAULT="${CUDA_HOME_DEFAULT:-/usr/local/cuda-12.8}"
 TORCH_CUDA_ARCH_LIST_DEFAULT="${TORCH_CUDA_ARCH_LIST_DEFAULT:-12.0}"
+PROJECT_EXTRAS="${PROJECT_EXTRAS:-}"
 INSTALL_KAOLIN="${INSTALL_KAOLIN:-0}"
 BUILD_RENDERER="${BUILD_RENDERER:-1}"
 INSTALL_DISO="${INSTALL_DISO:-0}"
@@ -20,6 +21,7 @@ PYDEVELOPABILITY_STRICT="${PYDEVELOPABILITY_STRICT:-0}"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$PROJECT_ROOT/$ENV_NAME"
 VENV_PYTHON="$VENV_DIR/bin/python3"
+PYPROJECT_FILE="$PROJECT_ROOT/pyproject.toml"
 RENDERER_DIR="$PROJECT_ROOT/subprojects/fixed_renderer"
 
 cd "$PROJECT_ROOT"
@@ -52,10 +54,141 @@ confirm_env_flag() {
     fi
 }
 
+normalize_csv() {
+    local raw="$1"
+    raw="${raw//,/ }"
+    echo "$raw" | xargs
+}
+
+select_project_extras() {
+    if [[ -n "${PROJECT_EXTRAS// }" ]]; then
+        PROJECT_EXTRAS="$(normalize_csv "$PROJECT_EXTRAS")"
+        return 0
+    fi
+
+    if [[ ! -t 0 ]]; then
+        PROJECT_EXTRAS=""
+        return 0
+    fi
+
+    local available
+    available="$("$VENV_PYTHON" - "$PYPROJECT_FILE" <<'PY'
+import sys
+import tomllib
+from pathlib import Path
+
+data = tomllib.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+extras = sorted(data["project"].get("optional-dependencies", {}))
+print(", ".join(extras))
+PY
+)"
+
+    echo "Optional extras defined in pyproject.toml: ${available:-<none>}"
+    read -r -p "Extras to install (comma-separated, blank for none): " PROJECT_EXTRAS
+    PROJECT_EXTRAS="$(normalize_csv "$PROJECT_EXTRAS")"
+}
+
+install_pyproject_group() {
+    local group="$1"
+    "$VENV_PYTHON" - "$PYPROJECT_FILE" "$group" <<'PY'
+import os
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+from packaging.requirements import Requirement
+
+pyproject_path = Path(sys.argv[1])
+group = sys.argv[2]
+
+data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+project = data["project"]
+optional = project.get("optional-dependencies", {})
+skip_pydevelopability = os.environ.get("SKIP_PYDEVELOPABILITY_EXTRA", "1").strip() == "1"
+
+def normalize_name(name: str) -> str:
+    return name.lower().replace("-", "_")
+
+project_name = normalize_name(project["name"])
+
+if group == "base":
+    requirements = list(project.get("dependencies", []))
+else:
+    if group not in optional:
+        available = ", ".join(sorted(optional))
+        raise SystemExit(f"Unknown optional dependency group '{group}'. Available: {available}")
+    requirements = list(optional[group])
+
+if not requirements:
+    raise SystemExit(0)
+
+overrides = {
+    "torch": os.environ.get("TORCH_VERSION", "").strip(),
+    "torchvision": os.environ.get("TORCHVISION_VERSION", "").strip(),
+}
+
+def expand_requirement(item: str) -> list[str]:
+    req = Requirement(item)
+    if normalize_name(req.name) == project_name and req.extras:
+        expanded: list[str] = []
+        for extra_name in sorted(req.extras):
+            if skip_pydevelopability and extra_name == "pydevelopability":
+                continue
+            if extra_name not in optional:
+                available = ", ".join(sorted(optional))
+                raise SystemExit(f"Unknown nested optional dependency group '{extra_name}'. Available: {available}")
+            for nested_item in optional[extra_name]:
+                expanded.extend(expand_requirement(nested_item))
+        return expanded
+
+    override = overrides.get(req.name)
+    if override:
+        return [f"{req.name}=={override}"]
+    return [item]
+
+resolved = []
+seen = set()
+for item in requirements:
+    for resolved_item in expand_requirement(item):
+        if resolved_item not in seen:
+            resolved.append(resolved_item)
+            seen.add(resolved_item)
+
+index_url = os.environ.get("TORCH_INDEX_URL", "").strip()
+torch_requirements = []
+other_requirements = []
+for item in resolved:
+    if Requirement(item).name in {"torch", "torchvision"}:
+        torch_requirements.append(item)
+    else:
+        other_requirements.append(item)
+
+print("Installing", group, "requirements from pyproject.toml:")
+for req in resolved:
+    print("  ", req)
+
+if other_requirements:
+    subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", *other_requirements], check=True)
+
+if torch_requirements:
+    if not index_url:
+        raise SystemExit("TORCH_INDEX_URL must be set when installing torch or torchvision overrides.")
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "--index-url", index_url, *torch_requirements],
+        check=True,
+    )
+PY
+}
+
 echo "Checking Python..."
 require_cmd awk
 require_cmd sed
 require_cmd nvidia-smi
+
+if [[ ! -f "$PYPROJECT_FILE" ]]; then
+    echo "Error: pyproject.toml not found at $PYPROJECT_FILE."
+    exit 1
+fi
 
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
     echo "Error: Python binary '$PYTHON_BIN' not found."
@@ -70,7 +203,7 @@ fi
 
 if ! "$PYTHON_BIN" -c "import _ctypes" >/dev/null 2>&1; then
     echo "Error: Python is missing _ctypes."
-    echo "Rebuild Python 3.11.6 with libffi present, then rerun this script."
+    echo "Rebuild Python $PYTHON_VERSION_REQUIRED with libffi present, then rerun this script."
     exit 1
 fi
 
@@ -86,7 +219,7 @@ if command -v nvcc >/dev/null 2>&1; then
 elif [[ -x "$CUDA_HOME_DEFAULT/bin/nvcc" ]]; then
     export CUDA_HOME="$CUDA_HOME_DEFAULT"
 else
-    echo "Error: nvcc not found. Install CUDA 12.8 toolkit first."
+    echo "Error: nvcc not found. Install CUDA toolkit first or set CUDA_HOME_DEFAULT."
     exit 1
 fi
 export PATH="$CUDA_HOME/bin:$PATH"
@@ -98,36 +231,33 @@ if [[ ! -d "$VENV_DIR" ]]; then
     "$PYTHON_BIN" -m venv "$VENV_DIR"
 fi
 
-# Match the working Euler workflow more closely for editable installs and extension builds.
-# This avoids setuptools/PEP 660 edge cases during local CUDA extension compilation.
 source "$VENV_DIR/bin/activate"
 export SETUPTOOLS_ENABLE_FEATURES="legacy-editable"
-export TORCH_CUDA_ARCH_LIST="$TORCH_CUDA_ARCH_LIST_DEFAULT"
+export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-$TORCH_CUDA_ARCH_LIST_DEFAULT}"
 
 echo "Installing base tooling..."
-python -m pip install --upgrade pip setuptools wheel build
+python -m pip install --upgrade pip setuptools wheel build packaging
 
-echo "Installing PyTorch for CUDA 12.8 / RTX 5090..."
-python -m pip install --upgrade --index-url "$TORCH_INDEX_URL" \
-    "torch==$TORCH_VERSION" \
-    "torchvision==$TORCHVISION_VERSION"
-
-echo "Installing project dependencies..."
+echo "Installing editable project package..."
 python -m pip install --no-deps -e .
-python -m pip install \
-    "gymnasium>=1.0.0" \
-    "pandas>=2.2.3" \
-    "matplotlib>=3.9.3" \
-    "numpy>=2.0.0" \
-    "ruff>=0.1.0" \
-    "pre-commit>=3.0.0" \
-    "mypy>=1.19.1" \
-    "fast-simplification>=0.1.13" \
-    "wandb[media]>=0.23.1" \
-    "types-paramiko" \
-    "types-pytz" \
-    "types-requests" \
-    "types-PyYAML"
+
+echo "Installing base dependencies from pyproject.toml..."
+install_pyproject_group base
+
+select_project_extras
+if [[ -n "${PROJECT_EXTRAS// }" ]]; then
+    for extra in $PROJECT_EXTRAS; do
+        if [[ "$extra" == "pydevelopability" ]]; then
+            echo "Skipping pydevelopability extra here; it is handled by the optional build step below."
+            continue
+        fi
+        echo "Installing optional dependency group '$extra' from pyproject.toml..."
+        install_pyproject_group "$extra"
+    done
+else
+    echo "No optional pyproject extras selected."
+fi
+
 pre-commit install || true
 
 confirm_env_flag INSTALL_KAOLIN "Install Kaolin?" "n"
@@ -136,23 +266,32 @@ confirm_env_flag INSTALL_DISO "Install DISO?" "n"
 confirm_env_flag BUILD_PYDEVELOPABILITY "Build pydevelopability C++ extension?" "n"
 
 if [[ "$INSTALL_KAOLIN" == "1" ]]; then
-    TORCH_PLAIN_VERSION="$(python - <<'PY'
+    echo "Installing Kaolin..."
+    KAOLIN_INDEX="$("$VENV_PYTHON" - <<'PY'
 import torch
-print(torch.__version__.split("+")[0])
+
+torch_version = torch.__version__.split("+")[0]
+cuda_version = (torch.version.cuda or "").replace(".", "")
+if not cuda_version:
+    raise SystemExit("Installed torch does not report a CUDA version; cannot resolve Kaolin wheels.")
+print(f"https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-{torch_version}_cu{cuda_version}.html")
 PY
 )"
-    CUDA_TAG="$(python - <<'PY'
-import torch
-print((torch.version.cuda or "").replace(".", ""))
-PY
-)"
-    KAOLIN_INDEX="https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-${TORCH_PLAIN_VERSION}_cu${CUDA_TAG}.html"
-    echo "Installing Kaolin from $KAOLIN_INDEX"
+    echo "Using Kaolin index: $KAOLIN_INDEX"
     python -m pip uninstall -y kaolin >/dev/null 2>&1 || true
     python -m pip install -f "$KAOLIN_INDEX" kaolin
+    python - <<'PY'
+import kaolin
+print("Kaolin import OK:", getattr(kaolin, "__version__", "unknown"))
+PY
 fi
 
 if [[ "$BUILD_RENDERER" == "1" ]]; then
+    if [[ ! -d "$RENDERER_DIR" || ! -f "$RENDERER_DIR/setup.py" ]]; then
+        echo "Error: fixed_renderer not found at $RENDERER_DIR."
+        exit 1
+    fi
+
     echo "Building fixed_renderer with TORCH_CUDA_ARCH_LIST=$TORCH_CUDA_ARCH_LIST..."
     (
         cd "$RENDERER_DIR"
@@ -162,10 +301,23 @@ if [[ "$BUILD_RENDERER" == "1" ]]; then
     echo "Verifying fixed_renderer imports..."
     PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}" python - <<'PY'
 import importlib
+from pathlib import Path
+
+root = Path.cwd()
+for path in (
+    root / "subprojects/fixed_renderer/cuda/load_textures",
+    root / "subprojects/fixed_renderer/cuda/rasterize",
+    root / "subprojects/fixed_renderer/cuda/create_texture_image",
+):
+    matches = list(path.parent.glob(path.name + "*.so"))
+    if not matches:
+        raise SystemExit(f"Missing built extension artifact near {path}")
+
 for name in (
     "subprojects.fixed_renderer.cuda.load_textures",
     "subprojects.fixed_renderer.cuda.rasterize",
     "subprojects.fixed_renderer.cuda.create_texture_image",
+    "subprojects.fixed_renderer.renderer",
 ):
     importlib.import_module(name)
     print("import ok:", name)
@@ -175,11 +327,17 @@ fi
 if [[ "$INSTALL_DISO" == "1" ]]; then
     echo "Installing DISO..."
     python -m pip install diso --no-build-isolation
+    python - <<'PY'
+import diso
+print("DISO import OK:", getattr(diso, "__file__", "unknown location"))
+print("DiffMC available:", hasattr(diso, "DiffMC"))
+print("DiffDMC available:", hasattr(diso, "DiffDMC"))
+PY
 fi
 
 if [[ "$BUILD_PYDEVELOPABILITY" == "1" ]]; then
     echo "Building pydevelopability..."
-    python -m pip install --upgrade pybind11 cmake
+    python -m pip install --upgrade ".[pydevelopability]"
     PYDEV_ROOT="$PROJECT_ROOT/subprojects/pydevelopability"
     BUILD_DIR="$PYDEV_ROOT/build_manual"
     CC_ROOT="${CC_ROOT:-$PROJECT_ROOT/subprojects/concentrate_curvature}"
@@ -250,7 +408,9 @@ cat <<EOF
 Setup complete.
 Activate with: source $ENV_NAME/bin/activate
 
-Optional extras:
+Installed project extras: ${PROJECT_EXTRAS:-<none>}
+
+Optional extras from pyproject.toml can be installed later with:
   $VENV_PYTHON -m pip install '.[wp1_cfd_ai]'
   $VENV_PYTHON -m pip install '.[wp2_assembler]'
   $VENV_PYTHON -m pip install '.[wp3_solar_estimator]'
