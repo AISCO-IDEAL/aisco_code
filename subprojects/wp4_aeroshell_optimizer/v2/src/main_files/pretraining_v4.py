@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 import torch
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MarchingCubesExtractor
@@ -76,6 +76,21 @@ def _extract_mesh(model: SupportsModelContract, pth_path: Path, device: str, mes
     else:
         kaolin_to_PLY(verts, faces, filename=ply_path.name, mesh_dir=ply_path.parent)
         print(f"\u2713 Saved mesh to {ply_path}")
+
+
+def log_model_stats(model: SupportsModelContract, epoch: int) -> None:
+    if wandb.run is not None:
+        layer_omegas = {}
+        for name, param in model.named_parameters():
+            if "omega" in name:
+                layer_omegas[name] = param.detach().cpu().numpy()
+        wandb.log({"pretraining/layer_omegas": wandb.Histogram(layer_omegas)}, step=epoch)
+
+        layer_scales = {}
+        for name, param in model.named_parameters():
+            if "scale" in name:
+                layer_scales[name] = param.detach().cpu().numpy()
+        wandb.log({"pretraining/layer_scales": wandb.Histogram(layer_scales)}, step=epoch)
 
 
 def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # noqa: PLR0912, PLR0915 — training loop matches pretraining_v3.py structure; extracting sub-functions would obscure the linear flow
@@ -177,7 +192,7 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
         mesh_box = int(bb_half_extent * 1.1)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs)
+    scheduler = ReduceLROnPlateau(optimizer, mode="min")
 
     print(
         f"[v4] Starting pretraining: epochs={num_epochs}, batch={batch_size}, lr={learning_rate}, eikonal_weight={eikonal_weight}"
@@ -216,7 +231,7 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
 
         total_loss.backward()
         optimizer.step()
-        scheduler.step()
+        scheduler.step(total_loss, epoch=epoch)
 
         if use_wandb and wandb.run is not None:
             wandb.log(

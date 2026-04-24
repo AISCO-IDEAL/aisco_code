@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from numpy.typing import NDArray
 
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.kaolin_conversions import get_diff_mesh
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visualiser import Visualiser
 
@@ -46,7 +46,7 @@ def initialize_visualiser(
 
 def render_image(
     visualiser: Visualiser,
-    model: BaseModel | None = None,
+    model: SupportsModelContract | None = None,
     verts: torch.Tensor | None = None,
     faces_in: torch.Tensor | None = None,
     position: list[float] | None = None,

@@ -1,0 +1,66 @@
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v4.py
+entity: aisco
+project: WIRE-Fitting
+
+method: bayes
+metric:
+  goal: minimize
+  name: pretraining/mse_loss
+
+parameters:
+  pretraining_v4_config.model_name:
+    value: "WIREV5"
+
+
+  models/WIRE_v5.hidden_features:
+    values: [128, 256, 512]
+  models/WIRE_v5.hidden_layers:
+    values: [3, 6, 8, 12]
+  models/WIRE_v5.skip_layer_idx:
+    values: [1, 2]
+
+  models/WIRE_v5.first_omega_min:
+    distribution: uniform
+    min: 1.0
+    max: 5.0
+  models/WIRE_v5.first_omega_max:
+    distribution: uniform
+    min: 5.0
+    max: 30.0
+
+
+  models/WIRE_v5.hidden_omega_min:
+    distribution: uniform
+    min: 1.0
+    max: 5.0
+  models/WIRE_v5.hidden_omega_max:
+    distribution: uniform
+    min: 5.0
+    max: 30.0
+
+
+  models/WIRE_v5.first_scale_min:
+    distribution: uniform
+    min: 1.0
+    max: 5.0
+  models/WIRE_v5.first_scale_max:
+    distribution: uniform
+    min: 10.0
+    max: 50.0
+
+  models/WIRE_v5.hidden_scale_min:
+    distribution: uniform
+    min: 1.0
+    max: 5.0
+  models/WIRE_v5.hidden_scale_max:
+    distribution: uniform
+    min: 10.0
+    max: 50.0
+
+  # Training
+  pretraining_v4_config.training_loop.learning_rate:
+    values: [0.0001, 0.0005, 0.001]
+  pretraining_v4_config.training_loop.eikonal_weight:
+    values: [0.05, 0.1, 0.2]
+  pretraining_v4_config.training_loop.random_batch_size:
+    values: [500,1024,2048,3301]
