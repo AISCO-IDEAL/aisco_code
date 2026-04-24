@@ -1,7 +1,7 @@
 model_name: "ConcatWIREV2"
 z_placement: "unit_circle"
 z_radius: 1.0
-force_pretraining: false
+force_pretraining: true # iff false, a hashed pretraining will be used if applicable
 
 # One entry per latent slot.  Slot 0 maps to z₀ = origin.
 # shape_type: "sphere" | "cube" | "ply"
@@ -53,7 +53,7 @@ latent_population:
 training_loop:
   epochs: 1000
   learning_rate: 0.0005
-  batch_size_per_shape: 512
+  batch_size_per_shape: 4096 #8192
   print_interval: 25
   eikonal_weight: 0.1
 
@@ -63,3 +63,4 @@ output:
   checkpoint_path: "/cluster/work/fuge/AISCO/latent_pretraining/pretrained_latent.pth"
   mesh_resolution: 64
   mesh_box_mm: 1500
+  vis_cadence: 300 # at what interval to visualize the sampling

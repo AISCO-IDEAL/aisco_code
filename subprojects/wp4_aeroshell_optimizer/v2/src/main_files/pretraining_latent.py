@@ -164,6 +164,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         raise TypeError(f"Model {type(model).__name__} does not implement SupportsLatentConcat. ")
 
     ckpt_path = _resolve_checkpoint_path(config, model)
+    config_hash = _compute_pretrain_config_hash(config, model)
     force: bool = bool(config.get("force_pretraining", True))
 
     # --- Fast resume ---
@@ -215,6 +216,13 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     print_interval: int = int(loop_cfg["print_interval"])
     eikonal_weight: float = float(loop_cfg["eikonal_weight"])
 
+    # --- Output / visualisation config (read once, shared between loop and post-training) ---
+    output_cfg: dict[str, Any] = config.get("output", {})
+    vis_dir: Path = ckpt_path.parent / f"sampling_vis_{config_hash}"
+    vis_cadence: int = int(output_cfg.get("vis_cadence", 0))  # 0 = disabled
+    vis_mesh_res: int = int(output_cfg.get("mesh_resolution", 64))
+    vis_mesh_box: int = int(output_cfg.get("mesh_box_mm", 2000))
+
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = CosineAnnealingLR(optimizer, T_max=max(epochs, 1))
@@ -225,6 +233,14 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         f"lr={lr}, batch_size_per_shape={batch_size_per_shape}, device={device}",
         flush=True,
     )
+
+    # --- Per-epoch visualizer (b): current trained mesh + loss sample points ---
+    epoch_vis: SamplingVisualizer | None = None
+    if vis_sampling and vis_cadence > 0:
+        epoch_vis = SamplingVisualizer(output_dir=vis_dir, is_static=False)
+        print(
+            f"[latent_pretrain] Per-epoch vis enabled: cadence={vis_cadence}, mesh_res={vis_mesh_res}, mesh_box=±{vis_mesh_box} mm → {vis_dir}"
+        )
 
     # --- Training loop ---
     for epoch in tqdm(range(epochs), desc="latent_pretrain", unit="ep"):
@@ -304,6 +320,22 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         optimizer.step()
         scheduler.step()
 
+        # --- Per-epoch snapshot (b): current trained mesh + current sampled points ---
+        if vis_sampling and epoch_vis is not None and epoch % vis_cadence == 0:
+            _write_epoch_vis_snapshot(
+                model=model,
+                Z=Z,
+                shapes=shapes,
+                ply_cache=ply_cache,
+                epoch=epoch,
+                mesh_res=vis_mesh_res,
+                mesh_box=vis_mesh_box,
+                device=device,
+                vis=epoch_vis,
+                batch_size_per_shape=batch_size_per_shape,
+            )
+            model.train()  # restore after eval inside snapshot
+
         if epoch % print_interval == 0:
             lr_now = scheduler.get_last_lr()[0]
             tqdm.write(
@@ -336,7 +368,6 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         print(f"[latent_pretrain] Z pairwise distances: min={min(pairwise):.3f}, mean={mean_dist:.3f}, max={max(pairwise):.3f}")
 
     # --- Optional per-slot mesh extraction ---
-    output_cfg: dict[str, Any] = config.get("output", {})
     mesh_res = output_cfg.get("mesh_resolution")
     mesh_box = output_cfg.get("mesh_box_mm")
     if mesh_res and mesh_box:
@@ -353,13 +384,13 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                     "Skipping mesh output — checkpoint is still valid."
                 )
 
-    # --- Optional sampling visualization (post-training) ---
+    # --- Optional sampling visualization (a): target mesh + representative sample ---
     if vis_sampling:
         _visualize_pretraining_sampling(
             shapes=shapes,
             ply_cache=ply_cache,
             device=device,
-            output_dir=ckpt_path.parent / "sampling_vis",
+            output_dir=vis_dir,
             batch_size_per_shape=batch_size_per_shape,
         )
 
@@ -409,7 +440,88 @@ def _visualize_pretraining_sampling(
                 points_mm=pts,
                 mesh_verts=mesh_verts,
                 mesh_faces=mesh_faces,
-                name=f"slot{slot_idx:02d}_{slot_name}_{shape_type}",
+                name=f"slot{slot_idx:02d}_{slot_name}_{shape_type}_target",
             )
         except Exception as exc:  # visualization is non-critical
             print(f"[latent_pretrain] WARNING: visualization failed for slot {slot_idx} ({slot_name}): {exc}")
+
+
+def _extract_current_mesh_arrays(
+    model: SupportsLatentConcat,
+    z_slot: Tensor,
+    mesh_res: int,
+    mesh_box: int,
+    device: str,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Extract the current SDF mesh for a single latent slot as numpy arrays.
+
+    Sets the model's active latent vector to ``z_slot``, runs marching cubes via
+    kaolin, and returns the mesh.  The model is set to eval mode internally;
+    the caller is responsible for restoring train mode afterwards.
+
+    Returns:
+        ``(verts_np, faces_np)`` as float32 / int64 numpy arrays, or ``None``
+        if kaolin is unavailable or mesh extraction fails.
+    """
+    try:
+        from subprojects.wp4_aeroshell_optimizer.v2.src.utils.kaolin_conversions import (  # noqa: PLC0415
+            get_diff_mesh,
+        )
+    except ImportError:
+        return None
+
+    try:
+        model.set_latent_vector(z_slot.to(device))
+        model.eval()
+        box_dim = [-mesh_box, mesh_box, -mesh_box, mesh_box, -mesh_box, mesh_box]
+        verts, faces = get_diff_mesh(model, grid_res=mesh_res, box_dim=box_dim, device=device)
+        return verts.detach().cpu().numpy().astype("float32"), faces.detach().cpu().numpy().astype("int64")
+    except Exception as exc:
+        print(f"[latent_pretrain] WARNING: per-epoch mesh extraction failed: {exc}")
+        return None
+
+
+def _write_epoch_vis_snapshot(
+    model: SupportsLatentConcat,
+    Z: Tensor,
+    shapes: list[dict[str, Any]],
+    ply_cache: dict[int, tuple[Tensor, Tensor, float]],
+    epoch: int,
+    mesh_res: int,
+    mesh_box: int,
+    device: str,
+    vis: SamplingVisualizer,
+    batch_size_per_shape: int,
+) -> None:
+    """Write one epoch snapshot: current trained mesh + current loss sample points.
+
+    For each slot, extracts the current SDF mesh via marching cubes and pairs it
+    with a fresh sample batch to show what the model currently looks like alongside
+    the points being used to compute the loss.
+
+    The caller must call ``model.train()`` after this function returns.
+    """
+    for slot_idx, shape in enumerate(shapes):
+        slot_name = shape.get("name", str(slot_idx))
+        shape_type: str = shape["shape_type"]
+        shape_params = _build_shape_params(shape, ply_cache, slot_idx)
+
+        try:
+            pts, _ = _sample_points_for_shape(shape_type, shape_params, batch_size_per_shape, device)
+        except Exception as exc:
+            print(f"[latent_pretrain] WARNING: epoch vis sampling failed for slot {slot_idx} ({slot_name}): {exc}")
+            continue
+
+        mesh_arrays = _extract_current_mesh_arrays(model, Z[slot_idx], mesh_res, mesh_box, device)
+        mesh_verts_ep = mesh_arrays[0] if mesh_arrays is not None else None
+        mesh_faces_ep = mesh_arrays[1] if mesh_arrays is not None else None
+
+        try:
+            vis.save_snapshot(
+                points_mm=pts,
+                mesh_verts=mesh_verts_ep,
+                mesh_faces=mesh_faces_ep,
+                name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
+            )
+        except Exception as exc:
+            print(f"[latent_pretrain] WARNING: epoch vis save failed for slot {slot_idx} ({slot_name}): {exc}")
