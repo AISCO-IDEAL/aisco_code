@@ -7,7 +7,7 @@
 ##########################################################################
 
 setup:
-    run_local: true
+    run_local: false
     name: "euler_field_cp_full"
     id: "_RUN_ID_"
     seed: 42
