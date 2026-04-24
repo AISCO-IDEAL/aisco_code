@@ -33,7 +33,9 @@ if TYPE_CHECKING:
 
 
 _MESH_COLOUR_DARK_BLUE: tuple[int, int, int] = (0, 0, 139)
-_POINT_COLOUR_RED: tuple[int, int, int] = (220, 30, 30)
+_POINT_COLOUR_GREEN: tuple[int, int, int] = (34, 139, 34)  # forest green — quality-of-fit / surface samples
+_POINT_COLOUR_WHITE: tuple[int, int, int] = (220, 220, 220)  # light grey-white — domain / eikonal samples
+_POINT_COLOUR_RED: tuple[int, int, int] = (220, 30, 30)  # kept for backwards compatibility
 
 
 class SamplingVisualizer:
@@ -64,20 +66,27 @@ class SamplingVisualizer:
         mesh_faces: np.ndarray | None,
         name: str,
         *,
+        secondary_points_mm: torch.Tensor | np.ndarray | None = None,
+        points_colour: tuple[int, int, int] = _POINT_COLOUR_GREEN,
+        secondary_colour: tuple[int, int, int] = _POINT_COLOUR_WHITE,
         max_points: int = 8192,
     ) -> Path | None:
         """Write a combined PLY file with coloured mesh and sampled points.
 
         Args:
-            points_mm: (N, 3) array of sampled points in mm.
+            points_mm: (N, 3) primary sample points in mm (surface-concentrated).
             mesh_verts: (V, 3) float32 array of mesh vertices in mm.
                 ``None`` to skip mesh (points-only file).
             mesh_faces: (F, 3) int64 array of triangle face indices.
                 ``None`` to skip mesh.
             name: Filename stem (no extension).
-            max_points: Cap on number of points written.  Random subsampling is
-                applied when the input exceeds this limit, keeping file size
-                manageable.
+            secondary_points_mm: (M, 3) optional secondary sample points in mm
+                (domain / eikonal). Coloured ``secondary_colour`` (default light
+                grey).  ``None`` to omit.
+            points_colour: RGB tuple for primary points (default forest green).
+            secondary_colour: RGB tuple for secondary points (default light grey).
+            max_points: Cap on number of points written per group.  Random
+                subsampling is applied when the input exceeds this limit.
 
         Returns:
             Path to the written PLY, or ``None`` when skipped (``is_static`` and
@@ -124,13 +133,27 @@ class SamplingVisualizer:
                 )
                 has_mesh = False
 
-        # --- Point component (red) ---
+        # --- Point component ---
         pt_colour = np.tile(
-            np.array(_POINT_COLOUR_RED, dtype=np.float64) / 255.0,
+            np.array(points_colour, dtype=np.float64) / 255.0,
             (pts.shape[0], 1),
         )
         all_verts.append(pts)
         all_colours.append(pt_colour)
+
+        # --- Secondary point component (domain / eikonal) ---
+        if secondary_points_mm is not None:
+            sec_pts = _to_numpy_f64(secondary_points_mm)
+            if sec_pts.shape[0] > max_points:
+                rng2 = np.random.default_rng()
+                idx2 = rng2.choice(sec_pts.shape[0], max_points, replace=False)
+                sec_pts = sec_pts[idx2]
+            sec_colour = np.tile(
+                np.array(secondary_colour, dtype=np.float64) / 255.0,
+                (sec_pts.shape[0], 1),
+            )
+            all_verts.append(sec_pts)
+            all_colours.append(sec_colour)
 
         # --- Merge into a single PointCloud for export ---
         combined.points = o3d.utility.Vector3dVector(np.vstack(all_verts))
@@ -148,6 +171,17 @@ class SamplingVisualizer:
         print(f"[SamplingVisualizer] Saved → {out_path}")
         self._already_written = True
         return out_path
+
+    def write_legend(self, text: str) -> Path:
+        """Write a ``legend.txt`` into ``output_dir`` explaining the colour coding.
+
+        Overwrites any existing legend file.  Safe to call multiple times.
+        """
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        path = self.output_dir / "legend.txt"
+        path.write_text(text, encoding="utf-8")
+        print(f"[SamplingVisualizer] Legend → {path}")
+        return path
 
     def reset(self) -> None:
         """Allow a new write even when ``is_static=True``."""

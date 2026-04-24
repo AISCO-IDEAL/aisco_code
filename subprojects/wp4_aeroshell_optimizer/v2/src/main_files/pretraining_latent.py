@@ -222,6 +222,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     vis_cadence: int = int(output_cfg.get("vis_cadence", 0))  # 0 = disabled
     vis_mesh_res: int = int(output_cfg.get("mesh_resolution", 64))
     vis_mesh_box: int = int(output_cfg.get("mesh_box_mm", 2000))
+    vis_eikonal_pts: bool = bool(output_cfg.get("vis_eikonal_pts", True))
 
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -333,6 +334,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 device=device,
                 vis=epoch_vis,
                 batch_size_per_shape=batch_size_per_shape,
+                show_domain_pts=vis_eikonal_pts,
             )
             model.train()  # restore after eval inside snapshot
 
@@ -386,12 +388,18 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
 
     # --- Optional sampling visualization (a): target mesh + representative sample ---
     if vis_sampling:
+        if epoch_vis is None:  # no per-epoch vis created yet (vis_cadence == 0)
+            static_vis = SamplingVisualizer(output_dir=vis_dir, is_static=False)
+            static_vis.write_legend(_make_vis_legend(config_hash, vis_cadence, vis_eikonal_pts))
+        else:
+            static_vis = epoch_vis  # re-use same dir and legend already written
         _visualize_pretraining_sampling(
             shapes=shapes,
             ply_cache=ply_cache,
             device=device,
-            output_dir=vis_dir,
+            vis=static_vis,
             batch_size_per_shape=batch_size_per_shape,
+            show_domain_pts=vis_eikonal_pts,
         )
 
     return model, Z
@@ -401,28 +409,28 @@ def _visualize_pretraining_sampling(
     shapes: list[dict[str, Any]],
     ply_cache: dict[int, tuple[Tensor, Tensor, float]],
     device: str,
-    output_dir: Path,
+    vis: SamplingVisualizer,
     batch_size_per_shape: int,
+    *,
+    show_domain_pts: bool = True,
 ) -> None:
-    """Write sampling visualizations for each pretraining slot after training.
+    """Write target-shape visualizations for each pretraining slot after training.
 
     For each slot, produces a PLY file showing:
-    - The **target mesh** (dark blue) — original PLY, or absent for sphere/cube.
-    - The **sampled points** (red) used during training.
-
-    Files are written to ``output_dir``.
+    - The **target mesh** (dark blue) — original PLY vertices, or absent for sphere/cube.
+    - The **surface sample points** (forest green) — surface-concentrated sub-population.
+    - The **domain sample points** (light grey) — uniform bounding-box sub-population,
+      only written when ``show_domain_pts=True``.
     """
-    print(f"[latent_pretrain] Writing sampling visualization → {output_dir}")
-    vis = SamplingVisualizer(output_dir=output_dir, is_static=False)
+    print(f"[latent_pretrain] Writing target sampling visualization → {vis.output_dir}")
 
     for slot_idx, shape in enumerate(shapes):
         slot_name = shape.get("name", str(slot_idx))
         shape_type: str = shape["shape_type"]
-
-        # --- Sample points for this slot (one representative batch) ---
         shape_params = _build_shape_params(shape, ply_cache, slot_idx)
+
         try:
-            pts, _ = _sample_points_for_shape(shape_type, shape_params, batch_size_per_shape, device)
+            surface_pts, domain_pts = _vis_split_sample(shape_type, shape_params, batch_size_per_shape, device)
         except Exception as exc:  # visualization is non-critical
             print(f"[latent_pretrain] WARNING: sampling failed for slot {slot_idx} ({slot_name}): {exc}")
             continue
@@ -437,10 +445,11 @@ def _visualize_pretraining_sampling(
 
         try:
             vis.save_snapshot(
-                points_mm=pts,
+                points_mm=surface_pts,
                 mesh_verts=mesh_verts,
                 mesh_faces=mesh_faces,
                 name=f"slot{slot_idx:02d}_{slot_name}_{shape_type}_target",
+                secondary_points_mm=domain_pts if show_domain_pts else None,
             )
         except Exception as exc:  # visualization is non-critical
             print(f"[latent_pretrain] WARNING: visualization failed for slot {slot_idx} ({slot_name}): {exc}")
@@ -492,12 +501,16 @@ def _write_epoch_vis_snapshot(
     device: str,
     vis: SamplingVisualizer,
     batch_size_per_shape: int,
+    *,
+    show_domain_pts: bool = True,
 ) -> None:
     """Write one epoch snapshot: current trained mesh + current loss sample points.
 
     For each slot, extracts the current SDF mesh via marching cubes and pairs it
-    with a fresh sample batch to show what the model currently looks like alongside
-    the points being used to compute the loss.
+    with a fresh sample batch split by sub-population:
+    - **Forest green** (primary): surface-concentrated samples (quality-of-fit region).
+    - **Light grey** (secondary, optional): domain / bounding-box uniform samples
+      that also feed the eikonal term; omitted when ``show_domain_pts=False``.
 
     The caller must call ``model.train()`` after this function returns.
     """
@@ -507,7 +520,7 @@ def _write_epoch_vis_snapshot(
         shape_params = _build_shape_params(shape, ply_cache, slot_idx)
 
         try:
-            pts, _ = _sample_points_for_shape(shape_type, shape_params, batch_size_per_shape, device)
+            surface_pts, domain_pts = _vis_split_sample(shape_type, shape_params, batch_size_per_shape, device)
         except Exception as exc:
             print(f"[latent_pretrain] WARNING: epoch vis sampling failed for slot {slot_idx} ({slot_name}): {exc}")
             continue
@@ -518,10 +531,107 @@ def _write_epoch_vis_snapshot(
 
         try:
             vis.save_snapshot(
-                points_mm=pts,
+                points_mm=surface_pts,
                 mesh_verts=mesh_verts_ep,
                 mesh_faces=mesh_faces_ep,
                 name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
+                secondary_points_mm=domain_pts if show_domain_pts else None,
             )
         except Exception as exc:
             print(f"[latent_pretrain] WARNING: epoch vis save failed for slot {slot_idx} ({slot_name}): {exc}")
+
+
+def _vis_split_sample(
+    shape_type: str,
+    shape_params: dict[str, Any],
+    batch_size: int,
+    device: str,
+) -> tuple[Tensor, Tensor]:
+    """Sample for visualization, returning ``(surface_pts, domain_pts)`` separately.
+
+    Calls ``_sample_points_for_shape`` and splits by the known sub-population
+    boundary: the first ``n_domain`` rows are always uniform domain points; the
+    remainder are surface-concentrated (surface ± jitter for PLY, face-uniform +
+    near-surface for sphere/cube).
+
+    Returns:
+        ``(surface_pts, domain_pts)`` each as ``(K, 3)`` Tensor.
+    """
+    pts, _ = _sample_points_for_shape(shape_type, shape_params, batch_size, device)
+    n_domain = batch_size // 2 if shape_type == "ply" else int(batch_size * 0.50)
+    domain_pts = pts[:n_domain]
+    surface_pts = pts[n_domain:]
+    return surface_pts, domain_pts
+
+
+def _make_vis_legend(config_hash: str, vis_cadence: int, vis_eikonal_pts: bool) -> str:
+    """Build the legend.txt content for a sampling_vis directory."""
+    eikonal_note = (
+        "  Light grey (220, 220, 220): Domain sample points (bounding-box uniform, 50 % of batch).\n"
+        "      Contribute to BOTH the MSE loss and the eikonal loss.\n"
+        "      Shown because vis_eikonal_pts: true in config."
+        if vis_eikonal_pts
+        else "  Domain points (light grey): HIDDEN because vis_eikonal_pts: false in config."
+    )
+    cadence_note = f"every {vis_cadence} epochs" if vis_cadence > 0 else "disabled (vis_cadence: 0)"
+    return f"""Sampling Visualization Legend
+==============================
+Config hash : {config_hash}
+
+File naming
+-----------
+  slot{{N:02d}}_{{name}}_{{shape_type}}_target.ply
+      Written once after training.
+      Shows the original target shape and a representative training sample.
+
+  slot{{N:02d}}_{{name}}_epoch{{E:05d}}.ply
+      Written {cadence_note}.
+      Shows the CURRENT trained SDF mesh and a fresh training sample at that epoch.
+
+Companion files (*_mesh_only.ply)
+---------------------------------
+  Each entry above has a companion *_mesh_only.ply (pure triangle mesh, no
+  point cloud).  Open this in MeshLab / CloudCompare to see full mesh geometry.
+  The combined .ply is a point cloud; mesh vertices appear as blue dots.
+
+Colour coding
+-------------
+  Dark blue  (0,   0,   139): Mesh vertices.
+      - target PLYs : vertices of the original target PLY file.
+      - epoch PLYs  : current trained SDF mesh (marching cubes at that epoch).
+      NOTE: mesh vertices are rendered as POINTS in the combined .ply file.
+            Open the companion *_mesh_only.ply for the full triangle mesh view.
+            Blue dots only at front/back of a car model is CORRECT: those
+            regions have denser triangulation (more curvature), hence more vertices.
+
+  Forest green (34, 139, 34): Surface-concentrated sample points.
+      - For PLY targets : 50 % of batch — trimesh.sample.sample_surface() +
+                          Gaussian jitter (sigma = 0.05 x bbox_extent).
+      - For sphere/cube : 50 % of batch — exact surface (30 %) +
+                          near-surface band (20 %, |SDF| < 0.15-0.3 x scale).
+      Role: primary quality-of-fit region for the MSE loss.
+
+{eikonal_note}
+
+Loss terms in pretraining
+--------------------------
+  1. MSE loss (quality of fit): L2 between predicted SDF and ground-truth SDF,
+     normalised to metres.  All sample points (green + grey) contribute.
+     GT SDF computed by: mesh_sdf (GPU) for PLY; analytic for sphere/cube.
+
+  2. Eikonal loss: penalises |grad SDF| != 1.  Uses the SAME sample batch as
+     the MSE loss (green + grey points together).  There is no separate
+     eikonal-specific point set in the current implementation.
+     Toggle grey points off with vis_eikonal_pts: false in config.output.
+
+  NO smoothness loss in pretraining.  Smoothness is applied only in the
+  main aeroshell optimizer loop, not here.
+
+DeepSDF vs AISCO sampling (reference)
+---------------------------------------
+  DeepSDF uses TWO near-surface Gaussian scales (sigma_1=0.0025,
+  sigma_2=0.00025 in normalised [-1,1] space) + unit-sphere uniform samples,
+  pre-computed offline.  AISCO uses ONE scale (0.05 x bbox_extent) + uniform
+  domain, computed online per epoch.  The tighter DeepSDF sigma_2 band
+  provides higher SDF accuracy very close to the surface.
+"""

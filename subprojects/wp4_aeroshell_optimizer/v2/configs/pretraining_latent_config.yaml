@@ -64,3 +64,4 @@ output:
   mesh_resolution: 64
   mesh_box_mm: 1500
   vis_cadence: 300 # at what interval to visualize the sampling
+  vis_eikonal_pts: false   # hide grey domain points (default: true)
