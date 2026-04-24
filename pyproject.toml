@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "AISCO_code"
-version = "0.5.0"
+version = "0.5.1"
 description = "Monorepo for all AISCO code"
 authors = [
     {name = "Kolja Diehl", email = "kdiehl@ethz.ch"}
@@ -196,6 +196,7 @@ ignore = [
     "N806", # in ML uppercase variables are common
     "N803", # invalid argument name
     "PD011", # falsely flags torch tensor .values (e.g. from .max(dim=0).values)
+    "RUF002", # we do not care if x or × is being used in a docstring
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.

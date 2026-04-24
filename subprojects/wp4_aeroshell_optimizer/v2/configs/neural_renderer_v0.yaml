@@ -26,7 +26,7 @@ mesh_extraction:
   resolution: 256 # Conservative default, adjust based on your GPU  #  total_loss.py: mesh_config.get("resolution", 128)
   # Bounding box [[xmin,xmax], [ymin,ymax], [zmin,zmax]]
   # Adjust to encompass your geometry with some margin
-  bbox: [[-5000, 5000], [-5000, 5000], [-5000, 5000]]  #  total_loss.py: mesh_config.get("bbox", ...)
+  bbox: [[-2900, 2900], [-1150, 1150], [0, 1650]]  #  total_loss.py: mesh_config.get("bbox", ...)
   # Isovalue for surface extraction (0.0 = zero level set, standard for SDFs)
   isovalue: 0.0  #  total_loss.py: self._mesh_extraction_config.get("isovalue", 0.0)
   # Batch size for SDF evaluation (points processed per GPU call)

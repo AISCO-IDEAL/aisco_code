@@ -21,6 +21,7 @@ from torch import Tensor
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
     _compute_eikonal_latent,
     _extract_mesh,
@@ -34,20 +35,24 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_
 
 
 def _load_ply_tensors(ply_path: str, device: str, ply_scale: float = 1.0) -> tuple[Tensor, Tensor, float]:
-    """Load a PLY mesh and return (verts, faces, bbox_extent).
+    """Load a PLY mesh, transform to AISCO convention, and return (verts, faces, bbox_extent).
+
+    Applies three deterministic transforms after scaling:
+    1. Axis permutation [2, 0, 1]: PLY_Z→AISCO_X (length), PLY_X→AISCO_Y (width),
+       PLY_Y→AISCO_Z (height).
+    2. X centering: shifts so that the car is symmetrically centred on the X axis.
+    3. Z grounding: shifts so that Z_min equals the outer-prism ground clearance (100mm).
 
     Args:
         ply_path: Absolute path to the PLY file.
         device: Target device string.
         ply_scale: Multiplicative scale applied to raw vertex coordinates.  Use
-            ``1000.0`` when the PLY is stored in metres and the training
-            coordinate system is millimetres (the AISCO default).  Use ``1.0``
-            when the PLY is already in mm.
+            ``100.0`` when the PLY is stored in decimetres (the AISCO pretraining
+            convention).  Use ``1.0`` when the PLY is already in mm.
 
     Returns:
         Tuple of (ply_verts, ply_faces, bbox_extent) where bbox_extent is the
-        diagonal of the mesh bounding box **after scaling** (i.e. in mm when
-        ``ply_scale=1000.0``).
+        diagonal of the mesh bounding box after all transforms (in mm).
     """
     raw_mesh = trimesh.load(ply_path)
     if not isinstance(raw_mesh, trimesh.Trimesh):
@@ -57,7 +62,54 @@ def _load_ply_tensors(ply_path: str, device: str, ply_scale: float = 1.0) -> tup
         )
     verts_np = np.array(raw_mesh.vertices, dtype="float32") * ply_scale
     faces_np = np.array(raw_mesh.faces, dtype="int64")
-    bbox_diag = float(np.linalg.norm(verts_np.max(axis=0) - verts_np.min(axis=0)))
+
+    # --- Axis permutation: PLY_Z→AISCO_X, PLY_X→AISCO_Y, PLY_Y→AISCO_Z ---
+    verts_np = verts_np[:, [2, 0, 1]]
+
+    # --- X centering: shift so that X_center = 0 (car centred on length axis) ---
+    x_center = (float(verts_np[:, 0].max()) + float(verts_np[:, 0].min())) / 2.0
+    verts_np[:, 0] -= x_center
+
+    # --- Z grounding: shift so Z_min = ground_clearance (100mm) ---
+    prism = get_outer_prism_bounds_mm()
+    ground_clearance = abs(prism["z_sampling"][0])  # = 100.0 mm
+    z_shift = ground_clearance - float(verts_np[:, 2].min())
+    verts_np[:, 2] += z_shift
+
+    # --- Telemetry ---
+    shape_name = Path(ply_path).stem
+    extents = verts_np.max(axis=0) - verts_np.min(axis=0)
+    ctr = (verts_np.max(axis=0) + verts_np.min(axis=0)) / 2.0
+    z_min_after = float(verts_np[:, 2].min())
+    x_center_after = float(ctr[0])
+    print(
+        f"[PLY Loader] {shape_name}: "
+        f"ext=({extents[0]:.0f},{extents[1]:.0f},{extents[2]:.0f})mm  "
+        f"center=({ctr[0]:.0f},{ctr[1]:.0f},{ctr[2]:.0f})mm  "
+        f"Z_min={z_min_after:.0f}mm  X_center={x_center_after:.0f}mm"
+    )
+
+    # --- Outer-prism violation warnings ---
+    prism_length = prism["x"][1] - prism["x"][0]
+    prism_width = prism["y"][1] - prism["y"][0]
+    prism_height = float(prism["z_mesh"][1])
+    axis_checks = [("X", float(extents[0]), prism_length), ("Y", float(extents[1]), prism_width)]
+    for axis_name, extent_mm, limit_mm in axis_checks:
+        if extent_mm > limit_mm:
+            pct = 100.0 * (extent_mm - limit_mm) / limit_mm
+            print(
+                f"[PLY Loader] WARNING: {shape_name} {axis_name}-extent {extent_mm:.0f}mm "
+                f"exceeds outer_prism limit {limit_mm:.0f}mm by {pct:.1f}%"
+            )
+    z_max_after = float(verts_np[:, 2].max())
+    if z_max_after > prism_height:
+        pct = 100.0 * (z_max_after - prism_height) / prism_height
+        print(
+            f"[PLY Loader] WARNING: {shape_name} Z_max {z_max_after:.0f}mm "
+            f"exceeds outer_prism height {prism_height:.0f}mm by {pct:.1f}%"
+        )
+
+    bbox_diag = float(np.linalg.norm(extents))
     ply_verts = torch.tensor(verts_np, device=device)
     ply_faces = torch.tensor(faces_np, device=device)
     return ply_verts, ply_faces, max(bbox_diag, 1.0)

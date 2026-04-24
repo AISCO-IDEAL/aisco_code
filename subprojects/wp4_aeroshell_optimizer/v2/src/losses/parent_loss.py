@@ -50,7 +50,8 @@ class ParentLoss:
         if loss_name and ("eikonal" in loss_name.lower() or "smoothness" in loss_name.lower()):
             self.points = get_points(
                 num_points=self.losses_config["get_points_params"]["num_points"],
-                bbox_size=self.losses_config["get_points_params"]["bbox_size"],
+                bbox_lo=self.losses_config["get_points_params"]["bbox_lo"],
+                bbox_hi=self.losses_config["get_points_params"]["bbox_hi"],
                 device=self.device,
             )
 

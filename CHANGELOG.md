@@ -2,6 +2,58 @@
 
 All notable changes to AISCO_code are documented here.
 
+## [0.5.1] — Plan 010: PLY Fix and Outer-Prism Domain Unification
+
+### Fixed
+
+- **`subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_latent.py`** — `_load_ply_tensors`
+  now applies axis permutation [2,0,1] (PLY_Z→AISCO_X, PLY_X→AISCO_Y, PLY_Y→AISCO_Z),
+  X-centering, and Z-grounding (Z_min = 100mm ground clearance). Corrects the 10× scale
+  error (`ply_scale` changed from 1000.0 to 100.0 in config).
+
+- **`subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v1_1.py`** — `_load_ply_mesh`
+  and `_sample_points_for_shape` PLY branch updated with same axis permutation, X-centering,
+  Z-grounding, and outer-prism cuboid domain sampling.
+
+- **`subprojects/wp4_aeroshell_optimizer/v2/src/utils/losses_utils.py`** — `get_points`
+  signature changed from `bbox_size: float` (cubic) to `bbox_lo: list[float], bbox_hi: list[float]`
+  (per-axis cuboid). Now samples the outer-prism domain correctly.
+
+### Added
+
+- **`subprojects/wp2_assembler/version4/utils/reg_imp.py`** — new `get_outer_prism_bounds_mm()`
+  function returning the outer-prism X/Y/Z bounds from `regulations_and_parameters.yaml`
+  as the single source of truth for all domain sampling.
+
+- **`tests/wp2_assembler/test_reg_imp.py`** — 7 TDD tests for `get_outer_prism_bounds_mm`. All pass.
+
+- **`tests/wp4_aeroshell_optimizer/v2/test_ply_fix_and_domain.py`** — 13 TDD tests covering
+  PLY axis permutation / centering / grounding and `get_points` per-axis cuboid sampling. All pass.
+
+### Changed
+
+- **`subprojects/wp4_aeroshell_optimizer/v2/configs/pretraining_latent_config.yaml`** — all 5 PLY
+  entries: `ply_scale 1000.0 → 100.0`. Removed `mesh_box_mm`. Changed `vis_mesh_display_mode`
+  from `"faces"` to `"vertices"`.
+
+- **`subprojects/wp4_aeroshell_optimizer/v2/configs/losses_v0_config.yaml`** — `bbox_size: 10.0`
+  replaced by `bbox_lo/bbox_hi` matching outer-prism dimensions. `connectedness_config.bbox`
+  and `developability_config.mesh_bbox` updated to outer-prism mm values.
+
+- **`subprojects/wp4_aeroshell_optimizer/v2/configs/GINN.yaml`** — `diversity_bbox_size`:
+  `10.0 → 5800.0` mm (car-length approximation).
+
+- **`subprojects/wp4_aeroshell_optimizer/v2/configs/neural_renderer_v0.yaml`** — `bbox`:
+  `[[-5000,5000],...]` → outer-prism `[[-2900,2900],[-1150,1150],[0,1650]]`.
+
+- **`subprojects/wp4_aeroshell_optimizer/v2/src/utils/kaolin_conversions.py`** — default
+  `box_dim` updated from `[-5000,5000,...]` to outer-prism mm values.
+
+- **`subprojects/wp4_aeroshell_optimizer/v2/src/losses/parent_loss.py`** — `get_points` call
+  updated to use `bbox_lo`/`bbox_hi` keys from config.
+
+---
+
 ## [Unreleased — Plan 005: Latent Population Pretraining]
 
 > **Note:** Plan 005 targeted v0.3.0 but pyproject.toml was already at v0.5.0 when

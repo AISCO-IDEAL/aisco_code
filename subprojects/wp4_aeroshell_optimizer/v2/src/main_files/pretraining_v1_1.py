@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import trimesh
 
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.ground_truth_masks.simple_geoms import (
     cube_gt,
     ply_gt,
@@ -64,13 +65,30 @@ def _load_ply_mesh(config: dict, device: str) -> tuple[torch.Tensor, torch.Tenso
             raise ValueError(
                 f"PLY file not found: '{ply_path}'. Set 'beast_pretraining_ply_path' in pretraining config for local runs."
             )
-    ply_scale = float(config.get("pretraining_ply_scale", 1000.0))
+    ply_scale = float(config.get("pretraining_ply_scale", 100.0))
     raw_mesh = trimesh.load(ply_path)
     assert isinstance(raw_mesh, trimesh.Trimesh), f"Expected Trimesh, got {type(raw_mesh)}"
-    ply_verts_t = torch.tensor(np.array(raw_mesh.vertices, dtype="float32") * ply_scale, device=device)
+    verts_np = np.array(raw_mesh.vertices, dtype="float32") * ply_scale
+
+    # Axis permutation: PLY_Z→AISCO_X, PLY_X→AISCO_Y, PLY_Y→AISCO_Z
+    verts_np = verts_np[:, [2, 0, 1]]
+
+    # X centering
+    x_center = (float(verts_np[:, 0].max()) + float(verts_np[:, 0].min())) / 2.0
+    verts_np[:, 0] -= x_center
+
+    # Z grounding: Z_min = ground_clearance
+    prism = get_outer_prism_bounds_mm()
+    ground_clearance = abs(prism["z_sampling"][0])
+    verts_np[:, 2] += ground_clearance - float(verts_np[:, 2].min())
+
+    ply_verts_t = torch.tensor(verts_np, device=device)
     ply_faces_t = torch.tensor(np.array(raw_mesh.faces, dtype="int64"), device=device)
+    extents = verts_np.max(axis=0) - verts_np.min(axis=0)
     print(
-        f"[pretraining] Loaded PLY '{ply_path}' | scale={ply_scale} | vertices={ply_verts_t.shape[0]} faces={ply_faces_t.shape[0]}"
+        f"[pretraining] Loaded PLY '{ply_path}' | scale={ply_scale} | "
+        f"ext=({extents[0]:.0f},{extents[1]:.0f},{extents[2]:.0f})mm | "
+        f"vertices={ply_verts_t.shape[0]} faces={ply_faces_t.shape[0]}"
     )
     return ply_verts_t, ply_faces_t
 
@@ -267,8 +285,11 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
         n_domain = batch_size // 2
         n_surface = batch_size - n_domain
 
-        # Domain half (50 %)
-        domain_pts = (torch.rand(n_domain, 3, device=device) - 0.5) * bbox_extent
+        # Domain half (50 %) — sample from the outer-prism cuboid
+        prism = get_outer_prism_bounds_mm()
+        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z_sampling"][0]], dtype=torch.float32, device=device)
+        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z_sampling"][1]], dtype=torch.float32, device=device)
+        domain_pts = lo + torch.rand(n_domain, 3, device=device) * (hi - lo)
         domain_gt = ply_gt(domain_pts, ply_verts, ply_faces)
 
         # 50 % surface + Gaussian jitter

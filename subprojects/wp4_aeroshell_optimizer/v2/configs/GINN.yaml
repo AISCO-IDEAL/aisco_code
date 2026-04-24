@@ -4,7 +4,7 @@ population_size: 6
 # Points are used for cheap WIRE-only forward passes (no CFD/raytracing).
 # With 20 GB VRAM this can be set high; 2048 is a conservative default.
 diversity_num_points: 4096
-diversity_bbox_size: 10.0        # [meters^3]: matches get_points_params.bbox_size in losses_v0_config.yaml
+diversity_bbox_size: 5800.0       # [mm]: car-length dimension; outer_prism longest axis (X: 5800mm).
 diversity_norm_order: 2          # p for L^p field distance
 diversity_neighbor_agg_fn: "min" # 'min' = maximize nearest-neighbour distance (GINN paper Eq. 26)
 

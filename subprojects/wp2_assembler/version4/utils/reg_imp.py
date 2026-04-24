@@ -36,6 +36,34 @@ def get_regulation(section: str) -> int | float:
     return -1  # Final value is not a number
 
 
+def get_outer_prism_bounds_mm() -> dict[str, tuple[float, float]]:
+    """Return outer-prism spatial bounds in millimetres.
+
+    Reads dimensions directly from ``regulations_and_parameters.yaml`` so that
+    any change to the regulation values propagates automatically to all callers.
+
+    Returns:
+        Dict with four keys:
+          - ``"x"``: ``(lo, hi)`` along the car-length axis (symmetric, ±length/2).
+          - ``"y"``: ``(lo, hi)`` along the lateral axis (symmetric, ±width/2).
+          - ``"z_sampling"``: ``(lo, hi)`` for domain sampling — includes a
+            below-ground buffer equal to ``ground_clearance`` for eikonal
+            regularisation.
+          - ``"z_mesh"``: ``(lo, hi)`` for mesh extraction — shapes exist above
+            the ground plane (Z ≥ 0).
+    """
+    half_length = float(get_regulation("no_build_zones.outer_prism.length")) / 2.0
+    half_width = float(get_regulation("no_build_zones.outer_prism.width")) / 2.0
+    height = float(get_regulation("no_build_zones.outer_prism.height"))
+    ground_clearance = float(get_regulation("no_build_zones.outer_prism.ground_clearance"))
+    return {
+        "x": (-half_length, half_length),
+        "y": (-half_width, half_width),
+        "z_sampling": (-ground_clearance, height),
+        "z_mesh": (0.0, height),
+    }
+
+
 if __name__ == "__main__":
     # Example usage - get values from nested YAML structure in test - print values 3 2 1
     pass
