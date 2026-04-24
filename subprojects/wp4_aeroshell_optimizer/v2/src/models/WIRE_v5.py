@@ -1,23 +1,10 @@
 import math
+from typing import cast
 
 import torch
 from torch import nn
 
-import wandb
-from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
-    DebugManager,
-    collect_alm_state,
-    collect_cuda_memory,
-    collect_loss_components,
-    collect_loss_diagnostics,
-    collect_loss_weights,
-    collect_optimizer_state,
-    collect_param_stats,
-)
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import allround_save_data
-from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager, Wrapper
 
 
 def _log_tile(lo: float, hi: float, n: int) -> list[tuple[float, float]]:
@@ -143,7 +130,7 @@ class WIREV5(BaseModel):
         if not isinstance(torch_dtype, torch.dtype):
             raise TypeError(f"Invalid dtype given: {dtype}")
 
-        center = (
+        center: torch.Tensor = (
             torch.zeros(in_features, dtype=torch_dtype) if bbox_center is None else torch.tensor(bbox_center, dtype=torch_dtype)
         )
         self.register_buffer("bbox_center", center)
@@ -216,160 +203,22 @@ class WIREV5(BaseModel):
             "dtype": str(torch_dtype),
         }
 
+    @property
+    def bbox_center_tensor(self) -> torch.Tensor:
+        return cast(torch.Tensor, self.bbox_center)
+
+    @property
+    def bbox_half_extent_tensor(self) -> torch.Tensor:
+        return cast(torch.Tensor, self.bbox_half_extent)
+
     def forward(self, coords: torch.Tensor) -> torch.Tensor:
-        x = (coords - self.bbox_center) / self.bbox_half_extent
+        x = (coords - self.bbox_center_tensor) / self.bbox_half_extent_tensor
         h = x
         for i, layer in enumerate(self.gabor_layers):
             if i == self.skip_layer_idx + 1:
                 h = torch.cat([h, x], dim=-1)
             h = layer(h)
-        return self.output_layer(h) * self.bbox_half_extent
-
-    def optimise(
-        self,
-        general_config,
-        training_config,
-        renderer_manager: VisualisationManager | None = None,
-        renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
-        wandb_name: str | None = None,
-        debug_manager: DebugManager | None = None,
-    ) -> None:
-        if training_config is None:
-            raise ValueError("Training config must be provided for optimisation.")
-
-        self.train()
-
-        dbg = debug_manager if debug_manager is not None else DebugManager(config={"GLOBAL_DEBUG": False})
-
-        if wandb.run and "learning_rate " in wandb.config:
-            learning_rate = wandb.config.learning_rate
-            print(f"Sweep: Updated learning_rate to {learning_rate}")
-        else:
-            learning_rate = training_config["training_params"].get("learning_rate", 1e-3)
-
-        optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
-        num_epochs = training_config["training_params"].get("num_epochs", 1000)
-
-        device = str(next(self.parameters()).device)
-        loss_function = TotalLoss(device, renderer_manager=renderer_manager)
-
-        dbg.log_run_config(
-            model=self,
-            training_config=training_config,
-            general_config=general_config,
-            device=device,
-            num_epochs=num_epochs,
-            learning_rate=learning_rate,
-            optimizer_type="Adam",
-            loss_config={
-                "use_alm": getattr(loss_function, "_use_alm", False),
-                "use_cse": getattr(loss_function, "_use_cse", False),
-                "manual_weights": collect_loss_weights(loss_function),
-            },
-        )
-
-        for epoch in range(num_epochs):
-            dbg.begin_iteration(epoch)
-
-            optimizer.zero_grad()
-
-            loss_function.get_total_loss(model=self, epoch_name=epoch)
-
-            trainable_params = [p for p in self.parameters() if p.requires_grad]
-            prev_grad = [torch.zeros_like(p) for p in trainable_params]
-            log_grad_mem = loss_function._gradient_memory_diagnostics
-            device_str = str(next(self.parameters()).device)
-            total_weighted_loss = 0.0
-            per_component_grad_norms: dict[str, float] = {}
-            for component_name, weighted_loss in loss_function._last_weighted_losses.items():
-                if not weighted_loss.requires_grad:
-                    continue
-                total_weighted_loss += weighted_loss.item()
-                if log_grad_mem and "cuda" in device_str:
-                    mem_before = torch.cuda.memory_allocated() / 1024**2
-                weighted_loss.backward(retain_graph=False)
-                if log_grad_mem and "cuda" in device_str:
-                    mem_after = torch.cuda.memory_allocated() / 1024**2
-                    print(
-                        f"  [Epoch {epoch}] backward({component_name}): "
-                        f"{mem_before:.1f} MB → {mem_after:.1f} MB "
-                        f"(freed {mem_before - mem_after:.1f} MB)"
-                    )
-                    if wandb.run:
-                        wandb.log({f"grad_memory/{component_name}_after_mb": mem_after}, step=epoch)
-                        wandb.log({f"grad_memory/{component_name}_freed_mb": mem_before - mem_after}, step=epoch)
-                curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
-                delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
-                per_component_grad_norms[component_name] = delta_norm
-                if wandb.run:
-                    wandb.log({f"{component_name}_gradient": delta_norm}, step=epoch)
-                prev_grad = curr_grad
-
-            grad_norm = sum(p.grad.detach().pow(2).sum().item() for p in self.parameters() if p.grad is not None) ** 0.5
-            lr = optimizer.param_groups[0]["lr"]
-
-            _last_cs = getattr(loss_function, "_last_cruising_speed", None)
-            dbg.log_values(
-                epoch,
-                loss=total_weighted_loss,
-                loss_components=collect_loss_components(loss_function),
-                per_component_grad_norms=per_component_grad_norms,
-                grad_norm=grad_norm,
-                lr=lr,
-                param_stats=collect_param_stats(self) if dbg.print_raw_values and dbg.log_param_stats else None,
-                optimizer_state=collect_optimizer_state(optimizer) if dbg.print_raw_values and dbg.log_optimizer_state else None,
-                cuda_memory=collect_cuda_memory() if dbg.print_raw_values and dbg.log_cuda_memory else None,
-                alm_state=collect_alm_state(loss_function) if dbg.print_raw_values and dbg.log_alm_state else None,
-                loss_weights=collect_loss_weights(loss_function),
-                loss_diagnostics=collect_loss_diagnostics(loss_function)
-                if dbg.print_raw_values and dbg.log_loss_diagnostics
-                else None,
-                extra={
-                    "cruising_speed": _last_cs.item() if _last_cs is not None else "N/A",
-                },
-            )
-
-            dbg.check_warnings(
-                epoch,
-                loss=total_weighted_loss,
-                grad_norm=grad_norm,
-                loss_components=collect_loss_components(loss_function),
-                loss_diagnostics=collect_loss_diagnostics(loss_function) if dbg.emit_warnings else None,
-            )
-
-            dbg.check_insights(
-                epoch,
-                loss=total_weighted_loss,
-                lr=lr,
-                grad_norm=grad_norm,
-            )
-
-            mesh_save_interval = training_config["training_params"].get("mesh_save_interval", 50)
-            if (epoch + 1) % mesh_save_interval == 0:
-                allround_save_data(
-                    model=self,
-                    storage_path=general_config["storage_paths"].get(
-                        "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
-                    ),
-                    save_model=True,
-                    save_mesh=True,
-                    epoch=epoch + 1,
-                    verbose=general_config["general_info"].get("verbose", False),
-                    pretraining=False,
-                    wandb_run=wandb_name,
-                    marching_cubes_usage=training_config["training_params"].get("marching_cubes_usage", "False"),
-                )
-
-            optimizer.step()
-
-            dbg.end_iteration(
-                epoch,
-                loss=total_weighted_loss,
-                grad_norm=grad_norm,
-                lr=lr,
-            )
-
-        dbg.stop()
+        return self.output_layer(h) * self.bbox_half_extent_tensor
 
     def get_model_info_dict(self) -> dict:
         return self.model_info_dict

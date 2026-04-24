@@ -8,6 +8,7 @@ Usage:
 import torch
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import pretraining
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.WIRE_v2 import WIREV2
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 
@@ -24,7 +25,8 @@ override = {
     "training_loop.random_batch_size": 4096,
     "training_loop.print_interval": 50,
 }
-
+# for mypy: check that WIREV2 is compatible with SupportsModelContract
+assert isinstance(model, SupportsModelContract)
 trained = pretraining(model=model, override_config=override)
 
 # Save the model
