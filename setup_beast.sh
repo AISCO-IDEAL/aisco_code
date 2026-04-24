@@ -14,9 +14,9 @@ PYTHON_BIN="${PYTHON_BIN:-python3.11}"
 AUTO_INSTALL_SYSTEM_DEPS="${AUTO_INSTALL_SYSTEM_DEPS:-1}"
 AUTO_REBUILD_PYTHON="${AUTO_REBUILD_PYTHON:-0}"
 SYSTEM_DEPS_ATTEMPTED="${SYSTEM_DEPS_ATTEMPTED:-0}"
-INSTALL_KAOLIN="${INSTALL_KAOLIN:-1}"
-INSTALL_DISO="${INSTALL_DISO:-1}"
-BUILD_PYDEVELOPABILITY="${BUILD_PYDEVELOPABILITY:-1}"
+INSTALL_KAOLIN="${INSTALL_KAOLIN:-}"
+INSTALL_DISO="${INSTALL_DISO:-}"
+BUILD_PYDEVELOPABILITY="${BUILD_PYDEVELOPABILITY:-}"
 PYDEVELOPABILITY_STRICT="${PYDEVELOPABILITY_STRICT:-0}"
 
 APT_BUILD_DEPS=(
@@ -45,6 +45,23 @@ require_cmd() {
         echo "Error: required command '$cmd' was not found."
         exit 1
     fi
+}
+
+find_executable() {
+    local cmd="$1"
+    local candidate=""
+
+    if candidate="$(command -v "$cmd" 2>/dev/null)"; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+
+    if [[ -n "${VENV_DIR:-}" && -x "$VENV_DIR/bin/$cmd" ]]; then
+        printf '%s\n' "$VENV_DIR/bin/$cmd"
+        return 0
+    fi
+
+    return 1
 }
 
 install_python_build_deps_ubuntu() {
@@ -255,11 +272,55 @@ install_dependencies() {
     # Install base project dependencies.
     "$VENV_PYTHON" -m pip install -e .
 
-    # Install all optional dependency groups defined in pyproject.toml.
-    "$VENV_PYTHON" -m pip install \
-        '.[wp1_cfd_ai,wp2_assembler,wp3_solar_estimator,wp4_aeroshell_optimizer,wp7_gui,testing,pydevelopability]'
-
     "$VENV_PYTHON" -m pre_commit install || true
+
+    echo ""
+    echo "Standard dependencies installed."
+    echo ""
+    echo "Optional dependencies can be installed manually:"
+    echo "   - Workpackage 1 (wp1_cfd_ai):                  $VENV_PYTHON -m pip install '.[wp1_cfd_ai]'"
+    echo "   - Workpackage 2 (wp2_assembler):               $VENV_PYTHON -m pip install '.[wp2_assembler]'"
+    echo "   - Workpackage 3 (wp3_solar_estimator):         $VENV_PYTHON -m pip install '.[wp3_solar_estimator]'"
+    echo "   - Workpackage 4 (wp4_aeroshell_optimizer):     $VENV_PYTHON -m pip install '.[wp4_aeroshell_optimizer]'"
+    echo "   - Workpackage 7 GUI (wp7_gui):                 $VENV_PYTHON -m pip install '.[wp7_gui]'"
+    echo "   - Testing dependencies:                        $VENV_PYTHON -m pip install '.[testing]'"
+    echo "   - pydevelopability build dependencies:         $VENV_PYTHON -m pip install '.[pydevelopability]'"
+    echo "   - All optional dependencies:                   $VENV_PYTHON -m pip install '.[all]'"
+    echo ""
+}
+
+ask_yes_no() {
+    local prompt="$1"
+    local answer
+
+    read -r -p "$prompt [y/n]: " answer
+    [[ "$answer" == "y" || "$answer" == "Y" ]]
+}
+
+configure_optional_steps() {
+    if [[ -z "$INSTALL_KAOLIN" ]]; then
+        if ask_yes_no "Do you want to install Kaolin (GPU/CUDA-dependent)?"; then
+            INSTALL_KAOLIN="1"
+        else
+            INSTALL_KAOLIN="0"
+        fi
+    fi
+
+    if [[ -z "$INSTALL_DISO" ]]; then
+        if ask_yes_no "Do you want to install DISO (GPU/CUDA-dependent)?"; then
+            INSTALL_DISO="1"
+        else
+            INSTALL_DISO="0"
+        fi
+    fi
+
+    if [[ -z "$BUILD_PYDEVELOPABILITY" ]]; then
+        if ask_yes_no "Do you want to build pydevelopability C++ extension?"; then
+            BUILD_PYDEVELOPABILITY="1"
+        else
+            BUILD_PYDEVELOPABILITY="0"
+        fi
+    fi
 }
 
 install_kaolin() {
@@ -322,9 +383,6 @@ build_pydevelopability_cpp() {
         return 0
     fi
 
-    require_cmd cmake
-    require_cmd make
-
     local pydev_root
     pydev_root="$PROJECT_ROOT/subprojects/pydevelopability"
     local pydev_build
@@ -333,10 +391,42 @@ build_pydevelopability_cpp() {
     local cc_root
     local dev_repo
     local libigl_include
+    local cmake_bin
+    local make_bin
 
     cc_root="${CC_ROOT:-$PROJECT_ROOT/subprojects/concentrate_curvature}"
     dev_repo="${DEV_REPO:-$cc_root/DevelopabilityOfTriangleMeshes}"
     libigl_include="${LIBIGL_INCLUDE:-$cc_root/libigl-modern/include}"
+
+    echo "Ensuring pydevelopability build tools are available in the venv..."
+    if ! "$VENV_PYTHON" -m pip install --upgrade pybind11 cmake; then
+        echo "Warning: could not install pybind11/cmake into $ENV_NAME."
+        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
+            exit 1
+        fi
+        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
+        return 0
+    fi
+
+    if ! cmake_bin="$(find_executable cmake)"; then
+        echo "Warning: cmake was not found, even after installing the Python cmake package."
+        echo "         This step is only needed for the optional pydevelopability C++ extension."
+        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
+            exit 1
+        fi
+        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
+        return 0
+    fi
+
+    if ! make_bin="$(find_executable make)"; then
+        echo "Warning: make was not found."
+        echo "         Install build-essential/make on the target Linux machine to build pydevelopability."
+        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
+            exit 1
+        fi
+        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
+        return 0
+    fi
 
     pybind11_dir="$($VENV_PYTHON -m pybind11 --cmakedir 2>/dev/null || true)"
     if [[ -z "$pybind11_dir" || ! -d "$pybind11_dir" ]]; then
@@ -375,7 +465,7 @@ build_pydevelopability_cpp() {
     rm -rf "$pydev_build"
     mkdir -p "$pydev_build"
     pushd "$pydev_build" >/dev/null
-    if ! cmake .. \
+    if ! "$cmake_bin" .. \
         -DCMAKE_BUILD_TYPE=Release \
         -Dpybind11_DIR="$pybind11_dir" \
         -DCC_ROOT="$cc_root" \
@@ -391,7 +481,7 @@ build_pydevelopability_cpp() {
         return 0
     fi
 
-    if ! make -j"$(nproc)"; then
+    if ! "$make_bin" -j"$(nproc)"; then
         popd >/dev/null
         if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
             echo "Error: pydevelopability build failed in strict mode."
@@ -466,6 +556,7 @@ check_gpu_5090
 detect_cuda_home
 create_or_reuse_venv
 install_dependencies
+configure_optional_steps
 install_kaolin
 install_diso
 build_pydevelopability_cpp

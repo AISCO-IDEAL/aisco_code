@@ -10,6 +10,7 @@ import torch
 
 import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
+from subprojects.wp4_aeroshell_optimizer.v2.scripts.postprocess_gradient_conflict import build_conflict_gif
 from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import DiversityTrainer
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
@@ -24,6 +25,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import DebugManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
     configure_headless_pyvista,
@@ -216,6 +218,27 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
         os.makedirs(rendering_dir, exist_ok=True)
 
+    # Gradient conflict tracking setup
+    conflict_cadence: int = training_config["training_params"].get("gradient_conflict_cadence", 0)
+    conflict_tracker: GradientConflictTracker | None = None
+    conflict_output_dir: Path | None = None
+    if conflict_cadence > 0:
+        conflict_output_dir_str = training_config["training_params"].get("gradient_conflict_output_dir", "")
+        if conflict_output_dir_str:
+            conflict_output_dir = Path(conflict_output_dir_str)
+        elif wandb_name is not None:
+            if run_locally:
+                base_dir = Path(general_config["storage_paths"]["local_storage_dir"])
+            else:
+                base_dir = Path(general_config["storage_paths"]["storage_dir"])
+            conflict_output_dir = base_dir / model_hash / reformat_wandb_name(wandb_name) / "gradient_conflict"
+        else:
+            conflict_output_dir = Path("/tmp/gradient_conflict")
+        conflict_output_dir.mkdir(parents=True, exist_ok=True)
+        conflict_tracker = GradientConflictTracker(conflict_output_dir)
+        if verbose:
+            print(f"Gradient conflict tracking enabled (cadence={conflict_cadence}, output={conflict_output_dir}")
+
     # 5. Run main training loop
 
     if has_optimise:
@@ -231,6 +254,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             wandb_name=wandb_name,
             general_config=general_config,
             debug_manager=debug_manager,
+            conflict_tracker=conflict_tracker,
+            conflict_cadence=conflict_cadence,
         )
 
         # ------------------------------------------------------------------
@@ -334,6 +359,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             use_neural_renderer=wandb_cfg.get("use_neural_renderer", False),
             use_wandb=use_wandb,
             log_dir=rendering_dir,
+            conflict_tracker=conflict_tracker,
+            conflict_cadence=conflict_cadence,
         )
 
         interpolation_state = setup_latent_interpolator(
@@ -374,7 +401,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 )
 
             run_latent_interpolation(state=interpolation_state, epoch=epoch, stage="periodic", verbose=verbose)
-            if verbose and epoch % 50 == 0:
+            if verbose and epoch % 50 == 0:  # arbitray number, adjust as needed
                 print(
                     f"Epoch {epoch}/{num_epochs} | per_vector={metrics['per_vector_loss']:.4f} | "
                     f"diversity={metrics['diversity_loss']:.4f} | total={metrics['total_loss']:.4f}"
@@ -390,6 +417,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 print(f"Manager finalize failed: {e}")
 
     # 6. Saving of files and postprocessing
+
+    # Post-process gradient conflict data into GIF if tracking was active
+    if conflict_tracker is not None and conflict_output_dir is not None:
+        try:
+            gif_path = conflict_output_dir / "conflict_evolution.gif"
+            build_conflict_gif(conflict_output_dir, gif_path, fps=5)
+            if verbose:
+                print(f"Gradient conflict GIF saved to {gif_path}")
+        except Exception as e:
+            print(f"Warning: Failed to post-process gradient conflict data: {e}")
 
     # Reset latent vector to zeros before saving final model.
     if uses_diversity and isinstance(model, SupportsLatentConcat):

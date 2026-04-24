@@ -60,11 +60,13 @@ class WeightedLossResult:
 
     ``scalar`` keeps the live autograd graph for backward(). ``log_data`` holds
     detached (host-side) floats suitable for averaging across a population and
-    feeding directly into wandb.log.
+    feeding directly into wandb.log. ``components`` holds per-loss weighted tensors
+    (with live graphs) when return_components=True.
     """
 
     scalar: torch.Tensor
     log_data: dict[str, float] = field(default_factory=dict)
+    components: dict[str, torch.Tensor] = field(default_factory=dict)
 
 
 class TotalLossV2:
@@ -347,6 +349,7 @@ class TotalLossV2:
         self,
         bundle: RawLossBundle,
         alm_manager: ALMManager | None = None,
+        return_components: bool = False,
     ) -> WeightedLossResult:
         """Combine raw losses into a backpropable scalar plus a detached log dict.
 
@@ -357,10 +360,12 @@ class TotalLossV2:
         Args:
             bundle: Raw unweighted losses grouped by role/category from `compute`.
             alm_manager: Optional ALM manager for constraint penalty weighting.
+            return_components: If True, populate WeightedLossResult.components with per-loss tensors
+                (with live autograd graphs) for gradient conflict analysis. No extra computation.
 
         Returns:
-            WeightedLossResult where `scalar` is used for backward and `log_data`
-            contains detached numeric values for telemetry.
+            WeightedLossResult where `scalar` is used for backward, `log_data` contains detached
+            numeric values for telemetry, and `components` holds per-loss tensors if return_components=True.
 
         ALM multiplier updates are NOT performed here; the caller owns that lifecycle.
         """
@@ -446,4 +451,8 @@ class TotalLossV2:
             scalar = torch.tensor(0.0, device=self._device)
         log_data["raw_losses/total_loss"] = scalar.item()
 
-        return WeightedLossResult(scalar=scalar, log_data=log_data)
+        return WeightedLossResult(
+            scalar=scalar,
+            log_data=log_data,
+            components=weighted_components if return_components else {},
+        )

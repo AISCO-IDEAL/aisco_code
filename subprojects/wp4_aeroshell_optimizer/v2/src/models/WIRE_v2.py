@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch import nn
 
@@ -14,6 +15,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     collect_optimizer_state,
     collect_param_stats,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import allround_save_data
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager, Wrapper
 
@@ -155,6 +157,8 @@ class WIREV2(BaseModel):
         renderer_wrapper: Wrapper | None = None,  # noqa: ARG002
         wandb_name: str | None = None,
         debug_manager: DebugManager | None = None,
+        conflict_tracker: GradientConflictTracker | None = None,
+        conflict_cadence: int = 0,
     ) -> None:
         if training_config is None:
             raise ValueError("Training config must be provided for optimisation.")
@@ -216,6 +220,8 @@ class WIREV2(BaseModel):
             device_str = str(next(self.parameters()).device)
             total_weighted_loss = 0.0
             per_component_grad_norms: dict[str, float] = {}
+            capture_conflict = conflict_tracker is not None and conflict_cadence > 0 and epoch % conflict_cadence == 0
+            per_component_grad_vectors: dict[str, np.ndarray] = {}
             for component_name, weighted_loss in loss_function._last_weighted_losses.items():
                 if not weighted_loss.requires_grad:
                     continue
@@ -246,7 +252,16 @@ class WIREV2(BaseModel):
                 per_component_grad_norms[component_name] = delta_norm
                 if wandb.run:
                     wandb.log({f"{component_name}_gradient": delta_norm}, step=epoch)
+                if capture_conflict:
+                    delta_grad = torch.cat(
+                        [(c - pv).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
+                    )
+                    per_component_grad_vectors[component_name] = delta_grad.numpy()
                 prev_grad = curr_grad
+
+            # Save gradient conflict data if tracking is active
+            if capture_conflict and per_component_grad_vectors and conflict_tracker is not None:
+                conflict_tracker.save_from_grad_vectors(per_component_grad_vectors, epoch)
 
             # ── Debug: compute aggregate gradient norm ───────────────
             grad_norm = sum(p.grad.detach().pow(2).sum().item() for p in self.parameters() if p.grad is not None) ** 0.5
