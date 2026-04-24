@@ -11,6 +11,7 @@ from kaolin.ops.conversions import (
     voxelgrids_to_trianglemeshes,
 )
 
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 
 ####################### eschaerer #################
@@ -41,7 +42,16 @@ def get_diff_mesh(
     ####################### eschaerer #################
     # Enforce deterministic behavior for PyTorch operations (needed for backpropagation tests)
     if box_dim is None:
-        box_dim = [-2900, 2900, -1150, 1150, 0, 1650]
+        # Get outer-prism bounds from wp2 (single source of truth)
+        prism = get_outer_prism_bounds_mm()
+        box_dim = [
+            int(prism["x"][0]),
+            int(prism["x"][1]),
+            int(prism["y"][0]),
+            int(prism["y"][1]),
+            int(prism["z_mesh"][0]),
+            int(prism["z_mesh"][1]),
+        ]
     # torch.use_deterministic_algorithms(True) # interferes with WP3 #aalthaus #vdiekmann  # noqa: ERA001
     torch.manual_seed(42)  # Set a fixed seed
     ###################################################
