@@ -98,7 +98,7 @@ fi
 
 read -p "Do you want to BUILD Neural Renderer (DON'T DO THIS UNLESS SOMEONE SCREWED UP)? [y/n]: " install_renderer
 if [[ "$install_renderer" == "y" ]]; then
-    cd /cluster/home/aalthaus/AISCO_code/fixed_renderer
+    cd /home/aisco/Documents/AISCO_code/fixed_renderer
     export TORCH_CUDA_ARCH_LIST="12.0"
     python setup.py build_ext --inplace
 else
