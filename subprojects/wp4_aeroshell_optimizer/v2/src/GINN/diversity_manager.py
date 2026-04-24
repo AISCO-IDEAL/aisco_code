@@ -160,7 +160,7 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     # Phase 1 — per-vector backward
     # ------------------------------------------------------------------
-    def _per_vector_backward(
+    def _per_vector_backward(  # noqa: PLR0912, PLR0915
         self,
         epoch: int,
     ) -> tuple[

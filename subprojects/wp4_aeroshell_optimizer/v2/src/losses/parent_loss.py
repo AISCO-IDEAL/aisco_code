@@ -80,4 +80,3 @@ class ParentLoss:
 
     def _loss(self, model) -> torch.Tensor:  # noqa: ARG002
         return torch.tensor(0.0, device=self.device)
-

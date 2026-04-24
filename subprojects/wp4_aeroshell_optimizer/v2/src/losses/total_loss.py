@@ -244,10 +244,7 @@ class TotalLoss:
             self._disabled_epochs[category] = [(int(s), int(e)) for s, e in disabled_raw]
 
     def _is_category_active(self, category: str, epoch: int) -> bool:
-        for start, end in self._disabled_epochs.get(category, []):
-            if start <= epoch and (end == -1 or epoch <= end):
-                return False
-        return True
+        return all(not (start <= epoch and (end == -1 or epoch <= end)) for start, end in self._disabled_epochs.get(category, []))
 
     # ------------------------------------------------------------------
     # mesh extraction sharing
@@ -318,7 +315,7 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # loss computation
     # ------------------------------------------------------------------
-    def _compute_raw_losses(self, model: TrainModel, epoch_name: int, skip_telemetry: bool = False) -> dict[str, torch.Tensor]:
+    def _compute_raw_losses(self, model: TrainModel, epoch_name: int) -> dict[str, torch.Tensor]:
         """Evaluate every active loss instance and return raw (unweighted) tensors.
 
         Losses in a disabled epoch range are handled according to self._deactivate_scheduler_mode:
@@ -390,7 +387,7 @@ class TotalLoss:
 
         return None
 
-    def _apply_weighting(
+    def _apply_weighting(  # noqa: PLR0912, PLR0915
         self,
         raw_losses: dict[str, torch.Tensor],
     ) -> torch.Tensor:
@@ -537,7 +534,7 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # logging
     # ------------------------------------------------------------------
-    def _handle_telemetry(  # noqa: PLR0912
+    def _handle_telemetry(
         self,
         loss_log: dict[str, float],
         epoch_name: int,
@@ -889,7 +886,7 @@ class TotalLoss:
         device: torch.device = next(iter(model.parameters())).device
 
         # 1. Evaluate all active loss instances
-        raw: dict[str, torch.Tensor] = self._compute_raw_losses(model, epoch_name, skip_telemetry=skip_telemetry)
+        raw: dict[str, torch.Tensor] = self._compute_raw_losses(model, epoch_name)
 
         # 2. Apply weighting (populates _last_weighted_losses)
         total: torch.Tensor = self._apply_weighting(raw)

@@ -408,6 +408,9 @@ class TotalLossV2:
                 or self._constraint_by_category.get(category)
                 or self._aux_by_category.get(category)
             )
+            assert lookup is not None, (
+                f"Category '{category}' in zero_weighted but not found in objectives, constraints, or aux lookups."
+            )
             log_data[f"raw_losses/{lookup[0]}"] = t.item()
             log_data[f"weighted_losses/{lookup[0]}"] = 0.0
         log_data.update(getattr(self, "_skipped_log_zeros", {}))

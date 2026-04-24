@@ -165,7 +165,8 @@ class BaseModel(nn.Module):
 
             # Scheduled-off losses aren't in _last_weighted_losses; log explicit 0 so
             # WandB doesn't interpolate from a stale value.
-            zero_weighted_cats = getattr(loss_function, "_zero_weighted_categories", set())
+            zero_weighted_cats: set = getattr(loss_function, "_zero_weighted_categories", set())
+            print("type of zero_weighted_cats:", type(zero_weighted_cats))
             if zero_weighted_cats:
                 for loss_name, category in getattr(loss_function, "_loss_name_to_category", {}).items():
                     if category not in zero_weighted_cats:
