@@ -533,16 +533,17 @@ class TestPretrainConfigHash:
         assert _compute_pretrain_config_hash(config_a, model) != _compute_pretrain_config_hash(config_b, model)
 
     def test_resolve_path_embeds_hash(self) -> None:
-        """Resolved path's parent folder is named by the config hash."""
+        """Resolved path's parent folder and filename both contain config hash."""
         _resolve_checkpoint_path = _import(PRETRAIN_LATENT, "_resolve_checkpoint_path")
         _compute_pretrain_config_hash = _import(PRETRAIN_LATENT, "_compute_pretrain_config_hash")
         model = _make_concat_wire_v2()
         config = _make_latent_pretrain_config("/tmp/base/pretrained_latent.pth")
         expected_hash = _compute_pretrain_config_hash(config, model)
         resolved = _resolve_checkpoint_path(config, model)
-        # New structure: /tmp/base/<hash>/pretrained_latent.pth
+        # Structure: /tmp/base/<hash>/pretrained_latent_<hash>.pth
         assert resolved.parent.name == expected_hash
-        assert resolved.name == "pretrained_latent.pth"
+        assert expected_hash in resolved.stem
+        assert resolved.suffix == ".pth"
 
     def test_resolve_path_same_directory(self) -> None:
         """Resolved checkpoint is under the configured base directory."""
@@ -550,10 +551,10 @@ class TestPretrainConfigHash:
         model = _make_concat_wire_v2()
         config = _make_latent_pretrain_config("/some/dir/pretrained_latent.pth")
         resolved = _resolve_checkpoint_path(config, model)
-        # New structure: /some/dir/<hash>/pretrained_latent.pth
+        # Structure: /some/dir/<hash>/pretrained_latent_<hash>.pth
         assert resolved.parent.parent == Path("/some/dir")
         assert resolved.suffix == ".pth"
-        assert resolved.name == "pretrained_latent.pth"
+        assert "pretrained_latent_" in resolved.name
 
     def test_different_configs_separate_checkpoints(self, tmp_path: Path) -> None:
         """Two configs with different training params write to separate checkpoint folders."""
@@ -569,7 +570,7 @@ class TestPretrainConfigHash:
         pretraining_latent(model_b, config_b, "cpu")
 
         # New structure: tmp_path/<hash>/pretrained_latent.pth
-        pth_files = list(tmp_path.glob("**/pretrained_latent.pth"))
+        pth_files = list(tmp_path.glob("**/pretrained_latent_*.pth"))
         assert len(pth_files) == 2, f"Expected 2 separate checkpoint files in hash folders, got {len(pth_files)}: {pth_files}"
 
     def test_same_config_reuses_checkpoint(self, tmp_path: Path) -> None:
@@ -586,5 +587,5 @@ class TestPretrainConfigHash:
 
         assert torch.allclose(Z_first, Z_second.to(Z_first.device), atol=1e-5)
         # New structure: tmp_path/<hash>/pretrained_latent.pth
-        pth_files = list(tmp_path.glob("**/pretrained_latent.pth"))
+        pth_files = list(tmp_path.glob("**/pretrained_latent_*.pth"))
         assert len(pth_files) == 1, f"Should not create a second file on resume, got {len(pth_files)}: {pth_files}"

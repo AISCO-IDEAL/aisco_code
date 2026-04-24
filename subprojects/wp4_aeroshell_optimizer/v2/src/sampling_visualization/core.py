@@ -142,7 +142,7 @@ class SamplingVisualizer:
             all_colours.append(mesh_colour)
             # Build triangle mesh for *_mesh_only.ply (always triangle mesh, best-effort)
             try:
-                tri_mesh = _build_o3d_mesh(mesh_verts, mesh_faces)
+                tri_mesh = _build_o3d_mesh(verts_arr, faces_arr)
             except Exception as exc:  # mesh build failure only affects *_mesh_only.ply
                 warnings.warn(
                     f"[SamplingVisualizer] Mesh build failed for '{name}': {exc}. Skipping *_mesh_only.ply.",
@@ -175,7 +175,7 @@ class SamplingVisualizer:
         # --- Merge into a proper mesh (with faces) if mesh exists, else point cloud ---
         # When both mesh and points exist, create a TriangleMesh combining them.
         # This way the output PLY has proper triangle geometry + colored point vertices.
-        if has_mesh and mesh_display_mode == "vertices":
+        if has_mesh and mesh_display_mode == "faces":
             # TriangleMesh approach: concatenate all vertices (mesh + points),
             # assign colours, keep triangles (indices still valid).
             combined_verts = np.vstack(all_verts)  # [mesh_verts, pts, sec_pts, ...]
@@ -239,7 +239,7 @@ def _to_numpy_f64(x: torch.Tensor | np.ndarray) -> np.ndarray:
 def _build_o3d_mesh(
     verts: np.ndarray,
     faces: np.ndarray,
-) -> o3d.geometry.TriangleMesh:  # type: ignore[name-defined]
+) -> o3d.geometry.TriangleMesh:
     """Construct a coloured open3d TriangleMesh from numpy arrays."""
     import open3d as o3d  # noqa: PLC0415
 

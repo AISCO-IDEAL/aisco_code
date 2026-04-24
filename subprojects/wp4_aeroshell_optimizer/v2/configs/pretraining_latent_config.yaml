@@ -71,7 +71,7 @@ latent_population:
     surface_noise_sigma_factor: 0.005
 
 training_loop:
-  epochs: 601
+  epochs: 10
   learning_rate: 0.0005
   batch_size_per_shape: 4096 #8192
   print_interval: 25
@@ -87,4 +87,4 @@ output:
   mesh_box_mm: 1700
   vis_cadence: 300 # at what interval to visualize the sampling
   vis_eikonal_pts: true   # visualize sampled points for eikonal loss (default: true)
-  vis_mesh_display_mode: "faces"   # "vertices" | "face_centers"
+  vis_mesh_display_mode: "faces"   # "faces" displays the actual mesh.

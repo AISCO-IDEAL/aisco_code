@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import torch
@@ -126,12 +126,12 @@ def _resolve_checkpoint_path(config: dict[str, Any], model: SupportsLatentConcat
 
     All outputs for a run go into a single hash-named folder:
       <base_dir>/<hash>/
-        pretrained_latent.pth
+        pretrained_latent_<hash>.pth
         sampling_vis/
         mesh_extracted/
 
     For example, if config specifies ``/path/to/pretrained_latent.pth``, the
-    resolved checkpoint is ``/path/to/<hash>/pretrained_latent.pth``.
+    resolved checkpoint is ``/path/to/<hash>/pretrained_latent_<hash>.pth``.
     Different configs resolve to different hash folders; identical configs
     resolve to the same folder.
 
@@ -140,12 +140,12 @@ def _resolve_checkpoint_path(config: dict[str, Any], model: SupportsLatentConcat
         model: Model whose architecture is included in the hash.
 
     Returns:
-        Path to checkpoint inside hash-named directory.
+        Path to checkpoint inside hash-named directory with hash in filename.
     """
     base = Path(config["output"]["checkpoint_path"])
     config_hash = _compute_pretrain_config_hash(config, model)
-    # New structure: /path/to/<hash>/pretrained_latent.pth
-    return base.parent / config_hash / base.name
+    # Structure: /path/to/<hash>/pretrained_latent_<hash>.pth
+    return base.parent / config_hash / f"{base.stem}_{config_hash}{base.suffix}"
 
 
 def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsically sequential; decomposition would obscure control flow
@@ -250,7 +250,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     vis_eikonal_pts: bool = bool(output_cfg.get("vis_eikonal_pts", True))
     # "vertices": blue dot per mesh vertex (sparse on flat surfaces)
     # "face_centers": blue dot per triangle centroid (uniform coverage)
-    vis_mesh_display_mode: str = output_cfg.get("vis_mesh_display_mode", "vertices")
+    vis_mesh_display_mode: Literal["vertices", "face_centers"] = output_cfg.get("vis_mesh_display_mode", "vertices")
 
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -491,7 +491,7 @@ def _visualize_pretraining_sampling(
     cached_surface: list[tuple[Tensor, Tensor]],
     batch_size_per_shape: int,
     *,
-    mesh_display_mode: str = "vertices",
+    mesh_display_mode: Literal["vertices", "face_centers"] = "vertices",
     show_domain_pts: bool = True,
 ) -> None:
     """Write target-shape visualizations for each pretraining slot after training.
@@ -590,7 +590,7 @@ def _write_epoch_vis_snapshot(
     device: str,
     vis: SamplingVisualizer,
     *,
-    mesh_display_mode: str = "vertices",
+    mesh_display_mode: Literal["vertices", "face_centers"] = "vertices",
     show_domain_pts: bool = True,
 ) -> None:
     """Write one epoch snapshot: current trained mesh + the ACTUAL training point sets.
@@ -634,7 +634,7 @@ def _make_vis_legend(
     vis_cadence: int,
     vis_eikonal_pts: bool,
     surface_resample_cadence: int,
-    vis_mesh_display_mode: str,
+    vis_mesh_display_mode: Literal["vertices", "face_centers"],
 ) -> str:
     """Build the legend.txt content for a sampling_vis directory."""
     eikonal_note = (
