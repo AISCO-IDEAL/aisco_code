@@ -8,8 +8,8 @@ For mesh_sdf extraction, gradients are preserved through surrogate backprop.
 import torch
 
 from subprojects.wp3_solar_estimator.v3B_2.solar_loss_v3B_2 import SolarLossEstimator
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 
 
 class SolarV3B2(ParentLoss):
