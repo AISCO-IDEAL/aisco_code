@@ -39,8 +39,8 @@ DATASET_METADATA = {
         num_variable_chunks=1,
         signed={"u": [False], "c": [None]},
         names={"u": ["$p$"], "c": [None]},
-        global_mean=[0.0],
-        global_std=[1.0],
+        global_mean=[-0.1777508407831192],
+        global_std=[0.32097315788269043],
     ),
     "incompressible_fluids/euler_drag": Metadata(
         periodic=False,
@@ -56,8 +56,8 @@ DATASET_METADATA = {
         num_variable_chunks=1,
         signed={"u": [False], "c": [None]},
         names={"u": ["$p$"], "c": [None]},
-        global_mean=[-0.1777508407831192],
-        global_std=[0.32097315788269043],
+        global_mean=[-63.66019058227539],
+        global_std=[54.39186477661133],
     ),
     # PLY-based DrivAer (multi-head: cd only, force=NaN), z-up after y↔z swap in preprocessing
     "incompressible_fluids/drivaer_drag": Metadata(
