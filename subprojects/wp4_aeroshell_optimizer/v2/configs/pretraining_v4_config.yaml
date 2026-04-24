@@ -16,7 +16,7 @@ pretraining:
   username: ${USER}
 
 training_loop:
-  epochs: 500
+  epochs: 350
   learning_rate: 0.00005
   random_batch_size: 2048
   print_interval: 50
