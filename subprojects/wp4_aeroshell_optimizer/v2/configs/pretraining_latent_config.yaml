@@ -28,7 +28,7 @@ latent_population:
     side_length: null
     ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_bullet_blunt.ply"
     ply_scale: 1000.0                  # PLY stored in metres → convert to mm
-    surface_noise_sigma_factor: 0.05   # σ = 5% of bbox diagonal
+    surface_noise_sigma_factor: 0.005   # σ = 5% of bbox diagonal
 
   - name: "simple_bullet_pointy"
     shape_type: "ply"
@@ -36,7 +36,7 @@ latent_population:
     side_length: null
     ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_bullet_pointy.ply"
     ply_scale: 1000.0
-    surface_noise_sigma_factor: 0.05
+    surface_noise_sigma_factor: 0.005
 
   - name: "simple_catamaran"
     shape_type: "ply"
@@ -44,7 +44,7 @@ latent_population:
     side_length: null
     ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_catamaran.ply"
     ply_scale: 1000.0
-    surface_noise_sigma_factor: 0.05
+    surface_noise_sigma_factor: 0.005
 
   - name: "simple_cuboid"
     shape_type: "ply"
@@ -52,7 +52,7 @@ latent_population:
     side_length: null
     ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_cuboid.ply"
     ply_scale: 1000.0
-    surface_noise_sigma_factor: 0.05
+    surface_noise_sigma_factor: 0.005
 
   - name: "simple_trimaran"
     shape_type: "ply"
@@ -60,7 +60,7 @@ latent_population:
     side_length: null
     ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_trimaran.ply"
     ply_scale: 1000.0
-    surface_noise_sigma_factor: 0.05
+    surface_noise_sigma_factor: 0.005
 
   - name: "simple_solarcar"
     shape_type: "ply"
@@ -68,7 +68,7 @@ latent_population:
     side_length: null
     ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_solarcar.ply"
     ply_scale: 1000.0
-    surface_noise_sigma_factor: 0.05
+    surface_noise_sigma_factor: 0.005
 
 training_loop:
   epochs: 601
@@ -76,7 +76,7 @@ training_loop:
   batch_size_per_shape: 4096 #8192
   print_interval: 25
   eikonal_weight: 0.1
-  surface_resample_cadence: 0   # 0 = static (DeepSDF-style, default) 
+  surface_resample_cadence: 0   # 0 = static (DeepSDF-style, default)
                                 # N = refresh near-surface cache every N epochs
 
 output:
@@ -86,5 +86,5 @@ output:
   mesh_resolution: 64
   mesh_box_mm: 1700
   vis_cadence: 300 # at what interval to visualize the sampling
-  vis_eikonal_pts: false   # hide grey domain points (default: true)
+  vis_eikonal_pts: true   # hide grey domain points (default: true)
   vis_mesh_display_mode: "face_centers"   # "vertices" | "face_centers"

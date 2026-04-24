@@ -435,13 +435,15 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     mesh_res = output_cfg.get("mesh_resolution")
     mesh_box = output_cfg.get("mesh_box_mm")
     if mesh_res and mesh_box:
+        mesh_dir = ckpt_path.parent / f"mesh_extracted_{config_hash}"
+        mesh_dir.mkdir(parents=True, exist_ok=True)
         for slot_idx in range(num_shapes):
             slot_name = shapes[slot_idx].get("name", str(slot_idx))
-            slot_ckpt = ckpt_path.parent / f"{ckpt_path.stem}_slot{slot_idx}_{slot_name}.pth"
+            slot_mesh_path = mesh_dir / f"slot{slot_idx:02d}_{slot_name}.ply"
             try:
                 model.set_latent_vector(Z[slot_idx].to(device))
                 model.eval()
-                _extract_mesh(model, slot_ckpt, device, int(mesh_res), int(mesh_box))
+                _extract_mesh(model, slot_mesh_path, device, int(mesh_res), int(mesh_box))
             except Exception as exc:  # BLE001 not enabled; mesh extraction is non-critical and must not abort the run
                 print(
                     f"[latent_pretrain] WARNING: mesh extraction for slot {slot_idx} failed: {exc}. "

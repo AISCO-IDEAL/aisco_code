@@ -59,7 +59,7 @@ class SamplingVisualizer:
     # Public API
     # ------------------------------------------------------------------
 
-    def save_snapshot(
+    def save_snapshot(  # noqa: PLR0915  # inherently sequential file I/O with conditional mesh/point logic
         self,
         points_mm: torch.Tensor | np.ndarray,
         mesh_verts: np.ndarray | None,
@@ -172,12 +172,31 @@ class SamplingVisualizer:
             all_verts.append(sec_pts)
             all_colours.append(sec_colour)
 
-        # --- Merge into a single PointCloud for export ---
-        combined.points = o3d.utility.Vector3dVector(np.vstack(all_verts))
-        combined.colors = o3d.utility.Vector3dVector(np.vstack(all_colours))
-
-        out_path = self.output_dir / f"{name}.ply"
-        o3d.io.write_point_cloud(str(out_path), combined, write_ascii=False)
+        # --- Merge into a proper mesh (with faces) if mesh exists, else point cloud ---
+        # When both mesh and points exist, create a TriangleMesh combining them.
+        # This way the output PLY has proper triangle geometry + colored point vertices.
+        if has_mesh and mesh_display_mode == "vertices":
+            # TriangleMesh approach: concatenate all vertices (mesh + points),
+            # assign colours, keep triangles (indices still valid).
+            combined_verts = np.vstack(all_verts)  # [mesh_verts, pts, sec_pts, ...]
+            combined_cols = np.vstack(all_colours)
+            # Create combined TriangleMesh
+            combined_mesh = o3d.geometry.TriangleMesh()
+            combined_mesh.vertices = o3d.utility.Vector3dVector(combined_verts)
+            combined_mesh.vertex_colors = o3d.utility.Vector3dVector(combined_cols)
+            # Triangles reference only the first mesh_verts.shape[0] vertices
+            combined_mesh.triangles = o3d.utility.Vector3iVector(np.asarray(mesh_faces, dtype=np.int32))
+            out_path = self.output_dir / f"{name}.ply"
+            o3d.io.write_triangle_mesh(str(out_path), combined_mesh, write_ascii=False)
+            print(f"[SamplingVisualizer] Saved combined mesh+points → {out_path}")
+        else:
+            # PointCloud approach: no triangle mesh.
+            # Used when mesh is absent or mesh_display_mode="face_centers".
+            combined.points = o3d.utility.Vector3dVector(np.vstack(all_verts))
+            combined.colors = o3d.utility.Vector3dVector(np.vstack(all_colours))
+            out_path = self.output_dir / f"{name}.ply"
+            o3d.io.write_point_cloud(str(out_path), combined, write_ascii=False)
+            print(f"[SamplingVisualizer] Saved point cloud → {out_path}")
 
         # If mesh is present, also write the triangle mesh alongside
         # (some viewers can only show the mesh if triangles are present)
