@@ -167,15 +167,23 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
   outer_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/outer.ply"
 
 cfd:
-  model_id: 63435761      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2 or a key for Version 1
-  local_model_id: local_1776771256  # fallback id used when running off-cluster (present in ~/results/metrics.csv)
-  version: 2              # Options: 1, 2         Recomendation: 2
+  model_id: 64641068      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2/3 or a key for Version 1
+  version: 3              # Options: 1, 2, 3      Recomendation: 3
   visualisations: false   # Options: true, false  Recomendation: false
   v_inf: 25.0             # Default: 25.0         Recomendation: Has to Match the Value used during respective GAOT-Training
   rho: 1.225              # Default: 1.1225       Recomendation: Has to Match the Value used during respective GAOT-Training
   mesh_resolution: 50000  # Default: 50000        Recomendation: Has to Match the Value used during respective GAOT-Training
   gradient_max: 0.1       # Options: any float    Recomendation: 0.1
 
+cfd_local:
+  run_local: true
+  model_id: local_1777017531      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2 or a key for Version 1
+  version: 3              # Options: 1, 2, 3      Recomendation: 3
+  visualisations: false   # Options: true, false  Recomendation: false
+  v_inf: 25.0             # Default: 25.0         Recomendation: Has to Match the Value used during respective GAOT-Training
+  rho: 1.225              # Default: 1.1225       Recomendation: Has to Match the Value used during respective GAOT-Training
+  mesh_resolution: 50000  # Default: 50000        Recomendation: Has to Match the Value used during respective GAOT-Training
+  gradient_max: 0.1
 
 developability_config:
   # Energy type: 0=HINGE, 1=MINWIDTH, 2=OLDHINGE, 3=OLDMINWIDTH, 4=PAIRWISENORMALS, 5=MAXPAIRWISENORMALS
