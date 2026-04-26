@@ -16,11 +16,12 @@ from pathlib import Path
 
 class Environment(Enum):
     """Enumeration of supported runtime environments."""
+
     AISCO_BEAST = "aisco_beast"  # Local AISCO Beast machine
-    WSL = "wsl"                   # Windows Subsystem for Linux
-    EULER = "euler"               # ETH Euler cluster
-    SLURM = "slurm"               # Generic SLURM cluster
-    UNKNOWN = "unknown"           # Could not determine
+    WSL = "wsl"  # Windows Subsystem for Linux
+    EULER = "euler"  # ETH Euler cluster
+    SLURM = "slurm"  # Generic SLURM cluster
+    UNKNOWN = "unknown"  # Could not determine
 
 
 def detect_environment() -> Environment:
