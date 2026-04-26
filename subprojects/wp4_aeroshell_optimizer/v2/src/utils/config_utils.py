@@ -25,7 +25,7 @@ from warnings import warn
 
 import yaml
 
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import get_config_path, get_run_locally_value
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import get_run_locally_value
 
 # ---------------------------------------------------------------------------
 # Module-level config registry
