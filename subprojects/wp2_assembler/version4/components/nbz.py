@@ -104,17 +104,13 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
         if cut_wheel is not None:
             cut_inner_solids.append(cut_wheel)
 
-    cut_outer_nbz = keep_above_z(outer_nbz(id_number), ground_clearance)
-    if cut_outer_nbz is None:
-        raise ValueError(f"Outer NBZ was completely removed for assembly {id_number}.")
-
     cut_inner_assembly = cq.Assembly()
     for i, s in enumerate(cut_inner_solids):
         cut_inner_assembly.add(s, name=f"{'inner'}_{i}")
 
     cut_inner_assembly.name = "inner_assembly"
 
-    return cut_inner_assembly, cut_outer_nbz.Solids()[0], vision_nbz(id_number)
+    return cut_inner_assembly, outer_nbz(id_number), vision_nbz(id_number)
 
 
 def max_assembly_id() -> int:

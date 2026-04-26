@@ -53,19 +53,19 @@ rendering_modes:
       store_wandb: true
       render_mode: "rgb"
       camera_position_1: [0, 3000, 0]      # testing alignement with assembler
-      camera_position_2: [2000, 3000, 0]
-      camera_position_3: [4000, 3000, 0]
-      camera_position_4: [6000, 3000, 0]
-      camera_position_5: [-1300, -2000, 0] # left behind wheel
-      camera_position_6: [-1300, 900, 0]   # right behind wheel
-      camera_position_7: [4900, -1100, 0]  # front wheel
+      camera_position_2: [0, 3000, 50]
+      camera_position_3: [0, 3000, 100]
+      camera_position_4: [0, 3000, 150]
+      # camera_position_5: [-1300, -2000, 0] # left behind wheel
+      # camera_position_6: [-1300, 900, 0]   # right behind wheel
+      # camera_position_7: [4900, -1100, 0]  # front wheel
       look_at: [0, 0, 0]                   # fallback look_at if specific look_at_1, look_at_2, ... are not provided
-      look_at_2: [2000, 0, 0]
-      look_at_3: [4000, 0, 0]
-      look_at_4: [6000, 0, 0]
-      look_at_5: [-1300, 0, 0]
-      look_at_6: [-1300, -1100, 0]
-      look_at_7: [2900, -1100, 0]
+      look_at_2: [0, 0, 50]
+      look_at_3: [0, 0, 100]
+      look_at_4: [0, 0, 150]
+      # look_at_5: [-1300, 0, 0]
+      # look_at_6: [-1300, -1100, 0]
+      # look_at_7: [2900, -1100, 0]
       fps: 10
       render_interval: 1
       make_gif: true
