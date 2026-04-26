@@ -171,7 +171,8 @@ class DiversityTrainer:
         dict[str, float],
         dict[str, np.ndarray] | None,
     ]:
-        """Iterate over the population and immediately backward each z's loss.
+        """
+        Iterate over the population and immediately backward each z's loss.
 
         Returns mean scalar loss (for metrics), averaged mean constraints across the
         population (for ALM update; None if no ALM), averaged loss log_data,
@@ -207,6 +208,7 @@ class DiversityTrainer:
                 and epoch % self._conflict_cadence == 0
                 and i == 0
             )
+            # properly weight losses, return components = True so we can do individual backward calls per component for conflict tracking
             result = self._total_loss.weight(bundle, alm_manager=self._alm_manager, return_components=True)
 
             # Detach constraints before backward — graph will be freed
@@ -218,8 +220,10 @@ class DiversityTrainer:
                 summed_log_data[k] = summed_log_data.get(k, 0.0) + v
 
             # Per-component backward: each component uses retain_graph=False and frees immediately.
-            # Does not add all components up and then .backwards(), less efficient per z sample but much lower peak VRAM (each loss can fully exploit VRAM).
-            # May add config toggle or smart detection to see if we can get performance boost
+            # Does not call .backward() for the totalloss scalar, but the individual components.
+            # Done because we may want to capture gradient conflicts at the component level,
+            # and doing one backward on the total loss would give us only the combined gradient, not the per-component gradients needed for conflict analysis.
+            # TODO: May add config toggle or smart detection to see if we can get performance boost
             trainable_params = [p for p in self._model.parameters() if p.requires_grad]
             prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
             per_population_conflict_vectors: dict[str, np.ndarray] | None = (
@@ -231,7 +235,7 @@ class DiversityTrainer:
                 if not weighted_loss.requires_grad:
                     summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0)
                     continue
-
+                # per-component backward for singel z, with graph freed immediately after for VRAM efficiency; log gradient norms for conflict tracking
                 (weighted_loss / self._population_size).backward(retain_graph=False)
                 curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
                 delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5

@@ -383,7 +383,6 @@ class TotalLossV2:
         finally:
             self._clear_shared_meshes()
 
-        print(bundle)
         return bundle
 
     def weight(  # noqa: PLR0912, PLR0915
@@ -548,5 +547,5 @@ class TotalLossV2:
             log_data=log_data,
             components=weighted_components if return_components else {},
         )
-        print(return_value)
+
         return return_value
