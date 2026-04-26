@@ -16,6 +16,7 @@ MAPPING_FILE="${SLACK_MAPPING_FILE:-/etc/AISCO-Beast_mapping.conf}"
 QUEUE_SOCKET="${TS_SOCKET:-/tmp/gpu_queue}"
 TSP_BIN="/usr/bin/tsp"
 LOG_FILE="${SLACK_NOTIFY_LOG:-/var/log/aisco/slack_notify.log}"
+META_PREFIX="/tmp/aisco-tsp-meta"
 
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || LOG_FILE="/tmp/slack_notify.log"
 
@@ -71,7 +72,14 @@ resolve_recipient() {
     [ -n "$r" ] && { printf '%s\n' "$r"; return; }
     r=$(printf '%s\n' "$info" | job_value "AISCO_SUBMITTER")
     [ -n "$r" ] && { printf '%s\n' "$r"; return; }
-    printf '%s\n' "${USER:-unknown}"
+    printf '\n'
+}
+
+meta_value() {
+    local key="$1" job_id="$2" meta_file
+    meta_file="${META_PREFIX}-${job_id}.env"
+    [ -r "$meta_file" ] || return 0
+    awk -F= -v k="$key" '$1 == k { print substr($0, index($0, "=") + 1); exit }' "$meta_file"
 }
 
 notify_user() {
@@ -122,11 +130,13 @@ SUBMITTER=$(printf '%s\n' "$INFO" | job_value "AISCO_SUBMITTER")
 if [ -z "$RECIPIENT" ] || [ "$RECIPIENT" = "${USER:-unknown}" ]; then
     RECIPIENT=$(command_value "AISCO_NOTIFY_USERNAME" "$COMMAND")
 fi
+[ -z "$RECIPIENT" ] && RECIPIENT=$(meta_value "AISCO_NOTIFY_USERNAME" "$JOB_ID")
 [ -z "$RECIPIENT" ] && RECIPIENT="${USER:-unknown}"
 
 if [ -z "$SUBMITTER" ]; then
     SUBMITTER=$(command_value "AISCO_SUBMITTER" "$COMMAND")
 fi
+[ -z "$SUBMITTER" ] && SUBMITTER=$(meta_value "AISCO_SUBMITTER" "$JOB_ID")
 [ -z "$SUBMITTER" ] && SUBMITTER="$RECIPIENT"
 
 if [ "$EXIT_CODE" -eq 0 ]; then
@@ -144,3 +154,4 @@ MSG+=$'\n*Command:* '"'$COMMAND'"
 MSG+=$'\n*Output:* '"$OUTPUT_FILE"
 
 notify_user "$RECIPIENT" "$MSG"
+rm -f "${META_PREFIX}-${JOB_ID}.env" 2>/dev/null || true
