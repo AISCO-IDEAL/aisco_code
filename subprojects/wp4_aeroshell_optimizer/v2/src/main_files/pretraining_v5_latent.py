@@ -3,7 +3,9 @@
 
 Usage (from AISCO_code repo root with aisco_env active):
 
-    python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v5_latent.py --wandb --vis-sampling #recommended
+    #recommended:
+    python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v5_latent.py --wandb --vis-sampling
+
     python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v5_latent.py \\
         --config pretraining_latent_config.yaml \\
         --epochs 2000 \\
@@ -27,6 +29,11 @@ import argparse
 
 import torch
 
+from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import pretraining_latent
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -41,12 +48,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--epochs",
         type=int,
-        default=None,  # value from config will be used
+        default=None, # value from config will be used
         help="Override training_loop.epochs from config.",
     )
     parser.add_argument(
         "--no-mesh",
-        action="store_true",  # iff flag is present: no_mesh == true
+        action="store_true", # iff flag is present: no_mesh == true
         dest="no_mesh",
         help="Skip per-slot mesh extraction after training.",
     )
@@ -57,7 +64,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--wandb",
-        action="store_true",  # iff flag is present: use_wandb == true
+        action="store_true", # iff flag is present: use_wandb == true
         dest="use_wandb",
         help="Log training metrics to Weights & Biases.",
     )
@@ -69,7 +76,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--vis-sampling",
-        action="store_true",  # iff flag is present: vis_sampling == true
+        action="store_true", # iff flag is present: vis_sampling == true
         dest="vis_sampling",
         help="Write sampling visualizations (points + mesh PLY) after training.",
     )
@@ -79,11 +86,6 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     """Run latent-population pretraining from the command line."""
     args = _parse_args()
-
-    from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import pretraining_latent  # noqa: PLC0415
-    from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat  # noqa: PLC0415
-    from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config  # noqa: PLC0415
-    from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init  # noqa: PLC0415
 
     config = load_config(v="v2", cfg_name=args.config)
 
@@ -99,9 +101,7 @@ def main() -> None:
         print("[pretraining_v5_latent] Mesh extraction disabled (--no-mesh).")
 
     # Device selection
-    device: str = (
-        args.device if args.device is not None else "cuda" if torch.cuda.is_available() else "cpu"
-    )  # TODO: align with rest of code
+    device: str = args.device if args.device is not None else "cuda" if torch.cuda.is_available() else "cpu" # TODO: align with rest of code
     print(f"[pretraining_v5_latent] Device: {device}")
 
     # Load model
@@ -140,8 +140,6 @@ def main() -> None:
     model, Z = pretraining_latent(model, config, device, use_wandb=use_wandb, vis_sampling=args.vis_sampling)
 
     if use_wandb:
-        import wandb  # noqa: PLC0415
-
         wandb.finish()
 
     print(
