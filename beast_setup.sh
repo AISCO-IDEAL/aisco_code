@@ -68,7 +68,7 @@ else
 fi
 
 echo "📦 Upgrading pip and installing standard dependencies from pyproject.toml..."
-python3 -m pip install --upgrade pip setuptools wheel build
+python3 -m pip install --upgrade pip setuptools wheel build ninja
 python3 -m pip install -e .
 
 echo "🪝 Setting up Pre-commit Hooks..."
@@ -98,9 +98,11 @@ fi
 
 read -p "Do you want to BUILD Neural Renderer (DON'T DO THIS UNLESS SOMEONE SCREWED UP)? [y/n]: " install_renderer
 if [[ "$install_renderer" == "y" ]]; then
-    cd /home/aisco/Documents/AISCO_code/fixed_renderer
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    cd "$SCRIPT_DIR/subprojects/fixed_renderer"
     export TORCH_CUDA_ARCH_LIST="12.0"
     python setup.py build_ext --inplace
+    cd "$SCRIPT_DIR"
 else
     echo "⏭️ Skipping Renderer installation."
 fi
