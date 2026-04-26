@@ -8,7 +8,7 @@
 #SBATCH --gpus=1
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 ## run this command:
-## bash ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts/beast_testing.sh
+## bash ~/Documents/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts/beast_testing.sh
 
 set -euo pipefail
 
