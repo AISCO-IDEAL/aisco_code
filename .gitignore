@@ -43,7 +43,7 @@ tests/**/data/
 #These 3 for cpython and renderign stuff
 !**/*.cpp
 !**/*.cu
-# !**/*.cpython-311-x86_64-linux-gnu.so # must be built locally, not synced via git
+!**/*.cpython-311-x86_64-linux-gnu.so # must be built locally, not synced via git
 #Needed? check later
 !**/*.linux-x86_64-cpython-311
 !**/*.md
