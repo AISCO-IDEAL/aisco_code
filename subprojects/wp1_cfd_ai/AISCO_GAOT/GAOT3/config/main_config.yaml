@@ -135,7 +135,7 @@ dataset:
     order_file_name:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
-    subsample_nodes: 40000     # randomly sample 30k nodes per load if sample exceeds this
+    subsample_nodes: 50000     # randomly sample 30k nodes per load if sample exceeds this
     subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"
     deterministic_subsampling: false  # false keeps fresh random subsets on every load
     subsampling_seed: 42        # used only when deterministic_subsampling is true
@@ -156,7 +156,7 @@ optimizer:
     args:
         lr: 6e-4
         weight_decay: 1e-05
-        epoch: 5
+        epoch: 500
         loss_scale: 1.0
         eval_every_eps: 1
         viz_every_eps: 1   # visualize every N epochs; defaults to eval_every_eps if omitted
