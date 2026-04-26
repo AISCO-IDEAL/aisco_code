@@ -23,6 +23,9 @@ general_info:
   cse_prefactors:  # prefactors applied to objectives before feeding into CSE
     drag: 1.0
     solar: 1.0
+  cse_defaults: #Default values used in the null_loss
+    drag: 30 #[N]
+    solar: 700 #[W]
   cse_params:  # physical constants for CSE; also picks which category is drag/solar
     drag_category: "aero"
     solar_category: "solar"

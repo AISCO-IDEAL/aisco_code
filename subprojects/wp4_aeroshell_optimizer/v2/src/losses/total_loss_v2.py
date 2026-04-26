@@ -118,7 +118,8 @@ class TotalLossV2:
         self._cse_tol: float = float(cse_params.get("tol", 1e-4))
         # Last-known raw (pre-prefactor) value per CSE objective category, used when that category
         # is scheduled out so the other objective can still run CSE with a meaningful partner value.
-        self._cse_objective_cache: dict[str, torch.Tensor] = {}
+        self.solar_default_value: float = gi["cse_defaults"]["solar"]
+        self.drag_default_value: float = gi["cse_defaults"]["drag"]
         self._cse_prefactors: dict[str, float] = gi.get("cse_prefactors", {})
 
         self._init_active_losses()
@@ -375,13 +376,18 @@ class TotalLossV2:
             ):
                 for category, (loss_name, instance) in role_dict.items():
                     if not calibration_mode and not self._is_category_active(category, epoch_name):
+                        is_cse_managed_objective = (
+                            self.use_cse
+                            and role_dict is self._objective_by_category
+                            and category in {self._cse_drag_category, self._cse_solar_category}
+                        )
                         if self._deactivate_scheduler_mode == "zero_weighted":
                             sig = inspect.signature(instance.get_loss)
                             if "skip_telemetry" in sig.parameters:
                                 bundle.zero_weighted[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
                             else:
                                 bundle.zero_weighted[category] = instance.get_loss(model, epoch_name)
-                        else:
+                        elif not is_cse_managed_objective:
                             self._skipped_log_zeros[f"raw_losses/{loss_name}"] = 0.0
                         continue
                     sig = inspect.signature(instance.get_loss)
@@ -408,8 +414,7 @@ class TotalLossV2:
         * Auxiliaries: always manual weights.
 
         When norm_manager is provided, both loss_scale and grad_scale are baked into each component
-        tensor before it is returned (and before backward is called by the caller). ALM-managed
-        constraints are excluded from scaling since ALM owns their weighting.
+        tensor before it is returned (and before backward is called by the caller).
 
         Args:
             bundle: Raw unweighted losses grouped by role/category from `compute`.
@@ -469,8 +474,13 @@ class TotalLossV2:
             raw_value = t.item()
             log_data[f"raw_losses/{raw_name}"] = raw_value
             log_data[f"normalized_losses/{raw_name}"] = loss_scale(raw_name, raw_value)
-            log_data[f"weighted_losses/{lookup[0]}"] = 0.0
-            log_data[f"optimizer_losses/{lookup[0]}"] = 0.0
+            if not (
+                self.use_cse
+                and category in {self._cse_drag_category, self._cse_solar_category}
+                and category in self._objective_by_category
+            ):
+                log_data[f"weighted_losses/{lookup[0]}"] = 0.0
+                log_data[f"optimizer_losses/{lookup[0]}"] = 0.0
         log_data.update(getattr(self, "_skipped_log_zeros", {}))
 
         # --- Objectives ---------------------------------------------------
@@ -490,32 +500,16 @@ class TotalLossV2:
             drag_pf: float = float(self._cse_prefactors.get("drag", 1.0))
             solar_pf: float = float(self._cse_prefactors.get("solar", 1.0))
 
-            # Update cache for objectives that were computed this epoch (live or zero_weighted).
-            # Zero_weighted objectives exist in bundle.zero_weighted — cache their value but use the
-            # cached (detached) version so no gradient flows through CSE from a zero_weighted input.
-            if drag_cat not in bundle.objectives and drag_cat in bundle.zero_weighted:
-                self._cse_objective_cache[drag_cat] = bundle.zero_weighted[drag_cat].detach().clone()
-            elif drag_cat in bundle.objectives:
-                self._cse_objective_cache[drag_cat] = bundle.objectives[drag_cat].detach().clone()
-            if solar_cat not in bundle.objectives and solar_cat in bundle.zero_weighted:
-                self._cse_objective_cache[solar_cat] = bundle.zero_weighted[solar_cat].detach().clone()
-            elif solar_cat in bundle.objectives:
-                self._cse_objective_cache[solar_cat] = bundle.objectives[solar_cat].detach().clone()
-
             # Resolve the tensor each CSE input will use.
             # Active: live tensor (gradient flows). Inactive: cached detached value (no gradient).
             # Cold-start fallback (cache empty, already off at epoch 0): zeros, like a weight-0 null loss.
             drag_is_live: bool = drag_cat in bundle.objectives
             solar_is_live: bool = solar_cat in bundle.objectives
             drag_raw: torch.Tensor = (
-                bundle.objectives[drag_cat]
-                if drag_is_live
-                else self._cse_objective_cache.get(drag_cat, torch.zeros(1, device=self._device))
+                bundle.objectives[drag_cat] if drag_is_live else self.drag_default_value * torch.ones(1, device=self._device)
             )
             solar_raw: torch.Tensor = (
-                bundle.objectives[solar_cat]
-                if solar_is_live
-                else self._cse_objective_cache.get(solar_cat, torch.zeros(1, device=self._device))
+                bundle.objectives[solar_cat] if solar_is_live else self.solar_default_value * torch.ones(1, device=self._device)
             )
 
             v_cruise: torch.Tensor = cruising_speed(
@@ -533,7 +527,7 @@ class TotalLossV2:
             log_data["cse/cruising_speed_ms"] = v_cruise.item()
             cse_loss_scale = norm_manager.get_loss_scale("cse_objective") if norm_manager else 1.0
             log_data["normalized_losses/cse_objective"] = v_cruise.item() * cse_loss_scale
-            # Only backprop if at least one input is live; both-cached → v_cruise has no grad.
+            # Only backprop if at least one input is live; both dead → v_cruise has no grad.
             if drag_is_live or solar_is_live:
                 # Minimize -v_cruise to maximize physical speed
                 cse_scale = (norm_manager.get_loss_scale("cse_objective") * norm_manager.get_grad_scale("cse_objective")) if norm_manager else 1.0
@@ -557,7 +551,13 @@ class TotalLossV2:
         all_constraint_cats = self.constraint_category_order
         active_constraint_cats = [cat for cat in all_constraint_cats if cat in bundle.constraints]
         active_constraint_indices = [i for i, cat in enumerate(all_constraint_cats) if cat in bundle.constraints]
-        active_constraint_tensors = [bundle.constraints[cat] for cat in active_constraint_cats]
+        active_constraint_tensors: list[torch.Tensor] = []
+        for cat in active_constraint_cats:
+            c_tensor = bundle.constraints[cat]
+            if norm_manager is not None:
+                c_name = self._constraint_by_category[cat][0]
+                c_tensor = c_tensor * norm_manager.get_loss_scale(c_name)
+            active_constraint_tensors.append(c_tensor)
 
         if alm_manager is not None:
             penalties: dict[str, torch.Tensor] = alm_manager.compute_penalty(

@@ -286,7 +286,7 @@ class DiversityTrainer:
         conflict vectors for the first population member.
         """
         use_alm: bool = self._alm_manager is not None
-        all_raw_constraints: list[list[Tensor]] = []
+        all_alm_constraints: list[list[Tensor]] = []
         summed_log_data: dict[str, float] = {}
         summed_grad_log_data: dict[str, float] = {}
         total_loss_val: float = 0.0
@@ -317,9 +317,17 @@ class DiversityTrainer:
             # properly weight losses, return components = True so we can do individual backward calls per component for conflict tracking
             result = self._total_loss.weight(bundle, alm_manager=self._alm_manager, return_components=True, norm_manager=self._norm_manager)
 
-            # Detach constraints before backward — graph will be freed
+            # Detach ALM-space constraints before backward — graph will be freed.
+            # If loss normalisation is enabled, ALM updates operate on normalized
+            # constraint values (same space as ALM penalties in TotalLossV2.weight).
             if use_alm:
-                all_raw_constraints.append([bundle.constraints[cat].detach() for cat in active_constraint_cats])
+                alm_constraints_for_member: list[Tensor] = []
+                for cat in active_constraint_cats:
+                    c_tensor = bundle.constraints[cat]
+                    c_name = self._total_loss._constraint_by_category[cat][0]
+                    c_for_alm = c_tensor * self._norm_manager.get_loss_scale(c_name)
+                    alm_constraints_for_member.append(c_for_alm.detach())
+                all_alm_constraints.append(alm_constraints_for_member)
 
             total_loss_val += result.log_data.get("raw_losses/total_loss", result.scalar.item())
             for k, v in result.log_data.items():
@@ -337,7 +345,7 @@ class DiversityTrainer:
             )
 
             for component_name, weighted_loss in result.components.items():
-                grad_key = f"weighted_gradients/{component_name}"
+                grad_key = f"optimizer_gradients/{component_name}"
                 if not weighted_loss.requires_grad:
                     summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0)
                     continue
@@ -364,33 +372,22 @@ class DiversityTrainer:
                 )
                 if lookup is None:
                     continue
+                if getattr(self._total_loss, "use_cse", False) and category in {
+                    getattr(self._total_loss, "_cse_drag_category", None),
+                    getattr(self._total_loss, "_cse_solar_category", None),
+                }:
+                    continue
                 loss_name = lookup[0]
-                grad_key = f"weighted_gradients/{loss_name}"
+                grad_key = f"optimizer_gradients/{loss_name}"
                 summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0)
 
             if per_population_conflict_vectors is not None:
                 phase1_conflict_vectors = per_population_conflict_vectors
 
-        # CSE-managed objectives (drag + solar) are merged into cse_objective — never individually
-        # backward'd. Log explicit 0 so charts stay visible and reflect CSE hand-off cleanly.
-        if getattr(self._total_loss, "use_cse", False):
-            obj_by_cat = getattr(self._total_loss, "_objective_by_category", {})
-            for cat in [
-                getattr(self._total_loss, "_cse_drag_category", None),
-                getattr(self._total_loss, "_cse_solar_category", None),
-            ]:
-                if cat is None:
-                    continue
-                entry = obj_by_cat.get(cat)
-                if entry:
-                    grad_key = f"weighted_gradients/{entry[0]}"
-                    if grad_key not in summed_grad_log_data:
-                        summed_grad_log_data[grad_key] = 0.0
-
         mean_constraints: list[Tensor] | None = None
-        if use_alm and all_raw_constraints:
-            num_c = len(all_raw_constraints[0])
-            mean_constraints = [torch.stack([pop[c_idx] for pop in all_raw_constraints]).mean() for c_idx in range(num_c)]
+        if use_alm and all_alm_constraints:
+            num_c = len(all_alm_constraints[0])
+            mean_constraints = [torch.stack([pop[c_idx] for pop in all_alm_constraints]).mean() for c_idx in range(num_c)]
 
         avg_log_data = {k: v / self._population_size for k, v in summed_log_data.items()}
         avg_grad_log_data = {k: v / self._population_size for k, v in summed_grad_log_data.items()}
@@ -464,7 +461,7 @@ class DiversityTrainer:
             diversity_result.weighted.backward(retain_graph=False)
             curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
             delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
-            diversity_grad_key = f"weighted_gradients/{self._diversity_manager.loss_name}"
+            diversity_grad_key = f"optimizer_gradients/{self._diversity_manager.loss_name}"
             per_loss_gradient_log_data[diversity_grad_key] = delta_norm
 
             if capture_conflict and self._conflict_tracker is not None:
@@ -477,7 +474,7 @@ class DiversityTrainer:
             diversity_weighted_loss_val = float(diversity_result.weighted.detach().item())
             diversity_log_data = self._diversity_manager.build_log_data(diversity_loss_val)
         elif self._diversity_manager is not None and self._diversity_manager.enabled:
-            per_loss_gradient_log_data[f"weighted_gradients/{self._diversity_manager.loss_name}"] = 0.0
+            per_loss_gradient_log_data[f"optimizer_gradients/{self._diversity_manager.loss_name}"] = 0.0
 
         if capture_conflict and self._conflict_tracker is not None and conflict_vectors:
             self._conflict_tracker.save_from_grad_vectors(conflict_vectors, epoch)
@@ -528,11 +525,6 @@ class DiversityTrainer:
         log_dict.update(self._norm_manager.get_telemetry())
         log_dict.update(diversity_log_data)
         log_dict.update(gradient_log_data)
-
-        # Clear alias for downstream dashboards: these are measured after backward calls.
-        for key, value in gradient_log_data.items():
-            if key.startswith("weighted_gradients/"):
-                log_dict[f"post_backward_gradients/{key.removeprefix('weighted_gradients/')}"] = value
 
         # Competition charts (avg-of-population)
         raw_floats: dict[str, float] = {

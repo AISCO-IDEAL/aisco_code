@@ -139,7 +139,7 @@ class BaseModel(nn.Module):
             for component_name, weighted_loss in loss_function._last_weighted_losses.items():
                 if not weighted_loss.requires_grad:
                     per_component_grad_norms[component_name] = 0.0
-                    grad_log_dict[f"weighted_gradients/{component_name}"] = 0.0
+                    grad_log_dict[f"optimizer_gradients/{component_name}"] = 0.0
                     continue
                 total_weighted_loss += weighted_loss.item()
                 if log_grad_mem and "cuda" in device_str:
@@ -157,7 +157,7 @@ class BaseModel(nn.Module):
                 curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
                 delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
                 per_component_grad_norms[component_name] = delta_norm
-                grad_log_dict[f"weighted_gradients/{component_name}"] = delta_norm
+                grad_log_dict[f"optimizer_gradients/{component_name}"] = delta_norm
                 if capture_conflict:
                     delta_grad = torch.cat(
                         [(c - pv).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
@@ -172,24 +172,15 @@ class BaseModel(nn.Module):
                 for loss_name, category in getattr(loss_function, "_loss_name_to_category", {}).items():
                     if category not in zero_weighted_cats:
                         continue
+                    if getattr(loss_function, "_use_cse", False) and category in {
+                        getattr(loss_function, "_cse_drag_category", None),
+                        getattr(loss_function, "_cse_solar_category", None),
+                    }:
+                        continue
                     if loss_name in per_component_grad_norms:
                         continue
                     per_component_grad_norms[loss_name] = 0.0
-                    grad_log_dict[f"weighted_gradients/{loss_name}"] = 0.0
-
-            # CSE-managed objectives (drag + solar) are merged into cse_objective and never
-            # individually backward'd. Log explicit 0 so the chart stays visible and clean.
-            if getattr(loss_function, "_use_cse", False):
-                for cat in [
-                    getattr(loss_function, "_cse_drag_category", None),
-                    getattr(loss_function, "_cse_solar_category", None),
-                ]:
-                    if cat is None:
-                        continue
-                    entry = getattr(loss_function, "_objective_losses", {}).get(cat)
-                    if entry and entry[0] not in per_component_grad_norms:
-                        per_component_grad_norms[entry[0]] = 0.0
-                        grad_log_dict[f"weighted_gradients/{entry[0]}"] = 0.0
+                    grad_log_dict[f"optimizer_gradients/{loss_name}"] = 0.0
 
             # Merge gradient metrics with the deferred loss/competition/memory dict from
             # _handle_telemetry and fire a single wandb.log per epoch.
