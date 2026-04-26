@@ -28,6 +28,7 @@ import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
@@ -132,6 +133,9 @@ class DiversityTrainer:
         self._raw_loss_history: list[dict[str, float]] = []
         self._weighted_loss_history: list[dict[str, float]] = []
 
+        norm_cfg = self._total_loss.losses_config.get("general_info", {}).get("loss_normalisation", {})
+        self._norm_manager = LossNormalisationManager(norm_cfg)
+
     # ------------------------------------------------------------------
     # Latent resampling
     # ------------------------------------------------------------------
@@ -156,6 +160,106 @@ class DiversityTrainer:
         )
         if self._force_z0_to_origin:
             self._Z[0] = torch.zeros(self._z_dim, device=self._device, dtype=torch.float32)
+
+    # ------------------------------------------------------------------
+    # Loss & gradient normalisation calibration
+    # ------------------------------------------------------------------
+    def _calibrate(self) -> None:
+        """Calibrate loss and gradient scale factors before training begins.
+
+        Runs one full forward pass over all population members with calibration_mode=True
+        (bypasses epoch scheduling so every loss is computed regardless of _disabled_epochs).
+        Loss scales are derived from the mean absolute raw value across the population.
+        Gradient scales are derived from the per-component gradient L2 norm on the first
+        population member, measured after loss scales have already been applied.
+
+        Null losses (requires_grad=False on the component tensor) are skipped — both scales
+        remain 1.0 for them. Optimizer gradients are zeroed before and after to leave no trace.
+        """
+        print("[LossNormalisation] Starting calibration pass...")
+        self._model_optimizer.zero_grad()
+
+        # --- Loss scale calibration: forward-only pass over full population ---
+        loss_value_sums: dict[str, float] = {}
+        calibrated_names: set[str] = set()
+
+        for i in range(self._population_size):
+            self._model.set_latent_vector(self._Z[i])
+            bundle = self._total_loss.compute(self._model, epoch_name=0, calibration_mode=True)
+
+            for role_dict, role_bundle in (
+                (self._total_loss._objective_by_category, bundle.objectives),
+                (self._total_loss._constraint_by_category, bundle.constraints),
+                (self._total_loss._aux_by_category, bundle.aux),
+            ):
+                for category, tensor in role_bundle.items():
+                    loss_name = role_dict[category][0]
+                    calibrated_names.add(loss_name)
+                    loss_value_sums[loss_name] = loss_value_sums.get(loss_name, 0.0) + abs(tensor.detach().item())
+
+        loss_scales: dict[str, float] = {}
+        for name in calibrated_names:
+            mean_val = loss_value_sums[name] / self._population_size
+            loss_scales[name] = self._norm_manager._target_loss / mean_val if mean_val > 0 else 1.0
+            print(f"  Loss scale for {name}: mean_raw={mean_val:.6g}, scale={loss_scales[name]:.6g}")
+
+        # CSE: loss_scale for cse_objective is derived from the raw v_cruise value.
+        # Individual drag/solar categories are excluded — they are consumed by CSE internally.
+        if getattr(self._total_loss, "use_cse", False):
+            print("  CSE mode detected: computing cse_objective scale...")
+            self._model.set_latent_vector(self._Z[0])
+            bundle = self._total_loss.compute(self._model, epoch_name=0, calibration_mode=True)
+            # weight() without a norm_manager gives us the raw v_cruise-based cse_objective
+            raw_result = self._total_loss.weight(bundle, self._alm_manager, return_components=True, norm_manager=None)
+            if "cse_objective" in raw_result.components:
+                cse_val = abs(raw_result.components["cse_objective"].detach().item())
+                loss_scales["cse_objective"] = self._norm_manager._target_loss / cse_val if cse_val > 0 else 1.0
+                calibrated_names.add("cse_objective")
+                print(f"  Loss scale for cse_objective: raw={cse_val:.6g}, scale={loss_scales['cse_objective']:.6g}")
+            # Remove drag/solar from calibrated set since they're merged into cse_objective
+            drag_name = self._total_loss._objective_by_category.get(self._total_loss._cse_drag_category, (None,))[0]
+            solar_name = self._total_loss._objective_by_category.get(self._total_loss._cse_solar_category, (None,))[0]
+            for merged_name in (drag_name, solar_name):
+                if merged_name:
+                    print(f"  Excluding {merged_name} (merged into cse_objective)")
+                    calibrated_names.discard(merged_name)
+                    loss_scales.pop(merged_name, None)
+
+        # Store loss scales so weight() can apply them during gradient calibration below
+        self._norm_manager.record_calibration(loss_scales, {}, calibrated_names)
+
+        # --- Gradient scale calibration: backward pass on first population member ---
+        print("[LossNormalisation] Computing gradient scales...")
+        self._model_optimizer.zero_grad()
+        self._model.set_latent_vector(self._Z[0])
+        bundle = self._total_loss.compute(self._model, epoch_name=0, calibration_mode=True)
+        # weight() with norm_manager applies loss_scales; we measure grad norms on top of them
+        result = self._total_loss.weight(bundle, self._alm_manager, return_components=True, norm_manager=self._norm_manager)
+
+        trainable_params = [p for p in self._model.parameters() if p.requires_grad]
+        prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
+
+        components_with_grad = [(name, t) for name, t in result.components.items() if t.requires_grad]
+        grad_scales: dict[str, float] = {}
+
+        for idx, (name, component) in enumerate(components_with_grad):
+            is_last = idx == len(components_with_grad) - 1
+            component.backward(retain_graph=not is_last)
+            curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
+            delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
+            grad_scales[name] = self._norm_manager._target_grad / delta_norm if delta_norm > 0 else 1.0
+            print(f"  Grad scale for {name}: delta_norm={delta_norm:.6g}, scale={grad_scales[name]:.6g}")
+            prev_grad = curr_grad
+
+        # Record final calibration with both scale dicts
+        self._norm_manager.record_calibration(loss_scales, grad_scales, calibrated_names)
+        self._model_optimizer.zero_grad()
+
+        summary_items = [f"{n}(loss={loss_scales.get(n, 1.0):.3g}, grad={grad_scales.get(n, 1.0):.3g})"
+                         for n in sorted(calibrated_names)]
+        print(f"[LossNormalisation] Calibration complete. {len(calibrated_names)} losses calibrated:")
+        for item in summary_items:
+            print(f"  ✓ {item}")
 
     # ------------------------------------------------------------------
     # Phase 1 — per-vector backward
@@ -209,7 +313,7 @@ class DiversityTrainer:
                 and i == 0
             )
             # properly weight losses, return components = True so we can do individual backward calls per component for conflict tracking
-            result = self._total_loss.weight(bundle, alm_manager=self._alm_manager, return_components=True)
+            result = self._total_loss.weight(bundle, alm_manager=self._alm_manager, return_components=True, norm_manager=self._norm_manager)
 
             # Detach constraints before backward — graph will be freed
             if use_alm:
@@ -312,6 +416,9 @@ class DiversityTrainer:
 
 
         """
+        if self._norm_manager.is_enabled() and not self._norm_manager.is_calibrated():
+            self._calibrate()
+
         if self._z_resample_cadence > 0 and epoch > 0 and epoch % self._z_resample_cadence == 0:
             self._resample_population(epoch)
 
@@ -416,6 +523,7 @@ class DiversityTrainer:
         log_dict: dict[str, float] = dict(avg_log_data)
         if self._alm_manager is not None:
             log_dict.update(self._alm_manager.get_telemetry())
+        log_dict.update(self._norm_manager.get_telemetry())
         log_dict.update(diversity_log_data)
         log_dict.update(gradient_log_data)
 

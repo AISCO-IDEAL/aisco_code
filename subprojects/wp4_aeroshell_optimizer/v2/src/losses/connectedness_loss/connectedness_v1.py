@@ -29,7 +29,6 @@ class ConnectednessV1(ParentLoss):
         self.iso_level: float = float(connectedness_config.get("iso_level", 0.0))
         self.target_betti_dim0: int = int(connectedness_config.get("target_betti_dim0", 1))
         self.maxdim: int = int(connectedness_config.get("maxdim", 0))
-        self.warmup_epochs: int = int(connectedness_config.get("warmup_epochs", 50))
         self.eval_period: int = max(1, int(connectedness_config.get("eval_period", 5)))
         self.return_cached_on_skip: bool = self._as_bool(connectedness_config.get("return_cached_on_skip", "False"))
         self.persistence_min_lifetime: float = float(connectedness_config.get("persistence_min_lifetime", 0.0))
@@ -78,10 +77,7 @@ class ConnectednessV1(ParentLoss):
             self.grid_points = self.grid_points.to(model_device)
 
         epoch_name: int = int(getattr(self, "epoch_name", -1))
-        if epoch_name < self.warmup_epochs:
-            return self._inactive_loss()
-
-        if (epoch_name - self.warmup_epochs) % self.eval_period != 0:
+        if epoch_name % self.eval_period != 0:
             return self._inactive_loss()
 
         with torch.no_grad():

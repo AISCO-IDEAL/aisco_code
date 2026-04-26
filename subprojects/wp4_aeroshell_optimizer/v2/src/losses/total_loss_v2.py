@@ -28,6 +28,7 @@ import torch
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
@@ -344,12 +345,20 @@ class TotalLossV2:
         """Category names for active constraints, in YAML order."""
         return list(self._constraint_by_category.keys())
 
-    def compute(self, model: SupportsModelContract, epoch_name: int = 0) -> RawLossBundle:
+    def compute(
+        self,
+        model: SupportsModelContract,
+        epoch_name: int = 0,
+        calibration_mode: bool = False,
+    ) -> RawLossBundle:
         """Evaluate every active loss instance and return raw (unweighted) tensors.
 
         Args:
             model: The trainable model passed to each active loss instance.
             epoch_name: Training step/epoch identifier forwarded to each loss call.
+            calibration_mode: If True, bypass epoch scheduling and compute all losses regardless
+                of _disabled_epochs. Used by LossNormalisationManager to calibrate scale factors
+                for losses that are not yet active at epoch 0.
 
         Returns:
             RawLossBundle with unweighted objective, constraint, and aux tensors
@@ -365,7 +374,7 @@ class TotalLossV2:
                 (self._aux_by_category, bundle.aux),
             ):
                 for category, (loss_name, instance) in role_dict.items():
-                    if not self._is_category_active(category, epoch_name):
+                    if not calibration_mode and not self._is_category_active(category, epoch_name):
                         if self._deactivate_scheduler_mode == "zero_weighted":
                             sig = inspect.signature(instance.get_loss)
                             if "skip_telemetry" in sig.parameters:
@@ -390,6 +399,7 @@ class TotalLossV2:
         bundle: RawLossBundle,
         alm_manager: ALMManager | None = None,
         return_components: bool = False,
+        norm_manager: LossNormalisationManager | None = None,
     ) -> WeightedLossResult:
         """Combine raw losses into a backpropable scalar plus a detached log dict.
 
@@ -397,11 +407,16 @@ class TotalLossV2:
         * Constraints: ALM ``lambda*c + 0.5*mu*c^2`` if ``alm_manager`` is given, else manual weights.
         * Auxiliaries: always manual weights.
 
+        When norm_manager is provided, both loss_scale and grad_scale are baked into each component
+        tensor before it is returned (and before backward is called by the caller). ALM-managed
+        constraints are excluded from scaling since ALM owns their weighting.
+
         Args:
             bundle: Raw unweighted losses grouped by role/category from `compute`.
             alm_manager: Optional ALM manager for constraint penalty weighting.
             return_components: If True, populate WeightedLossResult.components with per-loss tensors
                 (with live autograd graphs) for gradient conflict analysis. No extra computation.
+            norm_manager: Optional normalisation manager; applies calibrated loss and gradient scales.
 
         Returns:
             WeightedLossResult where `scalar` is used for backward, `log_data` contains detached
@@ -490,14 +505,16 @@ class TotalLossV2:
             # Only backprop if at least one input is live; both-cached → v_cruise has no grad.
             if drag_is_live or solar_is_live:
                 # Minimize -v_cruise to maximize physical speed
-                weighted_components["cse_objective"] = -v_cruise
+                cse_scale = (norm_manager.get_loss_scale("cse_objective") * norm_manager.get_grad_scale("cse_objective")) if norm_manager else 1.0
+                weighted_components["cse_objective"] = -v_cruise * cse_scale
                 log_data["weighted_losses/cse_objective"] = v_cruise.item()
         else:
             for category, t in bundle.objectives.items():
                 name: str = self._objective_by_category[category][0]
                 w: float = self._manual_weights.get(name, 1.0)
                 sign: float = float(self._objective_signs.get(category, 1))
-                wt: torch.Tensor = sign * w * t
+                combined_scale = (norm_manager.get_loss_scale(name) * norm_manager.get_grad_scale(name)) if norm_manager else 1.0
+                wt: torch.Tensor = sign * w * t * combined_scale
                 weighted_components[name] = wt
                 log_data[f"weighted_losses/{name}"] = wt.item()
 
@@ -514,13 +531,15 @@ class TotalLossV2:
                 active_constraint_tensors, active_indices=active_constraint_indices
             )
             for key, t in penalties.items():
-                weighted_components[key] = t
+                grad_scale = (norm_manager.get_grad_scale(key) if norm_manager else 1.0)
+                weighted_components[key] = t * grad_scale
                 log_data[f"weighted_losses/{key}"] = t.item()
         else:
             for category, t in bundle.constraints.items():
                 name = self._constraint_by_category[category][0]
                 w = self._manual_weights.get(name, 1.0)
-                wt = w * t
+                combined_scale = (norm_manager.get_loss_scale(name) * norm_manager.get_grad_scale(name)) if norm_manager else 1.0
+                wt = w * t * combined_scale
                 weighted_components[name] = wt
                 log_data[f"weighted_losses/{name}"] = wt.item()
 
@@ -528,7 +547,8 @@ class TotalLossV2:
         for category, t in bundle.aux.items():
             name = self._aux_by_category[category][0]
             w = self._manual_weights.get(name, 1.0)
-            wt = w * t
+            combined_scale = (norm_manager.get_loss_scale(name) * norm_manager.get_grad_scale(name)) if norm_manager else 1.0
+            wt = w * t * combined_scale
             weighted_components[name] = wt
             log_data[f"weighted_losses/{name}"] = wt.item()
 
