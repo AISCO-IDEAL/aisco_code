@@ -26,7 +26,7 @@ latent_population:
     shape_type: "ply"
     radius: null
     side_length: null
-    ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_bullet_blunt.ply"
+    ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_bullet_blunt2.ply"
     ply_scale: 100.0                   # PLY stored in decimetres → convert to mm
     surface_noise_sigma_factor: 0.005   # σ = 5% of bbox diagonal
 
@@ -42,7 +42,7 @@ latent_population:
     shape_type: "ply"
     radius: null
     side_length: null
-    ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_catamaran.ply"
+    ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_catamaran2.ply"
     ply_scale: 100.0
     surface_noise_sigma_factor: 0.005
 
@@ -71,7 +71,7 @@ latent_population:
     surface_noise_sigma_factor: 0.005
 
 training_loop:
-  epochs: 13
+  epochs: 23
   learning_rate: 0.0005
   batch_size_per_shape: 4096 #8192
   print_interval: 25
@@ -84,8 +84,9 @@ output:
   # (which scans the standard pretrained_path directory).
   checkpoint_path: "/cluster/work/fuge/AISCO/latent_pretraining/pretrained_latent.pth"
   mesh_resolution: 64
-  vis_cadence: 300 # at what interval to visualize the sampling
-  vis_eikonal_pts: true   # visualize sampled points for eikonal loss (default: true)
-  vis_show_target_pts: true # visualize target points (default: true)
-  vis_show_model_pts: true # visualize model points (default: true)
-  vis_mesh_display_mode: "vertices"   # "vertices" renders the raw ply vertex cloud.
+  bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2
+
+  vis_cadence: 10 # at what interval to visualize the sampling
+  vis_show_eikonal_pts: true   # visualize sampled points for eikonal loss (default: true)
+  vis_show_target_pts: "mesh"  # "pts" = surface cache pts in green | "mesh" = target triangle mesh in green
+  # model points are always displayed as red points
