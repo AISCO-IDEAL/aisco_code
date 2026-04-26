@@ -25,6 +25,7 @@ from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bou
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
     _compute_eikonal_latent,
     _extract_mesh,
+    _make_mesh_extractor_config,
     _sample_points_for_shape,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
@@ -36,6 +37,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.core impo
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor
 
 
 def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Tensor, float]:
@@ -303,16 +305,18 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     output_cfg: dict[str, Any] = config.get("output", {})
     run_dir: Path = ckpt_path.parent  # Hash-named folder containing all outputs
     vis_dir: Path = run_dir / "sampling_vis"
+    outer_prism = get_outer_prism_bounds_mm()  # Single source of truth for bounding box
+
     vis_cadence: int = int(output_cfg.get("vis_cadence", 0))  # 0 = disabled
     vis_mesh_res: int = int(output_cfg.get("mesh_resolution", 64))
-    vis_mesh_box: int = int(output_cfg.get("mesh_box_mm", 2000))
-    vis_eikonal_pts: bool = bool(output_cfg.get("vis_eikonal_pts", True))
-    # "vertices": blue dot per mesh vertex (sparse on flat surfaces)
-    # "face_centers": blue dot per triangle centroid (uniform coverage)
-    vis_mesh_display_mode: Literal["vertices", "face_centers"] = output_cfg.get("vis_mesh_display_mode", "vertices")
-    # Toggle what epoch snapshots show in the combined PLY
+
+    vis_show_eikonal_pts: bool = bool(output_cfg.get("vis_show_eikonal_pts", True)) # GREY: points sampled for eikonal loss
     vis_show_target_pts: bool = bool(output_cfg.get("vis_show_target_pts", True))   # GREEN: target shape surface cache
     vis_show_model_pts: bool = bool(output_cfg.get("vis_show_model_pts", True))     # RED:   current SDF model surface
+
+    vis_mesh_display_mode: Literal["vertices", "face_centers"] = output_cfg.get("vis_mesh_display_mode", "vertices")
+    # Toggle what epoch snapshots show in the combined PLY
+
 
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -348,10 +352,10 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     if vis_sampling and vis_cadence > 0:
         epoch_vis = SamplingVisualizer(output_dir=vis_dir, is_static=False)
         epoch_vis.write_legend(
-            _make_vis_legend(config_hash, vis_cadence, vis_eikonal_pts, surface_resample_cadence, vis_mesh_display_mode)
+            _make_vis_legend(config_hash, vis_cadence, vis_show_eikonal_pts, surface_resample_cadence, vis_mesh_display_mode)
         )
         print(
-            f"[latent_pretrain] Per-epoch vis enabled: cadence={vis_cadence}, mesh_res={vis_mesh_res}, mesh_box=±{vis_mesh_box} mm → {vis_dir}"
+            f"[latent_pretrain] Per-epoch vis enabled: cadence={vis_cadence}, mesh_res={vis_mesh_res} → {vis_dir}"
         )
 
     # --- Training loop ---
@@ -465,13 +469,13 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 domain_pts_per_slot=domain_pts_list,
                 epoch=epoch,
                 mesh_res=vis_mesh_res,
-                mesh_box=vis_mesh_box,
+                outer_prism=outer_prism,
                 device=device,
                 vis=epoch_vis,
                 mesh_display_mode=vis_mesh_display_mode,
                 show_target_pts=vis_show_target_pts,
                 show_model_pts=vis_show_model_pts,
-                show_domain_pts=vis_eikonal_pts,
+                show_eikonal_pts=vis_show_eikonal_pts,
             )
             model.train()  # restore after eval inside snapshot
 
@@ -508,7 +512,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         print(f"[latent_pretrain] Z pairwise distances: min={min(pairwise):.3f}, mean={mean_dist:.3f}, max={max(pairwise):.3f}")
 
     # --- Optional per-slot mesh extraction ---
-    # vis_mesh_res and vis_mesh_box already have defaults (64 / 2000); use them here too.
+    # Uses outer_prism bounds (single source of truth, not a symmetric cube).
     mesh_dir = run_dir / "mesh_extracted"
     mesh_dir.mkdir(parents=True, exist_ok=True)
     for slot_idx in range(num_shapes):
@@ -517,7 +521,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         try:
             model.set_latent_vector(Z[slot_idx].to(device))
             model.eval()
-            _extract_mesh(model, slot_mesh_path, device, vis_mesh_res, vis_mesh_box)
+            _extract_mesh(model, slot_mesh_path, device, vis_mesh_res, outer_prism)
         except Exception as exc:  # BLE001 not enabled; mesh extraction is non-critical and must not abort the run
             print(
                 f"[latent_pretrain] WARNING: mesh extraction for slot {slot_idx} failed: {exc}. "
@@ -529,7 +533,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         if epoch_vis is None:  # no per-epoch vis created yet (vis_cadence == 0)
             static_vis = SamplingVisualizer(output_dir=vis_dir, is_static=False)
             static_vis.write_legend(
-                _make_vis_legend(config_hash, vis_cadence, vis_eikonal_pts, surface_resample_cadence, vis_mesh_display_mode)
+                _make_vis_legend(config_hash, vis_cadence, vis_show_eikonal_pts, surface_resample_cadence, vis_mesh_display_mode)
             )
         else:
             static_vis = epoch_vis  # re-use same dir and legend already written
@@ -541,7 +545,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             cached_surface=cached_surface,
             batch_size_per_shape=batch_size_per_shape,
             mesh_display_mode=vis_mesh_display_mode,
-            show_domain_pts=vis_eikonal_pts,
+            show_eikonal_pts=vis_show_eikonal_pts,
         )
 
     return model, Z
@@ -556,7 +560,7 @@ def _visualize_pretraining_sampling(
     batch_size_per_shape: int,
     *,
     mesh_display_mode: Literal["vertices", "face_centers"] = "vertices",
-    show_domain_pts: bool = True,
+    show_eikonal_pts: bool = True,
 ) -> None:
     """Write target-shape visualizations for each pretraining slot after training.
 
@@ -564,7 +568,7 @@ def _visualize_pretraining_sampling(
     - **Target mesh** (dark blue, vertices or face-centers per ``mesh_display_mode``).
     - **Surface cache pts** (forest green) — the exact near-surface pts used for MSE.
     - **Fresh domain pts** (light grey) — representative domain sample for context;
-      only written when ``show_domain_pts=True``.
+      only written when ``show_eikonal_pts=True``.
     """
     print(f"[latent_pretrain] Writing target sampling visualization → {vis.output_dir}")
     n_dom = batch_size_per_shape // 2
@@ -578,7 +582,7 @@ def _visualize_pretraining_sampling(
 
         # Domain pts: sample once for visualization (grey) — not cached, representative only
         domain_pts_i: Tensor | None = None
-        if show_domain_pts:
+        if show_eikonal_pts:
             try:
                 shape_params = _build_shape_params(shape, ply_cache, slot_idx)
                 pts_i, _ = _sample_points_for_shape(shape_type, shape_params, batch_size_per_shape, device)
@@ -611,31 +615,24 @@ def _extract_current_mesh_arrays(
     model: SupportsLatentConcat,
     z_slot: Tensor,
     mesh_res: int,
-    mesh_box: int,
+    outer_prism: dict[str, Any],
     device: str,
 ) -> tuple[np.ndarray, np.ndarray] | None:
     """Extract the current SDF mesh for a single latent slot as numpy arrays.
 
     Sets the model's active latent vector to ``z_slot``, runs marching cubes via
-    kaolin, and returns the mesh.  The model is set to eval mode internally;
-    the caller is responsible for restoring train mode afterwards.
+    the unified mesh extractor, and returns the mesh.  The model is set to eval
+    mode internally; the caller is responsible for restoring train mode afterwards.
 
     Returns:
         ``(verts_np, faces_np)`` as float32 / int64 numpy arrays, or ``None``
-        if kaolin is unavailable or mesh extraction fails.
+        if mesh extraction fails.
     """
-    try:
-        from subprojects.wp4_aeroshell_optimizer.v2.src.utils.kaolin_conversions import (  # noqa: PLC0415
-            get_diff_mesh,
-        )
-    except ImportError:
-        return None
-
     try:
         model.set_latent_vector(z_slot.to(device))
         model.eval()
-        box_dim = [-mesh_box, mesh_box, -mesh_box, mesh_box, -mesh_box, mesh_box]
-        verts, faces = get_diff_mesh(model, grid_res=mesh_res, box_dim=box_dim, device=device)
+        cfg = _make_mesh_extractor_config(device, mesh_res, outer_prism)
+        verts, faces = MeshSDFExtractor(config=cfg).extract_mesh(model)
         return verts.detach().cpu().numpy().astype("float32"), faces.detach().cpu().numpy().astype("int64")
     except Exception as exc:
         print(f"[latent_pretrain] WARNING: per-epoch mesh extraction failed: {exc}")
@@ -650,14 +647,14 @@ def _write_epoch_vis_snapshot(
     domain_pts_per_slot: list[Tensor],
     epoch: int,
     mesh_res: int,
-    mesh_box: int,
+    outer_prism: dict[str, Any],
     device: str,
     vis: SamplingVisualizer,
     *,
     mesh_display_mode: Literal["vertices", "face_centers"] = "vertices",
     show_target_pts: bool = True,
     show_model_pts: bool = True,
-    show_domain_pts: bool = True,
+    show_eikonal_pts: bool = True,
 ) -> None:
     """Write one epoch snapshot: current trained mesh, target surface, and domain eikonal pts.
 
@@ -670,9 +667,8 @@ def _write_epoch_vis_snapshot(
       with ``show_model_pts``.  As training progresses these should converge toward
       the green points.
     - **Light grey** (optional): domain points (bounding-box uniform) used for eikonal
-      loss. Shows the region where |∇SDF|=1 is enforced.  Toggle with ``show_domain_pts``.
-    - ``*_mesh_only.ply``: full triangle mesh (always written when kaolin is available),
-      not shown as dark blue in the combined PLY to avoid colour confusion.
+      loss. Shows the region where |∇SDF|=1 is enforced.  Toggle with ``show_eikonal_pts``.
+    - ``*_mesh_only.ply``: full triangle mesh with no point clouds.
 
     The caller must call ``model.train()`` after this function returns.
     """
@@ -680,9 +676,9 @@ def _write_epoch_vis_snapshot(
         slot_name = shape.get("name", str(slot_idx))
 
         surf_pts_i, _ = cached_surface[slot_idx]
-        domain_pts_i = domain_pts_per_slot[slot_idx] if show_domain_pts else None
+        domain_pts_i = domain_pts_per_slot[slot_idx] if show_eikonal_pts else None
 
-        mesh_arrays = _extract_current_mesh_arrays(model, Z[slot_idx], mesh_res, mesh_box, device)
+        mesh_arrays = _extract_current_mesh_arrays(model, Z[slot_idx], mesh_res, outer_prism, device)
         mesh_verts_ep = mesh_arrays[0] if mesh_arrays is not None else None
         mesh_faces_ep = mesh_arrays[1] if mesh_arrays is not None else None
 
@@ -707,20 +703,20 @@ def _write_epoch_vis_snapshot(
             continue
 
         # If only model pts (target disabled), show them as primary RED
+        # All tensors moved to CPU — visualization never needs GPU memory.
         if target_pts is None:
-            primary_pts: Tensor = torch.from_numpy(model_pts)  # type: ignore[arg-type]
+            primary_pts: Tensor = torch.from_numpy(model_pts)
             primary_colour = _POINT_COLOUR_RED
-            secondary_pts: Tensor | np.ndarray | None = domain_pts_i
+            secondary_pts: Tensor | None = domain_pts_i.cpu() if domain_pts_i is not None else None
         else:
-            primary_pts = target_pts
+            primary_pts = target_pts.cpu()
             primary_colour = _POINT_COLOUR_GREEN
-            # Stack model pts (red) and domain pts (grey)
-            secondary_pts: Tensor | np.ndarray | None = None
+            # Stack model pts (red) and domain pts (grey) — both on CPU
+            secondary_pts: Tensor | None = None
             if show_model_pts and model_pts is not None:
-                secondary_pts = torch.from_numpy(model_pts)
+                secondary_pts = torch.from_numpy(model_pts)  # already CPU (from .cpu().numpy())
                 if domain_pts_i is not None:
-                    # If both model and domain pts are shown, concatenate them
-                    secondary_pts = torch.cat([secondary_pts, domain_pts_i], dim=0)
+                    secondary_pts = torch.cat([secondary_pts, domain_pts_i.cpu()], dim=0)
 
         try:
             vis.save_snapshot(
@@ -741,7 +737,7 @@ def _write_epoch_vis_snapshot(
 def _make_vis_legend(
     config_hash: str,
     vis_cadence: int,
-    vis_eikonal_pts: bool,
+    vis_show_eikonal_pts: bool,
     surface_resample_cadence: int,
     vis_mesh_display_mode: Literal["vertices", "face_centers"],
 ) -> str:
@@ -750,9 +746,9 @@ def _make_vis_legend(
         "  Light grey (220, 220, 220): Domain sample points (bounding-box uniform, ~50% of batch).\n"
         "      Used ONLY for the eikonal loss (|∇SDF| = 1 in bulk of space).\n"
         "      NOT used for the MSE loss.\n"
-        "      Shown in BOTH target and epoch PLYs because vis_eikonal_pts: true."
-        if vis_eikonal_pts
-        else "  Domain points (light grey): HIDDEN because vis_eikonal_pts: false in config."
+        "      Shown in BOTH target and epoch PLYs because vis_show_eikonal_pts: true."
+        if vis_show_eikonal_pts
+        else "  Domain points (light grey): HIDDEN because vis_show_eikonal_pts: false in config."
     )
     cadence_note = f"every {vis_cadence} epochs" if vis_cadence > 0 else "disabled (vis_cadence: 0)"
     surface_note = (
@@ -786,8 +782,8 @@ File naming
       pts (marching-cubes mesh vertices at that epoch).  As training converges
       the red points migrate toward the green points.
       Light grey points show domain/eikonal sample pts (bounding-box uniform) when
-      vis_eikonal_pts: true.
-      Toggle visibility via vis_show_target_pts / vis_show_model_pts / vis_eikonal_pts in config.
+      vis_show_eikonal_pts: true.
+      Toggle visibility via vis_show_target_pts / vis_show_model_pts / vis_show_eikonal_pts in config.
 
 Companion files (*_mesh_only.ply)
 ---------------------------------
@@ -825,8 +821,8 @@ Colour coding
       Toggle: vis_show_model_pts in config output section.
 
   Light grey (220, 220, 220): Domain sample points — in EPOCH files when
-      vis_eikonal_pts: true.  Bounding-box uniform points used for the eikonal
-      loss.  Toggle: vis_eikonal_pts in config output section.
+      vis_show_eikonal_pts: true.  Bounding-box uniform points used for the eikonal
+      loss.  Toggle: vis_show_eikonal_pts in config output section.
 
 {eikonal_note}
 

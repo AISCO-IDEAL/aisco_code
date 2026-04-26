@@ -86,7 +86,7 @@ class TestLoadPlyTensors:
         """After loading at scale=100 with permutation, axis 0 (AISCO X) must be longest."""
         _load_ply_tensors = _import(PRETRAIN_LATENT, "_load_ply_tensors")
         ply_path = _make_box_ply(tmp_path)
-        verts, _faces, _bbox = _load_ply_tensors(ply_path, "cpu", ply_scale=100.0)
+        verts, _faces, _bbox = _load_ply_tensors(ply_path, ply_scale=100.0)
         v = verts.numpy()
         extents = v.max(axis=0) - v.min(axis=0)
         assert extents[0] == pytest.approx(5800.0, abs=1.0), f"X extent should be 5800mm, got {extents[0]:.1f}"
@@ -97,7 +97,7 @@ class TestLoadPlyTensors:
         """X center must be at 0 after loading (car length centered on origin)."""
         _load_ply_tensors = _import(PRETRAIN_LATENT, "_load_ply_tensors")
         ply_path = _make_box_ply(tmp_path)
-        verts, _faces, _bbox = _load_ply_tensors(ply_path, "cpu", ply_scale=100.0)
+        verts, _faces, _bbox = _load_ply_tensors(ply_path, ply_scale=100.0)
         v = verts.numpy()
         x_center = (v[:, 0].max() + v[:, 0].min()) / 2.0
         assert x_center == pytest.approx(0.0, abs=1.0), f"X center should be 0, got {x_center:.1f}"
@@ -106,7 +106,7 @@ class TestLoadPlyTensors:
         """After Z grounding, Z_min must equal ground_clearance (100mm)."""
         _load_ply_tensors = _import(PRETRAIN_LATENT, "_load_ply_tensors")
         ply_path = _make_box_ply(tmp_path)
-        verts, _faces, _bbox = _load_ply_tensors(ply_path, "cpu", ply_scale=100.0)
+        verts, _faces, _bbox = _load_ply_tensors(ply_path, ply_scale=100.0)
         v = verts.numpy()
         z_min = float(v[:, 2].min())
         assert z_min == pytest.approx(100.0, abs=1.0), f"Z_min should be 100mm (ground clearance), got {z_min:.1f}"
@@ -115,7 +115,7 @@ class TestLoadPlyTensors:
         """bbox_extent (diagonal) must be in mm range (hundreds to thousands), not sub-millimetre."""
         _load_ply_tensors = _import(PRETRAIN_LATENT, "_load_ply_tensors")
         ply_path = _make_box_ply(tmp_path)
-        _verts, _faces, bbox_extent = _load_ply_tensors(ply_path, "cpu", ply_scale=100.0)
+        _verts, _faces, bbox_extent = _load_ply_tensors(ply_path, ply_scale=100.0)
         assert bbox_extent > 500.0, f"bbox_extent should be >500mm at scale=100, got {bbox_extent:.1f}"
         assert bbox_extent < 20_000.0, f"bbox_extent should be <20000mm at scale=100, got {bbox_extent:.1f}"
 
@@ -123,7 +123,7 @@ class TestLoadPlyTensors:
         """Face count and indices must be unchanged by the transform."""
         _load_ply_tensors = _import(PRETRAIN_LATENT, "_load_ply_tensors")
         ply_path = _make_box_ply(tmp_path)
-        _verts, faces, _bbox = _load_ply_tensors(ply_path, "cpu", ply_scale=100.0)
+        _verts, faces, _bbox = _load_ply_tensors(ply_path, ply_scale=100.0)
         assert faces.shape == (12, 3), f"Box has 12 triangles, got {faces.shape}"
 
     def test_scale_1000_gives_wrong_size(self, tmp_path: Path) -> None:

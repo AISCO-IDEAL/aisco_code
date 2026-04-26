@@ -1,6 +1,7 @@
 import importlib
 import os
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -11,7 +12,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.ground_truth_masks.simple
     cube_gt,
     ply_gt,
     sphere_gt,
-)  # Added cube_gt
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
@@ -20,6 +21,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     collect_optimizer_state,
     collect_param_stats,
 )
+from subprojects.wp5.unified_mesh_extraction import MeshExtractionConfig, MeshSDFExtractor
 
 
 def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml") -> SupportsModelContract:
@@ -293,8 +295,9 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
         gt = torch.cat([domain_gt, face_gt, near_gt_all], dim=0)
 
     elif shape_type == "ply":
-        ply_verts: torch.Tensor = shape_params["ply_verts"]
-        ply_faces: torch.Tensor = shape_params["ply_faces"]
+        # PLY tensors live on CPU in the cache; move to device only for the GPU BVH query.
+        ply_verts: torch.Tensor = shape_params["ply_verts"].to(device)
+        ply_faces: torch.Tensor = shape_params["ply_faces"].to(device)
         bbox_extent: float = float(shape_params["bbox_extent"])
         noise_sigma = float(shape_params.get("surface_noise_sigma_factor", 0.05)) * bbox_extent
 
@@ -308,9 +311,9 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
         domain_pts = lo + torch.rand(n_domain, 3, device=device) * (hi - lo)
         domain_gt = ply_gt(domain_pts, ply_verts, ply_faces)
 
-        # 50 % surface + Gaussian jitter
-        verts_np = ply_verts.cpu().numpy()
-        faces_np = ply_faces.cpu().numpy()
+        # 50 % surface + Gaussian jitter — use CPU arrays directly for trimesh
+        verts_np = shape_params["ply_verts"].numpy()  # already CPU
+        faces_np = shape_params["ply_faces"].numpy()  # already CPU
         mesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, process=False)
         surface_np, _ = trimesh.sample.sample_surface(mesh, n_surface)
         surface_pts = torch.tensor(surface_np, dtype=torch.float32, device=device)
@@ -329,34 +332,63 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
     return pts, gt
 
 
+def _make_mesh_extractor_config(device: str, mesh_res: int, outer_prism: dict[str, Any]) -> MeshExtractionConfig:
+    """Build a MeshExtractionConfig using outer_prism bounds.
+
+    Single source of truth for mesh extraction parameters in the pretraining
+    pipeline.  Always uses the AISCO outer_prism (asymmetric bounding box),
+    never symmetric ±mesh_box.
+
+    Args:
+        device: Compute device string (e.g. "cuda" or "cpu").
+        mesh_res: Marching-cubes grid resolution.
+        outer_prism: Dict from get_outer_prism_bounds_mm() with keys 'x', 'y', 'z_mesh'.
+    """
+    return MeshExtractionConfig(
+        device=device,
+        isovalue=0.0,
+        bbox=[
+            [float(outer_prism["x"][0]), float(outer_prism["x"][1])],
+            [float(outer_prism["y"][0]), float(outer_prism["y"][1])],
+            [float(outer_prism["z_mesh"][0]), float(outer_prism["z_mesh"][1])],
+        ],
+        base_resolution=mesh_res,
+        subdivision_factor=1,
+        max_refine_levels=0,
+        batch_size=65536,
+    )
+
+
 def _extract_mesh(
     model: SupportsModelContract,
     pth_path: Path | str,
     device: str,
     mesh_res: int,
-    mesh_box: int,
+    outer_prism: dict[str, Any],
 ) -> None:
     """Extract a mesh from a trained model and save as PLY alongside the checkpoint.
 
     Args:
         model: Trained SDF model implementing SupportsModelContract.
-        pth_path: Path to the saved checkpoint (PLY will share the same directory).
+        pth_path: Path to the output PLY file.
         device: Compute device string.
         mesh_res: Marching-cubes grid resolution.
-        mesh_box: Half-bounding-box in mm (±mesh_box on all axes).
+        outer_prism: Dict from get_outer_prism_bounds_mm() with keys 'x', 'y', 'z_mesh'.
     """
-    from subprojects.wp4_aeroshell_optimizer.v2.src.utils.kaolin_conversions import (  # noqa: PLC0415  # lazy import: kaolin is optional and must not be required at module load time
-        get_diff_mesh,
-        kaolin_to_PLY,
-    )
-
     pth_path = Path(pth_path)
-    box_dim = [-mesh_box, mesh_box, -mesh_box, mesh_box, -mesh_box, mesh_box]
-    print(f"[extract_mesh] Extracting mesh: res={mesh_res}, box=±{mesh_box} mm ...")
-    verts, faces = get_diff_mesh(model, grid_res=mesh_res, box_dim=box_dim, device=device)
-    ply_name = pth_path.stem + ".ply"
-    kaolin_to_PLY(verts, faces, filename=ply_name, mesh_dir=pth_path.parent)
-    print(f"[extract_mesh] Saved mesh to {pth_path.parent / ply_name}")
+    cfg = _make_mesh_extractor_config(device, mesh_res, outer_prism)
+    x_range = outer_prism["x"][1] - outer_prism["x"][0]
+    y_range = outer_prism["y"][1] - outer_prism["y"][0]
+    z_range = outer_prism["z_mesh"][1] - outer_prism["z_mesh"][0]
+    print(f"[extract_mesh] Extracting mesh: res={mesh_res}, bounds=X({x_range:.0f})Y({y_range:.0f})Z({z_range:.0f})mm, device={device} ...")
+    verts, faces = MeshSDFExtractor(config=cfg).extract_mesh(model)
+    ply_path = pth_path.with_suffix(".ply")
+    trimesh.Trimesh(
+        vertices=verts.detach().cpu().numpy(),
+        faces=faces.detach().cpu().numpy(),
+        process=False,
+    ).export(ply_path)
+    print(f"[extract_mesh] Saved mesh to {ply_path}")
 
 
 # 2026 03 05, eschaerer:
