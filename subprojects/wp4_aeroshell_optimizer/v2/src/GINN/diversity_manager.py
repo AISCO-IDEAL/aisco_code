@@ -196,7 +196,7 @@ class DiversityTrainer:
 
             bundle = self._total_loss.compute(self._model, epoch_name=epoch)
 
-            # Compute active constraint info once (same for all i since it depends only on epoch)
+            # Compute active constraint info for ALM once per epoch (same for all z_i since it depends only on epoch)
             if i == 0:
                 active_constraint_cats = [cat for cat in all_constraint_cats if cat in bundle.constraints]
                 active_constraint_indices = [j for j, cat in enumerate(all_constraint_cats) if cat in bundle.constraints]
@@ -218,6 +218,8 @@ class DiversityTrainer:
                 summed_log_data[k] = summed_log_data.get(k, 0.0) + v
 
             # Per-component backward: each component uses retain_graph=False and frees immediately.
+            # Does not add all components up and then .backwards(), less efficient per z sample but much lower peak VRAM (each loss can fully exploit VRAM).
+            # May add config toggle or smart detection to see if we can get performance boost
             trainable_params = [p for p in self._model.parameters() if p.requires_grad]
             prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
             per_population_conflict_vectors: dict[str, np.ndarray] | None = (

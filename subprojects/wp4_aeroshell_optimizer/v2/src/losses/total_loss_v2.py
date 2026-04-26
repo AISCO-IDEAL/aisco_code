@@ -52,12 +52,25 @@ class RawLossBundle:
     the caller decides whether to consume it.
     """
 
+    # Use fields for mypy related stuff, has to do with the @dataclass decorator
     objectives: dict[str, torch.Tensor] = field(default_factory=dict)
     constraints: dict[str, torch.Tensor] = field(default_factory=dict)
     aux: dict[str, torch.Tensor] = field(default_factory=dict)
     zero_weighted: dict[str, torch.Tensor] = field(default_factory=dict)
     side_data: dict[str, Any] = field(default_factory=dict)
 
+    def __str__(self) -> str:
+        def fmt_dict(d: dict[str, torch.Tensor]) -> str:
+            return ", ".join(f"{k}: {v.item():.4e}" for k, v in d.items())
+
+        return (
+            "RawLossBundle: "
+            f"Objectives: {{{fmt_dict(self.objectives)}}},\n"
+            f"Constraints: {{{fmt_dict(self.constraints)}}},\n"
+            f"Aux: {{{fmt_dict(self.aux)}}},\n"
+            f"Zero-weighted: {{{fmt_dict(self.zero_weighted)}}},\n"
+            f"Side-data keys: {list(self.side_data.keys())}"
+        )
 
 @dataclass
 class WeightedLossResult:
@@ -72,6 +85,9 @@ class WeightedLossResult:
     scalar: torch.Tensor
     log_data: dict[str, float] = field(default_factory=dict)
     components: dict[str, torch.Tensor] = field(default_factory=dict)
+
+    def __str__(self) -> str:
+        return f"WeightedLossResult content: \n Scalar: {self.scalar.item():.4e},\nLog data: {self.log_data},\nComponents: {{{', '.join(f'{k}: {v.item():.4e}' for k, v in self.components.items())}}}"
 
 
 class TotalLossV2:
@@ -366,6 +382,8 @@ class TotalLossV2:
                         target_dict[category] = instance.get_loss(model, epoch_name)
         finally:
             self._clear_shared_meshes()
+
+        print(bundle)
         return bundle
 
     def weight(  # noqa: PLR0912, PLR0915
@@ -525,9 +543,10 @@ class TotalLossV2:
         for source in (bundle.objectives, bundle.constraints, bundle.aux, bundle.zero_weighted):
             raw_total += sum(float(t.detach().item()) for t in source.values())
         log_data["raw_losses/total_loss"] = raw_total
-
-        return WeightedLossResult(
+        return_value = WeightedLossResult(
             scalar=scalar,
             log_data=log_data,
             components=weighted_components if return_components else {},
         )
+        print(return_value)
+        return return_value
