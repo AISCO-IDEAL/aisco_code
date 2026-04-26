@@ -29,12 +29,16 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 impo
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization import SamplingVisualizer
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.core import _POINT_COLOUR_RED
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.core import (
+    _POINT_COLOUR_GREEN,
+    _POINT_COLOUR_RED,
+    _POINT_COLOUR_WHITE,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
 
 
-def _load_ply_tensors(ply_path: str, device: str, ply_scale: float = 1.0) -> tuple[Tensor, Tensor, float]:
+def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Tensor, float]:
     """Load a PLY mesh, transform to AISCO convention, and return (verts, faces, bbox_extent).
 
     Applies three deterministic transforms after scaling:
@@ -43,9 +47,12 @@ def _load_ply_tensors(ply_path: str, device: str, ply_scale: float = 1.0) -> tup
     2. X centering: shifts so that the car is symmetrically centred on the X axis.
     3. Z grounding: shifts so that Z_min equals the outer-prism ground clearance (100mm).
 
+    Returned tensors are always on **CPU**.  Move to device only when needed (e.g.
+    inside ``_sample_points_for_shape`` for the GPU BVH query).  Keeping PLY geometry
+    on CPU prevents CUDA-context pollution from spreading to visualization code.
+
     Args:
         ply_path: Absolute path to the PLY file.
-        device: Target device string.
         ply_scale: Multiplicative scale applied to raw vertex coordinates.  Use
             ``100.0`` when the PLY is stored in decimetres (the AISCO pretraining
             convention).  Use ``1.0`` when the PLY is already in mm.
@@ -110,8 +117,8 @@ def _load_ply_tensors(ply_path: str, device: str, ply_scale: float = 1.0) -> tup
         )
 
     bbox_diag = float(np.linalg.norm(extents))
-    ply_verts = torch.tensor(verts_np, device=device)
-    ply_faces = torch.tensor(faces_np, device=device)
+    ply_verts = torch.tensor(verts_np)  # CPU — move to device in _sample_points_for_shape for BVH
+    ply_faces = torch.tensor(faces_np)  # CPU
     return ply_verts, ply_faces, max(bbox_diag, 1.0)
 
 
@@ -273,7 +280,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     for slot_idx, shape in enumerate(shapes):
         if shape["shape_type"] == "ply":
             ply_scale: float = float(shape.get("ply_scale", 1.0))
-            ply_cache[slot_idx] = _load_ply_tensors(str(shape["ply_path"]), device, ply_scale)
+            ply_cache[slot_idx] = _load_ply_tensors(str(shape["ply_path"]), ply_scale)
             print(f"[latent_pretrain] Slot {slot_idx}: loaded PLY '{shape['ply_path']}' scale={ply_scale}")
 
     # --- Build unit-circle Z ---
@@ -303,6 +310,9 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     # "vertices": blue dot per mesh vertex (sparse on flat surfaces)
     # "face_centers": blue dot per triangle centroid (uniform coverage)
     vis_mesh_display_mode: Literal["vertices", "face_centers"] = output_cfg.get("vis_mesh_display_mode", "vertices")
+    # Toggle what epoch snapshots show in the combined PLY
+    vis_show_target_pts: bool = bool(output_cfg.get("vis_show_target_pts", True))   # GREEN: target shape surface cache
+    vis_show_model_pts: bool = bool(output_cfg.get("vis_show_model_pts", True))     # RED:   current SDF model surface
 
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -380,6 +390,8 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         surface_pts = torch.cat(all_surface_pts, dim=0)  # (N*n_surf, 3)
         surface_gt = torch.cat(all_surface_gt, dim=0)  # (N*n_surf,)
         surface_z = torch.cat(all_surface_z, dim=0)  # (N*n_surf, z_dim)
+        # Keep per-slot domain pts for epoch visualization; also concatenate for forward pass
+        domain_pts_list = all_domain_pts  # list of per-slot domain tensors
         domain_pts = torch.cat(all_domain_pts, dim=0)  # (N*n_dom, 3)
         domain_z = torch.cat(all_domain_z, dim=0)  # (N*n_dom, z_dim)
 
@@ -450,13 +462,15 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 Z=Z,
                 shapes=shapes,
                 cached_surface=cached_surface,
-                domain_pts_per_slot=all_domain_pts,
+                domain_pts_per_slot=domain_pts_list,
                 epoch=epoch,
                 mesh_res=vis_mesh_res,
                 mesh_box=vis_mesh_box,
                 device=device,
                 vis=epoch_vis,
                 mesh_display_mode=vis_mesh_display_mode,
+                show_target_pts=vis_show_target_pts,
+                show_model_pts=vis_show_model_pts,
                 show_domain_pts=vis_eikonal_pts,
             )
             model.train()  # restore after eval inside snapshot
@@ -494,23 +508,21 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         print(f"[latent_pretrain] Z pairwise distances: min={min(pairwise):.3f}, mean={mean_dist:.3f}, max={max(pairwise):.3f}")
 
     # --- Optional per-slot mesh extraction ---
-    mesh_res = output_cfg.get("mesh_resolution")
-    mesh_box = output_cfg.get("mesh_box_mm")
-    if mesh_res and mesh_box:
-        mesh_dir = run_dir / "mesh_extracted"
-        mesh_dir.mkdir(parents=True, exist_ok=True)
-        for slot_idx in range(num_shapes):
-            slot_name = shapes[slot_idx].get("name", str(slot_idx))
-            slot_mesh_path = mesh_dir / f"slot{slot_idx:02d}_{slot_name}.ply"
-            try:
-                model.set_latent_vector(Z[slot_idx].to(device))
-                model.eval()
-                _extract_mesh(model, slot_mesh_path, device, int(mesh_res), int(mesh_box))
-            except Exception as exc:  # BLE001 not enabled; mesh extraction is non-critical and must not abort the run
-                print(
-                    f"[latent_pretrain] WARNING: mesh extraction for slot {slot_idx} failed: {exc}. "
-                    "Skipping mesh output — checkpoint is still valid."
-                )
+    # vis_mesh_res and vis_mesh_box already have defaults (64 / 2000); use them here too.
+    mesh_dir = run_dir / "mesh_extracted"
+    mesh_dir.mkdir(parents=True, exist_ok=True)
+    for slot_idx in range(num_shapes):
+        slot_name = shapes[slot_idx].get("name", str(slot_idx))
+        slot_mesh_path = mesh_dir / f"slot{slot_idx:02d}_{slot_name}.ply"
+        try:
+            model.set_latent_vector(Z[slot_idx].to(device))
+            model.eval()
+            _extract_mesh(model, slot_mesh_path, device, vis_mesh_res, vis_mesh_box)
+        except Exception as exc:  # BLE001 not enabled; mesh extraction is non-critical and must not abort the run
+            print(
+                f"[latent_pretrain] WARNING: mesh extraction for slot {slot_idx} failed: {exc}. "
+                "Skipping mesh output — checkpoint is still valid."
+            )
 
     # --- Optional sampling visualization (a): target mesh + the actual MSE surface cache ---
     if vis_sampling:
@@ -579,8 +591,8 @@ def _visualize_pretraining_sampling(
         mesh_faces: np.ndarray | None = None
         if shape_type == "ply" and slot_idx in ply_cache:
             ply_verts_t, ply_faces_t, _ = ply_cache[slot_idx]
-            mesh_verts = ply_verts_t.cpu().numpy()
-            mesh_faces = ply_faces_t.cpu().numpy()
+            mesh_verts = ply_verts_t.numpy()  # already CPU
+            mesh_faces = ply_faces_t.numpy()  # already CPU
 
         try:
             vis.save_snapshot(
@@ -643,17 +655,24 @@ def _write_epoch_vis_snapshot(
     vis: SamplingVisualizer,
     *,
     mesh_display_mode: Literal["vertices", "face_centers"] = "vertices",
+    show_target_pts: bool = True,
+    show_model_pts: bool = True,
     show_domain_pts: bool = True,
 ) -> None:
-    """Write one epoch snapshot: current trained mesh + the ACTUAL training point sets.
+    """Write one epoch snapshot: current trained mesh, target surface, and domain eikonal pts.
 
-    Uses the exact same point sets that were passed to the loss functions at this
-    epoch — not a re-sample.  This gives a faithful view of what the model saw.
+    The combined PLY shows the training convergence at a glance:
 
-    - **Forest green**: surface cache pts (near-surface perturbed, used for MSE).
-    - **Red** (optional): domain pts from this epoch (used for eikonal). Shows the
-      exact fresh-sampled uniform bbox points that were passed to eikonal loss.
-    - **Dark blue**: current trained SDF mesh (marching cubes).
+    - **Forest green** (optional): target shape surface cache pts — what the model is
+      being trained toward.  Toggle with ``show_target_pts``.
+    - **Red** (optional): current SDF model surface pts (mesh_verts from marching
+      cubes) — what the model currently predicts as its zero level set.  Toggle
+      with ``show_model_pts``.  As training progresses these should converge toward
+      the green points.
+    - **Light grey** (optional): domain points (bounding-box uniform) used for eikonal
+      loss. Shows the region where |∇SDF|=1 is enforced.  Toggle with ``show_domain_pts``.
+    - ``*_mesh_only.ply``: full triangle mesh (always written when kaolin is available),
+      not shown as dark blue in the combined PLY to avoid colour confusion.
 
     The caller must call ``model.train()`` after this function returns.
     """
@@ -667,14 +686,52 @@ def _write_epoch_vis_snapshot(
         mesh_verts_ep = mesh_arrays[0] if mesh_arrays is not None else None
         mesh_faces_ep = mesh_arrays[1] if mesh_arrays is not None else None
 
+        # Determine what to show in the combined PLY
+        target_pts: Tensor | None = surf_pts_i if show_target_pts else None
+        model_pts: np.ndarray | None = mesh_verts_ep if (show_model_pts and mesh_verts_ep is not None) else None
+
+        if target_pts is None and model_pts is None:
+            # Nothing to show in combined view; still write mesh_only if available
+            if mesh_verts_ep is not None and mesh_faces_ep is not None:
+                try:
+                    vis.save_snapshot(
+                        points_mm=torch.zeros(0, 3),
+                        mesh_verts=mesh_verts_ep,
+                        mesh_faces=mesh_faces_ep,
+                        name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
+                        show_mesh_in_combined=False,
+                        mesh_display_mode=mesh_display_mode,
+                    )
+                except Exception as exc:
+                    print(f"[latent_pretrain] WARNING: epoch vis save failed for slot {slot_idx} ({slot_name}): {exc}")
+            continue
+
+        # If only model pts (target disabled), show them as primary RED
+        if target_pts is None:
+            primary_pts: Tensor = torch.from_numpy(model_pts)  # type: ignore[arg-type]
+            primary_colour = _POINT_COLOUR_RED
+            secondary_pts: Tensor | np.ndarray | None = domain_pts_i
+        else:
+            primary_pts = target_pts
+            primary_colour = _POINT_COLOUR_GREEN
+            # Stack model pts (red) and domain pts (grey)
+            secondary_pts: Tensor | np.ndarray | None = None
+            if show_model_pts and model_pts is not None:
+                secondary_pts = torch.from_numpy(model_pts)
+                if domain_pts_i is not None:
+                    # If both model and domain pts are shown, concatenate them
+                    secondary_pts = torch.cat([secondary_pts, domain_pts_i], dim=0)
+
         try:
             vis.save_snapshot(
-                points_mm=surf_pts_i,
+                points_mm=primary_pts,
                 mesh_verts=mesh_verts_ep,
                 mesh_faces=mesh_faces_ep,
                 name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
-                secondary_points_mm=domain_pts_i,
-                points_colour=_POINT_COLOUR_RED,
+                secondary_points_mm=secondary_pts,
+                points_colour=primary_colour,
+                secondary_colour=_POINT_COLOUR_RED if (show_model_pts and model_pts is not None) else _POINT_COLOUR_WHITE,
+                show_mesh_in_combined=False,  # model surface shown as RED pts; mesh_only.ply still written
                 mesh_display_mode=mesh_display_mode,
             )
         except Exception as exc:
@@ -725,9 +782,12 @@ File naming
 
   slot{{N:02d}}_{{name}}_epoch{{E:05d}}.ply
       Written {cadence_note}.
-      Shows the CURRENT trained SDF mesh (blue) + the actual surface cache
-      pts used for MSE at that epoch (green) + the domain pts used for
-      eikonal at that epoch (grey).
+      Shows GREEN target shape surface cache vs RED current SDF model surface
+      pts (marching-cubes mesh vertices at that epoch).  As training converges
+      the red points migrate toward the green points.
+      Light grey points show domain/eikonal sample pts (bounding-box uniform) when
+      vis_eikonal_pts: true.
+      Toggle visibility via vis_show_target_pts / vis_show_model_pts / vis_eikonal_pts in config.
 
 Companion files (*_mesh_only.ply)
 ---------------------------------
@@ -741,17 +801,13 @@ Colour coding
       - target PLYs : {mesh_note}
         Dots only at front/back of a car = CORRECT (high curvature → dense
         triangulation → many vertices / face centroids there).
-      - epoch PLYs  : current trained SDF mesh (marching cubes at that epoch).
+      - epoch PLYs  : NOT shown as dark blue (see RED below instead).
       TIP: Open the companion *_mesh_only.ply for the full triangle mesh view.
 
-  Forest green (34, 139, 34): MSE surface cache — in TARGET (*_target.ply) files.
+  Forest green (34, 139, 34): Target shape surface cache — in BOTH *_target.ply
+      AND *_epochNNNNN.ply files.
       Points are near the target mesh (Gaussian-perturbed from surface).
       These are the EXACT points used for MSE loss during training.
-
-  Red (220, 30, 30): MSE surface cache — in EPOCH (*_epochNNNNN.ply) files.
-      Same semantic as green above; colour changed to distinguish from the
-      blue trained mesh at a glance.  Green (target) and red (epoch) are
-      drawn from the SAME cached_surface tensor.
 
       - For PLY targets : trimesh.sample.sample_surface() perturbed with
                           Gaussian noise (sigma = surface_noise_sigma_factor x
@@ -762,12 +818,22 @@ Colour coding
       Role: ONLY these points are passed to the MSE loss.
       Surface cache : {surface_note}
 
+  Red (220, 30, 30): Current SDF model surface pts — in EPOCH (*_epochNNNNN.ply)
+      files ONLY.  These are the marching-cubes mesh vertices of the model's
+      predicted zero level set at that epoch.  As training progresses these
+      should converge toward the GREEN target points.
+      Toggle: vis_show_model_pts in config output section.
+
+  Light grey (220, 220, 220): Domain sample points — in EPOCH files when
+      vis_eikonal_pts: true.  Bounding-box uniform points used for the eikonal
+      loss.  Toggle: vis_eikonal_pts in config output section.
+
 {eikonal_note}
 
 Loss terms in pretraining
 --------------------------
   1. MSE loss (quality of fit): L2( predicted_SDF / 1000, gt_SDF / 1000 ).
-     Uses GREEN/RED (near-surface) points ONLY.
+     Uses GREEN (near-surface) points ONLY.
      GT SDF: mesh_sdf (GPU BVH) for PLY; analytic for sphere/cube.
      NOTE: points ARE Gaussian-perturbed from surface (not exact surface),
      so GT SDF != 0.  Pure GT=0 sampling would be degenerate (f=0 everywhere

@@ -70,6 +70,7 @@ class SamplingVisualizer:
         points_colour: tuple[int, int, int] = _POINT_COLOUR_GREEN,
         secondary_colour: tuple[int, int, int] = _POINT_COLOUR_WHITE,
         mesh_display_mode: Literal["vertices", "face_centers"] = "vertices",
+        show_mesh_in_combined: bool = True,
         max_points: int = 8192,
     ) -> Path | None:
         """Write a combined PLY file with coloured mesh and sampled points.
@@ -92,6 +93,12 @@ class SamplingVisualizer:
                 triangle face, giving uniform coverage regardless of vertex density.
                 The companion ``*_mesh_only.ply`` always contains the full triangle
                 mesh regardless of this setting.
+            show_mesh_in_combined: When ``True`` (default), the mesh is rendered as
+                dark blue dots in the combined PLY alongside the coloured point sets.
+                When ``False``, the mesh is omitted from the combined PLY but the
+                ``*_mesh_only.ply`` companion is still written.  Set ``False`` in
+                epoch snapshots where the model surface is already shown as a
+                separate RED point set to avoid colour confusion.
             max_points: Cap on number of points written per group.  Random
                 subsampling is applied when the input exceeds this limit.
 
@@ -129,17 +136,18 @@ class SamplingVisualizer:
         if has_mesh:
             verts_arr = np.asarray(mesh_verts, dtype=np.float64)
             faces_arr = np.asarray(mesh_faces, dtype=np.int64)
-            if mesh_display_mode == "face_centers":
-                # One dot per triangle at the centroid — uniform surface coverage.
-                mesh_display_pts = (verts_arr[faces_arr[:, 0]] + verts_arr[faces_arr[:, 1]] + verts_arr[faces_arr[:, 2]]) / 3.0
-            else:  # "vertices"
-                mesh_display_pts = verts_arr
-            mesh_colour = np.tile(
-                np.array(_MESH_COLOUR_DARK_BLUE, dtype=np.float64) / 255.0,
-                (mesh_display_pts.shape[0], 1),
-            )
-            all_verts.append(mesh_display_pts)
-            all_colours.append(mesh_colour)
+            if show_mesh_in_combined:
+                if mesh_display_mode == "face_centers":
+                    # One dot per triangle at the centroid — uniform surface coverage.
+                    mesh_display_pts = (verts_arr[faces_arr[:, 0]] + verts_arr[faces_arr[:, 1]] + verts_arr[faces_arr[:, 2]]) / 3.0
+                else:  # "vertices"
+                    mesh_display_pts = verts_arr
+                mesh_colour = np.tile(
+                    np.array(_MESH_COLOUR_DARK_BLUE, dtype=np.float64) / 255.0,
+                    (mesh_display_pts.shape[0], 1),
+                )
+                all_verts.append(mesh_display_pts)
+                all_colours.append(mesh_colour)
             # Build triangle mesh for *_mesh_only.ply (always triangle mesh, best-effort)
             try:
                 tri_mesh = _build_o3d_mesh(verts_arr, faces_arr)

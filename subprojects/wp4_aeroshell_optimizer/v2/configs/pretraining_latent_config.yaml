@@ -86,4 +86,6 @@ output:
   mesh_resolution: 64
   vis_cadence: 300 # at what interval to visualize the sampling
   vis_eikonal_pts: true   # visualize sampled points for eikonal loss (default: true)
+  vis_show_target_pts: true # visualize target points (default: true)
+  vis_show_model_pts: true # visualize model points (default: true)
   vis_mesh_display_mode: "vertices"   # "vertices" renders the raw ply vertex cloud.
