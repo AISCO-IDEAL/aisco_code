@@ -1,0 +1,7 @@
+# Minimal model config for WIREOriginal
+in_features: 3
+hidden_features: 128
+hidden_layers: 4
+out_features: 1
+dtype: float32
+bbox_half_extent: 1000.0

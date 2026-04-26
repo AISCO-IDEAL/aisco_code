@@ -24,6 +24,30 @@
       "uses_diversity": false,
       "has_optimise": true
     },
+    "WIREV5": {
+      "model_class": "WIREV5",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v5.py",
+      "config_file": "models/WIRE_v5.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+    "WIREV6": {
+      "model_class": "WIREV6",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v6.py",
+      "config_file": "models/WIRE_v6.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+    "WIREOriginal": {
+      "model_class": "WIREOriginal",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/wire_original.py",
+      "config_file": "models/wire_original.yaml",
+      "uses_diversity": false,
+      "has_optimise": false
+    },
     "ConcatWIREV2": {
       "model_class": "ConcatWIREV2",
       "parent_class": "ConcatBaseModel",

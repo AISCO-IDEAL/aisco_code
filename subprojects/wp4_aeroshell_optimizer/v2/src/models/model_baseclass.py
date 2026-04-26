@@ -10,6 +10,7 @@ from torch import nn
 
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     DebugManager,
     collect_alm_state,
@@ -111,7 +112,7 @@ class BaseModel(nn.Module):
                 "manual_weights": collect_loss_weights(loss_function),
             },
         )
-
+        assert isinstance(self, SupportsModelContract)
         for epoch in range(num_epochs):
             dbg.begin_iteration(epoch)
 
@@ -119,6 +120,7 @@ class BaseModel(nn.Module):
 
             # Individual weighted tensors are stored in loss_function._last_weighted_losses
             # for the per-component backward below.
+
             loss_function.get_total_loss(model=self, epoch_name=epoch)
 
             # Per-component backward: each graph is freed immediately (retain_graph=False).
