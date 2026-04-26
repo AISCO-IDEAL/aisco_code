@@ -131,7 +131,9 @@ class DiversityTrainer:
 
         # Rolling history for the stacked-area competition chart
         self._raw_loss_history: list[dict[str, float]] = []
+        self._normalized_loss_history: list[dict[str, float]] = []
         self._weighted_loss_history: list[dict[str, float]] = []
+        self._optimizer_loss_history: list[dict[str, float]] = []
 
         norm_cfg = self._total_loss.losses_config.get("general_info", {}).get("loss_normalisation", {})
         self._norm_manager = LossNormalisationManager(norm_cfg)
@@ -527,16 +529,33 @@ class DiversityTrainer:
         log_dict.update(diversity_log_data)
         log_dict.update(gradient_log_data)
 
+        # Clear alias for downstream dashboards: these are measured after backward calls.
+        for key, value in gradient_log_data.items():
+            if key.startswith("weighted_gradients/"):
+                log_dict[f"post_backward_gradients/{key.removeprefix('weighted_gradients/')}"] = value
+
         # Competition charts (avg-of-population)
         raw_floats: dict[str, float] = {
             k.removeprefix("raw_losses/"): abs(v)
             for k, v in log_dict.items()
             if k.startswith("raw_losses/") and k != "raw_losses/total_loss"
         }
+        normalized_floats: dict[str, float] = {
+            k.removeprefix("normalized_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("normalized_losses/")
+        }
         weighted_floats: dict[str, float] = {
             k.removeprefix("weighted_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("weighted_losses/")
         }
-        competition_log = self._log_competition_charts(raw_floats, weighted_floats, epoch)
+        optimizer_floats: dict[str, float] = {
+            k.removeprefix("optimizer_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("optimizer_losses/")
+        }
+        competition_log = self._log_competition_charts(
+            raw_floats,
+            normalized_floats,
+            weighted_floats,
+            optimizer_floats,
+            epoch,
+        )
 
         # Merge competition charts into single log call to avoid WandB step corruption
         log_dict.update(competition_log)
@@ -545,7 +564,9 @@ class DiversityTrainer:
     def _log_competition_charts(  # noqa: PLR0915
         self,
         raw_floats: dict[str, float],
+        normalized_floats: dict[str, float],
         weighted_floats: dict[str, float],
+        optimizer_floats: dict[str, float],
         epoch: int,
     ) -> dict[str, Any]:
         """Generate pie/bar/radar/stacked-area charts of loss shares; return dict for WandB."""
@@ -553,7 +574,9 @@ class DiversityTrainer:
             return {}
         matplotlib.use("Agg")
         self._raw_loss_history.append(dict(raw_floats))
+        self._normalized_loss_history.append(dict(normalized_floats))
         self._weighted_loss_history.append(dict(weighted_floats))
+        self._optimizer_loss_history.append(dict(optimizer_floats))
 
         competition_log: dict[str, Any] = {}
 
@@ -600,8 +623,12 @@ class DiversityTrainer:
 
         raw_labels = list(raw_floats.keys())
         raw_vals = [raw_floats[k] for k in raw_labels]
+        n_labels = list(normalized_floats.keys())
+        n_vals = [normalized_floats[k] for k in n_labels]
         w_labels = list(weighted_floats.keys())
         w_vals = [weighted_floats[k] for k in w_labels]
+        opt_labels = list(optimizer_floats.keys())
+        opt_vals = [optimizer_floats[k] for k in opt_labels]
 
         fig_a = _safe_pie(raw_vals, raw_labels, f"Raw Losses (epoch {epoch})")
         competition_log["loss_competition/raw_pie"] = wandb.Image(fig_a)
@@ -609,12 +636,24 @@ class DiversityTrainer:
         fig_b = _safe_pie(w_vals, w_labels, f"Weighted Losses (epoch {epoch})")
         competition_log["loss_competition/weighted_pie"] = wandb.Image(fig_b)
         plt.close(fig_b)
+        fig_b2 = _safe_pie(n_vals, n_labels, f"Normalized Losses (epoch {epoch})")
+        competition_log["loss_competition/normalized_pie"] = wandb.Image(fig_b2)
+        plt.close(fig_b2)
+        fig_b3 = _safe_pie(opt_vals, opt_labels, f"Optimizer Losses (epoch {epoch})")
+        competition_log["loss_competition/optimizer_pie"] = wandb.Image(fig_b3)
+        plt.close(fig_b3)
         fig_c = _safe_hbar(raw_vals, raw_labels, f"Raw Loss Shares % (epoch {epoch})")
         competition_log["loss_competition/raw_bar"] = wandb.Image(fig_c)
         plt.close(fig_c)
         fig_d = _safe_hbar(w_vals, w_labels, f"Weighted Loss Shares % (epoch {epoch})")
         competition_log["loss_competition/weighted_bar"] = wandb.Image(fig_d)
         plt.close(fig_d)
+        fig_d2 = _safe_hbar(n_vals, n_labels, f"Normalized Loss Shares % (epoch {epoch})")
+        competition_log["loss_competition/normalized_bar"] = wandb.Image(fig_d2)
+        plt.close(fig_d2)
+        fig_d3 = _safe_hbar(opt_vals, opt_labels, f"Optimizer Loss Shares % (epoch {epoch})")
+        competition_log["loss_competition/optimizer_bar"] = wandb.Image(fig_d3)
+        plt.close(fig_d3)
 
         # Radar: union of keys, each series normalized to its own max for comparable angles
         all_keys = list(dict.fromkeys(list(raw_floats.keys()) + list(weighted_floats.keys())))

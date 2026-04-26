@@ -127,7 +127,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   diversity:
     _role: diversity
     null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    field_diversity_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+    field_diversity_v0: [1, 0.1, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
 
   total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly

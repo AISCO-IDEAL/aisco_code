@@ -143,7 +143,9 @@ class DiversityLossManager:
         weighted = self._weight * raw_loss_value
         return {
             f"raw_losses/{self._loss_name}": raw_loss_value,
+            f"normalized_losses/{self._loss_name}": raw_loss_value,
             f"weighted_losses/{self._loss_name}": weighted,
+            f"optimizer_losses/{self._loss_name}": weighted,
             "diversity/loss": raw_loss_value,
             "diversity/weighted_loss": weighted,
             "diversity/weight": self._weight,

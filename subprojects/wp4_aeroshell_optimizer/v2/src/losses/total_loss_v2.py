@@ -418,22 +418,44 @@ class TotalLossV2:
                 (with live autograd graphs) for gradient conflict analysis. No extra computation.
             norm_manager: Optional normalisation manager; applies calibrated loss and gradient scales.
 
-        Returns:
+                Returns:
             WeightedLossResult where `scalar` is used for backward, `log_data` contains detached
             numeric values for telemetry, and `components` holds per-loss tensors if return_components=True.
+
+                Telemetry namespaces:
+                - raw_losses/*: direct loss outputs (pre-weight, pre-normalization).
+                - normalized_losses/*: raw value after loss-scale only (for interpretability).
+                - optimizer_losses/*: exact per-component value entering the optimizer sum
+                    (after sign/weights/ALM and any grad-scale).
+                - weighted_losses/*: legacy namespace retained for dashboard compatibility.
 
         ALM multiplier updates are NOT performed here; the caller owns that lifecycle.
         """
         log_data: dict[str, float] = {}
         weighted_components: dict[str, torch.Tensor] = {}
 
+        loss_scale = (
+            (lambda component_name, raw_value: raw_value * norm_manager.get_loss_scale(component_name))
+            if norm_manager
+            else (lambda _component_name, raw_value: raw_value)
+        )
+
         # Raw logging — active losses by loss_name, zero_weighted at real value, skipped as 0
         for category, t in bundle.objectives.items():
-            log_data[f"raw_losses/{self._objective_by_category[category][0]}"] = t.item()
+            objective_name = self._objective_by_category[category][0]
+            raw_value = t.item()
+            log_data[f"raw_losses/{objective_name}"] = raw_value
+            log_data[f"normalized_losses/{objective_name}"] = loss_scale(objective_name, raw_value)
         for category, t in bundle.constraints.items():
-            log_data[f"raw_losses/{self._constraint_by_category[category][0]}"] = t.item()
+            constraint_name = self._constraint_by_category[category][0]
+            raw_value = t.item()
+            log_data[f"raw_losses/{constraint_name}"] = raw_value
+            log_data[f"normalized_losses/{constraint_name}"] = loss_scale(constraint_name, raw_value)
         for category, t in bundle.aux.items():
-            log_data[f"raw_losses/{self._aux_by_category[category][0]}"] = t.item()
+            aux_name = self._aux_by_category[category][0]
+            raw_value = t.item()
+            log_data[f"raw_losses/{aux_name}"] = raw_value
+            log_data[f"normalized_losses/{aux_name}"] = loss_scale(aux_name, raw_value)
         for category, t in bundle.zero_weighted.items():
             lookup = (
                 self._objective_by_category.get(category)
@@ -443,8 +465,12 @@ class TotalLossV2:
             assert lookup is not None, (
                 f"Category '{category}' in zero_weighted but not found in objectives, constraints, or aux lookups."
             )
-            log_data[f"raw_losses/{lookup[0]}"] = t.item()
+            raw_name = lookup[0]
+            raw_value = t.item()
+            log_data[f"raw_losses/{raw_name}"] = raw_value
+            log_data[f"normalized_losses/{raw_name}"] = loss_scale(raw_name, raw_value)
             log_data[f"weighted_losses/{lookup[0]}"] = 0.0
+            log_data[f"optimizer_losses/{lookup[0]}"] = 0.0
         log_data.update(getattr(self, "_skipped_log_zeros", {}))
 
         # --- Objectives ---------------------------------------------------
@@ -502,12 +528,18 @@ class TotalLossV2:
                 tol=self._cse_tol,
             )
             log_data["cruising_speed_ms"] = v_cruise.item()
+            log_data["cse/raw_drag_force_n"] = float(drag_raw.detach().item())
+            log_data["cse/raw_solar_power_w"] = float(solar_raw.detach().item())
+            log_data["cse/cruising_speed_ms"] = v_cruise.item()
+            cse_loss_scale = norm_manager.get_loss_scale("cse_objective") if norm_manager else 1.0
+            log_data["normalized_losses/cse_objective"] = v_cruise.item() * cse_loss_scale
             # Only backprop if at least one input is live; both-cached → v_cruise has no grad.
             if drag_is_live or solar_is_live:
                 # Minimize -v_cruise to maximize physical speed
                 cse_scale = (norm_manager.get_loss_scale("cse_objective") * norm_manager.get_grad_scale("cse_objective")) if norm_manager else 1.0
                 weighted_components["cse_objective"] = -v_cruise * cse_scale
                 log_data["weighted_losses/cse_objective"] = v_cruise.item()
+                log_data["optimizer_losses/cse_objective"] = weighted_components["cse_objective"].detach().item()
         else:
             for category, t in bundle.objectives.items():
                 name: str = self._objective_by_category[category][0]
@@ -517,6 +549,7 @@ class TotalLossV2:
                 wt: torch.Tensor = sign * w * t * combined_scale
                 weighted_components[name] = wt
                 log_data[f"weighted_losses/{name}"] = wt.item()
+                log_data[f"optimizer_losses/{name}"] = wt.item()
 
         # --- Constraints --------------------------------------------------
         # Derive active constraint indices relative to the full YAML-ordered constraint list,
@@ -534,6 +567,7 @@ class TotalLossV2:
                 grad_scale = (norm_manager.get_grad_scale(key) if norm_manager else 1.0)
                 weighted_components[key] = t * grad_scale
                 log_data[f"weighted_losses/{key}"] = t.item()
+                log_data[f"optimizer_losses/{key}"] = weighted_components[key].detach().item()
         else:
             for category, t in bundle.constraints.items():
                 name = self._constraint_by_category[category][0]
@@ -542,6 +576,7 @@ class TotalLossV2:
                 wt = w * t * combined_scale
                 weighted_components[name] = wt
                 log_data[f"weighted_losses/{name}"] = wt.item()
+                log_data[f"optimizer_losses/{name}"] = wt.item()
 
         # --- Auxiliaries (always manual) ----------------------------------
         for category, t in bundle.aux.items():
@@ -551,6 +586,7 @@ class TotalLossV2:
             wt = w * t * combined_scale
             weighted_components[name] = wt
             log_data[f"weighted_losses/{name}"] = wt.item()
+            log_data[f"optimizer_losses/{name}"] = wt.item()
 
         # --- Final scalar -------------------------------------------------
         if weighted_components:

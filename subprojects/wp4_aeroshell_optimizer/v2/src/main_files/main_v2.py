@@ -283,7 +283,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
         # ALM setup
         use_alm: bool = losses_config["general_info"].get("ALM") == "True"
-        alm_manager: ALMManager | None
+        alm_manager: ALMManager | None = None
         if use_alm:
             # get all constraint categories that are defined in the loss config, regardless of whether they are active or not. This is needed for the ALM manager to properly map the initial multipliers to the active constraints based on their categories, and also to know which constraints exist, even if not all are active.
             configured_constraint_categories: list[str] = [
