@@ -156,7 +156,7 @@ optimizer:
     args:
         lr: 6e-4
         weight_decay: 1e-05
-        epoch: 5
+        epoch: 500
         loss_scale: 1.0
         eval_every_eps: 1
         viz_every_eps: 1   # visualize every N epochs; defaults to eval_every_eps if omitted
