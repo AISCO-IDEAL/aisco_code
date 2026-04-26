@@ -120,7 +120,7 @@ esac
 JOB_ID=${1:?missing job id}
 EXIT_CODE=${2:?missing exit code}
 OUTPUT_FILE=${3:-}
-COMMAND=${4:-}
+COMMAND="${*:4}"
 
 INFO=$(job_info "$JOB_ID")
 RECIPIENT=$(resolve_recipient "$INFO")
