@@ -44,7 +44,24 @@ class MeshAssemblyModeV2(RenderingMode):
 
         self.config = config
         self.camera_positions: list[list[float]] = camera_positions
-        self.camera_directions: list[list[float]] = [[self.look_at[i] - pos[i] for i in range(3)] for pos in camera_positions]
+        # Per-camera look_at: look_at_1, look_at_2, ... fall back to the shared look_at.
+        look_at_targets: list[list[float]] = []
+        for i in range(len(camera_positions)):
+            key = f"look_at_{i + 1}"
+            if key in config:
+                look_at_targets.append(config[key])
+                print(
+                    f"[MeshAssemblyModeV2] cam{i}: camera_position={camera_positions[i]}, look_at=config['{key}']={config[key]}"
+                )
+            else:
+                look_at_targets.append(self.look_at)
+                print(
+                    f"[MeshAssemblyModeV2] cam{i}: camera_position={camera_positions[i]}, look_at=default={self.look_at} ('{key}' not in config, available keys: {[k for k in config if 'look' in k.lower()]})"
+                )
+        self.camera_directions: list[list[float]] = [
+            [target[j] - pos[j] for j in range(3)] for pos, target in zip(camera_positions, look_at_targets, strict=True)
+        ]
+        print(f"[MeshAssemblyModeV2] camera_directions={self.camera_directions}")
         # One cached base frame and assembly-id per camera position.
         self.base_frames: list[np.ndarray | None] = [None] * len(camera_positions)
         self.base_assembly_ids: list[int | None] = [None] * len(camera_positions)
@@ -99,6 +116,23 @@ class MeshAssemblyModeV2(RenderingMode):
 
         return load_bb_assembly_id()
 
+    def _render_look(self, **kwargs) -> Any:
+        """Render in 'look' mode so camera_direction is respected.
+
+        The shared renderer uses camera_mode='look_at' by default, which always
+        points at the world origin ([0,0,0]) and ignores camera_direction.
+        Temporarily switching to 'look' mode makes it use camera_direction instead,
+        which we compute as (look_at_target - camera_position) per camera.
+        The original mode is always restored, even on error.
+        """
+        renderer = self.visualiser.renderer
+        original_mode = renderer.camera_mode
+        renderer.camera_mode = "look"
+        try:
+            return self._render(**kwargs)
+        finally:
+            renderer.camera_mode = original_mode
+
     def _build_base_frame(self, assembly_id: int, camera_position: list[float], camera_direction: list[float]) -> np.ndarray:
         inner_solids, outer_solid = load_inner_outer_solids(assembly_id)
 
@@ -131,7 +165,7 @@ class MeshAssemblyModeV2(RenderingMode):
             color=self.outer_color,
         )
 
-        inner_rgb = self._render(
+        inner_rgb = self._render_look(
             vertices=inner_vertices,
             faces=inner_faces,
             textures=inner_textures,
@@ -139,7 +173,7 @@ class MeshAssemblyModeV2(RenderingMode):
             camera_position=camera_position,
             camera_direction=camera_direction,
         )
-        outer_rgb = self._render(
+        outer_rgb = self._render_look(
             vertices=outer_vertices,
             faces=outer_faces,
             textures=outer_textures,
@@ -147,7 +181,7 @@ class MeshAssemblyModeV2(RenderingMode):
             camera_position=camera_position,
             camera_direction=camera_direction,
         )
-        outer_sil = self._render(
+        outer_sil = self._render_look(
             vertices=outer_vertices,
             faces=outer_faces,
             mode="silhouettes",
@@ -193,7 +227,7 @@ class MeshAssemblyModeV2(RenderingMode):
                     color=self.mesh_color,
                 )
 
-                mesh_rgb = self._render(
+                mesh_rgb = self._render_look(
                     vertices=vertices,
                     faces=faces,
                     textures=mesh_textures,
@@ -201,7 +235,7 @@ class MeshAssemblyModeV2(RenderingMode):
                     camera_position=cam_pos,
                     camera_direction=cam_dir,
                 )
-                mesh_sil = self._render(
+                mesh_sil = self._render_look(
                     vertices=vertices,
                     faces=faces,
                     mode="silhouettes",

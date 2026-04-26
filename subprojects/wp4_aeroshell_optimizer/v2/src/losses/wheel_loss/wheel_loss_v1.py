@@ -50,6 +50,6 @@ class WheelLossV1(ParentLoss):
         # Sample points on SDF
         samples = model(self.points)  # shape: (num_wheels * sampling_density^2,)
 
-        # Calculate loss as ME of SDF at sampled points
-        loss = torch.mean(torch.abs(samples))
+        # Calculate loss as MSE of SDF at sampled points
+        loss = torch.mean(torch.square(samples))
         return loss
