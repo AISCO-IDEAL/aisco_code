@@ -60,6 +60,11 @@ job_value() {
     awk -F= -v key="$1" '$1 == key { print substr($0, index($0, "=") + 1); exit }'
 }
 
+command_value() {
+    local key="$1" command_line="$2"
+    printf '%s\n' "$command_line" | sed -n "s/.*[[:space:]]${key}=\([^[:space:]]*\).*/\1/p" | head -n1
+}
+
 resolve_recipient() {
     local info="$1" r
     r=$(printf '%s\n' "$info" | job_value "AISCO_NOTIFY_USERNAME")
@@ -112,6 +117,16 @@ COMMAND=${4:-}
 INFO=$(job_info "$JOB_ID")
 RECIPIENT=$(resolve_recipient "$INFO")
 SUBMITTER=$(printf '%s\n' "$INFO" | job_value "AISCO_SUBMITTER")
+
+# Fallback for cases where tsp metadata is not available at hook time.
+if [ -z "$RECIPIENT" ] || [ "$RECIPIENT" = "${USER:-unknown}" ]; then
+    RECIPIENT=$(command_value "AISCO_NOTIFY_USERNAME" "$COMMAND")
+fi
+[ -z "$RECIPIENT" ] && RECIPIENT="${USER:-unknown}"
+
+if [ -z "$SUBMITTER" ]; then
+    SUBMITTER=$(command_value "AISCO_SUBMITTER" "$COMMAND")
+fi
 [ -z "$SUBMITTER" ] && SUBMITTER="$RECIPIENT"
 
 if [ "$EXIT_CODE" -eq 0 ]; then
