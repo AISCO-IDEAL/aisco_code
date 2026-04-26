@@ -65,6 +65,12 @@ sudo chown aisco:aisco /var/log/aisco
 ( crontab -l 2>/dev/null; echo "@reboot /home/aisco/start_gpu_queue.sh >>/var/log/aisco/queue.log 2>&1" ) | crontab -
 ```
 
+If the queue was already running before `TS_ONFINISH` was configured, restart it explicitly:
+
+```bash
+/home/aisco/start_gpu_queue.sh --restart
+```
+
 ## Per-user shell setup (auto-applied by `add_student.sh`)
 
 Each user's `~/.bashrc` should contain:
@@ -118,6 +124,10 @@ tsp -r <ID>        # remove / kill
 beast-submit eschaerer /bin/sh -c 'echo hi; sleep 5'
 tsp                               # see it queued/running
 # wait ~6s → DM "GPU JOB FINISHED" should arrive
+
+# If the job runs but no DM arrives, restart the daemon with the notifier attached
+/home/aisco/start_gpu_queue.sh --restart
+beast-submit eschaerer /bin/sh -c 'echo hi; sleep 5'
 
 # 3. Verify the launcher can see the chosen virtualenv
 AISCO_VENV_DIR=/home/aisco/Documents/AISCO_code/aisco_env \
