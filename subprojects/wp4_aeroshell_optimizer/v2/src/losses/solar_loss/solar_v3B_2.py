@@ -16,10 +16,10 @@ class SolarV3B2(ParentLoss):
     """Solar objective wrapper for v3B_2 (meaningful watt-based output)."""
 
     def _setup(self) -> None:
-        gen_cfg = load_config(v="v1", cfg_name="general_config.yaml")
+        gen_cfg = load_config(v="v2", cfg_name="general_config.yaml")
         cfg_path = gen_cfg["active_configs"]["solar"]
         # Uses SolarLossConfigV3 config; can be customized per-version
-        solar_cfg = load_config(v="v1", cfg_name=cfg_path)["SolarLossConfigV3"]
+        solar_cfg = load_config(v="v2", cfg_name=cfg_path)["SolarLossConfigV3"]
         self.solar_estimator = SolarLossEstimator(config=solar_cfg)
 
     def _loss(self, model, skip_telemetry=False):

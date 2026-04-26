@@ -130,7 +130,7 @@ class MeshSDFExtractor:
         for k in [k for k in _MESH_CACHE if k[0] == model_id and k[1] != version]:
             _MESH_CACHE.pop(k, None)
 
-        if self.target_num_vertices is None:
+        if self.target_num_vertices is None or self.target_num_vertices < 0:
             verts, faces = self._extract(sdf_model, self.effective_resolution)
         else:
             verts, faces = self._extract_to_target(sdf_model)
