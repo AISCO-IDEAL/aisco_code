@@ -5,8 +5,8 @@
 # Runs the complete pipeline on ONE node (max 128 cores):
 #   1. Loop subdivision        (~180k verts, 16 workers)  [skippable]
 #   2. PLY → STL + case gen    (sequential, lightweight)  [skippable]
-#   3. Mesh  snappyHexMesh     (4 cases parallel → 4 × 32 = 128 cores)
-#   4. Solve simpleFoam        (2 cases parallel → 2 × 64 = 128 cores)
+#   3. Mesh  snappyHexMesh     (3 cases parallel → 3 × 32 = 96 cores)
+#   4. Solve simpleFoam        (3 cases parallel → 3 × 32 = 96 cores)
 #   5. Extract .pt + QA        (16 workers)               [skippable]
 #
 #   Look at the flags!!! you might want to skip or not something
@@ -20,15 +20,14 @@
 # =============================================================================
 
 #SBATCH --job-name=OF_FullProcess
-#SBATCH --partition=normal.24h
 #SBATCH --account=es_fuge
-#SBATCH --time=20:00:00
+#SBATCH --time=72:00:00
 #SBATCH --nodes=1
-#SBATCH --ntasks=128
+#SBATCH --ntasks=96
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1900M
-#SBATCH --output=/cluster/scratch/%u/scratch_logs/OF_FullProcess_%j.out
-#SBATCH --error=/cluster/scratch/%u/scratch_logs/OF_FullProcess_%j.err
+#SBATCH --output=/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/OPENFOAM_001/OF_FullProcess_%j.out
+#SBATCH --error=/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/OPENFOAM_001/OF_FullProcess_%j.err
 
 set -euo pipefail
 
@@ -37,28 +36,30 @@ echo "=== OF Full Process: $(date) | Job ${SLURM_JOB_ID} | $(hostname) ==="
 # =============================================================================
 # Flags — set to 1 to skip that step
 # =============================================================================
-SKIP_SUBDIVISION=1   # 1 = PLYs already subdivided, skip step 1
-SKIP_PREP=1          # 1 = PLY→STL + case gen already done, skip step 2
-SKIP_MESH=1          # 1 = cases already meshed, skip step 3
-SKIP_SOLVE=1         # 1 = cases already solved, skip step 4
+SKIP_SUBDIVISION=0   # 1 = PLYs already subdivided, skip step 1
+SKIP_PREP=0          # 1 = PLY→STL + case gen already done, skip step 2
+SKIP_MESH=0          # 1 = cases already meshed, skip step 3
+SKIP_SOLVE=0         # 1 = cases already solved, skip step 4
 SKIP_EXTRACT=0       # 1 = skip .pt extraction + QA, skip step 5
 
 # =============================================================================
 # Paths — edit these before submitting
 # =============================================================================
-PLY_INPUT="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/ply_to_simulate"
-PLY_SUBDIVIDED="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/ply_to_simulate_subdivided"
-STL_OUTPUT="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/GEOMETRY"
-GEO_MANIFEST="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/geometry_manifest.json"
-CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/CASES_v3"
-CASES_MANIFEST="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/cases_manifest.json"
-OUTPUT_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/processed_euler_openfoam_cp_v050"
+WORK_ROOT="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/OPENFOAM_001"
+
+PLY_INPUT="$WORK_ROOT/ply_to_simulate"
+PLY_SUBDIVIDED="$WORK_ROOT/ply_to_simulate_subdivided"
+STL_OUTPUT="$WORK_ROOT/GEOMETRY"
+GEO_MANIFEST="$WORK_ROOT/geometry_manifest.json"
+CASES_DIR="$WORK_ROOT/CASES_v3"
+CASES_MANIFEST="$WORK_ROOT/cases_manifest.json"
+OUTPUT_DIR="$WORK_ROOT/processed_euler_openfoam_cp_v050"
 
 PIPE="/cluster/home/$USER/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset/openfoam"
 DATASET_DIR="/cluster/home/$USER/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset"
 
-MESH_BATCH=4   # parallel mesh jobs  (4 × 32 = 128 cores)
-SOLVE_BATCH=2  # parallel solve jobs (2 × 64 = 128 cores)
+MESH_BATCH=3   # parallel mesh jobs  (3 × 32 = 96 cores)
+SOLVE_BATCH=3  # parallel solve jobs (3 × 32 = 96 cores)
 # =============================================================================
 
 module purge
@@ -67,7 +68,7 @@ module load openfoam/2306
 source /cluster/home/$USER/AISCO_code/aisco_env/bin/activate
 export PYTHONPATH="${DATASET_DIR}:${PYTHONPATH:-}"
 
-mkdir -p /cluster/scratch/$USER/scratch_logs
+mkdir -p "$WORK_ROOT/logs"
 mkdir -p "$STL_OUTPUT" "$CASES_DIR"
 
 # -----------------------------------------------------------------------
@@ -187,7 +188,7 @@ solve_case() {
     echo "[solve] START $RUN_ID at $(date)"
     cd "$CASE"
     local solved=0
-    for NPROCS in 64 32; do
+    for NPROCS in 32 16; do
         sed -i "s/numberOfSubdomains.*/numberOfSubdomains ${NPROCS};/" system/decomposeParDict
         rm -rf processor* 2>/dev/null || true
         decomposePar -force > log.decomposePar 2>&1
