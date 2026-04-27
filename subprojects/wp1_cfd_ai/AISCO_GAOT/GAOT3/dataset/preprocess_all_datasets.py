@@ -27,6 +27,7 @@ def run_datasets(
     drivaer_workers: int,
     ahmed_workers: int,
     blended_wing_workers: int,
+    target_reduction: float = 0.0,
 ) -> None:
     for dataset_name in datasets:
         output_dir = _resolve_output_dir(output_root, dataset_name)
@@ -34,9 +35,9 @@ def run_datasets(
         if dataset_name == "euler":
             process_euler_runs(output_dir=output_dir, num_workers=euler_workers)
         elif dataset_name == "drivaer":
-            process_vtp_runs("drivaer", num_workers=drivaer_workers, output_dir=output_dir)
+            process_vtp_runs("drivaer", num_workers=drivaer_workers, output_dir=output_dir, target_reduction=target_reduction)
         elif dataset_name == "ahmed":
-            process_vtp_runs("ahmed", num_workers=ahmed_workers, output_dir=output_dir)
+            process_vtp_runs("ahmed", num_workers=ahmed_workers, output_dir=output_dir, target_reduction=target_reduction)
         elif dataset_name == "blended_wing":
             process_blended_wing(output_dir=output_dir, num_workers=blended_wing_workers)
         else:
@@ -57,6 +58,8 @@ def main() -> None:
     parser.add_argument("--drivaer-workers", type=int, default=2)
     parser.add_argument("--ahmed-workers", type=int, default=2)
     parser.add_argument("--blended-wing-workers", type=int, default=8)
+    parser.add_argument("--target-reduction", type=float, default=0.0,
+                        help="Mesh decimation target (0.0-1.0). 0.6 = keep 40%% of vertices (drivaer/ahmed only).")
     args = parser.parse_args()
 
     datasets = ["euler", "drivaer", "ahmed", "blended_wing"] if "all" in args.datasets else args.datasets
@@ -67,6 +70,7 @@ def main() -> None:
         drivaer_workers=args.drivaer_workers,
         ahmed_workers=args.ahmed_workers,
         blended_wing_workers=args.blended_wing_workers,
+        target_reduction=args.target_reduction,
     )
 
 

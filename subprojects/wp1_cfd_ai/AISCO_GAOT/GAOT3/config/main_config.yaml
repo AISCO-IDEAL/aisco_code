@@ -123,7 +123,7 @@ dataset:
     val_size: 183
     test_size: 183
     batch_size: 6  # reduced from 12 to avoid OOM on larger CP-full meshes
-    num_workers: 4
+    num_workers: 8
     shuffle: true
     metric_suite: "general"
     update_pt_files_with_edges: false
@@ -135,8 +135,8 @@ dataset:
     order_file_name:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
-    subsample_nodes: 50000     # randomly sample 30k nodes per load if sample exceeds this
-    subsample_strategy: "poisson_disk"  # "random" | "voxel" | "poisson_disk" | "fps"
+    subsample_nodes: 25000     # randomly sample 30k nodes per load if sample exceeds this
+    subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"
     deterministic_subsampling: false  # false keeps fresh random subsets on every load
     subsampling_seed: 42        # used only when deterministic_subsampling is true
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
@@ -144,9 +144,9 @@ dataset:
     num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
 
     viz_axis_limits:            # Edit these ranges to control the visualized x/y/z box exactly, default is outer bounding box
-        x: [-3, 3]
-        y: [-1.5, 1.5]
-        z: [-0.5, 2]
+        x: [-0.5, 1.5]
+        y: [-0.5, 1.5]
+        z: [-0.5, 0.5]
     viz_field_vmin: -2.2        # min on pressure bar
     viz_field_vmax: 0.95         # max on pressure bar
     viz_abs_diff_vmax: 1.0      # max on error bar (min always 0)
@@ -156,7 +156,7 @@ optimizer:
     args:
         lr: 6e-4
         weight_decay: 1e-05
-        epoch: 500
+        epoch: 300
         loss_scale: 1.0
         eval_every_eps: 1
         viz_every_eps: 25   # visualize every N epochs; defaults to eval_every_eps if omitted
