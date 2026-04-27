@@ -13,7 +13,9 @@ class WheelLossV3(ParentLoss):
         self.__config = self.losses_config["wheel_loss_config"]
         self.assembly_id = int(self.losses_config["bb_config"].get("assembly_id", 1))
         self.weight_position = self.__config.get("weight_position", 0.5)
-        self._threshold = self.__config.get("threshold", -0.3)
+        self._threshold_huber = self.__config.get("threshold_huber", 10.0)
+        self._threshold_relu = self.__config.get("threshold_relu", -0.3)
+        self._manual_z_shift = self.__config.get("manual_z_shift", 0.0)
 
         assembly_map_path = Path(__file__).parents[6] / "subprojects/wp2_assembler/version4/config/assembly_map.yaml"
         with assembly_map_path.open("r") as f:
@@ -41,7 +43,9 @@ class WheelLossV3(ParentLoss):
         for wx, wy, wz in wheel_coords:
             xs = wx + grid_dx * L
             ys = wy + grid_dy * (width / 2)
-            zs = torch.full_like(xs, wz + radius - C)  # testing if the wz position is affecting the loss in first place
+            zs = torch.full_like(
+                xs, wz + radius - C + self._manual_z_shift
+            )  # testing if the wz position is affecting the loss in first place
             wheel_point_grids.append(torch.stack([xs, ys, zs], dim=-1))  # (sampling_density^2, 3)
 
         # shape of points: (num_wheels * sampling_density^2, 3)
@@ -60,12 +64,12 @@ class WheelLossV3(ParentLoss):
             only_inputs=True,
         )[0]  # shape: (num_wheels * sampling_density^2, 3)
 
-        # Calculate loss as MSE of SDF at sampled points
+        # Calculate loss as Huber Loss of SDF at sampled points, with transition to linear penalty for points above huber threshold
         # gradient should point in the negative z direction
-        position = torch.mean(torch.square(samples_point))
+        position = torch.nn.functional.huber_loss(samples_point, torch.zeros_like(samples_point), delta=self._threshold_huber)
         gradient_xy = torch.mean(torch.square(samples_gradient[:, :2]))  # x,y should be 0
         gradient_z = torch.mean(
-            torch.relu(samples_gradient[:, 2] - self._threshold)
+            torch.relu(samples_gradient[:, 2] - self._threshold_relu)
         )  # z should be threshold or smaller (threshold from config). Anything above threshold is penalized linearly
         gradient = gradient_xy + gradient_z
         loss = self.weight_position * position + (1 - self.weight_position) * gradient

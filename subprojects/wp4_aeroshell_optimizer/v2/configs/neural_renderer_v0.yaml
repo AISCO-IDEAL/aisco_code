@@ -47,25 +47,65 @@ rendering_modes:
   enabled: true #Whether to use the visual wrapper at all, if false, no rendering is done, even if modes are enabled  #  visual_wrapper.py: modes_config["enabled"]
 
   mesh_assembly_mode_v2: # inner+outer bb + sdf visualisation, fast compute time
-    enabled: true
+    enabled: false
     class_path: "custom_modes.mesh_assembly_mode_v2:MeshAssemblyModeV2"
+    config:
+      store_wandb: false
+      render_mode: "rgb"
+      camera_position: [-6000, -200, 0]
+      look_at: [0, 0, 0]
+      fps: 10
+      render_interval: 1
+      make_gif: true
+      mesh_color: [0.2, 1.0, 1.0]
+      mesh_alpha: 0.5
+      assembly_color: [1.0, 0.55, 0.0]
+      outer_color: [1.0, 0.35, 0.15]
+      outer_alpha: 0.2
+      outer_edge_color: [0.0, 0.0, 0.0]
+      outer_edge_strength: 1.0
+      tolerance: 2.0
+      angular_tolerance: 0.4
+
+  mesh_assembly_mode_v3: # inner+outer bb + sdf visualisation, fast compute time
+    enabled: false
+    class_path: "custom_modes.mesh_assembly_mode_v3:MeshAssemblyModeV3"
     config:
       store_wandb: true
       render_mode: "rgb"
-      camera_position_1: [0, 3000, 0]      # testing alignement with assembler
-      camera_position_2: [0, 3000, 50]
-      camera_position_3: [0, 3000, 100]
-      camera_position_4: [0, 3000, 150]
-      # camera_position_5: [-1300, -2000, 0] # left behind wheel
-      # camera_position_6: [-1300, 900, 0]   # right behind wheel
-      # camera_position_7: [4900, -1100, 0]  # front wheel
-      look_at: [0, 0, 0]                   # fallback look_at if specific look_at_1, look_at_2, ... are not provided
-      look_at_2: [0, 0, 50]
-      look_at_3: [0, 0, 100]
-      look_at_4: [0, 0, 150]
-      # look_at_5: [-1300, 0, 0]
-      # look_at_6: [-1300, -1100, 0]
-      # look_at_7: [2900, -1100, 0]
+      camera_position_1: [-6000, -200, 0]
+      camera_position_2: [-3000, 3000, 3000]
+      look_at: [0, 0, 0] # fallback look_at if specific look_at_1, look_at_2, ... are not provided
+      look_at_2: [-3000, 0, 0]
+      fps: 10
+      render_interval: 1
+      make_gif: true
+      mesh_color: [0.2, 1.0, 1.0]
+      mesh_alpha: 0.5
+      assembly_color: [1.0, 0.55, 0.0]
+      outer_color: [1.0, 0.35, 0.15]
+      outer_alpha: 0.2
+      outer_edge_color: [0.0, 0.0, 0.0]
+      outer_edge_strength: 1.0
+      tolerance: 2.0
+      angular_tolerance: 0.4
+
+  mesh_assembly_mode_v4: # inner+outer bb + sdf visualisation, fast compute time
+    enabled: true
+    class_path: "custom_modes.mesh_assembly_mode_v4:MeshAssemblyModeV4"
+    config:
+      store_wandb: true
+      render_mode: "rgb"
+      camera_position_1: [-6000, -200, 0]
+      camera_position_2: [-3000, 3000, 3000]
+      camera_position_3: [200, 0, 6000]  # slight X offset avoids view direction being parallel to Z-up vector
+      camera_position_4: [-1300, -2000, 0]
+      camera_position_5: [-1300, 900, 0]
+      camera_position_6: [4900, -1100, 0]
+      look_at: [0, 0, 0] # fallback look_at if specific look_at_1, look_at_2, ... are not provided
+      look_at_4: [-1300, 0, 0]
+      look_at_5: [-1300, -1100, 0]
+      look_at_6: [2900, -1100, 0]
       fps: 10
       render_interval: 1
       make_gif: true

@@ -154,7 +154,7 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     dy: 250  #
     dz: 250  #
     rand: 400  #
-  assembly_id: 2 # 1 for the standard one # also used in wheel_loss_v0.py # rendering modes only (assembly_mode.py, mesh_assembly_mode_v2.py), not bb_v3.py (which randomises 1-52)
+  assembly_id: 2 # 1 for the standard one # also used in wheel_loss_v0.py # rendering modes only (assembly_mode.py, mesh_assembly_mode_v4.py), not bb_v3.py (which randomises 1-52)
   render_until_blue: "False"
   sdf_device: cuda  # mesh-backed BB SDF compute device
   # v4.2 specific:
@@ -173,7 +173,7 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     inner_margin: 0.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
     outer_margin: 0.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
   # v4.5 nbz selection:
-  nbz_selection: "outer"  # "outer", or "both"
+  nbz_selection: "both"  # "outer", or "both"
   # silvretta_v0 specific:
   inner_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/inner.ply"
   outer_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/outer.ply"
@@ -208,4 +208,6 @@ developability_config:
 wheel_loss_config:
   sampling_density: 10 # points per edge of the rectangle
   weight_position: 0.33  # weight for position vs. gradient in the loss calculation
-  threshold: -0.3  # z-gradient threshold for wheel loss v2; gradients above this value are penalized linearly, while gradients below are not penalized (should be negative, e.g. -0.3 means z gradients above -0.3 are penalized, while z gradients of -0.3 or smaller are not penalized)
+  threshold_huber: 10.0  # Huber loss threshold for wheel loss v3
+  threshold_relu: -0.3  # z-gradient threshold for wheel loss v3; gradients above this value are penalized linearly, while gradients below are not penalized (should be negative, e.g. -0.3 means z gradients above -0.3 are penalized, while z gradients of -0.3 or smaller are not penalized)
+  manual_z_shift: -10.0 # manual shift applied to z-coordinate of wheel loss sample points, to give more room for the SDF to find a solution
