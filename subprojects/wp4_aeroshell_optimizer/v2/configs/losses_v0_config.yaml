@@ -203,7 +203,7 @@ cfd:
   gradient_max: 0.1       # Options: any float    Recomendation: 0.1
 
 cfd_local:
-  run_local: false
+  run_local: true
   model_id: local_1777017531      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2 or a key for Version 1
   version: 3              # Options: 1, 2, 3      Recomendation: 3
   visualisations: false   # Options: true, false  Recomendation: false
