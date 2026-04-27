@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 
 import torch
 from torch_geometric.loader import DataLoader as PyGDataLoader
@@ -73,6 +74,7 @@ class StatisticsHandler:
             elif hasattr(batch, "y") and batch.y is not None:
                 all_x.append(batch.y.cpu())
         per_head_stats = self._per_head_stats(trainer, all_force, all_cd)
+        combined: list[torch.Tensor]
         if all_x:
             combined = all_x
         elif all_force or all_cd:
@@ -80,7 +82,7 @@ class StatisticsHandler:
         else:
             raise ValueError("No data found in training set to calculate statistics.")
         full_x_tensor = torch.cat(combined, dim=0)
-        stats_to_save = {
+        stats_to_save: dict[str, Any] = {
             "mean": torch.mean(full_x_tensor, dim=0, dtype=trainer.dtype),
             "std": torch.std(full_x_tensor, dim=0).to(trainer.dtype),
         }
