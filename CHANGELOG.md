@@ -2,6 +2,25 @@
 
 All notable changes to AISCO_code are documented here.
 
+## [0.6.2] — 2026-04-27 (Plan 022 Exp-B)
+
+### Changed
+
+- **Loss strategy** (`pretraining_latent.py`) — Replaced MSE-on-surface + eikonal with **L1 on all
+  points** (surface + domain). Domain GT SDF (previously discarded) is now retained from
+  `_sample_points_for_shape` and included in the loss. `_compute_eikonal_latent` is no longer
+  imported or called. W&B logs `l1_all` instead of `eikonal`.
+- **W&B metadata** — `loss_type`, `sampling_strategy`, and `run_group` are now read from
+  `training_loop` config keys (optional; fall back to sensible defaults) instead of being
+  hardcoded.
+- **`pretraining_latent_config.yaml`** — `eikonal_weight` retained for YAML schema compatibility;
+  not applied by the training loop.
+
+### Added
+
+- `pretraining_latent_config_exp_b.yaml` — 2-slot experiment config (sphere + simple_bullet_blunt)
+  used to validate the L1-all strategy. Kept as a reference config.
+
 ## [0.6.1] — 2026-04-27 (Plan 021)
 
 ### Added

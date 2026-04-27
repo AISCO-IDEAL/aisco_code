@@ -451,7 +451,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     lr: float = float(loop_cfg["learning_rate"])
     batch_size_per_shape: int = int(loop_cfg["batch_size_per_shape"])
     print_interval: int = int(loop_cfg["print_interval"])
-    # Exp-B: eikonal removed — eikonal_weight config key retained for YAML compatibility, not applied
+    # eikonal removed in favour of L1 on all pts — eikonal_weight config key retained for YAML compat
     # 0 = static surface cache (DeepSDF-style: sample once, reuse forever)
     # N > 0 = refresh surface cache every N epochs
     surface_resample_cadence: int = int(loop_cfg.get("surface_resample_cadence", 0))
@@ -489,7 +489,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = CosineAnnealingLR(optimizer, T_max=max(epochs, 1))
-    l1_fn = torch.nn.L1Loss()  # Exp-B: L1 on all pts replaces MSE-surface + eikonal
+    l1_fn = torch.nn.L1Loss()  # L1 on all pts (surface + domain) replaces MSE-surface + eikonal
 
     # --- Build initial surface sample cache (near-surface Gaussian-perturbed pts for MSE) ---
     # Split convention: domain = pts[:n_dom], surface = pts[n_dom:].
@@ -504,7 +504,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         else f"refreshed every {surface_resample_cadence} epochs"
     )
     print(
-        f"[latent_pretrain] Surface cache: {resample_label}. MSE uses surface cache, eikonal uses fresh domain pts.", flush=True
+        f"[latent_pretrain] Surface cache: {resample_label}. L1-all uses surface cache + fresh domain pts.", flush=True
     )
     if bbox_scale_factor != 1.0:
         print(
@@ -546,16 +546,15 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         epoch_vis.write_legend(_make_vis_legend(config_hash, vis_cadence, vis_show_eikonal_pts, surface_resample_cadence))
         print(f"[latent_pretrain] Per-epoch vis enabled: cadence={vis_cadence}, mesh_res={vis_mesh_res} → {vis_dir}")
 
-    # --- Exp-B: register experiment identity in W&B config ---
+    # --- Register run metadata in W&B config (keys sourced from config when present) ---
     if use_wandb:
         import wandb  # noqa: PLC0415
 
         wandb.config.update(
             {
-                "experiment": "exp_b_deepsdf_adapted",
-                "loss_type": "l1-all",
-                "sampling_strategy": "all-pts-split",
-                "run_group": "exp-b-deepsdf-adapted",
+                "loss_type": loop_cfg.get("loss_type", "l1-all"),
+                "sampling_strategy": loop_cfg.get("sampling_strategy", "all-pts-split"),
+                "run_group": loop_cfg.get("run_group", ""),
             },
             allow_val_change=True,
         )
@@ -583,7 +582,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
 
         # Sample fresh domain pts (uniform bbox) for L1-all loss — every epoch
         all_domain_pts: list[Tensor] = []
-        all_domain_gt: list[Tensor] = []  # Exp-B: retain domain GT SDF for L1-all loss
+        all_domain_gt: list[Tensor] = []  # GT SDF for L1-all loss
         all_domain_z: list[Tensor] = []
         all_surface_pts: list[Tensor] = []
         all_surface_gt: list[Tensor] = []
@@ -591,7 +590,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
 
         for slot_idx, shape in enumerate(shapes):
             shape_params = _build_shape_params(shape, ply_cache, slot_idx)
-            # Domain pts: always fresh; GT SDF retained for L1-all loss (Exp-B: no eikonal)
+            # Domain pts: always fresh; GT SDF retained for L1-all loss
             pts_i, domain_gt_i = _sample_points_for_shape(
                 shape["shape_type"],
                 shape_params,
@@ -639,7 +638,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 f"shape slots {nan_slots}. "
                 "No checkpoint written. "
                 "Try reducing learning_rate in "
-                "pretraining_latent_config_exp_b.yaml.",
+                "pretraining_latent_config.yaml.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -655,8 +654,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             )
             slot_losses.append(slot_l1.item())
 
-        # Exp-B: L1 on ALL pts (surface + domain) — replaces MSE-surface + eikonal
-        # gt_all layout mirrors all_pts_combined: surface first, domain second
+        # L1 on ALL pts (surface + domain) — surface first, domain second (mirrors all_pts_combined layout)
         gt_all = torch.cat([surface_gt, domain_gt], dim=0)
         total_loss = l1_fn(pred / 1000.0, gt_all / 1000.0)
         l1_all = total_loss.item()
@@ -673,7 +671,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 f"shape slot {nan_slot} ({shape_name}). "
                 "No checkpoint written. "
                 "Try reducing learning_rate in "
-                "pretraining_latent_config_exp_b.yaml.",
+                "pretraining_latent_config.yaml.",
                 file=sys.stderr,
             )
             sys.exit(1)
