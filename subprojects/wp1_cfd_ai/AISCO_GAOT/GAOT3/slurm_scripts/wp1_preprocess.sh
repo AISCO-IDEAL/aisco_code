@@ -9,8 +9,6 @@
 
 # RUN COMMAND:
 # sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/slurm_scripts/wp1_preprocess.sh
-# Optional: provide a CPU partition explicitly if your cluster requires it,
-# e.g. sbatch --partition=<cpu_partition> subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/slurm_scripts/wp1_preprocess.sh
 
 module purge
 module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6 eth_proxy
@@ -42,10 +40,10 @@ ulimit -n 65536
 # --------------------
 # Preprocessing options
 # --------------------
-# Choose datasets from: euler drivaer ahmed blended_wing
+# Choose datasets from: euler drivaer ahmed blended_wing blended_wing2
 # Example: DATASETS=("euler" "drivaer")
 # Existing <output_path>/<dataset>/<sample>/data.pt files are skipped on reruns.
-DATASETS=("ahmed")
+DATASETS=("blended_wing2")
 
 # Leave empty ("") to use PREPROCESSING_CONFIG default output_path,
 # or set a custom base output path.
@@ -56,6 +54,7 @@ EULER_WORKERS=4
 DRIVAER_WORKERS=2
 AHMED_WORKERS=2
 BLENDED_WING_WORKERS=8
+BLENDED_WING2_WORKERS=8
 
 # Decimation ratio for drivaer/ahmed only, used 0.5 for ahmed and 0.0 for drivaer
 TARGET_REDUCTION=0.0
@@ -79,6 +78,7 @@ aargs=(
     --drivaer-workers "$DRIVAER_WORKERS"
     --ahmed-workers "$AHMED_WORKERS"
     --blended-wing-workers "$BLENDED_WING_WORKERS"
+    --blended-wing2-workers "$BLENDED_WING2_WORKERS"
     --target-reduction "$TARGET_REDUCTION"
 )
 

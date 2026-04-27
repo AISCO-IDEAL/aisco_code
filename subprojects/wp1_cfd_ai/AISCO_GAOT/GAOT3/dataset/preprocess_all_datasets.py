@@ -14,19 +14,20 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.dataset.preprocessing_euler import 
 PREPROCESSING_CONFIG: dict[str, Any] = {
     "defaults": {
         # Dataset execution order when --datasets all is used.
-        "dataset_order": ["euler", "drivaer", "ahmed", "blended_wing"],
+        "dataset_order": ["euler", "drivaer", "ahmed", "blended_wing", "blended_wing2"],
         # Per-dataset CPU workers for the raw-data conversion step.
         "workers": {
             "euler": 4,
             "drivaer": 2,
             "ahmed": 2,
             "blended_wing": 8,
+            "blended_wing2": 8,
         },
         # Base output directory. Each selected dataset is written to
         # <output_path>/<dataset_name>/.
         "output_path": "/cluster/work/fuge/AISCO/wp1_cfd_ai/all_processed",
         # Mesh decimation ratio for VTP datasets (drivaer/ahmed only).
-        "target_reduction": 0.0,
+        "target_reduction": 0.0,  # Keep (1 - target_reduction) of vertices; 0.6 = keep 40% of vertices
     },
     "datasets": {
         "euler": {
@@ -48,6 +49,12 @@ PREPROCESSING_CONFIG: dict[str, Any] = {
             "vtk_dir": "/cluster/work/fuge/AISCO/wp1_cfd_ai/blended_wing/train/vtk",
             # Blended-wing metadata file with aerodynamic conditions per case.
             "case_data_path": "/cluster/work/fuge/AISCO/wp1_cfd_ai/blended_wing/train/case_data_solar.dat",
+        },
+        "blended_wing2": {
+            # Blended-wing VTK geometry directory.
+            "vtk_dir": "/cluster/work/fuge/AISCO/wp1_cfd_ai/blended_wing/test/vtk",
+            # Blended-wing metadata file with aerodynamic conditions per case.
+            "case_data_path": "/cluster/work/fuge/AISCO/wp1_cfd_ai/blended_wing/test/case_data_solar.dat",
         },
     },
 }
@@ -71,6 +78,7 @@ def run_datasets(
     drivaer_workers: int,
     ahmed_workers: int,
     blended_wing_workers: int,
+    blended_wing2_workers: int,
     target_reduction: float = 0.0,
 ) -> dict[str, int]:
     summary: dict[str, int] = {}
@@ -112,6 +120,14 @@ def run_datasets(
                 num_workers=blended_wing_workers,
             )
             summary[dataset_name] = len(processed)
+        elif dataset_name == "blended_wing2":
+            processed = process_blended_wing(
+                vtk_dir=str(dataset_cfg["vtk_dir"]),
+                case_data_path=str(dataset_cfg["case_data_path"]),
+                output_dir=output_dir,
+                num_workers=blended_wing2_workers,
+            )
+            summary[dataset_name] = len(processed)
         else:
             raise ValueError(f"Unsupported dataset: {dataset_name}")
 
@@ -132,7 +148,7 @@ def main() -> None:
         nargs="+",
         default=["all"],
         choices=["all", *RUNNER_DATASET_ORDER],
-        help="Datasets to process. Use 'all' to run all four.",
+        help="Datasets to process. Use 'all' to run all five.",
     )
     parser.add_argument(
         "--output-path",
@@ -145,6 +161,7 @@ def main() -> None:
     parser.add_argument("--drivaer-workers", type=int, default=int(RUNNER_DEFAULT_WORKERS["drivaer"]))
     parser.add_argument("--ahmed-workers", type=int, default=int(RUNNER_DEFAULT_WORKERS["ahmed"]))
     parser.add_argument("--blended-wing-workers", type=int, default=int(RUNNER_DEFAULT_WORKERS["blended_wing"]))
+    parser.add_argument("--blended-wing2-workers", type=int, default=int(RUNNER_DEFAULT_WORKERS["blended_wing2"]))
     parser.add_argument(
         "--target-reduction",
         type=float,
@@ -161,6 +178,7 @@ def main() -> None:
         drivaer_workers=args.drivaer_workers,
         ahmed_workers=args.ahmed_workers,
         blended_wing_workers=args.blended_wing_workers,
+        blended_wing2_workers=args.blended_wing2_workers,
         target_reduction=args.target_reduction,
     )
 
