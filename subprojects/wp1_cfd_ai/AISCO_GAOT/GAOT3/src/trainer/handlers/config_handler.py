@@ -64,6 +64,7 @@ class ConfigHandler:
                 continue
             key, raw_value = item.split("=", 1)
             lower = raw_value.lower()
+            value: Any
             if lower == "true":
                 value = True
             elif lower == "false":

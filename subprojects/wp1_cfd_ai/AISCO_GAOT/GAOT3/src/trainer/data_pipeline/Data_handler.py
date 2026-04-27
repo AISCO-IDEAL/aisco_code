@@ -236,9 +236,10 @@ class DataHandler:
 
     def _dataloader_seed_tools(self, trainer):
         base_seed = int(trainer.setup_config["seed"]) + int(trainer.setup_config.get("rank", 0))
+
         def seed_worker(worker_id: int) -> None:
             worker_seed = (base_seed + worker_id) % (2**32)
-            np.random.seed(worker_seed)
+            _ = np.random.default_rng(worker_seed)
             random.seed(worker_seed)
             torch.manual_seed(worker_seed)
 

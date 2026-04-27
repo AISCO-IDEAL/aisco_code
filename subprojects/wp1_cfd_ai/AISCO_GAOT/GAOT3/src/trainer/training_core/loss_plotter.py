@@ -12,7 +12,7 @@ class LossPlotter:
     def __init__(self, config: dict) -> None:
         self.config: dict = config
 
-    def save_loss_history(self, trainer=None, **kwargs) -> None:
+    def save_loss_history(self, **kwargs) -> None:
         epochs = kwargs["epochs"]
         losses = kwargs["losses"]
         val_epochs = kwargs.get("val_epochs")

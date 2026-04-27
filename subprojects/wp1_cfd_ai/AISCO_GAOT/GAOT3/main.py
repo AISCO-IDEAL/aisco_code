@@ -11,13 +11,12 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.trainer.handlers.config_handler import ConfigHandler
+from src.trainer.training_orchestrator import TrainingOrchestrator
 
 main_config: dict = {}
 
 
 def run_config_file(config_file: str, overrides: dict | None = None):
-    from src.trainer.training_orchestrator import TrainingOrchestrator
-
     main_config.clear()
     main_config.update(ConfigHandler().load_config(config_file, overrides=overrides))
     return TrainingOrchestrator(main_config).run()
@@ -52,30 +51,35 @@ def run_config_files(
         for process in processes:
             process.join()
     elif platform.system() == "Linux":
-        num_devices = torch.cuda.device_count()
-        process_map: dict[str, list[Process]] = {"cpu": []}
-        for index in range(num_devices):
-            process_map[f"cuda:{index}"] = []
-        for config_file in config_files:
-            config = ConfigHandler().load_config(config_file, overrides=overrides)
-            process = Process(target=run_config_file_popen_handle, args=(config_file,))
-            if config["setup"]["device"].startswith("cuda"):
-                device_id = int(config["setup"]["device"][-1])
-                process_map[f"cuda:{device_id}"].append(process)
-            else:
-                process_map["cpu"].append(process)
-
-        max_jobs = max([len(value) for value in process_map.values()])
-        max_runs = (max_jobs + num_works_per_device - 1) // num_works_per_device
-        for index in range(max_runs):
-            for processes in process_map.values():
-                for process in processes[index * num_works_per_device : (index + 1) * num_works_per_device]:
-                    process.start()
-            for processes in process_map.values():
-                for process in processes[index * num_works_per_device : (index + 1) * num_works_per_device]:
-                    process.join()
+        _run_linux_config_files(config_files, num_works_per_device, overrides)
     else:
         raise NotImplementedError(f"Platform {platform.system()} not supported")
+
+
+def _run_linux_config_files(config_files: list[str], num_works_per_device: int, overrides: dict | None) -> None:
+    process_map = _build_linux_process_map(config_files, overrides)
+    max_jobs = max(len(value) for value in process_map.values())
+    max_runs = (max_jobs + num_works_per_device - 1) // num_works_per_device
+    for index in range(max_runs):
+        for processes in process_map.values():
+            for process in processes[index * num_works_per_device : (index + 1) * num_works_per_device]:
+                process.start()
+        for processes in process_map.values():
+            for process in processes[index * num_works_per_device : (index + 1) * num_works_per_device]:
+                process.join()
+
+
+def _build_linux_process_map(config_files: list[str], overrides: dict | None) -> dict[str, list[Process]]:
+    process_map: dict[str, list[Process]] = {"cpu": []}
+    for index in range(torch.cuda.device_count()):
+        process_map[f"cuda:{index}"] = []
+    for config_file in config_files:
+        config = ConfigHandler().load_config(config_file, overrides=overrides)
+        process = Process(target=run_config_file_popen_handle, args=(config_file,))
+        device = config["setup"]["device"]
+        process_key = f"cuda:{int(device[-1])}" if device.startswith("cuda") else "cpu"
+        process_map[process_key].append(process)
+    return process_map
 
 
 if __name__ == "__main__":

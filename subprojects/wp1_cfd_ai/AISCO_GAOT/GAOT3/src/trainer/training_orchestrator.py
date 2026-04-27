@@ -5,10 +5,12 @@ from __future__ import annotations
 import logging
 import math
 import os
+from typing import Any
 
 import pandas as pd
 import torch
 import torch.distributed as dist
+from torch import nn
 
 from .data_pipeline.Data_handler import DataHandler
 from .handlers.checkpoint_handler import CheckpointHandler
@@ -26,6 +28,8 @@ from .validation_and_logging.WandB_logger import WandBLogger
 class TrainingOrchestrator:
     def __init__(self, config: dict) -> None:
         self.config: dict = config
+        self.model: nn.Module
+        self.device: torch.device
 
     def run(self):
         self.config = PathHandler(self.config).prepare_paths_and_datarow()
@@ -100,7 +104,7 @@ class TrainingOrchestrator:
             kwargs["best_epoch"] = result["best"]["epoch"]
             kwargs["best_loss"] = result["best"]["loss"]
         if self.config["setup"]["rank"] == 0:
-            LossPlotter(self.config).save_loss_history(self, **kwargs)
+            LossPlotter(self.config).save_loss_history(**kwargs)
             self.tracker.log_metrics(
                 {"best/loss": result["best"]["loss"], "best/epoch": result["best"]["epoch"], "training_time": result["time"]}
             )
@@ -139,10 +143,7 @@ class TrainingOrchestrator:
     def _setup_logging(self) -> None:
         level = os.environ.get("LOG_LEVEL", "INFO")
         log_file = os.environ.get("LOG_FILE", None) or self.config["path"].get("log_path", None)
-        if isinstance(level, str):
-            parsed_level = getattr(logging, level.upper(), logging.INFO)
-        else:
-            parsed_level = level
+        parsed_level = getattr(logging, level.upper(), logging.INFO) if isinstance(level, str) else level
         handlers: list[logging.Handler] = [logging.StreamHandler()]
         if log_file is not None:
             try:
@@ -173,7 +174,7 @@ class TrainingOrchestrator:
 
     def _prepare_loss_parameters(self):
         self._uncertainty_weighting = self.config["dataset"]["uncertainty_weighting"]
-        params = list(self.model.parameters())
+        params: list[Any] = list(self.model.parameters())
         if not self._uncertainty_weighting:
             return params
         self.log_sigma_field = torch.nn.Parameter(torch.tensor([math.log(1)], device=self.device))

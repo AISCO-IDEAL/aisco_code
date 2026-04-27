@@ -6,12 +6,20 @@ import csv
 import logging
 import os
 import time
+from contextlib import contextmanager
 from copy import deepcopy
+from typing import Any, IO, TypedDict
 
 import numpy as np
 import psutil
 import torch
 from tqdm import tqdm
+
+
+class TrainMetrics(TypedDict):
+    total_loss: float
+    num_batches: int
+    epoch_values: dict[Any, Any]
 
 
 class Optimiser:
@@ -31,36 +39,38 @@ class Optimiser:
         losses, epochs, val_losses, val_epochs = [], [], [], []
         disable_pbar = training_context.setup_config.get("rank", 0) != 0
         pbar = tqdm(total=self.config["optimizer"]["args"]["epoch"], desc=description, colour=color, disable=disable_pbar)
-        csv_file, csv_writer = self._open_epoch_csv(training_context, disable_pbar)
-        global_step = 0
-        for epoch in range(self.config["optimizer"]["args"]["epoch"]):
-            train_sampler = training_context.train_loader.sampler
-            if hasattr(train_sampler, "set_epoch"):
-                train_sampler.set_epoch(epoch)
-            train_metrics, global_step = self._train_epoch(training_context, global_step)
-            self._step_scheduler(epoch)
-            pbar.update(1)
-            if (epoch + 1) % self.config["optimizer"]["args"]["eval_every_eps"] != 0:
-                continue
-            avg_train_loss = train_metrics["total_loss"] / max(train_metrics["num_batches"], 1)
-            val_metrics = training_context.validate(training_context.val_loader, epoch_name=epoch)
-            current_lr = self.optimizer.param_groups[0]["lr"]
-            self._log_epoch(training_context, epoch, avg_train_loss, val_metrics, train_metrics, current_lr, pbar, disable_pbar)
-            self._write_epoch_csv(csv_writer, csv_file, epoch, avg_train_loss, val_metrics, current_lr)
-            losses.append(avg_train_loss)
-            epochs.append(epoch)
-            val_losses.append(val_metrics["loss"])
-            val_epochs.append(epoch)
-            current_loss = (
-                val_metrics["loss"] if self.config["optimizer"]["args"]["early_save_metric"].lower() == "val" else avg_train_loss
-            )
-            if current_loss < best_loss:
-                best_loss, best_epoch, best_state = current_loss, epoch, deepcopy(training_context.model.state_dict())
-            self._periodic_save(training_context, epoch, avg_train_loss, val_metrics["loss"])
+        with self._epoch_csv(training_context, disable_pbar) as (csv_file, csv_writer):
+            global_step = 0
+            for epoch in range(self.config["optimizer"]["args"]["epoch"]):
+                train_sampler = training_context.train_loader.sampler
+                if hasattr(train_sampler, "set_epoch"):
+                    train_sampler.set_epoch(epoch)
+                train_metrics, global_step = self._train_epoch(training_context, global_step)
+                self._step_scheduler(epoch)
+                pbar.update(1)
+                if (epoch + 1) % self.config["optimizer"]["args"]["eval_every_eps"] != 0:
+                    continue
+                avg_train_loss = train_metrics["total_loss"] / max(train_metrics["num_batches"], 1)
+                val_metrics = training_context.validate(training_context.val_loader, epoch_name=epoch)
+                current_lr = self.optimizer.param_groups[0]["lr"]
+                self._log_epoch(
+                    training_context, epoch, avg_train_loss, val_metrics, train_metrics, current_lr, pbar, disable_pbar
+                )
+                self._write_epoch_csv(csv_writer, csv_file, epoch, avg_train_loss, val_metrics, current_lr)
+                losses.append(avg_train_loss)
+                epochs.append(epoch)
+                val_losses.append(val_metrics["loss"])
+                val_epochs.append(epoch)
+                current_loss = (
+                    val_metrics["loss"]
+                    if self.config["optimizer"]["args"]["early_save_metric"].lower() == "val"
+                    else avg_train_loss
+                )
+                if current_loss < best_loss:
+                    best_loss, best_epoch, best_state = current_loss, epoch, deepcopy(training_context.model.state_dict())
+                self._periodic_save(training_context, epoch, avg_train_loss, val_metrics["loss"])
         if best_state is not None:
             training_context.model.load_state_dict(best_state)
-        if csv_file is not None:
-            csv_file.close()
         if not disable_pbar:
             pbar.close()
         return {
@@ -70,18 +80,19 @@ class Optimiser:
             "time": time.time() - start_time,
         }
 
-    def _train_epoch(self, training_context, global_step: int) -> tuple[dict, int]:
+    def _train_epoch(self, training_context, global_step: int) -> tuple[TrainMetrics, int]:
         training_context.model.train()
-        metrics = {"total_loss": 0.0, "num_batches": 0, "epoch_values": {}}
+        metrics: TrainMetrics = {"total_loss": 0.0, "num_batches": 0, "epoch_values": {}}
+        epoch_values = metrics["epoch_values"]
         for batch in training_context.train_loader:
             self.optimizer.zero_grad()
             with training_context.autocast_ctx:
                 train_loss, head_losses = training_context.train_step(batch)
             train_loss.backward()
-            self._accumulate_head_losses(metrics["epoch_values"], head_losses)
+            self._accumulate_head_losses(epoch_values, head_losses)
             self._clip_gradients(training_context)
-            self._accumulate_grad_norms(training_context, metrics["epoch_values"])
-            self._accumulate_scalar_diagnostics(training_context, metrics["epoch_values"])
+            self._accumulate_grad_norms(training_context, epoch_values)
+            self._accumulate_scalar_diagnostics(training_context, epoch_values)
             self.optimizer.step()
             metrics["total_loss"] += train_loss.detach().item()
             metrics["num_batches"] += 1
@@ -89,17 +100,19 @@ class Optimiser:
             self._save_step_checkpoint(training_context, global_step, metrics["num_batches"], train_loss)
         return metrics, global_step
 
-    def _open_epoch_csv(self, training_context, disable_pbar: bool):
+    @contextmanager
+    def _epoch_csv(self, training_context, disable_pbar: bool):
         if disable_pbar:
-            return None, None
+            yield None, None
+            return
         csv_path = training_context.path_config["result_path"].replace(".png", "_epoch_metrics.csv")
         os.makedirs(os.path.dirname(csv_path), exist_ok=True)
-        csv_file = open(csv_path, "w", newline="")
-        csv_writer = csv.DictWriter(
-            csv_file, fieldnames=["epoch", "train_loss", "val_loss", "val_rel_l2", "lr"], extrasaction="ignore"
-        )
-        csv_writer.writeheader()
-        return csv_file, csv_writer
+        with open(csv_path, "w", newline="") as csv_file:
+            csv_writer = csv.DictWriter(
+                csv_file, fieldnames=["epoch", "train_loss", "val_loss", "val_rel_l2", "lr"], extrasaction="ignore"
+            )
+            csv_writer.writeheader()
+            yield csv_file, csv_writer
 
     def _step_scheduler(self, epoch: int) -> None:
         args = self.config["optimizer"]["args"]
@@ -190,7 +203,7 @@ class Optimiser:
         epoch: int,
         avg_train_loss: float,
         val_metrics: dict,
-        train_metrics: dict,
+        train_metrics: TrainMetrics,
         current_lr: float,
         pbar,
         disable_pbar: bool,
@@ -244,7 +257,13 @@ class Optimiser:
             metrics["train/MSE_total"] = train_mse_sum / train_mse_count
 
     def _write_epoch_csv(
-        self, csv_writer, csv_file, epoch: int, avg_train_loss: float, val_metrics: dict, current_lr: float
+        self,
+        csv_writer: csv.DictWriter | None,
+        csv_file: IO[str] | None,
+        epoch: int,
+        avg_train_loss: float,
+        val_metrics: dict,
+        current_lr: float,
     ) -> None:
         if csv_writer is None or csv_file is None:
             return
@@ -296,7 +315,8 @@ class Optimiser:
             logging.getLogger(__name__).warning(f"Failed to save step checkpoint: {exc}")
 
     def _grad_norms(self, model) -> dict[str, float]:
-        norms, total_norm_sq = {}, 0.0
+        norms: dict[str, float] = {}
+        total_norm_sq = 0.0
         for name, param in model.named_parameters():
             if param.grad is None:
                 continue
