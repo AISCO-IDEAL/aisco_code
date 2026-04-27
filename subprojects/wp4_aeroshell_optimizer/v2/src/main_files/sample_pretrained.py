@@ -11,6 +11,7 @@ from pathlib import Path
 
 import torch
 
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.WIRE_v2 import WIREV2
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.kaolin_conversions import (
@@ -31,6 +32,7 @@ def sample(model_path: str, out_path: str, res: int, box: int) -> None:
 
     box_dim = [-box, box, -box, box, -box, box]
     print(f"Extracting mesh: res={res}, box=±{box}mm ...")
+    assert isinstance(model, SupportsModelContract)
     verts, faces = get_diff_mesh(model, grid_res=res, box_dim=box_dim, device=device)
     print(f"  vertices: {verts.shape[0]}, faces: {faces.shape[0]}")
 
