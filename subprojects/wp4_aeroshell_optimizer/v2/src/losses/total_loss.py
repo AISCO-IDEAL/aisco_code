@@ -479,7 +479,9 @@ class TotalLoss:
             self._last_cruising_speed_diagnostics = {"cruising_speed_ms": v_cruise.item()}
             # Only backprop if at least one input is live; both-cached → v_cruise has no grad.
             if drag_is_live or solar_is_live:
-                cse_scale = self._norm_manager.get_loss_scale("cse_objective") * self._norm_manager.get_grad_scale("cse_objective")
+                cse_scale = self._norm_manager.get_loss_scale("cse_objective") * self._norm_manager.get_grad_scale(
+                    "cse_objective"
+                )
                 self._last_weighted_losses["cse_objective"] = -v_cruise * cse_scale
         else:
             self._last_cruising_speed = None
@@ -596,8 +598,7 @@ class TotalLoss:
         for name, tensor_val in self._last_weighted_losses.items():
             log_dict[f"optimizer_losses/{name}"] = tensor_val.item()
         obj_sign_legacy: dict[str, float] = {
-            self._objective_losses[cat][0]: float(self._objective_signs.get(cat, 1))
-            for cat in self._objective_losses
+            self._objective_losses[cat][0]: float(self._objective_signs.get(cat, 1)) for cat in self._objective_losses
         }
         if self._use_cse:
             obj_sign_legacy["cse_objective"] = -1.0
@@ -628,7 +629,9 @@ class TotalLoss:
         optimizer_floats: dict[str, float] = {
             k.removeprefix("optimizer_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("optimizer_losses/")
         }
-        competition_log = self._log_loss_competition_charts(raw_floats, normalized_floats, weighted_floats, optimizer_floats, epoch_name)
+        competition_log = self._log_loss_competition_charts(
+            raw_floats, normalized_floats, weighted_floats, optimizer_floats, epoch_name
+        )
 
         # Merge competition charts into single log call to avoid WandB step corruption
         log_dict.update(competition_log)
@@ -984,8 +987,7 @@ class TotalLoss:
         optimizer.zero_grad()
 
         summary_items = [
-            f"{n}(loss={loss_scales.get(n, 1.0):.3g}, grad={grad_scales.get(n, 1.0):.3g})"
-            for n in sorted(calibrated_names)
+            f"{n}(loss={loss_scales.get(n, 1.0):.3g}, grad={grad_scales.get(n, 1.0):.3g})" for n in sorted(calibrated_names)
         ]
         print(f"[LossNormalisation] Calibration complete. {len(calibrated_names)} losses calibrated:")
         for item in summary_items:

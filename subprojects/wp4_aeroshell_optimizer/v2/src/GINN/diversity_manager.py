@@ -257,8 +257,9 @@ class DiversityTrainer:
         self._norm_manager.record_calibration(loss_scales, grad_scales, calibrated_names)
         self._model_optimizer.zero_grad()
 
-        summary_items = [f"{n}(loss={loss_scales.get(n, 1.0):.3g}, grad={grad_scales.get(n, 1.0):.3g})"
-                         for n in sorted(calibrated_names)]
+        summary_items = [
+            f"{n}(loss={loss_scales.get(n, 1.0):.3g}, grad={grad_scales.get(n, 1.0):.3g})" for n in sorted(calibrated_names)
+        ]
         print(f"[LossNormalisation] Calibration complete. {len(calibrated_names)} losses calibrated:")
         for item in summary_items:
             print(f"  ✓ {item}")
@@ -315,7 +316,9 @@ class DiversityTrainer:
                 and i == 0
             )
             # properly weight losses, return components = True so we can do individual backward calls per component for conflict tracking
-            result = self._total_loss.weight(bundle, alm_manager=self._alm_manager, return_components=True, norm_manager=self._norm_manager)
+            result = self._total_loss.weight(
+                bundle, alm_manager=self._alm_manager, return_components=True, norm_manager=self._norm_manager
+            )
 
             # Detach ALM-space constraints before backward — graph will be freed.
             # If loss normalisation is enabled, ALM updates operate on normalized
