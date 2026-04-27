@@ -25,7 +25,6 @@ from tqdm import tqdm
 
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
-    _compute_eikonal_latent,
     _extract_mesh,
     _sample_points_for_shape,
 )
@@ -452,7 +451,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     lr: float = float(loop_cfg["learning_rate"])
     batch_size_per_shape: int = int(loop_cfg["batch_size_per_shape"])
     print_interval: int = int(loop_cfg["print_interval"])
-    eikonal_weight: float = float(loop_cfg["eikonal_weight"])
+    # Exp-B: eikonal removed — eikonal_weight config key retained for YAML compatibility, not applied
     # 0 = static surface cache (DeepSDF-style: sample once, reuse forever)
     # N > 0 = refresh surface cache every N epochs
     surface_resample_cadence: int = int(loop_cfg.get("surface_resample_cadence", 0))
@@ -490,7 +489,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = CosineAnnealingLR(optimizer, T_max=max(epochs, 1))
-    mse_fn = torch.nn.MSELoss()
+    l1_fn = torch.nn.L1Loss()  # Exp-B: L1 on all pts replaces MSE-surface + eikonal
 
     # --- Build initial surface sample cache (near-surface Gaussian-perturbed pts for MSE) ---
     # Split convention: domain = pts[:n_dom], surface = pts[n_dom:].
@@ -547,6 +546,20 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         epoch_vis.write_legend(_make_vis_legend(config_hash, vis_cadence, vis_show_eikonal_pts, surface_resample_cadence))
         print(f"[latent_pretrain] Per-epoch vis enabled: cadence={vis_cadence}, mesh_res={vis_mesh_res} → {vis_dir}")
 
+    # --- Exp-B: register experiment identity in W&B config ---
+    if use_wandb:
+        import wandb  # noqa: PLC0415
+
+        wandb.config.update(
+            {
+                "experiment": "exp_b_deepsdf_adapted",
+                "loss_type": "l1-all",
+                "sampling_strategy": "all-pts-split",
+                "run_group": "exp-b-deepsdf-adapted",
+            },
+            allow_val_change=True,
+        )
+
     # --- Training loop ---
     for epoch in tqdm(range(epochs), desc="latent_pretrain", unit="ep"):
         model.train()
@@ -568,8 +581,9 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 )
                 cached_surface[slot_idx] = (pts_i[n_dom:], gt_i[n_dom:])
 
-        # Sample fresh domain pts (uniform bbox) for eikonal — every epoch
+        # Sample fresh domain pts (uniform bbox) for L1-all loss — every epoch
         all_domain_pts: list[Tensor] = []
+        all_domain_gt: list[Tensor] = []  # Exp-B: retain domain GT SDF for L1-all loss
         all_domain_z: list[Tensor] = []
         all_surface_pts: list[Tensor] = []
         all_surface_gt: list[Tensor] = []
@@ -577,8 +591,8 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
 
         for slot_idx, shape in enumerate(shapes):
             shape_params = _build_shape_params(shape, ply_cache, slot_idx)
-            # Domain pts: always fresh (we discard the gt for domain — eikonal does not need it)
-            pts_i, _ = _sample_points_for_shape(
+            # Domain pts: always fresh; GT SDF retained for L1-all loss (Exp-B: no eikonal)
+            pts_i, domain_gt_i = _sample_points_for_shape(
                 shape["shape_type"],
                 shape_params,
                 batch_size_per_shape,
@@ -592,6 +606,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             # Surface pts: from cache (or refreshed above)
             surf_pts_i, surf_gt_i = cached_surface[slot_idx]
             all_domain_pts.append(domain_pts_i)
+            all_domain_gt.append(domain_gt_i[:n_dom])
             all_domain_z.append(Z[slot_idx].unsqueeze(0).expand(n_dom, -1))
             all_surface_pts.append(surf_pts_i)
             all_surface_gt.append(surf_gt_i)
@@ -601,9 +616,10 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         surface_pts = torch.cat(all_surface_pts, dim=0)  # (N*n_surf, 3)
         surface_gt = torch.cat(all_surface_gt, dim=0)  # (N*n_surf,)
         surface_z = torch.cat(all_surface_z, dim=0)  # (N*n_surf, z_dim)
-        # Keep per-slot eikonal pts for epoch visualization; also concatenate for forward pass
-        eikonal_pts_list = all_domain_pts  # list of per-slot domain tensors
+        # Keep per-slot domain pts for epoch visualization; also concatenate for forward pass
+        eikonal_pts_list = all_domain_pts  # list of per-slot domain tensors (visualised as grey)
         domain_pts = torch.cat(all_domain_pts, dim=0)  # (N*n_dom, 3)
+        domain_gt = torch.cat(all_domain_gt, dim=0)  # (N*n_dom,) GT SDF for L1-all loss
         domain_z = torch.cat(all_domain_z, dim=0)  # (N*n_dom, z_dim)
 
         all_pts_combined = torch.cat([surface_pts, domain_pts], dim=0)
@@ -622,28 +638,28 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 f"[latent_pretrain] NaN/Inf in model output at epoch {epoch}, "
                 f"shape slots {nan_slots}. "
                 "No checkpoint written. "
-                "Try reducing learning_rate or eikonal_weight in "
-                "pretraining_latent_config.yaml.",
+                "Try reducing learning_rate in "
+                "pretraining_latent_config_exp_b.yaml.",
                 file=sys.stderr,
             )
             sys.exit(1)
 
-        # Per-slot MSE on near-surface points only (normalised to metres)
+        # Per-slot L1 on surface pts (diagnostic tracking — comparable to baseline per-slot losses)
         slot_losses: list[float] = []
-        total_mse = torch.zeros(1, device=device).squeeze()
         for slot_idx in range(num_shapes):
             start = slot_idx * n_surf
             end = start + n_surf
-            slot_mse = mse_fn(
+            slot_l1 = l1_fn(
                 pred_surface[start:end] / 1000.0,
                 surface_gt[start:end] / 1000.0,
             )
-            slot_losses.append(slot_mse.item())
-            total_mse = total_mse + slot_mse
+            slot_losses.append(slot_l1.item())
 
-        # Eikonal on domain pts only (uniform bbox — enforces |∇SDF|=1 in bulk of space)
-        eikonal = _compute_eikonal_latent(model, domain_pts, domain_z, device)
-        total_loss = total_mse / num_shapes + eikonal_weight * eikonal
+        # Exp-B: L1 on ALL pts (surface + domain) — replaces MSE-surface + eikonal
+        # gt_all layout mirrors all_pts_combined: surface first, domain second
+        gt_all = torch.cat([surface_gt, domain_gt], dim=0)
+        total_loss = l1_fn(pred / 1000.0, gt_all / 1000.0)
+        l1_all = total_loss.item()
 
         # NaN guard — halt before writing checkpoint
         if not math.isfinite(total_loss.item()):
@@ -656,8 +672,8 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 f"[latent_pretrain] NaN/Inf detected at epoch {epoch}, "
                 f"shape slot {nan_slot} ({shape_name}). "
                 "No checkpoint written. "
-                "Try reducing learning_rate or eikonal_weight in "
-                "pretraining_latent_config.yaml.",
+                "Try reducing learning_rate in "
+                "pretraining_latent_config_exp_b.yaml.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -708,7 +724,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             tqdm.write(
                 f"[latent_pretrain] Epoch {epoch:5d} | total={total_loss.item():.6f} "
                 f"| slot_losses={[f'{v:.4f}' for v in slot_losses]} "
-                f"| eikonal={eikonal.item():.6f} | lr={lr_now:.2e}"
+                f"| l1_all={l1_all:.6f} | lr={lr_now:.2e}"
                 f" | z_grad={z_grad_norm:.2e} | xyz_grad={xyz_grad_norm:.2e}"
                 f" | ratio={grad_ratio:.2e}{warn_suffix}"
             )
@@ -718,7 +734,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 wandb.log(
                     {
                         "total_loss": total_loss.item(),
-                        "eikonal": eikonal.item(),
+                        "l1_all": l1_all,
                         "lr": lr_now,
                         "latent_grad_norm": z_grad_norm,
                         "spatial_grad_norm": xyz_grad_norm,
@@ -813,7 +829,6 @@ def _write_epoch_vis_snapshot(
 
         try:
             if use_mesh_mode:
-                print("!!!!! MESH MODE !!!!!")
                 # "mesh" mode: target PLY mesh (green), model pts (red), eikonal pts (grey)
                 ply_verts_t, ply_faces_t, _ = ply_cache[slot_idx]
                 target_verts_np = ply_verts_t.cpu().numpy()
@@ -831,7 +846,6 @@ def _write_epoch_vis_snapshot(
                 )
             else:
                 # "pts" mode (or non-PLY slot): target cache pts (green), model pts (red), eikonal pts (grey)
-                print("!!!!! PTS MODE !!!!!")
                 vis.save_snapshot(
                     points_mm=surf_pts_i.cpu(),
                     mesh_verts=None,
