@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 #  Constants
 # ---------------------------------------------------------------------------
 # v050 paths — production dataset.
-CASES_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3"
+CASES_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/CASES_v3"
 OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_v050"
 NUM_WORKERS = 4
 DEFAULT_TIME_STEP = 4500

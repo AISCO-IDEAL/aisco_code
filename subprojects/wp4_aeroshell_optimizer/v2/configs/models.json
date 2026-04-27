@@ -43,7 +43,7 @@
     "WIREOriginal": {
       "model_class": "WIREOriginal",
       "parent_class": "BaseModel",
-      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/wire_original.py",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/original_wire.py",
       "config_file": "models/wire_original.yaml",
       "uses_diversity": false,
       "has_optimise": false
