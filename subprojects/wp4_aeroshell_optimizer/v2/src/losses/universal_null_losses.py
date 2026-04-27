@@ -78,11 +78,83 @@ class _BaseNullLoss(ParentLoss):
 
 
 class NullLossSolar(_BaseNullLoss):
-    """Null loss for solar energy objectives."""
+    """Null loss for solar energy objectives, returns a default so the CSE can work properly"""
+
+    def _setup(self) -> None:
+        """Initialize cached constant tensor from configured weight value.
+
+        Reads the weight (second element of the [compute, weight, path] tuple) from
+        losses_config so the return value is configurable without code changes.
+        Gradients are zero regardless of value since the tensor is not model-derived.
+        """
+        configured_value = 0.0
+
+        for block in self.losses_config.get("losses", {}).values():
+            if isinstance(block, dict) and self.loss_name in block:
+                entry = block[self.loss_name]
+                if isinstance(entry, list) and len(entry) >= 2:
+                    configured_value = float(entry[1])
+                break
+
+        if self.losses_config["general_info"]["CSE"].lower() == "true":
+            if configured_value != 1.0:
+                print(
+                    f"Warning: Since CSE is enabled, should the solar loss be turned off via the _disabled_epochs key, it stores the CSE default value specified in the cse_defaults key for cruising speed estimation. {self.loss_name} weight is {configured_value}, not 1.0., which indicates that you attempt to override the default value used. Make sure this is intentional."
+                )
+            # override the configured value with the default
+            configured_value = self.losses_config["general_info"]["cse_defaults"]["solar"]
+        self._zero = torch.tensor(configured_value, device=self.device, requires_grad=False)
+
+    def _loss(self, model) -> torch.Tensor:  # noqa: ARG002
+        """Return cached constant tensor.
+
+        Args:
+            model: The model (unused in null loss)
+
+        Returns:
+            Constant tensor without gradients
+        """
+        return self._zero
 
 
 class NullLossAero(_BaseNullLoss):
-    """Null loss for aerodynamic objectives."""
+    """Null loss for solar energy objectives, returns a default so the CSE can work properly"""
+
+    def _setup(self) -> None:
+        """Initialize cached constant tensor from configured weight value.
+
+        Reads the weight (second element of the [compute, weight, path] tuple) from
+        losses_config so the return value is configurable without code changes.
+        Gradients are zero regardless of value since the tensor is not model-derived.
+        """
+        configured_value = 0.0
+
+        for block in self.losses_config.get("losses", {}).values():
+            if isinstance(block, dict) and self.loss_name in block:
+                entry = block[self.loss_name]
+                if isinstance(entry, list) and len(entry) >= 2:
+                    configured_value = float(entry[1])
+                break
+
+        if self.losses_config["general_info"]["CSE"].lower() == "true":
+            if configured_value != 1.0:
+                print(
+                    f"Warning: Since CSE is enabled, should the drag loss be turned off via the _disabled_epochs key, it stores the CSE default value specified in the cse_defaults key for cruising speed estimation. {self.loss_name} weight is {configured_value}, not 1.0., which indicates that you attempt to override the default value used. Make sure this is intentional."
+                )
+            # override the configured value with the default
+            configured_value = self.losses_config["general_info"]["cse_defaults"]["drag"]
+        self._zero = torch.tensor(configured_value, device=self.device, requires_grad=False)
+
+    def _loss(self, model) -> torch.Tensor:  # noqa: ARG002
+        """Return cached constant tensor.
+
+        Args:
+            model: The model (unused in null loss)
+
+        Returns:
+            Constant tensor without gradients
+        """
+        return self._zero
 
 
 class NullLossBb(_BaseNullLoss):

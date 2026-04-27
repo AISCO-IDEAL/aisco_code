@@ -19,8 +19,8 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=4G
-#SBATCH --output=/cluster/scratch/elihuber/scratch_logs/OF_Pipeline_%j.out
-#SBATCH --error=/cluster/scratch/elihuber/scratch_logs/OF_Pipeline_%j.err
+#SBATCH --output=/cluster/scratch/%u/scratch_logs/OF_Pipeline_%j.out
+#SBATCH --error=/cluster/scratch/%u/scratch_logs/OF_Pipeline_%j.err
 
 set -euo pipefail
 
@@ -31,20 +31,20 @@ echo "Job ID: ${SLURM_JOB_ID}"
 MAX_PARALLEL="${MAX_PARALLEL:-25}"
 V_INF="${V_INF:-25.0}"
 
-SCRIPT_DIR="/cluster/home/elihuber/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset/openfoam"
+SCRIPT_DIR="/cluster/home/$USER/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset/openfoam"
 SLURM_SCRIPTS="${SCRIPT_DIR}/slurm"
 
 PLY_INPUT="/cluster/work/fuge/AISCO/wp1_cfd_ai/openfoam_geometry"
-STL_OUTPUT="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/GEOMETRY"
-GEO_MANIFEST="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/geometry_manifest.json"
-CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3"
-CASES_MANIFEST="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/cases_manifest.json"
+STL_OUTPUT="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/GEOMETRY"
+GEO_MANIFEST="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/geometry_manifest.json"
+CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/CASES_v3"
+CASES_MANIFEST="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/cases_manifest.json"
 
 # Ensure scratch logs directory exists
-mkdir -p /cluster/scratch/elihuber/scratch_logs
+mkdir -p /cluster/scratch/$USER/scratch_logs
 
 # --- Activate Python environment ---------------------------------------------
-source /cluster/home/elihuber/AISCO_code/aisco_env/bin/activate
+source /cluster/home/$USER/AISCO_code/aisco_env/bin/activate
 
 # --- Step 1: PLY → STL conversion --------------------------------------------
 echo ""
