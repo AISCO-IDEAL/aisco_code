@@ -67,7 +67,9 @@ class DataHandler:
                 n_query_sample = n_input_sample
             else:
                 n_query_sample = min(num_query_nodes, num_full_nodes_i)
-                query_perm = torch.randperm(num_full_nodes_i, device=full_pos_i.device, generator=sample_generator)[:n_query_sample]
+                query_perm = torch.randperm(num_full_nodes_i, device=full_pos_i.device, generator=sample_generator)[
+                    :n_query_sample
+                ]
             data_i = Data(pos=full_pos_i[input_perm])
             if full_c_i is not None:
                 data_i.c = full_c_i[input_perm]
@@ -134,7 +136,9 @@ class DataHandler:
     def _precompute_edges_when_requested(self, trainer) -> None:
         if not trainer.dataset_config["update_pt_files_with_edges"]:
             return
-        EdgeHandler(self.config).update_pt_files_with_edges(trainer, trainer.order_file_path, trainer.model_config["args"]["magno"])
+        EdgeHandler(self.config).update_pt_files_with_edges(
+            trainer, trainer.order_file_path, trainer.model_config["args"]["magno"]
+        )
         if trainer.setup_config["distributed"]:
             torch.distributed.barrier()
         trainer.model_config["args"]["magno"]["precompute_edges"] = True
@@ -182,7 +186,9 @@ class DataHandler:
 
     def _build_datasets_and_loaders(self, trainer, composed_transform, collate_fn):
         if trainer.setup_config["train"]:
-            train_ds = VTKMeshDataset(trainer.data_root, trainer.order_file_path, trainer.dataset_config, "train", composed_transform)
+            train_ds = VTKMeshDataset(
+                trainer.data_root, trainer.order_file_path, trainer.dataset_config, "train", composed_transform
+            )
             val_ds = VTKMeshDataset(trainer.data_root, trainer.order_file_path, trainer.dataset_config, "val", composed_transform)
             train_sampler = self._sampler(trainer, train_ds, trainer.dataset_config["shuffle"], True)
             trainer.train_loader = self._loader(trainer, train_ds, collate_fn, train_sampler, trainer.dataset_config["shuffle"])
@@ -245,6 +251,11 @@ class DataHandler:
         trainer._viz_fixed_axis_limits = {"x": (-3.0, 3.0), "y": (-3.0, 3.0), "z": (-3.0, 3.0)}
         axis_cfg = trainer.dataset_config.get("viz_axis_limits")
         if axis_cfg is not None:
-            trainer._viz_fixed_axis_limits = {axis: (float(axis_cfg[axis][0]), float(axis_cfg[axis][1])) for axis in ("x", "y", "z")}
-        trainer._viz_fixed_clim_common = (float(trainer.dataset_config["viz_field_vmin"]), float(trainer.dataset_config["viz_field_vmax"]))
+            trainer._viz_fixed_axis_limits = {
+                axis: (float(axis_cfg[axis][0]), float(axis_cfg[axis][1])) for axis in ("x", "y", "z")
+            }
+        trainer._viz_fixed_clim_common = (
+            float(trainer.dataset_config["viz_field_vmin"]),
+            float(trainer.dataset_config["viz_field_vmax"]),
+        )
         trainer._viz_fixed_clim_diff = (0.0, float(trainer.dataset_config["viz_abs_diff_vmax"]))

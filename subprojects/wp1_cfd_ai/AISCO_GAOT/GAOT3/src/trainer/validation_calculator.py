@@ -39,9 +39,7 @@ class ValidationCalculator:
                 if valid_mask.any():
                     p_valid = p_normalized[valid_mask]
                     t_valid = t_normalized[valid_mask]
-                    total_rel_l2 += (
-                        torch.linalg.norm(p_valid - t_valid) / (torch.linalg.norm(t_valid) + 1e-10)
-                    ).item()
+                    total_rel_l2 += (torch.linalg.norm(p_valid - t_valid) / (torch.linalg.norm(t_valid) + 1e-10)).item()
         local_metrics = torch.tensor([total_loss, total_mse, total_rel_l2], dtype=torch.float64, device=trainer.device)
         world_size = 1
         if trainer.setup_config["distributed"]:
@@ -65,7 +63,10 @@ class ValidationCalculator:
     def visualize_samples(self, trainer, epoch: int) -> None:
         if trainer.setup_config["rank"] != 0 or trainer.dataset_config.get("num_viz_samples", 1) <= 0:
             return
-        for split_label, loader in [("train", getattr(trainer, "train_loader", None)), ("val", getattr(trainer, "val_loader", None))]:
+        for split_label, loader in [
+            ("train", getattr(trainer, "train_loader", None)),
+            ("val", getattr(trainer, "val_loader", None)),
+        ]:
             if loader is None:
                 continue
             try:
@@ -99,7 +100,9 @@ class ValidationCalculator:
                 field_target_normalized = batch.x.to(trainer.device)
                 valid = ~torch.isnan(field_target_normalized)
                 if valid.any():
-                    mse = mse + trainer.dataset_config["field_loss_weight"] * mse_fn(pred["field"][valid], field_target_normalized[valid])
+                    mse = mse + trainer.dataset_config["field_loss_weight"] * mse_fn(
+                        pred["field"][valid], field_target_normalized[valid]
+                    )
             return loss, mse, p_normalized, t_normalized
         target_normalized = batch.y
         return trainer.loss_fn(pred, target_normalized), mse_fn(pred, target_normalized), pred, target_normalized
@@ -112,9 +115,9 @@ class ValidationCalculator:
             target_normalized = target_raw.to(trainer.device).view_as(pred[head_name])
             valid = ~torch.isnan(target_normalized)
             if valid.any():
-                head_losses[head_name] = head_losses.get(head_name, 0.0) + loss_fn_none(
-                    pred[head_name][valid], target_normalized[valid]
-                ).mean().item()
+                head_losses[head_name] = (
+                    head_losses.get(head_name, 0.0) + loss_fn_none(pred[head_name][valid], target_normalized[valid]).mean().item()
+                )
 
     def _integrated_drag_errors(self, trainer, batch, pred) -> list[float]:
         if not isinstance(pred, dict) or "field" not in pred or not hasattr(batch, "x") or batch.x is None:
@@ -141,7 +144,9 @@ class ValidationCalculator:
         target_unnormalized = self._denormalize_field(trainer, batch.x.to(trainer.device))
         max_samples = min(int(trainer.dataset_config.get("num_viz_samples", 1)), len(self._sample_ranges(batch)))
         for sample_index, (start, end) in enumerate(self._sample_ranges(batch)[:max_samples]):
-            self._log_field_visual(trainer, split_label, batch, target_unnormalized, pred_unnormalized, start, end, sample_index, epoch)
+            self._log_field_visual(
+                trainer, split_label, batch, target_unnormalized, pred_unnormalized, start, end, sample_index, epoch
+            )
             drag_pred = self._integrate_sample(trainer, batch, pred_unnormalized, start, end)
             drag_target = self._integrate_sample(trainer, batch, target_unnormalized, start, end)
             metrics = {}
@@ -171,7 +176,9 @@ class ValidationCalculator:
         if metrics:
             trainer.tracker.log_metrics(metrics, step=epoch + 1)
 
-    def _log_field_visual(self, trainer, split_label: str, batch, target, pred, start: int, end: int, sample_index: int, epoch: int) -> None:
+    def _log_field_visual(
+        self, trainer, split_label: str, batch, target, pred, start: int, end: int, sample_index: int, epoch: int
+    ) -> None:
         pos = batch.pos_raw[start:end] if hasattr(batch, "pos_raw") else batch.pos[start:end]
         coords = pos.detach().cpu().numpy()
         target_values = target[start:end].detach().cpu().numpy()
@@ -190,7 +197,9 @@ class ValidationCalculator:
         pred_values = np.asarray(pred_values).squeeze()
         diff_values = np.abs(pred_values - target_values)
         fig = plt.figure(figsize=(12, 4))
-        for index, (title, values) in enumerate([("Ground Truth", target_values), ("Prediction", pred_values), ("Absolute Difference", diff_values)], start=1):
+        for index, (title, values) in enumerate(
+            [("Ground Truth", target_values), ("Prediction", pred_values), ("Absolute Difference", diff_values)], start=1
+        ):
             ax = fig.add_subplot(1, 3, index, projection="3d")
             plot = ax.scatter(coords[:, 0], coords[:, 1], coords[:, 2], c=values, s=2, cmap="jet")
             ax.set_title(title)

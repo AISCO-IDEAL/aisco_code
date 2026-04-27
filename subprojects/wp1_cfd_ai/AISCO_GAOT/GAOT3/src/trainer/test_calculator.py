@@ -140,7 +140,9 @@ class TestCalculator:
             full_preds = torch.cat(collected["preds"], dim=0)
             full_targets = torch.cat(collected["targets"], dim=0)
             diff = full_preds - full_targets
-            trainer.tracker.log_metrics({"test/mse": torch.mean(diff**2).item(), "test/mre_percent": self._mre(diff, full_targets)})
+            trainer.tracker.log_metrics(
+                {"test/mse": torch.mean(diff**2).item(), "test/mre_percent": self._mre(diff, full_targets)}
+            )
         if collected["multi_head"] and collected["field_preds"] and full_preds.numel() == 1 and full_preds.item() == 0.0:
             full_preds = torch.cat(collected["field_preds"], dim=0)
             full_targets = torch.cat(collected["field_targets"], dim=0)

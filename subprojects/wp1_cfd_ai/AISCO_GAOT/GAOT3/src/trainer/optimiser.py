@@ -51,7 +51,9 @@ class Optimiser:
             epochs.append(epoch)
             val_losses.append(val_metrics["loss"])
             val_epochs.append(epoch)
-            current_loss = val_metrics["loss"] if self.config["optimizer"]["args"]["early_save_metric"].lower() == "val" else avg_train_loss
+            current_loss = (
+                val_metrics["loss"] if self.config["optimizer"]["args"]["early_save_metric"].lower() == "val" else avg_train_loss
+            )
             if current_loss < best_loss:
                 best_loss, best_epoch, best_state = current_loss, epoch, deepcopy(training_context.model.state_dict())
             self._periodic_save(training_context, epoch, avg_train_loss, val_metrics["loss"])
@@ -93,18 +95,21 @@ class Optimiser:
         csv_path = training_context.path_config["result_path"].replace(".png", "_epoch_metrics.csv")
         os.makedirs(os.path.dirname(csv_path), exist_ok=True)
         csv_file = open(csv_path, "w", newline="")
-        csv_writer = csv.DictWriter(csv_file, fieldnames=["epoch", "train_loss", "val_loss", "val_rel_l2", "lr"], extrasaction="ignore")
+        csv_writer = csv.DictWriter(
+            csv_file, fieldnames=["epoch", "train_loss", "val_loss", "val_rel_l2", "lr"], extrasaction="ignore"
+        )
         csv_writer.writeheader()
         return csv_file, csv_writer
 
     def _step_scheduler(self, epoch: int) -> None:
         args = self.config["optimizer"]["args"]
-        if args["scheduler"] == "step" and (epoch + 1) % args["scheduler_step_size"] == 0:
-            self._scale_lr(args["scheduler_gamma"])
-        elif args["scheduler"] == "exp":
+        if (args["scheduler"] == "step" and (epoch + 1) % args["scheduler_step_size"] == 0) or args["scheduler"] == "exp":
             self._scale_lr(args["scheduler_gamma"])
         elif args["scheduler"] == "cos":
-            lr = args["scheduler_eta_min"] + (args["lr"] - args["scheduler_eta_min"]) * (1 + np.cos(np.pi * (epoch + 1) / args["scheduler_t_max"])) / 2
+            lr = (
+                args["scheduler_eta_min"]
+                + (args["lr"] - args["scheduler_eta_min"]) * (1 + np.cos(np.pi * (epoch + 1) / args["scheduler_t_max"])) / 2
+            )
             self._set_lr(lr)
         elif args["scheduler"] == "mix":
             self._set_lr(self._mix_lr(epoch + 1))
@@ -137,7 +142,10 @@ class Optimiser:
 
     def _clip_gradients(self, training_context) -> None:
         params_to_clip = list(training_context.model.parameters())
-        if getattr(training_context, "log_sigma_field", None) is not None and getattr(training_context, "log_sigma_scalar", None) is not None:
+        if (
+            getattr(training_context, "log_sigma_field", None) is not None
+            and getattr(training_context, "log_sigma_scalar", None) is not None
+        ):
             params_to_clip += [training_context.log_sigma_field, training_context.log_sigma_scalar]
         torch.nn.utils.clip_grad_norm_(params_to_clip, 1.0)
 
@@ -154,7 +162,9 @@ class Optimiser:
             token_norm = getattr(encoder, "_last_token_norm", 0.0)
             if getattr(encoder, "mode", "concat") == "concat":
                 scalar_norm = getattr(encoder, "_last_scalar_norm", 0.0)
-                epoch_values[f"{prefix}/fusion_ratio"] = epoch_values.get(f"{prefix}/fusion_ratio", 0.0) + (scalar_norm / token_norm if token_norm > 0 else 0.0)
+                epoch_values[f"{prefix}/fusion_ratio"] = epoch_values.get(f"{prefix}/fusion_ratio", 0.0) + (
+                    scalar_norm / token_norm if token_norm > 0 else 0.0
+                )
             elif getattr(encoder, "mode", "concat") == "film":
                 for metric, attr, default in [
                     ("film_gamma_mean", "_last_gamma_mean", 1.0),
@@ -162,7 +172,9 @@ class Optimiser:
                     ("film_gamma_std", "_last_gamma_std", 0.0),
                     ("film_perturbation", "_last_film_perturbation", 0.0),
                 ]:
-                    epoch_values[f"{prefix}/{metric}"] = epoch_values.get(f"{prefix}/{metric}", 0.0) + getattr(encoder, attr, default)
+                    epoch_values[f"{prefix}/{metric}"] = epoch_values.get(f"{prefix}/{metric}", 0.0) + getattr(
+                        encoder, attr, default
+                    )
             epoch_values[f"{prefix}/token_norm"] = epoch_values.get(f"{prefix}/token_norm", 0.0) + token_norm
         encoder = getattr(raw_model, "scalar_encoder", None) or getattr(raw_model, "late_scalar_encoder", None)
         scale_factor = getattr(encoder, "_last_sf", None) if encoder is not None else None
@@ -172,8 +184,25 @@ class Optimiser:
             epoch_values["scalar_enc/sf_min"] = min(epoch_values.get("scalar_enc/sf_min", float("inf")), scale_factor["min"])
             epoch_values["scalar_enc/sf_max"] = max(epoch_values.get("scalar_enc/sf_max", float("-inf")), scale_factor["max"])
 
-    def _log_epoch(self, training_context, epoch: int, avg_train_loss: float, val_metrics: dict, train_metrics: dict, current_lr: float, pbar, disable_pbar: bool) -> None:
-        metrics = {"train/loss_total": avg_train_loss, "train/MSE_total": avg_train_loss, "val/loss": val_metrics["loss"], "val/MSE": val_metrics["mse"], "val/rel_l2": val_metrics["rel_l2"], "lr": current_lr}
+    def _log_epoch(
+        self,
+        training_context,
+        epoch: int,
+        avg_train_loss: float,
+        val_metrics: dict,
+        train_metrics: dict,
+        current_lr: float,
+        pbar,
+        disable_pbar: bool,
+    ) -> None:
+        metrics = {
+            "train/loss_total": avg_train_loss,
+            "train/MSE_total": avg_train_loss,
+            "val/loss": val_metrics["loss"],
+            "val/MSE": val_metrics["mse"],
+            "val/rel_l2": val_metrics["rel_l2"],
+            "lr": current_lr,
+        }
         if not disable_pbar:
             pbar.set_postfix({"train_loss": avg_train_loss, "val_MSE": val_metrics["mse"], "rel_l2": val_metrics["rel_l2"]})
         for key, value in val_metrics.items():
@@ -182,9 +211,22 @@ class Optimiser:
         self._average_epoch_values(metrics, train_metrics["epoch_values"], train_metrics["num_batches"])
         metrics["memory"] = psutil.Process(os.getpid()).memory_info().rss / 1e9
         if torch.cuda.is_available():
-            metrics.update({"gpu/allocated_MB": torch.cuda.memory_allocated() / 1e6, "gpu/reserved_MB": torch.cuda.memory_reserved() / 1e6, "gpu/max_allocated_MB": torch.cuda.max_memory_allocated() / 1e6, "gpu/max_reserved_MB": torch.cuda.max_memory_reserved() / 1e6, "gpu/cache_free_MB": (torch.cuda.memory_reserved() - torch.cuda.memory_allocated()) / 1e6})
+            metrics.update(
+                {
+                    "gpu/allocated_MB": torch.cuda.memory_allocated() / 1e6,
+                    "gpu/reserved_MB": torch.cuda.memory_reserved() / 1e6,
+                    "gpu/max_allocated_MB": torch.cuda.max_memory_allocated() / 1e6,
+                    "gpu/max_reserved_MB": torch.cuda.max_memory_reserved() / 1e6,
+                    "gpu/cache_free_MB": (torch.cuda.memory_reserved() - torch.cuda.memory_allocated()) / 1e6,
+                }
+            )
         training_context.tracker.log_metrics(metrics, step=epoch + 1)
-        if epoch < self.config["optimizer"]["args"].get("viz_warmup_epochs", 0) or (self.config["optimizer"]["args"].get("viz_every_eps", self.config["optimizer"]["args"]["eval_every_eps"]) > 0 and (epoch + 1) % self.config["optimizer"]["args"].get("viz_every_eps", self.config["optimizer"]["args"]["eval_every_eps"]) == 0):
+        if epoch < self.config["optimizer"]["args"].get("viz_warmup_epochs", 0) or (
+            self.config["optimizer"]["args"].get("viz_every_eps", self.config["optimizer"]["args"]["eval_every_eps"]) > 0
+            and (epoch + 1)
+            % self.config["optimizer"]["args"].get("viz_every_eps", self.config["optimizer"]["args"]["eval_every_eps"])
+            == 0
+        ):
             try:
                 training_context.visualize_sample(epoch)
             except Exception as exc:
@@ -201,29 +243,55 @@ class Optimiser:
         if train_mse_count > 0:
             metrics["train/MSE_total"] = train_mse_sum / train_mse_count
 
-    def _write_epoch_csv(self, csv_writer, csv_file, epoch: int, avg_train_loss: float, val_metrics: dict, current_lr: float) -> None:
+    def _write_epoch_csv(
+        self, csv_writer, csv_file, epoch: int, avg_train_loss: float, val_metrics: dict, current_lr: float
+    ) -> None:
         if csv_writer is None or csv_file is None:
             return
-        csv_writer.writerow({"epoch": epoch + 1, "train_loss": avg_train_loss, "val_loss": val_metrics["loss"], "val_rel_l2": val_metrics["rel_l2"], "lr": current_lr})
+        csv_writer.writerow(
+            {
+                "epoch": epoch + 1,
+                "train_loss": avg_train_loss,
+                "val_loss": val_metrics["loss"],
+                "val_rel_l2": val_metrics["rel_l2"],
+                "lr": current_lr,
+            }
+        )
         csv_file.flush()
 
     def _periodic_save(self, training_context, epoch: int, avg_train_loss: float, val_loss: float) -> None:
-        if self.config["optimizer"]["args"].get("save_every_epochs", 0) <= 0 or (epoch + 1) % self.config["optimizer"]["args"]["save_every_epochs"] != 0 or training_context.setup_config.get("rank", 0) != 0:
+        if (
+            self.config["optimizer"]["args"].get("save_every_epochs", 0) <= 0
+            or (epoch + 1) % self.config["optimizer"]["args"]["save_every_epochs"] != 0
+            or training_context.setup_config.get("rank", 0) != 0
+        ):
             return
         try:
             training_context.save_ckpt()
-            training_context.tracker.save_checkpoint_artifact(epoch=epoch + 1, train_loss=avg_train_loss, val_loss=val_loss, is_best=False, config_dict=training_context.full_config_dict)
+            training_context.tracker.save_checkpoint_artifact(
+                epoch=epoch + 1,
+                train_loss=avg_train_loss,
+                val_loss=val_loss,
+                is_best=False,
+                config_dict=training_context.full_config_dict,
+            )
             if training_context.setup_config.get("test_during_training", False):
                 training_context.test()
         except Exception as exc:
             logging.getLogger(__name__).warning(f"Periodic save failed: {exc}")
 
     def _save_step_checkpoint(self, training_context, global_step: int, batch_index: int, train_loss) -> None:
-        if self.config["optimizer"]["args"]["save_every_steps"] <= 0 or global_step % self.config["optimizer"]["args"]["save_every_steps"] != 0 or training_context.setup_config.get("rank", 0) != 0:
+        if (
+            self.config["optimizer"]["args"]["save_every_steps"] <= 0
+            or global_step % self.config["optimizer"]["args"]["save_every_steps"] != 0
+            or training_context.setup_config.get("rank", 0) != 0
+        ):
             return
         try:
             training_context.save_ckpt()
-            logging.getLogger(__name__).info(f"Step checkpoint saved at global_step={global_step} (batch {batch_index}), loss={train_loss.detach().cpu().item():.4f}")
+            logging.getLogger(__name__).info(
+                f"Step checkpoint saved at global_step={global_step} (batch {batch_index}), loss={train_loss.detach().cpu().item():.4f}"
+            )
         except Exception as exc:
             logging.getLogger(__name__).warning(f"Failed to save step checkpoint: {exc}")
 

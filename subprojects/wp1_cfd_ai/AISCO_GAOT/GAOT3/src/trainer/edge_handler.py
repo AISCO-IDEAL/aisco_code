@@ -36,7 +36,9 @@ class EdgeHandler:
         total_samples = len(all_filenames_base)
         indices = np.arange(total_samples)
         train_indices = indices[: trainer.dataset_config["train_size"]]
-        val_indices = indices[trainer.dataset_config["train_size"] : trainer.dataset_config["train_size"] + trainer.dataset_config["val_size"]]
+        val_indices = indices[
+            trainer.dataset_config["train_size"] : trainer.dataset_config["train_size"] + trainer.dataset_config["val_size"]
+        ]
         test_indices = indices[-trainer.dataset_config["test_size"] :]
         relevant_indices = np.concatenate([train_indices, val_indices, test_indices])
         return [f"{all_filenames_base[index]}.pt" for index in relevant_indices]
@@ -73,10 +75,24 @@ class EdgeHandler:
         for scale_idx, scale in enumerate(magno_config.get("scales", [1.0])):
             radius = magno_config.get("gno_radius", 0.15) * scale
             enc_edge_index = get_neighbor_strategy(
-                encoder_strategy, phys_pos, batch_idx_phys, latent_tokens_cpu, batch_idx_latent, radius, magno_config.get("k_neighbors", 1), False
+                encoder_strategy,
+                phys_pos,
+                batch_idx_phys,
+                latent_tokens_cpu,
+                batch_idx_latent,
+                radius,
+                magno_config.get("k_neighbors", 1),
+                False,
             ).to(torch.int32)
             dec_edge_index = get_neighbor_strategy(
-                decoder_strategy, phys_pos, batch_idx_phys, latent_tokens_cpu, batch_idx_latent, radius, magno_config.get("k_neighbors", 1), True
+                decoder_strategy,
+                phys_pos,
+                batch_idx_phys,
+                latent_tokens_cpu,
+                batch_idx_latent,
+                radius,
+                magno_config.get("k_neighbors", 1),
+                True,
             ).to(torch.int32)
             setattr(data, f"encoder_edge_index_s{scale_idx}", enc_edge_index)
             setattr(data, f"decoder_edge_index_s{scale_idx}", dec_edge_index)

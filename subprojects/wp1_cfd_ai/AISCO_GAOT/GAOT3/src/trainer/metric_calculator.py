@@ -30,7 +30,9 @@ class MetricCalculator:
             return self._compute_general_metrics(pred_unnormalized, target_unnormalized)
         raise ValueError(f"Unknown metric suite: {metric_suite}")
 
-    def _compute_drivaernet_metric(self, target_unnormalized, pred_unnormalized, metadata, active_variables) -> dict[str, float] | None:
+    def _compute_drivaernet_metric(
+        self, target_unnormalized, pred_unnormalized, metadata, active_variables
+    ) -> dict[str, float] | None:
         if metadata is None or not isinstance(target_unnormalized, list) or not isinstance(pred_unnormalized, list):
             return None
         if active_variables is not None:
