@@ -1,0 +1,52 @@
+# Experiment B: DeepSDF-adapted — L1 on all pts (surface + domain), no eikonal
+# Branch: exp/sampling-deepsdf-adapted
+# Plan: agent-output/planning/022-sampling-architecture-experiments.md
+#
+# Key differences vs pretraining_latent_config.yaml (baseline):
+#   - Loss: L1 on ALL pts (surface + domain) instead of MSE-surface + eikonal
+#   - eikonal_weight: 0.0  (retained for YAML schema compatibility; not applied in code)
+#   - 2 shapes only (sphere + simple_bullet_blunt) for controlled comparison
+#   - W&B run_group set in code to "exp-b-deepsdf-adapted"
+
+model_name: "ConcatWIREV2"
+z_placement: "unit_circle"
+z_radius: 2.0
+force_pretraining: true
+
+latent_population:
+  - name: "sphere_slot_0"
+    shape_type: "sphere"
+    radius: 500.0
+    side_length: null
+    ply_path: null
+
+  - name: "simple_bullet_blunt"
+    shape_type: "ply"
+    radius: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_bullet_blunt2.ply"
+    ply_scale: 100.0
+    surface_noise_sigma_factor: 0.005
+
+training_loop:
+  epochs: 100
+  learning_rate: 0.0005
+  batch_size_per_shape: 4096
+  print_interval: 25
+  eikonal_weight: 0.0        # Exp-B: eikonal removed; value here is unused by code
+  surface_resample_cadence: 0
+
+  near_surface_fraction: 0.30
+  domain_fraction: 0.50
+  near_surface_tight_sigma: 0.005
+  near_surface_wide_sigma: null
+
+output:
+  checkpoint_path: "/cluster/work/fuge/AISCO/latent_pretraining/exp_b/pretrained_latent.pth"
+  mesh_resolution: 64
+  bbox_scale_factor: 1.0
+  sdf_cache_dir: null
+
+  vis_cadence: 10
+  vis_show_eikonal_pts: true   # grey = domain pts used for L1 loss (not eikonal in Exp-B)
+  vis_show_target_pts: "pts"
