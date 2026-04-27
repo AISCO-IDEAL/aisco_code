@@ -19,13 +19,13 @@ from __future__ import annotations
 import contextlib
 import copy
 import json
-import os
 import re
-import socket
 from pathlib import Path
 from warnings import warn
 
 import yaml
+
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import get_run_locally_value
 
 # ---------------------------------------------------------------------------
 # Module-level config registry
@@ -108,27 +108,20 @@ def _resolve_sweep_target(key: str) -> tuple[dict | None, list[str]]:
 def _load_yaml(v: str, cfg_name: str) -> dict:
     """
     Load a YAML configuration file from disk (no registry, no wandb side-effects) by giving the name/path of the config file, located in the v{x}/configs/ folder.
+
+    Environment-aware path resolution is delegated to device_detection module.
     """
     config_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
+    if Path.home() == Path("/home/aisco"):  # Checks if running on the Best and corrects Path if necessary
+        config_path = (
+            Path.home() / "Documents" / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
+        )
     try:
         with config_path.open() as f:
             config = yaml.safe_load(f)
 
         if cfg_name == "general_config.yaml" and isinstance(config, dict) and "general_info" in config:
-            is_wsl = "WSL_DISTRO_NAME" in os.environ
-            hostname = socket.gethostname()
-            is_euler_node = hostname.startswith("eu-")
-            is_slurm_job = "SLURM_JOB_ID" in os.environ
-
-            if is_wsl:
-                # Definitely local (WSL)
-                config["general_info"]["run_locally"] = "True"
-            elif is_euler_node or is_slurm_job:
-                # Definitely cluster (HPC)
-                config["general_info"]["run_locally"] = "False"
-            else:
-                # Default to Euler if uncertain
-                config["general_info"]["run_locally"] = "False"
+            config["general_info"]["run_locally"] = get_run_locally_value()
 
         return config  # noqa: TRY300
     except FileNotFoundError as e:
@@ -142,7 +135,7 @@ def _load_yaml(v: str, cfg_name: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def register_all_configs(general_config: dict, *, v: str = "v1") -> None:
+def register_all_configs(general_config: dict, *, v: str = "v2") -> None:
     """Pre-load every sub-config referenced in *general_config* into the
     registry so that :func:`apply_sweep_overrides` can patch them and later
     :func:`load_config` calls return the patched version.
@@ -364,7 +357,7 @@ def get_registered_config(cfg_name: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-def load_config(v: str = "v1", cfg_name: str = "general_config.yaml") -> dict:
+def load_config(v: str = "v2", cfg_name: str = "general_config.yaml") -> dict:
     """Load a config by name.
 
     If the registry has been initialised (i.e. we are inside a sweep-aware

@@ -40,7 +40,7 @@ class MeshSDFExtractor:
     target vertex count) lets multiple losses share the same extraction.
     """
 
-    def __init__(self, config: MeshExtractionConfig | None = None) -> None:
+    def __init__(self, config: MeshExtractionConfig | None = None, gradient_max: None | float = None) -> None:
         """Initialise an extractor bound to a fixed bbox/resolution.
 
         Steps:
@@ -51,6 +51,7 @@ class MeshSDFExtractor:
           5) Initialise slots for the cross-loss shared-mesh injection API.
           6) Call `set_grid` to compute the effective grid resolution.
         """
+        self.gradient_max = gradient_max
         self.config = config if config is not None else load_mesh_extraction_config()
         self.device = self.config.device
         if self.device.startswith("cuda") and not torch.cuda.is_available():
@@ -129,7 +130,7 @@ class MeshSDFExtractor:
         for k in [k for k in _MESH_CACHE if k[0] == model_id and k[1] != version]:
             _MESH_CACHE.pop(k, None)
 
-        if self.target_num_vertices is None:
+        if self.target_num_vertices is None or self.target_num_vertices < 0:
             verts, faces = self._extract(sdf_model, self.effective_resolution)
         else:
             verts, faces = self._extract_to_target(sdf_model)
@@ -181,6 +182,13 @@ class MeshSDFExtractor:
 
         (dL_dv,) = torch.autograd.grad(loss, v_for_loss, torch.ones_like(loss))
         surrogate = self.compute_gradient_flow(verts, dL_dv, sdf_model)
+
+        if self.gradient_max is not None:
+            norms = torch.norm(dL_dv, dim=1, keepdim=True)
+            scale = self.gradient_max / (norms + 1e-8)
+            scale = torch.minimum(scale, torch.ones_like(scale))
+            dL_dv = dL_dv * scale
+
         return verts, faces, loss, surrogate, dL_dv
 
     def compute_gradient_flow(self, vertices: torch.Tensor, dL_dvertices: torch.Tensor, sdf_model: SDFModel) -> torch.Tensor:

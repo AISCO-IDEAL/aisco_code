@@ -1,524 +1,384 @@
 #!/usr/bin/env bash
-# Run from project root with:
-#   chmod +x ./setup_beast.sh && PYTHON_BIN="/home/clhuber/.pyenv/versions/3.11.6/bin/python" ./setup_beast.sh
-# If Python was built without _ctypes, this script can install required Ubuntu build deps,
-# then instruct (or optionally auto-run) a Python 3.11.6 rebuild via pyenv.
-# Setup script for AISCO_code on a local Ubuntu machine with RTX 5090.
-# This script is intentionally strict and only supports RTX 5090 (sm_120).
+# Local Ubuntu setup for AISCO_code on Beast (RTX 5090 / sm_120).
 
 set -euo pipefail
 
 ENV_NAME="${ENV_NAME:-aisco_env}"
-REQUIRED_PYTHON_VERSION="3.11.6"
 PYTHON_BIN="${PYTHON_BIN:-python3.11}"
-AUTO_INSTALL_SYSTEM_DEPS="${AUTO_INSTALL_SYSTEM_DEPS:-1}"
-AUTO_REBUILD_PYTHON="${AUTO_REBUILD_PYTHON:-0}"
-SYSTEM_DEPS_ATTEMPTED="${SYSTEM_DEPS_ATTEMPTED:-0}"
+PYTHON_VERSION_REQUIRED="${PYTHON_VERSION_REQUIRED:-3.11.6}"
+TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
+TORCH_VERSION="${TORCH_VERSION:-2.8.0+cu128}"
+TORCHVISION_VERSION="${TORCHVISION_VERSION:-0.23.0+cu128}"
+CUDA_HOME_DEFAULT="${CUDA_HOME_DEFAULT:-/usr/local/cuda-12.8}"
+TORCH_CUDA_ARCH_LIST_DEFAULT="${TORCH_CUDA_ARCH_LIST_DEFAULT:-12.0}"
+PROJECT_EXTRAS="${PROJECT_EXTRAS:-}"
 INSTALL_KAOLIN="${INSTALL_KAOLIN:-}"
+BUILD_RENDERER="${BUILD_RENDERER:-}"
 INSTALL_DISO="${INSTALL_DISO:-}"
 BUILD_PYDEVELOPABILITY="${BUILD_PYDEVELOPABILITY:-}"
 PYDEVELOPABILITY_STRICT="${PYDEVELOPABILITY_STRICT:-0}"
 
-APT_BUILD_DEPS=(
-    libffi-dev
-    build-essential
-    zlib1g-dev
-    libssl-dev
-    libbz2-dev
-    libreadline-dev
-    libsqlite3-dev
-    liblzma-dev
-    tk-dev
-    uuid-dev
-)
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$SCRIPT_DIR"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$PROJECT_ROOT/$ENV_NAME"
 VENV_PYTHON="$VENV_DIR/bin/python3"
+PYPROJECT_FILE="$PROJECT_ROOT/pyproject.toml"
+RENDERER_DIR="$PROJECT_ROOT/subprojects/fixed_renderer"
 
 cd "$PROJECT_ROOT"
 
 require_cmd() {
-    local cmd="$1"
-    if ! command -v "$cmd" >/dev/null 2>&1; then
-        echo "Error: required command '$cmd' was not found."
-        exit 1
-    fi
+    command -v "$1" >/dev/null 2>&1 || { echo "Error: missing required command '$1'."; exit 1; }
 }
 
-find_executable() {
-    local cmd="$1"
-    local candidate=""
+confirm_env_flag() {
+    local name="$1"
+    local prompt="$2"
+    local default="$3"
+    local current="${!name}"
 
-    if candidate="$(command -v "$cmd" 2>/dev/null)"; then
-        printf '%s\n' "$candidate"
+    if [[ "$current" == "1" || "$current" == "0" ]]; then
         return 0
     fi
 
-    if [[ -n "${VENV_DIR:-}" && -x "$VENV_DIR/bin/$cmd" ]]; then
-        printf '%s\n' "$VENV_DIR/bin/$cmd"
+    if [[ ! -t 0 ]]; then
+        printf -v "$name" '%s' "$default"
         return 0
     fi
 
-    return 1
-}
-
-install_python_build_deps_ubuntu() {
-    if [[ "$SYSTEM_DEPS_ATTEMPTED" == "1" ]]; then
-        return 0
-    fi
-
-    SYSTEM_DEPS_ATTEMPTED="1"
-
-    if [[ "$AUTO_INSTALL_SYSTEM_DEPS" != "1" ]]; then
-        return 0
-    fi
-
-    if ! command -v apt-get >/dev/null 2>&1; then
-        return 0
-    fi
-
-    local sudo_prefix=""
-    if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-        if command -v sudo >/dev/null 2>&1; then
-            sudo_prefix="sudo"
-        else
-            echo "Warning: apt-get detected but sudo is unavailable; skipping system dependency install."
-            return 0
-        fi
-    fi
-
-    echo "Installing Python build dependencies (Ubuntu/Debian)..."
-    if ! $sudo_prefix apt-get update; then
-        echo "Warning: apt-get update failed. Continuing with existing environment."
-        return 0
-    fi
-
-    if ! $sudo_prefix apt-get install -y "${APT_BUILD_DEPS[@]}"; then
-        echo "Warning: apt-get install failed. Continuing with existing environment."
-        return 0
-    fi
-}
-
-print_python_rebuild_help() {
-    local pyenv_hint=""
-    if ! command -v pyenv >/dev/null 2>&1; then
-        pyenv_hint=$(cat <<'EOF'
-pyenv is not installed in this shell.
-
-Install pyenv, then rebuild Python:
-
-  curl https://pyenv.run | bash
-  export PYENV_ROOT="$HOME/.pyenv"
-  export PATH="$PYENV_ROOT/bin:$PATH"
-  eval "$(pyenv init -)"
-EOF
-)
-    fi
-
-    cat <<EOF
-Python $REQUIRED_PYTHON_VERSION was found, but _ctypes is missing.
-
-Run the following commands, then rerun this setup script:
-
-  sudo apt update
-  sudo apt install -y ${APT_BUILD_DEPS[*]}
-  pyenv install $REQUIRED_PYTHON_VERSION -f
-  pyenv shell $REQUIRED_PYTHON_VERSION
-  python -c "import _ctypes; print('ctypes ok')"
-  cd "$PROJECT_ROOT"
-    PYTHON_BIN="\$(which python)" ./setup_beast.sh
-
-$pyenv_hint
-
-Alternative without pyenv (manual source build):
-
-    cd /tmp
-    wget -q https://www.python.org/ftp/python/$REQUIRED_PYTHON_VERSION/Python-$REQUIRED_PYTHON_VERSION.tgz
-    tar -xzf Python-$REQUIRED_PYTHON_VERSION.tgz
-    cd Python-$REQUIRED_PYTHON_VERSION
-    ./configure --prefix="\$HOME/.local/python-$REQUIRED_PYTHON_VERSION" --enable-optimizations --with-system-ffi
-    make -j"\$(nproc)"
-    make install
-    "\$HOME/.local/python-$REQUIRED_PYTHON_VERSION/bin/python3.11" -c "import _ctypes; print('ctypes ok')"
-    cd "$PROJECT_ROOT"
-    PYTHON_BIN="\$HOME/.local/python-$REQUIRED_PYTHON_VERSION/bin/python3.11" ./setup_beast.sh
-
-Optional: set AUTO_REBUILD_PYTHON=1 to let this script auto-run the pyenv rebuild step.
-EOF
-}
-
-try_pyenv_rebuild_python() {
-    if [[ "$AUTO_REBUILD_PYTHON" != "1" ]]; then
-        return 1
-    fi
-
-    if ! command -v pyenv >/dev/null 2>&1; then
-        echo "AUTO_REBUILD_PYTHON=1 was set, but pyenv is not installed."
-        return 1
-    fi
-
-    echo "AUTO_REBUILD_PYTHON=1 set. Rebuilding Python $REQUIRED_PYTHON_VERSION via pyenv..."
-    pyenv install "$REQUIRED_PYTHON_VERSION" -f
-    pyenv shell "$REQUIRED_PYTHON_VERSION"
-
-    local rebuilt_bin
-    rebuilt_bin="$(command -v python)"
-    if [[ -z "$rebuilt_bin" ]]; then
-        echo "Error: pyenv rebuild completed but no python executable found in PATH."
-        return 1
-    fi
-
-    if ! "$rebuilt_bin" -c "import _ctypes" >/dev/null 2>&1; then
-        echo "Error: rebuilt Python still missing _ctypes."
-        return 1
-    fi
-
-    PYTHON_BIN="$rebuilt_bin"
-    echo "Using rebuilt Python: $PYTHON_BIN"
-    return 0
-}
-
-check_python() {
-    if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-        echo "Error: Python binary '$PYTHON_BIN' not found."
-        echo "Use Python $REQUIRED_PYTHON_VERSION and rerun with:"
-        echo "  PYTHON_BIN=/path/to/python3.11 ./setup_beast.sh"
-        exit 1
-    fi
-
-    local version
-    version="$($PYTHON_BIN --version 2>&1 | awk '{print $2}')"
-    if [[ "$version" != "$REQUIRED_PYTHON_VERSION" ]]; then
-        echo "Error: Python $REQUIRED_PYTHON_VERSION is required, found $version."
-        exit 1
-    fi
-
-    if ! "$PYTHON_BIN" -c "import _ctypes" >/dev/null 2>&1; then
-        echo "Python is missing _ctypes."
-        install_python_build_deps_ubuntu
-
-        if try_pyenv_rebuild_python; then
-            if ! "$PYTHON_BIN" -c "import _ctypes" >/dev/null 2>&1; then
-                echo "Error: _ctypes still missing after attempted rebuild."
-                print_python_rebuild_help
-                exit 1
-            fi
-        else
-            print_python_rebuild_help
-            exit 1
-        fi
-    fi
-}
-
-check_gpu_5090() {
-    require_cmd nvidia-smi
-
-    local gpu_name
-    gpu_name="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n1 | sed 's/^ *//;s/ *$//')"
-
-    if [[ "$gpu_name" != *"RTX 5090"* && "$gpu_name" != *"GeForce RTX 5090"* ]]; then
-        echo "Error: this setup script only supports RTX 5090. Detected: '$gpu_name'"
-        exit 1
-    fi
-
-    echo "Detected supported GPU: $gpu_name"
-}
-
-detect_cuda_home() {
-    if command -v nvcc >/dev/null 2>&1; then
-        local nvcc_path
-        nvcc_path="$(readlink -f "$(command -v nvcc)")"
-        export CUDA_HOME="$(dirname "$(dirname "$nvcc_path")")"
-    elif [[ -x "/usr/local/cuda/bin/nvcc" ]]; then
-        export CUDA_HOME="/usr/local/cuda"
-    elif [[ -x "/usr/local/cuda-12.8/bin/nvcc" ]]; then
-        export CUDA_HOME="/usr/local/cuda-12.8"
-    else
-        echo "Error: CUDA toolkit (nvcc) not found. Install CUDA toolkit and retry."
-        exit 1
-    fi
-
-    export PATH="$CUDA_HOME/bin:$PATH"
-    export LD_LIBRARY_PATH="$CUDA_HOME/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-    echo "CUDA_HOME=$CUDA_HOME"
-}
-
-create_or_reuse_venv() {
-    if [[ ! -d "$VENV_DIR" ]]; then
-        echo "Creating venv: $VENV_DIR"
-        "$PYTHON_BIN" -m venv "$VENV_DIR"
-    else
-        echo "Reusing existing venv: $VENV_DIR"
-    fi
-
-    if [[ ! -x "$VENV_PYTHON" ]]; then
-        echo "Error: venv python not found at $VENV_PYTHON"
-        exit 1
-    fi
-}
-
-install_dependencies() {
-    # shellcheck disable=SC1091
-    source "$VENV_DIR/bin/activate"
-
-    "$VENV_PYTHON" -m pip install --upgrade pip setuptools wheel build
-
-    # Beast path (RTX 5090): install a CUDA 12.8 torch build with sm_120 support.
-    "$VENV_PYTHON" -m pip install --upgrade --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0+cu128
-    "$VENV_PYTHON" -m pip install --upgrade --index-url https://download.pytorch.org/whl/cu128 torchvision==0.23.0+cu128
-
-    # Install base project dependencies.
-    "$VENV_PYTHON" -m pip install -e .
-
-    "$VENV_PYTHON" -m pre_commit install || true
-
-    echo ""
-    echo "Standard dependencies installed."
-    echo ""
-    echo "Optional dependencies can be installed manually:"
-    echo "   - Workpackage 1 (wp1_cfd_ai):                  $VENV_PYTHON -m pip install '.[wp1_cfd_ai]'"
-    echo "   - Workpackage 2 (wp2_assembler):               $VENV_PYTHON -m pip install '.[wp2_assembler]'"
-    echo "   - Workpackage 3 (wp3_solar_estimator):         $VENV_PYTHON -m pip install '.[wp3_solar_estimator]'"
-    echo "   - Workpackage 4 (wp4_aeroshell_optimizer):     $VENV_PYTHON -m pip install '.[wp4_aeroshell_optimizer]'"
-    echo "   - Workpackage 7 GUI (wp7_gui):                 $VENV_PYTHON -m pip install '.[wp7_gui]'"
-    echo "   - Testing dependencies:                        $VENV_PYTHON -m pip install '.[testing]'"
-    echo "   - pydevelopability build dependencies:         $VENV_PYTHON -m pip install '.[pydevelopability]'"
-    echo "   - All optional dependencies:                   $VENV_PYTHON -m pip install '.[all]'"
-    echo ""
-}
-
-ask_yes_no() {
-    local prompt="$1"
-    local answer
-
+    local answer=""
     read -r -p "$prompt [y/n]: " answer
-    [[ "$answer" == "y" || "$answer" == "Y" ]]
-}
-
-configure_optional_steps() {
-    if [[ -z "$INSTALL_KAOLIN" ]]; then
-        if ask_yes_no "Do you want to install Kaolin (GPU/CUDA-dependent)?"; then
-            INSTALL_KAOLIN="1"
-        else
-            INSTALL_KAOLIN="0"
-        fi
-    fi
-
-    if [[ -z "$INSTALL_DISO" ]]; then
-        if ask_yes_no "Do you want to install DISO (GPU/CUDA-dependent)?"; then
-            INSTALL_DISO="1"
-        else
-            INSTALL_DISO="0"
-        fi
-    fi
-
-    if [[ -z "$BUILD_PYDEVELOPABILITY" ]]; then
-        if ask_yes_no "Do you want to build pydevelopability C++ extension?"; then
-            BUILD_PYDEVELOPABILITY="1"
-        else
-            BUILD_PYDEVELOPABILITY="0"
-        fi
+    if [[ "${answer:-$default}" =~ ^[Yy]$ ]]; then
+        printf -v "$name" '%s' "1"
+    else
+        printf -v "$name" '%s' "0"
     fi
 }
 
-install_kaolin() {
-    if [[ "$INSTALL_KAOLIN" != "1" ]]; then
-        echo "Skipping Kaolin install (INSTALL_KAOLIN=$INSTALL_KAOLIN)."
+normalize_csv() {
+    local raw="$1"
+    raw="${raw//,/ }"
+    echo "$raw" | xargs
+}
+
+select_project_extras() {
+    if [[ -n "${PROJECT_EXTRAS// }" ]]; then
+        PROJECT_EXTRAS="$(normalize_csv "$PROJECT_EXTRAS")"
         return 0
     fi
 
-    local torch_version
-    local cuda_version
-    torch_version="$($VENV_PYTHON - <<'PY'
-import torch
-print(torch.__version__.split('+')[0])
-PY
-)"
-    cuda_version="$($VENV_PYTHON - <<'PY'
-import torch
-v = torch.version.cuda
-print(v.replace('.', '') if v else '')
-PY
-)"
-
-    if [[ -z "$torch_version" || -z "$cuda_version" ]]; then
-        echo "Error: could not determine torch/cuda versions for Kaolin installation."
-        echo "       torch='$torch_version' cuda='$cuda_version'"
-        exit 1
-    fi
-
-    local kaolin_index
-    kaolin_index="https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-${torch_version}_cu${cuda_version}.html"
-
-    echo "Installing Kaolin using index: $kaolin_index"
-    if ! "$VENV_PYTHON" -m pip install -f "$kaolin_index" kaolin; then
-        echo ""
-        echo "Error: Kaolin installation failed for the current torch build."
-        echo "       Torch version: $torch_version"
-        echo "       CUDA version:  $cuda_version"
-        echo "       Attempted URL: $kaolin_index"
-        echo ""
-        echo "This usually means NVIDIA does not provide a Kaolin wheel for this exact torch/CUDA combo."
-        echo "Use a supported torch build for Kaolin, or rerun setup with INSTALL_KAOLIN=0 if you intentionally want to skip it."
-        echo "Note: WP4 requires Kaolin and will fail at import time without it."
-        exit 1
-    fi
-}
-
-install_diso() {
-    if [[ "$INSTALL_DISO" != "1" ]]; then
-        echo "Skipping DISO install (INSTALL_DISO=$INSTALL_DISO)."
+    if [[ ! -t 0 ]]; then
+        PROJECT_EXTRAS=""
         return 0
     fi
 
+    local available
+    available="$("$VENV_PYTHON" - "$PYPROJECT_FILE" <<'PY'
+import sys
+import tomllib
+from pathlib import Path
+
+data = tomllib.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+extras = sorted(data["project"].get("optional-dependencies", {}))
+print(", ".join(extras))
+PY
+)"
+
+    echo "Optional extras defined in pyproject.toml: ${available:-<none>}"
+    read -r -p "Extras to install (comma-separated, blank for none): " PROJECT_EXTRAS
+    PROJECT_EXTRAS="$(normalize_csv "$PROJECT_EXTRAS")"
+}
+
+install_pyproject_group() {
+    local group="$1"
+    "$VENV_PYTHON" - "$PYPROJECT_FILE" "$group" <<'PY'
+import os
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+from packaging.requirements import Requirement
+
+pyproject_path = Path(sys.argv[1])
+group = sys.argv[2]
+
+data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+project = data["project"]
+optional = project.get("optional-dependencies", {})
+skip_pydevelopability = os.environ.get("SKIP_PYDEVELOPABILITY_EXTRA", "1").strip() == "1"
+
+def normalize_name(name: str) -> str:
+    return name.lower().replace("-", "_")
+
+project_name = normalize_name(project["name"])
+
+if group == "base":
+    requirements = list(project.get("dependencies", []))
+else:
+    if group not in optional:
+        available = ", ".join(sorted(optional))
+        raise SystemExit(f"Unknown optional dependency group '{group}'. Available: {available}")
+    requirements = list(optional[group])
+
+if not requirements:
+    raise SystemExit(0)
+
+overrides = {
+    "torch": os.environ.get("TORCH_VERSION", "").strip(),
+    "torchvision": os.environ.get("TORCHVISION_VERSION", "").strip(),
+}
+
+def expand_requirement(item: str) -> list[str]:
+    req = Requirement(item)
+    if normalize_name(req.name) == project_name and req.extras:
+        expanded: list[str] = []
+        for extra_name in sorted(req.extras):
+            if skip_pydevelopability and extra_name == "pydevelopability":
+                continue
+            if extra_name not in optional:
+                available = ", ".join(sorted(optional))
+                raise SystemExit(f"Unknown nested optional dependency group '{extra_name}'. Available: {available}")
+            for nested_item in optional[extra_name]:
+                expanded.extend(expand_requirement(nested_item))
+        return expanded
+
+    override = overrides.get(req.name)
+    if override:
+        return [f"{req.name}=={override}"]
+    return [item]
+
+resolved = []
+seen = set()
+for item in requirements:
+    for resolved_item in expand_requirement(item):
+        if resolved_item not in seen:
+            resolved.append(resolved_item)
+            seen.add(resolved_item)
+
+index_url = os.environ.get("TORCH_INDEX_URL", "").strip()
+torch_requirements = []
+other_requirements = []
+for item in resolved:
+    if Requirement(item).name in {"torch", "torchvision"}:
+        torch_requirements.append(item)
+    else:
+        other_requirements.append(item)
+
+print("Installing", group, "requirements from pyproject.toml:")
+for req in resolved:
+    print("  ", req)
+
+if other_requirements:
+    subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", *other_requirements], check=True)
+
+if torch_requirements:
+    if not index_url:
+        raise SystemExit("TORCH_INDEX_URL must be set when installing torch or torchvision overrides.")
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "--index-url", index_url, *torch_requirements],
+        check=True,
+    )
+PY
+}
+
+echo "Checking Python..."
+require_cmd awk
+require_cmd sed
+require_cmd nvidia-smi
+
+if [[ ! -f "$PYPROJECT_FILE" ]]; then
+    echo "Error: pyproject.toml not found at $PYPROJECT_FILE."
+    exit 1
+fi
+
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    echo "Error: Python binary '$PYTHON_BIN' not found."
+    exit 1
+fi
+
+PYTHON_VERSION="$("$PYTHON_BIN" --version 2>&1 | awk '{print $2}')"
+if [[ "$PYTHON_VERSION" != "$PYTHON_VERSION_REQUIRED" ]]; then
+    echo "Error: Python $PYTHON_VERSION_REQUIRED is required, found $PYTHON_VERSION."
+    exit 1
+fi
+
+if ! "$PYTHON_BIN" -c "import _ctypes" >/dev/null 2>&1; then
+    echo "Error: Python is missing _ctypes."
+    echo "Rebuild Python $PYTHON_VERSION_REQUIRED with libffi present, then rerun this script."
+    exit 1
+fi
+
+GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n1 | sed 's/^ *//;s/ *$//')"
+if [[ "$GPU_NAME" != *"RTX 5090"* && "$GPU_NAME" != *"GeForce RTX 5090"* ]]; then
+    echo "Error: this script only supports RTX 5090. Detected '$GPU_NAME'."
+    exit 1
+fi
+echo "Detected GPU: $GPU_NAME"
+
+if command -v nvcc >/dev/null 2>&1; then
+    export CUDA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v nvcc)")")")"
+elif [[ -x "$CUDA_HOME_DEFAULT/bin/nvcc" ]]; then
+    export CUDA_HOME="$CUDA_HOME_DEFAULT"
+else
+    echo "Error: nvcc not found. Install CUDA toolkit first or set CUDA_HOME_DEFAULT."
+    exit 1
+fi
+export PATH="$CUDA_HOME/bin:$PATH"
+export LD_LIBRARY_PATH="$CUDA_HOME/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+echo "CUDA_HOME=$CUDA_HOME"
+
+if [[ ! -d "$VENV_DIR" ]]; then
+    echo "Creating venv at $VENV_DIR"
+    "$PYTHON_BIN" -m venv "$VENV_DIR"
+fi
+
+source "$VENV_DIR/bin/activate"
+export SETUPTOOLS_ENABLE_FEATURES="legacy-editable"
+export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-$TORCH_CUDA_ARCH_LIST_DEFAULT}"
+
+echo "Installing base tooling..."
+python -m pip install --upgrade pip setuptools wheel build packaging
+
+echo "Installing editable project package..."
+python -m pip install --no-deps -e .
+
+echo "Installing base dependencies from pyproject.toml..."
+install_pyproject_group base
+
+select_project_extras
+if [[ -n "${PROJECT_EXTRAS// }" ]]; then
+    for extra in $PROJECT_EXTRAS; do
+        if [[ "$extra" == "pydevelopability" ]]; then
+            echo "Skipping pydevelopability extra here; it is handled by the optional build step below."
+            continue
+        fi
+        echo "Installing optional dependency group '$extra' from pyproject.toml..."
+        install_pyproject_group "$extra"
+    done
+else
+    echo "No optional pyproject extras selected."
+fi
+
+pre-commit install || true
+
+confirm_env_flag INSTALL_KAOLIN "Install Kaolin?" "n"
+confirm_env_flag BUILD_RENDERER "Build fixed_renderer for RTX 5090?" "y"
+confirm_env_flag INSTALL_DISO "Install DISO?" "n"
+confirm_env_flag BUILD_PYDEVELOPABILITY "Build pydevelopability C++ extension?" "n"
+
+if [[ "$INSTALL_KAOLIN" == "1" ]]; then
+    echo "Installing Kaolin..."
+    KAOLIN_INDEX="$("$VENV_PYTHON" - <<'PY'
+import torch
+
+torch_version = torch.__version__.split("+")[0]
+cuda_version = (torch.version.cuda or "").replace(".", "")
+if not cuda_version:
+    raise SystemExit("Installed torch does not report a CUDA version; cannot resolve Kaolin wheels.")
+print(f"https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-{torch_version}_cu{cuda_version}.html")
+PY
+)"
+    echo "Using Kaolin index: $KAOLIN_INDEX"
+    python -m pip uninstall -y kaolin >/dev/null 2>&1 || true
+    python -m pip install -f "$KAOLIN_INDEX" kaolin
+    python - <<'PY'
+import kaolin
+print("Kaolin import OK:", getattr(kaolin, "__version__", "unknown"))
+PY
+fi
+
+if [[ "$BUILD_RENDERER" == "1" ]]; then
+    if [[ ! -d "$RENDERER_DIR" || ! -f "$RENDERER_DIR/setup.py" ]]; then
+        echo "Error: fixed_renderer not found at $RENDERER_DIR."
+        exit 1
+    fi
+
+    echo "Building fixed_renderer with TORCH_CUDA_ARCH_LIST=$TORCH_CUDA_ARCH_LIST..."
+    (
+        cd "$RENDERER_DIR"
+        python setup.py build_ext --inplace
+    )
+
+    echo "Verifying fixed_renderer imports..."
+    PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}" python - <<'PY'
+import importlib
+from pathlib import Path
+
+root = Path.cwd()
+for path in (
+    root / "subprojects/fixed_renderer/cuda/load_textures",
+    root / "subprojects/fixed_renderer/cuda/rasterize",
+    root / "subprojects/fixed_renderer/cuda/create_texture_image",
+):
+    matches = list(path.parent.glob(path.name + "*.so"))
+    if not matches:
+        raise SystemExit(f"Missing built extension artifact near {path}")
+
+for name in (
+    "subprojects.fixed_renderer.cuda.load_textures",
+    "subprojects.fixed_renderer.cuda.rasterize",
+    "subprojects.fixed_renderer.cuda.create_texture_image",
+    "subprojects.fixed_renderer.renderer",
+):
+    importlib.import_module(name)
+    print("import ok:", name)
+PY
+fi
+
+if [[ "$INSTALL_DISO" == "1" ]]; then
     echo "Installing DISO..."
-    "$VENV_PYTHON" -m pip install diso --no-build-isolation
-}
+    python -m pip install diso --no-build-isolation
+    python - <<'PY'
+import diso
+print("DISO import OK:", getattr(diso, "__file__", "unknown location"))
+print("DiffMC available:", hasattr(diso, "DiffMC"))
+print("DiffDMC available:", hasattr(diso, "DiffDMC"))
+PY
+fi
 
-build_pydevelopability_cpp() {
-    if [[ "$BUILD_PYDEVELOPABILITY" != "1" ]]; then
-        echo "Skipping pydevelopability C++ build (BUILD_PYDEVELOPABILITY=$BUILD_PYDEVELOPABILITY)."
-        return 0
-    fi
+if [[ "$BUILD_PYDEVELOPABILITY" == "1" ]]; then
+    echo "Building pydevelopability..."
+    python -m pip install --upgrade ".[pydevelopability]"
+    PYDEV_ROOT="$PROJECT_ROOT/subprojects/pydevelopability"
+    BUILD_DIR="$PYDEV_ROOT/build_manual"
+    CC_ROOT="${CC_ROOT:-$PROJECT_ROOT/subprojects/concentrate_curvature}"
+    DEV_REPO="${DEV_REPO:-$CC_ROOT/DevelopabilityOfTriangleMeshes}"
+    LIBIGL_INCLUDE="${LIBIGL_INCLUDE:-$CC_ROOT/libigl-modern/include}"
+    PYBIND11_DIR="$(python -m pybind11 --cmakedir 2>/dev/null || true)"
 
-    local pydev_root
-    pydev_root="$PROJECT_ROOT/subprojects/pydevelopability"
-    local pydev_build
-    pydev_build="$pydev_root/build_manual"
-    local pybind11_dir
-    local cc_root
-    local dev_repo
-    local libigl_include
-    local cmake_bin
-    local make_bin
-
-    cc_root="${CC_ROOT:-$PROJECT_ROOT/subprojects/concentrate_curvature}"
-    dev_repo="${DEV_REPO:-$cc_root/DevelopabilityOfTriangleMeshes}"
-    libigl_include="${LIBIGL_INCLUDE:-$cc_root/libigl-modern/include}"
-
-    echo "Ensuring pydevelopability build tools are available in the venv..."
-    if ! "$VENV_PYTHON" -m pip install --upgrade pybind11 cmake; then
-        echo "Warning: could not install pybind11/cmake into $ENV_NAME."
+    if [[ ! -d "$PYBIND11_DIR" || ! -f "$DEV_REPO/include/developableflow/fixed_topology_core.cpp" || ! -f "$LIBIGL_INCLUDE/igl/is_border_vertex.h" ]]; then
         if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
+            echo "Error: missing pydevelopability build prerequisites."
             exit 1
         fi
-        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
-        return 0
+        echo "Skipping pydevelopability: missing prerequisites."
+    else
+        rm -rf "$BUILD_DIR"
+        mkdir -p "$BUILD_DIR"
+        (
+            cd "$BUILD_DIR"
+            cmake .. \
+                -DCMAKE_BUILD_TYPE=Release \
+                -Dpybind11_DIR="$PYBIND11_DIR" \
+                -DCC_ROOT="$CC_ROOT" \
+                -DDEV_REPO="$DEV_REPO" \
+                -DLIBIGL_INCLUDE="$LIBIGL_INCLUDE"
+            make -j"$(nproc)"
+            cp "$(find . -name '_devcore*.so' | head -n1)" "$PYDEV_ROOT/pydevelopability/"
+        )
+        python -m pip install --no-deps -e .
     fi
+fi
 
-    if ! cmake_bin="$(find_executable cmake)"; then
-        echo "Warning: cmake was not found, even after installing the Python cmake package."
-        echo "         This step is only needed for the optional pydevelopability C++ extension."
-        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
-            exit 1
-        fi
-        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
-        return 0
-    fi
-
-    if ! make_bin="$(find_executable make)"; then
-        echo "Warning: make was not found."
-        echo "         Install build-essential/make on the target Linux machine to build pydevelopability."
-        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
-            exit 1
-        fi
-        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
-        return 0
-    fi
-
-    pybind11_dir="$($VENV_PYTHON -m pybind11 --cmakedir 2>/dev/null || true)"
-    if [[ -z "$pybind11_dir" || ! -d "$pybind11_dir" ]]; then
-        echo "Warning: pybind11 CMake config directory was not found in this venv."
-        echo "         Install pybind11 into $ENV_NAME to build pydevelopability."
-        echo "         Example: $VENV_PYTHON -m pip install pybind11"
-        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
-            exit 1
-        fi
-        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
-        return 0
-    fi
-
-    if [[ ! -f "$dev_repo/include/developableflow/fixed_topology_core.cpp" ]]; then
-        echo "Warning: required developability source not found: $dev_repo/include/developableflow/fixed_topology_core.cpp"
-        echo "         Set DEV_REPO (or CC_ROOT) to your concentrate_curvature checkout."
-        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
-            exit 1
-        fi
-        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
-        return 0
-    fi
-
-    if [[ ! -f "$libigl_include/igl/is_border_vertex.h" ]]; then
-        echo "Warning: required libigl header not found: $libigl_include/igl/is_border_vertex.h"
-        echo "         Set LIBIGL_INCLUDE (or CC_ROOT) to your libigl include directory."
-        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
-            exit 1
-        fi
-        echo "Skipping pydevelopability C++ build (set PYDEVELOPABILITY_STRICT=1 to fail instead)."
-        return 0
-    fi
-
-    echo "Building pydevelopability C++ extension..."
-    # Reset stale CMake cache to avoid source-dir mismatch after moving/copying repos.
-    rm -rf "$pydev_build"
-    mkdir -p "$pydev_build"
-    pushd "$pydev_build" >/dev/null
-    if ! "$cmake_bin" .. \
-        -DCMAKE_BUILD_TYPE=Release \
-        -Dpybind11_DIR="$pybind11_dir" \
-        -DCC_ROOT="$cc_root" \
-        -DDEV_REPO="$dev_repo" \
-        -DLIBIGL_INCLUDE="$libigl_include"
-    then
-        popd >/dev/null
-        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
-            echo "Error: pydevelopability CMake configure failed in strict mode."
-            exit 1
-        fi
-        echo "Warning: pydevelopability CMake configure failed; continuing without C++ extension."
-        return 0
-    fi
-
-    if ! "$make_bin" -j"$(nproc)"; then
-        popd >/dev/null
-        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
-            echo "Error: pydevelopability build failed in strict mode."
-            exit 1
-        fi
-        echo "Warning: pydevelopability build failed; continuing without C++ extension."
-        return 0
-    fi
-
-    local built_so
-    built_so="$(find . -name '_devcore*.so' | head -n1 || true)"
-    if [[ -z "$built_so" ]]; then
-        popd >/dev/null
-        if [[ "$PYDEVELOPABILITY_STRICT" == "1" ]]; then
-            echo "Error: pydevelopability build finished but no _devcore*.so artifact was produced."
-            exit 1
-        fi
-        echo "Warning: pydevelopability did not produce _devcore*.so; continuing without C++ extension."
-        return 0
-    fi
-
-    cp "$built_so" "$pydev_root/pydevelopability/"
-    popd >/dev/null
-
-    "$VENV_PYTHON" -m pip install -e .
-}
-
-verify_torch_cuda_5090() {
-    "$VENV_PYTHON" - <<'PY'
+echo "Verifying PyTorch CUDA support..."
+python - <<'PY'
 import sys
 import torch
 
 print("torch", torch.__version__)
 print("torch.version.cuda", torch.version.cuda)
 
-if not torch.cuda.is_available() or torch.cuda.device_count() == 0:
-    print("Error: CUDA is not available to PyTorch.")
+if not torch.cuda.is_available():
+    print("Error: torch.cuda.is_available() is False")
     sys.exit(1)
 
 name = torch.cuda.get_device_name(0)
@@ -530,38 +390,33 @@ print("capability", cap)
 print("arch_list", arch_list)
 
 if "5090" not in name:
-    print(f"Error: expected RTX 5090, got '{name}'")
+    print("Error: expected RTX 5090")
     sys.exit(1)
-
 if cap != (12, 0):
     print(f"Error: expected capability (12, 0), got {cap}")
     sys.exit(1)
-
 if "sm_120" not in arch_list:
-    print("Error: installed torch build does not include sm_120 kernels.")
+    print("Error: installed torch build does not include sm_120 kernels")
     sys.exit(1)
 
 x = torch.tensor([1.0], device="cuda")
-y = x + 1.0
-print("CUDA smoke test OK:", y.item())
+print("CUDA smoke test OK:", (x + 1).item())
 PY
-}
 
-echo "Starting RTX 5090-only setup..."
-require_cmd awk
-require_cmd sed
-install_python_build_deps_ubuntu
-check_python
-check_gpu_5090
-detect_cuda_home
-create_or_reuse_venv
-install_dependencies
-configure_optional_steps
-install_kaolin
-install_diso
-build_pydevelopability_cpp
-verify_torch_cuda_5090
+cat <<EOF
 
-echo ""
-echo "Setup complete (RTX 5090 validated)."
-echo "Activate with: source $ENV_NAME/bin/activate"
+Setup complete.
+Activate with: source $ENV_NAME/bin/activate
+
+Installed project extras: ${PROJECT_EXTRAS:-<none>}
+
+Optional extras from pyproject.toml can be installed later with:
+  $VENV_PYTHON -m pip install '.[wp1_cfd_ai]'
+  $VENV_PYTHON -m pip install '.[wp2_assembler]'
+  $VENV_PYTHON -m pip install '.[wp3_solar_estimator]'
+  $VENV_PYTHON -m pip install '.[wp4_aeroshell_optimizer]'
+  $VENV_PYTHON -m pip install '.[wp7_gui]'
+  $VENV_PYTHON -m pip install '.[testing]'
+  $VENV_PYTHON -m pip install '.[pydevelopability]'
+  $VENV_PYTHON -m pip install '.[all]'
+EOF
