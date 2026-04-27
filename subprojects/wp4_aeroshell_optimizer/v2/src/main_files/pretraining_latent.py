@@ -27,7 +27,6 @@ from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bou
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
     _compute_eikonal_latent,
     _extract_mesh,
-    _make_mesh_extractor_config,
     _sample_points_for_shape,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
@@ -39,7 +38,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.core impo
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
-from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor
 
 
 def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Tensor, float]:
@@ -259,7 +257,7 @@ def _load_or_build_surface_cache(
                     "date": datetime.now().isoformat(),
                 },
             },
-            cache_path,  # type: ignore[arg-type]  # cache_path is always defined when cache_dir is not None
+            cache_path,
         )
 
     return surf_pts, surf_gt
@@ -668,8 +666,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         mean_dist = sum(pairwise) / len(pairwise)
         print(f"[latent_pretrain] Z pairwise distances: min={min(pairwise):.3f}, mean={mean_dist:.3f}, max={max(pairwise):.3f}")
 
-    # --- Optional per-slot mesh extraction ---
-    # Uses outer_prism bounds (single source of truth, not a symmetric cube).
+    # --- Final Mesh Extraction ---
     pretrained_shapes_dir = run_dir / "pretrained_shapes"
     pretrained_shapes_dir.mkdir(parents=True, exist_ok=True)
     for slot_idx in range(num_shapes):
@@ -686,34 +683,6 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             )
 
     return model, Z
-
-
-def _extract_current_mesh_arrays(
-    model: SupportsLatentConcat,
-    z_slot: Tensor,
-    mesh_res: int,
-    outer_prism: dict[str, Any],
-    device: str,
-) -> tuple[np.ndarray, np.ndarray] | None:
-    """Extract the current SDF mesh for a single latent slot as numpy arrays.
-
-    Sets the model's active latent vector to ``z_slot``, runs marching cubes via
-    the unified mesh extractor, and returns the mesh.  The model is set to eval
-    mode internally; the caller is responsible for restoring train mode afterwards.
-
-    Returns:
-        ``(verts_np, faces_np)`` as float32 / int64 numpy arrays, or ``None``
-        if mesh extraction fails.
-    """
-    try:
-        model.set_latent_vector(z_slot.to(device))
-        model.eval()
-        cfg = _make_mesh_extractor_config(device, mesh_res, outer_prism)
-        verts, faces = MeshSDFExtractor(config=cfg).extract_mesh(model)
-        return verts.detach().cpu().numpy().astype("float32"), faces.detach().cpu().numpy().astype("int64")
-    except Exception as exc:
-        print(f"[latent_pretrain] WARNING: per-epoch mesh extraction failed: {exc}")
-        return None
 
 
 def _write_epoch_vis_snapshot(
@@ -758,7 +727,9 @@ def _write_epoch_vis_snapshot(
         eikonal_pts_i: Tensor | None = eikonal_pts_per_slot[slot_idx] if show_eikonal_pts else None
 
         # Extract current model surface (red) as numpy arrays
-        mesh_arrays = _extract_current_mesh_arrays(model, Z[slot_idx], mesh_res, outer_prism, device)
+        model.set_latent_vector(Z[slot_idx].to(device))
+        model.eval()
+        mesh_arrays = _extract_mesh(model, None, device, mesh_res, outer_prism, return_mesh=True)
         model_verts_np: np.ndarray | None = mesh_arrays[0] if mesh_arrays is not None else None
 
         # Determine whether to show the target as a proper triangle mesh (green geometry)

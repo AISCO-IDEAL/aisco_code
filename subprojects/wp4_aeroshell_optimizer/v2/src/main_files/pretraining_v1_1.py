@@ -416,34 +416,58 @@ def _make_mesh_extractor_config(device: str, mesh_res: int, outer_prism: dict[st
 
 def _extract_mesh(
     model: SupportsModelContract,
-    pth_path: Path | str,
+    pth_path: Path | str | None,
     device: str,
     mesh_res: int,
     outer_prism: dict[str, Any],
-) -> None:
-    """Extract a mesh from a trained model and save as PLY alongside the checkpoint.
+    *,
+    return_mesh: bool = False,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Extract a mesh from a trained model.
+
+    When ``return_mesh=False`` (default), saves the mesh as a PLY file at
+    ``pth_path.with_suffix('.ply')`` and returns ``None``.  ``pth_path`` must
+    not be ``None`` in this mode.
+
+    When ``return_mesh=True``, returns ``(verts_np, faces_np)`` as float32 /
+    int64 numpy arrays and does **not** write to disk.  Exceptions are caught
+    and ``None`` is returned on failure.  ``pth_path`` is ignored in this mode.
 
     Args:
         model: Trained SDF model implementing SupportsModelContract.
-        pth_path: Path to the output PLY file.
+        pth_path: Path used to derive the output ``.ply`` file.  Ignored when
+            ``return_mesh=True``; must not be ``None`` when ``return_mesh=False``.
         device: Compute device string.
         mesh_res: Marching-cubes grid resolution.
         outer_prism: Dict from get_outer_prism_bounds_mm() with keys 'x', 'y', 'z_mesh'.
+        return_mesh: When ``True``, return numpy arrays instead of saving to disk.
+
+    Returns:
+        ``None`` when ``return_mesh=False`` (file saved to disk).
+        ``(verts_np, faces_np)`` or ``None`` when ``return_mesh=True``.
     """
-    pth_path = Path(pth_path)
-    cfg = _make_mesh_extractor_config(device, mesh_res, outer_prism)
-    x_range = outer_prism["x"][1] - outer_prism["x"][0]
-    y_range = outer_prism["y"][1] - outer_prism["y"][0]
-    z_range = outer_prism["z_mesh"][1] - outer_prism["z_mesh"][0]
-    print(f"[extract_mesh] Extracting mesh: res={mesh_res}, bounds=X({x_range:.0f})Y({y_range:.0f})Z({z_range:.0f})mm, device={device} ...")
-    verts, faces = MeshSDFExtractor(config=cfg).extract_mesh(model)
-    ply_path = pth_path.with_suffix(".ply")
-    trimesh.Trimesh(
-        vertices=verts.detach().cpu().numpy(),
-        faces=faces.detach().cpu().numpy(),
-        process=False,
-    ).export(ply_path)
-    print(f"[extract_mesh] Saved mesh to {ply_path}")
+    try:
+        cfg = _make_mesh_extractor_config(device, mesh_res, outer_prism)
+        if not return_mesh:
+            x_range = outer_prism["x"][1] - outer_prism["x"][0]
+            y_range = outer_prism["y"][1] - outer_prism["y"][0]
+            z_range = outer_prism["z_mesh"][1] - outer_prism["z_mesh"][0]
+            print(f"[extract_mesh] Extracting mesh: res={mesh_res}, bounds=X({x_range:.0f})Y({y_range:.0f})Z({z_range:.0f})mm, device={device} ...")
+        verts, faces = MeshSDFExtractor(config=cfg).extract_mesh(model)
+        verts_np = verts.detach().cpu().numpy().astype("float32")
+        faces_np = faces.detach().cpu().numpy().astype("int64")
+        if return_mesh:
+            return verts_np, faces_np
+        assert pth_path is not None, "_extract_mesh: pth_path must not be None when return_mesh=False"
+        ply_path = Path(pth_path).with_suffix(".ply")
+        trimesh.Trimesh(vertices=verts_np, faces=faces_np, process=False).export(ply_path)
+        print(f"[extract_mesh] Saved mesh to {ply_path}")
+    except Exception as exc:
+        if return_mesh:
+            print(f"[extract_mesh] WARNING: mesh extraction failed: {exc}")
+            return None
+        raise
+    return None
 
 
 # 2026 03 05, eschaerer:
