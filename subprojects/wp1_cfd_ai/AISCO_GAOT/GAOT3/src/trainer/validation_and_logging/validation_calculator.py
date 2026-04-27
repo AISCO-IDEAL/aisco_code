@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-import logging, os, tempfile
+import logging
+import os
+import tempfile
 
 import matplotlib.pyplot as plt
 import numpy as np

@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MAIN_FILE = PROJECT_ROOT / "main.py"
 TRAINER_DIR = PROJECT_ROOT / "src" / "trainer"
