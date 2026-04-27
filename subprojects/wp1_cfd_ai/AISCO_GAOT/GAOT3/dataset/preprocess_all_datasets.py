@@ -58,8 +58,12 @@ def main() -> None:
     parser.add_argument("--drivaer-workers", type=int, default=2)
     parser.add_argument("--ahmed-workers", type=int, default=2)
     parser.add_argument("--blended-wing-workers", type=int, default=8)
-    parser.add_argument("--target-reduction", type=float, default=0.0,
-                        help="Mesh decimation target (0.0-1.0). 0.6 = keep 40%% of vertices (drivaer/ahmed only).")
+    parser.add_argument(
+        "--target-reduction",
+        type=float,
+        default=0.0,
+        help="Mesh decimation target (0.0-1.0). 0.6 = keep 40%% of vertices (drivaer/ahmed only).",
+    )
     args = parser.parse_args()
 
     datasets = ["euler", "drivaer", "ahmed", "blended_wing"] if "all" in args.datasets else args.datasets

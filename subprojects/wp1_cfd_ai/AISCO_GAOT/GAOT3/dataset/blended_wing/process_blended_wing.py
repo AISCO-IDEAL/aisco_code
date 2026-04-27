@@ -75,7 +75,7 @@ def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
             return None
 
         faces = None
-        if hasattr(mesh, 'faces') and mesh.faces is not None and mesh.faces.size > 0:
+        if hasattr(mesh, "faces") and mesh.faces is not None and mesh.faces.size > 0:
             try:
                 faces_raw = mesh.faces.reshape(-1, 4)
                 faces = torch.tensor(faces_raw[:, 1:], dtype=torch.long).t().contiguous()
@@ -87,7 +87,7 @@ def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
         mesh = mesh.compute_normals(cell_normals=False, point_normals=True, auto_orient_normals=True)
 
         pos = torch.tensor(mesh.points, dtype=torch.float32)  # (N,3)
-        c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32) # (N,3)
+        c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32)  # (N,3)
         cp = torch.tensor(mesh.point_data["cp"], dtype=torch.float32).unsqueeze(1)  # (N,1)
 
     except Exception as e:
@@ -111,6 +111,7 @@ def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
 
     torch.save(data, os.path.join(output_dir, f"{case_name}.pt"))
     return case_name
+
 
 def _process_chunk(chunk, case_lookup, output_dir, num_workers):
     """

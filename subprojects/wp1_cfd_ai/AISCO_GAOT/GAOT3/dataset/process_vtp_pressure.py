@@ -231,7 +231,7 @@ def process_single_vtp(run_id, dataset_cfg, target_reduction=0.0):
     # Sichereres Speichern für den Euler-Cluster
     try:
         torch.save(data, final_path)
-        with open(final_path, 'a') as f:
+        with open(final_path, "a") as f:
             os.fsync(f.fileno())
 
         # Sanity Check, um korrupte ZIPs zu verhindern
@@ -335,8 +335,12 @@ def main():
     parser.add_argument("--run_ids", nargs="+", type=int, default=None)
     parser.add_argument("--max_runs", type=int, default=None)
     parser.add_argument("--workers", type=int, default=NUM_WORKERS)
-    parser.add_argument("--target-reduction", type=float, default=0.0,
-                        help="Mesh decimation target (0.0-1.0, default 0.0 = no decimation). 0.6 = keep 40%% of vertices.")
+    parser.add_argument(
+        "--target-reduction",
+        type=float,
+        default=0.0,
+        help="Mesh decimation target (0.0-1.0, default 0.0 = no decimation). 0.6 = keep 40%% of vertices.",
+    )
     args = parser.parse_args()
 
     process_all(
