@@ -2,6 +2,18 @@
 
 All notable changes to AISCO_code are documented here.
 
+## [0.6.1] — 2026-04-27 (Plan 021)
+
+### Added
+
+- **Latent gradient telemetry** (`pretraining_latent.py`) — Every `print_interval` epochs the
+  training loop now probes `‖∂L/∂z_input‖` and `‖∂L/∂xyz_input‖` using
+  `_compute_input_grad_norms`. The ratio `z_grad / xyz_grad` is printed to the terminal
+  (appended to the existing epoch line as `| z_grad=... | xyz_grad=... | ratio=...`) and
+  logged to W&B as `latent_grad_norm`, `spatial_grad_norm`, `grad_norm_ratio`. A
+  `[WARN: ratio<0.01]` suffix is printed when the latent gradient signal is below 1% of
+  the spatial gradient — indicating potential latent collapse.
+
 ## [0.6.0] — 2026-04-27 (Plans 013 + 018)
 
 ### Fixed

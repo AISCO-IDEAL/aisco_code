@@ -854,3 +854,106 @@ class TestClearMeshCacheOnExtraction:
             f"got {mock_clear.call_count}. "
             "Add clear_mesh_cache() inside the post-training export loop."
         )
+
+
+# ---------------------------------------------------------------------------
+# Plan 021 — _compute_input_grad_norms (TDD red phase)
+# ---------------------------------------------------------------------------
+
+
+class TestComputeInputGradNorms:
+    """Tests for _compute_input_grad_norms diagnostic helper (Plan 021).
+
+    These tests are written BEFORE the implementation (TDD red phase).
+    They will fail with AttributeError until _compute_input_grad_norms exists.
+    """
+
+    def test_importable(self) -> None:
+        """_compute_input_grad_norms must be importable from pretraining_latent."""
+        mod = importlib.import_module(PRETRAIN_LATENT)
+        assert hasattr(mod, "_compute_input_grad_norms"), (
+            "_compute_input_grad_norms not found in pretraining_latent module. "
+            "Add the helper function as specified in Plan 021 M1."
+        )
+
+    def test_returns_positive_norms_for_sensitive_model(self) -> None:
+        """Both z_grad_norm and xyz_grad_norm should be > 0 for a standard ConcatWIREV2."""
+        _compute_input_grad_norms = _import(PRETRAIN_LATENT, "_compute_input_grad_norms")
+        model = _make_concat_wire_v2()
+        model.eval()
+        n = 8
+        pts = torch.randn(n, 3) * 500.0  # mm-scale spatial coords
+        z_dim = model.get_model_info_dict()["z_dim"]
+        z = torch.randn(n, z_dim)
+        gt_sdf = torch.zeros(n)  # zero GT → loss = mean((pred/1000)^2)
+
+        z_norm, xyz_norm, z_warn = _compute_input_grad_norms(model, pts, z, gt_sdf, "cpu")
+
+        assert not z_warn, "z gradient should not be None — z is concatenated into model input"
+        assert z_norm > 0.0, f"z_grad_norm should be positive, got {z_norm}"
+        assert xyz_norm > 0.0, f"xyz_grad_norm should be positive, got {xyz_norm}"
+
+    def test_ratio_is_finite_and_positive(self) -> None:
+        """grad_norm_ratio z_norm / (xyz_norm + eps) should be finite and positive."""
+        _compute_input_grad_norms = _import(PRETRAIN_LATENT, "_compute_input_grad_norms")
+        model = _make_concat_wire_v2()
+        model.eval()
+        n = 8
+        pts = torch.randn(n, 3) * 500.0
+        z_dim = model.get_model_info_dict()["z_dim"]
+        z = torch.randn(n, z_dim)
+        gt_sdf = torch.zeros(n)
+
+        z_norm, xyz_norm, _ = _compute_input_grad_norms(model, pts, z, gt_sdf, "cpu")
+        ratio = z_norm / (xyz_norm + 1e-8)
+
+        assert math.isfinite(ratio), f"grad_norm_ratio should be finite, got {ratio}"
+        assert ratio > 0.0, f"grad_norm_ratio should be positive, got {ratio}"
+
+    def test_model_params_grad_not_set(self) -> None:
+        """Probe must not accumulate .grad on model parameters (no optimizer pollution)."""
+        _compute_input_grad_norms = _import(PRETRAIN_LATENT, "_compute_input_grad_norms")
+        model = _make_concat_wire_v2()
+        model.eval()
+        # Ensure all .grad are None before the probe
+        for p in model.parameters():
+            p.grad = None
+
+        n = 8
+        pts = torch.randn(n, 3) * 500.0
+        z_dim = model.get_model_info_dict()["z_dim"]
+        z = torch.randn(n, z_dim)
+        gt_sdf = torch.zeros(n)
+
+        _compute_input_grad_norms(model, pts, z, gt_sdf, "cpu")
+
+        # After probe, model parameter grads must still be None
+        param_grads = [p.grad for p in model.parameters() if p.grad is not None]
+        assert param_grads == [], (
+            f"Probe must not set .grad on model parameters. "
+            f"Found {len(param_grads)} parameters with non-None grad after probe."
+        )
+
+    def test_integration_print_contains_z_grad(self, tmp_path: Path) -> None:
+        """Integration: epoch print line must contain 'z_grad=' when print_interval=1."""
+        pretraining_latent = _import(PRETRAIN_LATENT, "pretraining_latent")
+        model = _make_concat_wire_v2()
+        config = _make_latent_pretrain_config(str(tmp_path / "ckpt.pth"))
+        config["training_loop"]["epochs"] = 2
+        config["training_loop"]["print_interval"] = 1
+
+        written: list[str] = []
+        mock_extract = MagicMock(return_value=None)
+
+        with (
+            patch(f"{PRETRAIN_LATENT}._extract_mesh", mock_extract),
+            patch("tqdm.tqdm.write", side_effect=written.append),
+        ):
+            pretraining_latent(model, config, "cpu")
+
+        epoch_lines = [ln for ln in written if "[latent_pretrain]" in ln and "Epoch" in ln]
+        assert epoch_lines, f"No epoch print lines captured. All writes: {written}"
+        assert any("z_grad=" in ln for ln in epoch_lines), (
+            "Expected 'z_grad=' in epoch print output. Epoch lines:\n"
+            + "\n".join(epoch_lines)
+        )

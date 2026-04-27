@@ -315,6 +315,56 @@ def _resolve_checkpoint_path(config: dict[str, Any], model: SupportsLatentConcat
     return base.parent / config_hash / f"{base.stem}_{config_hash}{base.suffix}"
 
 
+def _compute_input_grad_norms(
+    model: SupportsLatentConcat,
+    pts: Tensor,
+    z: Tensor,
+    gt_sdf: Tensor,
+    device: str,  # noqa: ARG001  # kept for API consistency; tensors must already be on the correct device
+) -> tuple[float, float, bool]:
+    """Probe ‖∂L/∂z_input‖ and ‖∂L/∂xyz_input‖ on a small representative batch.
+
+    Uses ``torch.autograd.grad`` (not ``.backward()``) so that model parameter
+    ``.grad`` attributes are never touched — no optimizer-state pollution.
+
+    The scalar probe loss is MSE(pred/1000, gt_sdf/1000) matching the training
+    loss normalisation.  ``gt_sdf`` is detached; only ``pts`` and ``z`` carry
+    the computation graph.
+
+    Args:
+        model: ConcatWIREV2 (or any SupportsLatentConcat).  Caller manages
+            train/eval mode; this function does not switch mode.
+        pts: (M, 3) surface query points in mm.  Will be detached internally.
+        z: (M, z_dim) latent vectors aligned with pts.  Will be detached.
+        gt_sdf: (M,) ground-truth SDF in mm.  Detached; used only for loss.
+        device: PyTorch device string (unused; reserved for API symmetry).
+
+    Returns:
+        ``(z_grad_norm, xyz_grad_norm, z_detached_warn)`` where:
+
+        - ``z_grad_norm``: ‖∂L/∂z_input‖ (0.0 if z not in graph).
+        - ``xyz_grad_norm``: ‖∂L/∂xyz_input‖ (0.0 if xyz not in graph).
+        - ``z_detached_warn``: True when z gradient is None (z not in graph).
+    """
+    pts_probe = pts.detach().requires_grad_(True)
+    z_probe = z.detach().requires_grad_(True)
+
+    pred = model(pts_probe, z=z_probe).squeeze()
+    loss = ((pred / 1000.0 - gt_sdf.detach() / 1000.0) ** 2).mean()
+
+    grads = torch.autograd.grad(
+        outputs=loss,
+        inputs=[z_probe, pts_probe],
+        allow_unused=True,
+    )
+    z_grad, pts_grad = grads
+
+    z_detached = z_grad is None
+    z_norm = 0.0 if z_detached else float(z_grad.norm().item())
+    xyz_norm = float(pts_grad.norm().item()) if pts_grad is not None else 0.0
+    return z_norm, xyz_norm, z_detached
+
+
 def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsically sequential; decomposition would obscure control flow
     model: SupportsLatentConcat,
     config: dict[str, Any],
@@ -637,10 +687,30 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
 
         if epoch % print_interval == 0:
             lr_now = scheduler.get_last_lr()[0]
+
+            # --- Gradient probe: ‖∂L/∂z_input‖ vs ‖∂L/∂xyz_input‖ on slot-0 surface pts ---
+            model.eval()
+            surf_pts_0, surf_gt_0 = cached_surface[0]
+            z0_expanded = Z[0].unsqueeze(0).expand(surf_pts_0.size(0), -1)
+            z_grad_norm, xyz_grad_norm, z_warn = _compute_input_grad_norms(
+                model, surf_pts_0, z0_expanded, surf_gt_0, device
+            )
+            model.train()
+
+            grad_ratio = z_grad_norm / (xyz_grad_norm + 1e-8)
+            if z_warn:
+                warn_suffix = " [WARN: z not in graph]"
+            elif grad_ratio < 0.01:
+                warn_suffix = " [WARN: ratio<0.01]"
+            else:
+                warn_suffix = ""
+
             tqdm.write(
                 f"[latent_pretrain] Epoch {epoch:5d} | total={total_loss.item():.6f} "
                 f"| slot_losses={[f'{v:.4f}' for v in slot_losses]} "
                 f"| eikonal={eikonal.item():.6f} | lr={lr_now:.2e}"
+                f" | z_grad={z_grad_norm:.2e} | xyz_grad={xyz_grad_norm:.2e}"
+                f" | ratio={grad_ratio:.2e}{warn_suffix}"
             )
             if use_wandb:
                 import wandb  # noqa: PLC0415
@@ -650,6 +720,9 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                         "total_loss": total_loss.item(),
                         "eikonal": eikonal.item(),
                         "lr": lr_now,
+                        "latent_grad_norm": z_grad_norm,
+                        "spatial_grad_norm": xyz_grad_norm,
+                        "grad_norm_ratio": grad_ratio,
                         **{f"slot_{i}_loss": v for i, v in enumerate(slot_losses)},
                     },
                     step=epoch,
