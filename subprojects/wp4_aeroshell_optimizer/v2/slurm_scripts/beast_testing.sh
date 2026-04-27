@@ -8,50 +8,44 @@
 #SBATCH --gpus=1
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 ## ---------------------------------------------------------------------------
-## How to run on BEAST (Task Spooler queue)
+## How to run on AISCO-Beast (shared Task Spooler GPU queue)
 ##
-##   Submit (queued, one heavy job at a time, Slack notify on finish):
-##     tsp -L beast_testing bash ~/Documents/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts/beast_testing.sh ETHkuerzel
+##   Submit (queued, one heavy job at a time, Slack DM on finish):
+##     beast-submit <slack-user> bash ~/path/to/beast_testing.sh
 ##
-##   Run directly (no queue):
-##     bash ~/Documents/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts/beast_testing.sh ETHkuerzel
+##   With a label:
+##     beast-submit -L wp4_test eschaerer bash ~/path/to/beast_testing.sh
 ##
-##   Inspect queue (works WHILE a job is running, from any ssh session):
-##                                tsp                 # list queued / running / finished
-##                                tsp -i <ID>         # info on one job
-##                                tail -f $(tsp -o <ID>)   # follow stdout file of a job
-##                                tsp -c              # tail the *currently running* job (blocks; Ctrl-C to detach)
-##                                tsp -t <ID>         # tail finished job's output
-##                                tsp -r <ID>         # remove / kill
+##   Inspect (works while a job is running, from any ssh session):
+##     tsp                       # list queued / running / finished
+##     tsp -i <ID>               # info on one job
+##     tail -f $(tsp -o <ID>)    # follow stdout file of a job
+##     tsp -t <ID>               # tail finished job's output
+##     tsp -r <ID>               # remove / kill a job
 ##
-##   IMPORTANT: submit jobs with `tsp ... bash script.sh ...`, NOT `bash script.sh`.
-##   Plain `bash` blocks your terminal and bypasses the queue, which is why it
-##   may *look* like you can't view the queue while the job is active.
+##   Run directly (bypasses queue, blocks your shell):
+##     bash ~/path/to/beast_testing.sh [slack-user]
 ##
-## Configurable log directory (in addition to tsp's own /tmp/ts-out.XXXX file):
-##   export BEAST_LOG_DIR=/path/to/dir   # before submitting; default: $HOME/beast_logs
-##   The script will tee its full stdout/stderr into:
+## Configurable persistent log directory:
+##   export BEAST_LOG_DIR=/path/to/dir   # default: $HOME/beast_logs
+##   Full stdout/stderr is teed to:
 ##       $BEAST_LOG_DIR/<jobname>_<UTC-timestamp>_<pid>.log
+##   plus $BEAST_LOG_DIR/latest.log -> newest run.
 ##
-## Slack notifications (system-wide hook on BEAST):
-##   - The tsp daemon must have TS_ONFINISH=~/slack_notify.sh set when it
-##     started. If you exported it after the daemon was already running, the
-##     hook is NOT picked up. Fix:
-##         echo 'export TS_ONFINISH=$HOME/slack_notify.sh' >> ~/.bashrc
-##         tsp -K          # kill the daemon; next `tsp` call respawns it
-##   - The first positional arg of this script (ETHkuerzel) is what the
-##     notifier maps to your Slack ID via /etc/AISCO-Beast_mapping.conf.
-##   - Smoke-test the notifier directly:
-##         ~/slack_notify.sh ETHkuerzel  test-message
+## Slack recipient resolution order inside the script:
+##   1. AISCO_NOTIFY_USERNAME env var (set automatically by beast-submit)
+##   2. $1 positional arg
+##   3. $USER
 ## ---------------------------------------------------------------------------
 
 set -euo pipefail
 
 umask 0002
 
-# Optional ETH username arg (used by the BEAST tsp Slack notifier to DM the right user).
-ETH_USER="${1:-${USER:-unknown}}"
-export AISCO_ETH_USER="$ETH_USER"   # also expose via env so TS_ONFINISH hooks can read it
+# Slack recipient: env var (set by beast-submit) > $1 > $USER
+ETH_USER="${AISCO_NOTIFY_USERNAME:-${1:-${USER:-unknown}}}"
+export AISCO_NOTIFY_USERNAME="$ETH_USER"
+export AISCO_SUBMITTER="${AISCO_SUBMITTER:-$(id -un)}"
 
 # ---------------------------------------------------------------------------
 # Tee all output to a configurable log file (in addition to tsp's /tmp/ts-out.*)
@@ -114,7 +108,7 @@ else
     VENV_DIR="$PROJECT_ROOT/aisco_env"
     if [ ! -x "$VENV_DIR/bin/python" ]; then
         ts "ERROR: required local env not found: $VENV_DIR"
-        ts "Hint: run ./setup_beast.sh or export AISCO_VENV_DIR to another valid venv"
+        ts "Hint: run ./setup_beast.sh or export AISCO_VENV_DIR, for example: /home/aisco/Documents/AISCO_code/aisco_env"
         exit 1
     fi
     ts "Checkpoint: using default local env: $VENV_DIR"
