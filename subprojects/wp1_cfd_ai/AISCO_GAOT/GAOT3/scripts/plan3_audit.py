@@ -72,7 +72,7 @@ def _has_self_config_assignment(class_node: ast.ClassDef) -> bool:
     return False
 
 
-def collect_audit() -> dict[str, Any]:
+def collect_audit() -> dict[str, Any]:  # noqa: PLR0912
     trainer_files = sorted(path for path in TRAINER_DIR.glob("*.py") if path.name != "__init__.py")
     file_rows = []
     failures = []
@@ -99,7 +99,7 @@ def collect_audit() -> dict[str, Any]:
             failures.append(f"{path.name} is under 100 lines without a documented exception")
         for class_node in classes:
             if not _has_self_config_assignment(class_node):
-                failures.append(f"{path.name}:{class_node.name} does not assign self.config in __init__")
+                failures.append(f"{path.name}:{class_node.name} does not assign self.config in __init__")  # noqa: PERF401
 
     main_text = MAIN_FILE.read_text(encoding="utf-8")
     if not _module_docstring(MAIN_FILE):
@@ -114,7 +114,7 @@ def collect_audit() -> dict[str, Any]:
     loss_text = (TRAINER_DIR / "loss_fn.py").read_text(encoding="utf-8")
     for helper_name in ("build_loss_fn", "RelativeL2Loss", "L2Loss"):
         if f"def {helper_name}" in loss_text:
-            failures.append(f"loss_fn.py still exposes module helper {helper_name}")
+            failures.append(f"loss_fn.py still exposes module helper {helper_name}")  # noqa: PERF401
 
     return {
         "project_root": PROJECT_ROOT.as_posix(),

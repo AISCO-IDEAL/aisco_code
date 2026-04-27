@@ -166,7 +166,7 @@ def _get_decoder_strategy(
         raise ValueError(f"Unknown decoder strategy: {neighbor_strategy}")
 
 
-def apply_neighbor_sampling(
+def apply_neighbor_sampling(  # noqa: PLR0911
     edge_index: torch.Tensor,
     num_query_nodes: int,
     device: torch.device,
@@ -236,7 +236,7 @@ def apply_neighbor_sampling(
 # MAGNOEncoder
 ############
 class MAGNOEncoder(nn.Module):
-    def __init__(self, in_channels, magno_config: dict):
+    def __init__(self, in_channels, magno_config: dict):  # noqa: PLR0915
         super().__init__()
         self.magno_config = magno_config
 
