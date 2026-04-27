@@ -38,6 +38,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.core impo
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
+from subprojects.wp5.unified_mesh_extraction import clear_mesh_cache
 
 
 def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Tensor, float]:
@@ -673,6 +674,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         slot_name = shapes[slot_idx].get("name", str(slot_idx))
         slot_mesh_path = pretrained_shapes_dir / f"slot{slot_idx:02d}_{slot_name}.ply"
         try:
+            clear_mesh_cache()  # BUG-001: evict stale cache entry before loading the next latent
             model.set_latent_vector(Z[slot_idx].to(device))
             model.eval()
             _extract_mesh(model, slot_mesh_path, device, vis_mesh_res, outer_prism)
@@ -727,6 +729,7 @@ def _write_epoch_vis_snapshot(
         eikonal_pts_i: Tensor | None = eikonal_pts_per_slot[slot_idx] if show_eikonal_pts else None
 
         # Extract current model surface (red) as numpy arrays
+        clear_mesh_cache()  # BUG-001: evict stale cache entry before loading the next latent
         model.set_latent_vector(Z[slot_idx].to(device))
         model.eval()
         mesh_arrays = _extract_mesh(model, None, device, mesh_res, outer_prism, return_mesh=True)

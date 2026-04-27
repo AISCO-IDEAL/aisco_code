@@ -2,6 +2,42 @@
 
 All notable changes to AISCO_code are documented here.
 
+## [0.6.0] — 2026-04-27 (Plans 013 + 018)
+
+### Fixed
+
+- **BUG-001** (`pretraining_latent.py`) — All post-training and per-epoch mesh PLYs were
+  byte-identical across slots because `MeshSDFExtractor`’s global cache did not include
+  the active latent vector in its key. Fix: `clear_mesh_cache()` is now called immediately
+  before each per-slot `_extract_mesh` call (both in the post-training export loop and in
+  `_write_epoch_vis_snapshot`).
+
+- **QA-001** (`pretraining_latent_config.yaml`) — `sdf_cache_dir` was hardcoded to a
+  cluster-specific absolute path, causing `FileNotFoundError` for non-Euler developers.
+  Default is now `null` (cache disabled). Developers opt in by setting an absolute path.
+
+### Changed
+
+- **`pretraining_latent_config.yaml`** — `z_radius` default changed from `1.0` to `2.0`.
+  Spatial inputs enter the model as mm / 1000 ≈ [−5, 5]; `z_radius = 2.0` places latent codes
+  at a comparable magnitude to the dominant spatial axis, improving latent discriminability
+  from initialization.
+  **⚠ Checkpoint break**: this changes `_compute_pretrain_config_hash` → different
+  checkpoint directory. Any existing checkpoint under `z_radius: 1.0` will not be found
+  by fast-resume. Either keep `z_radius: 1.0` explicitly or re-run pretraining.
+
+### Added (Plan 013 — carried into this release)
+
+- **Watertightness guard** (`_load_ply_tensors`) — raises `ValueError` with an actionable
+  message when a PLY mesh is not watertight, preventing silent downstream failures.
+
+- **Dual-band near-surface sampling** — `near_surface_tight_sigma` /
+  `near_surface_wide_sigma` parameters in `training_loop` config for DeepSDF-style
+  two-Gaussian surface sampling.
+
+- **Precomputed SDF cache** (`_load_or_build_surface_cache`) — on-disk SHA256-keyed
+  `.pt` cache for surface sample points; eliminates redundant BVH queries across runs.
+
 ## [0.5.1] — Plan 010: PLY Fix and Outer-Prism Domain Unification
 
 ### Fixed

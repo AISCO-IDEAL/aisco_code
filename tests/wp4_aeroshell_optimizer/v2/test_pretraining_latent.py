@@ -797,3 +797,60 @@ class TestSDFCache:
 
         assert pts_meta.device.type == "meta"
         assert gt_meta.device.type == "meta"
+
+
+# ---------------------------------------------------------------------------
+# BUG-001 — clear_mesh_cache inserted before per-slot extraction (Plan 018 M1)
+# ---------------------------------------------------------------------------
+
+
+class TestClearMeshCacheOnExtraction:
+    """Tests that clear_mesh_cache() is called before each per-slot _extract_mesh call.
+
+    BUG-001 root cause: the global _MESH_CACHE in cache.py is keyed without the
+    active latent vector, so all slots hit the same cache entry and produce
+    identical PLY files.  The fix inserts clear_mesh_cache() before each call.
+
+    These tests verify the call-order contract without running full pretraining.
+    """
+
+    def test_clear_mesh_cache_importable_from_pretraining_latent_module(self) -> None:
+        """clear_mesh_cache must be importable from within pretraining_latent's namespace.
+
+        This test verifies that the import was added to pretraining_latent.py.
+        It will FAIL until the import is present (TDD red phase).
+        """
+        mod = importlib.import_module(PRETRAIN_LATENT)
+        assert hasattr(mod, "clear_mesh_cache"), (
+            "clear_mesh_cache not found in pretraining_latent module namespace. "
+            "Add: from subprojects.wp5.unified_mesh_extraction import clear_mesh_cache"
+        )
+
+    def test_post_training_export_clears_cache_per_slot(self, tmp_path: Path) -> None:
+        """clear_mesh_cache() must be called once per slot in the post-training export loop.
+
+        Strategy: patch clear_mesh_cache and _extract_mesh inside pretraining_latent,
+        run pretraining (3 epochs, 2 slots), then assert clear_mesh_cache was called
+        at least as many times as there are slots in the export loop.
+        """
+        pretraining_latent = _import(PRETRAIN_LATENT, "pretraining_latent")
+        model = _make_concat_wire_v2()
+        config = _make_latent_pretrain_config(str(tmp_path / "ckpt.pth"))
+
+        mock_clear = MagicMock()
+        # _extract_mesh must not actually write PLY files; stub out the save path
+        mock_extract = MagicMock(return_value=None)
+
+        with (
+            patch(f"{PRETRAIN_LATENT}.clear_mesh_cache", mock_clear),
+            patch(f"{PRETRAIN_LATENT}._extract_mesh", mock_extract),
+        ):
+            pretraining_latent(model, config, "cpu")
+
+        num_slots = len(config["latent_population"])  # 2
+        # At least one clear per slot in the export loop
+        assert mock_clear.call_count >= num_slots, (
+            f"Expected clear_mesh_cache() called >= {num_slots} times (one per export slot), "
+            f"got {mock_clear.call_count}. "
+            "Add clear_mesh_cache() inside the post-training export loop."
+        )

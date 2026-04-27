@@ -1,6 +1,8 @@
 model_name: "ConcatWIREV2"
 z_placement: "unit_circle"
-z_radius: 1.0
+z_radius: 2.0  # unit-circle radius for pretrained latent codes.
+              # Spatial inputs are mm/1000 ≈ [-5, 5]; z_radius=2.0 gives latents a
+              # comparable magnitude to the dominant spatial axis.
 force_pretraining: true # iff false, a hashed pretraining will be used if applicable
 
 # One entry per latent slot.  Slot 0 maps to z₀ = origin.
@@ -71,7 +73,7 @@ latent_population:
   #   surface_noise_sigma_factor: 0.005
 
 training_loop:
-  epochs: 1000
+  epochs: 100
   learning_rate: 0.0005
   batch_size_per_shape: 4096 #8192
   print_interval: 25
@@ -95,10 +97,11 @@ output:
   mesh_resolution: 64
   bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2 Assembler
 
-  
+
   # Cache key includes ply_path stem, ply_scale, sigma params, n_surf → hash-tagged .pt files.
   # Useful for static cache (surface_resample_cadence: 0): GT SDF is computed once and reused.
-  sdf_cache_dir: "/cluster/work/fuge/AISCO/latent_pretraining/sdf_cache"  
+  # Set to an absolute path to enable; null = disabled (always build fresh, never write).
+  sdf_cache_dir: null  # null = disabled (portable default; set to absolute path to opt in)
 
   vis_cadence: 10 # at what interval to visualize the sampling
   vis_show_eikonal_pts: true   # visualize sampled points for eikonal loss (default: true)
