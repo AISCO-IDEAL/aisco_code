@@ -37,6 +37,9 @@ hidden_dims: [256, 256, 256, 512, 512, 512, 512, 256, 128]
 #
 # === PRESETS — uncomment one to try, leave the rest commented ===============
 # Each preset has 10 entries (9 hidden + 1 output). All are length-checked.
+
+# --- Basic MLP ----------------------------------------------------------
+activations: [tanh, relu, tanh, relu, tanh, relu, tanh, relu, tanh, relu, linear]        # smooth, good general default
 #
 # --- Smooth baselines (controls) ----------------------------------------
 # activations: [silu, silu, silu, silu, silu, silu, silu, silu, silu, linear]            # current baseline (too smooth)
@@ -65,7 +68,6 @@ hidden_dims: [256, 256, 256, 512, 512, 512, 512, 256, 128]
 #
 # --- Hybrid (smooth surface, slight crease capacity at output edge) ----
 # activations: [silu, silu, silu, silu, silu, silu, silu, silu, mish, tanh]              # mish penultimate + tanh output
-activations: [gelu, silu, silu, gelu, silu, silu, gelu, silu, silu, linear]            # alternating smooth pair
 #
 # previous test results:
 # activations: [silu, silu, silu, silu, silu, silu, silu, silu, silu, linear]: too smooth, misses fine details, wandb: https://wandb.ai/aisco/temp_/runs/oro8bbk8?nw=nwusereschaerer
@@ -73,6 +75,8 @@ activations: [gelu, silu, silu, gelu, silu, silu, gelu, silu, silu, linear]     
 # activations: [snake, silu, silu, silu, silu, silu, silu, silu, silu, linear]: SDF missing for large parts, not even pretraining works, wandb: https://wandb.ai/aisco/temp_/runs/8i2fp7kn?nw=nwusereschaerer
 # activations: [snake, snake, silu, snake, silu, silu, silu, silu, silu, linear]: very bad, lots of NaN losses, no geometry
 # activations: [softplus, softplus, softplus, softplus, softplus, softplus, softplus, softplus, softplus, linear]  # no mesh, no geometry, bad, wandb: https://wandb.ai/aisco/temp_/runs/qgttbwqv?nw=nwusereschaerer
+# activations: [gelu, silu, silu, gelu, silu, silu, gelu, silu, silu, linear] # only a few sharp pyramids, wandb: https://wandb.ai/aisco/temp_/runs/826mksb2?nw=nwusereschaerer
+
 
 
 # 1-indexed layer numbers where the (scaled) input features are re-concatenated
