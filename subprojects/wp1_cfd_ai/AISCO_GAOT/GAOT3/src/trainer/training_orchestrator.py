@@ -10,17 +10,17 @@ import pandas as pd
 import torch
 import torch.distributed as dist
 
-from .checkpoint_handler import CheckpointHandler
-from .Data_handler import DataHandler
-from .loss_fn import LossFn
-from .loss_plotter import LossPlotter
-from .model_handler import ModelHandler
-from .optimiser import Optimiser
-from .path_handler import PathHandler
-from .runtime_handler import RuntimeHandler
-from .test_calculator import TestCalculator
-from .validation_calculator import ValidationCalculator
-from .WandB_logger import WandBLogger
+from .data_pipeline.Data_handler import DataHandler
+from .handlers.checkpoint_handler import CheckpointHandler
+from .handlers.model_handler import ModelHandler
+from .handlers.path_handler import PathHandler
+from .handlers.runtime_handler import RuntimeHandler
+from .training_core.loss_fn import LossFn
+from .training_core.loss_plotter import LossPlotter
+from .training_core.optimiser import Optimiser
+from .validation_and_logging.test_calculator import TestCalculator
+from .validation_and_logging.validation_calculator import ValidationCalculator
+from .validation_and_logging.WandB_logger import WandBLogger
 
 
 class TrainingOrchestrator:

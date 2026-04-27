@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from .utils.metric import compute_drivaernet_metric
+from ..utils.metric import compute_drivaernet_metric
 
 EPSILON = 1e-10
 

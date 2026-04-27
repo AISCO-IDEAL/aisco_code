@@ -8,7 +8,7 @@ import shutil
 
 import yaml
 
-from .utils.setup import load_ckpt, save_ckpt
+from ..utils.setup import load_ckpt, save_ckpt
 
 
 class CheckpointHandler:

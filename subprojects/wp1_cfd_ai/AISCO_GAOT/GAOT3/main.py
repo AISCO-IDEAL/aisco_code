@@ -10,7 +10,7 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from src.trainer.config_handler import ConfigHandler
+from src.trainer.handlers.config_handler import ConfigHandler
 
 main_config: dict = {}
 

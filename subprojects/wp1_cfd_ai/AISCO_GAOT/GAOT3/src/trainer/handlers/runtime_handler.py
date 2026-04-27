@@ -10,8 +10,8 @@ from typing import Any
 import torch
 import torch.distributed as dist
 
-from ..dataloader.metadata import DATASET_METADATA
-from .utils.setup import manual_seed
+from ...dataloader.metadata import DATASET_METADATA
+from ..utils.setup import manual_seed
 
 
 class RuntimeHandler:
