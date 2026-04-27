@@ -7,12 +7,63 @@
 #SBATCH --mem-per-cpu=8G
 #SBATCH --gpus=1
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
-## run this command:
-## bash ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts/beast_testing.sh
+## ---------------------------------------------------------------------------
+## How to run on BEAST (Task Spooler queue)
+##
+##   Submit (queued, one heavy job at a time, Slack notify on finish):
+##     tsp -L beast_testing bash ~/Documents/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts/beast_testing.sh ETHkuerzel
+##
+##   Run directly (no queue):
+##     bash ~/Documents/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts/beast_testing.sh ETHkuerzel
+##
+##   Inspect queue (works WHILE a job is running, from any ssh session):
+##                                tsp                 # list queued / running / finished
+##                                tsp -i <ID>         # info on one job
+##                                tail -f $(tsp -o <ID>)   # follow stdout file of a job
+##                                tsp -c              # tail the *currently running* job (blocks; Ctrl-C to detach)
+##                                tsp -t <ID>         # tail finished job's output
+##                                tsp -r <ID>         # remove / kill
+##
+##   IMPORTANT: submit jobs with `tsp ... bash script.sh ...`, NOT `bash script.sh`.
+##   Plain `bash` blocks your terminal and bypasses the queue, which is why it
+##   may *look* like you can't view the queue while the job is active.
+##
+## Configurable log directory (in addition to tsp's own /tmp/ts-out.XXXX file):
+##   export BEAST_LOG_DIR=/path/to/dir   # before submitting; default: $HOME/beast_logs
+##   The script will tee its full stdout/stderr into:
+##       $BEAST_LOG_DIR/<jobname>_<UTC-timestamp>_<pid>.log
+##
+## Slack notifications (system-wide hook on BEAST):
+##   - The tsp daemon must have TS_ONFINISH=~/slack_notify.sh set when it
+##     started. If you exported it after the daemon was already running, the
+##     hook is NOT picked up. Fix:
+##         echo 'export TS_ONFINISH=$HOME/slack_notify.sh' >> ~/.bashrc
+##         tsp -K          # kill the daemon; next `tsp` call respawns it
+##   - The first positional arg of this script (ETHkuerzel) is what the
+##     notifier maps to your Slack ID via /etc/AISCO-Beast_mapping.conf.
+##   - Smoke-test the notifier directly:
+##         ~/slack_notify.sh ETHkuerzel  test-message
+## ---------------------------------------------------------------------------
 
 set -euo pipefail
 
 umask 0002
+
+# Optional ETH username arg (used by the BEAST tsp Slack notifier to DM the right user).
+ETH_USER="${1:-${USER:-unknown}}"
+export AISCO_ETH_USER="$ETH_USER"   # also expose via env so TS_ONFINISH hooks can read it
+
+# ---------------------------------------------------------------------------
+# Tee all output to a configurable log file (in addition to tsp's /tmp/ts-out.*)
+# ---------------------------------------------------------------------------
+BEAST_LOG_DIR="${BEAST_LOG_DIR:-$HOME/beast_logs}"
+mkdir -p "$BEAST_LOG_DIR"
+JOB_TAG="${SLURM_JOB_NAME:-beast_testing}_$(date -u +%Y%m%dT%H%M%SZ)_$$"
+BEAST_LOG_FILE="$BEAST_LOG_DIR/${JOB_TAG}.log"
+# Symlink "latest" for convenience: tail -f $BEAST_LOG_DIR/latest.log
+ln -sfn "$BEAST_LOG_FILE" "$BEAST_LOG_DIR/latest.log"
+exec > >(tee -a "$BEAST_LOG_FILE") 2>&1
+echo "[beast_testing] full log: $BEAST_LOG_FILE"
 
 ts() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
@@ -35,6 +86,8 @@ fi
 echo "=========================================="
 echo "Job started on: $(date)"
 echo "Job ID: ${SLURM_JOB_ID:-local}"
+echo "tsp job ID: ${TS_SLOT:-${TS_SOCKET:+tsp}-N/A}"
+echo "ETH user (Slack target): $ETH_USER"
 echo "Running on node: ${SLURMD_NODENAME:-$(hostname)}"
 echo "Number of CPUs: ${SLURM_CPUS_PER_TASK:-$(nproc)}"
 echo "Allocated memory per CPU: ${SLURM_MEM_PER_CPU:-N/A} MB"

@@ -8,16 +8,13 @@ export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH
 # Instead of 'module load', we ensure our local environment is ready.
 # Make sure you have installed: python3, python3-venv, and CUDA.
 ###########################################################################
-# cd ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts
-# bash run_local.sh
+# bash subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts/run_local.sh
 ###########################################################################
 
 umask 0002 # ensure group write permissions for logs and models
 
-USERNAME=$(whoami) #elegant, right? yes
-# Update this path to where your code actually sits on WSL
 
-PROJECT_ROOT="$HOME/AISCO_code"
+PROJECT_ROOT="$HOME/Documents/AISCO_code"
 VENV_DIR="$PROJECT_ROOT/aisco_env"
 
 #------------------------------------------------------------------------------
@@ -59,7 +56,7 @@ export AISCO_CODE_PATH="$PROJECT_ROOT"
 cd "$PROJECT_ROOT"
 
 # Run the python command
-python3 subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v1_1_one_model.py \
+python3 subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py  \
     --save_model \
     --problem_id="AISCO_WP4_Test1"
 

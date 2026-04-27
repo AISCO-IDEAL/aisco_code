@@ -8,18 +8,18 @@ For mesh_sdf extraction, gradients are preserved through surrogate backprop.
 import torch
 
 from subprojects.wp3_solar_estimator.v3B_2.solar_loss_v3B_2 import SolarLossEstimator
-from subprojects.wp4_aeroshell_optimizer.v1.src.losses.parent_loss import ParentLoss
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 
 
 class SolarV3B2(ParentLoss):
     """Solar objective wrapper for v3B_2 (meaningful watt-based output)."""
 
     def _setup(self) -> None:
-        gen_cfg = load_config(v="v1", cfg_name="general_config.yaml")
+        gen_cfg = load_config(v="v2", cfg_name="general_config.yaml")
         cfg_path = gen_cfg["active_configs"]["solar"]
         # Uses SolarLossConfigV3 config; can be customized per-version
-        solar_cfg = load_config(v="v1", cfg_name=cfg_path)["SolarLossConfigV3"]
+        solar_cfg = load_config(v="v2", cfg_name=cfg_path)["SolarLossConfigV3"]
         self.solar_estimator = SolarLossEstimator(config=solar_cfg)
 
     def _loss(self, model, skip_telemetry=False):
