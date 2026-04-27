@@ -10,6 +10,7 @@ import torch
 
 import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
+from subprojects.wp4_aeroshell_optimizer.v2.scripts.postprocess_gradient_conflict import build_conflict_gif
 from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import DiversityTrainer
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
@@ -24,6 +25,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import DebugManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
     configure_headless_pyvista,
@@ -49,6 +51,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     # 1. Load and register configs
     general_config: dict[str, Any] = load_config(v="v2", cfg_name="general_config.yaml")
+    # Auto-detect environment: override run_locally if /cluster is not accessible
+    if not os.path.isdir("/cluster"):
+        general_config["general_info"]["run_locally"] = "True"
     verbose: bool = general_config.get("general_info", {}).get("verbose", True)
     device: str = general_config.get("general_info", {}).get("device", "cuda" if torch.cuda.is_available() else "cpu")
     if str(device).startswith("cuda") and not torch.cuda.is_available():
@@ -126,7 +131,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     if run_locally:
         pretrained_path = pretraining_config["pretraining"].get("local_pretraining_model_path", "")
         if not pretrained_path:  # check if empty path given in pretraining config, if so fallback to general config path
-            pretrained_path = general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+            pretrained_path = general_config["storage_paths"].get("beast_storage_dir") or general_config["storage_paths"].get(
+                "local_storage_dir", "./local_storage_dir"
+            )
     else:
         pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", "")
         if not pretrained_path:  # check if empty path given in pretraining config, if so fallback to general config path
@@ -200,11 +207,37 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     if wandb_name is not None:
         if run_locally:
             rendering_dir = (
-                Path(general_config["storage_paths"]["local_storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
+                Path(
+                    general_config["storage_paths"].get("beast_storage_dir")
+                    or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+                )
+                / model_hash
+                / reformat_wandb_name(wandb_name)
             )
         else:
             rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
         os.makedirs(rendering_dir, exist_ok=True)
+
+    # Gradient conflict tracking setup
+    conflict_cadence: int = training_config["training_params"].get("gradient_conflict_cadence", 0)
+    conflict_tracker: GradientConflictTracker | None = None
+    conflict_output_dir: Path | None = None
+    if conflict_cadence > 0:
+        conflict_output_dir_str = training_config["training_params"].get("gradient_conflict_output_dir", "")
+        if conflict_output_dir_str:
+            conflict_output_dir = Path(conflict_output_dir_str)
+        elif wandb_name is not None:
+            if run_locally:
+                base_dir = Path(general_config["storage_paths"]["local_storage_dir"])
+            else:
+                base_dir = Path(general_config["storage_paths"]["storage_dir"])
+            conflict_output_dir = base_dir / model_hash / reformat_wandb_name(wandb_name) / "gradient_conflict"
+        else:
+            conflict_output_dir = Path("/tmp/gradient_conflict")
+        conflict_output_dir.mkdir(parents=True, exist_ok=True)
+        conflict_tracker = GradientConflictTracker(conflict_output_dir)
+        if verbose:
+            print(f"Gradient conflict tracking enabled (cadence={conflict_cadence}, output={conflict_output_dir}")
 
     # 5. Run main training loop
 
@@ -221,6 +254,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             wandb_name=wandb_name,
             general_config=general_config,
             debug_manager=debug_manager,
+            conflict_tracker=conflict_tracker,
+            conflict_cadence=conflict_cadence,
         )
 
         # ------------------------------------------------------------------
@@ -245,30 +280,35 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
         total_loss = TotalLossV2(device=device)
         diversity_loss_manager = DiversityLossManager(losses_config=losses_config, device=device)
+
+        # ALM setup
         use_alm: bool = losses_config["general_info"].get("ALM") == "True"
-        configured_constraint_categories: list[str] = [
-            category
-            for category, block in losses_config.get("losses", {}).items()
-            if isinstance(block, dict) and block.get("_role") == "constraint"
-        ]
-        alm_manager: ALMManager | None = (
-            ALMManager(
+        alm_manager: ALMManager | None = None
+        if use_alm:
+            # get all constraint categories that are defined in the loss config, regardless of whether they are active or not. This is needed for the ALM manager to properly map the initial multipliers to the active constraints based on their categories, and also to know which constraints exist, even if not all are active.
+            configured_constraint_categories: list[str] = [
+                category
+                for category, block in losses_config.get("losses", {}).items()
+                if isinstance(block, dict) and block.get("_role") == "constraint"
+            ]
+            alm_manager = ALMManager(
                 total_loss.constraint_names,
                 losses_config["general_info"],
                 torch.device(device),
                 active_constraint_categories=total_loss.constraint_category_order,
                 configured_constraint_categories=configured_constraint_categories,
             )
-            if use_alm
-            else None
-        )
 
         # Mesh extractor + optional renderer (only used if rendering_freq is set)
         renderer_cfg = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")
         mesh_extraction_config: dict[str, Any] = renderer_cfg.get("mesh_extraction", {})
+        mesh_extractor_device = mesh_extraction_config.get("device", str(device))
+        if str(mesh_extractor_device).startswith("cuda") and not torch.cuda.is_available():
+            print(f"Configured mesh extractor device '{mesh_extractor_device}' unavailable. Falling back to CPU.")
+            mesh_extractor_device = "cpu"
         mesh_extractor = MeshExtractor(
             algorithm=mesh_extraction_config.get("algorithm", "mc"),
-            device=mesh_extraction_config.get("device", str(device)),
+            device=mesh_extractor_device,
             verbose=mesh_extraction_config.get("verbose", False),
         )
         mesh_extractor.set_grid(
@@ -320,6 +360,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             use_neural_renderer=wandb_cfg.get("use_neural_renderer", False),
             use_wandb=use_wandb,
             log_dir=rendering_dir,
+            conflict_tracker=conflict_tracker,
+            conflict_cadence=conflict_cadence,
         )
 
         interpolation_state = setup_latent_interpolator(
@@ -339,8 +381,28 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         for epoch in range(num_epochs):
             model.train()
             metrics = trainer.step(epoch=epoch)
+
+            mesh_save_interval = training_config["training_params"].get("mesh_save_interval", 50)
+            if (epoch + 1) % mesh_save_interval == 0:
+                allround_save_data(
+                    model=model,
+                    storage_path=(
+                        general_config["storage_paths"].get("beast_storage_dir")
+                        or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+                    )
+                    if run_locally
+                    else general_config["storage_paths"]["storage_dir"],
+                    save_model=True,
+                    save_mesh=True,
+                    epoch=epoch + 1,
+                    verbose=general_config["general_info"].get("verbose", False),
+                    pretraining=False,
+                    wandb_run=wandb_name,
+                    device=str(device),
+                )
+
             run_latent_interpolation(state=interpolation_state, epoch=epoch, stage="periodic", verbose=verbose)
-            if verbose and epoch % 50 == 0:
+            if verbose and epoch % 50 == 0:  # arbitray number, adjust as needed
                 print(
                     f"Epoch {epoch}/{num_epochs} | per_vector={metrics['per_vector_loss']:.4f} | "
                     f"diversity={metrics['diversity_loss']:.4f} | total={metrics['total_loss']:.4f}"
@@ -357,23 +419,38 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     # 6. Saving of files and postprocessing
 
+    # Post-process gradient conflict data into GIF if tracking was active
+    if conflict_tracker is not None and conflict_output_dir is not None:
+        try:
+            gif_path = conflict_output_dir / "conflict_evolution.gif"
+            build_conflict_gif(conflict_output_dir, gif_path, fps=5)
+            if verbose:
+                print(f"Gradient conflict GIF saved to {gif_path}")
+        except Exception as e:
+            print(f"Warning: Failed to post-process gradient conflict data: {e}")
+
     # Reset latent vector to zeros before saving final model.
     if uses_diversity and isinstance(model, SupportsLatentConcat):
         model.set_latent_vector(torch.zeros_like(model.get_latent_vector()))
 
     allround_save_data(
         model=model,
-        storage_path=general_config["general_info"].get(
-            "storage_path", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
-        ),
+        storage_path=(
+            general_config["storage_paths"].get("beast_storage_dir")
+            or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+        )
+        if run_locally
+        else general_config["storage_paths"].get("storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"),
         save_model=True,
         save_mesh=True,
         verbose=verbose,
         pretraining=False,
         wandb_run=wandb_name,
-        epoch=training_config["training_params"].get("num_epochs", 420420), #Use 420420 to avoid default value that is misleading
+        epoch=training_config["training_params"].get(
+            "num_epochs", 420420
+        ),  # Use 420420 to avoid default value that is misleading
         resolution=128,
-        marching_cubes_usage=True,
+        device=str(device),
     )
     print("Completed job successfully.")
 

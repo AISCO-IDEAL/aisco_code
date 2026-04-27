@@ -1,3 +1,4 @@
+import hashlib
 import os
 from collections.abc import Callable
 
@@ -19,18 +20,31 @@ EXPECTED_DATA_SHAPE_DIMS = 3
 # ---------------------------------------------------------------------------
 
 
-def _subsample_random(pos: torch.Tensor, n_target: int) -> torch.Tensor:
+def _make_generator(seed: int | None = None) -> torch.Generator:
+    gen = torch.Generator()
+    if seed is None:
+        seed = int.from_bytes(os.urandom(8), "big")
+    gen.manual_seed(seed)
+    return gen
+
+
+def _stable_seed(*parts: object) -> int:
+    text = "|".join(str(part) for part in parts)
+    digest = hashlib.blake2b(text.encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, "big") % ((1 << 63) - 1)
+
+
+def _subsample_random(pos: torch.Tensor, n_target: int, seed: int | None = None) -> torch.Tensor:
     """Random uniform subsampling (original behaviour).
 
     Uses an independent RNG so results vary across epochs even when
     DataLoader workers are re-seeded with the same ``torch.manual_seed``.
     """
-    _gen = torch.Generator()
-    _gen.manual_seed(int.from_bytes(os.urandom(8), "big"))
+    _gen = _make_generator(seed)
     return torch.randperm(pos.shape[0], generator=_gen)[:n_target]
 
 
-def _subsample_voxel(pos: torch.Tensor, n_target: int, tol: float = 0.10) -> torch.Tensor:
+def _subsample_voxel(pos: torch.Tensor, n_target: int, seed: int | None = None, tol: float = 0.10) -> torch.Tensor:
     """Voxel-grid subsampling: keep one random point per voxel.
 
     Ensures spatially uniform coverage regardless of local mesh density.
@@ -48,8 +62,7 @@ def _subsample_voxel(pos: torch.Tensor, n_target: int, tol: float = 0.10) -> tor
     same ``torch.manual_seed``.
     """
     # Independent generator — NOT affected by torch.manual_seed()
-    _gen = torch.Generator()
-    _gen.manual_seed(int.from_bytes(os.urandom(8), "big"))
+    _gen = _make_generator(seed)
 
     pos_min = pos.min(dim=0).values
     pos_max = pos.max(dim=0).values
@@ -99,7 +112,7 @@ def _subsample_voxel(pos: torch.Tensor, n_target: int, tol: float = 0.10) -> tor
     return best_idx
 
 
-def _subsample_fps(pos: torch.Tensor, n_target: int) -> torch.Tensor:
+def _subsample_fps(pos: torch.Tensor, n_target: int, seed: int | None = None) -> torch.Tensor:
     """Farthest-point sampling: iteratively pick the point farthest from the
     already-selected set.  Gives excellent spatial coverage but is slower
     than random or voxel (~40 s for 135 K → 50 K on CPU).
@@ -110,11 +123,12 @@ def _subsample_fps(pos: torch.Tensor, n_target: int) -> torch.Tensor:
     ratio = min(n_target / pos.shape[0], 1.0)
     if _fps_fn is not None:
         batch_idx = torch.zeros(pos.shape[0], dtype=torch.long, device=pos.device)
-        idx = _fps_fn(pos, batch_idx, ratio=ratio)
+        idx = _fps_fn(pos, batch_idx, ratio=ratio, random_start=seed is None)
     else:
         # Pure-Python fallback (slow but correct)
+        _gen = _make_generator(seed)
         n = pos.shape[0]
-        selected: list[int] = [int(torch.randint(n, (1,)).item())]
+        selected: list[int] = [int(torch.randint(n, (1,), generator=_gen).item())]
         dists = torch.full((n,), float("inf"))
         for _ in range(min(n_target, n) - 1):
             last = pos[selected[-1]].unsqueeze(0)
@@ -126,7 +140,7 @@ def _subsample_fps(pos: torch.Tensor, n_target: int) -> torch.Tensor:
     return idx[:n_target]
 
 
-def _subsample_poisson_disk(pos: torch.Tensor, n_target: int) -> torch.Tensor:
+def _subsample_poisson_disk(pos: torch.Tensor, n_target: int, seed: int | None = None) -> torch.Tensor:
     """Poisson-disk sampling: greedily accept points only if they are at least
     ``r`` away from all already-accepted points.  Uses a spatial hash (voxel
     grid with cell size = r / √3) for O(1) neighbour checks.
@@ -153,7 +167,8 @@ def _subsample_poisson_disk(pos: torch.Tensor, n_target: int) -> torch.Tensor:
 
     # Use os.urandom so the shuffle varies across epochs even when
     # DataLoader workers are re-seeded with the same torch.manual_seed.
-    rng = np.random.default_rng(int.from_bytes(os.urandom(8), "big"))
+    rng_seed = seed if seed is not None else int.from_bytes(os.urandom(8), "big")
+    rng = np.random.default_rng(rng_seed)
 
     def _run(r: float) -> np.ndarray:
         """Single pass of greedy Poisson-disk acceptance."""
@@ -252,6 +267,8 @@ class VTKMeshDataset(Dataset):
         self.drop_pressure = dataset_config.get("drop_pressure", False)
         self.subsample_nodes = dataset_config.get("subsample_nodes", None)
         self.subsample_strategy = dataset_config.get("subsample_strategy", "random")
+        self.deterministic_subsampling = dataset_config.get("deterministic_subsampling", False)
+        self.subsampling_seed = dataset_config.get("subsampling_seed", 42)
         _valid = {"random", "voxel", "fps", "poisson_disk"}
         if self.subsample_strategy not in _valid:
             raise ValueError(f"subsample_strategy must be one of {_valid}, got '{self.subsample_strategy}'")
@@ -329,7 +346,7 @@ class VTKMeshDataset(Dataset):
     def len(self):
         return len(self.split_filenames)
 
-    def get(self, idx):
+    def get(self, idx):  # noqa: PLR0912
         filepath = os.path.join(self.processed_dir, self.split_filenames[idx])
         # Also support subdirectory layout: euler_run_1/data.pt
         if not os.path.isfile(filepath):
@@ -358,14 +375,17 @@ class VTKMeshDataset(Dataset):
                 # data.num_nodes dynamically, so it would shrink mid-loop otherwise
                 original_num_nodes = data.num_nodes
 
-                _subsample_fns: dict[str, Callable[[torch.Tensor, int], torch.Tensor]] = {
+                _subsample_fns: dict[str, Callable[[torch.Tensor, int, int | None], torch.Tensor]] = {
                     "random": _subsample_random,
                     "voxel": _subsample_voxel,
                     "fps": _subsample_fps,
                     "poisson_disk": _subsample_poisson_disk,
                 }
                 _strategy_fn = _subsample_fns[self.subsample_strategy]
-                perm = _strategy_fn(data.pos, self.subsample_nodes)
+                subsample_seed = None
+                if self.deterministic_subsampling:
+                    subsample_seed = _stable_seed(self.subsampling_seed, self.split, idx, self.subsample_strategy)
+                perm = _strategy_fn(data.pos, self.subsample_nodes, subsample_seed)
 
                 # Apply permutation to every per-node tensor
                 for attr in list(data.keys()):

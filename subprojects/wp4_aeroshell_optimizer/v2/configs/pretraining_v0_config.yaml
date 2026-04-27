@@ -1,11 +1,12 @@
 #Here put the config for model pretraining
-pretraining_shape: "ply" # "sphere", "cube", or "ply"  #  pretraining_v1_1.py: config.get("pretraining_shape", "sphere")
+pretraining_shape: "sphere" # "sphere", "cube", or "ply"  #  pretraining_v1_1.py: config.get("pretraining_shape", "sphere")
 pretraining_ply_path: "/cluster/work/fuge/AISCO/concentrate_curvature/DevelopabilityOfTriangleMeshes/assets/bunny.ply"  # used when pretraining_shape="ply"
+beast_pretraining_ply_path: "/home/aisco/Downloads/sphere.ply"  # used when pretraining_shape="ply" and beast_pretraining is True
 pretraining_ply_scale: 1000.0  # scale ply vertices to mm (bunny.ply is unit-scale → ×1000)
 
 pretraining:
   use_pretrained: True # True or False possible  # NOT USED — never read by any code (main checks fetch_pretrained_model result instead)
-  force_pretraining: False  # USED — main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("force_pretraining", False)
+  force_pretraining: True  # USED — main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("force_pretraining", False)
   pretraining_model_path: ""  # USED — main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("pretraining_model_path", "path/to/pretrained/model.pth")  # note: pretraining_v0_model.pth is the basic MLP sphere or ellipsoid
   local_pretraining_model_path: ""
   username: ${USER} # for windows users: %USERNAME%  # NOT USED — never read by any code in the optimisation loop

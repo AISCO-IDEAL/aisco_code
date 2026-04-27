@@ -12,7 +12,7 @@ from subprojects.wp4_aeroshell_optimizer.v1.logging_lib.basic_plots import (
     log_renderer_image,  # noqa: F401
     multi_log_in_one,
 )
-from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 
 
 class MeshStatistics:
@@ -40,7 +40,7 @@ class MeshStatistics:
         """
         if not self.use_wandb:
             return
-        solar_config = load_config(v="v1", cfg_name="solar_configs/solar_loss_config.yaml")["SolarLossConfigV3"]
+        solar_config = load_config(v="v2", cfg_name="solar_configs/solar_loss_config.yaml")["SolarLossConfigV3"]
         solar_angle = torch.tensor(solar_config["sun_dir"], device=vertices.device)
         self.solar_angle = solar_angle / torch.norm(solar_angle)  # Normalize to unit vector so dot products give cos(θ)
         self.area_budget = solar_config["area_budget_mm2"]

@@ -8,11 +8,19 @@ import torch
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 
-cripser: Any = importlib.import_module("cripser")
-
 
 class ConnectednessV1(ParentLoss):
     def _setup(self) -> None:
+        try:
+            self._cripser: Any = importlib.import_module("cripser")
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "ConnectednessV1 requires the optional Python package 'cripser'. "
+                "Either install 'cripser' in the active environment or disable "
+                "losses.connectedness.connectedness_v1 in "
+                "subprojects/wp4_aeroshell_optimizer/v2/configs/losses_v0_config.yaml."
+            ) from exc
+
         connectedness_config: dict[str, Any] = self.losses_config.get("connectedness_config", {})
         get_points_config: dict[str, Any] = self.losses_config.get("get_points_params", {})
 
@@ -21,7 +29,6 @@ class ConnectednessV1(ParentLoss):
         self.iso_level: float = float(connectedness_config.get("iso_level", 0.0))
         self.target_betti_dim0: int = int(connectedness_config.get("target_betti_dim0", 1))
         self.maxdim: int = int(connectedness_config.get("maxdim", 0))
-        self.warmup_epochs: int = int(connectedness_config.get("warmup_epochs", 50))
         self.eval_period: int = max(1, int(connectedness_config.get("eval_period", 5)))
         self.return_cached_on_skip: bool = self._as_bool(connectedness_config.get("return_cached_on_skip", "False"))
         self.persistence_min_lifetime: float = float(connectedness_config.get("persistence_min_lifetime", 0.0))
@@ -70,10 +77,7 @@ class ConnectednessV1(ParentLoss):
             self.grid_points = self.grid_points.to(model_device)
 
         epoch_name: int = int(getattr(self, "epoch_name", -1))
-        if epoch_name < self.warmup_epochs:
-            return self._inactive_loss()
-
-        if (epoch_name - self.warmup_epochs) % self.eval_period != 0:
+        if epoch_name % self.eval_period != 0:
             return self._inactive_loss()
 
         with torch.no_grad():
@@ -93,7 +97,7 @@ class ConnectednessV1(ParentLoss):
                 field_for_ph = grid_t.reshape(-1)
             field_np = field_for_ph.detach().cpu().numpy().reshape(self.grid_shape)
 
-        ph: np.ndarray = cripser.computePH(field_np, maxdim=self.maxdim)
+        ph: np.ndarray = self._cripser.computePH(field_np, maxdim=self.maxdim)
         critical_linear_indices = self._extract_dim0_death_indices(ph)
         if critical_linear_indices.size == 0:
             self._cached_loss = torch.tensor(0.0, device=self.grid_points.device)
