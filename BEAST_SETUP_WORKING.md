@@ -1,6 +1,6 @@
-After you set up your account on the Beast, cloned AISCO_code onto it and got git running, you need to set up the env. 
+After you set up your account on the Beast, cloned AISCO_code onto it and got git running, you need to set up the env.
 This is not trivial, as the RTX5090 needs torch2.7 or newer, which cant be candeld by a RTX4090...
-I tried to document my process of setting it up. Then I tried to boil it down to the essential Parts, so if you execute all of these comands in your terminal it should work. 
+I tried to document my process of setting it up. Then I tried to boil it down to the essential Parts, so if you execute all of these comands in your terminal it should work.
 If it actually does or you needed another fix, please document this here.
 
 You should start by editing the pyproject.toml and upgrade the following two lines:
@@ -42,7 +42,7 @@ Delete and recreate environment via setup script:
 ```bash
 cd /home/clhuber/AISCO_code
 rm -rf aisco_env
-AUTO_INSTALL_SYSTEM_DEPS=0 PYTHON_BIN="$(which python)" ./setup_beast.sh
+AUTO_INSTALL_SYSTEM_DEPS=0 PYTHON_BIN="$(which python)" ./beast_setup.sh
 ```
 
 
