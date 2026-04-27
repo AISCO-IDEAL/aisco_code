@@ -73,6 +73,7 @@ class RawLossBundle:
             f"Side-data keys: {list(self.side_data.keys())}"
         )
 
+
 @dataclass
 class WeightedLossResult:
     """Output of ``TotalLossV2.weight``.
@@ -530,7 +531,11 @@ class TotalLossV2:
             # Only backprop if at least one input is live; both dead → v_cruise has no grad.
             if drag_is_live or solar_is_live:
                 # Minimize -v_cruise to maximize physical speed
-                cse_scale = (norm_manager.get_loss_scale("cse_objective") * norm_manager.get_grad_scale("cse_objective")) if norm_manager else 1.0
+                cse_scale = (
+                    (norm_manager.get_loss_scale("cse_objective") * norm_manager.get_grad_scale("cse_objective"))
+                    if norm_manager
+                    else 1.0
+                )
                 weighted_components["cse_objective"] = -v_cruise * cse_scale
                 log_data["weighted_losses/cse_objective"] = v_cruise.item()
                 log_data["optimizer_losses/cse_objective"] = weighted_components["cse_objective"].detach().item()
@@ -564,7 +569,7 @@ class TotalLossV2:
                 active_constraint_tensors, active_indices=active_constraint_indices
             )
             for key, t in penalties.items():
-                grad_scale = (norm_manager.get_grad_scale(key) if norm_manager else 1.0)
+                grad_scale = norm_manager.get_grad_scale(key) if norm_manager else 1.0
                 weighted_components[key] = t * grad_scale
                 log_data[f"weighted_losses/{key}"] = t.item()
                 log_data[f"optimizer_losses/{key}"] = weighted_components[key].detach().item()
@@ -606,8 +611,7 @@ class TotalLossV2:
         log_data["raw_losses/total_loss"] = raw_total
 
         obj_sign: dict[str, float] = {
-            self._objective_by_category[cat][0]: float(self._objective_signs.get(cat, 1))
-            for cat in self._objective_by_category
+            self._objective_by_category[cat][0]: float(self._objective_signs.get(cat, 1)) for cat in self._objective_by_category
         }
         if self.use_cse:
             obj_sign["cse_objective"] = -1.0

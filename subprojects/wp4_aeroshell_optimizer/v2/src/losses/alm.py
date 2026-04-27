@@ -26,6 +26,7 @@ class ALMManager:
 
 
     """
+
     def __init__(
         self,
         constraint_names: list[str],

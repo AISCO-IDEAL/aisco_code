@@ -28,8 +28,8 @@ _GROUND_CLEARANCE_M = 0.1
 
 # Default paths on Euler
 _DEFAULT_INPUT_DIR = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/openfoam_geometry")
-_DEFAULT_OUTPUT_DIR = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/GEOMETRY")
-_DEFAULT_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/geometry_manifest.json")
+_DEFAULT_OUTPUT_DIR = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/GEOMETRY")
+_DEFAULT_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/geometry_manifest.json")
 
 
 def compute_ground_translation(z_min: float, target_clearance: float = _GROUND_CLEARANCE_M) -> float:
