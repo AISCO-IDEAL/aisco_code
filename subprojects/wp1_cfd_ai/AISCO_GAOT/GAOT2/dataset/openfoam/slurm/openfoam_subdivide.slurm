@@ -15,8 +15,8 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem-per-cpu=4G
-#SBATCH --output=/cluster/scratch/elihuber/scratch_logs/OF_Subdivide_%j.out
-#SBATCH --error=/cluster/scratch/elihuber/scratch_logs/OF_Subdivide_%j.err
+#SBATCH --output=/cluster/scratch/%u/scratch_logs/OF_Subdivide_%j.out
+#SBATCH --error=/cluster/scratch/%u/scratch_logs/OF_Subdivide_%j.err
 
 set -euo pipefail
 
@@ -24,9 +24,9 @@ echo "=== Loop Subdivision at $(date) ==="
 echo "Job ID: ${SLURM_JOB_ID}"
 
 # Activate Python environment
-source /cluster/home/elihuber/AISCO_code/aisco_env/bin/activate
+source /cluster/home/$USER/AISCO_code/aisco_env/bin/activate
 
-SCRIPT_DIR="/cluster/home/elihuber/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset/openfoam"
+SCRIPT_DIR="/cluster/home/$USER/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset/openfoam"
 INPUT_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/openfoam_geometry"
 OUTPUT_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/of_geom_l2"
 

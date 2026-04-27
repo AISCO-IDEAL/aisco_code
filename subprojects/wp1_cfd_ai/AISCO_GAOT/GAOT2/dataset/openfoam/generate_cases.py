@@ -94,10 +94,10 @@ _OMEGA_INLET_V_REF = 25.0
 _V_REF = 25.0
 
 # Default paths on Euler
-_DEFAULT_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/geometry_manifest.json")
+_DEFAULT_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/geometry_manifest.json")
 _DEFAULT_TEMPLATE = Path(__file__).resolve().parent / "case_template"
-_DEFAULT_OUTPUT = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3")
-_DEFAULT_CASES_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/cases_manifest.json")
+_DEFAULT_OUTPUT = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/CASES_v3")
+_DEFAULT_CASES_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/cases_manifest.json")
 
 
 def compute_domain_extents(
@@ -402,9 +402,9 @@ def generate_all_cases(
 
 def main() -> None:
     """CLI entry point for case generation."""
-    _AHMED_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/ahmed_geometry_manifest.json")
-    _AHMED_OUTPUT = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/AHMED_CASES")
-    _AHMED_CASES_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/ahmed_cases_manifest.json")
+    _AHMED_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/ahmed_geometry_manifest.json")
+    _AHMED_OUTPUT = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/AHMED_CASES")
+    _AHMED_CASES_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/ahmed_cases_manifest.json")
 
     parser = argparse.ArgumentParser(description="Generate OpenFOAM cases from geometry manifest")
     parser.add_argument("--manifest", type=Path, default=_DEFAULT_MANIFEST, help="Path to geometry_manifest.json")

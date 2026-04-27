@@ -25,8 +25,8 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1900M
 #SBATCH --array=1-234%2
-#SBATCH --output=/cluster/scratch/elihuber/scratch_logs/OF_Solve_%A_%a.out
-#SBATCH --error=/cluster/scratch/elihuber/scratch_logs/OF_Solve_%A_%a.err
+#SBATCH --output=/cluster/scratch/%u/scratch_logs/OF_Solve_%A_%a.out
+#SBATCH --error=/cluster/scratch/%u/scratch_logs/OF_Solve_%A_%a.err
 
 set -euo pipefail
 
@@ -89,7 +89,7 @@ if [[ -n "${RUN_LIST:-}" && -f "${RUN_LIST}" ]]; then
 else
     RUN_ID=$(printf "%03d" "$SLURM_ARRAY_TASK_ID")
 fi
-CASE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3/RUN_${RUN_ID}"
+CASE_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/CASES_v3/RUN_${RUN_ID}"
 
 if [[ ! -d "$CASE_DIR" ]]; then
     echo "ERROR: Case directory $CASE_DIR does not exist. Skipping."
