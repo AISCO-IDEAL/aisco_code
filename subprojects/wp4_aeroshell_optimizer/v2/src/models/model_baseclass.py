@@ -98,6 +98,12 @@ class BaseModel(nn.Module):
         device = str(next(self.parameters()).device)
         loss_function = TotalLoss(device, renderer_manager=renderer_manager)
 
+        if loss_function._norm_manager.is_enabled():
+            assert isinstance(self, SupportsModelContract), (
+                "Model must implement SupportsModelContract to use the LossNormalisationManager."
+            )
+            loss_function._calibrate(self, optimizer)
+
         dbg.log_run_config(
             model=self,
             training_config=training_config,

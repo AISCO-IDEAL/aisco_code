@@ -595,9 +595,28 @@ class TotalLossV2:
             scalar = torch.tensor(0.0, device=self._device)
 
         raw_total = 0.0
-        for source in (bundle.objectives, bundle.constraints, bundle.aux, bundle.zero_weighted):
+        for category, t in bundle.objectives.items():
+            sign = float(self._objective_signs.get(category, 1))
+            raw_total += sign * float(t.detach().item())
+        for source in (bundle.constraints, bundle.aux):
             raw_total += sum(float(t.detach().item()) for t in source.values())
+        for category, t in bundle.zero_weighted.items():
+            sign = float(self._objective_signs.get(category, 1)) if category in self._objective_by_category else 1.0
+            raw_total += sign * float(t.detach().item())
         log_data["raw_losses/total_loss"] = raw_total
+
+        obj_sign: dict[str, float] = {
+            self._objective_by_category[cat][0]: float(self._objective_signs.get(cat, 1))
+            for cat in self._objective_by_category
+        }
+        if self.use_cse:
+            obj_sign["cse_objective"] = -1.0
+        log_data["normalized_losses/total_loss"] = sum(
+            obj_sign.get(k.removeprefix("normalized_losses/"), 1.0) * v
+            for k, v in log_data.items()
+            if k.startswith("normalized_losses/") and k != "normalized_losses/total_loss"
+        )
+        log_data["optimizer_losses/total_loss"] = scalar.detach().item()
         return_value = WeightedLossResult(
             scalar=scalar,
             log_data=log_data,

@@ -58,6 +58,7 @@ from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cub
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
@@ -100,7 +101,9 @@ class TotalLoss:
         self._last_cruising_speed_diagnostics: dict | None = None
         # Rolling history for loss-competition stacked-area chart (one dict per epoch).
         self._raw_loss_history: list[dict[str, float]] = []
+        self._normalized_loss_history: list[dict[str, float]] = []
         self._weighted_loss_history: list[dict[str, float]] = []
+        self._optimizer_loss_history: list[dict[str, float]] = []
 
         self._load_configs()
 
@@ -131,6 +134,9 @@ class TotalLoss:
                 active_constraint_categories=list(self._constraint_losses.keys()),
                 configured_constraint_categories=self._configured_constraint_categories,
             )
+
+        norm_cfg = self.losses_config.get("general_info", {}).get("loss_normalisation", {})
+        self._norm_manager = LossNormalisationManager(norm_cfg)
 
     def _load_configs(self) -> None:
         self._general_config: dict[str, Any] = load_config()
@@ -315,12 +321,16 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # loss computation
     # ------------------------------------------------------------------
-    def _compute_raw_losses(self, model: TrainModel, epoch_name: int) -> dict[str, torch.Tensor]:
+    def _compute_raw_losses(self, model: TrainModel, epoch_name: int, calibration_mode: bool = False) -> dict[str, torch.Tensor]:
         """Evaluate every active loss instance and return raw (unweighted) tensors.
 
         Losses in a disabled epoch range are handled according to self._deactivate_scheduler_mode:
           "skip": not computed; tracked in self._skipped_categories for 0-logging.
           "zero_weighted": computed and included in raw; tracked in self._zero_weighted_categories.
+
+        Args:
+            calibration_mode: If True, bypass epoch scheduling and compute all losses regardless
+                of _disabled_epochs. Used by _calibrate() to reach every loss before training starts.
         """
         self._skipped_categories: set[str] = set()
         self._zero_weighted_categories: set[str] = set()
@@ -329,7 +339,7 @@ class TotalLoss:
         try:
             for name, instance in self._active_losses.items():
                 category = self._loss_name_to_category.get(name, "")
-                if not self._is_category_active(category, epoch_name):
+                if not calibration_mode and not self._is_category_active(category, epoch_name):
                     if self._deactivate_scheduler_mode == "zero_weighted":
                         self._zero_weighted_categories.add(category)
                         sig = inspect.signature(instance.get_loss)
@@ -469,7 +479,8 @@ class TotalLoss:
             self._last_cruising_speed_diagnostics = {"cruising_speed_ms": v_cruise.item()}
             # Only backprop if at least one input is live; both-cached → v_cruise has no grad.
             if drag_is_live or solar_is_live:
-                self._last_weighted_losses["cse_objective"] = -v_cruise
+                cse_scale = self._norm_manager.get_loss_scale("cse_objective") * self._norm_manager.get_grad_scale("cse_objective")
+                self._last_weighted_losses["cse_objective"] = -v_cruise * cse_scale
         else:
             self._last_cruising_speed = None
             self._last_cruising_speed_diagnostics = None
@@ -481,7 +492,8 @@ class TotalLoss:
                     continue
                 w: float = self._manual_weights.get(name, 1.0)
                 sign: float = float(self._objective_signs.get(cat, 1))
-                self._last_weighted_losses[name] = sign * raw_losses[name] * w
+                combined_scale = self._norm_manager.get_loss_scale(name) * self._norm_manager.get_grad_scale(name)
+                self._last_weighted_losses[name] = sign * raw_losses[name] * w * combined_scale
 
         # ---- Constraints -------------------------------------------------
         # Inactive (skipped or zero_weighted) categories are excluded from ALM updates
@@ -490,8 +502,12 @@ class TotalLoss:
         all_constraint_cats: list[str] = list(self._constraint_losses.keys())
         active_constraint_cats: list[str] = [cat for cat in all_constraint_cats if cat not in inactive_cats]
         active_constraint_indices: list[int] = [i for i, cat in enumerate(all_constraint_cats) if cat not in inactive_cats]
-        active_constraint_names: list[str] = [self._constraint_losses[cat][0] for cat in active_constraint_cats]
-        active_constraint_tensors: list[torch.Tensor] = [raw_losses[n] for n in active_constraint_names]
+        # Pre-scale each active constraint tensor by loss_scale so ALM operates in normalised space.
+        # grad_scale is applied to the resulting penalty below to keep it consistent with v2 semantics.
+        active_constraint_tensors: list[torch.Tensor] = [
+            raw_losses[self._constraint_losses[cat][0]] * self._norm_manager.get_loss_scale(self._constraint_losses[cat][0])
+            for cat in active_constraint_cats
+        ]
 
         if self._use_alm:
             if not self._external_alm and self.alm_manager is not None:
@@ -499,7 +515,10 @@ class TotalLoss:
                 alm_penalties = self.alm_manager.compute_penalty(
                     active_constraint_tensors, active_indices=active_constraint_indices
                 )
-                self._last_weighted_losses.update(alm_penalties)
+                for key, t in alm_penalties.items():
+                    # key = "alm_{constraint_name}"; grad_scale is keyed the same way
+                    grad_scale = self._norm_manager.get_grad_scale(key)
+                    self._last_weighted_losses[key] = t * grad_scale
                 # zero_weighted constraints: overwrite with 0 so no gradient flows
                 for cat in getattr(self, "_zero_weighted_categories", set()):
                     if cat in self._constraint_losses:
@@ -515,7 +534,8 @@ class TotalLoss:
                 if cat in getattr(self, "_zero_weighted_categories", set()):
                     self._last_weighted_losses[cname] = torch.zeros((), device=self._device)
                     continue
-                self._last_weighted_losses[cname] = raw_losses[cname] * w_c
+                combined_scale = self._norm_manager.get_loss_scale(cname) * self._norm_manager.get_grad_scale(cname)
+                self._last_weighted_losses[cname] = raw_losses[cname] * w_c * combined_scale
 
         # ---- Auxiliary (always manual-weighted) --------------------------
         for aux_name in self._auxiliary_losses:
@@ -526,7 +546,8 @@ class TotalLoss:
                 self._last_weighted_losses[aux_name] = torch.zeros((), device=self._device)
                 continue
             w_a: float = self._manual_weights.get(aux_name, 1.0)
-            self._last_weighted_losses[aux_name] = raw_losses[aux_name] * w_a
+            combined_scale = self._norm_manager.get_loss_scale(aux_name) * self._norm_manager.get_grad_scale(aux_name)
+            self._last_weighted_losses[aux_name] = raw_losses[aux_name] * w_a * combined_scale
 
         weighted_total: torch.Tensor = sum(self._last_weighted_losses.values())  # type: ignore[assignment]
         return weighted_total
@@ -534,7 +555,7 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # logging
     # ------------------------------------------------------------------
-    def _handle_telemetry(
+    def _handle_telemetry(  # noqa: PLR0912, PLR0915
         self,
         loss_log: dict[str, float],
         epoch_name: int,
@@ -556,33 +577,58 @@ class TotalLoss:
         # unweighted losses + total loss
         log_dict.update(loss_log)
 
-        # individual weighted contributions
-        for name, val in self._last_weighted_losses.items():
-            # Negate cse_objective back to positive for physical meaning in logs
-            # (we minimize -v_cruise internally, but log +v_cruise for readability)
-            logged_val = (
-                -val.item() if name == "cse_objective" else val.item()
-            )  # the CSE is logged negatively, as we have a minimization scheme
+        # normalized_losses: raw * loss_scale only (no grad_scale, no manual weight)
+        for name, val in loss_log.items():
+            if not name.startswith("raw_losses/") or name == "raw_losses/total_loss":
+                continue
+            loss_name = name.removeprefix("raw_losses/")
+            log_dict[f"normalized_losses/{loss_name}"] = val * self._norm_manager.get_loss_scale(loss_name)
+        if self._use_cse and self._last_cruising_speed is not None:
+            cse_loss_scale = self._norm_manager.get_loss_scale("cse_objective")
+            log_dict["normalized_losses/cse_objective"] = self._last_cruising_speed.item() * cse_loss_scale
+
+        # weighted_losses: legacy compat — positive values for readability
+        for name, tensor_val in self._last_weighted_losses.items():
+            logged_val = -tensor_val.item() if name == "cse_objective" else tensor_val.item()
             log_dict[f"weighted_losses/{name}"] = logged_val
+
+        # optimizer_losses: exact signed value entering the optimizer sum
+        for name, tensor_val in self._last_weighted_losses.items():
+            log_dict[f"optimizer_losses/{name}"] = tensor_val.item()
+        obj_sign_legacy: dict[str, float] = {
+            self._objective_losses[cat][0]: float(self._objective_signs.get(cat, 1))
+            for cat in self._objective_losses
+        }
+        if self._use_cse:
+            obj_sign_legacy["cse_objective"] = -1.0
+        log_dict["normalized_losses/total_loss"] = sum(
+            obj_sign_legacy.get(k.removeprefix("normalized_losses/"), 1.0) * v
+            for k, v in log_dict.items()
+            if k.startswith("normalized_losses/") and k != "normalized_losses/total_loss"
+        )
+        log_dict["optimizer_losses/total_loss"] = total_loss.item()
 
         # cruising speed
         if self._last_cruising_speed is not None:
             log_dict["cruising_speed_ms"] = self._last_cruising_speed.item()
 
-        # ALM multipliers (only in ALM mode)
+        # ALM multipliers + normalization scale constants
         if self._use_alm and self.alm_manager is not None:
             log_dict.update(self.alm_manager.get_telemetry())
+        log_dict.update(self._norm_manager.get_telemetry())
 
         # --- Loss competition charts -------------------------------------
-        # raw_floats: strip prefix, exclude total, take abs (handles negative cse_objective)
         raw_floats: dict[str, float] = {
             k.removeprefix("raw_losses/"): abs(v) for k, v in loss_log.items() if k != "raw_losses/total_loss"
         }
-        # weighted_floats: abs of each weighted component.
-        # When CSE is active, _last_weighted_losses contains cse_objective instead of
-        # drag/solar, so the weighted charts naturally show cruising-speed competition.
+        normalized_floats: dict[str, float] = {
+            k.removeprefix("normalized_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("normalized_losses/")
+        }
         weighted_floats: dict[str, float] = {k: abs(v.item()) for k, v in self._last_weighted_losses.items()}
-        competition_log = self._log_loss_competition_charts(raw_floats, weighted_floats, epoch_name)
+        optimizer_floats: dict[str, float] = {
+            k.removeprefix("optimizer_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("optimizer_losses/")
+        }
+        competition_log = self._log_loss_competition_charts(raw_floats, normalized_floats, weighted_floats, optimizer_floats, epoch_name)
 
         # Merge competition charts into single log call to avoid WandB step corruption
         log_dict.update(competition_log)
@@ -690,27 +736,21 @@ class TotalLoss:
     def _log_loss_competition_charts(  # noqa: PLR0915
         self,
         raw_floats: dict[str, float],
+        normalized_floats: dict[str, float],
         weighted_floats: dict[str, float],
+        optimizer_floats: dict[str, float],
         epoch_name: int,
     ) -> dict[str, Any]:
-        """Generate 6 loss-competition visualizations and return as dict for WandB.
+        """Generate loss-competition visualizations and return as dict for WandB.
 
-        Returns dict with keys under loss_competition/ containing wandb.Image objects:
-        (a) raw_pie          - pie chart of raw loss shares
-        (b) weighted_pie     - pie chart of weighted loss shares
-        (c) raw_bar          - normalized horizontal stacked bar, raw
-        (d) weighted_bar     - normalized horizontal stacked bar, weighted
-        (e) radar            - polar overlay of raw (dashed) vs weighted (solid), both normalized 0-1
-        (f) stacked_area     - stacked area over training time (two subplots)
-
-        When CSE is active, ``weighted_floats`` already contains ``cse_objective``
-        in place of individual drag/solar entries, so the weighted charts naturally
-        reflect cruising-speed competition without special-casing here.
+        Four views (raw / normalized / weighted / optimizer) each get a pie and bar chart.
+        A radar overlay (raw vs weighted) and a stacked-area timeline are also produced.
         """
         matplotlib.use("Agg")  # headless cluster - no display server
-        # Append to rolling history (feeds stacked-area chart)
         self._raw_loss_history.append(dict(raw_floats))
+        self._normalized_loss_history.append(dict(normalized_floats))
         self._weighted_loss_history.append(dict(weighted_floats))
+        self._optimizer_loss_history.append(dict(optimizer_floats))
 
         competition_log: dict = {}
 
@@ -780,28 +820,37 @@ class TotalLoss:
 
         raw_labels = list(raw_floats.keys())
         raw_vals = [raw_floats[k] for k in raw_labels]
+        n_labels = list(normalized_floats.keys())
+        n_vals = [normalized_floats[k] for k in n_labels]
         w_labels = list(weighted_floats.keys())
         w_vals = [weighted_floats[k] for k in w_labels]
+        opt_labels = list(optimizer_floats.keys())
+        opt_vals = [optimizer_floats[k] for k in opt_labels]
 
-        # --- (a) Raw pie -------------------------------------------------
         fig_a = _safe_pie(raw_vals, raw_labels, f"Raw Losses (epoch {epoch_name})")
         competition_log["loss_competition/raw_pie"] = wandb.Image(fig_a)
         plt.close(fig_a)
-
-        # --- (b) Weighted pie --------------------------------------------
-        fig_b = _safe_pie(w_vals, w_labels, f"Weighted Losses (epoch {epoch_name})")
-        competition_log["loss_competition/weighted_pie"] = wandb.Image(fig_b)
+        fig_b = _safe_pie(n_vals, n_labels, f"Normalized Losses (epoch {epoch_name})")
+        competition_log["loss_competition/normalized_pie"] = wandb.Image(fig_b)
         plt.close(fig_b)
-
-        # --- (c) Raw normalized horizontal bar ---------------------------
-        fig_c = _safe_hbar(raw_vals, raw_labels, f"Raw Loss Shares % (epoch {epoch_name})")
-        competition_log["loss_competition/raw_bar"] = wandb.Image(fig_c)
+        fig_c = _safe_pie(w_vals, w_labels, f"Weighted Losses (epoch {epoch_name})")
+        competition_log["loss_competition/weighted_pie"] = wandb.Image(fig_c)
         plt.close(fig_c)
-
-        # --- (d) Weighted normalized horizontal bar ----------------------
-        fig_d = _safe_hbar(w_vals, w_labels, f"Weighted Loss Shares % (epoch {epoch_name})")
-        competition_log["loss_competition/weighted_bar"] = wandb.Image(fig_d)
+        fig_d = _safe_pie(opt_vals, opt_labels, f"Optimizer Losses (epoch {epoch_name})")
+        competition_log["loss_competition/optimizer_pie"] = wandb.Image(fig_d)
         plt.close(fig_d)
+        fig_e = _safe_hbar(raw_vals, raw_labels, f"Raw Loss Shares % (epoch {epoch_name})")
+        competition_log["loss_competition/raw_bar"] = wandb.Image(fig_e)
+        plt.close(fig_e)
+        fig_f = _safe_hbar(n_vals, n_labels, f"Normalized Loss Shares % (epoch {epoch_name})")
+        competition_log["loss_competition/normalized_bar"] = wandb.Image(fig_f)
+        plt.close(fig_f)
+        fig_g = _safe_hbar(w_vals, w_labels, f"Weighted Loss Shares % (epoch {epoch_name})")
+        competition_log["loss_competition/weighted_bar"] = wandb.Image(fig_g)
+        plt.close(fig_g)
+        fig_h = _safe_hbar(opt_vals, opt_labels, f"Optimizer Loss Shares % (epoch {epoch_name})")
+        competition_log["loss_competition/optimizer_bar"] = wandb.Image(fig_h)
+        plt.close(fig_h)
 
         # --- (e) Radar / spider chart ------------------------------------
         # Union of all loss keys; missing entries get 0 so both series share axes.
@@ -818,26 +867,25 @@ class TotalLoss:
             raw_norm = [v / raw_max for v in raw_vals_r] + [raw_vals_r[0] / raw_max]
             w_norm = [v / w_max for v in w_vals_r] + [w_vals_r[0] / w_max]
 
-            fig_e, ax_e = plt.subplots(figsize=(6, 6), subplot_kw={"polar": True})
-            ax_e.plot(angles, raw_norm, "o--", color="steelblue", linewidth=1.5, label="raw (norm)")
-            ax_e.fill(angles, raw_norm, color="steelblue", alpha=0.15)
-            ax_e.plot(angles, w_norm, "o-", color="tomato", linewidth=2, label="weighted (norm)")
-            ax_e.fill(angles, w_norm, color="tomato", alpha=0.15)
-            ax_e.set_xticks(angles[:-1])
-            ax_e.set_xticklabels(all_keys, fontsize=9)
-            ax_e.set_title(f"Loss Radar (epoch {epoch_name})", pad=15)
-            ax_e.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1))
-            fig_e.tight_layout()
-            competition_log["loss_competition/radar"] = wandb.Image(fig_e)
-            plt.close(fig_e)
+            fig_radar, ax_radar = plt.subplots(figsize=(6, 6), subplot_kw={"polar": True})
+            ax_radar.plot(angles, raw_norm, "o--", color="steelblue", linewidth=1.5, label="raw (norm)")
+            ax_radar.fill(angles, raw_norm, color="steelblue", alpha=0.15)
+            ax_radar.plot(angles, w_norm, "o-", color="tomato", linewidth=2, label="weighted (norm)")
+            ax_radar.fill(angles, w_norm, color="tomato", alpha=0.15)
+            ax_radar.set_xticks(angles[:-1])
+            ax_radar.set_xticklabels(all_keys, fontsize=9)
+            ax_radar.set_title(f"Loss Radar (epoch {epoch_name})", pad=15)
+            ax_radar.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1))
+            fig_radar.tight_layout()
+            competition_log["loss_competition/radar"] = wandb.Image(fig_radar)
+            plt.close(fig_radar)
 
-        # --- (f) Stacked area over training time -------------------------
         if len(self._raw_loss_history) >= 2:
             epochs_so_far = list(range(len(self._raw_loss_history)))
 
             def _stacked_area(history: list[dict[str, float]], ax: plt.Axes, title: str) -> None:
                 all_k = list(dict.fromkeys(k for d in history for k in d))
-                matrix = np.array([[d.get(k, 0.0) for k in all_k] for d in history])  # [T, K]
+                matrix = np.array([[d.get(k, 0.0) for k in all_k] for d in history])
                 row_sums = matrix.sum(axis=1, keepdims=True)
                 row_sums[row_sums == 0] = 1.0
                 matrix_pct = matrix / row_sums * 100
@@ -854,15 +902,94 @@ class TotalLoss:
                 ax.legend(loc="upper left", fontsize=8, ncol=2)
                 ax.set_ylim(0, 100)
 
-            fig_f, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+            fig_area, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
             _stacked_area(self._raw_loss_history, ax_top, "Raw Loss Competition Over Training")
             _stacked_area(self._weighted_loss_history, ax_bot, "Weighted Loss Competition Over Training")
             ax_bot.set_xlabel("Epoch")
-            fig_f.tight_layout()
-            competition_log["loss_competition/stacked_area"] = wandb.Image(fig_f)
-            plt.close(fig_f)
+            fig_area.tight_layout()
+            competition_log["loss_competition/stacked_area"] = wandb.Image(fig_area)
+            plt.close(fig_area)
 
         return competition_log
+
+    # ------------------------------------------------------------------
+    # Loss & gradient normalisation calibration
+    # ------------------------------------------------------------------
+    def _calibrate(self, model: TrainModel, optimizer: torch.optim.Optimizer) -> None:
+        """Calibrate loss and gradient scale factors before training begins.
+
+        Runs one full forward pass with calibration_mode=True (bypasses epoch scheduling),
+        then one backward pass to measure per-component gradient norms on top of loss-scaled
+        tensors. Null losses (requires_grad=False) are skipped — their scales stay at 1.0.
+        Optimizer gradients are zeroed before and after to leave no trace.
+        """
+        print("[LossNormalisation] Starting calibration pass...")
+        optimizer.zero_grad()
+
+        # --- Loss scale calibration (forward only) ---
+        raw = self._compute_raw_losses(model, epoch_name=0, calibration_mode=True)
+        calibrated_names: set[str] = set(raw.keys())
+        loss_scales: dict[str, float] = {}
+        for name, tensor in raw.items():
+            mean_val = abs(tensor.detach().item())
+            loss_scales[name] = self._norm_manager._target_loss / mean_val if mean_val > 0 else 1.0
+            print(f"  Loss scale for {name}: mean_raw={mean_val:.6g}, scale={loss_scales[name]:.6g}")
+
+        # CSE: scale is derived from the raw v_cruise output, not individual drag/solar.
+        if self._use_cse:
+            print("  CSE mode detected: computing cse_objective scale...")
+            # Temporarily record loss_scales (no grad_scales yet) so _apply_weighting can run.
+            # cse_scale will be 1.0*1.0=1.0 here (grad_scales empty → get_grad_scale returns 1.0).
+            self._norm_manager.record_calibration(loss_scales, {}, calibrated_names)
+            self._apply_weighting(raw)
+            if "cse_objective" in self._last_weighted_losses:
+                # loss_scale=1.0 and grad_scale=1.0 at this point, so the value equals -v_cruise
+                raw_cse_val = abs(self._last_weighted_losses["cse_objective"].detach().item())
+                loss_scales["cse_objective"] = self._norm_manager._target_loss / raw_cse_val if raw_cse_val > 0 else 1.0
+                calibrated_names.add("cse_objective")
+                print(f"  Loss scale for cse_objective: raw={raw_cse_val:.6g}, scale={loss_scales['cse_objective']:.6g}")
+            drag_name = self._objective_losses.get(self._cse_drag_category, (None,))[0]
+            solar_name = self._objective_losses.get(self._cse_solar_category, (None,))[0]
+            for merged_name in (drag_name, solar_name):
+                if merged_name:
+                    print(f"  Excluding {merged_name} (merged into cse_objective)")
+                    calibrated_names.discard(merged_name)
+                    loss_scales.pop(merged_name, None)
+
+        # Store loss scales so _apply_weighting applies them during gradient calibration.
+        self._norm_manager.record_calibration(loss_scales, {}, calibrated_names)
+
+        # --- Gradient scale calibration (backward pass) ---
+        print("[LossNormalisation] Computing gradient scales...")
+        optimizer.zero_grad()
+        raw = self._compute_raw_losses(model, epoch_name=0, calibration_mode=True)
+        self._apply_weighting(raw)  # loss_scales now active; populates _last_weighted_losses
+
+        trainable_params = [p for p in model.parameters() if p.requires_grad]
+        prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
+
+        components_with_grad = [(name, t) for name, t in self._last_weighted_losses.items() if t.requires_grad]
+        grad_scales: dict[str, float] = {}
+
+        for idx, (name, component) in enumerate(components_with_grad):
+            is_last = idx == len(components_with_grad) - 1
+            component.backward(retain_graph=not is_last)
+            curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
+            delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
+            grad_scales[name] = self._norm_manager._target_grad / delta_norm if delta_norm > 0 else 1.0
+            print(f"  Grad scale for {name}: delta_norm={delta_norm:.6g}, scale={grad_scales[name]:.6g}")
+            prev_grad = curr_grad
+
+        self._norm_manager.record_calibration(loss_scales, grad_scales, calibrated_names)
+        optimizer.zero_grad()
+
+        summary_items = [
+            f"{n}(loss={loss_scales.get(n, 1.0):.3g}, grad={grad_scales.get(n, 1.0):.3g})"
+            for n in sorted(calibrated_names)
+        ]
+        print(f"[LossNormalisation] Calibration complete. {len(calibrated_names)} losses calibrated:")
+        for item in summary_items:
+            print(f"  ✓ {item}")
 
     # ------------------------------------------------------------------
     # Orchestrator
@@ -902,7 +1029,12 @@ class TotalLoss:
                         loss_log[f"raw_losses/{role_dict[cat][0]}"] = 0.0
                 if cat in self._auxiliary_losses:
                     loss_log[f"raw_losses/{cat}"] = 0.0
-            loss_log["raw_losses/total_loss"] = sum(value for key, value in loss_log.items() if key.startswith("raw_losses/"))
+            raw_total = 0.0
+            for name, t in raw.items():
+                category = self._loss_name_to_category.get(name, "")
+                sign = float(self._objective_signs.get(category, 1))
+                raw_total += sign * t.item()
+            loss_log["raw_losses/total_loss"] = raw_total
             self._handle_telemetry(loss_log, epoch_name, device, model, total)
 
         if self._external_alm:
