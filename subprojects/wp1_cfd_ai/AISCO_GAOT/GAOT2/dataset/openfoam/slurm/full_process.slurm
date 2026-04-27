@@ -5,8 +5,8 @@
 # Runs the complete pipeline on ONE node (max 128 cores):
 #   1. Loop subdivision        (~180k verts, 16 workers)  [skippable]
 #   2. PLY → STL + case gen    (sequential, lightweight)  [skippable]
-#   3. Mesh  snappyHexMesh     (3 cases parallel → 3 × 32 = 96 cores)
-#   4. Solve simpleFoam        (3 cases parallel → 3 × 32 = 96 cores)
+#   3. Mesh  snappyHexMesh     (3 cases parallel → 3 × 28 = 84 cores)
+#   4. Solve simpleFoam        (3 cases parallel → 3 × 28 = 84 cores)
 #   5. Extract .pt + QA        (16 workers)               [skippable]
 #
 #   Look at the flags!!! you might want to skip or not something
@@ -23,7 +23,7 @@
 #SBATCH --account=es_fuge
 #SBATCH --time=72:00:00
 #SBATCH --nodes=1
-#SBATCH --ntasks=96
+#SBATCH --ntasks=84
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1900M
 #SBATCH --output=/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/OPENFOAM_001/OF_FullProcess_%j.out
@@ -58,8 +58,8 @@ OUTPUT_DIR="$WORK_ROOT/processed_euler_openfoam_cp_v050"
 PIPE="/cluster/home/$USER/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset/openfoam"
 DATASET_DIR="/cluster/home/$USER/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset"
 
-MESH_BATCH=3   # parallel mesh jobs  (3 × 32 = 96 cores)
-SOLVE_BATCH=3  # parallel solve jobs (3 × 32 = 96 cores)
+MESH_BATCH=3   # parallel mesh jobs  (3 × 28 = 84 cores)
+SOLVE_BATCH=3  # parallel solve jobs (3 × 28 = 84 cores)
 # =============================================================================
 
 module purge
@@ -162,7 +162,7 @@ mesh_case() {
     surfaceFeatureExtract > log.surfaceFeatureExtract 2>&1
     rm -rf processor* 2>/dev/null || true
     decomposePar -decomposeParDict system/decomposeParDict.mesh -force > log.decomposePar_mesh 2>&1
-    mpirun --bind-to none -np 32 snappyHexMesh -parallel -overwrite \
+    mpirun --bind-to none -np 28 snappyHexMesh -parallel -overwrite \
         -decomposeParDict system/decomposeParDict.mesh > log.snappyHexMesh 2>&1
     reconstructParMesh -constant > log.reconstructParMesh 2>&1 || {
         if [[ -f constant/polyMesh/owner ]]; then
@@ -188,7 +188,7 @@ solve_case() {
     echo "[solve] START $RUN_ID at $(date)"
     cd "$CASE"
     local solved=0
-    for NPROCS in 32 16; do
+    for NPROCS in 28 14; do
         sed -i "s/numberOfSubdomains.*/numberOfSubdomains ${NPROCS};/" system/decomposeParDict
         rm -rf processor* 2>/dev/null || true
         decomposePar -force > log.decomposePar 2>&1
