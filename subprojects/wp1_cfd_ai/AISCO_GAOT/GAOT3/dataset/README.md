@@ -1,12 +1,18 @@
 # GAOT3 Dataset Preprocessing
 
+
+####	MAKE SURE TO EITHER EDIT THE PREPROCESSING_CONFIG IN THE PREPROCESS_ALL_DATASETS.PY
+####	OR THE SLURM SCRIPT WP1_PREPROCESS.SH AS NEEDED
+
+
 Run preprocessing from the repository root using the unified runner:
 
 ```bash
 python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/dataset/preprocess_all_datasets.py --datasets all
 ```
+or via sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/dataset/preprocess_all_datasets.py
 
-The dataset-specific scripts are now flattened directly in this folder:
+The dataset-specific scripts are the following ones and can be found in the subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/dataset:
 
 - `preprocessing_euler.py`
 - `preprocessing_ahmed_drivaer.py`
