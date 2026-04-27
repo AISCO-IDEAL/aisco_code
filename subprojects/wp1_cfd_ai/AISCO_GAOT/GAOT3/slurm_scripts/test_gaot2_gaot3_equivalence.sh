@@ -38,6 +38,7 @@ echo "=========================================="
 export PYTHONUNBUFFERED=TRUE
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONHASHSEED=0
+export CUBLAS_WORKSPACE_CONFIG=:4096:8
 export PYTHONPATH="$REPO_DIR:$REPO_DIR/subprojects:${PYTHONPATH:-}"
 export WANDB_DISABLED=true
 

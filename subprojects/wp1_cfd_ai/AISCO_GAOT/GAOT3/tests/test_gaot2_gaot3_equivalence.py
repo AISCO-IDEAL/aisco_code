@@ -61,6 +61,8 @@ def _env_for(version_dir: Path) -> dict[str, str]:
     env["PYTHONPATH"] = os.pathsep.join(pythonpath)
     env.setdefault("PYTHONUNBUFFERED", "1")
     env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+    env.setdefault("PYTHONHASHSEED", "0")
+    env.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     env.setdefault("WANDB_DISABLED", "true")
     return env
 
