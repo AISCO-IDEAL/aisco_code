@@ -39,7 +39,7 @@ hidden_dims: [256, 256, 256, 512, 512, 512, 512, 256, 128]
 # Each preset has 10 entries (9 hidden + 1 output). All are length-checked.
 
 # --- Basic MLP ----------------------------------------------------------
-activations: [tanh, relu, tanh, relu, tanh, relu, tanh, relu, tanh, relu, linear]        # smooth, good general default
+activations: [tanh, relu, tanh, relu, tanh, relu, tanh, relu, tanh, linear]        # smooth, good general default
 #
 # --- Smooth baselines (controls) ----------------------------------------
 # activations: [silu, silu, silu, silu, silu, silu, silu, silu, silu, linear]            # current baseline (too smooth)
