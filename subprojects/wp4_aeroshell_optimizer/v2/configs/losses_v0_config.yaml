@@ -49,7 +49,7 @@ general_info:
 #
   deactivate_scheduler_mode: skip
   loss_normalisation:
-    enabled: True
+    enabled: False
     target_loss_value: 1.0
     target_gradient_norm: 1.0
 

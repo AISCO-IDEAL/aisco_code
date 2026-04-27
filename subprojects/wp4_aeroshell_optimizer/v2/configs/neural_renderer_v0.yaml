@@ -118,6 +118,8 @@ rendering_modes:
       outer_edge_strength: 1.0
       tolerance: 2.0
       angular_tolerance: 0.4
+      ply_export_enabled: true
+      ply_export_interval: 10  # optional: overrides render_interval for PLY export cadence
 
 
   #use alex_mode as an example, just renders a GIF of the mesh

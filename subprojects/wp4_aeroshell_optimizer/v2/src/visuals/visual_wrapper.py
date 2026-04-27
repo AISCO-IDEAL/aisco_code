@@ -179,6 +179,10 @@ class VisualisationManager:
         # Detach all tensors before dispatching to any mode so no rendering
         # operation can retain or extend the training computation graph.
         optimization_state = {k: v.detach() if isinstance(v, torch.Tensor) else v for k, v in optimization_state.items()}
+        # Inject mesh output directory so modes can write side-car files (e.g. PLY exports)
+        # without needing direct access to VisualisationManager internals.
+        if self.output_dir is not None and "mesh_dir" not in optimization_state:
+            optimization_state["mesh_dir"] = self.output_dir / "meshes"
         step = optimization_state.get("iteration")
 
         for mode_name, mode in self.rendering_modes.items():

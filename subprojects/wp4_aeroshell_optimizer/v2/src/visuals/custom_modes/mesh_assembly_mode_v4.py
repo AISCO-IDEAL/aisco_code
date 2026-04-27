@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import torch
 from PIL import Image, ImageDraw
 
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.combined_ply_export import export_combined_bbox_mesh_ply
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.custom_modes.bounding_box_mode_utils import (
     alpha_blend,
     get_mesh_from_optimization_state,
@@ -65,10 +67,20 @@ class MeshAssemblyModeV4(RenderingMode):
         # One cached base frame and assembly-id per camera position.
         self.base_frames: list[np.ndarray | None] = [None] * len(camera_positions)
         self.base_assembly_ids: list[int | None] = [None] * len(camera_positions)
+        # Cached bbox mesh tensors keyed by assembly_id for PLY export.
+        self.cached_bbox_tensors: dict[int, tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = {}
 
         self.frame_storage = []
         self.render_interval = int(config.get("render_interval", 1))
         self.make_gif = bool(config.get("make_gif", True))
+
+        self.ply_export_enabled = bool(config.get("ply_export_enabled", False))
+        self.ply_export_interval = int(config.get("ply_export_interval", self.render_interval))
+        self._ply_missing_mesh_dir_warned = False
+        # Holds the last optimization_state that contained a valid mesh, so finalize()
+        # can write at least one combined PLY if no interval export fired yet.
+        self._last_ply_state: dict | None = None
+        self._ply_export_count: int = 0
 
         self.mesh_color = tuple(config.get("mesh_color", [0.2, 1.0, 1.0]))
         self.mesh_alpha = float(config.get("mesh_alpha", config.get("alpha", 0.5)))
@@ -153,6 +165,16 @@ class MeshAssemblyModeV4(RenderingMode):
             tolerance=self.tolerance,
             angular_tolerance=self.angular_tolerance,
         )
+
+        # Cache raw bbox tensors once per assembly_id so update() can use them
+        # for PLY export without re-tessellating.
+        if assembly_id not in self.cached_bbox_tensors:
+            self.cached_bbox_tensors[assembly_id] = (
+                inner_vertices.detach().cpu(),
+                inner_faces.detach().cpu(),
+                outer_vertices.detach().cpu(),
+                outer_faces.detach().cpu(),
+            )
 
         inner_textures = self.visualiser.create_solid_texture(
             batch_size=1,
@@ -260,7 +282,86 @@ class MeshAssemblyModeV4(RenderingMode):
                 )
                 self.frame_storage.append(self._annotate_frame(fallback, epoch_value=iteration, sdf_ok=False))
 
+        # PLY export — once per ply_export_interval (independent of camera loop).
+        if self.ply_export_enabled and vertices is not None and faces is not None and int(faces.numel()) > 0:
+            # Always keep the most recent valid state so finalize() can flush it.
+            self._last_ply_state = {
+                "iteration": iteration,
+                "assembly_id": current_assembly_id,
+                "vertices": vertices.detach().cpu(),
+                "faces": faces.detach().cpu(),
+                "mesh_dir": optimization_state.get("mesh_dir"),
+            }
+
+        if (
+            self.ply_export_enabled
+            and iteration is not None
+            and iteration % self.ply_export_interval == 0
+            and vertices is not None
+            and faces is not None
+            and int(faces.numel()) > 0
+        ):
+            self._write_ply(
+                assembly_id=current_assembly_id,
+                iteration=iteration,
+                mesh_dir=optimization_state.get("mesh_dir"),
+                sdf_verts=vertices.detach().cpu(),
+                sdf_faces=faces.detach().cpu(),
+            )
+
+    def _write_ply(
+        self,
+        assembly_id: int,
+        iteration: int,
+        mesh_dir: Any,
+        sdf_verts: torch.Tensor,
+        sdf_faces: torch.Tensor,
+    ) -> None:
+        """Write a combined bbox+SDF PLY for the given epoch. Called from update() and finalize()."""
+        if mesh_dir is None:
+            if not self._ply_missing_mesh_dir_warned:
+                print("[MeshAssemblyModeV4] PLY export skipped: 'mesh_dir' not found in optimization_state")
+                self._ply_missing_mesh_dir_warned = True
+            return
+        bbox = self.cached_bbox_tensors.get(assembly_id)
+        if bbox is None:
+            return
+        inner_v, inner_f, outer_v, outer_f = bbox
+        ply_path = mesh_dir / f"combined_bb_mesh_epoch{iteration:04d}.ply"
+        try:
+            export_combined_bbox_mesh_ply(
+                inner_verts=inner_v,
+                inner_faces=inner_f,
+                outer_verts=outer_v,
+                outer_faces=outer_f,
+                sdf_verts=sdf_verts,
+                sdf_faces=sdf_faces,
+                output_path=ply_path,
+                inner_color=self.assembly_color,
+                outer_color=self.outer_color,
+                sdf_color=self.mesh_color,
+                outer_alpha=self.outer_alpha,
+                sdf_alpha=self.mesh_alpha,
+            )
+            print(f"[MeshAssemblyModeV4] Combined PLY exported: epoch={iteration}, path={ply_path}, components=inner+outer+sdf")
+            self._ply_export_count += 1
+        except Exception as ply_exc:
+            print(f"[MeshAssemblyModeV4] PLY export failed at epoch={iteration}: {ply_exc}")
+
     def finalize(self, output_dir, file_name="mesh_assembly_v4.gif", delete: bool = False) -> None:
+        # If PLY export was enabled but no interval export fired (e.g. ply_export_interval
+        # exceeds num_epochs), write the last valid state now as a final snapshot.
+        if self.ply_export_enabled and self._ply_export_count == 0 and self._last_ply_state is not None:
+            state = self._last_ply_state
+            iteration = state["iteration"] if state["iteration"] is not None else 0
+            self._write_ply(
+                assembly_id=state["assembly_id"],
+                iteration=iteration,
+                mesh_dir=state.get("mesh_dir"),
+                sdf_verts=state["vertices"],
+                sdf_faces=state["faces"],
+            )
+
         if not self.frame_storage:
             print(f"  {self.__class__.__name__}: No frames to save")
             return
