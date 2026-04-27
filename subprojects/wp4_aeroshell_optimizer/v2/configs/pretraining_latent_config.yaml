@@ -62,16 +62,16 @@ latent_population:
     ply_scale: 100.0
     surface_noise_sigma_factor: 0.005
 
-  - name: "simple_solarcar"
-    shape_type: "ply"
-    radius: null
-    side_length: null
-    ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_solarcar.ply"
-    ply_scale: 100.0
-    surface_noise_sigma_factor: 0.005
+  # - name: "simple_solarcar"
+  #   shape_type: "ply"
+  #   radius: null
+  #   side_length: null
+  #   ply_path: "/cluster/work/fuge/AISCO/pretraining_shapes/simple_solarcar.ply"
+  #   ply_scale: 100.0
+  #   surface_noise_sigma_factor: 0.005
 
 training_loop:
-  epochs: 23
+  epochs: 1000
   learning_rate: 0.0005
   batch_size_per_shape: 4096 #8192
   print_interval: 25
@@ -79,14 +79,28 @@ training_loop:
   surface_resample_cadence: 0   # 0 = static (DeepSDF-style, default)
                                 # N = refresh near-surface cache every N epochs
 
+  # --- M2: Dual-band near-surface sampling ---
+  # near_surface_fraction + domain_fraction must sum to ≤ 1.0.
+  # Remainder (1 - near_surface_fraction - domain_fraction) goes to exact surface pts.
+  # If near_surface_wide_sigma is absent (null), single-band mode is used (backward-compat).
+  near_surface_fraction: 0.30     # fraction of batch for near-surface pts (split between bands)
+  domain_fraction: 0.50           # fraction of batch for outer_prism uniform pts (eikonal)
+  near_surface_tight_sigma: 0.005 # tight band σ = factor × bbox_extent_mm  (≈25mm at car scale)
+  near_surface_wide_sigma: 0.05   # wide band σ = factor × bbox_extent_mm   (≈250mm at car scale)
+
 output:
   # Must live in a directory NOT scanned by fetch_pretrained_model
   # (which scans the standard pretrained_path directory).
   checkpoint_path: "/cluster/work/fuge/AISCO/latent_pretraining/pretrained_latent.pth"
   mesh_resolution: 64
-  bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2
+  bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2 Assembler
+
+  
+  # Cache key includes ply_path stem, ply_scale, sigma params, n_surf → hash-tagged .pt files.
+  # Useful for static cache (surface_resample_cadence: 0): GT SDF is computed once and reused.
+  sdf_cache_dir: "/cluster/work/fuge/AISCO/latent_pretraining/sdf_cache"  
 
   vis_cadence: 10 # at what interval to visualize the sampling
   vis_show_eikonal_pts: true   # visualize sampled points for eikonal loss (default: true)
-  vis_show_target_pts: "mesh"  # "pts" = surface cache pts in green | "mesh" = target triangle mesh in green
+  vis_show_target_pts: "pts"  # "pts" = surface cache pts in green | "mesh" = target triangle mesh in green
   # model points are always displayed as red points

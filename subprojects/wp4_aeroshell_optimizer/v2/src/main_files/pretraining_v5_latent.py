@@ -48,12 +48,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--epochs",
         type=int,
-        default=None, # value from config will be used
+        default=None,  # value from config will be used
         help="Override training_loop.epochs from config.",
     )
     parser.add_argument(
         "--no-mesh",
-        action="store_true", # iff flag is present: no_mesh == true
+        action="store_true",  # iff flag is present: no_mesh == true
         dest="no_mesh",
         help="Skip per-slot mesh extraction after training.",
     )
@@ -64,7 +64,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--wandb",
-        action="store_true", # iff flag is present: use_wandb == true
+        action="store_true",  # iff flag is present: use_wandb == true
         dest="use_wandb",
         help="Log training metrics to Weights & Biases.",
     )
@@ -76,7 +76,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--vis-sampling",
-        action="store_true", # iff flag is present: vis_sampling == true
+        action="store_true",  # iff flag is present: vis_sampling == true
         dest="vis_sampling",
         help="Write sampling visualizations (points + mesh PLY) after training.",
     )
@@ -101,7 +101,9 @@ def main() -> None:
         print("[pretraining_v5_latent] Mesh extraction disabled (--no-mesh).")
 
     # Device selection
-    device: str = args.device if args.device is not None else "cuda" if torch.cuda.is_available() else "cpu" # TODO: align with rest of code
+    device: str = (
+        args.device if args.device is not None else "cuda" if torch.cuda.is_available() else "cpu"
+    )  # TODO: align with rest of code
     print(f"[pretraining_v5_latent] Device: {device}")
 
     # Load model

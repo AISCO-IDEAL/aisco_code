@@ -64,6 +64,34 @@ def get_outer_prism_bounds_mm() -> dict[str, tuple[float, float]]:
     }
 
 
+def scale_outer_prism(outer_prism: dict[str, tuple[float, float]], scale_factor: float) -> dict[str, tuple[float, float]]:
+    """Scale outer_prism bounds symmetrically around each axis centre.
+
+    Each axis half-span is multiplied by *scale_factor*; the centre of each
+    axis is preserved.  For axes that are already symmetric about zero (x, y)
+    this is equivalent to a simple multiplicative scale.  For asymmetric axes
+    (z_sampling, z_mesh) the centre is preserved instead of the origin.
+
+    Args:
+        outer_prism: Dict from ``get_outer_prism_bounds_mm()`` with keys
+            ``'x'``, ``'y'``, ``'z_sampling'``, ``'z_mesh'``.
+        scale_factor: Multiplicative factor for each half-span.  ``1.0`` returns
+            the input unchanged.  ``> 1.0`` expands; ``< 1.0`` shrinks.
+
+    Returns:
+        New outer_prism dict with scaled bounds.  If *scale_factor* is ``1.0``,
+        returns the original dict (no copy).
+    """
+    if scale_factor == 1.0:
+        return outer_prism
+    result: dict[str, tuple[float, float]] = {}
+    for key, (lo, hi) in outer_prism.items():
+        centre = (lo + hi) / 2.0
+        half_span = (hi - lo) / 2.0 * scale_factor
+        result[key] = (centre - half_span, centre + half_span)
+    return result
+
+
 if __name__ == "__main__":
     # Example usage - get values from nested YAML structure in test - print values 3 2 1
     pass

@@ -20,8 +20,10 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 import torch
+import trimesh
 
 # ---------------------------------------------------------------------------
 # Helpers shared across tests
@@ -82,7 +84,6 @@ def _make_latent_pretrain_config(checkpoint_path: str, force: bool = True) -> di
         "output": {
             "checkpoint_path": checkpoint_path,
             "mesh_resolution": 16,
-            "mesh_box_mm": 2000,
         },
     }
 
@@ -358,6 +359,49 @@ class TestDiversityTrainerModeC:
 
 
 # ---------------------------------------------------------------------------
+# M1 — _load_ply_tensors watertightness guard
+# ---------------------------------------------------------------------------
+
+
+class TestLoadPlyTensorsWatertight:
+    """Verify that _load_ply_tensors raises ValueError for non-watertight meshes."""
+
+    def test_raises_if_not_watertight(self, tmp_path: Path) -> None:
+        """A non-watertight PLY must raise ValueError before any vertex processing."""
+        _load_ply_tensors = _import(PRETRAIN_LATENT, "_load_ply_tensors")
+
+        # Build a minimal open mesh (non-watertight: two disconnected triangles, open boundary)
+        verts = np.array(
+            [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1]],
+            dtype=np.float64,
+        )
+        faces = np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int64)  # 2 disconnected tris = open mesh
+        mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+        assert not mesh.is_watertight, "Fixture mesh must not be watertight"
+
+        ply_path = tmp_path / "open_mesh.ply"
+        mesh.export(str(ply_path))
+
+        with pytest.raises(ValueError, match="watertight"):
+            _load_ply_tensors(str(ply_path), ply_scale=1.0)
+
+    def test_watertight_mesh_loads_without_error(self, tmp_path: Path) -> None:
+        """A watertight PLY must load successfully and return verts, faces, extent."""
+        _load_ply_tensors = _import(PRETRAIN_LATENT, "_load_ply_tensors")
+
+        sphere = trimesh.creation.icosphere(radius=500.0)
+        assert sphere.is_watertight, "Fixture sphere must be watertight"
+
+        ply_path = tmp_path / "sphere.ply"
+        sphere.export(str(ply_path))
+
+        verts, faces, extent = _load_ply_tensors(str(ply_path), ply_scale=1.0)
+        assert verts.shape[0] > 0
+        assert faces.shape[0] > 0
+        assert extent > 0.0
+
+
+# ---------------------------------------------------------------------------
 # M3 — pretraining_latent integration
 # ---------------------------------------------------------------------------
 
@@ -591,3 +635,165 @@ class TestPretrainConfigHash:
         # New structure: tmp_path/<hash>/pretrained_latent.pth
         pth_files = list(tmp_path.glob("**/pretrained_latent_*.pth"))
         assert len(pth_files) == 1, f"Should not create a second file on resume, got {len(pth_files)}: {pth_files}"
+
+
+# ---------------------------------------------------------------------------
+# M3 — _load_or_build_surface_cache SDF cache
+# ---------------------------------------------------------------------------
+
+
+class TestSDFCache:
+    """Tests for _load_or_build_surface_cache (Plan 013 / M3)."""
+
+    def _make_sphere_ply(self, tmp_path: Path, radius: float = 500.0) -> Path:
+        """Export a watertight icosphere as PLY; return path."""
+        sphere = trimesh.creation.icosphere(radius=radius)
+        ply_path = tmp_path / "sphere.ply"
+        sphere.export(str(ply_path))
+        return ply_path
+
+    def _make_ply_shape_params(self, ply_path: Path) -> dict:
+        mesh = trimesh.load(str(ply_path))
+        verts_np = np.array(mesh.vertices, dtype="float32")
+        faces_np = np.array(mesh.faces, dtype="int64")
+        verts_t = torch.tensor(verts_np)
+        faces_t = torch.tensor(faces_np)
+        extents = verts_np.max(axis=0) - verts_np.min(axis=0)
+        return {
+            "ply_verts": verts_t,
+            "ply_faces": faces_t,
+            "bbox_extent": float(np.linalg.norm(extents)),
+            "surface_noise_sigma_factor": 0.005,
+        }
+
+    def test_cache_miss_builds_and_writes(self, tmp_path: Path) -> None:
+        """On first call (cache miss), cache file is written to cache_dir."""
+        _load_or_build_surface_cache = _import(PRETRAIN_LATENT, "_load_or_build_surface_cache")
+        ply_path = self._make_sphere_ply(tmp_path)
+        shape_params = self._make_ply_shape_params(ply_path)
+        cache_dir = tmp_path / "sdf_cache"
+        cache_dir.mkdir()
+
+        pts, gt = _load_or_build_surface_cache(
+            ply_path=str(ply_path),
+            ply_scale=1.0,
+            shape_params=shape_params,
+            batch_size=100,
+            n_dom=50,
+            device="cpu",
+            cache_dir=cache_dir,
+        )
+        assert pts.shape == (50, 3), f"Expected (50, 3), got {pts.shape}"
+        assert gt.shape == (50,), f"Expected (50,), got {gt.shape}"
+
+        cache_files = list(cache_dir.glob("*.pt"))
+        assert len(cache_files) == 1, f"Expected 1 cache file, got {len(cache_files)}"
+
+    def test_cache_hit_loads_same_pts(self, tmp_path: Path) -> None:
+        """On second call (cache hit), the same pts and gt are returned without re-sampling."""
+        _load_or_build_surface_cache = _import(PRETRAIN_LATENT, "_load_or_build_surface_cache")
+        ply_path = self._make_sphere_ply(tmp_path)
+        shape_params = self._make_ply_shape_params(ply_path)
+        cache_dir = tmp_path / "sdf_cache"
+        cache_dir.mkdir()
+
+        kwargs: dict = {
+            "ply_path": str(ply_path),
+            "ply_scale": 1.0,
+            "shape_params": shape_params,
+            "batch_size": 100,
+            "n_dom": 50,
+            "device": "cpu",
+            "cache_dir": cache_dir,
+        }
+        pts_first, gt_first = _load_or_build_surface_cache(**kwargs)
+        pts_second, gt_second = _load_or_build_surface_cache(**kwargs)
+
+        assert torch.allclose(pts_first, pts_second), "Cache hit must return identical pts"
+        assert torch.allclose(gt_first, gt_second), "Cache hit must return identical gt"
+        # Still only one cache file (no duplicate created on hit)
+        assert len(list(cache_dir.glob("*.pt"))) == 1
+
+    def test_param_change_creates_new_cache_file(self, tmp_path: Path) -> None:
+        """Changing n_dom → new hash → new cache file (old file untouched)."""
+        _load_or_build_surface_cache = _import(PRETRAIN_LATENT, "_load_or_build_surface_cache")
+        ply_path = self._make_sphere_ply(tmp_path)
+        shape_params = self._make_ply_shape_params(ply_path)
+        cache_dir = tmp_path / "sdf_cache"
+        cache_dir.mkdir()
+
+        _load_or_build_surface_cache(
+            ply_path=str(ply_path),
+            ply_scale=1.0,
+            shape_params=shape_params,
+            batch_size=100,
+            n_dom=50,
+            device="cpu",
+            cache_dir=cache_dir,
+        )
+        _load_or_build_surface_cache(
+            ply_path=str(ply_path),
+            ply_scale=1.0,
+            shape_params=shape_params,
+            batch_size=100,
+            n_dom=30,  # changed n_dom → different n_surf → new hash
+            device="cpu",
+            cache_dir=cache_dir,
+        )
+        cache_files = list(cache_dir.glob("*.pt"))
+        assert len(cache_files) == 2, f"Expected 2 separate cache files, got {len(cache_files)}"
+
+    def test_none_cache_dir_skips_cache(self, tmp_path: Path) -> None:
+        """cache_dir=None must return pts/gt without writing any file."""
+        _load_or_build_surface_cache = _import(PRETRAIN_LATENT, "_load_or_build_surface_cache")
+        ply_path = self._make_sphere_ply(tmp_path)
+        shape_params = self._make_ply_shape_params(ply_path)
+
+        pts, gt = _load_or_build_surface_cache(
+            ply_path=str(ply_path),
+            ply_scale=1.0,
+            shape_params=shape_params,
+            batch_size=80,
+            n_dom=40,
+            device="cpu",
+            cache_dir=None,
+        )
+        assert pts.shape[0] == 40
+        assert gt.shape[0] == 40
+        # No files written anywhere in tmp_path (cache was disabled)
+        pt_files = list(tmp_path.glob("**/*.pt"))
+        assert len(pt_files) == 0, f"Expected no .pt files, found: {pt_files}"
+
+    def test_cache_hit_moves_tensors_to_requested_device(self, tmp_path: Path) -> None:
+        """Cache hit must move loaded CPU tensors onto requested device."""
+        _load_or_build_surface_cache = _import(PRETRAIN_LATENT, "_load_or_build_surface_cache")
+        ply_path = self._make_sphere_ply(tmp_path)
+        shape_params = self._make_ply_shape_params(ply_path)
+        cache_dir = tmp_path / "sdf_cache"
+        cache_dir.mkdir()
+
+        # First call builds cache on CPU.
+        _load_or_build_surface_cache(
+            ply_path=str(ply_path),
+            ply_scale=1.0,
+            shape_params=shape_params,
+            batch_size=100,
+            n_dom=50,
+            device="cpu",
+            cache_dir=cache_dir,
+        )
+
+        # Second call must load from cache and honor requested device.
+        # Use "meta" to validate device transfer without requiring CUDA hardware.
+        pts_meta, gt_meta = _load_or_build_surface_cache(
+            ply_path=str(ply_path),
+            ply_scale=1.0,
+            shape_params=shape_params,
+            batch_size=100,
+            n_dom=50,
+            device="meta",
+            cache_dir=cache_dir,
+        )
+
+        assert pts_meta.device.type == "meta"
+        assert gt_meta.device.type == "meta"

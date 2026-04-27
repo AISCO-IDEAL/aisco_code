@@ -9,8 +9,10 @@ Entry point: ``pretraining_latent(model, config, device)``
 
 from __future__ import annotations
 
+import hashlib
 import math
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +23,7 @@ from torch import Tensor
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
-from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
     _compute_eikonal_latent,
     _extract_mesh,
@@ -68,6 +70,12 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
         raise TypeError(
             f"Expected a Trimesh object when loading '{ply_path}', got {type(raw_mesh)}. "
             "Ensure the PLY file contains a single solid mesh."
+        )
+    if not raw_mesh.is_watertight:
+        raise ValueError(
+            f"PLY mesh '{ply_path}' is not watertight (has open edges or self-intersections). "
+            "Pretraining requires a watertight mesh for correct GT SDF values. "
+            "Repair the mesh with 'meshlabserver' (close_holes.mlx filter) or 'pymeshfix' before retrying."
         )
     verts_np = np.array(raw_mesh.vertices, dtype="float32") * ply_scale
     faces_np = np.array(raw_mesh.faces, dtype="int64")
@@ -158,26 +166,103 @@ def _build_shape_params(
     )
 
 
-def _scale_outer_prism(outer_prism: dict[str, Any], scale_factor: float) -> dict[str, Any]:
-    """Scale outer_prism bounds by a multiplicative factor.
+def _load_or_build_surface_cache(
+    ply_path: str,
+    ply_scale: float,
+    shape_params: dict[str, Any],
+    batch_size: int,
+    n_dom: int,
+    device: str,
+    cache_dir: Path | None,
+    *,
+    near_surface_fraction: float = 0.50,
+    domain_fraction: float = 0.50,
+    near_surface_tight_sigma: float | None = None,
+    near_surface_wide_sigma: float | None = None,
+) -> tuple[Tensor, Tensor]:
+    """Load surface pts + GT SDF from disk cache, or build and save them.
+
+    Cache key is derived from all parameters that affect the point distribution.
+    Cache file: ``cache_dir/<hash>.pt``.  On a cache miss the file is written
+    so that subsequent calls return immediately.
 
     Args:
-        outer_prism: Dict from get_outer_prism_bounds_mm() with keys 'x', 'y', 'z_mesh'.
-        scale_factor: Multiplicative factor (1.0 = no scaling, > 1.0 = expand, < 1.0 = shrink).
+        ply_path: Absolute path to the PLY file (used for cache key only; mesh
+            must already be loaded into *shape_params*).
+        ply_scale: Multiplicative scale applied when the PLY was loaded (for key).
+        shape_params: Dict with ``"ply_verts"``, ``"ply_faces"``,
+            ``"bbox_extent"``, ``"surface_noise_sigma_factor"`` as produced by
+            ``_build_shape_params``.
+        batch_size: Total batch size passed to ``_sample_points_for_shape``.
+        n_dom: Number of domain (eikonal) pts per slot.  Surface pts =
+            ``batch_size - n_dom``.
+        device: PyTorch device string.
+        cache_dir: Directory for ``.pt`` cache files.  ``None`` = disabled
+            (always build fresh, never write).
+        near_surface_fraction: Forwarded to ``_sample_points_for_shape``.
+        domain_fraction: Forwarded to ``_sample_points_for_shape``.
+        near_surface_tight_sigma: Forwarded to ``_sample_points_for_shape``.
+        near_surface_wide_sigma: Forwarded to ``_sample_points_for_shape``.
 
     Returns:
-        New outer_prism dict with scaled bounds, centered at same origin.
+        ``(surf_pts, surf_gt)`` — the surface half of the sampled batch
+        (``batch_size - n_dom`` rows).
     """
-    if scale_factor == 1.0:
-        return outer_prism  # No scaling needed
-    scaled = {}
-    for key in ["x", "y", "z_mesh", "z_sampling"]:
-        if key in outer_prism:
-            lo, hi = outer_prism[key]
-            center = (lo + hi) / 2.0
-            half_width = (hi - lo) / 2.0 * scale_factor
-            scaled[key] = [center - half_width, center + half_width]
-    return scaled
+    n_surf = batch_size - n_dom
+    sigma_key = float(shape_params.get("surface_noise_sigma_factor", 0.05))
+    tight_key = near_surface_tight_sigma if near_surface_tight_sigma is not None else -1.0
+    wide_key = near_surface_wide_sigma if near_surface_wide_sigma is not None else -1.0
+
+    if cache_dir is not None:
+        key_str = (
+            f"{Path(ply_path).stem}|{ply_scale}|{sigma_key}|{tight_key}|{wide_key}"
+            f"|{n_surf}|{near_surface_fraction}|{domain_fraction}"
+        )
+        cache_hash = hashlib.sha256(key_str.encode()).hexdigest()[:10]
+        cache_path = cache_dir / f"{cache_hash}.pt"
+
+        if cache_path.exists():
+            payload: dict[str, Any] = torch.load(cache_path, weights_only=True)
+            cached_pts: Tensor = payload["pts"]
+            cached_gt: Tensor = payload["gt"]
+            return cached_pts.to(device), cached_gt.to(device)
+
+    # Cache miss (or caching disabled): build via sampling
+    pts_all, gt_all = _sample_points_for_shape(
+        "ply",
+        shape_params,
+        batch_size,
+        device,
+        near_surface_fraction=near_surface_fraction,
+        domain_fraction=domain_fraction,
+        near_surface_tight_sigma=near_surface_tight_sigma,
+        near_surface_wide_sigma=near_surface_wide_sigma,
+    )
+    surf_pts = pts_all[n_dom:]
+    surf_gt = gt_all[n_dom:]
+
+    if cache_dir is not None:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "pts": surf_pts.cpu(),
+                "gt": surf_gt.cpu(),
+                "meta": {
+                    "ply_path": ply_path,
+                    "ply_scale": ply_scale,
+                    "surface_noise_sigma_factor": sigma_key,
+                    "near_surface_tight_sigma": tight_key,
+                    "near_surface_wide_sigma": wide_key,
+                    "n_surf": n_surf,
+                    "near_surface_fraction": near_surface_fraction,
+                    "domain_fraction": domain_fraction,
+                    "date": datetime.now().isoformat(),
+                },
+            },
+            cache_path,  # type: ignore[arg-type]  # cache_path is always defined when cache_dir is not None
+        )
+
+    return surf_pts, surf_gt
 
 
 def _compute_pretrain_config_hash(config: dict[str, Any], model: SupportsLatentConcat) -> str:
@@ -323,16 +408,32 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     # N > 0 = refresh surface cache every N epochs
     surface_resample_cadence: int = int(loop_cfg.get("surface_resample_cadence", 0))
 
+    # --- M2: Dual-band near-surface sampling params ---
+    # Defaults reproduce the legacy single-band PLY behaviour (50/50 domain/surface, one band).
+    near_surface_fraction: float = float(loop_cfg.get("near_surface_fraction", 0.50))
+    domain_fraction: float = float(loop_cfg.get("domain_fraction", 0.50))
+    # None → single-band fallback (uses surface_noise_sigma_factor from shape_params)
+    near_surface_tight_sigma: float | None = (
+        float(loop_cfg["near_surface_tight_sigma"]) if loop_cfg.get("near_surface_tight_sigma") is not None else None
+    )
+    near_surface_wide_sigma: float | None = (
+        float(loop_cfg["near_surface_wide_sigma"]) if loop_cfg.get("near_surface_wide_sigma") is not None else None
+    )
+
     # --- Output / visualisation config (read once, shared between loop and post-training) ---
     output_cfg: dict[str, Any] = config.get("output", {})
     run_dir: Path = ckpt_path.parent  # Hash-named folder containing all outputs
     vis_dir: Path = run_dir / "sampling_vis"
     outer_prism_raw = get_outer_prism_bounds_mm()  # Single source of truth for bounding box
     bbox_scale_factor: float = float(output_cfg.get("bbox_scale_factor", 1.0))  # Multiply bounds by this factor
-    outer_prism = _scale_outer_prism(outer_prism_raw, bbox_scale_factor)
+    outer_prism = scale_outer_prism(outer_prism_raw, bbox_scale_factor)
 
     vis_cadence: int = int(output_cfg.get("vis_cadence", 0))  # 0 = disabled
     vis_mesh_res: int = int(output_cfg.get("mesh_resolution", 64))
+
+    # --- M3: Precomputed SDF cache ---
+    _sdf_cache_dir_raw = output_cfg.get("sdf_cache_dir")
+    sdf_cache_dir: Path | None = Path(_sdf_cache_dir_raw) if _sdf_cache_dir_raw is not None else None
 
     vis_show_eikonal_pts: bool = bool(output_cfg.get("vis_show_eikonal_pts", True))  # GREY: points sampled for eikonal loss
     vis_show_target_pts: str = str(output_cfg.get("vis_show_target_pts", "pts"))  # "pts" or "mesh"
@@ -343,8 +444,11 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     mse_fn = torch.nn.MSELoss()
 
     # --- Build initial surface sample cache (near-surface Gaussian-perturbed pts for MSE) ---
-    # Split convention (matches _sample_points_for_shape): domain = pts[:n_dom], surface = pts[n_dom:]
-    n_dom: int = batch_size_per_shape // 2
+    # Split convention: domain = pts[:n_dom], surface = pts[n_dom:].
+    # n_dom = int(batch * domain_fraction) — matches _sample_points_for_shape PLY branch.
+    # Sphere/cube hardcode 50 % domain; domain_fraction should be kept at 0.50 when mixing
+    # PLY with sphere/cube shapes to maintain consistent surface-cache sizes.
+    n_dom: int = int(batch_size_per_shape * domain_fraction)
     n_surf: int = batch_size_per_shape - n_dom
     resample_label = (
         "static (DeepSDF-style: sampled once, reused all epochs)"
@@ -362,8 +466,24 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     cached_surface: list[tuple[Tensor, Tensor]] = []
     for slot_idx, shape in enumerate(shapes):
         shape_params = _build_shape_params(shape, ply_cache, slot_idx)
-        pts_i, gt_i = _sample_points_for_shape(shape["shape_type"], shape_params, batch_size_per_shape, device)
-        cached_surface.append((pts_i[n_dom:], gt_i[n_dom:]))  # surface = second half
+        if shape["shape_type"] == "ply":
+            surf_pts_i, surf_gt_i = _load_or_build_surface_cache(
+                ply_path=str(shape["ply_path"]),
+                ply_scale=float(shape.get("ply_scale", 1.0)),
+                shape_params=shape_params,
+                batch_size=batch_size_per_shape,
+                n_dom=n_dom,
+                device=device,
+                cache_dir=sdf_cache_dir,
+                near_surface_fraction=near_surface_fraction,
+                domain_fraction=domain_fraction,
+                near_surface_tight_sigma=near_surface_tight_sigma,
+                near_surface_wide_sigma=near_surface_wide_sigma,
+            )
+            cached_surface.append((surf_pts_i, surf_gt_i))
+        else:
+            pts_i, gt_i = _sample_points_for_shape(shape["shape_type"], shape_params, batch_size_per_shape, device)
+            cached_surface.append((pts_i[n_dom:], gt_i[n_dom:]))  # surface = second half
 
     print(
         f"[latent_pretrain] Starting: N={num_shapes} shapes, epochs={epochs}, "
@@ -387,7 +507,16 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         if surface_resample_cadence > 0 and epoch > 0 and epoch % surface_resample_cadence == 0:
             for slot_idx, shape in enumerate(shapes):
                 shape_params = _build_shape_params(shape, ply_cache, slot_idx)
-                pts_i, gt_i = _sample_points_for_shape(shape["shape_type"], shape_params, batch_size_per_shape, device)
+                pts_i, gt_i = _sample_points_for_shape(
+                    shape["shape_type"],
+                    shape_params,
+                    batch_size_per_shape,
+                    device,
+                    near_surface_fraction=near_surface_fraction,
+                    domain_fraction=domain_fraction,
+                    near_surface_tight_sigma=near_surface_tight_sigma,
+                    near_surface_wide_sigma=near_surface_wide_sigma,
+                )
                 cached_surface[slot_idx] = (pts_i[n_dom:], gt_i[n_dom:])
 
         # Sample fresh domain pts (uniform bbox) for eikonal — every epoch
@@ -400,7 +529,16 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         for slot_idx, shape in enumerate(shapes):
             shape_params = _build_shape_params(shape, ply_cache, slot_idx)
             # Domain pts: always fresh (we discard the gt for domain — eikonal does not need it)
-            pts_i, _ = _sample_points_for_shape(shape["shape_type"], shape_params, batch_size_per_shape, device)
+            pts_i, _ = _sample_points_for_shape(
+                shape["shape_type"],
+                shape_params,
+                batch_size_per_shape,
+                device,
+                near_surface_fraction=near_surface_fraction,
+                domain_fraction=domain_fraction,
+                near_surface_tight_sigma=near_surface_tight_sigma,
+                near_surface_wide_sigma=near_surface_wide_sigma,
+            )
             domain_pts_i = pts_i[:n_dom]
             # Surface pts: from cache (or refreshed above)
             surf_pts_i, surf_gt_i = cached_surface[slot_idx]

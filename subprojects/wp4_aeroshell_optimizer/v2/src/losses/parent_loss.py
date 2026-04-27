@@ -13,7 +13,7 @@ import inspect
 import torch
 
 import wandb
-from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.losses_utils import get_points
 
@@ -52,15 +52,16 @@ class ParentLoss:
             # Get outer-prism bounds from wp2 (single source of truth)
             prism = get_outer_prism_bounds_mm()
             scale = float(self.losses_config["get_points_params"].get("bbox_scale_factor", 1.0))
+            scaled_prism = scale_outer_prism(prism, scale)
             bbox_lo = [
-                prism["x"][0] * scale,
-                prism["y"][0] * scale,
-                prism["z_sampling"][0] * scale,
+                scaled_prism["x"][0],
+                scaled_prism["y"][0],
+                scaled_prism["z_sampling"][0],
             ]
             bbox_hi = [
-                prism["x"][1] * scale,
-                prism["y"][1] * scale,
-                prism["z_sampling"][1] * scale,
+                scaled_prism["x"][1],
+                scaled_prism["y"][1],
+                scaled_prism["z_sampling"][1],
             ]
             self.points = get_points(
                 num_points=self.losses_config["get_points_params"]["num_points"],

@@ -19,9 +19,9 @@ import open3d as o3d
 import torch
 
 _MESH_COLOUR_DARK_BLUE: tuple[int, int, int] = (0, 0, 139)
-_POINT_COLOUR_GREEN: tuple[int, int, int] = (34, 139, 34)   # target / surface samples
-_POINT_COLOUR_WHITE: tuple[int, int, int] = (220, 220, 220) # eikonal domain samples
-_POINT_COLOUR_RED: tuple[int, int, int] = (220, 30, 30)     # model surface prediction
+_POINT_COLOUR_GREEN: tuple[int, int, int] = (34, 139, 34)  # target / surface samples
+_POINT_COLOUR_WHITE: tuple[int, int, int] = (220, 220, 220)  # eikonal domain samples
+_POINT_COLOUR_RED: tuple[int, int, int] = (220, 30, 30)  # model surface prediction
 
 
 class SamplingVisualizer:
@@ -118,9 +118,11 @@ class SamplingVisualizer:
         """Allow a new write even when ``is_static=True``."""
         self._already_written = False
 
+
 ###
 # Private helpers
 ###
+
 
 def _to_numpy_f64(x: torch.Tensor | np.ndarray) -> np.ndarray:
     """Convert input to (N, 3) float64 numpy array."""

@@ -23,6 +23,11 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
 )
 from subprojects.wp5.unified_mesh_extraction import MeshExtractionConfig, MeshSDFExtractor
 
+# --- Module constants (Plan 013 M2) ---
+_DEFAULT_TIGHT_SIGMA_FACTOR = 0.005  # per config default; tight band sigma_factor * bbox_extent_mm
+
+
+
 
 def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml") -> SupportsModelContract:
     """
@@ -170,6 +175,11 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
     shape_params: dict,
     batch_size: int,
     device: str | torch.device,
+    *,  # keyword-only args follow
+    near_surface_fraction: float = 0.50,
+    domain_fraction: float = 0.50,
+    near_surface_tight_sigma: float | None = None,
+    near_surface_wide_sigma: float | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Sample a surface-concentrated batch of 3D points and ground-truth SDF values.
 
@@ -299,29 +309,74 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
         ply_verts: torch.Tensor = shape_params["ply_verts"].to(device)
         ply_faces: torch.Tensor = shape_params["ply_faces"].to(device)
         bbox_extent: float = float(shape_params["bbox_extent"])
-        noise_sigma = float(shape_params.get("surface_noise_sigma_factor", 0.05)) * bbox_extent
 
-        n_domain = batch_size // 2
-        n_surface = batch_size - n_domain
+        n_domain = int(batch_size * domain_fraction)
+        n_near = int(batch_size * near_surface_fraction)
+        n_exact = batch_size - n_domain - n_near  # exact surface pts (zero jitter)
 
-        # Domain half (50 %) — sample from the outer-prism cuboid
+        # Validate that fractions don't exceed batch size
+        if near_surface_fraction + domain_fraction > 1.0:
+            raise ValueError(
+                f"near_surface_fraction + domain_fraction must sum to ≤ 1.0, "
+                f"got {near_surface_fraction} + {domain_fraction} = {near_surface_fraction + domain_fraction}"
+            )
+
+        # Domain — sample from the outer-prism cuboid
         prism = get_outer_prism_bounds_mm()
         lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z_sampling"][0]], dtype=torch.float32, device=device)
         hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z_sampling"][1]], dtype=torch.float32, device=device)
         domain_pts = lo + torch.rand(n_domain, 3, device=device) * (hi - lo)
         domain_gt = ply_gt(domain_pts, ply_verts, ply_faces)
 
-        # 50 % surface + Gaussian jitter — use CPU arrays directly for trimesh
+        # Use CPU arrays for trimesh surface sampling (avoids moving trimesh to device)
         verts_np = shape_params["ply_verts"].numpy()  # already CPU
         faces_np = shape_params["ply_faces"].numpy()  # already CPU
         mesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, process=False)
-        surface_np, _ = trimesh.sample.sample_surface(mesh, n_surface)
-        surface_pts = torch.tensor(surface_np, dtype=torch.float32, device=device)
-        surface_pts = surface_pts + torch.randn_like(surface_pts) * noise_sigma
-        surface_gt = ply_gt(surface_pts, ply_verts, ply_faces)
 
-        pts = torch.cat([domain_pts, surface_pts], dim=0)
-        gt = torch.cat([domain_gt, surface_gt], dim=0)
+        if near_surface_wide_sigma is None:
+            # --- Single-band mode (backward-compatible default) ---
+            sigma = (
+                near_surface_tight_sigma * bbox_extent
+                if near_surface_tight_sigma is not None
+                else float(shape_params.get("surface_noise_sigma_factor", 0.05)) * bbox_extent
+            )
+            near_np, _ = trimesh.sample.sample_surface(mesh, n_near)
+            near_pts = torch.tensor(near_np, dtype=torch.float32, device=device)
+            near_pts = near_pts + torch.randn_like(near_pts) * sigma
+            near_gt = ply_gt(near_pts, ply_verts, ply_faces)
+            surface_pts_list = [near_pts]
+            surface_gt_list = [near_gt]
+        else:
+            # --- Dual-band mode ---
+            tight_sigma = near_surface_tight_sigma * bbox_extent if near_surface_tight_sigma is not None else _DEFAULT_TIGHT_SIGMA_FACTOR * bbox_extent
+            wide_sigma = near_surface_wide_sigma * bbox_extent
+
+            n_tight = n_near // 2
+            n_wide = n_near - n_tight  # tight gets floor(n_near/2), wide absorbs remainder (asymmetric split favors broader band)
+
+            tight_np, _ = trimesh.sample.sample_surface(mesh, n_tight)
+            tight_pts = torch.tensor(tight_np, dtype=torch.float32, device=device)
+            tight_pts = tight_pts + torch.randn_like(tight_pts) * tight_sigma
+            tight_gt = ply_gt(tight_pts, ply_verts, ply_faces)
+
+            wide_np, _ = trimesh.sample.sample_surface(mesh, n_wide)
+            wide_pts = torch.tensor(wide_np, dtype=torch.float32, device=device)
+            wide_pts = wide_pts + torch.randn_like(wide_pts) * wide_sigma
+            wide_gt = ply_gt(wide_pts, ply_verts, ply_faces)
+
+            surface_pts_list = [tight_pts, wide_pts]
+            surface_gt_list = [tight_gt, wide_gt]
+
+        # Exact surface pts (zero jitter) — always last in surface half
+        if n_exact > 0:
+            exact_np, _ = trimesh.sample.sample_surface(mesh, n_exact)
+            exact_pts = torch.tensor(exact_np, dtype=torch.float32, device=device)
+            exact_gt = ply_gt(exact_pts, ply_verts, ply_faces)
+            surface_pts_list.append(exact_pts)
+            surface_gt_list.append(exact_gt)
+
+        pts = torch.cat([domain_pts, *surface_pts_list], dim=0)
+        gt = torch.cat([domain_gt, *surface_gt_list], dim=0)
 
     else:
         raise ValueError(
