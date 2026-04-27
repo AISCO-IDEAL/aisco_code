@@ -14,18 +14,52 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.weights import weights_al
 
 
 class ALMManager:
+    """
+    Manages the state of the Augmented Lagrangian Method (ALM) for constraint optimisation.
+
+    This class maintains the multipliers (lambda, mu, nu) for each constraint and provides methods to compute the ALM penalty and update the multipliers based on observed constraint values.
+
+    Methods:
+        compute_penalty: Compute the ALM penalty for given constraint values.
+        update_multipliers: Update the ALM multipliers based on observed constraint values.
+        get_telemetry() -> dict[str, float]: Get the current multipliers for logging purposes.
+
+
+    """
+
     def __init__(
         self,
         constraint_names: list[str],
         gi: dict[str, Any],
         device: torch.device,
-        active_constraint_categories: list[str] | None = None,
-        configured_constraint_categories: list[str] | None = None,
+        active_constraint_categories: list[str],
+        configured_constraint_categories: list[str],
     ) -> None:
+        """
+        Initialisation of the ALMManager.
+
+        Needs:
+        - constraint_names: List of all constraint names, in a fixed order.
+        - gi: the ["general_info"] entry of the loss config. Should contain:
+            - initial_lambda: scalar (not recommended) or list of initial lambda values.
+            - initial_mu: scalar (not recommended) or list of initial mu values.
+            - initial_nu: scalar (not recommended) or list of initial nu values.
+            - alpha: ALM alpha parameter (default 0.99).
+            - gamma: ALM gamma parameter (default 0.01).
+            - gamma_aggressive: ALM aggressive gamma multiplier (default 1.1).
+            - ALM_aggressive: whether to use aggressive multiplier updates (default False).
+            - ALM_aggressive_capu: cap for aggressive multiplier updates (default 0.25).
+            - alm_thresholds: optional scalar or list of thresholds for aggressive updates.
+        - device: torch.device to store the multipliers on.
+        - active_constraint_categories: Comes from the TotalLossV2.constraint_category_order property. This returns which categories are considered active.
+        - configured_constraint_categories: List of ALL constraints defined in the loss config. Needs to be provided so the initial ALM Parameter lists can stay set in the same length and order regardless of disabled constraints, the params will be properly remapped to the active constraints based on their categories.
+        """
         self.constraint_names = constraint_names
         self.device = device
         self.nc: int = len(constraint_names)
+        # assume all constraints are active if no active categories are provided, otherwise filter by active categories
         self.active_constraint_categories: list[str] = active_constraint_categories or list(constraint_names)
+        # set variable containing all defined constraint categories for proper mapping of initial multipliers, even if not all are active.
         self.configured_constraint_categories: list[str] = configured_constraint_categories or list(
             self.active_constraint_categories
         )
@@ -127,7 +161,7 @@ class ALMManager:
         Formula: lambda * c + 0.5 * mu * c^2
 
         Args:
-            constraints: One tensor per active constraint, in the order of active_indices.
+            constraints: List of Tensors, one tensor per active constraint, in the order of active_indices.
             active_indices: Indices into self.constraint_names that are currently active.
                 If None, all constraints are assumed active and constraints must have length self.nc.
         """

@@ -191,9 +191,9 @@ def main() -> None:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    ply_files = sorted(args.input_dir.glob("RUN_*.ply"))
+    ply_files = sorted(args.input_dir.glob("*.ply"))
     if not ply_files:
-        logger.error("No RUN_*.ply files found in %s.", args.input_dir)
+        logger.error("No .ply files found in %s.", args.input_dir)
         sys.exit(1)
 
     logger.info(

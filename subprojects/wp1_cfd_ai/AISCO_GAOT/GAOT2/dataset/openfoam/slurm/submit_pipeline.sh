@@ -68,7 +68,7 @@ echo "Batch ID: $(date +%Y%m%dT%H%M%S)"
 echo ""
 
 # Ensure scratch log directory exists
-mkdir -p /cluster/scratch/elihuber/scratch_logs
+mkdir -p /cluster/scratch/$USER/scratch_logs
 
 # --- Submit mesh array -------------------------------------------------------
 echo "Submitting mesh jobs (${N} tasks)..."
