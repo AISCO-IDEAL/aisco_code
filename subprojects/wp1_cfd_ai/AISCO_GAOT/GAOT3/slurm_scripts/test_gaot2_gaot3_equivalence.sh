@@ -37,10 +37,14 @@ echo "=========================================="
 
 export PYTHONUNBUFFERED=TRUE
 export PYTHONDONTWRITEBYTECODE=1
+export PYTHONHASHSEED=0
 export PYTHONPATH="$REPO_DIR:$REPO_DIR/subprojects:${PYTHONPATH:-}"
 export WANDB_DISABLED=true
 
 cd "$REPO_DIR"
+
+find subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2 subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3 \
+    -type d -name "__pycache__" -prune -exec rm -rf {} +
 
 TEST_SCRIPT="subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/tests/test_gaot2_gaot3_equivalence.py"
 GAOT2_CONFIG="${GAOT2_CONFIG:-subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/main_config.yaml}"
