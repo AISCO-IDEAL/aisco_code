@@ -12,7 +12,7 @@ setup:
     id: "_RUN_ID_"
     seed: 42
     device: "cuda:0"
-    dtype: "bfloat16"  # options: "torch.float32" | "bfloat16"
+    dtype: "torch.float32"  # options: "torch.float32" | "bfloat16" | "torch.float64"
     trainer_name: "static3d"
     train: true
     test: true
