@@ -805,9 +805,7 @@ class StaticTrainer3D(TrainerBase):
             self._neural_field_sample_calls = getattr(self, "_neural_field_sample_calls", 0) + 1
             sample_generator = torch.Generator(device=full_pos_i.device)
             sample_generator.manual_seed(sample_seed)
-            input_perm = torch.randperm(num_full_nodes_i, device=full_pos_i.device, generator=sample_generator)[
-                :n_input_sample
-            ]
+            input_perm = torch.randperm(num_full_nodes_i, device=full_pos_i.device, generator=sample_generator)[:n_input_sample]
 
             if use_same_sampling:
                 query_perm = input_perm

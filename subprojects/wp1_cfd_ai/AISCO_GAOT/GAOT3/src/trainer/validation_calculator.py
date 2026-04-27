@@ -66,7 +66,10 @@ class ValidationCalculator:
     def visualize_samples(self, trainer, epoch: int) -> None:
         if trainer.setup_config["rank"] != 0 or trainer.dataset_config.get("num_viz_samples", 1) <= 0:
             return
-        for split_label, loader in [("train", getattr(trainer, "train_loader", None)), ("val", getattr(trainer, "val_loader", None))]:
+        for split_label, loader in [
+            ("train", getattr(trainer, "train_loader", None)),
+            ("val", getattr(trainer, "val_loader", None)),
+        ]:
             if loader is None:
                 continue
             try:
@@ -105,7 +108,12 @@ class ValidationCalculator:
                     )
             return loss, mse, pred_selected_normalized, target_selected_normalized
         target_normalized = batch.y
-        return trainer.loss_fn(pred_normalized, target_normalized), mse_fn(pred_normalized, target_normalized), pred_normalized, target_normalized
+        return (
+            trainer.loss_fn(pred_normalized, target_normalized),
+            mse_fn(pred_normalized, target_normalized),
+            pred_normalized,
+            target_normalized,
+        )
 
     def _add_head_losses(self, trainer, pred_normalized, targets, head_losses) -> None:
         loss_fn_none = torch.nn.MSELoss(reduction="none")
@@ -115,9 +123,10 @@ class ValidationCalculator:
             target_normalized = target_raw.to(trainer.device).view_as(pred_normalized[head_name])
             valid = ~torch.isnan(target_normalized)
             if valid.any():
-                head_losses[head_name] = head_losses.get(head_name, 0.0) + loss_fn_none(
-                    pred_normalized[head_name][valid], target_normalized[valid]
-                ).mean().item()
+                head_losses[head_name] = (
+                    head_losses.get(head_name, 0.0)
+                    + loss_fn_none(pred_normalized[head_name][valid], target_normalized[valid]).mean().item()
+                )
 
     def _integrated_drag_errors(self, trainer, batch, pred_normalized) -> list[float]:
         if not isinstance(pred_normalized, dict) or "field" not in pred_normalized or not hasattr(batch, "x") or batch.x is None:
@@ -144,7 +153,9 @@ class ValidationCalculator:
         target_unnormalized = self._denormalize_field(trainer, batch.x.to(trainer.device))
         max_samples = min(int(trainer.dataset_config.get("num_viz_samples", 1)), len(self._sample_ranges(batch)))
         for sample_index, (start, end) in enumerate(self._sample_ranges(batch)[:max_samples]):
-            self._log_field_visual(trainer, split_label, batch, target_unnormalized, pred_unnormalized, start, end, sample_index, epoch)
+            self._log_field_visual(
+                trainer, split_label, batch, target_unnormalized, pred_unnormalized, start, end, sample_index, epoch
+            )
             drag_pred = self._integrate_sample(trainer, batch, pred_unnormalized, start, end)
             drag_target = self._integrate_sample(trainer, batch, target_unnormalized, start, end)
             metrics = {}
@@ -177,7 +188,16 @@ class ValidationCalculator:
             trainer.tracker.log_metrics(metrics, step=epoch + 1)
 
     def _log_field_visual(
-        self, trainer, split_label: str, batch, target_unnormalized, pred_unnormalized, start: int, end: int, sample_index: int, epoch: int
+        self,
+        trainer,
+        split_label: str,
+        batch,
+        target_unnormalized,
+        pred_unnormalized,
+        start: int,
+        end: int,
+        sample_index: int,
+        epoch: int,
     ) -> None:
         pos = batch.pos_raw[start:end] if hasattr(batch, "pos_raw") else batch.pos[start:end]
         coords = pos.detach().cpu().numpy()
@@ -197,7 +217,9 @@ class ValidationCalculator:
         pred_values = np.asarray(pred_values).squeeze()
         diff_values = np.abs(pred_values - target_values)
         fig = plt.figure(figsize=(12, 4))
-        for index, (title, values) in enumerate([("Ground Truth", target_values), ("Prediction", pred_values), ("Absolute Difference", diff_values)], start=1):
+        for index, (title, values) in enumerate(
+            [("Ground Truth", target_values), ("Prediction", pred_values), ("Absolute Difference", diff_values)], start=1
+        ):
             ax = fig.add_subplot(1, 3, index, projection="3d")
             plot = ax.scatter(coords[:, 0], coords[:, 1], coords[:, 2], c=values, s=2, cmap="jet")
             ax.set_title(title)

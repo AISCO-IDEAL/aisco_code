@@ -10,9 +10,8 @@ import pandas as pd
 import torch
 import torch.distributed as dist
 
-from .Data_handler import DataHandler
-from .WandB_logger import WandBLogger
 from .checkpoint_handler import CheckpointHandler
+from .Data_handler import DataHandler
 from .loss_fn import LossFn
 from .loss_plotter import LossPlotter
 from .model_handler import ModelHandler
@@ -21,6 +20,7 @@ from .path_handler import PathHandler
 from .runtime_handler import RuntimeHandler
 from .test_calculator import TestCalculator
 from .validation_calculator import ValidationCalculator
+from .WandB_logger import WandBLogger
 
 
 class TrainingOrchestrator:

@@ -33,7 +33,9 @@ def run_config_file_popen_handle(config_file: str) -> None:
         print(f"Job {config_file} error: {err.decode('utf-8').strip()}")
 
 
-def run_config_files(config_files: list[str], is_debug: bool, num_works_per_device: int = 3, overrides: dict | None = None) -> None:
+def run_config_files(
+    config_files: list[str], is_debug: bool, num_works_per_device: int = 3, overrides: dict | None = None
+) -> None:
     if len(config_files) == 1:
         run_config_file(config_files[0], overrides=overrides)
     elif is_debug:

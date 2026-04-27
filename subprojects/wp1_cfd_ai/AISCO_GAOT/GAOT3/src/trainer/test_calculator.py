@@ -142,14 +142,24 @@ class TestCalculator:
             full_target_unnormalized = torch.cat(collected["targets"], dim=0)
             diff_unnormalized = full_pred_unnormalized - full_target_unnormalized
             trainer.tracker.log_metrics(
-                {"test/mse": torch.mean(diff_unnormalized**2).item(), "test/mre_percent": self._mre(diff_unnormalized, full_target_unnormalized)}
+                {
+                    "test/mse": torch.mean(diff_unnormalized**2).item(),
+                    "test/mre_percent": self._mre(diff_unnormalized, full_target_unnormalized),
+                }
             )
-        if collected["multi_head"] and collected["field_preds"] and full_pred_unnormalized.numel() == 1 and full_pred_unnormalized.item() == 0.0:
+        if (
+            collected["multi_head"]
+            and collected["field_preds"]
+            and full_pred_unnormalized.numel() == 1
+            and full_pred_unnormalized.item() == 0.0
+        ):
             full_pred_unnormalized = torch.cat(collected["field_preds"], dim=0)
             full_target_unnormalized = torch.cat(collected["field_targets"], dim=0)
         self._calculate_metrics(trainer, collected, full_pred_unnormalized, full_target_unnormalized)
         if trainer.dataset_config["metric_suite"] == "general":
-            results_array = torch.cat([full_target_unnormalized.view(-1, 1), full_pred_unnormalized.view(-1, 1)], dim=1).cpu().numpy()
+            results_array = (
+                torch.cat([full_target_unnormalized.view(-1, 1), full_pred_unnormalized.view(-1, 1)], dim=1).cpu().numpy()
+            )
             if collected["field_sample_metrics"] and full_pred_unnormalized.shape[0] > total_samples:
                 self._write_field_metrics(collected["field_sample_metrics"])
             else:

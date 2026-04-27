@@ -20,11 +20,13 @@ class LossFn:
         latent_tokens_normalized = trainer.latent_tokens.to(trainer.device)
         field_target_normalized = None
         if strategy == "neural_field":
-            sampled_data_list, query_pos, query_batch_idx, field_target_normalized = trainer.data_handler.sample_nodes_neural_field(
-                trainer,
-                batch,
-                trainer.dataset_config["neural_field_input_nodes"],
-                trainer.dataset_config["neural_field_query_nodes_train"],
+            sampled_data_list, query_pos, query_batch_idx, field_target_normalized = (
+                trainer.data_handler.sample_nodes_neural_field(
+                    trainer,
+                    batch,
+                    trainer.dataset_config["neural_field_input_nodes"],
+                    trainer.dataset_config["neural_field_query_nodes_train"],
+                )
             )
             sampled_batch = trainer.collate_fn(sampled_data_list).to(trainer.device)
             query_pos = query_pos.to(trainer.device)
