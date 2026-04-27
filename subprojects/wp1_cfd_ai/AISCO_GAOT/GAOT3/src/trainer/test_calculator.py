@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import csv
 import logging
 import statistics
 import time
 from typing import Any
 
+import numpy as np
 import torch
 
 from .metric_calculator import MetricCalculator
-from .prediction_writer import PredictionWriter
 
 EPSILON = 1e-10
 
@@ -135,31 +136,32 @@ class TestCalculator:
             )
 
     def _finalize(self, trainer, collected, inference_times, data_loading_times, total_samples: int) -> None:
-        full_preds, full_targets = self._write_head_predictions(trainer, collected)
+        full_pred_unnormalized, full_target_unnormalized = self._write_head_predictions(trainer, collected)
         if not collected["multi_head"]:
-            full_preds = torch.cat(collected["preds"], dim=0)
-            full_targets = torch.cat(collected["targets"], dim=0)
-            diff = full_preds - full_targets
-            trainer.tracker.log_metrics({"test/mse": torch.mean(diff**2).item(), "test/mre_percent": self._mre(diff, full_targets)})
-        if collected["multi_head"] and collected["field_preds"] and full_preds.numel() == 1 and full_preds.item() == 0.0:
-            full_preds = torch.cat(collected["field_preds"], dim=0)
-            full_targets = torch.cat(collected["field_targets"], dim=0)
-        self._calculate_metrics(trainer, collected, full_preds, full_targets)
+            full_pred_unnormalized = torch.cat(collected["preds"], dim=0)
+            full_target_unnormalized = torch.cat(collected["targets"], dim=0)
+            diff_unnormalized = full_pred_unnormalized - full_target_unnormalized
+            trainer.tracker.log_metrics(
+                {"test/mse": torch.mean(diff_unnormalized**2).item(), "test/mre_percent": self._mre(diff_unnormalized, full_target_unnormalized)}
+            )
+        if collected["multi_head"] and collected["field_preds"] and full_pred_unnormalized.numel() == 1 and full_pred_unnormalized.item() == 0.0:
+            full_pred_unnormalized = torch.cat(collected["field_preds"], dim=0)
+            full_target_unnormalized = torch.cat(collected["field_targets"], dim=0)
+        self._calculate_metrics(trainer, collected, full_pred_unnormalized, full_target_unnormalized)
         if trainer.dataset_config["metric_suite"] == "general":
-            writer = PredictionWriter(self.config)
-            results_array = torch.cat([full_targets.view(-1, 1), full_preds.view(-1, 1)], dim=1).cpu().numpy()
-            if collected["field_sample_metrics"] and full_preds.shape[0] > total_samples:
-                writer.write_field_metrics(collected["field_sample_metrics"])
+            results_array = torch.cat([full_target_unnormalized.view(-1, 1), full_pred_unnormalized.view(-1, 1)], dim=1).cpu().numpy()
+            if collected["field_sample_metrics"] and full_pred_unnormalized.shape[0] > total_samples:
+                self._write_field_metrics(collected["field_sample_metrics"])
             else:
-                writer.write_predictions(results_array, "True_Drag,Predicted_Drag")
+                self._write_predictions(results_array, "True_Drag,Predicted_Drag")
         self._log_speed(trainer, inference_times, data_loading_times, total_samples)
         self._log_field_metrics(trainer, collected)
 
     def _write_head_predictions(self, trainer, collected):
-        full_preds = torch.tensor([0.0])
-        full_targets = torch.tensor([0.0])
+        full_pred_unnormalized = torch.tensor([0.0])
+        full_target_unnormalized = torch.tensor([0.0])
         if not collected["multi_head"]:
-            return full_preds, full_targets
+            return full_pred_unnormalized, full_target_unnormalized
         for head_name in collected["preds"]:
             if not collected["preds"][head_name]:
                 continue
@@ -174,14 +176,14 @@ class TestCalculator:
                 }
             )
             results_array = torch.cat([head_targets.view(-1, 1), head_preds.view(-1, 1)], dim=1).cpu().numpy()
-            PredictionWriter(self.config).write_predictions(
+            self._write_predictions(
                 results_array,
                 f"True_{head_name},Predicted_{head_name}",
                 trainer.path_config["result_path"].replace(".png", f"_{head_name}_predictions.csv"),
             )
-            if full_preds.numel() == 1 and full_preds.item() == 0.0:
-                full_preds, full_targets = head_preds, head_targets
-        return full_preds, full_targets
+            if full_pred_unnormalized.numel() == 1 and full_pred_unnormalized.item() == 0.0:
+                full_pred_unnormalized, full_target_unnormalized = head_preds, head_targets
+        return full_pred_unnormalized, full_target_unnormalized
 
     def _log_speed(self, trainer, inference_times, data_loading_times, total_samples: int) -> None:
         if not inference_times:
@@ -219,13 +221,13 @@ class TestCalculator:
     def _mre(self, diff, targets) -> float:
         return (torch.abs(diff) / (torch.abs(targets) + EPSILON)).mean().item() * 100.0
 
-    def _calculate_metrics(self, trainer, collected, full_preds, full_targets) -> None:
+    def _calculate_metrics(self, trainer, collected, full_pred_unnormalized, full_target_unnormalized) -> None:
         if trainer.dataset_config["metric_suite"] == "drivaernet":
             target_unnormalized = collected["targets"]
             pred_unnormalized = collected["preds"]
         else:
-            target_unnormalized = full_targets
-            pred_unnormalized = full_preds
+            target_unnormalized = full_target_unnormalized
+            pred_unnormalized = full_pred_unnormalized
         MetricCalculator(self.config).compute_metrics(
             trainer.dataset_config["metric_suite"],
             target_unnormalized,
@@ -233,3 +235,15 @@ class TestCalculator:
             metadata=trainer.metadata,
             active_variables=trainer.dataset_config["active_variables"],
         )
+
+    def _write_predictions(self, values, header: str, path: str | None = None) -> None:
+        np.savetxt(path or self._general_prediction_path(), values, delimiter=",", header=header, comments="")
+
+    def _write_field_metrics(self, rows: list[dict], path: str | None = None) -> None:
+        with open(path or self._general_prediction_path(), "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["filename", "n_nodes", "MSE", "MAE", "Rel_L2_pct"])
+            writer.writeheader()
+            writer.writerows(rows)
+
+    def _general_prediction_path(self) -> str:
+        return self.config["path"]["result_path"].replace(".png", "_predictions.csv")

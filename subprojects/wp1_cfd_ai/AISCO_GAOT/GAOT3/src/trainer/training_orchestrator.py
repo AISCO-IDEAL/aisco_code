@@ -6,6 +6,7 @@ import logging
 import math
 import os
 
+import pandas as pd
 import torch
 import torch.distributed as dist
 
@@ -17,7 +18,6 @@ from .loss_plotter import LossPlotter
 from .model_handler import ModelHandler
 from .optimiser import Optimiser
 from .path_handler import PathHandler
-from .result_writer import ResultWriter
 from .runtime_handler import RuntimeHandler
 from .test_calculator import TestCalculator
 from .validation_calculator import ValidationCalculator
@@ -42,7 +42,7 @@ class TrainingOrchestrator:
             if self.config["setup"]["test"]:
                 self._run_test(trainer, checkpoint_handler)
             if self.config["setup"].get("rank", 0) == 0:
-                ResultWriter(self.config).append_datarow()
+                self._append_datarow()
         finally:
             if self.config["setup"].get("rank", 0) == 0 and hasattr(self, "tracker"):
                 self.tracker.close()
@@ -77,11 +77,19 @@ class TrainingOrchestrator:
         checkpoint_handler.load_for_testing(trainer)
         trainer.test()
 
+    def _append_datarow(self) -> None:
+        if os.path.exists(self.config["path"]["database_path"]):
+            database = pd.read_csv(self.config["path"]["database_path"])
+        else:
+            database = pd.DataFrame(columns=self.config["datarow"].keys())
+        database.loc[len(database)] = self.config["datarow"]
+        database.to_csv(self.config["path"]["database_path"], index=False)
+
     def fit(self, _verbose=False):
         result = self.optimizer.optimise(self)
         self.config["datarow"]["training time"] = result["time"]
         if len(result["train"]["loss"]) == 0:
-            if self.setup_config["rank"] == 0:
+            if self.config["setup"]["rank"] == 0:
                 self.test()
             return
         kwargs = {"epochs": result["train"]["epoch"], "losses": result["train"]["loss"]}
@@ -91,13 +99,13 @@ class TrainingOrchestrator:
         if "best" in result:
             kwargs["best_epoch"] = result["best"]["epoch"]
             kwargs["best_loss"] = result["best"]["loss"]
-        if self.setup_config["rank"] == 0:
+        if self.config["setup"]["rank"] == 0:
             LossPlotter(self.config).save_loss_history(self, **kwargs)
             self.tracker.log_metrics(
                 {"best/loss": result["best"]["loss"], "best/epoch": result["best"]["epoch"], "training_time": result["time"]}
             )
             self.save_ckpt()
-            if self.setup_config["wandb"]:
+            if self.config["setup"]["wandb"]:
                 self.tracker.save_checkpoint_artifact(
                     epoch=result["best"]["epoch"],
                     train_loss=result["best"]["loss"],
@@ -150,7 +158,7 @@ class TrainingOrchestrator:
         )
 
     def _record_model_size(self) -> None:
-        if self.setup_config["rank"] != 0:
+        if self.config["setup"]["rank"] != 0:
             return
         nparam = sum([p.numel() * 2 if p.is_complex() else p.numel() for p in self.model.parameters()])
         nbytes = sum(

@@ -7,25 +7,13 @@ import torch
 from src.model.gaot_3d import masked_multi_head_loss
 
 
-def build_loss_fn(loss_name: str):
-    return LossFn({"optimizer": {"args": {"loss": loss_name}}}).loss_fn
-
-
-def RelativeL2Loss():
-    return build_loss_fn("relative_l2")
-
-
-def L2Loss():
-    return build_loss_fn("l2")
-
-
 class LossFn:
     def __init__(self, config: dict) -> None:
         self.config: dict = config
         self.loss_fn = self._build_loss_fn(self.config["optimizer"]["args"].get("loss", "mse"))
 
-    def calculate_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return self.loss_fn(pred, target)
+    def calculate_loss(self, pred_normalized: torch.Tensor, target_normalized: torch.Tensor) -> torch.Tensor:
+        return self.loss_fn(pred_normalized, target_normalized)
 
     def calculate_train_loss(self, trainer, batch):
         strategy = trainer.dataset_config["training_strategy"]
@@ -74,13 +62,13 @@ class LossFn:
             return self._combine_uncertainty_loss(trainer, scalar_loss, field_loss, head_losses)
         return scalar_loss + trainer.dataset_config["field_loss_weight"] * field_loss, head_losses
 
-    def add_field_loss(self, trainer, batch, pred, loss, head_losses):
-        if "field" not in pred or not hasattr(batch, "x") or batch.x is None:
+    def add_field_loss(self, trainer, batch, pred_normalized, loss, head_losses):
+        if "field" not in pred_normalized or not hasattr(batch, "x") or batch.x is None:
             return loss
         field_target_normalized = batch.x.to(trainer.device)
         valid = ~torch.isnan(field_target_normalized)
         if valid.any():
-            field_loss = self.loss_fn(pred["field"][valid], field_target_normalized[valid])
+            field_loss = self.loss_fn(pred_normalized["field"][valid], field_target_normalized[valid])
             head_losses["field"] = head_losses.get("field", 0.0) + field_loss.item()
             loss = loss + trainer.dataset_config["field_loss_weight"] * field_loss
         return loss
@@ -94,20 +82,20 @@ class LossFn:
             return self._calculate_relative_l2_loss
         raise ValueError(f"Unknown loss '{loss_name}'. Supported: ['mse', 'l2', 'relative_l2']")
 
-    def _calculate_relative_l2_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        if pred.ndim == 1:
-            pred = pred.unsqueeze(0)
-            target = target.unsqueeze(0)
-        diff_normalized = pred - target
+    def _calculate_relative_l2_loss(self, pred_normalized: torch.Tensor, target_normalized: torch.Tensor) -> torch.Tensor:
+        if pred_normalized.ndim == 1:
+            pred_normalized = pred_normalized.unsqueeze(0)
+            target_normalized = target_normalized.unsqueeze(0)
+        diff_normalized = pred_normalized - target_normalized
         diff_norm = diff_normalized.flatten(1).norm(p=2, dim=1)
-        target_norm = target.flatten(1).norm(p=2, dim=1).clamp(min=1e-8)
+        target_norm = target_normalized.flatten(1).norm(p=2, dim=1).clamp(min=1e-8)
         return (diff_norm / target_norm).mean()
 
-    def _calculate_l2_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        if pred.ndim == 1:
-            pred = pred.unsqueeze(0)
-            target = target.unsqueeze(0)
-        diff_normalized = pred - target
+    def _calculate_l2_loss(self, pred_normalized: torch.Tensor, target_normalized: torch.Tensor) -> torch.Tensor:
+        if pred_normalized.ndim == 1:
+            pred_normalized = pred_normalized.unsqueeze(0)
+            target_normalized = target_normalized.unsqueeze(0)
+        diff_normalized = pred_normalized - target_normalized
         return diff_normalized.flatten(1).norm(p=2, dim=1).mean()
 
     def _calculate_scalar_head_losses(self, trainer, pred_normalized, targets_normalized):

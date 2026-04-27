@@ -1,3 +1,5 @@
+"""GAOT3 main is called as python main.py -c config.yaml and passes config dicts to TrainingOrchestrator."""
+
 import os
 import platform
 import subprocess
