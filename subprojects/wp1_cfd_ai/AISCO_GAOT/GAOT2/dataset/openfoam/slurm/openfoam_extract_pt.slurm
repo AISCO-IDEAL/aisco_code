@@ -16,19 +16,19 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem-per-cpu=4G
-#SBATCH --output=/cluster/scratch/elihuber/scratch_logs/OF_Extract_%j.out
-#SBATCH --error=/cluster/scratch/elihuber/scratch_logs/OF_Extract_%j.err
+#SBATCH --output=/cluster/scratch/%u/scratch_logs/OF_Extract_%j.out
+#SBATCH --error=/cluster/scratch/%u/scratch_logs/OF_Extract_%j.err
 
 set -euo pipefail
 
 echo "=== OpenFOAM .pt Extraction at $(date) ==="
 
 # Activate Python environment
-source /cluster/home/elihuber/AISCO_code/aisco_env/bin/activate
+source /cluster/home/$USER/AISCO_code/aisco_env/bin/activate
 
-SCRIPT_DIR="/cluster/home/elihuber/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset/openfoam"
-DATASET_DIR="/cluster/home/elihuber/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset"
-CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3"
+SCRIPT_DIR="/cluster/home/$USER/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset/openfoam"
+DATASET_DIR="/cluster/home/$USER/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/dataset"
+CASES_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/CASES_v3"
 OUTPUT_DIR="/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_v050"
 
 # common_preprocessing lives in dataset/, one level up from openfoam/

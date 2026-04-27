@@ -34,10 +34,10 @@ _SUBMIT_SCRIPT = _SLURM_DIR / "submit_pipeline.sh"
 _EXTRACT_SLURM = _SLURM_DIR / "openfoam_extract_pt.slurm"
 
 _DEFAULT_PLY_INPUT = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/openfoam_geometry")
-_DEFAULT_STL_OUTPUT = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/GEOMETRY")
-_DEFAULT_GEO_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/geometry_manifest.json")
-_DEFAULT_CASES_DIR = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/CASES_v3")
-_DEFAULT_CASES_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM/cases_manifest.json")
+_DEFAULT_STL_OUTPUT = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/GEOMETRY")
+_DEFAULT_GEO_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/geometry_manifest.json")
+_DEFAULT_CASES_DIR = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/CASES_v3")
+_DEFAULT_CASES_MANIFEST = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/cases_manifest.json")
 _DEFAULT_TEMPLATE = _OPENFOAM_DIR / "case_template"
 _DEFAULT_DATASET_DIR = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_v050")
 
