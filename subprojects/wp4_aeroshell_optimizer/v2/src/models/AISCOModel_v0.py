@@ -61,6 +61,10 @@ def _build_activation(name: str | None, num_features: int, snake_alpha_init: flo
         "gelu": nn.GELU,
         "relu": nn.ReLU,
         "leakyrelu": nn.LeakyReLU,
+        "elu": nn.ELU,
+        "selu": nn.SELU,
+        "mish": nn.Mish,
+        "softplus": nn.Softplus,
         "tanh": nn.Tanh,
         "linear": nn.Identity,
         "none": nn.Identity,
@@ -71,7 +75,8 @@ def _build_activation(name: str | None, num_features: int, snake_alpha_init: flo
         return _Snake(num_features=num_features, alpha_init=snake_alpha_init, learnable=True)
     if key not in factories:
         raise ValueError(
-            f"Unknown activation '{name}'. Supported: silu, gelu, relu, leakyrelu, tanh, snake, linear."
+            f"Unknown activation '{name}'. Supported: silu, gelu, relu, leakyrelu, elu, "
+            "selu, mish, softplus, tanh, snake, linear."
         )
     return factories[key]()
 
@@ -104,8 +109,8 @@ class AISCOModel(BaseModel):
                 layers + 1 output layer = 10 ``Linear`` layers total).
             activations: Activation name applied AFTER each ``Linear`` (length
                 ``len(hidden_dims) + 1``). Recognised: ``silu``, ``gelu``, ``relu``,
-                ``leakyrelu``, ``tanh``, ``snake``, ``linear``. Defaults to 9 x
-                ``silu`` + ``linear``.
+                ``leakyrelu``, ``elu``, ``selu``, ``mish``, ``softplus``, ``tanh``,
+                ``snake``, ``linear``. Defaults to 9 x ``silu`` + ``linear``.
             concat_input_at: 1-indexed layer numbers whose ``Linear`` input is
                 concatenated with the (scaled) input features. Defaults to
                 ``[3, 5, 8]``.

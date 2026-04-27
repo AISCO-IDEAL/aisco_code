@@ -20,19 +20,60 @@ out_features: 1       # signed distance scalar
 hidden_dims: [256, 256, 256, 512, 512, 512, 512, 256, 128]
 
 # Activation applied AFTER each Linear (length = len(hidden_dims) + 1).
-# Recognised: silu, gelu, relu, leakyrelu, tanh, snake, linear.
+# Recognised: silu, gelu, relu, leakyrelu, elu, selu, mish, softplus, tanh,
+#             snake, linear.
 # (Sine/SIREN was removed: it proved unstable and produced wobbly SDFs.)
-# `snake` (Ziyin et al. 2020): f(x) = x + sin(alpha*x)^2 / alpha. Adds periodic
-# capacity for sharp creases without SIREN's instability. `alpha` is per-channel
-# learnable; tune its init via `snake_alpha_init` below.
-
+#
+# Quick guide for SDFs (cars / boats):
+#   silu, gelu, mish     -> smooth surfaces, good gradients (best general default)
+#   elu, selu            -> smooth + non-zero mean; can sharpen mid-layer features
+#   softplus             -> very smooth, excellent for Eikonal regularisation
+#   leakyrelu, relu      -> piecewise-linear, edge-friendly but cardboard-like SDF
+#   tanh                 -> bounded; useful at output for SDF clamping
+#   snake                -> periodic capacity for creases. Sensitive: keep `snake_alpha_init`
+#                          small (0.2-0.5) and place snake AWAY from layer 1 and AWAY
+#                          from layers right after `concat_input_at` (your past
+#                          NaNs came from snake at layer 1 + concat re-injection).
+#
+# === PRESETS — uncomment one to try, leave the rest commented ===============
+# Each preset has 10 entries (9 hidden + 1 output). All are length-checked.
+#
+# --- Smooth baselines (controls) ----------------------------------------
+# activations: [silu, silu, silu, silu, silu, silu, silu, silu, silu, linear]            # current baseline (too smooth)
+# activations: [gelu, gelu, gelu, gelu, gelu, gelu, gelu, gelu, gelu, linear]            # heavier-tailed silu
+# activations: [mish, mish, mish, mish, mish, mish, mish, mish, mish, linear]            # near-silu, slightly sharper
+#
+# --- Bounded output (clamps SDF magnitude before output_scale) ---------
+# activations: [silu, silu, silu, silu, silu, silu, silu, silu, silu, tanh]              # SiLU body, tanh on last layer
+# activations: [gelu, gelu, gelu, gelu, gelu, gelu, gelu, gelu, gelu, tanh]
+#
+# --- Mixed smooth: stronger curvature in the middle without breaking surface --
+# activations: [silu, silu, gelu, gelu, gelu, gelu, gelu, silu, silu, linear]            # GELU mid-block
+# activations: [silu, silu, mish, mish, mish, mish, mish, silu, silu, linear]
+# activations: [silu, silu, elu, elu, silu, silu, silu, silu, silu, linear]              # ELU before residual
+#
+# --- Edge-aware (use sparingly: too much causes the cardboard look) ----
+# activations: [silu, silu, silu, leakyrelu, silu, silu, silu, silu, silu, linear]       # ONE leakyrelu mid-stack
+# activations: [silu, silu, leakyrelu, silu, silu, leakyrelu, silu, silu, silu, linear]  # two well-spaced
+# activations: [silu, silu, silu, silu, leakyrelu, silu, silu, leakyrelu, silu, linear]  # late + middle
+#
+# --- Snake (periodic; needs small alpha_init, NOT at layer 1) ----------
+# Set `snake_alpha_init: 0.3` below when using these.
+# activations: [silu, silu, silu, snake, silu, silu, silu, silu, silu, linear]           # one snake at layer 4
+# activations: [silu, silu, silu, silu, silu, snake, silu, silu, silu, linear]           # one snake at layer 6
+# activations: [silu, silu, silu, snake, silu, silu, snake, silu, silu, linear]          # two well-separated snakes
+#
+# --- Hybrid (smooth surface, slight crease capacity at output edge) ----
+# activations: [silu, silu, silu, silu, silu, silu, silu, silu, mish, tanh]              # mish penultimate + tanh output
+activations: [gelu, silu, silu, gelu, silu, silu, gelu, silu, silu, linear]            # alternating smooth pair
+#
 # previous test results:
 # activations: [silu, silu, silu, silu, silu, silu, silu, silu, silu, linear]: too smooth, misses fine details, wandb: https://wandb.ai/aisco/temp_/runs/oro8bbk8?nw=nwusereschaerer
 # activations: [silu, gelu, leakyrelu, gelu, leakyrelu, silu, leakyrelu, silu, linear]: too much big rectangles and edges, no conversion, wandb: https://wandb.ai/aisco/temp_/runs/6lg7mxet?nw=nwusereschaerer
 # activations: [snake, silu, silu, silu, silu, silu, silu, silu, silu, linear]: SDF missing for large parts, not even pretraining works, wandb: https://wandb.ai/aisco/temp_/runs/8i2fp7kn?nw=nwusereschaerer
-# activations: [snake, snake, silu, snake, silu, silu, silu, silu, silu, linear]
+# activations: [snake, snake, silu, snake, silu, silu, silu, silu, silu, linear]: very bad, lots of NaN losses, no geometry
+# activations: [softplus, softplus, softplus, softplus, softplus, softplus, softplus, softplus, softplus, linear]  # no mesh, no geometry, bad, wandb: https://wandb.ai/aisco/temp_/runs/qgttbwqv?nw=nwusereschaerer
 
-activations: [snake, snake, silu, snake, silu, silu, silu, silu, silu, linear]
 
 # 1-indexed layer numbers where the (scaled) input features are re-concatenated
 # onto the layer's input.
@@ -52,8 +93,9 @@ bias: true
 
 # Initial value for Snake's learnable per-channel alpha (only matters if any
 # `snake` entry is in `activations`). Higher = higher-frequency capacity at
-# init. 0.5-1.0 for smooth shapes, 5-30 for highly periodic data.
-snake_alpha_init: 1.0
+# init. For SDFs use 0.2-0.5; values >= 1.0 here have already produced NaNs
+# in this codebase (see test results above).
+snake_alpha_init: 0.3
 
 # --- Memory control ---
 # When the input batch dimension exceeds this value, forward() splits the
