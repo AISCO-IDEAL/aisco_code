@@ -211,19 +211,6 @@ class StaticTrainer3D(TrainerBase):
             )
         self._val_data: dict[str, Any] = {"exists": "No"}
 
-    def _dataloader_seed_tools(self):
-        base_seed = int(self.setup_config["seed"]) + int(self.setup_config.get("rank", 0))
-
-        def seed_worker(worker_id: int) -> None:
-            worker_seed = (base_seed + worker_id) % (2**32)
-            np.random.seed(worker_seed)  # noqa: NPY002
-            random.seed(worker_seed)
-            torch.manual_seed(worker_seed)
-
-        generator = torch.Generator()
-        generator.manual_seed(base_seed)
-        return seed_worker, generator
-
     def _init_viz_consistency_settings(self):
         """Build fixed axis and color ranges for cross-epoch/run comparability."""
         # Axis limits priority:
@@ -331,15 +318,7 @@ class StaticTrainer3D(TrainerBase):
             transform=RescalePosition(),
         )
 
-        seed_worker, loader_generator = self._dataloader_seed_tools()
-        temp_loader = PyGDataLoader(
-            temp_train_dataset,
-            batch_size=dataset_config["batch_size"],
-            shuffle=False,
-            num_workers=4,
-            worker_init_fn=seed_worker,
-            generator=loader_generator,
-        )
+        temp_loader = PyGDataLoader(temp_train_dataset, batch_size=dataset_config["batch_size"], shuffle=False, num_workers=4)
 
         all_x = []
         all_force = []
@@ -678,7 +657,6 @@ class StaticTrainer3D(TrainerBase):
             # Multi-head decoder: count total output dims across heads
             self.num_output_channels = 2  # force(1) + cd(1)
         # --- Create DataLoaders ---
-        seed_worker, loader_generator = self._dataloader_seed_tools()
         if self.setup_config["train"]:
             ## --- Create DistributedSampler for training ---
             train_sampler = None
@@ -701,8 +679,6 @@ class StaticTrainer3D(TrainerBase):
                 pin_memory=False,
                 drop_last=train_sampler is not None,
                 collate_fn=collate_fn,
-                worker_init_fn=seed_worker,
-                generator=loader_generator,
             )
 
             val_sampler = None
@@ -722,8 +698,6 @@ class StaticTrainer3D(TrainerBase):
                 pin_memory=False,
                 sampler=val_sampler,
                 collate_fn=collate_fn,
-                worker_init_fn=seed_worker,
-                generator=loader_generator,
             )
 
         test_sampler = None
@@ -735,8 +709,6 @@ class StaticTrainer3D(TrainerBase):
             pin_memory=False,
             sampler=test_sampler,
             collate_fn=collate_fn,
-            worker_init_fn=seed_worker,
-            generator=loader_generator,
         )
 
     def init_model(self, model_config):
@@ -801,20 +773,14 @@ class StaticTrainer3D(TrainerBase):
             if n_input_sample <= 0:
                 continue
 
-            sample_seed = int(self.setup_config["seed"]) + int(getattr(self, "_neural_field_sample_calls", 0))
-            self._neural_field_sample_calls = getattr(self, "_neural_field_sample_calls", 0) + 1
-            sample_generator = torch.Generator(device=full_pos_i.device)
-            sample_generator.manual_seed(sample_seed)
-            input_perm = torch.randperm(num_full_nodes_i, device=full_pos_i.device, generator=sample_generator)[:n_input_sample]
+            input_perm = torch.randperm(num_full_nodes_i)[:n_input_sample]
 
             if use_same_sampling:
                 query_perm = input_perm
                 n_query_sample = n_input_sample
             else:
                 n_query_sample = min(num_query_nodes, num_full_nodes_i)
-                query_perm = torch.randperm(num_full_nodes_i, device=full_pos_i.device, generator=sample_generator)[
-                    :n_query_sample
-                ]
+                query_perm = torch.randperm(num_full_nodes_i)[:n_query_sample]
 
             sampled_pos_i = full_pos_i[input_perm]
 
@@ -862,7 +828,7 @@ class StaticTrainer3D(TrainerBase):
         n = self.dataset_config.get("num_viz_samples", 1)
         if n <= 0:
             return [], []
-        rng = random.Random(int(self.setup_config["seed"]))
+        rng = random.Random(int.from_bytes(os.urandom(4), "big"))
         train_size = len(self.train_loader.dataset)
         val_size = len(self.val_loader.dataset)
         train_indices = rng.sample(range(train_size), min(n, train_size))
@@ -1298,8 +1264,9 @@ class StaticTrainer3D(TrainerBase):
 
                     # Pull current-batch geometry to CPU once (normals & physics positions).
                     # IMPORTANT: we MUST use the same batch's normals and positions for both
-                    # pred and GT-sub integration. Using geometry stored from
-                    # a different sampled node set would pair wrong Cp values with wrong
+                    # pred and GT-sub integration. Subsampling is random each epoch (os.urandom
+                    # seeded), so the node set changes every epoch. Using geometry stored from
+                    # the init pass (different nodes) would pair wrong Cp values with wrong
                     # normals and produce garbage drag values that never improve.
                     batch_c_cpu = batch.c.cpu() if hasattr(batch, "c") and batch.c is not None else None
                     batch_pos_cpu = (
