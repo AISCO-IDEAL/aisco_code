@@ -28,6 +28,7 @@ DEFAULT_LOG_DIR = Path(tempfile.gettempdir()) / "gaot2_gaot3_main_equivalence"
 EQUIVALENCE_EPOCHS = 3
 EQUIVALENCE_SUBSAMPLE_NODES = 50000
 EQUIVALENCE_SUBSAMPLING_SEED = 42
+EQUIVALENCE_NUM_WORKERS = 0
 INFERENCE_ATOL = 1e-6
 INFERENCE_RTOL = 1e-6
 
@@ -97,6 +98,29 @@ def _write_equivalence_config(version: str, source_config: Path, log_dir: Path) 
     dataset["subsample_strategy"] = "random"
     dataset["deterministic_subsampling"] = True
     dataset["subsampling_seed"] = EQUIVALENCE_SUBSAMPLING_SEED
+    dataset["shuffle"] = False
+    dataset["num_workers"] = EQUIVALENCE_NUM_WORKERS
+    dataset["num_viz_samples"] = 0
+
+    model = cfg.setdefault("model", {})
+    if not isinstance(model, dict):
+        raise TypeError(f"Expected model mapping in {source_config}")
+    model_args = model.setdefault("args", {})
+    if not isinstance(model_args, dict):
+        raise TypeError(f"Expected model.args mapping in {source_config}")
+    magno = model_args.setdefault("magno", {})
+    if not isinstance(magno, dict):
+        raise TypeError(f"Expected model.args.magno mapping in {source_config}")
+    magno["decoder_sampling_strategy"] = None
+    magno["decoder_sample_ratio"] = None
+
+    transformer = model_args.setdefault("transformer", {})
+    if not isinstance(transformer, dict):
+        raise TypeError(f"Expected model.args.transformer mapping in {source_config}")
+    attn_config = transformer.setdefault("attn_config", {})
+    if not isinstance(attn_config, dict):
+        raise TypeError(f"Expected model.args.transformer.attn_config mapping in {source_config}")
+    attn_config["atten_dropout"] = 0.0
 
     optimizer = cfg.setdefault("optimizer", {})
     if not isinstance(optimizer, dict):
@@ -284,6 +308,11 @@ def run_gaot_main_equivalence(
         f"dataset.subsample_strategy=random, "
         f"dataset.deterministic_subsampling=True, "
         f"dataset.subsampling_seed={EQUIVALENCE_SUBSAMPLING_SEED}, "
+        f"dataset.shuffle=False, "
+        f"dataset.num_workers={EQUIVALENCE_NUM_WORKERS}, "
+        f"dataset.num_viz_samples=0, "
+        f"model.args.magno.decoder_sampling_strategy=None, "
+        f"model.args.transformer.attn_config.atten_dropout=0.0, "
         f"optimizer.args.epoch={EQUIVALENCE_EPOCHS}"
     )
 
