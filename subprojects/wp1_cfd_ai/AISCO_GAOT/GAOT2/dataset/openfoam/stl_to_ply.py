@@ -239,7 +239,9 @@ def main() -> None:
     parser.add_argument("--input-dir", type=Path, default=_DEFAULT_INPUT_DIR, help="Directory with STL files")
     parser.add_argument("--output-dir", type=Path, default=_DEFAULT_OUTPUT_DIR, help="Directory for output PLY files")
     parser.add_argument("--manifest", type=Path, default=_DEFAULT_MANIFEST, help="Path for output manifest JSON")
-    parser.add_argument("--run-ids", type=int, nargs="+", default=None, help="Specific run IDs to process (expects RUN_XXX.stl naming)")
+    parser.add_argument(
+        "--run-ids", type=int, nargs="+", default=None, help="Specific run IDs to process (expects RUN_XXX.stl naming)"
+    )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 

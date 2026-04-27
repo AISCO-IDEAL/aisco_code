@@ -105,11 +105,7 @@ def subdivide_ply(
         # --- Input quality gate ---
         input_quality = check_mesh_quality(mesh)
         if not input_quality["ok"]:
-            reasons = [
-                key
-                for key in ("watertight", "edge_manifold", "vertex_manifold")
-                if not input_quality[key]
-            ]
+            reasons = [key for key in ("watertight", "edge_manifold", "vertex_manifold") if not input_quality[key]]
             return {
                 "run_id": run_id,
                 "status": "skipped",
@@ -128,11 +124,7 @@ def subdivide_ply(
         # --- Output quality gate ---
         output_quality = check_mesh_quality(mesh)
         if not output_quality["ok"]:
-            reasons = [
-                key
-                for key in ("watertight", "edge_manifold", "vertex_manifold")
-                if not output_quality[key]
-            ]
+            reasons = [key for key in ("watertight", "edge_manifold", "vertex_manifold") if not output_quality[key]]
             return {
                 "run_id": run_id,
                 "status": "error",
