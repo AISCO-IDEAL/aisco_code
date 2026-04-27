@@ -83,7 +83,7 @@ def _repo_relative(path: Path) -> Path:
     return path
 
 
-def _write_equivalence_config(version: str, source_config: Path, log_dir: Path) -> Path:
+def _write_equivalence_config(version: str, source_config: Path, log_dir: Path) -> Path:  # noqa: PLR0915
     """Write a temporary config with deterministic node subsampling and short training."""
     source_config = _repo_path(source_config).resolve()
     with source_config.open(encoding="utf-8") as f:
