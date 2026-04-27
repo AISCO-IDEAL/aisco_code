@@ -18,6 +18,7 @@ The dataset-specific scripts are now flattened directly in this folder:
 - `drivaer`
 - `ahmed`
 - `blended_wing`
+- `blended_wing2`
 
 ## How To Select Datasets
 
@@ -29,6 +30,9 @@ python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/dataset/preprocess_all_datasets.p
 
 # Multiple datasets
 python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/dataset/preprocess_all_datasets.py --datasets drivaer ahmed
+
+# Multiple blended-wing datasets
+python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/dataset/preprocess_all_datasets.py --datasets blended_wing blended_wing2
 
 # All datasets
 python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/dataset/preprocess_all_datasets.py --datasets all
@@ -63,7 +67,7 @@ The preprocessing pipeline now follows one orchestrator flow for every dataset:
 2. For each selected dataset, it dispatches to the corresponding dataset adapter:
 	 - Euler: `preprocessing_euler.py`
 	 - DrivAer/Ahmed: `preprocessing_ahmed_drivaer.py`
-	 - Blended wing: `preprocessing_blended_wing.py`
+	 - Blended wing (both `blended_wing` and `blended_wing2`): `preprocessing_blended_wing.py`
 3. Each adapter writes per-sample `data.pt` files and then writes dataset-level `order_.txt` and `manifest.json`.
 4. Before each sample is saved, the canonical contract is applied and validated so all datasets share the same required keys.
 
@@ -82,6 +86,7 @@ Example:
 <output_path>/drivaer/
 <output_path>/ahmed/
 <output_path>/blended_wing/
+<output_path>/blended_wing2/
 ```
 
 Default `output_path` is set in `PREPROCESSING_CONFIG["defaults"]["output_path"]`.
@@ -93,7 +98,8 @@ python subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/dataset/preprocess_all_datasets.p
 	--output-path /cluster/work/fuge/AISCO/wp1_cfd_ai/processed_experiment
 ```
 
-Blended wing sample folders are named `case_XXXX`.
+Blended-wing sample folders keep their original case names from each source dataset.
+For example, this can include both `case_XXXX` and `case_XXX` depending on dataset source.
 
 ## Canonical Contract
 
