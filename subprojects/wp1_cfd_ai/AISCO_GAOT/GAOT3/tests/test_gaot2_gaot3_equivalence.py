@@ -26,6 +26,8 @@ DEFAULT_GAOT2_CONFIG = Path("subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/main
 DEFAULT_GAOT3_CONFIG = Path("subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml")
 DEFAULT_LOG_DIR = Path(tempfile.gettempdir()) / "gaot2_gaot3_main_equivalence"
 EQUIVALENCE_EPOCHS = 3
+EQUIVALENCE_SUBSAMPLE_NODES = 50000
+EQUIVALENCE_SUBSAMPLING_SEED = 42
 INFERENCE_ATOL = 1e-6
 INFERENCE_RTOL = 1e-6
 
@@ -79,7 +81,7 @@ def _repo_relative(path: Path) -> Path:
 
 
 def _write_equivalence_config(version: str, source_config: Path, log_dir: Path) -> Path:
-    """Write a temporary config with node subsampling disabled and short training."""
+    """Write a temporary config with deterministic node subsampling and short training."""
     source_config = _repo_path(source_config).resolve()
     with source_config.open(encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
@@ -89,8 +91,10 @@ def _write_equivalence_config(version: str, source_config: Path, log_dir: Path) 
     dataset = cfg.setdefault("dataset", {})
     if not isinstance(dataset, dict):
         raise TypeError(f"Expected dataset mapping in {source_config}")
-    dataset["subsample_nodes"] = None
-    dataset["deterministic_subsampling"] = False
+    dataset["subsample_nodes"] = EQUIVALENCE_SUBSAMPLE_NODES
+    dataset["subsample_strategy"] = "random"
+    dataset["deterministic_subsampling"] = True
+    dataset["subsampling_seed"] = EQUIVALENCE_SUBSAMPLING_SEED
 
     optimizer = cfg.setdefault("optimizer", {})
     if not isinstance(optimizer, dict):
@@ -274,8 +278,10 @@ def run_gaot_main_equivalence(
 
     print(
         "\nEquivalence overrides: "
-        f"dataset.subsample_nodes=null, "
-        f"dataset.deterministic_subsampling=False, "
+        f"dataset.subsample_nodes={EQUIVALENCE_SUBSAMPLE_NODES}, "
+        f"dataset.subsample_strategy=random, "
+        f"dataset.deterministic_subsampling=True, "
+        f"dataset.subsampling_seed={EQUIVALENCE_SUBSAMPLING_SEED}, "
         f"optimizer.args.epoch={EQUIVALENCE_EPOCHS}"
     )
 
