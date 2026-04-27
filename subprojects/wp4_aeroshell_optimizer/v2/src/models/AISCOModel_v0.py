@@ -24,21 +24,56 @@ from torch import nn
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
 
 
-def _build_activation(name: str | None) -> nn.Module:
+class _Snake(nn.Module):
+    """Snake activation: f(x) = x + (1/alpha) * sin(alpha * x)^2.
+
+    From Ziyin, Hartwig & Ueda (2020), "Neural Networks Fail to Learn Periodic
+    Functions and How to Fix It". Adds periodic capacity (good for edges/creases
+    in SDFs) on top of an identity backbone, so gradients remain well-behaved
+    near zero — unlike pure sine/SIREN which we found unstable here.
+
+    ``alpha`` is a per-channel learnable parameter when ``learnable=True``.
+    Larger ``alpha`` -> higher frequency content. Typical init: 0.5-1.0 for
+    smooth shapes, 5-30 for highly periodic data.
+    """
+
+    def __init__(self, num_features: int, alpha_init: float = 1.0, learnable: bool = True):
+        super().__init__()
+        alpha = torch.full((num_features,), float(alpha_init))
+        if learnable:
+            self.alpha = nn.Parameter(alpha)
+        else:
+            self.register_buffer("alpha", alpha)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Broadcast alpha over leading dims; channel dim is last for our Linear stack.
+        a = self.alpha
+        # Avoid division by zero if alpha drifts to ~0 during training.
+        safe_a = torch.where(a.abs() < 1e-4, torch.full_like(a, 1e-4), a)
+        return x + (torch.sin(a * x) ** 2) / safe_a
+
+
+def _build_activation(name: str | None, num_features: int, snake_alpha_init: float = 1.0) -> nn.Module:
     key = (name or "linear").lower()
-    if key in ("silu", "swish"):
-        return nn.SiLU()
-    if key == "gelu":
-        return nn.GELU()
-    if key == "relu":
-        return nn.ReLU()
-    if key == "tanh":
-        return nn.Tanh()
-    if key in ("linear", "none", "identity", ""):
-        return nn.Identity()
-    raise ValueError(
-        f"Unknown activation '{name}'. Supported: silu, gelu, relu, tanh, linear."
-    )
+    factories: dict[str, type[nn.Module]] = {
+        "silu": nn.SiLU,
+        "swish": nn.SiLU,
+        "gelu": nn.GELU,
+        "relu": nn.ReLU,
+        "leakyrelu": nn.LeakyReLU,
+        "tanh": nn.Tanh,
+        "linear": nn.Identity,
+        "none": nn.Identity,
+        "identity": nn.Identity,
+        "": nn.Identity,
+    }
+    if key == "snake":
+        return _Snake(num_features=num_features, alpha_init=snake_alpha_init, learnable=True)
+    if key not in factories:
+        raise ValueError(
+            f"Unknown activation '{name}'. Supported: silu, gelu, relu, leakyrelu, tanh, snake, linear."
+        )
+    return factories[key]()
 
 
 class AISCOModel(BaseModel):
@@ -57,6 +92,7 @@ class AISCOModel(BaseModel):
         output_scale: float = 1000.0,
         bias: bool = True,
         forward_chunk_size: int = 131072,
+        snake_alpha_init: float = 1.0,
     ):
         """
         Args:
@@ -68,7 +104,8 @@ class AISCOModel(BaseModel):
                 layers + 1 output layer = 10 ``Linear`` layers total).
             activations: Activation name applied AFTER each ``Linear`` (length
                 ``len(hidden_dims) + 1``). Recognised: ``silu``, ``gelu``, ``relu``,
-                ``tanh``, ``linear``. Defaults to 9 x ``silu`` + ``linear``.
+                ``leakyrelu``, ``tanh``, ``snake``, ``linear``. Defaults to 9 x
+                ``silu`` + ``linear``.
             concat_input_at: 1-indexed layer numbers whose ``Linear`` input is
                 concatenated with the (scaled) input features. Defaults to
                 ``[3, 5, 8]``.
@@ -85,6 +122,10 @@ class AISCOModel(BaseModel):
                 first dim and concatenated. This keeps activation memory bounded
                 for dense grid evaluations (e.g. the connectedness loss). Set
                 to ``0`` to disable chunking.
+            snake_alpha_init: Initial value for the per-channel learnable
+                ``alpha`` of any ``snake`` activation in ``activations``. Higher
+                values bias toward higher-frequency content. Ignored when no
+                ``snake`` entry is used. Default 1.0 (smooth, edge-friendly).
         """
         super().__init__(config=config, overwrite_base_init=True)
 
@@ -116,6 +157,7 @@ class AISCOModel(BaseModel):
         self.input_scale = float(input_scale)
         self.output_scale = float(output_scale)
         self.forward_chunk_size = int(forward_chunk_size)
+        self.snake_alpha_init = float(snake_alpha_init)
 
         # mirror BaseModel attributes for get_model_info_dict / debug introspection
         self.in_dim = self.in_features
@@ -137,7 +179,11 @@ class AISCOModel(BaseModel):
             act_name = self.activations_cfg[layer_idx - 1]
 
             self.linears.append(linear)
-            self.acts.append(_build_activation(act_name))
+            # Snake needs the per-layer width so its learnable alpha has the
+            # right shape; other activations ignore num_features.
+            self.acts.append(
+                _build_activation(act_name, num_features=out_dim, snake_alpha_init=self.snake_alpha_init)
+            )
 
             if layer_idx in self.residual_at and in_dim != out_dim:
                 # auto-projection so the residual add is well-defined when shapes differ

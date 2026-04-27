@@ -20,10 +20,19 @@ out_features: 1       # signed distance scalar
 hidden_dims: [256, 256, 256, 512, 512, 512, 512, 256, 128]
 
 # Activation applied AFTER each Linear (length = len(hidden_dims) + 1).
-# Recognised: silu, gelu, relu, tanh, linear.
+# Recognised: silu, gelu, relu, leakyrelu, tanh, snake, linear.
 # (Sine/SIREN was removed: it proved unstable and produced wobbly SDFs.)
-# Swap any entry to `gelu` if you want a heavier-tailed alternative to SiLU.
-activations: [silu, silu, silu, silu, silu, silu, silu, silu, silu, linear]
+# `snake` (Ziyin et al. 2020): f(x) = x + sin(alpha*x)^2 / alpha. Adds periodic
+# capacity for sharp creases without SIREN's instability. `alpha` is per-channel
+# learnable; tune its init via `snake_alpha_init` below.
+
+# previous test results:
+# activations: [silu, silu, silu, silu, silu, silu, silu, silu, silu, linear]: too smooth, misses fine details, wandb: https://wandb.ai/aisco/temp_/runs/oro8bbk8?nw=nwusereschaerer
+# activations: [silu, gelu, leakyrelu, gelu, leakyrelu, silu, leakyrelu, silu, linear]: too much big rectangles and edges, no conversion, wandb: https://wandb.ai/aisco/temp_/runs/6lg7mxet?nw=nwusereschaerer
+# activations: [snake, silu, silu, silu, silu, silu, silu, silu, silu, linear]: SDF missing for large parts, not even pretraining works, wandb: https://wandb.ai/aisco/temp_/runs/8i2fp7kn?nw=nwusereschaerer
+# activations: [snake, snake, silu, snake, silu, silu, silu, silu, silu, linear]
+
+activations: [snake, snake, silu, snake, silu, silu, silu, silu, silu, linear]
 
 # 1-indexed layer numbers where the (scaled) input features are re-concatenated
 # onto the layer's input.
@@ -40,6 +49,11 @@ output_scale: 1000.0  # multiplies output (back to mm)
 
 # --- Misc ---
 bias: true
+
+# Initial value for Snake's learnable per-channel alpha (only matters if any
+# `snake` entry is in `activations`). Higher = higher-frequency capacity at
+# init. 0.5-1.0 for smooth shapes, 5-30 for highly periodic data.
+snake_alpha_init: 1.0
 
 # --- Memory control ---
 # When the input batch dimension exceeds this value, forward() splits the
