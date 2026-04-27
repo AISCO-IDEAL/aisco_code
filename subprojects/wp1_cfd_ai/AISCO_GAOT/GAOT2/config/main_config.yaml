@@ -7,6 +7,7 @@
 ##########################################################################
 
 setup:
+    run_local: false
     name: "euler_field_cp_full"
     id: "_RUN_ID_"
     seed: 42
@@ -28,7 +29,7 @@ setup:
     wandb_mode: online
     wandb_tags: ["field", "pressure", "euler", "multi_head", "gaot", "cp_full", "oom_investigation"]
     wandb_watch_model: false
-    wandb_notes: "OOM investigation on CP-full dataset — reduce batch_size/model if needed"
+    wandb_notes: "Default Note"
 
     test_during_training: false
 
@@ -134,9 +135,9 @@ dataset:
     order_file_name:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
-    subsample_nodes: 50000     # randomly sample 30k nodes per load if sample exceeds this
-    subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"
-    deterministic_subsampling: false  # false keeps fresh random subsets on every load
+    subsample_nodes: 50000      # null disables node subsampling
+    subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"; ignored when subsample_nodes is null
+    deterministic_subsampling: true  # ignored when subsample_nodes is null
     subsampling_seed: 42        # used only when deterministic_subsampling is true
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
@@ -179,3 +180,11 @@ path:
     result_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/results.png"
     config_save_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/config.yaml"
     database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv"
+
+local_path:
+    ckpt_path: "/home/aisco/results/_NAME___RUN_ID_/model.pt"
+    loss_path: "/home/aisco/results/_NAME___RUN_ID_/loss.png"
+    result_path: "/home/aisco/results/_NAME___RUN_ID_/results.png"
+    config_save_path: "/home/aisco/results/_NAME___RUN_ID_/config.yaml"
+    database_path: "/home/aisco/results/metrics.csv"
+    dataset: "/home/aisco/datasets/processed_euler_cp_full"  # local path to dataset (overrides base_path when run_local=true)
