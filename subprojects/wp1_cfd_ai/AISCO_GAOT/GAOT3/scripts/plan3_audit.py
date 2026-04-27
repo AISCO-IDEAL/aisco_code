@@ -39,11 +39,7 @@ def _classes(path: Path) -> list[ast.ClassDef]:
 
 
 def _public_methods(class_node: ast.ClassDef) -> list[str]:
-    return [
-        node.name
-        for node in class_node.body
-        if isinstance(node, ast.FunctionDef) and not node.name.startswith("_")
-    ]
+    return [node.name for node in class_node.body if isinstance(node, ast.FunctionDef) and not node.name.startswith("_")]
 
 
 def _has_self_config_assignment(class_node: ast.ClassDef) -> bool:

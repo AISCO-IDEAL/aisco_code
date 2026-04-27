@@ -8,7 +8,7 @@ import os
 import time
 from contextlib import contextmanager
 from copy import deepcopy
-from typing import Any, IO, TypedDict
+from typing import IO, Any, TypedDict
 
 import numpy as np
 import psutil
