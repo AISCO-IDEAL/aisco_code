@@ -752,11 +752,11 @@ def _is_valid_data_pt(filepath: str) -> bool:
         has_scalar_or_face = any(
             hasattr(d, k) and getattr(d, k) is not None for k in ("x", "cp", "pressure", "wall_shear", "face")
         )
-        if not has_scalar_or_face:
-            return False
-        return True
+
     except Exception:
         return False
+    else:
+        return has_scalar_or_face
 
 
 def _to_node_scalar(x):
@@ -867,10 +867,9 @@ def _get_dataset_runs(dataset_path: str) -> list:
 
     # Collect runs based on detected structure
     for e in entries:
-        if has_flat and e.endswith(".pt"):
-            if _is_valid_data_pt(os.path.join(dataset_path, e)):
-                run_name = e[:-3]  # remove .pt
-                runs.append((run_name, os.path.join(dataset_path, e)))
+        if has_flat and e.endswith(".pt") and _is_valid_data_pt(os.path.join(dataset_path, e)):
+            run_name = e[:-3]  # remove .pt
+            runs.append((run_name, os.path.join(dataset_path, e)))
         if has_nested and "." not in e:
             nested_pt = os.path.join(dataset_path, e, "data.pt")
             if os.path.isfile(nested_pt):
@@ -1094,9 +1093,12 @@ def _cache_worker(args):
         run_name = os.path.basename(run_pt_path)[:-3]  # remove .pt
     try:
         _load_run_cached(run_pt_path, field)
-        return (run_name, True, None)
+
     except Exception as e:
         return (run_name, False, str(e))
+
+    else:
+        return (run_name, True, None)
 
 
 def _thumb_worker(args):

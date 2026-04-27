@@ -8,7 +8,7 @@
 
 setup:
     run_local: false
-    name: "united_dataset_cp"
+    name: "euler_cp"
     id: "_RUN_ID_"
     seed: 42
     device: "cuda:0"
@@ -25,7 +25,7 @@ setup:
 
     wandb_project: "WP1_finetuning"
     wandb_entity: aisco
-    wandb_group: united_dataset_cp
+    wandb_group: euler_cp
     wandb_mode: online
     wandb_tags: ["field", "pressure", "euler", "multi_head", "gaot", "cp_full", "oom_investigation"]
     wandb_watch_model: false
@@ -113,15 +113,15 @@ model:
             film_init_scale: 0.01       # reduced from 0.1 — perturbation hit 1.0 at epoch 80
 
 dataset:
-    name: "united_cp"
-    metaname: "incompressible_fluids/united_cp"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/united_dataset"
+    name: "euler"
+    metaname: "incompressible_fluids/euler_pressure"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/all_processed/euler"
     processed_folder: ""
     force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
-    train_size: 550
-    val_size: 183
-    test_size: 183
+    train_size: 140
+    val_size: 40
+    test_size: 40
     batch_size: 6  # reduced from 12 to avoid OOM on larger CP-full meshes
     num_workers: 8
     shuffle: true
