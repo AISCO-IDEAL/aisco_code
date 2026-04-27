@@ -5,3 +5,7 @@ hidden_layers: 4
 out_features: 1
 dtype: float32
 bbox_half_extent: 1000.0
+first_omega_min: 10.0
+hidden_omega_min: 50.0
+first_scale_min: 10.0
+hidden_scale_min: 10.0

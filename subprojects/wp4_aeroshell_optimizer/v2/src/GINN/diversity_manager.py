@@ -28,6 +28,7 @@ import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
@@ -130,7 +131,12 @@ class DiversityTrainer:
 
         # Rolling history for the stacked-area competition chart
         self._raw_loss_history: list[dict[str, float]] = []
+        self._normalized_loss_history: list[dict[str, float]] = []
         self._weighted_loss_history: list[dict[str, float]] = []
+        self._optimizer_loss_history: list[dict[str, float]] = []
+
+        norm_cfg = self._total_loss.losses_config.get("general_info", {}).get("loss_normalisation", {})
+        self._norm_manager = LossNormalisationManager(norm_cfg)
 
     # ------------------------------------------------------------------
     # Latent resampling
@@ -158,6 +164,106 @@ class DiversityTrainer:
             self._Z[0] = torch.zeros(self._z_dim, device=self._device, dtype=torch.float32)
 
     # ------------------------------------------------------------------
+    # Loss & gradient normalisation calibration
+    # ------------------------------------------------------------------
+    def _calibrate(self) -> None:
+        """Calibrate loss and gradient scale factors before training begins.
+
+        Runs one full forward pass over all population members with calibration_mode=True
+        (bypasses epoch scheduling so every loss is computed regardless of _disabled_epochs).
+        Loss scales are derived from the mean absolute raw value across the population.
+        Gradient scales are derived from the per-component gradient L2 norm on the first
+        population member, measured after loss scales have already been applied.
+
+        Null losses (requires_grad=False on the component tensor) are skipped — both scales
+        remain 1.0 for them. Optimizer gradients are zeroed before and after to leave no trace.
+        """
+        print("[LossNormalisation] Starting calibration pass...")
+        self._model_optimizer.zero_grad()
+
+        # --- Loss scale calibration: forward-only pass over full population ---
+        loss_value_sums: dict[str, float] = {}
+        calibrated_names: set[str] = set()
+
+        for i in range(self._population_size):
+            self._model.set_latent_vector(self._Z[i])
+            bundle = self._total_loss.compute(self._model, epoch_name=0, calibration_mode=True)
+
+            for role_dict, role_bundle in (
+                (self._total_loss._objective_by_category, bundle.objectives),
+                (self._total_loss._constraint_by_category, bundle.constraints),
+                (self._total_loss._aux_by_category, bundle.aux),
+            ):
+                for category, tensor in role_bundle.items():
+                    loss_name = role_dict[category][0]
+                    calibrated_names.add(loss_name)
+                    loss_value_sums[loss_name] = loss_value_sums.get(loss_name, 0.0) + abs(tensor.detach().item())
+
+        loss_scales: dict[str, float] = {}
+        for name in calibrated_names:
+            mean_val = loss_value_sums[name] / self._population_size
+            loss_scales[name] = self._norm_manager._target_loss / mean_val if mean_val > 0 else 1.0
+            print(f"  Loss scale for {name}: mean_raw={mean_val:.6g}, scale={loss_scales[name]:.6g}")
+
+        # CSE: loss_scale for cse_objective is derived from the raw v_cruise value.
+        # Individual drag/solar categories are excluded — they are consumed by CSE internally.
+        if getattr(self._total_loss, "use_cse", False):
+            print("  CSE mode detected: computing cse_objective scale...")
+            self._model.set_latent_vector(self._Z[0])
+            bundle = self._total_loss.compute(self._model, epoch_name=0, calibration_mode=True)
+            # weight() without a norm_manager gives us the raw v_cruise-based cse_objective
+            raw_result = self._total_loss.weight(bundle, self._alm_manager, return_components=True, norm_manager=None)
+            if "cse_objective" in raw_result.components:
+                cse_val = abs(raw_result.components["cse_objective"].detach().item())
+                loss_scales["cse_objective"] = self._norm_manager._target_loss / cse_val if cse_val > 0 else 1.0
+                calibrated_names.add("cse_objective")
+                print(f"  Loss scale for cse_objective: raw={cse_val:.6g}, scale={loss_scales['cse_objective']:.6g}")
+            # Remove drag/solar from calibrated set since they're merged into cse_objective
+            drag_name = self._total_loss._objective_by_category.get(self._total_loss._cse_drag_category, (None,))[0]
+            solar_name = self._total_loss._objective_by_category.get(self._total_loss._cse_solar_category, (None,))[0]
+            for merged_name in (drag_name, solar_name):
+                if merged_name:
+                    print(f"  Excluding {merged_name} (merged into cse_objective)")
+                    calibrated_names.discard(merged_name)
+                    loss_scales.pop(merged_name, None)
+
+        # Store loss scales so weight() can apply them during gradient calibration below
+        self._norm_manager.record_calibration(loss_scales, {}, calibrated_names)
+
+        # --- Gradient scale calibration: backward pass on first population member ---
+        print("[LossNormalisation] Computing gradient scales...")
+        self._model_optimizer.zero_grad()
+        self._model.set_latent_vector(self._Z[0])
+        bundle = self._total_loss.compute(self._model, epoch_name=0, calibration_mode=True)
+        # weight() with norm_manager applies loss_scales; we measure grad norms on top of them
+        result = self._total_loss.weight(bundle, self._alm_manager, return_components=True, norm_manager=self._norm_manager)
+
+        trainable_params = [p for p in self._model.parameters() if p.requires_grad]
+        prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
+
+        components_with_grad = [(name, t) for name, t in result.components.items() if t.requires_grad]
+        grad_scales: dict[str, float] = {}
+
+        for idx, (name, component) in enumerate(components_with_grad):
+            is_last = idx == len(components_with_grad) - 1
+            component.backward(retain_graph=not is_last)
+            curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
+            delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
+            grad_scales[name] = self._norm_manager._target_grad / delta_norm if delta_norm > 0 else 1.0
+            print(f"  Grad scale for {name}: delta_norm={delta_norm:.6g}, scale={grad_scales[name]:.6g}")
+            prev_grad = curr_grad
+
+        # Record final calibration with both scale dicts
+        self._norm_manager.record_calibration(loss_scales, grad_scales, calibrated_names)
+        self._model_optimizer.zero_grad()
+
+        summary_items = [f"{n}(loss={loss_scales.get(n, 1.0):.3g}, grad={grad_scales.get(n, 1.0):.3g})"
+                         for n in sorted(calibrated_names)]
+        print(f"[LossNormalisation] Calibration complete. {len(calibrated_names)} losses calibrated:")
+        for item in summary_items:
+            print(f"  ✓ {item}")
+
+    # ------------------------------------------------------------------
     # Phase 1 — per-vector backward
     # ------------------------------------------------------------------
     def _per_vector_backward(  # noqa: PLR0912, PLR0915
@@ -171,7 +277,8 @@ class DiversityTrainer:
         dict[str, float],
         dict[str, np.ndarray] | None,
     ]:
-        """Iterate over the population and immediately backward each z's loss.
+        """
+        Iterate over the population and immediately backward each z's loss.
 
         Returns mean scalar loss (for metrics), averaged mean constraints across the
         population (for ALM update; None if no ALM), averaged loss log_data,
@@ -179,7 +286,7 @@ class DiversityTrainer:
         conflict vectors for the first population member.
         """
         use_alm: bool = self._alm_manager is not None
-        all_raw_constraints: list[list[Tensor]] = []
+        all_alm_constraints: list[list[Tensor]] = []
         summed_log_data: dict[str, float] = {}
         summed_grad_log_data: dict[str, float] = {}
         total_loss_val: float = 0.0
@@ -196,7 +303,7 @@ class DiversityTrainer:
 
             bundle = self._total_loss.compute(self._model, epoch_name=epoch)
 
-            # Compute active constraint info once (same for all i since it depends only on epoch)
+            # Compute active constraint info for ALM once per epoch (same for all z_i since it depends only on epoch)
             if i == 0:
                 active_constraint_cats = [cat for cat in all_constraint_cats if cat in bundle.constraints]
                 active_constraint_indices = [j for j, cat in enumerate(all_constraint_cats) if cat in bundle.constraints]
@@ -207,17 +314,30 @@ class DiversityTrainer:
                 and epoch % self._conflict_cadence == 0
                 and i == 0
             )
-            result = self._total_loss.weight(bundle, alm_manager=self._alm_manager, return_components=True)
+            # properly weight losses, return components = True so we can do individual backward calls per component for conflict tracking
+            result = self._total_loss.weight(bundle, alm_manager=self._alm_manager, return_components=True, norm_manager=self._norm_manager)
 
-            # Detach constraints before backward — graph will be freed
+            # Detach ALM-space constraints before backward — graph will be freed.
+            # If loss normalisation is enabled, ALM updates operate on normalized
+            # constraint values (same space as ALM penalties in TotalLossV2.weight).
             if use_alm:
-                all_raw_constraints.append([bundle.constraints[cat].detach() for cat in active_constraint_cats])
+                alm_constraints_for_member: list[Tensor] = []
+                for cat in active_constraint_cats:
+                    c_tensor = bundle.constraints[cat]
+                    c_name = self._total_loss._constraint_by_category[cat][0]
+                    c_for_alm = c_tensor * self._norm_manager.get_loss_scale(c_name)
+                    alm_constraints_for_member.append(c_for_alm.detach())
+                all_alm_constraints.append(alm_constraints_for_member)
 
             total_loss_val += result.log_data.get("raw_losses/total_loss", result.scalar.item())
             for k, v in result.log_data.items():
                 summed_log_data[k] = summed_log_data.get(k, 0.0) + v
 
             # Per-component backward: each component uses retain_graph=False and frees immediately.
+            # Does not call .backward() for the totalloss scalar, but the individual components.
+            # Done because we may want to capture gradient conflicts at the component level,
+            # and doing one backward on the total loss would give us only the combined gradient, not the per-component gradients needed for conflict analysis.
+            # TODO: May add config toggle or smart detection to see if we can get performance boost
             trainable_params = [p for p in self._model.parameters() if p.requires_grad]
             prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
             per_population_conflict_vectors: dict[str, np.ndarray] | None = (
@@ -225,11 +345,11 @@ class DiversityTrainer:
             )
 
             for component_name, weighted_loss in result.components.items():
-                grad_key = f"weighted_gradients/{component_name}"
+                grad_key = f"optimizer_gradients/{component_name}"
                 if not weighted_loss.requires_grad:
                     summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0)
                     continue
-
+                # per-component backward for singel z, with graph freed immediately after for VRAM efficiency; log gradient norms for conflict tracking
                 (weighted_loss / self._population_size).backward(retain_graph=False)
                 curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
                 delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
@@ -252,33 +372,22 @@ class DiversityTrainer:
                 )
                 if lookup is None:
                     continue
+                if getattr(self._total_loss, "use_cse", False) and category in {
+                    getattr(self._total_loss, "_cse_drag_category", None),
+                    getattr(self._total_loss, "_cse_solar_category", None),
+                }:
+                    continue
                 loss_name = lookup[0]
-                grad_key = f"weighted_gradients/{loss_name}"
+                grad_key = f"optimizer_gradients/{loss_name}"
                 summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0)
 
             if per_population_conflict_vectors is not None:
                 phase1_conflict_vectors = per_population_conflict_vectors
 
-        # CSE-managed objectives (drag + solar) are merged into cse_objective — never individually
-        # backward'd. Log explicit 0 so charts stay visible and reflect CSE hand-off cleanly.
-        if getattr(self._total_loss, "use_cse", False):
-            obj_by_cat = getattr(self._total_loss, "_objective_by_category", {})
-            for cat in [
-                getattr(self._total_loss, "_cse_drag_category", None),
-                getattr(self._total_loss, "_cse_solar_category", None),
-            ]:
-                if cat is None:
-                    continue
-                entry = obj_by_cat.get(cat)
-                if entry:
-                    grad_key = f"weighted_gradients/{entry[0]}"
-                    if grad_key not in summed_grad_log_data:
-                        summed_grad_log_data[grad_key] = 0.0
-
         mean_constraints: list[Tensor] | None = None
-        if use_alm and all_raw_constraints:
-            num_c = len(all_raw_constraints[0])
-            mean_constraints = [torch.stack([pop[c_idx] for pop in all_raw_constraints]).mean() for c_idx in range(num_c)]
+        if use_alm and all_alm_constraints:
+            num_c = len(all_alm_constraints[0])
+            mean_constraints = [torch.stack([pop[c_idx] for pop in all_alm_constraints]).mean() for c_idx in range(num_c)]
 
         avg_log_data = {k: v / self._population_size for k, v in summed_log_data.items()}
         avg_grad_log_data = {k: v / self._population_size for k, v in summed_grad_log_data.items()}
@@ -306,6 +415,9 @@ class DiversityTrainer:
 
 
         """
+        if self._norm_manager.is_enabled() and not self._norm_manager.is_calibrated():
+            self._calibrate()
+
         if self._z_resample_cadence > 0 and epoch > 0 and epoch % self._z_resample_cadence == 0:
             self._resample_population(epoch)
 
@@ -349,7 +461,7 @@ class DiversityTrainer:
             diversity_result.weighted.backward(retain_graph=False)
             curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
             delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
-            diversity_grad_key = f"weighted_gradients/{self._diversity_manager.loss_name}"
+            diversity_grad_key = f"optimizer_gradients/{self._diversity_manager.loss_name}"
             per_loss_gradient_log_data[diversity_grad_key] = delta_norm
 
             if capture_conflict and self._conflict_tracker is not None:
@@ -362,7 +474,7 @@ class DiversityTrainer:
             diversity_weighted_loss_val = float(diversity_result.weighted.detach().item())
             diversity_log_data = self._diversity_manager.build_log_data(diversity_loss_val)
         elif self._diversity_manager is not None and self._diversity_manager.enabled:
-            per_loss_gradient_log_data[f"weighted_gradients/{self._diversity_manager.loss_name}"] = 0.0
+            per_loss_gradient_log_data[f"optimizer_gradients/{self._diversity_manager.loss_name}"] = 0.0
 
         if capture_conflict and self._conflict_tracker is not None and conflict_vectors:
             self._conflict_tracker.save_from_grad_vectors(conflict_vectors, epoch)
@@ -410,6 +522,7 @@ class DiversityTrainer:
         log_dict: dict[str, float] = dict(avg_log_data)
         if self._alm_manager is not None:
             log_dict.update(self._alm_manager.get_telemetry())
+        log_dict.update(self._norm_manager.get_telemetry())
         log_dict.update(diversity_log_data)
         log_dict.update(gradient_log_data)
 
@@ -419,10 +532,22 @@ class DiversityTrainer:
             for k, v in log_dict.items()
             if k.startswith("raw_losses/") and k != "raw_losses/total_loss"
         }
+        normalized_floats: dict[str, float] = {
+            k.removeprefix("normalized_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("normalized_losses/")
+        }
         weighted_floats: dict[str, float] = {
             k.removeprefix("weighted_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("weighted_losses/")
         }
-        competition_log = self._log_competition_charts(raw_floats, weighted_floats, epoch)
+        optimizer_floats: dict[str, float] = {
+            k.removeprefix("optimizer_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("optimizer_losses/")
+        }
+        competition_log = self._log_competition_charts(
+            raw_floats,
+            normalized_floats,
+            weighted_floats,
+            optimizer_floats,
+            epoch,
+        )
 
         # Merge competition charts into single log call to avoid WandB step corruption
         log_dict.update(competition_log)
@@ -431,7 +556,9 @@ class DiversityTrainer:
     def _log_competition_charts(  # noqa: PLR0915
         self,
         raw_floats: dict[str, float],
+        normalized_floats: dict[str, float],
         weighted_floats: dict[str, float],
+        optimizer_floats: dict[str, float],
         epoch: int,
     ) -> dict[str, Any]:
         """Generate pie/bar/radar/stacked-area charts of loss shares; return dict for WandB."""
@@ -439,7 +566,9 @@ class DiversityTrainer:
             return {}
         matplotlib.use("Agg")
         self._raw_loss_history.append(dict(raw_floats))
+        self._normalized_loss_history.append(dict(normalized_floats))
         self._weighted_loss_history.append(dict(weighted_floats))
+        self._optimizer_loss_history.append(dict(optimizer_floats))
 
         competition_log: dict[str, Any] = {}
 
@@ -486,8 +615,12 @@ class DiversityTrainer:
 
         raw_labels = list(raw_floats.keys())
         raw_vals = [raw_floats[k] for k in raw_labels]
+        n_labels = list(normalized_floats.keys())
+        n_vals = [normalized_floats[k] for k in n_labels]
         w_labels = list(weighted_floats.keys())
         w_vals = [weighted_floats[k] for k in w_labels]
+        opt_labels = list(optimizer_floats.keys())
+        opt_vals = [optimizer_floats[k] for k in opt_labels]
 
         fig_a = _safe_pie(raw_vals, raw_labels, f"Raw Losses (epoch {epoch})")
         competition_log["loss_competition/raw_pie"] = wandb.Image(fig_a)
@@ -495,12 +628,24 @@ class DiversityTrainer:
         fig_b = _safe_pie(w_vals, w_labels, f"Weighted Losses (epoch {epoch})")
         competition_log["loss_competition/weighted_pie"] = wandb.Image(fig_b)
         plt.close(fig_b)
+        fig_b2 = _safe_pie(n_vals, n_labels, f"Normalized Losses (epoch {epoch})")
+        competition_log["loss_competition/normalized_pie"] = wandb.Image(fig_b2)
+        plt.close(fig_b2)
+        fig_b3 = _safe_pie(opt_vals, opt_labels, f"Optimizer Losses (epoch {epoch})")
+        competition_log["loss_competition/optimizer_pie"] = wandb.Image(fig_b3)
+        plt.close(fig_b3)
         fig_c = _safe_hbar(raw_vals, raw_labels, f"Raw Loss Shares % (epoch {epoch})")
         competition_log["loss_competition/raw_bar"] = wandb.Image(fig_c)
         plt.close(fig_c)
         fig_d = _safe_hbar(w_vals, w_labels, f"Weighted Loss Shares % (epoch {epoch})")
         competition_log["loss_competition/weighted_bar"] = wandb.Image(fig_d)
         plt.close(fig_d)
+        fig_d2 = _safe_hbar(n_vals, n_labels, f"Normalized Loss Shares % (epoch {epoch})")
+        competition_log["loss_competition/normalized_bar"] = wandb.Image(fig_d2)
+        plt.close(fig_d2)
+        fig_d3 = _safe_hbar(opt_vals, opt_labels, f"Optimizer Loss Shares % (epoch {epoch})")
+        competition_log["loss_competition/optimizer_bar"] = wandb.Image(fig_d3)
+        plt.close(fig_d3)
 
         # Radar: union of keys, each series normalized to its own max for comparable angles
         all_keys = list(dict.fromkeys(list(raw_floats.keys()) + list(weighted_floats.keys())))
