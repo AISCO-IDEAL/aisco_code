@@ -73,7 +73,7 @@ latent_population:
   #   surface_noise_sigma_factor: 0.005
 
 training_loop:
-  epochs: 100
+  epochs: 3000
   learning_rate: 0.0005
   batch_size_per_shape: 4096 #8192
   print_interval: 25
@@ -88,7 +88,7 @@ training_loop:
   near_surface_fraction: 0.30     # fraction of batch for near-surface pts (split between bands)
   domain_fraction: 0.50           # fraction of batch for outer_prism uniform pts (eikonal)
   near_surface_tight_sigma: 0.005 # tight band σ = factor × bbox_extent_mm  (≈25mm at car scale)
-  near_surface_wide_sigma: 0.05   # wide band σ = factor × bbox_extent_mm   (≈250mm at car scale)
+  near_surface_wide_sigma: null   # wide band σ = factor × bbox_extent_mm   (≈250mm at car scale)
 
 output:
   # Must live in a directory NOT scanned by fetch_pretrained_model

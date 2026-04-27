@@ -829,7 +829,6 @@ def _write_epoch_vis_snapshot(
 
         try:
             if use_mesh_mode:
-                print("!!!!! MESH MODE !!!!!")
                 # "mesh" mode: target PLY mesh (green), model pts (red), eikonal pts (grey)
                 ply_verts_t, ply_faces_t, _ = ply_cache[slot_idx]
                 target_verts_np = ply_verts_t.cpu().numpy()
@@ -847,7 +846,6 @@ def _write_epoch_vis_snapshot(
                 )
             else:
                 # "pts" mode (or non-PLY slot): target cache pts (green), model pts (red), eikonal pts (grey)
-                print("!!!!! PTS MODE !!!!!")
                 vis.save_snapshot(
                     points_mm=surf_pts_i.cpu(),
                     mesh_verts=None,

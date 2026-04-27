@@ -29,10 +29,10 @@ latent_population:
     surface_noise_sigma_factor: 0.005
 
 training_loop:
-  epochs: 100
+  epochs: 3000
   learning_rate: 0.0005
   batch_size_per_shape: 4096
-  print_interval: 25
+  print_interval: 50
   eikonal_weight: 0.0        # Exp-B: eikonal removed; value here is unused by code
   surface_resample_cadence: 0
 
