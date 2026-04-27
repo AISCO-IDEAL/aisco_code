@@ -1,0 +1,99 @@
+# Loaded by smart_model_init -> passed as **model_config to AISCOModel(...).
+# Every key here maps directly to an AISCOModel.__init__ argument.
+
+# --- I/O ---
+in_features: 3        # x, y, z
+out_features: 1       # signed distance scalar
+
+# --- Architecture (10 Linear layers total = len(hidden_dims) + 1) ---
+# Spec:
+#   layer 1: 3   -> 256
+#   layer 2: 256 -> 256
+#   layer 3: 256 -> 256       (concat input)
+#   layer 4: 256 -> 512
+#   layer 5: 512 -> 512       (concat input + residual)
+#   layer 6: 512 -> 512
+#   layer 7: 512 -> 512
+#   layer 8: 512 -> 256       (concat input + residual)
+#   layer 9: 256 -> 128
+#   layer 10: 128 -> 1        (output)
+hidden_dims: [256, 256, 256, 512, 512, 512, 512, 256, 128]
+
+# Activation applied AFTER each Linear (length = len(hidden_dims) + 1).
+# Recognised: silu, gelu, relu, tanh, linear.
+# (Sine/SIREN was removed: it proved unstable and produced wobbly SDFs.)
+# Swap any entry to `gelu` if you want a heavier-tailed alternative to SiLU.
+activations: [silu, silu, silu, silu, silu, silu, silu, silu, silu, linear]
+
+# 1-indexed layer numbers where the (scaled) input features are re-concatenated
+# onto the layer's input.
+concat_input_at: [3, 5, 8]
+
+# 1-indexed layer numbers where the layer's input (after any concat) is added
+# back to its post-activation output. A learnable projection is auto-created
+# when input/output dims differ (e.g. layer 8: 515 -> 256).
+residual_at: [5, 8]
+
+# --- Coordinate scaling ---
+input_scale: 1000.0   # divides input (mm -> ~unit-scale)
+output_scale: 1000.0  # multiplies output (back to mm)
+
+# --- Misc ---
+bias: true
+
+# --- Memory control ---
+# When the input batch dimension exceeds this value, forward() splits the
+# input into chunks of this size and concatenates the outputs. This bounds
+# peak activation memory for dense-grid evaluations (e.g. ConnectednessV1's
+# voxel grid which previously triggered a 4 GiB CUDA OOM on layer 5/512).
+# Set to 0 to disable chunking (matches old behaviour).
+forward_chunk_size: 131072
+
+
+
+
+####################
+####################
+
+# Please no sine activation functions, the proved to be unstable and wobbly: replace with SiLU and add GELU as option in the config everywhere and also: fix the OOM
+# Traceback (most recent call last):
+#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py", line 459, in <module>
+#     main()
+#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py", line 251, in main
+#     model.optimise(
+#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/models/model_baseclass.py", line 105, in optimise
+#     loss_function._calibrate(self, optimizer)
+#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py", line 965, in _calibrate
+#     raw = self._compute_raw_losses(model, epoch_name=0, calibration_mode=True)
+#           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py", line 355, in _compute_raw_losses
+#     raw[name] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+#                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/losses/parent_loss.py", line 77, in get_loss
+#     self._last_loss = self._loss(model)
+#                       ^^^^^^^^^^^^^^^^^
+#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py", line 84, in _loss
+#     model_out = model(self.grid_points)
+#                 ^^^^^^^^^^^^^^^^^^^^^^^
+#   File "/cluster/home/eschaerer/AISCO_code/aisco_env/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+#     return self._call_impl(*args, **kwargs)
+#            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#   File "/cluster/home/eschaerer/AISCO_code/aisco_env/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+#     return forward_call(*args, **kwargs)
+#            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/models/AISCOModel_v0.py", line 191, in forward
+#     h = act(linear(h))
+#         ^^^^^^^^^^^^^^
+#   File "/cluster/home/eschaerer/AISCO_code/aisco_env/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+#     return self._call_impl(*args, **kwargs)
+#            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#   File "/cluster/home/eschaerer/AISCO_code/aisco_env/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+#     return forward_call(*args, **kwargs)
+#            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/models/AISCOModel_v0.py", line 35, in forward
+#     return torch.sin(self.omega_0 * x)
+#            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 4.00 GiB. GPU 0 has a total capacity of 23.52 GiB of which 1.49 GiB is free. Including non-PyTorch memory, this process has 22.02 GiB memory in use. Of the allocated memory 18.06 GiB is allocated by PyTorch, and 3.45 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+
+####################
+####################
