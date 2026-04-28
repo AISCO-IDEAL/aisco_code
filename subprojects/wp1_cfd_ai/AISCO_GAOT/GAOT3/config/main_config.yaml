@@ -113,7 +113,7 @@ model:
             film_init_scale: 0.01       # reduced from 0.1 — perturbation hit 1.0 at epoch 80
 
 dataset:
-    name: "euler_pressure_field_new"
+    name: "euler_cp_field"
     metaname: "incompressible_fluids/euler_pressure"
     base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_cp_full"
     processed_folder: ""
