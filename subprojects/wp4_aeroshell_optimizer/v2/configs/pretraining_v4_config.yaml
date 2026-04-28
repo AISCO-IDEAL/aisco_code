@@ -16,15 +16,17 @@ pretraining:
   username: ${USER}
 
 training_loop:
-  epochs: 350
+  epochs: 600
   learning_rate: 0.00005
   random_batch_size: 2048
   print_interval: 50
-  eikonal_weight: 0.1
+  eikonal_weight: 0.001
+  surface_ratio: 0.6        # fraction of each batch sampled on/near the mesh surface (rest is uniform)
+  surface_noise_sigma_pct: 0.005  # Gaussian noise sigma as a fraction of bb_half_extent
 
 output:
-  checkpoint_path: "/cluster/work/fuge/AISCO/WIRE_fitting_alex/silvretta/"
-  mesh_resolution: 300   # marching-cubes grid resolution for post-training PLY extraction
+  checkpoint_path: "/cluster/work/fuge/AISCO/WIRE_fitting_alex/normalisation_tests/"
+  mesh_resolution: 600   # marching-cubes grid resolution for post-training PLY extraction
   mesh_box_mm: 1000     # half-extent of the marching-cubes bounding box in mm
 
 wandb:

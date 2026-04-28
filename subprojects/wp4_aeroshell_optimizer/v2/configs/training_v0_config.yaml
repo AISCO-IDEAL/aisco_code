@@ -1,5 +1,5 @@
 training_params:
-  learning_rate: 0.0005  # 0.0005 for WIREV2 and ConcatWireV2, 0.0001 for basic MLP
+  learning_rate: 0.000008  # 0.0005 for WIREV2 and ConcatWireV2, 0.0001 for basic MLP
   num_epochs: 5 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
   mesh_save_interval: 25  # basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
   marching_cubes_usage: "True"  # storage_utils.py: general_config["general_info"].get("marching_cubes_usage", "False") (if True, uses marching cubes with threads for mesh extraction, if False uses kaolin-based mesh extraction without threads, which is more stable but slower)

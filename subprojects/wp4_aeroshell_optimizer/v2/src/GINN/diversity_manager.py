@@ -13,6 +13,7 @@ single-z trainer with no diversity phase.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,8 @@ class DiversityTrainer:
         diversity_neighbor_agg_fn: str = "min",
         force_z0_to_origin: bool = True,
         z_resample_cadence: int = 0,
+        initial_Z: Tensor | None = None,
+        z_resample_start_epoch: int = 0,
         mesh_extractor: MeshExtractor | None = None,
         mesh_extraction_config: dict[str, Any] | None = None,
         renderer_manager: VisualisationManager | None = None,
@@ -85,6 +88,14 @@ class DiversityTrainer:
                 sampling params passed to the diversity manager compute call.
             force_z0_to_origin: pin Z[0] at the origin (reference shape in GINN).
             z_resample_cadence: resample Z every N epochs (0 disables resampling).
+            initial_Z: Optional pretrained latent population of shape (N, z_dim).  When
+                provided the random initialisation is replaced by this tensor.  A copy
+                is made so the caller's tensor is not modified in-place.
+            z_resample_start_epoch: First epoch at which resampling is allowed (Mode C
+                warm-up guard).  0 (default) means resampling can start immediately
+                (backward-compatible with existing behaviour).  Set to a positive value
+                to hold the pretrained Z population for that many epochs before the
+                normal z_resample_cadence logic kicks in.
             mesh_extractor + mesh_extraction_config + renderer_manager + rendering_freq +
                 use_neural_renderer: rendering wiring. All None/default -> no rendering.
             use_wandb: if False, logging is silently skipped.
@@ -109,6 +120,8 @@ class DiversityTrainer:
 
         self._force_z0_to_origin: bool = force_z0_to_origin
         self._z_resample_cadence: int = max(0, int(z_resample_cadence))
+        self._z_resample_start_epoch: int = max(0, int(z_resample_start_epoch))
+        self._mode_c_transition_logged: bool = False
 
         self._mesh_extractor: MeshExtractor | None = mesh_extractor
         self._mesh_extraction_config: dict[str, Any] = mesh_extraction_config or {}
@@ -123,7 +136,20 @@ class DiversityTrainer:
         self._resample_generator = torch.Generator(device=generator_device)
 
         # Fixed population of latent vectors (not trained). Z[0] optionally pinned to origin.
-        self._Z: Tensor = torch.randn(population_size, z_dim, device=self._device, dtype=torch.float32)
+        if initial_Z is not None:
+            expected_shape = (population_size, z_dim)
+            if tuple(initial_Z.shape) != expected_shape:
+                raise ValueError(
+                    f"initial_Z shape {tuple(initial_Z.shape)} does not match expected "
+                    f"{expected_shape}. "
+                    f"Set population_size={initial_Z.shape[0]} in GINN.yaml to match the "
+                    f"pretrained population, or re-run pretraining with "
+                    f"population_size={population_size}."
+                )
+            self._Z: Tensor = initial_Z.clone().to(self._device)
+        else:
+            self._Z = torch.randn(population_size, z_dim, device=self._device, dtype=torch.float32)
+
         if self._force_z0_to_origin and self._population_size > 0:
             self._Z[0] = torch.zeros(z_dim, device=self._device, dtype=torch.float32)
 
@@ -536,13 +562,19 @@ class DiversityTrainer:
             if k.startswith("raw_losses/") and k != "raw_losses/total_loss"
         }
         normalized_floats: dict[str, float] = {
-            k.removeprefix("normalized_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("normalized_losses/")
+            k.removeprefix("normalized_losses/"): abs(v)
+            for k, v in log_dict.items()
+            if k.startswith("normalized_losses/") and k != "normalized_losses/total_loss"
         }
         weighted_floats: dict[str, float] = {
-            k.removeprefix("weighted_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("weighted_losses/")
+            k.removeprefix("weighted_losses/"): abs(v)
+            for k, v in log_dict.items()
+            if k.startswith("weighted_losses/") and k != "weighted_losses/total_loss"
         }
         optimizer_floats: dict[str, float] = {
-            k.removeprefix("optimizer_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("optimizer_losses/")
+            k.removeprefix("optimizer_losses/"): abs(v)
+            for k, v in log_dict.items()
+            if k.startswith("optimizer_losses/") and k != "optimizer_losses/total_loss"
         }
         competition_log = self._log_competition_charts(
             raw_floats,
@@ -577,7 +609,16 @@ class DiversityTrainer:
 
         def _safe_pie(values: list[float], labels: list[str], title: str) -> plt.Figure:
             fig, ax = plt.subplots(figsize=(6, 6))
-            values = [abs(v) for v in values]
+            filtered = [
+                (v, lbl)
+                for v, lbl in zip(values, labels, strict=True)
+                if isinstance(v, (int, float)) and math.isfinite(v) and v > 0
+            ]
+            if filtered:
+                values = [v for v, _ in filtered]
+                labels = [lbl for _, lbl in filtered]
+            else:
+                values, labels = [], []
             total = sum(values)
             if total == 0 or len(values) == 0:
                 ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)

@@ -623,11 +623,17 @@ class TotalLoss:
             k.removeprefix("raw_losses/"): abs(v) for k, v in loss_log.items() if k != "raw_losses/total_loss"
         }
         normalized_floats: dict[str, float] = {
-            k.removeprefix("normalized_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("normalized_losses/")
+            k.removeprefix("normalized_losses/"): abs(v)
+            for k, v in log_dict.items()
+            if k.startswith("normalized_losses/") and k != "normalized_losses/total_loss"
         }
-        weighted_floats: dict[str, float] = {k: abs(v.item()) for k, v in self._last_weighted_losses.items()}
+        weighted_floats: dict[str, float] = {
+            k: abs(v.item()) for k, v in self._last_weighted_losses.items() if k != "weighted_losses/total_loss"
+        }
         optimizer_floats: dict[str, float] = {
-            k.removeprefix("optimizer_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("optimizer_losses/")
+            k.removeprefix("optimizer_losses/"): abs(v)
+            for k, v in log_dict.items()
+            if k.startswith("optimizer_losses/") and k != "optimizer_losses/total_loss"
         }
         competition_log = self._log_loss_competition_charts(
             raw_floats, normalized_floats, weighted_floats, optimizer_floats, epoch_name

@@ -3,7 +3,9 @@ from typing import cast
 
 import torch
 from torch import nn
+from torch.nn.utils.parametrizations import spectral_norm
 
+from subprojects.wp2_assembler.version4.utils.wp4_utils import get_outer_bb_info
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
 
 
@@ -41,6 +43,7 @@ class GaborLayerV5(nn.Module):
         scale_max: float = 10.0,
         train_omega: bool = False,
         train_scale: bool = False,
+        use_spectral_norm: bool = False,
         dtype: torch.dtype = torch.float32,
     ):
         super().__init__()
@@ -58,7 +61,8 @@ class GaborLayerV5(nn.Module):
         else:
             self.register_buffer("log_scale", log_scale_vals)
 
-        self.wave_proj = nn.Linear(in_features, out_features, bias=bias, dtype=dtype)
+        wave_proj = nn.Linear(in_features, out_features, bias=bias, dtype=dtype)
+        self.wave_proj = spectral_norm(wave_proj) if use_spectral_norm else wave_proj
         self.decay_proj = nn.Linear(in_features, out_features, bias=bias, dtype=dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -86,8 +90,11 @@ class WIREV5(BaseModel):
         skip_layer_idx: int = 2,
         train_omega: bool = False,
         train_scale: bool = False,
+        use_spectral_norm: bool = False,
         bbox_center: list[float] | None = None,
         bbox_half_extent: float = 1000.0,
+        use_assembly_normalisation: bool = False,
+        use_smooth_output: bool = False,
         dtype: str = "float32",
     ):
         """
@@ -130,12 +137,22 @@ class WIREV5(BaseModel):
         if not isinstance(torch_dtype, torch.dtype):
             raise TypeError(f"Invalid dtype given: {dtype}")
 
+        if use_assembly_normalisation:
+            outer_bb_info = get_outer_bb_info()
+            # normalise the origin to be at center and get car data within [-1,1]^3 cube inside the model
+            bbox_center = outer_bb_info["centroid"]
+            bbox_half_extent = max(outer_bb_info["width"], outer_bb_info["length"], outer_bb_info["height"]) / 2.0
+            print(
+                f"[{self.__class__.__name__}] Using automatic assembly normalisation with bbox_center={bbox_center} and bbox_half_extent={bbox_half_extent}"
+            )
+        # If use_assembly_normalisation is True, use these values.
+        # If False, bbox_center and bbox_half_extent are taken from the arguments (with [0,0,0] and 1000 defaults respectively).])
         center: torch.Tensor = (
             torch.zeros(in_features, dtype=torch_dtype) if bbox_center is None else torch.tensor(bbox_center, dtype=torch_dtype)
         )
         self.register_buffer("bbox_center", center)
         self.register_buffer("bbox_half_extent", torch.tensor(bbox_half_extent, dtype=torch_dtype))
-
+        # Model layers initialisation
         self.skip_layer_idx = skip_layer_idx
         self.in_features = in_features
 
@@ -155,6 +172,7 @@ class WIREV5(BaseModel):
                 scale_max=first_scale_max,
                 train_omega=train_omega,
                 train_scale=train_scale,
+                use_spectral_norm=use_spectral_norm,
                 dtype=torch_dtype,
             )
         )
@@ -172,10 +190,12 @@ class WIREV5(BaseModel):
                     scale_max=scale_bands[j][1],
                     train_omega=train_omega,
                     train_scale=train_scale,
+                    use_spectral_norm=use_spectral_norm,
                     dtype=torch_dtype,
                 )
             )
 
+        self.smooth_proj = nn.Linear(hidden_features, hidden_features, dtype=torch_dtype) if use_smooth_output else None
         self.output_layer = nn.Linear(hidden_features, out_features, dtype=torch_dtype)
 
         self.model_info_dict = {
@@ -197,6 +217,8 @@ class WIREV5(BaseModel):
             "skip_layer_idx": skip_layer_idx,
             "trainable_omega": train_omega,
             "trainable_scale": train_scale,
+            "use_smooth_output": use_smooth_output,
+            "use_spectral_norm": use_spectral_norm,
             "bbox_center": bbox_center if bbox_center is not None else [0.0] * in_features,
             "bbox_half_extent": bbox_half_extent,
             "total_parameters": sum(p.numel() for p in self.parameters()),
@@ -218,6 +240,8 @@ class WIREV5(BaseModel):
             if i == self.skip_layer_idx + 1:
                 h = torch.cat([h, x], dim=-1)
             h = layer(h)
+        if self.smooth_proj is not None:
+            h = torch.nn.functional.silu(self.smooth_proj(h))
         return self.output_layer(h) * self.bbox_half_extent_tensor
 
     def get_model_info_dict(self) -> dict:

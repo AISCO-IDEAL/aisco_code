@@ -1303,3 +1303,140 @@ class TestGetTotalLoss:
             assert not torch.allclose(lam_after_1, lam_after_2)
         finally:
             cleanup()
+
+
+# ===========================================================================
+# Test: Loss-competition dict exclusion of total_loss (Plan 020)
+# ===========================================================================
+
+
+class TestCompetitionDictExclusion:
+    """total_loss must never appear as a competitor key in competition chart dicts.
+
+    These tests reproduce the bug described in Analysis 020 and guard against
+    regression after the fix in Plan 020.
+
+    Note: tests use `object.__new__` to bypass TotalLoss / DiversityTrainer __init__,
+    which requires heavy external dependencies. The make_total_loss fixture is NOT used
+    here because it has a pre-existing issue where it attempts to patch MeshStatistics
+    at module level but that symbol is only imported locally inside a method.
+    """
+
+    def test_total_loss_competition_dicts_exclude_total_loss(self) -> None:
+        """TotalLoss._handle_telemetry must not pass total_loss into competition chart dicts.
+
+        The four dicts (raw_floats, normalized_floats, weighted_floats, optimizer_floats)
+        passed to _log_loss_competition_charts must all exclude any key named 'total_loss'.
+        """
+        from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss  # noqa: PLC0415
+
+        tl = object.__new__(TotalLoss)
+        tl._use_wandb = True
+        tl._use_renderer = False
+        tl._use_cse = False
+        tl._last_cruising_speed = None
+        tl._memory_diagnostics = False
+        tl._last_weighted_losses = {
+            "gaot_loss": torch.tensor(2.0),
+            "solar_v3B": torch.tensor(100.0),
+        }
+        tl._objective_losses = {}
+        tl._objective_signs = {}
+        tl._use_alm = False
+        mock_norm = MagicMock()
+        mock_norm.get_loss_scale.return_value = 1.0
+        mock_norm.get_telemetry.return_value = {}
+        tl._norm_manager = mock_norm
+
+        # loss_log contains a raw_losses/total_loss that must NOT reach competition dicts.
+        loss_log: dict[str, float] = {
+            "raw_losses/gaot_loss": 2.0,
+            "raw_losses/solar_v3B": 100.0,
+            "raw_losses/total_loss": 102.0,  # contaminant — must NOT reach pie charts
+        }
+        total_loss_tensor = torch.tensor(102.0)
+
+        captured: dict[str, dict] = {}
+
+        def _spy(
+            raw_f: dict,
+            norm_f: dict,
+            weighted_f: dict,
+            opt_f: dict,
+            _epoch: int,
+        ) -> dict:
+            captured["raw"] = raw_f
+            captured["normalized"] = norm_f
+            captured["weighted"] = weighted_f
+            captured["optimizer"] = opt_f
+            return {}
+
+        with patch.object(tl, "_log_loss_competition_charts", side_effect=_spy):
+            tl._handle_telemetry(
+                total_loss=total_loss_tensor,
+                loss_log=loss_log,
+                epoch_name=0,
+                model=MagicMock(),
+                device=torch.device("cpu"),
+            )
+
+        assert captured, "Spy was never called — _log_loss_competition_charts not reached"
+        assert "total_loss" not in captured["raw"], "raw_floats must not contain total_loss"
+        assert "total_loss" not in captured["normalized"], "normalized_floats must not contain total_loss"
+        assert "total_loss" not in captured["weighted"], "weighted_floats must not contain total_loss"
+        assert "total_loss" not in captured["optimizer"], "optimizer_floats must not contain total_loss"
+
+    def test_diversity_trainer_competition_dicts_exclude_total_loss(self) -> None:
+        """DiversityTrainer._log must not pass total_loss into competition chart dicts.
+
+        avg_log_data is built from TotalLossV2.weight() log_data which contains
+        normalized_losses/total_loss and optimizer_losses/total_loss. The _log()
+        method must exclude these before passing dicts to _log_competition_charts.
+        """
+        from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import DiversityTrainer  # noqa: PLC0415
+
+        dt = object.__new__(DiversityTrainer)
+        dt._use_wandb = True
+
+        # avg_log_data mimics the dict from TotalLossV2.weight() — contains total_loss keys.
+        avg_log_data: dict[str, float] = {
+            "raw_losses/gaot_loss": 2.0,
+            "raw_losses/solar_v3B": 100.0,
+            "raw_losses/total_loss": 102.0,  # contaminant
+            "normalized_losses/gaot_loss": 0.5,
+            "normalized_losses/solar_v3B": 0.8,
+            "normalized_losses/total_loss": 1.3,  # contaminant
+            "weighted_losses/gaot_loss": 0.1,
+            "weighted_losses/solar_v3B": 0.4,
+            "optimizer_losses/gaot_loss": 0.1,
+            "optimizer_losses/solar_v3B": 0.4,
+            "optimizer_losses/total_loss": 0.5,  # contaminant
+        }
+
+        captured: dict[str, dict] = {}
+
+        def _spy(raw_f: dict, norm_f: dict, weighted_f: dict, opt_f: dict, _epoch: int) -> dict:
+            captured["raw"] = raw_f
+            captured["normalized"] = norm_f
+            captured["weighted"] = weighted_f
+            captured["optimizer"] = opt_f
+            return {}
+
+        mock_alm = MagicMock()
+        mock_alm.get_telemetry.return_value = {}
+        mock_norm = MagicMock()
+        mock_norm.get_telemetry.return_value = {}
+        dt._alm_manager = mock_alm
+        dt._norm_manager = mock_norm
+
+        dm_module = "subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager"
+        with patch(f"{dm_module}.wandb") as mock_wandb:
+            mock_wandb.run = MagicMock()
+            with patch.object(dt, "_log_competition_charts", side_effect=_spy):
+                dt._log(avg_log_data, {}, {}, epoch=0)
+
+        assert captured, "Spy was never called — _log_competition_charts not reached"
+        assert "total_loss" not in captured["raw"], "raw_floats must not contain total_loss"
+        assert "total_loss" not in captured["normalized"], "normalized_floats must not contain total_loss"
+        assert "total_loss" not in captured["weighted"], "weighted_floats must not contain total_loss"
+        assert "total_loss" not in captured["optimizer"], "optimizer_floats must not contain total_loss"
