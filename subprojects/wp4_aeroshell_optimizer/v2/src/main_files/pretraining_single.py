@@ -65,6 +65,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     load_config,
     register_all_configs,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import detect_environment
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 
@@ -155,9 +156,16 @@ def _build_active_configs() -> dict[str, str]:
     Includes pretraining_single + every model config listed in models.json so
     that ``models/<model_yaml>.X`` sweep keys are resolvable.
     """
-    models_json_path = (
-        Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / "v2" / "configs" / "models.json"
-    )
+    environment = detect_environment()
+    if environment == "aisco_beast":
+        models_json_path = Path.home() / "Documents" / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / "v2" / "configs" / "models.json"
+    elif environment == "wsl":
+        # note from eschaerer: the path must be updated, this is just a placeholder
+        models_json_path = Path.home() / "note from eschaerer: the path must be updated, this is just a placeholder"
+    else:
+        models_json_path = (
+            Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / "v2" / "configs" / "models.json"
+        )
     models_inventory = json.loads(models_json_path.read_text())
     active: dict[str, str] = {"pretraining_single": "pretraining_single_config.yaml"}
     for model_info in models_inventory["models"].values():
