@@ -119,7 +119,7 @@ dataset:
     processed_folder: ""
     force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
-    handpicked_val: false
+    handpicked_val: true
     val_files_path: "config/val_files.yaml"
     train_size: 600
     val_size: 200
