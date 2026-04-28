@@ -31,10 +31,27 @@ class FieldDiversityV0:
         model: SupportsModelContract,
         Z: Tensor | None = None,
         num_points: int = 2048,
-        bbox_size: float = 10.0,
+        bbox_lo: list[float] | None = None,
+        bbox_hi: list[float] | None = None,
         norm_order: int = 2,
         neighbor_agg_fn: str = "min",
     ) -> Tensor:
+        """Compute field-diversity loss over the given latent population.
+
+        Args:
+            model: SDF network with latent-concat support.
+            Z: Latent population tensor of shape (N, z_dim).
+            num_points: Number of random sample points.
+            bbox_lo: Per-axis lower bounds [x_lo, y_lo, z_lo] in mm.
+                Defaults to outer_prism x/y/z lower bounds.
+            bbox_hi: Per-axis upper bounds [x_hi, y_hi, z_hi] in mm.
+                Defaults to outer_prism x/y/z upper bounds.
+            norm_order: Lp norm order for field distance.
+            neighbor_agg_fn: Aggregation over neighbours ("min" or "mean").
+
+        Returns:
+            Scalar diversity loss tensor.
+        """
         if not isinstance(model, SupportsLatentConcat):
             return torch.zeros((), device=self._device, dtype=torch.float32)
         if Z is None:
@@ -42,7 +59,14 @@ class FieldDiversityV0:
         if Z.shape[0] <= 1:
             return torch.zeros((), device=Z.device, dtype=torch.float32)
 
-        points = (torch.rand(num_points, 3, device=Z.device) - 0.5) * bbox_size
+        # Per-axis non-cubic sampling matching the outer prism (default = outer_prism bounds in mm).
+        # Previous implementation used a scalar `bbox_size` creating a cube, which wasted ~75%
+        # of samples outside the actual car volume (Y and Z axes are much narrower than X).
+        _lo = bbox_lo if bbox_lo is not None else [-2900.0, -1150.0, -100.0]
+        _hi = bbox_hi if bbox_hi is not None else [2900.0, 1150.0, 1650.0]
+        lo = torch.tensor(_lo, device=Z.device, dtype=torch.float32)
+        hi = torch.tensor(_hi, device=Z.device, dtype=torch.float32)
+        points = lo + torch.rand(num_points, 3, device=Z.device) * (hi - lo)
         field_values: list[Tensor] = []
         for i in range(Z.shape[0]):
             model.set_latent_vector(Z[i])

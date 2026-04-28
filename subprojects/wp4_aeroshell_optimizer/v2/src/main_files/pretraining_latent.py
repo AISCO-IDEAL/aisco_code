@@ -87,7 +87,7 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
 
     # --- Z grounding: shift so Z_min = ground_clearance (100mm) ---
     prism = get_outer_prism_bounds_mm()
-    ground_clearance = abs(prism["z_sampling"][0])  # = 100.0 mm
+    ground_clearance = abs(prism["z"][0])  # = 100.0 mm
     z_shift = ground_clearance - float(verts_np[:, 2].min())
     verts_np[:, 2] += z_shift
 
@@ -107,7 +107,7 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     # --- Outer-prism violation warnings ---
     prism_length = prism["x"][1] - prism["x"][0]
     prism_width = prism["y"][1] - prism["y"][0]
-    prism_height = float(prism["z_mesh"][1])
+    prism_height = float(prism["z"][1])
     axis_checks = [("X", float(extents[0]), prism_length), ("Y", float(extents[1]), prism_width)]
     for axis_name, extent_mm, limit_mm in axis_checks:
         if extent_mm > limit_mm:
