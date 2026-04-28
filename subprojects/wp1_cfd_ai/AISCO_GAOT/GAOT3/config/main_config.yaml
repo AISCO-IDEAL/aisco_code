@@ -119,9 +119,9 @@ dataset:
     processed_folder: ""
     force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
-    train_size: 900
-    val_size: 250
-    test_size: 250
+    train_size: 600
+    val_size: 200
+    test_size: 200
     batch_size: 16  # reduced from 12 to avoid OOM on larger CP-full meshes
     num_workers: 8
     shuffle: true

@@ -338,10 +338,14 @@ class VTKMeshDataset(Dataset):
                 # We use -1 or 0 to indicate it's missing/not applicable
                 data.n_surface_faces = 0
 
-            # flow_conditions can be a dict with dataset-specific keys
-            # (e.g. M_inf vs v_inf), which breaks PyG collation.
-            if hasattr(data, "flow_conditions"):
-                del data.flow_conditions
+            # Drop all string/dict metadata attributes that PyG cannot batch as tensors.
+            for _str_attr in (
+                "source_dataset", "source_case_id", "geom_name",
+                "preprocess_version", "cd_mean50", "cd_std50",
+                "converged", "final_residuals", "flow_conditions",
+            ):
+                if hasattr(data, _str_attr):
+                    delattr(data, _str_attr)
 
             # Drop raw pressure field if requested (model usually trains on Cp)
             if self.drop_pressure and hasattr(data, "pressure"):
