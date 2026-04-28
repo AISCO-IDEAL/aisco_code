@@ -12,6 +12,7 @@ import inspect
 
 import torch
 
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.losses_utils import get_points
 
@@ -47,9 +48,24 @@ class ParentLoss:
 
         # Initialise points if eikonal or smoothness loss
         if loss_name and ("eikonal" in loss_name.lower() or "smoothness" in loss_name.lower()):
+            # Get outer-prism bounds from wp2 (single source of truth)
+            prism = get_outer_prism_bounds_mm()
+            scale = float(self.losses_config["domain_pts_sampling"].get("bbox_scale_factor", 1.0))
+            scaled_prism = scale_outer_prism(prism, scale)
+            bbox_lo = [
+                scaled_prism["x"][0],
+                scaled_prism["y"][0],
+                scaled_prism["z_sampling"][0],
+            ]
+            bbox_hi = [
+                scaled_prism["x"][1],
+                scaled_prism["y"][1],
+                scaled_prism["z_sampling"][1],
+            ]
             self.points = get_points(
-                num_points=self.losses_config["get_points_params"]["num_points"],
-                bbox_size=self.losses_config["get_points_params"]["bbox_size"],
+                num_points=self.losses_config["domain_pts_sampling"]["num_points"],
+                bbox_lo=bbox_lo,
+                bbox_hi=bbox_hi,
                 device=self.device,
             )
 

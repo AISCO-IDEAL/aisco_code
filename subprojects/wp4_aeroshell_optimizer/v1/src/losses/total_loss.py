@@ -147,7 +147,7 @@ class TotalLoss:
         ``initial_lambda``, ``initial_mu`` and ``initial_nu`` may be a single
         scalar (broadcast to all constraints) or a list of length
         *n_constraints* for per-constraint control.
-        """  # noqa: RUF002
+        """
         gi: dict[str, Any] = self.losses_config["general_info"]
         dev = self._device
         nc: int = len(self._constraint_losses)  # typically 3

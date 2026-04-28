@@ -137,9 +137,9 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
     artifact_every: 10  # NOT WORKING PROPERLY IT SEEMS: save model+mesh checkpoint artifact to wandb every N epochs
 
-get_points_params: # used in eikonal and smoothness loss  #  parent_loss.py: self.losses_config["get_points_params"]["num_points"] and ["bbox_size"]
+domain_pts_sampling: # used in eikonal and smoothness loss  #  parent_loss.py: calls get_outer_prism_bounds_mm() from wp2
   num_points: 1000  #  parent_loss.py
-  bbox_size: 10.0  #  parent_loss.py
+  bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; 1.0 = full outer_prism
 
 
 connectedness_config:
@@ -147,7 +147,7 @@ connectedness_config:
   return_cached_on_skip: "False"  # if True, reuse last computed scalar on skipped epochs
   grid_dim: 3
   grid_resolution: 128
-  bbox: [[-4000, 4000], [-3000, 3000], [-1000, 5000]] # [mm] placeholder, same as default mesh bbox
+  bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2
   iso_level: 0.0
   target_betti_dim0: 1  # enforce one connected component
   maxdim: 0  # start with H0-only connectedness enforcement
@@ -216,7 +216,7 @@ developability_config:
   # Energy type: 0=HINGE, 1=MINWIDTH, 2=OLDHINGE, 3=OLDMINWIDTH, 4=PAIRWISENORMALS, 5=MAXPAIRWISENORMALS
   energy_type: 4
   mesh_resolution: 64     # DISO grid resolution for mesh extraction
-  mesh_bbox: [[-5000, 5000], [-5000, 5000], [-5000, 5000]]
+  bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2
   mesh_isovalue: 0.0
   mesh_batch_size: 8192
   # Post-optimization: runs C++ L-BFGS after the final training epoch
