@@ -93,6 +93,7 @@ class ConcatWIREV5(ConcatBaseModel):
         self.skip_layer_idx = skip_layer_idx
         self.coords = coords
         self.z_dim = z_dim
+        self._active_z = torch.zeros(z_dim, dtype=torch_dtype)
 
         omega_bands = _log_tile(hidden_omega_min, hidden_omega_max, hidden_layers)
         scale_bands = _log_tile(hidden_scale_min, hidden_scale_max, hidden_layers)
