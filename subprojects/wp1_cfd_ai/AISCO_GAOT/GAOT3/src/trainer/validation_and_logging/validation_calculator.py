@@ -301,8 +301,9 @@ class ValidationCalculator:
             if "field" not in pred_normalized or not hasattr(batch, "x") or batch.x is None:
                 continue
 
-            pred_unnormalized = self._denormalize_field(trainer, pred_normalized["field"])
-            target_unnormalized = self._denormalize_field(trainer, batch.x.to(trainer.device))
+            # Use the same raw field tensors as the GAOT2 sample visualizer for consistent optics.
+            field_pred = pred_normalized["field"]
+            field_target = batch.x.to(trainer.device)
 
             for sample_index, (start, end) in enumerate(self._sample_ranges(batch)):
                 if sample_index >= len(filenames):
@@ -317,8 +318,8 @@ class ValidationCalculator:
                     trainer,
                     split_label,
                     batch,
-                    target_unnormalized,
-                    pred_unnormalized,
+                    field_target,
+                    field_pred,
                     start,
                     end,
                     sample_index,
@@ -326,8 +327,8 @@ class ValidationCalculator:
                     image_tag=tag,
                 )
 
-                drag_pred = self._integrate_sample(trainer, batch, pred_unnormalized, start, end)
-                drag_target = self._integrate_sample(trainer, batch, target_unnormalized, start, end)
+                drag_pred = self._integrate_sample(trainer, batch, field_pred, start, end)
+                drag_target = self._integrate_sample(trainer, batch, field_target, start, end)
                 metrics = {}
                 if drag_pred is not None:
                     metrics[f"viz/{split_label}/integrated_drag_pred_{tag}"] = drag_pred
@@ -422,15 +423,15 @@ class ValidationCalculator:
         self._log_scalar_visuals(trainer, split_label, batch, pred_normalized, epoch)
         if "field" not in pred_normalized or not hasattr(batch, "x") or batch.x is None:
             return
-        pred_unnormalized = self._denormalize_field(trainer, pred_normalized["field"])
-        target_unnormalized = self._denormalize_field(trainer, batch.x.to(trainer.device))
+        field_pred = pred_normalized["field"]
+        field_target = batch.x.to(trainer.device)
         max_samples = min(int(trainer.dataset_config.get("num_viz_samples", 1)), len(self._sample_ranges(batch)))
         for sample_index, (start, end) in enumerate(self._sample_ranges(batch)[:max_samples]):
             self._log_field_visual(
-                trainer, split_label, batch, target_unnormalized, pred_unnormalized, start, end, sample_index, epoch
+                trainer, split_label, batch, field_target, field_pred, start, end, sample_index, epoch
             )
-            drag_pred = self._integrate_sample(trainer, batch, pred_unnormalized, start, end)
-            drag_target = self._integrate_sample(trainer, batch, target_unnormalized, start, end)
+            drag_pred = self._integrate_sample(trainer, batch, field_pred, start, end)
+            drag_target = self._integrate_sample(trainer, batch, field_target, start, end)
             metrics = {}
             if drag_pred is not None:
                 metrics[f"viz/{split_label}/integrated_drag_pred_{sample_index}"] = drag_pred
@@ -465,8 +466,8 @@ class ValidationCalculator:
         trainer,
         split_label: str,
         batch,
-        target_unnormalized,
-        pred_unnormalized,
+        target_values_tensor,
+        pred_values_tensor,
         start: int,
         end: int,
         sample_index: int,
@@ -475,15 +476,39 @@ class ValidationCalculator:
     ) -> None:
         pos = batch.pos_raw[start:end] if hasattr(batch, "pos_raw") else batch.pos[start:end]
         coords = pos.detach().cpu().numpy()
-        target_values = target_unnormalized[start:end].detach().cpu().numpy()
-        pred_values = pred_unnormalized[start:end].detach().cpu().numpy()
+        target_values = target_values_tensor[start:end].detach().cpu().numpy().squeeze()
+        pred_values = pred_values_tensor[start:end].detach().cpu().numpy().squeeze()
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as image_file:
             image_path = image_file.name
         try:
-            self._save_field_plot(coords, target_values, pred_values, image_path)
+            # Keep prefix-mode optics consistent with GAOT2/GAOT3 single-sample visualizer.
+            plot_3d_comparison_matplotlib(
+                coords=coords,
+                u_gtr=target_values,
+                u_prd=pred_values,
+                save_path=image_path,
+                variable_name="Pressure",
+                point_size=2.0,
+                cmap="jet",
+                dpi=150,
+                view_angle=(20, -120),
+                hide_grid=False,
+                equal_aspect=False,
+                show_abs_diff=True,
+                show_input_shape=False,
+                use_ground_truth_range=False,
+                fixed_clim_common=trainer._viz_fixed_clim_common,
+                fixed_clim_diff=trainer._viz_fixed_clim_diff,
+                fixed_axis_limits=trainer._viz_fixed_axis_limits,
+            )
             field_tag = image_tag if image_tag is not None else str(sample_index)
             safe_tag = re.sub(r"[^0-9A-Za-z_-]", "_", field_tag)
-            trainer.tracker.log_image(f"viz/{split_label}/field_{safe_tag}", image_path, step=epoch + 1)
+            trainer.tracker.log_image(
+                f"viz/{split_label}/field_{safe_tag}",
+                image_path,
+                step=epoch + 1,
+                caption=f"Pressure Field [{split_label}] {safe_tag} - Epoch {epoch + 1}",
+            )
         finally:
             if os.path.exists(image_path):
                 os.remove(image_path)
@@ -515,7 +540,8 @@ class ValidationCalculator:
         name = os.path.basename(str(filename))
         if name.endswith(".pt"):
             name = name[:-3]
-        match = re.match(r"sample_(\d)\d+", name)
+        # Unified naming is sample_<prefix><index>, where index has 5 digits.
+        match = re.fullmatch(r"sample_(\d+)(\d{5})", name)
         if match is None:
             return None
         return match.group(1)
