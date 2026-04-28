@@ -13,6 +13,7 @@ single-z trainer with no diversity phase.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -536,13 +537,19 @@ class DiversityTrainer:
             if k.startswith("raw_losses/") and k != "raw_losses/total_loss"
         }
         normalized_floats: dict[str, float] = {
-            k.removeprefix("normalized_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("normalized_losses/")
+            k.removeprefix("normalized_losses/"): abs(v)
+            for k, v in log_dict.items()
+            if k.startswith("normalized_losses/") and k != "normalized_losses/total_loss"
         }
         weighted_floats: dict[str, float] = {
-            k.removeprefix("weighted_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("weighted_losses/")
+            k.removeprefix("weighted_losses/"): abs(v)
+            for k, v in log_dict.items()
+            if k.startswith("weighted_losses/") and k != "weighted_losses/total_loss"
         }
         optimizer_floats: dict[str, float] = {
-            k.removeprefix("optimizer_losses/"): abs(v) for k, v in log_dict.items() if k.startswith("optimizer_losses/")
+            k.removeprefix("optimizer_losses/"): abs(v)
+            for k, v in log_dict.items()
+            if k.startswith("optimizer_losses/") and k != "optimizer_losses/total_loss"
         }
         competition_log = self._log_competition_charts(
             raw_floats,
@@ -577,7 +584,16 @@ class DiversityTrainer:
 
         def _safe_pie(values: list[float], labels: list[str], title: str) -> plt.Figure:
             fig, ax = plt.subplots(figsize=(6, 6))
-            values = [abs(v) for v in values]
+            filtered = [
+                (v, lbl)
+                for v, lbl in zip(values, labels, strict=True)
+                if isinstance(v, (int, float)) and math.isfinite(v) and v > 0
+            ]
+            if filtered:
+                values = [v for v, _ in filtered]
+                labels = [lbl for _, lbl in filtered]
+            else:
+                values, labels = [], []
             total = sum(values)
             if total == 0 or len(values) == 0:
                 ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)

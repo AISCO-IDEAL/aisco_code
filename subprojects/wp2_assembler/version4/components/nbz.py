@@ -50,6 +50,7 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
         raise ValueError("ValueError in wp2, version4, nbz. id_number of assembly bigger than max.")
 
     ground_clearance = get_regulation("no_build_zones.outer_prism.ground_clearance")
+    wheel_clearance = get_regulation("no_build_zones.outer_prism.wheel_clearance")
 
     def keep_above_z(solid: cq.Solid, z_cut: float) -> cq.Solid | None:
         """
@@ -91,18 +92,21 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
     wheel_solids = inner_solids[1:]
 
     seat_bbox = seat_solid.BoundingBox()
-    if seat_bbox.zmin < ground_clearance + 1:
+    if seat_bbox.zmin < wheel_clearance:
         raise ValueError(
-            f"Seat intersects the outer NBZ cut plane. "
-            f"seat zmin = {seat_bbox.zmin:.3f} mm, required >= {ground_clearance + 1:.3f} mm."
+            f"Seat intersects the outer NBZ cut plane. seat zmin = {seat_bbox.zmin:.3f} mm, required >= {wheel_clearance:.3f} mm."
         )
 
     cut_inner_solids: list[cq.Solid] = [seat_solid]
 
     for wheel in wheel_solids:
-        cut_wheel = keep_above_z(wheel, ground_clearance + 1)  # the +1 is so that there is space for the mesh to go throgh.
+        cut_wheel = keep_above_z(wheel, wheel_clearance)  # the +1 is so that there is space for the mesh to go throgh.
         if cut_wheel is not None:
             cut_inner_solids.append(cut_wheel)
+
+    cut_outer_nbz = keep_above_z(outer_nbz(id_number), ground_clearance)
+    if cut_outer_nbz is None:
+        raise ValueError(f"Outer NBZ was completely removed for assembly {id_number}.")
 
     cut_inner_assembly = cq.Assembly()
     for i, s in enumerate(cut_inner_solids):
@@ -110,7 +114,7 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
 
     cut_inner_assembly.name = "inner_assembly"
 
-    return cut_inner_assembly, outer_nbz(id_number), vision_nbz(id_number)
+    return cut_inner_assembly, cut_outer_nbz.Solids()[0], vision_nbz(id_number)
 
 
 def max_assembly_id() -> int:
