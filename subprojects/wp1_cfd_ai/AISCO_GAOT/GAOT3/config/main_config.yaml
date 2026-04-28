@@ -3,7 +3,7 @@
 #
 #  Same as main_config.yaml but points to /processed_euler_cp_full/.
 #  The full CP meshes are larger → hits CUDA OOM with batch_size=12.
-#  Reduce batch_size and/or use smaller model to investigate.
+#  Reduce batch_size and/or use smaller model to investigate. sali
 ##########################################################################
 
 setup:
