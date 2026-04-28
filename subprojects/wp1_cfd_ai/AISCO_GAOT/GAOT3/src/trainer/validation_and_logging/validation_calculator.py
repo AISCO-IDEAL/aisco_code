@@ -85,9 +85,7 @@ class ValidationCalculator:
                 try:
                     self._run_viz_for_sample(trainer, sample, label, epoch, sample_index=index)
                 except Exception:
-                    logging.getLogger(__name__).exception(
-                        f"Viz failed for {label} sample {index} (epoch {epoch + 1}):"
-                    )
+                    logging.getLogger(__name__).exception(f"Viz failed for {label} sample {index} (epoch {epoch + 1}):")
 
     def _pick_viz_samples(self, trainer):
         """Randomly select N samples from train and N from val for per-epoch visualisation."""
@@ -102,8 +100,7 @@ class ValidationCalculator:
         train_samples = [trainer.train_loader.dataset[i] for i in train_indices]
         val_samples = [trainer.val_loader.dataset[i] for i in val_indices]
         names_train = ", ".join(
-            f"{i}({getattr(sample, 'filename', 'N/A')})"
-            for i, sample in zip(train_indices, train_samples, strict=True)
+            f"{i}({getattr(sample, 'filename', 'N/A')})" for i, sample in zip(train_indices, train_samples, strict=True)
         )
         names_val = ", ".join(
             f"{i}({getattr(sample, 'filename', 'N/A')})" for i, sample in zip(val_indices, val_samples, strict=True)
@@ -166,7 +163,11 @@ class ValidationCalculator:
             v_inf = trainer.dataset_config.get("v_inf", 25.0)
             rho = trainer.dataset_config.get("rho", 1.225)
             field_pred_t = pred["field"].cpu().float().squeeze()
-            pos_cpu = batch.pos_raw.cpu().float() if hasattr(batch, "pos_raw") and batch.pos_raw is not None else batch.pos.cpu().float()
+            pos_cpu = (
+                batch.pos_raw.cpu().float()
+                if hasattr(batch, "pos_raw") and batch.pos_raw is not None
+                else batch.pos.cpu().float()
+            )
             normals_cpu = batch.c.cpu().float()
 
             drag_pred_val = float("nan")
