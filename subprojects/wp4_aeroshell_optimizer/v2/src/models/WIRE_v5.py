@@ -218,6 +218,7 @@ class WIREV5(BaseModel):
             "trainable_omega": train_omega,
             "trainable_scale": train_scale,
             "use_smooth_output": use_smooth_output,
+            "use_spectral_norm": use_spectral_norm,
             "bbox_center": bbox_center if bbox_center is not None else [0.0] * in_features,
             "bbox_half_extent": bbox_half_extent,
             "total_parameters": sum(p.numel() for p in self.parameters()),
