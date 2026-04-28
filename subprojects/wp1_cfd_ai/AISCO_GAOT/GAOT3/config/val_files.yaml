@@ -1,0 +1,19 @@
+# Handpicked validation candidate list.
+#
+# Enable with:
+#   dataset:
+#     handpicked_val: true
+#     val_files_path: "config/val_files.yaml"
+#
+# Add one sample name per line, matching entries from the dataset order_file.
+# Names may be written with or without the .pt suffix.
+#
+# If this file contains more entries than dataset.val_size, only val_size
+# entries are selected for validation and the remaining candidates return to
+# the train/test pool.
+#
+# Example:
+# case_001
+# case_017.pt
+# case_042
+
