@@ -141,7 +141,13 @@ dataset:
     subsampling_seed: 42        # used only when deterministic_subsampling is true
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
-    num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
+
+
+    num_viz_samples: 0         # number of random viz samples per split (train/val); 0 = disable viz (viz_per_dataset is ignored)
+    viz_per_dataset: true      # false: visualise N random samples of the whole dataset (N = num_viz_samples)
+                               # true: visualise N random samples per subdataset of the whole dataset (only necessary if you have a united
+                               # dataset of multiple subdatasets (e.g. united_all on work/fuge) --> subdatasets need to have a different prefix
+                               # in their name, e.g. sample_YXXXXX all data with the same Y are from the same subdataset)
 
     viz_axis_limits:            # Edit these ranges to control the visualized x/y/z box exactly, default is outer bounding box
         x: [-3, 4.5]
@@ -158,8 +164,8 @@ optimizer:
         weight_decay: 1e-05
         epoch: 300
         loss_scale: 1.0
-        eval_every_eps: 10
-        viz_every_eps: 10   # visualize every N epochs; defaults to eval_every_eps if omitted
+        eval_every_eps: 1
+        viz_every_eps: 25   # visualize every N epochs; defaults to eval_every_eps if omitted
         viz_warmup_epochs: 0  # also visualize every epoch for the first X epochs (0 = disabled)
         scheduler: "mix"
         max_lr: 0.003

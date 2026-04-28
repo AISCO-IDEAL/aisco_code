@@ -81,9 +81,7 @@ def _discover_datasets(root: Path, extra_dataset_paths: list[Path] | None = None
             print(f"⚠️ Warnung: Zusatz-Datensatzpfad ist kein Ordner: {extra_path}")
             continue
         if not (extra_path / DATASET_INDEX_FILENAME).exists():
-            print(
-                f"⚠️ Warnung: Zusatz-Datensatzpfad ohne {DATASET_INDEX_FILENAME}: {extra_path}"
-            )
+            print(f"⚠️ Warnung: Zusatz-Datensatzpfad ohne {DATASET_INDEX_FILENAME}: {extra_path}")
             continue
         _append_if_valid(extra_path)
 

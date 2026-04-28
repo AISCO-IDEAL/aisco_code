@@ -340,9 +340,15 @@ class VTKMeshDataset(Dataset):
 
             # Drop all string/dict metadata attributes that PyG cannot batch as tensors.
             for _str_attr in (
-                "source_dataset", "source_case_id", "geom_name",
-                "preprocess_version", "cd_mean50", "cd_std50",
-                "converged", "final_residuals", "flow_conditions",
+                "source_dataset",
+                "source_case_id",
+                "geom_name",
+                "preprocess_version",
+                "cd_mean50",
+                "cd_std50",
+                "converged",
+                "final_residuals",
+                "flow_conditions",
             ):
                 if hasattr(data, _str_attr):
                     delattr(data, _str_attr)

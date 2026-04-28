@@ -42,8 +42,8 @@ DATASET_METADATA = {
         num_variable_chunks=1,
         signed={"u": [False], "c": [None]},
         names={"u": ["$p$"], "c": [None]},
-        global_mean= [-0.18390923738479614],
-        global_std= [0.2756047248840332],
+        global_mean=[-0.18390923738479614],
+        global_std=[0.2756047248840332],
     ),
     "incompressible_fluids/euler_drag": Metadata(
         periodic=False,
