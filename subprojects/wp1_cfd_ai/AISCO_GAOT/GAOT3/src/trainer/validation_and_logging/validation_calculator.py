@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import tempfile
 
 import matplotlib.pyplot as plt
@@ -75,12 +76,96 @@ class ValidationCalculator:
             if loader is None:
                 continue
             try:
+                if self._visualize_distinct_dataset_prefixes(trainer, split_label, loader, epoch):
+                    continue
                 batch = next(iter(loader)).to(trainer.device)
                 with torch.no_grad():
                     pred_normalized = trainer.model(batch=batch, tokens_pos=trainer.latent_tokens.to(trainer.device))
                 self._log_visual_batch(trainer, split_label, batch, pred_normalized, epoch)
             except Exception as exc:
                 logging.getLogger(__name__).warning(f"Failed to visualize {split_label} samples at epoch {epoch + 1}: {exc}")
+
+    def _visualize_distinct_dataset_prefixes(self, trainer, split_label: str, loader, epoch: int) -> bool:
+        target_prefixes = self._expected_dataset_prefixes(loader)
+        if not target_prefixes:
+            return False
+
+        seen_prefixes: set[str] = set()
+        logged_scalar_metrics = False
+
+        for batch_raw in loader:
+            if seen_prefixes == target_prefixes:
+                break
+
+            batch = batch_raw.to(trainer.device)
+            filenames = self._batch_filenames(batch)
+            if filenames is None:
+                return False
+
+            with torch.no_grad():
+                pred_normalized = trainer.model(batch=batch, tokens_pos=trainer.latent_tokens.to(trainer.device))
+
+            if not isinstance(pred_normalized, dict):
+                return False
+
+            if not logged_scalar_metrics:
+                self._log_scalar_visuals(trainer, split_label, batch, pred_normalized, epoch)
+                logged_scalar_metrics = True
+
+            if "field" not in pred_normalized or not hasattr(batch, "x") or batch.x is None:
+                continue
+
+            pred_unnormalized = self._denormalize_field(trainer, pred_normalized["field"])
+            target_unnormalized = self._denormalize_field(trainer, batch.x.to(trainer.device))
+
+            for sample_index, (start, end) in enumerate(self._sample_ranges(batch)):
+                if sample_index >= len(filenames):
+                    break
+
+                prefix = self._dataset_prefix_from_filename(filenames[sample_index])
+                if prefix is None or prefix in seen_prefixes:
+                    continue
+
+                tag = f"dataset_{prefix}"
+                self._log_field_visual(
+                    trainer,
+                    split_label,
+                    batch,
+                    target_unnormalized,
+                    pred_unnormalized,
+                    start,
+                    end,
+                    sample_index,
+                    epoch,
+                    image_tag=tag,
+                )
+
+                drag_pred = self._integrate_sample(trainer, batch, pred_unnormalized, start, end)
+                drag_target = self._integrate_sample(trainer, batch, target_unnormalized, start, end)
+                metrics = {}
+                if drag_pred is not None:
+                    metrics[f"viz/{split_label}/integrated_drag_pred_{tag}"] = drag_pred
+                if drag_target is not None:
+                    metrics[f"viz/{split_label}/integrated_drag_gt_{tag}"] = drag_target
+                if drag_pred is not None and drag_target is not None:
+                    metrics[f"viz/{split_label}/integrated_drag_abs_error_{tag}"] = abs(drag_pred - drag_target)
+                if metrics:
+                    trainer.tracker.log_metrics(metrics, step=epoch + 1)
+
+                seen_prefixes.add(prefix)
+                if seen_prefixes == target_prefixes:
+                    break
+
+        missing_prefixes = sorted(target_prefixes - seen_prefixes)
+        if missing_prefixes:
+            logging.getLogger(__name__).warning(
+                "Visualization coverage incomplete for %s split at epoch %s. Missing dataset prefixes: %s",
+                split_label,
+                epoch + 1,
+                ", ".join(missing_prefixes),
+            )
+
+        return True
 
     def _batch_losses(self, trainer, batch, pred_normalized, mse_fn, head_losses):
         if isinstance(pred_normalized, dict):
@@ -200,6 +285,7 @@ class ValidationCalculator:
         end: int,
         sample_index: int,
         epoch: int,
+        image_tag: str | None = None,
     ) -> None:
         pos = batch.pos_raw[start:end] if hasattr(batch, "pos_raw") else batch.pos[start:end]
         coords = pos.detach().cpu().numpy()
@@ -209,10 +295,44 @@ class ValidationCalculator:
             image_path = image_file.name
         try:
             self._save_field_plot(coords, target_values, pred_values, image_path)
-            trainer.tracker.log_image(f"viz/{split_label}/field_{sample_index}", image_path, step=epoch + 1)
+            field_tag = image_tag if image_tag is not None else str(sample_index)
+            safe_tag = re.sub(r"[^0-9A-Za-z_-]", "_", field_tag)
+            trainer.tracker.log_image(f"viz/{split_label}/field_{safe_tag}", image_path, step=epoch + 1)
         finally:
             if os.path.exists(image_path):
                 os.remove(image_path)
+
+    def _expected_dataset_prefixes(self, loader) -> set[str]:
+        dataset = getattr(loader, "dataset", None)
+        split_filenames = getattr(dataset, "split_filenames", None)
+        if split_filenames is None:
+            return set()
+        prefixes = {self._dataset_prefix_from_filename(name) for name in split_filenames}
+        return {prefix for prefix in prefixes if prefix is not None}
+
+    def _batch_filenames(self, batch) -> list[str] | None:
+        if not hasattr(batch, "filename"):
+            return None
+        filenames = batch.filename
+        if isinstance(filenames, str):
+            return [filenames]
+        if isinstance(filenames, (list, tuple)):
+            return [str(name) for name in filenames]
+        try:
+            return [str(name) for name in filenames]
+        except TypeError:
+            return None
+
+    def _dataset_prefix_from_filename(self, filename: str | None) -> str | None:
+        if filename is None:
+            return None
+        name = os.path.basename(str(filename))
+        if name.endswith(".pt"):
+            name = name[:-3]
+        match = re.match(r"sample_(\d)\d+", name)
+        if match is None:
+            return None
+        return match.group(1)
 
     def _save_field_plot(self, coords, target_values, pred_values, image_path: str) -> None:
         target_values = np.asarray(target_values).squeeze()

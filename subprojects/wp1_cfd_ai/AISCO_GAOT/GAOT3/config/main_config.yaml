@@ -8,7 +8,7 @@
 
 setup:
     run_local: false
-    name: "euler_field_cp_full"
+    name: "united_all_cp_field"
     id: "_RUN_ID_"
     seed: 42
     device: "cuda:0"
@@ -23,11 +23,11 @@ setup:
     wandb: true
     wandb_run_name: "_NAME___RUN_ID_"
 
-    wandb_project: "WP1_default"
+    wandb_project: "WP1_united_all"
     wandb_entity: aisco
-    wandb_group: euler_field_cp_full
+    wandb_group: united_all_cp_field
     wandb_mode: online
-    wandb_tags: ["field", "pressure", "euler", "multi_head", "gaot", "cp_full", "oom_investigation"]
+    wandb_tags: ["field", "pressure", "united_all", "multi_head", "gaot", "cp_full", "oom_investigation"]
     wandb_watch_model: false
     wandb_notes: "Default Note"
 
@@ -113,9 +113,9 @@ model:
             film_init_scale: 0.01       # reduced from 0.1 — perturbation hit 1.0 at epoch 80
 
 dataset:
-    name: "euler_cp_field"
-    metaname: "incompressible_fluids/euler_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_cp_full"
+    name: "united_all_cp_field"
+    metaname: "incompressible_fluids/united_all_cp"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/united_all"
     processed_folder: ""
     force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
@@ -144,7 +144,7 @@ dataset:
     num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
 
     viz_axis_limits:            # Edit these ranges to control the visualized x/y/z box exactly, default is outer bounding box
-        x: [-3, 3]
+        x: [-3, 4.5]
         y: [-1.5, 1.5]
         z: [-0.5, 2]
     viz_field_vmin: -2.2        # min on pressure bar

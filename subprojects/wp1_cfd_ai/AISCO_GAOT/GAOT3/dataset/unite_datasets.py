@@ -23,10 +23,10 @@ INDEX_FILENAME = "order_.txt"
 # Name der Datensatz-Index-Datei innerhalb jedes Datensatz-Ordners
 DATASET_INDEX_FILENAME = "order_.txt"
 
-# Persistentes Mapping fuer stabile Source->Unified Zuordnung.
+# Persistentes Mapping for stabile Source->Unified Zuordnung.
 NAME_MAPPING_FILENAME = "name_mapping.json"
 
-# Feste Prefix-Zuordnung fuer bestimmte Datensaetze.
+# Feste Prefix-Zuordnung für bestimmte Datensaetze.
 # Beide Blended-Wing-Datensaetze teilen sich denselben Prefix.
 DATASET_PREFIX_OVERRIDES = {
     "blended_wing": 1,
