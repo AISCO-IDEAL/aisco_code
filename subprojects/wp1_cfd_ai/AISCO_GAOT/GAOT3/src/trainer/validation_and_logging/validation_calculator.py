@@ -47,9 +47,7 @@ class ValidationCalculator:
                     trainer, batch, pred_normalized, mse_fn, head_losses
                 )
                 integrated_errors.extend(self._integrated_drag_errors(trainer, batch, pred_normalized))
-                signed_x_drag_weighted_errors.extend(
-                    self._signed_x_drag_weighted_field_errors(trainer, batch, pred_normalized)
-                )
+                signed_x_drag_weighted_errors.extend(self._signed_x_drag_weighted_field_errors(trainer, batch, pred_normalized))
                 signed_x_drag_area_weighted_errors.extend(
                     self._signed_x_drag_area_weighted_field_errors(trainer, batch, pred_normalized)
                 )

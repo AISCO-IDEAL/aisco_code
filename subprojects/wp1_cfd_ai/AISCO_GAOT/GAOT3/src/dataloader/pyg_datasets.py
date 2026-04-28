@@ -339,8 +339,7 @@ class VTKMeshDataset(Dataset):
 
         if len(validation_names) < val_size:
             raise ValueError(
-                "Handpicked validation list contains fewer samples than val_size: "
-                f"{len(validation_names)} < {val_size}"
+                f"Handpicked validation list contains fewer samples than val_size: {len(validation_names)} < {val_size}"
             )
 
         candidate_indices = np.array([order_name_to_index[name] for name in validation_names], dtype=int)
