@@ -34,7 +34,7 @@ from omegaconf import OmegaConf
 from torch_geometric.data import Batch
 
 from src.model.gaot_3d import GAOT3D, masked_multi_head_loss
-from src.trainer.stat import StaticTrainer3D
+from src.trainer.training_orchestrator import TrainingOrchestrator
 
 
 # ─── helpers ──────────────────────────────────────────────────────────
@@ -206,11 +206,8 @@ def main():  # noqa: PLR0912, PLR0915
     separator("PHASE 1: MODEL + DATA LOADING")
 
     # We build the trainer normally but intercept the training loop
-    ns = argparse.Namespace(**cfg)
-    ns.datarow = {}
-
-    # Manually reconstruct what the trainer does
-    trainer = StaticTrainer3D(ns)
+    cfg["datarow"] = {}
+    trainer = TrainingOrchestrator(cfg)._build_trainer()
     model = trainer.model
     model.to(device)
     model.train()
