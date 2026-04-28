@@ -281,8 +281,8 @@ def _compute_pretrain_config_hash(config: dict[str, Any], model: SupportsLatentC
         "model": dict_hashing(model.get_model_info_dict()),
         "latent_population": config["latent_population"],
         "training_loop": config["training_loop"],
-        "z_placement": config.get("z_placement", "unit_circle"),
-        "z_radius": config.get("z_radius", 1.0),
+        "z_placement": config.get("z_placement", "circle"),
+        "z_radius": config.get("z_radius", 2.0),
     }
     return dict_hashing(key)
 
@@ -374,7 +374,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
 ) -> tuple[SupportsLatentConcat, Tensor]:
     """Run latent-population pretraining for a SupportsLatentConcat model.
 
-    Trains model weights so that each latent slot z_i (placed on a unit circle)
+    Trains model weights so that each latent slot z_i (placed on a circle)
     approximates a corresponding target SDF (sphere / cube / PLY mesh).
 
     Fast-resume: if a valid checkpoint exists at ``config["output"]["checkpoint_path"]``
@@ -440,7 +440,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             ply_cache[slot_idx] = _load_ply_tensors(str(shape["ply_path"]), ply_scale)
             print(f"[latent_pretrain] Slot {slot_idx}: loaded PLY '{shape['ply_path']}' scale={ply_scale}")
 
-    # --- Build unit-circle Z ---
+    # --- Build circle Z ---
     z_dim: int = model.get_model_info_dict()["z_dim"]
     z_radius: float = float(config.get("z_radius", 1.0))
     Z = build_unit_circle_Z(num_shapes, z_dim, z_radius, device)
@@ -450,8 +450,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     epochs: int = int(loop_cfg["epochs"])
     lr: float = float(loop_cfg["learning_rate"])
     batch_size_per_shape: int = int(loop_cfg["batch_size_per_shape"])
-    print_interval: int = int(loop_cfg["print_interval"])
-    # eikonal removed in favour of L1 on all pts — eikonal_weight config key retained for YAML compat
+    logging_interval: int = int(loop_cfg["logging_interval"])
     # 0 = static surface cache (DeepSDF-style: sample once, reuse forever)
     # N > 0 = refresh surface cache every N epochs
     surface_resample_cadence: int = int(loop_cfg.get("surface_resample_cadence", 0))
@@ -471,7 +470,8 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     # --- Output / visualisation config (read once, shared between loop and post-training) ---
     output_cfg: dict[str, Any] = config.get("output", {})
     run_dir: Path = ckpt_path.parent  # Hash-named folder containing all outputs
-    vis_dir: Path = run_dir / "sampling_vis"
+    visualisation_directory: str = str(output_cfg.get("visualisation_directory", "sampling_vis"))
+    vis_dir: Path = run_dir / visualisation_directory
     outer_prism_raw = get_outer_prism_bounds_mm()  # Single source of truth for bounding box
     bbox_scale_factor: float = float(output_cfg.get("bbox_scale_factor", 1.0))  # Multiply bounds by this factor
     outer_prism = scale_outer_prism(outer_prism_raw, bbox_scale_factor)
@@ -699,7 +699,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             )
             model.train()  # restore after eval inside snapshot
 
-        if epoch % print_interval == 0:
+        if epoch % logging_interval == 0:
             lr_now = scheduler.get_last_lr()[0]
 
             # --- Gradient probe: ‖∂L/∂z_input‖ vs ‖∂L/∂xyz_input‖ on slot-0 surface pts ---
@@ -727,7 +727,6 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 f" | ratio={grad_ratio:.2e}{warn_suffix}"
             )
             if use_wandb:
-                import wandb  # noqa: PLC0415
 
                 wandb.log(
                     {
@@ -761,7 +760,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         slot_name = shapes[slot_idx].get("name", str(slot_idx))
         slot_mesh_path = pretrained_shapes_dir / f"slot{slot_idx:02d}_{slot_name}.ply"
         try:
-            clear_mesh_cache()  # BUG-001: evict stale cache entry before loading the next latent
+            clear_mesh_cache()
             model.set_latent_vector(Z[slot_idx].to(device))
             model.eval()
             _extract_mesh(model, slot_mesh_path, device, vis_mesh_res, outer_prism)
@@ -816,7 +815,7 @@ def _write_epoch_vis_snapshot(
         eikonal_pts_i: Tensor | None = eikonal_pts_per_slot[slot_idx] if show_eikonal_pts else None
 
         # Extract current model surface (red) as numpy arrays
-        clear_mesh_cache()  # BUG-001: evict stale cache entry before loading the next latent
+        clear_mesh_cache()
         model.set_latent_vector(Z[slot_idx].to(device))
         model.eval()
         mesh_arrays = _extract_mesh(model, None, device, mesh_res, outer_prism, return_mesh=True)
