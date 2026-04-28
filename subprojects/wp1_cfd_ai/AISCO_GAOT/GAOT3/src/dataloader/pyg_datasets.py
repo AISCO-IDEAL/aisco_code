@@ -341,17 +341,13 @@ class VTKMeshDataset(Dataset):
 
         validation_names = [name for name in validation_names if name in order_name_to_index]
         missing_files = sorted(
-            name
-            for name in validation_names
-            if not self._processed_sample_exists(all_filenames[order_name_to_index[name]])
+            name for name in validation_names if not self._processed_sample_exists(all_filenames[order_name_to_index[name]])
         )
         if missing_files:
             logger.warning("Skipping handpicked validation samples with missing processed files: %s", missing_files)
 
         validation_names = [
-            name
-            for name in validation_names
-            if self._processed_sample_exists(all_filenames[order_name_to_index[name]])
+            name for name in validation_names if self._processed_sample_exists(all_filenames[order_name_to_index[name]])
         ]
 
         candidate_indices = np.array([order_name_to_index[name] for name in validation_names], dtype=int)
