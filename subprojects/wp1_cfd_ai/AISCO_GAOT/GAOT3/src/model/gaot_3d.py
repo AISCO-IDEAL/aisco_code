@@ -391,3 +391,39 @@ class _ResidualBlock(nn.Module):
         h = self.norm(x)
         h = self.fc2(self.act(self.fc1(h)))
         return x + h
+
+
+# ═════════════════════════════════════════════════════════════════════════
+#  Multi-head loss
+# ═════════════════════════════════════════════════════════════════════════
+
+
+def masked_multi_head_loss(
+    predictions: dict[str, torch.Tensor],
+    targets: dict[str, torch.Tensor],
+    loss_fn: nn.Module | None = None,
+    weights: dict[str, float] | None = None,
+) -> torch.Tensor:
+    """Loss over multiple heads, masking NaN targets per sample."""
+    if loss_fn is None:
+        loss_fn = nn.MSELoss(reduction="none")
+    if weights is None:
+        weights = {}
+
+    device = next(iter(predictions.values())).device
+    total = torch.tensor(0.0, device=device)
+    n_active = 0
+
+    for name, pred in predictions.items():
+        gt = targets.get(name)
+        if gt is None:
+            continue
+        gt = gt.to(device).view_as(pred)
+        valid = ~torch.isnan(gt)
+        if not valid.any():
+            continue
+        w = weights.get(name, 1.0)
+        total = total + w * loss_fn(pred[valid], gt[valid]).mean()
+        n_active += 1
+
+    return total / max(n_active, 1)
