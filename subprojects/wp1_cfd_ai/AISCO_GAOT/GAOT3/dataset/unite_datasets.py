@@ -95,18 +95,13 @@ def _resolve_sample_file(source_path: Path, sample_name: str) -> Path:
         return flat_path
 
     raise FileNotFoundError(
-        f"Sample-Datei nicht gefunden fuer '{sample_name}' in {source_path}. "
-        f"Erwartet: {subfolder_path} oder {flat_path}"
+        f"Sample-Datei nicht gefunden fuer '{sample_name}' in {source_path}. Erwartet: {subfolder_path} oder {flat_path}"
     )
 
 
 def _collect_united_sample_names(output_path: Path) -> list[str]:
     """Liest alle vereinheitlichten Sample-Namen aus dem Zielordner."""
-    sample_names = {
-        pt_file.stem
-        for pt_file in output_path.glob("sample*.pt")
-        if pt_file.is_file()
-    }
+    sample_names = {pt_file.stem for pt_file in output_path.glob("sample*.pt") if pt_file.is_file()}
     return sorted(sample_names)
 
 
@@ -301,10 +296,7 @@ def consolidate_datasets():
             name_mapping=name_mapping,
         )
 
-        print(
-            f"✅ {count_written} Dateien aus Datenset {label} neu geschrieben, "
-            f"{count_skipped} uebersprungen."
-        )
+        print(f"✅ {count_written} Dateien aus Datenset {label} neu geschrieben, {count_skipped} uebersprungen.")
 
     _save_name_mapping(mapping_path, name_mapping)
     print(f"Persistentes Mapping aktualisiert: {mapping_path}")
