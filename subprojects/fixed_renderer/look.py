@@ -29,6 +29,12 @@ def look(vertices, eye, direction=[0, 1, 0], up=None):
 
     if up is None:
         up = torch.cuda.FloatTensor([0, 1, 0])
+    elif isinstance(up, list | tuple):
+        up = torch.tensor(up, dtype=torch.float32, device=device)
+    elif isinstance(up, np.ndarray):
+        up = torch.from_numpy(up).to(device)
+    elif torch.is_tensor(up):
+        up = up.to(device)
     if eye.ndimension() == 1:
         eye = eye[None, :]
     if direction.ndimension() == 1:
