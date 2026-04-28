@@ -4,7 +4,7 @@
 interpolator:
   # Grid resolution: creates grid_resolution x grid_resolution mesh samples
   # Higher = more detailed interpolation but slower (10 = 100 samples total)
-  grid_resolution: 10
+  grid_resolution: 5
 
   # Latent space range: bounds for z[0] and z[1] sweeping
   # Typical range: -2.0 to 2.0 (adjust based on your model's latent distribution)
@@ -45,7 +45,7 @@ interpolator:
 
   # Render interpolation grids periodically during the training loop
   render_during_training: true
-  render_frequency: 10
+  render_frequency: 25
 
   # Print detailed point extraction progress during rendering
   verbose: false

@@ -19,20 +19,18 @@ For each run, extracts:
   - filename:   str
 
 Usage:
-    python process_fluent_pressure.py                           # all runs
-    python process_fluent_pressure.py --run_ids 1 2 3           # specific runs
-    python process_fluent_pressure.py --max_runs 5              # first 5 runs
-    python process_fluent_pressure.py --workers 4               # parallel workers
+        python preprocessing_euler.py                           # all runs
+        python preprocessing_euler.py --run_ids 1 2 3           # specific runs
+        python preprocessing_euler.py --max_runs 5              # first 5 runs
+        python preprocessing_euler.py --workers 4               # parallel workers
 """
 
 import argparse
 import glob
 import os
 import re
-import sys
 import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from pathlib import Path
 from typing import Any
 
 import h5py
@@ -41,12 +39,17 @@ import torch
 from torch_geometric.data import Data
 from tqdm import tqdm
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.dataset.common_preprocessing import (
+    AIR_DENSITY,
+    PREPROCESS_CONTRACT_VERSION,
+    V_INF_EULER,
+    apply_canonical_contract,
+    compute_geom_conditioning,
+    compute_pressure_coefficient,
+    validate_canonical_contract,
+    write_dataset_manifest,
+)
 
-from common_preprocessing import AIR_DENSITY, V_INF_EULER, compute_geom_conditioning, compute_pressure_coefficient
-
-# ---------------------------------------------------------------------------
-#  Constants
 # ---------------------------------------------------------------------------
 FLUENT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT"
 RESULTS_DIR = os.path.join(FLUENT_DIR, "RUN/RESULTS")
@@ -370,6 +373,16 @@ def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, out
     data.filename = f"RUN_{run_id:03d}"
     data.n_surface_faces = n_faces
 
+    apply_canonical_contract(
+        data,
+        source_dataset="euler",
+        source_case_id=f"RUN_{run_id:03d}",
+        filename=f"RUN_{run_id:03d}",
+        geom_name="",
+        flow_conditions={},
+    )
+    validate_canonical_contract(data)
+
     save_name = f"euler_run_{run_id}"
     save_dir = os.path.join(output_dir, save_name)
     os.makedirs(save_dir, exist_ok=True)
@@ -380,7 +393,7 @@ def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, out
 # ---------------------------------------------------------------------------
 #  Batch processing
 # ---------------------------------------------------------------------------
-def process_all_runs(
+def process_all_runs(  # noqa: PLR0912, PLR0915 - batch orchestration intentionally keeps full control flow in one place.
     results_dir=RESULTS_DIR, force_dir=FORCE_DIR, output_dir=OUTPUT_DIR, run_ids=None, max_runs=None, num_workers=NUM_WORKERS
 ):
     """
@@ -415,47 +428,71 @@ def process_all_runs(
     print(f"  Force:   {force_dir}")
     print(f"  Output:  {output_dir}")
 
-    order_list = []
+    existing_names = []
+    run_ids_todo = []
+    for rid in run_ids:
+        save_name = f"euler_run_{rid}"
+        pt_path = os.path.join(output_dir, save_name, "data.pt")
+        if os.path.exists(pt_path):
+            existing_names.append(save_name)
+        else:
+            run_ids_todo.append(rid)
+
+    print(f"  Skipping {len(existing_names)} already-processed, {len(run_ids_todo)} remaining.")
+
+    order_list_new = []
 
     if num_workers <= 1:
-        for rid in tqdm(run_ids, desc="Processing runs"):
+        for rid in tqdm(run_ids_todo, desc="Processing runs"):
             try:
                 result = process_single_run(rid, results_dir, force_dir, output_dir)
                 if result is not None:
-                    order_list.append(result)
+                    order_list_new.append(result)
             except Exception as e:
                 print(f"  [FAIL] RUN_{rid:03d}: {e}")
                 traceback.print_exc()
     else:
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            futures = {executor.submit(process_single_run, rid, results_dir, force_dir, output_dir): rid for rid in run_ids}
+            futures = {executor.submit(process_single_run, rid, results_dir, force_dir, output_dir): rid for rid in run_ids_todo}
             for future in tqdm(as_completed(futures), total=len(futures), desc="Processing runs"):
                 rid = futures[future]
                 try:
                     result = future.result()
                     if result is not None:
-                        order_list.append(result)
+                        order_list_new.append(result)
                 except Exception as e:
                     print(f"  [FAIL] RUN_{rid:03d}: {e}")
                     traceback.print_exc()
 
-    # Sort numerically
-    order_list.sort(key=lambda x: int(x.split("_")[-1]))
+    all_names = existing_names + order_list_new
+    all_names = sorted(set(all_names), key=lambda x: int(x.split("_")[-1]))
 
     order_path = os.path.join(output_dir, "order_.txt")
     with open(order_path, "w") as f:
-        f.writelines(f"{name}\n" for name in order_list)
+        f.writelines(f"{name}\n" for name in all_names)
 
-    print(f"\nDone! Processed {len(order_list)}/{len(run_ids)} runs.")
+    print(f"\nThis run: {len(order_list_new)} processed.")
+    print(f"Total in output dir: {len(all_names)} runs.")
     print(f"Order file: {order_path}")
     print(f"Data saved to: {output_dir}")
-    return order_list
+
+    write_dataset_manifest(
+        output_dir=output_dir,
+        dataset_name="euler",
+        processed_count=len(all_names),
+        total_candidates=len(run_ids),
+        failed_count=max(0, len(run_ids) - len(all_names)),
+        contract_version=PREPROCESS_CONTRACT_VERSION,
+        source_root=results_dir,
+    )
+
+    return all_names
 
 
 # ---------------------------------------------------------------------------
 #  CLI
 # ---------------------------------------------------------------------------
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Process Fluent .cas.h5/.dat.h5 into GAOT .pt with pressure field.")
     parser.add_argument("--results_dir", default=RESULTS_DIR)
     parser.add_argument("--force_dir", default=FORCE_DIR)

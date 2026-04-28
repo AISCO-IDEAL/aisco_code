@@ -8,5 +8,5 @@ object transportProperties;
 
 transportModel Newtonian;
 
-// Kinematic viscosity: nu = mu/rho = 1.813e-5 / 1.225
-nu              [0 2 -1 0 0 0 0] 1.480e-5;
+// Kinematic viscosity: nu = mu/rho = 1.813e-5 / 1.2041
+nu              [0 2 -1 0 0 0 0] 1.5056888963e-5;

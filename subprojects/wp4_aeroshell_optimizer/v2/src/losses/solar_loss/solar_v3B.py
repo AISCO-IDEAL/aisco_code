@@ -5,10 +5,10 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_c
 
 class SolarV3B(ParentLoss):
     def _setup(self) -> None:
-        gen_cfg = load_config(v="v1", cfg_name="general_config.yaml")
+        gen_cfg = load_config(v="v2", cfg_name="general_config.yaml")
         cfg_path = gen_cfg["active_configs"]["solar"]
         # Important, there is no config v3B, as they differ only by some calculations and since v3 is not really used
-        solar_cfg = load_config(v="v1", cfg_name=cfg_path)["SolarLossConfigV3"]
+        solar_cfg = load_config(v="v2", cfg_name=cfg_path)["SolarLossConfigV3"]
         self.solar_estimator = SolarLossEstimator(config=solar_cfg)
         self.power_conversion_factor = solar_cfg["power_conversion_factor"]
 

@@ -330,23 +330,24 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
         total_loss = TotalLossV2(device=device)
         diversity_loss_manager = DiversityLossManager(losses_config=losses_config, device=device)
+
+        # ALM setup
         use_alm: bool = losses_config["general_info"].get("ALM") == "True"
-        configured_constraint_categories: list[str] = [
-            category
-            for category, block in losses_config.get("losses", {}).items()
-            if isinstance(block, dict) and block.get("_role") == "constraint"
-        ]
-        alm_manager: ALMManager | None = (
-            ALMManager(
+        alm_manager: ALMManager | None = None
+        if use_alm:
+            # get all constraint categories that are defined in the loss config, regardless of whether they are active or not. This is needed for the ALM manager to properly map the initial multipliers to the active constraints based on their categories, and also to know which constraints exist, even if not all are active.
+            configured_constraint_categories: list[str] = [
+                category
+                for category, block in losses_config.get("losses", {}).items()
+                if isinstance(block, dict) and block.get("_role") == "constraint"
+            ]
+            alm_manager = ALMManager(
                 total_loss.constraint_names,
                 losses_config["general_info"],
                 torch.device(device),
                 active_constraint_categories=total_loss.constraint_category_order,
                 configured_constraint_categories=configured_constraint_categories,
             )
-            if use_alm
-            else None
-        )
 
         # Mesh extractor + optional renderer (only used if rendering_freq is set)
         renderer_cfg = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")

@@ -13,7 +13,6 @@ from matplotlib import pyplot as plt
 import wandb
 from subprojects.wp3_solar_estimator.v7.solar_loss_v7 import SolarLossEstimator
 from subprojects.wp4_aeroshell_optimizer import (
-    BaseModel,
     allround_save_data,
     apply_sweep_overrides,
     dict_hashing,
@@ -24,6 +23,7 @@ from subprojects.wp4_aeroshell_optimizer import (
     reformat_wandb_name,
     register_all_configs,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 
 
 def _extract_histogram_bins_and_counts(hist_obj: Any) -> tuple[list[float], list[float]] | None:
@@ -158,7 +158,7 @@ def _save_visibility_histogram_plot(bins: list[float], counts: list[float], outp
     plt.close(fig)
 
 
-def _resolve_bulk_run_dir(model: BaseModel, general_config: dict[str, Any]) -> Path:
+def _resolve_bulk_run_dir(model: SupportsModelContract, general_config: dict[str, Any]) -> Path:
     """Match bulk-storage run folder structure used by allround_save_data."""
     model_hash = dict_hashing(model.get_model_info_dict())
 
@@ -194,7 +194,7 @@ def _register_and_apply_sweep_overrides(general_config: dict[str, Any]) -> None:
         wandb.config.update(get_master_config(), allow_val_change=True)
 
 
-def _instantiate_model(general_config: dict[str, Any]) -> BaseModel:
+def _instantiate_model(general_config: dict[str, Any]) -> SupportsModelContract:
     """Instantiate the configured model class with sweep-aware config."""
     model_cfg_name = general_config["active_configs"]["model_params"]
     model_config = load_config(v="v1", cfg_name=model_cfg_name)
@@ -203,12 +203,12 @@ def _instantiate_model(general_config: dict[str, Any]) -> BaseModel:
     model_definition = general_config["model_def"]["model_file_path"]
     model_class = dynamic_type_loading(file_path=model_definition, class_name=model_name)
 
-    model = cast(BaseModel, model_class(**model_config))
+    model = cast(SupportsModelContract, model_class(**model_config))
     device = "cuda" if torch.cuda.is_available() else "cpu"
     return model.to(device)
 
 
-def _load_pretrained_or_raise(model: BaseModel, general_config: dict[str, Any]) -> None:
+def _load_pretrained_or_raise(model: SupportsModelContract, general_config: dict[str, Any]) -> None:
     """Load matching pretrained weights into model, fail fast if unavailable."""
     pre_cfg_name = general_config["active_configs"].get("pretraining", "pretraining_v0_config.yaml")
     pre_cfg = load_config(v="v1", cfg_name=pre_cfg_name)
@@ -231,7 +231,7 @@ def _load_pretrained_or_raise(model: BaseModel, general_config: dict[str, Any]) 
     print(f"Loaded pretrained model from {pretrained_model}")
 
 
-def _run_one_shot_solar(model: BaseModel, general_config: dict[str, Any]) -> tuple[torch.Tensor, SolarLossEstimator]:
+def _run_one_shot_solar(model: SupportsModelContract, general_config: dict[str, Any]) -> tuple[torch.Tensor, SolarLossEstimator]:
     """Run exactly one solar loss evaluation using SolarLossConfigV7."""
     solar_cfg_path = general_config["active_configs"]["solar"]
     solar_cfg = load_config(v="v1", cfg_name=solar_cfg_path)["SolarLossConfigV7"]
@@ -255,7 +255,7 @@ def _finalize_rendering_if_enabled(solar_estimator: SolarLossEstimator) -> None:
             print(f"Warning: rendering finalize failed: {exc}")
 
 
-def _save_artifacts(model: BaseModel, general_config: dict[str, Any]) -> None:
+def _save_artifacts(model: SupportsModelContract, general_config: dict[str, Any]) -> None:
     """Save model and mesh using the same helper used by the full pipeline."""
     training_cfg_name = general_config["active_configs"].get("training", "training_v0_config.yaml")
     training_config = load_config(v="v1", cfg_name=training_cfg_name)

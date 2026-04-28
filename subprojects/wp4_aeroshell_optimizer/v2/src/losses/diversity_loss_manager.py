@@ -102,7 +102,8 @@ class DiversityLossManager:
 
         self._loss_name, self._weight, path = enabled_entries[0]
         abs_path = Path.cwd() / Path(path)
-        family: str = Path(path).stem.title().replace("_", "")
+        # Derive class name from the active config key so one file can host multiple loss classes.
+        family: str = self._loss_name.title().replace("_", "")
         loss_cls = load_class_from_path(str(abs_path), family)
         self._loss_instance = loss_cls(
             device=str(self._device),
@@ -142,7 +143,9 @@ class DiversityLossManager:
         weighted = self._weight * raw_loss_value
         return {
             f"raw_losses/{self._loss_name}": raw_loss_value,
+            f"normalized_losses/{self._loss_name}": raw_loss_value,
             f"weighted_losses/{self._loss_name}": weighted,
+            f"optimizer_losses/{self._loss_name}": weighted,
             "diversity/loss": raw_loss_value,
             "diversity/weighted_loss": weighted,
             "diversity/weight": self._weight,

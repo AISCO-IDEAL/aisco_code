@@ -33,7 +33,7 @@ functions
 
         patches         (car_surface);
         rho             rhoInf;
-        rhoInf          1.225;
+        rhoInf          1.2041;
         CofR            (0 0 0);
     }
 
@@ -46,7 +46,7 @@ functions
 
         patches         (car_surface);
         rho             rhoInf;
-        rhoInf          1.225;
+        rhoInf          1.2041;
         CofR            (0 0 0);
         liftDir         (0 0 1);
         dragDir         (-1 0 0);

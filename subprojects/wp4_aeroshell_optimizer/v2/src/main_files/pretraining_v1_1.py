@@ -59,7 +59,7 @@ def _apply_override_config(config: dict, override_config: dict) -> dict:
     return config
 
 
-def _load_ply_mesh(config: dict, device: str) -> tuple[torch.Tensor, torch.Tensor]:
+def _load_ply_mesh(config: dict, device: str, center_mesh: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
     ply_path = config.get("pretraining_ply_path")
     if not ply_path:
         raise ValueError("pretraining_shape='ply' requires 'pretraining_ply_path' in pretraining config")
@@ -97,6 +97,10 @@ def _load_ply_mesh(config: dict, device: str) -> tuple[torch.Tensor, torch.Tenso
         f"ext=({extents[0]:.0f},{extents[1]:.0f},{extents[2]:.0f})mm | "
         f"vertices={ply_verts_t.shape[0]} faces={ply_faces_t.shape[0]}"
     )
+    if center_mesh:
+        centroid = ply_verts_t.mean(dim=0)
+        ply_verts_t -= centroid
+        print(f"[pretraining] Centered PLY mesh by subtracting centroid: {centroid.cpu().numpy()}")
     return ply_verts_t, ply_faces_t
 
 

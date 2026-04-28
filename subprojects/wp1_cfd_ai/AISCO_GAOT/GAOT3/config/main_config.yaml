@@ -7,12 +7,12 @@
 ##########################################################################
 
 setup:
-    run_local: true
+    run_local: false
     name: "euler_field_cp_full"
     id: "_RUN_ID_"
     seed: 42
     device: "cuda:0"
-    dtype: "bfloat16"  # options: "torch.float32" | "bfloat16"
+    dtype: "torch.float32"  # options: "torch.float32" | "bfloat16" | "torch.float64"
     trainer_name: "static3d"
     train: true
     test: true
@@ -29,7 +29,7 @@ setup:
     wandb_mode: online
     wandb_tags: ["field", "pressure", "euler", "multi_head", "gaot", "cp_full", "oom_investigation"]
     wandb_watch_model: false
-    wandb_notes: "OOM investigation on CP-full dataset — reduce batch_size/model if needed"
+    wandb_notes: "Default Note"
 
     test_during_training: false
 
@@ -46,10 +46,10 @@ model:
             use_gno: true
             gno_coord_dim: 3
             neighbor_strategy: "bidirectional"
-            projection_channels: 256
+            projection_channels: 220
             in_gno_channel_mlp_hidden_layers: [64, 64, 64]
             out_gno_channel_mlp_hidden_layers: [64, 64]
-            lifting_channels: 32
+            lifting_channels: 13
             gno_radius: 0.066
             gno_use_torch_cluster: true
             attention_type: "cosine"
@@ -113,7 +113,7 @@ model:
             film_init_scale: 0.01       # reduced from 0.1 — perturbation hit 1.0 at epoch 80
 
 dataset:
-    name: "euler_pressure_field_new"
+    name: "euler_cp_field"
     metaname: "incompressible_fluids/euler_pressure"
     base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_cp_full"
     processed_folder: ""
@@ -135,9 +135,9 @@ dataset:
     order_file_name:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
-    subsample_nodes: 50000     # randomly sample 30k nodes per load if sample exceeds this
+    subsample_nodes: 50000      # deterministically sample up to 50k nodes per load if sample exceeds this
     subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"
-    deterministic_subsampling: false  # false keeps fresh random subsets on every load
+    deterministic_subsampling: false  # true keeps equivalent GAOT2/GAOT3 runs on the same node subsets
     subsampling_seed: 42        # used only when deterministic_subsampling is true
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
@@ -182,9 +182,9 @@ path:
     database_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv"
 
 local_path:
-    ckpt_path: "/home/clhuber/results/_NAME___RUN_ID_/model.pt"
-    loss_path: "/home/clhuber/results/_NAME___RUN_ID_/loss.png"
-    result_path: "/home/clhuber/results/_NAME___RUN_ID_/results.png"
-    config_save_path: "/home/clhuber/results/_NAME___RUN_ID_/config.yaml"
-    database_path: "/home/clhuber/results/metrics.csv"
-    dataset: "/home/clhuber/datasets/processed_euler_cp_full"  # local path to dataset (overrides base_path when run_local=true)
+    ckpt_path: "/home/aisco/results/_NAME___RUN_ID_/model.pt"
+    loss_path: "/home/aisco/results/_NAME___RUN_ID_/loss.png"
+    result_path: "/home/aisco/results/_NAME___RUN_ID_/results.png"
+    config_save_path: "/home/aisco/results/_NAME___RUN_ID_/config.yaml"
+    database_path: "/home/aisco/results/metrics.csv"
+    dataset: "/home/aisco/datasets/processed_euler_cp_full"  # local path to dataset (overrides base_path when run_local=true)

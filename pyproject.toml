@@ -22,7 +22,7 @@ dependencies = [
   "mypy>=1.19.1",
   "fast-simplification>=0.1.13", # used for unified mesh extraction in wp5
   "torch==2.4.0",
-   # "torchvision==0.19.0", Not needed accordingto #aalthaus
+  "torchvision==0.19.0",
   "wandb[media] >= 0.23.1",
   "types-paramiko",
   "types-pytz",
@@ -134,6 +134,7 @@ exclude = [
     "**/visuals/testing.py",
     "**/blendednet/**",      # eschaerer: Tim's sinusoidal activation function model (just inspiration, not actually used in our code)
     "**/GINN_Playground/**", #aalthaus, experiments not relevant to main loop
+    "**/models/original_wire.py", #aalthaus, orignal wire from their github
 ]
 
 
@@ -243,6 +244,7 @@ exclude = [
   ".*/blendednet/.*",     # <-- eschaerer: Tim's sinusoidal activation function model (just inspiration)
   ".*/GINN_Playground/.*", # <-- aalthaus: GINN_Playground is not relevant to the rest and served as an experiment only
   'tests/',
+  '(^|/)original_wire\.py$' # <-- aalthaus: original wire implementation
 ]
 
 [[tool.mypy.overrides]]
