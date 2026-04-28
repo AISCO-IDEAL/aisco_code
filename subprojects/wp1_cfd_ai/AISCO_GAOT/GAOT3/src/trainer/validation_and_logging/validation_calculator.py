@@ -29,6 +29,7 @@ class ValidationCalculator:
         total_mse = 0.0
         total_rel_l2 = 0.0
         integrated_errors = []
+        signed_x_drag_weighted_errors = []
         head_losses: dict[str, float] = {}
         num_batches = len(loader)
         mse_fn = torch.nn.MSELoss()
@@ -40,6 +41,9 @@ class ValidationCalculator:
                     trainer, batch, pred_normalized, mse_fn, head_losses
                 )
                 integrated_errors.extend(self._integrated_drag_errors(trainer, batch, pred_normalized))
+                signed_x_drag_weighted_errors.extend(
+                    self._signed_x_drag_weighted_field_errors(trainer, batch, pred_normalized)
+                )
                 total_loss += loss.item()
                 total_mse += mse.item()
                 valid_mask = ~torch.isnan(target_selected_normalized)
@@ -66,6 +70,12 @@ class ValidationCalculator:
             result["average_integrated_drag_error"] = float(np.mean(integrated_errors))
             trainer.tracker.log_metrics(
                 {"val/average_integrated/integrated_drag_error": result["average_integrated_drag_error"]},
+                step=epoch_name,
+            )
+        if trainer.setup_config["rank"] == 0 and signed_x_drag_weighted_errors:
+            result["signed_x_drag_weighted_field_error"] = float(np.mean(signed_x_drag_weighted_errors))
+            trainer.tracker.log_metrics(
+                {"val/signed_x_drag_weighted_field_error": result["signed_x_drag_weighted_field_error"]},
                 step=epoch_name,
             )
         return result
@@ -314,6 +324,24 @@ class ValidationCalculator:
             drag_target = self._integrate_sample(trainer, batch, target_unnormalized, start, end)
             if drag_pred is not None and drag_target is not None:
                 errors.append(abs(drag_pred - drag_target))
+        return errors
+
+    def _signed_x_drag_weighted_field_errors(self, trainer, batch, pred_normalized) -> list[float]:
+        if not isinstance(pred_normalized, dict) or "field" not in pred_normalized or not hasattr(batch, "x") or batch.x is None:
+            return []
+        if not hasattr(batch, "c") or batch.c is None:
+            return []
+        pred_unnormalized = self._denormalize_field(trainer, pred_normalized["field"])
+        target_unnormalized = self._denormalize_field(trainer, batch.x.to(trainer.device))
+        errors = []
+        for start, end in self._sample_ranges(batch):
+            pred = pred_unnormalized[start:end].squeeze(-1)
+            target = target_unnormalized[start:end].squeeze(-1)
+            normal_x = batch.c[start:end, 0].to(device=pred.device, dtype=pred.dtype)
+            valid = ~torch.isnan(target)
+            if valid.any():
+                weighted_error = (pred[valid] - target[valid]) * -normal_x[valid]
+                errors.append(weighted_error.mean().item())
         return errors
 
     def _denormalize_field(self, trainer, value_normalized):
