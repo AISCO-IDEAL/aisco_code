@@ -12,7 +12,7 @@ setup:
     id: "_RUN_ID_"
     seed: 42
     device: "cuda:0"
-    dtype: "torch.float32"  # options: "torch.float32" | "bfloat16" | "torch.float64"
+    dtype: "bfloat16"  # options: "torch.float32" | "bfloat16" | "torch.float64"
     trainer_name: "static3d"
     train: true
     test: true
@@ -46,10 +46,10 @@ model:
             use_gno: true
             gno_coord_dim: 3
             neighbor_strategy: "bidirectional"
-            projection_channels: 256
+            projection_channels: 220
             in_gno_channel_mlp_hidden_layers: [64, 64, 64]
             out_gno_channel_mlp_hidden_layers: [64, 64]
-            lifting_channels: 32
+            lifting_channels: 13
             gno_radius: 0.066
             gno_use_torch_cluster: true
             attention_type: "cosine"
@@ -119,11 +119,11 @@ dataset:
     processed_folder: ""
     force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
-    train_size: 110
-    val_size: 23
-    test_size: 20
-    batch_size: 6  # reduced from 12 to avoid OOM on larger CP-full meshes
-    num_workers: 4
+    train_size: 900
+    val_size: 250
+    test_size: 250
+    batch_size: 16  # reduced from 12 to avoid OOM on larger CP-full meshes
+    num_workers: 8
     shuffle: true
     metric_suite: "general"
     update_pt_files_with_edges: false
@@ -135,7 +135,7 @@ dataset:
     order_file_name:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
-    subsample_nodes: 50000      # deterministically sample up to 50k nodes per load if sample exceeds this
+    subsample_nodes: 25000      # deterministically sample up to 50k nodes per load if sample exceeds this
     subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"
     deterministic_subsampling: false  # true keeps equivalent GAOT2/GAOT3 runs on the same node subsets
     subsampling_seed: 42        # used only when deterministic_subsampling is true
@@ -156,10 +156,10 @@ optimizer:
     args:
         lr: 6e-4
         weight_decay: 1e-05
-        epoch: 500
+        epoch: 300
         loss_scale: 1.0
-        eval_every_eps: 1
-        viz_every_eps: 1   # visualize every N epochs; defaults to eval_every_eps if omitted
+        eval_every_eps: 10
+        viz_every_eps: 10   # visualize every N epochs; defaults to eval_every_eps if omitted
         viz_warmup_epochs: 0  # also visualize every epoch for the first X epochs (0 = disabled)
         scheduler: "mix"
         max_lr: 0.003
@@ -172,7 +172,8 @@ optimizer:
         beta1: 0.95
         beta2: 0.999
         eps: 1e-6
-        loss: "mse"  # options: "mse" | "l2" | "relative_l2"
+        loss: "mse"  # options: "mse" | "l2" | "relative_l2" | "weighted_mse"
+        mse_mix_weight: 0.5  # weighted_mse mix factor a
 
 path:
     ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/model.pt"

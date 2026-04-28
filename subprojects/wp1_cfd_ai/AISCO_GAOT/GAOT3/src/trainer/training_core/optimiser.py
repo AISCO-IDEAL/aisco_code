@@ -233,7 +233,6 @@ class Optimiser:
                     "gpu/cache_free_MB": (torch.cuda.memory_reserved() - torch.cuda.memory_allocated()) / 1e6,
                 }
             )
-        training_context.tracker.log_metrics(metrics, step=epoch + 1)
         if epoch < self.config["optimizer"]["args"].get("viz_warmup_epochs", 0) or (
             self.config["optimizer"]["args"].get("viz_every_eps", self.config["optimizer"]["args"]["eval_every_eps"]) > 0
             and (epoch + 1)
@@ -245,6 +244,7 @@ class Optimiser:
             except Exception as exc:
                 logging.getLogger(__name__).warning(f"Visualization failed at epoch {epoch + 1}: {exc}")
             training_context.model.train()
+        training_context.tracker.log_metrics(metrics, step=epoch + 1)
 
     def _average_epoch_values(self, metrics: dict, epoch_values: dict, num_batches: int) -> None:
         train_mse_sum, train_mse_count = 0.0, 0
