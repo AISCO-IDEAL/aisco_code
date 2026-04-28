@@ -3,7 +3,7 @@
 #
 #  Same as main_config.yaml but points to /processed_euler_cp_full/.
 #  The full CP meshes are larger → hits CUDA OOM with batch_size=12.
-#  Reduce batch_size and/or use smaller model to investigate. sali
+#  Reduce batch_size and/or use smaller model to investigate.
 ##########################################################################
 
 setup:
@@ -27,7 +27,7 @@ setup:
     wandb_entity: aisco
     wandb_group: united_all_cp_field
     wandb_mode: online
-    wandb_tags: ["field", "pressure", "united_all", "multi_head", "gaot", "cp_full", "oom_investigation"]
+    wandb_tags: ["field", "united_all", "gaot", "cp_full"]
     wandb_watch_model: false
     wandb_notes: "Default Note"
 
