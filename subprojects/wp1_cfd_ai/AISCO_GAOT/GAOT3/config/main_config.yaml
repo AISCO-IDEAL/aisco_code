@@ -172,7 +172,8 @@ optimizer:
         beta1: 0.95
         beta2: 0.999
         eps: 1e-6
-        loss: "mse"  # options: "mse" | "l2" | "relative_l2"
+        loss: "mse"  # options: "mse" | "l2" | "relative_l2" | "weighted_mse"
+        mse_mix_weight: 0.5  # weighted_mse mix factor a
 
 path:
     ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/model.pt"
