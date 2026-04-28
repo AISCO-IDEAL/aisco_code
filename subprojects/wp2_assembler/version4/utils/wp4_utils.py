@@ -3,7 +3,7 @@ from pathlib import Path
 import yaml
 
 
-def get_outer_bb_info()-> dict:
+def get_outer_bb_info() -> dict:
     """
     Gets info about the outer bb that is relevant for WP4 from assembly regulations version 4
     Reads the regulations_and_parameters.yaml file and returns the relevant info as a dictionary.
@@ -18,11 +18,11 @@ def get_outer_bb_info()-> dict:
     with config_path.open() as file:
         data = yaml.safe_load(file)
 
-    outer_bb_dims=data["no_build_zones"]["outer_prism"]
-    return_dict={}
-    return_dict["width"]=outer_bb_dims["width"]
-    return_dict["length"]=outer_bb_dims["length"]
-    return_dict["height"]=outer_bb_dims["height"]
+    outer_bb_dims = data["no_build_zones"]["outer_prism"]
+    return_dict = {}
+    return_dict["width"] = outer_bb_dims["width"]
+    return_dict["length"] = outer_bb_dims["length"]
+    return_dict["height"] = outer_bb_dims["height"]
     return_dict["centroid"] = [
         0.0,  # x
         0.0,  # y

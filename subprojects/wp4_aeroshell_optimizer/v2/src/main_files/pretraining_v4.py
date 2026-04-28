@@ -214,7 +214,9 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
             n_uniform = batch_size - n_surface
             uniform_pts = bb_center + (torch.rand(n_uniform, 3, device=device) - 0.5) * (2 * bb_half_extent)
             surf_idx = torch.randint(0, ply_verts_t.shape[0], (n_surface,), device=device)
-            surface_pts = ply_verts_t[surf_idx] + torch.randn(n_surface, 3, device=device) * (bb_half_extent * surface_noise_sigma_pct)
+            surface_pts = ply_verts_t[surf_idx] + torch.randn(n_surface, 3, device=device) * (
+                bb_half_extent * surface_noise_sigma_pct
+            )
             input_data = torch.cat([uniform_pts, surface_pts], dim=0)
         else:
             input_data = (torch.rand(batch_size, 3, device=device) - 0.5) * 5000.0
