@@ -100,11 +100,7 @@ def _trimesh_to_pyrender(geo: object) -> pyrender.Mesh | None:
         # No stored colors: neutral white, visible on black background
         colors = np.ones((len(points), 4), dtype=np.float32)
 
-    return pyrender.Mesh(
-        primitives=[
-            pyrender.Primitive(positions=points, color_0=colors, mode=pyrender.GLTF.POINTS)
-        ]
-    )
+    return pyrender.Mesh(primitives=[pyrender.Primitive(positions=points, color_0=colors, mode=pyrender.GLTF.POINTS)])
 
 
 def _load_pyrender_geometries(fpath: Path) -> list[pyrender.Mesh]:
@@ -142,11 +138,7 @@ def _get_vertices(fpath: Path) -> np.ndarray | None:
     loaded = trimesh.load(str(fpath), process=False)
 
     if isinstance(loaded, trimesh.Scene):
-        parts = [
-            np.asarray(g.vertices)
-            for g in loaded.geometry.values()
-            if hasattr(g, "vertices") and len(g.vertices) > 0
-        ]
+        parts = [np.asarray(g.vertices) for g in loaded.geometry.values() if hasattr(g, "vertices") and len(g.vertices) > 0]
         return np.vstack(parts) if parts else None
 
     if hasattr(loaded, "vertices") and len(loaded.vertices) > 0:
@@ -354,17 +346,13 @@ def _try_interactive_camera(first_ply: Path, output_dir: Path) -> Path | None:
         ax = fig.add_subplot(111, projection="3d")
         ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], s=1.0, c="cyan", alpha=0.7)
         ax.set_title(
-            "Rotate to the desired view angle, then CLOSE this window.\n"
-            f"Current: azim={ax.azim:.1f}°  elev={ax.elev:.1f}°"
+            f"Rotate to the desired view angle, then CLOSE this window.\nCurrent: azim={ax.azim:.1f}°  elev={ax.elev:.1f}°"
         )
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
         ax.set_zlabel("Z")
         plt.tight_layout()
-        print(
-            "INSTRUCTIONS: Rotate the 3D view to your desired camera angle,"
-            " then CLOSE the window."
-        )
+        print("INSTRUCTIONS: Rotate the 3D view to your desired camera angle, then CLOSE the window.")
         plt.show()  # blocks until the user closes the window
 
         azim_deg = float(ax.azim)
@@ -384,9 +372,7 @@ def _try_interactive_camera(first_ply: Path, output_dir: Path) -> Path | None:
                 f,
                 indent=2,
             )
-        print(
-            f"Camera saved (azim={azim_deg:.1f}°, elev={elev_deg:.1f}°): {cam_json_path}"
-        )
+        print(f"Camera saved (azim={azim_deg:.1f}°, elev={elev_deg:.1f}°): {cam_json_path}")
     except Exception as exc:
         print(f"Warning: Interactive camera setup failed ({exc}). Auto-computing camera.")
         return None
@@ -482,10 +468,7 @@ def generate_gifs(
             else:
                 # Collect vertices from every frame so the camera frames the full
                 # trajectory, not just one snapshot.
-                all_verts_list = [
-                    v for v in (_get_vertices(fp) for fp in file_paths)
-                    if v is not None
-                ]
+                all_verts_list = [v for v in (_get_vertices(fp) for fp in file_paths) if v is not None]
                 if not all_verts_list:
                     print(f"  Warning: No vertex data for slot {slot}. Skipping.")
                     continue
@@ -493,16 +476,14 @@ def generate_gifs(
 
             frames = [_render_frame(renderer, fp, cam_pose) for fp in file_paths]
             gif_path = output_path / f"slot{slot}_convergence.gif"
-            imageio.mimsave(str(gif_path), frames, fps=FPS)
+            imageio.mimsave(str(gif_path), frames, fps=FPS)  # type: ignore[arg-type]
             print(f"  Saved: {gif_path}")
     finally:
         renderer.delete()
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Render PLY file sequences to GIFs. Cluster-safe (EGL headless)."
-    )
+    parser = argparse.ArgumentParser(description="Render PLY file sequences to GIFs. Cluster-safe (EGL headless).")
     parser.add_argument("--input", type=str, help="Input folder containing PLY files.")
     parser.add_argument("--output", type=str, help="Output folder for GIF files.")
     parser.add_argument(
@@ -520,11 +501,7 @@ if __name__ == "__main__":
     c_j: Path | None
     if args.input:
         in_p = Path(args.input).resolve()
-        out_p = (
-            Path(args.output).resolve()
-            if args.output
-            else in_p.parent / "pretraining_latent_gifs"
-        )
+        out_p = Path(args.output).resolve() if args.output else in_p.parent / "pretraining_latent_gifs"
         cam_p: Path | None = Path(args.cam_json).resolve() if args.cam_json else None
         generate_gifs(in_p, out_p, cam_json=cam_p)
     else:

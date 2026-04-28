@@ -972,8 +972,7 @@ class TestComputeInputGradNorms:
         # After probe, model parameter grads must still be None
         param_grads = [p.grad for p in model.parameters() if p.grad is not None]
         assert param_grads == [], (
-            f"Probe must not set .grad on model parameters. "
-            f"Found {len(param_grads)} parameters with non-None grad after probe."
+            f"Probe must not set .grad on model parameters. Found {len(param_grads)} parameters with non-None grad after probe."
         )
 
     def test_integration_print_contains_z_grad(self, tmp_path: Path) -> None:
@@ -995,7 +994,6 @@ class TestComputeInputGradNorms:
 
         epoch_lines = [ln for ln in written if "[latent_pretrain]" in ln and "Epoch" in ln]
         assert epoch_lines, f"No epoch print lines captured. All writes: {written}"
-        assert any("z_grad=" in ln for ln in epoch_lines), (
-            "Expected 'z_grad=' in epoch print output. Epoch lines:\n"
-            + "\n".join(epoch_lines)
+        assert any("z_grad=" in ln for ln in epoch_lines), "Expected 'z_grad=' in epoch print output. Epoch lines:\n" + "\n".join(
+            epoch_lines
         )

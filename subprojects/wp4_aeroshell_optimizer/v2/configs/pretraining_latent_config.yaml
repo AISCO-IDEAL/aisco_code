@@ -3,7 +3,7 @@ z_placement: "circle"
 z_radius: 2.0  # unit-circle radius for pretrained latent codes.
               # Spatial inputs are mm/1000 ≈ [-5, 5]; z_radius=2.0 gives latents a
               # comparable magnitude to the dominant spatial axis.
-force_pretraining: true # iff false, a hashed pretraining will be used if applicable
+force_pretraining: false # iff false, a hashed pretraining will be used if applicable
 
 # One entry per latent slot.  Slot 0 maps to z₀ = origin.
 # shape_type: "sphere" | "cube" | "ply"
@@ -93,7 +93,7 @@ training_loop:
   learning_rate: 0.0005
   batch_size_per_shape: 4096 #8192
   logging_interval: 25 # wandb stats logging intervall (displayed in terminal as well)
-  surface_resample_cadence: 1   # 0 = static (DeepSDF-style, default)
+  surface_resample_cadence: 0   # 0 = static (DeepSDF-style, default)
                                 # N = refresh near-surface cache every N epochs
 
   # --- M2: Dual-band near-surface sampling ---

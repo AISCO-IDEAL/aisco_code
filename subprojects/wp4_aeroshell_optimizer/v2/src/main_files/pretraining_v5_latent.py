@@ -163,10 +163,7 @@ def main() -> None:
 
     ckpt_path: Path = _resolve_checkpoint_path(config, model)
     run_dir: Path = ckpt_path.parent
-    print(
-        f"[pretraining_v5_latent] Pretraining complete. "
-        f"Z shape={tuple(Z.shape)}, checkpoint: {ckpt_path}"
-    )
+    print(f"[pretraining_v5_latent] Pretraining complete. Z shape={tuple(Z.shape)}, checkpoint: {ckpt_path}")
 
     # --- Optional: render convergence GIFs from sampling_vis PLY sequence ---
     if args.make_gif:

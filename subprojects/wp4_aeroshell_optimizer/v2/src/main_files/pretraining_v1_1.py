@@ -27,8 +27,6 @@ from subprojects.wp5.unified_mesh_extraction import MeshExtractionConfig, MeshSD
 _DEFAULT_TIGHT_SIGMA_FACTOR = 0.005  # per config default; tight band sigma_factor * bbox_extent_mm
 
 
-
-
 def dynamic_model_loading(config_name: str = "pretraining_v0_config.yaml") -> SupportsModelContract:
     """
     Dynamically loads the model architecture based on the configuration file.
@@ -352,7 +350,11 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
             surface_gt_list = [near_gt]
         else:
             # --- Dual-band mode ---
-            tight_sigma = near_surface_tight_sigma * bbox_extent if near_surface_tight_sigma is not None else _DEFAULT_TIGHT_SIGMA_FACTOR * bbox_extent
+            tight_sigma = (
+                near_surface_tight_sigma * bbox_extent
+                if near_surface_tight_sigma is not None
+                else _DEFAULT_TIGHT_SIGMA_FACTOR * bbox_extent
+            )
             wide_sigma = near_surface_wide_sigma * bbox_extent
 
             n_tight = n_near // 2
@@ -456,7 +458,9 @@ def _extract_mesh(
             x_range = outer_prism["x"][1] - outer_prism["x"][0]
             y_range = outer_prism["y"][1] - outer_prism["y"][0]
             z_range = outer_prism["z_mesh"][1] - outer_prism["z_mesh"][0]
-            print(f"[extract_mesh] Extracting mesh: res={mesh_res}, bounds=X({x_range:.0f})Y({y_range:.0f})Z({z_range:.0f})mm, device={device} ...")
+            print(
+                f"[extract_mesh] Extracting mesh: res={mesh_res}, bounds=X({x_range:.0f})Y({y_range:.0f})Z({z_range:.0f})mm, device={device} ..."
+            )
         verts, faces = MeshSDFExtractor(config=cfg).extract_mesh(model)
         verts_np = verts.detach().cpu().numpy().astype("float32")
         faces_np = faces.detach().cpu().numpy().astype("int64")
