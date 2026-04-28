@@ -1,6 +1,7 @@
 import hashlib
 import os
 from collections.abc import Callable
+from typing import cast
 
 import numpy as np
 import torch
@@ -239,79 +240,43 @@ class EnrichedData(Data):
             return super().__inc__(key, value, *args, **kwargs)
 
 
+# These expected dims handle the squeezing of scalar fields (e.g., [N, 1] -> [N])
+EXPECTED_DATA_SHAPE_DIMS = 2
+
+
 class VTKMeshDataset(Dataset):
     """
     PyTorch Geometric Dataset for loading preprocessed VTK mesh data.
-    Assumes data is preprocessed and saved as individual .pt files containing Data objects.
+    Standardizes attributes across unified datasets to prevent DataLoader KeyErrors.
     """
 
     def __init__(self, root, order_file, dataset_config, split="train", transform=None, pre_transform=None, pre_filter=None):
-        """
-        Args:
-            root (str): Root directory where the dataset should be saved/found.
-                        Contains raw (optional) and processed directories.
-            order_file (str): Path to the order.txt file.
-            dataset_config (DatasetConfig): Configuration object with train/val/test sizes.
-            split (str): One of 'train', 'val', 'test'.
-            transform (callable, optional): Data transformation function applied after loading.
-            pre_transform (callable, optional): Data transformation function applied before saving processed data.
-            pre_filter (callable, optional): Data filtering function applied before saving.
-        """
         self.order_file = order_file
         self.dataset_config = dataset_config
         self.split = split
-        self.active_variables = dataset_config["active_variables"]  # None
+        self.active_variables = dataset_config.get("active_variables", None)
         self.drop_pressure = dataset_config.get("drop_pressure", False)
         self.subsample_nodes = dataset_config.get("subsample_nodes", None)
         self.subsample_strategy = dataset_config.get("subsample_strategy", "random")
         self.deterministic_subsampling = dataset_config.get("deterministic_subsampling", False)
         self.subsampling_seed = dataset_config.get("subsampling_seed", 42)
+
         _valid = {"random", "voxel", "fps", "poisson_disk"}
         if self.subsample_strategy not in _valid:
             raise ValueError(f"subsample_strategy must be one of {_valid}, got '{self.subsample_strategy}'")
-        # Assuming processed files are stored in root/processed/
+
         super().__init__(root, transform, pre_transform, pre_filter)
-        # Load indices after processing ensures processed files are available
         self._load_split_indices()
 
     @property
-    def raw_file_names(self):
-        # List raw files if needed for processing (e.g., original VTK paths)
-        # For simplicity, assume processing happens externally based on order_file
-        return []  # Or return list based on order_file if process() needs it
-
-    @property
     def processed_dir(self) -> str:
-        """Returns the path to the directory containing processed pyg files."""
         return os.path.join(self.root, self.dataset_config["processed_folder"])
 
     @property
     def processed_file_names(self):
-        # Check if processed files exist based on order_file
-        # This is used by PyG to check if processing is needed
         with open(self.order_file) as f:
             order_list = [line.strip() for line in f if line.strip()]
         return [f"{fname}.pt" for fname in order_list]
-
-    def _download(self):
-        # Skip raw dir creation — data is already preprocessed externally
-        pass
-
-    def download(self):
-        # No download necessary if data is local
-        pass
-
-    def _process(self):
-        # Skip processed dir creation — data is already preprocessed externally
-        pass
-
-    def process(self):
-        # This method is called if processed files don't exist.
-        # Ideally, the external script already created the .pt files.
-        # If not, you could implement the VTK -> Data object conversion here.
-        print("Processing raw data (should ideally be done by external script)...")
-        # Placeholder: Add the conversion logic from your script here if needed.
-        # Ensure it saves files named according to processed_file_names in self.processed_dir
 
     def _load_split_indices(self):
         with open(self.order_file) as f:
@@ -322,9 +287,8 @@ class VTKMeshDataset(Dataset):
         val_size = self.dataset_config["val_size"]
         test_size = self.dataset_config["test_size"]
 
-        # Generate indices based on dataset size and split
         indices = np.arange(total_samples)
-        if self.dataset_config["rand_dataset"]:  # False
+        if self.dataset_config.get("rand_dataset", False):
             rng = np.random.default_rng(seed=42)
             rng.shuffle(indices)
 
@@ -345,57 +309,81 @@ class VTKMeshDataset(Dataset):
 
     def get(self, idx):  # noqa: PLR0912
         filepath = os.path.join(self.processed_dir, self.split_filenames[idx])
-        # Also support subdirectory layout: euler_run_1/data.pt
+
         if not os.path.isfile(filepath):
             alt = os.path.join(self.processed_dir, self.split_filenames[idx].removesuffix(".pt"), "data.pt")
             if os.path.isfile(alt):
                 filepath = alt
-        try:
-            data = torch.load(filepath, weights_only=False)
 
-            # Drop raw pressure field — model trains on cp (stored as x), not absolute pressure
+        try:
+            # Note: weights_only=False is used because Data objects contain custom attributes
+            data = torch.load(filepath, weights_only=False)
+            num_nodes = data.pos.shape[0]
+
+            # --- SCHEMA STANDARDIZATION ---
+            # Ensures all samples have the same keys before batching.
+            # We add these BEFORE subsampling so the masks/slices apply to them too.
+
+            if not hasattr(data, "wall_shear"):
+                data.wall_shear = torch.zeros((num_nodes, 3), dtype=torch.float32)
+
+            if not hasattr(data, "pressure"):
+                data.pressure = torch.zeros((num_nodes, 1), dtype=torch.float32)
+
+            if not hasattr(data, "cp"):
+                data.cp = torch.zeros((num_nodes, 1), dtype=torch.float32)
+
+            if not hasattr(data, "n_surface_faces"):
+                # We use -1 or 0 to indicate it's missing/not applicable
+                data.n_surface_faces = 0
+
+            # Drop raw pressure field if requested (model usually trains on Cp)
             if self.drop_pressure and hasattr(data, "pressure"):
                 del data.pressure
 
-            # Drop face connectivity unconditionally when subsampling is enabled —
-            # face indices are invalid after subsampling, and samples that happen to
-            # be smaller than subsample_nodes would keep face otherwise, causing
-            # PyG collate to fail (KeyError: 'face') when mixing subsampled and
-            # non-subsampled samples in the same batch.
+            # Drop face connectivity for subsampling consistency (as per your original logic)
             if self.subsample_nodes is not None and hasattr(data, "face"):
                 del data.face
 
-            # Node subsampling: if sample has more nodes than subsample_nodes,
-            # select a subset according to the configured strategy.
-            if self.subsample_nodes is not None and data.num_nodes > self.subsample_nodes:
-                # Capture num_nodes BEFORE modifying any attribute — PyG recomputes
-                # data.num_nodes dynamically, so it would shrink mid-loop otherwise
-                original_num_nodes = data.num_nodes
+            # --- NODE SUBSAMPLING ---
+            if self.subsample_nodes is not None and num_nodes > self.subsample_nodes:
+                # Capture original count before modification
+                original_num_nodes = num_nodes
 
-                _subsample_fns: dict[str, Callable[[torch.Tensor, int, int | None], torch.Tensor]] = {
+                # Mapping strategies to functions (assumed to be in scope)
+                _subsample_fns = {
                     "random": _subsample_random,
                     "voxel": _subsample_voxel,
                     "fps": _subsample_fps,
                     "poisson_disk": _subsample_poisson_disk,
                 }
-                _strategy_fn = _subsample_fns[self.subsample_strategy]
+
+                _strategy_fn = cast(
+                    Callable[[torch.Tensor, int, int | None], torch.Tensor], _subsample_fns[self.subsample_strategy]
+                )
                 subsample_seed = None
                 if self.deterministic_subsampling:
                     subsample_seed = _stable_seed(self.subsampling_seed, self.split, idx, self.subsample_strategy)
+
                 perm = _strategy_fn(data.pos, self.subsample_nodes, subsample_seed)
 
-                # Apply permutation to every per-node tensor
+                # Apply permutation to every per-node tensor (including newly added zeros)
                 for attr in list(data.keys()):
                     val = data[attr]
                     if isinstance(val, torch.Tensor) and val.dim() >= 1 and val.shape[0] == original_num_nodes:
                         data[attr] = val[perm]
 
+            # --- FEATURE SELECTION & SQUEEZING ---
             if self.active_variables is not None and hasattr(data, "x") and data.x is not None:
                 data.x = data.x[:, self.active_variables]
-            if hasattr(data, "x") and data.x is not None and len(data.x.shape) == EXPECTED_DATA_SHAPE_DIMS:
-                data.x = data.x.squeeze(-1)
+
+            # Squeeze scalar fields from [N, 1] to [N] if they match EXPECTED_DATA_SHAPE_DIMS
+            # Keep everything as [N, 1] for consistency with MSE loss
+            if hasattr(data, "x") and data.x is not None and data.x.dim() == 1:
+                data.x = data.x.unsqueeze(-1)
+
         except FileNotFoundError as exc:
-            raise FileNotFoundError(f"Processed file not found: {filepath}. Ensure preprocessing script was run.") from exc
+            raise FileNotFoundError(f"Processed file not found: {filepath}.") from exc
         except Exception as e:
             print(f"Error loading data for index {idx} (file: {filepath}): {e}")
             raise
