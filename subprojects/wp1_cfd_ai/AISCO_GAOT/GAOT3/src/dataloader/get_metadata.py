@@ -3,8 +3,12 @@ import os
 import torch
 from tqdm import tqdm
 
+# RUN COMMAND: python /cluster/home/roarnold/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/src/dataloader/get_metadata.py
+
+##                              !!!!! CHANGE USERNAME !!!!!
+
 # Update this to your new data path
-DATA_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/united_dataset/"
+DATA_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/united_all/"
 
 
 def calculate_metadata(data_dir):

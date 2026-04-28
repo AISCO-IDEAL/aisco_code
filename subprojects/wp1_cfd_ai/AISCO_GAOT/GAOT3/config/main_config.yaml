@@ -8,11 +8,11 @@
 
 setup:
     run_local: false
-    name: "euler_field_cp_full"
+    name: "united_all_cp_field"
     id: "_RUN_ID_"
     seed: 42
     device: "cuda:0"
-    dtype: "torch.float32"  # options: "torch.float32" | "bfloat16" | "torch.float64"
+    dtype: "bfloat16"  # options: "torch.float32" | "bfloat16" | "torch.float64"
     trainer_name: "static3d"
     train: true
     test: true
@@ -23,11 +23,11 @@ setup:
     wandb: true
     wandb_run_name: "_NAME___RUN_ID_"
 
-    wandb_project: "WP1_default"
+    wandb_project: "WP1_united_all"
     wandb_entity: aisco
-    wandb_group: euler_field_cp_full
+    wandb_group: united_all_cp_field
     wandb_mode: online
-    wandb_tags: ["field", "pressure", "euler", "multi_head", "gaot", "cp_full", "oom_investigation"]
+    wandb_tags: ["field", "pressure", "united_all", "multi_head", "gaot", "cp_full", "oom_investigation"]
     wandb_watch_model: false
     wandb_notes: "Default Note"
 
@@ -113,17 +113,17 @@ model:
             film_init_scale: 0.01       # reduced from 0.1 — perturbation hit 1.0 at epoch 80
 
 dataset:
-    name: "euler_cp_field"
-    metaname: "incompressible_fluids/euler_pressure"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_cp_full"
+    name: "united_all_cp_field"
+    metaname: "incompressible_fluids/united_all_cp"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/united_all"
     processed_folder: ""
     force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
-    train_size: 110
-    val_size: 23
-    test_size: 20
-    batch_size: 6  # reduced from 12 to avoid OOM on larger CP-full meshes
-    num_workers: 4
+    train_size: 900
+    val_size: 250
+    test_size: 250
+    batch_size: 16  # reduced from 12 to avoid OOM on larger CP-full meshes
+    num_workers: 8
     shuffle: true
     metric_suite: "general"
     update_pt_files_with_edges: false
@@ -135,7 +135,7 @@ dataset:
     order_file_name:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
-    subsample_nodes: 50000      # deterministically sample up to 50k nodes per load if sample exceeds this
+    subsample_nodes: 25000      # deterministically sample up to 50k nodes per load if sample exceeds this
     subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"
     deterministic_subsampling: false  # true keeps equivalent GAOT2/GAOT3 runs on the same node subsets
     subsampling_seed: 42        # used only when deterministic_subsampling is true
@@ -144,7 +144,7 @@ dataset:
     num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz
 
     viz_axis_limits:            # Edit these ranges to control the visualized x/y/z box exactly, default is outer bounding box
-        x: [-3, 3]
+        x: [-3, 4.5]
         y: [-1.5, 1.5]
         z: [-0.5, 2]
     viz_field_vmin: -2.2        # min on pressure bar
@@ -156,10 +156,10 @@ optimizer:
     args:
         lr: 6e-4
         weight_decay: 1e-05
-        epoch: 500
+        epoch: 300
         loss_scale: 1.0
-        eval_every_eps: 1
-        viz_every_eps: 1   # visualize every N epochs; defaults to eval_every_eps if omitted
+        eval_every_eps: 10
+        viz_every_eps: 10   # visualize every N epochs; defaults to eval_every_eps if omitted
         viz_warmup_epochs: 0  # also visualize every epoch for the first X epochs (0 = disabled)
         scheduler: "mix"
         max_lr: 0.003
