@@ -114,7 +114,11 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
     # All model configs must be registered before apply_sweep_overrides so that
     # sweep params targeting e.g. models/WIRE_v3.hidden_features are patchable,
     # and smart_model_init's load_config call returns the patched version.
-    models_json_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / "v2" / "configs" / "models.json"
+    base_path= Path.home()
+    print(f"Path.home() is: {base_path}")
+    if base_path == Path("/home/aisco"):
+        base_path=Path("/home/aisco/Documents")
+    models_json_path = base_path / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / "v2" / "configs" / "models.json"
     models_inventory = json.loads(models_json_path.read_text())
     active_configs: dict[str, str] = {"pretraining_v4": "pretraining_v4_config.yaml"}
     for model_info in models_inventory["models"].values():
@@ -173,6 +177,8 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
     batch_size: int = config["training_loop"]["random_batch_size"]
     print_interval: int = config["training_loop"]["print_interval"]
     eikonal_weight: float = config["training_loop"]["eikonal_weight"]
+    surface_ratio: float = config["training_loop"].get("surface_ratio", 0.5)
+    surface_noise_sigma_pct: float = config["training_loop"].get("surface_noise_sigma_pct", 0.05)
 
     # ── Output settings ──────────────────────────────────────────────────────
     output_cfg: dict = config["output"]
@@ -204,12 +210,13 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
 
         if pretraining_shape == "ply":
             assert bb_center is not None and bb_half_extent is not None and ply_verts_t is not None
-            n_surface = batch_size // 2
+            n_surface = int(batch_size * surface_ratio)
             n_uniform = batch_size - n_surface
             uniform_pts = bb_center + (torch.rand(n_uniform, 3, device=device) - 0.5) * (2 * bb_half_extent)
             surf_idx = torch.randint(0, ply_verts_t.shape[0], (n_surface,), device=device)
-            # sigma = 5% of half-extent concentrates samples in the near-surface band where SDF varies fastest
-            surface_pts = ply_verts_t[surf_idx] + torch.randn(n_surface, 3, device=device) * (bb_half_extent * 0.05)
+            surface_pts = ply_verts_t[surf_idx] + torch.randn(n_surface, 3, device=device) * (
+                bb_half_extent * surface_noise_sigma_pct
+            )
             input_data = torch.cat([uniform_pts, surface_pts], dim=0)
         else:
             input_data = (torch.rand(batch_size, 3, device=device) - 0.5) * 5000.0

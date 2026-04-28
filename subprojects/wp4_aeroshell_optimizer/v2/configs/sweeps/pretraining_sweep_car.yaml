@@ -1,0 +1,81 @@
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v4.py
+entity: aisco
+project: WIRE-Fitting
+
+method: bayes
+metric:
+  goal: minimize
+  name: pretraining/mse_loss
+
+parameters:
+  pretraining_v4_config.model_name:
+    value: "WIREV5"
+
+  # --- Architecture ---
+  models/WIRE_v5.use_smooth_output:
+    values: [true,false]
+  models/WIRE_v5.use_spectral_norm:
+    values: [true,false]
+
+
+  models/WIRE_v5.hidden_features:
+    values: [256, 512]
+  models/WIRE_v5.hidden_layers:
+    values: [3, 4, 6]
+  models/WIRE_v5.skip_layer_idx:
+    values: [1, 2]
+
+  # --- Omega (frequency) initialization ranges ---
+  # omega_min values below 1.0 are a no-op until the forward-pass clamp (min=0.0) is revised.
+  # Initialization is kept conservative so the eikonal loss starts near 1.0;
+  # train_omega=True lets the network drift to higher frequencies once the coarse shape is learned.
+  models/WIRE_v5.first_omega_min:
+    distribution: uniform
+    min: 1
+    max: 20
+  models/WIRE_v5.first_omega_max:
+    distribution: uniform
+    min: 20
+    max: 80
+
+  models/WIRE_v5.hidden_omega_min:
+    distribution: uniform
+    min: 1
+    max: 20
+  models/WIRE_v5.hidden_omega_max:
+    distribution: uniform
+    min: 20
+    max: 120
+
+  # --- Scale (Gaussian envelope) ranges ---
+  # Higher scale = narrower Gaussian = more spatially local Gabor wavelet.
+  # The coarse-to-fine schedule tiles scale in the same direction as omega (correct).
+  # Upper bound on hidden_scale_max is tightened from 130 → 65 to prevent over-localization.
+  models/WIRE_v5.first_scale_min:
+    distribution: uniform
+    min: 1.0
+    max: 30.0
+  models/WIRE_v5.first_scale_max:
+    distribution: uniform
+    min: 30
+    max: 150
+
+  models/WIRE_v5.hidden_scale_min:
+    distribution: uniform
+    min: 1.0
+    max: 30.0
+  models/WIRE_v5.hidden_scale_max:
+    distribution: uniform
+    min: 30
+    max: 150
+
+  # --- Training ---
+  # Low eikonal_weight values (0.005, 0.01) are essential: at medium-init omega ranges
+  # the eikonal starts above 1.0, and a low weight lets MSE dominate early so the network
+  # first learns the coarse car shape before enforcing the SDF constraint.
+  pretraining_v4_config.training_loop.eikonal_weight:
+    values: [0.001, 0.01, 0.05, 0.1]
+  pretraining_v4_config.training_loop.learning_rate:
+    values: [0.0001, 0.0005, 0.001]
+  pretraining_v4_config.training_loop.random_batch_size:
+    values: [1024, 2048, 3301]
