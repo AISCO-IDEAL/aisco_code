@@ -108,7 +108,7 @@ training_loop:
 output:
   # Must live in a directory NOT scanned by fetch_pretrained_model
   # (which scans the standard pretrained_path directory).
-  checkpoint_path: "/cluster/work/fuge/AISCO/latent_pretraining/pretrained_latent.pth"
+  checkpoint_path: "/cluster/work/fuge/AISCO/latent_pretraining/runs/pretrained_latent.pth"
   mesh_resolution: 64
   bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2 Assembler
 
@@ -119,7 +119,7 @@ output:
   sdf_cache_dir: "/cluster/work/fuge/AISCO/latent_pretraining/01_sdf_cache"  # precomputed SDFs from target PLY shapes
   visualisation_directory: "sampling_vis" # directory name withhin directory of the current hash
 
-  vis_cadence: 3 # at what interval to visualize the sampling
+  vis_cadence: 1 # at what interval to visualize the sampling
   vis_show_eikonal_pts: true   # visualize sampled points for eikonal loss (default: true)
   vis_show_target_pts: "pts"  # "pts" = surface cache pts in green | "mesh" = target triangle mesh in green
   # model points are always displayed as red points
