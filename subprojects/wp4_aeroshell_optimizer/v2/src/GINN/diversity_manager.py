@@ -166,7 +166,7 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     # Loss & gradient normalisation calibration
     # ------------------------------------------------------------------
-    def _calibrate(self) -> None:
+    def _calibrate(self) -> None:  # noqa: PLR0912, PLR0915
         """Calibrate loss and gradient scale factors before training begins.
 
         Runs one full forward pass over all population members with calibration_mode=True
