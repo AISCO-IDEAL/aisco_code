@@ -78,7 +78,7 @@ def _make_latent_pretrain_config(checkpoint_path: str, force: bool = True) -> di
             "epochs": 3,
             "learning_rate": 1e-4,
             "batch_size_per_shape": 32,
-            "print_interval": 1,
+            "logging_interval": 1,
             "eikonal_weight": 0.01,
         },
         "output": {
@@ -797,6 +797,48 @@ class TestSDFCache:
 
         assert pts_meta.device.type == "meta"
         assert gt_meta.device.type == "meta"
+
+    def test_content_change_busts_cache(self, tmp_path: Path) -> None:
+        """PLY content change (same path, different bytes) must produce a cache miss.
+
+        This is the TDD red-phase test for Plan 028 M1 (content hash in cache key).
+        After M1 is implemented, the PLY content hash is included in the cache key
+        so that a same-name file with different bytes creates a new .pt file.
+        """
+        _load_or_build_surface_cache = _import(PRETRAIN_LATENT, "_load_or_build_surface_cache")
+        ply_path = self._make_sphere_ply(tmp_path, radius=500.0)
+        shape_params = self._make_ply_shape_params(ply_path)
+        cache_dir = tmp_path / "sdf_cache"
+        cache_dir.mkdir()
+
+        kwargs: dict = {
+            "ply_path": str(ply_path),
+            "ply_scale": 1.0,
+            "shape_params": shape_params,
+            "batch_size": 100,
+            "n_dom": 50,
+            "device": "cpu",
+            "cache_dir": cache_dir,
+        }
+        # First call: build cache from original PLY.
+        _load_or_build_surface_cache(**kwargs)
+        assert len(list(cache_dir.glob("*.pt"))) == 1
+
+        # Overwrite PLY with a different sphere (same path, different byte content).
+        new_sphere = trimesh.creation.icosphere(radius=300.0)
+        new_sphere.export(str(ply_path))
+
+        # Update shape_params to match new geometry.
+        shape_params_new = self._make_ply_shape_params(ply_path)
+        kwargs["shape_params"] = shape_params_new
+
+        # Second call: new content must cause a cache miss → 2 .pt files in cache_dir.
+        _load_or_build_surface_cache(**kwargs)
+        cache_files = list(cache_dir.glob("*.pt"))
+        assert len(cache_files) == 2, (
+            f"Expected 2 .pt files after PLY content change (cache miss), got {len(cache_files)}. "
+            "The cache key must include a PLY content hash (Plan 028 M1)."
+        )
 
 
 # ---------------------------------------------------------------------------

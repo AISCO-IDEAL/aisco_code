@@ -30,7 +30,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 impo
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization import SamplingVisualizer
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.core import (
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.points_SDFmesh_to_ply import (
     _POINT_COLOUR_GREEN,
     _POINT_COLOUR_RED,
     _POINT_COLOUR_WHITE,
@@ -212,9 +212,13 @@ def _load_or_build_surface_cache(
     wide_key = near_surface_wide_sigma if near_surface_wide_sigma is not None else -1.0
 
     if cache_dir is not None:
+        # Include PLY file content hash so that an in-place file update (same path,
+        # new bytes) automatically produces a new cache key and forces a rebuild.
+        # Cost: one extra file read at startup, negligible vs BVH computation.
+        ply_content_hash = hashlib.sha256(Path(ply_path).read_bytes()).hexdigest()[:8]
         key_str = (
             f"{Path(ply_path).stem}|{ply_scale}|{sigma_key}|{tight_key}|{wide_key}"
-            f"|{n_surf}|{near_surface_fraction}|{domain_fraction}"
+            f"|{n_surf}|{near_surface_fraction}|{domain_fraction}|{ply_content_hash}"
         )
         cache_hash = hashlib.sha256(key_str.encode()).hexdigest()[:10]
         cache_path = cache_dir / f"{cache_hash}.pt"
@@ -248,6 +252,7 @@ def _load_or_build_surface_cache(
                 "meta": {
                     "ply_path": ply_path,
                     "ply_scale": ply_scale,
+                    "ply_content_hash": ply_content_hash,
                     "surface_noise_sigma_factor": sigma_key,
                     "near_surface_tight_sigma": tight_key,
                     "near_surface_wide_sigma": wide_key,
@@ -326,9 +331,12 @@ def _compute_input_grad_norms(
     Uses ``torch.autograd.grad`` (not ``.backward()``) so that model parameter
     ``.grad`` attributes are never touched — no optimizer-state pollution.
 
-    The scalar probe loss is MSE(pred/1000, gt_sdf/1000) matching the training
-    loss normalisation.  ``gt_sdf`` is detached; only ``pts`` and ``z`` carry
-    the computation graph.
+    The scalar probe loss is intentionally MSE(pred/1000, gt_sdf/1000) rather
+    than the training loss (L1-all).  MSE is a valid diagnostic probe: it is
+    smooth everywhere and produces clean gradient signals for sensitivity
+    analysis.  Using MSE here does NOT imply that training uses MSE — it is
+    a deliberate choice for the gradient-sensitivity diagnostic.
+    ``gt_sdf`` is detached; only ``pts`` and ``z`` carry the computation graph.
 
     Args:
         model: ConcatWIREV2 (or any SupportsLatentConcat).  Caller manages
@@ -483,7 +491,9 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     _sdf_cache_dir_raw = output_cfg.get("sdf_cache_dir")
     sdf_cache_dir: Path | None = Path(_sdf_cache_dir_raw) if _sdf_cache_dir_raw is not None else None
 
-    vis_show_eikonal_pts: bool = bool(output_cfg.get("vis_show_eikonal_pts", True))  # GREY: points sampled for eikonal loss
+    vis_show_domain_pts: bool = bool(
+        output_cfg.get("vis_show_domain_pts", output_cfg.get("vis_show_eikonal_pts", True))
+    )  # GREY: domain pts used for L1-all loss
     vis_show_target_pts: str = str(output_cfg.get("vis_show_target_pts", "pts"))  # "pts" or "mesh"
 
     model = model.to(device)
@@ -503,9 +513,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         if surface_resample_cadence == 0
         else f"refreshed every {surface_resample_cadence} epochs"
     )
-    print(
-        f"[latent_pretrain] Surface cache: {resample_label}. L1-all uses surface cache + fresh domain pts.", flush=True
-    )
+    print(f"[latent_pretrain] Surface cache: {resample_label}. L1-all uses surface cache + fresh domain pts.", flush=True)
     if bbox_scale_factor != 1.0:
         print(
             f"[latent_pretrain] Mesh bbox scale factor: {bbox_scale_factor}x outer_prism (expanded from wp2)",
@@ -543,7 +551,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     epoch_vis: SamplingVisualizer | None = None
     if vis_sampling and vis_cadence > 0:
         epoch_vis = SamplingVisualizer(output_dir=vis_dir, is_static=False)
-        epoch_vis.write_legend(_make_vis_legend(config_hash, vis_cadence, vis_show_eikonal_pts, surface_resample_cadence))
+        epoch_vis.write_legend(_make_vis_legend(config_hash, vis_cadence, vis_show_domain_pts, surface_resample_cadence))
         print(f"[latent_pretrain] Per-epoch vis enabled: cadence={vis_cadence}, mesh_res={vis_mesh_res} → {vis_dir}")
 
     # --- Register run metadata in W&B config (keys sourced from config when present) ---
@@ -616,7 +624,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         surface_gt = torch.cat(all_surface_gt, dim=0)  # (N*n_surf,)
         surface_z = torch.cat(all_surface_z, dim=0)  # (N*n_surf, z_dim)
         # Keep per-slot domain pts for epoch visualization; also concatenate for forward pass
-        eikonal_pts_list = all_domain_pts  # list of per-slot domain tensors (visualised as grey)
+        domain_pts_list = all_domain_pts  # list of per-slot domain tensors (visualised as grey)
         domain_pts = torch.cat(all_domain_pts, dim=0)  # (N*n_dom, 3)
         domain_gt = torch.cat(all_domain_gt, dim=0)  # (N*n_dom,) GT SDF for L1-all loss
         domain_z = torch.cat(all_domain_z, dim=0)  # (N*n_dom, z_dim)
@@ -687,7 +695,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 Z=Z,
                 shapes=shapes,
                 cached_surface=cached_surface,
-                eikonal_pts_per_slot=eikonal_pts_list,
+                domain_pts_per_slot=domain_pts_list,
                 ply_cache=ply_cache,
                 epoch=epoch,
                 mesh_res=vis_mesh_res,
@@ -695,7 +703,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 device=device,
                 vis=epoch_vis,
                 show_target_pts=vis_show_target_pts,
-                show_eikonal_pts=vis_show_eikonal_pts,
+                show_domain_pts=vis_show_domain_pts,
             )
             model.train()  # restore after eval inside snapshot
 
@@ -706,9 +714,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             model.eval()
             surf_pts_0, surf_gt_0 = cached_surface[0]
             z0_expanded = Z[0].unsqueeze(0).expand(surf_pts_0.size(0), -1)
-            z_grad_norm, xyz_grad_norm, z_warn = _compute_input_grad_norms(
-                model, surf_pts_0, z0_expanded, surf_gt_0, device
-            )
+            z_grad_norm, xyz_grad_norm, z_warn = _compute_input_grad_norms(model, surf_pts_0, z0_expanded, surf_gt_0, device)
             model.train()
 
             grad_ratio = z_grad_norm / (xyz_grad_norm + 1e-8)
@@ -727,7 +733,6 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 f" | ratio={grad_ratio:.2e}{warn_suffix}"
             )
             if use_wandb:
-
                 wandb.log(
                     {
                         "total_loss": total_loss.item(),
@@ -778,7 +783,7 @@ def _write_epoch_vis_snapshot(
     Z: Tensor,
     shapes: list[dict[str, Any]],
     cached_surface: list[tuple[Tensor, Tensor]],
-    eikonal_pts_per_slot: list[Tensor],
+    domain_pts_per_slot: list[Tensor],
     ply_cache: dict[int, tuple[Tensor, Tensor, float]],
     epoch: int,
     mesh_res: int,
@@ -787,9 +792,9 @@ def _write_epoch_vis_snapshot(
     vis: SamplingVisualizer,
     *,
     show_target_pts: str = "pts",
-    show_eikonal_pts: bool = True,
+    show_domain_pts: bool = True,
 ) -> None:
-    """Write one epoch snapshot: current trained mesh, target surface, and eikonal pts.
+    """Write one epoch snapshot: current trained mesh, target surface, and domain pts.
 
     For each slot the combined PLY shows training convergence at a glance.
     All tensors are moved to CPU before passing to the visualizer.
@@ -797,13 +802,13 @@ def _write_epoch_vis_snapshot(
     Color coding:
     - **Forest green**: target (either surface-cache pts or target mesh geometry).
     - **Red**: current SDF model surface (marching-cubes vertices, always shown).
-    - **Light grey**: eikonal domain pts (shown when ``show_eikonal_pts=True``).
+    - **Light grey**: domain pts (shown when ``show_domain_pts=True``).
 
     Args:
         show_target_pts: ``"pts"`` shows surface-cache pts in green (primary points).
             ``"mesh"`` shows the target PLY triangle mesh in green; for non-PLY
             slots falls back to ``"pts"`` behavior.
-        show_eikonal_pts: When ``True``, eikonal domain pts are shown in light grey.
+        show_domain_pts: When ``True``, domain pts are shown in light grey.
 
     The caller must call ``model.train()`` after this function returns.
     """
@@ -812,7 +817,7 @@ def _write_epoch_vis_snapshot(
         shape_type: str = shape["shape_type"]
 
         surf_pts_i, _ = cached_surface[slot_idx]  # target surface cache pts
-        eikonal_pts_i: Tensor | None = eikonal_pts_per_slot[slot_idx] if show_eikonal_pts else None
+        domain_pts_i: Tensor | None = domain_pts_per_slot[slot_idx] if show_domain_pts else None
 
         # Extract current model surface (red) as numpy arrays
         clear_mesh_cache()
@@ -826,7 +831,7 @@ def _write_epoch_vis_snapshot(
 
         try:
             if use_mesh_mode:
-                # "mesh" mode: target PLY mesh (green), model pts (red), eikonal pts (grey)
+                # "mesh" mode: target PLY mesh (green), model pts (red), domain pts (grey)
                 ply_verts_t, ply_faces_t, _ = ply_cache[slot_idx]
                 target_verts_np = ply_verts_t.cpu().numpy()
                 target_faces_np = ply_faces_t.cpu().numpy()
@@ -836,20 +841,20 @@ def _write_epoch_vis_snapshot(
                     mesh_verts=target_verts_np,
                     mesh_faces=target_faces_np,
                     name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
-                    secondary_points_mm=eikonal_pts_i.cpu() if eikonal_pts_i is not None else None,
+                    secondary_points_mm=domain_pts_i.cpu() if domain_pts_i is not None else None,
                     points_colour=_POINT_COLOUR_RED,
                     secondary_colour=_POINT_COLOUR_WHITE,
                     mesh_colour=_POINT_COLOUR_GREEN,
                 )
             else:
-                # "pts" mode (or non-PLY slot): target cache pts (green), model pts (red), eikonal pts (grey)
+                # "pts" mode (or non-PLY slot): target cache pts (green), model pts (red), domain pts (grey)
                 vis.save_snapshot(
                     points_mm=surf_pts_i.cpu(),
                     mesh_verts=None,
                     mesh_faces=None,
                     name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
                     secondary_points_mm=torch.from_numpy(model_verts_np) if model_verts_np is not None else None,
-                    tertiary_points_mm=eikonal_pts_i.cpu() if eikonal_pts_i is not None else None,
+                    tertiary_points_mm=domain_pts_i.cpu() if domain_pts_i is not None else None,
                     points_colour=_POINT_COLOUR_GREEN,
                     secondary_colour=_POINT_COLOUR_RED,
                     tertiary_colour=_POINT_COLOUR_WHITE,
@@ -861,17 +866,16 @@ def _write_epoch_vis_snapshot(
 def _make_vis_legend(
     config_hash: str,
     vis_cadence: int,
-    vis_show_eikonal_pts: bool,
+    vis_show_domain_pts: bool,
     surface_resample_cadence: int,
 ) -> str:
     """Build the legend.txt content for a sampling_vis directory."""
-    eikonal_note = (
-        "  Light grey (220, 220, 220): Eikonal domain sample points (bounding-box uniform, ~50% of batch).\n"
-        "      Used ONLY for the eikonal loss (|∇SDF| = 1 in bulk of space).\n"
-        "      NOT used for the MSE loss.\n"
-        "      Shown in epoch PLYs because vis_show_eikonal_pts: true."
-        if vis_show_eikonal_pts
-        else "  Eikonal points (light grey): HIDDEN because vis_show_eikonal_pts: false in config."
+    domain_note = (
+        "  Light grey (220, 220, 220): Domain pts (bounding-box uniform, ~50% of batch).\n"
+        "      Used for L1-all loss together with the surface pts.\n"
+        "      Shown in epoch PLYs because vis_show_domain_pts: true."
+        if vis_show_domain_pts
+        else "  Domain pts (light grey): HIDDEN because vis_show_domain_pts: false in config."
     )
     cadence_note = f"every {vis_cadence} epochs" if vis_cadence > 0 else "disabled (vis_cadence: 0)"
     surface_note = (
@@ -892,7 +896,7 @@ File naming
         Green points = target surface-cache pts, Red points = current model surface.
       When vis_show_target_pts: "mesh" (PLY slots only):
         Green triangle mesh = target shape, Red points = current model surface.
-      Light grey points = eikonal domain pts when vis_show_eikonal_pts: true.
+      Light grey points = domain pts when vis_show_domain_pts: true.
       As training converges red points migrate toward the green target.
 
   pretrained_shapes/slot{{N:02d}}_{{name}}.ply
@@ -901,8 +905,8 @@ File naming
 Colour coding
 -------------
   Forest green (34, 139, 34): Target shape.
-      - "pts" mode : surface-cache points near the target mesh.
-        These are the EXACT points used for MSE loss during training.
+      - "pts" mode : surface-cache points near the target mesh (near-surface
+        Gaussian-perturbed pts).  These are the surface half of the L1-all batch.
       - "mesh" mode: target triangle mesh (proper geometry).
       Surface cache : {surface_note}
 
@@ -910,26 +914,21 @@ Colour coding
       files.  Marching-cubes mesh vertices of the model's predicted zero level
       set at that epoch.  Always shown.
 
-  Light grey (220, 220, 220): Eikonal domain sample points — in EPOCH files when
-      vis_show_eikonal_pts: true.  Bounding-box uniform points used for the eikonal
-      loss.  Toggle: vis_show_eikonal_pts in config output section.
+  Light grey (220, 220, 220): Domain pts — in EPOCH files when
+      vis_show_domain_pts: true.  Bounding-box uniform points (~50% of batch),
+      the domain half of the L1-all loss.
+      Toggle: vis_show_domain_pts in config output section.
 
-{eikonal_note}
+{domain_note}
 
-Loss terms in pretraining
+Loss in pretraining
 --------------------------
-  1. MSE loss (quality of fit): L2( predicted_SDF / 1000, gt_SDF / 1000 ).
-     Uses GREEN (near-surface) points ONLY.
+  L1-all loss: L1( predicted_SDF / 1000, gt_SDF / 1000 ).
+     Applied to ALL points (surface + domain combined).
+     GREEN (near-surface) + GREY (domain) = complete L1-all batch.
      GT SDF: mesh_sdf (GPU BVH) for PLY; analytic for sphere/cube.
-     NOTE: points ARE Gaussian-perturbed from surface (not exact surface),
-     so GT SDF != 0.  Pure GT=0 sampling would be degenerate (f=0 everywhere
-     achieves zero MSE; eikonal alone cannot fix this).
-
-  2. Eikonal loss: penalises |∇SDF| != 1.
-     Uses GREY (domain/bounding-box uniform) points ONLY.
-     Enforces correct gradient magnitude in the bulk of the sampling space.
-     Note: eikonal near the surface is NOT explicitly constrained — the
-     near-surface MSE gradient implicitly constrains it there.
+     Surface pts are Gaussian-perturbed from the mesh surface so GT SDF != 0
+     everywhere (avoids the degenerate all-zero solution).
 
   NO smoothness loss in pretraining.  Smoothness applies in the main
   aeroshell optimizer loop only.

@@ -2,6 +2,41 @@
 
 All notable changes to AISCO_code are documented here.
 
+## [0.6.3] — 2026-04-28 (Plan 028)
+
+### Fixed
+
+- **BUG: Stale PLY surface cache** (`pretraining_latent.py`) — `_load_or_build_surface_cache`
+  cache key previously included only the PLY filename stem, so an in-place PLY update
+  (same path, different bytes) silently returned stale surface pts.  The key now includes
+  an 8-char SHA-256 content hash of the PLY file bytes; any byte-level change forces a
+  cache miss and a fresh rebuild.  Existing `.pt` cache files written without the content
+  hash are automatically bypassed (cache miss) — delete `sdf_cache_dir` to reclaim disk
+  space after upgrading.
+
+### Changed
+
+- **`sampling_visualization/core.py` renamed** to `points_SDFmesh_to_ply.py`.  All imports
+  updated (`__init__.py`, `pretraining_latent.py`).
+- **Domain-pts naming cleanup** (`pretraining_latent.py`) — removed all stale "eikonal"
+  labels from variables that hold domain points used for the L1-all loss:
+  - Config key `vis_show_eikonal_pts` → `vis_show_domain_pts` (backward-compat alias
+    retained in code: falls back to `vis_show_eikonal_pts` if new key absent).
+  - Python variable `eikonal_pts_list` → `domain_pts_list`.
+  - `_write_epoch_vis_snapshot` parameter `eikonal_pts_per_slot` → `domain_pts_per_slot`.
+  - `_write_epoch_vis_snapshot` kwarg `show_eikonal_pts` → `show_domain_pts`.
+  - `_make_vis_legend` parameter and legend text updated to reflect L1-all regime.
+- **`_make_vis_legend` rewritten** — legend text now accurately describes the L1-all loss
+  regime (GREEN = surface half, GREY = domain half, both fed to L1-all loss).  All MSE and
+  eikonal loss references removed from the legend.
+- **`_compute_input_grad_norms` docstring fixed** — clarified that the probe intentionally
+  uses MSE (not the training L1-all loss) and explains why MSE is correct for a
+  gradient-sensitivity diagnostic.
+- **`main_v2.py` W&B forwarding** — `_maybe_run_latent_pretraining` now accepts
+  `use_wandb: bool` and forwards it to `pretraining_latent(...)`.  When the global
+  optimizer runs with W&B enabled, pretraining metrics (`l1_all`, `slot_N_loss`,
+  `latent_grad_norm`) are now logged to the active W&B run.
+
 ## [0.6.2] — 2026-04-27 (Plan 022 Exp-B)
 
 ### Changed

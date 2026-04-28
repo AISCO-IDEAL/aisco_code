@@ -50,6 +50,8 @@ def _maybe_run_latent_pretraining(
     model: Any,
     general_config: dict[str, Any],
     device: str,
+    *,
+    use_wandb: bool = False,
 ) -> tuple[Any, "torch.Tensor | None"]:
     """Run latent-population pretraining if configured and model supports it.
 
@@ -63,6 +65,8 @@ def _maybe_run_latent_pretraining(
         model: The SDF model (any type).
         general_config: Loaded general_config.yaml dict.
         device: Runtime device string.
+        use_wandb: Whether W&B is initialised for the current run.  When
+            ``True``, pretraining metrics are logged to the active W&B run.
 
     Returns:
         Tuple ``(model, Z_pretrained)`` where ``Z_pretrained`` is the pretrained
@@ -84,7 +88,7 @@ def _maybe_run_latent_pretraining(
     from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config  # noqa: PLC0415
 
     latent_config = _load_config(v="v2", cfg_name=latent_cfg_name)
-    model, Z_pretrained = pretraining_latent(model, latent_config, device)
+    model, Z_pretrained = pretraining_latent(model, latent_config, device, use_wandb=use_wandb, vis_sampling=False)
     return model, Z_pretrained
 
 
@@ -240,7 +244,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     # 3c. Latent-population pretraining (Mode C warm-up).
     # Only runs when active_configs.latent_pretraining is set to a non-empty config filename.
-    model, Z_pretrained = _maybe_run_latent_pretraining(model, general_config, device)
+    model, Z_pretrained = _maybe_run_latent_pretraining(model, general_config, device, use_wandb=use_wandb)
 
     # 4. Initialise whatever we need to run the main training loop, e.g. trainer, loss function, etc.
 

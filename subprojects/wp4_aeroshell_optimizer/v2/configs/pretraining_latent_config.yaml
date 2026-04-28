@@ -80,7 +80,7 @@ latent_population:
   #   ply_scale: 100.0
   #   surface_noise_sigma_factor: 0.005
 
-  - name: "simple_solarcar"
+  - name: "simple_solarcar" # Broken:too large?!
     shape_type: "ply"
     radius: null
     side_length: null
@@ -93,7 +93,7 @@ training_loop:
   learning_rate: 0.0005
   batch_size_per_shape: 4096 #8192
   logging_interval: 25 # wandb stats logging intervall (displayed in terminal as well)
-  surface_resample_cadence: 0   # 0 = static (DeepSDF-style, default)
+  surface_resample_cadence: 1   # 0 = static (DeepSDF-style, default)
                                 # N = refresh near-surface cache every N epochs
 
   # --- M2: Dual-band near-surface sampling ---
@@ -120,6 +120,6 @@ output:
   visualisation_directory: "sampling_vis" # directory name withhin directory of the current hash
 
   vis_cadence: 1 # at what interval to visualize the sampling
-  vis_show_eikonal_pts: true   # visualize sampled points for eikonal loss (default: true)
+  vis_show_domain_pts: true   # show domain pts (grey) used for L1-all loss (default: true)
   vis_show_target_pts: "pts"  # "pts" = surface cache pts in green | "mesh" = target triangle mesh in green
   # model points are always displayed as red points
