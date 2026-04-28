@@ -3,7 +3,7 @@ import torch.nn as nn  # noqa: PLR0402
 import torch_geometric as pyg
 from torch_geometric.nn import knn as pyg_knn
 from torch_geometric.nn import radius as pyg_radius
-from torch_geometric.utils import coalesce, dropout_edge
+from torch_geometric.utils import coalesce
 
 from .geoembed import GeometricEmbedding
 from .integral_transform import IntegralTransform
@@ -166,7 +166,7 @@ def _get_decoder_strategy(
         raise ValueError(f"Unknown decoder strategy: {neighbor_strategy}")
 
 
-def apply_neighbor_sampling(
+def apply_neighbor_sampling(  # noqa: PLR0911
     edge_index: torch.Tensor,
     num_query_nodes: int,
     device: torch.device,
@@ -174,6 +174,7 @@ def apply_neighbor_sampling(
     max_neighbors: int | None = None,
     sample_ratio: float | None = None,
     training: bool = True,
+    seed: int | None = None,
 ) -> torch.Tensor:
     if sampling_strategy is None:
         return edge_index
@@ -202,7 +203,9 @@ def apply_neighbor_sampling(
             node_edge_indices = torch.where(node_edge_mask)[0]
             num_node_edges = len(node_edge_indices)
 
-            perm = torch.randperm(num_node_edges, device=device)[:max_neighbors]
+            generator = torch.Generator(device=device)
+            generator.manual_seed(0 if seed is None else seed)
+            perm = torch.randperm(num_node_edges, device=device, generator=generator)[:max_neighbors]
             edges_to_keep_for_node = node_edge_indices[perm]
             node_keep_mask = torch.zeros_like(node_edge_mask)
             node_keep_mask[edges_to_keep_for_node] = True
@@ -218,8 +221,12 @@ def apply_neighbor_sampling(
         if sample_ratio >= 1.0:
             return edge_index
         p_drop = 1.0 - sample_ratio
-        sampled_edge_index, _ = dropout_edge(edge_index, p=p_drop, force_undirected=False, training=training)
-        return sampled_edge_index
+        if not training:
+            return edge_index
+        generator = torch.Generator(device=device)
+        generator.manual_seed(0 if seed is None else seed)
+        edge_mask = torch.rand(edge_index.shape[1], device=device, generator=generator) >= p_drop
+        return edge_index[:, edge_mask]
 
     else:
         raise ValueError(f"Invalid sampling strategy: {sampling_strategy}")
@@ -229,7 +236,7 @@ def apply_neighbor_sampling(
 # MAGNOEncoder
 ############
 class MAGNOEncoder(nn.Module):
-    def __init__(self, in_channels, magno_config: dict):
+    def __init__(self, in_channels, magno_config: dict):  # noqa: PLR0915
         super().__init__()
         self.magno_config = magno_config
 
@@ -249,6 +256,8 @@ class MAGNOEncoder(nn.Module):
         self.sampling_strategy = magno_config.get("encoder_sampling_strategy", magno_config.get("sampling_strategy"))
         self.max_neighbors = magno_config.get("encoder_max_neighbors", magno_config.get("max_neighbors"))
         self.sample_ratio = magno_config.get("encoder_sample_ratio", magno_config.get("sample_ratio"))
+        self.sampling_seed = int(magno_config.get("sampling_seed", 42))
+        self._sampling_calls = 0
         if self.sampling_strategy == "max_neighbors":
             print("Warning: 'max_neighbors' sampling strategy with PyG edge_index is less efficient. Consider using 'ratio'.")
 
@@ -370,6 +379,8 @@ class MAGNOEncoder(nn.Module):
                 neighbor_counts = None
 
             # --- Apply Neighbor Sampling ---
+            sampling_seed = self.sampling_seed + self._sampling_calls
+            self._sampling_calls += 1
             edge_index = apply_neighbor_sampling(
                 edge_index=edge_index,
                 num_query_nodes=latent_tokens_pos.shape[0],
@@ -378,6 +389,7 @@ class MAGNOEncoder(nn.Module):
                 max_neighbors=self.max_neighbors,
                 sample_ratio=self.sample_ratio,
                 training=self.training,
+                seed=sampling_seed,
             )
 
             # --- Conditional GNO Path ---
@@ -474,6 +486,8 @@ class MAGNODecoder(nn.Module):
         self.sampling_strategy = magno_config.get("decoder_sampling_strategy", magno_config.get("sampling_strategy"))
         self.max_neighbors = magno_config.get("decoder_max_neighbors", magno_config.get("max_neighbors"))
         self.sample_ratio = magno_config.get("decoder_sample_ratio", magno_config.get("sample_ratio"))
+        self.sampling_seed = int(magno_config.get("sampling_seed", 42))
+        self._sampling_calls = 0
         if self.sampling_strategy == "max_neighbors":
             print("Warning: 'max_neighbors' sampling strategy with PyG edge_index is less efficient. Consider using 'ratio'.")
 
@@ -557,6 +571,8 @@ class MAGNODecoder(nn.Module):
                 neighbor_counts = None
 
             # --- Apply Neighbor Sampling ---
+            sampling_seed = self.sampling_seed + self._sampling_calls
+            self._sampling_calls += 1
             edge_index = apply_neighbor_sampling(
                 edge_index=edge_index,
                 num_query_nodes=phys_pos_query.shape[0],
@@ -565,6 +581,7 @@ class MAGNODecoder(nn.Module):
                 max_neighbors=self.max_neighbors,
                 sample_ratio=self.sample_ratio,
                 training=self.training,
+                seed=sampling_seed,
             )
 
             # GNO Layer Call - removed batch_y and batch_x arguments

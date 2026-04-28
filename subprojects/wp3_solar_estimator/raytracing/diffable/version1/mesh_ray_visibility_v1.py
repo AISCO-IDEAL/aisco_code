@@ -1,4 +1,4 @@
-# ruff: noqa: RUF002, RUF003
+# ruff: noqa: RUF003
 """
 Differentiable mesh-based visibility via Möller-Trumbore ray-triangle intersection.
 

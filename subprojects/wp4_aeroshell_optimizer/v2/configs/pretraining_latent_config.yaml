@@ -1,0 +1,125 @@
+model_name: "ConcatWIREV2"
+z_placement: "circle"
+z_radius: 2.0  # unit-circle radius for pretrained latent codes.
+              # Spatial inputs are mm/1000 ≈ [-5, 5]; z_radius=2.0 gives latents a
+              # comparable magnitude to the dominant spatial axis.
+force_pretraining: false # iff false, a hashed pretraining will be used if applicable
+
+# One entry per latent slot.  Slot 0 maps to z₀ = origin.
+# shape_type: "sphere" | "cube" | "ply"
+# All keys must be present (set unused keys to null).
+#
+# PLY-specific keys:
+#   ply_scale: multiplies raw vertex coordinates → mm.
+#     100.0   if PLY is stored in decimetres (AISCO pretraining convention)
+#     1.0     if PLY is already in mm
+#   surface_noise_sigma_factor: σ = factor × bbox_extent_mm.
+#     0.005   ≈ DeepSDF tight band (σ ≈ 25mm at car scale)
+#     0.05    wider band (σ ≈ 250mm at car scale, default)
+latent_population:
+  # you can add as many shapes as you want
+  - name: "sphere_slot_0" #arbitray name
+    shape_type: "sphere"
+    radius: 500.0         # iff shape_type == "sphere"
+    side_length: null     # iff shape_type == "cube"
+    ply_path: null        # iff shape_type == "ply"
+
+  - name: "simple_bullet_blunt"
+    shape_type: "ply"
+    radius: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_bullet_blunt2.ply"
+    ply_scale: 100.0                   # PLY stored in decimetres → convert to mm
+    surface_noise_sigma_factor: 0.005   # σ = 5% of bbox diagonal
+
+  - name: "simple_bullet_pointy"
+    shape_type: "ply"
+    radius: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_bullet_pointy.ply"
+    ply_scale: 100.0
+    surface_noise_sigma_factor: 0.005
+
+  - name: "simple_catamaran"
+    shape_type: "ply"
+    radius: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_catamaran2.ply"
+    ply_scale: 100.0
+    surface_noise_sigma_factor: 0.005
+
+  # - name: "silvretta"
+  #   shape_type: "ply"
+  #   radius: null
+  #   side_length: null
+  #   ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/original_silvretta.ply"
+  #   ply_scale: 100.0
+  #   surface_noise_sigma_factor: 0.005
+
+  # - name: "bunny" #BROKEN: too small?!
+  #   shape_type: "ply"
+  #   radius: null
+  #   side_length: null
+  #   ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/bunny.ply"
+  #   ply_scale: 0.1
+  #   surface_noise_sigma_factor: 0.005
+
+  # - name: "simple_cuboid"
+  #   shape_type: "ply"
+  #   radius: null
+  #   side_length: null
+  #   ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_cuboid.ply"
+  #   ply_scale: 100.0
+  #   surface_noise_sigma_factor: 0.005
+
+  # - name: "simple_trimaran"
+  #   shape_type: "ply"
+  #   radius: null
+  #   side_length: null
+  #   ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_trimaran.ply"
+  #   ply_scale: 100.0
+  #   surface_noise_sigma_factor: 0.005
+
+  - name: "simple_solarcar" # Broken:too large?!
+    shape_type: "ply"
+    radius: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_solarcar_watertight.ply"
+    ply_scale: 100.0
+    surface_noise_sigma_factor: 0.005
+
+training_loop:
+  epochs: 300
+  learning_rate: 0.0005
+  batch_size_per_shape: 4096 #8192
+  logging_interval: 25 # wandb stats logging intervall (displayed in terminal as well)
+  surface_resample_cadence: 0   # 0 = static (DeepSDF-style, default)
+                                # N = refresh near-surface cache every N epochs
+
+  # --- M2: Dual-band near-surface sampling ---
+  # near_surface_fraction + domain_fraction must sum to ≤ 1.0.
+  # Remainder (1 - near_surface_fraction - domain_fraction) goes to exact surface pts.
+  # If near_surface_wide_sigma is absent (null), single-band mode is used (backward-compat).
+  near_surface_fraction: 0.30     # fraction of batch for near-surface pts (split between bands)
+  domain_fraction: 0.50           # fraction of batch for outer_prism uniform pts (eikonal)
+  near_surface_tight_sigma: 0.005 # tight band σ = factor × bbox_extent_mm  (≈25mm at car scale)
+  near_surface_wide_sigma: null   # wide band σ = factor × bbox_extent_mm   (≈250mm at car scale)
+
+output:
+  # Must live in a directory NOT scanned by fetch_pretrained_model
+  # (which scans the standard pretrained_path directory).
+  checkpoint_path: "/cluster/work/fuge/AISCO/latent_pretraining/runs/pretrained_latent.pth"
+  mesh_resolution: 64
+  bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2 Assembler
+
+
+  # Cache key includes ply_path stem, ply_scale, sigma params, n_surf → hash-tagged .pt files.
+  # Useful for static cache (surface_resample_cadence: 0): GT SDF is computed once and reused.
+  # Set to an absolute path to enable; null = disabled (always build fresh, never write).
+  sdf_cache_dir: "/cluster/work/fuge/AISCO/latent_pretraining/01_sdf_cache"  # precomputed SDFs from target PLY shapes
+  visualisation_directory: "sampling_vis" # directory name withhin directory of the current hash
+
+  vis_cadence: 1 # at what interval to visualize the sampling
+  vis_show_domain_pts: true   # show domain pts (grey) used for L1-all loss (default: true)
+  vis_show_target_pts: "pts"  # "pts" = surface cache pts in green | "mesh" = target triangle mesh in green
+  # model points are always displayed as red points

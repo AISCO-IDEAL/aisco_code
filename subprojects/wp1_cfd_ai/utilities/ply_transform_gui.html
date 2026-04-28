@@ -1448,6 +1448,18 @@
                     </div>
                     <button class="btn-ghost" id="ds-autorange-btn" onclick="dsAutoRangeBoth()">▦ Auto range both <span
                             class="spin" id="ds-autorange-spin"></span></button>
+                    <div class="field" style="margin-bottom:0;max-width:125px">
+                        <label>Manual min</label>
+                        <input type="number" id="ds-manual-min" step="0.01"
+                            onkeydown="if(event.key==='Enter') dsApplyManualRange()">
+                    </div>
+                    <div class="field" style="margin-bottom:0;max-width:125px">
+                        <label>Manual max</label>
+                        <input type="number" id="ds-manual-max" step="0.01"
+                            onkeydown="if(event.key==='Enter') dsApplyManualRange()">
+                    </div>
+                    <button class="btn-ghost" id="ds-manual-apply-btn" onclick="dsApplyManualRange()">Apply manual range
+                        <span class="spin" id="ds-manual-apply-spin"></span></button>
                     <span id="ds-range-display" style="font-size:.72rem;color:var(--tx3)"></span>
                 </div>
             </div>
@@ -3073,6 +3085,46 @@
                 dsLog(`<span class="er">[Range] ${escHtml(String(e))}</span>`);
             } finally {
                 btn.disabled = false; spin.classList.remove('on');
+            }
+        }
+
+        async function dsApplyManualRange() {
+            const slotsToDo = ['A', 'B'].filter(s => dsState[s].path && dsState[s].runs.length > 0);
+            if (!slotsToDo.length) { alert('Load at least one dataset first.'); return; }
+
+            const minEl = document.getElementById('ds-manual-min');
+            const maxEl = document.getElementById('ds-manual-max');
+            const minVal = Number.parseFloat(minEl?.value ?? '');
+            const maxVal = Number.parseFloat(maxEl?.value ?? '');
+            if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) {
+                alert('Enter numeric min and max values.');
+                return;
+            }
+            if (maxVal <= minVal) {
+                alert('Manual max must be greater than manual min.');
+                return;
+            }
+
+            const btn = document.getElementById('ds-manual-apply-btn');
+            const spin = document.getElementById('ds-manual-apply-spin');
+            const display = document.getElementById('ds-range-display');
+            btn.disabled = true;
+            spin.classList.add('on');
+            try {
+                for (const s of slotsToDo) {
+                    dsState[s].globalMin = minVal;
+                    dsState[s].globalMax = maxVal;
+                    const slotDisplay = document.getElementById(`ds-autorange-slot-display-${s}`);
+                    if (slotDisplay) slotDisplay.textContent = `${minVal.toFixed(3)} … ${maxVal.toFixed(3)} (manual)`;
+                }
+                display.textContent = `${minVal.toFixed(3)} … ${maxVal.toFixed(3)} (manual)`;
+                dsLog(`<span class="ok">[Range] Manual range applied: ${minVal.toFixed(3)} … ${maxVal.toFixed(3)} — reloading…</span>`);
+                await Promise.all(slotsToDo.map(s => dsLoadRun(s, dsState[s].idx)));
+            } catch (e) {
+                dsLog(`<span class="er">[Range] ${escHtml(String(e))}</span>`);
+            } finally {
+                btn.disabled = false;
+                spin.classList.remove('on');
             }
         }
 

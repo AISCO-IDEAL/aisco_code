@@ -4,25 +4,28 @@ import torch
 from tqdm import tqdm
 
 # Update this to your new data path
-DATA_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler/"
+DATA_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/united_dataset/"
 
 
 def calculate_metadata(data_dir):
     all_coords = []
     all_targets = []
 
-    files = [f for f in os.listdir(data_dir) if f.endswith(".pt")]
-    print(f"Analyzing {len(files)} files using 'pos' as coordinates...")
+    files = [f for f in os.listdir(data_dir) if f.startswith("sample_") and f.endswith(".pt")]
+    print(f"Analyzing {len(files)} files using 'pos' as coordinates and 'x' as targets...")
 
     for f in tqdm(files):
+        # Load the PyTorch Geometric Data object
         data = torch.load(os.path.join(data_dir, f), weights_only=False)
 
-        # Pull coordinates (pos) and targets (y)
+        # Pull coordinates (pos) and the pressure field target (x)
         all_coords.append(data.pos)
-        all_targets.append(data.y)
+        all_targets.append(data.x)
+
+    print("\nConcatenating tensors... (If the script crashes here, you are out of RAM)")
 
     combined_x = torch.cat(all_coords, dim=0)
-    # Convert to float to avoid mean/std calculation errors with integers
+    # Convert to float to avoid mean/std calculation errors
     combined_y = torch.cat(all_targets, dim=0).float()
 
     print("\n" + "=" * 40)
