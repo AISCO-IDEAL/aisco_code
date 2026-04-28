@@ -1,0 +1,61 @@
+# Single-shape pretraining configuration (Plan 014, v0.1.0).
+#
+# Sibling of pretraining_latent_config.yaml — same sampling/loss machinery, but
+# fits ONE target shape with a non-conditional model (no latent z).
+#
+# Replaces the legacy pretraining_v4_config.yaml + pretraining_v4.py pipeline.
+# Use with: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_single.py
+
+# --- Model selection ---
+# Must be a key registered in v2/configs/models.json that points to a model
+# implementing SupportsModelContract (i.e. forward(x) — no z argument).
+model_name: "AISCOModel"
+
+# --- Target shape ---
+# Exactly one shape — analogous to a single entry of latent_population in the
+# latent config, but flattened into the top-level dict.
+shape:
+  shape_type: "ply"        # "sphere" | "cube" | "ply"
+  name: "bunny"        # used in output paths / wandb logs
+  radius: null             # iff shape_type == "sphere"
+  side_length: null        # iff shape_type == "cube"
+  ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/bunny.ply"
+  ply_scale: 100.0         # PLY stored in decimetres → x100 to mm. Use 1.0 if PLY is already in mm.
+  surface_noise_sigma_factor: 0.005   # σ = factor × bbox_extent_mm — used only in single-band mode
+
+force_pretraining: false   # iff false, a hashed pretraining will be reused if it exists
+
+random_seed: 42
+
+training_loop:
+  epochs: 700
+  learning_rate: 0.0005
+  batch_size: 4096
+  logging_interval: 25
+  surface_resample_cadence: 0   # 0 = static (DeepSDF-style: sample once, reuse forever)
+                                # N = refresh near-surface cache every N epochs
+
+  # --- Sampling fractions (mirrors pretraining_latent_config.yaml) ---
+  # near_surface_fraction + domain_fraction must sum to ≤ 1.0.
+  # Remainder goes to exact (zero-jitter) surface pts.
+  near_surface_fraction: 0.30
+  domain_fraction: 0.50
+  near_surface_tight_sigma: 0.005     # tight band σ = factor × bbox_extent_mm  (≈ 25 mm at car scale)
+  near_surface_wide_sigma: null       # set to e.g. 0.05 to enable dual-band sampling
+
+output:
+  # Hash-tagged subdirectory will be appended automatically — i.e. the final
+  # checkpoint lives at <stem>/<hash>/<basename>_<hash>.pth.
+  checkpoint_path: "/cluster/work/fuge/AISCO/AISCOModel_Pretraining/single/pretrained_single.pth"
+  mesh_resolution: 256
+  bbox_scale_factor: 1.0      # multiply outer_prism bounds by this; sourced from wp2 Assembler
+
+  # Cache key includes ply path + content hash + sigma + n_surf params; useful when
+  # surface_resample_cadence == 0 so the GT SDF is computed once and reused.
+  # null = disabled (always rebuild, never write).
+  sdf_cache_dir: "/cluster/work/fuge/AISCO/latent_pretraining/01_sdf_cache"
+
+wandb:
+  use_wandb: true
+  project_name: "AISCOModel_Pretraining_Single"
+  entity_name: "aisco"

@@ -17,7 +17,9 @@ out_features: 1       # signed distance scalar
 #   layer 8: 512 -> 256       (concat input + residual)
 #   layer 9: 256 -> 128
 #   layer 10: 128 -> 1        (output)
-hidden_dims: [256, 256, 256, 512, 512, 512, 512, 256, 128]
+# hidden_dims: [256, 256, 256, 512, 512, 512, 512, 256, 128] # old
+hidden_dims: [256, 256, 256, 512, 512, 512, 512, 384, 256] # 13
+
 
 # Activation applied AFTER each Linear (length = len(hidden_dims) + 1).
 # Recognised: silu, gelu, relu, leakyrelu, elu, selu, mish, softplus, tanh,
@@ -34,59 +36,34 @@ hidden_dims: [256, 256, 256, 512, 512, 512, 512, 256, 128]
 #                          small (0.2-0.5) and place snake AWAY from layer 1 and AWAY
 #                          from layers right after `concat_input_at` (your past
 #                          NaNs came from snake at layer 1 + concat re-injection).
-#
-# === PRESETS — uncomment one to try, leave the rest commented ===============
-# Each preset has 10 entries (9 hidden + 1 output). All are length-checked.
 
-# --- Basic MLP ----------------------------------------------------------
-activations: [tanh, relu, tanh, relu, tanh, relu, tanh, relu, tanh, linear]        # smooth, good general default
-#
-# --- Smooth baselines (controls) ----------------------------------------
-# activations: [silu, silu, silu, silu, silu, silu, silu, silu, silu, linear]            # current baseline (too smooth)
-# activations: [gelu, gelu, gelu, gelu, gelu, gelu, gelu, gelu, gelu, linear]            # heavier-tailed silu
-# activations: [mish, mish, mish, mish, mish, mish, mish, mish, mish, linear]            # near-silu, slightly sharper
-#
-# --- Bounded output (clamps SDF magnitude before output_scale) ---------
-# activations: [silu, silu, silu, silu, silu, silu, silu, silu, silu, tanh]              # SiLU body, tanh on last layer
-# activations: [gelu, gelu, gelu, gelu, gelu, gelu, gelu, gelu, gelu, tanh]
-#
-# --- Mixed smooth: stronger curvature in the middle without breaking surface --
-# activations: [silu, silu, gelu, gelu, gelu, gelu, gelu, silu, silu, linear]            # GELU mid-block
-# activations: [silu, silu, mish, mish, mish, mish, mish, silu, silu, linear]
-# activations: [silu, silu, elu, elu, silu, silu, silu, silu, silu, linear]              # ELU before residual
-#
-# --- Edge-aware (use sparingly: too much causes the cardboard look) ----
-# activations: [silu, silu, silu, leakyrelu, silu, silu, silu, silu, silu, linear]       # ONE leakyrelu mid-stack
-# activations: [silu, silu, leakyrelu, silu, silu, leakyrelu, silu, silu, silu, linear]  # two well-spaced
-# activations: [silu, silu, silu, silu, leakyrelu, silu, silu, leakyrelu, silu, linear]  # late + middle
-#
-# --- Snake (periodic; needs small alpha_init, NOT at layer 1) ----------
-# Set `snake_alpha_init: 0.3` below when using these.
-# activations: [silu, silu, silu, snake, silu, silu, silu, silu, silu, linear]           # one snake at layer 4
-# activations: [silu, silu, silu, silu, silu, snake, silu, silu, silu, linear]           # one snake at layer 6
-# activations: [silu, silu, silu, snake, silu, silu, snake, silu, silu, linear]          # two well-separated snakes
-#
-# --- Hybrid (smooth surface, slight crease capacity at output edge) ----
-# activations: [silu, silu, silu, silu, silu, silu, silu, silu, mish, tanh]              # mish penultimate + tanh output
-#
 # previous test results:
-# activations: [silu, silu, silu, silu, silu, silu, silu, silu, silu, linear]: too smooth, misses fine details, wandb: https://wandb.ai/aisco/temp_/runs/oro8bbk8?nw=nwusereschaerer
-# activations: [silu, gelu, leakyrelu, gelu, leakyrelu, silu, leakyrelu, silu, linear]: too much big rectangles and edges, no conversion, wandb: https://wandb.ai/aisco/temp_/runs/6lg7mxet?nw=nwusereschaerer
-# activations: [snake, silu, silu, silu, silu, silu, silu, silu, silu, linear]: SDF missing for large parts, not even pretraining works, wandb: https://wandb.ai/aisco/temp_/runs/8i2fp7kn?nw=nwusereschaerer
-# activations: [snake, snake, silu, snake, silu, silu, silu, silu, silu, linear]: very bad, lots of NaN losses, no geometry
-# activations: [softplus, softplus, softplus, softplus, softplus, softplus, softplus, softplus, softplus, linear]  # no mesh, no geometry, bad, wandb: https://wandb.ai/aisco/temp_/runs/qgttbwqv?nw=nwusereschaerer
-# activations: [gelu, silu, silu, gelu, silu, silu, gelu, silu, silu, linear] # only a few sharp pyramids, wandb: https://wandb.ai/aisco/temp_/runs/826mksb2?nw=nwusereschaerer
+# https://wandb.ai/aisco/AISCOModel_Pretraining/table
+activations: [linear, silu, gelu, leakyrelu, gelu, leakyrelu, silu, leakyrelu, silu, linear] # pretraining on silvretta: just a very smooth and bullet-form ellipsoid; eikonal loss: decays to zero very fast; wandb: honest-morning-1
+# activations: [silu, silu, silu, silu, silu, silu, silu, silu, silu, linear] # pretraining on silvretta: very smooth ellipsoid, but way closer to the sphere; eikonal loss: decaying slower and staying a little higher; wandb: likely-leaf-5
+# activations: [silu, silu, gelu, gelu, gelu, gelu, gelu, silu, silu, linear] # pretraining on silvretta: empty mesh; eikonal loss: decay only until 0.8; wandb: comic-sponge-6
+# activations: [silu, silu, gelu, gelu, gelu, gelu, gelu, silu, silu, tanh] # pretraining on silvretta: empty mesh; eikonal loss: decay only until 0.8; wandb: golden-snowflake-7
+# activations: [silu, silu, mish, mish, mish, mish, mish, silu, silu, linear] # pretraining on silvretta: very smooth ellipsoid, but way closer to the sphere; eikonal loss: decaying slower until 0.05 ; wandb: vital-firefly-8
+# activations: [silu, silu, silu, silu, silu, snake, silu, silu, silu, linear] # pretraining on silvretta: very smooth ellipsoid, but way closer to the sphere; eikonal loss: decaying slower until 0.05; wandb: deep-sponge-9
 
+
+
+# basic MLP: pretraining on silvretta: empty mesh extracted wandb: true-oath-2; eikonal loss: decaying to 1 only; wandb: eager-resonance-3
+# WIREV2: pretraining on silvretta: very wobbly, fails to capture silvretta, just some connected blobs eikonal loss: decaying a slower than AISCOModel, oscillating around 0.3; wandb: jolly-microwave-4
+# ExampleModel: pretraining on silvretta: ; eikonal loss: ; wandb:
 
 
 # 1-indexed layer numbers where the (scaled) input features are re-concatenated
 # onto the layer's input.
-concat_input_at: [3, 5, 8]
+# concat_input_at: [3, 5, 8] # old, struggle to move away from ellipsoid
+concat_input_at: [3, 5, 8] # activations: [linear, silu, gelu, leakyrelu, gelu, leakyrelu, silu, leakyrelu, silu, linear] -> this combination produced an empty mesh
 
 # 1-indexed layer numbers where the layer's input (after any concat) is added
 # back to its post-activation output. A learnable projection is auto-created
 # when input/output dims differ (e.g. layer 8: 515 -> 256).
-residual_at: [5, 8]
+# residual_at: [5, 8] # old, struggly to move away from ellipsoid
+# residual_at: [] # activations: [linear, silu, gelu, leakyrelu, gelu, leakyrelu, silu, leakyrelu, silu, linear] -> this combination produced an empty mesh
+residual_at: [5, 8] # activations: [linear, silu, gelu, leakyrelu, gelu, leakyrelu, silu, leakyrelu, silu, linear] -> this combination produced
 
 # --- Coordinate scaling ---
 input_scale: 1000.0   # divides input (mm -> ~unit-scale)
@@ -99,7 +76,7 @@ bias: true
 # `snake` entry is in `activations`). Higher = higher-frequency capacity at
 # init. For SDFs use 0.2-0.5; values >= 1.0 here have already produced NaNs
 # in this codebase (see test results above).
-snake_alpha_init: 0.3
+snake_alpha_init: 0.2
 
 # --- Memory control ---
 # When the input batch dimension exceeds this value, forward() splits the
@@ -108,52 +85,3 @@ snake_alpha_init: 0.3
 # voxel grid which previously triggered a 4 GiB CUDA OOM on layer 5/512).
 # Set to 0 to disable chunking (matches old behaviour).
 forward_chunk_size: 131072
-
-
-
-
-####################
-####################
-
-# Please no sine activation functions, the proved to be unstable and wobbly: replace with SiLU and add GELU as option in the config everywhere and also: fix the OOM
-# Traceback (most recent call last):
-#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py", line 459, in <module>
-#     main()
-#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py", line 251, in main
-#     model.optimise(
-#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/models/model_baseclass.py", line 105, in optimise
-#     loss_function._calibrate(self, optimizer)
-#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py", line 965, in _calibrate
-#     raw = self._compute_raw_losses(model, epoch_name=0, calibration_mode=True)
-#           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py", line 355, in _compute_raw_losses
-#     raw[name] = instance.get_loss(model, epoch_name, skip_telemetry=True)
-#                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/losses/parent_loss.py", line 77, in get_loss
-#     self._last_loss = self._loss(model)
-#                       ^^^^^^^^^^^^^^^^^
-#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py", line 84, in _loss
-#     model_out = model(self.grid_points)
-#                 ^^^^^^^^^^^^^^^^^^^^^^^
-#   File "/cluster/home/eschaerer/AISCO_code/aisco_env/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
-#     return self._call_impl(*args, **kwargs)
-#            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-#   File "/cluster/home/eschaerer/AISCO_code/aisco_env/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
-#     return forward_call(*args, **kwargs)
-#            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/models/AISCOModel_v0.py", line 191, in forward
-#     h = act(linear(h))
-#         ^^^^^^^^^^^^^^
-#   File "/cluster/home/eschaerer/AISCO_code/aisco_env/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
-#     return self._call_impl(*args, **kwargs)
-#            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-#   File "/cluster/home/eschaerer/AISCO_code/aisco_env/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
-#     return forward_call(*args, **kwargs)
-#            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-#   File "/cluster/home/eschaerer/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/models/AISCOModel_v0.py", line 35, in forward
-#     return torch.sin(self.omega_0 * x)
-#            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-# torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 4.00 GiB. GPU 0 has a total capacity of 23.52 GiB of which 1.49 GiB is free. Including non-PyTorch memory, this process has 22.02 GiB memory in use. Of the allocated memory 18.06 GiB is allocated by PyTorch, and 3.45 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
-
-####################
-####################

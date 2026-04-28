@@ -137,7 +137,7 @@ class AISCOModel(BaseModel):
         if hidden_dims is None:
             hidden_dims = [256, 256, 256, 512, 512, 512, 512, 256, 128]
         if activations is None:
-            activations = ["silu"] * 9 + ["linear"]
+            activations = ["silu"] * len(hidden_dims) + ["linear"]
         if concat_input_at is None:
             concat_input_at = [3, 5, 8]
         if residual_at is None:
@@ -220,13 +220,18 @@ class AISCOModel(BaseModel):
         # bound peak activation memory. This rescues large-grid evaluations
         # (e.g. ConnectednessV1's full voxel grid) from CUDA OOM without
         # changing numerics for normal-sized batches.
-        x = x / 1000.0  # Scale input to meters
-
+        #
+        # NOTE: input/output scaling lives ONLY in _forward_single (driven by
+        # input_scale / output_scale). Do NOT add extra /1000 or *1000 here —
+        # doing so previously caused a 1_000_000x input attenuation and
+        # asymmetric output scaling between the chunked / non-chunked paths,
+        # which made the SDF collapse to a constant and produced 0 vertices
+        # at mesh extraction.
         chunk = self.forward_chunk_size
         if chunk <= 0 or x.dim() == 0 or x.shape[0] <= chunk:
             return self._forward_single(x)
         outs = [self._forward_single(x[i : i + chunk]) for i in range(0, x.shape[0], chunk)]
-        return torch.cat(outs, dim=0)*1000.0  # Scale output back to mm
+        return torch.cat(outs, dim=0)
 
     def get_model_info_dict(self) -> dict:
         return {

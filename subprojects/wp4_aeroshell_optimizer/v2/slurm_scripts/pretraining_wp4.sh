@@ -1,15 +1,14 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=WIRE
-#SBATCH --time=00:59:00                   # Adjust time as needed
+#SBATCH --job-name=AISCOModel_Pretraining
+#SBATCH --time=00:10:00                   # Adjust time as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
 #SBATCH --gpus=1
-#SBATCH --output=/cluster/scratch/aalthaus/logs/%x_%j.out
-#SBATCH --error=/cluster/scratch/aalthaus/logs/%x_%j.err
+#SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 #SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=aalthaus@ethz.ch
+#SBATCH --mail-user=%u@ethz.ch
 #------------------------------------------------------------------------------
 # Define username variable (must come after all #SBATCH directives)
 #------------------------------------------------------------------------------
@@ -75,12 +74,12 @@ echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 #------------------------------------------------------------------------------
 export PYTHONUNBUFFERED=TRUE
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:$PYTHONPATH"
-cd /cluster/home/aalthaus/AISCO_code/
+cd /cluster/home/$USERNAME/AISCO_code/
 #python -m src.main
 
-python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v1.0.py \
+python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_v4.py \
     --save_model \
-    --problem_id="AISCO_WP4_Test1"
+    --problem_id="AISCO_WP4_Test1" 2>&1
 #------------------------------------------------------------------------------
 # Print job end information
 #------------------------------------------------------------------------------
