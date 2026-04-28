@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import random
@@ -112,7 +113,7 @@ class ValidationCalculator:
         )
         return train_samples, val_samples
 
-    def _run_viz_for_sample(self, trainer, sample, split_label: str, epoch: int, sample_index: int = 0) -> None:
+    def _run_viz_for_sample(self, trainer, sample, split_label: str, epoch: int, sample_index: int = 0) -> None:  # noqa: PLR0912, PLR0915
         """Run inference on a single sample and log field + scalar + integrated-drag images to W&B."""
         loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
         batch = next(iter(loader)).to(trainer.device)
@@ -158,10 +159,8 @@ class ValidationCalculator:
                         caption=f"Pressure Field [{split_label}] {fname} — Epoch {epoch + 1}",
                     )
                 finally:
-                    try:
+                    with contextlib.suppress(OSError):
                         os.remove(tmp_path)
-                    except OSError:
-                        pass
 
         if isinstance(pred, dict) and "field" in pred and hasattr(batch, "c") and batch.c is not None:
             v_inf = trainer.dataset_config.get("v_inf", 25.0)
