@@ -1,6 +1,10 @@
 """
 Process Blended Wing Body (BWB) CFD data into PyG-compatible .pt files.
 
+Usage:
+    python preprocessing_blended_wing.py
+    python preprocessing_blended_wing.py --num-workers 8
+
 Data layout:
   /cluster/work/fuge/AISCO/wp1_cfd_ai/blended_wing/train/
     vtk/case_NNNN.vtk   -- surface mesh with point arrays: cp, cf_x, cf_y, cf_z
@@ -21,11 +25,8 @@ Saved Data fields:
   filename str          -- case identifier, e.g. "case_0000"
 """
 
-import glob
 import os
-import sys
 from concurrent.futures import BrokenExecutor, ProcessPoolExecutor, as_completed
-from pathlib import Path
 
 import pandas as pd
 import pyvista as pv
@@ -33,14 +34,19 @@ import torch
 from torch_geometric.data import Data
 from tqdm import tqdm
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
-
-from common_preprocessing import A_SEA_LEVEL, compute_geom_conditioning
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.dataset.common_preprocessing import (
+    A_SEA_LEVEL,
+    PREPROCESS_CONTRACT_VERSION,
+    apply_canonical_contract,
+    compute_geom_conditioning,
+    validate_canonical_contract,
+    write_dataset_manifest,
+)
 
 DATA_ROOT = "/cluster/work/fuge/AISCO/wp1_cfd_ai/blended_wing/train"
 VTK_DIR = os.path.join(DATA_ROOT, "vtk")
-CASE_DATA = os.path.join(DATA_ROOT, "case_data.dat")
-OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing_cp_full"
+CASE_DATA = os.path.join(DATA_ROOT, "case_data_solar.dat")
+OUTPUT_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_blended_wing_cp_full_filtered"
 
 NUM_WORKERS = 8
 
@@ -58,6 +64,11 @@ def load_case_data(path: str) -> dict:
             "CD": row["CD"],
             "CL": row["CL"],
             "M_inf": row["M_inf"],
+            "geom_name": str(row["geom_name"]),
+            "alt_kft": row["alt_kft"],
+            "Re": row["Re"],
+            "alpha_deg": row["alpha_deg"],
+            "beta_deg": row["beta_deg"],
         }
         for _, row in case_df.iterrows()
     }
@@ -75,20 +86,34 @@ def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
         if mesh.n_points == 0:
             return None
 
+        faces = None
+        if hasattr(mesh, "faces") and mesh.faces is not None and mesh.faces.size > 0:
+            try:
+                faces_raw = mesh.faces.reshape(-1, 4)
+                faces = torch.tensor(faces_raw[:, 1:], dtype=torch.long).t().contiguous()
+            except ValueError:
+                mesh = mesh.triangulate()
+                faces_raw = mesh.faces.reshape(-1, 4)
+                faces = torch.tensor(faces_raw[:, 1:], dtype=torch.long).t().contiguous()
+
         mesh = mesh.compute_normals(cell_normals=False, point_normals=True, auto_orient_normals=True)
+
         pos = torch.tensor(mesh.points, dtype=torch.float32)  # (N,3)
-        c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32)
+        c = torch.tensor(mesh.point_data["Normals"], dtype=torch.float32)  # (N,3)
         cp = torch.tensor(mesh.point_data["cp"], dtype=torch.float32).unsqueeze(1)  # (N,1)
-    except Exception:
+
+    except Exception as e:
+        print(f"Error processing {vtk_file}: {e}")
         return None
 
     aero = case_lookup[case_name]
     v_inf = float(aero["M_inf"]) * A_SEA_LEVEL
 
-    data = Data(pos=pos, c=c)
-    data.x = cp  # per-vertex Cp field
+    data = Data(pos=pos, c=c, x=cp, face=faces)
+
     data.cd = torch.tensor([aero["CD"]], dtype=torch.float32)
-    data.force = torch.tensor([float("nan")], dtype=torch.float32)  # no absolute force
+    data.force = torch.tensor([float("nan")], dtype=torch.float32)
+
     geom_extent, geom_aspect, conditioning = compute_geom_conditioning(pos, v_inf)
     data.v_inf = torch.tensor([v_inf], dtype=torch.float32)
     data.geom_extent = geom_extent
@@ -96,7 +121,26 @@ def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
     data.conditioning = conditioning
     data.filename = case_name
 
-    torch.save(data, os.path.join(output_dir, f"{case_name}.pt"))
+    flow_conditions = {
+        "M_inf": float(aero.get("M_inf", float("nan"))),
+        "alt_kft": float(aero.get("alt_kft", float("nan"))),
+        "Re": float(aero.get("Re", float("nan"))),
+        "alpha_deg": float(aero.get("alpha_deg", float("nan"))),
+        "beta_deg": float(aero.get("beta_deg", float("nan"))),
+    }
+    apply_canonical_contract(
+        data,
+        source_dataset="blended_wing",
+        source_case_id=case_name,
+        filename=case_name,
+        geom_name=str(aero.get("geom_name", "")),
+        flow_conditions=flow_conditions,
+    )
+    validate_canonical_contract(data)
+
+    case_output_dir = os.path.join(output_dir, case_name)
+    os.makedirs(case_output_dir, exist_ok=True)
+    torch.save(data, os.path.join(case_output_dir, "data.pt"))
     return case_name
 
 
@@ -131,11 +175,18 @@ def process_blended_wing(vtk_dir=VTK_DIR, case_data_path=CASE_DATA, output_dir=O
     case_lookup = load_case_data(case_data_path)
     print(f"Loaded {len(case_lookup)} cases from case_data.dat")
 
-    vtk_files = sorted(glob.glob(os.path.join(vtk_dir, "case_*.vtk")))
-    print(f"Found {len(vtk_files)} VTK files. Processing with {num_workers} workers...")
+    vtk_files = [os.path.join(vtk_dir, f"{case_name}.vtk") for case_name in case_lookup]
+    missing_vtk = [os.path.basename(vtk_file).replace(".vtk", "") for vtk_file in vtk_files if not os.path.exists(vtk_file)]
+    vtk_files = [vtk_file for vtk_file in vtk_files if os.path.exists(vtk_file)]
+
+    print(f"Found {len(vtk_files)} VTK files listed in case_data.dat. Processing with {num_workers} workers...")
+    if missing_vtk:
+        print(f"  Warning: {len(missing_vtk)} cases from case_data.dat have no matching VTK file and will be skipped.")
 
     # Skip already-processed files (safe to resume after crash)
-    vtk_todo = [f for f in vtk_files if not os.path.exists(os.path.join(output_dir, os.path.basename(f).replace(".vtk", ".pt")))]
+    vtk_todo = [
+        f for f in vtk_files if not os.path.exists(os.path.join(output_dir, os.path.basename(f).replace(".vtk", ""), "data.pt"))
+    ]
     print(f"  Skipping {len(vtk_files) - len(vtk_todo)} already-processed, {len(vtk_todo)} remaining.")
 
     order_list = []
@@ -163,22 +214,45 @@ def process_blended_wing(vtk_dir=VTK_DIR, case_data_path=CASE_DATA, output_dir=O
                 finally:
                     # Check if the .pt was written (success) vs not (corrupt/crash)
                     case_name = os.path.basename(f).replace(".vtk", "")
-                    if not os.path.exists(os.path.join(output_dir, f"{case_name}.pt")):
+                    if not os.path.exists(os.path.join(output_dir, case_name, "data.pt")):
                         skipped_corrupt += 1
                         print(f"\n  Skipping corrupt file: {os.path.basename(f)}")
                 pbar.update(1)
 
     pbar.close()
 
-    # Build order_.txt from everything in the output dir
-    all_pt = sorted(os.path.basename(f).replace(".pt", "") for f in glob.glob(os.path.join(output_dir, "case_*.pt")))
+    order_path = os.path.join(output_dir, "order_.txt")
+    existing_order = []
+    if os.path.exists(order_path):
+        with open(order_path) as f:
+            existing_order = [line.strip() for line in f if line.strip()]
 
-    with open(os.path.join(output_dir, "order_.txt"), "w") as f:
+    current_order = [case_name for case_name in case_lookup if os.path.exists(os.path.join(output_dir, case_name, "data.pt"))]
+    all_pt = existing_order[:]
+    seen = set(existing_order)
+    for case_name in current_order:
+        if case_name not in seen:
+            all_pt.append(case_name)
+            seen.add(case_name)
+
+    with open(order_path, "w") as f:
         f.writelines(f"{name}\n" for name in all_pt)
 
     print(f"\nThis run:  {len(order_list)} processed, {skipped_corrupt} corrupt/skipped.")
     print(f"Total in output dir: {len(all_pt)} cases.")
     print(f"Saved to: {output_dir}")
+
+    write_dataset_manifest(
+        output_dir=output_dir,
+        dataset_name="blended_wing",
+        processed_count=len(all_pt),
+        total_candidates=len(vtk_files),
+        failed_count=max(0, len(vtk_files) - len(all_pt)),
+        contract_version=PREPROCESS_CONTRACT_VERSION,
+        source_root=vtk_dir,
+    )
+
+    return all_pt
 
 
 if __name__ == "__main__":

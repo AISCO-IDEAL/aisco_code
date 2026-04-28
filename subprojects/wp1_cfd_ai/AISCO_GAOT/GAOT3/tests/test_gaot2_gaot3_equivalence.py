@@ -26,7 +26,9 @@ DEFAULT_GAOT2_CONFIG = Path("subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT2/config/main
 DEFAULT_GAOT3_CONFIG = Path("subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml")
 DEFAULT_LOG_DIR = Path(tempfile.gettempdir()) / "gaot2_gaot3_main_equivalence"
 EQUIVALENCE_EPOCHS = 3
+EQUIVALENCE_SUBSAMPLE_NODES = 50000
 EQUIVALENCE_SUBSAMPLING_SEED = 42
+EQUIVALENCE_NUM_WORKERS = 0
 INFERENCE_ATOL = 1e-6
 INFERENCE_RTOL = 1e-6
 
@@ -60,6 +62,8 @@ def _env_for(version_dir: Path) -> dict[str, str]:
     env["PYTHONPATH"] = os.pathsep.join(pythonpath)
     env.setdefault("PYTHONUNBUFFERED", "1")
     env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+    env.setdefault("PYTHONHASHSEED", "0")
+    env.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     env.setdefault("WANDB_DISABLED", "true")
     return env
 
@@ -79,8 +83,8 @@ def _repo_relative(path: Path) -> Path:
     return path
 
 
-def _write_equivalence_config(version: str, source_config: Path, log_dir: Path) -> Path:
-    """Write a temporary config with deterministic subsampling and short training."""
+def _write_equivalence_config(version: str, source_config: Path, log_dir: Path) -> Path:  # noqa: PLR0915
+    """Write a temporary config with deterministic node subsampling and short training."""
     source_config = _repo_path(source_config).resolve()
     with source_config.open(encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
@@ -90,8 +94,33 @@ def _write_equivalence_config(version: str, source_config: Path, log_dir: Path) 
     dataset = cfg.setdefault("dataset", {})
     if not isinstance(dataset, dict):
         raise TypeError(f"Expected dataset mapping in {source_config}")
+    dataset["subsample_nodes"] = EQUIVALENCE_SUBSAMPLE_NODES
+    dataset["subsample_strategy"] = "random"
     dataset["deterministic_subsampling"] = True
     dataset["subsampling_seed"] = EQUIVALENCE_SUBSAMPLING_SEED
+    dataset["shuffle"] = False
+    dataset["num_workers"] = EQUIVALENCE_NUM_WORKERS
+    dataset["num_viz_samples"] = 0
+
+    model = cfg.setdefault("model", {})
+    if not isinstance(model, dict):
+        raise TypeError(f"Expected model mapping in {source_config}")
+    model_args = model.setdefault("args", {})
+    if not isinstance(model_args, dict):
+        raise TypeError(f"Expected model.args mapping in {source_config}")
+    magno = model_args.setdefault("magno", {})
+    if not isinstance(magno, dict):
+        raise TypeError(f"Expected model.args.magno mapping in {source_config}")
+    magno["decoder_sampling_strategy"] = None
+    magno["decoder_sample_ratio"] = None
+
+    transformer = model_args.setdefault("transformer", {})
+    if not isinstance(transformer, dict):
+        raise TypeError(f"Expected model.args.transformer mapping in {source_config}")
+    attn_config = transformer.setdefault("attn_config", {})
+    if not isinstance(attn_config, dict):
+        raise TypeError(f"Expected model.args.transformer.attn_config mapping in {source_config}")
+    attn_config["atten_dropout"] = 0.0
 
     optimizer = cfg.setdefault("optimizer", {})
     if not isinstance(optimizer, dict):
@@ -275,8 +304,15 @@ def run_gaot_main_equivalence(
 
     print(
         "\nEquivalence overrides: "
+        f"dataset.subsample_nodes={EQUIVALENCE_SUBSAMPLE_NODES}, "
+        f"dataset.subsample_strategy=random, "
         f"dataset.deterministic_subsampling=True, "
         f"dataset.subsampling_seed={EQUIVALENCE_SUBSAMPLING_SEED}, "
+        f"dataset.shuffle=False, "
+        f"dataset.num_workers={EQUIVALENCE_NUM_WORKERS}, "
+        f"dataset.num_viz_samples=0, "
+        f"model.args.magno.decoder_sampling_strategy=None, "
+        f"model.args.transformer.attn_config.atten_dropout=0.0, "
         f"optimizer.args.epoch={EQUIVALENCE_EPOCHS}"
     )
 
