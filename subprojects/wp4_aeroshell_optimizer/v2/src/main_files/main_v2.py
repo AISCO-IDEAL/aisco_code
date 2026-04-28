@@ -46,6 +46,52 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Vi
 configure_headless_pyvista()
 
 
+def _maybe_run_latent_pretraining(
+    model: Any,
+    general_config: dict[str, Any],
+    device: str,
+    *,
+    use_wandb: bool = False,
+) -> tuple[Any, "torch.Tensor | None"]:
+    """Run latent-population pretraining if configured and model supports it.
+
+    Reads ``general_config["active_configs"]["latent_pretraining"]``.  When the
+    value is an empty string (the default), pretraining is skipped and ``None``
+    is returned as Z.  When a config filename is provided and the model does not
+    implement ``SupportsLatentConcat``, a warning is printed and ``None`` is
+    returned.
+
+    Args:
+        model: The SDF model (any type).
+        general_config: Loaded general_config.yaml dict.
+        device: Runtime device string.
+        use_wandb: Whether W&B is initialised for the current run.  When
+            ``True``, pretraining metrics are logged to the active W&B run.
+
+    Returns:
+        Tuple ``(model, Z_pretrained)`` where ``Z_pretrained`` is the pretrained
+        latent population tensor or ``None`` if pretraining was skipped.
+    """
+    latent_cfg_name: str = general_config.get("active_configs", {}).get("latent_pretraining", "")
+    if not latent_cfg_name:
+        return model, None
+
+    if not isinstance(model, SupportsLatentConcat):
+        print(
+            f"WARNING: latent_pretraining='{latent_cfg_name}' is configured but model "
+            f"{type(model).__name__} does not implement SupportsLatentConcat. "
+            "Skipping latent pretraining."
+        )
+        return model, None
+
+    from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import pretraining_latent  # noqa: PLC0415
+    from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config  # noqa: PLC0415
+
+    latent_config = _load_config(v="v2", cfg_name=latent_cfg_name)
+    model, Z_pretrained = pretraining_latent(model, latent_config, device, use_wandb=use_wandb, vis_sampling=False)
+    return model, Z_pretrained
+
+
 def main() -> None:  # noqa: PLR0912, PLR0915
     print("Starting Main file V2...")
 
@@ -195,6 +241,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     if verbose:
         print(f"Pretraining complete for model: {model_class_name} with Parent class: {parent_class_name}")
         print(f"Detailed settings: {[f'{key}: {value}' for key, value in settings.items()]}")
+
+    # 3c. Latent-population pretraining (Mode C warm-up).
+    # Only runs when active_configs.latent_pretraining is set to a non-empty config filename.
+    model, Z_pretrained = _maybe_run_latent_pretraining(model, general_config, device, use_wandb=use_wandb)
 
     # 4. Initialise whatever we need to run the main training loop, e.g. trainer, loss function, etc.
 
@@ -353,6 +403,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             diversity_neighbor_agg_fn=ginn_config.get("diversity_neighbor_agg_fn", "min"),
             force_z0_to_origin=ginn_config.get("force_z0_to_origin", True),
             z_resample_cadence=ginn_config.get("z_resample_cadence", 0),
+            initial_Z=Z_pretrained,
+            z_resample_start_epoch=ginn_config.get("z_resample_start_epoch", 0),
             mesh_extractor=mesh_extractor,
             mesh_extraction_config=mesh_extraction_config,
             renderer_manager=renderer_manager,

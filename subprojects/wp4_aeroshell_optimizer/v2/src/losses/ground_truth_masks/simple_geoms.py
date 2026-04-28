@@ -33,11 +33,12 @@ def sphere_gt(
     Generate signed distance ground truth values for a sphere centered at the coordinates.
     Args:
         points: Input coordinates of shape (batch_size, 3)
+        coordinates: Center of the sphere [x, y, z]
         radius: Radius of the sphere
     """
 
     coordinates = coordinates.to(points.device)
-    return torch.norm(points, dim=-1) - radius
+    return torch.norm(points - coordinates, dim=-1) - radius
 
 
 def cube_gt(

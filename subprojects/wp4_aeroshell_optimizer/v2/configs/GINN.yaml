@@ -4,7 +4,7 @@ population_size: 4
 # Points are used for cheap WIRE-only forward passes (no CFD/raytracing).
 # With 20 GB VRAM this can be set high; 2048 is a conservative default.
 diversity_num_points: 4096
-diversity_bbox_size: 10.0        # [meters^3]: matches get_points_params.bbox_size in losses_v0_config.yaml
+diversity_bbox_size: 5800.0       # [mm]: car-length dimension; outer_prism longest axis (X: 5800mm).
 diversity_norm_order: 2          # p for L^p field distance
 diversity_neighbor_agg_fn: "min" # 'min' = maximize nearest-neighbour distance (GINN paper Eq. 26)
 
@@ -12,4 +12,9 @@ diversity_neighbor_agg_fn: "min" # 'min' = maximize nearest-neighbour distance (
 force_z0_to_origin: true         # true keeps first latent vector fixed at origin
 
 # Latent resampling behaviour
+# Mode A: z_resample_cadence=0                    → never resample (fixed population)
+# Mode B: z_resample_cadence>0, z_resample_start_epoch=0  → resample from epoch 0
+# Mode C: z_resample_cadence>0, z_resample_start_epoch>0  → hold pretrained Z for
+#          z_resample_start_epoch epochs, then resample every z_resample_cadence epochs
 z_resample_cadence: 1            # 0 disables resampling, N>0 resamples every N epochs
+z_resample_start_epoch: 0        # 0 = Mode B (resample from epoch 1); N>0 = Mode C warm-up
