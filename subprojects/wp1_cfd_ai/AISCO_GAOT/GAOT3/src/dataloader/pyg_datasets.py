@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import os
 from collections import Counter
 from collections.abc import Callable
@@ -333,14 +334,25 @@ class VTKMeshDataset(Dataset):
         if duplicate_names:
             raise ValueError(f"Handpicked validation list contains duplicate sample names: {duplicate_names}")
 
+        logger = logging.getLogger(__name__)
         missing_names = sorted(name for name in validation_names if name not in order_name_to_index)
         if missing_names:
-            raise ValueError(f"Handpicked validation samples are not present in order_file: {missing_names}")
+            logger.warning("Skipping handpicked validation samples not present in order_file: %s", missing_names)
 
-        if len(validation_names) < val_size:
-            raise ValueError(
-                f"Handpicked validation list contains fewer samples than val_size: {len(validation_names)} < {val_size}"
-            )
+        validation_names = [name for name in validation_names if name in order_name_to_index]
+        missing_files = sorted(
+            name
+            for name in validation_names
+            if not self._processed_sample_exists(all_filenames[order_name_to_index[name]])
+        )
+        if missing_files:
+            logger.warning("Skipping handpicked validation samples with missing processed files: %s", missing_files)
+
+        validation_names = [
+            name
+            for name in validation_names
+            if self._processed_sample_exists(all_filenames[order_name_to_index[name]])
+        ]
 
         candidate_indices = np.array([order_name_to_index[name] for name in validation_names], dtype=int)
         candidate_order = np.arange(len(candidate_indices))
@@ -357,8 +369,30 @@ class VTKMeshDataset(Dataset):
         if self.dataset_config.get("rand_dataset", False):
             rng = np.random.default_rng(seed=42)
             rng.shuffle(all_indices)
+        all_indices = np.array(
+            [index for index in all_indices if self._processed_sample_exists(all_filenames[index])],
+            dtype=int,
+        )
         val_index_set = set(val_indices)
         remaining_indices = np.array([index for index in all_indices if index not in val_index_set], dtype=int)
+
+        if len(val_indices) < val_size:
+            fill_count = val_size - len(val_indices)
+            if fill_count > len(remaining_indices):
+                raise ValueError(
+                    "Not enough available samples to fill handpicked validation split: "
+                    f"need {fill_count}, have {len(remaining_indices)}"
+                )
+            logger.warning(
+                "Handpicked validation list has only %s usable samples for val_size=%s; "
+                "filling the remaining %s from available non-handpicked samples.",
+                len(val_indices),
+                val_size,
+                fill_count,
+            )
+            val_indices = np.concatenate([val_indices, remaining_indices[:fill_count]])
+            val_index_set = set(val_indices)
+            remaining_indices = np.array([index for index in all_indices if index not in val_index_set], dtype=int)
 
         if train_size + test_size > len(remaining_indices):
             raise ValueError(
@@ -404,6 +438,12 @@ class VTKMeshDataset(Dataset):
     @staticmethod
     def _normalize_sample_name(name: str) -> str:
         return name.strip().removesuffix(".pt")
+
+    def _processed_sample_exists(self, name: str) -> bool:
+        sample_name = self._normalize_sample_name(name)
+        direct_path = os.path.join(self.processed_dir, f"{sample_name}.pt")
+        nested_path = os.path.join(self.processed_dir, sample_name, "data.pt")
+        return os.path.isfile(direct_path) or os.path.isfile(nested_path)
 
     def len(self):
         return len(self.split_filenames)
