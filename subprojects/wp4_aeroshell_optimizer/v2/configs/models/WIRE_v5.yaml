@@ -47,7 +47,7 @@ hidden_scale_min: 1.1743072337647469
 
 train_omega: False
 train_scale: False
-use_spectral_norm: False # Not recommended
+use_spectral_norm: True
 use_smooth_output: True
 
 # Geometry-aware normalisation (backward-compatible default = /1000 from V4)
