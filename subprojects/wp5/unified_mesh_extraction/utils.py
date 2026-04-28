@@ -46,11 +46,11 @@ class MeshExtractionConfig:
 
     device: str
     isovalue: float
-    bbox: list[list[float]]
     base_resolution: int
     subdivision_factor: int
     max_refine_levels: int
     batch_size: int
+    bbox: list[list[float]] | None = None
     target_num_vertices: int | None = None
     vertex_count_tolerance: float = 0.1
 
@@ -76,11 +76,11 @@ def load_mesh_extraction_config(config_path: Path | None = None) -> MeshExtracti
     return MeshExtractionConfig(
         device=str(p.get("device", "cuda")),
         isovalue=float(p.get("isovalue", 0.0)),
-        bbox=_normalise_bbox(p["bbox"]),
         base_resolution=int(p["base_resolution"]),
         subdivision_factor=int(p.get("subdivision_factor", 2)),
         max_refine_levels=int(p.get("max_refine_levels", 0)),
         batch_size=int(p.get("batch_size", 65536)),
+        bbox=_normalise_bbox(p["bbox"]) if "bbox" in p else None,
         target_num_vertices=int(p["target_num_vertices"]) if p.get("target_num_vertices") is not None else None,
         vertex_count_tolerance=float(p.get("vertex_count_tolerance", 0.1)),
     )

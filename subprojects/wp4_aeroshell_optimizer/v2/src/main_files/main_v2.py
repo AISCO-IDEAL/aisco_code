@@ -9,12 +9,12 @@ from typing import Any
 import torch
 
 import wandb
-from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
 from subprojects.wp4_aeroshell_optimizer.v2.scripts.postprocess_gradient_conflict import build_conflict_gif
 from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import DiversityTrainer
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
+from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import pretraining_latent
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat, SupportsOptimise
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
@@ -23,6 +23,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     load_config,
     register_all_configs,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import DebugManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
@@ -83,9 +84,6 @@ def _maybe_run_latent_pretraining(
             "Skipping latent pretraining."
         )
         return model, None
-
-    from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import pretraining_latent  # noqa: PLC0415
-    from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config  # noqa: PLC0415
 
     latent_config = _load_config(v="v2", cfg_name=latent_cfg_name)
     model, Z_pretrained = pretraining_latent(model, latent_config, device, use_wandb=use_wandb, vis_sampling=False)
@@ -349,22 +347,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 configured_constraint_categories=configured_constraint_categories,
             )
 
-        # Mesh extractor + optional renderer (only used if rendering_freq is set)
-        renderer_cfg = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")
-        mesh_extraction_config: dict[str, Any] = renderer_cfg.get("mesh_extraction", {})
-        mesh_extractor_device = mesh_extraction_config.get("device", str(device))
-        if str(mesh_extractor_device).startswith("cuda") and not torch.cuda.is_available():
-            print(f"Configured mesh extractor device '{mesh_extractor_device}' unavailable. Falling back to CPU.")
-            mesh_extractor_device = "cpu"
-        mesh_extractor = MeshExtractor(
-            algorithm=mesh_extraction_config.get("algorithm", "mc"),
-            device=mesh_extractor_device,
-            verbose=mesh_extraction_config.get("verbose", False),
-        )
-        mesh_extractor.set_grid(
-            bbox=mesh_extraction_config.get("bbox", [[-5000, 5000], [-5000, 5000], [-5000, 5000]]),
-            resolution=mesh_extraction_config.get("resolution", 128),
-        )
         renderer_manager = VisualisationManager(verbose=verbose, output_dir=rendering_dir)
 
         # GINN / diversity config — absent or uses_diversity=False collapses to single-model mode
@@ -398,17 +380,15 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             model_lr=learning_rate,
             diversity_manager=diversity_loss_manager,
             diversity_num_points=ginn_config.get("diversity_num_points", 2048),
-            diversity_bbox_size=ginn_config.get("diversity_bbox_size", 10.0),
             diversity_norm_order=ginn_config.get("diversity_norm_order", 2),
             diversity_neighbor_agg_fn=ginn_config.get("diversity_neighbor_agg_fn", "min"),
             force_z0_to_origin=ginn_config.get("force_z0_to_origin", True),
             z_resample_cadence=ginn_config.get("z_resample_cadence", 0),
             initial_Z=Z_pretrained,
             z_resample_start_epoch=ginn_config.get("z_resample_start_epoch", 0),
-            mesh_extractor=mesh_extractor,
-            mesh_extraction_config=mesh_extraction_config,
             renderer_manager=renderer_manager,
             rendering_freq=wandb_cfg.get("rendering_frequency"),
+            diversity_bbox_scale_factor=ginn_config.get("bbox_scale_factor", 1.0),
             use_neural_renderer=wandb_cfg.get("use_neural_renderer", False),
             use_wandb=use_wandb,
             log_dir=rendering_dir,
