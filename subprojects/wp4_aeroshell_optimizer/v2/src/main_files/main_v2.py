@@ -2,6 +2,7 @@
 This should be the final main file we use for the Project. It should be modular and easily extendible
 """
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import Di
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
+from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import pretraining_latent
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat, SupportsOptimise
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
@@ -23,7 +25,9 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     load_config,
     register_all_configs,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import DebugManager
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is_local_machine
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
@@ -84,10 +88,12 @@ def _maybe_run_latent_pretraining(
         )
         return model, None
 
-    from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import pretraining_latent  # noqa: PLC0415
-    from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config  # noqa: PLC0415
 
-    latent_config = _load_config(v="v2", cfg_name=latent_cfg_name)
+    # Resolve ${LATENT_DATA_ROOT} via JSON round-trip: ~/beast_logs locally, cluster path otherwise.
+    root = str(Path.home() / "beast_logs") if is_local_machine() else "/cluster/work/fuge/AISCO/latent_pretraining"
+    raw = json.dumps(_load_config(v="v2", cfg_name=latent_cfg_name))
+    latent_config = json.loads(raw.replace("${LATENT_DATA_ROOT}", root))
+
     model, Z_pretrained = pretraining_latent(model, latent_config, device, use_wandb=use_wandb, vis_sampling=False)
     return model, Z_pretrained
 
