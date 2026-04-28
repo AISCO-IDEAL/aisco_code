@@ -23,7 +23,7 @@ EXPECTED_DATA_SHAPE_DIMS = 3
 def _make_generator(seed: int | None = None) -> torch.Generator:
     gen = torch.Generator()
     if seed is None:
-        seed = torch.initial_seed()
+        seed = int.from_bytes(os.urandom(8), "big")
     gen.manual_seed(seed)
     return gen
 
@@ -37,8 +37,8 @@ def _stable_seed(*parts: object) -> int:
 def _subsample_random(pos: torch.Tensor, n_target: int, seed: int | None = None) -> torch.Tensor:
     """Random uniform subsampling (original behaviour).
 
-    Uses an independent RNG derived from either the supplied seed or
-    ``torch.initial_seed``.
+    Uses an independent RNG so results vary across epochs even when
+    DataLoader workers are re-seeded with the same ``torch.manual_seed``.
     """
     _gen = _make_generator(seed)
     return torch.randperm(pos.shape[0], generator=_gen)[:n_target]
@@ -57,8 +57,9 @@ def _subsample_voxel(pos: torch.Tensor, n_target: int, seed: int | None = None, 
     reduces the pairwise overlap between epochs from ~60% to ~47% while
     preserving full spatial coverage (no region is ever unrepresented).
 
-    Uses an independent RNG derived from either the supplied seed or
-    ``torch.initial_seed``.
+    Uses an independent RNG (seeded from ``os.urandom``) so that results
+    vary across epochs even when DataLoader workers are re-seeded with the
+    same ``torch.manual_seed``.
     """
     # Independent generator — NOT affected by torch.manual_seed()
     _gen = _make_generator(seed)
@@ -164,7 +165,9 @@ def _subsample_poisson_disk(pos: torch.Tensor, n_target: int, seed: int | None =
     # Poisson disk at radius r we keep n * (median_nn / r)^2 points
     r_est = median_nn * (n / n_target) ** 0.5
 
-    rng_seed = seed if seed is not None else torch.initial_seed()
+    # Use os.urandom so the shuffle varies across epochs even when
+    # DataLoader workers are re-seeded with the same torch.manual_seed.
+    rng_seed = seed if seed is not None else int.from_bytes(os.urandom(8), "big")
     rng = np.random.default_rng(rng_seed)
 
     def _run(r: float) -> np.ndarray:
