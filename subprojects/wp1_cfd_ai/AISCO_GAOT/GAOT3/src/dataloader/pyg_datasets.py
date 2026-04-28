@@ -318,6 +318,7 @@ class VTKMeshDataset(Dataset):
         try:
             # Note: weights_only=False is used because Data objects contain custom attributes
             data = torch.load(filepath, weights_only=False)
+            data.filename = self.split_filenames[idx]
             num_nodes = data.pos.shape[0]
 
             # --- SCHEMA STANDARDIZATION ---
@@ -336,6 +337,21 @@ class VTKMeshDataset(Dataset):
             if not hasattr(data, "n_surface_faces"):
                 # We use -1 or 0 to indicate it's missing/not applicable
                 data.n_surface_faces = 0
+
+            # Drop all string/dict metadata attributes that PyG cannot batch as tensors.
+            for _str_attr in (
+                "source_dataset",
+                "source_case_id",
+                "geom_name",
+                "preprocess_version",
+                "cd_mean50",
+                "cd_std50",
+                "converged",
+                "final_residuals",
+                "flow_conditions",
+            ):
+                if hasattr(data, _str_attr):
+                    delattr(data, _str_attr)
 
             # Drop raw pressure field if requested (model usually trains on Cp)
             if self.drop_pressure and hasattr(data, "pressure"):

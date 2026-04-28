@@ -6,6 +6,7 @@ import contextlib
 import logging
 import os
 import random
+import re
 import tempfile
 
 import matplotlib.pyplot as plt
@@ -77,15 +78,102 @@ class ValidationCalculator:
         if num_viz <= 0:
             return
         if not hasattr(trainer, "_viz_train_samples"):
-            trainer._viz_train_samples, trainer._viz_val_samples = self._pick_viz_samples(trainer)
+            per_dataset = trainer.dataset_config.get("viz_per_dataset", True)
+            if per_dataset:
+                (
+                    trainer._viz_train_samples,
+                    trainer._viz_train_suffixes,
+                    trainer._viz_val_samples,
+                    trainer._viz_val_suffixes,
+                ) = self._pick_prefix_viz_samples(trainer, num_viz)
+            else:
+                train_s, val_s = self._pick_viz_samples(trainer)
+                trainer._viz_train_samples = train_s
+                trainer._viz_train_suffixes = [f"_{i + 1}" for i in range(len(train_s))]
+                trainer._viz_val_samples = val_s
+                trainer._viz_val_suffixes = [f"_{i + 1}" for i in range(len(val_s))]
 
         trainer.model.eval()
-        for samples, label in [(trainer._viz_train_samples, "train"), (trainer._viz_val_samples, "val")]:
-            for index, sample in enumerate(samples):
+        splits = [
+            (trainer._viz_train_samples, trainer._viz_train_suffixes, "train"),
+            (trainer._viz_val_samples, trainer._viz_val_suffixes, "val"),
+        ]
+        for samples, suffixes, label in splits:
+            for sample, key_suffix in zip(samples, suffixes, strict=False):
                 try:
-                    self._run_viz_for_sample(trainer, sample, label, epoch, sample_index=index)
+                    self._run_viz_for_sample(trainer, sample, label, epoch, key_suffix=key_suffix)
                 except Exception:
-                    logging.getLogger(__name__).exception(f"Viz failed for {label} sample {index} (epoch {epoch + 1}):")
+                    logging.getLogger(__name__).exception(f"Viz failed for {label}{key_suffix} (epoch {epoch + 1}):")
+
+    def _pick_prefix_viz_samples(self, trainer, n: int):
+        """Select N samples per distinct dataset prefix for train and val splits.
+
+        Filenames are expected to follow ``sample_YXXXXX.pt`` where ``Y`` is the
+        dataset prefix and ``XXXXX`` is a per-dataset case id.
+
+        Returns (train_samples, train_suffixes, val_samples, val_suffixes) where
+        suffixes are W&B key suffixes like ``_1`` (n=1) or ``_1_1``, ``_1_2`` (n>1).
+        """
+        train_samples, train_meta = self._pick_distinct_prefix_samples(trainer.train_loader.dataset, n)
+        val_samples, val_meta = self._pick_distinct_prefix_samples(trainer.val_loader.dataset, n)
+
+        log = logging.getLogger(__name__)
+        if train_meta:
+            train_desc = ", ".join(f"{p}[{i}]:{idx}({name})" for p, i, idx, name in train_meta)
+            log.info(f"Rank {trainer.setup_config['rank']}: Viz train prefixes — [{train_desc}]")
+        if val_meta:
+            val_desc = ", ".join(f"{p}[{i}]:{idx}({name})" for p, i, idx, name in val_meta)
+            log.info(f"Rank {trainer.setup_config['rank']}: Viz val prefixes — [{val_desc}]")
+
+        def _suffix(prefix: str, i: int) -> str:
+            return f"_{prefix}" if n == 1 else f"_{prefix}_{i}"
+
+        if train_samples or val_samples:
+            train_suffixes = [_suffix(p, i) for p, i, _, _ in train_meta]
+            val_suffixes = [_suffix(p, i) for p, i, _, _ in val_meta]
+            return train_samples, train_suffixes, val_samples, val_suffixes
+
+        # Fallback for datasets without parseable sample names.
+        log.warning("Could not infer dataset prefixes from filenames; falling back to random viz samples.")
+        train_s, val_s = self._pick_viz_samples(trainer)
+        return train_s, [f"_{i + 1}" for i in range(len(train_s))], val_s, [f"_{i + 1}" for i in range(len(val_s))]
+
+    def _pick_distinct_prefix_samples(self, dataset, n: int):
+        """Return up to N samples per distinct filename prefix in deterministic prefix order.
+
+        Returns (samples, meta) where meta is a list of (prefix, sample_index_within_prefix, dataset_idx, filename).
+        """
+        prefix_to_rows: dict[str, list[tuple[int, str]]] = {}
+
+        split_filenames = getattr(dataset, "split_filenames", None)
+        if split_filenames is not None:
+            iterable: list[tuple[int, str]] = list(enumerate(split_filenames))
+        else:
+            iterable = [(idx, getattr(dataset[idx], "filename", "")) for idx in range(len(dataset))]
+
+        for idx, filename in iterable:
+            prefix = self._dataset_prefix_from_filename(filename)
+            if prefix is None:
+                continue
+            prefix_to_rows.setdefault(prefix, []).append((idx, str(filename)))
+
+        samples = []
+        meta: list[tuple[str, int, int, str]] = []  # (prefix, sample_i, dataset_idx, filename)
+        for prefix, rows in sorted(prefix_to_rows.items(), key=lambda item: int(item[0])):
+            for sample_i, (idx, name) in enumerate(rows[:n], start=1):
+                samples.append(dataset[idx])
+                meta.append((prefix, sample_i, idx, name))
+        return samples, meta
+
+    def _dataset_prefix_from_filename(self, filename: str | os.PathLike[str] | None) -> str | None:
+        if filename is None:
+            return None
+        name = os.path.basename(str(filename))
+        name = name.removesuffix(".pt")
+        match = re.fullmatch(r"sample_(\d+)(\d{5})", name)
+        if not match:
+            return None
+        return match.group(1)
 
     def _pick_viz_samples(self, trainer):
         """Randomly select N samples from train and N from val for per-epoch visualisation."""
@@ -110,7 +198,7 @@ class ValidationCalculator:
         )
         return train_samples, val_samples
 
-    def _run_viz_for_sample(self, trainer, sample, split_label: str, epoch: int, sample_index: int = 0) -> None:  # noqa: PLR0912, PLR0915
+    def _run_viz_for_sample(self, trainer, sample, split_label: str, epoch: int, key_suffix: str = "_1") -> None:  # noqa: PLR0912, PLR0915
         """Run inference on a single sample and log field + scalar + integrated-drag images to W&B."""
         loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
         batch = next(iter(loader)).to(trainer.device)
@@ -120,7 +208,7 @@ class ValidationCalculator:
         coords_tensor = batch.pos_raw if hasattr(batch, "pos_raw") else batch.pos
         coords = coords_tensor.cpu().numpy()
         fname = getattr(sample, "filename", split_label)
-        suffix = f"_{sample_index}" if sample_index > 0 else ""
+        suffix = key_suffix
 
         if isinstance(pred, dict) and "field" in pred:
             field_pred = pred["field"].cpu().numpy().squeeze()
