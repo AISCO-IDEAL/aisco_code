@@ -92,22 +92,6 @@ export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:${PYTHONPATH:-
 cd /cluster/home/$USERNAME/AISCO_code/
 ts "Checkpoint: changed directory to $(pwd)"
 
-ts "Checkpoint: starting import preflight (60s timeout)"
-if timeout 60s "$PYTHON_BIN" -u - <<'PY'
-print('preflight: interpreter ok', flush=True)
-import torch
-print(f'preflight: torch {torch.__version__}', flush=True)
-import subprojects.wp4_aeroshell_optimizer.v2.src.main_files.main_v2 as _m
-print('preflight: main_v2 import ok', flush=True)
-PY
-then
-    ts "Checkpoint: import preflight passed"
-else
-    rc=$?
-    ts "ERROR: import preflight failed or timed out (rc=$rc)"
-    exit "$rc"
-fi
-
 
 #python -m src.main
 

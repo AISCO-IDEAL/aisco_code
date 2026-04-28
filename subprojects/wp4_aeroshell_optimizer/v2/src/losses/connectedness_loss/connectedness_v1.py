@@ -22,7 +22,7 @@ class ConnectednessV1(ParentLoss):
             ) from exc
 
         connectedness_config: dict[str, Any] = self.losses_config.get("connectedness_config", {})
-        get_points_config: dict[str, Any] = self.losses_config.get("get_points_params", {})
+        domain_pts_config: dict[str, Any] = self.losses_config.get("domain_pts_sampling", {})
 
         self.grid_dim: int = int(connectedness_config.get("grid_dim", 3))
         self.grid_resolution: int = int(connectedness_config.get("grid_resolution", 40))
@@ -53,7 +53,7 @@ class ConnectednessV1(ParentLoss):
         if self.ph_smoothing_kernel % 2 == 0:
             self.ph_smoothing_kernel += 1
 
-        default_bbox_size: float = float(get_points_config.get("bbox_size", 10.0))
+        default_bbox_size: float = float(domain_pts_config.get("bbox_size", 10.0))
         default_bbox: list[list[float]] = [[-0.5 * default_bbox_size, 0.5 * default_bbox_size] for _ in range(self.grid_dim)]
         bbox: list[list[float]] = connectedness_config.get("bbox", default_bbox)
         if len(bbox) != self.grid_dim:

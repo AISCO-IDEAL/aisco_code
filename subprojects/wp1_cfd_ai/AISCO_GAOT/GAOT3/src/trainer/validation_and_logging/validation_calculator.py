@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+import random
 import tempfile
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from torch_geometric.loader import DataLoader as PyGDataLoader
 
 from src.model.gaot_3d import masked_multi_head_loss
 from src.utils.pressure_integration import cp_field_to_drag, cp_field_to_drag_pointcloud
+
+from ..utils.plot import plot_3d_comparison_matplotlib
 
 
 class ValidationCalculator:
@@ -66,21 +71,187 @@ class ValidationCalculator:
         return result
 
     def visualize_samples(self, trainer, epoch: int) -> None:
-        if trainer.setup_config["rank"] != 0 or trainer.dataset_config.get("num_viz_samples", 1) <= 0:
+        if trainer.setup_config["rank"] != 0:
             return
-        for split_label, loader in [
-            ("train", getattr(trainer, "train_loader", None)),
-            ("val", getattr(trainer, "val_loader", None)),
-        ]:
-            if loader is None:
-                continue
+        num_viz = trainer.dataset_config.get("num_viz_samples", 1)
+        if num_viz <= 0:
+            return
+        if not hasattr(trainer, "_viz_train_samples"):
+            trainer._viz_train_samples, trainer._viz_val_samples = self._pick_viz_samples(trainer)
+
+        trainer.model.eval()
+        for samples, label in [(trainer._viz_train_samples, "train"), (trainer._viz_val_samples, "val")]:
+            for index, sample in enumerate(samples):
+                try:
+                    self._run_viz_for_sample(trainer, sample, label, epoch, sample_index=index)
+                except Exception:
+                    logging.getLogger(__name__).exception(f"Viz failed for {label} sample {index} (epoch {epoch + 1}):")
+
+    def _pick_viz_samples(self, trainer):
+        """Randomly select N samples from train and N from val for per-epoch visualisation."""
+        n = trainer.dataset_config.get("num_viz_samples", 1)
+        if n <= 0:
+            return [], []
+        rng = random.Random(int.from_bytes(os.urandom(4), "big"))
+        train_size = len(trainer.train_loader.dataset)
+        val_size = len(trainer.val_loader.dataset)
+        train_indices = rng.sample(range(train_size), min(n, train_size))
+        val_indices = rng.sample(range(val_size), min(n, val_size))
+        train_samples = [trainer.train_loader.dataset[i] for i in train_indices]
+        val_samples = [trainer.val_loader.dataset[i] for i in val_indices]
+        names_train = ", ".join(
+            f"{i}({getattr(sample, 'filename', 'N/A')})" for i, sample in zip(train_indices, train_samples, strict=True)
+        )
+        names_val = ", ".join(
+            f"{i}({getattr(sample, 'filename', 'N/A')})" for i, sample in zip(val_indices, val_samples, strict=True)
+        )
+        logging.getLogger(__name__).info(
+            f"Rank {trainer.setup_config['rank']}: Viz samples — train[{names_train}], val[{names_val}]"
+        )
+        return train_samples, val_samples
+
+    def _run_viz_for_sample(self, trainer, sample, split_label: str, epoch: int, sample_index: int = 0) -> None:  # noqa: PLR0912, PLR0915
+        """Run inference on a single sample and log field + scalar + integrated-drag images to W&B."""
+        loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
+        batch = next(iter(loader)).to(trainer.device)
+        with torch.no_grad():
+            pred = trainer.model(batch=batch, tokens_pos=trainer.latent_tokens.to(trainer.device))
+
+        coords_tensor = batch.pos_raw if hasattr(batch, "pos_raw") else batch.pos
+        coords = coords_tensor.cpu().numpy()
+        fname = getattr(sample, "filename", split_label)
+        suffix = f"_{sample_index}" if sample_index > 0 else ""
+
+        if isinstance(pred, dict) and "field" in pred:
+            field_pred = pred["field"].cpu().numpy().squeeze()
+            field_gt = batch.x.cpu().numpy().squeeze() if batch.x is not None else None
+
+            if field_gt is not None:
+                with tempfile.NamedTemporaryFile(suffix=".png", prefix="pressure_field_", delete=False) as tmp_file:
+                    tmp_path = tmp_file.name
+                try:
+                    plot_3d_comparison_matplotlib(
+                        coords=coords,
+                        u_gtr=field_gt,
+                        u_prd=field_pred,
+                        save_path=tmp_path,
+                        variable_name="Pressure",
+                        point_size=2.0,
+                        cmap="jet",
+                        dpi=150,
+                        view_angle=(20, -120),
+                        hide_grid=False,
+                        equal_aspect=False,
+                        show_abs_diff=True,
+                        show_input_shape=False,
+                        use_ground_truth_range=False,
+                        fixed_clim_common=trainer._viz_fixed_clim_common,
+                        fixed_clim_diff=trainer._viz_fixed_clim_diff,
+                        fixed_axis_limits=trainer._viz_fixed_axis_limits,
+                    )
+                    trainer.tracker.log_image(
+                        f"viz/{split_label}/pressure_field{suffix}",
+                        tmp_path,
+                        step=epoch + 1,
+                        caption=f"Pressure Field [{split_label}] {fname} — Epoch {epoch + 1}",
+                    )
+                finally:
+                    with contextlib.suppress(OSError):
+                        os.remove(tmp_path)
+
+        if isinstance(pred, dict) and "field" in pred and hasattr(batch, "c") and batch.c is not None:
+            v_inf = trainer.dataset_config.get("v_inf", 25.0)
+            rho = trainer.dataset_config.get("rho", 1.225)
+            field_pred_t = pred["field"].cpu().float().squeeze()
+            pos_cpu = (
+                batch.pos_raw.cpu().float()
+                if hasattr(batch, "pos_raw") and batch.pos_raw is not None
+                else batch.pos.cpu().float()
+            )
+            normals_cpu = batch.c.cpu().float()
+
+            drag_pred_val = float("nan")
+            drag_gt_val = float("nan")
             try:
-                batch = next(iter(loader)).to(trainer.device)
-                with torch.no_grad():
-                    pred_normalized = trainer.model(batch=batch, tokens_pos=trainer.latent_tokens.to(trainer.device))
-                self._log_visual_batch(trainer, split_label, batch, pred_normalized, epoch)
-            except Exception as exc:
-                logging.getLogger(__name__).warning(f"Failed to visualize {split_label} samples at epoch {epoch + 1}: {exc}")
+                drag_pred_val = cp_field_to_drag_pointcloud(field_pred_t, normals_cpu, pos_cpu, v_inf=v_inf, rho=rho).item()
+            except Exception:
+                logging.getLogger(__name__).debug("Integrated drag (pred) failed", exc_info=True)
+
+            if batch.x is not None:
+                field_gt_t = batch.x.cpu().float().squeeze()
+                try:
+                    drag_gt_val = cp_field_to_drag_pointcloud(field_gt_t, normals_cpu, pos_cpu, v_inf=v_inf, rho=rho).item()
+                except Exception:
+                    logging.getLogger(__name__).debug("Integrated drag (GT) failed", exc_info=True)
+
+            drag_metrics = {}
+            if not np.isnan(drag_pred_val):
+                drag_metrics[f"viz/{split_label}/integrated_drag_pred{suffix}"] = drag_pred_val
+            if not np.isnan(drag_gt_val):
+                drag_metrics[f"viz/{split_label}/integrated_drag_gt{suffix}"] = drag_gt_val
+            if drag_metrics:
+                trainer.tracker.log_metrics(drag_metrics, step=epoch + 1)
+
+            if not np.isnan(drag_pred_val):
+                fig_drag, ax_drag = plt.subplots(figsize=(5, 4))
+                labels = []
+                values = []
+                colors = []
+                if not np.isnan(drag_gt_val):
+                    labels.append("GT")
+                    values.append(drag_gt_val)
+                    colors.append("steelblue")
+                labels.append("Pred")
+                values.append(drag_pred_val)
+                colors.append("coral")
+                ax_drag.bar(labels, values, color=colors)
+                ax_drag.set_ylabel("Drag Force [N]")
+                if not np.isnan(drag_gt_val):
+                    ax_drag.set_title(f"Integrated Drag  GT={drag_gt_val:.4f} N  Pred={drag_pred_val:.4f} N")
+                else:
+                    ax_drag.set_title(f"Integrated Drag  Pred={drag_pred_val:.4f} N")
+                fig_drag.suptitle(f"Integrated Pressure Drag [{split_label}] {fname} — Epoch {epoch + 1}", fontsize=11)
+                plt.tight_layout()
+                trainer.tracker.log_image(
+                    f"viz/{split_label}/integrated_drag{suffix}",
+                    fig_drag,
+                    step=epoch + 1,
+                    caption=f"{split_label} {fname} epoch {epoch + 1}",
+                )
+                plt.close(fig_drag)
+
+        if isinstance(pred, dict):
+            scalar_parts = []
+            for head in ["force", "cd"]:
+                if head in pred and hasattr(batch, head):
+                    pred_value = pred[head].cpu().item()
+                    gt_value = getattr(batch, head)
+                    if gt_value is not None and not torch.isnan(gt_value).all():
+                        target_value = gt_value.cpu().item()
+                        if hasattr(trainer, "per_head_stats") and head in trainer.per_head_stats:
+                            head_mean = trainer.per_head_stats[head]["mean"].item()
+                            head_std = trainer.per_head_stats[head]["std"].item()
+                            pred_value = pred_value * head_std + head_mean
+                            target_value = target_value * head_std + head_mean
+                        scalar_parts.append((head, target_value, pred_value))
+
+            if scalar_parts:
+                fig, axes = plt.subplots(1, len(scalar_parts), figsize=(5 * len(scalar_parts), 4))
+                if len(scalar_parts) == 1:
+                    axes = [axes]
+                for ax, (name, gt_value, pred_value) in zip(axes, scalar_parts, strict=False):
+                    ax.bar(["GT", "Pred"], [gt_value, pred_value], color=["steelblue", "coral"])
+                    ax.set_title(f"{name}  (GT={gt_value:.4f}, Pred={pred_value:.4f})")
+                    ax.set_ylabel(name)
+                fig.suptitle(f"Scalars [{split_label}] {fname} — Epoch {epoch + 1}", fontsize=13)
+                plt.tight_layout()
+                trainer.tracker.log_image(
+                    f"viz/{split_label}/scalar_predictions{suffix}",
+                    fig,
+                    step=epoch + 1,
+                    caption=f"{split_label} {fname} epoch {epoch + 1}",
+                )
+                plt.close(fig)
 
     def _batch_losses(self, trainer, batch, pred_normalized, mse_fn, head_losses):
         if isinstance(pred_normalized, dict):
@@ -144,91 +315,6 @@ class ValidationCalculator:
             if drag_pred is not None and drag_target is not None:
                 errors.append(abs(drag_pred - drag_target))
         return errors
-
-    def _log_visual_batch(self, trainer, split_label: str, batch, pred_normalized, epoch: int) -> None:
-        if not isinstance(pred_normalized, dict):
-            return
-        self._log_scalar_visuals(trainer, split_label, batch, pred_normalized, epoch)
-        if "field" not in pred_normalized or not hasattr(batch, "x") or batch.x is None:
-            return
-        pred_unnormalized = self._denormalize_field(trainer, pred_normalized["field"])
-        target_unnormalized = self._denormalize_field(trainer, batch.x.to(trainer.device))
-        max_samples = min(int(trainer.dataset_config.get("num_viz_samples", 1)), len(self._sample_ranges(batch)))
-        for sample_index, (start, end) in enumerate(self._sample_ranges(batch)[:max_samples]):
-            self._log_field_visual(
-                trainer, split_label, batch, target_unnormalized, pred_unnormalized, start, end, sample_index, epoch
-            )
-            drag_pred = self._integrate_sample(trainer, batch, pred_unnormalized, start, end)
-            drag_target = self._integrate_sample(trainer, batch, target_unnormalized, start, end)
-            metrics = {}
-            if drag_pred is not None:
-                metrics[f"viz/{split_label}/integrated_drag_pred_{sample_index}"] = drag_pred
-            if drag_target is not None:
-                metrics[f"viz/{split_label}/integrated_drag_gt_{sample_index}"] = drag_target
-            if drag_pred is not None and drag_target is not None:
-                metrics[f"viz/{split_label}/integrated_drag_abs_error_{sample_index}"] = abs(drag_pred - drag_target)
-            if metrics:
-                trainer.tracker.log_metrics(metrics, step=epoch + 1)
-
-    def _log_scalar_visuals(self, trainer, split_label: str, batch, pred_normalized, epoch: int) -> None:
-        metrics = {}
-        for head_name in ("force", "cd"):
-            if head_name not in pred_normalized or not hasattr(batch, head_name):
-                continue
-            target_normalized = getattr(batch, head_name)
-            if target_normalized is None:
-                continue
-            pred_unnormalized, target_unnormalized = self._denormalize_head(
-                trainer, head_name, pred_normalized[head_name], target_normalized.to(trainer.device)
-            )
-            valid = ~torch.isnan(target_unnormalized)
-            if valid.any():
-                diff = pred_unnormalized[valid] - target_unnormalized[valid]
-                metrics[f"viz/{split_label}/{head_name}_mae"] = torch.mean(torch.abs(diff)).item()
-                metrics[f"viz/{split_label}/{head_name}_mse"] = torch.mean(diff**2).item()
-        if metrics:
-            trainer.tracker.log_metrics(metrics, step=epoch + 1)
-
-    def _log_field_visual(
-        self,
-        trainer,
-        split_label: str,
-        batch,
-        target_unnormalized,
-        pred_unnormalized,
-        start: int,
-        end: int,
-        sample_index: int,
-        epoch: int,
-    ) -> None:
-        pos = batch.pos_raw[start:end] if hasattr(batch, "pos_raw") else batch.pos[start:end]
-        coords = pos.detach().cpu().numpy()
-        target_values = target_unnormalized[start:end].detach().cpu().numpy()
-        pred_values = pred_unnormalized[start:end].detach().cpu().numpy()
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as image_file:
-            image_path = image_file.name
-        try:
-            self._save_field_plot(coords, target_values, pred_values, image_path)
-            trainer.tracker.log_image(f"viz/{split_label}/field_{sample_index}", image_path, step=epoch + 1)
-        finally:
-            if os.path.exists(image_path):
-                os.remove(image_path)
-
-    def _save_field_plot(self, coords, target_values, pred_values, image_path: str) -> None:
-        target_values = np.asarray(target_values).squeeze()
-        pred_values = np.asarray(pred_values).squeeze()
-        diff_values = np.abs(pred_values - target_values)
-        fig = plt.figure(figsize=(12, 4))
-        for index, (title, values) in enumerate(
-            [("Ground Truth", target_values), ("Prediction", pred_values), ("Absolute Difference", diff_values)], start=1
-        ):
-            ax = fig.add_subplot(1, 3, index, projection="3d")
-            plot = ax.scatter(coords[:, 0], coords[:, 1], coords[:, 2], c=values, s=2, cmap="jet")
-            ax.set_title(title)
-            fig.colorbar(plot, ax=ax, shrink=0.6)
-        fig.tight_layout()
-        fig.savefig(image_path, dpi=200)
-        plt.close(fig)
 
     def _denormalize_field(self, trainer, value_normalized):
         u_mean = trainer.u_mean.to(value_normalized.device)

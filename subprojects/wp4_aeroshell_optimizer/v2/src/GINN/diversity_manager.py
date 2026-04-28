@@ -61,6 +61,8 @@ class DiversityTrainer:
         diversity_neighbor_agg_fn: str = "min",
         force_z0_to_origin: bool = True,
         z_resample_cadence: int = 0,
+        initial_Z: Tensor | None = None,
+        z_resample_start_epoch: int = 0,
         mesh_extractor: MeshExtractor | None = None,
         mesh_extraction_config: dict[str, Any] | None = None,
         renderer_manager: VisualisationManager | None = None,
@@ -86,6 +88,14 @@ class DiversityTrainer:
                 sampling params passed to the diversity manager compute call.
             force_z0_to_origin: pin Z[0] at the origin (reference shape in GINN).
             z_resample_cadence: resample Z every N epochs (0 disables resampling).
+            initial_Z: Optional pretrained latent population of shape (N, z_dim).  When
+                provided the random initialisation is replaced by this tensor.  A copy
+                is made so the caller's tensor is not modified in-place.
+            z_resample_start_epoch: First epoch at which resampling is allowed (Mode C
+                warm-up guard).  0 (default) means resampling can start immediately
+                (backward-compatible with existing behaviour).  Set to a positive value
+                to hold the pretrained Z population for that many epochs before the
+                normal z_resample_cadence logic kicks in.
             mesh_extractor + mesh_extraction_config + renderer_manager + rendering_freq +
                 use_neural_renderer: rendering wiring. All None/default -> no rendering.
             use_wandb: if False, logging is silently skipped.
@@ -110,6 +120,8 @@ class DiversityTrainer:
 
         self._force_z0_to_origin: bool = force_z0_to_origin
         self._z_resample_cadence: int = max(0, int(z_resample_cadence))
+        self._z_resample_start_epoch: int = max(0, int(z_resample_start_epoch))
+        self._mode_c_transition_logged: bool = False
 
         self._mesh_extractor: MeshExtractor | None = mesh_extractor
         self._mesh_extraction_config: dict[str, Any] = mesh_extraction_config or {}
@@ -124,7 +136,20 @@ class DiversityTrainer:
         self._resample_generator = torch.Generator(device=generator_device)
 
         # Fixed population of latent vectors (not trained). Z[0] optionally pinned to origin.
-        self._Z: Tensor = torch.randn(population_size, z_dim, device=self._device, dtype=torch.float32)
+        if initial_Z is not None:
+            expected_shape = (population_size, z_dim)
+            if tuple(initial_Z.shape) != expected_shape:
+                raise ValueError(
+                    f"initial_Z shape {tuple(initial_Z.shape)} does not match expected "
+                    f"{expected_shape}. "
+                    f"Set population_size={initial_Z.shape[0]} in GINN.yaml to match the "
+                    f"pretrained population, or re-run pretraining with "
+                    f"population_size={population_size}."
+                )
+            self._Z: Tensor = initial_Z.clone().to(self._device)
+        else:
+            self._Z = torch.randn(population_size, z_dim, device=self._device, dtype=torch.float32)
+
         if self._force_z0_to_origin and self._population_size > 0:
             self._Z[0] = torch.zeros(z_dim, device=self._device, dtype=torch.float32)
 
