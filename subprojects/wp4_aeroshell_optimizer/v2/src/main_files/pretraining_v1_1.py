@@ -70,7 +70,7 @@ def _load_ply_mesh(config: dict, device: str, center_mesh: bool = False) -> tupl
             raise ValueError(
                 f"PLY file not found: '{ply_path}'. Set 'beast_pretraining_ply_path' in pretraining config for local runs."
             )
-    ply_scale = float(config.get("pretraining_ply_scale", 1000.0)) #default scaling from m to mm
+    ply_scale = float(config.get("pretraining_ply_scale", 1000.0))  # default scaling from m to mm
     raw_mesh = trimesh.load(ply_path)
     assert isinstance(raw_mesh, trimesh.Trimesh), f"Expected Trimesh, got {type(raw_mesh)}"
     verts_np = np.array(raw_mesh.vertices, dtype="float32") * ply_scale
