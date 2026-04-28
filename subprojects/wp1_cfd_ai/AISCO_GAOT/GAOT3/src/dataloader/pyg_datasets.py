@@ -1,5 +1,7 @@
 import hashlib
+import logging
 import os
+from collections import Counter
 from collections.abc import Callable
 from typing import cast
 
@@ -287,6 +289,17 @@ class VTKMeshDataset(Dataset):
         val_size = self.dataset_config["val_size"]
         test_size = self.dataset_config["test_size"]
 
+        if self.dataset_config.get("handpicked_val", False) and self._validation_list_path():
+            split_indices = self._load_handpicked_validation_split_indices(
+                all_filenames=all_filenames,
+                train_size=train_size,
+                val_size=val_size,
+                test_size=test_size,
+            )
+            self.split_filenames = [f"{all_filenames[i]}.pt" for i in split_indices]
+            print(f"Loaded {len(self.split_filenames)} samples for split '{self.split}'.")
+            return
+
         indices = np.arange(total_samples)
         if self.dataset_config.get("rand_dataset", False):
             rng = np.random.default_rng(seed=42)
@@ -303,6 +316,130 @@ class VTKMeshDataset(Dataset):
 
         self.split_filenames = [f"{all_filenames[i]}.pt" for i in split_indices]
         print(f"Loaded {len(self.split_filenames)} samples for split '{self.split}'.")
+
+    def _load_handpicked_validation_split_indices(
+        self,
+        all_filenames: list[str],
+        train_size: int,
+        val_size: int,
+        test_size: int,
+    ) -> np.ndarray:
+        validation_names = self._read_validation_file_names()
+        order_name_to_index = {self._normalize_sample_name(name): index for index, name in enumerate(all_filenames)}
+
+        if not validation_names:
+            raise ValueError("Handpicked validation list is empty.")
+
+        duplicate_names = sorted(name for name, count in Counter(validation_names).items() if count > 1)
+        if duplicate_names:
+            raise ValueError(f"Handpicked validation list contains duplicate sample names: {duplicate_names}")
+
+        logger = logging.getLogger(__name__)
+        missing_names = sorted(name for name in validation_names if name not in order_name_to_index)
+        if missing_names:
+            logger.warning("Skipping handpicked validation samples not present in order_file: %s", missing_names)
+
+        validation_names = [name for name in validation_names if name in order_name_to_index]
+        missing_files = sorted(
+            name for name in validation_names if not self._processed_sample_exists(all_filenames[order_name_to_index[name]])
+        )
+        if missing_files:
+            logger.warning("Skipping handpicked validation samples with missing processed files: %s", missing_files)
+
+        validation_names = [
+            name for name in validation_names if self._processed_sample_exists(all_filenames[order_name_to_index[name]])
+        ]
+
+        candidate_indices = np.array([order_name_to_index[name] for name in validation_names], dtype=int)
+        candidate_order = np.arange(len(candidate_indices))
+        if self.dataset_config.get("rand_dataset", False):
+            rng = np.random.default_rng(seed=42)
+            rng.shuffle(candidate_order)
+
+        # val_files_path is a handpicked candidate pool.  If it contains more
+        # samples than val_size, only the selected val_size samples are held out;
+        # unselected candidates return to the ordinary train/test slicing pool.
+        val_indices = candidate_indices[candidate_order[:val_size]]
+
+        all_indices = np.arange(len(all_filenames))
+        if self.dataset_config.get("rand_dataset", False):
+            rng = np.random.default_rng(seed=42)
+            rng.shuffle(all_indices)
+        all_indices = np.array(
+            [index for index in all_indices if self._processed_sample_exists(all_filenames[index])],
+            dtype=int,
+        )
+        val_index_set = set(val_indices)
+        remaining_indices = np.array([index for index in all_indices if index not in val_index_set], dtype=int)
+
+        if len(val_indices) < val_size:
+            fill_count = val_size - len(val_indices)
+            if fill_count > len(remaining_indices):
+                raise ValueError(
+                    "Not enough available samples to fill handpicked validation split: "
+                    f"need {fill_count}, have {len(remaining_indices)}"
+                )
+            logger.warning(
+                "Handpicked validation list has only %s usable samples for val_size=%s; "
+                "filling the remaining %s from available non-handpicked samples.",
+                len(val_indices),
+                val_size,
+                fill_count,
+            )
+            val_indices = np.concatenate([val_indices, remaining_indices[:fill_count]])
+            val_index_set = set(val_indices)
+            remaining_indices = np.array([index for index in all_indices if index not in val_index_set], dtype=int)
+
+        if train_size + test_size > len(remaining_indices):
+            raise ValueError(
+                "train_size + test_size is larger than the non-validation sample count: "
+                f"{train_size} + {test_size} > {len(remaining_indices)}"
+            )
+
+        if self.split == "train":
+            return remaining_indices[:train_size]
+        if self.split == "val":
+            return val_indices
+        if self.split == "test":
+            return remaining_indices[-test_size:] if test_size > 0 else np.array([], dtype=int)
+        raise ValueError(f"Invalid split: {self.split}")
+
+    def _read_validation_file_names(self) -> list[str]:
+        path = self._validation_list_path()
+        if path is None:
+            return []
+        with open(path) as f:
+            raw_lines = f.readlines()
+        names = []
+        for raw_line in raw_lines:
+            line = raw_line.split("#", 1)[0].strip()
+            if not line:
+                continue
+            if line.startswith("-"):
+                line = line[1:].strip()
+            names.append(self._normalize_sample_name(line.strip("'\"")))
+        return names
+
+    def _validation_list_path(self) -> str | None:
+        configured_path = self.dataset_config.get("val_files_path") or self.dataset_config.get("val_file_list")
+        if not configured_path:
+            return None
+        configured_path = os.fspath(configured_path)
+        if os.path.isabs(configured_path):
+            return configured_path
+        if os.path.exists(configured_path):
+            return configured_path
+        return os.path.join(self.root, configured_path)
+
+    @staticmethod
+    def _normalize_sample_name(name: str) -> str:
+        return name.strip().removesuffix(".pt")
+
+    def _processed_sample_exists(self, name: str) -> bool:
+        sample_name = self._normalize_sample_name(name)
+        direct_path = os.path.join(self.processed_dir, f"{sample_name}.pt")
+        nested_path = os.path.join(self.processed_dir, sample_name, "data.pt")
+        return os.path.isfile(direct_path) or os.path.isfile(nested_path)
 
     def len(self):
         return len(self.split_filenames)
