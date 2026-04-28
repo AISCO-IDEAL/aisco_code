@@ -114,7 +114,11 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
     # All model configs must be registered before apply_sweep_overrides so that
     # sweep params targeting e.g. models/WIRE_v3.hidden_features are patchable,
     # and smart_model_init's load_config call returns the patched version.
-    models_json_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / "v2" / "configs" / "models.json"
+    base_path= Path.home()
+    print(f"Path.home() is: {base_path}")
+    if base_path == Path("/home/aisco"):
+        base_path=Path("/home/aisco/Documents")
+    models_json_path = base_path / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / "v2" / "configs" / "models.json"
     models_inventory = json.loads(models_json_path.read_text())
     active_configs: dict[str, str] = {"pretraining_v4": "pretraining_v4_config.yaml"}
     for model_info in models_inventory["models"].values():
