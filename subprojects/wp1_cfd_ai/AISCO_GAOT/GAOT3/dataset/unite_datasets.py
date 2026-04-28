@@ -23,14 +23,26 @@ INDEX_FILENAME = "order_.txt"
 # Name der Datensatz-Index-Datei innerhalb jedes Datensatz-Ordners
 DATASET_INDEX_FILENAME = "order_.txt"
 
-# Persistentes Mapping fuer stabile Source->Unified Zuordnung.
+# Persistentes Mapping for stabile Source->Unified Zuordnung.
 NAME_MAPPING_FILENAME = "name_mapping.json"
 
-# Feste Prefix-Zuordnung fuer bestimmte Datensaetze.
+# Zusätzliche Datensatz-Pfade ausserhalb von PREPROCESSED_ROOT.
+# Diese werden NACH den Root-Datensaetzen verarbeitet, damit bestehende Prefix-Zuordnung stabil bleibt.
+EXTRA_DATASET_PATHS = [
+    Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/processed_euler_openfoam_cp_v050"),
+    Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_v050_backup"),
+]
+
+# Gemeinsamer Prefix fuer beide OpenFOAM-v050-Datensaetze.
+OPENFOAM_V050_SHARED_PREFIX = 5
+
+# Feste Prefix-Zuordnung für bestimmte Datensaetze.
 # Beide Blended-Wing-Datensaetze teilen sich denselben Prefix.
 DATASET_PREFIX_OVERRIDES = {
     "blended_wing": 1,
     "blended_wing2": 1,
+    "processed_euler_openfoam_cp_v050": OPENFOAM_V050_SHARED_PREFIX,
+    "processed_euler_openfoam_cp_v050_backup": OPENFOAM_V050_SHARED_PREFIX,
 }
 # =================================================
 
@@ -38,17 +50,41 @@ DATASET_PREFIX_OVERRIDES = {
 BASE_NAME_REGEX = re.compile(r"^sample_(\d+)$")
 
 
-def _discover_datasets(root: Path) -> list[Path]:
-    """Findet alle Datensatz-Unterordner, die eine order_.txt enthalten."""
-    if not root.exists():
-        return []
+def _discover_datasets(root: Path, extra_dataset_paths: list[Path] | None = None) -> list[Path]:
+    """Findet Datensaetze in PREPROCESSED_ROOT plus optionalen Zusatzpfaden."""
+    dataset_paths: list[Path] = []
+    seen_paths: set[Path] = set()
 
-    dataset_paths = []
-    for candidate in sorted(root.iterdir()):
+    def _append_if_valid(candidate: Path) -> None:
+        try:
+            canonical = candidate.resolve(strict=False)
+        except OSError:
+            canonical = candidate
+        if canonical in seen_paths:
+            return
         if not candidate.is_dir():
+            return
+        if not (candidate / DATASET_INDEX_FILENAME).exists():
+            return
+        dataset_paths.append(candidate)
+        seen_paths.add(canonical)
+
+    if root.exists():
+        for candidate in sorted(root.iterdir()):
+            _append_if_valid(candidate)
+
+    for extra_path in extra_dataset_paths or []:
+        if not extra_path.exists():
+            print(f"⚠️ Warnung: Zusatz-Datensatzpfad nicht gefunden: {extra_path}")
             continue
-        if (candidate / DATASET_INDEX_FILENAME).exists():
-            dataset_paths.append(candidate)
+        if not extra_path.is_dir():
+            print(f"⚠️ Warnung: Zusatz-Datensatzpfad ist kein Ordner: {extra_path}")
+            continue
+        if not (extra_path / DATASET_INDEX_FILENAME).exists():
+            print(f"⚠️ Warnung: Zusatz-Datensatzpfad ohne {DATASET_INDEX_FILENAME}: {extra_path}")
+            continue
+        _append_if_valid(extra_path)
+
     return dataset_paths
 
 
@@ -261,7 +297,7 @@ def _process_dataset_samples(
 def consolidate_datasets():
     OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 
-    dataset_paths = _discover_datasets(PREPROCESSED_ROOT)
+    dataset_paths = _discover_datasets(PREPROCESSED_ROOT, EXTRA_DATASET_PATHS)
     datasets = _build_dataset_specs(dataset_paths)
 
     mapping_path = OUTPUT_PATH / NAME_MAPPING_FILENAME

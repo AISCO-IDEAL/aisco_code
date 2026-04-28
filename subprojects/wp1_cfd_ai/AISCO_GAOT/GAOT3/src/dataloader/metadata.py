@@ -25,15 +25,15 @@ class Metadata:
 
 
 DATASET_METADATA = {
-    "incompressible_fluids/united_cp": Metadata(
+    "incompressible_fluids/united_all_cp": Metadata(
         periodic=False,
         group_u="u",
         group_c=None,
         group_x="x",
         type="gaot",
         domain_x=(
-            [-4.996915340423584, -1.3060903549194336, -1.1929689645767212],
-            [4.699999809265137, 1.6555274724960327, 2.0490450859069824],
+            [-4.996915340423584, -2.75, -1.5078723430633545],
+            [4.699999809265137, 2.5010437965393066, 2.0490450859069824],
         ),  # x=flow, y=lateral, z=vertical (meters)
         domain_t=None,
         fix_x=False,
@@ -42,8 +42,8 @@ DATASET_METADATA = {
         num_variable_chunks=1,
         signed={"u": [False], "c": [None]},
         names={"u": ["$p$"], "c": [None]},
-        global_mean=[-0.1777508407831192],
-        global_std=[0.32097315788269043],
+        global_mean=[-0.18390923738479614],
+        global_std=[0.2756047248840332],
     ),
     "incompressible_fluids/euler_drag": Metadata(
         periodic=False,
