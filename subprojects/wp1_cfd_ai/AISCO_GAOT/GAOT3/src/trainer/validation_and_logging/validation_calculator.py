@@ -14,7 +14,12 @@ import torch
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
 from src.model.gaot_3d import masked_multi_head_loss
-from src.utils.pressure_integration import cp_field_to_drag, cp_field_to_drag_pointcloud
+from src.utils.pressure_integration import (
+    compute_pointcloud_vertex_areas,
+    compute_vertex_areas,
+    cp_field_to_drag,
+    cp_field_to_drag_pointcloud,
+)
 
 from ..utils.plot import plot_3d_comparison_matplotlib
 
@@ -30,6 +35,7 @@ class ValidationCalculator:
         total_rel_l2 = 0.0
         integrated_errors = []
         signed_x_drag_weighted_errors = []
+        signed_x_drag_area_weighted_errors = []
         head_losses: dict[str, float] = {}
         num_batches = len(loader)
         mse_fn = torch.nn.MSELoss()
@@ -43,6 +49,9 @@ class ValidationCalculator:
                 integrated_errors.extend(self._integrated_drag_errors(trainer, batch, pred_normalized))
                 signed_x_drag_weighted_errors.extend(
                     self._signed_x_drag_weighted_field_errors(trainer, batch, pred_normalized)
+                )
+                signed_x_drag_area_weighted_errors.extend(
+                    self._signed_x_drag_area_weighted_field_errors(trainer, batch, pred_normalized)
                 )
                 total_loss += loss.item()
                 total_mse += mse.item()
@@ -76,6 +85,12 @@ class ValidationCalculator:
             result["signed_x_drag_weighted_field_error"] = float(np.mean(signed_x_drag_weighted_errors))
             trainer.tracker.log_metrics(
                 {"val/signed_x_drag_weighted_field_error": result["signed_x_drag_weighted_field_error"]},
+                step=epoch_name,
+            )
+        if trainer.setup_config["rank"] == 0 and signed_x_drag_area_weighted_errors:
+            result["signed_x_drag_area_weighted_field_error"] = float(np.mean(signed_x_drag_area_weighted_errors))
+            trainer.tracker.log_metrics(
+                {"val/signed_x_drag_area_weighted_field_error": result["signed_x_drag_area_weighted_field_error"]},
                 step=epoch_name,
             )
         return result
@@ -344,6 +359,25 @@ class ValidationCalculator:
                 errors.append(weighted_error.mean().item())
         return errors
 
+    def _signed_x_drag_area_weighted_field_errors(self, trainer, batch, pred_normalized) -> list[float]:
+        if not isinstance(pred_normalized, dict) or "field" not in pred_normalized or not hasattr(batch, "x") or batch.x is None:
+            return []
+        if not hasattr(batch, "c") or batch.c is None:
+            return []
+        pred_unnormalized = self._denormalize_field(trainer, pred_normalized["field"])
+        target_unnormalized = self._denormalize_field(trainer, batch.x.to(trainer.device))
+        errors = []
+        for start, end in self._sample_ranges(batch):
+            pred = pred_unnormalized[start:end].squeeze(-1)
+            target = target_unnormalized[start:end].squeeze(-1)
+            normal_x = batch.c[start:end, 0].to(device=pred.device, dtype=pred.dtype)
+            vertex_areas = self._sample_vertex_areas(batch, start, end).to(device=pred.device, dtype=pred.dtype)
+            valid = ~torch.isnan(target) & torch.isfinite(vertex_areas)
+            if valid.any():
+                weighted_error = (pred[valid] - target[valid]) * -normal_x[valid] * vertex_areas[valid]
+                errors.append(weighted_error.mean().item())
+        return errors
+
     def _denormalize_field(self, trainer, value_normalized):
         u_mean = trainer.u_mean.to(value_normalized.device)
         u_std = trainer.u_std.to(value_normalized.device)
@@ -379,6 +413,13 @@ class ValidationCalculator:
         if not valid.any():
             return None
         return face[:, valid] - start
+
+    def _sample_vertex_areas(self, batch, start: int, end: int):
+        pos = batch.pos_raw[start:end] if hasattr(batch, "pos_raw") else batch.pos[start:end]
+        face = self._sample_face(batch, start, end)
+        if face is not None:
+            return compute_vertex_areas(pos, face)
+        return compute_pointcloud_vertex_areas(pos)
 
     def _sample_ranges(self, batch) -> list[tuple[int, int]]:
         if hasattr(batch, "ptr"):
