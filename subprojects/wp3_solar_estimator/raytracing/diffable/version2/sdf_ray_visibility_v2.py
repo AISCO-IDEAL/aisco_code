@@ -1,4 +1,4 @@
-# ruff: noqa: RUF002, RUF003
+# ruff: noqa: RUF003
 """
 Differentiable SDF-based visibility via ray marching.
 
