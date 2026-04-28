@@ -19,7 +19,7 @@
 #    - Use actual geometry bounds: bbox_center=centroid, bbox_half_extent=half of longest axis.
 
 in_features: 3
-hidden_features: 512
+hidden_features: 256
 hidden_layers: 4
 out_features: 1
 skip_layer_idx: 1
@@ -48,5 +48,6 @@ train_scale: False
 # would use bbox_center=[0, 0, 1000], bbox_half_extent=2500.0
 bbox_center: [0.0, 0.0, 0.0]
 bbox_half_extent: 1000.0
-
+#if true overwrites the two entries above
+use_assembly_normalisation: True
 dtype: "float32"

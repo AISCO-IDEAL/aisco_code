@@ -4,6 +4,7 @@ from typing import cast
 import torch
 from torch import nn
 
+from subprojects.wp2_assembler.version4.utils.wp4_utils import get_outer_bb_info
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
 
 
@@ -88,6 +89,7 @@ class WIREV5(BaseModel):
         train_scale: bool = False,
         bbox_center: list[float] | None = None,
         bbox_half_extent: float = 1000.0,
+        use_assembly_normalisation: bool = False,
         dtype: str = "float32",
     ):
         """
@@ -130,12 +132,22 @@ class WIREV5(BaseModel):
         if not isinstance(torch_dtype, torch.dtype):
             raise TypeError(f"Invalid dtype given: {dtype}")
 
+        if use_assembly_normalisation:
+            outer_bb_info = get_outer_bb_info()
+            # normalise the origin to be at center and get car data within [-1,1]^3 cube inside the model
+            bbox_center = outer_bb_info["centroid"]
+            bbox_half_extent = max(outer_bb_info["width"], outer_bb_info["length"], outer_bb_info["height"]) / 2.0
+            print(
+                f"[{self.__class__.__name__}] Using automatic assembly normalisation with bbox_center={bbox_center} and bbox_half_extent={bbox_half_extent}"
+            )
+        # If use_assembly_normalisation is True, use these values.
+        # If False, bbox_center and bbox_half_extent are taken from the arguments (with [0,0,0] and 1000 defaults respectively).])
         center: torch.Tensor = (
             torch.zeros(in_features, dtype=torch_dtype) if bbox_center is None else torch.tensor(bbox_center, dtype=torch_dtype)
         )
         self.register_buffer("bbox_center", center)
         self.register_buffer("bbox_half_extent", torch.tensor(bbox_half_extent, dtype=torch_dtype))
-
+        # Model layers initialisation
         self.skip_layer_idx = skip_layer_idx
         self.in_features = in_features
 
