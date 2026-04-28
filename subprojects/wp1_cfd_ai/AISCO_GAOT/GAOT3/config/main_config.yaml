@@ -46,10 +46,10 @@ model:
             use_gno: true
             gno_coord_dim: 3
             neighbor_strategy: "bidirectional"
-            projection_channels: 256
+            projection_channels: 220
             in_gno_channel_mlp_hidden_layers: [64, 64, 64]
             out_gno_channel_mlp_hidden_layers: [64, 64]
-            lifting_channels: 32
+            lifting_channels: 13
             gno_radius: 0.066
             gno_use_torch_cluster: true
             attention_type: "cosine"
