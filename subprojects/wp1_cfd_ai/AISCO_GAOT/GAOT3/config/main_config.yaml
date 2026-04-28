@@ -23,7 +23,7 @@ setup:
     wandb: true
     wandb_run_name: "_NAME___RUN_ID_"
 
-    wandb_project: "WP1_united_all"
+    wandb_project: "WP1_default"
     wandb_entity: aisco
     wandb_group: united_all_cp_field
     wandb_mode: online
@@ -135,7 +135,7 @@ dataset:
     order_file_name:
     active_heads: []  # empty = field-only (disable force/cd scalar heads)
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
-    subsample_nodes: 25000      # deterministically sample up to 50k nodes per load if sample exceeds this
+    subsample_nodes: 50000      # deterministically sample up to 50k nodes per load if sample exceeds this
     subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"
     deterministic_subsampling: false  # true keeps equivalent GAOT2/GAOT3 runs on the same node subsets
     subsampling_seed: 42        # used only when deterministic_subsampling is true
@@ -143,8 +143,8 @@ dataset:
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
 
 
-    num_viz_samples: 0         # number of random viz samples per split (train/val); 0 = disable viz (viz_per_dataset is ignored)
-    viz_per_dataset: true      # false: visualise N random samples of the whole dataset (N = num_viz_samples)
+    num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz (viz_per_dataset is ignored)
+    viz_per_dataset: false      # false: visualise N random samples of the whole dataset (N = num_viz_samples)
                                # true: visualise N random samples per subdataset of the whole dataset (only necessary if you have a united
                                # dataset of multiple subdatasets (e.g. united_all on work/fuge) --> subdatasets need to have a different prefix
                                # in their name, e.g. sample_YXXXXX all data with the same Y are from the same subdataset)
