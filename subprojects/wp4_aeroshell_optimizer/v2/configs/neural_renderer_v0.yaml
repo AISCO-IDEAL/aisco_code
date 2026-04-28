@@ -50,9 +50,9 @@ rendering_modes:
     enabled: false
     class_path: "custom_modes.mesh_assembly_mode_v2:MeshAssemblyModeV2"
     config:
-      store_wandb: false
+      store_wandb: true
       render_mode: "rgb"
-      camera_position: [-6000, -200, 0]
+      camera_position: [-3000, 3000, 3000]
       look_at: [0, 0, 0]
       fps: 10
       render_interval: 1

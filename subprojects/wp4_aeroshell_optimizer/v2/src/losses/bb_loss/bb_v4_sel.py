@@ -39,7 +39,7 @@ def _sample_mesh_surface_points(mesh: trimesh.Trimesh, count: int) -> np.ndarray
     return points.astype(np.float32, copy=False)
 
 
-class BbV45(ParentLoss):
+class BbV4Sel(ParentLoss):
     """Surface-sampled BB loss from WP2 inner/outer zero-level surfaces.
 
     Instead of evaluating over the full pointgrid volume, this loss samples points
@@ -71,7 +71,7 @@ class BbV45(ParentLoss):
                 f"Invalid value for random_assembly_id: {self.__config['random_assembly_id']} (expected 'True' or 'False')"
             )
 
-        print(f"[BbV45] Using assembly_id={self.assembly_id}")
+        print(f"[BbV4Sel] Using assembly_id={self.assembly_id}")
 
         tess_tolerance = float(self.__config.get("tessellation_tolerance", 2.0))
         tess_angular_tolerance = float(self.__config.get("tessellation_angular_tolerance", 0.4))
@@ -123,7 +123,7 @@ class BbV45(ParentLoss):
         self.__softplus_beta = float(self.__analytic_cfg.get("softplus_beta", 10.0))
 
         print(
-            f"[BbV45] Surface samples: inner={self.__inner_surface_points.shape[0]}, outer={self.__outer_surface_points.shape[0]}"
+            f"[BbV4Sel] Surface samples: inner={self.__inner_surface_points.shape[0]}, outer={self.__outer_surface_points.shape[0]}"
         )
 
     def _violation(self, value: torch.Tensor) -> torch.Tensor:

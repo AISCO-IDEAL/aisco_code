@@ -49,7 +49,7 @@ general_info:
 #
   deactivate_scheduler_mode: skip
   loss_normalisation:
-    enabled: False
+    enabled: True
     target_loss_value: 1.0
     target_gradient_norm: 1.0
 
@@ -74,8 +74,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: objective
     _sign: minimize
     _disabled_epochs: [[0,100]]
-    null_loss_aero: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+    null_loss_aero: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
   bb:
     _role: constraint
@@ -87,7 +87,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     bb_v4_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]                     # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
     bb_v4_3: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]                    # v4.3 with improved ALM and CSE support
     bb_v4_4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]                    # v4.4 surface-sampled BB constraints on WP2 inner/outer zero-level surfaces
-    bb_v4_5: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_5.py"]                    # v4.5 with option to select either inner or outer nbz
+    bb_v4_sel: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]                  # v4.sel with option to select either inner or outer nbz
     silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]   # version provided by Silvretta, not working well as of 2025 12 15
 
   eikonal:
@@ -130,12 +130,12 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: objective
     _sign: maximize
     _disabled_epochs:  [[0,15]]
-    solar_v3B_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
+    solar_v3B_2: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
     solar_v4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
     solar_v5: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
-    null_loss_solar: [1, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    null_loss_solar: [0, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
 
   diversity:
     _role: diversity
@@ -199,7 +199,7 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     softplus_beta: 10.0  # only used when penalty="softplus"
     inner_margin: 0.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
     outer_margin: 0.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
-  # v4.5 nbz selection:
+  # v4.sel nbz selection:
   nbz_selection: "both"  # "outer", or "both"
   # silvretta_v0 specific:
   inner_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/inner.ply"
@@ -245,4 +245,4 @@ wheel_loss_config:
   weight_position: 0.33  # weight for position vs. gradient in the loss calculation
   threshold_huber: 10.0  # Huber loss threshold for wheel loss v3
   threshold_relu: -0.3  # z-gradient threshold for wheel loss v3; gradients above this value are penalized linearly, while gradients below are not penalized (should be negative, e.g. -0.3 means z gradients above -0.3 are penalized, while z gradients of -0.3 or smaller are not penalized)
-  manual_z_shift: -10.0 # manual shift applied to z-coordinate of wheel loss sample points, to give more room for the SDF to find a solution
+  manual_z_shift: -5.0 # manual shift applied to z-coordinate of wheel loss sample points, to give more room for the SDF to find a solution
