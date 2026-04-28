@@ -8,7 +8,7 @@ from tqdm import tqdm
 ##                              !!!!! CHANGE USERNAME !!!!!
 
 # Update this to your new data path
-DATA_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/united_all/"
+DATA_DIR = "/cluster/work/fuge/AISCO/wp1_cfd_ai/united_all_datasets"
 
 
 def calculate_metadata(data_dir):

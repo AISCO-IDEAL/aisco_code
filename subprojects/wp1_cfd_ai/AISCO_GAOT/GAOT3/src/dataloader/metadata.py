@@ -25,7 +25,7 @@ class Metadata:
 
 
 DATASET_METADATA = {
-    "incompressible_fluids/united_all_cp": Metadata(
+    "incompressible_fluids/united_all_cp_no_of": Metadata(
         periodic=False,
         group_u="u",
         group_c=None,
@@ -44,6 +44,26 @@ DATASET_METADATA = {
         names={"u": ["$p$"], "c": [None]},
         global_mean=[-0.18390923738479614],
         global_std=[0.2756047248840332],
+    ),
+    "incompressible_fluids/united_all_datasets": Metadata(
+        periodic=False,
+        group_u="u",
+        group_c=None,
+        group_x="x",
+        type="gaot",
+        domain_x=(
+            [-4.996915817260742, -2.8957769870758057, -1.5078723430633545],
+            [4.699999809265137, 2.501098394393921, 3.508775472640991],
+        ),  # x=flow, y=lateral, z=vertical (meters)
+        domain_t=None,
+        fix_x=False,
+        active_variables=None,
+        chunked_variables=None,
+        num_variable_chunks=1,
+        signed={"u": [False], "c": [None]},
+        names={"u": ["$p$"], "c": [None]},
+        global_mean=[-0.20794643461704254],
+        global_std=[0.3705284893512726],
     ),
     "incompressible_fluids/euler_drag": Metadata(
         periodic=False,
