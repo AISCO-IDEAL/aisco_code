@@ -14,16 +14,15 @@ class LossFn:
         return self._calculate_field_loss(pred_normalized, target_normalized)
 
     def calculate_train_loss(self, trainer, batch):
-        strategy = trainer.dataset_config["training_strategy"]
         latent_tokens_normalized = trainer.latent_tokens.to(trainer.device)
         field_target_normalized = None
-        if strategy == "neural_field":
+        if self.config["dataset"]["training_strategy"] == "neural_field":
             sampled_data_list, query_pos, query_batch_idx, field_target_normalized = (
                 trainer.data_handler.sample_nodes_neural_field(
                     trainer,
                     batch,
-                    trainer.dataset_config["neural_field_input_nodes"],
-                    trainer.dataset_config["neural_field_query_nodes_train"],
+                    self.config["dataset"]["neural_field_input_nodes"],
+                    self.config["dataset"]["neural_field_query_nodes_train"],
                 )
             )
             sampled_batch = trainer.collate_fn(sampled_data_list).to(trainer.device)
@@ -54,7 +53,7 @@ class LossFn:
         if field_target_normalized is None:
             raise ValueError("Field loss requires a field target, but neither sampled targets nor batch.x were found.")
         field_loss = self._calculate_field_loss(pred_normalized["field"], field_target_normalized)
-        return trainer.dataset_config["field_loss_weight"] * field_loss, {"field": field_loss.item()}
+        return self.config["dataset"]["field_loss_weight"] * field_loss, {"field": field_loss.item()}
 
     def add_field_loss(self, trainer, batch, pred_normalized, loss, head_losses):
         if "field" not in pred_normalized or not hasattr(batch, "x") or batch.x is None:
@@ -62,7 +61,7 @@ class LossFn:
         field_target_normalized = batch.x.to(trainer.device)
         field_loss = self._calculate_field_loss(pred_normalized["field"], field_target_normalized)
         head_losses["field"] = head_losses.get("field", 0.0) + field_loss.item()
-        return loss + trainer.dataset_config["field_loss_weight"] * field_loss
+        return loss + self.config["dataset"]["field_loss_weight"] * field_loss
 
     def _build_loss_fn(self, loss_name: str):
         if loss_name == "mse":
