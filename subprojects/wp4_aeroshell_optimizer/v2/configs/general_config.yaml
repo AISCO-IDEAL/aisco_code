@@ -15,7 +15,7 @@ active_configs:
   neural_renderer: "neural_renderer_v0.yaml"  #  visual_wrapper.py, total_loss.py
   interpolator: "postprocessing_interpolator_config.yaml"  # latent-space interpolation monitoring
   solar: "solar_configs/solar_loss_config.yaml" # Used in all solar versions above V3s
-  latent_pretraining: ""  # Set to "pretraining_latent_config.yaml" to enable latent-population warm-up (Plan 005)
+  latent_pretraining: "pretraining_latent_config.yaml"  # Used by pretraining_latent.py
 
 wandb_general:
   use_wandb: True # main_v1_1_one_model.py, total_loss.py

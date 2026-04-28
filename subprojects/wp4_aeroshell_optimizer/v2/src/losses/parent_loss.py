@@ -50,7 +50,7 @@ class ParentLoss:
         if loss_name and ("eikonal" in loss_name.lower() or "smoothness" in loss_name.lower()):
             # Get outer-prism bounds from wp2 (single source of truth)
             prism = get_outer_prism_bounds_mm()
-            scale = float(self.losses_config["get_points_params"].get("bbox_scale_factor", 1.0))
+            scale = float(self.losses_config["domain_pts_sampling"].get("bbox_scale_factor", 1.0))
             scaled_prism = scale_outer_prism(prism, scale)
             bbox_lo = [
                 scaled_prism["x"][0],
@@ -63,7 +63,7 @@ class ParentLoss:
                 scaled_prism["z_sampling"][1],
             ]
             self.points = get_points(
-                num_points=self.losses_config["get_points_params"]["num_points"],
+                num_points=self.losses_config["domain_pts_sampling"]["num_points"],
                 bbox_lo=bbox_lo,
                 bbox_hi=bbox_hi,
                 device=self.device,
