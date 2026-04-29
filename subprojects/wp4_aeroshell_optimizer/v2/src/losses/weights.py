@@ -59,7 +59,7 @@ def weights_alm(
             lam_orig = lams.clone()
 
         ns.mul_(alps).add_((1 - alps) * (closs * closs))
-        new_mus = gamma / (torch.sqrt(ns) + epsilon)
+        new_mus = (gamma / (torch.sqrt(ns) + epsilon)).clamp_(max=10000.0)
         ms.copy_(new_mus)
         # Lambda update: λ += μ · |C| (per spec; abs is equivalent for non-negative constraint losses)
         lams.addcmul_(ms, closs.abs())
