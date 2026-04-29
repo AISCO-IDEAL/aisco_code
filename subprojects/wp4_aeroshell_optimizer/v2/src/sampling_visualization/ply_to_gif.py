@@ -29,6 +29,7 @@ import imageio
 import numpy as np
 import pyrender
 import trimesh
+from PIL import Image, ImageDraw, ImageFont
 
 # ==========================================
 # SETTINGS
@@ -37,6 +38,15 @@ FPS = 10
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
 _SLOT_PATTERN = re.compile(r"slot(\d{2})_.*?_epoch(\d{5})\.ply")
+
+# Camera configuration
+CAMERA_DIRECTION = "X"  # along the camera looks
+CAMERA_DISTANCE_MULTIPLIER = 1.0  # smaller more zoomed in
+CAMERA_ELEVATION_ANGLE = 30.0
+
+# Rendering configuration
+POINT_SIZE = 3  # pixels per point; increase for larger/more visible dots
+BACKGROUND_COLOR = [1.0, 1.0, 1.0, 1.0]  # 1.0: white, 0.0: black
 
 
 def _extract_vertex_colors(geo: object) -> np.ndarray | None:
@@ -147,39 +157,56 @@ def _get_vertices(fpath: Path) -> np.ndarray | None:
     return None
 
 
-def _compute_camera_pose(vertices: np.ndarray) -> np.ndarray:
-    """Compute a stable camera pose that frames all vertices.
+def _get_camera_offset(diag: float, direction: str = "Z", distance_mult: float = 2.0) -> np.ndarray:
+    """Return the camera offset vector based on viewing direction."""
+    dist = diag * distance_mult
+    offset_map = {
+        "X": np.array([dist, 0.0, 0.0]),
+        "Y": np.array([0.0, dist, 0.0]),
+        "Z": np.array([0.0, 0.0, dist]),
+    }
+    return offset_map.get(direction, offset_map["Z"])
 
-    The camera is placed along +Z from the geometry centroid at a
-    distance proportional to the bounding-box diagonal, looking back
-    toward the centroid.
 
-    Args:
-        vertices: (N, 3) array of vertex positions.
-
-    Returns:
-        4x4 camera-to-world pose matrix (OpenGL convention: camera
-        looks along its local -Z axis).
-    """
+def _compute_camera_pose(
+    vertices: np.ndarray,
+    direction: str = "Z",
+    distance_mult: float = 2.0,
+    elevation_angle: float = 0.0,
+) -> np.ndarray:
+    """Compute camera pose that frames vertices and always looks at centroid."""
     centroid = vertices.mean(axis=0)
     diag = float(np.linalg.norm(vertices.max(axis=0) - vertices.min(axis=0)))
     if diag < 1e-6:
         diag = 1.0
 
-    cam_pos = centroid + np.array([0.0, 0.0, diag * 2.0])
-    forward = centroid - cam_pos  # direction camera looks toward
+    base_offset = _get_camera_offset(diag, direction, distance_mult)
+
+    world_up = np.array([0.0, 0.0, 1.0]) if direction in {"X", "Y"} else np.array([0.0, 1.0, 0.0])
+
+    elev_rad = np.radians(elevation_angle)
+    right_vec = np.cross(base_offset, world_up)
+    if np.linalg.norm(right_vec) < 1e-6:
+        world_up = np.array([1.0, 0.0, 0.0]) if direction != "X" else np.array([0.0, 1.0, 0.0])
+        right_vec = np.cross(base_offset, world_up)
+    right_vec = right_vec / np.linalg.norm(right_vec)
+    tilt_vec = np.cross(right_vec, base_offset)
+    tilt_vec = tilt_vec / np.linalg.norm(tilt_vec)
+
+    tilted_offset = base_offset * np.cos(elev_rad) + tilt_vec * np.linalg.norm(base_offset) * np.sin(elev_rad)
+    cam_pos = centroid + tilted_offset
+
+    forward = centroid - cam_pos
     forward = forward / np.linalg.norm(forward)
 
-    world_up = np.array([0.0, 1.0, 0.0])
     right = np.cross(forward, world_up)
     if np.linalg.norm(right) < 1e-6:
-        world_up = np.array([1.0, 0.0, 0.0])
+        world_up = np.array([1.0, 0.0, 0.0]) if direction != "X" else np.array([0.0, 1.0, 0.0])
         right = np.cross(forward, world_up)
     right = right / np.linalg.norm(right)
     up = np.cross(right, forward)
     up = up / np.linalg.norm(up)
 
-    # OpenGL: camera looks along -Z, so camera_Z_world = -forward
     pose = np.eye(4, dtype=np.float64)
     pose[:3, 0] = right
     pose[:3, 1] = up
@@ -209,26 +236,35 @@ def _load_camera_pose(cam_json: Path) -> np.ndarray | None:
         return None
 
 
+def _add_text_overlay(img_array: np.ndarray, epoch: int, camera_dir: str) -> np.ndarray:
+    """Add epoch number and camera direction text overlay."""
+    img = Image.fromarray(img_array, "RGB")
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
+    except Exception:
+        font = ImageFont.load_default()  # type: ignore[assignment]
+    text = f"Epoch: {epoch:05d}  |  View: {camera_dir}-axis"
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = float(bbox[2] - bbox[0])
+    text_height = float(bbox[3] - bbox[1])
+    padding = 10.0
+    bg_coords = (10.0, 10.0, 10.0 + text_width + 2 * padding, 10.0 + text_height + 2 * padding)
+    draw.rectangle(bg_coords, fill=(0, 0, 0, 180))
+    draw.text((10.0 + padding, 10.0 + padding), text, fill=(255, 255, 255), font=font)
+    return np.asarray(img)
+
+
 def _render_frame(
     renderer: pyrender.OffscreenRenderer,
     fpath: Path,
     cam_pose: np.ndarray,
+    camera_direction: str = CAMERA_DIRECTION,
+    add_overlay: bool = True,
 ) -> np.ndarray:
-    """Render one PLY file to an (H, W, 3) uint8 RGB image.
-
-    A fresh scene is created per frame so camera and geometry do not
-    accumulate across frames.
-
-    Args:
-        renderer: Shared OffscreenRenderer (reused across all frames for speed).
-        fpath: PLY file to render.
-        cam_pose: 4x4 camera-to-world pose matrix.
-
-    Returns:
-        (WINDOW_HEIGHT, WINDOW_WIDTH, 3) uint8 image array.
-    """
+    """Render one PLY file to an (H, W, 3) uint8 RGB image with optional text overlay."""
     scene = pyrender.Scene(
-        bg_color=[0.0, 0.0, 0.0, 1.0],
+        bg_color=BACKGROUND_COLOR,
         ambient_light=[0.4, 0.4, 0.4, 1.0],
     )
     camera = pyrender.PerspectiveCamera(
@@ -236,13 +272,14 @@ def _render_frame(
         aspectRatio=WINDOW_WIDTH / WINDOW_HEIGHT,
     )
     scene.add(camera, pose=cam_pose)
-    # Directional light co-located with camera so the object is always lit
     scene.add(pyrender.DirectionalLight(color=np.ones(3), intensity=3.0), pose=cam_pose)
-
     for geo in _load_pyrender_geometries(fpath):
         scene.add(geo)
-
     color, _ = renderer.render(scene)
+    match = re.search(r"epoch(\d{5})", fpath.name)
+    epoch = int(match.group(1)) if match else 0
+    if add_overlay:
+        color = _add_text_overlay(color, epoch, camera_direction)
     return color
 
 
@@ -457,7 +494,7 @@ def generate_gifs(
     if cam_json is not None and cam_json.exists():
         cam_pose_override = _load_camera_pose(cam_json)
 
-    renderer = pyrender.OffscreenRenderer(WINDOW_WIDTH, WINDOW_HEIGHT)
+    renderer = pyrender.OffscreenRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, point_size=POINT_SIZE)
     try:
         for slot, files in sorted(slots.items()):
             files.sort(key=lambda x: x[0])
@@ -467,15 +504,19 @@ def generate_gifs(
             if cam_pose_override is not None:
                 cam_pose = cam_pose_override
             else:
-                # Collect vertices from every frame so the camera frames the full
-                # trajectory, not just one snapshot.
                 all_verts_list = [v for v in (_get_vertices(fp) for fp in file_paths) if v is not None]
                 if not all_verts_list:
                     print(f"  Warning: No vertex data for slot {slot}. Skipping.")
                     continue
-                cam_pose = _compute_camera_pose(np.vstack(all_verts_list))
-
-            frames = [_render_frame(renderer, fp, cam_pose) for fp in file_paths]
+                cam_pose = _compute_camera_pose(
+                    np.vstack(all_verts_list),
+                    direction=CAMERA_DIRECTION,
+                    distance_mult=CAMERA_DISTANCE_MULTIPLIER,
+                    elevation_angle=CAMERA_ELEVATION_ANGLE,
+                )
+            frames = [
+                _render_frame(renderer, fp, cam_pose, camera_direction=CAMERA_DIRECTION, add_overlay=True) for fp in file_paths
+            ]
             gif_path = output_path / f"slot{slot}_convergence.gif"
             imageio.mimsave(str(gif_path), frames, fps=FPS)  # type: ignore[arg-type]
             print(f"  Saved: {gif_path}")
@@ -487,16 +528,34 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Render PLY file sequences to GIFs. Cluster-safe (EGL headless).")
     parser.add_argument("--input", type=str, help="Input folder containing PLY files.")
     parser.add_argument("--output", type=str, help="Output folder for GIF files.")
+    parser.add_argument("--cam_json", type=str, help="Path to camera_config.json from a prior interactive setup.")
     parser.add_argument(
-        "--cam_json",
+        "--camera-direction",
         type=str,
-        help="Path to camera_config.json from a prior interactive setup.",
+        default=CAMERA_DIRECTION,
+        choices=["X", "Y", "Z"],
+        help=f"Camera view direction (default: {CAMERA_DIRECTION}).",
+    )
+    parser.add_argument(
+        "--camera-distance",
+        type=float,
+        default=CAMERA_DISTANCE_MULTIPLIER,
+        help=f"Camera distance multiplier (default: {CAMERA_DISTANCE_MULTIPLIER}).",
+    )
+    parser.add_argument(
+        "--camera-elevation",
+        type=float,
+        default=CAMERA_ELEVATION_ANGLE,
+        help=f"Camera elevation angle in degrees (default: {CAMERA_ELEVATION_ANGLE}).",
     )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
+    CAMERA_DIRECTION = args.camera_direction
+    CAMERA_DISTANCE_MULTIPLIER = args.camera_distance
+    CAMERA_ELEVATION_ANGLE = args.camera_elevation
     in_p: Path | None
     out_p: Path | None
     c_j: Path | None

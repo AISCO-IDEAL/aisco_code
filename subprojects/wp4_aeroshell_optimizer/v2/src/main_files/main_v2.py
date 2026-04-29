@@ -189,11 +189,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         )
         if verbose:
             print(f"[latent_space] Latent pretraining complete. Population size: {len(latent_config['latent_population'])}")
-        if make_gif:
+        if make_gif and any(vis_run_dir.glob("*.ply")):
             print("[latent_space] Generating GIFs for latent pretraining visualization...")
             generate_gifs(
                 input_path=vis_run_dir, output_path=rendering_dir / "gifs" if rendering_dir is not None else vis_run_dir / "gifs"
             )
+        elif make_gif and verbose:
+            print("[latent_space] Skipping GIF generation: no PLY files in sampling_vis (fast-resume or vis disabled).")
 
     else:
         # Standard pretraining: look for an existing checkpoint, then run pretraining_v1_1 if needed.

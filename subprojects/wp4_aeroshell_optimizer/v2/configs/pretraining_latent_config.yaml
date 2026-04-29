@@ -79,13 +79,13 @@ latent_population:
   #   ply_scale: 100.0
   #   surface_noise_sigma_factor: 0.005
 
-  - name: "simple_solarcar" # Broken:too large?!
-    shape_type: "ply"
-    radius: null
-    side_length: null
-    ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_solarcar_watertight.ply"
-    ply_scale: 100.0
-    surface_noise_sigma_factor: 0.005
+  # - name: "simple_solarcar" # Broken:too large?!
+  #   shape_type: "ply"
+  #   radius: null
+  #   side_length: null
+  #   ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_solarcar_watertight.ply"
+  #   ply_scale: 100.0
+  #   surface_noise_sigma_factor: 0.005
 
 training_loop:
   epochs: 400
@@ -117,8 +117,8 @@ output:
   # Set to an absolute path to enable; null = disabled (always build fresh, never write).
   sdf_cache_dir: "/cluster/work/fuge/AISCO/latent_pretraining/01_sdf_cache"  # precomputed SDFs from target PLY shapes
 
-  sampling_vis: True # used in main loop, use flags in standalone pretraining
-  make_gif: True     # used in main loop, use flags in standalone pretraining
+  sampling_vis: true # used in main loop, use flags in standalone pretraining
+  make_gif: true     # used in main loop, use flags in standalone pretraining
   visualisation_directory: "sampling_vis" # directory name withhin directory of the current hash # only used by standalone pretraining
 
   vis_cadence: 1 # at what interval to visualize the sampling
