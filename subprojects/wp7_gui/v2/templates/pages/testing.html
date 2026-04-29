@@ -166,6 +166,7 @@
             <input type="text" id="cfgFolderInput" placeholder="/path/to/config/folder" value="">
         </div>
         <button id="btnRunTest">Execute</button>
+        <button id="btnStop" disabled style="background:#777;margin-left:6px;">Stop</button>
         <button id="btnClear">Clear Output</button>
       </div>
     </section>
@@ -179,6 +180,7 @@
         const usesGuiToggle = document.getElementById("usesGuiToggle");
         const cfgFolderInput = document.getElementById("cfgFolderInput");
     const btnRunTest = document.getElementById("btnRunTest");
+        const btnStop = document.getElementById("btnStop");
     const btnClear = document.getElementById("btnClear");
     const outputConsole = document.getElementById("outputConsole");
 
@@ -219,6 +221,7 @@
           // If the backend started a background process, poll the run-local logs
           if (data.status === "started" || data.status === "running") {
               appendOutput(`Started PID: ${data.pid}. Polling logs...`);
+              btnStop.disabled = false;
 
               const pollInterval = 1000;
               let pollTimer = setInterval(async () => {
@@ -242,6 +245,7 @@
                       clearInterval(pollTimer);
                       btnRunTest.disabled = false;
                       btnRunTest.textContent = 'Execute';
+                      btnStop.disabled = true;
                   }
               } catch (err) {
                   appendOutput(`ERROR polling logs: ${err.message}`, true);
@@ -272,12 +276,31 @@
       }
     }
 
+        async function stopRun() {
+            btnStop.disabled = true;
+            appendOutput('Requesting stop...');
+            try {
+                const res = await fetch('/run-local/stop', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) {
+                    appendOutput(`Stop failed: ${data.detail?.message || 'Unknown'}`, true);
+                    btnStop.disabled = false;
+                    return;
+                }
+                appendOutput(`Stop request: ${data.status} - ${data.message || ''}`);
+            } catch (err) {
+                appendOutput(`ERROR stopping run: ${err.message}`, true);
+                btnStop.disabled = false;
+            }
+        }
+
     function clearOutput() {
         outputConsole.textContent = "Ready. Configure overrides and click Execute.";
       outputConsole.className = "output";
     }
 
     btnRunTest.addEventListener("click", runTest);
+        btnStop.addEventListener('click', stopRun);
     btnClear.addEventListener("click", clearOutput);
         cfgFolderInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {

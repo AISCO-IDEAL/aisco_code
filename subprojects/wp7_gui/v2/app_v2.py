@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import threading
+import signal
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -290,6 +291,26 @@ class GUIRequestHandler:
             "return_code": return_code,
             "truncated": truncated,
         }
+
+    def handle_stop_run_local(self) -> JSONResponse:
+        """Stop the currently running local process (if any)."""
+        with PROCESS_LOCK:
+            process = STATE.get("run_local_process")
+            if process is None or process.poll() is not None:
+                return JSONResponse(status_code=200, content={"status": "not_running", "message": "No active run to stop"})
+
+            try:
+                # Kill the whole process group to ensure children are terminated
+                os.killpg(process.pid, signal.SIGTERM)
+            except Exception:
+                try:
+                    process.terminate()
+                except Exception:
+                    pass
+
+            return JSONResponse(
+                status_code=200, content={"status": "stopping", "pid": process.pid, "message": "Sent termination signal"}
+            )
 
     def handle_run_local_progress(self) -> dict[str, Any]:
         num_epochs = self._get_num_epochs_from_training_config()
@@ -619,6 +640,11 @@ def artifact_file_endpoint(path: str = "") -> FileResponse:
 @app.get("/run-local/slow-gif")
 def slow_gif_endpoint(path: str = "", factor: str = "2.5") -> FileResponse:
     return handler.handle_slow_gif(path, factor)
+
+
+@app.post("/run-local/stop")
+def run_local_stop_endpoint() -> JSONResponse:
+    return handler.handle_stop_run_local()
 
 
 @app.get("/ui/page/{page_key}")

@@ -5,7 +5,6 @@ This should be the final main file we use for the Project. It should be modular 
 import argparse
 import json
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -99,9 +98,16 @@ def _maybe_run_latent_pretraining(
     return model, Z_pretrained
 
 
-def main() -> None:  # noqa: PLR0912, PLR0915
+def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa: PLR0912, PLR0915
 
     print("Starting Main file V2...")
+    assert cfg_folder is not None, (
+        "cfg_folder is None, this should not be happening. Check the caller or argument parsing logic and if you changed anything."
+    )
+    if gui_mode:
+        raise NotImplementedError(
+            "GUI mode is not implemented yet. Check the GUI development branch or contact the developers for more info."
+        )
 
     # 1. Load and register configs
     general_config: dict[str, Any] = load_config(v="v2", cfg_name="general_config.yaml")
@@ -529,5 +535,5 @@ if __name__ == "__main__":
     # check that the folder path has no spaces in it
     assert args.cfg_folder != "", 'You need to specify a config folder via "--cfg-folder PATH" for this to work'
     assert " " not in args.cfg_folder, f"Config folder path cannot contain spaces. Received: '{args.cfg_folder}'"
-    sys.exit(0)
-    main()
+
+    main(gui_mode=args.uses_gui, cfg_folder=args.cfg_folder)
