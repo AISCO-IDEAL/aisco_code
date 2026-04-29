@@ -1,0 +1,1 @@
+[WARNING] Ground violation: seat bottom (0.0 mm) is below the wheel clearance plane (100.0 mm).
