@@ -521,6 +521,13 @@ if __name__ == "__main__":
     parser.add_argument("--uses-gui", action="store_true", help="Running from GUI")
     parser.add_argument("--cfg-folder", type=str, default="", help="Path to config override folder")
     args, _ = parser.parse_known_args()
-
+    print(f"CLI arguments received: {args}, type: {type(args)}")
+    print(f"Extras: {_}, type: {type(_)}")
     # Arguments are available but not used yet - caller will handle them
+    print(f"uses_gui: {args.uses_gui}, cfg_folder: {args.cfg_folder}")
+    assert _ == [], "Unexpected extra CLI arguments received. Check the caller or argument parsing logic."
+    # check that the folder path has no spaces in it
+    assert args.cfg_folder != "", 'You need to specify a config folder via "--cfg-folder PATH" for this to work'
+    assert " " not in args.cfg_folder, f"Config folder path cannot contain spaces. Received: '{args.cfg_folder}'"
+    sys.exit(0)
     main()

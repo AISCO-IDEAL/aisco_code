@@ -215,31 +215,53 @@ class GUIRequestHandler:
                 cli_args.append("--uses-gui")
             if payload.cfg_folder and payload.cfg_folder.strip():
                 cli_args.extend(["--cfg-folder", payload.cfg_folder.strip()])
+            # Start as a background process and stream to the standard run log so long-running
+            # runs don't block the FastAPI worker or get killed by upstream timeouts.
+            with PROCESS_LOCK:
+                run_local_process = STATE["run_local_process"]
+                if run_local_process is not None and run_local_process.poll() is None:
+                    return JSONResponse(
+                        status_code=200,
+                        content={
+                            "status": "running",
+                            "message": "run_local.sh is already running",
+                            "pid": run_local_process.pid,
+                        },
+                    )
 
-            # Run synchronously with timeout
-            process = subprocess.run(
-                ["bash", str(RUN_LOCAL_SCRIPT)] + cli_args,
-                cwd=str(REPO_ROOT.parent),
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
+                start_stamp = datetime.now().isoformat(timespec="seconds")
+                run_label = f"config-overrides: {cli_args or 'none'}"
+                RUN_LOCAL_LOG.parent.mkdir(parents=True, exist_ok=True)
+                RUN_LOCAL_LOG.write_text(
+                    f"[{start_stamp}] Starting run_local.sh ({run_label})\n\n",
+                    encoding="utf-8",
+                )
 
-            LOGGER.info("Config override run executed with args: %s (return code: %s)", cli_args, process.returncode)
+                process_env = os.environ.copy()
 
+                log_handle = RUN_LOCAL_LOG.open("a", encoding="utf-8")
+                process = subprocess.Popen(
+                    ["bash", str(RUN_LOCAL_SCRIPT)] + cli_args,
+                    cwd=str(REPO_ROOT.parent),
+                    stdout=log_handle,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    env=process_env,
+                    start_new_session=True,
+                )
+                log_handle.close()
+                STATE["run_local_process"] = process
+
+            LOGGER.info("Started config-override script. PID: %s, args: %s", process.pid, cli_args)
             return JSONResponse(
                 status_code=200,
                 content={
-                    "status": "success" if process.returncode == 0 else "failed",
-                    "return_code": process.returncode,
-                    "stdout": process.stdout,
-                    "stderr": process.stderr,
+                    "status": "started",
+                    "message": "Process started; poll /run-local/logs for output",
+                    "pid": process.pid,
                     "cli_args": cli_args,
                 },
             )
-        except subprocess.TimeoutExpired:
-            LOGGER.error("Config override run timed out after 30 seconds")
-            raise HTTPException(status_code=500, detail={"message": "Run timed out after 30 seconds"}) from None
         except Exception as error:
             LOGGER.exception("Failed to run with config overrides")
             raise HTTPException(status_code=500, detail={"message": str(error)}) from error

@@ -191,7 +191,7 @@
     async function runTest() {
         const usesGui = usesGuiToggle.checked;
         const cfgFolder = cfgFolderInput.value.trim();
-    
+
       btnRunTest.disabled = true;
       btnRunTest.textContent = "Running...";
       outputConsole.className = "output";
@@ -216,25 +216,59 @@
           return;
         }
 
-        if (data.stdout) {
-          appendOutput(data.stdout.trim());
-        }
+          // If the backend started a background process, poll the run-local logs
+          if (data.status === "started" || data.status === "running") {
+              appendOutput(`Started PID: ${data.pid}. Polling logs...`);
 
-        if (data.stderr) {
-          outputConsole.className = "output error";
-          appendOutput(data.stderr.trim(), true);
-        }
+              const pollInterval = 1000;
+              let pollTimer = setInterval(async () => {
+                  try {
+                      const logsRes = await fetch('/run-local/logs');
+                      if (!logsRes.ok) {
+                          appendOutput('Failed to fetch logs', true);
+                          clearInterval(pollTimer);
+                          btnRunTest.disabled = false;
+                          btnRunTest.textContent = 'Execute';
+                          return;
+                      }
+                const logsData = await logsRes.json();
+                const logs = logsData.logs || '';
+                outputConsole.textContent = logs || '(no logs yet)';
+                outputConsole.scrollTop = outputConsole.scrollHeight;
 
-        appendOutput("---");
-        outputConsole.className = data.status === "success" ? "output success" : "output error";
-        appendOutput(`Return code: ${data.return_code} (${data.status})`, data.return_code !== 0);
+                  if (!logsData.running) {
+                      appendOutput('---');
+                      appendOutput(`Return code: ${logsData.return_code} (${logsData.return_code === 0 ? 'success' : 'finished'})`, logsData.return_code !== 0);
+                      clearInterval(pollTimer);
+                      btnRunTest.disabled = false;
+                      btnRunTest.textContent = 'Execute';
+                  }
+              } catch (err) {
+                  appendOutput(`ERROR polling logs: ${err.message}`, true);
+                  clearInterval(pollTimer);
+                  btnRunTest.disabled = false;
+                  btnRunTest.textContent = 'Execute';
+              }
+          }, pollInterval);
+        } else {
+            // Fallback: server returned immediate stdout/stderr (short runs)
+            if (data.stdout) appendOutput(data.stdout.trim());
+            if (data.stderr) {
+              outputConsole.className = 'output error';
+              appendOutput(data.stderr.trim(), true);
+          }
+            appendOutput('---');
+            outputConsole.className = data.status === 'success' ? 'output success' : 'output error';
+            appendOutput(`Return code: ${data.return_code} (${data.status})`, data.return_code !== 0);
+            btnRunTest.disabled = false;
+            btnRunTest.textContent = 'Execute';
+        }
 
       } catch (error) {
         outputConsole.className = "output error";
-        appendOutput(`ERROR: ${error.message}`, true);
-      } finally {
+          appendOutput(`ERROR: ${error.message}`, true);
         btnRunTest.disabled = false;
-        btnRunTest.textContent = "Execute";
+          btnRunTest.textContent = 'Execute';
       }
     }
 
