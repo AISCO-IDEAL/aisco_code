@@ -97,9 +97,7 @@ def _build_shape_params(shape: dict[str, Any], ply_tensors: tuple[Tensor, Tensor
     raise ValueError(f"Unknown shape_type '{shape_type}'. Valid values: 'sphere', 'cube', 'ply'.")
 
 
-def _sample_surface_points_with_normals(
-    ply_verts: Tensor, ply_faces: Tensor, n_pts: int, device: str
-) -> tuple[Tensor, Tensor]:
+def _sample_surface_points_with_normals(ply_verts: Tensor, ply_faces: Tensor, n_pts: int, device: str) -> tuple[Tensor, Tensor]:
     """Sample exact on-surface points + per-point unit normals from a PLY mesh.
 
     Faces are sampled with probability proportional to their area (so dense /
@@ -161,7 +159,6 @@ def _grad_of_sdf(model: SupportsModelContract, pts: Tensor) -> Tensor:
         retain_graph=True,
     )[0]
     return grad
-
 
 
 def _compute_pretrain_config_hash(config: dict[str, Any], model: SupportsModelContract) -> str:
@@ -228,7 +225,16 @@ def _build_active_configs() -> dict[str, str]:
     """
     environment = detect_environment()
     if environment == "aisco_beast":
-        models_json_path = Path.home() / "Documents" / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / "v2" / "configs" / "models.json"
+        models_json_path = (
+            Path.home()
+            / "Documents"
+            / "AISCO_code"
+            / "subprojects"
+            / "wp4_aeroshell_optimizer"
+            / "v2"
+            / "configs"
+            / "models.json"
+        )
     elif environment == "wsl":
         # note from eschaerer: the path must be updated, this is just a placeholder
         models_json_path = Path.home() / "note from eschaerer: the path must be updated, this is just a placeholder"
@@ -403,9 +409,7 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
     if use_normal_loss:
         assert ply_tensors is not None  # narrowed by use_normal_loss
         ply_verts_cpu, ply_faces_cpu, _ = ply_tensors
-        norm_pts, norm_normals = _sample_surface_points_with_normals(
-            ply_verts_cpu, ply_faces_cpu, normal_batch_size, device
-        )
+        norm_pts, norm_normals = _sample_surface_points_with_normals(ply_verts_cpu, ply_faces_cpu, normal_batch_size, device)
         print(
             f"[single] Normal-loss enabled: λ_n={normal_loss_weight} on {normal_batch_size} pts/step "
             f"(refresh every {normal_resample_cadence} ep, 0 = static)."
@@ -453,17 +457,10 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
             surf_gt = gt_re[n_dom:].to(device)
 
         # Refresh on-surface cache for normal loss (cheap; pure CPU mesh sampling).
-        if (
-            use_normal_loss
-            and normal_resample_cadence > 0
-            and epoch > 0
-            and epoch % normal_resample_cadence == 0
-        ):
+        if use_normal_loss and normal_resample_cadence > 0 and epoch > 0 and epoch % normal_resample_cadence == 0:
             assert ply_tensors is not None
             ply_verts_cpu, ply_faces_cpu, _ = ply_tensors
-            norm_pts, norm_normals = _sample_surface_points_with_normals(
-                ply_verts_cpu, ply_faces_cpu, normal_batch_size, device
-            )
+            norm_pts, norm_normals = _sample_surface_points_with_normals(ply_verts_cpu, ply_faces_cpu, normal_batch_size, device)
 
         # Fresh domain pts every epoch — surface pts come from the cache.
         pts_fresh, gt_fresh = _sample_points_for_shape(
@@ -487,8 +484,7 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
         # NaN guard before computing loss
         if not math.isfinite(pred.sum().item() if pred.numel() > 0 else 0.0):
             print(
-                f"[single] NaN/Inf in model output at epoch {epoch}. "
-                "No checkpoint written. Try lowering learning_rate.",
+                f"[single] NaN/Inf in model output at epoch {epoch}. No checkpoint written. Try lowering learning_rate.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -526,11 +522,7 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
         # Keeping this OFF the near-surface band avoids the v4 ellipsoid
         # collapse, while still stabilising gradient magnitudes globally.
         if use_eikonal_loss and eik_bounds is not None:
-            eik_pts = (
-                torch.rand(eikonal_batch_size, 3, device=device)
-                * (eik_bounds[:, 1] - eik_bounds[:, 0])
-                + eik_bounds[:, 0]
-            )
+            eik_pts = torch.rand(eikonal_batch_size, 3, device=device) * (eik_bounds[:, 1] - eik_bounds[:, 0]) + eik_bounds[:, 0]
             grad_eik = _grad_of_sdf(model, eik_pts)
             eikonal_loss = ((torch.linalg.norm(grad_eik, dim=-1) - 1.0) ** 2).mean()
             total_loss = total_loss + eikonal_loss_weight * eikonal_loss

@@ -2,6 +2,7 @@
 
 Run from anywhere; targets the absolute path on /cluster/work.
 """
+
 from __future__ import annotations
 
 import re

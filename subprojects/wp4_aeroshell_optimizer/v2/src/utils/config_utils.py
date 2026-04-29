@@ -165,15 +165,7 @@ def register_all_configs(general_config: dict, *, v: str = "v2") -> None:
 
     model_name = general_config.get("model_def", {}).get("model_name")
     if isinstance(model_name, str) and model_name:
-        models_path = (
-            Path.home()
-            / "AISCO_code"
-            / "subprojects"
-            / "wp4_aeroshell_optimizer"
-            / v
-            / "configs"
-            / "models.json"
-        )
+        models_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / "models.json"
         if Path.home() == Path("/home/aisco"):
             models_path = (
                 Path.home()
