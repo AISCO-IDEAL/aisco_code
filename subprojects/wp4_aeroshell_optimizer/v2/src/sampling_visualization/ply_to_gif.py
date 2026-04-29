@@ -29,24 +29,20 @@ import imageio
 import numpy as np
 import pyrender
 import trimesh
+import yaml
 from PIL import Image, ImageDraw, ImageFont
 
-# ==========================================
-# SETTINGS
-# ==========================================
-FPS = 10
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 720
+_CFG = yaml.safe_load((Path(__file__).parent / "viz_config.yaml").read_text())
+FPS: int = _CFG["fps"]
+WINDOW_WIDTH: int = _CFG["window_width"]
+WINDOW_HEIGHT: int = _CFG["window_height"]
+CAMERA_DIRECTION: str = _CFG["camera_direction"]
+CAMERA_DISTANCE_MULTIPLIER: float = _CFG["camera_distance_multiplier"]
+CAMERA_ELEVATION_ANGLE: float = _CFG["camera_elevation_angle"]
+POINT_SIZE: int = _CFG["point_size"]
+BACKGROUND_COLOR: list[float] = _CFG["background_color"]
+
 _SLOT_PATTERN = re.compile(r"slot(\d{2})_.*?_epoch(\d{5})\.ply")
-
-# Camera configuration
-CAMERA_DIRECTION = "X"  # along the camera looks
-CAMERA_DISTANCE_MULTIPLIER = 1.0  # smaller more zoomed in
-CAMERA_ELEVATION_ANGLE = 30.0
-
-# Rendering configuration
-POINT_SIZE = 3  # pixels per point; increase for larger/more visible dots
-BACKGROUND_COLOR = [1.0, 1.0, 1.0, 1.0]  # 1.0: white, 0.0: black
 
 
 def _extract_vertex_colors(geo: object) -> np.ndarray | None:
