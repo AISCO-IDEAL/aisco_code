@@ -1,4 +1,5 @@
 model_name: "ConcatWIREV2" # only used for standalone pretraining. If in main loop, the model_name from general_config.yaml is used.
+z_placement: "circle"
 z_radius: 2.0  # unit-circle radius for pretrained latent codes.
               # Spatial inputs are mm/1000 ≈ [-5, 5]; z_radius=2.0 gives latents a
               # comparable magnitude to the dominant spatial axis.
@@ -88,7 +89,7 @@ latent_population:
   #   surface_noise_sigma_factor: 0.005
 
 training_loop:
-  epochs: 400
+  epochs: 10
   learning_rate: 0.0005
   batch_size_per_shape: 4096 #8192
   logging_interval: 25 # wandb stats logging intervall (displayed in terminal as well)
