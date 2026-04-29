@@ -22,13 +22,14 @@ from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 _PARAMS_PATH = Path(__file__).parent / "parameters.yaml"
 _OUTPUT_DIR = Path(__file__).parent
 _PLY_OUTPUT_PATH = _OUTPUT_DIR / "assembly.ply"
+_STEP_OUTPUT_PATH = _OUTPUT_DIR / "assembly.step"
 _CHECKS_OUTPUT_PATH = _OUTPUT_DIR / "checks.txt"
 
 # --- export toggles ---
 _EXPORT_SEAT = True
 _EXPORT_WHEELS = True
 _EXPORT_VISION = False                  # vision cone
-_EXPORT_OUTER = True
+_EXPORT_OUTER = False
 
 # --- check toggles ---
 _CHECK_DEGENERATE_WHEELS = True         # checks if all wheels have same x, would give a outer bounding box with lenght 0.
@@ -56,18 +57,23 @@ def _write_ply(shape: cq.Shape, path: Path) -> None:
 
 def save_ply(inner: cq.Assembly, outer: cq.Solid, vision: cq.Assembly) -> None:
     solids: list[cq.Shape] = []
+    step_assembly = cq.Assembly(name="assembly")
 
     solids.extend(inner.toCompound().Solids())
+    step_assembly.add(inner, name="inner")
     if _EXPORT_OUTER:
         solids.append(outer)
+        step_assembly.add(outer, name="outer_nbz")
     if _EXPORT_VISION:
         solids.extend(vision.toCompound().Solids())
+        step_assembly.add(vision, name="vision")
 
     if not solids:
-        print("[WARNING] No enabled geometry to export to assembly.ply.")
+        print("[WARNING] No enabled geometry to export to assembly.ply or assembly.step.")
         return
 
     _write_ply(cq.Compound.makeCompound(solids), _PLY_OUTPUT_PATH)
+    step_assembly.save(str(_STEP_OUTPUT_PATH), exportType="STEP")
 
 
 def write_params(params: dict) -> None:
@@ -305,12 +311,13 @@ def call_assembly_from_params() -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
 
     seat_solid = inner_solids[0]
     wheel_solids = inner_solids[1:]
+    wheel_names = [k for k in params if k.startswith("wheel_")]
 
-    cut_inner_solids: list[cq.Solid] = [seat_solid]
-    for wheel in wheel_solids:
+    cut_wheel_solids: list[tuple[str, cq.Solid]] = []
+    for wheel_name, wheel in zip(wheel_names, wheel_solids, strict=False):
         cut_wheel = keep_above_z(wheel, wheel_clearance)
         if cut_wheel is not None:
-            cut_inner_solids.append(cut_wheel)
+            cut_wheel_solids.append((wheel_name, cut_wheel))
 
     cut_outer = keep_above_z(_outer_nbz_from_dict(params), ground_clearance)
     if cut_outer is None:
@@ -318,11 +325,11 @@ def call_assembly_from_params() -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
         cut_outer = _outer_nbz_from_dict(params)
 
     cut_inner_assembly = cq.Assembly()
-    if _EXPORT_SEAT and cut_inner_solids:
-        cut_inner_assembly.add(cut_inner_solids[0], name="inner_0")
+    if _EXPORT_SEAT:
+        cut_inner_assembly.add(seat_solid, name="Seat")
     if _EXPORT_WHEELS:
-        for i, s in enumerate(cut_inner_solids[1:], 1):
-            cut_inner_assembly.add(s, name=f"inner_{i}")
+        for wheel_name, wheel_solid in cut_wheel_solids:
+            cut_inner_assembly.add(wheel_solid, name=wheel_name)
     cut_inner_assembly.name = "inner_assembly"
 
     outer_solid = cut_outer.Solids()[0]

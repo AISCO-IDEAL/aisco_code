@@ -21,12 +21,13 @@ A) How to use the assembly maker for the GUI:
     This reads parameters.yaml, generates the assembly, and writes:
 
         assembly.ply
+        assembly.step
         checks.txt
 
-    3) Grab assembly.ply for the generated geometry. Read checks.txt to see the latest
+    3) Grab assembly.ply or assembly.step for the generated geometry. Read checks.txt to see the latest
         validity check result.
 
-    Thats it. now you can see the generated assembly in the ply file and the validity check in the txt file.
+    Thats it. now you can see the generated assembly in the ply/step file and the validity check in the txt file.
         Note: The assembly doesnt have to be valid for the ply file to get generated. The validity check is
         important later.
 
@@ -44,5 +45,5 @@ B) If you want to add this new assembly to the assembly map so that WP4 (and the
 
 C) Things you can change in GUI_assembly.py:
 
-    - _EXPORT_* flags choose what gets exported into assembly.ply. (Seat, wheels, outer, etc)
+    - _EXPORT_* flags choose what gets exported into assembly.ply and assembly.step. (Seat, wheels, outer, etc)
     - _CHECK_* flags enable or disable checks before adding to assembly_map.yaml.
