@@ -2,6 +2,7 @@
 This should be the final main file we use for the Project. It should be modular and easily extendible
 """
 
+import argparse
 import json
 import os
 from pathlib import Path
@@ -24,6 +25,8 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     get_master_config,
     load_config,
     register_all_configs,
+    set_gui_config_folder,
+    switch_to_gui_config,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import DebugManager
@@ -97,8 +100,15 @@ def _maybe_run_latent_pretraining(
     return model, Z_pretrained
 
 
-def main() -> None:  # noqa: PLR0912, PLR0915
+def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa: PLR0912, PLR0915
+
     print("Starting Main file V2...")
+    if gui_mode:
+        if not cfg_folder:
+            raise ValueError("--uses-gui requires --cfg-folder to point at a GUI override folder.")
+        set_gui_config_folder(cfg_folder)
+        switch_to_gui_config(True)
+        print(f"GUI override mode active. Loading configs from: {cfg_folder}")
 
     # 1. Load and register configs
     general_config: dict[str, Any] = load_config(v="v2", cfg_name="general_config.yaml")
@@ -513,4 +523,19 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
 
 if __name__ == "__main__":
-    main()
+    # CLI argument parsing (for GUI config override infrastructure)
+    parser = argparse.ArgumentParser(description="AISCO WP4 Aeroshell Optimizer")
+    parser.add_argument("--uses-gui", action="store_true", help="Running from GUI")
+    parser.add_argument("--cfg-folder", type=str, default="", help="Path to config override folder")
+    args, _ = parser.parse_known_args()
+    print(f"CLI arguments received: {args}, type: {type(args)}")
+    print(f"Extras: {_}, type: {type(_)}")
+    # Arguments are available but not used yet - caller will handle them
+    print(f"uses_gui: {args.uses_gui}, cfg_folder: {args.cfg_folder}")
+    assert _ == [], "Unexpected extra CLI arguments received. Check the caller or argument parsing logic."
+    # --cfg-folder is only required when running through the GUI override flow.
+    if args.uses_gui:
+        assert args.cfg_folder != "", '--uses-gui requires "--cfg-folder PATH" to be set'
+    assert " " not in args.cfg_folder, f"Config folder path cannot contain spaces. Received: '{args.cfg_folder}'"
+
+    main(gui_mode=args.uses_gui, cfg_folder=args.cfg_folder)
