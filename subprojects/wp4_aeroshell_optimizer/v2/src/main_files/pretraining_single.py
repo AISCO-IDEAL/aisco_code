@@ -1,19 +1,22 @@
 #!/usr/bin/env python
 """Single-shape pretraining (Plan 014, v0.1.0).
 
-Drop-in replacement for ``pretraining_v4.py`` that uses the much better
-sampling / loss machinery from ``pretraining_latent.py`` — but for a single
-target shape with a non-conditional model (no latent z).
+Fits a non-conditional SDF model (no latent z) to ONE target shape using the
+same sampling / loss machinery as ``pretraining_latent.py``.
 
-Key differences vs ``pretraining_v4.py``:
-  * Surface-concentrated sampling (``_sample_points_for_shape``) replaces the
-    50/50 uniform/jittered split with a hardcoded σ = 5 % of bbox.  The default
-    near-surface σ is now 0.5 % of the bbox diagonal (~25 mm at car scale),
-    which is what actually pins the surface during training.
-  * **L1-all** loss on (surface ∪ domain) pts replaces ``MSE_surface +
-    eikonal_weight * eikonal``.  L1-all directly forces both correct surface
-    location and correct far-field SDF magnitude — the eikonal regulariser
-    becomes redundant and the ellipsoid attractor disappears.
+Design notes (vs the legacy single-shape pipeline this replaced):
+  * Surface-concentrated sampling (``_sample_points_for_shape``) instead of a
+    50/50 uniform/jittered split with a hardcoded σ = 5 % of bbox.  The
+    default near-surface σ is 0.5 – 2 % of the bbox diagonal, which is what
+    actually pins the surface during training.
+  * **L1-all** loss on (surface ∪ domain) pts as the mandatory term,
+    replacing ``MSE_surface + eikonal_weight * eikonal``.  L1-all directly
+    forces both correct surface location and correct far-field SDF magnitude
+    — the eikonal regulariser becomes redundant and the ellipsoid attractor
+    disappears.
+  * Optional IGR-style surface-normal supervision and a light off-surface
+    eikonal regulariser are layered on top (see
+    ``pretraining_single_config.yaml`` for conceptual notes).
   * DeepSDF-style static surface cache (sampled once, reused every epoch).
     Optional refresh via ``surface_resample_cadence``.
   * Hash-tagged checkpoint folder so different sweep configs land in distinct
@@ -21,10 +24,10 @@ Key differences vs ``pretraining_v4.py``:
   * Marching-cubes extraction uses the asymmetric outer_prism bounding box
     (the actual sampling region) rather than a hardcoded ±N mm cube.
 
-Sweep-compatible: same ``register_all_configs`` / ``apply_sweep_overrides``
-pattern as ``pretraining_v4.py``, so existing sweep YAML keys of the form
+Sweep-compatible: standard ``register_all_configs`` / ``apply_sweep_overrides``
+pattern, so sweep YAML keys of the form
 ``pretraining_single_config.training_loop.X`` and
-``models/AISCOModel_v0.X`` work unchanged.
+``models/AISCOModel_v0.X`` work directly.
 
 Usage (smoke test — 5 epochs, no mesh extraction):
     python subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_single.py --epochs 5 --no-mesh
@@ -92,6 +95,73 @@ def _build_shape_params(shape: dict[str, Any], ply_tensors: tuple[Tensor, Tensor
             "surface_noise_sigma_factor": float(shape.get("surface_noise_sigma_factor", 0.05)),
         }
     raise ValueError(f"Unknown shape_type '{shape_type}'. Valid values: 'sphere', 'cube', 'ply'.")
+
+
+def _sample_surface_points_with_normals(
+    ply_verts: Tensor, ply_faces: Tensor, n_pts: int, device: str
+) -> tuple[Tensor, Tensor]:
+    """Sample exact on-surface points + per-point unit normals from a PLY mesh.
+
+    Faces are sampled with probability proportional to their area (so dense /
+    fine-detail regions are not undersampled), then each face is sampled with
+    a uniform barycentric coordinate.  The returned normal for each point is
+    the unit face normal (per-vertex normals would average across creases and
+    blur the supervision signal we explicitly want to inject — see the docstring
+    of ``main`` for why we add this loss term).
+
+    Args:
+        ply_verts: (V, 3) float tensor of mesh vertices on CPU (already in mm,
+            in AISCO axis convention, as returned by ``_load_ply_tensors``).
+        ply_faces: (F, 3) int64 tensor of triangle vertex indices (CPU).
+        n_pts: Number of on-surface points to draw.
+        device: Target device for the returned tensors.
+
+    Returns:
+        Tuple ``(pts, normals)`` of shape ``(n_pts, 3)`` each, on ``device``.
+        ``normals`` are unit-length.
+    """
+    verts = ply_verts.to(torch.float32)
+    faces = ply_faces.to(torch.long)
+    v0 = verts[faces[:, 0]]
+    v1 = verts[faces[:, 1]]
+    v2 = verts[faces[:, 2]]
+    face_normals_raw = torch.cross(v1 - v0, v2 - v0, dim=-1)
+    face_areas = 0.5 * torch.linalg.norm(face_normals_raw, dim=-1)
+    # Guard against zero-area faces (degenerate triangles in the input PLY).
+    face_areas = torch.clamp(face_areas, min=1e-12)
+    face_normals = face_normals_raw / (2.0 * face_areas.unsqueeze(-1))
+
+    face_idx = torch.multinomial(face_areas, n_pts, replacement=True)
+    # Uniform barycentric sampling on the unit triangle: (1-√r1, √r1·(1-r2), √r1·r2).
+    r1 = torch.rand(n_pts)
+    r2 = torch.rand(n_pts)
+    sqrt_r1 = torch.sqrt(r1)
+    b0 = (1.0 - sqrt_r1).unsqueeze(-1)
+    b1 = (sqrt_r1 * (1.0 - r2)).unsqueeze(-1)
+    b2 = (sqrt_r1 * r2).unsqueeze(-1)
+    pts = b0 * v0[face_idx] + b1 * v1[face_idx] + b2 * v2[face_idx]
+    normals = face_normals[face_idx]
+    return pts.to(device), normals.to(device)
+
+
+def _grad_of_sdf(model: SupportsModelContract, pts: Tensor) -> Tensor:
+    """Return ``∇f(x)`` for an SDF network ``f``.
+
+    Standard IGR-style trick: enable ``requires_grad`` on the inputs and
+    backprop a sum-of-outputs to recover the per-point gradient in a single
+    autograd call.  ``create_graph=True`` so the gradient itself is
+    differentiable (needed because the eikonal / normal losses depend on it).
+    """
+    pts = pts.detach().requires_grad_(True)
+    pred = model(pts).squeeze(-1)
+    grad = torch.autograd.grad(
+        outputs=pred.sum(),
+        inputs=pts,
+        create_graph=True,
+        retain_graph=True,
+    )[0]
+    return grad
+
 
 
 def _compute_pretrain_config_hash(config: dict[str, Any], model: SupportsModelContract) -> str:
@@ -248,6 +318,21 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
         float(loop_cfg["near_surface_wide_sigma"]) if loop_cfg.get("near_surface_wide_sigma") is not None else None
     )
 
+    # Tier-1 architectural-loss knobs (Plan 015).
+    normal_loss_weight: float = float(loop_cfg.get("normal_loss_weight", 0.0))
+    normal_batch_size: int = int(loop_cfg.get("normal_batch_size", 512))
+    normal_resample_cadence: int = int(loop_cfg.get("normal_resample_cadence", 50))
+    eikonal_loss_weight: float = float(loop_cfg.get("eikonal_loss_weight", 0.0))
+    eikonal_batch_size: int = int(loop_cfg.get("eikonal_batch_size", 1024))
+    use_normal_loss = normal_loss_weight > 0.0 and shape["shape_type"] == "ply"
+    use_eikonal_loss = eikonal_loss_weight > 0.0
+    if normal_loss_weight > 0.0 and shape["shape_type"] != "ply":
+        print(
+            f"[single] WARNING: normal_loss_weight={normal_loss_weight} requested but shape_type "
+            f"is '{shape['shape_type']}'; disabling (no mesh normals available).",
+            file=sys.stderr,
+        )
+
     if near_surface_fraction + domain_fraction > 1.0 + 1e-9:
         raise ValueError(
             f"near_surface_fraction + domain_fraction must sum to ≤ 1.0, "
@@ -312,6 +397,41 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
     )
     print(f"[single] Surface cache: {resample_label}.")
 
+    # ── Optional: on-surface points + per-point unit normals (for normal loss) ─
+    norm_pts: Tensor | None = None
+    norm_normals: Tensor | None = None
+    if use_normal_loss:
+        assert ply_tensors is not None  # narrowed by use_normal_loss
+        ply_verts_cpu, ply_faces_cpu, _ = ply_tensors
+        norm_pts, norm_normals = _sample_surface_points_with_normals(
+            ply_verts_cpu, ply_faces_cpu, normal_batch_size, device
+        )
+        print(
+            f"[single] Normal-loss enabled: λ_n={normal_loss_weight} on {normal_batch_size} pts/step "
+            f"(refresh every {normal_resample_cadence} ep, 0 = static)."
+        )
+    if use_eikonal_loss:
+        print(
+            f"[single] Eikonal regulariser enabled: λ_eik={eikonal_loss_weight} on "
+            f"{eikonal_batch_size} domain pts/step (off-surface only)."
+        )
+
+    # Per-axis sampling bounds for the eikonal regulariser — mirrors
+    # outer_prism so eikonal pts share the support of the L1 domain pts.
+    eik_bounds = (
+        torch.tensor(
+            [
+                [outer_prism["x"][0], outer_prism["x"][1]],
+                [outer_prism["y"][0], outer_prism["y"][1]],
+                [outer_prism["z_sampling"][0], outer_prism["z_mesh"][1]],
+            ],
+            dtype=torch.float32,
+            device=device,
+        )
+        if use_eikonal_loss
+        else None
+    )
+
     # ── Training loop ───────────────────────────────────────────────────────
     for epoch in tqdm(range(epochs), desc="single_pretrain", unit="ep"):
         model.train()
@@ -331,6 +451,19 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
             )
             surf_pts = pts_re[n_dom:].to(device)
             surf_gt = gt_re[n_dom:].to(device)
+
+        # Refresh on-surface cache for normal loss (cheap; pure CPU mesh sampling).
+        if (
+            use_normal_loss
+            and normal_resample_cadence > 0
+            and epoch > 0
+            and epoch % normal_resample_cadence == 0
+        ):
+            assert ply_tensors is not None
+            ply_verts_cpu, ply_faces_cpu, _ = ply_tensors
+            norm_pts, norm_normals = _sample_surface_points_with_normals(
+                ply_verts_cpu, ply_faces_cpu, normal_batch_size, device
+            )
 
         # Fresh domain pts every epoch — surface pts come from the cache.
         pts_fresh, gt_fresh = _sample_points_for_shape(
@@ -361,10 +494,47 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
             sys.exit(1)
 
         # L1-all on (surface ∪ domain) pts in metres for numerical scale. # noqa: RUF003
-        # Replaces the v4 MSE_surface + eikonal_weight * eikonal formulation —
-        # the eikonal term is implicit because GT SDF magnitudes far from the
-        # surface already encode |∇f| ≈ 1.
-        total_loss = l1_fn(pred / 1000.0, all_gt / 1000.0)
+        # GT SDF magnitudes far from the surface already encode |∇f| ≈ 1, so
+        # the L1-all term implicitly does most of the eikonal work.  The
+        # explicit normal / eikonal losses below add the *missing* surface-
+        # orientation supervision that L1-on-distance can't provide.
+        l1_loss = l1_fn(pred / 1000.0, all_gt / 1000.0)
+        total_loss = l1_loss
+
+        normal_loss_val = 0.0
+        eikonal_loss_val = 0.0
+
+        # ---- Normal loss (IGR-style) -------------------------------------
+        # Pin f(x_surf) → 0 *and* align ∇f(x_surf) with the mesh normal.
+        # This is the single biggest fix for the "potato + blobs, no fine
+        # detail" symptom: L1-on-distance doesn't constrain surface
+        # orientation, so the network is free to fit any smooth blob with
+        # roughly the right volume.
+        if use_normal_loss and norm_pts is not None and norm_normals is not None:
+            grad_surf = _grad_of_sdf(model, norm_pts)  # mm-domain grad of mm-domain SDF (unitless ratio)
+            grad_norm = grad_surf / (torch.linalg.norm(grad_surf, dim=-1, keepdim=True) + 1e-8)
+            normal_alignment = (1.0 - (grad_norm * norm_normals).sum(dim=-1)).mean()
+            # Also constrain f(x_surf) = 0 (in metres for scale parity with L1).
+            f_surf = model(norm_pts).squeeze(-1)
+            on_surface_mse = (f_surf / 1000.0).abs().mean()
+            normal_loss = normal_alignment + on_surface_mse
+            total_loss = total_loss + normal_loss_weight * normal_loss
+            normal_loss_val = float(normal_loss.detach().item())
+
+        # ---- Light eikonal regulariser (off-surface only) ----------------
+        # Sample fresh uniform pts in the outer_prism box and push |∇f| → 1.
+        # Keeping this OFF the near-surface band avoids the v4 ellipsoid
+        # collapse, while still stabilising gradient magnitudes globally.
+        if use_eikonal_loss and eik_bounds is not None:
+            eik_pts = (
+                torch.rand(eikonal_batch_size, 3, device=device)
+                * (eik_bounds[:, 1] - eik_bounds[:, 0])
+                + eik_bounds[:, 0]
+            )
+            grad_eik = _grad_of_sdf(model, eik_pts)
+            eikonal_loss = ((torch.linalg.norm(grad_eik, dim=-1) - 1.0) ** 2).mean()
+            total_loss = total_loss + eikonal_loss_weight * eikonal_loss
+            eikonal_loss_val = float(eikonal_loss.detach().item())
 
         # Diagnostic-only: surface-only L1 (comparable across runs).
         with torch.no_grad():
@@ -386,7 +556,8 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
             lr_now = scheduler.get_last_lr()[0]
             tqdm.write(
                 f"[single] epoch={epoch:5d} | total={total_loss.item():.6f} "
-                f"| surf={surf_loss:.6f} | dom={dom_loss:.6f} | lr={lr_now:.2e}"
+                f"| l1={l1_loss.item():.6f} | surf={surf_loss:.6f} | dom={dom_loss:.6f} "
+                f"| n={normal_loss_val:.4f} | eik={eikonal_loss_val:.4f} | lr={lr_now:.2e}"
             )
             if use_wandb:
                 wandb.log(
@@ -394,8 +565,11 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
                         # Sweep metric: keep the same name as v4 so existing
                         # sweep YAMLs (metric.name: pretraining/total_loss) work.
                         "pretraining/total_loss": total_loss.item(),
+                        "pretraining/l1_loss": l1_loss.item(),
                         "pretraining/surface_loss": surf_loss,
                         "pretraining/domain_loss": dom_loss,
+                        "pretraining/normal_loss": normal_loss_val,
+                        "pretraining/eikonal_loss": eikonal_loss_val,
                         "pretraining/lr": lr_now,
                     },
                     step=epoch,
@@ -418,7 +592,7 @@ def main(epochs_override: int | None = None, no_mesh: bool = False) -> None:  # 
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Single-shape SDF pretraining (replaces pretraining_v4.py)")
+    parser = argparse.ArgumentParser(description="Single-shape SDF pretraining")
     parser.add_argument(
         "--epochs",
         type=int,

@@ -1,87 +1,123 @@
+# =============================================================================
+# AISCOModel v0 — single-shape SDF MLP (default constructor kwargs)
+# =============================================================================
+#
 # Loaded by smart_model_init -> passed as **model_config to AISCOModel(...).
 # Every key here maps directly to an AISCOModel.__init__ argument.
+#
+# -----------------------------------------------------------------------------
+# Conceptual overview
+# -----------------------------------------------------------------------------
+# AISCOModel is a 10-Linear-layer MLP that maps a 3-D point (x,y,z in mm) to
+# a single signed-distance scalar. The architecture is fully driven by the
+# fields below; in plain English it works as follows:
+#
+#   1. Coordinate scaling
+#        Inputs are divided by `input_scale` so the MLP operates on
+#        ~unit-scale numbers regardless of the physical extent of the shape.
+#        The output is multiplied back by `output_scale` so the network
+#        speaks the same metric (mm) as the rest of the pipeline.
+#
+#   2. Sinusoidal positional encoding (NeRF-style, `fourier_levels = L`)
+#        gamma(x) = [x, sin(2^k pi x), cos(2^k pi x)]_{k=0..L-1}
+#        Effective input dim becomes 3 * (1 + 2L). This widens the frequency
+#        basis the MLP can represent, which is the cheapest path to capturing
+#        fine geometric detail (bunny ears, toes, creases). L=0 disables it
+#        and reproduces the legacy un-encoded behaviour bit-exact.
+#
+#   3. Hidden trunk (`hidden_dims`)
+#        A 9-deep stack of Linear layers (256 -> 256 -> 256 -> 512 -> 512 ->
+#        512 -> 512 -> 384 -> 256) followed by a 256 -> 1 output Linear, for
+#        10 Linear layers total. The 512-wide mid-stack supplies capacity for
+#        non-linear regions; the 384/256 taper trades parameters for a
+#        smoother last-layer manifold.
+#
+#   4. Input re-injection (`concat_input_at`)
+#        At the listed 1-indexed layers, the encoded input is re-concatenated
+#        onto the layer's input. This restores positional information that
+#        would otherwise wash out in deeper layers (the standard DeepSDF /
+#        SIREN trick). Re-injecting on every other layer (1,3,5,7,9) gave the
+#        deepest trunk the strongest positional signal of all swept variants.
+#
+#   5. Residual additions (`residual_at`)
+#        At the listed layers the layer's input is added to its post-
+#        activation output. A learnable Linear projection is auto-built when
+#        shapes differ. Residuals at (4,6,8) shore up gradient flow through
+#        the 512-wide trunk and the 512 -> 384 -> 256 taper.
+#
+#   6. Activations (`activations`, length = 10)
+#        One activation is applied AFTER each Linear. The winning profile
+#        ("profile C") interleaves SiLU with LeakyReLU in the mid-stack:
+#        SiLU gives smooth gradients (good Eikonal behaviour); LeakyReLU
+#        adds piecewise-linear capacity, which is what carves crisp creases
+#        like the bunny's ear ridges. Pure-smooth profiles produced
+#        ellipsoids; pure piecewise-linear profiles produced cardboard SDFs.
+#
+# Recognised activations: silu, leakyrelu, linear. (Other families and
+# sine/SIREN were tried and dropped — wobbly SDFs or training instabilities.)
+#
+# -----------------------------------------------------------------------------
+# Tuning history
+# -----------------------------------------------------------------------------
+# These defaults are baked from the stage-2 refinement sweep winner
+# (run hash `186b3aad3b`, project `aisco/AISCOModel_Pretraining_Single`) —
+# qualitatively the cleanest bunny mesh: smooth body, captures most local
+# detail, and starts to connect both ears to the head. The stage-1 winner
+# ("fanciful-sweep #11", run `bw8cja3s`) only managed a coarse blob bunny.
+# =============================================================================
 
 # --- I/O ---
 in_features: 3        # x, y, z
 out_features: 1       # signed distance scalar
 
 # --- Architecture (10 Linear layers total = len(hidden_dims) + 1) ---
-# Spec:
-#   layer 1: 3   -> 256
-#   layer 2: 256 -> 256
-#   layer 3: 256 -> 256       (concat input)
-#   layer 4: 256 -> 512
-#   layer 5: 512 -> 512       (concat input + residual)
-#   layer 6: 512 -> 512
-#   layer 7: 512 -> 512
-#   layer 8: 512 -> 256       (concat input + residual)
-#   layer 9: 256 -> 128
-#   layer 10: 128 -> 1        (output)
-# hidden_dims: [256, 256, 256, 512, 512, 512, 512, 256, 128] # old
-hidden_dims: [256, 256, 256, 512, 512, 512, 512, 384, 256] # 13
+#   layer 1:  enc -> 256       (concat input)
+#   layer 2:  256 -> 256
+#   layer 3:  256 -> 256       (concat input)
+#   layer 4:  256 -> 512                          (residual)
+#   layer 5:  512 -> 512       (concat input)
+#   layer 6:  512 -> 512                          (residual)
+#   layer 7:  512 -> 512       (concat input)
+#   layer 8:  512 -> 384                          (residual)
+#   layer 9:  384 -> 256       (concat input)
+#   layer 10: 256 -> 1         (output)
+hidden_dims: [256, 256, 256, 512, 512, 512, 512, 384, 256]
 
+# Profile C (winning): SiLU baseline + LeakyReLU at 3, 5, 7. Linear output.
+activations: [silu, silu, leakyrelu, silu, leakyrelu, silu, leakyrelu, silu, silu, linear]
 
-# Activation applied AFTER each Linear (length = len(hidden_dims) + 1).
-# Recognised: silu, gelu, relu, leakyrelu, elu, selu, mish, softplus, tanh,
-#             snake, linear.
-# (Sine/SIREN was removed: it proved unstable and produced wobbly SDFs.)
-#
-# Quick guide for SDFs (cars / boats):
-#   silu, gelu, mish     -> smooth surfaces, good gradients (best general default)
-#   elu, selu            -> smooth + non-zero mean; can sharpen mid-layer features
-#   softplus             -> very smooth, excellent for Eikonal regularisation
-#   leakyrelu, relu      -> piecewise-linear, edge-friendly but cardboard-like SDF
-#   tanh                 -> bounded; useful at output for SDF clamping
-#   snake                -> periodic capacity for creases. Sensitive: keep `snake_alpha_init`
-#                          small (0.2-0.5) and place snake AWAY from layer 1 and AWAY
-#                          from layers right after `concat_input_at` (your past
-#                          NaNs came from snake at layer 1 + concat re-injection).
-
-# previous test results:
-# https://wandb.ai/aisco/AISCOModel_Pretraining/table
-activations: [linear, silu, gelu, leakyrelu, gelu, leakyrelu, silu, leakyrelu, silu, linear] # pretraining on silvretta: just a very smooth and bullet-form ellipsoid; eikonal loss: decays to zero very fast; wandb: honest-morning-1
-# activations: [silu, silu, silu, silu, silu, silu, silu, silu, silu, linear] # pretraining on silvretta: very smooth ellipsoid, but way closer to the sphere; eikonal loss: decaying slower and staying a little higher; wandb: likely-leaf-5
-# activations: [silu, silu, gelu, gelu, gelu, gelu, gelu, silu, silu, linear] # pretraining on silvretta: empty mesh; eikonal loss: decay only until 0.8; wandb: comic-sponge-6
-# activations: [silu, silu, gelu, gelu, gelu, gelu, gelu, silu, silu, tanh] # pretraining on silvretta: empty mesh; eikonal loss: decay only until 0.8; wandb: golden-snowflake-7
-# activations: [silu, silu, mish, mish, mish, mish, mish, silu, silu, linear] # pretraining on silvretta: very smooth ellipsoid, but way closer to the sphere; eikonal loss: decaying slower until 0.05 ; wandb: vital-firefly-8
-# activations: [silu, silu, silu, silu, silu, snake, silu, silu, silu, linear] # pretraining on silvretta: very smooth ellipsoid, but way closer to the sphere; eikonal loss: decaying slower until 0.05; wandb: deep-sponge-9
-
-
-
-# basic MLP: pretraining on silvretta: empty mesh extracted wandb: true-oath-2; eikonal loss: decaying to 1 only; wandb: eager-resonance-3
-# WIREV2: pretraining on silvretta: very wobbly, fails to capture silvretta, just some connected blobs eikonal loss: decaying a slower than AISCOModel, oscillating around 0.3; wandb: jolly-microwave-4
-# ExampleModel: pretraining on silvretta: ; eikonal loss: ; wandb:
-
-
-# 1-indexed layer numbers where the (scaled) input features are re-concatenated
-# onto the layer's input.
-# concat_input_at: [3, 5, 8] # old, struggle to move away from ellipsoid
-concat_input_at: [3, 5, 8] # activations: [linear, silu, gelu, leakyrelu, gelu, leakyrelu, silu, leakyrelu, silu, linear] -> this combination produced an empty mesh
+# 1-indexed layer numbers where the (scaled, encoded) input features are
+# re-concatenated onto the layer's input.
+concat_input_at: [1, 3, 5, 7, 9]
 
 # 1-indexed layer numbers where the layer's input (after any concat) is added
 # back to its post-activation output. A learnable projection is auto-created
-# when input/output dims differ (e.g. layer 8: 515 -> 256).
-# residual_at: [5, 8] # old, struggly to move away from ellipsoid
-# residual_at: [] # activations: [linear, silu, gelu, leakyrelu, gelu, leakyrelu, silu, leakyrelu, silu, linear] -> this combination produced an empty mesh
-residual_at: [5, 8] # activations: [linear, silu, gelu, leakyrelu, gelu, leakyrelu, silu, leakyrelu, silu, linear] -> this combination produced
+# when input/output dims differ (e.g. layer 4: 256 + enc_dim -> 512).
+residual_at: [4, 6, 8]
 
 # --- Coordinate scaling ---
-input_scale: 1000.0   # divides input (mm -> ~unit-scale)
-output_scale: 1000.0  # multiplies output (back to mm)
+# Lower input_scale -> larger numbers reach the MLP -> wider frequency
+# budget. 400 mm was the sweet spot in stage-2 (200 over-sharpened at
+# car-scale, 1000 produced ellipsoids).
+input_scale: 400.0
+output_scale: 1000.0   # multiplies output (back to mm)
 
 # --- Misc ---
 bias: true
-
-# Initial value for Snake's learnable per-channel alpha (only matters if any
-# `snake` entry is in `activations`). Higher = higher-frequency capacity at
-# init. For SDFs use 0.2-0.5; values >= 1.0 here have already produced NaNs
-# in this codebase (see test results above).
-snake_alpha_init: 0.2
 
 # --- Memory control ---
 # When the input batch dimension exceeds this value, forward() splits the
 # input into chunks of this size and concatenates the outputs. This bounds
 # peak activation memory for dense-grid evaluations (e.g. ConnectednessV1's
 # voxel grid which previously triggered a 4 GiB CUDA OOM on layer 5/512).
-# Set to 0 to disable chunking (matches old behaviour).
+# Set to 0 to disable chunking.
 forward_chunk_size: 131072
+
+# --- Sinusoidal positional encoding (NeRF-style) ---
+# When > 0, the (scaled) input fed to the network is
+#   gamma(x) = [x, sin(2^k pi x), cos(2^k pi x)]_{k=0..L-1}
+# of effective dim 3*(1 + 2L), and the same encoding is re-injected at every
+# `concat_input_at` layer. 0 disables it (legacy, backward-compatible with
+# pre-Fourier checkpoints). 4 was the stage-2 winner; higher (>=8) produced
+# noisy SDFs at this batch size.
+fourier_levels: 4

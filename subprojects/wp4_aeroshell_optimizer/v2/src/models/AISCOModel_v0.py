@@ -1,84 +1,68 @@
 
 """AISCO SDF model (v0).
 
-A 10-layer SDF MLP with:
-  - Smooth activations (SiLU by default; GELU available via config)
-  - Repeated concatenation of the (scaled) input features at chosen layers
-  - Residual additions at chosen layers (with auto-projection when shapes differ)
-  - Optional chunked forward pass to keep memory bounded on large coordinate
-    grids (e.g. the connectedness loss evaluating a dense voxel grid).
+A 10-Linear-layer MLP that maps a 3-D point ``(x, y, z)`` in mm to a single
+signed-distance scalar. Every architectural knob is exposed through the YAML
+config and forwarded as ``model_class(**model_config)`` from
+``subprojects/wp4_aeroshell_optimizer/v2/src/utils/dynamic_loading.py``; the
+default winning configuration lives in
+``subprojects/wp4_aeroshell_optimizer/v2/configs/models/AISCOModel_v0.yaml``.
 
-Every architectural choice is exposed through the YAML config and forwarded as
-``model_class(**model_config)`` from
-``subprojects/wp4_aeroshell_optimizer/v2/src/utils/dynamic_loading.py``.
+Conceptual data flow (one ``forward(x)`` call):
 
-Latent-vector conditioning is not implemented here — see the ``concat_AISCOModel``
-variant for that.
+    x  --[/ input_scale]-->  x_norm
+       --[Fourier encoding]-->  x_enc          (gamma(x) of dim 3*(1+2L))
+       --[Linear stack]-->  h                  (10 layers, see below)
+       --[* output_scale]-->  f(x)             (signed distance in mm)
+
+Inside the Linear stack:
+  * Each layer is ``act(Linear(h))``.
+  * At every layer in ``concat_input_at`` the encoded input ``x_enc`` is
+    concatenated onto the layer's input. This restores positional information
+    that would otherwise wash out in deep layers (DeepSDF / SIREN trick).
+  * At every layer in ``residual_at`` the layer's input (after any concat) is
+    added back to its post-activation output; a learnable projection is
+    auto-built when shapes differ.
+  * ``forward()`` chunks along the leading dim when ``forward_chunk_size > 0``
+    and the batch exceeds it, bounding peak activation memory for dense-grid
+    SDF evaluations (e.g. the connectedness loss).
+
+Activation choice matters for SDFs: pure-smooth profiles (all-SiLU) bias
+toward ellipsoidal blobs; pure piecewise-linear profiles produce cardboard
+SDFs. The winning ``profile C`` interleaves SiLU with LeakyReLU mid-stack to
+get smooth gradients *and* enough piecewise-linear capacity to carve crisp
+creases (e.g. bunny ear ridges). The factory below therefore only exposes the
+three activations actually used by the winning config: ``silu``, ``leakyrelu``,
+``linear``.
+
+Latent-vector conditioning is not implemented here — see the
+``concat_AISCOModel`` variant for that.
 """
 
 from __future__ import annotations
+
+import math
+from typing import cast
 
 import torch
 from torch import nn
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
 
-
-class _Snake(nn.Module):
-    """Snake activation: f(x) = x + (1/alpha) * sin(alpha * x)^2.
-
-    From Ziyin, Hartwig & Ueda (2020), "Neural Networks Fail to Learn Periodic
-    Functions and How to Fix It". Adds periodic capacity (good for edges/creases
-    in SDFs) on top of an identity backbone, so gradients remain well-behaved
-    near zero — unlike pure sine/SIREN which we found unstable here.
-
-    ``alpha`` is a per-channel learnable parameter when ``learnable=True``.
-    Larger ``alpha`` -> higher frequency content. Typical init: 0.5-1.0 for
-    smooth shapes, 5-30 for highly periodic data.
-    """
-
-    def __init__(self, num_features: int, alpha_init: float = 1.0, learnable: bool = True):
-        super().__init__()
-        alpha = torch.full((num_features,), float(alpha_init))
-        if learnable:
-            self.alpha = nn.Parameter(alpha)
-        else:
-            self.register_buffer("alpha", alpha)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Broadcast alpha over leading dims; channel dim is last for our Linear stack.
-        a = self.alpha
-        # Avoid division by zero if alpha drifts to ~0 during training.
-        safe_a = torch.where(a.abs() < 1e-4, torch.full_like(a, 1e-4), a)
-        return x + (torch.sin(a * x) ** 2) / safe_a
+_ACTIVATION_FACTORIES: dict[str, type[nn.Module]] = {
+    "silu": nn.SiLU,
+    "leakyrelu": nn.LeakyReLU,
+    "linear": nn.Identity,
+}
 
 
-def _build_activation(name: str | None, num_features: int, snake_alpha_init: float = 1.0) -> nn.Module:
+def _build_activation(name: str) -> nn.Module:
     key = (name or "linear").lower()
-    factories: dict[str, type[nn.Module]] = {
-        "silu": nn.SiLU,
-        "swish": nn.SiLU,
-        "gelu": nn.GELU,
-        "relu": nn.ReLU,
-        "leakyrelu": nn.LeakyReLU,
-        "elu": nn.ELU,
-        "selu": nn.SELU,
-        "mish": nn.Mish,
-        "softplus": nn.Softplus,
-        "tanh": nn.Tanh,
-        "linear": nn.Identity,
-        "none": nn.Identity,
-        "identity": nn.Identity,
-        "": nn.Identity,
-    }
-    if key == "snake":
-        return _Snake(num_features=num_features, alpha_init=snake_alpha_init, learnable=True)
-    if key not in factories:
+    if key not in _ACTIVATION_FACTORIES:
         raise ValueError(
-            f"Unknown activation '{name}'. Supported: silu, gelu, relu, leakyrelu, elu, "
-            "selu, mish, softplus, tanh, snake, linear."
+            f"Unknown activation '{name}'. Supported: {sorted(_ACTIVATION_FACTORIES)}."
         )
-    return factories[key]()
+    return _ACTIVATION_FACTORIES[key]()
 
 
 class AISCOModel(BaseModel):
@@ -93,11 +77,11 @@ class AISCOModel(BaseModel):
         activations: list[str] | None = None,
         concat_input_at: list[int] | None = None,
         residual_at: list[int] | None = None,
-        input_scale: float = 1000.0,
+        input_scale: float = 400.0,
         output_scale: float = 1000.0,
         bias: bool = True,
         forward_chunk_size: int = 131072,
-        snake_alpha_init: float = 1.0,
+        fourier_levels: int = 4,
     ):
         """
         Args:
@@ -105,43 +89,48 @@ class AISCOModel(BaseModel):
             in_features: Number of input coordinate features (default 3 for x, y, z).
             out_features: Number of output features (default 1 for signed distance).
             hidden_dims: Output width of each hidden ``Linear``. Defaults to the
-                spec ``[256, 256, 256, 512, 512, 512, 512, 256, 128]`` (9 hidden
-                layers + 1 output layer = 10 ``Linear`` layers total).
+                winning spec ``[256, 256, 256, 512, 512, 512, 512, 384, 256]``
+                (9 hidden layers + 1 output layer = 10 ``Linear`` layers total).
             activations: Activation name applied AFTER each ``Linear`` (length
-                ``len(hidden_dims) + 1``). Recognised: ``silu``, ``gelu``, ``relu``,
-                ``leakyrelu``, ``elu``, ``selu``, ``mish``, ``softplus``, ``tanh``,
-                ``snake``, ``linear``. Defaults to 9 x ``silu`` + ``linear``.
+                ``len(hidden_dims) + 1``). Recognised: ``silu``, ``leakyrelu``,
+                ``linear``. Defaults to the winning profile C.
             concat_input_at: 1-indexed layer numbers whose ``Linear`` input is
-                concatenated with the (scaled) input features. Defaults to
-                ``[3, 5, 8]``.
-            residual_at: 1-indexed layer numbers where the layer's input (after any
-                concat) is added back to its post-activation output. A learnable
-                projection is added automatically when shapes differ. Defaults to
-                ``[5, 8]``.
-            input_scale: Divides the input (so ``x / input_scale`` is fed to the
-                network). Default 1000.0 mirrors ``BaseModel``.
-            output_scale: Multiplies the network output (e.g. mm rescale).
+                concatenated with the (encoded) input features. Defaults to
+                ``[1, 3, 5, 7, 9]``.
+            residual_at: 1-indexed layer numbers where the layer's input (after
+                any concat) is added back to its post-activation output. A
+                learnable projection is added automatically when shapes differ.
+                Defaults to ``[4, 6, 8]``.
+            input_scale: Divides the input (so ``x / input_scale`` is fed to
+                the network). Default 400.0 (winning value).
+            output_scale: Multiplies the network output (mm rescale). Default 1000.0.
             bias: Whether ``Linear`` layers carry a bias.
             forward_chunk_size: When > 0 and the input batch dimension exceeds
                 this value, the forward pass is computed in chunks along the
                 first dim and concatenated. This keeps activation memory bounded
                 for dense grid evaluations (e.g. the connectedness loss). Set
                 to ``0`` to disable chunking.
-            snake_alpha_init: Initial value for the per-channel learnable
-                ``alpha`` of any ``snake`` activation in ``activations``. Higher
-                values bias toward higher-frequency content. Ignored when no
-                ``snake`` entry is used. Default 1.0 (smooth, edge-friendly).
+            fourier_levels: Number of NeRF-style sinusoidal positional-encoding
+                bands applied to the (scaled) input. When ``L > 0``, the input
+                fed to the network — and re-injected at ``concat_input_at``
+                layers — is
+                ``[x, sin(2^k π x), cos(2^k π x)]_{k=0..L-1}`` of effective
+                dimension ``in_features * (1 + 2L)``. ``0`` disables the
+                encoding. Default 4 (winning value).
         """
         super().__init__(config=config, overwrite_base_init=True)
 
         if hidden_dims is None:
-            hidden_dims = [256, 256, 256, 512, 512, 512, 512, 256, 128]
+            hidden_dims = [256, 256, 256, 512, 512, 512, 512, 384, 256]
         if activations is None:
-            activations = ["silu"] * len(hidden_dims) + ["linear"]
+            activations = [
+                "silu", "silu", "leakyrelu", "silu", "leakyrelu",
+                "silu", "leakyrelu", "silu", "silu", "linear",
+            ]
         if concat_input_at is None:
-            concat_input_at = [3, 5, 8]
+            concat_input_at = [1, 3, 5, 7, 9]
         if residual_at is None:
-            residual_at = [5, 8]
+            residual_at = [4, 6, 8]
 
         n_linear = len(hidden_dims) + 1  # hidden layers + output layer
         if len(activations) != n_linear:
@@ -162,7 +151,18 @@ class AISCOModel(BaseModel):
         self.input_scale = float(input_scale)
         self.output_scale = float(output_scale)
         self.forward_chunk_size = int(forward_chunk_size)
-        self.snake_alpha_init = float(snake_alpha_init)
+        self.fourier_levels = int(fourier_levels)
+        if self.fourier_levels < 0:
+            raise ValueError(f"fourier_levels must be >= 0, got {self.fourier_levels}.")
+        # Effective width of what the MLP actually sees as "input" (used for
+        # both the first Linear and every concat re-injection point).
+        self._enc_dim = self.in_features * (1 + 2 * self.fourier_levels)
+        if self.fourier_levels > 0:
+            # Standard NeRF-style frequency schedule: 2^k π for k = 0..L-1.
+            # Registered as a buffer so it moves with .to(device) and is
+            # serialised with the model.
+            freqs = (2.0 ** torch.arange(self.fourier_levels)) * math.pi
+            self.register_buffer("_fourier_freqs", freqs)
 
         # mirror BaseModel attributes for get_model_info_dict / debug introspection
         self.in_dim = self.in_features
@@ -175,20 +175,14 @@ class AISCOModel(BaseModel):
         self.acts = nn.ModuleList()
         self.residual_projs = nn.ModuleDict()  # keyed by str(layer_idx_1based)
 
-        prev_dim = self.in_features
+        prev_dim = self._enc_dim
         for layer_idx in range(1, n_linear + 1):
-            in_dim = prev_dim + (self.in_features if layer_idx in self.concat_input_at else 0)
+            in_dim = prev_dim + (self._enc_dim if layer_idx in self.concat_input_at else 0)
             out_dim = out_dims[layer_idx - 1]
 
             linear = nn.Linear(in_dim, out_dim, bias=bias)
-            act_name = self.activations_cfg[layer_idx - 1]
-
             self.linears.append(linear)
-            # Snake needs the per-layer width so its learnable alpha has the
-            # right shape; other activations ignore num_features.
-            self.acts.append(
-                _build_activation(act_name, num_features=out_dim, snake_alpha_init=self.snake_alpha_init)
-            )
+            self.acts.append(_build_activation(self.activations_cfg[layer_idx - 1]))
 
             if layer_idx in self.residual_at and in_dim != out_dim:
                 # auto-projection so the residual add is well-defined when shapes differ
@@ -196,8 +190,19 @@ class AISCOModel(BaseModel):
 
             prev_dim = out_dim
 
+    def _encode(self, x_in: torch.Tensor) -> torch.Tensor:
+        """Apply the optional sinusoidal positional encoding."""
+        if self.fourier_levels == 0:
+            return x_in
+        # Shapes: x_in is (..., in_features); self._fourier_freqs is (L,).
+        freqs = cast(torch.Tensor, self._fourier_freqs)
+        scaled = x_in.unsqueeze(-1) * freqs  # (..., in_features, L)
+        sin_part = torch.sin(scaled).flatten(-2)
+        cos_part = torch.cos(scaled).flatten(-2)
+        return torch.cat([x_in, sin_part, cos_part], dim=-1)
+
     def _forward_single(self, x: torch.Tensor) -> torch.Tensor:
-        x_in = x / self.input_scale
+        x_in = self._encode(x / self.input_scale)
         h = x_in
         for i, (linear, act) in enumerate(zip(self.linears, self.acts, strict=True)):
             layer_idx = i + 1  # 1-indexed
@@ -207,10 +212,7 @@ class AISCOModel(BaseModel):
             h = act(linear(h))
             if layer_idx in self.residual_at:
                 key = str(layer_idx)
-                try:
-                    proj = self.residual_projs[key]
-                except KeyError:
-                    proj = None
+                proj = self.residual_projs[key]
                 skip = proj(pre) if proj is not None else pre
                 h = h + skip
         return h * self.output_scale
@@ -245,6 +247,7 @@ class AISCOModel(BaseModel):
             "input_scale": self.input_scale,
             "output_scale": self.output_scale,
             "forward_chunk_size": self.forward_chunk_size,
+            "fourier_levels": self.fourier_levels,
             "total_parameters": sum(p.numel() for p in self.parameters()),
         }
 
