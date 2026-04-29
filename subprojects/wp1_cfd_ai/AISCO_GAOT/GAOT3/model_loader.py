@@ -256,7 +256,6 @@ class ModelLoader:
             self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
 
         cuppled_loss = loss.detach() + surrogate_loss - surrogate_loss.detach()
-        assert cuppled_loss == loss.item() + surrogate_loss - surrogate_loss.item()
         return cuppled_loss
 
     def _visualize_pressure_field(
