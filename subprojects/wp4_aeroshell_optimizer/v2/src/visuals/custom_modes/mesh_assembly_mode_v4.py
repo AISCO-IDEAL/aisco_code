@@ -70,7 +70,20 @@ class MeshAssemblyModeV4(RenderingMode):
         # Cached bbox mesh tensors keyed by assembly_id for PLY export.
         self.cached_bbox_tensors: dict[int, tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = {}
 
-        self.frame_storage = []
+        # PLAN-026: frame_storage is a list[list[Any]] here — one inner list per camera.
+        # This is a deliberate LSP deviation: RenderingMode declares frame_storage as
+        # list[Any] (flat).  MeshAssemblyModeV4 overrides it with a nested structure so
+        # that finalize() can write one GIF per camera into cam{idx}/ sub-directories.
+        #
+        # IMPORTANT FOR FUTURE MODE AUTHORS: any code that reads frame_storage via a
+        # RenderingMode reference (e.g. visual_wrapper.py) MUST guard against the nested
+        # layout before treating it as a flat list of frames.  Check whether the first
+        # element is itself a list (and that storage is non-empty) before doing so.
+        # Failing to guard will produce wrong W&B upload keys and potentially an
+        # IndexError on empty storage.
+        # See also: AISCO-docs/40_Aeroshell_Optimiser/02 Code Documentation/
+        #           Multi-Camera Visualiser Guide.md — "frame_storage Contract" section.
+        self.frame_storage: list[list[Any]] = [[] for _ in camera_positions]
         self.render_interval = int(config.get("render_interval", 1))
         self.make_gif = bool(config.get("make_gif", True))
 
@@ -93,6 +106,30 @@ class MeshAssemblyModeV4(RenderingMode):
 
         self.tolerance = float(config.get("tolerance", 2.0))
         self.angular_tolerance = float(config.get("angular_tolerance", 0.4))
+
+    # ------------------------------------------------------------------
+    # RenderingMode overrides required by the nested frame_storage layout
+    # ------------------------------------------------------------------
+
+    def clear_frames(self) -> None:
+        """Reset each per-camera buffer to empty without destroying the outer list.
+
+        The base-class implementation calls ``self.frame_storage.clear()``, which
+        would collapse the nested structure to a flat empty list.  This override
+        empties each inner list individually so the n_cams slot structure is
+        preserved for the next training run.
+        """
+        for inner in self.frame_storage:
+            inner.clear()
+
+    def num_stored_frames(self) -> int:
+        """Return total frame count summed across all cameras.
+
+        The base-class implementation returns ``len(self.frame_storage)`` which,
+        on the nested list, would return n_cams instead of the total number of
+        frames.  This override sums the inner list lengths.
+        """
+        return sum(len(inner) for inner in self.frame_storage)
 
     def _annotate_frame(self, frame: np.ndarray, epoch_value: Any, sdf_ok: bool) -> np.ndarray:
         img_uint8 = (np.clip(frame, 0.0, 1.0) * 255.0).astype(np.uint8)
@@ -240,7 +277,9 @@ class MeshAssemblyModeV4(RenderingMode):
                 assert base_frame is not None  # guaranteed by the block above
 
                 if vertices is None or faces is None or int(faces.numel()) == 0:
-                    self.frame_storage.append(self._annotate_frame(base_frame.copy(), epoch_value=iteration, sdf_ok=False))
+                    self.frame_storage[cam_idx].append(
+                        self._annotate_frame(base_frame.copy(), epoch_value=iteration, sdf_ok=False)
+                    )
                     continue
 
                 mesh_textures = self.visualiser.create_solid_texture(
@@ -269,7 +308,7 @@ class MeshAssemblyModeV4(RenderingMode):
                 mesh_mask = mesh_sil[0] if hasattr(mesh_sil, "__len__") and len(mesh_sil) > 0 else mesh_sil
 
                 blended = alpha_blend(base_frame, mesh_img, mesh_mask.squeeze(-1), alpha=self.mesh_alpha)
-                self.frame_storage.append(self._annotate_frame(blended, epoch_value=iteration, sdf_ok=True))
+                self.frame_storage[cam_idx].append(self._annotate_frame(blended, epoch_value=iteration, sdf_ok=True))
 
             except Exception as e:
                 print(f"[MeshAssemblyModeV4] cam{cam_idx} rendering failed: {e}")
@@ -280,7 +319,7 @@ class MeshAssemblyModeV4(RenderingMode):
                     if self.base_frames[cam_idx] is not None
                     else np.zeros((1, 1, 3), dtype=np.float32)
                 )
-                self.frame_storage.append(self._annotate_frame(fallback, epoch_value=iteration, sdf_ok=False))
+                self.frame_storage[cam_idx].append(self._annotate_frame(fallback, epoch_value=iteration, sdf_ok=False))
 
         # PLY export — once per ply_export_interval (independent of camera loop).
         if self.ply_export_enabled and vertices is not None and faces is not None and int(faces.numel()) > 0:
@@ -362,18 +401,26 @@ class MeshAssemblyModeV4(RenderingMode):
                 sdf_faces=state["faces"],
             )
 
-        if not self.frame_storage:
+        # Early-exit when every per-camera buffer is empty.
+        if not any(self.frame_storage):
             print(f"  {self.__class__.__name__}: No frames to save")
             return
 
-        if self.make_gif and len(self.frame_storage) > 1:
-            gif_path = output_dir / file_name
-            self._frames_to_gif(gif_path, fps=self.fps)
-            print(f"  Saved {len(self.frame_storage)} frames to {gif_path}")
-        else:
-            png_path = output_dir / file_name.replace(".gif", ".png")
-            self._save_image(self.frame_storage[-1], png_path)
-            print(f"  Saved frame to {png_path}")
+        # Write one GIF (or PNG) per camera into cam{idx}/ sub-directories so
+        # each perspective can be reviewed independently without needing gif_hack.py.
+        for cam_idx, cam_frames in enumerate(self.frame_storage):
+            if not cam_frames:
+                continue
+            cam_dir = output_dir / f"cam{cam_idx}"
+            cam_dir.mkdir(parents=True, exist_ok=True)
+            if self.make_gif and len(cam_frames) > 1:
+                gif_path = cam_dir / file_name
+                self._frames_to_gif(gif_path, fps=self.fps, frame_list=cam_frames)
+                print(f"  cam{cam_idx}: saved {len(cam_frames)} frames → {gif_path}")
+            else:
+                png_path = cam_dir / file_name.replace(".gif", ".png")
+                self._save_image(cam_frames[-1], png_path)
+                print(f"  cam{cam_idx}: saved frame → {png_path}")
 
         if delete:
             self.clear_frames()

@@ -52,11 +52,11 @@ interpolator:
 
   # Rendering backend:
   # - "pyvista" (default): existing behavior
-  # - "mesh_assembly_mode_v2": uses existing assembly renderer pipeline
-  render_backend: "mesh_assembly_mode_v2"
+  # - "mesh_assembly_mode_v4": uses existing assembly renderer pipeline
+  render_backend: "mesh_assembly_mode_v4"
 
   # Optional config forwarded to MeshAssemblyModeV2 when using
-  # render_backend: "mesh_assembly_mode_v2"
+  # render_backend: "mesh_assembly_mode_v4"
   mesh_assembly_mode_config:
     # Required by RenderingMode base class
     camera_position: [5000, 5000, 5000]
@@ -69,6 +69,6 @@ interpolator:
     mesh_alpha: 0.5
     outer_alpha: 0.2
 
-  # Optional Visualiser overrides for mesh_assembly_mode_v2 backend.
+  # Optional Visualiser overrides for mesh_assembly_mode_v4 backend.
   # If omitted, interpolator uses sensible defaults and current device.
   mesh_visualiser: {}
