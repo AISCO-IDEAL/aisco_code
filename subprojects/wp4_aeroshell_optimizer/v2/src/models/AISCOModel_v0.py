@@ -1,4 +1,3 @@
-
 """AISCO SDF model (v0).
 
 A 10-Linear-layer MLP that maps a 3-D point ``(x, y, z)`` in mm to a single
@@ -59,9 +58,7 @@ _ACTIVATION_FACTORIES: dict[str, type[nn.Module]] = {
 def _build_activation(name: str) -> nn.Module:
     key = (name or "linear").lower()
     if key not in _ACTIVATION_FACTORIES:
-        raise ValueError(
-            f"Unknown activation '{name}'. Supported: {sorted(_ACTIVATION_FACTORIES)}."
-        )
+        raise ValueError(f"Unknown activation '{name}'. Supported: {sorted(_ACTIVATION_FACTORIES)}.")
     return _ACTIVATION_FACTORIES[key]()
 
 
@@ -124,8 +121,16 @@ class AISCOModel(BaseModel):
             hidden_dims = [256, 256, 256, 512, 512, 512, 512, 384, 256]
         if activations is None:
             activations = [
-                "silu", "silu", "leakyrelu", "silu", "leakyrelu",
-                "silu", "leakyrelu", "silu", "silu", "linear",
+                "silu",
+                "silu",
+                "leakyrelu",
+                "silu",
+                "leakyrelu",
+                "silu",
+                "leakyrelu",
+                "silu",
+                "silu",
+                "linear",
             ]
         if concat_input_at is None:
             concat_input_at = [1, 3, 5, 7, 9]
@@ -134,10 +139,7 @@ class AISCOModel(BaseModel):
 
         n_linear = len(hidden_dims) + 1  # hidden layers + output layer
         if len(activations) != n_linear:
-            raise ValueError(
-                f"activations has length {len(activations)} but must equal "
-                f"len(hidden_dims) + 1 = {n_linear}."
-            )
+            raise ValueError(f"activations has length {len(activations)} but must equal len(hidden_dims) + 1 = {n_linear}.")
         for idx in list(concat_input_at) + list(residual_at):
             if not 1 <= idx <= n_linear:
                 raise ValueError(f"Layer index {idx} out of range [1, {n_linear}].")
