@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from functions.assembly_selection_service import AssemblySelectionService
+from functions.pretraining_service import PretrainingService
 from pydantic import BaseModel
 
 # Configure logging
@@ -57,6 +58,7 @@ RUN_LOCAL_LOG = GUI_ROOT / "logs" / f"run_local_{timestamp}.log"
 GENERAL_CONFIG_PATH = _WP4_CONFIGS_DIR / "general_config.yaml"
 DEFAULT_LOCAL_STORAGE_DIR = REPO_ROOT.parent / "local_storage_dir"
 DEFAULT_BULK_STORAGE_DIR = Path("/cluster/work/fuge/AISCO/bulk_storage")
+PRETRAINING_STORAGE_ROOT = Path("/cluster/work/fuge/AISCO/latent_pretraining/runs/14f323b3fc/pretraining_latent_gifs")
 SLOW_GIF_CACHE_DIR = GUI_ROOT / "cache"
 MESH_ASSEMBLY_DIR_CANDIDATES = ("mesh_assembly_mode_v4", "mesh_assembly_mode_v3", "mesh_assembly_mode_v2", "mesh_assembly_mode")
 
@@ -66,6 +68,7 @@ STATE: dict[str, subprocess.Popen[str] | None] = {"run_local_process": None}
 ASSEMBLY_ID_ENV_VAR = "AISCO_ASSEMBLY_ID"
 GUI_PAGE_FILES: dict[str, Path] = {
     "introduction": PAGES_DIR / "introduction.html",
+    "pretraining": PAGES_DIR / "pretraining.html",
     "optimization": PAGES_DIR / "optimization.html",
     "solar": PAGES_DIR / "solar.html",
     "assembly_selection": PAGES_DIR / "assembly_selection.html",
@@ -132,6 +135,13 @@ class GUIRequestHandler:
     @staticmethod
     def handle_wp2_mesh() -> FileResponse:
         return assembly_selection_service.get_mesh_response()
+
+    def handle_pretraining_gifs(self) -> dict[str, Any]:
+        return pretraining_service.list_gifs()
+
+    @staticmethod
+    def handle_pretraining_gif_file(rel_path: str) -> FileResponse:
+        return pretraining_service.get_gif_response(rel_path)
 
     def handle_run_local(self, payload: RunLocalRequest) -> JSONResponse:
         raw_assembly_id = payload.assembly_id
@@ -525,6 +535,7 @@ class GUIRequestHandler:
 
 app = FastAPI(title="AISCO GUI Server")
 assembly_selection_service = AssemblySelectionService(repo_root=REPO_ROOT)
+pretraining_service = PretrainingService(storage_root=PRETRAINING_STORAGE_ROOT)
 handler = GUIRequestHandler()
 
 
@@ -557,6 +568,16 @@ def artifact_file_endpoint(path: str = "") -> FileResponse:
 @app.get("/run-local/slow-gif")
 def slow_gif_endpoint(path: str = "", factor: str = "2.5") -> FileResponse:
     return handler.handle_slow_gif(path, factor)
+
+
+@app.get("/pretraining/gifs")
+def pretraining_gifs_endpoint() -> dict[str, Any]:
+    return handler.handle_pretraining_gifs()
+
+
+@app.get("/pretraining/gif-file")
+def pretraining_gif_file_endpoint(path: str = "") -> FileResponse:
+    return handler.handle_pretraining_gif_file(path)
 
 
 @app.get("/assembly-selection/params")
