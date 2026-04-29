@@ -69,7 +69,8 @@ class MeshSDFExtractor:
         # `max_refine_levels` is treated as a resolution multiplier on the
         # uniform grid; it yields equivalent quality to adaptive refinement
         # at a fraction of the complexity.
-        self.set_grid(self.config.bbox, self.config.base_resolution)
+        if self.config.bbox is not None:
+            self.set_grid(self.config.bbox, self.config.base_resolution)
 
     def set_grid(self, bbox: Any, resolution: int) -> None:
         """Update bbox and base resolution.

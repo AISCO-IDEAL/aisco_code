@@ -9,6 +9,7 @@ from pathlib import Path
 import torch
 import trimesh
 
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing, str_hashing
@@ -123,7 +124,11 @@ def allround_save_data(  # noqa: PLR0915
 
         temp_model = copy.deepcopy(model).to(mesh_device)
         extractor = MeshSDFExtractor(config=mesh_config)
-        extractor.set_grid(bbox=mesh_config.bbox, resolution=mesh_config.base_resolution)
+        _prism = get_outer_prism_bounds_mm()
+        extractor.set_grid(
+            bbox=[[_prism["x"][0], _prism["x"][1]], [_prism["y"][0], _prism["y"][1]], [_prism["z"][0], _prism["z"][1]]],
+            resolution=mesh_config.base_resolution,
+        )
         verts, faces = extractor.extract_mesh(temp_model)
 
         filename = f"{wandb_run}_{epoch_str}_adaptive_mesh_res_{mesh_config.base_resolution}.ply"

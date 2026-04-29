@@ -1,9 +1,6 @@
 device: "cuda"
 isovalue: 0.0
-bbox:
-  - [-5000.0, 5000.0]
-  - [-5000.0, 5000.0]
-  - [-5000.0, 5000.0]
+# bbox is intentionally omitted; callers must provide it via set_grid() using outer_prism bounds from WP2.
 base_resolution: 64
 subdivision_factor: 2
 max_refine_levels: 0
