@@ -1,6 +1,4 @@
-import errno
 import hashlib
-import json
 import logging
 import mimetypes
 import os
@@ -8,13 +6,16 @@ import re
 import subprocess
 import threading
 from datetime import datetime
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import parse_qs, unquote, urlparse
 
 import imageio.v2 as imageio
+import uvicorn
 import yaml
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -62,7 +63,20 @@ STATE: dict[str, subprocess.Popen[str] | None] = {"run_local_process": None}
 ASSEMBLY_ID_ENV_VAR = "AISCO_ASSEMBLY_ID"
 
 
-class GUIRequestHandler(SimpleHTTPRequestHandler):
+class RunLocalRequest(BaseModel):
+    """Request payload for launching a local optimization run.
+
+    Args:
+        assembly_id: Optional assembly ID to optimize. Empty string is treated as random.
+
+    Returns:
+        None
+    """
+
+    assembly_id: int | str | None = None
+
+
+class GUIRequestHandler:
     @staticmethod
     def _coerce_bool(value: object, default: bool = False) -> bool:
         if isinstance(value, bool):
@@ -93,35 +107,8 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             LOGGER.warning("Falling back to default local storage root due to config read error: %s", error)
             return DEFAULT_LOCAL_STORAGE_DIR.resolve()
 
-    def do_GET(self) -> None:
-        parsed = urlparse(self.path)
-        if parsed.path == "/run-local/logs":
-            self.handle_run_local_logs()
-            return
-        if parsed.path == "/run-local/progress":
-            self.handle_run_local_progress()
-            return
-        if parsed.path == "/run-local/artifacts":
-            self.handle_run_local_artifacts()
-            return
-        if parsed.path == "/run-local/artifact-file":
-            self.handle_artifact_file(parsed)
-            return
-        if parsed.path == "/run-local/slow-gif":
-            self.handle_slow_gif(parsed)
-            return
-
-        super().do_GET()
-
-    def do_POST(self) -> None:
-        if self.path == "/run-local":
-            self.handle_run_local()
-        else:
-            self._send_json(404, {"message": "Endpoint not found"})
-
-    def handle_run_local(self) -> None:
-        body_data = self._read_json_body()
-        raw_assembly_id = body_data.get("assembly_id")
+    def handle_run_local(self, payload: RunLocalRequest) -> JSONResponse:
+        raw_assembly_id = payload.assembly_id
 
         assembly_id: int | None = None
         if raw_assembly_id not in (None, ""):
@@ -129,31 +116,29 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             try:
                 assembly_id = int(raw_assembly_id_str)
             except (TypeError, ValueError):
-                self._send_json(400, {"message": "assembly_id must be an integer between 1 and 51"})
-                return
+                raise HTTPException(
+                    status_code=400, detail={"message": "assembly_id must be an integer between 1 and 51"}
+                ) from None
 
             if not 1 <= assembly_id <= 51:
-                self._send_json(400, {"message": "assembly_id must be in range 1..51"})
-                return
+                raise HTTPException(status_code=400, detail={"message": "assembly_id must be in range 1..51"})
 
         if not RUN_LOCAL_SCRIPT.exists():
             LOGGER.error("Script missing: %s", RUN_LOCAL_SCRIPT)
-            self._send_json(500, {"message": f"Optimization script not found at {RUN_LOCAL_SCRIPT}"})
-            return
+            raise HTTPException(status_code=500, detail={"message": f"Optimization script not found at {RUN_LOCAL_SCRIPT}"})
 
         try:
             with PROCESS_LOCK:
                 run_local_process = STATE["run_local_process"]
                 if run_local_process is not None and run_local_process.poll() is None:
-                    self._send_json(
-                        200,
-                        {
+                    return JSONResponse(
+                        status_code=200,
+                        content={
                             "status": "running",
                             "message": "run_local.sh is already running",
                             "pid": run_local_process.pid,
                         },
                     )
-                    return
 
                 start_stamp = datetime.now().isoformat(timespec="seconds")
                 run_label = "random assembly_id" if assembly_id is None else f"assembly_id={assembly_id}"
@@ -183,20 +168,22 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                 STATE["run_local_process"] = process
 
             LOGGER.info("Started optimization script. PID: %s", process.pid)
-            self._send_json(
-                200,
-                {
+            return JSONResponse(
+                status_code=200,
+                content={
                     "status": "success",
                     "message": "Optimization process started",
                     "pid": process.pid,
                     "assembly_id": assembly_id,
                 },
             )
-        except Exception as e:
+        except HTTPException:
+            raise
+        except Exception as error:
             LOGGER.exception("Failed to launch subprocess")
-            self._send_json(500, {"message": str(e)})
+            raise HTTPException(status_code=500, detail={"message": str(error)}) from error
 
-    def handle_run_local_logs(self) -> None:
+    def handle_run_local_logs(self) -> dict[str, Any]:
         max_chars = 60000
         logs = ""
         truncated = False
@@ -213,18 +200,15 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             pid = process.pid if process is not None else None
             return_code = None if running or process is None else process.poll()
 
-        self._send_json(
-            200,
-            {
-                "logs": logs,
-                "running": running,
-                "pid": pid,
-                "return_code": return_code,
-                "truncated": truncated,
-            },
-        )
+        return {
+            "logs": logs,
+            "running": running,
+            "pid": pid,
+            "return_code": return_code,
+            "truncated": truncated,
+        }
 
-    def handle_run_local_progress(self) -> None:
+    def handle_run_local_progress(self) -> dict[str, Any]:
         num_epochs = self._get_num_epochs_from_training_config()
         current_epoch = -1
         progress_percent = 0.0
@@ -246,34 +230,27 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             running = process is not None and process.poll() is None
             return_code = None if running or process is None else process.poll()
 
-        self._send_json(
-            200,
-            {
-                "running": running,
-                "completed": completed,
-                "return_code": return_code,
-                "num_epochs": num_epochs,
-                "current_epoch": current_epoch,
-                "progress_percent": round(progress_percent, 1),
-            },
-        )
+        return {
+            "running": running,
+            "completed": completed,
+            "return_code": return_code,
+            "num_epochs": num_epochs,
+            "current_epoch": current_epoch,
+            "progress_percent": round(progress_percent, 1),
+        }
 
-    def handle_run_local_artifacts(self) -> None:
+    def handle_run_local_artifacts(self) -> dict[str, Any]:
         storage_root = self._get_storage_root()
         run_dir = self._detect_current_run_dir()
         if run_dir is None:
-            self._send_json(
-                200,
-                {
-                    "run_dir": None,
-                    "mesh_assembly_gifs": [],
-                    "solar_loss_gifs": [],
-                    "meshes": [],
-                    "storage_root": str(storage_root),
-                    "message": "No completed run output directory found yet.",
-                },
-            )
-            return
+            return {
+                "run_dir": None,
+                "mesh_assembly_gifs": [],
+                "solar_loss_gifs": [],
+                "meshes": [],
+                "storage_root": str(storage_root),
+                "message": "No completed run output directory found yet.",
+            }
 
         mesh_assembly_dir = self._find_mesh_assembly_dir(run_dir)
         solar_loss_dir = run_dir / "solar_loss_rendering"
@@ -322,69 +299,48 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
 
             meshes.sort(key=lambda item: item["epoch"] if item["epoch"] is not None else -1)
 
-        self._send_json(
-            200,
-            {
-                "run_dir": str(run_dir.resolve()),
-                "storage_root": str(storage_root),
-                "mesh_assembly_gifs": gifs,
-                "solar_loss_gifs": solar_loss_gifs,
-                "meshes": meshes,
-                "message": "Artifacts loaded",
-            },
-        )
+        return {
+            "run_dir": str(run_dir.resolve()),
+            "storage_root": str(storage_root),
+            "mesh_assembly_gifs": gifs,
+            "solar_loss_gifs": solar_loss_gifs,
+            "meshes": meshes,
+            "message": "Artifacts loaded",
+        }
 
-    def handle_artifact_file(self, parsed) -> None:
-        query = parse_qs(parsed.query)
-        raw_path = query.get("path", [""])[0]
-        rel_path = unquote(raw_path).lstrip("/")
+    def handle_artifact_file(self, rel_path: str) -> FileResponse:
+        rel_path = rel_path.lstrip("/")
         if not rel_path:
-            self._send_json(400, {"message": "Missing path query parameter"})
-            return
+            raise HTTPException(status_code=400, detail={"message": "Missing path query parameter"})
 
         requested = self._resolve_storage_file(rel_path)
         if requested is None:
-            self._send_json(400, {"message": "Invalid artifact path"})
-            return
+            raise HTTPException(status_code=400, detail={"message": "Invalid artifact path"})
 
         if not requested.exists() or not requested.is_file():
-            self._send_json(404, {"message": "Artifact file not found"})
-            return
+            raise HTTPException(status_code=404, detail={"message": "Artifact file not found"})
 
         mime_type = mimetypes.guess_type(str(requested))[0] or "application/octet-stream"
-        content = requested.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", mime_type)
-        self.send_header("Content-Length", str(len(content)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(content)
+        return FileResponse(str(requested), media_type=mime_type, headers={"Cache-Control": "no-store"})
 
-    def handle_slow_gif(self, parsed) -> None:  # noqa: PLR0911
-        query = parse_qs(parsed.query)
-        raw_path = query.get("path", [""])[0]
-        rel_path = unquote(raw_path).lstrip("/")
+    def handle_slow_gif(self, rel_path: str, factor_value: str = "2.5") -> FileResponse:
+        rel_path = rel_path.lstrip("/")
         if not rel_path:
-            self._send_json(400, {"message": "Missing path query parameter"})
-            return
+            raise HTTPException(status_code=400, detail={"message": "Missing path query parameter"})
 
         try:
-            factor = float(query.get("factor", ["2.5"])[0])
+            factor = float(factor_value)
             factor = max(1.0, min(factor, 10.0))
         except ValueError:
-            self._send_json(400, {"message": "Invalid factor value"})
-            return
+            raise HTTPException(status_code=400, detail={"message": "Invalid factor value"}) from None
 
         requested = self._resolve_storage_file(rel_path)
         if requested is None:
-            self._send_json(400, {"message": "Invalid artifact path"})
-            return
+            raise HTTPException(status_code=400, detail={"message": "Invalid artifact path"})
         if not requested.exists() or not requested.is_file():
-            self._send_json(404, {"message": "Artifact file not found"})
-            return
+            raise HTTPException(status_code=404, detail={"message": "Artifact file not found"})
         if requested.suffix.lower() != ".gif":
-            self._send_json(400, {"message": "Only GIF files are supported for slow playback"})
-            return
+            raise HTTPException(status_code=400, detail={"message": "Only GIF files are supported for slow playback"})
 
         cache_key = hashlib.sha1(f"{requested.resolve()}|{requested.stat().st_mtime_ns}|{factor:.2f}".encode()).hexdigest()
         SLOW_GIF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -392,29 +348,21 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
 
         if not cached_path.exists():
             if imageio is None:
-                self._send_json(500, {"message": "imageio is required for slow GIF generation"})
-                return
+                raise HTTPException(status_code=500, detail={"message": "imageio is required for slow GIF generation"})
             try:
                 frames = imageio.mimread(requested)
-                if not frames:
-                    self._send_json(500, {"message": "Failed to decode GIF frames"})
-                    return
-
                 meta = imageio.get_reader(requested).get_meta_data()
                 base_duration = float(meta.get("duration", 0.08))
                 slow_duration = max(0.02, base_duration * factor)
-                imageio.mimsave(cached_path, cast(list[Any], frames), duration=slow_duration)
             except Exception as error:
-                self._send_json(500, {"message": f"Failed to build slowed GIF: {error}"})
-                return
+                raise HTTPException(status_code=500, detail={"message": f"Failed to build slowed GIF: {error}"}) from error
 
-        content = cached_path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", "image/gif")
-        self.send_header("Content-Length", str(len(content)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(content)
+            if not frames:
+                raise HTTPException(status_code=500, detail={"message": "Failed to decode GIF frames"})
+
+            imageio.mimsave(cached_path, cast(list[Any], frames), duration=slow_duration)
+
+        return FileResponse(str(cached_path), media_type="image/gif", headers={"Cache-Control": "no-store"})
 
     def _resolve_storage_file(self, rel_path: str) -> Path | None:
         try:
@@ -548,72 +496,57 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             return None
         return int(match.group(1))
 
-    def _read_json_body(self) -> dict:
-        raw_length = self.headers.get("Content-Length", "0")
-        try:
-            content_length = int(raw_length)
-        except ValueError:
-            return {}
 
-        if content_length <= 0:
-            return {}
-
-        raw_body = self.rfile.read(content_length)
-        try:
-            decoded = raw_body.decode("utf-8")
-            return json.loads(decoded)
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            return {}
-
-    def _send_json(self, status_code: int, payload: dict) -> None:
-        response = json.dumps(payload).encode("utf-8")
-        self.send_response(status_code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")  # Useful if GUI is served differently
-        self.send_header("Content-Length", str(len(response)))
-        self.end_headers()
-        self.wfile.write(response)
+app = FastAPI(title="AISCO GUI Server")
+handler = GUIRequestHandler()
 
 
-def create_server(host: str, start_port: int, max_tries: int = 20) -> tuple[ThreadingHTTPServer, int]:
-    for port in range(start_port, start_port + max_tries):
-        try:
-            server = ThreadingHTTPServer((host, port), GUIRequestHandler)
-        except OSError as error:
-            if error.errno == errno.EADDRINUSE:
-                LOGGER.warning("Port %s is already in use, trying next port...", port)
-                continue
-            raise
-        else:
-            return server, port
+@app.post("/run-local")
+def run_local_endpoint(payload: RunLocalRequest) -> JSONResponse:
+    response = handler.handle_run_local(payload)
+    return response
 
-    msg = f"No free port found in range {start_port}-{start_port + max_tries - 1}"
-    raise RuntimeError(msg)
+
+@app.get("/run-local/logs")
+def run_local_logs_endpoint() -> dict[str, Any]:
+    return handler.handle_run_local_logs()
+
+
+@app.get("/run-local/progress")
+def run_local_progress_endpoint() -> dict[str, Any]:
+    return handler.handle_run_local_progress()
+
+
+@app.get("/run-local/artifacts")
+def run_local_artifacts_endpoint() -> dict[str, Any]:
+    return handler.handle_run_local_artifacts()
+
+
+@app.get("/run-local/artifact-file")
+def artifact_file_endpoint(path: str = "") -> FileResponse:
+    return handler.handle_artifact_file(path)
+
+
+@app.get("/run-local/slow-gif")
+def slow_gif_endpoint(path: str = "", factor: str = "2.5") -> FileResponse:
+    return handler.handle_slow_gif(path, factor)
+
+
+if TEMPLATES_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(TEMPLATES_DIR), html=True), name="static")
+else:
+    LOGGER.warning("Templates directory missing: %s", TEMPLATES_DIR)
 
 
 def main() -> None:
-    templates_dir = TEMPLATES_DIR
-
-    if not templates_dir.exists():
-        print(f"Warning: {templates_dir} not found. Static files may not serve correctly.")
-    else:
-        os.chdir(templates_dir)
-
     host = "0.0.0.0"
-    start_port = 8000
-    server, port = create_server(host, start_port)
+    port = 8000
 
     print("--- AISCO GUI Server ---")
-    print(f"Serving static files from: {templates_dir}")
+    print(f"Serving static files from: {TEMPLATES_DIR}")
     print(f"Local URL: http://localhost:{port}")
     print(f"To open in Windows: /mnt/c/Program\\ Files/Mozilla\\ Firefox/firefox.exe http://localhost:{port}")
-
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nShutting down gracefully...")
-    finally:
-        server.server_close()
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 if __name__ == "__main__":
