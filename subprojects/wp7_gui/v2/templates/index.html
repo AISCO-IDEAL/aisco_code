@@ -52,33 +52,42 @@
             border-radius: 14px;
             padding: 10px 14px;
             box-shadow: var(--shadow);
-            display: flex;
+            display: grid;
+            grid-template-rows: auto;
             align-items: center;
-            justify-content: space-between;
-            gap: 10px;
+            gap: 0;
         }
 
         .top-brand {
-            display: flex;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
             align-items: center;
+            width: 100%;
             gap: 10px;
         }
 
+        .logo-slot {
+            display: flex;
+            align-items: center;
+        }
+
+        .logo-slot.left {
+            justify-content: flex-start;
+        }
+
+        .logo-slot.center {
+            justify-content: center;
+        }
+
+        .logo-slot.right {
+            justify-content: flex-end;
+        }
+
         .top-brand img {
-            height: 36px;
+            height: 40px;
             width: auto;
             object-fit: contain;
             display: block;
-        }
-
-        .top-bar-label {
-            margin: 0;
-            font-size: 0.86rem;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: #ffd2d2;
-            font-weight: 700;
-            white-space: nowrap;
         }
 
         .body-layout {
@@ -193,7 +202,7 @@
             }
 
             .nav {
-                grid-template-columns: repeat(3, minmax(120px, 1fr));
+                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
             }
 
             .nav-button {
@@ -201,9 +210,18 @@
             }
 
             .top-bar {
-                flex-direction: column;
-                align-items: flex-start;
                 gap: 8px;
+            }
+
+            .top-brand {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .logo-slot.left,
+            .logo-slot.center,
+            .logo-slot.right {
+                justify-content: center;
             }
 
             .top-brand img {
@@ -217,11 +235,16 @@
     <main class="shell">
         <header class="top-bar">
             <div class="top-brand" aria-label="Team logos">
-                <img src="/ideal.png" alt="IDEAL logo">
-                <img src="/logo.png" alt="AISCO logo">
-                <img src="/aCe.png" alt="aCe logo">
+                <div class="logo-slot left">
+                    <img src="/Ideal.png" alt="IDEAL logo">
+                </div>
+                <div class="logo-slot center">
+                    <img src="/logo.png" alt="AISCO logo">
+                </div>
+                <div class="logo-slot right">
+                    <img src="/ACE.png" alt="aCe logo">
+                </div>
             </div>
-            <p class="top-bar-label">WP7 Unified Multi-Page GUI</p>
         </header>
 
         <div class="body-layout">
@@ -229,6 +252,7 @@
                 <h1 class="headline">WP7 Navigation</h1>
 
                 <nav class="nav" aria-label="GUI pages">
+                    <button class="nav-button" data-page="introduction">Introduction</button>
                     <button class="nav-button" data-page="optimization">Optimization Workspace</button>
                     <button class="nav-button" data-page="solar">Solar Viewer</button>
                     <button class="nav-button" data-page="logs">Run Logs</button>
@@ -239,8 +263,8 @@
 
             <section class="workspace">
                 <header class="workspace-top">
-                    <h2 id="pageTitle">Optimization Workspace</h2>
-                    <p id="pageHint">Live run controls, artifacts, and mesh playback.</p>
+                    <h2 id="pageTitle">Introduction</h2>
+                    <p id="pageHint">Quick orientation to the WP7 GUI and page layout.</p>
                 </header>
                 <iframe id="pageFrame" title="WP7 content area"></iframe>
             </section>
@@ -249,6 +273,11 @@
 
     <script>
         const PAGE_CONFIG = {
+            introduction: {
+                title: "Introduction",
+                hint: "Quick orientation to the WP7 GUI and page layout.",
+                src: "/ui/page/introduction"
+            },
             optimization: {
                 title: "Optimization Workspace",
                 hint: "Live run controls, artifacts, and mesh playback.",
@@ -299,7 +328,7 @@
             if (hashValue && Object.prototype.hasOwnProperty.call(PAGE_CONFIG, hashValue)) {
                 return hashValue;
             }
-            return "optimization";
+            return "introduction";
         }
 
         buttons.forEach((button) => {

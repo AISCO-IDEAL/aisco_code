@@ -63,6 +63,7 @@ PROCESS_LOCK = threading.Lock()
 STATE: dict[str, subprocess.Popen[str] | None] = {"run_local_process": None}
 ASSEMBLY_ID_ENV_VAR = "AISCO_ASSEMBLY_ID"
 GUI_PAGE_FILES: dict[str, Path] = {
+    "introduction": PAGES_DIR / "introduction.html",
     "optimization": PAGES_DIR / "optimization.html",
     "solar": PAGES_DIR / "solar.html",
     "logs": PAGES_DIR / "logs.html",

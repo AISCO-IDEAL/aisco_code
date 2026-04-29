@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Introduction</title>
+    <style>
+        :root {
+            --bg: #1f2436;
+            --panel: #2a3047;
+            --card: #f7faf8;
+            --accent: #c82121;
+            --text: #121722;
+            --muted: #5e6b75;
+            --border: #d8e1db;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: radial-gradient(circle at top left, #2b3554 0%, #1f2436 45%, #171c2e 100%);
+            color: #f2f5f8;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .layout {
+            width: 100%;
+            height: 100%;
+            padding: 16px;
+            display: grid;
+            grid-template-rows: auto 1fr;
+            gap: 14px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border-radius: 14px;
+            padding: 14px;
+            box-shadow: 0 14px 26px rgba(0, 0, 0, 0.22);
+        }
+
+        .title {
+            margin: 0;
+            font-size: 1.08rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        .meta {
+            margin-top: 6px;
+            color: #c7d3db;
+            font-size: 0.9rem;
+            line-height: 1.35;
+        }
+
+        .grid {
+            min-height: 0;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(260px, 1fr));
+            gap: 12px;
+            align-content: start;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text);
+            padding: 12px;
+            min-height: 0;
+        }
+
+        .card h2 {
+            margin: 0 0 8px;
+            font-size: 0.98rem;
+        }
+
+        .card p {
+            margin: 0;
+            font-size: 0.9rem;
+            line-height: 1.45;
+            color: var(--muted);
+        }
+
+        .steps {
+            margin: 0;
+            padding-left: 18px;
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .steps strong {
+            color: var(--text);
+        }
+
+        .chip {
+            display: inline-block;
+            margin-top: 8px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #fff;
+            background: var(--accent);
+            border-radius: 999px;
+            padding: 4px 10px;
+        }
+
+        @media (max-width: 980px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="layout">
+        <section class="panel">
+            <h1 class="title">Welcome to the WP7 GUI</h1>
+            <div class="meta">
+                This interface is the front-end shell for launching and monitoring local WP4 optimization runs.
+                Use the sidebar to switch between pages without restarting the app.
+            </div>
+            <span class="chip">Quick Start</span>
+        </section>
+
+        <section class="grid">
+            <article class="card">
+                <h2>Optimization Workspace</h2>
+                <p>
+                    Start a run, choose an assembly ID, track progress, and inspect artifacts.
+                    This page combines run control, GIF previews, and the interactive 3D mesh viewer.
+                </p>
+            </article>
+
+            <article class="card">
+                <h2>Solar Viewer</h2>
+                <p>
+                    Focused page for solar-loss rendering GIF output from the latest run.
+                    Useful when you only want to monitor panel placement rendering.
+                </p>
+            </article>
+
+            <article class="card">
+                <h2>Run Logs</h2>
+                <p>
+                    Live terminal-style logs with a progress bar for quick diagnostics.
+                    Use this view during active runs to spot warnings or failures early.
+                </p>
+            </article>
+
+            <article class="card">
+                <h2>Typical Workflow</h2>
+                <ol class="steps">
+                    <li><strong>Open Optimization Workspace</strong> and click RUN.</li>
+                    <li><strong>Watch progress</strong> and visual outputs update automatically.</li>
+                    <li><strong>Switch to Logs</strong> for detailed runtime output.</li>
+                    <li><strong>Switch to Solar Viewer</strong> for focused solar rendering checks.</li>
+                </ol>
+            </article>
+        </section>
+    </main>
+</body>
+
+</html>
