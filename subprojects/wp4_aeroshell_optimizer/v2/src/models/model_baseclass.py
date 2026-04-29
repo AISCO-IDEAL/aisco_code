@@ -201,6 +201,17 @@ class BaseModel(nn.Module):
             grad_norm = sum(p.grad.detach().pow(2).sum().item() for p in self.parameters() if p.grad is not None) ** 0.5
             lr = optimizer.param_groups[0]["lr"]
 
+            raw_metrics = {
+                name: float(tensor.detach().item())
+                for name, tensor in getattr(loss_function, "latest_raw_metrics", {}).items()
+                if torch.is_tensor(tensor)
+            }
+            due_recalibration_names = loss_function._norm_manager.get_recalibration_requests(epoch, raw_metrics)
+            if due_recalibration_names:
+                print(f"[LossNormalisation] Recalibrating after epoch {epoch}: {sorted(due_recalibration_names)}")
+                loss_function._calibrate(self, optimizer)
+                loss_function._norm_manager.mark_recalibrated(due_recalibration_names, epoch)
+
             _last_cs = getattr(loss_function, "_last_cruising_speed", None)
             dbg.log_values(
                 epoch,
