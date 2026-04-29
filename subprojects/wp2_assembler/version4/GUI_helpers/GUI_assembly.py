@@ -19,8 +19,8 @@ from subprojects.wp2_assembler.version4.utils.assemblies_maker import (
 )
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 
-_PARAMS_PATH = Path(__file__).parent / "parameters.yaml"    # change this for the parameters
-_OUTPUT_DIR = Path(__file__).parent                         # change this for the exports
+_PARAMS_PATH = Path(__file__).parent / "parameters.yaml"  # change this for the parameters
+_OUTPUT_DIR = Path(__file__).parent  # change this for the exports
 _PLY_OUTPUT_PATH = _OUTPUT_DIR / "assembly.ply"
 _STEP_OUTPUT_PATH = _OUTPUT_DIR / "assembly.step"
 _CHECKS_OUTPUT_PATH = _OUTPUT_DIR / "checks.txt"
@@ -28,16 +28,16 @@ _CHECKS_OUTPUT_PATH = _OUTPUT_DIR / "checks.txt"
 # --- export toggles ---
 _EXPORT_SEAT = True
 _EXPORT_WHEELS = True
-_EXPORT_VISION = False                  # vision cone
+_EXPORT_VISION = False  # vision cone
 _EXPORT_OUTER = False
 
 # --- check toggles ---
-_CHECK_DEGENERATE_WHEELS = True         # checks if all wheels have same x, would give a outer bounding box with lenght 0.
-_CHECK_COLLISIONS = True                # checks if the seat or wheels collide with anything
-_CHECK_SEAT_IN_WHEEL_POLYGON = True     # checks if the seat xy is inside the shape made by the wheels. Basically, that the seat is not "hanging". This is so that the assembly makes sense physically, but can be left out.
-_CHECK_SEAT_INSIDE_OUTER = True         # if seat is inside outer bounding box
-_CHECK_WHEELS_INSIDE_OUTER = True       # if wheels are inside outer bounding box
-_CHECK_SEAT_CLEARANCE = True            # seat bottom must stay above the wheel clearance plane
+_CHECK_DEGENERATE_WHEELS = True  # checks if all wheels have same x, would give a outer bounding box with lenght 0.
+_CHECK_COLLISIONS = True  # checks if the seat or wheels collide with anything
+_CHECK_SEAT_IN_WHEEL_POLYGON = True  # checks if the seat xy is inside the shape made by the wheels. Basically, that the seat is not "hanging". This is so that the assembly makes sense physically, but can be left out.
+_CHECK_SEAT_INSIDE_OUTER = True  # if seat is inside outer bounding box
+_CHECK_WHEELS_INSIDE_OUTER = True  # if wheels are inside outer bounding box
+_CHECK_SEAT_CLEARANCE = True  # seat bottom must stay above the wheel clearance plane
 
 
 def _write_ply(shape: cq.Shape, path: Path) -> None:
@@ -225,15 +225,23 @@ def _check_validity(params: dict) -> list[str]:
 
     def aabb(pos: dict, margin: dict) -> dict:
         return {
-            "xmin": pos["x"] - margin["x_back"], "xmax": pos["x"] + margin["x_fwd"],
-            "ymin": pos["y"] - margin["y_down"], "ymax": pos["y"] + margin["y_up"],
-            "zmin": pos["z"] - margin["z_down"], "zmax": pos["z"] + margin["z_up"],
+            "xmin": pos["x"] - margin["x_back"],
+            "xmax": pos["x"] + margin["x_fwd"],
+            "ymin": pos["y"] - margin["y_down"],
+            "ymax": pos["y"] + margin["y_up"],
+            "zmin": pos["z"] - margin["z_down"],
+            "zmax": pos["z"] + margin["z_up"],
         }
 
     def overlaps(a: dict, b: dict) -> bool:
-        return (a["xmin"] <= b["xmax"] and a["xmax"] >= b["xmin"] and
-                a["ymin"] <= b["ymax"] and a["ymax"] >= b["ymin"] and
-                a["zmin"] <= b["zmax"] and a["zmax"] >= b["zmin"])
+        return (
+            a["xmin"] <= b["xmax"]
+            and a["xmax"] >= b["xmin"]
+            and a["ymin"] <= b["ymax"]
+            and a["ymax"] >= b["ymin"]
+            and a["zmin"] <= b["zmax"]
+            and a["zmax"] >= b["zmin"]
+        )
 
     names = list(parts.keys())
     aabbs = {n: aabb(*parts[n]) for n in names}
@@ -267,7 +275,9 @@ def _check_validity(params: dict) -> list[str]:
     # Check 6: seat bottom below wheel clearance plane
     seat_bottom = seat["z"] - seat_margin["z_down"]
     if _CHECK_SEAT_CLEARANCE and seat_bottom < wheel_clearance:
-        warn(f"[WARNING] Ground violation: seat bottom ({seat_bottom:.1f} mm) is below the wheel clearance plane ({wheel_clearance:.1f} mm).")
+        warn(
+            f"[WARNING] Ground violation: seat bottom ({seat_bottom:.1f} mm) is below the wheel clearance plane ({wheel_clearance:.1f} mm)."
+        )
 
     _write_checks(messages)
     return messages
