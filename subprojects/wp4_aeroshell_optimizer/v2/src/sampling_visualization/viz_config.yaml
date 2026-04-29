@@ -1,0 +1,20 @@
+# Visualization configuration
+# Shared by ply_to_gif.py and points_SDFmesh_to_ply.py
+
+# --- GIF rendering (ply_to_gif.py) ---
+fps: 10
+window_width: 1280
+window_height: 720
+
+camera_direction: "X"        # which axis the camera looks along: X, Y, or Z
+camera_distance_multiplier: 1.0  # smaller = more zoomed in
+camera_elevation_angle: 30.0     # degrees above the horizontal plane
+
+point_size: 3                    # pixels per rendered point
+background_color: [1.0, 1.0, 1.0, 1.0]  # RGBA; 1.0=white, 0.0=black
+
+# --- PLY export colours (points_SDFmesh_to_ply.py) ---
+mesh_colour_dark_blue: [0, 0, 139]
+point_colour_green: [34, 139, 34]   # target / surface samples
+point_colour_grey: [41, 41, 41]     # eikonal domain samples
+point_colour_red: [220, 30, 30]     # model surface prediction

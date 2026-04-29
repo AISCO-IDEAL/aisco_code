@@ -55,7 +55,7 @@ interpolator:
   # - "mesh_assembly_mode_v4": uses existing assembly renderer pipeline
   render_backend: "mesh_assembly_mode_v4"
 
-  # Optional config forwarded to MeshAssemblyModeV2 when using
+  # Optional config forwarded to MeshAssemblyModeV4 when using
   # render_backend: "mesh_assembly_mode_v4"
   mesh_assembly_mode_config:
     # Required by RenderingMode base class

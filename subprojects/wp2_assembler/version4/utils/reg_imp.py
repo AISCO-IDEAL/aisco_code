@@ -46,11 +46,7 @@ def get_outer_prism_bounds_mm() -> dict[str, tuple[float, float]]:
         Dict with four keys:
           - ``"x"``: ``(lo, hi)`` along the car-length axis (symmetric, ±length/2).
           - ``"y"``: ``(lo, hi)`` along the lateral axis (symmetric, ±width/2).
-          - ``"z_sampling"``: ``(lo, hi)`` for domain sampling — includes a
-            below-ground buffer equal to ``ground_clearance`` for eikonal
-            regularisation.
-          - ``"z_mesh"``: ``(lo, hi)`` for mesh extraction — shapes exist above
-            the ground plane (Z ≥ 0).
+          - ``"z"``: ``(lo, hi)`` between ground clearence and height.
     """
     half_length = float(get_regulation("no_build_zones.outer_prism.length")) / 2.0
     half_width = float(get_regulation("no_build_zones.outer_prism.width")) / 2.0
@@ -59,8 +55,7 @@ def get_outer_prism_bounds_mm() -> dict[str, tuple[float, float]]:
     return {
         "x": (-half_length, half_length),
         "y": (-half_width, half_width),
-        "z_sampling": (-ground_clearance, height),
-        "z_mesh": (0.0, height),
+        "z": (ground_clearance, height),
     }
 
 
@@ -70,11 +65,11 @@ def scale_outer_prism(outer_prism: dict[str, tuple[float, float]], scale_factor:
     Each axis half-span is multiplied by *scale_factor*; the centre of each
     axis is preserved.  For axes that are already symmetric about zero (x, y)
     this is equivalent to a simple multiplicative scale.  For asymmetric axes
-    (z_sampling, z_mesh) the centre is preserved instead of the origin.
+    (z) the centre is preserved instead of the origin.
 
     Args:
         outer_prism: Dict from ``get_outer_prism_bounds_mm()`` with keys
-            ``'x'``, ``'y'``, ``'z_sampling'``, ``'z_mesh'``.
+            ``'x'``, ``'y'``, ``'z'``.
         scale_factor: Multiplicative factor for each half-span.  ``1.0`` returns
             the input unchanged.  ``> 1.0`` expands; ``< 1.0`` shrinks.
 

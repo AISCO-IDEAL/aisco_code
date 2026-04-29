@@ -14,6 +14,7 @@ single-z trainer with no diversity phase.
 from __future__ import annotations
 
 import math
+from dataclasses import replace as _dc_replace
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +27,7 @@ from torch import Tensor
 from torch.optim.optimizer import Optimizer
 
 import wandb
-from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager
@@ -35,6 +36,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import Sup
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 
 class DiversityTrainer:
@@ -56,15 +58,13 @@ class DiversityTrainer:
         model_lr: float = 1e-4,
         diversity_manager: DiversityLossManager | None = None,
         diversity_num_points: int = 2048,
-        diversity_bbox_size: float = 10.0,
+        diversity_bbox_scale_factor: float = 1.0,
         diversity_norm_order: int = 2,
         diversity_neighbor_agg_fn: str = "min",
         force_z0_to_origin: bool = True,
         z_resample_cadence: int = 0,
         initial_Z: Tensor | None = None,
         z_resample_start_epoch: int = 0,
-        mesh_extractor: MeshExtractor | None = None,
-        mesh_extraction_config: dict[str, Any] | None = None,
         renderer_manager: VisualisationManager | None = None,
         rendering_freq: int | None = None,
         use_neural_renderer: bool = False,
@@ -84,8 +84,11 @@ class DiversityTrainer:
             model_lr: Adam learning rate for model parameters.
             diversity_manager: Optional population-level diversity manager. Set to
                 ``None`` to skip Phase 2 entirely.
-            diversity_num_points / bbox_size / norm_order / neighbor_agg_fn: trainer-level
+            diversity_num_points / diversity_bbox_scale_factor / norm_order / neighbor_agg_fn: trainer-level
                 sampling params passed to the diversity manager compute call.
+            diversity_bbox_scale_factor: Multiplier applied to the outer_prism bounds before
+                sampling.  ``1.0`` (default) uses the exact outer_prism volume.  Values
+                ``> 1.0`` expand the sample region; ``< 1.0`` shrink it.
             force_z0_to_origin: pin Z[0] at the origin (reference shape in GINN).
             z_resample_cadence: resample Z every N epochs (0 disables resampling).
             initial_Z: Optional pretrained latent population of shape (N, z_dim).  When
@@ -96,8 +99,9 @@ class DiversityTrainer:
                 (backward-compatible with existing behaviour).  Set to a positive value
                 to hold the pretrained Z population for that many epochs before the
                 normal z_resample_cadence logic kicks in.
-            mesh_extractor + mesh_extraction_config + renderer_manager + rendering_freq +
-                use_neural_renderer: rendering wiring. All None/default -> no rendering.
+        mesh_extraction_config: dict removed — extractor is constructed internally using
+                the WP5 unified mesh extractor and scaled outer_prism bounds.
+            renderer_manager + rendering_freq + use_neural_renderer: rendering wiring.
             use_wandb: if False, logging is silently skipped.
             log_dir: directory for transient STL/PNG renders when falling back to CAD vis.
         """
@@ -114,7 +118,9 @@ class DiversityTrainer:
 
         self._diversity_manager: DiversityLossManager | None = diversity_manager
         self._diversity_num_points: int = diversity_num_points
-        self._diversity_bbox_size: float = diversity_bbox_size
+        _prism = scale_outer_prism(get_outer_prism_bounds_mm(), diversity_bbox_scale_factor)
+        self._diversity_bbox_lo: list[float] = [_prism["x"][0], _prism["y"][0], _prism["z"][0]]
+        self._diversity_bbox_hi: list[float] = [_prism["x"][1], _prism["y"][1], _prism["z"][1]]
         self._diversity_norm_order: int = diversity_norm_order
         self._diversity_neighbor_agg_fn: str = diversity_neighbor_agg_fn
 
@@ -123,8 +129,18 @@ class DiversityTrainer:
         self._z_resample_start_epoch: int = max(0, int(z_resample_start_epoch))
         self._mode_c_transition_logged: bool = False
 
-        self._mesh_extractor: MeshExtractor | None = mesh_extractor
-        self._mesh_extraction_config: dict[str, Any] = mesh_extraction_config or {}
+        self._mesh_extractor: MeshSDFExtractor
+        _mesh_config = load_mesh_extraction_config()
+        _mesh_config = _dc_replace(_mesh_config, device=str(self._device))
+        self._mesh_extractor = MeshSDFExtractor(config=_mesh_config)
+        self._mesh_extractor.set_grid(
+            bbox=[
+                [self._diversity_bbox_lo[0], self._diversity_bbox_hi[0]],
+                [self._diversity_bbox_lo[1], self._diversity_bbox_hi[1]],
+                [self._diversity_bbox_lo[2], self._diversity_bbox_hi[2]],
+            ],
+            resolution=_mesh_config.base_resolution,
+        )
         self._renderer_manager: VisualisationManager | None = renderer_manager
         self._rendering_freq: int | None = rendering_freq
         self._use_neural_renderer: bool = use_neural_renderer
@@ -527,7 +543,8 @@ class DiversityTrainer:
                 self._model,
                 self._Z,
                 num_points=self._diversity_num_points,
-                bbox_size=self._diversity_bbox_size,
+                bbox_lo=self._diversity_bbox_lo,
+                bbox_hi=self._diversity_bbox_hi,
                 norm_order=self._diversity_norm_order,
                 neighbor_agg_fn=self._diversity_neighbor_agg_fn,
             )
@@ -809,17 +826,10 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     def _render(self, epoch: int, total_loss_val: float) -> None:
         """Extract mesh from Z[0] and forward to either VisualisationManager or CAD fallback."""
-        if self._mesh_extractor is None:
-            return
         if self._rendering_freq is None or epoch % self._rendering_freq != 0:
             return
 
-        cfg = self._mesh_extraction_config
-        verts, faces = self._mesh_extractor.extract_mesh(
-            model=self._model,
-            isovalue=cfg.get("isovalue", 0.0),
-            batch_size=cfg.get("batch_size", 8192),
-        )
+        verts, faces = self._mesh_extractor.extract_mesh(sdf_model=self._model)
 
         if self._use_neural_renderer and self._renderer_manager is not None:
             try:
