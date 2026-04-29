@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=8G                  # Total 40G memory
-#SBATCH --gpus=rtx_4090:1
+#SBATCH --gpus=1
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=%u@ethz.ch
@@ -97,8 +97,7 @@ ts "Checkpoint: changed directory to $(pwd)"
 
 ts "Checkpoint: launching main_v2.py with hard timeout"
 if timeout --signal=TERM --kill-after=30s 13800s "$PYTHON_BIN" -u subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py \
-    --save_model \
-    --problem_id="AISCO_WP4_Test1"  2>&1
+    
 then
     ts "Checkpoint: main_v2.py finished successfully"
 else
