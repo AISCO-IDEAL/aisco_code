@@ -17,6 +17,7 @@ from pyrender import RenderFlags
 
 import wandb
 from subprojects.wp2_assembler.version4.components.nbz import call_assembly
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
@@ -457,7 +458,11 @@ class AutoVisToWandB:
         sdf_model.eval()
 
         extractor = MeshSDFExtractor(config=mesh_config)
-        extractor.set_grid(bbox=mesh_config.bbox, resolution=mesh_config.base_resolution)
+        _bbox = mesh_config.bbox
+        if _bbox is None:
+            _prism = get_outer_prism_bounds_mm()
+            _bbox = [[_prism["x"][0], _prism["x"][1]], [_prism["y"][0], _prism["y"][1]], [_prism["z"][0], _prism["z"][1]]]
+        extractor.set_grid(bbox=_bbox, resolution=mesh_config.base_resolution)
         vertices, faces = extractor.extract_mesh(sdf_model)
 
         # Create temporary directory and file path

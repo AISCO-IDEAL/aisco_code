@@ -55,12 +55,12 @@ class ParentLoss:
             bbox_lo = [
                 scaled_prism["x"][0],
                 scaled_prism["y"][0],
-                scaled_prism["z_sampling"][0],
+                scaled_prism["z"][0],
             ]
             bbox_hi = [
                 scaled_prism["x"][1],
                 scaled_prism["y"][1],
-                scaled_prism["z_sampling"][1],
+                scaled_prism["z"][1],
             ]
             self.points = get_points(
                 num_points=self.losses_config["domain_pts_sampling"]["num_points"],
