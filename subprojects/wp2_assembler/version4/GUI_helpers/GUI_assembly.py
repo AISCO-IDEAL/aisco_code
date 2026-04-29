@@ -239,13 +239,16 @@ def _check_validity(params: dict) -> list[str]:
     if not aabb_inside_outer_nbz(params, seat_aabb):
         warn("[WARNING] Out of bounds: seat bounding box extends outside the outer NBZ.")
 
-    # Check 5: wheel bounding boxes outside outer NBZ
+    wheel_clearance = get_regulation("no_build_zones.outer_prism.wheel_clearance")
+
+    # Check 5: wheel bounding boxes outside outer NBZ after wheel-clearance cut
     for wheel_name in wheels:
-        if not aabb_inside_outer_nbz(params, aabbs[wheel_name]):
-            warn(f"[WARNING] Out of bounds: {wheel_name} bounding box extends outside the outer NBZ.")
+        wheel_aabb = dict(aabbs[wheel_name])
+        wheel_aabb["zmin"] = max(wheel_aabb["zmin"], wheel_clearance)
+        if not aabb_inside_outer_nbz(params, wheel_aabb):
+            warn(f"[WARNING] Out of bounds: {wheel_name} bounding box extends outside the outer NBZ after clearance cut.")
 
     # Check 6: seat bottom below wheel clearance plane
-    wheel_clearance = get_regulation("no_build_zones.outer_prism.wheel_clearance")
     seat_bottom = seat["z"] - seat_margin["z_down"]
     if seat_bottom < wheel_clearance:
         warn(f"[WARNING] Ground violation: seat bottom ({seat_bottom:.1f} mm) is below the wheel clearance plane ({wheel_clearance:.1f} mm).")
