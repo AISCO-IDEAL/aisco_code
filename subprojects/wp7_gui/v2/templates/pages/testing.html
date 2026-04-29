@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLI Testing</title>
+  <style>
+    :root {
+      --bg: #23283e;
+      --panel: #23283e;
+      --accent: #c82121;
+      --accent-2: #9f1616;
+      --text: #102018;
+      --muted: #496456;
+      --border: #23283e;
+      --shadow: 0 10px 20px rgba(16, 32, 24, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      padding: 0;
+    }
+
+    .page {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 8px;
+      margin: 0;
+      padding: 12px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 12px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 8px;
+      min-height: 0;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .input-group {
+      display: grid;
+      gap: 4px;
+    }
+
+    .input-group label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.9rem;
+      background: #f8fcf9;
+      color: var(--text);
+      font-family: "Courier New", monospace;
+    }
+
+    input[type="text"]:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    button {
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button:hover {
+      background: var(--accent-2);
+    }
+
+    button:disabled {
+      background: #999;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .output {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      background: #f8fcf9;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-family: "Courier New", monospace;
+      font-size: 0.85rem;
+      color: var(--text);
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.4;
+    }
+
+    .output.success {
+      color: #2d5016;
+      background: #e8f5e9;
+    }
+
+    .output.error {
+      color: #7a0e0e;
+      background: #ffebee;
+    }
+
+    .status-line {
+      font-weight: 700;
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid currentColor;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="card">
+      <div class="controls">
+        <div class="input-group">
+          <label for="cliArgsInput">CLI Arguments</label>
+          <input type="text" id="cliArgsInput" placeholder="e.g., --test-cli" value="--test-cli">
+        </div>
+        <button id="btnRunTest">Execute</button>
+        <button id="btnClear">Clear Output</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="output" id="outputConsole">Ready. Enter CLI arguments and click Execute.</div>
+    </section>
+  </main>
+
+  <script>
+    const cliArgsInput = document.getElementById("cliArgsInput");
+    const btnRunTest = document.getElementById("btnRunTest");
+    const btnClear = document.getElementById("btnClear");
+    const outputConsole = document.getElementById("outputConsole");
+
+    function appendOutput(text, isError = false) {
+      const timestamp = new Date().toLocaleTimeString();
+      outputConsole.textContent += `[${timestamp}] ${text}\n`;
+      outputConsole.scrollTop = outputConsole.scrollHeight;
+    }
+
+    async function runTest() {
+      const args = cliArgsInput.value.trim();
+      btnRunTest.disabled = true;
+      btnRunTest.textContent = "Running...";
+      outputConsole.className = "output";
+      outputConsole.textContent = "";
+
+      appendOutput(`Executing: python main_v2.py ${args}`);
+      appendOutput("---");
+
+      try {
+        const res = await fetch("/run-local/test-cli", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cli_args: args })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          outputConsole.className = "output error";
+          appendOutput(`ERROR: ${data.detail?.message || "Unknown error"}`, true);
+          return;
+        }
+
+        if (data.stdout) {
+          appendOutput(data.stdout.trim());
+        }
+
+        if (data.stderr) {
+          outputConsole.className = "output error";
+          appendOutput(data.stderr.trim(), true);
+        }
+
+        appendOutput("---");
+        outputConsole.className = data.status === "success" ? "output success" : "output error";
+        appendOutput(`Return code: ${data.return_code} (${data.status})`, data.return_code !== 0);
+
+      } catch (error) {
+        outputConsole.className = "output error";
+        appendOutput(`ERROR: ${error.message}`, true);
+      } finally {
+        btnRunTest.disabled = false;
+        btnRunTest.textContent = "Execute";
+      }
+    }
+
+    function clearOutput() {
+      outputConsole.textContent = "Ready. Enter CLI arguments and click Execute.";
+      outputConsole.className = "output";
+    }
+
+    btnRunTest.addEventListener("click", runTest);
+    btnClear.addEventListener("click", clearOutput);
+    cliArgsInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        runTest();
+      }
+    });
+  </script>
+</body>
+</html>

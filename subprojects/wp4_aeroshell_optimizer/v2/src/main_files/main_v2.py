@@ -2,8 +2,18 @@
 This should be the final main file we use for the Project. It should be modular and easily extendible
 """
 
+import argparse
+import sys
+
+# Early exit for --test-cli (before heavy imports)
+if "--test-cli" in sys.argv:
+    print("[SUCCESS] CLI infrastructure working correctly!")
+    print("Ready for GUI integration.")
+    sys.exit(0)
+
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -98,6 +108,7 @@ def _maybe_run_latent_pretraining(
 
 
 def main() -> None:  # noqa: PLR0912, PLR0915
+
     print("Starting Main file V2...")
 
     # 1. Load and register configs
@@ -513,4 +524,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
 
 if __name__ == "__main__":
+    # CLI argument parsing (for GUI testing infrastructure)
+    parser = argparse.ArgumentParser(description="AISCO WP4 Aeroshell Optimizer")
+    parser.add_argument("--test-cli", action="store_true", help="Test CLI infrastructure and exit")
+    args, _ = parser.parse_known_args()
+
+    if args.test_cli:
+        print("[SUCCESS] CLI infrastructure working correctly!")
+        print("Ready for GUI integration.")
+        sys.exit(0)
     main()

@@ -52,6 +52,7 @@ _WP4_CONFIGS_DIR = WP4_ACTIVE_ROOT / "configs"
 _WP4_SLURM_DIR = WP4_ACTIVE_ROOT / "slurm_scripts"
 
 RUN_LOCAL_SCRIPT = _WP4_SLURM_DIR / "run_local.sh"
+RUN_TEST_CLI_SCRIPT = _WP4_SLURM_DIR / "run_test_cli.sh"
 RUN_LOCAL_LOG = GUI_ROOT / "logs" / f"run_local_{timestamp}.log"
 GENERAL_CONFIG_PATH = _WP4_CONFIGS_DIR / "general_config.yaml"
 DEFAULT_LOCAL_STORAGE_DIR = REPO_ROOT.parent / "local_storage_dir"
@@ -66,6 +67,7 @@ GUI_PAGE_FILES: dict[str, Path] = {
     "optimization": PAGES_DIR / "optimization.html",
     "solar": PAGES_DIR / "solar.html",
     "logs": PAGES_DIR / "logs.html",
+    "testing": PAGES_DIR / "testing.html",
 }
 
 
@@ -80,6 +82,16 @@ class RunLocalRequest(BaseModel):
     """
 
     assembly_id: int | str | None = None
+
+
+class TestCLIRequest(BaseModel):
+    """Request payload for testing CLI argument passthrough.
+
+    Args:
+        cli_args: CLI arguments to pass to main_v2.py (space-separated or as list)
+    """
+
+    cli_args: str = ""
 
 
 class GUIRequestHandler:
@@ -187,6 +199,44 @@ class GUIRequestHandler:
             raise
         except Exception as error:
             LOGGER.exception("Failed to launch subprocess")
+            raise HTTPException(status_code=500, detail={"message": str(error)}) from error
+
+    def handle_test_cli(self, payload: TestCLIRequest) -> JSONResponse:
+        """Execute main_v2.py with provided CLI arguments and return output."""
+        if not RUN_TEST_CLI_SCRIPT.exists():
+            LOGGER.error("Script missing: %s", RUN_TEST_CLI_SCRIPT)
+            raise HTTPException(status_code=500, detail={"message": f"Script not found at {RUN_TEST_CLI_SCRIPT}"})
+
+        try:
+            cli_args_str = (payload.cli_args or "").strip()
+            cli_args = cli_args_str.split() if cli_args_str else []
+
+            # Run synchronously with timeout (increased to 30s for Python startup overhead)
+            process = subprocess.run(
+                ["bash", str(RUN_TEST_CLI_SCRIPT)] + cli_args,
+                cwd=str(REPO_ROOT.parent),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            LOGGER.info("Test CLI executed with args: %s (return code: %s)", cli_args, process.returncode)
+
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success" if process.returncode == 0 else "failed",
+                    "return_code": process.returncode,
+                    "stdout": process.stdout,
+                    "stderr": process.stderr,
+                    "cli_args": cli_args,
+                },
+            )
+        except subprocess.TimeoutExpired:
+            LOGGER.error("Test CLI timed out after 30 seconds")
+            raise HTTPException(status_code=500, detail={"message": "Test timed out after 30 seconds"}) from None
+        except Exception as error:
+            LOGGER.exception("Failed to run CLI test")
             raise HTTPException(status_code=500, detail={"message": str(error)}) from error
 
     def handle_run_local_logs(self) -> dict[str, Any]:
@@ -510,6 +560,12 @@ handler = GUIRequestHandler()
 @app.post("/run-local")
 def run_local_endpoint(payload: RunLocalRequest) -> JSONResponse:
     response = handler.handle_run_local(payload)
+    return response
+
+
+@app.post("/run-local/test-cli")
+def test_cli_endpoint(payload: TestCLIRequest) -> JSONResponse:
+    response = handler.handle_test_cli(payload)
     return response
 
 
