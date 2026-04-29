@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WP7 GUI</title>
+  <style>
+    :root {
+      --bg: #23283e;
+      --panel: #23283e;
+      --accent: #c82121;
+      --accent-2: #9f1616;
+      --text: #102018;
+      --muted: #496456;
+      --border: #23283e;
+      --shadow: 0 10px 20px rgba(16, 32, 24, 0.08);
+      --visual-card-width: 480px;
+      --visual-media-height: 300px;
+      --visual-gap: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      padding: 0;
+    }
+
+    .page {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 8px;
+      margin: 0;
+      padding: 12px;
+    }
+
+    /* --- NEW CSS FOR LOGO WRAPPER --- */
+    .logo-container {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .logo-container .card {
+      flex: 1;
+    }
+
+    /* -------------------------------- */
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 8px;
+      overflow: hidden;
+    }
+
+    .logo-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      min-height: 64px;
+    }
+
+    .logo-wrap img {
+      max-height: 52px;
+      width: auto;
+      object-fit: contain;
+      display: block;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: auto auto 1fr auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .assembly-wrap {
+      display: grid;
+      gap: 4px;
+      min-width: 170px;
+    }
+
+    .assembly-wrap label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .assembly-wrap select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 9px;
+      font-size: 0.9rem;
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .assembly-wrap select:focus {
+      outline: 2px solid var(--accent-2);
+      outline-offset: 1px;
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 16px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: var(--accent-2);
+    }
+
+    #btnRunLocal {
+      margin-top: 18px;
+    }
+
+    .progress-wrap {
+      width: 100%;
+      display: grid;
+      gap: 6px;
+    }
+
+    .progress-label {
+      font-size: 0.9rem;
+      color: var(--muted);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    progress {
+      width: 100%;
+      height: 18px;
+      accent-color: var(--accent);
+      margin: 0;
+    }
+
+    progress::-webkit-progress-value {
+      background: var(--accent);
+    }
+
+    progress::-moz-progress-bar {
+      background: var(--accent);
+    }
+
+    #progressText {
+      font-size: 0.9rem;
+      color: var(--muted);
+      min-width: 120px;
+      text-align: right;
+    }
+
+    .visuals-grid {
+      height: 100%;
+      display: grid;
+      grid-template-columns: repeat(3, var(--visual-card-width));
+      justify-content: center;
+      align-content: start;
+      gap: var(--visual-gap);
+    }
+
+    .visual-card {
+      width: var(--visual-card-width);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px;
+      background: #f8fcf9;
+      display: grid;
+      grid-template-rows: auto 1fr auto auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .visual-title {
+      font-size: 0.95rem;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .image-slot {
+      width: 100%;
+      height: var(--visual-media-height);
+      min-height: var(--visual-media-height);
+      max-height: var(--visual-media-height);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #f1f7f3;
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+    }
+
+    .image-slot img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: top center;
+      display: none;
+    }
+
+    #artifactImage,
+    #solarArtifactImage {
+      transform: translateY(-8px);
+    }
+
+    .hint {
+      font-size: 0.85rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.1;
+      margin: 0;
+    }
+
+    .hint:empty {
+      display: none;
+    }
+
+    #meshStatus {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      background: rgba(35, 40, 62, 0.9);
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      color: #fff;
+      max-width: 90%;
+      z-index: 10;
+    }
+
+    .mesh-controls {
+      display: grid;
+      gap: 6px;
+    }
+
+    .mesh-slider-label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      opacity: 1 !important;
+    }
+
+    /* Webkit browsers (Chrome, Safari, Edge) */
+    input[type="range"]::-webkit-slider-track {
+      background: #FFB3B3;
+      height: 8px;
+      border-radius: 4px;
+      outline: none;
+      border: 2px solid #ff9999;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #c82121;
+      cursor: pointer;
+      margin-top: -5px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      background: #a61b1b;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Firefox */
+    input[type="range"]::-moz-range-track {
+      background: #FFB3B3;
+      height: 8px;
+      border-radius: 4px;
+      border: 2px solid #ff9999;
+      outline: none;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #c82121;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    input[type="range"]::-moz-range-thumb:hover {
+      background: #a61b1b;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    input[type="range"]:disabled {
+      opacity: 1 !important;
+      cursor: not-allowed;
+    }
+
+    input[type="range"]:disabled::-webkit-slider-thumb {
+      background: #a61b1b;
+      cursor: not-allowed;
+    }
+
+    input[type="range"]:disabled::-moz-range-thumb {
+      background: #a61b1b;
+      cursor: not-allowed;
+    }
+
+    .mesh-actions {
+      margin-top: -10px;
+    }
+
+    @media (max-width: 1300px) {
+      .visuals-grid {
+        grid-template-columns: min(92vw, var(--visual-card-width));
+      }
+
+      .visual-card {
+        width: min(92vw, var(--visual-card-width));
+      }
+    }
+
+    @media (max-width: 900px) {
+      .controls {
+        grid-template-columns: 1fr;
+      }
+
+      #progressText {
+        text-align: left;
+      }
+
+      .visuals-grid {
+        grid-template-columns: min(92vw, var(--visual-card-width));
+      }
+
+      .visual-card {
+        width: min(92vw, var(--visual-card-width));
+      }
+    }
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+
+<body>
+  <main class="page">
+
+    <div class="logo-container">
+      <section class="card logo-wrap" aria-label="Team logo">
+        <img id="logo2" src="/ideal.png" alt="Logo IDEAL">
+      </section>
+      <section class="card logo-wrap" aria-label="Team logo">
+        <img id="logo1" src="/logo.png" alt="Logo AISCO">
+      </section>
+      <section class="card logo-wrap" aria-label="Team logo">
+        <img id="logo3" src="/aCe.png" alt="Logo aCe">
+      </section>
+    </div>
+
+    <section class="card controls">
+      <button id="btnRunLocal">RUN</button>
+      <div class="assembly-wrap">
+        <label for="assemblyIdSelect">Assembly ID (1-51)</label>
+        <select id="assemblyIdSelect">
+          <option value="">Random</option>
+        </select>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-label">Optimization Progress</div>
+        <progress id="epochProgress" value="0" max="100"></progress>
+      </div>
+      <div id="progressText">0.0%</div>
+    </section>
+
+    <section class="card" style="min-height: 0;">
+      <div class="visuals-grid">
+        <div class="visual-card">
+          <div class="visual-title">Aeroshell Evolution</div>
+          <div class="image-slot">
+            <img id="artifactImage" alt="mesh assembly gif preview">
+          </div>
+          <div class="hint" id="artifactStatus">No GIF loaded yet.</div>
+          <div class="gif-actions">
+            <button id="btnRestartGif" type="button">Restart GIF</button>
+          </div>
+        </div>
+
+        <div class="visual-card">
+          <div class="visual-title">Solar Placement</div>
+          <div class="image-slot">
+            <img id="solarArtifactImage" alt="solar loss gif preview">
+          </div>
+          <div class="hint" id="solarArtifactStatus">No solar_loss_rendering GIF loaded yet.</div>
+          <div class="gif-actions">
+            <button id="btnRestartSolarGif" type="button">Restart GIF</button>
+          </div>
+        </div>
+
+        <div class="visual-card">
+          <div class="visual-title"> Aeroshell Mesh</div>
+          <div class="image-slot" id="meshContainer" style="position: relative;">
+            <span id="meshPlaceholder"
+              style="color: var(--muted); font-size: 0.9rem; position: absolute; z-index: 1;">No mesh loaded yet</span>
+            <div class="hint" id="meshStatus">No mesh available.</div>
+          </div>
+          <div class="mesh-actions">
+            <div class="mesh-controls">
+              <div class="mesh-slider-label">Epoch Slider</div>
+              <input type="range" id="meshEpochSlider" min="0" max="100" value="0" disabled>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const logo1 = document.getElementById("logo1");
+    const logo2 = document.getElementById("logo2");
+
+    const btnRunLocal = document.getElementById("btnRunLocal");
+    const assemblyIdSelect = document.getElementById("assemblyIdSelect");
+    const epochProgress = document.getElementById("epochProgress");
+    const progressText = document.getElementById("progressText");
+
+    const artifactImage = document.getElementById("artifactImage");
+    const artifactStatus = document.getElementById("artifactStatus");
+    const btnRestartGif = document.getElementById("btnRestartGif");
+    const solarArtifactImage = document.getElementById("solarArtifactImage");
+    const solarArtifactStatus = document.getElementById("solarArtifactStatus");
+    const btnRestartSolarGif = document.getElementById("btnRestartSolarGif");
+
+    let gifEntry = null;
+    let currentGifKey = null;
+    let solarGifEntry = null;
+    let currentSolarGifKey = null;
+    let meshes = [];
+    let currentMeshIndex = 0;
+
+    function initializeAssemblyIdOptions() {
+      for (let id = 1; id <= 51; id += 1) {
+        const option = document.createElement("option");
+        option.value = String(id);
+        option.textContent = String(id);
+        assemblyIdSelect.appendChild(option);
+      }
+    }
+
+    function getSelectedAssemblyId() {
+      const rawValue = String(assemblyIdSelect.value || "").trim();
+      if (!rawValue) {
+        return null;
+      }
+
+      const parsed = Number.parseInt(rawValue, 10);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 51) {
+        return undefined;
+      }
+
+      return parsed;
+    }
+
+    function cacheBustUrl(url) {
+      const separator = url.includes('?') ? '&' : '?';
+      return `${url}${separator}t=${Date.now()}`;
+    }
+
+    async function startRunLocal() {
+      const selectedAssemblyId = getSelectedAssemblyId();
+      if (selectedAssemblyId === undefined) {
+        return;
+      }
+
+      btnRunLocal.disabled = true;
+      btnRunLocal.textContent = "RUNNING...";
+      try {
+        const payload = selectedAssemblyId === null ? {} : { assembly_id: selectedAssemblyId };
+        const res = await fetch("/run-local", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        await res.json();
+      } catch (_error) {
+        console.error("Failed to start run:", _error);
+      } finally {
+        await refreshProgress();
+        await refreshArtifacts();
+      }
+    }
+
+    function updateGifDisplay() {
+      if (!gifEntry) {
+        artifactImage.style.display = "none";
+        artifactStatus.textContent = "No mesh_assembly_mode GIF found for current run.";
+        currentGifKey = null;
+        btnRestartGif.disabled = true;
+        return;
+      }
+
+      if (currentGifKey !== gifEntry.key) {
+        artifactImage.src = cacheBustUrl(gifEntry.playUrl);
+        currentGifKey = gifEntry.key;
+      }
+      artifactImage.style.display = "block";
+      artifactStatus.textContent = "";
+      btnRestartGif.disabled = false;
+    }
+
+    function restartGif() {
+      if (!gifEntry) {
+        return;
+      }
+      artifactImage.src = cacheBustUrl(gifEntry.playUrl);
+      artifactStatus.textContent = "";
+    }
+
+    function updateSolarGifDisplay() {
+      if (!solarGifEntry) {
+        solarArtifactImage.style.display = "none";
+        solarArtifactStatus.textContent = "No solar_loss_rendering GIF found for current run.";
+        currentSolarGifKey = null;
+        btnRestartSolarGif.disabled = true;
+        return;
+      }
+
+      if (currentSolarGifKey !== solarGifEntry.key) {
+        solarArtifactImage.src = cacheBustUrl(solarGifEntry.playUrl);
+        currentSolarGifKey = solarGifEntry.key;
+      }
+      solarArtifactImage.style.display = "block";
+      solarArtifactStatus.textContent = "";
+      btnRestartSolarGif.disabled = false;
+    }
+
+    function restartSolarGif() {
+      if (!solarGifEntry) {
+        return;
+      }
+      solarArtifactImage.src = cacheBustUrl(solarGifEntry.playUrl);
+      solarArtifactStatus.textContent = "";
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes === 0) return "0 B";
+      const k = 1024;
+      const sizes = ["B", "KB", "MB", "GB"];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
+    }
+
+    // Updated updateMeshDisplay to work with Three.js
+    function updateMeshDisplay() {
+      const meshEpochSlider = document.getElementById("meshEpochSlider");
+      const meshStatus = document.getElementById("meshStatus");
+      const meshPlaceholder = document.getElementById("meshPlaceholder");
+
+      if (meshes.length === 0) {
+        meshEpochSlider.disabled = true;
+        meshStatus.textContent = "No mesh available.";
+        meshPlaceholder.style.display = "block";
+        return;
+      }
+
+      meshEpochSlider.disabled = false;
+      meshEpochSlider.max = String(meshes.length - 1);
+
+      const currentMesh = meshes[currentMeshIndex];
+      meshStatus.textContent = currentMesh.name;
+      meshEpochSlider.value = String(currentMeshIndex);
+
+      // Hide the text placeholder
+      meshPlaceholder.style.display = "none";
+
+      // Tell Three.js to render the file
+      if (window.load3DMesh) {
+        window.load3DMesh(currentMesh.url);
+      }
+    }
+
+    function handleMeshSliderChange(event) {
+      currentMeshIndex = Number.parseInt(event.target.value, 10);
+      updateMeshDisplay();
+    }
+
+
+
+    async function refreshArtifacts() {
+      try {
+        const res = await fetch(`/run-local/artifacts?t=${Date.now()}`, { cache: "no-store" });
+        const data = await res.json();
+
+        const gifList = data.mesh_assembly_gifs || [];
+        if (gifList.length > 0) {
+          const selectedGif = gifList[0];
+          gifEntry = {
+            key: selectedGif.rel_path || selectedGif.name,
+            name: selectedGif.name,
+            playUrl: selectedGif.url
+          };
+          updateGifDisplay();
+        } else {
+          gifEntry = null;
+          updateGifDisplay();
+        }
+
+        const solarGifList = data.solar_loss_gifs || [];
+        if (solarGifList.length > 0) {
+          const selectedSolarGif = solarGifList.find((entry) => entry.name === "rendering.gif") || solarGifList[0];
+          solarGifEntry = {
+            key: selectedSolarGif.rel_path || selectedSolarGif.name,
+            name: selectedSolarGif.name,
+            playUrl: selectedSolarGif.url
+          };
+          updateSolarGifDisplay();
+        } else {
+          solarGifEntry = null;
+          updateSolarGifDisplay();
+        }
+
+        const meshList = data.meshes || [];
+        if (meshList.length > 0) {
+          const isFirstLoad = meshes.length === 0;
+          // Check if the user is currently looking at the newest available mesh
+          const wasOnLatest = meshes.length > 0 && currentMeshIndex === meshes.length - 1;
+          const hasNewMeshes = meshList.length > meshes.length;
+
+          meshes = meshList; // Update our background data array
+
+          if (isFirstLoad) {
+            // First time loading: jump to the end and render
+            currentMeshIndex = meshes.length - 1;
+            updateMeshDisplay();
+          } else if (hasNewMeshes) {
+            if (wasOnLatest) {
+              // User is watching the live updates: auto-advance to the new one!
+              currentMeshIndex = meshes.length - 1;
+              updateMeshDisplay();
+            } else {
+              // User is inspecting an older mesh: DO NOT interrupt the 3D viewer.
+              // Just silently update the slider's boundary so they can scroll forward later.
+              document.getElementById("meshEpochSlider").max = String(meshes.length - 1);
+            }
+          }
+        } else if (meshes.length !== 0) {
+          // Only clear and update if we previously had meshes and now don't
+          meshes = [];
+          updateMeshDisplay();
+        }
+
+      } catch (_error) {
+        console.error("Failed to fetch artifacts:", _error);
+      }
+    }
+
+    async function refreshProgress() {
+      try {
+        const res = await fetch(`/run-local/progress?t=${Date.now()}`, { cache: "no-store" });
+        const data = await res.json();
+
+        const pct = Number(data.progress_percent || 0);
+        epochProgress.value = pct;
+        progressText.textContent = `${pct.toFixed(1)}%`;
+
+        if (data.running) {
+          btnRunLocal.disabled = true;
+          assemblyIdSelect.disabled = true;
+          btnRunLocal.textContent = "RUNNING...";
+        } else {
+          btnRunLocal.disabled = false;
+          assemblyIdSelect.disabled = false;
+          btnRunLocal.textContent = "RUN";
+        }
+      } catch (_error) {
+        console.error("Failed to fetch progress:", _error);
+      }
+    }
+
+    logo1.onerror = () => logo1.style.display = "none";
+    logo2.onerror = () => logo2.style.display = "none";
+
+    btnRunLocal.addEventListener("click", startRunLocal);
+    btnRestartGif.addEventListener("click", restartGif);
+    btnRestartSolarGif.addEventListener("click", restartSolarGif);
+
+    document.getElementById("meshEpochSlider").addEventListener("input", handleMeshSliderChange);
+
+    initializeAssemblyIdOptions();
+    refreshProgress();
+    refreshArtifacts();
+    setInterval(refreshProgress, 1000);
+    setInterval(refreshArtifacts, 3000);
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+
+    let scene, camera, renderer, controls, currentMeshObj;
+    const container = document.getElementById('meshContainer');
+
+    function init3D() {
+      // 1. Setup Scene
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xf1f7f3); // Matches your background CSS
+
+      // 2. Setup Camera
+      camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+      camera.position.set(0, 0, 3); // Start slightly zoomed out
+
+      // 3. Setup Renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      container.appendChild(renderer.domElement);
+
+      // 4. Setup Controls (Allows mouse drag to rotate)
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      // 5. Setup Lighting
+      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+      hemiLight.position.set(0, 1, 0);
+      scene.add(hemiLight);
+
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      dirLight.position.set(1, 1, 1);
+      scene.add(dirLight);
+
+      // 6. Handle resizing
+      window.addEventListener('resize', () => {
+        if (!container) return;
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+      });
+
+      animate();
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (controls) controls.update();
+      if (renderer && scene && camera) renderer.render(scene, camera);
+    }
+
+    // Expose this to your main script
+    // Expose this to your main script
+    window.load3DMesh = function (url) {
+      if (!scene) init3D();
+
+      const loader = new PLYLoader();
+
+      // Add cache-busting to the URL just to be safe
+      const cacheBustedUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+
+      loader.load(cacheBustedUrl, (geometry) => {
+        console.log("PLY geometry loaded successfully!", geometry);
+
+        geometry.computeVertexNormals();
+        geometry.computeBoundingBox();
+
+        // 1. Bulletproof Centering: Translate the geometry itself, not the mesh container
+        const center = new THREE.Vector3();
+        geometry.boundingBox.getCenter(center);
+        geometry.translate(-center.x, -center.y, -center.z);
+
+        // 2. Re-compute bounding box after moving it to the origin
+        geometry.computeBoundingBox();
+
+        // 3. Calculate safe scale
+        const size = new THREE.Vector3();
+        geometry.boundingBox.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const safeScale = maxDim > 0 ? (2.0 / maxDim) : 1;
+
+        // Remove old mesh if sliding
+        if (currentMeshObj) {
+          scene.remove(currentMeshObj);
+          currentMeshObj.geometry.dispose();
+          currentMeshObj.material.dispose();
+        }
+
+        // Create material
+        const material = new THREE.MeshStandardMaterial({
+          color: 0x99A3A4,
+          roughness: 0.6,
+          metalness: 0.2,
+          side: THREE.DoubleSide
+        });
+
+        currentMeshObj = new THREE.Mesh(geometry, material);
+        currentMeshObj.scale.set(safeScale, safeScale, safeScale);
+
+        scene.add(currentMeshObj);
+
+        // 4. Force the camera and controls to look right at the new object
+        camera.position.set(0, 0, 3.5);
+        controls.target.set(0, 0, 0);
+        controls.update();
+
+      },
+        (progress) => {
+          // Optional: logs loading progress
+          // console.log((progress.loaded / progress.total * 100) + '% loaded');
+        },
+        (error) => {
+          console.error("Critical error loading PLY file:", error);
+          alert("Failed to parse the PLY file. Please check the browser console (F12) for the exact error.");
+        });
+    }
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar View</title>
+    <style>
+        :root {
+            --bg: #1f2436;
+            --panel: #2a3047;
+            --card: #f7faf8;
+            --accent: #c82121;
+            --muted: #627078;
+            --border: #d8e1db;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: radial-gradient(circle at top left, #2b3554 0%, #1f2436 45%, #171c2e 100%);
+            color: #f2f5f8;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .grid {
+            display: grid;
+            gap: 14px;
+            width: 100%;
+            height: 100%;
+            grid-template-rows: auto 1fr;
+            margin: 0;
+            padding: 16px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border-radius: 14px;
+            padding: 14px;
+            box-shadow: 0 14px 26px rgba(0, 0, 0, 0.22);
+        }
+
+        .title {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        .meta {
+            margin-top: 6px;
+            color: #c7d3db;
+            font-size: 0.9rem;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 10px;
+            color: #11161f;
+            min-height: 0;
+            display: grid;
+            grid-template-rows: 1fr auto;
+        }
+
+        .preview {
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: #eef3f0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+        }
+
+        .preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            object-position: top center;
+            display: none;
+        }
+
+        .hint {
+            margin: 8px 0 0;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="grid">
+        <section class="panel">
+            <h1 class="title">Solar Placement View</h1>
+            <div class="meta">Dedicated page for solar loss rendering previews from the current run.</div>
+        </section>
+
+        <section class="card">
+            <div class="preview">
+                <img id="solarGif" alt="solar loss rendering gif">
+            </div>
+            <p class="hint" id="status">Waiting for solar GIF artifacts...</p>
+        </section>
+    </main>
+
+    <script>
+        const solarGif = document.getElementById("solarGif");
+        const status = document.getElementById("status");
+        let currentGifKey = null;
+
+        function cacheBust(url) {
+            const separator = url.includes("?") ? "&" : "?";
+            return `${url}${separator}t=${Date.now()}`;
+        }
+
+        async function refreshSolarView() {
+            try {
+                const response = await fetch(`/run-local/artifacts?t=${Date.now()}`, { cache: "no-store" });
+                const payload = await response.json();
+
+                const solarGifList = payload.solar_loss_gifs || [];
+                if (solarGifList.length === 0) {
+                    solarGif.style.display = "none";
+                    status.textContent = "No solar_loss_rendering GIF found for the latest run.";
+                    currentGifKey = null;
+                    return;
+                }
+
+                const selected = solarGifList.find((entry) => entry.name === "rendering.gif") || solarGifList[0];
+                const gifKey = selected.rel_path || selected.name;
+                if (gifKey !== currentGifKey) {
+                    solarGif.src = cacheBust(selected.url);
+                    currentGifKey = gifKey;
+                }
+
+                solarGif.style.display = "block";
+                status.textContent = `Showing: ${selected.name}`;
+            } catch (_error) {
+                status.textContent = "Failed to load solar artifacts.";
+            }
+        }
+
+        refreshSolarView();
+        setInterval(refreshSolarView, 4000);
+    </script>
+</body>
+
+</html>

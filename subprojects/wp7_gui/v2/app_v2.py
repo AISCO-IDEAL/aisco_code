@@ -27,6 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 GUI_ROOT = Path(__file__).resolve().parent
 LEGACY_GUI_ROOT = GUI_ROOT.parent
 TEMPLATES_DIR = GUI_ROOT / "templates"
+PAGES_DIR = TEMPLATES_DIR / "pages"
 
 WP4_PACKAGE_ROOT = REPO_ROOT / "wp4_aeroshell_optimizer"
 
@@ -61,6 +62,11 @@ MESH_ASSEMBLY_DIR_CANDIDATES = ("mesh_assembly_mode_v4", "mesh_assembly_mode_v3"
 PROCESS_LOCK = threading.Lock()
 STATE: dict[str, subprocess.Popen[str] | None] = {"run_local_process": None}
 ASSEMBLY_ID_ENV_VAR = "AISCO_ASSEMBLY_ID"
+GUI_PAGE_FILES: dict[str, Path] = {
+    "optimization": PAGES_DIR / "optimization.html",
+    "solar": PAGES_DIR / "solar.html",
+    "logs": PAGES_DIR / "logs.html",
+}
 
 
 class RunLocalRequest(BaseModel):
@@ -530,6 +536,29 @@ def artifact_file_endpoint(path: str = "") -> FileResponse:
 @app.get("/run-local/slow-gif")
 def slow_gif_endpoint(path: str = "", factor: str = "2.5") -> FileResponse:
     return handler.handle_slow_gif(path, factor)
+
+
+@app.get("/ui/page/{page_key}")
+def gui_page_endpoint(page_key: str) -> FileResponse:
+    page_path = GUI_PAGE_FILES.get(page_key)
+    if page_path is None:
+        valid_pages = ", ".join(sorted(GUI_PAGE_FILES))
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": f"Unknown page '{page_key}'. Choose one of: {valid_pages}",
+            },
+        )
+
+    if not page_path.exists() or not page_path.is_file():
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"Configured page file not found: {page_path}",
+            },
+        )
+
+    return FileResponse(str(page_path), media_type="text/html", headers={"Cache-Control": "no-store"})
 
 
 if TEMPLATES_DIR.exists():
