@@ -1,5 +1,7 @@
 import importlib
+import json
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     collect_optimizer_state,
     collect_param_stats,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp5.unified_mesh_extraction import MeshExtractionConfig, MeshSDFExtractor
 
 # --- Module constants (Plan 013 M2) ---
@@ -482,6 +485,59 @@ def _extract_mesh(
     return None
 
 
+def _compute_solitary_pretrain_hash(config: dict[str, Any], model: SupportsModelContract) -> str:
+    """Compute a stable hash over model architecture and all solitary pretraining parameters.
+
+    Covers: full model architecture (via get_model_info_dict), pretraining_shape,
+    and the complete training_loop dict.  For PLY shapes, also includes the PLY stem
+    (not full path, for path-move resilience) and ply_scale.
+
+    Args:
+        config: Dict from the ``pretraining`` section of pretraining_v0_config.yaml.
+        model: Model whose architecture is included in the hash.
+
+    Returns:
+        10-character hex hash string.
+    """
+    pretraining_shape: str = config.get("pretraining_shape", "sphere")
+    key: dict[str, Any] = {
+        "model": model.get_model_info_dict(),
+        "pretraining_shape": pretraining_shape,
+        "training_loop": config.get("training_loop", {}),
+    }
+    if pretraining_shape == "ply":
+        ply_path_raw = config.get("pretraining_ply_path") or config.get("beast_pretraining_ply_path", "")
+        key["ply_stem"] = Path(ply_path_raw).stem if ply_path_raw else ""
+        key["ply_scale"] = config.get("pretraining_ply_scale", 1000.0)
+    return dict_hashing(key)
+
+
+def _resolve_solitary_ckpt_path(
+    config: dict[str, Any],
+    model: SupportsModelContract,
+    base_dir: Path,
+) -> Path:
+    """Return the canonical checkpoint path for a solitary pretraining run.
+
+    Folder structure:
+      <base_dir>/<epochs:06d>_<ModelClass>_<config_hash>/pretrained_<config_hash>.pth
+        model_info_dict.json
+
+    Args:
+        config: Dict from the ``pretraining`` section of pretraining_v0_config.yaml.
+        model: Model whose architecture is included in the hash.
+        base_dir: Root directory for solitary pretraining checkpoints.
+
+    Returns:
+        Absolute Path to the checkpoint file inside the canonical folder.
+    """
+    config_hash = _compute_solitary_pretrain_hash(config, model)
+    epochs: int = int(config.get("training_loop", {}).get("epochs", 0))
+    model_class_name: str = model.__class__.__name__
+    folder_name = f"{epochs:06d}_{model_class_name}_{config_hash}"
+    return base_dir / folder_name / f"pretrained_{config_hash}.pth"
+
+
 # 2026 03 05, eschaerer:
 # look i'm not sure if the changes i made also work on the HPC. Please revert them if they don't
 def pretraining(
@@ -489,6 +545,7 @@ def pretraining(
     pretraining_config_name: str = "pretraining_v0_config.yaml",
     override_config: dict | None = None,
     debug_manager: DebugManager | None = None,
+    canonical_ckpt_path: Path | None = None,
 ) -> SupportsModelContract:
     # Does pretraining, for now only on a sphere
 
@@ -611,4 +668,27 @@ def pretraining(
 
     # ── Debug: cleanup ───────────────────────────────────────────
     dbg.stop()
+
+    # --- Save to canonical checkpoint path if provided (Plan 031 / M4 + M5) ---
+    if canonical_ckpt_path is not None:
+        canonical_ckpt_path.parent.mkdir(parents=True, exist_ok=True)
+        config_hash = _compute_solitary_pretrain_hash(config, model)
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "meta": {
+                    "config_hash": config_hash,
+                    "date": datetime.now().isoformat(),
+                    "epochs": num_epochs,
+                    "model_class": model.__class__.__name__,
+                },
+            },
+            canonical_ckpt_path,
+        )
+        print(f"[pretraining] SAVE  path={canonical_ckpt_path}  hash={config_hash}  epochs={num_epochs}")
+        info_json_path = canonical_ckpt_path.parent / "model_info_dict.json"
+        with open(info_json_path, "w") as _f:
+            json.dump(model.get_model_info_dict(), _f, indent=2)
+        print(f"[pretraining] Wrote model_info_dict.json → {info_json_path}")
+
     return model

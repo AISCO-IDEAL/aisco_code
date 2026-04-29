@@ -14,8 +14,18 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import Di
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
-from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import pretraining_latent
-from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import pretraining
+from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import (
+    _compute_latent_pretrain_hash,
+    pretraining_latent,
+)
+from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import (
+    _resolve_checkpoint_path as _resolve_latent_ckpt_path,
+)
+from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
+    _compute_solitary_pretrain_hash,
+    _resolve_solitary_ckpt_path,
+    pretraining,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat, SupportsOptimise
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.ply_to_gif import generate_gifs
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
@@ -34,7 +44,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import (
     allround_save_data,
-    fetch_pretrained_model,
     reformat_wandb_name,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.wandb_utils import patch_wandb_log_for_monotonic_steps
@@ -165,27 +174,18 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         vis_sampling = latent_config["output"].get("sampling_vis", True)
         make_gif = latent_config["output"].get("make_gif", False)
 
-        # Checkpoint: same storage root and model-hash subdir as standard pretraining.
-        # This keeps latent pretrained files alongside standard ones and is consistent
-        # with fetch_pretrained_model's search pattern.
-        if run_locally:
-            storage_root = general_config["storage_paths"].get("beast_storage_dir") or general_config["storage_paths"].get(
-                "local_storage_dir", "./local_storage_dir"
-            )
-        else:
-            storage_root = general_config["storage_paths"]["storage_dir"]
-        latent_ckpt_path = Path(storage_root) / model_hash / f"pretrained_latent_{model_hash}.pth"
+        # Vis dir: derive from canonical pretraining run folder (never /tmp).
+        # Computed before calling pretraining_latent so GIF generation has the path.
+        pretrain_run_dir: Path = _resolve_latent_ckpt_path(latent_config, model).parent
+        vis_run_dir: Path = pretrain_run_dir / "sampling_vis"
 
-        # Vis + GIFs live inside the main run dir (same as renders/meshes).
-        vis_run_dir: Path = (rendering_dir / "sampling_vis") if rendering_dir is not None else Path("/tmp/aisco_sampling_vis")
+        pretrained_hash: str = _compute_latent_pretrain_hash(latent_config, model)
         model, Z_pretrained = pretraining_latent(
             model,
             latent_config,
             device,
             use_wandb=use_wandb,
             vis_sampling=vis_sampling,
-            vis_output_dir=vis_run_dir,
-            checkpoint_path=latent_ckpt_path,
         )
         if verbose:
             print(f"[latent_space] Latent pretraining complete. Population size: {len(latent_config['latent_population'])}")
@@ -198,43 +198,36 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             print("[latent_space] Skipping GIF generation: no PLY files in sampling_vis (fast-resume or vis disabled).")
 
     else:
-        # Standard pretraining: look for an existing checkpoint, then run pretraining_v1_1 if needed.
+        # Standard pretraining: hash-based canonical lookup (Plan 031 / M4).
         pretraining_config_name = general_config["active_configs"].get("pretraining", "pretraining_v0_config.yaml")
         pretraining_config = load_config(v="v2", cfg_name=pretraining_config_name)
         force_pretraining = pretraining_config["pretraining"].get("force_pretraining", False)
 
-        ### get paths
+        # Canonical base dir for solitary pretraining (environment-aware)
         if run_locally:
-            pretrained_path = pretraining_config["pretraining"].get("local_pretraining_model_path", "")
-            if not pretrained_path:  # check if empty path given in pretraining config, if so fallback to general config path
-                pretrained_path = general_config["storage_paths"].get("beast_storage_dir") or general_config["storage_paths"].get(
-                    "local_storage_dir", "./local_storage_dir"
-                )
+            _local_root = general_config["storage_paths"].get("beast_storage_dir") or general_config["storage_paths"].get(
+                "local_storage_dir", "./local_storage_dir"
+            )
+            solitary_base_dir = Path(_local_root) / "pretraining" / "solitary_pretraining"
         else:
-            pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", "")
-            if not pretrained_path:  # check if empty path given in pretraining config, if so fallback to general config path
-                pretrained_path = general_config["storage_paths"].get("storage_dir", "/cluster/work/fuge/AISCO/temp_")
+            solitary_base_dir = Path("/cluster/work/fuge/AISCO/pretraining/solitary_pretraining")
 
-        if verbose:
-            print(f"Pretrained path (from pretraining cfg): {pretrained_path}")
+        pretrained_hash = _compute_solitary_pretrain_hash(pretraining_config, model)
+        pretrained_model_path: Path = _resolve_solitary_ckpt_path(pretraining_config, model, solitary_base_dir)
 
-        ### load pretrained model if exists
-        pretrained_model_path = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
-
-        ### pretraining if model doesn't exist
-        if pretrained_model_path is not None and not force_pretraining:
-            model.load_state_dict(torch.load(pretrained_model_path, map_location=device))
+        if pretrained_model_path.exists() and not force_pretraining:
+            ckpt = torch.load(pretrained_model_path, map_location=device, weights_only=True)
+            if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
+                model.load_state_dict(ckpt["model_state_dict"])
+            else:
+                model.load_state_dict(ckpt)
             if verbose:
-                print(f"Loaded pretrained model of type {model.__class__.__name__} from {pretrained_model_path}")
+                print(f"[pretraining] LOAD  path={pretrained_model_path}  hash={pretrained_hash}  status=fast_resume")
         else:
             if verbose and not force_pretraining:
-                print("No pretrained model found, proceeding by pretraining")
+                print(f"[pretraining] MISS  path={pretrained_model_path}  hash={pretrained_hash}  action=train")
             if verbose and force_pretraining:
-                print("Force pretraining enabled, proceeding by pretraining")
-                if pretrained_model_path:
-                    print(
-                        f"Note: A pretrained model was found at {pretrained_model_path} but will be ignored due to force_pretraining=True"
-                    )
+                print(f"[pretraining] Force pretraining enabled. hash={pretrained_hash}")
 
             print(f"Starting pretraining for model {model.__class__.__name__}")
             if uses_diversity:
@@ -253,16 +246,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 # Reset active latent vector to zeros before pretraining.
                 model.set_latent_vector(torch.zeros_like(active_latent))
 
-            model = pretraining(model=model, debug_manager=debug_manager)
-
-            allround_save_data(
+            model = pretraining(
                 model=model,
-                storage_path=pretrained_path,
-                save_model=True,
-                save_mesh=True,
-                epoch=None,
-                verbose=verbose,
-                pretraining=True,
+                debug_manager=debug_manager,
+                pretraining_config_name=pretraining_config_name,
+                canonical_ckpt_path=pretrained_model_path,
             )
     if verbose:
         print(f"Pretraining complete for model: {model_class_name} with Parent class: {parent_class_name}")

@@ -1,9 +1,9 @@
-model_name: "ConcatWIREV2" # only used for standalone pretraining. If in main loop, the model_name from general_config.yaml is used.
+model_name: "ConcatWIREV5" # only used for standalone pretraining. If in main loop, the model_name from general_config.yaml is used.
 z_placement: "circle"
 z_radius: 2.0  # unit-circle radius for pretrained latent codes.
               # Spatial inputs are mm/1000 ≈ [-5, 5]; z_radius=2.0 gives latents a
               # comparable magnitude to the dominant spatial axis.
-force_pretraining: false # iff false, a hashed pretraining will be used if applicable
+force_pretraining: true # iff false, a hashed pretraining will be used if applicable
 
 # One entry per latent slot.  Slot 0 maps to z₀ = origin.
 # shape_type: "sphere" | "cube" | "ply"
@@ -18,11 +18,11 @@ force_pretraining: false # iff false, a hashed pretraining will be used if appli
 #     0.05    wider band (σ ≈ 250mm at car scale, default)
 latent_population:
   # you can add as many shapes as you want
-  - name: "sphere_slot_0" #arbitray name
-    shape_type: "sphere"
-    radius: 500.0         # iff shape_type == "sphere"
-    side_length: null     # iff shape_type == "cube"
-    ply_path: null        # iff shape_type == "ply"
+  # - name: "sphere_slot_0" #arbitray name
+  #   shape_type: "sphere"
+  #   radius: 500.0         # iff shape_type == "sphere"
+  #   side_length: null     # iff shape_type == "cube"
+  #   ply_path: null        # iff shape_type == "ply"
 
   - name: "simple_bullet_blunt"
     shape_type: "ply"
@@ -44,7 +44,7 @@ latent_population:
     shape_type: "ply"
     radius: null
     side_length: null
-    ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_catamaran2.ply"
+    ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_catamaran.ply"
     ply_scale: 100.0
     surface_noise_sigma_factor: 0.005
 
@@ -64,21 +64,21 @@ latent_population:
   #   ply_scale: 0.1
   #   surface_noise_sigma_factor: 0.005
 
-  # - name: "simple_cuboid"
-  #   shape_type: "ply"
-  #   radius: null
-  #   side_length: null
-  #   ply_path: "${LATENT_DATA_ROOT}/00_pretraining_target_shapes/simple_cuboid.ply"
-  #   ply_scale: 100.0
-  #   surface_noise_sigma_factor: 0.005
+  - name: "simple_cuboid"
+    shape_type: "ply"
+    radius: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_cuboid.ply"
+    ply_scale: 100.0
+    surface_noise_sigma_factor: 0.005
 
-  # - name: "simple_trimaran"
-  #   shape_type: "ply"
-  #   radius: null
-  #   side_length: null
-  #   ply_path: "${LATENT_DATA_ROOT}/00_pretraining_target_shapes/simple_trimaran.ply"
-  #   ply_scale: 100.0
-  #   surface_noise_sigma_factor: 0.005
+  - name: "simple_trimaran"
+    shape_type: "ply"
+    radius: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_trimaran.ply"
+    ply_scale: 100.0
+    surface_noise_sigma_factor: 0.005
 
   # - name: "simple_solarcar" # Broken:too large?!
   #   shape_type: "ply"
@@ -89,7 +89,7 @@ latent_population:
   #   surface_noise_sigma_factor: 0.005
 
 training_loop:
-  epochs: 10
+  epochs: 3000
   learning_rate: 0.0005
   batch_size_per_shape: 4096 #8192
   logging_interval: 25 # wandb stats logging intervall (displayed in terminal as well)
@@ -105,12 +105,14 @@ training_loop:
   near_surface_tight_sigma: 0.005 # tight band σ = factor × bbox_extent_mm  (≈25mm at car scale)
   near_surface_wide_sigma: null   # wide band σ = factor × bbox_extent_mm   (≈250mm at car scale)
 
+  bbox_scale_factor: 1.0  # Multiply outer_prism bounds by this for domain sampling (scales training distribution).
+                          # Moved here from output section (Plan 031 / M2) — this is a training parameter.
+
 output:
-  # Must live in a directory NOT scanned by fetch_pretrained_model
-  # (which scans the standard pretrained_path directory).
-  checkpoint_path: "/cluster/work/fuge/AISCO/latent_pretraining/runs/pretrained_latent.pth"
-  mesh_resolution: 64
-  bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2 Assembler
+  # Canonical base directory for all latent pretraining checkpoints.
+  # Plan 031 / M3: checkpoint path is now fully computed as:
+  #   <base_dir>/<epochs:06d>_<ModelClass>_<config_hash>/pretrained_latent_<config_hash>.pth
+  base_dir: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining"
 
 
   # Cache key includes ply_path stem, ply_scale, sigma params, n_surf → hash-tagged .pt files.
