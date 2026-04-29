@@ -33,7 +33,15 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import ge
 _config_registry: dict[str, dict] = {}
 _registry_initialised: bool = False
 _registry_alias_index: dict[str, set[str]] = {}
+_using_custom_gui_configs: bool = False
+_gui_config_folder: Path | None = None
 
+def switch_to_gui_config(value: bool) -> None:
+    _using_custom_gui_folder = value
+
+
+def set_gui_config_folder(folder_path: str) -> None:
+    _gui_config_folder = Path(folder_path)
 
 def _cfg_key(cfg_name: str) -> str:
     """Normalise a config filename to a registry key (drop ``.yaml``)."""

@@ -3,9 +3,9 @@ import logging
 import mimetypes
 import os
 import re
+import signal
 import subprocess
 import threading
-import signal
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
