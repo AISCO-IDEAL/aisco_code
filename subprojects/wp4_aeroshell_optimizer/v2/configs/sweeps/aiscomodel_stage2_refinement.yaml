@@ -1,0 +1,118 @@
+# =============================================================================
+# AISCOModel pretraining — STAGE 2 narrow refinement sweep.
+#
+# Centred on the stage-1 winner (run "fanciful-sweep" #11, id `bw8cja3s`)
+# from aiscomodel_complexity_sweep.yaml.  Stage-1 produced a coarse bunny
+# ("potato + blobs for ears/feet"); the goal of stage-2 is to recover the
+# missing fine detail (crisp ears, concavity between legs).
+#
+# Strategy:
+#   * NARROW the existing axes that stage-1 already explored.  We freeze the
+#     architectural categoricals to the winning profile (saves a 5x4x4 = 80x
+#     reduction in search volume) and tighten LR / sigma / fraction ranges
+#     to ±1 step around the winner.
+#   * ADD new axes that stage-1 did NOT cover.  These are the
+#     architectural / loss-formulation changes that the stage-1 wrap-up
+#     identified as the actual unlock for fine detail:
+#         - normal_loss_weight   (IGR-style ∇f→n_surf alignment)
+#         - eikonal_loss_weight  (light |∇f|=1, off-surface only)
+#         - fourier_levels       (sinusoidal positional encoding)
+#   * INCREASE the per-run budget (epochs up to 1500) since dual-band L1 +
+#     normal-loss continues to improve well past stage-1's 700-epoch cap.
+#     Hyperband still culls the laggards, so wall-clock stays bounded.
+#
+# Launch:
+#   wandb sweep subprojects/wp4_aeroshell_optimizer/v2/configs/sweeps/aiscomodel_stage2_refinement.yaml
+#   # then edit SWEEP_ID in slurm_scripts/launch_sweep.sh and `sbatch` it.
+# =============================================================================
+
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_single.py
+entity: aisco
+project: AISCOModel_Pretraining_Single
+
+method: bayes
+metric:
+  goal: minimize
+  name: pretraining/total_loss
+
+# Hyperband: with longer epochs we lift min_iter so we don't kill runs whose
+# normal-loss only kicks in once the surface roughly localises (~150-200 ep).
+early_terminate:
+  type: hyperband
+  min_iter: 200
+  eta: 3
+
+parameters:
+  pretraining_single_config.model_name:
+    value: "AISCOModel"
+
+  # ─── Frozen at stage-1 winner ──────────────────────────────────────────────
+  # Profile C beat the others in stage-1; freezing it shrinks the categorical
+  # search by 5x.  Same logic for concat_input_at / residual_at.
+  models/AISCOModel_v0.activations:
+    value: [silu, silu, leakyrelu, silu, leakyrelu, silu, leakyrelu, silu, silu, linear]
+  models/AISCOModel_v0.concat_input_at:
+    value: [1, 3, 5, 7, 9]
+  models/AISCOModel_v0.residual_at:
+    value: [4, 6, 8]
+
+  # ─── Narrow ranges (±1 step around winner) ────────────────────────────────
+  # Winner LR scheduled 9e-4 → 2.84e-6 (cosine).  Tighten to ±0.5 decade.
+  pretraining_single_config.training_loop.learning_rate:
+    distribution: log_uniform_values
+    min: 0.0003
+    max: 0.0015
+
+  # Winner = 4096; allow one step up.  Bigger = denser geometry signal/step.
+  pretraining_single_config.training_loop.batch_size:
+    values: [4096, 8192]
+
+  # Push budget further — stage-1 capped at 700 and was still improving.
+  pretraining_single_config.training_loop.epochs:
+    values: [700, 1000, 1500]
+
+  # Winner = 0.02; explore tighter values now that the gross shape is correct
+  # (we want the surface pinned harder for fine-detail recovery).
+  pretraining_single_config.training_loop.near_surface_tight_sigma:
+    values: [0.005, 0.01, 0.02]
+
+  # Winner = 0.30; allow up to 0.50 to bias more compute toward the surface
+  # band now that the far-field SDF is roughly correct.
+  pretraining_single_config.training_loop.near_surface_fraction:
+    values: [0.30, 0.50]
+
+  # Winner = 0.50; one step down only — surface band gains the share.
+  pretraining_single_config.training_loop.domain_fraction:
+    values: [0.30, 0.50]
+
+  # Winner = 200; ±1 step.
+  models/AISCOModel_v0.input_scale:
+    values: [200.0, 400.0]
+
+  # Winner = 1000.
+  models/AISCOModel_v0.output_scale:
+    value: 1000.0
+
+  # Winner = 0.2; profile C has no snake activation, so this is a no-op
+  # (kept here only to preserve the run-config schema).
+  models/AISCOModel_v0.snake_alpha_init:
+    value: 0.2
+
+  # ─── New axes (NOT explored in stage-1) ───────────────────────────────────
+
+  # IGR-style surface-normal loss: aligns ∇f(x_surf) with mesh face normals.
+  # Stage-1 wrap-up identified this as the single biggest expected unlock for
+  # the "fine detail" gap.  0.0 = control (replicates stage-1 loss exactly).
+  pretraining_single_config.training_loop.normal_loss_weight:
+    values: [0.0, 0.05, 0.1, 0.3]
+
+  # Off-surface eikonal regulariser (|∇f|=1 on domain pts only).  Light
+  # weights only — heavier weights drive the v4 ellipsoid collapse.
+  pretraining_single_config.training_loop.eikonal_loss_weight:
+    values: [0.0, 0.01, 0.05]
+
+  # Sinusoidal positional encoding on the input.  L = 0 reproduces stage-1
+  # exactly (control); L = 4..8 is the typical NeRF/SDF range.  Larger L
+  # widens the frequency basis but also widens the first Linear layer.
+  models/AISCOModel_v0.fourier_levels:
+    values: [0, 4, 6, 8]

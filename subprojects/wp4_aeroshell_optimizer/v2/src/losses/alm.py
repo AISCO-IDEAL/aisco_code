@@ -49,7 +49,7 @@ class ALMManager:
             - gamma_aggressive: ALM aggressive gamma multiplier (default 1.1).
             - ALM_aggressive: whether to use aggressive multiplier updates (default False).
             - ALM_aggressive_capu: cap for aggressive multiplier updates (default 0.25).
-            - alm_thresholds: optional scalar or list of thresholds for aggressive updates.
+            - alm_thresholds: optional per-constraint deadzone. In standard mode: if |c_i| < threshold_i, nu/mu/lambda for that constraint are not updated (frozen). Set to null/absent for pure adaptive formula with no deadzone. Ignored in aggressive mode (which uses alm_aggressive_capu instead).
         - device: torch.device to store the multipliers on.
         - active_constraint_categories: Comes from the TotalLossV2.constraint_category_order property. This returns which categories are considered active.
         - configured_constraint_categories: List of ALL constraints defined in the loss config. Needs to be provided so the initial ALM Parameter lists can stay set in the same length and order regardless of disabled constraints, the params will be properly remapped to the active constraints based on their categories.
