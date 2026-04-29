@@ -1,5 +1,13 @@
 {
   "models": {
+    "AISCOModel": {
+      "model_class": "AISCOModel",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/AISCOModel_v0.py",
+      "config_file": "models/AISCOModel_v0.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
     "WIREV2": {
       "model_class": "WIREV2",
       "parent_class": "BaseModel",
@@ -61,6 +69,14 @@
       "parent_class": "ConcatBaseModel",
       "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/concat_WIRE_v3.py",
       "config_file": "models/concat_WIRE_v3.yaml",
+      "uses_diversity": true,
+      "has_optimise": false
+    },
+    "ConcatWIREV5": {
+      "model_class": "ConcatWIREV5",
+      "parent_class": "ConcatBaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/concat_WIRE_v5.py",
+      "config_file": "models/concat_WIRE_v5.yaml",
       "uses_diversity": true,
       "has_optimise": false
     },

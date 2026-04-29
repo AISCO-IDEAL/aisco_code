@@ -27,10 +27,28 @@ class MeshAssemblyModeV2(RenderingMode):
     """
 
     def __init__(self, visualiser, config):
-        super().__init__(visualiser, config)
+        # Collect camera positions from numbered keys (camera_position_1, camera_position_2, ...)
+        # or fall back to a single camera_position for backward compatibility.
+        camera_positions: list[list[float]] = []
+        idx = 1
+        while f"camera_position_{idx}" in config:
+            camera_positions.append(config[f"camera_position_{idx}"])
+            idx += 1
+        if not camera_positions:
+            camera_positions.append(config["camera_position"])  # raises KeyError with clear message if absent
+
+        # Base class requires camera_position; inject first position to satisfy its validation.
+        patched_config = dict(config)
+        patched_config.setdefault("camera_position", camera_positions[0])
+        super().__init__(visualiser, patched_config)
+
         self.config = config
-        self.base_frame = None
-        self.base_assembly_id: int | None = None
+        self.camera_positions: list[list[float]] = camera_positions
+        self.camera_directions: list[list[float]] = [[self.look_at[i] - pos[i] for i in range(3)] for pos in camera_positions]
+        # One cached base frame and assembly-id per camera position.
+        self.base_frames: list[np.ndarray | None] = [None] * len(camera_positions)
+        self.base_assembly_ids: list[int | None] = [None] * len(camera_positions)
+
         self.frame_storage = []
         self.render_interval = int(config.get("render_interval", 1))
         self.make_gif = bool(config.get("make_gif", True))
@@ -81,7 +99,7 @@ class MeshAssemblyModeV2(RenderingMode):
 
         return load_bb_assembly_id()
 
-    def _build_base_frame(self, assembly_id: int) -> np.ndarray:
+    def _build_base_frame(self, assembly_id: int, camera_position: list[float], camera_direction: list[float]) -> np.ndarray:
         inner_solids, outer_solid = load_inner_outer_solids(assembly_id)
 
         inner_meshes = [
@@ -118,23 +136,23 @@ class MeshAssemblyModeV2(RenderingMode):
             faces=inner_faces,
             textures=inner_textures,
             mode="rgb",
-            camera_position=self.camera_position,
-            camera_direction=self.camera_direction,
+            camera_position=camera_position,
+            camera_direction=camera_direction,
         )
         outer_rgb = self._render(
             vertices=outer_vertices,
             faces=outer_faces,
             textures=outer_textures,
             mode="rgb",
-            camera_position=self.camera_position,
-            camera_direction=self.camera_direction,
+            camera_position=camera_position,
+            camera_direction=camera_direction,
         )
         outer_sil = self._render(
             vertices=outer_vertices,
             faces=outer_faces,
             mode="silhouettes",
-            camera_position=self.camera_position,
-            camera_direction=self.camera_direction,
+            camera_position=camera_position,
+            camera_direction=camera_direction,
         )
 
         inner_img = inner_rgb[0] if hasattr(inner_rgb, "__len__") and len(inner_rgb) > 0 else inner_rgb
@@ -152,43 +170,49 @@ class MeshAssemblyModeV2(RenderingMode):
             return
 
         current_assembly_id = self._resolve_assembly_id(optimization_state)
-        if self.base_frame is None or self.base_assembly_id != current_assembly_id:
-            print(f"[MeshAssemblyModeV2] Using assembly_id={current_assembly_id}")
-            self.base_assembly_id = current_assembly_id
-            self.base_frame = self._build_base_frame(current_assembly_id)
-
         vertices, faces = get_mesh_from_optimization_state(optimization_state)
-        if vertices is None or faces is None or int(faces.numel()) == 0:
-            self.frame_storage.append(self._annotate_frame(self.base_frame.copy(), epoch_value=iteration, sdf_ok=False))
-            return
 
-        mesh_textures = self.visualiser.create_solid_texture(
-            batch_size=1,
-            num_faces=faces.shape[0],
-            color=self.mesh_color,
-        )
+        for cam_idx, (cam_pos, cam_dir) in enumerate(zip(self.camera_positions, self.camera_directions, strict=True)):
+            if self.base_frames[cam_idx] is None or self.base_assembly_ids[cam_idx] != current_assembly_id:
+                if cam_idx == 0:
+                    print(f"[MeshAssemblyModeV2] Using assembly_id={current_assembly_id}")
+                self.base_assembly_ids[cam_idx] = current_assembly_id
+                self.base_frames[cam_idx] = self._build_base_frame(current_assembly_id, cam_pos, cam_dir)
 
-        mesh_rgb = self._render(
-            vertices=vertices,
-            faces=faces,
-            textures=mesh_textures,
-            mode="rgb",
-            camera_position=self.camera_position,
-            camera_direction=self.camera_direction,
-        )
-        mesh_sil = self._render(
-            vertices=vertices,
-            faces=faces,
-            mode="silhouettes",
-            camera_position=self.camera_position,
-            camera_direction=self.camera_direction,
-        )
+            base_frame = self.base_frames[cam_idx]
+            assert base_frame is not None  # guaranteed by the block above
 
-        mesh_img = mesh_rgb[0] if hasattr(mesh_rgb, "__len__") and len(mesh_rgb) > 0 else mesh_rgb
-        mesh_mask = mesh_sil[0] if hasattr(mesh_sil, "__len__") and len(mesh_sil) > 0 else mesh_sil
+            if vertices is None or faces is None or int(faces.numel()) == 0:
+                self.frame_storage.append(self._annotate_frame(base_frame.copy(), epoch_value=iteration, sdf_ok=False))
+                continue
 
-        blended = alpha_blend(self.base_frame, mesh_img, mesh_mask.squeeze(-1), alpha=self.mesh_alpha)
-        self.frame_storage.append(self._annotate_frame(blended, epoch_value=iteration, sdf_ok=True))
+            mesh_textures = self.visualiser.create_solid_texture(
+                batch_size=1,
+                num_faces=faces.shape[0],
+                color=self.mesh_color,
+            )
+
+            mesh_rgb = self._render(
+                vertices=vertices,
+                faces=faces,
+                textures=mesh_textures,
+                mode="rgb",
+                camera_position=cam_pos,
+                camera_direction=cam_dir,
+            )
+            mesh_sil = self._render(
+                vertices=vertices,
+                faces=faces,
+                mode="silhouettes",
+                camera_position=cam_pos,
+                camera_direction=cam_dir,
+            )
+
+            mesh_img = mesh_rgb[0] if hasattr(mesh_rgb, "__len__") and len(mesh_rgb) > 0 else mesh_rgb
+            mesh_mask = mesh_sil[0] if hasattr(mesh_sil, "__len__") and len(mesh_sil) > 0 else mesh_sil
+
+            blended = alpha_blend(base_frame, mesh_img, mesh_mask.squeeze(-1), alpha=self.mesh_alpha)
+            self.frame_storage.append(self._annotate_frame(blended, epoch_value=iteration, sdf_ok=True))
 
     def finalize(self, output_dir, file_name="mesh_assembly_v2.gif", delete: bool = False) -> None:
         if not self.frame_storage:

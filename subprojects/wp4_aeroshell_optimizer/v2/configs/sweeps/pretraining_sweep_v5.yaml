@@ -15,7 +15,7 @@ parameters:
   models/WIRE_v5.hidden_features:
     values: [128, 256, 512]
   models/WIRE_v5.hidden_layers:
-    values: [3, 6, 8, 12]
+    values: [2, 3, 6, 8]
   models/WIRE_v5.skip_layer_idx:
     values: [1, 2]
 
@@ -51,11 +51,11 @@ parameters:
   models/WIRE_v5.hidden_scale_min:
     distribution: uniform
     min: 1.0
-    max: 5.0
+    max: 10.0
   models/WIRE_v5.hidden_scale_max:
     distribution: uniform
     min: 10.0
-    max: 50.0
+    max: 130.0
 
   # Training
   pretraining_v4_config.training_loop.learning_rate:

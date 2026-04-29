@@ -47,6 +47,21 @@ def compute_vertex_areas(pos: Tensor, face: Tensor) -> Tensor:
     return vertex_areas
 
 
+def compute_pointcloud_vertex_areas(pos: Tensor, k: int = 16) -> Tensor:
+    """Estimate per-vertex surface area from point-cloud spacing."""
+    if pos.shape[0] < 2:
+        return torch.zeros(pos.shape[0], device=pos.device, dtype=pos.dtype)
+
+    k_eff = min(k, pos.shape[0] - 1)
+    pos_np = pos.detach().cpu().numpy()
+    tree = cKDTree(pos_np)
+    # k_eff+1 because the query includes the query point itself (distance 0)
+    dists, _ = tree.query(pos_np, k=k_eff + 1, workers=-1)
+    d_k = torch.from_numpy(dists[:, k_eff]).to(dtype=pos.dtype, device=pos.device)
+
+    return torch.pi * d_k.pow(2) / k_eff
+
+
 def compute_face_normals(pos: Tensor, face: Tensor) -> Tensor:
     v0 = pos[face[0]]
     v1 = pos[face[1]]

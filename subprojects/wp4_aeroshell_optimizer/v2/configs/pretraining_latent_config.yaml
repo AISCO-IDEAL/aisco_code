@@ -27,7 +27,7 @@ latent_population:
     shape_type: "ply"
     radius: null
     side_length: null
-    ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_bullet_blunt2.ply"
+    ply_path: "${LATENT_DATA_ROOT}/00_pretraining_target_shapes/simple_bullet_blunt2.ply"
     ply_scale: 100.0                   # PLY stored in decimetres → convert to mm
     surface_noise_sigma_factor: 0.005   # σ = 5% of bbox diagonal
 
@@ -35,7 +35,7 @@ latent_population:
     shape_type: "ply"
     radius: null
     side_length: null
-    ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_bullet_pointy.ply"
+    ply_path: "${LATENT_DATA_ROOT}/00_pretraining_target_shapes/simple_bullet_pointy.ply"
     ply_scale: 100.0
     surface_noise_sigma_factor: 0.005
 
@@ -43,7 +43,7 @@ latent_population:
     shape_type: "ply"
     radius: null
     side_length: null
-    ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_catamaran2.ply"
+    ply_path: "${LATENT_DATA_ROOT}/00_pretraining_target_shapes/simple_catamaran2.ply"
     ply_scale: 100.0
     surface_noise_sigma_factor: 0.005
 
@@ -51,7 +51,7 @@ latent_population:
   #   shape_type: "ply"
   #   radius: null
   #   side_length: null
-  #   ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/original_silvretta.ply"
+  #   ply_path: "${LATENT_DATA_ROOT}/00_pretraining_target_shapes/original_silvretta.ply"
   #   ply_scale: 100.0
   #   surface_noise_sigma_factor: 0.005
 
@@ -59,7 +59,7 @@ latent_population:
   #   shape_type: "ply"
   #   radius: null
   #   side_length: null
-  #   ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/bunny.ply"
+  #   ply_path: "${LATENT_DATA_ROOT}/00_pretraining_target_shapes/bunny.ply"
   #   ply_scale: 0.1
   #   surface_noise_sigma_factor: 0.005
 
@@ -67,7 +67,7 @@ latent_population:
   #   shape_type: "ply"
   #   radius: null
   #   side_length: null
-  #   ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_cuboid.ply"
+  #   ply_path: "${LATENT_DATA_ROOT}/00_pretraining_target_shapes/simple_cuboid.ply"
   #   ply_scale: 100.0
   #   surface_noise_sigma_factor: 0.005
 
@@ -75,7 +75,7 @@ latent_population:
   #   shape_type: "ply"
   #   radius: null
   #   side_length: null
-  #   ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_trimaran.ply"
+  #   ply_path: "${LATENT_DATA_ROOT}/00_pretraining_target_shapes/simple_trimaran.ply"
   #   ply_scale: 100.0
   #   surface_noise_sigma_factor: 0.005
 
@@ -107,7 +107,7 @@ training_loop:
 output:
   # Must live in a directory NOT scanned by fetch_pretrained_model
   # (which scans the standard pretrained_path directory).
-  checkpoint_path: "/cluster/work/fuge/AISCO/latent_pretraining/runs/pretrained_latent.pth" # only used by standalone
+  checkpoint_path: "${LATENT_DATA_ROOT}/runs/pretrained_latent.pth"
   mesh_resolution: 64
   bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2 Assembler
 
@@ -115,7 +115,7 @@ output:
   # Cache key includes ply_path stem, ply_scale, sigma params, n_surf → hash-tagged .pt files.
   # Useful for static cache (surface_resample_cadence: 0): GT SDF is computed once and reused.
   # Set to an absolute path to enable; null = disabled (always build fresh, never write).
-  sdf_cache_dir: "/cluster/work/fuge/AISCO/latent_pretraining/01_sdf_cache"  # precomputed SDFs from target PLY shapes
+  sdf_cache_dir: "${LATENT_DATA_ROOT}/01_sdf_cache"  # precomputed SDFs from target PLY shapes
 
   sampling_vis: true # used in main loop, use flags in standalone pretraining
   make_gif: true     # used in main loop, use flags in standalone pretraining

@@ -179,6 +179,10 @@ class VisualisationManager:
         # Detach all tensors before dispatching to any mode so no rendering
         # operation can retain or extend the training computation graph.
         optimization_state = {k: v.detach() if isinstance(v, torch.Tensor) else v for k, v in optimization_state.items()}
+        # Inject mesh output directory so modes can write side-car files (e.g. PLY exports)
+        # without needing direct access to VisualisationManager internals.
+        if self.output_dir is not None and "mesh_dir" not in optimization_state:
+            optimization_state["mesh_dir"] = self.output_dir / "meshes"
         step = optimization_state.get("iteration")
 
         for mode_name, mode in self.rendering_modes.items():
@@ -186,13 +190,17 @@ class VisualisationManager:
                 try:
                     frames_before = len(mode.frame_storage)
                     mode.update(optimization_state)
-                    # Stream each new frame to the wandb dashboard as a wandb.Image
-                    if self.store_wandb and wandb.run and len(mode.frame_storage) > frames_before:
-                        upload_neural_renderer_image(
-                            mode.frame_storage[-1],
-                            key=f"renders/{mode_name}",
-                            step=step,
-                        )
+                    # Stream each new frame to the wandb dashboard as a wandb.Image.
+                    # When a mode appends multiple frames per update (e.g. multi-camera),
+                    # each gets its own panel key: renders/{mode_name}/cam0, cam1, ...
+                    # Single-frame modes use renders/{mode_name}/cam0 for consistency.
+                    if self.store_wandb and wandb.run:
+                        for cam_idx, frame in enumerate(mode.frame_storage[frames_before:]):
+                            upload_neural_renderer_image(
+                                frame,
+                                key=f"renders/{mode_name}/cam{cam_idx}",
+                                step=step,
+                            )
                 except Exception as e:
                     print(f"Error in {mode_name}.update(): {e}")
                     tb.print_exc()

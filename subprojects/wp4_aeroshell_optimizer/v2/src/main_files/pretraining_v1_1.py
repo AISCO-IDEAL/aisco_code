@@ -8,6 +8,7 @@ import torch
 import trimesh
 
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
+from subprojects.wp2_assembler.version4.utils.wp4_utils import get_outer_bb_info
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.ground_truth_masks.simple_geoms import (
     cube_gt,
     ply_gt,
@@ -113,7 +114,10 @@ def _compute_gt_target(
     if pretraining_shape == "ply":
         assert ply_verts_t is not None and ply_faces_t is not None
         return ply_gt(input_data, ply_verts_t, ply_faces_t)
-    return sphere_gt(input_data)
+
+    # get centroid for pretraining
+    centroid = torch.Tensor(get_outer_bb_info()["centroid"]).to(input_data.device)
+    return sphere_gt(input_data, centroid)
 
 
 def _compute_eikonal(model, input_data: torch.Tensor, device: str) -> torch.Tensor:
