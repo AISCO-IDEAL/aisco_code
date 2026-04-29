@@ -88,7 +88,6 @@ def _maybe_run_latent_pretraining(
         )
         return model, None
 
-
     # Resolve ${LATENT_DATA_ROOT} via JSON round-trip: ~/beast_logs locally, cluster path otherwise.
     root = str(Path.home() / "beast_logs") if is_local_machine() else "/cluster/work/fuge/AISCO/latent_pretraining"
     raw = json.dumps(_load_config(v="v2", cfg_name=latent_cfg_name))
