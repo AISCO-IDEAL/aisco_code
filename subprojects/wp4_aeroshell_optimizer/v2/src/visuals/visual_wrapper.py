@@ -263,11 +263,11 @@ class VisualisationManager:
                     tb.print_exc()
         if self.store_wandb:
             print("All modes finalized. Uploading to wandb...")
-            # Walk the output dir recursively so per-camera sub-directories
-            # (cam0/, cam1/, ...) produced by MeshAssemblyModeV4 are included.
-            # The W&B key is qualified with the sub-directory name when the file
-            # lives inside a sub-folder so each camera gets its own panel.
-            # GIFs at the mode root (flat modes) use animations/{mode_name} as before.
+            # Check the output dir for generated GIFs and upload them to wandb.
+            # MeshAssemblyModeV4 writes cam{idx}_<hash>.gif at the mode root level;
+            # the cam prefix is extracted to give each camera its own W&B panel:
+            # path: animations/{mode_name}/cam0, animations/{mode_name}/cam1, ...
+            # Files without a cam{N}_ prefix (flat modes) use animations/{mode_name}.
             for mode_name, mode in self.rendering_modes.items():
                 if mode.enabled:
                     mode_output_dir = self.output_dir / mode_name
@@ -276,10 +276,20 @@ class VisualisationManager:
                             if not file.is_file():
                                 continue
                             suffix = file.suffix.lower()
-                            # Build W&B key: qualify with sub-folder name when the
-                            # file is not directly inside mode_output_dir.
+                            # Derive W&B panel key from filename: a cam{N}_ prefix
+                            # (e.g. "cam0_abc.gif") maps to animations/{mode}/cam0.
+                            # Sub-folder paths (future-proof) use the folder name.
                             relative_parent = file.parent.relative_to(mode_output_dir)
-                            subkey = mode_name if str(relative_parent) == "." else f"{mode_name}/{relative_parent}"
+                            if str(relative_parent) != ".":
+                                subkey = f"{mode_name}/{relative_parent}"
+                            else:
+                                stem = file.stem
+                                underscore_pos = stem.find("_")
+                                cam_prefix = stem[:underscore_pos] if underscore_pos > 0 else ""
+                                if cam_prefix.startswith("cam") and cam_prefix[3:].isdigit():
+                                    subkey = f"{mode_name}/{cam_prefix}"
+                                else:
+                                    subkey = mode_name
                             if suffix == ".gif":
                                 print(f"Uploading {file} to wandb under key animations/{subkey}...")
                                 upload_neural_renderer_gif(str(file), key=f"animations/{subkey}", step=0)

@@ -1,15 +1,16 @@
 from pathlib import Path
+from typing import cast
 
 import torch
-from wp3_solar_estimator.geo_mesh_utils.mesh_properties import compute_mesh_surface_area
-from wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
-from wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
-from wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
-from wp3_solar_estimator.meshing_benchmarks.analytical_sdfs import SphereSDF
-from wp3_solar_estimator.meshing_benchmarks.tests import BaseTester
-from wp4_aeroshell_optimizer import Wrapper
 
+from subprojects.wp3_solar_estimator.geo_mesh_utils.mesh_properties import compute_mesh_surface_area
+from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.helpers.storage_functions import tensors_to_mesh
+from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
+from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
+from subprojects.wp3_solar_estimator.meshing_benchmarks.analytical_sdfs import SphereSDF
+from subprojects.wp3_solar_estimator.meshing_benchmarks.tests import BaseTester
+from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Wrapper
 
 
 # kdiehl: ignored some mypy errors, double check iff there actually is a bug
@@ -59,7 +60,7 @@ class OptimiseSphereRadius(BaseTester):
         target_surface_area = 4 * torch.pi * (target_radius**2)
 
         # Choose an extractor (e.g., DISO_DiffMC) for optimization
-        extractor = self.meshing_algorithms[extractor_name]
+        extractor = cast(DISOExtractor | FCExtractor | MeshSDFExtractor, self.meshing_algorithms[extractor_name])
 
         optimizer = torch.optim.Adam([model.radius], lr=learning_rate)
 
@@ -68,11 +69,13 @@ class OptimiseSphereRadius(BaseTester):
 
             if extractor_name == "MeshSDF":
                 # Use MeshSDF's differentiable surrogate gradient path
+                mesh_sdf_extractor = cast(MeshSDFExtractor, extractor)
+
                 def loss_fn(vertices, faces):
                     est_area = compute_mesh_surface_area(vertices, faces)
                     return (est_area - target_surface_area) ** 2
 
-                verts, faces, loss, surrogate_loss = extractor.extract_and_compute_loss(
+                verts, faces, loss, surrogate_loss, _ = mesh_sdf_extractor.extract_and_compute_loss(
                     sdf_model=model,
                     loss_fn=loss_fn,
                     enable_backward=True,

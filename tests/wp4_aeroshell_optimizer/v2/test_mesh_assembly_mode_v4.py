@@ -48,7 +48,11 @@ def _make_visualiser() -> MagicMock:
     vis = MagicMock()
     vis.renderer.camera_mode = "look_at"
     vis.stored_frames = []
-    vis.frames_to_gif = MagicMock()
+
+    def _touch_gif(file_path: str, **_kwargs: object) -> None:
+        Path(file_path).touch()
+
+    vis.frames_to_gif.side_effect = _touch_gif
     vis.save_image = MagicMock()
     return vis
 
@@ -157,27 +161,26 @@ class TestFrameStorageShape:
 
 @pytest.mark.parametrize("n_cams", [1, 3])
 class TestFinalizeSubfolders:
-    def test_finalize_creates_cam_subdirs(self, tmp_path: Path, n_cams: int) -> None:
-        """finalize() must create cam0/, cam1/, ... sub-directories."""
+    def test_finalize_creates_cam_prefixed_gifs(self, tmp_path: Path, n_cams: int) -> None:
+        """finalize() must write cam{idx}_<name>.gif directly in output_dir (no subdirs)."""
         mode = _make_mode(n_cams)
         _inject_frames(mode, n_frames=3)
 
         mode.finalize(tmp_path, file_name="test.gif")
 
         for idx in range(n_cams):
-            assert (tmp_path / f"cam{idx}").is_dir(), f"cam{idx}/ not found in {list(tmp_path.iterdir())}"
+            expected = tmp_path / f"cam{idx}_test.gif"
+            assert expected.is_file(), f"cam{idx}_test.gif not found; output_dir contains: {list(tmp_path.iterdir())}"
 
-    def test_finalize_no_root_level_gif(self, tmp_path: Path, n_cams: int) -> None:
-        """finalize() must NOT produce a combined GIF at the output_dir root."""
+    def test_finalize_no_cam_subdirs(self, tmp_path: Path, n_cams: int) -> None:
+        """finalize() must NOT create cam{idx}/ sub-directories."""
         mode = _make_mode(n_cams)
         _inject_frames(mode, n_frames=3)
 
         mode.finalize(tmp_path, file_name="test.gif")
 
-        root_gifs = list(tmp_path.glob("*.gif"))
-        assert root_gifs == [], (
-            f"Unexpected root-level GIF(s): {root_gifs}. finalize() must write into cam{{{{idx}}}}/ sub-directories only."
-        )
+        subdirs = [p for p in tmp_path.iterdir() if p.is_dir()]
+        assert subdirs == [], f"Unexpected sub-directories: {subdirs}. GIFs must be written flat into output_dir."
 
     def test_finalize_empty_storage_produces_no_output(self, tmp_path: Path, n_cams: int) -> None:
         """finalize() with all-empty inner lists must produce no output at all."""

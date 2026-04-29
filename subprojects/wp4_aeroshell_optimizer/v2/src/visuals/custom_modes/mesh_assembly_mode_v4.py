@@ -406,19 +406,17 @@ class MeshAssemblyModeV4(RenderingMode):
             print(f"  {self.__class__.__name__}: No frames to save")
             return
 
-        # Write one GIF (or PNG) per camera into cam{idx}/ sub-directories so
-        # each perspective can be reviewed independently without needing gif_hack.py.
+        # Write one GIF (or PNG) per camera directly into output_dir, prefixed
+        # with cam{idx}_ so all perspectives are visible in one folder.
         for cam_idx, cam_frames in enumerate(self.frame_storage):
             if not cam_frames:
                 continue
-            cam_dir = output_dir / f"cam{cam_idx}"
-            cam_dir.mkdir(parents=True, exist_ok=True)
             if self.make_gif and len(cam_frames) > 1:
-                gif_path = cam_dir / file_name
+                gif_path = output_dir / f"cam{cam_idx}_{file_name}"
                 self._frames_to_gif(gif_path, fps=self.fps, frame_list=cam_frames)
                 print(f"  cam{cam_idx}: saved {len(cam_frames)} frames → {gif_path}")
             else:
-                png_path = cam_dir / file_name.replace(".gif", ".png")
+                png_path = output_dir / f"cam{cam_idx}_{file_name.replace('.gif', '.png')}"
                 self._save_image(cam_frames[-1], png_path)
                 print(f"  cam{cam_idx}: saved frame → {png_path}")
 
