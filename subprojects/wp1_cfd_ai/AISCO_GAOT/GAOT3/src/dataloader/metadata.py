@@ -25,6 +25,44 @@ class Metadata:
 
 
 DATASET_METADATA = {
+    "incompressible_fluids/euler_of": Metadata(
+        periodic=False,
+        group_u="u",
+        group_c=None,
+        group_x="x",
+        type="gaot",
+        domain_x=(
+            [-4.996915817260742, -2.8957769870758057, -1.5078723430633545], [4.699999809265137, 2.501098394393921, 3.508775472640991]
+        ),  # x=flow, y=lateral, z=vertical (meters)
+        domain_t=None,
+        fix_x=False,
+        active_variables=None,
+        chunked_variables=None,
+        num_variable_chunks=1,
+        signed={"u": [False], "c": [None]},
+        names={"u": ["$p$"], "c": [None]},
+        global_mean=[-0.39602479338645935],
+        global_std=[0.7298364639282227],
+    ),
+    "incompressible_fluids/euler": Metadata(
+        periodic=False,
+        group_u="u",
+        group_c=None,
+        group_x="x",
+        type="gaot",
+        domain_x=(
+            [-4.996915340423584, -2.75, -1.5078723430633545], [4.699999809265137, 2.5010437965393066, 2.0490450859069824]
+        ),  # x=flow, y=lateral, z=vertical (meters)
+        domain_t=None,
+        fix_x=False,
+        active_variables=None,
+        chunked_variables=None,
+        num_variable_chunks=1,
+        signed={"u": [False], "c": [None]},
+        names={"u": ["$p$"], "c": [None]},
+        global_mean=[-0.23824286460876465],
+        global_std=[0.3600948452949524],
+    ),
     "incompressible_fluids/united_all_cp_no_of": Metadata(
         periodic=False,
         group_u="u",
@@ -62,8 +100,8 @@ DATASET_METADATA = {
         num_variable_chunks=1,
         signed={"u": [False], "c": [None]},
         names={"u": ["$p$"], "c": [None]},
-        global_mean=[-0.20794643461704254],
-        global_std=[0.3705284893512726],
+        global_mean=[-0.23023323714733124],
+        global_std=[0.409395694732666],
     ),
     "incompressible_fluids/euler_drag": Metadata(
         periodic=False,
@@ -81,6 +119,23 @@ DATASET_METADATA = {
         names={"u": ["$p$"], "c": [None]},
         global_mean=[-63.66019058227539],
         global_std=[54.39186477661133],
+    ),
+    "incompressible_fluids/only_of": Metadata(
+        periodic=False,
+        group_u="u",
+        group_c=None,
+        group_x="x",
+        type="gaot",
+        domain_x=([-4.996915817260742, -2.8957769870758057, 0.09999565035104752], [4.699999809265137, 2.501098394393921, 3.508775472640991]),  # meters, x-negated so nose at -x matching DrivAer
+        domain_t=None,
+        fix_x=False,
+        active_variables=None,
+        chunked_variables=None,
+        num_variable_chunks=1,
+        signed={"u": [False], "c": [None]},
+        names={"u": ["$p$"], "c": [None]},
+        global_mean=[-0.578277051448822],
+        global_std=[0.9675652384757996],
     ),
     # PLY-based DrivAer (multi-head: cd only, force=NaN), z-up after y↔z swap in preprocessing
     "incompressible_fluids/drivaer_drag": Metadata(
