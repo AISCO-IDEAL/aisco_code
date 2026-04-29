@@ -26,8 +26,8 @@
 #SBATCH --ntasks=84
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1900M
-#SBATCH --output=/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/OPENFOAM_003/OF_FullProcess_%j.out
-#SBATCH --error=/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/OPENFOAM_003/OF_FullProcess_%j.err
+#SBATCH --output=/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/OPENFOAM_004/OF_FullProcess_%j.out
+#SBATCH --error=/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/OPENFOAM_004/OF_FullProcess_%j.err
 
 set -euo pipefail
 
@@ -45,7 +45,7 @@ SKIP_EXTRACT=0       # 1 = skip .pt extraction + QA, skip step 5
 # =============================================================================
 # Paths — edit these before submitting
 # =============================================================================
-WORK_ROOT="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/OPENFOAM_003"
+WORK_ROOT="/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/OPENFOAM_004"
 
 PLY_INPUT="$WORK_ROOT/ply_to_simulate"
 PLY_SUBDIVIDED="$WORK_ROOT/ply_to_simulate_subdivided"
