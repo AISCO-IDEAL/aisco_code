@@ -13,12 +13,12 @@ general_info:
   # - When a middle category is disabled, its slot is skipped automatically.
 
   # Again, the ooder here corresponds to the order of the constraints in this config further below
-  alm_thresholds: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]  # per-constraint threshold(s)
+  alm_thresholds: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # per-constraint deadzone: if |c_i| < threshold_i, nu/mu/lambda are frozen. Set to null to disable (pure adaptive formula). Ignored in aggressive mode.
   initial_lambda: [0.01, 0.01, 0.01, 0.01, 0.01, 0.01]  # per-constraint initial lambda(s)
-  initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial mu(s)
+  initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0, 0.5]  # per-constraint initial mu(s)
   initial_nu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial nu(s)
-  alpha: 0.99  # EMA decay factor for ν update
-  gamma: 0.01  # parameter for ALM penalty update
+  alpha: 0.8  # EMA decay factor for ν update
+  gamma: 0.2  # parameter for ALM penalty update
   gamma_aggressive: 1.1  # multiplicative increase factor for μ in aggressive CAPU mode
   cse_prefactors:  # prefactors applied to objectives before feeding into CSE
     drag: 1.0
@@ -47,11 +47,28 @@ general_info:
 # - Optionally set old variant(s) to compute=0 in the same category.
 # - No TotalLoss code edits required.
 #
-  deactivate_scheduler_mode: skip
+  deactivate_scheduler_mode: zero_weighted
   loss_normalisation:
-    enabled: False
+    enabled: True
     target_loss_value: 1.0
     target_gradient_norm: 1.0
+    # For recalibration: enter the name of the loss as it is called further below and you can set the following keys:
+      #min_abs_value: 1.0e-6 #only gets calibrated once value is above this
+      #consecutive_epochs: 1 #how many consecutive epochs the minimum magnitude needs to be reached to trigger calibration
+      #warmup_epochs: 0 #do not trigger before
+      #cooldown_epochs: 0 # if recalibrates, wait so long until it may recalibrate
+      #max_recalibrations: 1
+      # Optional hard overrides per loss:
+      # fixed_loss_scale: 1.0  # if set, loss-scale calibration is skipped for this loss
+      # fixed_grad_scale: 1.0  # if set, grad-scale calibration is skipped for this loss
+      # If both are set for all active losses, the whole calibration pass is skipped.
+
+
+    recalibration_rules:
+      connectedness_v1:
+        #experimental values by aalthaus
+        fixed_grad_scale: 100.0
+        fixed_loss_scale: 1.0
 
   # Epoch scheduler: "skip" (default) or "zero_weighted".
   # "skip": inactive losses are not computed; logged as 0. ALM multipliers frozen.
@@ -123,8 +140,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   surface_area:
     _role: aux
-    null_loss_surface_area: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    surface_loss_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
+    null_loss_surface_area: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    surface_loss_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
 
   solar:
     _role: objective

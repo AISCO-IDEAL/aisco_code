@@ -513,10 +513,11 @@ class TotalLoss:
 
         if self._use_alm:
             if not self._external_alm and self.alm_manager is not None:
-                self.alm_manager.update_multipliers(active_constraint_tensors, active_indices=active_constraint_indices)
+                # Compute penalty with current-epoch multipliers first (for gradient), then update for next epoch.
                 alm_penalties = self.alm_manager.compute_penalty(
                     active_constraint_tensors, active_indices=active_constraint_indices
                 )
+                self.alm_manager.update_multipliers(active_constraint_tensors, active_indices=active_constraint_indices)
                 for key, t in alm_penalties.items():
                     # key = "alm_{constraint_name}"; grad_scale is keyed the same way
                     grad_scale = self._norm_manager.get_grad_scale(key)
@@ -924,7 +925,11 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # Loss & gradient normalisation calibration
     # ------------------------------------------------------------------
-    def _calibrate(self, model: TrainModel, optimizer: torch.optim.Optimizer) -> None:
+    def _calibrate(  # noqa: PLR0912, PLR0915
+        self,
+        model: TrainModel,
+        optimizer: torch.optim.Optimizer,
+    ) -> None:
         """Calibrate loss and gradient scale factors before training begins.
 
         Runs one full forward pass with calibration_mode=True (bypasses epoch scheduling),
@@ -935,13 +940,45 @@ class TotalLoss:
         print("[LossNormalisation] Starting calibration pass...")
         optimizer.zero_grad()
 
+        loss_scales: dict[str, float] = {}
+        grad_scales: dict[str, float] = {}
+        calibrated_names: set[str] = set()
+
+        active_names: set[str] = set(self._active_losses.keys())
+        if self._use_cse:
+            drag_name = self._objective_losses.get(self._cse_drag_category, (None,))[0]
+            solar_name = self._objective_losses.get(self._cse_solar_category, (None,))[0]
+            for merged_name in (drag_name, solar_name):
+                if merged_name:
+                    active_names.discard(merged_name)
+            active_names.add("cse_objective")
+
+        if active_names and all(self._norm_manager.has_both_fixed_scales(name) for name in active_names):
+            for name in sorted(active_names):
+                fixed_loss = self._norm_manager.get_fixed_loss_scale(name)
+                fixed_grad = self._norm_manager.get_fixed_grad_scale(name)
+                if fixed_loss is None or fixed_grad is None:
+                    continue
+                loss_scales[name] = fixed_loss
+                grad_scales[name] = fixed_grad
+                calibrated_names.add(name)
+            self._norm_manager.record_calibration(loss_scales, grad_scales, calibrated_names)
+            optimizer.zero_grad()
+            print("[LossNormalisation] Calibration skipped (all active components use fixed loss+grad scales).")
+            return
+
         # --- Loss scale calibration (forward only) ---
         raw = self._compute_raw_losses(model, epoch_name=0, calibration_mode=True)
-        calibrated_names: set[str] = set(raw.keys())
-        loss_scales: dict[str, float] = {}
         for name, tensor in raw.items():
+            fixed_loss = self._norm_manager.get_fixed_loss_scale(name)
+            if fixed_loss is not None:
+                loss_scales[name] = fixed_loss
+                calibrated_names.add(name)
+                print(f"  Loss scale for {name}: fixed={fixed_loss:.6g}")
+                continue
             mean_val = abs(tensor.detach().item())
             loss_scales[name] = self._norm_manager._target_loss / mean_val if mean_val > 0 else 1.0
+            calibrated_names.add(name)
             print(f"  Loss scale for {name}: mean_raw={mean_val:.6g}, scale={loss_scales[name]:.6g}")
 
         # CSE: scale is derived from the raw v_cruise output, not individual drag/solar.
@@ -950,13 +987,19 @@ class TotalLoss:
             # Temporarily record loss_scales (no grad_scales yet) so _apply_weighting can run.
             # cse_scale will be 1.0*1.0=1.0 here (grad_scales empty → get_grad_scale returns 1.0).
             self._norm_manager.record_calibration(loss_scales, {}, calibrated_names)
-            self._apply_weighting(raw)
-            if "cse_objective" in self._last_weighted_losses:
-                # loss_scale=1.0 and grad_scale=1.0 at this point, so the value equals -v_cruise
-                raw_cse_val = abs(self._last_weighted_losses["cse_objective"].detach().item())
-                loss_scales["cse_objective"] = self._norm_manager._target_loss / raw_cse_val if raw_cse_val > 0 else 1.0
+            fixed_cse_loss = self._norm_manager.get_fixed_loss_scale("cse_objective")
+            if fixed_cse_loss is not None:
+                loss_scales["cse_objective"] = fixed_cse_loss
                 calibrated_names.add("cse_objective")
-                print(f"  Loss scale for cse_objective: raw={raw_cse_val:.6g}, scale={loss_scales['cse_objective']:.6g}")
+                print(f"  Loss scale for cse_objective: fixed={fixed_cse_loss:.6g}")
+            else:
+                self._apply_weighting(raw)
+                if "cse_objective" in self._last_weighted_losses:
+                    # loss_scale=1.0 and grad_scale=1.0 at this point, so the value equals -v_cruise
+                    raw_cse_val = abs(self._last_weighted_losses["cse_objective"].detach().item())
+                    loss_scales["cse_objective"] = self._norm_manager._target_loss / raw_cse_val if raw_cse_val > 0 else 1.0
+                    calibrated_names.add("cse_objective")
+                    print(f"  Loss scale for cse_objective: raw={raw_cse_val:.6g}, scale={loss_scales['cse_objective']:.6g}")
             drag_name = self._objective_losses.get(self._cse_drag_category, (None,))[0]
             solar_name = self._objective_losses.get(self._cse_solar_category, (None,))[0]
             for merged_name in (drag_name, solar_name):
@@ -973,21 +1016,27 @@ class TotalLoss:
         optimizer.zero_grad()
         raw = self._compute_raw_losses(model, epoch_name=0, calibration_mode=True)
         self._apply_weighting(raw)  # loss_scales now active; populates _last_weighted_losses
-
         trainable_params = [p for p in model.parameters() if p.requires_grad]
         prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
 
         components_with_grad = [(name, t) for name, t in self._last_weighted_losses.items() if t.requires_grad]
-        grad_scales: dict[str, float] = {}
+        components_to_backward = [
+            (name, t) for name, t in components_with_grad if not self._norm_manager.has_fixed_grad_scale(name)
+        ]
 
-        for idx, (name, component) in enumerate(components_with_grad):
-            is_last = idx == len(components_with_grad) - 1
+        for idx, (name, component) in enumerate(components_to_backward):
+            is_last = idx == len(components_to_backward) - 1
             component.backward(retain_graph=not is_last)
             curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
             delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
             grad_scales[name] = self._norm_manager._target_grad / delta_norm if delta_norm > 0 else 1.0
             print(f"  Grad scale for {name}: delta_norm={delta_norm:.6g}, scale={grad_scales[name]:.6g}")
             prev_grad = curr_grad
+
+        for name in calibrated_names:
+            fixed_grad = self._norm_manager.get_fixed_grad_scale(name)
+            if fixed_grad is not None and name not in grad_scales:
+                grad_scales[name] = fixed_grad
 
         self._norm_manager.record_calibration(loss_scales, grad_scales, calibrated_names)
         optimizer.zero_grad()
