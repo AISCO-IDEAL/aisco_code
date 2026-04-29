@@ -308,6 +308,10 @@
               <div class="mesh-slider-label">Epoch Slider</div>
               <input type="range" id="meshEpochSlider" min="0" max="100" value="0" disabled>
             </div>
+            <div class="mesh-controls">
+              <div class="mesh-slider-label">Opacity: <span id="meshOpacityValue">1.00</span></div>
+              <input type="range" id="meshOpacitySlider" min="0" max="1" step="0.01" value="1">
+            </div>
           </div>
         </div>
       </div>
@@ -328,6 +332,20 @@
     let currentSolarGifKey = null;
     let meshes = [];
     let currentMeshIndex = 0;
+    let meshOpacity = 1.0;
+
+    // Fetch initial mesh opacity from server config; keep 1.0 on any failure
+    fetch('/mesh-config')
+      .then(r => r.json())
+      .then(cfg => {
+        meshOpacity = typeof cfg.mesh_opacity === 'number' ? cfg.mesh_opacity : 1.0;
+        const slider = document.getElementById('meshOpacitySlider');
+        if (slider) {
+          slider.value = String(meshOpacity);
+          document.getElementById('meshOpacityValue').textContent = meshOpacity.toFixed(2);
+        }
+      })
+      .catch(() => { /* keep default 1.0 */ });
 
     function cacheBustUrl(url) {
       const separator = url.includes('?') ? '&' : '?';
@@ -503,6 +521,12 @@
 
     document.getElementById("meshEpochSlider").addEventListener("input", handleMeshSliderChange);
 
+    document.getElementById("meshOpacitySlider").addEventListener("input", function (e) {
+      meshOpacity = Number.parseFloat(e.target.value);
+      document.getElementById("meshOpacityValue").textContent = meshOpacity.toFixed(2);
+      if (window.applyMeshOpacity) window.applyMeshOpacity(meshOpacity);
+    });
+
     refreshArtifacts();
     setInterval(refreshArtifacts, 3000);
   </script>
@@ -596,12 +620,20 @@
           currentMeshObj.material.dispose();
         }
 
-        // Create material
+        // Create material — use vertex colours if present (M1), otherwise grey fallback
+        const hasVertexColors = geometry.attributes.color != null;
+        const opacity = Number.parseFloat(
+          document.getElementById('meshOpacitySlider')?.value ?? '1'
+        );
         const material = new THREE.MeshStandardMaterial({
-          color: 0x99A3A4,
+          color: hasVertexColors ? 0xffffff : 0x99A3A4,
+          vertexColors: hasVertexColors,
           roughness: 0.6,
           metalness: 0.2,
-          side: THREE.DoubleSide
+          side: THREE.DoubleSide,
+          transparent: opacity < 1.0,
+          depthWrite: opacity >= 1.0,
+          opacity: opacity
         });
 
         currentMeshObj = new THREE.Mesh(geometry, material);
@@ -624,6 +656,15 @@
           alert("Failed to parse the PLY file. Please check the browser console (F12) for the exact error.");
         });
     }
+
+    // Allow the opacity slider to update the current mesh without reloading it
+    window.applyMeshOpacity = function (opacity) {
+      if (!currentMeshObj) return;
+      currentMeshObj.material.transparent = opacity < 1.0;
+      currentMeshObj.material.depthWrite = opacity >= 1.0;
+      currentMeshObj.material.opacity = opacity;
+      currentMeshObj.material.needsUpdate = true;
+    };
   </script>
 </body>
 

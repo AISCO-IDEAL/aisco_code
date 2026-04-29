@@ -54,7 +54,8 @@ def test_load_mesh_extraction_config() -> None:
     config = load_mesh_extraction_config()
 
     assert config.base_resolution >= 2
-    assert len(config.bbox) == 3
+    # bbox is intentionally absent from YAML; callers must provide via set_grid()
+    assert config.bbox is None
 
 
 def test_active_cell_extraction_surface_area_stays_close_to_dense_baseline() -> None:
@@ -66,14 +67,16 @@ def test_active_cell_extraction_surface_area_stays_close_to_dense_baseline() -> 
         max_refine_levels=3,
         batch_size=1024,
     )
+    # Provide an explicit bbox; the sphere has radius 1500mm so this bbox contains it.
+    _test_bbox = [[-2000.0, 2000.0], [-2000.0, 2000.0], [-2000.0, 2000.0]]
     extractor = MeshSDFExtractor(config=test_config)
-    extractor.set_grid(bbox=test_config.bbox, resolution=test_config.base_resolution)
+    extractor.set_grid(bbox=_test_bbox, resolution=test_config.base_resolution)
 
     model = SphereSDF(radius=1500.0)
     vertices, faces = extractor.extract_mesh(model)
 
     adaptive_area = compute_surface_area(vertices, faces).item()
-    dense_area = _dense_baseline_surface_area(model, test_config.bbox, resolution=48, isovalue=test_config.isovalue)
+    dense_area = _dense_baseline_surface_area(model, _test_bbox, resolution=48, isovalue=test_config.isovalue)
 
     assert vertices.shape[0] > 0
     assert faces.shape[0] > 0
