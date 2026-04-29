@@ -14,7 +14,7 @@ export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH
 umask 0002 # ensure group write permissions for logs and models
 
 
-PROJECT_ROOT="$HOME/Documents/AISCO_code"
+PROJECT_ROOT="$HOME/AISCO_code"
 VENV_DIR="$PROJECT_ROOT/aisco_env"
 
 #------------------------------------------------------------------------------
