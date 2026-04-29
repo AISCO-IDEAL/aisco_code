@@ -5,7 +5,7 @@ general_info:
   verbose: "True"  #  basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
 
 model_def:
-  model_name: "ConcatWIREV2"  #  main_v2.py, dynamic model selection, should refer to models.json
+  model_name: "ConcatWIREV5"  #  main_v2.py, dynamic model selection, should refer to models.json
 
 active_configs:
   losses: "losses_v0_config.yaml"  #  total_loss.py, parent_loss.py, visual modes (assembly_mode, mesh_assembly_mode_v2)
@@ -15,6 +15,7 @@ active_configs:
   neural_renderer: "neural_renderer_v0.yaml"  #  visual_wrapper.py, total_loss.py
   interpolator: "postprocessing_interpolator_config.yaml"  # latent-space interpolation monitoring
   solar: "solar_configs/solar_loss_config.yaml" # Used in all solar versions above V3s
+  latent_pretraining: "pretraining_latent_config.yaml"  # Used by pretraining_latent.py
 
 wandb_general:
   use_wandb: True # main_v1_1_one_model.py, total_loss.py

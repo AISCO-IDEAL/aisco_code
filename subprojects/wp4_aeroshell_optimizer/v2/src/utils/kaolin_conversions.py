@@ -11,6 +11,7 @@ from kaolin.ops.conversions import (
     voxelgrids_to_trianglemeshes,
 )
 
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 
 ####################### eschaerer #################
@@ -41,7 +42,16 @@ def get_diff_mesh(
     ####################### eschaerer #################
     # Enforce deterministic behavior for PyTorch operations (needed for backpropagation tests)
     if box_dim is None:
-        box_dim = [-5000, 5000, -5000, 5000, -5000, 5000]
+        # Get outer-prism bounds from wp2 (single source of truth)
+        prism = get_outer_prism_bounds_mm()
+        box_dim = [
+            int(prism["x"][0]),
+            int(prism["x"][1]),
+            int(prism["y"][0]),
+            int(prism["y"][1]),
+            int(prism["z_mesh"][0]),
+            int(prism["z_mesh"][1]),
+        ]
     # torch.use_deterministic_algorithms(True) # interferes with WP3 #aalthaus #vdiekmann  # noqa: ERA001
     torch.manual_seed(42)  # Set a fixed seed
     ###################################################
@@ -89,6 +99,17 @@ def get_diff_mesh(
     base_res = res_x  # Simplification
     ind = flexicubes.construct_voxel_grid(base_res - 1)[1]
 
+    # Guard: NaN/Inf in sdf_values causes FlexiCubes' internal torch.gather to use
+    # out-of-bounds indices → CUDA device-side assert that irrecoverably poisons the
+    # entire process CUDA context.  Detach and clamp before topology extraction.
+    sdf_for_flexicubes = sdf_values.detach().nan_to_num(nan=0.0, posinf=1e6, neginf=-1e6)
+    if sdf_for_flexicubes.min().item() >= 0.0 or sdf_for_flexicubes.max().item() <= 0.0:
+        print("Warning: Empty mesh generated!")
+        return (
+            torch.zeros(0, 3, device=device, dtype=torch.float32),
+            torch.zeros(0, 3, device=device, dtype=torch.long),
+        )
+
     # 3. Use FlexiCubes to extract the mesh
     ####################### eschaerer #################
     torch.cuda.synchronize()
@@ -96,7 +117,7 @@ def get_diff_mesh(
 
     vertices, faces, _l_dev = flexicubes(
         voxelgrid_vertices=grid_points,  # Points
-        scalar_field=sdf_values,  # Values
+        scalar_field=sdf_for_flexicubes,  # Values — detached, NaN/Inf-clamped
         cube_idx=ind,  # Cube Indices
         resolution=base_res - 1,  # Resolution
     )

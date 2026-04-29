@@ -20,8 +20,8 @@ import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
     ensure_pyvista_headless,
 )
-from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.custom_modes.mesh_assembly_mode_v2 import (
-    MeshAssemblyModeV2,
+from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.custom_modes.mesh_assembly_mode_v4 import (
+    MeshAssemblyModeV4,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.tim_render import (
     render_mesh,
@@ -61,8 +61,8 @@ class Interpolator:
             - window_size: (width, height) tuple for rendered images
             - save_dir: Path for saving intermediate/final images
             - upload_to_wandb: bool, whether to upload grid to WandB
-            - render_backend: "pyvista" (default) or "mesh_assembly_mode_v2"
-            - mesh_assembly_mode_config: optional dict passed to MeshAssemblyModeV2
+            - render_backend: "pyvista" (default) or "mesh_assembly_mode_v4"
+            - mesh_assembly_mode_config: optional dict passed to MeshAssemblyModeV4
             - mesh_visualiser: optional dict used for Visualiser(...) kwargs
         device: torch device (cuda or cpu)
     """
@@ -118,7 +118,7 @@ class Interpolator:
         self._pyvista_preflight_done = False
 
         # Optional mesh-assembly mode backend state
-        self._mesh_assembly_mode: MeshAssemblyModeV2 | None = None
+        self._mesh_assembly_mode: MeshAssemblyModeV4 | None = None
 
         # Create save directory
         self.save_dir.mkdir(parents=True, exist_ok=True)
@@ -146,7 +146,7 @@ class Interpolator:
 
     def _configure_render_backend(self) -> None:
         """Initialize the selected render backend and run required preflight checks."""
-        if self.render_backend == "mesh_assembly_mode_v2":
+        if self.render_backend == "mesh_assembly_mode_v4":
             self._init_mesh_assembly_backend()
 
         if self.render_backend == "pyvista":
@@ -186,7 +186,7 @@ class Interpolator:
         print(f"PyVista render preflight passed (DISPLAY={os.environ.get('DISPLAY', '<unset>')})")
 
     def _init_mesh_assembly_backend(self) -> None:
-        """Initialize mesh_assembly_mode_v2 rendering backend."""
+        """Initialize mesh_assembly_mode_v4 rendering backend."""
         try:
             mode_config = dict(self.config.get("mesh_assembly_mode_config", {}))
 
@@ -203,7 +203,7 @@ class Interpolator:
             visualiser_kwargs.setdefault("image_size", int(min(self.window_size)))
 
             visualiser = Visualiser(**visualiser_kwargs)
-            self._mesh_assembly_mode = MeshAssemblyModeV2(visualiser=visualiser, config=mode_config)
+            self._mesh_assembly_mode = MeshAssemblyModeV4(visualiser=visualiser, config=mode_config)
             print("Interpolator mesh assembly backend initialized")
         except Exception as exc:
             self._disable_mesh_backend(f"Failed to initialize mesh assembly backend: {exc}")
@@ -228,7 +228,7 @@ class Interpolator:
         only final grid image returned.
 
         Args:
-            epoch: Current training epoch, used to label frames in mesh_assembly_mode_v2
+            epoch: Current training epoch, used to label frames in mesh_assembly_mode_v4
 
         Returns:
             PIL Image of final 2D grid layout
@@ -333,16 +333,16 @@ class Interpolator:
         Args:
             verts: [V, 3] vertex tensor
             faces: [F, 3] face index tensor
-            epoch: Current training epoch, forwarded to mesh_assembly_mode_v2 for labelling
+            epoch: Current training epoch, forwarded to mesh_assembly_mode_v4 for labelling
 
         Returns:
             PIL Image of rendered mesh, or None if rendering failed
         """
-        if self.render_backend == "mesh_assembly_mode_v2" and self._mesh_assembly_mode is not None:
+        if self.render_backend == "mesh_assembly_mode_v4" and self._mesh_assembly_mode is not None:
             try:
                 return self._resize_to_window(self._render_mesh_to_image_with_mesh_assembly(verts, faces, epoch))
             except Exception as exc:
-                self._disable_mesh_backend(f"mesh_assembly_mode_v2 render failed: {exc}")
+                self._disable_mesh_backend(f"mesh_assembly_mode_v4 render failed: {exc}")
 
         try:
             return self._render_mesh_to_image_with_pyvista(verts, faces)
@@ -358,9 +358,9 @@ class Interpolator:
         return image.resize(self.window_size, resample=Image.BILINEAR)
 
     def _render_mesh_to_image_with_mesh_assembly(self, verts: Tensor, faces: Tensor, epoch: int = 0) -> Image.Image:
-        """Render one mesh with MeshAssemblyModeV2 and convert to PIL image."""
+        """Render one mesh with MeshAssemblyModeV4 and convert to PIL image."""
         if self._mesh_assembly_mode is None:
-            raise RuntimeError("mesh_assembly_mode_v2 backend is not initialized")
+            raise RuntimeError("mesh_assembly_mode_v4 backend is not initialized")
 
         optimization_state = {
             "iteration": epoch,
@@ -371,7 +371,7 @@ class Interpolator:
         self._mesh_assembly_mode.update(optimization_state)
 
         if not self._mesh_assembly_mode.frame_storage:
-            raise RuntimeError("mesh_assembly_mode_v2 did not produce a frame")
+            raise RuntimeError("mesh_assembly_mode_v4 did not produce a frame")
 
         frame = self._mesh_assembly_mode.frame_storage[-1]
         frame_uint8 = (np.clip(frame, 0.0, 1.0) * 255.0).astype(np.uint8)
