@@ -15,9 +15,10 @@ import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from functions.assembly_selection_service import AssemblySelectionService
-from functions.pretraining_service import PretrainingService
 from pydantic import BaseModel
+
+from subprojects.wp7_gui.v2.functions.assembly_selection_service import AssemblySelectionService
+from subprojects.wp7_gui.v2.functions.pretraining_service import PretrainingService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
