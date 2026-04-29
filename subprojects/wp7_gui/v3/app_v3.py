@@ -4,21 +4,31 @@ Thin by design: this file only wires the FastAPI app to the two mode routers,
 the introduction page, and the static-asset mount. All business logic lives
 under core/, shared/, modes/<mode>/, and shared/.
 
-Run:    python -m subprojects.wp7_gui.v3.app_v3
+Run directly:   python app_v3.py           (from anywhere)
+Run as module:  python -m subprojects.wp7_gui.v3.app_v3   (from repo root)
 """
 from __future__ import annotations
 
 import logging
+import sys
+from pathlib import Path
 
-import uvicorn
-from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
+# Ensure the repo root (AISCO_code/) is on sys.path so that the
+# `subprojects.*` package imports resolve regardless of CWD or how this
+# file is invoked.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-from subprojects.wp7_gui.v3.core.settings import SETTINGS
-from subprojects.wp7_gui.v3.modes.launcher.routes import router as launcher_router
-from subprojects.wp7_gui.v3.modes.viewer.routes import router as viewer_router
+import uvicorn  # noqa: E402
+from fastapi import FastAPI, Request  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from fastapi.templating import Jinja2Templates  # noqa: E402
+
+from subprojects.wp7_gui.v3.core.settings import SETTINGS  # noqa: E402
+from subprojects.wp7_gui.v3.modes.launcher.routes import router as launcher_router  # noqa: E402
+from subprojects.wp7_gui.v3.modes.viewer.routes import router as viewer_router  # noqa: E402
+from subprojects.wp7_gui.v3.shared.api_router import router as api_router  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 LOGGER = logging.getLogger(__name__)
@@ -46,14 +56,10 @@ def healthz():
     return {"status": "ok", "wp4_active_version": SETTINGS.wp4_active_version}
 
 
-# Mode routers
 app.include_router(viewer_router)
 app.include_router(launcher_router)
+app.include_router(api_router)
 
-
-# v2 had aliased static logos at root paths (/Ideal.png, /logo.png, /ACE.png).
-# We mirror that by mounting the v3 static dir at /static. The base layout
-# references /static/img/<filename>; the user can drop logos there.
 if SETTINGS.static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(SETTINGS.static_dir)), name="static")
 else:
