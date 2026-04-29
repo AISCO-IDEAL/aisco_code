@@ -1,4 +1,4 @@
-population_size: 4
+population_size: 5 # needed to be 5 with new pretraining, not sure if compatible with other versions though.
 
 # Diversity loss sampling config
 # Points are used for cheap WIRE-only forward passes (no CFD/raytracing).

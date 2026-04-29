@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch
 
-# RUN COMMAND: python /cluster/home/USER/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/dataset/unite_datasets.py
+# RUN COMMAND: python /cluster/home/USERNAME/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/dataset/unite_datasets.py
 
 # CHANGE USER TO YOUR USERNAME
 
@@ -12,10 +12,10 @@ import torch
 # ================= CONFIGURATION =================
 # Root-Ordner mit allen preprocessierten Datensaetzen
 # (enthaelt Unterordner wie euler/, drivaer/, ahmed/, blended_wing/, ...)
-PREPROCESSED_ROOT = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/all_processed")
+PREPROCESSED_ROOT = Path("//cluster/work/fuge/AISCO/wp1_cfd_ai/all_processed")
 
 # Zielordner
-OUTPUT_PATH = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/united_all")
+OUTPUT_PATH = Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/united_all_datasets")
 
 # Name der Index-Datei
 INDEX_FILENAME = "order_.txt"
@@ -23,14 +23,26 @@ INDEX_FILENAME = "order_.txt"
 # Name der Datensatz-Index-Datei innerhalb jedes Datensatz-Ordners
 DATASET_INDEX_FILENAME = "order_.txt"
 
-# Persistentes Mapping fuer stabile Source->Unified Zuordnung.
+# Persistentes Mapping for stabile Source->Unified Zuordnung.
 NAME_MAPPING_FILENAME = "name_mapping.json"
 
-# Feste Prefix-Zuordnung fuer bestimmte Datensaetze.
+# Zusätzliche Datensatz-Pfade ausserhalb von PREPROCESSED_ROOT.
+# Diese werden NACH den Root-Datensaetzen verarbeitet, damit bestehende Prefix-Zuordnung stabil bleibt.
+EXTRA_DATASET_PATHS = [
+    Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/processed_euler_openfoam_cp_v050"),
+    Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_v050_backup"),
+]
+
+# Gemeinsamer Prefix fuer beide OpenFOAM-v050-Datensaetze.
+OPENFOAM_V050_SHARED_PREFIX = 5
+
+# Feste Prefix-Zuordnung für bestimmte Datensaetze.
 # Beide Blended-Wing-Datensaetze teilen sich denselben Prefix.
 DATASET_PREFIX_OVERRIDES = {
     "blended_wing": 1,
     "blended_wing2": 1,
+    "processed_euler_openfoam_cp_v050": OPENFOAM_V050_SHARED_PREFIX,
+    "processed_euler_openfoam_cp_v050_backup": OPENFOAM_V050_SHARED_PREFIX,
 }
 # =================================================
 
@@ -38,17 +50,86 @@ DATASET_PREFIX_OVERRIDES = {
 BASE_NAME_REGEX = re.compile(r"^sample_(\d+)$")
 
 
-def _discover_datasets(root: Path) -> list[Path]:
-    """Findet alle Datensatz-Unterordner, die eine order_.txt enthalten."""
-    if not root.exists():
-        return []
+def _canonical_path(path: Path) -> Path:
+    try:
+        return path.resolve(strict=False)
+    except OSError:
+        return path
 
-    dataset_paths = []
-    for candidate in sorted(root.iterdir()):
+
+def _get_data_attr(data: object, attr_name: str):
+    if isinstance(data, dict):
+        return data.get(attr_name)
+    return getattr(data, attr_name, None)
+
+
+def _flip_x_component(tensor: torch.Tensor, *, attr_name: str, require_xyz: bool) -> None:
+    if not isinstance(tensor, torch.Tensor):
+        return
+    if tensor.ndim == 0:
+        return
+    if require_xyz and tensor.shape[-1] != 3:
+        raise ValueError(f"Attribut '{attr_name}' hat unerwartete Shape {tuple(tensor.shape)}; erwartet letzte Dimension 3.")
+    if tensor.shape[-1] < 1:
+        return
+    tensor[..., 0] = -tensor[..., 0]
+
+
+def _flip_sample_x_axis(data: object) -> None:
+    """Spiegelt den Sample entlang der x-Achse (x -> -x).
+
+    Geometrie-gekoppelte Vektorfelder werden konsistent gespiegelt:
+    - pos / pos_raw (Koordinaten)
+    - c (Normalen)
+    - wall_shear (Vektorfeld, falls vorhanden)
+
+    Skalarfelder wie cp/pressure sowie Konnektivitaet (face) bleiben unveraendert.
+    """
+    for attr_name in ("pos", "pos_raw", "c"):
+        value = _get_data_attr(data, attr_name)
+        if value is not None:
+            _flip_x_component(value, attr_name=attr_name, require_xyz=True)
+
+    wall_shear = _get_data_attr(data, "wall_shear")
+    if wall_shear is not None:
+        _flip_x_component(wall_shear, attr_name="wall_shear", require_xyz=False)
+
+
+def _discover_datasets(root: Path, extra_dataset_paths: list[Path] | None = None) -> list[Path]:
+    """Findet Datensaetze in PREPROCESSED_ROOT plus optionalen Zusatzpfaden."""
+    dataset_paths: list[Path] = []
+    seen_paths: set[Path] = set()
+
+    def _append_if_valid(candidate: Path) -> None:
+        try:
+            canonical = candidate.resolve(strict=False)
+        except OSError:
+            canonical = candidate
+        if canonical in seen_paths:
+            return
         if not candidate.is_dir():
+            return
+        if not (candidate / DATASET_INDEX_FILENAME).exists():
+            return
+        dataset_paths.append(candidate)
+        seen_paths.add(canonical)
+
+    if root.exists():
+        for candidate in sorted(root.iterdir()):
+            _append_if_valid(candidate)
+
+    for extra_path in extra_dataset_paths or []:
+        if not extra_path.exists():
+            print(f"⚠️ Warnung: Zusatz-Datensatzpfad nicht gefunden: {extra_path}")
             continue
-        if (candidate / DATASET_INDEX_FILENAME).exists():
-            dataset_paths.append(candidate)
+        if not extra_path.is_dir():
+            print(f"⚠️ Warnung: Zusatz-Datensatzpfad ist kein Ordner: {extra_path}")
+            continue
+        if not (extra_path / DATASET_INDEX_FILENAME).exists():
+            print(f"⚠️ Warnung: Zusatz-Datensatzpfad ohne {DATASET_INDEX_FILENAME}: {extra_path}")
+            continue
+        _append_if_valid(extra_path)
+
     return dataset_paths
 
 
@@ -196,6 +277,7 @@ def _process_dataset_samples(
     prefix_counters: dict[int, int],
     used_base_names: set[str],
     name_mapping: dict[str, str],
+    apply_x_flip: bool,
 ) -> tuple[int, int]:
     """Verarbeitet alle Samples eines Datensatzes und liefert (neu_geschrieben, uebersprungen)."""
     try:
@@ -235,6 +317,10 @@ def _process_dataset_samples(
             # 1. Datei in den Arbeitsspeicher laden
             data = torch.load(file_path, map_location="cpu", weights_only=False)
 
+            # Optional: fuer Zusatz-Datensaetze x-Achse spiegeln.
+            if apply_x_flip:
+                _flip_sample_x_axis(data)
+
             # 2. Den internen Dateinamen überschreiben
             # Wir prüfen zur Sicherheit, ob es ein Dictionary oder ein Objekt (z.B. PyG Data) ist
             if isinstance(data, dict):
@@ -261,8 +347,9 @@ def _process_dataset_samples(
 def consolidate_datasets():
     OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 
-    dataset_paths = _discover_datasets(PREPROCESSED_ROOT)
+    dataset_paths = _discover_datasets(PREPROCESSED_ROOT, EXTRA_DATASET_PATHS)
     datasets = _build_dataset_specs(dataset_paths)
+    extra_dataset_canonicals = {_canonical_path(path) for path in EXTRA_DATASET_PATHS}
 
     mapping_path = OUTPUT_PATH / NAME_MAPPING_FILENAME
     name_mapping = _load_name_mapping(mapping_path)
@@ -286,7 +373,10 @@ def consolidate_datasets():
             print(f"⚠️ Warnung: Pfad für Datenset {label} nicht gefunden: {source_path}")
             continue
 
+        source_is_extra = _canonical_path(source_path) in extra_dataset_canonicals
         print(f"Verarbeite Datenset {label}...")
+        if source_is_extra:
+            print(f"↔️  x-Achse wird fuer Zusatz-Datenset gespiegelt: {source_path}")
         count_written, count_skipped = _process_dataset_samples(
             source_path=source_path,
             prefix=prefix,
@@ -294,6 +384,7 @@ def consolidate_datasets():
             prefix_counters=prefix_counters,
             used_base_names=used_base_names,
             name_mapping=name_mapping,
+            apply_x_flip=source_is_extra,
         )
 
         print(f"✅ {count_written} Dateien aus Datenset {label} neu geschrieben, {count_skipped} uebersprungen.")

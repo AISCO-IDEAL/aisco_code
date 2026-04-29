@@ -6,7 +6,8 @@ no_build_zones:
     height: 1650  # mm
     length: 5800  # mm
     width: 2300   # mm
-    ground_clearance: 100 # mm
+    ground_clearance: 90 # mm - minimum clearance for chassis, has to be smaller than wheel clearance, so that SDF canbe placed between the cut outer bb and the cut wheel.
+    wheel_clearance: 100 # mm - minimum clearance for wheels, has to be smaller than seat z-coordinate, so that the seat is not affected by the cut. For current assemblies z seat is set to 101 mm.
 
   wheel_based_rules:
     front_overhang: 0.6       # percentage, with 1 = 100%
@@ -52,6 +53,6 @@ wheel:
   tire_diameter: 557        # mm Silvretta tyre radius
   combinations:             # Defines the grid of seat positions that will be generated.
     count: [3,4]            # Allowed numbers of wheels to test when generating assemblies.
-    start: [-1300,-1101,0]  # Minimum (x, y, z) coordinate of the grid.
-    end: [2900,1101,0]      # Maximum (x, y, z) coordinate of the grid.
-    how_many: [3, 3, 1]     # Number of evenly spaced samples along each axis (x, y, z).
+    start: [-1300,-1000,0]  # Minimum (x, y, z) coordinate of the grid.
+    end: [2900,1000,0]      # Maximum (x, y, z) coordinate of the grid.
+    how_many: [3, 5, 1]     # Number of evenly spaced samples along each axis (x, y, z).
