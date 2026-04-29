@@ -513,10 +513,11 @@ class TotalLoss:
 
         if self._use_alm:
             if not self._external_alm and self.alm_manager is not None:
-                self.alm_manager.update_multipliers(active_constraint_tensors, active_indices=active_constraint_indices)
+                # Compute penalty with current-epoch multipliers first (for gradient), then update for next epoch.
                 alm_penalties = self.alm_manager.compute_penalty(
                     active_constraint_tensors, active_indices=active_constraint_indices
                 )
+                self.alm_manager.update_multipliers(active_constraint_tensors, active_indices=active_constraint_indices)
                 for key, t in alm_penalties.items():
                     # key = "alm_{constraint_name}"; grad_scale is keyed the same way
                     grad_scale = self._norm_manager.get_grad_scale(key)
