@@ -188,19 +188,44 @@ class VisualisationManager:
         for mode_name, mode in self.rendering_modes.items():
             if mode.enabled:
                 try:
-                    frames_before = len(mode.frame_storage)
+                    # MeshAssemblyModeV4 uses a nested frame_storage (list[list[Any]]),
+                    # one inner list per camera.  The isinstance guard distinguishes
+                    # nested from flat modes (i.e. modes that only use one camera perspective,
+                    # typically most modes) so both W&B upload paths work correctly.
+                    # For nested modes the check is reliable even before update() because
+                    # frame_storage is initialised as [[], [], ...] from __init__ onward.
+                    # For flat modes, frame_storage starts as [] so the guard short-circuits.
+                    # IMPORTANT: if you add a new multi-camera mode that also uses a
+                    # nested frame_storage, no extra changes are needed here — the
+                    # nested branch handles any number of cameras generically.
+                    is_nested_storage = bool(mode.frame_storage) and isinstance(mode.frame_storage[0], list)
+                    # For flat modes, snapshot the frame count *before* update() so we
+                    # can slice only the newly appended frames for W&B upload.
+                    # This variable is only used inside the flat-layout branch below.
+                    frames_before = 0 if is_nested_storage else len(mode.frame_storage)
+
                     mode.update(optimization_state)
+
                     # Stream each new frame to the wandb dashboard as a wandb.Image.
-                    # When a mode appends multiple frames per update (e.g. multi-camera),
-                    # each gets its own panel key: renders/{mode_name}/cam0, cam1, ...
                     # Single-frame modes use renders/{mode_name}/cam0 for consistency.
                     if self.store_wandb and wandb.run:
-                        for cam_idx, frame in enumerate(mode.frame_storage[frames_before:]):
-                            upload_neural_renderer_image(
-                                frame,
-                                key=f"renders/{mode_name}/cam{cam_idx}",
-                                step=step,
-                            )
+                        if is_nested_storage:
+                            # Nested layout: upload the latest frame from each camera.
+                            for cam_idx, cam_frames in enumerate(mode.frame_storage):
+                                if cam_frames:
+                                    upload_neural_renderer_image(
+                                        cam_frames[-1],
+                                        key=f"renders/{mode_name}/cam{cam_idx}",
+                                        step=step,
+                                    )
+                        else:
+                            # Flat layout: new frames were appended since the snapshot.
+                            for cam_idx, frame in enumerate(mode.frame_storage[frames_before:]):
+                                upload_neural_renderer_image(
+                                    frame,
+                                    key=f"renders/{mode_name}/cam{cam_idx}",
+                                    step=step,
+                                )
                 except Exception as e:
                     print(f"Error in {mode_name}.update(): {e}")
                     tb.print_exc()
@@ -238,19 +263,39 @@ class VisualisationManager:
                     tb.print_exc()
         if self.store_wandb:
             print("All modes finalized. Uploading to wandb...")
-            # Check the output dir and subfolders for the generated GIFs and upload them to wandb
+            # Check the output dir for generated GIFs and upload them to wandb.
+            # MeshAssemblyModeV4 writes cam{idx}_<hash>.gif at the mode root level;
+            # the cam prefix is extracted to give each camera its own W&B panel:
+            # path: animations/{mode_name}/cam0, animations/{mode_name}/cam1, ...
+            # Files without a cam{N}_ prefix (flat modes) use animations/{mode_name}.
             for mode_name, mode in self.rendering_modes.items():
                 if mode.enabled:
                     mode_output_dir = self.output_dir / mode_name
                     if mode_output_dir.exists() and mode_output_dir.is_dir():
-                        for file in mode_output_dir.iterdir():
+                        for file in mode_output_dir.rglob("*"):
+                            if not file.is_file():
+                                continue
                             suffix = file.suffix.lower()
+                            # Derive W&B panel key from filename: a cam{N}_ prefix
+                            # (e.g. "cam0_abc.gif") maps to animations/{mode}/cam0.
+                            # Sub-folder paths (future-proof) use the folder name.
+                            relative_parent = file.parent.relative_to(mode_output_dir)
+                            if str(relative_parent) != ".":
+                                subkey = f"{mode_name}/{relative_parent}"
+                            else:
+                                stem = file.stem
+                                underscore_pos = stem.find("_")
+                                cam_prefix = stem[:underscore_pos] if underscore_pos > 0 else ""
+                                if cam_prefix.startswith("cam") and cam_prefix[3:].isdigit():
+                                    subkey = f"{mode_name}/{cam_prefix}"
+                                else:
+                                    subkey = mode_name
                             if suffix == ".gif":
-                                print(f"Uploading {file} to wandb under key animations/{mode_name}...")
-                                upload_neural_renderer_gif(str(file), key=f"animations/{mode_name}", step=0)
+                                print(f"Uploading {file} to wandb under key animations/{subkey}...")
+                                upload_neural_renderer_gif(str(file), key=f"animations/{subkey}", step=0)
                             elif suffix in {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}:
-                                print(f"Uploading {file} to wandb under key images/{mode_name}...")
-                                upload_neural_renderer_image(str(file), key=f"images/{mode_name}", step=0)
+                                print(f"Uploading {file} to wandb under key images/{subkey}...")
+                                upload_neural_renderer_image(str(file), key=f"images/{subkey}", step=0)
                     else:
                         print(f"Output directory for mode {mode_name} does not exist: {mode_output_dir}")
 
