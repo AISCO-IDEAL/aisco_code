@@ -427,36 +427,24 @@ class TotalLossV2:
         self._visu_primary_f = faces
 
     def _capture_vertex_grads_via_autograd(self, bundle: RawLossBundle) -> None:
-        """For every active loss, run `autograd.grad(L_k, primary_verts)` once.
+        """Collect dL/dv for every loss whose extractor produced one this step.
 
-        Losses that share the primary SDF mesh (via `MeshSDFExtractor`) get a real
-        gradient; losses that don't share the primary SDF mesh are absent from the result. 
+        `MeshSDFExtractor.extract_and_compute_loss` already runs
+        `autograd.grad(loss, v_for_loss)` internally and stashes the result on
+        the extractor as `last_dL_dv` (vertices match the shared primary mesh).
+        We just harvest those tensors here, keyed by loss name. Losses that
+        don't go through `extract_and_compute_loss` (eikonal, smoothness, …)
+        leave `last_dL_dv = None` and are silently absent from the result.
+
+        The `bundle` argument is kept for API compatibility but unused.
         """
+        del bundle
         self._visu_per_loss_grads = {}
-        v = self._visu_primary_v
-        if v is None or not (v.requires_grad or v.grad_fn is not None):
-            return
-
-        bundle_tensors: dict[str, torch.Tensor] = {}
-        for cat, t in bundle.objectives.items():
-            bundle_tensors[self._objective_by_category[cat][0]] = t
-        for cat, t in bundle.constraints.items():
-            bundle_tensors[self._constraint_by_category[cat][0]] = t
-        for cat, t in bundle.aux.items():
-            bundle_tensors[self._aux_by_category[cat][0]] = t
-
-        for name, loss_t in bundle_tensors.items():
-            if not loss_t.requires_grad:
-                continue
-            try:
-                (g,) = torch.autograd.grad(
-                    loss_t, v, retain_graph=True, allow_unused=True, create_graph=False,
-                )
-            except RuntimeError:
-                continue
+        for loss_name, ext in self._find_mesh_extractors().items():
+            g = getattr(ext, "last_dL_dv", None)
             if g is None:
-                continue  # loss has no autograd path to the primary mesh.
-            self._visu_per_loss_grads[name] = g.detach()
+                continue
+            self._visu_per_loss_grads[loss_name] = g.detach()
 
     def compute(
         self,

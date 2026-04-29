@@ -359,28 +359,23 @@ class TotalLoss:
         self._visu_primary_f = faces
 
     def _capture_vertex_grads_via_autograd(self, raw_losses: dict[str, torch.Tensor]) -> None:
-        """For every active loss, run `autograd.grad(L_k, primary_verts)` once.
+        """Collect dL/dv for every loss whose extractor produced one this step.
 
-        Losses that share the primary SDF mesh (via `MeshSDFExtractor`) get a real
-        gradient; losses that don't share the primary SDF mesh are absent from the
-        result.
+        `MeshSDFExtractor.extract_and_compute_loss` already runs
+        `autograd.grad(loss, v_for_loss)` internally and stashes the result on
+        the extractor as `last_dL_dv` (vertices match the shared primary mesh).
+        We just harvest those tensors here, keyed by loss name. Losses that
+        don't go through `extract_and_compute_loss` are absent from the result.
+
+        The `raw_losses` argument is kept for API compatibility but unused.
         """
+        del raw_losses
         self._visu_per_loss_grads = {}
-        v = self._visu_primary_v
-        if v is None or not (v.requires_grad or v.grad_fn is not None):
-            return
-        for name, loss_t in raw_losses.items():
-            if not isinstance(loss_t, torch.Tensor) or not loss_t.requires_grad:
-                continue
-            try:
-                (g,) = torch.autograd.grad(
-                    loss_t, v, retain_graph=True, allow_unused=True, create_graph=False,
-                )
-            except RuntimeError:
-                continue
+        for loss_name, ext in self._find_mesh_extractors().items():
+            g = getattr(ext, "last_dL_dv", None)
             if g is None:
-                continue  # loss has no autograd path to the primary mesh.
-            self._visu_per_loss_grads[name] = g.detach()
+                continue
+            self._visu_per_loss_grads[loss_name] = g.detach()
 
     def collect_vertex_grads_for_visualisation(
         self,

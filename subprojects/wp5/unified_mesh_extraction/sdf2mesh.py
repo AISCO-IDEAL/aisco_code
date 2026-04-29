@@ -65,6 +65,9 @@ class MeshSDFExtractor:
         self._cached_resolution: int | None = None
         self._shared_vertices: torch.Tensor | None = None
         self._shared_faces: torch.Tensor | None = None
+        # Most recent dL/dv computed by `extract_and_compute_loss`, exposed for
+        # the visualisation pass (per-loss vertex-gradient renderers).
+        self.last_dL_dv: torch.Tensor | None = None
         self._stats: dict[str, int | float] = {"calls": 0}
         # `max_refine_levels` is treated as a resolution multiplier on the
         # uniform grid; it yields equivalent quality to adaptive refinement
@@ -189,6 +192,10 @@ class MeshSDFExtractor:
             scale = torch.minimum(scale, torch.ones_like(scale))
             dL_dv = dL_dv * scale
 
+        # Stash dL/dv for the visualisation pass (TotalLoss reads it via
+        # collect_vertex_grads_for_visualisation).
+        self.last_dL_dv = dL_dv.detach()
+
         return verts, faces, loss, surrogate, dL_dv
 
     def compute_gradient_flow(self, vertices: torch.Tensor, dL_dvertices: torch.Tensor, sdf_model: SDFModel) -> torch.Tensor:
@@ -256,6 +263,8 @@ class MeshSDFExtractor:
         """Remove any injected shared mesh (re-enables normal cache lookup)."""
         self._shared_vertices = None
         self._shared_faces = None
+        # Drop the cached dL/dv too so the next training step starts fresh.
+        self.last_dL_dv = None
 
     def get_stats(self) -> dict[str, int | float]:
         """Return a shallow copy of the per-extractor stats dict (API compat)."""
