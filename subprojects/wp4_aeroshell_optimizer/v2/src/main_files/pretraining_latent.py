@@ -227,6 +227,7 @@ def _load_or_build_surface_cache(
             payload: dict[str, Any] = torch.load(cache_path, weights_only=True)
             cached_pts: Tensor = payload["pts"]
             cached_gt: Tensor = payload["gt"]
+            print(f"[latent_space] Loaded cached SDF surface pts for {Path(ply_path).stem}. Population size: {len(cached_pts)}")
             return cached_pts.to(device), cached_gt.to(device)
 
     # Cache miss (or caching disabled): build via sampling
@@ -379,13 +380,15 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     *,
     use_wandb: bool = False,
     vis_sampling: bool = False,
+    vis_output_dir: Path | None = None,
+    checkpoint_path: Path | None = None,
 ) -> tuple[SupportsLatentConcat, Tensor]:
     """Run latent-population pretraining for a SupportsLatentConcat model.
 
     Trains model weights so that each latent slot z_i (placed on a circle)
     approximates a corresponding target SDF (sphere / cube / PLY mesh).
 
-    Fast-resume: if a valid checkpoint exists at ``config["output"]["checkpoint_path"]``
+    Fast-resume: if a valid checkpoint exists at the resolved checkpoint path
     and ``config["force_pretraining"]`` is False, the checkpoint is loaded and returned
     without training.
 
@@ -393,6 +396,12 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         model: ConcatWIREV2 (or any SupportsLatentConcat model).
         config: Dict matching the pretraining_latent_config.yaml schema.
         device: PyTorch device string (``"cpu"`` or ``"cuda"``).
+        checkpoint_path: Optional override for the checkpoint file path.  When
+            provided (e.g. by main_v2 to co-locate with standard pretrained
+            models), ``_resolve_checkpoint_path`` is skipped and this path is
+            used directly.  When ``None`` (standalone / script use), the path is
+            derived from ``config["output"]["checkpoint_path"]`` plus a config
+            hash subdirectory.
 
     Returns:
         Tuple ``(model, Z)`` where ``Z`` has shape ``(N, z_dim)`` and
@@ -407,7 +416,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     if not isinstance(model, SupportsLatentConcat):
         raise TypeError(f"Model {type(model).__name__} does not implement SupportsLatentConcat. ")
 
-    ckpt_path = _resolve_checkpoint_path(config, model)
+    ckpt_path = checkpoint_path if checkpoint_path is not None else _resolve_checkpoint_path(config, model)
     config_hash = _compute_pretrain_config_hash(config, model)
     force: bool = bool(config.get("force_pretraining", True))
 
@@ -479,7 +488,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     output_cfg: dict[str, Any] = config.get("output", {})
     run_dir: Path = ckpt_path.parent  # Hash-named folder containing all outputs
     visualisation_directory: str = str(output_cfg.get("visualisation_directory", "sampling_vis"))
-    vis_dir: Path = run_dir / visualisation_directory
+    vis_dir: Path = vis_output_dir if vis_output_dir is not None else run_dir / visualisation_directory
     outer_prism_raw = get_outer_prism_bounds_mm()  # Single source of truth for bounding box
     bbox_scale_factor: float = float(output_cfg.get("bbox_scale_factor", 1.0))  # Multiply bounds by this factor
     outer_prism = scale_outer_prism(outer_prism_raw, bbox_scale_factor)
@@ -735,13 +744,13 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             if use_wandb:
                 wandb.log(
                     {
-                        "total_loss": total_loss.item(),
-                        "l1_all": l1_all,
-                        "lr": lr_now,
-                        "latent_grad_norm": z_grad_norm,
-                        "spatial_grad_norm": xyz_grad_norm,
-                        "grad_norm_ratio": grad_ratio,
-                        **{f"slot_{i}_loss": v for i, v in enumerate(slot_losses)},
+                        "latent_pretraining/total_loss": total_loss.item(),
+                        "latent_pretraining/l1_all": l1_all,
+                        "latent_pretraining/lr": lr_now,
+                        "latent_pretraining/latent_grad_norm": z_grad_norm,
+                        "latent_pretraining/spatial_grad_norm": xyz_grad_norm,
+                        "latent_pretraining/grad_norm_ratio": grad_ratio,
+                        **{f"latent_pretraining/slot_{i}_loss": v for i, v in enumerate(slot_losses)},
                     },
                     step=epoch,
                 )

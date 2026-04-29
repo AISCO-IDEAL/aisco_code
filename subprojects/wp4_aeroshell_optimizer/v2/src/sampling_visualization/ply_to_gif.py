@@ -437,6 +437,7 @@ def generate_gifs(
             auto-computed camera for all slots.
     """
     output_path.mkdir(parents=True, exist_ok=True)
+    print(f"GIFs will be saved to: {output_path}")
 
     slots: dict[str, list[tuple[int, Path]]] = {}
     for filepath in input_path.glob("*.ply"):
