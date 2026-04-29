@@ -1,2 +1,3 @@
-[WARNING] Collision: wheel_0 and wheel_2 bounding boxes overlap.
+[WARNING] Collision: seat and wheel_0 bounding boxes overlap.
 [WARNING] Unstable assembly: seat is not enclosed by the wheel polygon.
+[WARNING] Out of bounds: wheel_2 bounding box extends outside the outer NBZ after clearance cut.
