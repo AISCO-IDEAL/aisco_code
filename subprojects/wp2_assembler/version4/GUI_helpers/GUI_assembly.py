@@ -19,8 +19,8 @@ from subprojects.wp2_assembler.version4.utils.assemblies_maker import (
 )
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 
-_PARAMS_PATH = Path(__file__).parent / "parameters.yaml"
-_OUTPUT_DIR = Path(__file__).parent
+_PARAMS_PATH = Path(__file__).parent / "parameters.yaml"    # change this for the parameters
+_OUTPUT_DIR = Path(__file__).parent                         # change this for the exports
 _PLY_OUTPUT_PATH = _OUTPUT_DIR / "assembly.ply"
 _STEP_OUTPUT_PATH = _OUTPUT_DIR / "assembly.step"
 _CHECKS_OUTPUT_PATH = _OUTPUT_DIR / "checks.txt"
