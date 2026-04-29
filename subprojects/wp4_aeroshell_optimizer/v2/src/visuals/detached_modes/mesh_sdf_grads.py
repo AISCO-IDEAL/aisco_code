@@ -53,7 +53,19 @@ class MeshSDFGrads(RenderingMode):
 
         vertice_grads = self._select_vertice_grads(optimization_state)
         if vertice_grads is None:
+            if not getattr(self, "_diag_logged_miss", False):
+                self._diag_logged_miss = True
+                has_total = "vertice_grads_total" in optimization_state
+                per_loss_keys = list((optimization_state.get("vertice_grads_per_loss") or {}).keys())
+                print(
+                    f"[VisuDiag MeshSDFGrads/{self.loss_key}] no grads available. "
+                    f"has_total={has_total} per_loss_keys={per_loss_keys}"
+                )
             return  # No grad available this step; silently skip a frame.
+
+        if not getattr(self, "_diag_logged_hit", False):
+            self._diag_logged_hit = True
+            print(f"[VisuDiag MeshSDFGrads/{self.loss_key}] first render OK, grads shape={tuple(vertice_grads.shape)}")
 
         vertices = optimization_state["vertices"].detach()
         faces = optimization_state["faces"].detach()
