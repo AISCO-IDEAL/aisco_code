@@ -24,7 +24,7 @@ export no_proxy=$(echo "$no_proxy" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export NO_PROXY=$(echo "$NO_PROXY" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="s0u2raai"   # can be either bare id (abc123xy) or full path (entity/project/id)
+SWEEP_ID="<EDIT_ME>"   # bare id (abc123xy) or full path (entity/project/id) -- set after `wandb sweep ...`
 SWEEP_ENTITY="aisco"               # used when SWEEP_ID is bare
 SWEEP_PROJECT="AISCOModel_Pretraining_Single"  # used when SWEEP_ID is bare; must match wandb sweep output
 COUNT=10                                       # runs per agent — keep at 1 for the smoke test; bump to 10-20 for the real run

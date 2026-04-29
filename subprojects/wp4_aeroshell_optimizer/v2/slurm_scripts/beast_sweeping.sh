@@ -115,7 +115,7 @@ cd "$PROJECT_ROOT"
 ts "Checkpoint: changed directory to $(pwd)"
 
 # ---- Sweep configuration ---------------------------------------------------
-SWEEP_ID="s0u2raai"                      # can be bare id (abc123xy) or full path (entity/project/id)
+SWEEP_ID="<EDIT_ME>"                      # bare id (abc123xy) or full path (entity/project/id) -- set after `wandb sweep ...`
 SWEEP_ENTITY="aisco"                    # used when SWEEP_ID is bare
 SWEEP_PROJECT="AISCOModel_Pretraining_Single"  # used when SWEEP_ID is bare; must match wandb sweep output
 COUNT="10"                              # runs per agent
