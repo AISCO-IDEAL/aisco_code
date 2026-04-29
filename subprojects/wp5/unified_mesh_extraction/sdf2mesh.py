@@ -263,8 +263,6 @@ class MeshSDFExtractor:
         """Remove any injected shared mesh (re-enables normal cache lookup)."""
         self._shared_vertices = None
         self._shared_faces = None
-        # Drop the cached dL/dv too so the next training step starts fresh.
-        self.last_dL_dv = None
 
     def get_stats(self) -> dict[str, int | float]:
         """Return a shallow copy of the per-extractor stats dict (API compat)."""
