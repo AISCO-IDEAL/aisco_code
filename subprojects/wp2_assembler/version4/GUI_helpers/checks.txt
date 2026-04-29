@@ -1,0 +1,3 @@
+[WARNING] Out of bounds: wheel_0 bounding box extends outside the outer NBZ.
+[WARNING] Out of bounds: wheel_1 bounding box extends outside the outer NBZ.
+[WARNING] Out of bounds: wheel_2 bounding box extends outside the outer NBZ.
