@@ -181,15 +181,124 @@ rendering_modes:
 
 detached_modes:
   enabled: true
-  MeshSDF_grads:
+  # MeshSDF_grads visualises dL/dv . n per loss. Each block selects one loss via
+  # `loss_key`; use "__total__" for the weighted sum across all losses that share
+  # the primary mesh. Add one block per loss you want to visualise; toggle `enabled`
+  # to switch a single loss on/off without touching the others.
+  MeshSDF_grads_total:
     enabled: True
     class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
     config:
-      camera_position: [-2000,0,7000] # [0, -7500, 3250]
+      camera_position: [-2000, 0, 7000]
       look_at: [-1500, 0, 0]
       render_mode: "rgb"
       fps: 10
-      #render_interval: 10
+      loss_key: "__total__"
+      intensity: 1.0
+
+  MeshSDF_grads_surface:
+    enabled: True
+    class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
+    config:
+      camera_position: [-2000, 0, 7000]
+      look_at: [-1500, 0, 0]
+      render_mode: "rgb"
+      fps: 10
+      loss_key: "surface_loss_v0"  # match the loss_name from losses_v0_config.yaml
+      intensity: 1.0
+
+  MeshSDF_grads_developability:
+    enabled: True
+    class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
+    config:
+      camera_position: [-2000, 0, 7000]
+      look_at: [-1500, 0, 0]
+      render_mode: "rgb"
+      fps: 10
+      loss_key: "developability_v0"  # match the loss_name from losses_v0_config.yaml
+      intensity: 1.0
+
+  # Generic Option-A capture: TotalLossV2 runs autograd.grad(L_k, primary_verts)
+  # for every active loss after compute(). Any loss with an autograd path to the
+  # primary SDF mesh will populate `vertice_grads_per_loss[loss_key]`. Losses that
+  # sample independent points (no path) are silently skipped — enabling the block
+  # is a no-op for them. Use `loss_key` = the loss_name from losses_v0_config.yaml.
+  MeshSDF_grads_eikonal:
+    enabled: True
+    class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
+    config:
+      camera_position: [-2000, 0, 7000]
+      look_at: [-1500, 0, 0]
+      render_mode: "rgb"
+      fps: 10
+      loss_key: "eikonal_v0"
+      intensity: 1.0
+
+  MeshSDF_grads_smoothness:
+    enabled: True
+    class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
+    config:
+      camera_position: [-2000, 0, 7000]
+      look_at: [-1500, 0, 0]
+      render_mode: "rgb"
+      fps: 10
+      loss_key: "smoothness_v0"
+      intensity: 1.0
+
+  MeshSDF_grads_connectedness:
+    enabled: True
+    class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
+    config:
+      camera_position: [-2000, 0, 7000]
+      look_at: [-1500, 0, 0]
+      render_mode: "rgb"
+      fps: 10
+      loss_key: "connectedness_v1"
+      intensity: 1.0
+
+  MeshSDF_grads_wheel:
+    enabled: True
+    class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
+    config:
+      camera_position: [-2000, 0, 7000]
+      look_at: [-1500, 0, 0]
+      render_mode: "rgb"
+      fps: 10
+      loss_key: "wheel_loss_v3"
+      intensity: 1.0
+
+  MeshSDF_grads_bb:
+    enabled: True
+    class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
+    config:
+      camera_position: [-2000, 0, 7000]
+      look_at: [-1500, 0, 0]
+      render_mode: "rgb"
+      fps: 10
+      loss_key: "bb_v4_sel"
+      intensity: 1.0
+
+  MeshSDF_grads_aero:
+    enabled: True
+    class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
+    config:
+      camera_position: [-2000, 0, 7000]
+      look_at: [-1500, 0, 0]
+      render_mode: "rgb"
+      fps: 10
+      loss_key: "null_loss_aero"  # use "gaot_loss" when CFD is enabled
+      intensity: 1.0
+
+  MeshSDF_grads_solar:
+    enabled: True
+    class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
+    config:
+      camera_position: [-2000, 0, 7000]
+      look_at: [-1500, 0, 0]
+      render_mode: "rgb"
+      fps: 10
+      loss_key: "null_loss_solar"  # change to solar_v3B_2 / solar_v7 when active
+      intensity: 1.0
 
   solar_v3_selection:
       enabled: True

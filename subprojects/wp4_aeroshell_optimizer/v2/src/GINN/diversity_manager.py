@@ -821,6 +821,19 @@ class DiversityTrainer:
             batch_size=cfg.get("batch_size", 8192),
         )
 
+        # Pull per-loss dL/dv buffers stashed during the most recent compute().
+        # When available we prefer the loss-extracted mesh so vertex grads align
+        # exactly with the rendered geometry.
+        grads_payload = self._total_loss.collect_vertex_grads_for_visualisation(
+            weights_by_name=self._total_loss._manual_weights,
+        )
+        extra_state: dict[str, Any] = {}
+        if grads_payload is not None:
+            verts = grads_payload["vertices"]
+            faces = grads_payload["faces"]
+            extra_state["vertice_grads_per_loss"] = grads_payload["per_loss"]
+            extra_state["vertice_grads_total"] = grads_payload["total"]
+
         if self._use_neural_renderer and self._renderer_manager is not None:
             try:
                 self._renderer_manager.update(
@@ -832,6 +845,7 @@ class DiversityTrainer:
                         "faces": faces,
                         "assembly_id": None,
                         "bb_assembly_id": None,
+                        **extra_state,
                     }
                 )
             except Exception as e:
