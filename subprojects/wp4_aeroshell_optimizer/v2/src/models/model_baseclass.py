@@ -21,9 +21,31 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     collect_optimizer_state,
     collect_param_stats,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment, detect_environment
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import allround_save_data
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Wrapper
+
+
+def _resolve_storage_dir(general_config: dict[str, Any]) -> str:
+    """Pick a writable storage_dir based on the detected runtime environment.
+
+    AISCO Beast → beast_storage_dir, WSL → local_storage_dir, cluster → storage_dir.
+    Falls back to general_config['general_info'].run_locally if env detection is UNKNOWN.
+    """
+    paths = general_config.get("storage_paths", {})
+    env = detect_environment()
+    if env == Environment.AISCO_BEAST:
+        return paths.get("beast_storage_dir") or paths.get("local_storage_dir", "./local_storage_dir")
+    if env == Environment.WSL:
+        return paths.get("local_storage_dir", "./local_storage_dir")
+    if env in (Environment.EULER, Environment.SLURM):
+        return paths.get("storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage")
+    # UNKNOWN: honour the legacy run_locally flag from general_config
+    run_locally = general_config.get("general_info", {}).get("run_locally", "False") == "True"
+    if run_locally:
+        return paths.get("local_storage_dir", "./local_storage_dir")
+    return paths.get("storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage")
 
 if TYPE_CHECKING:
     from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
@@ -252,9 +274,7 @@ class BaseModel(nn.Module):
             if (epoch + 1) % mesh_save_interval == 0:
                 allround_save_data(
                     model=self,
-                    storage_path=general_config["storage_paths"].get(
-                        "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
-                    ),
+                    storage_path=_resolve_storage_dir(general_config),
                     save_model=True,
                     save_mesh=True,
                     epoch=epoch + 1,
@@ -281,16 +301,7 @@ class BaseModel(nn.Module):
             if dev_instance.post_opt_enabled:
                 verts, faces = dev_instance.mesh_extractor.extract_mesh(sdf_model=self)
                 run_name = wandb_name or (wandb.run.name if wandb.run else "run")
-                _storage_paths = general_config.get("storage_paths", {})
-                _run_locally = general_config.get("general_info", {}).get("run_locally", "False") == "True"
-                if _run_locally:
-                    storage_dir = _storage_paths.get("beast_storage_dir") or _storage_paths.get(
-                        "local_storage_dir", "./local_storage_dir"
-                    )
-                else:
-                    storage_dir = _storage_paths.get(
-                        "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
-                    )
+                storage_dir = _resolve_storage_dir(general_config)
                 dev_instance.post_optimize(
                     vertices=verts.detach().cpu().numpy().astype("float64"),
                     faces=faces.detach().cpu().numpy().astype("int32"),
