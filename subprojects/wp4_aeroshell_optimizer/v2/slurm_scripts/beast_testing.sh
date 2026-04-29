@@ -11,7 +11,7 @@
 ## How to run on AISCO-Beast (shared Task Spooler GPU queue)
 ##
 ##   Submit (queued, one heavy job at a time, Slack DM on finish):
-##     beast-submit <slack-user> bash ~/path/to/beast_testing.sh
+##
 ##
 ##   With a label:
 ##     beast-submit -L wp4_test eschaerer bash ~/path/to/beast_testing.sh
@@ -67,7 +67,37 @@ export no_proxy=$(echo "${no_proxy:-}" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export NO_PROXY=$(echo "${NO_PROXY:-}" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../../../../" && pwd)"
+
+# Resolve PROJECT_ROOT robustly. The aisco_job_runner.sh wrapper on AISCO-Beast
+# copies this script to /tmp before executing it, so BASH_SOURCE-based path
+# arithmetic ("../../../..") lands at "/" and yields VENV_DIR="//aisco_env".
+# Strategy: prefer explicit env, then walk upward from SCRIPT_DIR looking for a
+# project marker, then fall back to walking upward from $PWD (the wrapper cd's
+# into the project root before invoking the script).
+_find_project_root() {
+    local start="$1"
+    local dir="$start"
+    while [ -n "$dir" ] && [ "$dir" != "/" ]; do
+        if [ -f "$dir/pyproject.toml" ] || [ -d "$dir/aisco_env" ] || [ "$(basename "$dir")" = "AISCO_code" ]; then
+            printf '%s\n' "$dir"
+            return 0
+        fi
+        dir="$(dirname "$dir")"
+    done
+    return 1
+}
+
+if [ -n "${AISCO_PROJECT_ROOT:-}" ]; then
+    PROJECT_ROOT="$AISCO_PROJECT_ROOT"
+elif PROJECT_ROOT="$(_find_project_root "$SCRIPT_DIR")"; then
+    :
+elif PROJECT_ROOT="$(_find_project_root "$PWD")"; then
+    :
+else
+    ts "ERROR: could not locate AISCO_code project root (SCRIPT_DIR=$SCRIPT_DIR, PWD=$PWD)"
+    ts "Hint: export AISCO_PROJECT_ROOT=/home/aisco/Documents/AISCO_code"
+    exit 1
+fi
 
 if command -v module >/dev/null 2>&1; then
     module purge
