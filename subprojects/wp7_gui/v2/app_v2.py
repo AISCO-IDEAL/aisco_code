@@ -605,6 +605,26 @@ def assembly_selection_mesh_endpoint() -> FileResponse:
     return handler.handle_wp2_mesh()
 
 
+@app.get("/mesh-config")
+def mesh_config_endpoint() -> dict[str, float]:
+    """Return mesh rendering config from general_config.yaml.
+
+    Reads the optional ``mesh_opacity`` key from the global WP4 config file.
+    Defaults to 1.0 (fully opaque) on any read, parse, or key-absence condition
+    so the frontend always receives a usable value — never a 500.
+
+    Returns:
+        A dict with a single ``mesh_opacity`` float in [0.0, 1.0].
+    """
+    try:
+        config_text = GENERAL_CONFIG_PATH.read_text(encoding="utf-8")
+        config: dict[str, object] = yaml.safe_load(config_text) or {}
+        opacity = float(config.get("mesh_opacity", 1.0))  # type: ignore[arg-type]
+    except Exception:
+        opacity = 1.0
+    return {"mesh_opacity": opacity}
+
+
 @app.get("/ui/page/{page_key}")
 def gui_page_endpoint(page_key: str) -> FileResponse:
     page_path = GUI_PAGE_FILES.get(page_key)
@@ -636,7 +656,7 @@ else:
 
 def main() -> None:
     host = "0.0.0.0"
-    port = 8001
+    port = 8002
 
     print("--- AISCO GUI Server ---")
     print(f"Serving static files from: {TEMPLATES_DIR}")
