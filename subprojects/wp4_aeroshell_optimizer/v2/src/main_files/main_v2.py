@@ -3,14 +3,6 @@ This should be the final main file we use for the Project. It should be modular 
 """
 
 import argparse
-import sys
-
-# Early exit for --test-cli (before heavy imports)
-if "--test-cli" in sys.argv:
-    print("[SUCCESS] CLI infrastructure working correctly!")
-    print("Ready for GUI integration.")
-    sys.exit(0)
-
 import json
 import os
 import sys
@@ -524,13 +516,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
 
 if __name__ == "__main__":
-    # CLI argument parsing (for GUI testing infrastructure)
+    # CLI argument parsing (for GUI config override infrastructure)
     parser = argparse.ArgumentParser(description="AISCO WP4 Aeroshell Optimizer")
-    parser.add_argument("--test-cli", action="store_true", help="Test CLI infrastructure and exit")
+    parser.add_argument("--uses-gui", action="store_true", help="Running from GUI")
+    parser.add_argument("--cfg-folder", type=str, default="", help="Path to config override folder")
     args, _ = parser.parse_known_args()
 
-    if args.test_cli:
-        print("[SUCCESS] CLI infrastructure working correctly!")
-        print("Ready for GUI integration.")
-        sys.exit(0)
+    # Arguments are available but not used yet - caller will handle them
     main()
