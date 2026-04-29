@@ -19,16 +19,8 @@ Minimum changes compared with the old 4090 flow:
 Log in to the Euler login node, then start an interactive job with one GPU:
 
 ```bash
-srun --cpus-per-task=1 --mem-per-cpu=8G --time=4:00:00 --gpus=1 --pty bash
+srun --cpus-per-task=1 --mem-per-cpu=8G --time=4:00:00 --gpus=pro_6000:1 --pty bash
 ```
-
-Check that the allocated GPU is the expected Blackwell card:
-
-```bash
-nvidia-smi
-```
-
-The GPU name should contain something like `RTX PRO 6000 Blackwell`.
 
 ## 2. Move to the Repository
 
@@ -54,15 +46,6 @@ Set the CUDA architecture for local CUDA extension builds:
 ```bash
 export TORCH_CUDA_ARCH_LIST="12.0"
 ```
-
-Optional sanity checks:
-
-```bash
-python3 --version
-nvcc --version
-```
-
-Python should be `3.11.6`, and `nvcc` should come from CUDA 12.8.
 
 ## 4. Create and Activate the Virtual Environment
 
