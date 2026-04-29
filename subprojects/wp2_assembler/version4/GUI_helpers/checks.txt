@@ -1,1 +1,1 @@
-[WARNING] Out of bounds: wheel_0 bounding box extends outside the outer NBZ after clearance cut.
+OK: no check warnings.

@@ -15,6 +15,7 @@ import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from functions.assembly_selection_service import AssemblySelectionService
 from pydantic import BaseModel
 
 # Configure logging
@@ -59,6 +60,7 @@ DEFAULT_BULK_STORAGE_DIR = Path("/cluster/work/fuge/AISCO/bulk_storage")
 SLOW_GIF_CACHE_DIR = GUI_ROOT / "cache"
 MESH_ASSEMBLY_DIR_CANDIDATES = ("mesh_assembly_mode_v4", "mesh_assembly_mode_v3", "mesh_assembly_mode_v2", "mesh_assembly_mode")
 
+
 PROCESS_LOCK = threading.Lock()
 STATE: dict[str, subprocess.Popen[str] | None] = {"run_local_process": None}
 ASSEMBLY_ID_ENV_VAR = "AISCO_ASSEMBLY_ID"
@@ -66,7 +68,8 @@ GUI_PAGE_FILES: dict[str, Path] = {
     "introduction": PAGES_DIR / "introduction.html",
     "optimization": PAGES_DIR / "optimization.html",
     "solar": PAGES_DIR / "solar.html",
-    "logs": PAGES_DIR / "logs.html",
+    "assembly_selection": PAGES_DIR / "assembly_selection.html",
+    "logs": PAGES_DIR / "assembly_selection.html",
 }
 
 
@@ -113,6 +116,22 @@ class GUIRequestHandler:
         except Exception as error:
             LOGGER.warning("Falling back to default local storage root due to config read error: %s", error)
             return DEFAULT_LOCAL_STORAGE_DIR.resolve()
+
+    def handle_wp2_params(self) -> dict[str, dict[str, float]]:
+        return assembly_selection_service.get_params()
+
+    def handle_wp2_update(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return assembly_selection_service.update_params(payload)
+
+    def handle_wp2_add_wheel(self) -> dict[str, Any]:
+        return assembly_selection_service.add_wheel()
+
+    def handle_wp2_remove_wheel(self) -> dict[str, Any]:
+        return assembly_selection_service.remove_wheel()
+
+    @staticmethod
+    def handle_wp2_mesh() -> FileResponse:
+        return assembly_selection_service.get_mesh_response()
 
     def handle_run_local(self, payload: RunLocalRequest) -> JSONResponse:
         raw_assembly_id = payload.assembly_id
@@ -505,6 +524,7 @@ class GUIRequestHandler:
 
 
 app = FastAPI(title="AISCO GUI Server")
+assembly_selection_service = AssemblySelectionService(repo_root=REPO_ROOT)
 handler = GUIRequestHandler()
 
 
@@ -539,6 +559,31 @@ def slow_gif_endpoint(path: str = "", factor: str = "2.5") -> FileResponse:
     return handler.handle_slow_gif(path, factor)
 
 
+@app.get("/assembly-selection/params")
+def assembly_selection_params_endpoint() -> dict[str, dict[str, float]]:
+    return handler.handle_wp2_params()
+
+
+@app.post("/assembly-selection/update")
+def assembly_selection_update_endpoint(payload: dict[str, Any]) -> dict[str, Any]:
+    return handler.handle_wp2_update(payload)
+
+
+@app.post("/assembly-selection/add-wheel")
+def assembly_selection_add_wheel_endpoint() -> dict[str, Any]:
+    return handler.handle_wp2_add_wheel()
+
+
+@app.post("/assembly-selection/remove-wheel")
+def assembly_selection_remove_wheel_endpoint() -> dict[str, Any]:
+    return handler.handle_wp2_remove_wheel()
+
+
+@app.get("/assembly-selection/mesh")
+def assembly_selection_mesh_endpoint() -> FileResponse:
+    return handler.handle_wp2_mesh()
+
+
 @app.get("/ui/page/{page_key}")
 def gui_page_endpoint(page_key: str) -> FileResponse:
     page_path = GUI_PAGE_FILES.get(page_key)
@@ -570,7 +615,7 @@ else:
 
 def main() -> None:
     host = "0.0.0.0"
-    port = 8000
+    port = 8001
 
     print("--- AISCO GUI Server ---")
     print(f"Serving static files from: {TEMPLATES_DIR}")
