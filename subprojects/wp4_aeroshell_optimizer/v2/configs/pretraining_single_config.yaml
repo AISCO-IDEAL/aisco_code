@@ -1,10 +1,55 @@
-# Single-shape pretraining configuration (Plan 014, v0.1.0).
+# =============================================================================
+# Single-shape pretraining configuration (Plan 014, v0.1.0)
+# =============================================================================
 #
-# Sibling of pretraining_latent_config.yaml — same sampling/loss machinery, but
-# fits ONE target shape with a non-conditional model (no latent z).
-#
-# Replaces the legacy pretraining_v4_config.yaml + pretraining_v4.py pipeline.
+# Sibling of pretraining_latent_config.yaml — same sampling / loss machinery,
+# but fits ONE target shape with a non-conditional model (no latent z).
 # Use with: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/pretraining_single.py
+#
+# -----------------------------------------------------------------------------
+# Conceptual overview of the training loop
+# -----------------------------------------------------------------------------
+# Each step builds a mixed minibatch from three pools:
+#
+#   * `near_surface_fraction` of the points are surface samples jittered by a
+#     tight Gaussian (`near_surface_tight_sigma` x bbox_extent). These pin the
+#     zero-level set hard.
+#   * `domain_fraction` of the points are uniform samples inside the outer
+#     prism (the wp2-Assembler bounding region). These give the network
+#     gradient signal in the far field.
+#   * The remainder are exact on-surface points (zero jitter), used both as
+#     surface anchors in the L1 loss and as the source of the autograd
+#     `normal_loss` (∇f vs ground-truth surface normal).
+#
+# Three loss terms combine into the total:
+#
+#   1. L1-all (mandatory) — |f_pred - f_gt| over (surface ∪ domain).
+#      Replaces the legacy MSE_surface + eikonal_weight * eikonal formulation
+#      that produced the v4 ellipsoid attractor: GT SDF magnitudes already
+#      encode |∇f| ≈ 1 in the far field, so a separate eikonal regulariser
+#      on every point is double-counting and biases toward smooth blobs.
+#
+#   2. normal_loss (optional, IGR-style) — `1 - cos(∇f, n_surf)` plus a small
+#      |f(x_surf)|/1000 anchor, evaluated on `normal_batch_size` exact surface
+#      points each step. Aligns the gradient field with the geometry's
+#      normals; this is what carves crisp creases (e.g. bunny ear ridges).
+#      PLY shapes only — no-op for sphere / cube targets.
+#
+#   3. eikonal_loss (optional, light) — `(||∇f|| - 1)^2` on a subset of
+#      domain (off-surface) points only. Putting it on surface points is what
+#      caused the v4 collapse, so it stays strictly off-surface here.
+#
+# Set the corresponding `*_loss_weight` to 0.0 to disable any optional term
+# (the loop falls back to the bare L1-all formulation).
+#
+# -----------------------------------------------------------------------------
+# Tuning history
+# -----------------------------------------------------------------------------
+# Defaults baked from the stage-2 refinement sweep winner (run hash
+# `186b3aad3b`, project `aisco/AISCOModel_Pretraining_Single`) — qualitatively
+# the cleanest bunny: smooth body, captures most local detail, both ears
+# starting to connect to the head.
+# =============================================================================
 
 # --- Model selection ---
 # Must be a key registered in v2/configs/models.json that points to a model
@@ -28,8 +73,8 @@ force_pretraining: false   # iff false, a hashed pretraining will be reused if i
 random_seed: 42
 
 training_loop:
-  epochs: 700
-  learning_rate: 0.0005
+  epochs: 1500
+  learning_rate: 0.0007963184383451837   # cosine-decayed to ~2.84e-6
   batch_size: 4096
   logging_interval: 25
   surface_resample_cadence: 0   # 0 = static (DeepSDF-style: sample once, reuse forever)
@@ -38,10 +83,24 @@ training_loop:
   # --- Sampling fractions (mirrors pretraining_latent_config.yaml) ---
   # near_surface_fraction + domain_fraction must sum to ≤ 1.0.
   # Remainder goes to exact (zero-jitter) surface pts.
-  near_surface_fraction: 0.30
-  domain_fraction: 0.50
-  near_surface_tight_sigma: 0.005     # tight band σ = factor × bbox_extent_mm  (≈ 25 mm at car scale)
+  near_surface_fraction: 0.5
+  domain_fraction: 0.3
+  near_surface_tight_sigma: 0.02      # tight band σ = factor × bbox_extent_mm
   near_surface_wide_sigma: null       # set to e.g. 0.05 to enable dual-band sampling
+
+  # --- Surface-normal supervision (IGR-style ∇f vs n_surf) ---
+  # Requires autograd through the model on a small batch of exact on-surface
+  # points each step. PLY shapes only — falls back to no-op for sphere/cube.
+  # 0.0 disables (loop reverts to bare L1-all).
+  normal_loss_weight: 0.3
+  normal_batch_size: 512              # on-surface pts/step for ∇f loss
+  normal_resample_cadence: 50         # refresh on-surface cache every N epochs (0 = static)
+
+  # --- Light eikonal regulariser ---
+  # Applied ONLY to off-surface domain pts. (Putting it on surface pts is
+  # what produced the v4 ellipsoid attractor.) 0.0 disables.
+  eikonal_loss_weight: 0.05
+  eikonal_batch_size: 1024            # subset of domain pts where ∇f is queried
 
 output:
   # Hash-tagged subdirectory will be appended automatically — i.e. the final
