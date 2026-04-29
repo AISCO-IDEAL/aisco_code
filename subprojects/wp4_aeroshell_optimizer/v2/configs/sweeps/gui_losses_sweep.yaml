@@ -1,0 +1,583 @@
+# ============================================================================
+# Sweep: GUI losses sweep — pre-focus rollout demo
+# ----------------------------------------------------------------------------
+# Spec by kdiehl (#kdiehl):
+#   • single model (no concat / no latent) -> WIREV5
+#   • min 3000 epochs per run, but start at 10 and double up
+#     (10 -> 20 -> 40 -> ... -> 2560 / 3000) by re-launching this sweep with
+#     a bumped `num_epochs` value below. num_epochs is intentionally NOT a
+#     sweep axis: each launch sweeps all scenarios at one fixed epoch budget.
+#   • pydevelopability loss deactivated (only `post_opt_enabled` runs at end).
+#   • additional losses (diversity / developability) left at config defaults.
+#   • alm_aggressive=False only (untested in aggressive mode).
+#
+# Required runs (encoded as 8 scenarios in a single categorical parameter):
+#   1. drag_only         — only aero (gaot)         + eikonal
+#   2. solar_only        — only solar               + eikonal
+#   3. wheel_only        — only wheel               + eikonal
+#   4. bb_only           — only bb                  + eikonal
+#   5. bb_connectedness  — bb + connectedness       + eikonal  (per spec: connectedness paired with bb)
+#   6. no_drag           — solar+wheel+bb+conn      + eikonal
+#   7. no_solar          — drag+wheel+bb+conn       + eikonal
+#   8. all_physical      — all 5 physical losses    + eikonal
+#
+# Always on  : eikonal (eikonal_v0).
+# Always off : smoothness, surface_area, developability.
+# Diversity  : kept at config default (field_diversity_v0, weight 0.01).
+#
+# Each value is a complete `losses` block — TotalLossV2 dynamically loads
+# every variant, so all variants must remain present (with compute=0/1
+# flipped). Exactly one variant per non-diversity category has compute=1.
+#
+# ALM/scheduler/model-hyperparameter regimes are intentionally NOT mixed
+# into this sweep (would explode runs combinatorially). Run a follow-up
+# sweep on the all_physical scenario to vary those.
+#
+# Parameter naming: <config_filename_without_yaml>.<nested.path.to.value>
+# ============================================================================
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py
+entity: aisco
+project: GUI_LossesSweep
+
+method: grid
+metric:
+  goal: maximize
+  name: raw_losses/total_loss
+
+parameters:
+
+  # ---- fixed knobs --------------------------------------------------------
+  general_config.model_def.model_name:
+    value: "WIREV5"
+
+  losses_v0_config.general_info.ALM:
+    value: "True"
+
+  losses_v0_config.general_info.ALM_aggressive:
+    value: "False"
+
+  # Bump this manually between launches: 10 -> 20 -> 40 -> 80 -> 160 ->
+  # 320 -> 640 -> 1280 -> 2560 -> 3000.
+  training_v0_config.training_params.num_epochs:
+    value: 10
+
+  # post-opt runs after training; cheap pydevelopability is the only thing
+  # that uses it here. Loss itself is disabled via the scenarios below.
+  losses_v0_config.developability_config.post_opt_enabled:
+    value: True
+
+  # ---- 8 explicit scenarios (single categorical axis) ---------------------
+  losses_v0_config.losses:
+    values:
+
+      # -------------------- 1. drag_only -----------------------------------
+      - aero:
+          _role: objective
+          _sign: minimize
+          _disabled_epochs: [[0, 0]]
+          null_loss_aero: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          gaot_loss:      [1,  1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+        bb:
+          _role: constraint
+          null_loss_bb:    [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          bb_v3:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"]
+          bb_v4:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"]
+          bb_v4_2:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]
+          bb_v4_3:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]
+          bb_v4_4:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]
+          bb_v4_sel:       [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]
+          silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]
+        eikonal:
+          _role: constraint
+          null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          eikonal_v0:        [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
+        smoothness:
+          _role: constraint
+          null_loss_smoothness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          smoothness_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
+        connectedness:
+          _role: constraint
+          _disabled_epochs: []
+          null_loss_connectedness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          connectedness_v1:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
+        developability:
+          _role: constraint
+          null_loss_developability: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          developability_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/developability_loss/developability_v0.py"]
+        wheel_loss:
+          _role: constraint
+          null_loss_wheel: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          wheel_loss_v0:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v0.py"]
+          wheel_loss_v1:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v1.py"]
+          wheel_loss_v2:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v2.py"]
+          wheel_loss_v3:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v3.py"]
+        surface_area:
+          _role: aux
+          null_loss_surface_area: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          surface_loss_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
+        solar:
+          _role: objective
+          _sign: maximize
+          _disabled_epochs: [[0, 0]]
+          solar_v3B_2:     [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
+          solar_v4:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
+          solar_v5:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
+          solar_v6:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
+          solar_v7:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
+          null_loss_solar: [1, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+        diversity:
+          _role: diversity
+          null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          field_diversity_v0:  [1, 0.01, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+        total:
+          total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]
+          artifact_every: 10
+        scenario_name: drag_only
+
+      # -------------------- 2. solar_only ----------------------------------
+      - aero:
+          _role: objective
+          _sign: minimize
+          _disabled_epochs: [[0, 0]]
+          null_loss_aero: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          gaot_loss:      [0,  1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+        bb:
+          _role: constraint
+          null_loss_bb:    [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          bb_v3:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"]
+          bb_v4:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"]
+          bb_v4_2:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]
+          bb_v4_3:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]
+          bb_v4_4:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]
+          bb_v4_sel:       [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]
+          silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]
+        eikonal:
+          _role: constraint
+          null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          eikonal_v0:        [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
+        smoothness:
+          _role: constraint
+          null_loss_smoothness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          smoothness_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
+        connectedness:
+          _role: constraint
+          _disabled_epochs: []
+          null_loss_connectedness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          connectedness_v1:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
+        developability:
+          _role: constraint
+          null_loss_developability: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          developability_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/developability_loss/developability_v0.py"]
+        wheel_loss:
+          _role: constraint
+          null_loss_wheel: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          wheel_loss_v0:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v0.py"]
+          wheel_loss_v1:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v1.py"]
+          wheel_loss_v2:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v2.py"]
+          wheel_loss_v3:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v3.py"]
+        surface_area:
+          _role: aux
+          null_loss_surface_area: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          surface_loss_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
+        solar:
+          _role: objective
+          _sign: maximize
+          _disabled_epochs: [[0, 0]]
+          solar_v3B_2:     [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
+          solar_v4:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
+          solar_v5:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
+          solar_v6:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
+          solar_v7:        [1,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
+          null_loss_solar: [0, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+        diversity:
+          _role: diversity
+          null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          field_diversity_v0:  [1, 0.01, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+        total:
+          total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]
+          artifact_every: 10
+        scenario_name: solar_only
+
+      # -------------------- 3. wheel_only ----------------------------------
+      - aero:
+          _role: objective
+          _sign: minimize
+          _disabled_epochs: [[0, 0]]
+          null_loss_aero: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          gaot_loss:      [0,  1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+        bb:
+          _role: constraint
+          null_loss_bb:    [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          bb_v3:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"]
+          bb_v4:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"]
+          bb_v4_2:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]
+          bb_v4_3:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]
+          bb_v4_4:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]
+          bb_v4_sel:       [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]
+          silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]
+        eikonal:
+          _role: constraint
+          null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          eikonal_v0:        [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
+        smoothness:
+          _role: constraint
+          null_loss_smoothness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          smoothness_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
+        connectedness:
+          _role: constraint
+          _disabled_epochs: []
+          null_loss_connectedness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          connectedness_v1:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
+        developability:
+          _role: constraint
+          null_loss_developability: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          developability_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/developability_loss/developability_v0.py"]
+        wheel_loss:
+          _role: constraint
+          null_loss_wheel: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          wheel_loss_v0:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v0.py"]
+          wheel_loss_v1:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v1.py"]
+          wheel_loss_v2:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v2.py"]
+          wheel_loss_v3:   [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v3.py"]
+        surface_area:
+          _role: aux
+          null_loss_surface_area: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          surface_loss_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
+        solar:
+          _role: objective
+          _sign: maximize
+          _disabled_epochs: [[0, 0]]
+          solar_v3B_2:     [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
+          solar_v4:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
+          solar_v5:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
+          solar_v6:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
+          solar_v7:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
+          null_loss_solar: [1, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+        diversity:
+          _role: diversity
+          null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          field_diversity_v0:  [1, 0.01, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+        total:
+          total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]
+          artifact_every: 10
+        scenario_name: wheel_only
+
+      # -------------------- 4. bb_only -------------------------------------
+      - aero:
+          _role: objective
+          _sign: minimize
+          _disabled_epochs: [[0, 0]]
+          null_loss_aero: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          gaot_loss:      [0,  1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+        bb:
+          _role: constraint
+          null_loss_bb:    [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          bb_v3:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"]
+          bb_v4:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"]
+          bb_v4_2:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]
+          bb_v4_3:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]
+          bb_v4_4:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]
+          bb_v4_sel:       [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]
+          silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]
+        eikonal:
+          _role: constraint
+          null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          eikonal_v0:        [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
+        smoothness:
+          _role: constraint
+          null_loss_smoothness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          smoothness_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
+        connectedness:
+          _role: constraint
+          _disabled_epochs: []
+          null_loss_connectedness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          connectedness_v1:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
+        developability:
+          _role: constraint
+          null_loss_developability: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          developability_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/developability_loss/developability_v0.py"]
+        wheel_loss:
+          _role: constraint
+          null_loss_wheel: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          wheel_loss_v0:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v0.py"]
+          wheel_loss_v1:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v1.py"]
+          wheel_loss_v2:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v2.py"]
+          wheel_loss_v3:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v3.py"]
+        surface_area:
+          _role: aux
+          null_loss_surface_area: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          surface_loss_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
+        solar:
+          _role: objective
+          _sign: maximize
+          _disabled_epochs: [[0, 0]]
+          solar_v3B_2:     [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
+          solar_v4:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
+          solar_v5:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
+          solar_v6:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
+          solar_v7:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
+          null_loss_solar: [1, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+        diversity:
+          _role: diversity
+          null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          field_diversity_v0:  [1, 0.01, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+        total:
+          total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]
+          artifact_every: 10
+        scenario_name: bb_only
+
+      # -------------------- 5. bb_connectedness ----------------------------
+      - aero:
+          _role: objective
+          _sign: minimize
+          _disabled_epochs: [[0, 0]]
+          null_loss_aero: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          gaot_loss:      [0,  1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+        bb:
+          _role: constraint
+          null_loss_bb:    [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          bb_v3:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"]
+          bb_v4:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"]
+          bb_v4_2:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]
+          bb_v4_3:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]
+          bb_v4_4:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]
+          bb_v4_sel:       [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]
+          silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]
+        eikonal:
+          _role: constraint
+          null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          eikonal_v0:        [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
+        smoothness:
+          _role: constraint
+          null_loss_smoothness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          smoothness_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
+        connectedness:
+          _role: constraint
+          _disabled_epochs: []
+          null_loss_connectedness: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          connectedness_v1:        [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
+        developability:
+          _role: constraint
+          null_loss_developability: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          developability_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/developability_loss/developability_v0.py"]
+        wheel_loss:
+          _role: constraint
+          null_loss_wheel: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          wheel_loss_v0:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v0.py"]
+          wheel_loss_v1:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v1.py"]
+          wheel_loss_v2:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v2.py"]
+          wheel_loss_v3:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v3.py"]
+        surface_area:
+          _role: aux
+          null_loss_surface_area: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          surface_loss_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
+        solar:
+          _role: objective
+          _sign: maximize
+          _disabled_epochs: [[0, 0]]
+          solar_v3B_2:     [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
+          solar_v4:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
+          solar_v5:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
+          solar_v6:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
+          solar_v7:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
+          null_loss_solar: [1, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+        diversity:
+          _role: diversity
+          null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          field_diversity_v0:  [1, 0.01, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+        total:
+          total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]
+          artifact_every: 10
+        scenario_name: bb_connectedness
+
+      # -------------------- 6. no_drag -------------------------------------
+      - aero:
+          _role: objective
+          _sign: minimize
+          _disabled_epochs: [[0, 0]]
+          null_loss_aero: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          gaot_loss:      [0,  1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+        bb:
+          _role: constraint
+          null_loss_bb:    [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          bb_v3:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"]
+          bb_v4:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"]
+          bb_v4_2:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]
+          bb_v4_3:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]
+          bb_v4_4:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]
+          bb_v4_sel:       [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]
+          silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]
+        eikonal:
+          _role: constraint
+          null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          eikonal_v0:        [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
+        smoothness:
+          _role: constraint
+          null_loss_smoothness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          smoothness_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
+        connectedness:
+          _role: constraint
+          _disabled_epochs: []
+          null_loss_connectedness: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          connectedness_v1:        [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
+        developability:
+          _role: constraint
+          null_loss_developability: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          developability_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/developability_loss/developability_v0.py"]
+        wheel_loss:
+          _role: constraint
+          null_loss_wheel: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          wheel_loss_v0:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v0.py"]
+          wheel_loss_v1:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v1.py"]
+          wheel_loss_v2:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v2.py"]
+          wheel_loss_v3:   [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v3.py"]
+        surface_area:
+          _role: aux
+          null_loss_surface_area: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          surface_loss_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
+        solar:
+          _role: objective
+          _sign: maximize
+          _disabled_epochs: [[0, 0]]
+          solar_v3B_2:     [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
+          solar_v4:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
+          solar_v5:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
+          solar_v6:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
+          solar_v7:        [1,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
+          null_loss_solar: [0, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+        diversity:
+          _role: diversity
+          null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          field_diversity_v0:  [1, 0.01, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+        total:
+          total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]
+          artifact_every: 10
+        scenario_name: no_drag
+
+      # -------------------- 7. no_solar ------------------------------------
+      - aero:
+          _role: objective
+          _sign: minimize
+          _disabled_epochs: [[0, 0]]
+          null_loss_aero: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          gaot_loss:      [1,  1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+        bb:
+          _role: constraint
+          null_loss_bb:    [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          bb_v3:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"]
+          bb_v4:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"]
+          bb_v4_2:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]
+          bb_v4_3:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]
+          bb_v4_4:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]
+          bb_v4_sel:       [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]
+          silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]
+        eikonal:
+          _role: constraint
+          null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          eikonal_v0:        [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
+        smoothness:
+          _role: constraint
+          null_loss_smoothness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          smoothness_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
+        connectedness:
+          _role: constraint
+          _disabled_epochs: []
+          null_loss_connectedness: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          connectedness_v1:        [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
+        developability:
+          _role: constraint
+          null_loss_developability: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          developability_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/developability_loss/developability_v0.py"]
+        wheel_loss:
+          _role: constraint
+          null_loss_wheel: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          wheel_loss_v0:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v0.py"]
+          wheel_loss_v1:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v1.py"]
+          wheel_loss_v2:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v2.py"]
+          wheel_loss_v3:   [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v3.py"]
+        surface_area:
+          _role: aux
+          null_loss_surface_area: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          surface_loss_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
+        solar:
+          _role: objective
+          _sign: maximize
+          _disabled_epochs: [[0, 0]]
+          solar_v3B_2:     [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
+          solar_v4:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
+          solar_v5:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
+          solar_v6:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
+          solar_v7:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
+          null_loss_solar: [1, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+        diversity:
+          _role: diversity
+          null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          field_diversity_v0:  [1, 0.01, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+        total:
+          total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]
+          artifact_every: 10
+        scenario_name: no_solar
+
+      # -------------------- 8. all_physical --------------------------------
+      - aero:
+          _role: objective
+          _sign: minimize
+          _disabled_epochs: [[0, 0]]
+          null_loss_aero: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          gaot_loss:      [1,  1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+        bb:
+          _role: constraint
+          null_loss_bb:    [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          bb_v3:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"]
+          bb_v4:           [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"]
+          bb_v4_2:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]
+          bb_v4_3:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]
+          bb_v4_4:         [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]
+          bb_v4_sel:       [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]
+          silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]
+        eikonal:
+          _role: constraint
+          null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          eikonal_v0:        [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
+        smoothness:
+          _role: constraint
+          null_loss_smoothness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          smoothness_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
+        connectedness:
+          _role: constraint
+          _disabled_epochs: []
+          null_loss_connectedness: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          connectedness_v1:        [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
+        developability:
+          _role: constraint
+          null_loss_developability: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          developability_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/developability_loss/developability_v0.py"]
+        wheel_loss:
+          _role: constraint
+          null_loss_wheel: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          wheel_loss_v0:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v0.py"]
+          wheel_loss_v1:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v1.py"]
+          wheel_loss_v2:   [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v2.py"]
+          wheel_loss_v3:   [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v3.py"]
+        surface_area:
+          _role: aux
+          null_loss_surface_area: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          surface_loss_v0:        [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
+        solar:
+          _role: objective
+          _sign: maximize
+          _disabled_epochs: [[0, 0]]
+          solar_v3B_2:     [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
+          solar_v4:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
+          solar_v5:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
+          solar_v6:        [0,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
+          solar_v7:        [1,   1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
+          null_loss_solar: [0, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+        diversity:
+          _role: diversity
+          null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+          field_diversity_v0:  [1, 0.01, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+        total:
+          total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]
+          artifact_every: 10
+        scenario_name: all_physical
