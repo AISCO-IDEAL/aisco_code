@@ -1,8 +1,11 @@
+import contextlib
 import hashlib
+import json
 import logging
 import mimetypes
 import os
 import re
+import shutil
 import signal
 import subprocess
 import threading
@@ -17,6 +20,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from utilities.config_interface import fetch_wp4_configs
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -68,7 +72,14 @@ GUI_PAGE_FILES: dict[str, Path] = {
     "solar": PAGES_DIR / "solar.html",
     "logs": PAGES_DIR / "logs.html",
     "testing": PAGES_DIR / "testing.html",
+    "config_overrides": PAGES_DIR / "config_overrides.html",
 }
+
+# Config-override session management
+CONFIG_OVERRIDES_ROOT = GUI_ROOT / "config_overrides"
+GUI_OVERRIDE_PREFIX = "gui_override_"
+GUI_SCHEMA_PATH = GUI_ROOT / "gui_schema.json"
+COPY_EXCLUDE_SUBFOLDERS = ("sweeps",)
 
 
 class RunLocalRequest(BaseModel):
@@ -94,6 +105,22 @@ class ConfigOverrideRequest(BaseModel):
 
     uses_gui: bool = False
     cfg_folder: str = ""
+
+
+class OverrideValuesRequest(BaseModel):
+    """Body for PUT /config-overrides/values.
+
+    updates is keyed by config filename relative to wp4/v2/configs/ (e.g. "training_v0_config.yaml"
+    or "solar_configs/solar_loss_config.yaml"); each value is a flat dict from dotted leaf path to new value.
+    """
+
+    folder: str
+    updates: dict[str, dict[str, Any]]
+
+
+class CleanupRequest(BaseModel):
+    folders: list[str] | None = None
+    all: bool = False
 
 
 class GUIRequestHandler:
@@ -242,7 +269,7 @@ class GUIRequestHandler:
 
                 log_handle = RUN_LOCAL_LOG.open("a", encoding="utf-8")
                 process = subprocess.Popen(
-                    ["bash", str(RUN_LOCAL_SCRIPT)] + cli_args,
+                    ["bash", str(RUN_LOCAL_SCRIPT), *cli_args],
                     cwd=str(REPO_ROOT.parent),
                     stdout=log_handle,
                     stderr=subprocess.STDOUT,
@@ -303,10 +330,8 @@ class GUIRequestHandler:
                 # Kill the whole process group to ensure children are terminated
                 os.killpg(process.pid, signal.SIGTERM)
             except Exception:
-                try:
+                with contextlib.suppress(Exception):
                     process.terminate()
-                except Exception:
-                    pass
 
             return JSONResponse(
                 status_code=200, content={"status": "stopping", "pid": process.pid, "message": "Sent termination signal"}
@@ -601,8 +626,232 @@ class GUIRequestHandler:
         return int(match.group(1))
 
 
+class ConfigOverrideManager:
+    """Manages GUI config-override sessions: copy YAMLs, validate edits, persist back, cleanup."""
+
+    def _load_schema(self) -> dict[str, Any]:
+        if not GUI_SCHEMA_PATH.exists():
+            raise HTTPException(status_code=500, detail={"message": f"Schema manifest missing: {GUI_SCHEMA_PATH}"})
+        try:
+            with GUI_SCHEMA_PATH.open(encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError as error:
+            raise HTTPException(status_code=500, detail={"message": f"Invalid gui_schema.json: {error}"}) from error
+
+    def _resolve_session_folder(self, folder_str: str) -> Path:
+        """Resolve a session folder argument and reject anything outside CONFIG_OVERRIDES_ROOT or missing the prefix."""
+        try:
+            candidate = Path(folder_str).resolve()
+            root = CONFIG_OVERRIDES_ROOT.resolve()
+            candidate.relative_to(root)
+        except (ValueError, OSError) as error:
+            raise HTTPException(status_code=400, detail={"message": f"Folder is outside the override root: {folder_str}"}) from error
+        if not candidate.name.startswith(GUI_OVERRIDE_PREFIX):
+            raise HTTPException(
+                status_code=400,
+                detail={"message": f"Folder name must start with '{GUI_OVERRIDE_PREFIX}': {candidate.name}"},
+            )
+        return candidate
+
+    def init_session(self) -> dict[str, Any]:
+        CONFIG_OVERRIDES_ROOT.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        session_dir = CONFIG_OVERRIDES_ROOT / f"{GUI_OVERRIDE_PREFIX}{stamp}"
+        if session_dir.exists():
+            # Avoid clobbering on rapid double-clicks within the same second.
+            session_dir = CONFIG_OVERRIDES_ROOT / f"{GUI_OVERRIDE_PREFIX}{stamp}_{os.getpid()}"
+        session_dir.mkdir(parents=True)
+
+        source_yaml_paths = fetch_wp4_configs(str(REPO_ROOT.parent), exclude_subfolders=COPY_EXCLUDE_SUBFOLDERS)
+        wp4_configs_root = (REPO_ROOT / "wp4_aeroshell_optimizer" / "v2" / "configs").resolve()
+
+        copied: list[str] = []
+        for src_str in source_yaml_paths:
+            src = Path(src_str).resolve()
+            rel = src.relative_to(wp4_configs_root)
+            dst = session_dir / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            copied.append(str(rel))
+
+        return {
+            "folder": str(session_dir),
+            "name": session_dir.name,
+            "copied_files": copied,
+            "skipped_subfolders": list(COPY_EXCLUDE_SUBFOLDERS),
+        }
+
+    def get_schema(self) -> dict[str, Any]:
+        return self._load_schema()
+
+    def get_values(self, folder_str: str) -> dict[str, Any]:
+        session_dir = self._resolve_session_folder(folder_str)
+        schema = self._load_schema()
+        result: dict[str, dict[str, Any]] = {}
+        for cfg_name, cfg_entry in schema.get("configs", {}).items():
+            yaml_path = session_dir / cfg_name
+            if not yaml_path.exists():
+                LOGGER.warning("Schema references missing YAML in session: %s", yaml_path)
+                continue
+            with yaml_path.open(encoding="utf-8") as f:
+                cfg_dict = yaml.safe_load(f) or {}
+            param_values: dict[str, Any] = {}
+            for param in cfg_entry.get("params", []):
+                dotted_path = param["path"]
+                param_values[dotted_path] = self._read_dotted(cfg_dict, dotted_path.split("."))
+            result[cfg_name] = param_values
+        return {"folder": str(session_dir), "values": result}
+
+    def set_values(self, payload: OverrideValuesRequest) -> dict[str, Any]:
+        session_dir = self._resolve_session_folder(payload.folder)
+        schema = self._load_schema()
+        schema_configs = schema.get("configs", {})
+
+        # Validate everything before writing anything — fail-fast keeps files consistent.
+        validated: dict[str, list[tuple[list[str], Any]]] = {}
+        for cfg_name, updates in payload.updates.items():
+            if cfg_name not in schema_configs:
+                raise HTTPException(status_code=400, detail={"message": f"Config not editable via GUI: {cfg_name}"})
+            param_lookup = {p["path"]: p for p in schema_configs[cfg_name].get("params", [])}
+            cfg_validated: list[tuple[list[str], Any]] = []
+            for dotted_path, raw_value in updates.items():
+                if dotted_path not in param_lookup:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={"message": f"Parameter not in schema whitelist: {cfg_name}::{dotted_path}"},
+                    )
+                coerced = self._validate_value(param_lookup[dotted_path], raw_value, cfg_name)
+                cfg_validated.append((dotted_path.split("."), coerced))
+            validated[cfg_name] = cfg_validated
+
+        # Apply: load → mutate → dump. Keep original key order via yaml's default behaviour on dicts.
+        written: list[str] = []
+        for cfg_name, segments_and_values in validated.items():
+            yaml_path = session_dir / cfg_name
+            if not yaml_path.exists():
+                raise HTTPException(status_code=404, detail={"message": f"YAML file missing in session: {cfg_name}"})
+            with yaml_path.open(encoding="utf-8") as f:
+                cfg_dict = yaml.safe_load(f) or {}
+            for segments, value in segments_and_values:
+                self._write_dotted(cfg_dict, segments, value)
+            with yaml_path.open("w", encoding="utf-8") as f:
+                yaml.safe_dump(cfg_dict, f, sort_keys=False, default_flow_style=False)
+            written.append(cfg_name)
+
+        return {"folder": str(session_dir), "written": written}
+
+    def list_sessions(self) -> dict[str, Any]:
+        if not CONFIG_OVERRIDES_ROOT.exists():
+            return {"sessions": []}
+        sessions = []
+        for entry in sorted(CONFIG_OVERRIDES_ROOT.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+            if entry.is_dir() and entry.name.startswith(GUI_OVERRIDE_PREFIX):
+                sessions.append(  # noqa: PERF401
+                    {
+                        "name": entry.name,
+                        "folder": str(entry),
+                        "mtime": entry.stat().st_mtime,
+                    }
+                )
+        return {"sessions": sessions}
+
+    def cleanup(self, payload: CleanupRequest) -> dict[str, Any]:
+        removed: list[str] = []
+        if payload.all:
+            if not CONFIG_OVERRIDES_ROOT.exists():
+                return {"removed": []}
+            for entry in CONFIG_OVERRIDES_ROOT.iterdir():
+                if entry.is_dir() and entry.name.startswith(GUI_OVERRIDE_PREFIX):
+                    shutil.rmtree(entry)
+                    removed.append(entry.name)
+            return {"removed": removed}
+
+        for folder_str in payload.folders or []:
+            session_dir = self._resolve_session_folder(folder_str)
+            if session_dir.exists():
+                shutil.rmtree(session_dir)
+                removed.append(session_dir.name)
+        return {"removed": removed}
+
+    @staticmethod
+    def _read_dotted(cfg_dict: dict, segments: list[str]) -> Any:
+        d: Any = cfg_dict
+        for seg in segments:
+            if not isinstance(d, dict) or seg not in d:
+                return None
+            d = d[seg]
+        return d
+
+    @staticmethod
+    def _write_dotted(cfg_dict: dict, segments: list[str], value: Any) -> None:
+        d = cfg_dict
+        for seg in segments[:-1]:
+            if seg not in d or not isinstance(d[seg], dict):
+                d[seg] = {}
+            d = d[seg]
+        d[segments[-1]] = value
+
+    @staticmethod
+    def _validate_value(param_schema: dict[str, Any], raw_value: Any, cfg_name: str) -> Any:  # noqa: PLR0912
+        ptype = param_schema.get("type")
+        path = param_schema.get("path", "?")
+        loc = f"{cfg_name}::{path}"
+        coerced: int | float
+
+        if ptype == "int":
+            if isinstance(raw_value, bool) or not isinstance(raw_value, int):
+                # Accept numeric strings too, but reject floats with non-zero fractional part.
+                try:
+                    coerced = int(raw_value)
+                    if isinstance(raw_value, float) and not raw_value.is_integer():
+                        raise ValueError  # noqa: TRY301
+                except (TypeError, ValueError) as error:
+                    raise HTTPException(status_code=400, detail={"message": f"{loc}: expected int, got {raw_value!r}"}) from error
+            else:
+                coerced = raw_value
+            if "min" in param_schema and coerced < param_schema["min"]:
+                raise HTTPException(status_code=400, detail={"message": f"{loc}: {coerced} < min {param_schema['min']}"})
+            if "max" in param_schema and coerced > param_schema["max"]:
+                raise HTTPException(status_code=400, detail={"message": f"{loc}: {coerced} > max {param_schema['max']}"})
+            return coerced
+
+        if ptype == "float":
+            if isinstance(raw_value, bool):
+                raise HTTPException(status_code=400, detail={"message": f"{loc}: expected float, got bool"})
+            try:
+                coerced = float(raw_value)
+            except (TypeError, ValueError) as error:
+                raise HTTPException(status_code=400, detail={"message": f"{loc}: expected float, got {raw_value!r}"}) from error
+            if "min" in param_schema and coerced < param_schema["min"]:
+                raise HTTPException(status_code=400, detail={"message": f"{loc}: {coerced} < min {param_schema['min']}"})
+            if "max" in param_schema and coerced > param_schema["max"]:
+                raise HTTPException(status_code=400, detail={"message": f"{loc}: {coerced} > max {param_schema['max']}"})
+            return coerced
+
+        if ptype == "bool":
+            if isinstance(raw_value, bool):
+                return raw_value
+            if isinstance(raw_value, str) and raw_value.lower() in {"true", "false"}:
+                return raw_value.lower() == "true"
+            raise HTTPException(status_code=400, detail={"message": f"{loc}: expected bool, got {raw_value!r}"})
+
+        if ptype == "string":
+            if not isinstance(raw_value, str):
+                raise HTTPException(status_code=400, detail={"message": f"{loc}: expected string, got {type(raw_value).__name__}"})
+            return raw_value
+
+        if ptype == "enum":
+            choices = param_schema.get("choices", [])
+            if raw_value not in choices:
+                raise HTTPException(status_code=400, detail={"message": f"{loc}: {raw_value!r} not in choices {choices}"})
+            return raw_value
+
+        raise HTTPException(status_code=500, detail={"message": f"{loc}: unknown schema type {ptype!r}"})
+
+
 app = FastAPI(title="AISCO GUI Server")
 handler = GUIRequestHandler()
+override_manager = ConfigOverrideManager()
 
 
 @app.post("/run-local")
@@ -645,6 +894,38 @@ def slow_gif_endpoint(path: str = "", factor: str = "2.5") -> FileResponse:
 @app.post("/run-local/stop")
 def run_local_stop_endpoint() -> JSONResponse:
     return handler.handle_stop_run_local()
+
+
+@app.post("/config-overrides/init")
+def config_overrides_init_endpoint() -> dict[str, Any]:
+    return override_manager.init_session()
+
+
+@app.get("/config-overrides/schema")
+def config_overrides_schema_endpoint() -> dict[str, Any]:
+    return override_manager.get_schema()
+
+
+@app.get("/config-overrides/values")
+def config_overrides_values_get_endpoint(folder: str = "") -> dict[str, Any]:
+    if not folder:
+        raise HTTPException(status_code=400, detail={"message": "Missing 'folder' query parameter"})
+    return override_manager.get_values(folder)
+
+
+@app.put("/config-overrides/values")
+def config_overrides_values_put_endpoint(payload: OverrideValuesRequest) -> dict[str, Any]:
+    return override_manager.set_values(payload)
+
+
+@app.get("/config-overrides/sessions")
+def config_overrides_sessions_endpoint() -> dict[str, Any]:
+    return override_manager.list_sessions()
+
+
+@app.post("/config-overrides/cleanup")
+def config_overrides_cleanup_endpoint(payload: CleanupRequest) -> dict[str, Any]:
+    return override_manager.cleanup(payload)
 
 
 @app.get("/ui/page/{page_key}")

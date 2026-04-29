@@ -25,6 +25,8 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     get_master_config,
     load_config,
     register_all_configs,
+    set_gui_config_folder,
+    switch_to_gui_config,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import DebugManager
@@ -101,13 +103,12 @@ def _maybe_run_latent_pretraining(
 def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa: PLR0912, PLR0915
 
     print("Starting Main file V2...")
-    assert cfg_folder is not None, (
-        "cfg_folder is None, this should not be happening. Check the caller or argument parsing logic and if you changed anything."
-    )
     if gui_mode:
-        raise NotImplementedError(
-            "GUI mode is not implemented yet. Check the GUI development branch or contact the developers for more info."
-        )
+        if not cfg_folder:
+            raise ValueError("--uses-gui requires --cfg-folder to point at a GUI override folder.")
+        set_gui_config_folder(cfg_folder)
+        switch_to_gui_config(True)
+        print(f"GUI override mode active. Loading configs from: {cfg_folder}")
 
     # 1. Load and register configs
     general_config: dict[str, Any] = load_config(v="v2", cfg_name="general_config.yaml")
@@ -532,8 +533,9 @@ if __name__ == "__main__":
     # Arguments are available but not used yet - caller will handle them
     print(f"uses_gui: {args.uses_gui}, cfg_folder: {args.cfg_folder}")
     assert _ == [], "Unexpected extra CLI arguments received. Check the caller or argument parsing logic."
-    # check that the folder path has no spaces in it
-    assert args.cfg_folder != "", 'You need to specify a config folder via "--cfg-folder PATH" for this to work'
+    # --cfg-folder is only required when running through the GUI override flow.
+    if args.uses_gui:
+        assert args.cfg_folder != "", '--uses-gui requires "--cfg-folder PATH" to be set'
     assert " " not in args.cfg_folder, f"Config folder path cannot contain spaces. Received: '{args.cfg_folder}'"
 
     main(gui_mode=args.uses_gui, cfg_folder=args.cfg_folder)

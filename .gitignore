@@ -107,3 +107,6 @@ ipython_config.py
 **/.pybuilder/
 **/.pyre/
 **/.pytype/
+
+# WP7 GUI config-override session folders (timestamped per session)
+subprojects/wp7_gui/v2/config_overrides/gui_override_*/

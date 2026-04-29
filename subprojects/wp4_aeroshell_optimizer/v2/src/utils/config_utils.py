@@ -37,10 +37,12 @@ _using_custom_gui_configs: bool = False
 _gui_config_folder: Path | None = None
 
 def switch_to_gui_config(value: bool) -> None:
-    _using_custom_gui_folder = value
+    global _using_custom_gui_configs  # noqa: PLW0603
+    _using_custom_gui_configs = value
 
 
 def set_gui_config_folder(folder_path: str) -> None:
+    global _gui_config_folder  # noqa: PLW0603
     _gui_config_folder = Path(folder_path)
 
 def _cfg_key(cfg_name: str) -> str:
@@ -117,13 +119,21 @@ def _load_yaml(v: str, cfg_name: str) -> dict:
     """
     Load a YAML configuration file from disk (no registry, no wandb side-effects) by giving the name/path of the config file, located in the v{x}/configs/ folder.
 
+    When GUI override mode is active (switch_to_gui_config(True) + set_gui_config_folder(...)),
+    the YAML is read from the GUI override folder instead. The override folder mirrors the
+    wp4/configs/ structure, so cfg_name (e.g. "solar_configs/solar_loss_config.yaml") resolves
+    relative to it directly.
+
     Environment-aware path resolution is delegated to device_detection module.
     """
-    config_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
-    if Path.home() == Path("/home/aisco"):  # Checks if running on the Best and corrects Path if necessary
-        config_path = (
-            Path.home() / "Documents" / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
-        )
+    if _using_custom_gui_configs and _gui_config_folder is not None:
+        config_path = _gui_config_folder / cfg_name
+    else:
+        config_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
+        if Path.home() == Path("/home/aisco"):  # Checks if running on the Best and corrects Path if necessary
+            config_path = (
+                Path.home() / "Documents" / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
+            )
     try:
         with config_path.open() as f:
             config = yaml.safe_load(f)
