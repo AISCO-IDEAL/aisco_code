@@ -7,6 +7,7 @@ from dataclasses import replace as _dc_replace
 import torch
 import torch.nn.functional as F  # noqa: N812 is standard alias for torch.nn.functional
 
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
@@ -33,7 +34,11 @@ class SurfaceLossV0(ParentLoss):
         mesh_config = load_mesh_extraction_config()
         mesh_config = _dc_replace(mesh_config, device=self.device)
         self.mesh_extractor = MeshSDFExtractor(config=mesh_config)
-        self.mesh_extractor.set_grid(bbox=mesh_config.bbox, resolution=mesh_config.base_resolution)
+        prism = get_outer_prism_bounds_mm()
+        self.mesh_extractor.set_grid(
+            bbox=[[prism["x"][0], prism["x"][1]], [prism["y"][0], prism["y"][1]], [prism["z"][0], prism["z"][1]]],
+            resolution=mesh_config.base_resolution,
+        )
 
     def _area_loss_fn(self, vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
         """Compute softplus-activated surface area loss from mesh geometry.

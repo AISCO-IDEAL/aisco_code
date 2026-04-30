@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.6.4] - 2026-04-29
+
+### Added
+
+- WP7 GUI v2: combined mesh PLY files now render with per-component vertex
+  colours (orange inner bbox, cyan SDF mesh, orange-red outer bbox). Fixes
+  the grey-mesh bug where `MeshStandardMaterial` was created without
+  `vertexColors`, discarding data already parsed by `PLYLoader`.
+- WP7 GUI v2: opacity slider added to the Aeroshell Mesh card. Initial value
+  is read from `mesh_opacity` in `general_config.yaml` via a new
+  `GET /mesh-config` endpoint; defaults to 1.0 (fully opaque) when the key
+  is absent or the file is unreadable. Slider updates apply live without
+  reloading the mesh and persist across epoch navigation.
+
 ## [0.5.2] - 2026-04-27
 
 ### Fixed

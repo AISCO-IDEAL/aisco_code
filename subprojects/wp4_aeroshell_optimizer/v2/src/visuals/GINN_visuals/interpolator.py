@@ -9,6 +9,7 @@ All parameters are config-driven to avoid hardcoding.
 """
 
 import os
+from dataclasses import replace as _dc_replace
 from pathlib import Path
 
 import numpy as np
@@ -34,10 +35,9 @@ try:
 except ImportError as exc:
     raise ImportError("PyVista is required for interpolator. Install with: pip install pyvista") from exc
 
-from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import (
-    MarchingCubesExtractor,
-)
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 
 class Interpolator:
@@ -54,7 +54,7 @@ class Interpolator:
             - grid_resolution: int, points per latent dimension (e.g., 10 for 10x10)
             - latent_range: [min, max], bounds for z[0] and z[1]
             - mesh_resolution: int, marching cubes grid resolution (e.g., 128)
-            - bbox_min, bbox_max: lists, bounding box for mesh extraction
+
             - isovalue: float, SDF level set (default 0.0)
             - camera_view: str, camera angle (iso, front, back, left, right, top, bottom)
             - mesh_color: str, PyVista color (e.g., "lightgrey")
@@ -80,26 +80,25 @@ class Interpolator:
         self.config = config
         self.device = torch.device(device) if isinstance(device, str) else device
 
-        # Initialize marching cubes extractor
-        self.mc_extractor = MarchingCubesExtractor()
-
         # Parse config
         self.grid_resolution = int(config.get("grid_resolution", 10))
         self.latent_range = config.get("latent_range", [-2.0, 2.0])
         self.mesh_resolution = int(config.get("mesh_resolution", 128))
-
-        # Extract bbox values as lists
-        bbox_min_list = config.get("bbox_min", [-4000, -4000, -4000])
-        bbox_max_list = config.get("bbox_max", [4000, 4000, 4000])
-
-        # Convert to MarchingCubesExtractor format: [[xmin,xmax], [ymin,ymax], [zmin,zmax]]
-        self.bbox = [
-            [bbox_min_list[0], bbox_max_list[0]],
-            [bbox_min_list[1], bbox_max_list[1]],
-            [bbox_min_list[2], bbox_max_list[2]],
-        ]
-
         self.isovalue = float(config.get("isovalue", 0.0))
+
+        # Build WP5 mesh extractor using outer_prism bounds from WP2 (no hardcoded bbox)
+        _mesh_config = load_mesh_extraction_config()
+        _prism = get_outer_prism_bounds_mm()
+        _mesh_config = _dc_replace(_mesh_config, device=str(self.device), isovalue=self.isovalue)
+        self.mc_extractor = MeshSDFExtractor(config=_mesh_config)
+        self.mc_extractor.set_grid(
+            bbox=[
+                [_prism["x"][0], _prism["x"][1]],
+                [_prism["y"][0], _prism["y"][1]],
+                [_prism["z"][0], _prism["z"][1]],
+            ],
+            resolution=self.mesh_resolution,
+        )
 
         raw_camera_view = config.get("camera_view", "iso")
         if isinstance(raw_camera_view, list):
@@ -122,9 +121,6 @@ class Interpolator:
 
         # Create save directory
         self.save_dir.mkdir(parents=True, exist_ok=True)
-
-        # Configure the marching cubes grid (call once during init)
-        self.mc_extractor.set_grid(bbox=self.bbox, resolution=self.mesh_resolution)
 
         # Get model's latent dimension (try z_dim first, then check for _active_z attribute)
         self.z_dim: int | None = None
@@ -311,11 +307,7 @@ class Interpolator:
     def _extract_mesh(self) -> tuple[Tensor, Tensor] | None:
         """Extract a mesh from the current model state."""
         try:
-            verts, faces = self.mc_extractor.extract_mesh(
-                model=self.model,
-                isovalue=self.isovalue,
-                batch_size=8192,
-            )
+            verts, faces = self.mc_extractor.extract_mesh(sdf_model=self.model)
         except Exception as exc:
             print(f"    Warning: Mesh extraction failed: {exc}")
             return None
