@@ -379,8 +379,14 @@ class ModelLoader:
             reference_field=reference_field,
         )
 
-        # Fix 4: use physical/raw normals for drag integration
-        integration_normals = batch.c_raw if hasattr(batch, "c_raw") and batch.c_raw is not None else batch.c
+        # Sign convention: cp_field is predicted in the GAOT training (model) frame,
+        # which has the x-axis flipped relative to the SDF frame (see _reformat_data).
+        # Integrating cp values against SDF-frame outward normals (c_raw) returns the
+        # x-component of the pressure force in the SDF frame, which is the negative of
+        # the conventional drag (force along freestream direction). Use model-frame
+        # outward normals (batch.c) so pressure_to_drag's orientation step aligns the
+        # area-normals with the freestream direction the cp field was predicted for.
+        integration_normals = batch.c if hasattr(batch, "c") and batch.c is not None else batch.c_raw
 
         int_drag_f = cp_field_to_drag(
             cp_field=pressure_field,
