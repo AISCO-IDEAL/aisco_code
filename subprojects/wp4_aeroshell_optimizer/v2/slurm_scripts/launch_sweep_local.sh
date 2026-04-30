@@ -26,7 +26,7 @@ set -euo pipefail
 umask 0002
 
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="${SWEEP_ID:-aisco/prefocus-rollout-sweep/vbyrbheh}"   # <-- EDIT THIS after `wandb sweep ...`
+SWEEP_ID="${SWEEP_ID:-aisco/prefocus-rollout-sweep/wxp9nyv8}"   # <-- EDIT THIS after `wandb sweep ...`
 COUNT="${COUNT:-56}"                                              # 7 scenarios x 4 epochs x 2 schedulers
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 

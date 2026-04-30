@@ -166,6 +166,16 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
         # Update wandb dashboard with the full patched master config
         wandb.config.update(get_master_config(), allow_val_change=True)
 
+    # Re-read flags that may have been overridden by the sweep so the rest of
+    # main() respects the overridden values (e.g. latent_space, run_locally).
+    _raw_latent_space = general_config["general_info"].get("latent_space", False)
+    if isinstance(_raw_latent_space, str):
+        latent_space = _raw_latent_space.strip().lower() in {"true", "1", "yes", "on"}
+    else:
+        latent_space = bool(_raw_latent_space)
+    _raw_run_locally = general_config["general_info"].get("run_locally", "False")
+    run_locally = str(_raw_run_locally).strip().lower() in {"true", "1", "yes", "on"}
+
     if verbose:
         print("Successfully loaded and registered all configs")
 
@@ -562,7 +572,15 @@ if __name__ == "__main__":
     print(f"Extras: {_}, type: {type(_)}")
     # Arguments are available but not used yet - caller will handle them
     print(f"uses_gui: {args.uses_gui}, cfg_folder: {args.cfg_folder}")
-    assert _ == [], "Unexpected extra CLI arguments received. Check the caller or argument parsing logic."
+    # NOTE: When launched by `wandb agent`, the agent appends sweep hyperparameter
+    # overrides as `--key=value` CLI args. These are consumed via `wandb.config`
+    # in `apply_sweep_overrides`, not via argparse, so we tolerate `--...`-style
+    # extras here. Only non-flag extras indicate a real caller bug.
+    _bad_extras = [a for a in _ if not a.startswith("--")]
+    assert _bad_extras == [], (
+        f"Unexpected non-flag CLI arguments received: {_bad_extras}. "
+        "Check the caller or argument parsing logic."
+    )
     # --cfg-folder is only required when running through the GUI override flow.
     if args.uses_gui:
         assert args.cfg_folder != "", '--uses-gui requires "--cfg-folder PATH" to be set'

@@ -24,7 +24,7 @@ export no_proxy=$(echo "$no_proxy" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export NO_PROXY=$(echo "$NO_PROXY" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/prefocus-rollout-sweep/0thdcd63"   # <-- EDIT THIS
+SWEEP_ID="aisco/prefocus-rollout-sweep/nbyf0lks"   # <-- EDIT THIS
 COUNT=10                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
 MAX_AGENTS=2                                  # max number of parallel agents (will be capped by available GPUs)
 

@@ -52,6 +52,8 @@ parameters:
   # --- Constants (single-model, no concat/latent, ALM on, aggressive off) ---
   general_config.model_def.model_name:
     value: "WIREV5"
+  general_config.general_info.latent_space:
+    value: False
   general_config.active_configs.latent_pretraining:
     value: ""
   losses_v0_config.general_info.ALM:
