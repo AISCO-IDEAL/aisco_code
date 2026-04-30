@@ -832,6 +832,7 @@ class DiversityTrainer:
             verts = grads_payload["vertices"]
             faces = grads_payload["faces"]
             extra_state["vertice_grads_per_loss"] = grads_payload["per_loss"]
+            extra_state["vertice_meshes_per_loss"] = grads_payload.get("per_loss_meshes", {})
             extra_state["vertice_grads_total"] = grads_payload["total"]
 
         if self._use_neural_renderer and self._renderer_manager is not None:

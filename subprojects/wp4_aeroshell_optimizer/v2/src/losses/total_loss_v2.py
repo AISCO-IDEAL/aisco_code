@@ -384,15 +384,23 @@ class TotalLossV2:
             )
         if not self._visu_per_loss_grads or self._visu_primary_v is None:
             return None
+        # Build "total" only from grads matching the primary mesh shape (losses
+        # with their own MeshSDFExtractor at a different resolution can't be
+        # broadcast-summed). Per-loss panels render on each loss's own mesh
+        # (see `per_loss_meshes`), so they are returned in full regardless.
+        n_primary = int(self._visu_primary_v.shape[0])
         weights = weights_by_name or {}
-        total = None
+        total: torch.Tensor | None = None
         for name, g in self._visu_per_loss_grads.items():
+            if g.shape[0] != n_primary:
+                continue
             w = float(weights.get(name, 1.0))
             total = g * w if total is None else total + g * w
         return {
             "vertices": self._visu_primary_v,
             "faces": self._visu_primary_f,
             "per_loss": dict(self._visu_per_loss_grads),
+            "per_loss_meshes": dict(getattr(self, "_visu_per_loss_meshes", {})),
             "total": total if total is not None else torch.zeros_like(self._visu_primary_v),
         }
 
@@ -440,11 +448,16 @@ class TotalLossV2:
         """
         del bundle
         self._visu_per_loss_grads = {}
+        self._visu_per_loss_meshes: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
         for loss_name, ext in self._find_mesh_extractors().items():
             g = getattr(ext, "last_dL_dv", None)
             if g is None:
                 continue
             self._visu_per_loss_grads[loss_name] = g.detach()
+            v = getattr(ext, "last_verts", None)
+            f = getattr(ext, "last_faces", None)
+            if v is not None and f is not None:
+                self._visu_per_loss_meshes[loss_name] = (v.detach(), f.detach())
 
     def compute(
         self,

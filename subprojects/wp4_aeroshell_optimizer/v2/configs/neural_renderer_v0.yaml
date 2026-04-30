@@ -286,7 +286,7 @@ detached_modes:
       look_at: [-1500, 0, 0]
       render_mode: "rgb"
       fps: 10
-      loss_key: "null_loss_aero"  # use "gaot_loss" when CFD is enabled
+      loss_key: "gaot_loss"  # use "null_loss_aero" when CFD is disabled
       intensity: 1.0
 
   MeshSDF_grads_solar:
@@ -297,8 +297,11 @@ detached_modes:
       look_at: [-1500, 0, 0]
       render_mode: "rgb"
       fps: 10
-      loss_key: "null_loss_solar"  # change to solar_v3B_2 / solar_v7 when active
-      intensity: 1.0
+      loss_key: "solar_v3B_2"  # change to null_loss_solar when solar is disabled
+      # Negative intensity flips red<->green: the solar loss is `-power`, so
+      # dL/dv·n is opposite of "where you want the surface to be pushed". With
+      # -1.0, green = "more solar gain on the outward side" (the intuitive view).
+      intensity: -1.0
 
   solar_v3_selection:
       enabled: True

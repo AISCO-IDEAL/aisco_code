@@ -37,7 +37,7 @@ class ModelLoader:
         self.optimization_state = {
             "vertices": None,
             "faces": None,
-            "vertice_grads": None,
+            "vertice_grads_total": None,
         }
 
         self.model_path = self._get_checkpoint_path()
@@ -58,7 +58,17 @@ class ModelLoader:
         )
 
         self.visualiser = Visualiser(device=self.device)
-        self.gradlogger = MeshSDFGrads(self.visualiser, intensity=10)
+        self.gradlogger = MeshSDFGrads(
+            self.visualiser,
+            config={
+                "camera_position": [-2000, 0, 7000],
+                "look_at": [-1500, 0, 0],
+                "render_mode": "rgb",
+                "fps": 10,
+                "loss_key": "__total__",
+                "intensity": 10,
+            },
+        )
 
     def _get_dataset_viz_config(self) -> dict:
         dataset_cfg = self.cfd_config.get("dataset", {}) if isinstance(self.cfd_config.get("dataset", {}), dict) else None
@@ -250,7 +260,7 @@ class ModelLoader:
             diag["dL_dvertices_max"] = dL_dvertices.abs().max().item()
         self._last_diagnostics = diag
 
-        self.optimization_state["vertice_grads"] = dL_dvertices
+        self.optimization_state["vertice_grads_total"] = dL_dvertices
 
         if self.cfd_config["visualisations"]:
             self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
@@ -351,7 +361,7 @@ class ModelLoader:
         with torch.autograd.set_detect_anomaly(True):
             gaot_loss = self.gaot.forward(batch=batch, tokens_pos=tokens_pos)
 
-        self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces, "vertice_grads": None}
+        self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces, "vertice_grads_total": None}
 
         pressure_field = gaot_loss["field"]
 
