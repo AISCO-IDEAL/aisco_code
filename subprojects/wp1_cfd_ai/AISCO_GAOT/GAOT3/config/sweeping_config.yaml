@@ -21,13 +21,13 @@ entity: aisco
 name: "wp1_gaot_optimiser_sweep"
 
 parameters:
-  # ========== OPTIMIZER / LR-RELATED ONLY ==========
-  model.args.magno.projection_channels:
+  # ========== TRAINING SIZE / DURATION ==========
+  dataset.batch_size:
     distribution: int_uniform
-    min: 100
-    max: 500
+    min: 4
+    max: 128
 
-  model.args.magno.lifting_channels:
+  optimizer.args.epoch:
     distribution: int_uniform
-    min: 10
-    max: 50
+    min: 500
+    max: 5000

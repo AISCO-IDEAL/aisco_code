@@ -8,7 +8,7 @@
 
 setup:
     run_local: false
-    name: "Final GOAT-ALL"
+    name: "GOAT_sweeping"
     id: "_RUN_ID_"
     seed: 42
     device: "cuda:0"
@@ -23,7 +23,7 @@ setup:
     wandb: true
     wandb_run_name: "_NAME___RUN_ID_"
 
-    wandb_project: "WP1_default"
+    wandb_project: "WP1_sweeping"
     wandb_entity: aisco
     wandb_group: united_all_cp_field
     wandb_mode: online
@@ -124,7 +124,7 @@ dataset:
     train_size: 1000
     val_size: 50
     test_size: 50
-    batch_size: 128  # reduced from 12 to avoid OOM on larger CP-full meshes
+    batch_size: 32  # reduced from 12 to avoid OOM on larger CP-full meshes
     num_workers: 8
     shuffle: true
     metric_suite: "general"
@@ -164,7 +164,7 @@ optimizer:
     args:
         lr: 6e-4
         weight_decay: 1e-05
-        epoch: 1500
+        epoch: 500
         loss_scale: 1.0
         eval_every_eps: 5
         viz_every_eps: 25   # visualize every N epochs; defaults to eval_every_eps if omitted
