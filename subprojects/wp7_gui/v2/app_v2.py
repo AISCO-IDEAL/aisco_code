@@ -64,7 +64,7 @@ RUN_LOCAL_LOG = GUI_ROOT / "logs" / f"run_local_{timestamp}.log"
 GENERAL_CONFIG_PATH = _WP4_CONFIGS_DIR / "general_config.yaml"
 DEFAULT_LOCAL_STORAGE_DIR = REPO_ROOT.parent / "local_storage_dir"
 DEFAULT_BULK_STORAGE_DIR = Path("/cluster/work/fuge/AISCO/bulk_storage")
-PRETRAINING_STORAGE_ROOT = Path("/cluster/work/fuge/AISCO/latent_pretraining/runs/14f323b3fc/pretraining_latent_gifs")
+PRETRAINING_STORAGE_ROOT = Path("/home/aisco/pretraining_gifs")
 SLOW_GIF_CACHE_DIR = GUI_ROOT / "cache"
 MESH_ASSEMBLY_DIR_CANDIDATES = ("mesh_assembly_mode_v4", "mesh_assembly_mode_v3", "mesh_assembly_mode_v2", "mesh_assembly_mode")
 
