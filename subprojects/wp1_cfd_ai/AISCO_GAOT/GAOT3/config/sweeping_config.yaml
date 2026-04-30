@@ -22,12 +22,8 @@ name: "wp1_gaot_optimiser_sweep"
 
 parameters:
   # ========== TRAINING SIZE / DURATION ==========
-  dataset.batch_size:
-    distribution: int_uniform
-    min: 4
-    max: 128
+  model.args.transformer.attn_config.atten_dropout:
+    distribution: uniform
+    min: 0
+    max: 1
 
-  optimizer.args.epoch:
-    distribution: int_uniform
-    min: 500
-    max: 5000
