@@ -73,10 +73,10 @@ DEFAULT_LOCAL_STORAGE_DIR = REPO_ROOT.parent / "local_storage_dir"
 DEFAULT_BULK_STORAGE_DIR = Path("/cluster/work/fuge/AISCO/bulk_storage")
 PRETRAINING_STORAGE_ROOT = Path("/home/aisco/pretraining_gifs")
 SOLAR_RENDERS_ROOT = Path(
-    "/home/aisco/Documents/AISCO_code/wandb/run-20260430_095749-gx2xmmxl/files/media/images/renders"
+    "/home/aisco/Documents/AISCO_code/wandb/run-20260430_064014-rkflw9m0/files/media/images/renders"
 )
 PRESSURE_VISUALS_ROOT = Path(
-    "/home/aisco/Documents/AISCO_code/wandb/run-20260430_095749-gx2xmmxl/files/media/images"
+    "/home/aisco/Documents/AISCO_code/wandb/run-20260430_064014-rkflw9m0/files/media/images"
 )
 MESH_ASSEMBLY_RENDERS_DIR = SOLAR_RENDERS_ROOT / "mesh_assembly_mode_v4"
 SLOW_GIF_CACHE_DIR = GUI_ROOT / "cache"
