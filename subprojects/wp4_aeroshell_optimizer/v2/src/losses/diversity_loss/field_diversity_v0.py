@@ -5,6 +5,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
 from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_loss import field_diversity_loss
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat, SupportsModelContract
 
@@ -31,10 +32,27 @@ class FieldDiversityV0:
         model: SupportsModelContract,
         Z: Tensor | None = None,
         num_points: int = 2048,
-        bbox_size: float = 10.0,
+        bbox_lo: list[float] | None = None,
+        bbox_hi: list[float] | None = None,
         norm_order: int = 2,
         neighbor_agg_fn: str = "min",
     ) -> Tensor:
+        """Compute field-diversity loss over the given latent population.
+
+        Args:
+            model: SDF network with latent-concat support.
+            Z: Latent population tensor of shape (N, z_dim).
+            num_points: Number of random sample points.
+            bbox_lo: Per-axis lower bounds [x_lo, y_lo, z_lo] in mm.
+                Defaults to outer_prism bounds from get_outer_prism_bounds_mm().
+            bbox_hi: Per-axis upper bounds [x_hi, y_hi, z_hi] in mm.
+                Defaults to outer_prism bounds from get_outer_prism_bounds_mm().
+            norm_order: Lp norm order for field distance.
+            neighbor_agg_fn: Aggregation over neighbours ("min" or "mean").
+
+        Returns:
+            Scalar diversity loss tensor.
+        """
         if not isinstance(model, SupportsLatentConcat):
             return torch.zeros((), device=self._device, dtype=torch.float32)
         if Z is None:
@@ -42,7 +60,18 @@ class FieldDiversityV0:
         if Z.shape[0] <= 1:
             return torch.zeros((), device=Z.device, dtype=torch.float32)
 
-        points = (torch.rand(num_points, 3, device=Z.device) - 0.5) * bbox_size
+        # Per-axis non-cubic sampling matching the outer prism (default = outer_prism bounds in mm).
+        # Previous implementation used a scalar `bbox_size` creating a cube, which wasted ~75%
+        # of samples outside the actual car volume (Y and Z axes are much narrower than X).
+        if bbox_lo is None or bbox_hi is None:
+            _prism = get_outer_prism_bounds_mm()
+            _lo = bbox_lo if bbox_lo is not None else [_prism["x"][0], _prism["y"][0], _prism["z"][0]]
+            _hi = bbox_hi if bbox_hi is not None else [_prism["x"][1], _prism["y"][1], _prism["z"][1]]
+        else:
+            _lo, _hi = bbox_lo, bbox_hi
+        lo = torch.tensor(_lo, device=Z.device, dtype=torch.float32)
+        hi = torch.tensor(_hi, device=Z.device, dtype=torch.float32)
+        points = lo + torch.rand(num_points, 3, device=Z.device) * (hi - lo)
         field_values: list[Tensor] = []
         for i in range(Z.shape[0]):
             model.set_latent_vector(Z[i])

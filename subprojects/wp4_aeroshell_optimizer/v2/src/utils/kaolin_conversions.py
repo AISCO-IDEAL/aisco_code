@@ -49,8 +49,8 @@ def get_diff_mesh(
             int(prism["x"][1]),
             int(prism["y"][0]),
             int(prism["y"][1]),
-            int(prism["z_mesh"][0]),
-            int(prism["z_mesh"][1]),
+            int(prism["z"][0]),
+            int(prism["z"][1]),
         ]
     # torch.use_deterministic_algorithms(True) # interferes with WP3 #aalthaus #vdiekmann  # noqa: ERA001
     torch.manual_seed(42)  # Set a fixed seed
