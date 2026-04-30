@@ -1,0 +1,42 @@
+{
+  "_comment": "Hand-written whitelist of GUI-editable config parameters. Each entry under 'configs' keys by the config filename (relative to wp4/v2/configs/). 'params' lists editable leaves. Supported types: int, float, bool, string, enum (with 'choices'). Add 'min'/'max' for numeric bounds.",
+  "configs": {
+    "training_v0_config.yaml": {
+      "label": "Training",
+      "params": [
+        {
+          "path": "training_params.num_epochs",
+          "label": "Number of epochs",
+          "type": "int",
+          "min": 1,
+          "max": 5000,
+          "ui": "number"
+        },
+        {
+          "path": "training_params.learning_rate",
+          "label": "Learning rate",
+          "type": "float",
+          "min": 1e-7,
+          "max": 1.0,
+          "ui": "number"
+        },
+        {
+          "path": "training_params.mesh_save_interval",
+          "label": "Mesh save interval (epochs)",
+          "type": "int",
+          "min": 1,
+          "max": 1000,
+          "ui": "number"
+        },
+        {
+          "path": "training_params.gradient_conflict_cadence",
+          "label": "Gradient conflict cadence (0 = off)",
+          "type": "int",
+          "min": 0,
+          "max": 1000,
+          "ui": "number"
+        }
+      ]
+    }
+  }
+}
