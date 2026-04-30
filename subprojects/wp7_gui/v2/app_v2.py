@@ -1027,7 +1027,7 @@ else:
 
 def main() -> None:
     host = "0.0.0.0"
-    port = 8002
+    port = 8000
 
     print("--- AISCO GUI Server ---")
     print(f"Serving static files from: {TEMPLATES_DIR}")

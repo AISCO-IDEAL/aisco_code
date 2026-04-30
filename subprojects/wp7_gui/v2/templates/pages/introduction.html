@@ -87,6 +87,71 @@
             line-height: 1.45;
         }
 
+        .jump-controls {
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .jump-button {
+            border: 1px solid #981818;
+            background: linear-gradient(180deg, #c22a2a 0%, #a11d1d 100%);
+            color: #fff;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .magic-picture {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            width: min(52vw, 560px);
+            opacity: 0;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        .magic-picture img {
+            display: block;
+            width: 100%;
+            height: auto;
+            border-radius: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.78);
+            box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
+        }
+
+        .magic-picture.active {
+            animation: magicJump 3.2s cubic-bezier(0.2, 0.85, 0.2, 1) forwards;
+        }
+
+        @keyframes magicJump {
+            0% {
+                opacity: 0;
+                transform: translate(95vw, 95vh) scale(0.72) rotate(-12deg);
+            }
+
+            20% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1.04) rotate(1deg);
+            }
+
+            78% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1) rotate(0deg);
+            }
+
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.95);
+            }
+        }
+
         .people-section {
             align-self: end;
         }
@@ -115,6 +180,7 @@
             padding: 8px;
             border: 1px solid var(--border);
             box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            transition: transform 140ms ease, box-shadow 180ms ease, border-color 180ms ease;
         }
 
         .person-card img {
@@ -159,6 +225,14 @@
             .person-card {
                 width: min(46%, 180px);
             }
+
+            .jump-controls {
+                justify-content: center;
+            }
+
+            .magic-picture {
+                width: min(82vw, 420px);
+            }
         }
     </style>
 </head>
@@ -177,17 +251,20 @@
                     independent subsidiary led entirely by Freelancers, while the AISCO Focus Project is driven by
                     Focus Students with support from Freelancers and under supervision of Prof. Fuge's IDEAL Lab.
                 </p>
+                <div class="jump-controls" aria-label="Magic picture action">
+                    <button id="jumpButton" class="jump-button" type="button">Use 3 GPUs</button>
+                </div>
             </article>
 
             <section class="people-section" aria-label="Supervision">
                 <h2 class="people-title">SUPERVISION</h2>
                 <div class="people-row">
-                    <figure class="person-card">
+                    <figure id="mark-card" class="person-card">
                         <img src="/pictures/mark.png" alt="Mark portrait">
                         <figcaption class="person-name">Prof. Dr. Mark Fuge</figcaption>
                     </figure>
 
-                    <figure class="person-card">
+                    <figure id="soheyl-card" class="person-card">
                         <img src="/pictures/soheyl.png" alt="Soheyl portrait">
                         <figcaption class="person-name">Dr. Soheyl Massoudi</figcaption>
                     </figure>
@@ -195,6 +272,31 @@
             </section>
         </section>
     </main>
+
+    <div id="magicPicture" class="magic-picture" aria-hidden="true">
+        <img src="/pictures/magic.png" alt="">
+    </div>
+
+    <script>
+        const jumpButton = document.getElementById("jumpButton");
+        const magicPicture = document.getElementById("magicPicture");
+        let hideTimer = 0;
+
+        function showMagicPicture() {
+            window.clearTimeout(hideTimer);
+            magicPicture.classList.remove("active");
+
+            // Force reflow so repeated clicks restart the animation.
+            void magicPicture.offsetWidth;
+            magicPicture.classList.add("active");
+
+            hideTimer = window.setTimeout(() => {
+                magicPicture.classList.remove("active");
+            }, 3200);
+        }
+
+        jumpButton.addEventListener("click", showMagicPicture);
+    </script>
 </body>
 
 </html>
