@@ -166,6 +166,16 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
         # Update wandb dashboard with the full patched master config
         wandb.config.update(get_master_config(), allow_val_change=True)
 
+    # Re-read flags that may have been overridden by the sweep so the rest of
+    # main() respects the overridden values (e.g. latent_space, run_locally).
+    _raw_latent_space = general_config["general_info"].get("latent_space", False)
+    if isinstance(_raw_latent_space, str):
+        latent_space = _raw_latent_space.strip().lower() in {"true", "1", "yes", "on"}
+    else:
+        latent_space = bool(_raw_latent_space)
+    _raw_run_locally = general_config["general_info"].get("run_locally", "False")
+    run_locally = str(_raw_run_locally).strip().lower() in {"true", "1", "yes", "on"}
+
     if verbose:
         print("Successfully loaded and registered all configs")
 
