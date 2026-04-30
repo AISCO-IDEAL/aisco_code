@@ -5,6 +5,7 @@ process + log file, and kills the process group on stop(). Thread-safe.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import signal
@@ -97,10 +98,8 @@ class ProcessManager:
             try:
                 os.killpg(self._process.pid, signal.SIGTERM)
             except Exception:
-                try:
+                with contextlib.suppress(Exception):
                     self._process.terminate()
-                except Exception:
-                    pass
             return {"status": "stopping", "pid": self._process.pid, "message": "Sent termination signal"}
 
     def get_state(self) -> RunState:

@@ -52,7 +52,7 @@ class AssemblySelectionService:
                 raise HTTPException(status_code=500, detail={"message": "Failed to load GUI_assembly.py spec"})
             module = importlib.util.module_from_spec(spec)
             try:
-                spec.loader.exec_module(module)  # type: ignore[union-attr]
+                spec.loader.exec_module(module)
             except Exception as exc:
                 raise HTTPException(status_code=500, detail={"message": f"Failed to import GUI_assembly.py: {exc}"}) from exc
             self._module = module

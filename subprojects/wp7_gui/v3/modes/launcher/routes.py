@@ -1,6 +1,7 @@
 """Launcher mode router — page views + API endpoints."""
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import yaml
@@ -116,9 +117,9 @@ def run_start(payload: RunStartRequest) -> JSONResponse:
         try:
             assembly_id = int(str(payload.assembly_id).strip())
         except (TypeError, ValueError):
-            raise HTTPException(status_code=400, detail={"message": "assembly_id must be an integer"})
+            raise HTTPException(status_code=400, detail={"message": "assembly_id must be an integer"}) from None
         if not 1 <= assembly_id <= 51:
-            raise HTTPException(status_code=400, detail={"message": "assembly_id must be 1–51"})
+            raise HTTPException(status_code=400, detail={"message": "assembly_id must be 1-51"})
 
     extra_args: list[str] = []
     if payload.cfg_folder:
@@ -200,7 +201,6 @@ def run_artifacts() -> dict[str, Any]:
 @router.get("/api/run/stream/logs")
 async def run_stream_logs() -> StreamingResponse:
     async def _gen():
-        import asyncio
         last_size = 0
         while True:
             state = _process_manager.get_state()
@@ -226,7 +226,6 @@ async def run_stream_logs() -> StreamingResponse:
 @router.get("/api/run/stream/artifacts")
 async def run_stream_artifacts() -> StreamingResponse:
     async def _gen():
-        import asyncio
         seen: dict[str, float] = {}
         while True:
             state = _process_manager.get_state()

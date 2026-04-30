@@ -74,13 +74,13 @@ def has_display_artifacts(run_path: Path) -> bool:
 def collect_run_dirs(storage_root: Path) -> list[Path]:
     if not storage_root.exists():
         return []
-    run_dirs: list[Path] = []
-    for model_dir in storage_root.iterdir():
-        if not model_dir.is_dir():
-            continue
-        for child in model_dir.iterdir():
-            if child.is_dir() and ((child / "meshes").exists() or find_mesh_assembly_dir(child) is not None):
-                run_dirs.append(child)
+    run_dirs: list[Path] = [
+        child
+        for model_dir in storage_root.iterdir()
+        if model_dir.is_dir()
+        for child in model_dir.iterdir()
+        if child.is_dir() and ((child / "meshes").exists() or find_mesh_assembly_dir(child) is not None)
+    ]
     return run_dirs
 
 
@@ -101,17 +101,17 @@ def detect_current_run_dir(storage_root: Path) -> Path | None:
 def list_all_runs(storage_root: Path) -> list[dict[str, object]]:
     """Return all run dirs with metadata, sorted newest-first."""
     run_dirs = collect_run_dirs(storage_root)
-    result = []
-    for d in sorted(run_dirs, key=lambda p: p.stat().st_mtime, reverse=True):
-        result.append({
+    return [
+        {
             "path": str(d),
             "name": d.name,
             "model_hash": d.parent.name,
             "mtime": d.stat().st_mtime,
             "has_gifs": has_any_gif_artifacts(d),
             "has_meshes": (d / "meshes").exists(),
-        })
-    return result
+        }
+        for d in sorted(run_dirs, key=lambda p: p.stat().st_mtime, reverse=True)
+    ]
 
 
 def extract_epoch(filename: str) -> int | None:

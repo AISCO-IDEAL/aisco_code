@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import unquote
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -57,20 +58,19 @@ def api_list_runs() -> dict[str, Any]:
     return {"storage_root": str(storage_root), "runs": runs}
 
 
-@router.get("/api/runs/{run_id}/artifacts")
+@router.get("/api/runs/{run_id:path}/artifacts")
 def api_run_artifacts(run_id: str) -> dict[str, Any]:
     """List artifacts for a specific finished run.
 
     run_id is the URL-encoded relative path from storage_root:
     e.g.  model_hash%2Fwandb_run_name
     """
-    from urllib.parse import unquote
     storage_root = _storage_root()
     run_dir = (storage_root / unquote(run_id)).resolve()
     try:
         run_dir.relative_to(storage_root.resolve())
     except ValueError:
-        raise HTTPException(status_code=400, detail={"message": "run_id is outside storage root"})
+        raise HTTPException(status_code=400, detail={"message": "run_id is outside storage root"}) from None
     if not run_dir.is_dir():
         raise HTTPException(status_code=404, detail={"message": "Run directory not found"})
     return list_artifacts(run_dir, storage_root)

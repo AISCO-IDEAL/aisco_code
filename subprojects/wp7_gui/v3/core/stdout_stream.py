@@ -31,7 +31,7 @@ def parse_epoch(log_text: str) -> int:
     for pattern in _EPOCH_PATTERNS:
         matches = pattern.findall(log_text)
         if matches:
-            best = max(best, max(int(m) for m in matches))
+            best = max(best, *[int(m) for m in matches])
     return best
 
 

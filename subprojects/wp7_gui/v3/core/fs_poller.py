@@ -42,7 +42,7 @@ def poll_once(
         candidate = run_dir / subdir
         if not candidate.is_dir():
             continue
-        kind = "mesh" if pattern.endswith(".ply") or pattern.endswith(".poly") else "gif"
+        kind = "mesh" if pattern.endswith((".ply", ".poly")) else "gif"
         for p in candidate.glob(pattern):
             key = str(p)
             try:

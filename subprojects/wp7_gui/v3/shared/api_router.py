@@ -5,7 +5,7 @@ Mounted at /api so both launcher and viewer pages can fetch
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import FileResponse
 
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
