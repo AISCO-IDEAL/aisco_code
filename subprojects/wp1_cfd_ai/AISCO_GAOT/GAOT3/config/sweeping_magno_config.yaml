@@ -1,0 +1,36 @@
+program: subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/main.py
+
+# Base arguments for main.py
+command:
+  - ${env}
+  - python
+  - ${program}
+  - -c
+  - subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml
+  - ${args}
+
+method: grid
+metric:
+  name: val/loss
+  goal: minimize
+
+project: WP1_drag
+entity: aisco
+name: "wp1_gaot_magno_layers_sweep"
+
+parameters:
+  # Encoder-side GNO kernel MLP hidden layers.
+  model.args.magno.in_gno_channel_mlp_hidden_layers:
+    values:
+      - [64]
+      - [64, 64]
+      - [64, 64, 64]
+      - [128, 128]
+
+  # Decoder-side GNO kernel MLP hidden layers.
+  model.args.magno.out_gno_channel_mlp_hidden_layers:
+    values:
+      - [64]
+      - [64, 64]
+      - [64, 64, 64]
+      - [128, 128]
