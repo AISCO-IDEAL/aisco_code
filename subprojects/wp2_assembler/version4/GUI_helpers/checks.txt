@@ -1,1 +1,21 @@
-OK: no check warnings.
+[WARNING] Collision: wheel_0 and wheel_3 bounding boxes overlap.
+[WARNING] Collision: wheel_0 and wheel_4 bounding boxes overlap.
+[WARNING] Collision: wheel_0 and wheel_5 bounding boxes overlap.
+[WARNING] Collision: wheel_0 and wheel_6 bounding boxes overlap.
+[WARNING] Collision: wheel_0 and wheel_7 bounding boxes overlap.
+[WARNING] Collision: wheel_0 and wheel_8 bounding boxes overlap.
+[WARNING] Collision: wheel_3 and wheel_4 bounding boxes overlap.
+[WARNING] Collision: wheel_3 and wheel_5 bounding boxes overlap.
+[WARNING] Collision: wheel_3 and wheel_6 bounding boxes overlap.
+[WARNING] Collision: wheel_3 and wheel_7 bounding boxes overlap.
+[WARNING] Collision: wheel_3 and wheel_8 bounding boxes overlap.
+[WARNING] Collision: wheel_4 and wheel_5 bounding boxes overlap.
+[WARNING] Collision: wheel_4 and wheel_6 bounding boxes overlap.
+[WARNING] Collision: wheel_4 and wheel_7 bounding boxes overlap.
+[WARNING] Collision: wheel_4 and wheel_8 bounding boxes overlap.
+[WARNING] Collision: wheel_5 and wheel_6 bounding boxes overlap.
+[WARNING] Collision: wheel_5 and wheel_7 bounding boxes overlap.
+[WARNING] Collision: wheel_5 and wheel_8 bounding boxes overlap.
+[WARNING] Collision: wheel_6 and wheel_7 bounding boxes overlap.
+[WARNING] Collision: wheel_6 and wheel_8 bounding boxes overlap.
+[WARNING] Collision: wheel_7 and wheel_8 bounding boxes overlap.
