@@ -1,125 +1,189 @@
+"""Render the surface mesh coloured by per-vertex `dL/dv . n` for one loss.
+
+The visualised quantity is the dot product between each vertex's outward normal
+and the gradient of a single loss (or the weighted total) with respect to that
+vertex. Positive values (loss wants to push the surface outward) are rendered
+green, negative values (push inward) are rendered red.
+
+Per-loss data flow:
+    ParentLoss.last_vertice_grads          (set by losses that use MeshSDFExtractor)
+        -> TotalLossV2.collect_vertex_grads_for_visualisation()
+        -> diversity_manager._render injects into optimization_state
+        -> MeshSDFGrads.update reads optimization_state["vertice_grads_per_loss"][loss_key]
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
 import torch
 
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.logging_lib.image_uploads import upload_neural_renderer_gif
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.rendering_mode_base_class import RenderingMode
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visualiser import Visualiser
 
+# Sentinel used to select the weighted-sum gradient instead of a single loss.
+TOTAL_KEY = "__total__"
+
 
 class MeshSDFGrads(RenderingMode):
-    def __init__(self, visualiser: Visualiser, intensity: float = 1.0):
-        self.intensity = intensity
-        config = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")["detached_modes"]["MeshSDF_grads"]["config"]
+    """Per-vertex gradient visualiser for one loss key.
+
+    Required config keys (in addition to RenderingMode's camera_position / look_at / render_mode):
+        loss_key:  loss name to visualise, or "__total__" for the weighted sum.
+        intensity: colour-saturation scale (default 1.0).
+    """
+
+    def __init__(self, visualiser: Visualiser, config: dict[str, Any]) -> None:
         super().__init__(visualiser, config)
+        self.loss_key: str = config.get("loss_key", TOTAL_KEY)
+        self.intensity: float = float(config.get("intensity", 1.0))
 
-    def update(self, optimization_state: dict) -> None:
+    def _select_vertice_grads(self, optimization_state: dict[str, Any]) -> torch.Tensor | None:
+        """Return the (V, 3) grad tensor for `self.loss_key`, or None if missing."""
+        if self.loss_key == TOTAL_KEY:
+            return optimization_state.get("vertice_grads_total")
+        per_loss = optimization_state.get("vertice_grads_per_loss") or {}
+        return per_loss.get(self.loss_key)
+
+    def _select_mesh(
+        self, optimization_state: dict[str, Any]
+    ) -> tuple[torch.Tensor, torch.Tensor] | None:
+        """Return (verts, faces) for `self.loss_key`.
+
+        For per-loss panels we prefer the loss's own mesh (stashed under
+        `vertice_meshes_per_loss[loss_key]`) so the gradient tensor and the
+        rendered geometry line up even when losses use different mesh
+        resolutions. Falls back to the primary mesh in `optimization_state`.
         """
-        Render the mesh with per-face colors based on the dot product between vertex normals and SDF gradients.
+        if self.loss_key != TOTAL_KEY:
+            meshes = optimization_state.get("vertice_meshes_per_loss") or {}
+            entry = meshes.get(self.loss_key)
+            if entry is not None:
+                v, f = entry
+                if v is not None and f is not None:
+                    return v, f
+        v = optimization_state.get("vertices")
+        f = optimization_state.get("faces")
+        if v is None or f is None:
+            return None
+        return v, f
 
-        Inputs:
-            optimization_state: dict containing "vertices", "faces", and "vertice_grads"
-            vertices: (V, 3) tensor of vertex positions
-            faces: (F, 3) tensor of vertex indices for each face
-            vertice_grads: (V, 3) tensor of gradients of the loss w.r.t. vertex positions, ideally extracted from the MeshSDF loss component
-        """
-
+    def update(self, optimization_state: dict[str, Any]) -> None:
         if not torch.cuda.is_available():
             return
 
-        vertices = optimization_state["vertices"].detach()
-        faces = optimization_state["faces"].detach()
-        vertice_grads = optimization_state["vertice_grads"].detach()
+        vertice_grads = self._select_vertice_grads(optimization_state)
+        if vertice_grads is None:
+            if not getattr(self, "_diag_logged_miss", False):
+                self._diag_logged_miss = True
+                has_total = "vertice_grads_total" in optimization_state
+                per_loss_keys = list((optimization_state.get("vertice_grads_per_loss") or {}).keys())
+                print(
+                    f"[VisuDiag MeshSDFGrads/{self.loss_key}] no grads available. "
+                    f"has_total={has_total} per_loss_keys={per_loss_keys}"
+                )
+            return  # No grad available this step; silently skip a frame.
 
+        if not getattr(self, "_diag_logged_hit", False):
+            self._diag_logged_hit = True
+            print(f"[VisuDiag MeshSDFGrads/{self.loss_key}] first render OK, grads shape={tuple(vertice_grads.shape)}")
+
+        mesh = self._select_mesh(optimization_state)
+        if mesh is None:
+            return
+        vertices, faces = mesh
+        vertices = vertices.detach()
+        faces = faces.detach()
         if faces.numel() == 0:
-            print(f"  {self.__class__.__name__}: No faces to render, skipping frame")
+            return
+        if vertice_grads.shape[0] != vertices.shape[0]:
+            # Mesh / grads mismatch (shouldn't happen now that per-loss meshes
+            # are tracked, but stay defensive so one bad loss can't kill the
+            # whole renderer).
+            if not getattr(self, "_diag_logged_shape", False):
+                self._diag_logged_shape = True
+                print(
+                    f"[VisuDiag MeshSDFGrads/{self.loss_key}] mesh/grads mismatch "
+                    f"verts={tuple(vertices.shape)} grads={tuple(vertice_grads.shape)}, skipping."
+                )
             return
 
-        # compute unit normals for each VERTEX by averaging face normals of adjacent faces
-        face_normals = torch.cross(
-            vertices[faces][:, 1] - vertices[faces][:, 0],
-            vertices[faces][:, 2] - vertices[faces][:, 0],
-            dim=-1,
-        )
+        # Vertex normals = average of incident face normals.
+        e1 = vertices[faces[:, 1]] - vertices[faces[:, 0]]
+        e2 = vertices[faces[:, 2]] - vertices[faces[:, 0]]
+        face_normals = torch.cross(e1, e2, dim=-1)
         face_normals = face_normals / (face_normals.norm(dim=-1, keepdim=True) + 1e-8)
         vertex_normals = torch.zeros_like(vertices)
-        for i in range(faces.shape[0]):
-            face = faces[i]
-            normal = face_normals[i]
-            vertex_normals[face] += normal
-
-        # ensure normals are unit vectors
+        vertex_normals.index_add_(0, faces[:, 0], face_normals)
+        vertex_normals.index_add_(0, faces[:, 1], face_normals)
+        vertex_normals.index_add_(0, faces[:, 2], face_normals)
         vertex_normals = vertex_normals / (vertex_normals.norm(dim=-1, keepdim=True) + 1e-8)
 
-        # take dot products between unit normals and non-unit vertice_grads to get per-face scalar values for visualisation
-        dot_products = torch.einsum("ij,ij->i", vertex_normals, vertice_grads)
+        # Per-vertex scalar: positive => grad pushes surface outward.
+        dot = torch.einsum("ij,ij->i", vertex_normals, vertice_grads.detach())
+        # Replace any NaN/Inf (degenerate normals on dense meshes can produce them)
+        # before normalising; otherwise the whole frame can come out black.
+        dot = torch.nan_to_num(dot, nan=0.0, posinf=0.0, neginf=0.0)
+        norm = torch.clamp(dot / (dot.abs().max() + 1e-8) * self.intensity, -1.0, 1.0)
 
-        # Make color range go from a standard dark grey (zero, in the middle of the range) to light yellow (positive, max value) and dark blue (negative, min value)
+        base = torch.tensor([0.5, 0.5, 0.5], device=faces.device)
+        out_color = torch.tensor([0.25, 1.0, 0.25], device=faces.device)  # green: outward push
+        in_color = torch.tensor([1.0, 0.0, 0.0], device=faces.device)     # red:   inward push
+        # Proper bidirectional lerp: norm=+1 → out_color, 0 → base, -1 → in_color.
+        # The previous formula `base + norm * (out - in)` produced negative / >1
+        # RGB values which the rasteriser renders as black, especially on dense
+        # meshes (e.g. the 50 k-vertex GAOT mesh) where grads have wider tails.
+        norm_unsq = norm.unsqueeze(-1)
+        pos = norm_unsq.clamp(min=0.0)
+        neg = (-norm_unsq).clamp(min=0.0)
+        colors = (
+            base.unsqueeze(0)
+            + pos * (out_color - base).unsqueeze(0)
+            + neg * (in_color - base).unsqueeze(0)
+        )
+        colors = torch.clamp(colors, 0.0, 1.0)
 
-        base_grey = torch.tensor([0.5, 0.5, 0.5], device=faces.device)
-        max_color = torch.tensor([0.25, 1.0, 0.25], device=faces.device)  # Green for pushing out
-        min_color = torch.tensor([1, 0.0, 0.0], device=faces.device)  # Red for pushing in
-
-        norm = dot_products / (dot_products.abs().max() + 1e-8)
-        norm = torch.clamp(norm * self.intensity, -1.0, 1.0)
-
-        colors = base_grey.unsqueeze(0) + norm.unsqueeze(-1) * (max_color - min_color).unsqueeze(0)
-        self.visualiser.vertex_colors_to_textures(vertex_colors=colors, faces=faces)
-
+        textures = self.visualiser.vertex_colors_to_textures(vertex_colors=colors, faces=faces)
         image = self._render(
             vertices=vertices,
             faces=faces,
-            textures=self.visualiser.vertex_colors_to_textures(vertex_colors=colors, faces=faces),
+            textures=textures,
             mode="rgb",
             camera_position=self.camera_position,
             camera_direction=self.camera_direction,
         )
-        # Store the rendered image (image[0] if batch dimension exists)
         if hasattr(image, "__len__") and len(image) > 0:
             self.frame_storage.append(image[0])
         else:
             self.frame_storage.append(image)
 
-    def finalize(self, output_dir, file_name="MeshSDF_grads.gif", delete=True):
-        """
-        Save all rendered frames as GIF and sample PNGs.
-
-        Args:
-            output_dir: Directory for saving results (mode-specific subdirectory)
-            file_name: Name of the output GIF file (default: "rendering.gif")
-            delete: If True, deletes stored frames after saving (default: False)
-        """
+    def finalize(self, output_dir, file_name: str | None = None, delete: bool = True) -> None:
+        """Save GIF + first/last PNG, upload to wandb, optionally clear frames."""
         if not self.frame_storage:
-            print(f"  {self.__class__.__name__}: No frames to save")
             return
-
-        # Create GIF animation
+        file_name = file_name or f"MeshSDF_grads_{self.loss_key}.gif"
         gif_path = output_dir / file_name
         self._frames_to_gif(gif_path, fps=self.fps)
-        print(f"    Saved GIF: {gif_path}")
-
-        # log GIF to wandb
         try:
-            upload_neural_renderer_gif(gif_path, key=f"animations/{self.__class__.__name__}_{file_name}", step=0)
+            upload_neural_renderer_gif(gif_path, key=f"animations/MeshSDFGrads/{self.loss_key}", step=0)
         except Exception as e:
-            print(f"    Warning: Failed to upload {file_name} to wandb: {e}")
-        # Save first frame as reference
-        first_frame_path = output_dir / f"{file_name}_first_frame.png"
-        self._save_image(self.frame_storage[0], first_frame_path)
-
-        # Save last frame as reference
-        last_frame_path = output_dir / f"{file_name}_final_frame.png"
-        self._save_image(self.frame_storage[-1], last_frame_path)
-        # clear frame storage to free memory
+            print(f"  MeshSDFGrads[{self.loss_key}]: wandb gif upload failed: {e}")
+        self._save_image(self.frame_storage[0], output_dir / f"{file_name}_first_frame.png")
+        self._save_image(self.frame_storage[-1], output_dir / f"{file_name}_final_frame.png")
         if delete:
             self.clear_frames()
-        print(f"    Saved sample frames to {output_dir}")
 
-    def log_single_image_to_wandb(self, optimization_state: dict, epoch_name: int) -> None:
+    def log_single_image_to_wandb(self, optimization_state: dict[str, Any], epoch_name: int) -> None:
+        """Render one frame and log it as a wandb image for this loss key."""
         try:
             self.update(optimization_state)
             if not self.frame_storage:
                 return
-            wandb.log({"epoch": epoch_name, "Aero-Gradients": wandb.Image(self.frame_storage[-1])}, step=int(epoch_name))
+            wandb.log(
+                {"epoch": epoch_name, f"Aero-Gradients/{self.loss_key}": wandb.Image(self.frame_storage[-1])},
+                step=int(epoch_name),
+            )
         except Exception as e:
-            print(f"Couldnt produce Gradient-immage in Epoch {epoch_name} for Reason {e}")
+            print(f"MeshSDFGrads[{self.loss_key}]: per-step wandb log failed at epoch {epoch_name}: {e}")

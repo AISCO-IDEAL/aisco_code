@@ -112,6 +112,8 @@ class DevelopabilityV0(ParentLoss):
                 return torch.tensor(0.0, device=self.device)
             return self.energy_fn(vertices.double(), faces).to(dtype=torch.float32)
 
+        # MeshSDFGrads visualisation grabs dL/dv generically via autograd in TotalLossV2,
+        # so no per-loss stash is needed here.
         _verts, _faces, _raw_loss, surrogate_loss, _ = self.mesh_extractor.extract_and_compute_loss(
             sdf_model=model,
             loss_fn=_developability_loss_fn,

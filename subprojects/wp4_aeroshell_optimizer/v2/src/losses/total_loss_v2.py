@@ -123,6 +123,13 @@ class TotalLossV2:
         self.drag_default_value: float = gi["cse_defaults"]["drag"]
         self._cse_prefactors: dict[str, float] = gi.get("cse_prefactors", {})
 
+        # Visualisation state — populated each compute() by _extract_primary_visu_mesh
+        # and _capture_vertex_grads_via_autograd. Read by the renderer via
+        # collect_vertex_grads_for_visualisation().
+        self._visu_primary_v: torch.Tensor | None = None
+        self._visu_primary_f: torch.Tensor | None = None
+        self._visu_per_loss_grads: dict[str, torch.Tensor] = {}
+
         self._init_active_losses()
 
     def _init_active_losses(self) -> None:  # noqa: PLR0912, PLR0915
@@ -347,6 +354,111 @@ class TotalLossV2:
         """Category names for active constraints, in YAML order."""
         return list(self._constraint_by_category.keys())
 
+    def collect_vertex_grads_for_visualisation(
+        self,
+        weights_by_name: dict[str, float] | None = None,
+    ) -> dict[str, Any] | None:
+        """Return per-loss + total dL/dv captured during the last `compute()` call.
+
+        Returns None if no loss had an autograd path to the primary mesh. Otherwise:
+            {
+              "vertices":  (V, 3) primary mesh vertices,
+              "faces":     (F, 3) primary mesh faces,
+              "per_loss":  {loss_name: (V, 3) dL/dv},
+              "total":     (V, 3) Σ_k w_k · dL/dv_k,
+            }
+
+        The "primary mesh" is owned by TotalLossV2 itself: it is extracted once via
+        any active `MeshSDFExtractor` (see `_extract_primary_visu_mesh`) and reused
+        by every loss that goes through that extractor. Losses that don't sample on
+        the SDF mesh (eikonal, smoothness, …) have no autograd path to it; they're
+        silently absent from `per_loss` rather than producing a misleading panel.
+        """
+        if not getattr(self, "_visu_diag_logged", False):
+            self._visu_diag_logged = True
+            v = self._visu_primary_v
+            v_state = "None" if v is None else f"shape={tuple(v.shape)} requires_grad={v.requires_grad} grad_fn={v.grad_fn is not None}"
+            print(
+                f"[VisuDiag V2] primary_mesh={v_state} "
+                f"per_loss_grads_keys={list(self._visu_per_loss_grads.keys())}"
+            )
+        if not self._visu_per_loss_grads or self._visu_primary_v is None:
+            return None
+        # Build "total" only from grads matching the primary mesh shape (losses
+        # with their own MeshSDFExtractor at a different resolution can't be
+        # broadcast-summed). Per-loss panels render on each loss's own mesh
+        # (see `per_loss_meshes`), so they are returned in full regardless.
+        n_primary = int(self._visu_primary_v.shape[0])
+        weights = weights_by_name or {}
+        total: torch.Tensor | None = None
+        for name, g in self._visu_per_loss_grads.items():
+            if g.shape[0] != n_primary:
+                continue
+            w = float(weights.get(name, 1.0))
+            total = g * w if total is None else total + g * w
+        return {
+            "vertices": self._visu_primary_v,
+            "faces": self._visu_primary_f,
+            "per_loss": dict(self._visu_per_loss_grads),
+            "per_loss_meshes": dict(getattr(self, "_visu_per_loss_meshes", {})),
+            "total": total if total is not None else torch.zeros_like(self._visu_primary_v),
+        }
+
+    def _extract_primary_visu_mesh(self, model: SupportsModelContract) -> None:
+        """Extract one primary mesh for the visualiser via any available extractor.
+
+        Reuses the result of `_inject_shared_meshes` when it ran (≥ 2 extractors).
+        Otherwise calls `extract_mesh` on whichever extractor is registered and
+        injects the result back into that extractor with `set_shared_mesh`, so the
+        single mesh-using loss reuses the exact same `(verts, faces)` tensors —
+        which means `autograd.grad(L_k, verts)` is well-defined for that loss.
+        """
+        self._visu_primary_v = None
+        self._visu_primary_f = None
+        extractors = self._find_mesh_extractors()
+        if not extractors:
+            return
+        # If _inject_shared_meshes already extracted a primary, reuse it.
+        for ext in extractors.values():
+            shared = getattr(ext, "_shared_vertices", None)
+            shared_f = getattr(ext, "_shared_faces", None)
+            if shared is not None and shared_f is not None:
+                self._visu_primary_v = shared
+                self._visu_primary_f = shared_f
+                return
+        # Otherwise extract once with the first extractor and pin it.
+        first_ext = next(iter(extractors.values()))
+        verts, faces = first_ext.extract_mesh(model)
+        first_ext.set_shared_mesh(verts, faces)
+        self._shared_mesh_extractors = extractors  # ensure clear_shared_mesh() runs.
+        self._visu_primary_v = verts
+        self._visu_primary_f = faces
+
+    def _capture_vertex_grads_via_autograd(self, bundle: RawLossBundle) -> None:
+        """Collect dL/dv for every loss whose extractor produced one this step.
+
+        `MeshSDFExtractor.extract_and_compute_loss` already runs
+        `autograd.grad(loss, v_for_loss)` internally and stashes the result on
+        the extractor as `last_dL_dv` (vertices match the shared primary mesh).
+        We just harvest those tensors here, keyed by loss name. Losses that
+        don't go through `extract_and_compute_loss` (eikonal, smoothness, …)
+        leave `last_dL_dv = None` and are silently absent from the result.
+
+        The `bundle` argument is kept for API compatibility but unused.
+        """
+        del bundle
+        self._visu_per_loss_grads = {}
+        self._visu_per_loss_meshes: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
+        for loss_name, ext in self._find_mesh_extractors().items():
+            g = getattr(ext, "last_dL_dv", None)
+            if g is None:
+                continue
+            self._visu_per_loss_grads[loss_name] = g.detach()
+            v = getattr(ext, "last_verts", None)
+            f = getattr(ext, "last_faces", None)
+            if v is not None and f is not None:
+                self._visu_per_loss_meshes[loss_name] = (v.detach(), f.detach())
+
     def compute(
         self,
         model: SupportsModelContract,
@@ -367,6 +479,7 @@ class TotalLossV2:
             grouped by category.
         """
         self._inject_shared_meshes(model)
+        self._extract_primary_visu_mesh(model)
         bundle = RawLossBundle()
         self._skipped_log_zeros: dict[str, float] = {}
         try:
@@ -398,6 +511,11 @@ class TotalLossV2:
                         target_dict[category] = instance.get_loss(model, epoch_name)
         finally:
             self._clear_shared_meshes()
+
+        # Visualisation hook: capture per-loss dL/dv against the primary mesh.
+        # Cheap (one cached backward subgraph per active loss); silently empty for
+        # losses with no autograd path to the SDF mesh.
+        self._capture_vertex_grads_via_autograd(bundle)
 
         return bundle
 
