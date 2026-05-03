@@ -45,8 +45,11 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     """Load a PLY mesh, transform to AISCO convention, and return (verts, faces, bbox_extent).
 
     Applies three deterministic transforms after scaling:
-    1. Axis permutation [2, 0, 1]: PLY_Z→AISCO_X (length), PLY_X→AISCO_Y (width),
-       PLY_Y→AISCO_Z (height).
+    1. Axis permutation (data-driven): the PLY axis with the largest coordinate
+       range maps to AISCO_X (length); the axis with the second-largest range maps
+       to AISCO_Y (width); the remaining axis maps to AISCO_Z (height).  If the
+       PLY is already correctly oriented (largest extent already on axis 0, second
+       on axis 1) no reordering takes place.
     2. X centering: shifts so that the car is symmetrically centred on the X axis.
     3. Z grounding: shifts so that Z_min equals the outer-prism ground clearance (100mm).
 
@@ -79,8 +82,10 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     verts_np = np.array(raw_mesh.vertices, dtype="float32") * ply_scale
     faces_np = np.array(raw_mesh.faces, dtype="int64")
 
-    # --- Axis permutation: PLY_Z→AISCO_X, PLY_X→AISCO_Y, PLY_Y→AISCO_Z ---
-    verts_np = verts_np[:, [2, 0, 1]]
+    # --- Axis permutation: map largest-extent axis → X, second → Y, smallest → Z ---
+    raw_extents = verts_np.max(axis=0) - verts_np.min(axis=0)  # shape (3,)
+    perm: list[int] = list(np.argsort(raw_extents)[::-1])  # descending by extent
+    verts_np = verts_np[:, perm]
 
     # --- X centering: shift so that X_center = 0 (car centred on length axis) ---
     x_center = (float(verts_np[:, 0].max()) + float(verts_np[:, 0].min())) / 2.0
@@ -105,6 +110,7 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     y_center_after = float(ctr[1])
     print(
         f"[PLY Loader] {shape_name}: "
+        f"perm={perm}  "
         f"ext=({extents[0]:.0f},{extents[1]:.0f},{extents[2]:.0f})mm  "
         f"center=({ctr[0]:.0f},{ctr[1]:.0f},{ctr[2]:.0f})mm  "
         f"Z_min={z_min_after:.0f}mm  X_center={x_center_after:.0f}mm  Y_center={y_center_after:.0f}mm"
