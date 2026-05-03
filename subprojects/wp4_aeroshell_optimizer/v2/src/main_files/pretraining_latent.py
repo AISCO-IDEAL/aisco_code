@@ -86,6 +86,10 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     x_center = (float(verts_np[:, 0].max()) + float(verts_np[:, 0].min())) / 2.0
     verts_np[:, 0] -= x_center
 
+    # --- Y centering: shift so that Y_center = 0 (car symmetric about lateral axis) ---
+    y_center = (float(verts_np[:, 1].max()) + float(verts_np[:, 1].min())) / 2.0
+    verts_np[:, 1] -= y_center
+
     # --- Z grounding: shift so Z_min = ground_clearance (100mm) ---
     prism = get_outer_prism_bounds_mm()
     ground_clearance = abs(prism["z"][0])  # = 100.0 mm
@@ -98,11 +102,12 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     ctr = (verts_np.max(axis=0) + verts_np.min(axis=0)) / 2.0
     z_min_after = float(verts_np[:, 2].min())
     x_center_after = float(ctr[0])
+    y_center_after = float(ctr[1])
     print(
         f"[PLY Loader] {shape_name}: "
         f"ext=({extents[0]:.0f},{extents[1]:.0f},{extents[2]:.0f})mm  "
         f"center=({ctr[0]:.0f},{ctr[1]:.0f},{ctr[2]:.0f})mm  "
-        f"Z_min={z_min_after:.0f}mm  X_center={x_center_after:.0f}mm"
+        f"Z_min={z_min_after:.0f}mm  X_center={x_center_after:.0f}mm  Y_center={y_center_after:.0f}mm"
     )
 
     # --- Outer-prism violation warnings ---
