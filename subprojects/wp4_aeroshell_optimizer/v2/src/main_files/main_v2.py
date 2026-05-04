@@ -261,7 +261,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     # 4. Initialise whatever we need to run the main training loop, e.g. trainer, loss function, etc.
 
     training_config = load_config(v="v2", cfg_name=general_config["active_configs"].get("training", None))
-    diagnostic_mode: bool = training_config.get("mode", {}).get("training_mode", "diagnostic") == "diagnostic"
+    _mode_cfg: dict = training_config.get("mode", {})
+    diagnostic_mode: bool = _mode_cfg.get("training_mode", "diagnostic") == "diagnostic"
+    print_timing: bool = _mode_cfg.get("print_timing", False)
 
     # Gradient conflict tracking setup
     conflict_cadence: int = training_config["training_params"].get("gradient_conflict_cadence", 0)
@@ -392,6 +394,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             conflict_tracker=conflict_tracker,
             conflict_cadence=conflict_cadence,
             diagnostic_mode=diagnostic_mode,
+            print_timing=print_timing,
         )
 
         interpolation_state = setup_latent_interpolator(

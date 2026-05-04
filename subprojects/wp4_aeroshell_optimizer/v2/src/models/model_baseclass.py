@@ -120,7 +120,9 @@ class BaseModel(nn.Module):
             },
         )
         assert isinstance(self, SupportsModelContract)
-        diagnostic_mode = training_config.get("mode", {}).get("training_mode", "diagnostic") == "diagnostic"
+        mode_cfg: dict = training_config.get("mode", {})
+        diagnostic_mode = mode_cfg.get("training_mode", "diagnostic") == "diagnostic"
+        print_timing: bool = mode_cfg.get("print_timing", False)
         for epoch in range(num_epochs):
             dbg.begin_iteration(epoch)
 
@@ -208,7 +210,10 @@ class BaseModel(nn.Module):
                 if capture_conflict and per_component_grad_vectors and conflict_tracker is not None:
                     conflict_tracker.save_from_grad_vectors(per_component_grad_vectors, epoch)
 
-            print(f"[PERF_TIMING] backward: {time.perf_counter() - t0:.4f}s")
+            if print_timing:
+                mode_label = "Diagnostic" if diagnostic_mode else "Performance"
+                n_losses = len(loss_function._last_weighted_losses)
+                print(f"{mode_label} mode backward {n_losses} Losses: {time.perf_counter() - t0:.4f} seconds")
 
             grad_norm = sum(p.grad.detach().pow(2).sum().item() for p in self.parameters() if p.grad is not None) ** 0.5
             lr = optimizer.param_groups[0]["lr"]

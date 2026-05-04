@@ -74,6 +74,7 @@ class DiversityTrainer:
         conflict_tracker: GradientConflictTracker | None = None,
         conflict_cadence: int = 0,
         diagnostic_mode: bool = True,
+        print_timing: bool = False,
     ) -> None:
         """
         Args:
@@ -118,6 +119,7 @@ class DiversityTrainer:
         self._conflict_tracker: GradientConflictTracker | None = conflict_tracker
         self._conflict_cadence: int = max(0, int(conflict_cadence))
         self._diagnostic_mode: bool = diagnostic_mode
+        self._print_timing: bool = print_timing
 
         self._diversity_manager: DiversityLossManager | None = diversity_manager
         self._diversity_num_points: int = diversity_num_points
@@ -484,7 +486,14 @@ class DiversityTrainer:
                 if per_population_conflict_vectors is not None:
                     phase1_conflict_vectors = per_population_conflict_vectors
 
-        print(f"[PERF_TIMING] _per_vector_backward: {time.perf_counter() - t0:.4f}s (epoch={epoch})")
+        if self._print_timing:
+            mode_label = "Diagnostic" if self._diagnostic_mode else "Performance"
+            n_losses = (
+                len(self._total_loss._objective_by_category)
+                + len(self._total_loss._constraint_by_category)
+                + len(self._total_loss._aux_by_category)
+            )
+            print(f"{mode_label} mode backward {n_losses} Losses: {time.perf_counter() - t0:.4f} seconds")
 
         mean_constraints: list[Tensor] | None = None
         if use_alm and all_alm_constraints:
