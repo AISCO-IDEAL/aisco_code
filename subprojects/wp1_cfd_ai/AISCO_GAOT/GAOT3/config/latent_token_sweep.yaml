@@ -1,0 +1,52 @@
+program: subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/main.py
+
+# Base arguments for main.py
+command:
+  - ${env}
+  - python
+  - ${program}
+  - -c
+  - subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml
+  - ${args}
+
+# Optimization setup
+method: bayes  # or "random" if you prefer
+metric:
+  name: val/loss   # adapt to your logged metric name
+  goal: minimize
+
+# Global sweep info (matches your project)
+project: WP1_drag
+entity: aisco
+name: "wp1_gaot_optimiser_sweep"
+
+parameters:
+  # ========== TRAINING SIZE / DURATION ==========
+  model.args.magno.gno_radius:
+    distribution: uniform
+    min: 0.01
+    max: 0.04
+
+  model.args.latent_tokens:
+    values:
+
+      - [128,16,8]
+      - [128,16,16]
+      - [128,16,32]
+
+      - [128,32,8]
+      - [128,32,16]
+      - [128,32,32]
+
+      - [128,64,8]
+      - [128,64,16]
+      - [128,64,32]
+
+      - [64,16,8]
+      - [64,16,16]
+      - [64,32,16]
+      - [64,64,16]
+      - [64,64,32]
+
+      - [32,64,16]
+      - [16,128,16]
