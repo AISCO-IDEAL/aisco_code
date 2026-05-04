@@ -74,11 +74,18 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
             "Ensure the PLY file contains a single solid mesh."
         )
     if not raw_mesh.is_watertight:
-        raise ValueError(
-            f"PLY mesh '{ply_path}' is not watertight (has open edges or self-intersections). "
-            "Pretraining requires a watertight mesh for correct GT SDF values. "
-            "Repair the mesh with 'meshlabserver' (close_holes.mlx filter) or 'pymeshfix' before retrying."
-        )
+        shape_name_raw = Path(ply_path).stem
+        print(f"[PLY Loader] {shape_name_raw}: not watertight — attempting trimesh repair …")
+        trimesh.repair.fill_holes(raw_mesh)
+        trimesh.repair.fix_normals(raw_mesh)
+        if raw_mesh.is_watertight:
+            print(f"[PLY Loader] {shape_name_raw}: repair succeeded — mesh is now watertight.")
+        else:
+            print(
+                f"[PLY Loader] WARNING: {shape_name_raw}: repair did not produce a watertight mesh. "
+                "GT SDF values near open edges may be inaccurate. "
+                "For best results, manually repair with 'meshlabserver' (close_holes.mlx) or 'pymeshfix'."
+            )
     verts_np = np.array(raw_mesh.vertices, dtype="float32") * ply_scale
     faces_np = np.array(raw_mesh.faces, dtype="int64")
 
