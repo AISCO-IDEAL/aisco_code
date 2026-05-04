@@ -8,4 +8,4 @@ training_params:
 
 
 mode:
-  training_mode: "diagnostic" #accepts "performance" or "diagnostic"
+  print_timing: true  # print backward timing per epoch (useful when benchmarking performance vs diagnostic mode)
