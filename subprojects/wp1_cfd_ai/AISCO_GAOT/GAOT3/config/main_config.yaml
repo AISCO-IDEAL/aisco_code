@@ -8,7 +8,7 @@
 
 setup:
     run_local: false
-    name: "united_all_cp_field"
+    name: "GOAT_sweeping"
     id: "_RUN_ID_"
     seed: 42
     device: "cuda:0"
@@ -23,7 +23,7 @@ setup:
     wandb: true
     wandb_run_name: "_NAME___RUN_ID_"
 
-    wandb_project: "WP1_default"
+    wandb_project: "WP1_sweeping"
     wandb_entity: aisco
     wandb_group: united_all_cp_field
     wandb_mode: online
@@ -113,18 +113,18 @@ model:
             film_init_scale: 0.01       # reduced from 0.1 — perturbation hit 1.0 at epoch 80
 
 dataset:
-    name: "united_all_cp_field"
-    metaname: "incompressible_fluids/united_all_cp"
-    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/united_all"
+    name: "united_clean_datasets"
+    metaname: "incompressible_fluids/united_clean_datasets"
+    base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/united_clean_datasets"
     processed_folder: ""
     force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
     handpicked_val: true
-    val_files_path: "/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/val_files.yaml"
-    train_size: 600
-    val_size: 200
-    test_size: 200
-    batch_size: 16  # reduced from 12 to avoid OOM on larger CP-full meshes
+    val_files_path: "/cluster/home/${oc.env:USER}/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/val_files.yaml"
+    train_size: 1000
+    val_size: 50
+    test_size: 50
+    batch_size: 32  # reduced from 12 to avoid OOM on larger CP-full meshes
     num_workers: 8
     shuffle: true
     metric_suite: "general"
@@ -146,7 +146,7 @@ dataset:
 
 
     num_viz_samples: 1         # number of random viz samples per split (train/val); 0 = disable viz (viz_per_dataset is ignored)
-    viz_per_dataset: false      # false: visualise N random samples of the whole dataset (N = num_viz_samples)
+    viz_per_dataset: true      # false: visualise N random samples of the whole dataset (N = num_viz_samples)
                                # true: visualise N random samples per subdataset of the whole dataset (only necessary if you have a united
                                # dataset of multiple subdatasets (e.g. united_all on work/fuge) --> subdatasets need to have a different prefix
                                # in their name, e.g. sample_YXXXXX all data with the same Y are from the same subdataset)
@@ -164,13 +164,13 @@ optimizer:
     args:
         lr: 6e-4
         weight_decay: 1e-05
-        epoch: 300
+        epoch: 500
         loss_scale: 1.0
-        eval_every_eps: 1
+        eval_every_eps: 5
         viz_every_eps: 25   # visualize every N epochs; defaults to eval_every_eps if omitted
         viz_warmup_epochs: 0  # also visualize every epoch for the first X epochs (0 = disabled)
         scheduler: "mix"
-        max_lr: 0.003
+        max_lr: 0.002
         min_lr: 2e-4
         final_lr: 2e-5
         save_every_epochs: 10
@@ -181,7 +181,7 @@ optimizer:
         beta2: 0.999
         eps: 1e-6
         loss: "mse"  # options: "mse" | "l2" | "relative_l2" | "weighted_mse"
-        mse_mix_weight: 0.5  # weighted_mse mix factor a
+        mse_mix_weight: 0.1  # weighted_mse mix factor a
 
 path:
     ckpt_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/_NAME___RUN_ID_/model.pt"
