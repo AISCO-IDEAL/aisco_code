@@ -97,10 +97,28 @@ def _parse_args() -> argparse.Namespace:
             "Output: <run_dir>/pretraining_latent_gifs/."
         ),
     )
+    parser.add_argument(
+        "--tight-sigma",
+        type=float,
+        default=None,
+        dest="tight_sigma",
+        help="Override training_loop.near_surface_tight_sigma (factor x bbox_extent_mm).",
+    )
+    parser.add_argument(
+        "--wide-sigma",
+        type=float,
+        default=None,
+        dest="wide_sigma",
+        help=(
+            "Override training_loop.near_surface_wide_sigma. "
+            "Setting this enables dual-band sampling (DeepSDF-style): "
+            "near-surface pts are split evenly between tight and wide Gaussian bands."
+        ),
+    )
     return parser.parse_args()
 
 
-def main() -> None:
+def main() -> None:  # noqa: PLR0912
     """Run latent-population pretraining from the command line."""
     args = _parse_args()
 
@@ -116,6 +134,14 @@ def main() -> None:
         config.get("output", {}).pop("mesh_resolution", None)
         config.get("output", {}).pop("mesh_box_mm", None)
         print("[pretraining_v5_latent] Mesh extraction disabled (--no-mesh).")
+
+    if args.tight_sigma is not None:
+        config["training_loop"]["near_surface_tight_sigma"] = args.tight_sigma
+        print(f"[pretraining_v5_latent] Overriding near_surface_tight_sigma → {args.tight_sigma}")
+
+    if args.wide_sigma is not None:
+        config["training_loop"]["near_surface_wide_sigma"] = args.wide_sigma
+        print(f"[pretraining_v5_latent] Overriding near_surface_wide_sigma → {args.wide_sigma} (dual-band enabled)")
 
     # Device selection
     device: str = (

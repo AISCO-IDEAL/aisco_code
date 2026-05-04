@@ -102,9 +102,9 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     y_center = (float(verts_np[:, 1].max()) + float(verts_np[:, 1].min())) / 2.0
     verts_np[:, 1] -= y_center
 
-    # --- Z grounding: shift so Z_min = ground_clearance (100mm) ---
+    # --- Z grounding: shift so Z_min = ground_clearance (90 + 10 = 100mm) ---
     prism = get_outer_prism_bounds_mm()
-    ground_clearance = abs(prism["z"][0])  # = 100.0 mm
+    ground_clearance = abs(prism["z"][0]) + 10.0 # to avoid the pretrained cars to be cut off at the bottom
     z_shift = ground_clearance - float(verts_np[:, 2].min())
     verts_np[:, 2] += z_shift
 

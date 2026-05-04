@@ -3,7 +3,7 @@ z_placement: "circle"
 z_radius: 2.0  # unit-circle radius for pretrained latent codes.
               # Spatial inputs are mm/1000 ≈ [-5, 5]; z_radius=2.0 gives latents a
               # comparable magnitude to the dominant spatial axis.
-force_pretraining: true # iff false, a hashed pretraining will be used if applicable
+force_pretraining: force # iff false, a hashed pretraining will be used if applicable
 
 # One entry per latent slot.  Slot 0 maps to z₀ = origin.
 # shape_type: "sphere" | "cube" | "ply"
@@ -44,7 +44,7 @@ latent_population:
     shape_type: "ply"
     radius: null
     side_length: null
-    ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_catamaran.ply"
+    ply_path: "/cluster/work/fuge/AISCO/latent_pretraining/00_pretraining_target_shapes/simple_catamaran2.ply"
     ply_scale: 100.0
     surface_noise_sigma_factor: 0.005
 
@@ -128,3 +128,5 @@ output:
   vis_show_domain_pts: true   # show domain pts (grey) used for L1-all loss (default: true)
   vis_show_target_pts: "pts"  # "pts" = surface cache pts in green | "mesh" = target triangle mesh in green
   # model points are always displayed as red points
+
+  mesh_resolution: 64  # grid resolution for final per-slot mesh extraction after training
