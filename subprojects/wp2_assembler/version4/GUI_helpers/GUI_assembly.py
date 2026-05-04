@@ -86,6 +86,12 @@ def read_params() -> dict:
         return yaml.safe_load(f) or {}
 
 
+def read_checks() -> str:
+    if not _CHECKS_OUTPUT_PATH.exists():
+        return "checks.txt has not been generated yet."
+    return _CHECKS_OUTPUT_PATH.read_text()
+
+
 def _write_checks(messages: list[str]) -> None:
     with _CHECKS_OUTPUT_PATH.open("w") as f:
         if messages:
@@ -371,4 +377,4 @@ def add_current_gui_assembly_to_map() -> int | None:
 if __name__ == "__main__":
     from subprojects.wp2_assembler.version4.GUI_helpers import _slider_gui
 
-    _slider_gui.run(read_params, write_params, call_assembly_from_params, add_current_gui_assembly_to_map)
+    _slider_gui.run(read_params, write_params, call_assembly_from_params, add_current_gui_assembly_to_map, read_checks)
