@@ -120,7 +120,7 @@ dataset:
     force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
     handpicked_val: true
-    val_files_path: "/cluster/home/clhuber/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/val_files.yaml"
+    val_files_path: "/cluster/home/${oc.env:USER}/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/val_files.yaml"
     train_size: 1000
     val_size: 50
     test_size: 50
