@@ -14,6 +14,7 @@ single-z trainer with no diversity phase.
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import replace as _dc_replace
 from pathlib import Path
 from typing import Any
@@ -72,6 +73,7 @@ class DiversityTrainer:
         log_dir: Path | None = None,
         conflict_tracker: GradientConflictTracker | None = None,
         conflict_cadence: int = 0,
+        diagnostic_mode: bool = True,
     ) -> None:
         """
         Args:
@@ -115,6 +117,7 @@ class DiversityTrainer:
 
         self._conflict_tracker: GradientConflictTracker | None = conflict_tracker
         self._conflict_cadence: int = max(0, int(conflict_cadence))
+        self._diagnostic_mode: bool = diagnostic_mode
 
         self._diversity_manager: DiversityLossManager | None = diversity_manager
         self._diversity_num_points: int = diversity_num_points
@@ -388,6 +391,7 @@ class DiversityTrainer:
         active_constraint_cats: list[str] = []
         active_constraint_indices: list[int] = []
 
+        t0 = time.perf_counter()
         for i in range(self._population_size):
             self._model.set_latent_vector(self._Z[i])
 
@@ -398,16 +402,21 @@ class DiversityTrainer:
                 active_constraint_cats = [cat for cat in all_constraint_cats if cat in bundle.constraints]
                 active_constraint_indices = [j for j, cat in enumerate(all_constraint_cats) if cat in bundle.constraints]
 
-            capture_components = (
-                self._conflict_tracker is not None
-                and self._conflict_cadence > 0
-                and epoch % self._conflict_cadence == 0
-                and i == 0
-            )
-            # properly weight losses, return components = True so we can do individual backward calls per component for conflict tracking
-            result = self._total_loss.weight(
-                bundle, alm_manager=self._alm_manager, return_components=True, norm_manager=self._norm_manager
-            )
+            if self._diagnostic_mode:
+                capture_components = (
+                    self._conflict_tracker is not None
+                    and self._conflict_cadence > 0
+                    and epoch % self._conflict_cadence == 0
+                    and i == 0
+                )
+                result = self._total_loss.weight(
+                    bundle, alm_manager=self._alm_manager, return_components=True, norm_manager=self._norm_manager
+                )
+            else:
+                capture_components = False
+                result = self._total_loss.weight(
+                    bundle, alm_manager=self._alm_manager, return_components=False, norm_manager=self._norm_manager
+                )
 
             # Detach ALM-space constraints before backward — graph will be freed.
             # If loss normalisation is enabled, ALM updates operate on normalized
@@ -425,56 +434,57 @@ class DiversityTrainer:
             for k, v in result.log_data.items():
                 summed_log_data[k] = summed_log_data.get(k, 0.0) + v
 
-            # Per-component backward: each component uses retain_graph=False and frees immediately.
-            # Does not call .backward() for the totalloss scalar, but the individual components.
-            # Done because we may want to capture gradient conflicts at the component level,
-            # and doing one backward on the total loss would give us only the combined gradient, not the per-component gradients needed for conflict analysis.
-            # TODO: May add config toggle or smart detection to see if we can get performance boost
-            trainable_params = [p for p in self._model.parameters() if p.requires_grad]
-            prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
-            per_population_conflict_vectors: dict[str, np.ndarray] | None = (
-                {} if capture_components and i == 0 and self._conflict_tracker is not None else None
-            )
+            if not self._diagnostic_mode:
+                # Performance mode: single combined backward, no per-component grad tracking or conflict capture.
+                (result.scalar / self._population_size).backward()
+            else:
+                # Diagnostic mode: per-component backward so we can track per-loss gradient norms and cosine conflict angles.
+                trainable_params = [p for p in self._model.parameters() if p.requires_grad]
+                prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
+                per_population_conflict_vectors: dict[str, np.ndarray] | None = (
+                    {} if capture_components and self._conflict_tracker is not None else None
+                )
 
-            for component_name, weighted_loss in result.components.items():
-                grad_key = f"optimizer_gradients/{component_name}"
-                if not weighted_loss.requires_grad:
+                for component_name, weighted_loss in result.components.items():
+                    grad_key = f"optimizer_gradients/{component_name}"
+                    if not weighted_loss.requires_grad:
+                        summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0)
+                        continue
+                    (weighted_loss / self._population_size).backward(retain_graph=False)
+                    curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
+                    delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
+                    summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0) + delta_norm
+
+                    if per_population_conflict_vectors is not None:
+                        delta_grad = torch.cat(
+                            [(c - pv).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
+                        )
+                        per_population_conflict_vectors[component_name] = delta_grad.numpy()
+
+                    prev_grad = curr_grad
+
+                # Explicit zero-gradient logs for scheduled zero-weighted losses.
+                for category in bundle.zero_weighted:
+                    lookup = (
+                        self._total_loss._objective_by_category.get(category)
+                        or self._total_loss._constraint_by_category.get(category)
+                        or self._total_loss._aux_by_category.get(category)
+                    )
+                    if lookup is None:
+                        continue
+                    if getattr(self._total_loss, "use_cse", False) and category in {
+                        getattr(self._total_loss, "_cse_drag_category", None),
+                        getattr(self._total_loss, "_cse_solar_category", None),
+                    }:
+                        continue
+                    loss_name = lookup[0]
+                    grad_key = f"optimizer_gradients/{loss_name}"
                     summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0)
-                    continue
-                # per-component backward for singel z, with graph freed immediately after for VRAM efficiency; log gradient norms for conflict tracking
-                (weighted_loss / self._population_size).backward(retain_graph=False)
-                curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
-                delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
-                summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0) + delta_norm
 
                 if per_population_conflict_vectors is not None:
-                    delta_grad = torch.cat(
-                        [(c - pv).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
-                    )
-                    per_population_conflict_vectors[component_name] = delta_grad.numpy()
+                    phase1_conflict_vectors = per_population_conflict_vectors
 
-                prev_grad = curr_grad
-
-            # Explicit zero-gradient logs for scheduled zero-weighted losses.
-            for category in bundle.zero_weighted:
-                lookup = (
-                    self._total_loss._objective_by_category.get(category)
-                    or self._total_loss._constraint_by_category.get(category)
-                    or self._total_loss._aux_by_category.get(category)
-                )
-                if lookup is None:
-                    continue
-                if getattr(self._total_loss, "use_cse", False) and category in {
-                    getattr(self._total_loss, "_cse_drag_category", None),
-                    getattr(self._total_loss, "_cse_solar_category", None),
-                }:
-                    continue
-                loss_name = lookup[0]
-                grad_key = f"optimizer_gradients/{loss_name}"
-                summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0)
-
-            if per_population_conflict_vectors is not None:
-                phase1_conflict_vectors = per_population_conflict_vectors
+        print(f"[PERF_TIMING] _per_vector_backward: {time.perf_counter() - t0:.4f}s (epoch={epoch})")
 
         mean_constraints: list[Tensor] | None = None
         if use_alm and all_alm_constraints:

@@ -5,3 +5,7 @@ training_params:
   marching_cubes_usage: "True"  # storage_utils.py: general_config["general_info"].get("marching_cubes_usage", "False") (if True, uses marching cubes with threads for mesh extraction, if False uses kaolin-based mesh extraction without threads, which is more stable but slower)
   gradient_conflict_cadence: 1  # Gradient conflict tracking cadence (0 = disabled, N = every N epochs). Stores per-component gradient vectors and cosine similarities to disk.
   gradient_conflict_output_dir: ""  # Output directory for gradient conflict data. If empty, defaults to <storage_dir>/<model_hash>/<wandb_run>/gradient_conflict/
+
+
+mode:
+  training_mode: "diagnostic" #accepts "performance" or "diagnostic"

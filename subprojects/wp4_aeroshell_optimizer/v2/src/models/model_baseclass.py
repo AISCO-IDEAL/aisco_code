@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -119,84 +120,95 @@ class BaseModel(nn.Module):
             },
         )
         assert isinstance(self, SupportsModelContract)
+        diagnostic_mode = training_config.get("mode", {}).get("training_mode", "diagnostic") == "diagnostic"
         for epoch in range(num_epochs):
             dbg.begin_iteration(epoch)
 
             optimizer.zero_grad()
 
-            # Individual weighted tensors are stored in loss_function._last_weighted_losses
-            # for the per-component backward below.
-
             loss_function.get_total_loss(model=self, epoch_name=epoch)
 
-            # Per-component backward: each graph is freed immediately (retain_graph=False).
-            # param.grad accumulates across calls — identical to backward() on the summed total.
-            # We track the delta of param.grad before/after each component to get per-loss
-            # gradient norms without needing retain_graph=True anywhere.
-            trainable_params = [p for p in self.parameters() if p.requires_grad]
-            prev_grad = [torch.zeros_like(p) for p in trainable_params]
-            log_grad_mem = loss_function._gradient_memory_diagnostics
-            device_str = str(next(self.parameters()).device)
-            total_weighted_loss = 0.0
+            t0 = time.perf_counter()
             per_component_grad_norms: dict[str, float] = {}
-            capture_conflict = conflict_tracker is not None and conflict_cadence > 0 and epoch % conflict_cadence == 0
-            per_component_grad_vectors: dict[str, np.ndarray] = {}
-            grad_log_dict: dict[str, float] = {}  # batch all gradient/memory logs
-            for component_name, weighted_loss in loss_function._last_weighted_losses.items():
-                if not weighted_loss.requires_grad:
-                    per_component_grad_norms[component_name] = 0.0
-                    grad_log_dict[f"optimizer_gradients/{component_name}"] = 0.0
-                    continue
-                total_weighted_loss += weighted_loss.item()
-                if log_grad_mem and "cuda" in device_str:
-                    mem_before = torch.cuda.memory_allocated() / 1024**2
-                weighted_loss.backward(retain_graph=False)
-                if log_grad_mem and "cuda" in device_str:
-                    mem_after = torch.cuda.memory_allocated() / 1024**2
-                    print(
-                        f"  [Epoch {epoch}] backward({component_name}): "
-                        f"{mem_before:.1f} MB → {mem_after:.1f} MB "
-                        f"(freed {mem_before - mem_after:.1f} MB)"
-                    )
-                    grad_log_dict[f"grad_memory/{component_name}_after_mb"] = mem_after
-                    grad_log_dict[f"grad_memory/{component_name}_freed_mb"] = mem_before - mem_after
-                curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
-                delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
-                per_component_grad_norms[component_name] = delta_norm
-                grad_log_dict[f"optimizer_gradients/{component_name}"] = delta_norm
-                if capture_conflict:
-                    delta_grad = torch.cat(
-                        [(c - pv).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
-                    )
-                    per_component_grad_vectors[component_name] = delta_grad.numpy()
-                prev_grad = curr_grad
+            grad_log_dict: dict[str, float] = {}
 
-            # Scheduled-off losses aren't in _last_weighted_losses; log explicit 0 so
-            # WandB doesn't interpolate from a stale value.
-            zero_weighted_cats: set = getattr(loss_function, "_zero_weighted_categories", set())
-            if zero_weighted_cats:
-                for loss_name, category in getattr(loss_function, "_loss_name_to_category", {}).items():
-                    if category not in zero_weighted_cats:
+            if not diagnostic_mode:
+                # Performance mode: single combined backward, no per-component grad tracking.
+                # Gradient conflict tracking and per-loss wandb gradient logs are disabled.
+                backpropable = {k: v for k, v in loss_function._last_weighted_losses.items() if v.requires_grad}
+                total_weighted_loss = sum(v.item() for v in backpropable.values())
+                if backpropable:
+                    sum(backpropable.values()).backward()
+                if wandb.run:
+                    pending = getattr(loss_function, "_pending_wandb_log", {})
+                    wandb.log(pending, step=epoch)
+                    loss_function._pending_wandb_log = {}
+            else:
+                # Diagnostic mode: per-component backward so we can track per-loss gradient norms
+                # and cosine conflict angles. Each graph is freed immediately (retain_graph=False);
+                # param.grad accumulates across calls — identical to backward() on the summed total.
+                trainable_params = [p for p in self.parameters() if p.requires_grad]
+                prev_grad = [torch.zeros_like(p) for p in trainable_params]
+                log_grad_mem = loss_function._gradient_memory_diagnostics
+                device_str = str(next(self.parameters()).device)
+                total_weighted_loss = 0.0
+                capture_conflict = conflict_tracker is not None and conflict_cadence > 0 and epoch % conflict_cadence == 0
+                per_component_grad_vectors: dict[str, np.ndarray] = {}
+                for component_name, weighted_loss in loss_function._last_weighted_losses.items():
+                    if not weighted_loss.requires_grad:
+                        per_component_grad_norms[component_name] = 0.0
+                        grad_log_dict[f"optimizer_gradients/{component_name}"] = 0.0
                         continue
-                    if getattr(loss_function, "_use_cse", False) and category in {
-                        getattr(loss_function, "_cse_drag_category", None),
-                        getattr(loss_function, "_cse_solar_category", None),
-                    }:
-                        continue
-                    if loss_name in per_component_grad_norms:
-                        continue
-                    per_component_grad_norms[loss_name] = 0.0
-                    grad_log_dict[f"optimizer_gradients/{loss_name}"] = 0.0
+                    total_weighted_loss += weighted_loss.item()
+                    if log_grad_mem and "cuda" in device_str:
+                        mem_before = torch.cuda.memory_allocated() / 1024**2
+                    weighted_loss.backward(retain_graph=False)
+                    if log_grad_mem and "cuda" in device_str:
+                        mem_after = torch.cuda.memory_allocated() / 1024**2
+                        print(
+                            f"  [Epoch {epoch}] backward({component_name}): "
+                            f"{mem_before:.1f} MB → {mem_after:.1f} MB "
+                            f"(freed {mem_before - mem_after:.1f} MB)"
+                        )
+                        grad_log_dict[f"grad_memory/{component_name}_after_mb"] = mem_after
+                        grad_log_dict[f"grad_memory/{component_name}_freed_mb"] = mem_before - mem_after
+                    curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
+                    delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
+                    per_component_grad_norms[component_name] = delta_norm
+                    grad_log_dict[f"optimizer_gradients/{component_name}"] = delta_norm
+                    if capture_conflict:
+                        delta_grad = torch.cat(
+                            [(c - pv).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
+                        )
+                        per_component_grad_vectors[component_name] = delta_grad.numpy()
+                    prev_grad = curr_grad
 
-            # Merge gradient metrics with the deferred loss/competition/memory dict from
-            # _handle_telemetry and fire a single wandb.log per epoch.
-            if wandb.run:
-                pending = getattr(loss_function, "_pending_wandb_log", {})
-                wandb.log({**pending, **grad_log_dict}, step=epoch)
-                loss_function._pending_wandb_log = {}
+                # Scheduled-off losses aren't in _last_weighted_losses; log explicit 0 so
+                # WandB doesn't interpolate from a stale value.
+                zero_weighted_cats: set = getattr(loss_function, "_zero_weighted_categories", set())
+                if zero_weighted_cats:
+                    for loss_name, category in getattr(loss_function, "_loss_name_to_category", {}).items():
+                        if category not in zero_weighted_cats:
+                            continue
+                        if getattr(loss_function, "_use_cse", False) and category in {
+                            getattr(loss_function, "_cse_drag_category", None),
+                            getattr(loss_function, "_cse_solar_category", None),
+                        }:
+                            continue
+                        if loss_name in per_component_grad_norms:
+                            continue
+                        per_component_grad_norms[loss_name] = 0.0
+                        grad_log_dict[f"optimizer_gradients/{loss_name}"] = 0.0
 
-            if capture_conflict and per_component_grad_vectors and conflict_tracker is not None:
-                conflict_tracker.save_from_grad_vectors(per_component_grad_vectors, epoch)
+                if wandb.run:
+                    pending = getattr(loss_function, "_pending_wandb_log", {})
+                    wandb.log({**pending, **grad_log_dict}, step=epoch)
+                    loss_function._pending_wandb_log = {}
+
+                if capture_conflict and per_component_grad_vectors and conflict_tracker is not None:
+                    conflict_tracker.save_from_grad_vectors(per_component_grad_vectors, epoch)
+
+            print(f"[PERF_TIMING] backward: {time.perf_counter() - t0:.4f}s")
 
             grad_norm = sum(p.grad.detach().pow(2).sum().item() for p in self.parameters() if p.grad is not None) ** 0.5
             lr = optimizer.param_groups[0]["lr"]
