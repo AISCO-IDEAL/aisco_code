@@ -10,6 +10,7 @@ Entry point: ``pretraining_latent(model, config, device)``
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import sys
 from datetime import datetime
@@ -44,8 +45,11 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     """Load a PLY mesh, transform to AISCO convention, and return (verts, faces, bbox_extent).
 
     Applies three deterministic transforms after scaling:
-    1. Axis permutation [2, 0, 1]: PLY_Z→AISCO_X (length), PLY_X→AISCO_Y (width),
-       PLY_Y→AISCO_Z (height).
+    1. Axis permutation (data-driven): the PLY axis with the largest coordinate
+       range maps to AISCO_X (length); the axis with the second-largest range maps
+       to AISCO_Y (width); the remaining axis maps to AISCO_Z (height).  If the
+       PLY is already correctly oriented (largest extent already on axis 0, second
+       on axis 1) no reordering takes place.
     2. X centering: shifts so that the car is symmetrically centred on the X axis.
     3. Z grounding: shifts so that Z_min equals the outer-prism ground clearance (100mm).
 
@@ -70,20 +74,33 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
             "Ensure the PLY file contains a single solid mesh."
         )
     if not raw_mesh.is_watertight:
-        raise ValueError(
-            f"PLY mesh '{ply_path}' is not watertight (has open edges or self-intersections). "
-            "Pretraining requires a watertight mesh for correct GT SDF values. "
-            "Repair the mesh with 'meshlabserver' (close_holes.mlx filter) or 'pymeshfix' before retrying."
-        )
+        shape_name_raw = Path(ply_path).stem
+        print(f"[PLY Loader] {shape_name_raw}: not watertight — attempting trimesh repair …")
+        trimesh.repair.fill_holes(raw_mesh)
+        trimesh.repair.fix_normals(raw_mesh)
+        if raw_mesh.is_watertight:
+            print(f"[PLY Loader] {shape_name_raw}: repair succeeded — mesh is now watertight.")
+        else:
+            print(
+                f"[PLY Loader] WARNING: {shape_name_raw}: repair did not produce a watertight mesh. "
+                "GT SDF values near open edges may be inaccurate. "
+                "For best results, manually repair with 'meshlabserver' (close_holes.mlx) or 'pymeshfix'."
+            )
     verts_np = np.array(raw_mesh.vertices, dtype="float32") * ply_scale
     faces_np = np.array(raw_mesh.faces, dtype="int64")
 
-    # --- Axis permutation: PLY_Z→AISCO_X, PLY_X→AISCO_Y, PLY_Y→AISCO_Z ---
-    verts_np = verts_np[:, [2, 0, 1]]
+    # --- Axis permutation: map largest-extent axis → X, second → Y, smallest → Z ---
+    raw_extents = verts_np.max(axis=0) - verts_np.min(axis=0)  # shape (3,)
+    perm: list[int] = list(np.argsort(raw_extents)[::-1])  # descending by extent
+    verts_np = verts_np[:, perm]
 
     # --- X centering: shift so that X_center = 0 (car centred on length axis) ---
     x_center = (float(verts_np[:, 0].max()) + float(verts_np[:, 0].min())) / 2.0
     verts_np[:, 0] -= x_center
+
+    # --- Y centering: shift so that Y_center = 0 (car symmetric about lateral axis) ---
+    y_center = (float(verts_np[:, 1].max()) + float(verts_np[:, 1].min())) / 2.0
+    verts_np[:, 1] -= y_center
 
     # --- Z grounding: shift so Z_min = ground_clearance (100mm) ---
     prism = get_outer_prism_bounds_mm()
@@ -97,11 +114,13 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     ctr = (verts_np.max(axis=0) + verts_np.min(axis=0)) / 2.0
     z_min_after = float(verts_np[:, 2].min())
     x_center_after = float(ctr[0])
+    y_center_after = float(ctr[1])
     print(
         f"[PLY Loader] {shape_name}: "
+        f"perm={perm}  "
         f"ext=({extents[0]:.0f},{extents[1]:.0f},{extents[2]:.0f})mm  "
         f"center=({ctr[0]:.0f},{ctr[1]:.0f},{ctr[2]:.0f})mm  "
-        f"Z_min={z_min_after:.0f}mm  X_center={x_center_after:.0f}mm"
+        f"Z_min={z_min_after:.0f}mm  X_center={x_center_after:.0f}mm  Y_center={y_center_after:.0f}mm"
     )
 
     # --- Outer-prism violation warnings ---
@@ -269,12 +288,17 @@ def _load_or_build_surface_cache(
     return surf_pts, surf_gt
 
 
-def _compute_pretrain_config_hash(config: dict[str, Any], model: SupportsLatentConcat) -> str:
-    """Compute a stable hash over model architecture and training config.
+def _compute_latent_pretrain_hash(config: dict[str, Any], model: SupportsLatentConcat) -> str:
+    """Compute a stable hash over model architecture and all training-significant parameters.
 
-    The hash covers: model architecture (via get_model_info_dict), latent_population,
-    training_loop, z_placement, and z_radius. Two runs with identical parameters
-    produce the same hash; any parameter change produces a different hash.
+    The hash covers: full model architecture (via get_model_info_dict), z_placement,
+    z_radius, the complete training_loop dict (including bbox_scale_factor), and
+    per-shape specs (name, type, ply_path_stem, ply_scale, sigma_factor, radius,
+    side_length).  Two runs with identical parameters produce the same hash;
+    any significant parameter change produces a different hash.
+
+    Note: Only the PLY stem (not the full path) is hashed, so moving a PLY file
+    to a different directory without renaming it does NOT force a rehash.
 
     Args:
         config: Dict matching the pretraining_latent_config.yaml schema.
@@ -283,41 +307,55 @@ def _compute_pretrain_config_hash(config: dict[str, Any], model: SupportsLatentC
     Returns:
         10-character hex hash string.
     """
+    shapes: list[dict[str, Any]] = config.get("latent_population", [])
+    shape_entries = [
+        {
+            "name": s["name"],
+            "type": s["shape_type"],
+            "stem": Path(s["ply_path"]).stem if s.get("ply_path") else None,
+            "scale": s.get("ply_scale"),
+            "sigma": s.get("surface_noise_sigma_factor"),
+            "radius": s.get("radius"),
+            "side_length": s.get("side_length"),
+        }
+        for s in shapes
+    ]
     key: dict[str, Any] = {
-        "model": dict_hashing(model.get_model_info_dict()),
-        "latent_population": config["latent_population"],
-        "training_loop": config["training_loop"],
+        "model": model.get_model_info_dict(),
         "z_placement": config.get("z_placement", "circle"),
         "z_radius": config.get("z_radius", 2.0),
+        "training_loop": config["training_loop"],
+        "shapes": shape_entries,
     }
     return dict_hashing(key)
 
 
 def _resolve_checkpoint_path(config: dict[str, Any], model: SupportsLatentConcat) -> Path:
-    """Return a hash-tagged checkpoint path with clean folder structure.
+    """Return the canonical checkpoint path for a given config and model.
 
-    All outputs for a run go into a single hash-named folder:
-      <base_dir>/<hash>/
-        pretrained_latent_<hash>.pth
+    All outputs for a run go into a single folder inside the canonical base dir:
+      <base_dir>/<epochs:06d>_<ModelClass>_<config_hash>/
+        pretrained_latent_<config_hash>.pth
+        model_info_dict.json
         sampling_vis/
-        mesh_extracted/
+        pretrained_shapes/
 
-    For example, if config specifies ``/path/to/pretrained_latent.pth``, the
-    resolved checkpoint is ``/path/to/<hash>/pretrained_latent_<hash>.pth``.
-    Different configs resolve to different hash folders; identical configs
-    resolve to the same folder.
+    Both standalone scripts and main_v2 call this function, so the same config
+    always resolves to the same folder regardless of launch context.
 
     Args:
         config: Dict matching the pretraining_latent_config.yaml schema.
         model: Model whose architecture is included in the hash.
 
     Returns:
-        Path to checkpoint inside hash-named directory with hash in filename.
+        Absolute Path to the checkpoint file inside the canonical folder.
     """
-    base = Path(config["output"]["checkpoint_path"])
-    config_hash = _compute_pretrain_config_hash(config, model)
-    # Structure: /path/to/<hash>/pretrained_latent_<hash>.pth
-    return base.parent / config_hash / f"{base.stem}_{config_hash}{base.suffix}"
+    config_hash = _compute_latent_pretrain_hash(config, model)
+    epochs: int = int(config["training_loop"]["epochs"])
+    model_class_name: str = model.__class__.__name__
+    base_dir = Path(config["output"]["base_dir"])
+    folder_name = f"{epochs:06d}_{model_class_name}_{config_hash}"
+    return base_dir / folder_name / f"pretrained_latent_{config_hash}.pth"
 
 
 def _compute_input_grad_norms(
@@ -417,7 +455,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         raise TypeError(f"Model {type(model).__name__} does not implement SupportsLatentConcat. ")
 
     ckpt_path = checkpoint_path if checkpoint_path is not None else _resolve_checkpoint_path(config, model)
-    config_hash = _compute_pretrain_config_hash(config, model)
+    config_hash = _compute_latent_pretrain_hash(config, model)
     force: bool = bool(config.get("force_pretraining", True))
 
     # --- Fast resume ---
@@ -430,9 +468,13 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 "Re-run pretraining with force_pretraining=true in "
                 "pretraining_latent_config.yaml to generate a new combined checkpoint."
             )
+        # --- Hash safety check (M5): detect manual copies or hash collisions ---
+        loaded_hash = ckpt.get("meta", {}).get("config_hash")
+        if loaded_hash is not None and loaded_hash != config_hash:
+            print(f"[latent_pretrain] WARN  hash_mismatch  loaded={loaded_hash}  current={config_hash}  path={ckpt_path}")
         model.load_state_dict(ckpt["model_state_dict"])
         Z: Tensor = ckpt["z_pretrained"].to(device)
-        print(f"[latent_pretrain] Fast resume: loaded checkpoint from '{ckpt_path}'")
+        print(f"[latent_pretrain] LOAD  path={ckpt_path}  hash={config_hash}  status=fast_resume")
         return model, Z
 
     shapes: list[dict[str, Any]] = config["latent_population"]
@@ -486,11 +528,11 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
 
     # --- Output / visualisation config (read once, shared between loop and post-training) ---
     output_cfg: dict[str, Any] = config.get("output", {})
-    run_dir: Path = ckpt_path.parent  # Hash-named folder containing all outputs
+    run_dir: Path = ckpt_path.parent  # Canonical folder containing all outputs
     visualisation_directory: str = str(output_cfg.get("visualisation_directory", "sampling_vis"))
     vis_dir: Path = vis_output_dir if vis_output_dir is not None else run_dir / visualisation_directory
     outer_prism_raw = get_outer_prism_bounds_mm()  # Single source of truth for bounding box
-    bbox_scale_factor: float = float(output_cfg.get("bbox_scale_factor", 1.0))  # Multiply bounds by this factor
+    bbox_scale_factor: float = float(loop_cfg.get("bbox_scale_factor", 1.0))  # Scales outer_prism for domain sampling
     outer_prism = scale_outer_prism(outer_prism_raw, bbox_scale_factor)
 
     vis_cadence: int = int(output_cfg.get("vis_cadence", 0))  # 0 = disabled
@@ -757,9 +799,26 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
 
     # --- Save checkpoint ---
     ckpt_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"model_state_dict": model.state_dict(), "z_pretrained": Z}, ckpt_path)
-    print(f"[latent_pretrain] Saved checkpoint to '{ckpt_path}' (model_state_dict + z_pretrained shape={tuple(Z.shape)})")
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "z_pretrained": Z,
+            "meta": {
+                "config_hash": config_hash,
+                "date": datetime.now().isoformat(),
+                "epochs": epochs,
+                "model_class": model.__class__.__name__,
+            },
+        },
+        ckpt_path,
+    )
+    print(f"[latent_pretrain] SAVE  path={ckpt_path}  hash={config_hash}  epochs={epochs}  shapes={num_shapes}")
     print(f"[latent_pretrain] All outputs → {run_dir}/")
+    # Write model_info_dict.json sidecar for human-readable audit
+    info_json_path = ckpt_path.parent / "model_info_dict.json"
+    with open(info_json_path, "w") as _f:
+        json.dump(model.get_model_info_dict(), _f, indent=2)
+    print(f"[latent_pretrain] Wrote model_info_dict.json → {info_json_path}")
 
     # --- Log Z spread ---
     pairwise = [(Z[i] - Z[j]).norm().item() for i in range(num_shapes) for j in range(i + 1, num_shapes)]
