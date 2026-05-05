@@ -539,7 +539,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         print("=" * 80)
         print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=prof_top_entries))
         print("=" * 80 + "\n")
-        print(f"Profiler trace saved to {rendering_dir / 'trace'} (format: PyTorch tensorboard)")
 
     print("Completed job successfully.")
 
