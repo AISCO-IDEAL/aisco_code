@@ -295,7 +295,9 @@ class DiversityTrainer:
                 self._model.set_latent_vector(self._Z[0])
                 bundle = self._total_loss.compute(self._model, epoch_name=0, calibration_mode=True)
                 # weight() without a norm_manager gives us the raw v_cruise-based cse_objective
-                raw_result = self._total_loss.weight(bundle, self._alm_manager, return_components=True, norm_manager=None, calibration_pass=True)
+                raw_result = self._total_loss.weight(
+                    bundle, self._alm_manager, return_components=True, norm_manager=None, calibration_pass=True
+                )
                 if "cse_objective" in raw_result.components:
                     cse_val = abs(raw_result.components["cse_objective"].detach().item())
                     loss_scales["cse_objective"] = self._norm_manager._target_loss / cse_val if cse_val > 0 else 1.0
@@ -322,7 +324,9 @@ class DiversityTrainer:
         self._model.set_latent_vector(self._Z[0])
         bundle = self._total_loss.compute(self._model, epoch_name=0, calibration_mode=True)
         # weight() with norm_manager applies loss_scales; we measure grad norms on top of them
-        result = self._total_loss.weight(bundle, self._alm_manager, return_components=True, norm_manager=self._norm_manager, calibration_pass=True)
+        result = self._total_loss.weight(
+            bundle, self._alm_manager, return_components=True, norm_manager=self._norm_manager, calibration_pass=True
+        )
 
         trainable_params = [p for p in self._model.parameters() if p.requires_grad]
         prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]

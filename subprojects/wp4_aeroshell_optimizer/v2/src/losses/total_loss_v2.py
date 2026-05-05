@@ -255,7 +255,8 @@ class TotalLossV2:
 
         if use_cse:
             dead_objectives = [
-                name for cat, (name, _) in self._objective_by_category.items()
+                name
+                for cat, (name, _) in self._objective_by_category.items()
                 if name in self._manual_weights and self._manual_weights[name] != 1.0
             ]
             if dead_objectives:
@@ -266,7 +267,8 @@ class TotalLossV2:
 
         if use_alm:
             dead_constraints = [
-                name for cat, (name, _) in self._constraint_by_category.items()
+                name
+                for cat, (name, _) in self._constraint_by_category.items()
                 if name in self._manual_weights and self._manual_weights[name] != 1.0
             ]
             if dead_constraints:
