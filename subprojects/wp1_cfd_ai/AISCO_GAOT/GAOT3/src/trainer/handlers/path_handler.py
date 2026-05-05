@@ -46,7 +46,7 @@ class PathHandler:
         self.config["path"]["config_save_path"] = self.config["local_path"]["config_save_path"]
         self.config["path"]["database_path"] = self.config["local_path"]["database_path"]
         self.config["dataset"]["base_path"] = self.config["local_path"]["dataset"]
-        self.config["dataset"]["val_files_path"] = "subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/val_files.yaml"
+        self.config["dataset"]["val_files_path"] = "/home/aisco/Documents/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/val_files.yaml"
 
     def _create_parent_directory(self, path: str) -> None:
         directory_path = os.path.dirname(path)
