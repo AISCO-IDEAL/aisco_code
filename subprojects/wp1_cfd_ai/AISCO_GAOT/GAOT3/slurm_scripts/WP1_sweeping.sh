@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=WP1_sweep
-#SBATCH --time=24:00:00          # adjust as needed
+#SBATCH --time=120:00:00          # adjust as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G
-#SBATCH --gpus=rtx_4090:1
+#SBATCH --gpus=pro_6000:1
 #SBATCH --output=/cluster/home/%u/logs/WP1_sweep_%j.out
 
 module purge
