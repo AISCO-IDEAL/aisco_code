@@ -289,7 +289,7 @@ class VTKMeshDataset(Dataset):
         val_size = self.dataset_config["val_size"]
         test_size = self.dataset_config["test_size"]
 
-        if self.dataset_config.get("handpicked_val", False) and self._validation_list_path():
+        if self.dataset_config.get("handpicked_val", False) and self.dataset_config.get("val_files_path"):
             split_indices = self._load_handpicked_validation_split_indices(
                 all_filenames=all_filenames,
                 train_size=train_size,
@@ -405,7 +405,7 @@ class VTKMeshDataset(Dataset):
         raise ValueError(f"Invalid split: {self.split}")
 
     def _read_validation_file_names(self) -> list[str]:
-        path = self._validation_list_path()
+        path = self.dataset_config.get("val_files_path")
         if path is None:
             return []
         with open(path) as f:
@@ -419,17 +419,6 @@ class VTKMeshDataset(Dataset):
                 line = line[1:].strip()
             names.append(self._normalize_sample_name(line.strip("'\"")))
         return names
-
-    def _validation_list_path(self) -> str | None:
-        configured_path = self.dataset_config.get("val_files_path") or self.dataset_config.get("val_file_list")
-        if not configured_path:
-            return None
-        configured_path = os.fspath(configured_path)
-        if os.path.isabs(configured_path):
-            return configured_path
-        if os.path.exists(configured_path):
-            return configured_path
-        return os.path.join(self.root, configured_path)
 
     @staticmethod
     def _normalize_sample_name(name: str) -> str:
