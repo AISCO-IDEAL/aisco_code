@@ -351,9 +351,13 @@ class DiversityTrainer:
         self._norm_manager.record_calibration(loss_scales, grad_scales, calibrated_names)
         self._model_optimizer.zero_grad()
 
-        summary_items = [
-            f"{n}(loss={loss_scales.get(n, 1.0):.3g}, grad={grad_scales.get(n, 1.0):.3g})" for n in sorted(calibrated_names)
-        ]
+        summary_items = []
+        for n in sorted(calibrated_names):
+            loss_scale = loss_scales.get(n, 1.0)
+            grad_scale = grad_scales.get(n, 1.0)
+            loss_status = f"loss={loss_scale:.3g}" if n in loss_scales else "loss=default"
+            grad_status = f"grad={grad_scale:.3g}" if n in grad_scales else "grad=fixed/default"
+            summary_items.append(f"{n}({loss_status}, {grad_status})")
         print(f"[LossNormalisation] Calibration complete. {len(calibrated_names)} losses calibrated:")
         for item in summary_items:
             print(f"  ✓ {item}")

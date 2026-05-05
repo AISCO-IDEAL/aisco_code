@@ -8,10 +8,7 @@ general_info:
   #    WARNING: When ALM="True", manual constraint weights are ignored by design.
   #    Constraint relative importance is controlled by ALM multipliers (initial_lambda, initial_mu, initial_nu).
 
-  cse_weight: 1.0  # Post-normalisation weight on the unified CSE objective (-v_cruise * loss_scale * grad_scale).
-                   # Tune this against diversity weight (field_diversity_v0 config entry below).
-                   # Only active when CSE="True"; individual aero/solar weights are dead code when CSE is on.
-
+  
   ALM_aggressive_capu: 0.25 # has constraint decreased sufficiently threshold, only used when ALM_aggressive=True. # weights.py: self.use_alm_aggressive
   # ALM parameter mapping order:
   # - Arrays are supported and can be provided in either format:
@@ -29,6 +26,11 @@ general_info:
   alpha: 0.8  # EMA decay factor for ν update
   gamma: 0.2  # parameter for ALM penalty update
   gamma_aggressive: 1.1  # multiplicative increase factor for μ in aggressive CAPU mode
+
+
+  cse_weight: 1.0  # Post-normalisation weight on the unified CSE objective (-v_cruise * loss_scale * grad_scale).
+                   # Tune this against diversity weight (field_diversity_v0 config entry below).
+                   # Only active when CSE="True"; individual aero/solar weights are dead code when CSE is on.
   cse_prefactors:  # prefactors applied to objectives before feeding into CSE
     drag: 1.0
     solar: 1.0

@@ -569,7 +569,7 @@ class TotalLossV2:
                 )
                 cse_weight = 1.0 if calibration_pass else self._cse_weight
                 weighted_components["cse_objective"] = -v_cruise * cse_scale * cse_weight
-                log_data["weighted_losses/cse_objective"] = v_cruise.item()
+                log_data["weighted_losses/cse_objective"] = (v_cruise * cse_loss_scale * cse_weight).item()
                 log_data["optimizer_losses/cse_objective"] = weighted_components["cse_objective"].detach().item()
         else:
             for category, t in bundle.objectives.items():
