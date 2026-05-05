@@ -21,7 +21,7 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.pressure_integration impo
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.scale import rescale, rescale_new
 from subprojects.wp4_aeroshell_optimizer import MeshSDFGrads, Visualiser
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.shear_force import ShearForce
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class ModelLoader:
         self.cfd_config = cfd_config
         self.device = device
         self._init_viz_consistency_settings()
-        self.shear_force_calculator = ShearForce(n_per_sqm=1)
+        self.shear_force_calculator = ShearForce(unit="mm^2")
 
         self.optimization_state = {
             "vertices": None,
@@ -399,6 +399,7 @@ class ModelLoader:
             }
 
         shearforce = self.shear_force_calculator.calculate_shear_force(mesh_verts, mesh_faces)
+        print(f"Shear Force: {shearforce}")
         return int_drag_f + shearforce
 
     def _reformat_data(self, mesh_verts, mesh_faces):
