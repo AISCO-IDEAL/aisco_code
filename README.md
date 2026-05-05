@@ -69,7 +69,17 @@ same as in 00EnvironmentSetup on Obsidian
 >
 > **-> congrats, you are all set!**
 > 
-
+## Euler Blackwell Setup for RTX-6000-Pro
+on a Login-Node, run the following comand to get a srun-job on a rtx-6000
+```bash
+srun --cpus-per-task=1 --mem-per-cpu=8G --time=4:00:00 --gpus=pro_6000:1 --pty bash
+```
+then run the setup-file:
+```bash
+cd AISCO_code
+chmod +x setup_new.sh
+~/AISCO_code/setup_new.sh
+```
 
 ## Environment Activation Guide (do this every time you open a new terminal)
 for AISCO, please activate myenv in the `cd ~/AISCO_code/` folder:
