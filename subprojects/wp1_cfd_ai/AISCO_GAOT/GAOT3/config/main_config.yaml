@@ -164,7 +164,7 @@ optimizer:
     args:
         lr: 6e-4
         weight_decay: 1e-05
-        epoch: 400
+        epoch: 500
         loss_scale: 1.0
         eval_every_eps: 5
         viz_every_eps: 25   # visualize every N epochs; defaults to eval_every_eps if omitted
@@ -196,4 +196,4 @@ local_path:
     result_path: "/home/aisco/results/_NAME___RUN_ID_/results.png"
     config_save_path: "/home/aisco/results/_NAME___RUN_ID_/config.yaml"
     database_path: "/home/aisco/results/metrics.csv"
-    dataset: "/home/aisco/datasets/processed_euler_cp_full"  # local path to dataset (overrides base_path when run_local=true)
+    dataset: "/home/aisco/datasets/united_clean_datasets"  # local path to dataset (overrides base_path when run_local=true)
