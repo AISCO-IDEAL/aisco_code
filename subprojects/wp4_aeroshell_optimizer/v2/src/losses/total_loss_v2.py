@@ -122,8 +122,10 @@ class TotalLossV2:
         self.solar_default_value: float = gi["cse_defaults"]["solar"]
         self.drag_default_value: float = gi["cse_defaults"]["drag"]
         self._cse_prefactors: dict[str, float] = gi.get("cse_prefactors", {})
+        self._cse_weight: float = float(gi.get("cse_weight", 1.0))
 
         self._init_active_losses()
+        self._warn_about_dead_weights()
 
     def _init_active_losses(self) -> None:  # noqa: PLR0912, PLR0915
         """Instantiate active losses and build role-grouped internal lookup maps.
@@ -244,6 +246,34 @@ class TotalLossV2:
 
             disabled_raw = block.get("_disabled_epochs", [])
             self._disabled_epochs[category] = [(int(s), int(e)) for s, e in disabled_raw]
+
+    def _warn_about_dead_weights(self) -> None:
+        """Warn users about config weights that will be ignored due to ALM or CSE modes."""
+        gi: dict[str, Any] = self.losses_config["general_info"]
+        use_cse: bool = gi.get("CSE") == "True"
+        use_alm: bool = gi.get("ALM") == "True"
+
+        if use_cse:
+            dead_objectives = [
+                name for cat, (name, _) in self._objective_by_category.items()
+                if name in self._manual_weights and self._manual_weights[name] != 1.0
+            ]
+            if dead_objectives:
+                print(
+                    f"⚠️  WARNING: CSE is enabled (CSE=True). Individual objective weights for {dead_objectives} "
+                    f"are dead code and will be ignored. Use 'cse_weight' config entry to scale CSE vs diversity."
+                )
+
+        if use_alm:
+            dead_constraints = [
+                name for cat, (name, _) in self._constraint_by_category.items()
+                if name in self._manual_weights and self._manual_weights[name] != 1.0
+            ]
+            if dead_constraints:
+                print(
+                    f"⚠️  WARNING: ALM is enabled (ALM=True). Constraint weights for {dead_constraints} "
+                    f"are dead code and will be ignored. Use 'initial_lambda' and 'initial_mu' config entries to influence constraint strength."
+                )
 
     def _is_category_active(self, category: str, epoch: int) -> bool:
         return all(
@@ -407,6 +437,7 @@ class TotalLossV2:
         alm_manager: ALMManager | None = None,
         return_components: bool = False,
         norm_manager: LossNormalisationManager | None = None,
+        calibration_pass: bool = False,
     ) -> WeightedLossResult:
         """Combine raw losses into a backpropable scalar plus a detached log dict.
 
@@ -536,13 +567,14 @@ class TotalLossV2:
                     if norm_manager
                     else 1.0
                 )
-                weighted_components["cse_objective"] = -v_cruise * cse_scale
+                cse_weight = 1.0 if calibration_pass else self._cse_weight
+                weighted_components["cse_objective"] = -v_cruise * cse_scale * cse_weight
                 log_data["weighted_losses/cse_objective"] = v_cruise.item()
                 log_data["optimizer_losses/cse_objective"] = weighted_components["cse_objective"].detach().item()
         else:
             for category, t in bundle.objectives.items():
                 name: str = self._objective_by_category[category][0]
-                w: float = self._manual_weights.get(name, 1.0)
+                w: float = 1.0 if calibration_pass else self._manual_weights.get(name, 1.0)
                 sign: float = float(self._objective_signs.get(category, 1))
                 combined_scale = (norm_manager.get_loss_scale(name) * norm_manager.get_grad_scale(name)) if norm_manager else 1.0
                 wt: torch.Tensor = sign * w * t * combined_scale
@@ -576,7 +608,7 @@ class TotalLossV2:
         else:
             for category, t in bundle.constraints.items():
                 name = self._constraint_by_category[category][0]
-                w = self._manual_weights.get(name, 1.0)
+                w = 1.0 if calibration_pass else self._manual_weights.get(name, 1.0)
                 combined_scale = (norm_manager.get_loss_scale(name) * norm_manager.get_grad_scale(name)) if norm_manager else 1.0
                 wt = w * t * combined_scale
                 weighted_components[name] = wt
@@ -586,7 +618,7 @@ class TotalLossV2:
         # --- Auxiliaries (always manual) ----------------------------------
         for category, t in bundle.aux.items():
             name = self._aux_by_category[category][0]
-            w = self._manual_weights.get(name, 1.0)
+            w = 1.0 if calibration_pass else self._manual_weights.get(name, 1.0)
             combined_scale = (norm_manager.get_loss_scale(name) * norm_manager.get_grad_scale(name)) if norm_manager else 1.0
             wt = w * t * combined_scale
             weighted_components[name] = wt
