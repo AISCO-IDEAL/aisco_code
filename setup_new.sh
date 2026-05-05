@@ -15,7 +15,7 @@ nvcc --version
 module list
 python3 -m venv aisco_env
 source aisco_env/bin/activate
-python -m pip install --upgrade pip setuptools wheel build ninja
+python -m pip install --upgrade pip setuptools wheel build ninja pybind11
 python -m pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0+cu128 torchvision==0.23.0+cu128
 python -m pip install -e '.[all]' --no-build-isolation -f https://data.pyg.org/whl/torch-2.8.0+cu128.html
 python -m pip install -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.8.0_cu128.html kaolin==0.18.0
