@@ -8,7 +8,7 @@
 
 setup:
     run_local: false
-    name: "GOAT_sweeping"
+    name: "GOAT_for_wp4"
     id: "_RUN_ID_"
     seed: 42
     device: "cuda:0"
@@ -23,7 +23,7 @@ setup:
     wandb: true
     wandb_run_name: "_NAME___RUN_ID_"
 
-    wandb_project: "WP1_sweeping"
+    wandb_project: "GOAT_for_WP4"
     wandb_entity: aisco
     wandb_group: united_all_cp_field
     wandb_mode: online
@@ -39,7 +39,7 @@ model:
     args:
         input_size: 6
         output_size: 1
-        latent_tokens: [32, 32, 16]
+        latent_tokens: [128, 16, 8]
         field_output_size: 1
         norm_domain: [[-1, -1, -1], [1, 1, 1]]
         magno:
@@ -48,7 +48,7 @@ model:
             neighbor_strategy: "bidirectional"
             projection_channels: 220
             in_gno_channel_mlp_hidden_layers: [64, 64, 64]
-            out_gno_channel_mlp_hidden_layers: [64, 64]
+            out_gno_channel_mlp_hidden_layers: [64]
             lifting_channels: 13
             gno_radius: 0.066
             gno_use_torch_cluster: true
@@ -80,7 +80,7 @@ model:
             use_attn_norm: true
             use_ffn_norm: true
             norm_eps: 1e-06
-            num_layers: 10
+            num_layers: 5
             positional_embedding: "rope"
             use_long_range_skip: true
 
@@ -164,7 +164,7 @@ optimizer:
     args:
         lr: 6e-4
         weight_decay: 1e-05
-        epoch: 500
+        epoch: 1000
         loss_scale: 1.0
         eval_every_eps: 5
         viz_every_eps: 25   # visualize every N epochs; defaults to eval_every_eps if omitted
