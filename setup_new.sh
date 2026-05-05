@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-cd AISCO_code
 rm -rf aisco_env
 module purge
 module load stack/2024-06 gcc/12.2.0 cuda/12.8.0 python_cuda/3.11.6 eth_proxy
