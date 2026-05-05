@@ -12,41 +12,62 @@ command:
 # Optimization setup
 method: bayes  # or "random" if you prefer
 metric:
-  name: val/loss   # adapt to your logged metric name
+  name: val/average_integrated/integrated_drag_error 
   goal: minimize
 
 # Global sweep info (matches your project)
 project: WP1_drag
 entity: aisco
-name: "wp1_gaot_optimiser_sweep"
+name: "Latent Token Sweep"
 
 parameters:
   # ========== TRAINING SIZE / DURATION ==========
-  model.args.magno.gno_radius:
-    distribution: uniform
-    min: 0.01
-    max: 0.04
 
   model.args.latent_tokens:
     values:
+      # 64, 64, ???
+      - [64,64,8]
+      - [64,64,16]
+      - [64,64,32]
+      - [64,64,64]
 
-      - [128,16,8]
-      - [128,16,16]
-      - [128,16,32]
+      # 64, 32, ???
+      - [64,32,8]
+      - [64,32,16]
+      - [64,32,32]
 
+      # 64, 16, ???
+      - [64,16,8]
+      - [64,16,16]
+
+      # 128, 128, ???
+      - [128,128,8]
+      - [128,128,16]
+      - [128,128,32]
+      - [128,128,64]
+      - [128,128,128]
+
+      # 128, 64, ???
+      - [128,64,8]
+      - [128,64,16]
+      - [128,64,32]
+      - [128,64,64]
+
+      # 128, 32, ???
       - [128,32,8]
       - [128,32,16]
       - [128,32,32]
 
-      - [128,64,8]
-      - [128,64,16]
-      - [128,64,32]
+      # 128, 16, ???
+      - [128,16,8]
+      - [128,16,16]
 
-      - [64,16,8]
-      - [64,16,16]
-      - [64,32,16]
-      - [64,64,16]
-      - [64,64,32]
+      # 128, 8, ???
+      - [128,8,8]
+      - [128,8,4]
 
-      - [32,64,16]
-      - [16,128,16]
+      # crazy
+      - [256, 256, 256]
+      - [32, 32, 16]
+      - [8, 32, 128]
+      - [256, 128, 64]
