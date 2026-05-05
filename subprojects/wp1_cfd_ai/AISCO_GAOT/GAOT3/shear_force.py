@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 
 import torch
-
+import yaml
 
 MAIN_CONFIG_PATH = Path(__file__).parent / "config" / "main_config.yaml"
 
@@ -12,8 +12,8 @@ class ShearForce:
     def __init__(self, n_per_sqm=0.5287701487541199, unit="m^2"):
         self.n_per_sqm = n_per_sqm
         self.factor = 1.0
-        if unit=="mm^2":
-            self.factor=0.000001
+        if unit == "mm^2":
+            self.factor = 0.000001
 
     @staticmethod
     def _as_triangle_faces(faces: torch.Tensor) -> torch.Tensor:
@@ -48,7 +48,7 @@ class ShearForce:
 
     def calculate_shear_force(self, verts: torch.Tensor, faces: torch.Tensor):
         total_area = torch.sum(self._face_areas(verts, faces))
-        return self.n_per_sqm * total_area *self.factor
+        return self.n_per_sqm * total_area * self.factor
 
     def calculate_average_newton_per_sqm(
         self,
@@ -87,17 +87,14 @@ class ShearForce:
                 wall_shear = wall_shear.to(device=verts.device, dtype=verts.dtype)
                 if wall_shear.shape[0] != verts.shape[0]:
                     raise ValueError(
-                        f"Expected {shear_attr} to have one value per vertex "
-                        f"({verts.shape[0]}), got {wall_shear.shape[0]}."
+                        f"Expected {shear_attr} to have one value per vertex ({verts.shape[0]}), got {wall_shear.shape[0]}."
                     )
                 if wall_shear.ndim == 1:
                     shear_magnitude = wall_shear.abs()
                 elif wall_shear.ndim == 2:
                     shear_magnitude = torch.norm(wall_shear, dim=1)
                 else:
-                    raise ValueError(
-                        f"Expected {shear_attr} shaped [N] or [N, C], got {tuple(wall_shear.shape)}."
-                    )
+                    raise ValueError(f"Expected {shear_attr} shaped [N] or [N, C], got {tuple(wall_shear.shape)}.")
 
                 vertex_areas = torch.zeros(verts.shape[0], device=verts.device, dtype=verts.dtype)
                 face_area_share = (face_areas / 3.0).repeat_interleave(3)
@@ -123,8 +120,6 @@ class ShearForce:
 
 
 def _load_dataset_config(config_path: Path) -> dict:
-    import yaml
-
     with open(config_path) as f:
         config = yaml.safe_load(f) or {}
     dataset_config = config.get("dataset", {})
