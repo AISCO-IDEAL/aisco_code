@@ -26,6 +26,7 @@ import torch
 import trimesh
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
+from torch.profiler import record_function
 
 import wandb
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
@@ -361,6 +362,7 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     # Phase 1 — per-vector backward
     # ------------------------------------------------------------------
+    @record_function("DiversityManager._per_vector_backward")
     def _per_vector_backward(  # noqa: PLR0912, PLR0915
         self,
         epoch: int,
@@ -515,6 +517,7 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     # Main step
     # ------------------------------------------------------------------
+    @record_function("DiversityManager.step")
     def step(self, epoch: int = -1) -> dict[str, float]:
         """
         One full optimization step: Phase 1 -> ALM update -> Phase 2 -> opt.step -> log/render.

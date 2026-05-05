@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from torch.profiler import record_function
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
@@ -383,19 +384,21 @@ class TotalLossV2:
                             and category in {self._cse_drag_category, self._cse_solar_category}
                         )
                         if self._deactivate_scheduler_mode == "zero_weighted":
-                            sig = inspect.signature(instance.get_loss)
-                            if "skip_telemetry" in sig.parameters:
-                                bundle.zero_weighted[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
-                            else:
-                                bundle.zero_weighted[category] = instance.get_loss(model, epoch_name)
+                            with record_function(f"loss_{loss_name}"):
+                                sig = inspect.signature(instance.get_loss)
+                                if "skip_telemetry" in sig.parameters:
+                                    bundle.zero_weighted[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+                                else:
+                                    bundle.zero_weighted[category] = instance.get_loss(model, epoch_name)
                         elif not is_cse_managed_objective:
                             self._skipped_log_zeros[f"raw_losses/{loss_name}"] = 0.0
                         continue
-                    sig = inspect.signature(instance.get_loss)
-                    if "skip_telemetry" in sig.parameters:
-                        target_dict[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
-                    else:
-                        target_dict[category] = instance.get_loss(model, epoch_name)
+                    with record_function(f"loss_{loss_name}"):
+                        sig = inspect.signature(instance.get_loss)
+                        if "skip_telemetry" in sig.parameters:
+                            target_dict[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+                        else:
+                            target_dict[category] = instance.get_loss(model, epoch_name)
         finally:
             self._clear_shared_meshes()
 
