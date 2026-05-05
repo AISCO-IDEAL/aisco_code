@@ -51,4 +51,7 @@ echo "✅ pydevelopability build complete."
 cd /cluster/home/$USER/AISCO_code/subprojects/fixed_renderer
 # optionally set arch if building on a login node:
 export TORCH_CUDA_ARCH_LIST="12.0"
+export CUDA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v nvcc)")")")"
+export PATH="$CUDA_HOME/bin:$PATH"
+export LD_LIBRARY_PATH="$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
 python setup.py build_ext --inplace
