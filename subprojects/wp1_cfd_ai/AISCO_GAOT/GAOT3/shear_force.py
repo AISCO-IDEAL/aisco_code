@@ -9,8 +9,11 @@ MAIN_CONFIG_PATH = Path(__file__).parent / "config" / "main_config.yaml"
 
 
 class ShearForce:
-    def __init__(self, n_per_sqm=1):
+    def __init__(self, n_per_sqm=0.5287701487541199, unit="m^2"):
         self.n_per_sqm = n_per_sqm
+        self.factor = 1.0
+        if unit=="mm^2":
+            self.factor=0.000001
 
     @staticmethod
     def _as_triangle_faces(faces: torch.Tensor) -> torch.Tensor:
@@ -45,7 +48,7 @@ class ShearForce:
 
     def calculate_shear_force(self, verts: torch.Tensor, faces: torch.Tensor):
         total_area = torch.sum(self._face_areas(verts, faces))
-        return self.n_per_sqm * total_area
+        return self.n_per_sqm * total_area *self.factor
 
     def calculate_average_newton_per_sqm(
         self,
@@ -190,6 +193,7 @@ def _load_samples(sample_paths: list[Path]):
 
 
 def main():
+    print("Start")
     config_path = MAIN_CONFIG_PATH
     dataset_config = _load_dataset_config(config_path)
     dataset_path = _resolve_dataset_path(dataset_config)
