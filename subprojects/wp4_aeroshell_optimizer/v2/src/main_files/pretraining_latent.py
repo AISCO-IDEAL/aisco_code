@@ -513,6 +513,8 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     # 0 = static surface cache (DeepSDF-style: sample once, reuse forever)
     # N > 0 = refresh surface cache every N epochs
     surface_resample_cadence: int = int(loop_cfg.get("surface_resample_cadence", 0))
+    track_band_losses: bool = bool(loop_cfg.get("track_band_losses", False))
+    eikonal_weight: float = float(loop_cfg.get("eikonal_weight", 0.0))
 
     # --- M2: Dual-band near-surface sampling params ---
     # Defaults reproduce the legacy single-band PLY behaviour (50/50 domain/surface, one band).
@@ -640,12 +642,12 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 cached_surface[slot_idx] = (pts_i[n_dom:], gt_i[n_dom:])
 
         # Sample fresh domain pts (uniform bbox) for L1-all loss — every epoch
-        all_domain_pts: list[Tensor] = []
-        all_domain_gt: list[Tensor] = []  # GT SDF for L1-all loss
+        all_domain_pts: list[Tensor] = [] # Domain points evaluated in the model
+        all_domain_gt: list[Tensor] = []  # Ground truth SDF for L1-all loss
         all_domain_z: list[Tensor] = []
-        all_surface_pts: list[Tensor] = []
-        all_surface_gt: list[Tensor] = []
-        all_surface_z: list[Tensor] = []
+        all_surface_pts: list[Tensor] = []# Surface points evaluated in the model
+        all_surface_gt: list[Tensor] = []  # Ground truth SDF for surface points
+        all_surface_z: list[Tensor] = []  # Latent vectors for surface points
 
         for slot_idx, shape in enumerate(shapes):
             shape_params = _build_shape_params(shape, ply_cache, slot_idx)
@@ -718,6 +720,45 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         total_loss = l1_fn(pred / 1000.0, gt_all / 1000.0)
         l1_all = total_loss.item()
 
+        # --- Per-band loss instrumentation (monitoring only; backprop still uses total_loss) ---
+        # Gated by training_loop.track_band_losses: true in config (default: false).
+        loss_tight_item = None
+        loss_wide_item = None
+        loss_domain_item = None
+
+        if track_band_losses:
+            if near_surface_wide_sigma is None:
+                # Single-band: all surface points are tight-band
+                loss_tight_item = l1_fn(pred_surface / 1000.0, surface_gt / 1000.0).item()
+            else:
+                # Dual-band: split surface points 50/50 between tight and wide
+                n_tight_per_shape = n_surf // 2
+                tight_indices = torch.tensor(
+                    [s * n_surf + i for s in range(num_shapes) for i in range(n_tight_per_shape)],
+                    device=device,
+                )
+                wide_indices = torch.tensor(
+                    [s * n_surf + i for s in range(num_shapes) for i in range(n_tight_per_shape, n_surf)],
+                    device=device,
+                )
+                loss_tight_item = l1_fn(pred_surface[tight_indices] / 1000.0, surface_gt[tight_indices] / 1000.0).item()
+                loss_wide_item = l1_fn(pred_surface[wide_indices] / 1000.0, surface_gt[wide_indices] / 1000.0).item()
+
+            if num_shapes * n_dom > 0:
+                loss_domain_item = l1_fn(pred[num_shapes * n_surf :] / 1000.0, domain_gt / 1000.0).item()
+
+        # --- Eikonal regularization: ||∇SDF(x)|| = 1 on domain points ---
+        # Gated by training_loop.eikonal_weight > 0 (default: 0.0 = disabled).
+        # Runs a second forward pass on domain pts with create_graph=True.
+        eikonal_loss_item: float | None = None
+        if eikonal_weight > 0.0:
+            eik_pts = domain_pts.detach().requires_grad_(True)
+            eik_pred = model(eik_pts, z=domain_z.detach()).squeeze()
+            (eik_grads,) = torch.autograd.grad(eik_pred.sum(), eik_pts, create_graph=True)
+            eikonal_loss = ((eik_grads.norm(dim=-1) - 1.0) ** 2).mean()
+            eikonal_loss_item = eikonal_loss.item()
+            total_loss = total_loss + eikonal_weight * eikonal_loss
+
         # NaN guard — halt before writing checkpoint
         if not math.isfinite(total_loss.item()):
             nan_slot: int | str = next(
@@ -776,29 +817,40 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             else:
                 warn_suffix = ""
 
+            eik_suffix = f" | eikonal={eikonal_loss_item:.4f}" if eikonal_loss_item is not None else ""
             tqdm.write(
                 f"[latent_pretrain] Epoch {epoch:5d} | total={total_loss.item():.6f} "
                 f"| slot_losses={[f'{v:.4f}' for v in slot_losses]} "
                 f"| l1_all={l1_all:.6f} | lr={lr_now:.2e}"
                 f" | z_grad={z_grad_norm:.2e} | xyz_grad={xyz_grad_norm:.2e}"
-                f" | ratio={grad_ratio:.2e}{warn_suffix}"
+                f" | ratio={grad_ratio:.2e}{warn_suffix}{eik_suffix}"
             )
             if use_wandb:
-                wandb.log(
-                    {
-                        "latent_pretraining/total_loss": total_loss.item(),
-                        "latent_pretraining/l1_all": l1_all,
-                        "latent_pretraining/lr": lr_now,
-                        "latent_pretraining/latent_grad_norm": z_grad_norm,
-                        "latent_pretraining/spatial_grad_norm": xyz_grad_norm,
-                        "latent_pretraining/grad_norm_ratio": grad_ratio,
-                        **{f"latent_pretraining/slot_{i}_loss": v for i, v in enumerate(slot_losses)},
-                    },
-                    step=epoch,
-                )
+                # Prepare per-band losses for logging
+                wandb_dict = {
+                    "latent_pretraining/total_loss": total_loss.item(),
+                    "latent_pretraining/l1_all": l1_all,
+                    "latent_pretraining/lr": lr_now,
+                    "latent_pretraining/latent_grad_norm": z_grad_norm,
+                    "latent_pretraining/spatial_grad_norm": xyz_grad_norm,
+                    "latent_pretraining/grad_norm_ratio": grad_ratio,
+                    **{f"latent_pretraining/slot_{i}_loss": v for i, v in enumerate(slot_losses)},
+                }
+                # Add per-band losses if available
+                if loss_tight_item is not None:
+                    wandb_dict["latent_pretraining/loss_tight_band"] = loss_tight_item
+                if loss_wide_item is not None:
+                    wandb_dict["latent_pretraining/loss_wide_band"] = loss_wide_item
+                if loss_domain_item is not None:
+                    wandb_dict["latent_pretraining/loss_domain"] = loss_domain_item
+                if eikonal_loss_item is not None:
+                    wandb_dict["latent_pretraining/eikonal_loss"] = eikonal_loss_item
+
+                wandb.log(wandb_dict, step=epoch)
 
     # --- Save checkpoint ---
     ckpt_path.parent.mkdir(parents=True, exist_ok=True)
+    _shape_names = [s.get("name", str(i)) for i, s in enumerate(shapes)]
     torch.save(
         {
             "model_state_dict": model.state_dict(),
@@ -808,16 +860,17 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 "date": datetime.now().isoformat(),
                 "epochs": epochs,
                 "model_class": model.__class__.__name__,
+                "shape_names": _shape_names,
             },
         },
         ckpt_path,
     )
-    print(f"[latent_pretrain] SAVE  path={ckpt_path}  hash={config_hash}  epochs={epochs}  shapes={num_shapes}")
+    print(f"[latent_pretrain] SAVE  path={ckpt_path}  hash={config_hash}  epochs={epochs}  shapes={_shape_names}")
     print(f"[latent_pretrain] All outputs → {run_dir}/")
-    # Write model_info_dict.json sidecar for human-readable audit
+    # Write model_info_dict.json sidecar: model architecture + shape names for human-readable audit
     info_json_path = ckpt_path.parent / "model_info_dict.json"
     with open(info_json_path, "w") as _f:
-        json.dump(model.get_model_info_dict(), _f, indent=2)
+        json.dump({**model.get_model_info_dict(), "shape_names": _shape_names}, _f, indent=2)
     print(f"[latent_pretrain] Wrote model_info_dict.json → {info_json_path}")
 
     # --- Log Z spread ---

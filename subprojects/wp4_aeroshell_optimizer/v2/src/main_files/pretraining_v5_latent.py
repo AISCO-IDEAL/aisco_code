@@ -115,10 +115,17 @@ def _parse_args() -> argparse.Namespace:
             "near-surface pts are split evenly between tight and wide Gaussian bands."
         ),
     )
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=None,
+        dest="learning_rate",
+        help="Override training_loop.learning_rate.",
+    )
     return parser.parse_args()
 
 
-def main() -> None:  # noqa: PLR0912
+def main() -> None:  # noqa: PLR0912,PLR0915
     """Run latent-population pretraining from the command line."""
     args = _parse_args()
 
@@ -142,6 +149,10 @@ def main() -> None:  # noqa: PLR0912
     if args.wide_sigma is not None:
         config["training_loop"]["near_surface_wide_sigma"] = args.wide_sigma
         print(f"[pretraining_v5_latent] Overriding near_surface_wide_sigma → {args.wide_sigma} (dual-band enabled)")
+
+    if args.learning_rate is not None:
+        config["training_loop"]["learning_rate"] = args.learning_rate
+        print(f"[pretraining_v5_latent] Overriding learning_rate → {args.learning_rate}")
 
     # Device selection
     device: str = (
