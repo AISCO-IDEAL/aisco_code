@@ -121,7 +121,7 @@ output:
   sdf_cache_dir: "/cluster/work/fuge/AISCO/latent_pretraining/01_sdf_cache"  # precomputed SDFs from target PLY shapes
 
   sampling_vis: true # used in main loop, use flags in standalone pretraining
-  make_gif: false   # used in main loop, use flags in standalone pretraining
+  make_gif: true   # used in main loop, use flags in standalone pretraining
   visualisation_directory: "sampling_vis" # directory name withhin directory of the current hash # only used by standalone pretraining
 
   vis_cadence: 1 # at what interval to visualize the sampling

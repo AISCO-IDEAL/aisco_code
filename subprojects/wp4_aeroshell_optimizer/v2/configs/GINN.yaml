@@ -1,4 +1,4 @@
-population_size: 2 # overwritten if pretraining on latent space is activated in general config
+population_size: 5 # overwritten if pretraining on latent space is activated in general config
 
 # Diversity loss sampling config
 # Points are used for cheap WIRE-only forward passes (no CFD/raytracing).

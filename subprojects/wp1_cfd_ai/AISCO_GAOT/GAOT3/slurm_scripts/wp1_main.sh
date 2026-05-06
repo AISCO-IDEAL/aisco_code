@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem-per-cpu=8G
-#SBATCH --gpus=pro_6000:1
+#SBATCH --gpus=rtx_4090:1
 #SBATCH --output=/cluster/scratch/%u/scratch_logs/GAOT3_CP_new_%j.out
 #SBATCH --error=/cluster/scratch/%u/scratch_logs/GAOT3_CP_new_%j.err
 
