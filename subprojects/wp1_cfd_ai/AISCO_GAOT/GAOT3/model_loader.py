@@ -342,9 +342,9 @@ class ModelLoader:
 
         step_val = self._to_wandb_step(self.epoch_name)
         if step_val is None:
-            wandb.log({"Aero-resolution": mesh_verts.shape[0]})
+            wandb.log({"cfd/Aero-resolution": mesh_verts.shape[0]})
         else:
-            wandb.log({"Aero-resolution": mesh_verts.shape[0]}, step=step_val)
+            wandb.log({"cfd/Aero-resolution": mesh_verts.shape[0]}, step=step_val)
 
         batch = self._reformat_data(mesh_verts, mesh_faces)
 
@@ -400,7 +400,8 @@ class ModelLoader:
             }
 
         shearforce = self.shear_force_calculator.calculate_shear_force(mesh_verts, mesh_faces)
-        print(f"Shear Force: {shearforce}")
+        wandb.log({"cfd/Shearforce:": shearforce}, step=self.epoch_name)
+        wandb.log({"cfd/int_drag_f": int_drag_f}, step=self.epoch_name)
         return int_drag_f + shearforce
 
     def _reformat_data(self, mesh_verts, mesh_faces):
@@ -458,7 +459,7 @@ class ModelLoader:
         # Check number of vertecies and faces
         v = verts.shape[0]
         f = faces.shape[0]
-        d = f - v * 2
+        d = v - f/2
 
         if d == 2:
             print("CFD-AI Check: Mesh is likely watertight (Euler characteristic check passed).")
@@ -481,3 +482,4 @@ class ModelLoader:
             warnings.warn(
                 f"CFD-AI Check: Mesh may not be watertight (Euler characteristic check failed with d={d}).", stacklevel=2
             )
+        wandb.log({"cfd/Mesh Quality (Target:2)": d}, step=self.epoch_name)
