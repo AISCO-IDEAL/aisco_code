@@ -13,6 +13,7 @@ from torch_geometric.data import Batch, Data
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
 import wandb
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.metadata import DATASET_METADATA
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.model.gaot_3d import GAOT3D
@@ -21,7 +22,6 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.pressure_integration impo
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.scale import rescale, rescale_new
 from subprojects.wp4_aeroshell_optimizer import MeshSDFGrads, Visualiser
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce
 
 logger = logging.getLogger(__name__)
 
