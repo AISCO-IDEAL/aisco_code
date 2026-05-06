@@ -1,7 +1,7 @@
 # Visualization configuration
 # Shared by ply_to_gif.py and points_SDFmesh_to_ply.py
 
-# --- GIF rendering (ply_to_gif.py) ---
+# --- GIF rendering (ply_to_gif.py) --- dermasse sali
 fps: 10
 window_width: 1280
 window_height: 720
