@@ -36,6 +36,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import DebugManager
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is_cluster
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
@@ -62,8 +63,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     # 1. Load and register configs
     general_config: dict[str, Any] = load_config(v="v2", cfg_name="general_config.yaml")
-    # Auto-detect environment: override run_locally if /cluster is not accessible
-    if not os.path.isdir("/cluster"):
+    # Auto-detect environment: override run_locally if not on a known cluster
+    if not is_cluster():
         general_config["general_info"]["run_locally"] = "True"
     verbose: bool = general_config.get("general_info", {}).get("verbose", True)
     device: str = general_config.get("general_info", {}).get("device", "cuda" if torch.cuda.is_available() else "cpu")
@@ -288,7 +289,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             conflict_output_dir = Path(conflict_output_dir_str)
         elif wandb_name is not None:
             if run_locally:
-                base_dir = Path(general_config["storage_paths"]["local_storage_dir"])
+                base_dir = Path(
+                    general_config["storage_paths"].get("beast_storage_dir")
+                    or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+                )
             else:
                 base_dir = Path(general_config["storage_paths"]["storage_dir"])
             conflict_output_dir = base_dir / model_hash / reformat_wandb_name(wandb_name) / "gradient_conflict"
