@@ -41,7 +41,7 @@ class GaotLoss(ParentLoss):
         if self._vis_manager is not None:
             # Propagate to the underlying model loader (GAOT3 only in practice;
             # setattr avoids mypy union-attr error on ModelLoader1/2).
-            self.gaot.vis_manager = self._vis_manager
+            setattr(self.gaot, "vis_manager", self._vis_manager)  # noqa: B010
         result = self.gaot.forward(sdf_model=model, epoch_name=self.epoch_name)
         # Propagate diagnostics from the underlying GAOT model loader
         self._last_diagnostics = getattr(self.gaot, "_last_diagnostics", {})
