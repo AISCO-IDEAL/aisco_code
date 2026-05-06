@@ -338,6 +338,8 @@ class ModelLoader:
         if mesh_verts is None or mesh_verts.shape[0] == 0:
             return torch.tensor(0.0, device=self.device)
 
+        self._check_watertightness(mesh_verts, mesh_faces)
+
         step_val = self._to_wandb_step(self.epoch_name)
         if step_val is None:
             wandb.log({"Aero-resolution": mesh_verts.shape[0]})
@@ -370,7 +372,6 @@ class ModelLoader:
             reference_field=reference_field,
         )
 
-        # Fix 4: use physical/raw normals for drag integration
         integration_normals = batch.c_raw if hasattr(batch, "c_raw") and batch.c_raw is not None else batch.c
 
         int_drag_f = cp_field_to_drag(
@@ -452,3 +453,31 @@ class ModelLoader:
             data = RescalePosition()(data)
 
         return Batch.from_data_list([data]).to(self.device)
+
+    def _check_watertightness(self, verts, faces) -> None:
+        # Check number of vertecies and faces
+        v = verts.shape[0]
+        f = faces.shape[0]
+        d = f - v * 2
+
+        if d == 2:
+            print("CFD-AI Check: Mesh is likely watertight (Euler characteristic check passed).")
+        elif d > 2:
+            if d > 12 and self.cfd_config.get("strict_watertightness_check", False):
+                print(
+                    "You can disable the strict watertightness check in the config to avoid this error and only get a warning instead. But if you do so, CFD-AI does not guarantee any reasonable behavior on non-watertight meshes. Proceed with caution and consider improving the mesh quality."
+                )
+                raise ValueError(f"CFD-AI Check: Mesh is likely not watertight (Euler characteristic check failed with d={d}).")
+            else:
+                warnings.warn(
+                    f"CFD-AI Check: Mesh may not be watertight (Euler characteristic check failed with d={d}).", stacklevel=2
+                )
+        elif d < -8 and self.cfd_config.get("strict_watertightness_check", False):
+            print(
+                "You can disable the strict watertightness check in the config to avoid this error and only get a warning instead. But if you do so, CFD-AI does not guarantee any reasonable behavior on non-watertight meshes. Proceed with caution and consider improving the mesh quality."
+            )
+            raise ValueError(f"CFD-AI Check: Mesh is likely not watertight (Euler characteristic check failed with d={d}).")
+        else:
+            warnings.warn(
+                f"CFD-AI Check: Mesh may not be watertight (Euler characteristic check failed with d={d}).", stacklevel=2
+            )

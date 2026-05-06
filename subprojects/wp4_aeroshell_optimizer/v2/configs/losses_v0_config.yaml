@@ -241,6 +241,7 @@ cfd:
   rho: 1.225              # Default: 1.1225       Recomendation: Has to Match the Value used during respective GAOT-Training
   mesh_resolution: 50000  # Default: 50000        Recomendation: Has to Match the Value used during respective GAOT-Training
   gradient_max: 0.1       # Options: any float    Recomendation: 0.1
+  strict_watertightness_check: true # Options: true, false 
 
 cfd_local:
   run_local: true
