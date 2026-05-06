@@ -2,6 +2,7 @@ from typing import cast
 
 import torch
 from torch import nn
+from torch.profiler import record_function
 
 from subprojects.wp2_assembler.version4.utils.wp4_utils import get_outer_bb_info
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.concat_baseclass import ConcatBaseModel
@@ -175,6 +176,7 @@ class ConcatWIREV5(ConcatBaseModel):
     def bbox_half_extent_tensor(self) -> torch.Tensor:
         return cast(torch.Tensor, self.bbox_half_extent)
 
+    @record_function("ConcatWIREV5.forward")
     def forward(self, x: torch.Tensor, z: torch.Tensor | None = None) -> torch.Tensor:
         """
         If z is not provided, uses the latent vector set via set_latent_vector().

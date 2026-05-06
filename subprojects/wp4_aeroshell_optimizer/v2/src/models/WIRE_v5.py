@@ -4,6 +4,7 @@ from typing import cast
 import torch
 from torch import nn
 from torch.nn.utils.parametrizations import spectral_norm
+from torch.profiler import record_function
 
 from subprojects.wp2_assembler.version4.utils.wp4_utils import get_outer_bb_info
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
@@ -233,6 +234,7 @@ class WIREV5(BaseModel):
     def bbox_half_extent_tensor(self) -> torch.Tensor:
         return cast(torch.Tensor, self.bbox_half_extent)
 
+    @record_function("WIREV5.forward")
     def forward(self, coords: torch.Tensor) -> torch.Tensor:
         x = (coords - self.bbox_center_tensor) / self.bbox_half_extent_tensor
         h = x
