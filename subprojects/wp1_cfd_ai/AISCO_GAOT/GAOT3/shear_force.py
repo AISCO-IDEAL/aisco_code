@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 
 import torch
-
+import yaml
 
 MAIN_CONFIG_PATH = Path(__file__).parent / "config" / "main_config.yaml"
 
@@ -120,8 +120,6 @@ class ShearForce:
 
 
 def _load_dataset_config(config_path: Path) -> dict:
-    import yaml
-
     with open(config_path) as f:
         config = yaml.safe_load(f) or {}
     dataset_config = config.get("dataset", {})

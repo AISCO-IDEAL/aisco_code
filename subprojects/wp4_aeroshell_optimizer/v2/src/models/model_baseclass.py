@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import torch
 from torch import nn
+from torch.profiler import record_function
 
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
@@ -69,6 +70,7 @@ class BaseModel(nn.Module):
             output = x
         return output * 1000.0
 
+    @record_function("ModelBaseclass.optimise")
     def optimise(  # noqa: PLR0912, PLR0915
         self,
         general_config: dict[str, Any],
@@ -290,6 +292,8 @@ class BaseModel(nn.Module):
                 grad_norm=grad_norm,
                 lr=lr,
             )
+            if prof is not None:
+                prof.step()
 
         dbg.stop()
 

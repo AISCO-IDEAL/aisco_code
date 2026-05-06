@@ -89,7 +89,7 @@ latent_population:
   #   surface_noise_sigma_factor: 0.005
 
 training_loop:
-  epochs: 3000
+  epochs: 400
   learning_rate: 0.0005
   batch_size_per_shape: 4096 #8192
   logging_interval: 25 # wandb stats logging intervall (displayed in terminal as well)

@@ -81,6 +81,19 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     debug_manager = DebugManager(config=debug_cfg)
     if verbose:
         print(debug_manager.summary())
+
+    # Setup profiler config
+    profiler_cfg = general_config.get("profiler", {})
+    profile_mode = profiler_cfg.get("profile_mode", False)
+    prof_wait = profiler_cfg.get("wait", 5)
+    prof_warmup = profiler_cfg.get("warmup", 2)
+    prof_active = profiler_cfg.get("active", 10)
+    prof_repeat = profiler_cfg.get("repeat", 1)
+    prof_top_entries = profiler_cfg.get("top_entries", 30)
+    if profile_mode and verbose:
+        print(
+            f"Performance profiler enabled with schedule: wait={prof_wait}, warmup={prof_warmup}, active={prof_active}, repeat={prof_repeat}, top_entries={prof_top_entries}"
+        )
     # 2. Handle wandb init and potential sweep/logging setup.
 
     use_wandb: bool = general_config["wandb_general"].get("use_wandb", False)
@@ -310,6 +323,19 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
         renderer_manager = VisualisationManager(verbose=verbose, output_dir=rendering_dir)
         print("Model has legacy optimise() method, assuming single batch optimisation is desired. \n Starting training...")
+
+        prof = None
+        if profile_mode:
+            prof = torch.profiler.profile(
+                activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+                schedule=torch.profiler.schedule(wait=prof_wait, warmup=prof_warmup, active=prof_active, repeat=prof_repeat),
+                on_trace_ready=None,
+                record_shapes=True,
+                profile_memory=True,
+                with_stack=True,
+            )
+            prof.start()
+
         model.optimise(
             training_config=training_config,
             renderer_manager=renderer_manager,
@@ -428,6 +454,18 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             mode = f"diversity (N={population_size})" if uses_diversity else "single-model"
             print(f"Starting {mode} training loop for {num_epochs} epochs...")
 
+        prof = None
+        if profile_mode:
+            prof = torch.profiler.profile(
+                activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+                schedule=torch.profiler.schedule(wait=prof_wait, warmup=prof_warmup, active=prof_active, repeat=prof_repeat),
+                on_trace_ready=None,
+                record_shapes=True,
+                profile_memory=True,
+                with_stack=True,
+            )
+            prof.start()
+
         for epoch in range(num_epochs):
             model.train()
             metrics = trainer.step(epoch=epoch)
@@ -457,6 +495,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                     f"Epoch {epoch}/{num_epochs} | per_vector={metrics['per_vector_loss']:.4f} | "
                     f"diversity={metrics['diversity_loss']:.4f} | total={metrics['total_loss']:.4f}"
                 )
+            if prof is not None:
+                prof.step()
 
         run_latent_interpolation(state=interpolation_state, epoch=num_epochs, stage="final", verbose=verbose)
         cleanup_latent_interpolator(interpolation_state)
@@ -509,6 +549,28 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         resolution=128,
         device=str(device),
     )
+
+    # Stop profiler after ALL training, rendering, and saving is complete
+    if prof is not None:
+        prof.stop()
+
+        profiler_cfg = general_config.get("profiler", {})
+        if profiler_cfg.get("export_trace", False):
+            trace_path = rendering_dir / "trace.json" if rendering_dir else Path("trace.json")
+            prof.export_chrome_trace(str(trace_path))
+            if verbose:
+                print(f"Exported profiler trace to {trace_path}")
+
+        print("\n" + "=" * 80)
+        print("PROFILER RESULTS: CUDA TIME (GPU Operations)")
+        print("=" * 80)
+        print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=prof_top_entries))
+        print("\n" + "=" * 80)
+        print("PROFILER RESULTS: CPU TIME (Host Operations)")
+        print("=" * 80)
+        print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=prof_top_entries))
+        print("=" * 80 + "\n")
+
     print("Completed job successfully.")
 
 
