@@ -18,16 +18,15 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent im
     _compute_latent_pretrain_hash,
     pretraining_latent,
 )
-from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import (
-    _resolve_checkpoint_path as _resolve_latent_ckpt_path,
-)
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
     _compute_solitary_pretrain_hash,
     _resolve_solitary_ckpt_path,
     pretraining,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat, SupportsOptimise
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.ply_to_gif import generate_gifs
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import (
+    CentralVisManager,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     apply_sweep_overrides,
     get_master_config,
@@ -170,6 +169,17 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         else:
             rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
         os.makedirs(rendering_dir, exist_ok=True)
+
+    # Construct CentralVisManager once per run (gated by config flag for rollback safety).
+    _vis_manager: CentralVisManager | None = None
+    if rendering_dir is not None and general_config.get("central_vis_manager_enabled", False):
+        _vis_manager = CentralVisManager(
+            run_dir=rendering_dir,
+            run_id=wandb_name or "unknown",
+        )
+        print(f"[CentralVisManager] enabled → {rendering_dir}")
+    else:
+        print("[CentralVisManager] disabled (central_vis_manager_enabled=false)")
     # 3b. Handle pretraining.
     # latent_space=true  → pretraining_latent.py (handles fast-resume internally; checkpoint in latent_pretraining dir)
     # latent_space=false → standard pretraining_v1_1.py (checkpoint in pretrained_path)
@@ -185,13 +195,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         latent_cfg_name: str = general_config["active_configs"].get("latent_pretraining", "pretraining_latent_config.yaml")
         latent_config = _load_config(v="v2", cfg_name=latent_cfg_name)
         vis_sampling = latent_config["output"].get("sampling_vis", True)
-        make_gif = latent_config["output"].get("make_gif", False)
 
         # Vis dir: derive from canonical pretraining run folder (never /tmp).
         # Computed before calling pretraining_latent so GIF generation has the path.
-        pretrain_run_dir: Path = _resolve_latent_ckpt_path(latent_config, model).parent
-        vis_run_dir: Path = pretrain_run_dir / "sampling_vis"
-
         pretrained_hash: str = _compute_latent_pretrain_hash(latent_config, model)
         model, Z_pretrained = pretraining_latent(
             model,
@@ -199,16 +205,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             device,
             use_wandb=use_wandb,
             vis_sampling=vis_sampling,
+            vis_manager=_vis_manager,
         )
         if verbose:
             print(f"[latent_space] Latent pretraining complete. Population size: {len(latent_config['latent_population'])}")
-        if make_gif and any(vis_run_dir.glob("*.ply")):
-            print("[latent_space] Generating GIFs for latent pretraining visualization...")
-            generate_gifs(
-                input_path=vis_run_dir, output_path=rendering_dir / "gifs" if rendering_dir is not None else vis_run_dir / "gifs"
-            )
-        elif make_gif and verbose:
-            print("[latent_space] Skipping GIF generation: no PLY files in sampling_vis (fast-resume or vis disabled).")
 
     else:
         # Standard pretraining: hash-based canonical lookup (Plan 031 / M4).
@@ -329,6 +329,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             debug_manager=debug_manager,
             conflict_tracker=conflict_tracker,
             conflict_cadence=conflict_cadence,
+            vis_manager=_vis_manager,
             prof=prof,
         )
 
@@ -352,7 +353,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         losses_config = load_config(v="v2", cfg_name=general_config["active_configs"]["losses"])
         wandb_cfg: dict[str, Any] = general_config.get("wandb_general", {})
 
-        total_loss = TotalLossV2(device=device)
+        total_loss = TotalLossV2(device=device, vis_manager=_vis_manager)
         diversity_loss_manager = DiversityLossManager(losses_config=losses_config, device=device)
 
         # ALM setup
@@ -422,6 +423,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             conflict_cadence=conflict_cadence,
             diagnostic_mode=diagnostic_mode,
             print_timing=print_timing,
+            vis_manager=_vis_manager,
         )
 
         interpolation_state = setup_latent_interpolator(
@@ -490,6 +492,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 renderer_manager.finalize()
             except Exception as e:
                 print(f"Manager finalize failed: {e}")
+
+        # CentralVisManager finalize: generate convergence GIFs for all visual types.
+        if _vis_manager is not None:
+            try:
+                _vis_manager.finalize()
+            except Exception as e:
+                print(f"CentralVisManager finalize failed: {e}")
 
     # 6. Saving of files and postprocessing
 

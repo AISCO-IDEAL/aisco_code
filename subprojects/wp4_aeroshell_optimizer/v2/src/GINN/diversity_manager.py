@@ -35,6 +35,9 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager im
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import (
+    CentralVisManager,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
@@ -76,6 +79,7 @@ class DiversityTrainer:
         conflict_cadence: int = 0,
         diagnostic_mode: bool = True,
         print_timing: bool = False,
+        vis_manager: CentralVisManager | None = None,
     ) -> None:
         """
         Args:
@@ -153,6 +157,7 @@ class DiversityTrainer:
 
         self._use_wandb: bool = use_wandb
         self._log_dir: Path = log_dir or Path("subprojects/wp4_aeroshell_optimizer/v2/logs")
+        self._vis_manager: CentralVisManager | None = vis_manager
 
         generator_device = self._device.type if self._device.type in {"cpu", "cuda"} else "cpu"
         self._resample_generator = torch.Generator(device=generator_device)
@@ -860,6 +865,21 @@ class DiversityTrainer:
             return
 
         verts, faces = self._mesh_extractor.extract_mesh(sdf_model=self._model)
+
+        # CentralVisManager path: write PLY for every population slot
+        if self._vis_manager is not None:
+            for i in range(self._population_size):
+                self._model.set_latent_vector(self._Z[i])
+                _verts, _faces = self._mesh_extractor.extract_mesh(sdf_model=self._model)
+                self._vis_manager.save_ply(
+                    f"mesh_shape/slot_{i:02d}",
+                    epoch,
+                    _verts.detach().cpu().numpy(),
+                    _faces.detach().cpu().numpy(),
+                )
+            # Restore model to Z[0] as reference shape
+            self._model.set_latent_vector(self._Z[0])
+            return
 
         if self._use_neural_renderer and self._renderer_manager is not None:
             try:

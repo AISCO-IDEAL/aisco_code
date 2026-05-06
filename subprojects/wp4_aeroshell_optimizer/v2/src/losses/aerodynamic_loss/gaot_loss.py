@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import torch
 
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.model_loader import ModelLoader as ModelLoader2
@@ -5,8 +9,16 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.model_loader import ModelLoader as 
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.model_loader import ModelLoader as ModelLoader1
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 
+if TYPE_CHECKING:
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import CentralVisManager
+
 
 class GaotLoss(ParentLoss):
+    # Set externally by TotalLoss after _init_active_losses(); propagated to
+    # self.gaot before each forward call so ModelLoader can route its
+    # Cp-field visualisation through CentralVisManager.
+    _vis_manager: CentralVisManager | None = None
+
     def _setup(self) -> None:
         version = self.losses_config["cfd"]["version"] if self.losses_config["cfd"]["version"] is not None else 1
 
@@ -24,6 +36,12 @@ class GaotLoss(ParentLoss):
             raise ValueError(f"Gaot Loss Version {version} is not implemented")
 
     def _loss(self, model) -> torch.Tensor:
+        # Propagate CentralVisManager to the underlying model loader so it can
+        # route its Cp-field visualisation through save_ply() instead of wandb PNG.
+        if self._vis_manager is not None:
+            # Propagate to the underlying model loader (GAOT3 only in practice;
+            # setattr avoids mypy union-attr error on ModelLoader1/2).
+            self.gaot.vis_manager = self._vis_manager
         result = self.gaot.forward(sdf_model=model, epoch_name=self.epoch_name)
         # Propagate diagnostics from the underlying GAOT model loader
         self._last_diagnostics = getattr(self.gaot, "_last_diagnostics", {})

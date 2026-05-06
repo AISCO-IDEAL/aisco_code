@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=Main_v2
-#SBATCH --time=01:00:00                   # Extended for adaptive mesh extraction (L=4)
+#SBATCH --time=04:00:00                   # Extended for adaptive mesh extraction (L=4)
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=32
+#SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=8G                  # Total 40G memory
-#SBATCH --gpus=rtx_4090:1
+#SBATCH --gpus=pro_6000:1
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=%u@ethz.ch
