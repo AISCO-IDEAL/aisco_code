@@ -411,6 +411,8 @@ class DiversityTrainer:
         t0 = time.perf_counter()
         for i in range(self._population_size):
             self._model.set_latent_vector(self._Z[i])
+            if self._vis_manager is not None:
+                self._vis_manager.set_active_slot(i)
 
             bundle = self._total_loss.compute(self._model, epoch_name=epoch)
 
@@ -500,6 +502,9 @@ class DiversityTrainer:
 
                 if per_population_conflict_vectors is not None:
                     phase1_conflict_vectors = per_population_conflict_vectors
+
+        if self._vis_manager is not None:
+            self._vis_manager.set_active_slot(None)
 
         if self._print_timing:
             mode_label = "Diagnostic" if self._diagnostic_mode else "Performance"

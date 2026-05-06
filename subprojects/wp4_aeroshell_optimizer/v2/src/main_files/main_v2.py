@@ -484,6 +484,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             if prof is not None:
                 prof.step()
 
+        # CentralVisManager finalize: generate convergence GIFs for all visual types.
+        # Must run BEFORE run_latent_interpolation(stage="final") because that call can
+        # SIGABRT on headless SLURM nodes (PyVista/VTK X11 fallback), killing the process
+        # before any subsequent code runs.
+        if _vis_manager is not None:
+            try:
+                _vis_manager.finalize()
+            except Exception as e:
+                print(f"CentralVisManager finalize failed: {e}")
+
         run_latent_interpolation(state=interpolation_state, epoch=num_epochs, stage="final", verbose=verbose)
         cleanup_latent_interpolator(interpolation_state)
 
@@ -492,13 +502,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 renderer_manager.finalize()
             except Exception as e:
                 print(f"Manager finalize failed: {e}")
-
-        # CentralVisManager finalize: generate convergence GIFs for all visual types.
-        if _vis_manager is not None:
-            try:
-                _vis_manager.finalize()
-            except Exception as e:
-                print(f"CentralVisManager finalize failed: {e}")
 
     # 6. Saving of files and postprocessing
 

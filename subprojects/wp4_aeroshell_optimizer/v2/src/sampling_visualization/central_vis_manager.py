@@ -176,6 +176,10 @@ class CentralVisManager:
         # finalize() can GIF slot-specific sub-paths (e.g. latent/sampling/slot00_foo)
         # even when they have no direct entry in visual_types config.
         self._written_dirs: set[Path] = set()
+        # Active population slot for diversity training.  When set, save_ply() and
+        # save_ply_points() automatically append "/slot_XX" to the visual_type so
+        # that each population member accumulates its own PLY sequence.
+        self._active_slot: int | None = None
         _log(
             {
                 "event": "central_vis_manager_init",
@@ -238,6 +242,19 @@ class CentralVisManager:
     # Public API
     # ------------------------------------------------------------------
 
+    def set_active_slot(self, slot_idx: int | None) -> None:
+        """Set (or clear) the active population slot.
+
+        When set to an integer, ``save_ply()`` and ``save_ply_points()``
+        automatically append ``/slot_XX`` to the ``visual_type`` argument,
+        keeping each diversity-training population member in its own PLY
+        sequence.  Call with ``None`` after the per-slot loop finishes.
+
+        Args:
+            slot_idx: Zero-based population index, or ``None`` to disable.
+        """
+        self._active_slot = slot_idx
+
     def save_ply(
         self,
         visual_type: str,
@@ -264,6 +281,9 @@ class CentralVisManager:
             Path to the written PLY, or ``None`` when the type is disabled or
             writing fails.
         """
+        if self._active_slot is not None and "/slot_" not in visual_type:
+            visual_type = f"{visual_type}/slot_{self._active_slot:02d}"
+
         type_cfg = self._type_config(visual_type)
         if type_cfg is None:
             return None
@@ -449,6 +469,9 @@ class CentralVisManager:
             Path to the written PLY, or ``None`` if the type is disabled or
             writing fails.
         """
+        if self._active_slot is not None and "/slot_" not in visual_type:
+            visual_type = f"{visual_type}/slot_{self._active_slot:02d}"
+
         type_cfg = self._type_config(visual_type)
         if type_cfg is None:
             return None
