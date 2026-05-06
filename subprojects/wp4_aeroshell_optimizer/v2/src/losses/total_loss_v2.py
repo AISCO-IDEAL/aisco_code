@@ -380,6 +380,7 @@ class TotalLossV2:
         """Category names for active constraints, in YAML order."""
         return list(self._constraint_by_category.keys())
 
+    @record_function("TotalLossV2.compute")
     def compute(
         self,
         model: SupportsModelContract,
@@ -436,6 +437,7 @@ class TotalLossV2:
 
         return bundle
 
+    @record_function("TotalLossV2.weight")
     def weight(  # noqa: PLR0912, PLR0915
         self,
         bundle: RawLossBundle,

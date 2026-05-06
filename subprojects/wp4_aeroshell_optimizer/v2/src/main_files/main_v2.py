@@ -530,6 +530,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     # Stop profiler after ALL training, rendering, and saving is complete
     if prof is not None:
         prof.stop()
+
+        profiler_cfg = general_config.get("profiler", {})
+        if profiler_cfg.get("export_trace", False):
+            trace_path = rendering_dir / "trace.json" if rendering_dir else Path("trace.json")
+            prof.export_chrome_trace(str(trace_path))
+            if verbose:
+                print(f"Exported profiler trace to {trace_path}")
+
         print("\n" + "=" * 80)
         print("PROFILER RESULTS: CUDA TIME (GPU Operations)")
         print("=" * 80)

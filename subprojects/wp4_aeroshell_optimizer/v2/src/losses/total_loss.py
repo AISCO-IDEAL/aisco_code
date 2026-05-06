@@ -51,6 +51,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import trimesh
+from torch.profiler import record_function
 
 import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import (
@@ -353,6 +354,7 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # loss computation
     # ------------------------------------------------------------------
+    @record_function("TotalLossV1._compute_raw_losses")
     def _compute_raw_losses(self, model: TrainModel, epoch_name: int, calibration_mode: bool = False) -> dict[str, torch.Tensor]:
         """Evaluate every active loss instance and return raw (unweighted) tensors.
 
@@ -429,6 +431,7 @@ class TotalLoss:
 
         return None
 
+    @record_function("TotalLossV1._apply_weighting")
     def _apply_weighting(  # noqa: PLR0912, PLR0915
         self,
         raw_losses: dict[str, torch.Tensor],
