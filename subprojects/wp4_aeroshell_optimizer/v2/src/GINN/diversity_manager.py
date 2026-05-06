@@ -866,14 +866,19 @@ class DiversityTrainer:
 
         verts, faces = self._mesh_extractor.extract_mesh(sdf_model=self._model)
 
-        # CentralVisManager path: write PLY (preferred)
+        # CentralVisManager path: write PLY for every population slot
         if self._vis_manager is not None:
-            self._vis_manager.save_ply(
-                "mesh_shape",
-                epoch,
-                verts.detach().cpu().numpy(),
-                faces.detach().cpu().numpy(),
-            )
+            for i in range(self._population_size):
+                self._model.set_latent_vector(self._Z[i])
+                _verts, _faces = self._mesh_extractor.extract_mesh(sdf_model=self._model)
+                self._vis_manager.save_ply(
+                    f"mesh_shape/slot_{i:02d}",
+                    epoch,
+                    _verts.detach().cpu().numpy(),
+                    _faces.detach().cpu().numpy(),
+                )
+            # Restore model to Z[0] as reference shape
+            self._model.set_latent_vector(self._Z[0])
             return
 
         if self._use_neural_renderer and self._renderer_manager is not None:

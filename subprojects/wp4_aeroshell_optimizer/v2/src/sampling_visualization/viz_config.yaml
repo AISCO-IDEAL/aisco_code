@@ -47,8 +47,8 @@ visual_types:
   mesh_shape:
     enabled: true
     colormap: null          # uniform dark-blue — shape is the information
-    interval: 50
-    alpha_enabled: null
+    interval: 1
+    alpha_enabled: true
     coordinate_system: null
     vmin: null
     vmax: null
@@ -57,16 +57,16 @@ visual_types:
     cp_field:
       enabled: true
       colormap: "coolwarm"  # diverging: blue=suction, red=stagnation
-      interval: 50
+      interval: 1
       alpha_enabled: null
-      coordinate_system: null
+      coordinate_system: true
       vmin: -2.0            # fixed range for cross-epoch comparability
       vmax: 1.0
 
     gradient:
-      enabled: false        # deferred — no caller milestone in this plan
+      enabled: true        # deferred — no caller milestone in this plan
       colormap: "magma"
-      interval: 50
+      interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: null
@@ -76,7 +76,7 @@ visual_types:
     selection:
       enabled: true
       colormap: "plasma"    # [0,1] bounded selection weight
-      interval: 50
+      interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -85,7 +85,7 @@ visual_types:
     shading:
       enabled: true
       colormap: "viridis"   # [0,1] bounded shading visibility
-      interval: 50
+      interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -94,16 +94,16 @@ visual_types:
     penalty:
       enabled: true
       colormap: "Reds"      # penalty intensity, lower-bounded at 0
-      interval: 50
+      interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
       vmax: null            # auto upper bound per epoch
 
   bb_constraint:
-    enabled: false          # disabled by default — confirm with user before enabling
+    enabled: true          # disabled by default — confirm with user before enabling
     colormap: "Reds"        # violation magnitude, lower-bounded at 0
-    interval: 50
+    interval: 1
     alpha_enabled: null
     coordinate_system: null
     vmin: 0.0

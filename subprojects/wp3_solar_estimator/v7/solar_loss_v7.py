@@ -1012,6 +1012,7 @@ class SolarLossEstimator:
         epoch_name: int | None = None,
         disable_logging: bool = False,
         disable_rendering: bool = False,
+        vis_manager: CentralVisManager | None = None,
     ) -> torch.Tensor:
         """
         Compute the solar loss for the given model.
@@ -1079,6 +1080,7 @@ class SolarLossEstimator:
                     selection_threshold_render=self.selection_threshold_render,
                     sdf_fn=model,
                     output_dir=self.rendering_dir,
+                    vis_manager=vis_manager,
                 )
                 return loss
 
@@ -1150,6 +1152,7 @@ class SolarLossEstimator:
                 selection_threshold_render=self.selection_threshold_render,
                 sdf_fn=model,
                 output_dir=self.rendering_dir,
+                vis_manager=vis_manager,
             )
 
         return loss if self.method != "mesh_sdf" else surrogate_loss

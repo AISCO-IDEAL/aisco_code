@@ -18,9 +18,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent im
     _compute_latent_pretrain_hash,
     pretraining_latent,
 )
-from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import (
-    _resolve_checkpoint_path as _resolve_latent_ckpt_path,
-)
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
     _compute_solitary_pretrain_hash,
     _resolve_solitary_ckpt_path,
@@ -30,7 +27,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import Sup
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import (
     CentralVisManager,
 )
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.ply_to_gif import generate_gifs
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     apply_sweep_overrides,
     get_master_config,
@@ -199,13 +195,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         latent_cfg_name: str = general_config["active_configs"].get("latent_pretraining", "pretraining_latent_config.yaml")
         latent_config = _load_config(v="v2", cfg_name=latent_cfg_name)
         vis_sampling = latent_config["output"].get("sampling_vis", True)
-        make_gif = latent_config["output"].get("make_gif", False)
 
         # Vis dir: derive from canonical pretraining run folder (never /tmp).
         # Computed before calling pretraining_latent so GIF generation has the path.
-        pretrain_run_dir: Path = _resolve_latent_ckpt_path(latent_config, model).parent
-        vis_run_dir: Path = pretrain_run_dir / "sampling_vis"
-
         pretrained_hash: str = _compute_latent_pretrain_hash(latent_config, model)
         model, Z_pretrained = pretraining_latent(
             model,
@@ -217,13 +209,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         )
         if verbose:
             print(f"[latent_space] Latent pretraining complete. Population size: {len(latent_config['latent_population'])}")
-        if make_gif and any(vis_run_dir.glob("*.ply")):
-            print("[latent_space] Generating GIFs for latent pretraining visualization...")
-            generate_gifs(
-                input_path=vis_run_dir, output_path=rendering_dir / "gifs" if rendering_dir is not None else vis_run_dir / "gifs"
-            )
-        elif make_gif and verbose:
-            print("[latent_space] Skipping GIF generation: no PLY files in sampling_vis (fast-resume or vis disabled).")
 
     else:
         # Standard pretraining: hash-based canonical lookup (Plan 031 / M4).

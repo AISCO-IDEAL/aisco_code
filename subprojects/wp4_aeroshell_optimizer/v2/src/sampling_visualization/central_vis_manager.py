@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,11 @@ _DEFAULT_CONFIG_PATH = Path(__file__).parent / "viz_config.yaml"
 
 # Uniform dark-blue used when no colormap is specified (RGB, float [0,1])
 _DARK_BLUE_RGB: tuple[float, float, float] = (0.0 / 255.0, 0.0 / 255.0, 139.0 / 255.0)
+
+
+def _log(event: dict[str, Any]) -> None:
+    """Write a JSON telemetry event to stderr (tqdm-safe, always visible in SLURM logs)."""
+    sys.stderr.write(json.dumps(event) + "\n")
 
 
 def face_to_vertex_average(
@@ -170,15 +176,13 @@ class CentralVisManager:
         # finalize() can GIF slot-specific sub-paths (e.g. latent/sampling/slot00_foo)
         # even when they have no direct entry in visual_types config.
         self._written_dirs: set[Path] = set()
-        print(
-            json.dumps(
-                {
-                    "event": "central_vis_manager_init",
-                    "run_id": run_id,
-                    "run_dir": str(self.run_dir),
-                    "alpha_support": self._alpha_use_struct_pack,
-                }
-            )
+        _log(
+            {
+                "event": "central_vis_manager_init",
+                "run_id": run_id,
+                "run_dir": str(self.run_dir),
+                "alpha_support": self._alpha_use_struct_pack,
+            }
         )
 
     # ------------------------------------------------------------------
@@ -264,30 +268,30 @@ class CentralVisManager:
         if type_cfg is None:
             return None
 
-        print(
-            json.dumps(
-                {
-                    "event": "ply_write_started",
-                    "run_id": self.run_id,
-                    "visual_type": visual_type,
-                    "epoch": epoch,
-                }
-            )
+        interval: int | None = type_cfg.get("interval")
+        if interval is not None and epoch % interval != 0:
+            return None
+
+        _log(
+            {
+                "event": "ply_write_started",
+                "run_id": self.run_id,
+                "visual_type": visual_type,
+                "epoch": epoch,
+            }
         )
 
         try:
             return self._do_save_ply(visual_type, epoch, verts, faces, scalar_values, type_cfg)
         except Exception as exc:
-            print(
-                json.dumps(
-                    {
-                        "event": "vis_write_failed",
-                        "run_id": self.run_id,
-                        "visual_type": visual_type,
-                        "epoch": epoch,
-                        "error": str(exc),
-                    }
-                )
+            _log(
+                {
+                    "event": "vis_write_failed",
+                    "run_id": self.run_id,
+                    "visual_type": visual_type,
+                    "epoch": epoch,
+                    "error": str(exc),
+                }
             )
             return None
 
@@ -313,23 +317,21 @@ class CentralVisManager:
         elif sv.shape[0] == n_faces and faces_np is not None:
             vertex_scalars = face_to_vertex_average(sv, faces_np, verts_np)
         else:
-            print(
-                json.dumps(
-                    {
-                        "event": "scalar_shape_mismatch_warning",
-                        "run_id": self.run_id,
-                        "visual_type": visual_type,
-                        "epoch": epoch,
-                        "scalar_shape": list(sv.shape),
-                        "n_verts": n_verts,
-                        "n_faces": n_faces,
-                        "message": (
-                            f"scalar values shape {sv.shape} matches neither "
-                            f"n_verts={n_verts} nor n_faces={n_faces}; "
-                            "falling back to uniform dark-blue color"
-                        ),
-                    }
-                )
+            _log(
+                {
+                    "event": "scalar_shape_mismatch_warning",
+                    "run_id": self.run_id,
+                    "visual_type": visual_type,
+                    "epoch": epoch,
+                    "scalar_shape": list(sv.shape),
+                    "n_verts": n_verts,
+                    "n_faces": n_faces,
+                    "message": (
+                        f"scalar values shape {sv.shape} matches neither "
+                        f"n_verts={n_verts} nor n_faces={n_faces}; "
+                        "falling back to uniform dark-blue color"
+                    ),
+                }
             )
             return np.tile(_DARK_BLUE_RGB, (n_verts, 1)).astype(np.float32)
 
@@ -405,16 +407,14 @@ class CentralVisManager:
         out_path = out_dir / f"epoch_{epoch:05d}.ply"
         o3d.io.write_triangle_mesh(str(out_path), mesh, write_ascii=False)
 
-        print(
-            json.dumps(
-                {
-                    "event": "ply_write_completed",
-                    "run_id": self.run_id,
-                    "visual_type": visual_type,
-                    "epoch": epoch,
-                    "path": str(out_path),
-                }
-            )
+        _log(
+            {
+                "event": "ply_write_completed",
+                "run_id": self.run_id,
+                "visual_type": visual_type,
+                "epoch": epoch,
+                "path": str(out_path),
+            }
         )
 
         return out_path
@@ -453,6 +453,10 @@ class CentralVisManager:
         if type_cfg is None:
             return None
 
+        interval: int | None = type_cfg.get("interval")
+        if interval is not None and epoch % interval != 0:
+            return None
+
         try:
             from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.points_SDFmesh_to_ply import (  # noqa: PLC0415
                 SamplingVisualizer,
@@ -469,28 +473,24 @@ class CentralVisManager:
                 mesh_faces=mesh_faces,
             )
 
-            print(
-                json.dumps(
-                    {
-                        "event": "ply_points_write_completed",
-                        "run_id": self.run_id,
-                        "visual_type": visual_type,
-                        "epoch": epoch,
-                        "path": str(path) if path else None,
-                    }
-                )
+            _log(
+                {
+                    "event": "ply_points_write_completed",
+                    "run_id": self.run_id,
+                    "visual_type": visual_type,
+                    "epoch": epoch,
+                    "path": str(path) if path else None,
+                }
             )
         except Exception as exc:
-            print(
-                json.dumps(
-                    {
-                        "event": "vis_write_failed",
-                        "run_id": self.run_id,
-                        "visual_type": visual_type,
-                        "epoch": epoch,
-                        "error": str(exc),
-                    }
-                )
+            _log(
+                {
+                    "event": "vis_write_failed",
+                    "run_id": self.run_id,
+                    "visual_type": visual_type,
+                    "epoch": epoch,
+                    "error": str(exc),
+                }
             )
             return None
         else:
@@ -540,36 +540,30 @@ class CentralVisManager:
             if not ply_files:
                 continue
 
-            print(
-                json.dumps(
-                    {
-                        "event": "gif_render_started",
-                        "run_id": self.run_id,
-                        "visual_type": visual_type,
-                        "n_frames": len(ply_files),
-                    }
-                )
+            _log(
+                {
+                    "event": "gif_render_started",
+                    "run_id": self.run_id,
+                    "visual_type": visual_type,
+                    "n_frames": len(ply_files),
+                }
             )
 
             try:
                 generate_gifs_flat(type_dir)
-                print(
-                    json.dumps(
-                        {
-                            "event": "gif_render_completed",
-                            "run_id": self.run_id,
-                            "visual_type": visual_type,
-                        }
-                    )
+                _log(
+                    {
+                        "event": "gif_render_completed",
+                        "run_id": self.run_id,
+                        "visual_type": visual_type,
+                    }
                 )
             except Exception as exc:
-                print(
-                    json.dumps(
-                        {
-                            "event": "gif_render_failed",
-                            "run_id": self.run_id,
-                            "visual_type": visual_type,
-                            "error": str(exc),
-                        }
-                    )
+                _log(
+                    {
+                        "event": "gif_render_failed",
+                        "run_id": self.run_id,
+                        "visual_type": visual_type,
+                        "error": str(exc),
+                    }
                 )
