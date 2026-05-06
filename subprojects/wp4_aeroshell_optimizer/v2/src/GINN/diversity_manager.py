@@ -26,6 +26,7 @@ import torch
 import trimesh
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
+from torch.profiler import record_function
 
 import wandb
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
@@ -295,7 +296,9 @@ class DiversityTrainer:
                 self._model.set_latent_vector(self._Z[0])
                 bundle = self._total_loss.compute(self._model, epoch_name=0, calibration_mode=True)
                 # weight() without a norm_manager gives us the raw v_cruise-based cse_objective
-                raw_result = self._total_loss.weight(bundle, self._alm_manager, return_components=True, norm_manager=None)
+                raw_result = self._total_loss.weight(
+                    bundle, self._alm_manager, return_components=True, norm_manager=None, calibration_pass=True
+                )
                 if "cse_objective" in raw_result.components:
                     cse_val = abs(raw_result.components["cse_objective"].detach().item())
                     loss_scales["cse_objective"] = self._norm_manager._target_loss / cse_val if cse_val > 0 else 1.0
@@ -322,7 +325,9 @@ class DiversityTrainer:
         self._model.set_latent_vector(self._Z[0])
         bundle = self._total_loss.compute(self._model, epoch_name=0, calibration_mode=True)
         # weight() with norm_manager applies loss_scales; we measure grad norms on top of them
-        result = self._total_loss.weight(bundle, self._alm_manager, return_components=True, norm_manager=self._norm_manager)
+        result = self._total_loss.weight(
+            bundle, self._alm_manager, return_components=True, norm_manager=self._norm_manager, calibration_pass=True
+        )
 
         trainable_params = [p for p in self._model.parameters() if p.requires_grad]
         prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
@@ -351,9 +356,13 @@ class DiversityTrainer:
         self._norm_manager.record_calibration(loss_scales, grad_scales, calibrated_names)
         self._model_optimizer.zero_grad()
 
-        summary_items = [
-            f"{n}(loss={loss_scales.get(n, 1.0):.3g}, grad={grad_scales.get(n, 1.0):.3g})" for n in sorted(calibrated_names)
-        ]
+        summary_items = []
+        for n in sorted(calibrated_names):
+            loss_scale = loss_scales.get(n, 1.0)
+            grad_scale = grad_scales.get(n, 1.0)
+            loss_status = f"loss={loss_scale:.3g}" if n in loss_scales else "loss=default"
+            grad_status = f"grad={grad_scale:.3g}" if n in grad_scales else "grad=fixed/default"
+            summary_items.append(f"{n}({loss_status}, {grad_status})")
         print(f"[LossNormalisation] Calibration complete. {len(calibrated_names)} losses calibrated:")
         for item in summary_items:
             print(f"  ✓ {item}")
@@ -361,6 +370,7 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     # Phase 1 — per-vector backward
     # ------------------------------------------------------------------
+    @record_function("DiversityManager._per_vector_backward")
     def _per_vector_backward(  # noqa: PLR0912, PLR0915
         self,
         epoch: int,
@@ -515,6 +525,7 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     # Main step
     # ------------------------------------------------------------------
+    @record_function("DiversityManager.step")
     def step(self, epoch: int = -1) -> dict[str, float]:
         """
         One full optimization step: Phase 1 -> ALM update -> Phase 2 -> opt.step -> log/render.
