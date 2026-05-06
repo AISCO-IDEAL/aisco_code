@@ -1,5 +1,5 @@
 # Visualization configuration
-# Shared by ply_to_gif.py and points_SDFmesh_to_ply.py
+# Shared by ply_to_gif.py, points_SDFmesh_to_ply.py, and central_vis_manager.py
 
 # --- GIF rendering (ply_to_gif.py) ---
 fps: 10
@@ -18,3 +18,103 @@ mesh_colour_dark_blue: [0, 0, 139]
 point_colour_green: [34, 139, 34]   # target / surface samples
 point_colour_grey: [41, 41, 41]     # eikonal domain samples
 point_colour_red: [220, 30, 30]     # model surface prediction
+
+# --- CentralVisManager extras (central_vis_manager.py) ---
+extras:
+  alpha_enabled: false           # enable per-vertex RGBA (vs RGB-only) in PLY writes
+  alpha_value: 1.0               # global alpha in [0, 1]; only used when alpha_enabled: true
+  coordinate_system: false       # merge coordinate-frame axes into each PLY
+  coordinate_system_scale: 0.1  # axis length as fraction of bounding-box diagonal
+
+# --- GIF auto-generation settings (central_vis_manager.finalize) ---
+gif:
+  enabled: true
+  fps: 10
+  max_frames: 200   # downsample sequence if it exceeds this; null = no limit
+
+# --- Per-visual-type settings ---
+# Keys follow the visual_type string passed to CentralVisManager.save_ply().
+# Hierarchy: aero/cp_field lives at visual_types.aero.cp_field in YAML.
+# Fields per entry:
+#   enabled:            bool — false → save_ply() is a silent no-op
+#   colormap:           matplotlib colormap name, or null for uniform color
+#   interval:           int — save every N epochs (enforced by caller, not manager)
+#   alpha_enabled:      bool | null — per-type override; null = use global extras.alpha_enabled
+#   coordinate_system:  bool | null — per-type override; null = use global extras.coordinate_system
+#   vmin:               float | null — fixed lower colormap bound; null = auto-range per epoch
+#   vmax:               float | null — fixed upper colormap bound; null = auto-range per epoch
+visual_types:
+  mesh_shape:
+    enabled: true
+    colormap: null          # uniform dark-blue — shape is the information
+    interval: 50
+    alpha_enabled: null
+    coordinate_system: null
+    vmin: null
+    vmax: null
+
+  aero:
+    cp_field:
+      enabled: true
+      colormap: "coolwarm"  # diverging: blue=suction, red=stagnation
+      interval: 50
+      alpha_enabled: null
+      coordinate_system: null
+      vmin: -2.0            # fixed range for cross-epoch comparability
+      vmax: 1.0
+
+    gradient:
+      enabled: false        # deferred — no caller milestone in this plan
+      colormap: "magma"
+      interval: 50
+      alpha_enabled: null
+      coordinate_system: null
+      vmin: null
+      vmax: null
+
+  solar:
+    selection:
+      enabled: true
+      colormap: "plasma"    # [0,1] bounded selection weight
+      interval: 50
+      alpha_enabled: null
+      coordinate_system: null
+      vmin: 0.0
+      vmax: 1.0
+
+    shading:
+      enabled: true
+      colormap: "viridis"   # [0,1] bounded shading visibility
+      interval: 50
+      alpha_enabled: null
+      coordinate_system: null
+      vmin: 0.0
+      vmax: 1.0
+
+    penalty:
+      enabled: true
+      colormap: "Reds"      # penalty intensity, lower-bounded at 0
+      interval: 50
+      alpha_enabled: null
+      coordinate_system: null
+      vmin: 0.0
+      vmax: null            # auto upper bound per epoch
+
+  bb_constraint:
+    enabled: false          # disabled by default — confirm with user before enabling
+    colormap: "Reds"        # violation magnitude, lower-bounded at 0
+    interval: 50
+    alpha_enabled: null
+    coordinate_system: null
+    vmin: 0.0
+    vmax: null
+
+  latent:
+    sampling:
+      enabled: true
+      colormap: null        # point-cloud snapshot — uniform colour per component
+      interval: null        # interval NOT enforced by manager; caller controls cadence
+      alpha_enabled: null
+      coordinate_system: null
+      vmin: null
+      vmax: null

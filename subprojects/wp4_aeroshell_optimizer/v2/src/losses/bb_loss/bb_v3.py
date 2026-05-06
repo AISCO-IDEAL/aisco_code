@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import os
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
@@ -8,8 +11,13 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.bb_loss.s_d_ffrom_cad_que
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import AutoVisToWandB
 
+if TYPE_CHECKING:
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import CentralVisManager
+
 
 class BbV3(ParentLoss):
+    _vis_manager: CentralVisManager | None
+
     def _setup(self) -> None:
         self.__config = self.losses_config["bb_config"]
         env_assembly_id = os.getenv("AISCO_ASSEMBLY_ID", "").strip()
@@ -80,6 +88,19 @@ class BbV3(ParentLoss):
             # Box constraints: clamp violations with ReLU
             upper_violation = torch.relu(sdf_pred - sdf_inner_t)
             lower_violation = torch.relu(sdf_outer_t - sdf_pred)
+
+            # CentralVisManager path: write PLY with per-point violation distances.
+            _vm = getattr(self, "_vis_manager", None)
+            if _vm is not None:
+                violation_distances = (upper_violation + lower_violation).detach().cpu().numpy()
+                pts_np = P.detach().cpu().numpy()
+                _vm.save_ply(
+                    "bb_constraint",
+                    int(self.epoch_name) if isinstance(self.epoch_name, (int, float)) else 0,
+                    pts_np,
+                    faces=None,
+                    scalar_values=violation_distances,
+                )
 
             loss = (upper_violation + lower_violation).mean()  # ** 0.5
             return loss

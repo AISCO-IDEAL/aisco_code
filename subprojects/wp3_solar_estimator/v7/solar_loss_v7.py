@@ -14,7 +14,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import replace as _replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 from matplotlib import pyplot as plt  # noqa: F401
@@ -42,6 +42,9 @@ from subprojects.wp4_aeroshell_optimizer import (
     reformat_wandb_name,
 )
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
+
+if TYPE_CHECKING:
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import CentralVisManager
 
 
 def _efficient_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
@@ -125,6 +128,7 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
     selection_threshold_render: float = 0.5,
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
     output_dir: Path | None = None,
+    vis_manager: CentralVisManager | None = None,
 ) -> torch.Tensor:
     """
     Compute differentiable solar mesh loss with soft selection and shading.
@@ -555,6 +559,38 @@ def solar_mesh_loss_v7(  # noqa: PLR0912, PLR0915
             rendering_manager.update(optimization_state=metrics_render)
         if counter == num_epochs and rendering_manager is not None:
             rendering_manager.finalize()
+
+    # CentralVisManager path: write PLY for each solar visual type.
+    if vis_manager is not None and shading_render_interval > 0 and (counter % shading_render_interval == 0):
+        _verts_t: torch.Tensor = metrics_render["vertices"]  # type: ignore[assignment]
+        _faces_t: torch.Tensor = metrics_render["faces"]  # type: ignore[assignment]
+        _sel_t: torch.Tensor = metrics_render["selection_weights"]  # type: ignore[assignment]
+        _shd_t: torch.Tensor = metrics_render["shading_visibility"]  # type: ignore[assignment]
+        _pen_t: torch.Tensor = metrics_render["shading_penalty_intensity"]  # type: ignore[assignment]
+        _verts_np = _verts_t.detach().cpu().numpy()
+        _faces_np = _faces_t.detach().cpu().numpy()
+        _epoch = int(counter)
+        vis_manager.save_ply(
+            "solar/selection",
+            _epoch,
+            _verts_np,
+            _faces_np,
+            scalar_values=_sel_t.detach().cpu().numpy(),
+        )
+        vis_manager.save_ply(
+            "solar/shading",
+            _epoch,
+            _verts_np,
+            _faces_np,
+            scalar_values=_shd_t.detach().cpu().numpy(),
+        )
+        vis_manager.save_ply(
+            "solar/penalty",
+            _epoch,
+            _verts_np,
+            _faces_np,
+            scalar_values=_pen_t.detach().cpu().numpy(),
+        )
 
     # Log to wandb if enabled
     if enable_wandb_logging and epoch_name is not None:

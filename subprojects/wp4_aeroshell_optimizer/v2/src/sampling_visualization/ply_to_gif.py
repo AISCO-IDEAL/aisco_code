@@ -23,6 +23,7 @@ os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
 import argparse
 import json
 import re
+import time
 from pathlib import Path
 
 import imageio
@@ -43,6 +44,7 @@ POINT_SIZE: int = _CFG["point_size"]
 BACKGROUND_COLOR: list[float] = _CFG["background_color"]
 
 _SLOT_PATTERN = re.compile(r"slot(\d{2})_.*?_epoch(\d{5})\.ply")
+_FLAT_PATTERN = re.compile(r"^epoch_(\d{5})\.ply$")
 
 
 def _extract_vertex_colors(geo: object) -> np.ndarray | None:
@@ -520,6 +522,117 @@ def generate_gifs(
         renderer.delete()
 
 
+def generate_gifs_flat(
+    input_dir: Path,
+    output_path: Path | None = None,
+    cam_json: Path | None = None,
+    max_frames: int | None = None,
+) -> None:
+    """Render a flat ``epoch_XXXXX.ply`` sequence to a single animation GIF.
+
+    Scans ``input_dir`` for files matching ``epoch_XXXXX.ply``, sorts them
+    by epoch number, optionally downsamples to ``max_frames``, and renders
+    every frame with the same camera pose computed from the union of all
+    vertex positions.
+
+    Args:
+        input_dir: Directory containing ``epoch_XXXXX.ply`` files.
+        output_path: Destination path for the GIF.  Defaults to
+            ``input_dir / "animation.gif"``.
+        cam_json: Optional path to a ``camera_config.json`` from a prior
+            interactive setup.  Overrides auto-computed camera when valid.
+        max_frames: Maximum number of frames to include in the GIF.
+            Frames are drawn uniformly from the sorted sequence.  If
+            ``None``, the value from ``_CFG["gif"]["max_frames"]`` is used;
+            if that is also ``None`` or missing, no downsampling is applied.
+
+    Raises:
+        ValueError: If no ``epoch_XXXXX.ply`` files are found in
+            ``input_dir``.
+    """
+    t_start = time.monotonic()
+
+    input_dir = Path(input_dir)
+    if output_path is None:
+        output_path = input_dir / "animation.gif"
+
+    # Collect and sort matching files
+    matches: list[tuple[int, Path]] = []
+    for fpath in input_dir.iterdir():
+        m = _FLAT_PATTERN.match(fpath.name)
+        if m:
+            matches.append((int(m.group(1)), fpath))
+
+    if not matches:
+        raise ValueError(
+            f"No epoch_XXXXX.ply files found in {input_dir}.  Expected files named epoch_00000.ply, epoch_00001.ply, etc."
+        )
+
+    matches.sort(key=lambda x: x[0])
+    file_paths = [fp for _, fp in matches]
+
+    # Determine effective max_frames
+    if max_frames is None:
+        gif_cfg = _CFG.get("gif", {})
+        max_frames = gif_cfg.get("max_frames")
+
+    if max_frames is not None and len(file_paths) > max_frames:
+        # Uniformly downsample: pick max_frames evenly-spaced indices
+        indices = np.round(np.linspace(0, len(file_paths) - 1, max_frames)).astype(int)
+        file_paths = [file_paths[i] for i in indices]
+
+    print(
+        json.dumps(
+            {
+                "event": "gif_flat_render_started",
+                "input_dir": str(input_dir),
+                "output_path": str(output_path),
+                "n_frames": len(file_paths),
+            }
+        )
+    )
+
+    # Build camera pose
+    cam_pose_override: np.ndarray | None = None
+    if cam_json is not None and Path(cam_json).exists():
+        cam_pose_override = _load_camera_pose(Path(cam_json))
+
+    if cam_pose_override is not None:
+        cam_pose = cam_pose_override
+    else:
+        all_verts = [v for v in (_get_vertices(fp) for fp in file_paths) if v is not None]
+        if not all_verts:
+            raise ValueError(f"No vertex data could be read from PLY files in {input_dir}.")
+        cam_pose = _compute_camera_pose(
+            np.vstack(all_verts),
+            direction=CAMERA_DIRECTION,
+            distance_mult=CAMERA_DISTANCE_MULTIPLIER,
+            elevation_angle=CAMERA_ELEVATION_ANGLE,
+        )
+
+    gif_fps: int = _CFG.get("gif", {}).get("fps", FPS)
+    renderer = pyrender.OffscreenRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, point_size=POINT_SIZE)
+    try:
+        frames = [_render_frame(renderer, fp, cam_pose, camera_direction=CAMERA_DIRECTION, add_overlay=True) for fp in file_paths]
+    finally:
+        renderer.delete()
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    imageio.mimsave(str(output_path), frames, fps=gif_fps)  # type: ignore[arg-type]
+
+    elapsed = time.monotonic() - t_start
+    print(
+        json.dumps(
+            {
+                "event": "gif_flat_render_completed",
+                "output_path": str(output_path),
+                "n_frames": len(frames),
+                "elapsed_s": round(elapsed, 2),
+            }
+        )
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Render PLY file sequences to GIFs. Cluster-safe (EGL headless).")
     parser.add_argument("--input", type=str, help="Input folder containing PLY files.")
@@ -557,10 +670,20 @@ if __name__ == "__main__":
     c_j: Path | None
     if args.input:
         in_p = Path(args.input).resolve()
-        out_p = Path(args.output).resolve() if args.output else in_p.parent / "pretraining_latent_gifs"
         cam_p: Path | None = Path(args.cam_json).resolve() if args.cam_json else None
-        generate_gifs(in_p, out_p, cam_json=cam_p)
+        # Auto-detect: flat epoch_*.ply takes priority over slot pattern
+        flat_files = [f for f in in_p.glob("*.ply") if _FLAT_PATTERN.match(f.name)]
+        if flat_files:
+            gif_out = Path(args.output).resolve() if args.output else in_p / "animation.gif"
+            generate_gifs_flat(in_p, output_path=gif_out, cam_json=cam_p)
+        else:
+            out_p = Path(args.output).resolve() if args.output else in_p.parent / "pretraining_latent_gifs"
+            generate_gifs(in_p, out_p, cam_json=cam_p)
     else:
         in_p, out_p, c_j = interactive_setup()
         if in_p is not None and out_p is not None:
-            generate_gifs(in_p, out_p, cam_json=c_j)
+            flat_files = [f for f in in_p.glob("*.ply") if _FLAT_PATTERN.match(f.name)]
+            if flat_files:
+                generate_gifs_flat(in_p, cam_json=c_j)
+            else:
+                generate_gifs(in_p, out_p, cam_json=c_j)
