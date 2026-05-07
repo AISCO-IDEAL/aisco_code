@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any, cast
 
 import torch
+import wandb
 from matplotlib import pyplot as plt
 
-import wandb
 from subprojects.wp3_solar_estimator.v7.solar_loss_v7 import SolarLossEstimator
 from subprojects.wp4_aeroshell_optimizer import (
     allround_save_data,

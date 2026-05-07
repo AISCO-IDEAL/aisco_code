@@ -14,6 +14,7 @@ import numpy as np
 import open3d as o3d
 import torch
 import torch_geometric as pyg
+import wandb
 from omegaconf import OmegaConf
 from scipy.spatial import cKDTree
 from torch.utils.data import DataLoader
@@ -23,7 +24,6 @@ from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch_geometric.transforms import Compose
 from tqdm import tqdm
 
-import wandb
 from src.dataloader.collate_functions import create_collate_function
 from src.dataloader.pyg_datasets import EnrichedData, VTKMeshDataset
 from src.dataloader.pyg_transforms import NormalizeFeatures, RescalePosition, RescalePositionNew
