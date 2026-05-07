@@ -94,6 +94,12 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     perm: list[int] = list(np.argsort(raw_extents)[::-1])  # descending by extent
     verts_np = verts_np[:, perm]
 
+    # --- Winding fix: odd permutations flip coordinate handedness → invert face normals.
+    # Detect parity by counting inversions; if odd, reverse face winding (swap cols 1 & 2).
+    perm_inversions = sum(1 for i in range(3) for j in range(i + 1, 3) if perm[i] > perm[j])
+    if perm_inversions % 2 == 1:
+        faces_np = faces_np[:, [0, 2, 1]]  # restore CCW winding after odd-permutation reflection
+
     # --- X centering: shift so that X_center = 0 (car centred on length axis) ---
     x_center = (float(verts_np[:, 0].max()) + float(verts_np[:, 0].min())) / 2.0
     verts_np[:, 0] -= x_center
@@ -117,7 +123,7 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     y_center_after = float(ctr[1])
     print(
         f"[PLY Loader] {shape_name}: "
-        f"perm={perm}  "
+        f"perm={perm}  winding_fix={'yes' if perm_inversions % 2 == 1 else 'no'}  "
         f"ext=({extents[0]:.0f},{extents[1]:.0f},{extents[2]:.0f})mm  "
         f"center=({ctr[0]:.0f},{ctr[1]:.0f},{ctr[2]:.0f})mm  "
         f"Z_min={z_min_after:.0f}mm  X_center={x_center_after:.0f}mm  Y_center={y_center_after:.0f}mm"
