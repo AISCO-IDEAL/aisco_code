@@ -336,6 +336,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         # ------------------------------------------------------------------
         # 9. Finalize renderers
         # ------------------------------------------------------------------
+        # CentralVisManager finalize: generate convergence GIFs for all visual types.
+        if _vis_manager is not None:
+            try:
+                _vis_manager.finalize()
+            except Exception as e:
+                print(f"CentralVisManager finalize failed: {e}")
+
         if use_wandb and general_config["wandb_general"].get("use_neural_renderer", False):
             try:
                 renderer_manager.finalize()
