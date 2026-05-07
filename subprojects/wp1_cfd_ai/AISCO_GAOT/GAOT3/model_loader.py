@@ -13,6 +13,7 @@ from torch_geometric.data import Batch, Data
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
 import wandb
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.metadata import DATASET_METADATA
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.model.gaot_3d import GAOT3D
@@ -33,6 +34,7 @@ class ModelLoader:
         self.cfd_config = cfd_config
         self.device = device
         self._init_viz_consistency_settings()
+        self.shear_force_calculator = ShearForce(unit="mm^2")
 
         self.optimization_state = {
             "vertices": None,
@@ -396,7 +398,9 @@ class ModelLoader:
                 "normals_flipped_count": getattr(self, "_normals_flipped_count", 0),
             }
 
-        return int_drag_f
+        shearforce = self.shear_force_calculator.calculate_shear_force(mesh_verts, mesh_faces)
+        print(f"Shear Force: {shearforce}")
+        return int_drag_f + shearforce
 
     def _reformat_data(self, mesh_verts, mesh_faces):
         optim_verts = mesh_verts.to(self.device)

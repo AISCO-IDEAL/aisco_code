@@ -3,7 +3,7 @@ z_placement: "circle"
 z_radius: 2.0  # unit-circle radius for pretrained latent codes.
               # Spatial inputs are mm/1000 ≈ [-5, 5]; z_radius=2.0 gives latents a
               # comparable magnitude to the dominant spatial axis.
-force_pretraining: force # iff false, a hashed pretraining will be used if applicable
+force_pretraining: false # iff false, a hashed pretraining will be used if applicable
 
 # One entry per latent slot.  Slot 0 maps to z₀ = origin.
 # shape_type: "sphere" | "cube" | "ply"
@@ -108,7 +108,7 @@ latent_population:
   #   ply_scale: 0.001
   #   surface_noise_sigma_factor: 0.005
 training_loop:
-  epochs: 500
+  epochs: 400
   learning_rate: 0.0005
   batch_size_per_shape: 8192 #8192
   logging_interval: 25 # wandb stats logging intervall (displayed in terminal as well)
