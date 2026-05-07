@@ -12,9 +12,9 @@ import OpenGL
 import pyrender
 import torch
 import trimesh
-import wandb
 from pyrender import RenderFlags
 
+import wandb
 from subprojects.wp2_assembler.version4.components.nbz import call_assembly
 from subprojects.wp3_solar_estimator.mesh_extractors.mesh_sdf.mesh_sdf_extractor import MeshSDFExtractor
 from subprojects.wp4_aeroshell_optimizer.v1.src.utils.config_utils import load_config

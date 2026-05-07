@@ -8,11 +8,11 @@ from dataclasses import replace as _replace
 
 import pandas as pd
 import torch
-import wandb
 import yaml
 from torch_geometric.data import Batch, Data
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
+import wandb
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.metadata import DATASET_METADATA
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew

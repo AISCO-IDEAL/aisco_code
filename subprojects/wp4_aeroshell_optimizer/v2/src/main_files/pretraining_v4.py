@@ -25,9 +25,9 @@ import sys
 from pathlib import Path
 
 import torch
-import wandb
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MarchingCubesExtractor
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
     _apply_override_config,

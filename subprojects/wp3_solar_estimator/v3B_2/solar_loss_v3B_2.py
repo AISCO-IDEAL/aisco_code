@@ -23,8 +23,8 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.diso.diso_wrapper import DISOExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.kaolin_flexicubes.flexicubes_wrapper import FCExtractor
 from subprojects.wp3_solar_estimator.mesh_extractors.sparse_dmc.sparse_dmc_extractor import SparseDMCExtractor

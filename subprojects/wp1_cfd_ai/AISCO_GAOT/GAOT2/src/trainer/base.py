@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.distributed as dist
-import wandb
 from torch import nn
 
+import wandb
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.utils.pressure_integration import cp_field_to_drag
 
 from ..dataloader.metadata import DATASET_METADATA
