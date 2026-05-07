@@ -44,7 +44,7 @@ POINT_SIZE: int = _CFG["point_size"]
 BACKGROUND_COLOR: list[float] = _CFG["background_color"]
 
 _SLOT_PATTERN = re.compile(r"slot(\d{2})_.*?_epoch(\d{5})\.ply")
-_FLAT_PATTERN = re.compile(r"^epoch_(\d{5})\.ply$")
+_FLAT_PATTERN = re.compile(r"^epoch_?(\d{5})\.ply$")
 
 
 def _extract_vertex_colors(geo: object) -> np.ndarray | None:
@@ -274,7 +274,7 @@ def _render_frame(
     for geo in _load_pyrender_geometries(fpath):
         scene.add(geo)
     color, _ = renderer.render(scene)
-    match = re.search(r"epoch(\d{5})", fpath.name)
+    match = re.search(r"epoch_?(\d{5})", fpath.name)
     epoch = int(match.group(1)) if match else 0
     if add_overlay:
         color = _add_text_overlay(color, epoch, camera_direction)
