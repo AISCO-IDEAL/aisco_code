@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
+import wandb
 from torch import nn
 from torch.profiler import record_function
 
-import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
