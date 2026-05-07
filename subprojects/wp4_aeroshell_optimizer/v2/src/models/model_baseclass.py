@@ -270,9 +270,15 @@ class BaseModel(nn.Module):
 
             mesh_save_interval = training_config["training_params"].get("mesh_save_interval", 50)
             if (epoch + 1) % mesh_save_interval == 0:
+                _run_locally = general_config["general_info"].get("run_locally", "False") == "True"
                 allround_save_data(
                     model=self,
-                    storage_path=general_config["storage_paths"].get(
+                    storage_path=(
+                        general_config["storage_paths"].get("beast_storage_dir")
+                        or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+                    )
+                    if _run_locally
+                    else general_config["storage_paths"].get(
                         "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
                     ),
                     save_model=True,

@@ -12,6 +12,7 @@ import trimesh
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is_local_machine
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing, str_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.kaolin_conversions import kaolin_to_PLY
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
@@ -43,8 +44,6 @@ def allround_save_data(  # noqa: PLR0915
 
     For questions regarding this function, talk to #aalthaus
     """
-    # Get general config:
-    general_config = load_config(v="v1", cfg_name="general_config.yaml")
     # Get Dictonary containing all relevant model information needed to recreate the model
     model_data = model.get_model_info_dict()
     if model_data is None or storage_path is None:
@@ -53,13 +52,18 @@ def allround_save_data(  # noqa: PLR0915
     # Hash the model_data dictionary
     model_hash_value = dict_hashing(model_data)
     # If storage_path is provided in the function arguments, use it
-    # Otherwise fallback to general_config paths
+    # Otherwise fallback to environment-aware path selection
     if not storage_path:
-        run_locally = general_config["general_info"].get("run_locally", "False") == "True"
-        if run_locally:
-            storage_path = general_config["storage_paths"]["local_storage_dir"]
+        if is_local_machine():
+            fallback_config = load_config(v="v2", cfg_name="general_config.yaml")
+            storage_path = fallback_config["storage_paths"].get("beast_storage_dir") or fallback_config["storage_paths"].get(
+                "local_storage_dir", "./local_storage_dir"
+            )
         else:
-            storage_path = general_config["storage_paths"]["storage_dir"]
+            fallback_config = load_config(v="v2", cfg_name="general_config.yaml")
+            storage_path = fallback_config["storage_paths"].get(
+                "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+            )
 
     dir_path = Path(storage_path) / model_hash_value
     os.makedirs(dir_path, exist_ok=True)

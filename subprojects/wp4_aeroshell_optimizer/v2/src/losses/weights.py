@@ -36,6 +36,7 @@ def weights_alm(
         # 1. Update Mu nur wenn nötig (Sufficient Decrease Condition)
         update_mask = torch.abs(closs) > (eta * ns)
         ms[update_mask] *= gamma_aggressive
+        ms.clamp_(max=10000.0)
 
         # 2. Update Nu (Benchmark) in-place
         ns.mul_(alps).add_((1 - alps) * torch.abs(closs))
