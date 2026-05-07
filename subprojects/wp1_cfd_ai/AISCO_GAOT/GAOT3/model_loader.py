@@ -334,6 +334,39 @@ class ModelLoader:
             except OSError:
                 pass
 
+    def _log_front_back_pressure_drag(self, pressure_field: torch.Tensor, batch: Batch, mesh_faces: torch.Tensor) -> None:
+        with torch.no_grad():
+            p = pressure_field.squeeze(-1) if pressure_field.dim() > 1 else pressure_field
+            face = mesh_faces.T
+            pos = batch.pos_raw
+            normals = batch.c
+
+            v0 = pos[face[0]]
+            v1 = pos[face[1]]
+            v2 = pos[face[2]]
+            area_normals = 0.5 * torch.cross(v1 - v0, v2 - v0, dim=-1)
+
+            outward_n = (normals[face[0]] + normals[face[1]] + normals[face[2]]) / 3.0
+            dot_prod = (area_normals * outward_n).sum(dim=-1, keepdim=True)
+            area_normals = torch.where(dot_prod < 0, -area_normals, area_normals)
+
+            q_inf = 0.5 * self.cfd_config["rho"] * self.cfd_config["v_inf"] ** 2
+            p_face = q_inf * (p[face[0]] + p[face[1]] + p[face[2]]) / 3.0
+            n_dir_area = area_normals[:, 0]
+            face_drag = -p_face * n_dir_area
+
+            front_faces = n_dir_area < 0
+            back_faces = n_dir_area > 0
+            wandb.log(
+                {
+                    "cfd/int_drag_front_f": face_drag[front_faces].sum().item(),
+                    "cfd/int_drag_back_f": face_drag[back_faces].sum().item(),
+                    "cfd/front_face_count": int(front_faces.sum().item()),
+                    "cfd/back_face_count": int(back_faces.sum().item()),
+                },
+                step=self.epoch_name,
+            )
+
     def loss_fn(self, mesh_verts, mesh_faces):
         if mesh_verts is None or mesh_verts.shape[0] == 0:
             return torch.tensor(0.0, device=self.device)
@@ -380,6 +413,7 @@ class ModelLoader:
             v_inf=self.cfd_config["v_inf"],
             rho=self.cfd_config["rho"],
         )
+        self._log_front_back_pressure_drag(pressure_field=pressure_field, batch=batch, mesh_faces=mesh_faces)
 
         with torch.no_grad():
             self._last_diagnostics = {
@@ -396,6 +430,10 @@ class ModelLoader:
                 "n_input_faces": int(mesh_faces.shape[0]),
                 "normals_flipped_count": getattr(self, "_normals_flipped_count", 0),
             }
+            if hasattr(batch, "scale_factors") and batch.scale_factors is not None:
+                self._last_diagnostics["scale_factors"] = batch.scale_factors.detach().cpu().flatten().tolist()
+            if hasattr(batch, "bbox_center") and batch.bbox_center is not None:
+                self._last_diagnostics["bbox_center"] = batch.bbox_center.detach().cpu().flatten().tolist()
 
         shearforce = self.shear_force_calculator.calculate_shear_force(mesh_verts, mesh_faces)
         wandb.log({"cfd/Shearforce:": shearforce}, step=self.epoch_name)
@@ -447,14 +485,6 @@ class ModelLoader:
             data = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=self._phy_domain)(data)
         else:
             data = RescalePosition(lims=(-1.0, 1.0))(data)
-
-        # Optimizer vertices were already converted from mm to m before the
-        # transform. The dataset transform preserves training behaviour by
-        # dividing scalar geometry features by 1000, so undo that only here.
-        if hasattr(data, "scale_factors") and data.scale_factors is not None:
-            data.scale_factors = data.scale_factors * 1000.0
-        if hasattr(data, "bbox_center") and data.bbox_center is not None:
-            data.bbox_center = data.bbox_center * 1000.0
 
         return Batch.from_data_list([data]).to(self.device)
 
