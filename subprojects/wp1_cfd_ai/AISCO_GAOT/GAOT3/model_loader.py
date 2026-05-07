@@ -372,13 +372,11 @@ class ModelLoader:
             reference_field=reference_field,
         )
 
-        integration_normals = batch.c_raw if hasattr(batch, "c_raw") and batch.c_raw is not None else batch.c
-
         int_drag_f = cp_field_to_drag(
             cp_field=pressure_field,
-            normals=integration_normals,
+            normals=batch.c,
             face=mesh_faces.T,
-            pos=mesh_verts * 1e-3,
+            pos=batch.pos_raw,
             v_inf=self.cfd_config["v_inf"],
             rho=self.cfd_config["rho"],
         )
@@ -446,12 +444,17 @@ class ModelLoader:
         )
 
         if self._og_config["dataset"]["use_rescale_new"]:
-            data = RescalePositionNew(
-                lims=(-1.0, 1.0),
-                phy_domain=self._phy_domain,
-            )(data)
+            data = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=self._phy_domain)(data)
         else:
-            data = RescalePosition()(data)
+            data = RescalePosition(lims=(-1.0, 1.0))(data)
+
+        # Optimizer vertices were already converted from mm to m before the
+        # transform. The dataset transform preserves training behaviour by
+        # dividing scalar geometry features by 1000, so undo that only here.
+        if hasattr(data, "scale_factors") and data.scale_factors is not None:
+            data.scale_factors = data.scale_factors * 1000.0
+        if hasattr(data, "bbox_center") and data.bbox_center is not None:
+            data.bbox_center = data.bbox_center * 1000.0
 
         return Batch.from_data_list([data]).to(self.device)
 
