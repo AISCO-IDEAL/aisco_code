@@ -527,6 +527,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     near_surface_wide_sigma: float | None = (
         float(loop_cfg["near_surface_wide_sigma"]) if loop_cfg.get("near_surface_wide_sigma") is not None else None
     )
+    interior_boost_fraction: float = float(loop_cfg.get("interior_boost_fraction", 0.0))
 
     # --- Output / visualisation config (read once, shared between loop and post-training) ---
     output_cfg: dict[str, Any] = config.get("output", {})
@@ -599,6 +600,12 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         f"lr={lr}, batch_size_per_shape={batch_size_per_shape} (n_surf={n_surf}, n_dom={n_dom}), device={device}",
         flush=True,
     )
+    if interior_boost_fraction > 0.0:
+        print(
+            f"[latent_pretrain] Interior boost ENABLED: target ≥{interior_boost_fraction:.0%} of domain pts inside mesh "
+            f"(affects PLY shapes only; rejection-samples {interior_boost_fraction * n_dom:.0f} interior pts per slot per epoch).",
+            flush=True,
+        )
 
     # --- Per-epoch visualizer (b): current trained mesh + loss sample points ---
     epoch_vis: SamplingVisualizer | None = None
@@ -661,6 +668,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 domain_fraction=domain_fraction,
                 near_surface_tight_sigma=near_surface_tight_sigma,
                 near_surface_wide_sigma=near_surface_wide_sigma,
+                interior_min_fraction=interior_boost_fraction,
             )
             domain_pts_i = pts_i[:n_dom]
             # Surface pts: from cache (or refreshed above)
@@ -879,9 +887,12 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         mean_dist = sum(pairwise) / len(pairwise)
         print(f"[latent_pretrain] Z pairwise distances: min={min(pairwise):.3f}, mean={mean_dist:.3f}, max={max(pairwise):.3f}")
 
-    # --- Final Mesh Extraction ---
+    # --- Final Mesh Extraction + Topology Summary ---
     pretrained_shapes_dir = run_dir / "pretrained_shapes"
     pretrained_shapes_dir.mkdir(parents=True, exist_ok=True)
+    topo_wandb: dict[str, Any] = {}
+    print("[latent_pretrain] Mesh topology summary (Euler X = 2-2g; genus-0 closed surface -> X=2):")
+    print(f"  {'slot':<5} {'shape':<35} {'verts':>7} {'faces':>7} {'comps':>6} {'euler':>6} {'watertight':>11}")
     for slot_idx in range(num_shapes):
         slot_name = shapes[slot_idx].get("name", str(slot_idx))
         slot_mesh_path = pretrained_shapes_dir / f"slot{slot_idx:02d}_{slot_name}.ply"
@@ -890,11 +901,29 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             model.set_latent_vector(Z[slot_idx].to(device))
             model.eval()
             _extract_mesh(model, slot_mesh_path, device, vis_mesh_res, outer_prism)
+            # --- Topology analysis ---
+            m = trimesh.load(str(slot_mesh_path))
+            if isinstance(m, trimesh.Trimesh):
+                n_comps = len(trimesh.graph.connected_components(m.edges, min_len=1))
+                euler = m.euler_number
+                wt = m.is_watertight
+                print("!!!!Topology analysis:")
+                print(
+                    f"  {slot_idx:<5} {slot_name:<35} {m.vertices.shape[0]:>7} {m.faces.shape[0]:>7}"
+                    f" {n_comps:>6} {euler:>6} {'yes' if wt else 'no':>11}"
+                )
+                topo_wandb[f"mesh_topo/slot{slot_idx}_{slot_name}/components"] = n_comps
+                topo_wandb[f"mesh_topo/slot{slot_idx}_{slot_name}/euler"] = euler
+                topo_wandb[f"mesh_topo/slot{slot_idx}_{slot_name}/watertight"] = int(wt)
+            else:
+                print(f"  {slot_idx:<5} {slot_name:<35} (not a single Trimesh — scene?)")
         except Exception as exc:  # BLE001 not enabled; mesh extraction is non-critical and must not abort the run
             print(
                 f"[latent_pretrain] WARNING: mesh extraction for slot {slot_idx} failed: {exc}. "
                 "Skipping mesh output — checkpoint is still valid."
             )
+    if use_wandb and topo_wandb:
+        wandb.log(topo_wandb, step=epochs)
 
     return model, Z
 

@@ -179,6 +179,75 @@ def _compute_eikonal_latent(
     return torch.tensor(0.0, device=device)
 
 
+def _boost_domain_interior(
+    domain_pts: torch.Tensor,
+    domain_gt: torch.Tensor,
+    interior_min_fraction: float,
+    lo: torch.Tensor,
+    hi: torch.Tensor,
+    ply_verts: torch.Tensor,
+    ply_faces: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Rejection-sample additional interior points until domain batch has ≥ interior_min_fraction negative-SDF pts.
+
+    Evicts exterior (positive-SDF) domain pts to make room, preserving total count.
+    If the mesh fills too little of the prism to satisfy the target, returns best-effort.
+
+    Args:
+        domain_pts: Current domain points [n_domain, 3].
+        domain_gt:  Ground-truth SDF for domain_pts [n_domain].
+        interior_min_fraction: Target fraction of domain pts with SDF < 0 (inside mesh).
+        lo: Prism lower bound [3].
+        hi: Prism upper bound [3].
+        ply_verts: PLY mesh vertices on the same device.
+        ply_faces: PLY mesh face indices on the same device.
+
+    Returns:
+        (domain_pts, domain_gt) with the same shape, but with at least
+        interior_min_fraction × n_domain points inside the mesh.
+    """
+    n_domain = domain_pts.shape[0]
+    target_interior = int(n_domain * interior_min_fraction)
+    interior_mask = domain_gt < 0
+    n_current = int(interior_mask.sum().item())
+    n_deficit = target_interior - n_current
+
+    if n_deficit <= 0:
+        print("[Interior Boost] Interior point requirement already satisfied.")
+        return domain_pts, domain_gt  # already satisfied
+
+    # Oversample 50x the deficit; handles very sparse interiors (bunny: ~4.3% of prism).
+    oversample_n = n_deficit * 50
+    cands = lo + torch.rand(oversample_n, 3, device=domain_pts.device) * (hi - lo)
+    cands_gt = ply_gt(cands, ply_verts, ply_faces)
+    new_mask = cands_gt < 0
+    new_interior_pts = cands[new_mask]
+    new_interior_gt = cands_gt[new_mask]
+
+    n_fill = min(n_deficit, new_interior_pts.shape[0])
+    print(f"[Interior Boost] Filling {n_fill} interior points (deficit: {n_deficit}, found: {new_interior_pts.shape[0]})")
+    if n_fill == 0:
+        print("[Interior Boost] WARNING: No interior points found — mesh too small or not inside prism.")
+        return domain_pts, domain_gt  # no interior found — mesh too small or not inside prism
+
+    # Keep all existing interior pts; trim exterior to make room for n_fill new interior pts.
+    exterior_mask = ~interior_mask
+    n_keep_exterior = max(0, int(exterior_mask.sum().item()) - n_fill)
+
+    result_pts = torch.cat([
+        domain_pts[interior_mask],
+        domain_pts[exterior_mask][:n_keep_exterior],
+        new_interior_pts[:n_fill],
+    ], dim=0)
+    result_gt = torch.cat([
+        domain_gt[interior_mask],
+        domain_gt[exterior_mask][:n_keep_exterior],
+        new_interior_gt[:n_fill],
+    ], dim=0)
+    # Guard: clamp to n_domain in case of off-by-one from integer rounding
+    return result_pts[:n_domain], result_gt[:n_domain]
+
+
 def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsically sequential; decomposition would obscure control flow
     shape_type: str,
     shape_params: dict,
@@ -189,6 +258,7 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
     domain_fraction: float = 0.50,
     near_surface_tight_sigma: float | None = None,
     near_surface_wide_sigma: float | None = None,
+    interior_min_fraction: float = 0.0,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Sample a surface-concentrated batch of 3D points and ground-truth SDF values.
 
@@ -336,6 +406,12 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
         hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z"][1]], dtype=torch.float32, device=device)
         domain_pts = lo + torch.rand(n_domain, 3, device=device) * (hi - lo)
         domain_gt = ply_gt(domain_pts, ply_verts, ply_faces)
+
+        # Interior boost: rejection-sample extra interior pts until target fraction is met.
+        if interior_min_fraction > 0.0:
+            domain_pts, domain_gt = _boost_domain_interior(
+                domain_pts, domain_gt, interior_min_fraction, lo, hi, ply_verts, ply_faces
+            )
 
         # Use CPU arrays for trimesh surface sampling (avoids moving trimesh to device)
         verts_np = shape_params["ply_verts"].numpy()  # already CPU
