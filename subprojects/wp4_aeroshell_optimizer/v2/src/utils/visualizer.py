@@ -13,9 +13,9 @@ import OpenGL
 import pyrender
 import torch
 import trimesh
+import wandb
 from pyrender import RenderFlags
 
-import wandb
 from subprojects.wp2_assembler.version4.components.nbz import call_assembly
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config

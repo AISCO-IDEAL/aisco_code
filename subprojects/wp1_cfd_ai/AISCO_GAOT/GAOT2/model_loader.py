@@ -7,11 +7,11 @@ import warnings
 
 import pandas as pd
 import torch
+import wandb
 import yaml
 from torch_geometric.data import Batch, Data
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
-import wandb
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.metadata import DATASET_METADATA
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.src.model.gaot_3d import GAOT3D
