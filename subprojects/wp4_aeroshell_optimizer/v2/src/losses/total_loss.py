@@ -51,9 +51,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import trimesh
-import wandb
 from torch.profiler import record_function
 
+import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import (
     MeshExtractor,
 )

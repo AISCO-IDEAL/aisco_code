@@ -46,11 +46,11 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import wandb
 from torch import Tensor
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
+import wandb
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import (
     _load_or_build_surface_cache,
