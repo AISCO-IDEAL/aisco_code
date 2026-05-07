@@ -54,8 +54,8 @@ any outdated setup files can be found at commit 64f74931
 Move to the AISCO_code folder
 cd ~/AISCO_code
 run
-`chmod +x ~/AISCO_code/setup_euler.sh`
-execute `~/AISCO_code/setup_euler.sh`
+`chmod +x ~/AISCO_code/setup_euler_old.sh`
+execute `~/AISCO_code/setup_euler_old.sh`
 make sure to install both, Kaolin and DISO when prompted
 after the script has finished run
 `module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6 eth_proxy`
