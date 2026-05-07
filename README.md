@@ -73,8 +73,7 @@ Add .so Files Manually
 On fresh install of aisco_env on Euler, you must add four .so files manually. This is due to incompatible GPUs of Euler and AISCO-BEAST.
 a) in /cluster/home/kdiehl/AISCO_code/subprojects/pydevelopability/pydevelopability add _devcore.cpython-311-x86_64-linux-gnu.so
 b) in /cluster/home/kdiehl/AISCO_code/subprojects/fixed_renderer/cuda add create_texture_image.cpython-311-x86_64-linux-gnu.so, load_textures.cpython-311-x86_64-linux-gnu.so and rasterize.cpython-311-x86_64-linux-gnu.so
-s
-all these file are stored in cluster/work/fuge/AISCO
+All these files are stored in /cluster/work/fuge/AISCO.
 
 
 ## Environment Activation Guide (do this every time you open a new terminal)
