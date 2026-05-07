@@ -34,8 +34,8 @@ start srun job
 Move to the AISCO_code folder
 `cd ~/AISCO_code`
 run
-`chmod +x setup_new.sh`
-`~/AISCO_code/setup_new.sh`
+`chmod +x setup_euler_new.sh`
+`~/AISCO_code/setup_euler_new.sh`
 Wait for approximately 15 mins until the setup finishes, and then cancel your srun job
 -> congrats, you are all set!
 
