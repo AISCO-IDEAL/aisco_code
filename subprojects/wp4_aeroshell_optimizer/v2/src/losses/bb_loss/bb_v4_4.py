@@ -120,6 +120,7 @@ class BbV44(ParentLoss):
         self.__outer_margin = float(self.__analytic_cfg.get("outer_margin", 0.0))
         self.__penalty = str(self.__analytic_cfg.get("penalty", "relu")).lower()
         self.__softplus_beta = float(self.__analytic_cfg.get("softplus_beta", 10.0))
+        self.__enforce_registered = False
 
         print(
             f"[BbV44] Surface samples: inner={self.__inner_surface_points.shape[0]}, outer={self.__outer_surface_points.shape[0]}"
@@ -135,11 +136,31 @@ class BbV44(ParentLoss):
             target_device = next(model.parameters()).device
             self.device = target_device
 
+            if not self.__enforce_registered and hasattr(model, "register_enforce_constraint"):
+                # Register inner and outer constraints
+                def inner_constraint(coords, sdf):
+                    return self._violation(sdf.squeeze(-1) + self.__inner_margin)
+
+                def outer_constraint(coords, sdf):
+                    return self._violation(self.__outer_margin - sdf.squeeze(-1))
+
+                model.register_enforce_constraint("bb_inner", inner_constraint)
+                model.register_enforce_constraint("bb_outer", outer_constraint)
+                self.__enforce_registered = True
+
             inner_points = self.__inner_surface_points.to(self.device)
             outer_points = self.__outer_surface_points.to(self.device)
 
-            inner_out = model(inner_points)
-            outer_out = model(outer_points)
+            if hasattr(model, "register_enforce_constraint"):
+                from subprojects.wp4_aeroshell_optimizer.v2.src.models.enforce_projector import enforce_layer_context
+
+                with enforce_layer_context(model, "bb_inner"):
+                    inner_out = model(inner_points)
+                with enforce_layer_context(model, "bb_outer"):
+                    outer_out = model(outer_points)
+            else:
+                inner_out = model(inner_points)
+                outer_out = model(outer_points)
 
             sdf_inner_pred = inner_out[0] if isinstance(inner_out, tuple) else inner_out
             sdf_outer_pred = outer_out[0] if isinstance(outer_out, tuple) else outer_out

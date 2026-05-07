@@ -69,6 +69,9 @@ class BaseModel(nn.Module):
             output = x
         return output * 1000.0
 
+    def on_epoch_start(self, epoch: int, num_epochs: int) -> None:
+        pass
+
     @record_function("ModelBaseclass.optimise")
     def optimise(  # noqa: PLR0912, PLR0915
         self,
@@ -127,6 +130,7 @@ class BaseModel(nn.Module):
         diagnostic_mode = mode_cfg.get("training_mode", "diagnostic") == "diagnostic"
         print_timing: bool = mode_cfg.get("print_timing", False)
         for epoch in range(num_epochs):
+            self.on_epoch_start(epoch, num_epochs)
             dbg.begin_iteration(epoch)
 
             optimizer.zero_grad()
