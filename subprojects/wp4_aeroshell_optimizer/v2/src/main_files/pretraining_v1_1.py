@@ -234,16 +234,22 @@ def _boost_domain_interior(
     exterior_mask = ~interior_mask
     n_keep_exterior = max(0, int(exterior_mask.sum().item()) - n_fill)
 
-    result_pts = torch.cat([
-        domain_pts[interior_mask],
-        domain_pts[exterior_mask][:n_keep_exterior],
-        new_interior_pts[:n_fill],
-    ], dim=0)
-    result_gt = torch.cat([
-        domain_gt[interior_mask],
-        domain_gt[exterior_mask][:n_keep_exterior],
-        new_interior_gt[:n_fill],
-    ], dim=0)
+    result_pts = torch.cat(
+        [
+            domain_pts[interior_mask],
+            domain_pts[exterior_mask][:n_keep_exterior],
+            new_interior_pts[:n_fill],
+        ],
+        dim=0,
+    )
+    result_gt = torch.cat(
+        [
+            domain_gt[interior_mask],
+            domain_gt[exterior_mask][:n_keep_exterior],
+            new_interior_gt[:n_fill],
+        ],
+        dim=0,
+    )
     # Guard: clamp to n_domain in case of off-by-one from integer rounding
     return result_pts[:n_domain], result_gt[:n_domain]
 

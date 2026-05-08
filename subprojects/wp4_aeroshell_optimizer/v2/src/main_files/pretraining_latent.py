@@ -110,7 +110,7 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
 
     # --- Z grounding: shift so Z_min = ground_clearance (90 + 10 = 100mm) ---
     prism = get_outer_prism_bounds_mm()
-    ground_clearance = abs(prism["z"][0]) + 10.0 # to avoid the pretrained cars to be cut off at the bottom
+    ground_clearance = abs(prism["z"][0]) + 10.0  # to avoid the pretrained cars to be cut off at the bottom
     z_shift = ground_clearance - float(verts_np[:, 2].min())
     verts_np[:, 2] += z_shift
 
@@ -417,6 +417,55 @@ def _compute_input_grad_norms(
     return z_norm, xyz_norm, z_detached
 
 
+def _check_state_dict_compatibility(
+    model: SupportsLatentConcat,
+    ckpt_state_dict: dict[str, Any],
+    ckpt_path: Path,
+) -> None:
+    """Raise ValueError if ckpt_state_dict is structurally incompatible with model.
+
+    Checks key sets and per-key tensor shapes.  Called before load_state_dict
+    so the error is actionable rather than a raw PyTorch RuntimeError.
+
+    Args:
+        model: The model instance to load weights into.
+        ckpt_state_dict: The ``model_state_dict`` loaded from a checkpoint.
+        ckpt_path: Path of the checkpoint file (used in error messages only).
+
+    Raises:
+        ValueError: If keys or tensor shapes do not match.
+    """
+    model_keys = set(model.state_dict().keys())
+    ckpt_keys = set(ckpt_state_dict.keys())
+
+    missing = model_keys - ckpt_keys
+    unexpected = ckpt_keys - model_keys
+    if missing or unexpected:
+        raise ValueError(
+            f"Architecture mismatch: checkpoint at '{ckpt_path}' has incompatible keys.\n"
+            f"  Missing in checkpoint : {sorted(missing) if missing else 'none'}\n"
+            f"  Unexpected in checkpoint: {sorted(unexpected) if unexpected else 'none'}\n"
+            "The checkpoint was likely trained with a different model architecture. "
+            "Update specific_pretraining_path in pretraining_latent_config.yaml to a "
+            "checkpoint that matches the current model."
+        )
+
+    shape_mismatches = [
+        f"  '{k}': model={tuple(model.state_dict()[k].shape)}  ckpt={tuple(ckpt_state_dict[k].shape)}"
+        for k in model_keys
+        if model.state_dict()[k].shape != ckpt_state_dict[k].shape
+    ]
+    if shape_mismatches:
+        raise ValueError(
+            f"Architecture mismatch: checkpoint at '{ckpt_path}' has incompatible tensor shapes "
+            f"({len(shape_mismatches)} parameter(s)):\n"
+            + "\n".join(shape_mismatches)
+            + "\nThe checkpoint was likely trained with different hidden_dim or z_dim. "
+            "Update specific_pretraining_path in pretraining_latent_config.yaml to a "
+            "compatible checkpoint."
+        )
+
+
 def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsically sequential; decomposition would obscure control flow
     model: SupportsLatentConcat,
     config: dict[str, Any],
@@ -460,6 +509,33 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     if not isinstance(model, SupportsLatentConcat):
         raise TypeError(f"Model {type(model).__name__} does not implement SupportsLatentConcat. ")
 
+    # --- Specific pretraining path override ---
+    if bool(config.get("use_specific_pretraining", False)):
+        specific_path_raw = config.get("specific_pretraining_path")
+        if not specific_path_raw:
+            raise ValueError(
+                "use_specific_pretraining is true but specific_pretraining_path is not set. "
+                "Set specific_pretraining_path to the absolute path of the .pth file in "
+                "pretraining_latent_config.yaml."
+            )
+        specific_path = Path(specific_path_raw)
+        if not specific_path.exists():
+            raise FileNotFoundError(
+                f"specific_pretraining_path does not exist: {specific_path}. Check the path in pretraining_latent_config.yaml."
+            )
+        ckpt = torch.load(specific_path, map_location=device, weights_only=True)
+        if not isinstance(ckpt, dict) or "model_state_dict" not in ckpt or "z_pretrained" not in ckpt:
+            raise ValueError(
+                f"Checkpoint at '{specific_path}' is missing 'model_state_dict' or 'z_pretrained' keys. "
+                "Ensure the file is a valid latent pretraining checkpoint."
+            )
+        _check_state_dict_compatibility(model, ckpt["model_state_dict"], specific_path)
+        print(f"[latent_pretrain] OK  architecture_compatible  model={model.__class__.__name__}  path={specific_path}")
+        model.load_state_dict(ckpt["model_state_dict"])
+        Z: Tensor = ckpt["z_pretrained"].to(device)
+        print(f"[latent_pretrain] LOAD  path={specific_path}  status=specific_pretraining_override")
+        return model, Z
+
     ckpt_path = checkpoint_path if checkpoint_path is not None else _resolve_checkpoint_path(config, model)
     config_hash = _compute_latent_pretrain_hash(config, model)
     force: bool = bool(config.get("force_pretraining", True))
@@ -479,7 +555,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         if loaded_hash is not None and loaded_hash != config_hash:
             print(f"[latent_pretrain] WARN  hash_mismatch  loaded={loaded_hash}  current={config_hash}  path={ckpt_path}")
         model.load_state_dict(ckpt["model_state_dict"])
-        Z: Tensor = ckpt["z_pretrained"].to(device)
+        Z = ckpt["z_pretrained"].to(device)
         print(f"[latent_pretrain] LOAD  path={ckpt_path}  hash={config_hash}  status=fast_resume")
         return model, Z
 
@@ -655,10 +731,10 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 cached_surface[slot_idx] = (pts_i[n_dom:], gt_i[n_dom:])
 
         # Sample fresh domain pts (uniform bbox) for L1-all loss — every epoch
-        all_domain_pts: list[Tensor] = [] # Domain points evaluated in the model
+        all_domain_pts: list[Tensor] = []  # Domain points evaluated in the model
         all_domain_gt: list[Tensor] = []  # Ground truth SDF for L1-all loss
         all_domain_z: list[Tensor] = []
-        all_surface_pts: list[Tensor] = []# Surface points evaluated in the model
+        all_surface_pts: list[Tensor] = []  # Surface points evaluated in the model
         all_surface_gt: list[Tensor] = []  # Ground truth SDF for surface points
         all_surface_z: list[Tensor] = []  # Latent vectors for surface points
 
