@@ -48,6 +48,7 @@ from torch import Tensor
 # Model reconstruction
 # ---------------------------------------------------------------------------
 
+
 def _build_model_from_info(info: dict[str, Any], device: torch.device) -> Any:
     """Reconstruct a ConcatWIREV5 from the model_info_dict.json sidecar.
 
@@ -109,7 +110,10 @@ def _build_model_from_info(info: dict[str, Any], device: torch.device) -> Any:
 # SDF statistics helper
 # ---------------------------------------------------------------------------
 
-def _sdf_stats(model: Any, z_vec: Tensor, prism: dict[str, list[float]], device: torch.device, n_pts: int = 8000) -> dict[str, float]:
+
+def _sdf_stats(
+    model: Any, z_vec: Tensor, prism: dict[str, list[float]], device: torch.device, n_pts: int = 8000
+) -> dict[str, float]:
     """Return SDF min/max/neg_frac over a uniform prism grid for the given z vector."""
     lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z"][0]], device=device)
     hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z"][1]], device=device)
@@ -126,6 +130,7 @@ def _sdf_stats(model: Any, z_vec: Tensor, prism: dict[str, list[float]], device:
 # ---------------------------------------------------------------------------
 # Mesh extraction + PLY save
 # ---------------------------------------------------------------------------
+
 
 def _extract_and_save(
     model: Any,
@@ -184,6 +189,7 @@ def _extract_and_save(
 # Mode implementations
 # ---------------------------------------------------------------------------
 
+
 def _mode1_circle(
     model: Any,
     z_dim: int,
@@ -211,13 +217,23 @@ def _mode1_circle(
         ply_name = f"circle_{idx:02d}_z=[{z0:.3f},{z1:.3f}].ply"
         valid = _extract_and_save(model, z_vec, out_dir / ply_name, prism, resolution, device)
 
-        row = {"mode": "circle", "label": f"circle_{idx:02d}", "z0": round(z0, 4), "z1": round(z1, 4),
-               "r": z_radius, "angle_deg": round(math.degrees(angle), 1), "mesh_valid": valid, **stats}
+        row = {
+            "mode": "circle",
+            "label": f"circle_{idx:02d}",
+            "z0": round(z0, 4),
+            "z1": round(z1, 4),
+            "r": z_radius,
+            "angle_deg": round(math.degrees(angle), 1),
+            "mesh_valid": valid,
+            **stats,
+        }
         records.append(row)
         status = "OK" if valid else "NO MESH"
-        print(f"  [{idx+1:2d}/{n_samples}] angle={math.degrees(angle):6.1f}°  "
-              f"sdf=[{stats['sdf_min']:+8.1f}, {stats['sdf_max']:+8.1f}]  "
-              f"neg={stats['neg_frac']:.3f}  {status}")
+        print(
+            f"  [{idx + 1:2d}/{n_samples}] angle={math.degrees(angle):6.1f}°  "
+            f"sdf=[{stats['sdf_min']:+8.1f}, {stats['sdf_max']:+8.1f}]  "
+            f"neg={stats['neg_frac']:.3f}  {status}"
+        )
 
     return records
 
@@ -245,8 +261,9 @@ def _mode2_radial(
         z_unit = z_dir / r_pretrained if r_pretrained > 1e-6 else torch.zeros_like(z_dir)
 
         name = shape_names[slot_idx] if slot_idx < len(shape_names) else f"slot{slot_idx:02d}"
-        print(f"\n  Slot {slot_idx} ({name})  pretrained r={r_pretrained:.3f}  "
-              f"dir=[{z_dir[0].item():.3f}, {z_dir[1].item():.3f}]")
+        print(
+            f"\n  Slot {slot_idx} ({name})  pretrained r={r_pretrained:.3f}  dir=[{z_dir[0].item():.3f}, {z_dir[1].item():.3f}]"
+        )
 
         for r in radii:
             z_vec = (z_unit * r).to(device)
@@ -256,13 +273,23 @@ def _mode2_radial(
 
             marker = " ← PRETRAINED" if abs(r - r_pretrained) < 0.01 else ""
             status = "OK" if valid else "NO MESH"
-            print(f"    r={r:.2f}  sdf=[{stats['sdf_min']:+8.1f}, {stats['sdf_max']:+8.1f}]  "
-                  f"neg={stats['neg_frac']:.3f}  {status}{marker}")
+            print(
+                f"    r={r:.2f}  sdf=[{stats['sdf_min']:+8.1f}, {stats['sdf_max']:+8.1f}]  "
+                f"neg={stats['neg_frac']:.3f}  {status}{marker}"
+            )
 
-            row = {"mode": "radial", "label": f"slot{slot_idx:02d}_r={r:.2f}",
-                   "slot": slot_idx, "shape": name, "r": r, "r_pretrained": round(r_pretrained, 4),
-                   "z0": round(z_vec[0].item(), 4), "z1": round(z_vec[1].item(), 4),
-                   "mesh_valid": valid, **stats}
+            row = {
+                "mode": "radial",
+                "label": f"slot{slot_idx:02d}_r={r:.2f}",
+                "slot": slot_idx,
+                "shape": name,
+                "r": r,
+                "r_pretrained": round(r_pretrained, 4),
+                "z0": round(z_vec[0].item(), 4),
+                "z1": round(z_vec[1].item(), 4),
+                "mesh_valid": valid,
+                **stats,
+            }
             records.append(row)
 
     return records
@@ -290,7 +317,7 @@ def _mode3_interp(
     if n_slots > 2:
         pairs.append((n_slots - 1, 1))  # close the circle between last and first circle slot
 
-    for (i, j) in pairs:
+    for i, j in pairs:
         z_a = Z_pretrained[i].to(device)
         z_b = Z_pretrained[j].to(device)
         name_a = shape_names[i] if i < len(shape_names) else f"slot{i:02d}"
@@ -306,14 +333,25 @@ def _mode3_interp(
             valid = _extract_and_save(model, z_vec, out_dir / ply_name, prism, resolution, device)
 
             status = "OK" if valid else "NO MESH"
-            print(f"    t={t:.2f}  z=[{z_vec[0].item():+.3f}, {z_vec[1].item():+.3f}]  "
-                  f"sdf=[{stats['sdf_min']:+8.1f}, {stats['sdf_max']:+8.1f}]  "
-                  f"neg={stats['neg_frac']:.3f}  {status}")
+            print(
+                f"    t={t:.2f}  z=[{z_vec[0].item():+.3f}, {z_vec[1].item():+.3f}]  "
+                f"sdf=[{stats['sdf_min']:+8.1f}, {stats['sdf_max']:+8.1f}]  "
+                f"neg={stats['neg_frac']:.3f}  {status}"
+            )
 
-            row = {"mode": "interp", "label": f"pair{i:02d}-{j:02d}_step{step:02d}",
-                   "slot_a": i, "slot_b": j, "shape_a": name_a, "shape_b": name_b,
-                   "t": round(t, 4), "z0": round(z_vec[0].item(), 4), "z1": round(z_vec[1].item(), 4),
-                   "mesh_valid": valid, **stats}
+            row = {
+                "mode": "interp",
+                "label": f"pair{i:02d}-{j:02d}_step{step:02d}",
+                "slot_a": i,
+                "slot_b": j,
+                "shape_a": name_a,
+                "shape_b": name_b,
+                "t": round(t, 4),
+                "z0": round(z_vec[0].item(), 4),
+                "z1": round(z_vec[1].item(), 4),
+                "mesh_valid": valid,
+                **stats,
+            }
             records.append(row)
 
     return records
@@ -322,6 +360,7 @@ def _mode3_interp(
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
+
 
 def _write_summary(records: list[dict[str, Any]], out_dir: Path, checkpoint_path: Path) -> None:
     """Write CSV and text summary of all exploration results."""
@@ -357,8 +396,10 @@ def _write_summary(records: list[dict[str, Any]], out_dir: Path, checkpoint_path
         total = len(mode_records)
         min_sdf = min(r["sdf_min"] for r in mode_records)
         pct = valid / total * 100 if total else 0
-        lines.append(f"  Mode {'1:circle' if mode_tag=='circle' else '2:radial' if mode_tag=='radial' else '3:interp':10s}  "
-                     f"mesh_valid={valid}/{total} ({pct:.0f}%)  global_sdf_min={min_sdf:+.1f}")
+        lines.append(
+            f"  Mode {'1:circle' if mode_tag == 'circle' else '2:radial' if mode_tag == 'radial' else '3:interp':10s}  "
+            f"mesh_valid={valid}/{total} ({pct:.0f}%)  global_sdf_min={min_sdf:+.1f}"
+        )
 
     # Identify broken radial entries
     radial = [r for r in records if r["mode"] == "radial"]
@@ -372,11 +413,14 @@ def _write_summary(records: list[dict[str, Any]], out_dir: Path, checkpoint_path
             first_invalid = next((r for r in slot_records if not r["mesh_valid"]), None)
             r_pretrained = slot_records[0]["r_pretrained"]
             if first_invalid:
-                lines.append(f"  Slot {slot_idx} ({slot_records[0]['shape']:30s})  "
-                              f"first_invalid_r={first_invalid['r']:.2f}  pretrained_r={r_pretrained:.2f}")
+                lines.append(
+                    f"  Slot {slot_idx} ({slot_records[0]['shape']:30s})  "
+                    f"first_invalid_r={first_invalid['r']:.2f}  pretrained_r={r_pretrained:.2f}"
+                )
             else:
-                lines.append(f"  Slot {slot_idx} ({slot_records[0]['shape']:30s})  "
-                              f"all radii valid  pretrained_r={r_pretrained:.2f}")
+                lines.append(
+                    f"  Slot {slot_idx} ({slot_records[0]['shape']:30s})  all radii valid  pretrained_r={r_pretrained:.2f}"
+                )
 
     summary_text = "\n".join(lines)
     print("\n" + summary_text)
@@ -386,6 +430,7 @@ def _write_summary(records: list[dict[str, Any]], out_dir: Path, checkpoint_path
 # ---------------------------------------------------------------------------
 # Checkpoint loading helper (extracted to keep main() under statement limit)
 # ---------------------------------------------------------------------------
+
 
 def _load_checkpoint(
     ckpt_path: Path,
@@ -408,8 +453,10 @@ def _load_checkpoint(
     with open(info_path) as f:
         model_info = json.load(f)
 
-    print(f"Building {model_info['name']}  z_dim={model_info['z_dim']}  "
-          f"hidden={model_info['hidden_features']}x{model_info['hidden_layers']}")
+    print(
+        f"Building {model_info['name']}  z_dim={model_info['z_dim']}  "
+        f"hidden={model_info['hidden_features']}x{model_info['hidden_layers']}"
+    )
     model = _build_model_from_info(model_info, device)
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=True)
     model.load_state_dict(ckpt["model_state_dict"])
@@ -440,6 +487,7 @@ def _load_checkpoint(
     print(f"Shape names: {shape_names}")
 
     from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm  # noqa: PLC0415
+
     prism_raw = get_outer_prism_bounds_mm()
     prism = {"x": list(prism_raw["x"]), "y": list(prism_raw["y"]), "z": list(prism_raw["z"])}
     print(f"Outer prism: x={prism['x']}, y={prism['y']}, z={prism['z']}")
@@ -451,20 +499,22 @@ def _load_checkpoint(
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Latent space validity explorer")
     parser.add_argument("--checkpoint", required=True, help="Path to pretrained_latent_*.pth")
-    parser.add_argument("--out", default=None,
-                        help="Output directory for PLYs and stats. Defaults to "
-                             "<checkpoint_dir>/latent_space_exploration_<hash> where "
-                             "<hash> is the suffix of the checkpoint filename.")
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="Output directory for PLYs and stats. Defaults to "
+        "<checkpoint_dir>/latent_space_exploration_<hash> where "
+        "<hash> is the suffix of the checkpoint filename.",
+    )
     parser.add_argument("--modes", default="123", help="Modes to run (e.g. '12' or '1' or '123')")
     parser.add_argument("--n_circle", type=int, default=24, help="Samples on the pretrained circle (Mode 1)")
-    parser.add_argument("--radii", default="0.0,0.5,1.0,1.5,2.0,2.5,3.0",
-                        help="Comma-separated radii for Mode 2")
+    parser.add_argument("--radii", default="0.0,0.5,1.0,1.5,2.0,2.5,3.0", help="Comma-separated radii for Mode 2")
     parser.add_argument("--n_interp", type=int, default=7, help="Steps per interpolation path (Mode 3)")
-    parser.add_argument("--resolution", type=int, default=64,
-                        help="Marching cubes grid resolution (lower = faster)")
+    parser.add_argument("--resolution", type=int, default=64, help="Marching cubes grid resolution (lower = faster)")
     parser.add_argument("--device", default="cpu", help="cpu or cuda")
     args = parser.parse_args()
 
@@ -493,25 +543,40 @@ def main() -> None:
 
     if "1" in args.modes:
         records = _mode1_circle(
-            model=model, z_dim=z_dim, z_radius=z_radius,
-            n_samples=args.n_circle, prism=prism, resolution=args.resolution,
-            device=device, out_dir=out_dir / "mode1_circle",
+            model=model,
+            z_dim=z_dim,
+            z_radius=z_radius,
+            n_samples=args.n_circle,
+            prism=prism,
+            resolution=args.resolution,
+            device=device,
+            out_dir=out_dir / "mode1_circle",
         )
         all_records.extend(records)
 
     if "2" in args.modes:
         records = _mode2_radial(
-            model=model, Z_pretrained=Z_pretrained, shape_names=shape_names,
-            radii=radii, prism=prism, resolution=args.resolution,
-            device=device, out_dir=out_dir / "mode2_radial",
+            model=model,
+            Z_pretrained=Z_pretrained,
+            shape_names=shape_names,
+            radii=radii,
+            prism=prism,
+            resolution=args.resolution,
+            device=device,
+            out_dir=out_dir / "mode2_radial",
         )
         all_records.extend(records)
 
     if "3" in args.modes:
         records = _mode3_interp(
-            model=model, Z_pretrained=Z_pretrained, shape_names=shape_names,
-            n_steps=args.n_interp, prism=prism, resolution=args.resolution,
-            device=device, out_dir=out_dir / "mode3_interp",
+            model=model,
+            Z_pretrained=Z_pretrained,
+            shape_names=shape_names,
+            n_steps=args.n_interp,
+            prism=prism,
+            resolution=args.resolution,
+            device=device,
+            out_dir=out_dir / "mode3_interp",
         )
         all_records.extend(records)
 
