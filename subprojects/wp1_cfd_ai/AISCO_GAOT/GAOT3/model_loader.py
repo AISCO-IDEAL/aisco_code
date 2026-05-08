@@ -342,15 +342,50 @@ class ModelLoader:
             except OSError:
                 pass
 
+    def _log_front_back_pressure_drag(self, pressure_field: torch.Tensor, batch: Batch, mesh_faces: torch.Tensor) -> None:
+        with torch.no_grad():
+            p = pressure_field.squeeze(-1) if pressure_field.dim() > 1 else pressure_field
+            face = mesh_faces.T
+            pos = batch.pos_raw
+            normals = batch.c
+
+            v0 = pos[face[0]]
+            v1 = pos[face[1]]
+            v2 = pos[face[2]]
+            area_normals = 0.5 * torch.cross(v1 - v0, v2 - v0, dim=-1)
+
+            outward_n = (normals[face[0]] + normals[face[1]] + normals[face[2]]) / 3.0
+            dot_prod = (area_normals * outward_n).sum(dim=-1, keepdim=True)
+            area_normals = torch.where(dot_prod < 0, -area_normals, area_normals)
+
+            q_inf = 0.5 * self.cfd_config["rho"] * self.cfd_config["v_inf"] ** 2
+            p_face = q_inf * (p[face[0]] + p[face[1]] + p[face[2]]) / 3.0
+            n_dir_area = area_normals[:, 0]
+            face_drag = -p_face * n_dir_area
+
+            front_faces = n_dir_area < 0
+            back_faces = n_dir_area > 0
+            wandb.log(
+                {
+                    "cfd/int_drag_front_f": face_drag[front_faces].sum().item(),
+                    "cfd/int_drag_back_f": face_drag[back_faces].sum().item(),
+                    "cfd/front_face_count": int(front_faces.sum().item()),
+                    "cfd/back_face_count": int(back_faces.sum().item()),
+                },
+                step=self.epoch_name,
+            )
+
     def loss_fn(self, mesh_verts, mesh_faces):
         if mesh_verts is None or mesh_verts.shape[0] == 0:
             return torch.tensor(0.0, device=self.device)
 
+        self._check_watertightness(mesh_verts, mesh_faces)
+
         step_val = self._to_wandb_step(self.epoch_name)
         if step_val is None:
-            wandb.log({"Aero-resolution": mesh_verts.shape[0]})
+            wandb.log({"cfd/Aero-resolution": mesh_verts.shape[0]})
         else:
-            wandb.log({"Aero-resolution": mesh_verts.shape[0]}, step=step_val)
+            wandb.log({"cfd/Aero-resolution": mesh_verts.shape[0]}, step=step_val)
 
         batch = self._reformat_data(mesh_verts, mesh_faces)
 
@@ -378,17 +413,15 @@ class ModelLoader:
             reference_field=reference_field,
         )
 
-        # Fix 4: use physical/raw normals for drag integration
-        integration_normals = batch.c_raw if hasattr(batch, "c_raw") and batch.c_raw is not None else batch.c
-
         int_drag_f = cp_field_to_drag(
             cp_field=pressure_field,
-            normals=integration_normals,
+            normals=batch.c,
             face=mesh_faces.T,
-            pos=mesh_verts * 1e-3,
+            pos=batch.pos_raw,
             v_inf=self.cfd_config["v_inf"],
             rho=self.cfd_config["rho"],
         )
+        self._log_front_back_pressure_drag(pressure_field=pressure_field, batch=batch, mesh_faces=mesh_faces)
 
         with torch.no_grad():
             self._last_diagnostics = {
@@ -405,8 +438,15 @@ class ModelLoader:
                 "n_input_faces": int(mesh_faces.shape[0]),
                 "normals_flipped_count": getattr(self, "_normals_flipped_count", 0),
             }
+            if hasattr(batch, "scale_factors") and batch.scale_factors is not None:
+                self._last_diagnostics["scale_factors"] = batch.scale_factors.detach().cpu().flatten().tolist()
+            if hasattr(batch, "bbox_center") and batch.bbox_center is not None:
+                self._last_diagnostics["bbox_center"] = batch.bbox_center.detach().cpu().flatten().tolist()
 
-        return int_drag_f
+        shearforce = self.shear_force_calculator.calculate_shear_force(mesh_verts, mesh_faces)
+        wandb.log({"cfd/Shearforce:": shearforce}, step=self.epoch_name)
+        wandb.log({"cfd/int_drag_f": int_drag_f}, step=self.epoch_name)
+        return int_drag_f + shearforce
 
     def _reformat_data(self, mesh_verts, mesh_faces):
         optim_verts = mesh_verts.to(self.device)
@@ -450,11 +490,37 @@ class ModelLoader:
         )
 
         if self._og_config["dataset"]["use_rescale_new"]:
-            data = RescalePositionNew(
-                lims=(-1.0, 1.0),
-                phy_domain=self._phy_domain,
-            )(data)
+            data = RescalePositionNew(lims=(-1.0, 1.0), phy_domain=self._phy_domain)(data)
         else:
-            data = RescalePosition()(data)
+            data = RescalePosition(lims=(-1.0, 1.0))(data)
 
         return Batch.from_data_list([data]).to(self.device)
+
+    def _check_watertightness(self, verts, faces) -> None:
+        # Check number of vertecies and faces
+        v = verts.shape[0]
+        f = faces.shape[0]
+        d = v - f / 2
+
+        if d == 2:
+            print("CFD-AI Check: Mesh is likely watertight (Euler characteristic check passed).")
+        elif d > 2:
+            if d > 12 and self.cfd_config.get("strict_watertightness_check", False):
+                print(
+                    "You can disable the strict watertightness check in the config to avoid this error and only get a warning instead. But if you do so, CFD-AI does not guarantee any reasonable behavior on non-watertight meshes. Proceed with caution and consider improving the mesh quality."
+                )
+                raise ValueError(f"CFD-AI Check: Mesh is likely not watertight (Euler characteristic check failed with d={d}).")
+            else:
+                warnings.warn(
+                    f"CFD-AI Check: Mesh may not be watertight (Euler characteristic check failed with d={d}).", stacklevel=2
+                )
+        elif d < -8 and self.cfd_config.get("strict_watertightness_check", False):
+            print(
+                "You can disable the strict watertightness check in the config to avoid this error and only get a warning instead. But if you do so, CFD-AI does not guarantee any reasonable behavior on non-watertight meshes. Proceed with caution and consider improving the mesh quality."
+            )
+            raise ValueError(f"CFD-AI Check: Mesh is likely not watertight (Euler characteristic check failed with d={d}).")
+        else:
+            warnings.warn(
+                f"CFD-AI Check: Mesh may not be watertight (Euler characteristic check failed with d={d}).", stacklevel=2
+            )
+        wandb.log({"cfd/Mesh Quality (Target:2)": d}, step=self.epoch_name)
