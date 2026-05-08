@@ -30,6 +30,7 @@ NAME_MAPPING_FILENAME = "name_mapping.json"
 # Diese werden NACH den Root-Datensaetzen verarbeitet, damit bestehende Prefix-Zuordnung stabil bleibt.
 EXTRA_DATASET_PATHS = [
     Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/processed_euler_openfoam_cp_v050"),
+    Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_tippi/processed_euler_openfoam_cp_v050"),
     Path("/cluster/work/fuge/AISCO/wp1_cfd_ai/processed_euler_openfoam_cp_v050_backup"),
 ]
 

@@ -135,7 +135,7 @@ output:
 
 
   sampling_vis: true # used in main loop, use flags in standalone pretraining
-  make_gif: true     # used in main loop, use flags in standalone pretraining
+  make_gif: true   # used in main loop, use flags in standalone pretraining
   visualisation_directory: "sampling_vis" # directory name withhin directory of the current hash # only used by standalone pretraining
 
   vis_cadence: 10 # at what interval to visualize the sampling

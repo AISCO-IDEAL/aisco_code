@@ -113,16 +113,16 @@ class BbV44(ParentLoss):
         )
         outer_points_np = _sample_mesh_surface_points(outer_mesh, outer_total)
 
-        self.__inner_surface_points = torch.from_numpy(inner_points_np)
-        self.__outer_surface_points = torch.from_numpy(outer_points_np)
+        self._inner_surface_points = torch.from_numpy(inner_points_np)
+        self._outer_surface_points = torch.from_numpy(outer_points_np)
 
-        self.__inner_margin = float(self.__analytic_cfg.get("inner_margin", 0.0))
-        self.__outer_margin = float(self.__analytic_cfg.get("outer_margin", 0.0))
+        self._inner_margin = float(self.__analytic_cfg.get("inner_margin", 0.0))
+        self._outer_margin = float(self.__analytic_cfg.get("outer_margin", 0.0))
         self.__penalty = str(self.__analytic_cfg.get("penalty", "relu")).lower()
         self.__softplus_beta = float(self.__analytic_cfg.get("softplus_beta", 10.0))
 
         print(
-            f"[BbV44] Surface samples: inner={self.__inner_surface_points.shape[0]}, outer={self.__outer_surface_points.shape[0]}"
+            f"[BbV44] Surface samples: inner={self._inner_surface_points.shape[0]}, outer={self._outer_surface_points.shape[0]}"
         )
 
     def _violation(self, value: torch.Tensor) -> torch.Tensor:
@@ -135,8 +135,8 @@ class BbV44(ParentLoss):
             target_device = next(model.parameters()).device
             self.device = target_device
 
-            inner_points = self.__inner_surface_points.to(self.device)
-            outer_points = self.__outer_surface_points.to(self.device)
+            inner_points = self._inner_surface_points.to(self.device)
+            outer_points = self._outer_surface_points.to(self.device)
 
             inner_out = model(inner_points)
             outer_out = model(outer_points)
@@ -148,8 +148,8 @@ class BbV44(ParentLoss):
             sdf_outer_pred = sdf_outer_pred.squeeze(-1)
 
             # inner surface target: model SDF should be <= -inner_margin
-            upper_violation = self._violation(sdf_inner_pred + self.__inner_margin)
+            upper_violation = self._violation(sdf_inner_pred + self._inner_margin)
             # outer surface target: model SDF should be >= outer_margin
-            lower_violation = self._violation(self.__outer_margin - sdf_outer_pred)
+            lower_violation = self._violation(self._outer_margin - sdf_outer_pred)
 
             return 0.5 * (upper_violation.mean() + lower_violation.mean())

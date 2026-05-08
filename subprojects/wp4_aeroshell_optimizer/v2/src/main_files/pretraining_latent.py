@@ -31,6 +31,9 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 impo
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization import SamplingVisualizer
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import (
+    CentralVisManager,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.points_SDFmesh_to_ply import (
     _POINT_COLOUR_GREEN,
     _POINT_COLOUR_RED,
@@ -475,6 +478,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     vis_sampling: bool = False,
     vis_output_dir: Path | None = None,
     checkpoint_path: Path | None = None,
+    vis_manager: CentralVisManager | None = None,
 ) -> tuple[SupportsLatentConcat, Tensor]:
     """Run latent-population pretraining for a SupportsLatentConcat model.
 
@@ -871,7 +875,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         scheduler.step()
 
         # --- Per-epoch snapshot (b): current trained mesh + current sampled points ---
-        if vis_sampling and epoch_vis is not None and epoch % vis_cadence == 0:
+        if vis_sampling and epoch % vis_cadence == 0 and (epoch_vis is not None or vis_manager is not None):
             _write_epoch_vis_snapshot(
                 model=model,
                 Z=Z,
@@ -884,6 +888,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 outer_prism=outer_prism,
                 device=device,
                 vis=epoch_vis,
+                vis_manager=vis_manager,
                 show_target_pts=vis_show_target_pts,
                 show_domain_pts=vis_show_domain_pts,
             )
@@ -1021,8 +1026,9 @@ def _write_epoch_vis_snapshot(
     mesh_res: int,
     outer_prism: dict[str, Any],
     device: str,
-    vis: SamplingVisualizer,
+    vis: SamplingVisualizer | None,
     *,
+    vis_manager: CentralVisManager | None = None,
     show_target_pts: str = "pts",
     show_domain_pts: bool = True,
 ) -> None:
@@ -1068,29 +1074,49 @@ def _write_epoch_vis_snapshot(
                 target_verts_np = ply_verts_t.cpu().numpy()
                 target_faces_np = ply_faces_t.cpu().numpy()
                 model_pts_tensor = torch.from_numpy(model_verts_np) if model_verts_np is not None else torch.zeros(0, 3)
-                vis.save_snapshot(
-                    points_mm=model_pts_tensor,
-                    mesh_verts=target_verts_np,
-                    mesh_faces=target_faces_np,
-                    name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
-                    secondary_points_mm=domain_pts_i.cpu() if domain_pts_i is not None else None,
-                    points_colour=_POINT_COLOUR_RED,
-                    secondary_colour=_POINT_COLOUR_WHITE,
-                    mesh_colour=_POINT_COLOUR_GREEN,
-                )
+                # CentralVisManager path (preferred when provided)
+                if vis_manager is not None:
+                    vis_manager.save_ply_points(
+                        f"latent/sampling/slot{slot_idx:02d}_{slot_name}",
+                        epoch,
+                        model_pts_tensor,
+                        secondary_points=domain_pts_i.cpu() if domain_pts_i is not None else None,
+                        mesh_verts=target_verts_np,
+                        mesh_faces=target_faces_np,
+                    )
+                if vis is not None:
+                    vis.save_snapshot(
+                        points_mm=model_pts_tensor,
+                        mesh_verts=target_verts_np,
+                        mesh_faces=target_faces_np,
+                        name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
+                        secondary_points_mm=domain_pts_i.cpu() if domain_pts_i is not None else None,
+                        points_colour=_POINT_COLOUR_RED,
+                        secondary_colour=_POINT_COLOUR_WHITE,
+                        mesh_colour=_POINT_COLOUR_GREEN,
+                    )
             else:
                 # "pts" mode (or non-PLY slot): target cache pts (green), model pts (red), domain pts (grey)
-                vis.save_snapshot(
-                    points_mm=surf_pts_i.cpu(),
-                    mesh_verts=None,
-                    mesh_faces=None,
-                    name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
-                    secondary_points_mm=torch.from_numpy(model_verts_np) if model_verts_np is not None else None,
-                    tertiary_points_mm=domain_pts_i.cpu() if domain_pts_i is not None else None,
-                    points_colour=_POINT_COLOUR_GREEN,
-                    secondary_colour=_POINT_COLOUR_RED,
-                    tertiary_colour=_POINT_COLOUR_WHITE,
-                )
+                if vis_manager is not None:
+                    vis_manager.save_ply_points(
+                        f"latent/sampling/slot{slot_idx:02d}_{slot_name}",
+                        epoch,
+                        surf_pts_i.cpu(),
+                        secondary_points=torch.from_numpy(model_verts_np) if model_verts_np is not None else None,
+                        tertiary_points=domain_pts_i.cpu() if domain_pts_i is not None else None,
+                    )
+                if vis is not None:
+                    vis.save_snapshot(
+                        points_mm=surf_pts_i.cpu(),
+                        mesh_verts=None,
+                        mesh_faces=None,
+                        name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
+                        secondary_points_mm=torch.from_numpy(model_verts_np) if model_verts_np is not None else None,
+                        tertiary_points_mm=domain_pts_i.cpu() if domain_pts_i is not None else None,
+                        points_colour=_POINT_COLOUR_GREEN,
+                        secondary_colour=_POINT_COLOUR_RED,
+                        tertiary_colour=_POINT_COLOUR_WHITE,
+                    )
         except Exception as exc:
             print(f"[latent_pretrain] WARNING: epoch vis save failed for slot {slot_idx} ({slot_name}): {exc}")
 

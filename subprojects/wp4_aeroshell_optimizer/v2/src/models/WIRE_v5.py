@@ -234,6 +234,9 @@ class WIREV5(BaseModel):
     def bbox_half_extent_tensor(self) -> torch.Tensor:
         return cast(torch.Tensor, self.bbox_half_extent)
 
+    def get_model_info_dict(self) -> dict:
+        return self.model_info_dict
+
     @record_function("WIREV5.forward")
     def forward(self, coords: torch.Tensor) -> torch.Tensor:
         x = (coords - self.bbox_center_tensor) / self.bbox_half_extent_tensor
@@ -245,6 +248,3 @@ class WIREV5(BaseModel):
         if self.smooth_proj is not None:
             h = torch.nn.functional.silu(self.smooth_proj(h))
         return self.output_layer(h) * self.bbox_half_extent_tensor
-
-    def get_model_info_dict(self) -> dict:
-        return self.model_info_dict

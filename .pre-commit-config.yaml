@@ -18,14 +18,14 @@ repos:
 
   # Ruff für Linting und Formatierung
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.4  # Aktuelle Version prüfen: https://github.com/astral-sh/ruff-pre-commit/releases
+    rev: v0.15.12  # Aktuelle Version prüfen: https://github.com/astral-sh/ruff-pre-commit/releases
     hooks:
       - id: ruff
         args: [--fix]  # Automatische Korrekturen aktivieren
 
   # MyPy für Typenprüfung
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.19.1  # Aktuelle Version prüfen: https://github.com/pre-commit/mirrors-mypy/releases # eschaerer: update acc. to pyproject.toml
+    rev: v2.0.0  # Aktuelle Version prüfen: https://github.com/pre-commit/mirrors-mypy/releases # eschaerer: update acc. to pyproject.toml
     hooks:
       - id: mypy
         exclude: ^tests/|.*/tests/|.*/archive/

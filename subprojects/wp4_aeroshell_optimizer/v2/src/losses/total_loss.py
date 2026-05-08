@@ -61,6 +61,9 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import (
+    CentralVisManager,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
@@ -87,10 +90,12 @@ class TotalLoss:
         dev: str | torch.device = "cuda",
         renderer_manager: VisualisationManager | None = None,
         external_alm: bool = False,  # Whether to do the ALM updates inside the loop or leave them to an external manager (like GINN's diversity manager)
+        vis_manager: CentralVisManager | None = None,
     ) -> None:
         self._device: torch.device = torch.device(dev) if isinstance(dev, str) else dev
         self._renderer_manager: VisualisationManager | None = renderer_manager
         self._external_alm: bool = external_alm
+        self._vis_manager: CentralVisManager | None = vis_manager
 
         # Populated each call to get_total_loss(); maps component name → weighted
         # live tensor.  The training loop calls .backward() per entry.
@@ -127,7 +132,11 @@ class TotalLoss:
 
         self._init_mesh_infrastructure()
         self._init_active_losses()  # must come before _init_alm_state (needs n_constraints)
-        self._warn_about_dead_weights()
+        # Propagate vis_manager to child loss instances (e.g. GaotLoss) so they can
+        # route their own visualizations through CentralVisManager.
+        if self._vis_manager is not None:
+            for _loss_inst in self._active_losses.values():
+                _loss_inst._vis_manager = self._vis_manager
         if self._use_alm:
             constraint_names: list[str] = [n for (n, _inst) in self._constraint_losses.values()]
             self.alm_manager = ALMManager(
@@ -696,7 +705,26 @@ class TotalLoss:
         self._pending_wandb_log: dict = log_dict
 
         # --- Mesh extraction & rendering ----------------------------------
-        if self._use_renderer and self._renderer_manager is not None:
+        # CentralVisManager path: independent of renderer_manager
+        if self._vis_manager is not None and (self._rendering_freq is None or epoch_name % self._rendering_freq == 0):
+            verts_vm, faces_vm = self._mesh_extractor.extract_mesh(
+                model=model,
+                isovalue=self._mesh_extraction_config.get("isovalue", 0.0),
+                batch_size=self._mesh_extraction_config.get("batch_size", 8192),
+            )
+            if self._mesh_statistics_enabled:
+                self._mesh_statistics.log_basic_mesh_stats(verts_vm, faces_vm, epoch_name)
+                self._mesh_statistics.log_solar_area_stats(verts_vm, faces_vm, epoch_name)
+            _verts_np = verts_vm.detach().cpu().numpy() if torch.is_tensor(verts_vm) else verts_vm
+            _faces_np: np.ndarray | None = (
+                faces_vm.detach().cpu().numpy()
+                if torch.is_tensor(faces_vm)
+                else (faces_vm if isinstance(faces_vm, np.ndarray) else None)
+            )
+            self._vis_manager.save_ply("mesh_shape", epoch_name, _verts_np, _faces_np)
+
+        # Legacy renderer path (neural renderer or CAD fallback)
+        elif self._use_renderer and self._renderer_manager is not None:
             verts, faces = self._mesh_extractor.extract_mesh(
                 model=model,
                 isovalue=self._mesh_extraction_config.get("isovalue", 0.0),
@@ -707,7 +735,7 @@ class TotalLoss:
                 self._mesh_statistics.log_solar_area_stats(verts, faces, epoch_name)
 
             if self._rendering_freq is not None and epoch_name % self._rendering_freq == 0:
-                if self._use_neural_renderer and self._renderer_manager is not None:
+                if self._use_neural_renderer:
                     try:
                         runtime_assembly_id = self._active_assembly_id()
                         self._renderer_manager.update(
@@ -725,8 +753,6 @@ class TotalLoss:
                         print(f"Renderer wrapper update failed: {e}")
                 else:
                     self._run_cad_vis(verts, faces, epoch_name)
-        else:
-            print(f"Skipping rendering at epoch {epoch_name} due to rendering frequency setting.")
 
         # --- GPU memory diagnostics (print only; logging is merged in _handle_telemetry) ----
         self._print_memory_diagnostics(epoch_name, device)
