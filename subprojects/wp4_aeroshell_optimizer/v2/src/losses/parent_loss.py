@@ -52,20 +52,21 @@ class ParentLoss:
             prism = get_outer_prism_bounds_mm()
             scale = float(self.losses_config["domain_pts_sampling"].get("bbox_scale_factor", 1.0))
             scaled_prism = scale_outer_prism(prism, scale)
-            bbox_lo = [
+            self._bbox_lo: list[float] = [
                 scaled_prism["x"][0],
                 scaled_prism["y"][0],
                 scaled_prism["z"][0],
             ]
-            bbox_hi = [
+            self._bbox_hi: list[float] = [
                 scaled_prism["x"][1],
                 scaled_prism["y"][1],
                 scaled_prism["z"][1],
             ]
+            self._num_domain_points: int = self.losses_config["domain_pts_sampling"]["num_points"]
             self.points = get_points(
-                num_points=self.losses_config["domain_pts_sampling"]["num_points"],
-                bbox_lo=bbox_lo,
-                bbox_hi=bbox_hi,
+                num_points=self._num_domain_points,
+                bbox_lo=self._bbox_lo,
+                bbox_hi=self._bbox_hi,
                 device=self.device,
             )
 
