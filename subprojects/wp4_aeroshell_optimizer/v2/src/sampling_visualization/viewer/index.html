@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Mesh Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #fff; overflow: hidden; font-family: monospace; }
+    canvas { display: block; }
+    #filename {
+      position: absolute; top: 10px; left: 10px;
+      background: rgba(0,0,0,0.55); color: #fff;
+      padding: 6px 12px; border-radius: 4px; font-size: 13px;
+      pointer-events: none;
+    }
+    #drop-hint {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.65); color: #fff;
+      padding: 24px 36px; border-radius: 8px; font-size: 16px;
+      text-align: center; line-height: 1.8; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="filename">no model loaded</div>
+  <div id="drop-hint">
+    Drop a .glb file here<br>
+    <span style="font-size:13px;opacity:0.7">or serve with <code>python -m http.server 8080</code><br>
+    and open <code>?model=../path/to/file.glb</code></span>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import GUI from 'https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm';
+
+    // --- Renderer ---
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    document.body.appendChild(renderer.domElement);
+
+    // --- Scene ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xffffff);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.001, 10000);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(5, 10, 7);
+    scene.add(dirLight);
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // --- GUI ---
+    let gui = new GUI({ title: 'Mesh Components' });
+
+    function buildGUI(root) {
+      gui.destroy();
+      gui = new GUI({ title: 'Mesh Components' });
+
+      // Bounding box toggle
+      const box3 = new THREE.Box3().setFromObject(root);
+      const boxHelper = new THREE.Box3Helper(box3, 0x888888);
+      scene.add(boxHelper);
+      const globalState = { bounding_box: true };
+      gui.add(globalState, 'bounding_box').name('Bounding Box').onChange(v => { boxHelper.visible = v; });
+      gui.add({ reset_camera: () => fitCamera(root) }, 'reset_camera').name('Reset Camera');
+      gui.add({ separator: '' }, 'separator').name('── Meshes ──').disable();
+
+      root.traverse(obj => {
+        if (!obj.isMesh) return;
+        const label = obj.name || `mesh_${obj.id}`;
+        const folder = gui.addFolder(label);
+        const state = { visible: true, opacity: 1.0 };
+
+        folder.add(state, 'visible').name('Visible').onChange(v => { obj.visible = v; });
+        folder.add(state, 'opacity', 0, 1, 0.01).name('Opacity').onChange(v => {
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach(m => { m.transparent = v < 1.0; m.opacity = v; m.needsUpdate = true; });
+          } else {
+            obj.material.transparent = v < 1.0;
+            obj.material.opacity = v;
+            obj.material.needsUpdate = true;
+          }
+        });
+        folder.open();
+      });
+    }
+
+    // --- Camera fitting ---
+    function fitCamera(root) {
+      const box = new THREE.Box3().setFromObject(root);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      controls.target.copy(center);
+      camera.position.copy(center).addScaledVector(new THREE.Vector3(1, 0.6, 1).normalize(), maxDim * 2.5);
+      camera.near = maxDim * 0.001;
+      camera.far  = maxDim * 100;
+      camera.updateProjectionMatrix();
+      controls.update();
+    }
+
+    // --- GLB loading ---
+    const loader = new GLTFLoader();
+    let currentRoot = null;
+
+    function loadGLB(url, displayName) {
+      document.getElementById('drop-hint').style.display = 'none';
+      document.getElementById('filename').textContent = `Loading: ${displayName}`;
+
+      loader.load(url, gltf => {
+        if (currentRoot) scene.remove(currentRoot);
+        currentRoot = gltf.scene;
+        scene.add(currentRoot);
+
+        // Ensure vertex colors are active and meshes are double-sided
+        currentRoot.traverse(obj => {
+          if (!obj.isMesh) return;
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+          mats.forEach(m => {
+            m.vertexColors = true;
+            m.side = THREE.DoubleSide;
+            m.needsUpdate = true;
+          });
+        });
+
+        fitCamera(currentRoot);
+        buildGUI(currentRoot);
+        document.getElementById('filename').textContent = displayName;
+      }, undefined, err => {
+        document.getElementById('filename').textContent = `Error: ${err.message}`;
+        console.error(err);
+      });
+    }
+
+    // Load from ?model= query param
+    const modelUrl = new URLSearchParams(window.location.search).get('model');
+    if (modelUrl) {
+      loadGLB(modelUrl, modelUrl.split('/').pop());
+    }
+
+    // Drag-and-drop (works when file is dropped directly onto the page)
+    document.addEventListener('dragover', e => e.preventDefault());
+    document.addEventListener('drop', e => {
+      e.preventDefault();
+      const file = e.dataTransfer?.files[0];
+      if (file?.name.endsWith('.glb')) loadGLB(URL.createObjectURL(file), file.name);
+    });
+
+    // --- Render loop ---
+    (function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    })();
+  </script>
+</body>
+</html>
