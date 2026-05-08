@@ -515,7 +515,7 @@ class ModelLoader:
         # Check number of vertecies and faces
         v = verts.shape[0]
         f = faces.shape[0]
-        d = v - f/2
+        d = v - f / 2
 
         if d == 2:
             print("CFD-AI Check: Mesh is likely watertight (Euler characteristic check passed).")
