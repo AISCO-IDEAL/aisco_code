@@ -14,10 +14,10 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import wandb
 from PIL import Image
 from torch import Tensor
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
     ensure_pyvista_headless,
 )
