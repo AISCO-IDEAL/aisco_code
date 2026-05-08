@@ -166,8 +166,8 @@ def boolean_to_rgb(
     Returns:
         (N, 3) float32 RGB array in [0, 1].
     """
-    true_rgba = tuple(int(c * 255) for c in true_rgb) + (255,)
-    false_rgba = tuple(int(c * 255) for c in false_rgb) + (255,)
+    true_rgba = tuple(int(c * 255) for c in true_rgb) + (255,)  # noqa: RUF005 : Weird unpacking thing
+    false_rgba = tuple(int(c * 255) for c in false_rgb) + (255,)  # noqa: RUF005
     rgba = map_boolean_mask_to_rgba(mask, true_rgba=true_rgba, false_rgba=false_rgba)  # type: ignore[arg-type]
     return rgba[:, :3].astype(np.float32) / 255.0
 

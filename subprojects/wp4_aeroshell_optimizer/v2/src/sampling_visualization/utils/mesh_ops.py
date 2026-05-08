@@ -29,9 +29,7 @@ def face_scalars_to_vertex(
     verts = np.asarray(verts, dtype=np.float64)
 
     if len(face_values) != len(faces):
-        raise ValueError(
-            f"face_values length ({len(face_values)}) does not match faces length ({len(faces)})."
-        )
+        raise ValueError(f"face_values length ({len(face_values)}) does not match faces length ({len(faces)}).")
 
     n_verts = len(verts)
     v0, v1, v2 = verts[faces[:, 0]], verts[faces[:, 1]], verts[faces[:, 2]]

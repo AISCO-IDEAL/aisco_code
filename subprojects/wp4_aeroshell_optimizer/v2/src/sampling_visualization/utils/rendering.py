@@ -120,6 +120,7 @@ def render_mesh(
     own_renderer = renderer is None
     if own_renderer:
         renderer = pyrender.OffscreenRenderer(width, height)
+    assert renderer is not None  # for mypy
     try:
         color, _ = renderer.render(scene)
     finally:
@@ -174,6 +175,7 @@ def render_ply(
     own_renderer = renderer is None
     if own_renderer:
         renderer = pyrender.OffscreenRenderer(width, height)
+    assert renderer is not None  # for mypy
     try:
         color, _ = renderer.render(scene)
     finally:

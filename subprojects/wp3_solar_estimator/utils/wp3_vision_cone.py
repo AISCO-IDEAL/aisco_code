@@ -1,12 +1,11 @@
 import cadquery as cq
 import torch
+
 from subprojects.wp2_assembler.version4.components.nbz import vision_nbz
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils import save_scene_glb, solid_rgb
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.custom_modes.bounding_box_mode_utils import (
     load_bb_assembly_id,
-    load_inner_outer_solids,
-    merge_meshes,
     solid_to_kaolin_mesh,
 )
 
@@ -22,6 +21,7 @@ def get_vision_cone_mesh(id_number) -> tuple[torch.Tensor, torch.Tensor]:
         )
     verts, faces = solid_to_kaolin_mesh(vison_cone_solid, device=dev)
     return verts, faces
+
 
 def mesh_intersection(
     verts1: torch.Tensor, faces1: torch.Tensor, vertices2: torch.Tensor, faces2: torch.Tensor

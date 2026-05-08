@@ -6,6 +6,7 @@ Usage:
     python serve.py path/to/file.glb --port 8081
     python serve.py path/to/file.glb --no-browser   # headless / X11-forward
 """
+
 import argparse
 import http.server
 import threading
@@ -45,7 +46,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, *_args) -> None:  # noqa: ANN002
+    def log_message(self, *_args) -> None:
         pass
 
 
