@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+{% block hint %}Edit whitelisted config values, save to a session folder, then run.{% endblock %}
+
+{% block content %}
+<div class="section-grid" style="grid-template-rows: auto auto 1fr auto; height: 100%;">
+
+  <!-- Session toolbar -->
+  <div class="dark-card toolbar">
+    <button class="btn" id="btnInit">Start new session</button>
+    <button class="btn secondary" id="btnReload" disabled>Reload values</button>
+    <div class="session-info" id="sessionInfo">No active session.</div>
+    <button class="btn danger" id="btnDiscard" disabled>Discard session</button>
+    <button class="btn danger" id="btnCleanAll">Clean all sessions</button>
+  </div>
+
+  <!-- Run toolbar -->
+  <div class="dark-card toolbar">
+    <button class="btn" id="btnSave" disabled>Save changes</button>
+    <button class="btn" id="btnRun" disabled>Run with overrides</button>
+    <button class="btn secondary" id="btnStop" disabled>Stop run</button>
+  </div>
+
+  <!-- Config form -->
+  <div class="card" style="overflow-y: auto; min-height: 0;">
+    <div id="formArea">
+      <div style="color: #496456; font-style: italic; text-align: center; padding: 40px 10px;">
+        Click "Start new session" to copy configs and begin editing.
+      </div>
+    </div>
+  </div>
+
+  <!-- Output console -->
+  <div class="dark-card" style="max-height: 200px; display: grid; grid-template-rows: auto 1fr; gap: 6px;">
+    <div style="font-size: 0.82rem; color: #f8d9d9; font-weight: 600;">Output</div>
+    <div class="console" id="outputConsole">Ready.</div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = "aiscoOverrideFolderV3";
+const API = "/launcher/api";
+
+let activeFolder = localStorage.getItem(STORAGE_KEY) || "";
+let cachedSchema = null;
+let pollTimer = null;
+
+const btnInit     = document.getElementById("btnInit");
+const btnReload   = document.getElementById("btnReload");
+const btnDiscard  = document.getElementById("btnDiscard");
+const btnCleanAll = document.getElementById("btnCleanAll");
+const btnSave     = document.getElementById("btnSave");
+const btnRun      = document.getElementById("btnRun");
+const btnStop     = document.getElementById("btnStop");
+const sessionInfo = document.getElementById("sessionInfo");
+const formArea    = document.getElementById("formArea");
+const output      = document.getElementById("outputConsole");
+
+function log(text, level = "info") {
+  const stamp = new Date().toLocaleTimeString();
+  output.textContent += `[${stamp}] ${text}\n`;
+  output.scrollTop = output.scrollHeight;
+  if (level === "error") output.className = "console error";
+  else if (level === "success") output.className = "console success";
+}
+
+function setFolder(folder) {
+  activeFolder = folder || "";
+  if (activeFolder) {
+    localStorage.setItem(STORAGE_KEY, activeFolder);
+    sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
+    btnReload.disabled = false;
+    btnDiscard.disabled = false;
+    btnRun.disabled = false;
+  } else {
+    localStorage.removeItem(STORAGE_KEY);
+    sessionInfo.textContent = "No active session.";
+    btnReload.disabled = btnDiscard.disabled = btnSave.disabled = btnRun.disabled = true;
+    formArea.innerHTML = '<div style="color:#496456;font-style:italic;text-align:center;padding:40px 10px;">Click "Start new session" to copy configs and begin editing.</div>';
+  }
+}
+
+function checkValidity() {
+  const inputs = formArea.querySelectorAll(".param-input");
+  let valid = true;
+  inputs.forEach(inp => {
+    const t = inp.dataset.type;
+    let ok = true;
+    if (t === "int" || t === "float") {
+      const v = t === "int" ? parseInt(inp.value, 10) : parseFloat(inp.value);
+      if (inp.value === "" || isNaN(v)) ok = false;
+      else {
+        if (inp.min !== "" && v < parseFloat(inp.min)) ok = false;
+        if (inp.max !== "" && v > parseFloat(inp.max)) ok = false;
+      }
+    }
+    inp.classList.toggle("invalid", !ok);
+    if (!ok) valid = false;
+  });
+  btnSave.disabled = !valid || !activeFolder;
+}
+
+function makeInput(param, current) {
+  const t = param.type;
+  if (t === "bool" || t === "enum") {
+    const sel = document.createElement("select");
+    sel.className = "param-input";
+    const choices = t === "bool" ? [true, false] : (param.choices || []);
+    choices.forEach(v => {
+      const opt = document.createElement("option");
+      opt.value = String(v); opt.textContent = String(v);
+      if (current === v || String(current) === String(v)) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", checkValidity);
+    return sel;
+  }
+  const inp = document.createElement("input");
+  inp.className = "param-input";
+  inp.value = current == null ? "" : String(current);
+  if (t === "int" || t === "float") {
+    inp.type = "number";
+    if ("min" in param) inp.min = param.min;
+    if ("max" in param) inp.max = param.max;
+    inp.step = t === "float" ? "any" : "1";
+    inp.addEventListener("input", () => {
+      if (t === "int" && inp.value.includes(".")) inp.value = inp.value.split(".")[0];
+      checkValidity();
+    });
+    inp.addEventListener("blur", () => {
+      const v = parseFloat(inp.value);
+      if (!isNaN(v)) {
+        if (inp.min !== "" && v < parseFloat(inp.min)) inp.value = inp.min;
+        if (inp.max !== "" && v > parseFloat(inp.max)) inp.value = inp.max;
+      }
+      checkValidity();
+    });
+  } else {
+    inp.type = "text";
+    inp.addEventListener("input", checkValidity);
+  }
+  return inp;
+}
+
+function renderForm(schema, values) {
+  formArea.innerHTML = "";
+  for (const [cfgName, cfgEntry] of Object.entries(schema.configs || {})) {
+    const cfgVals = (values && values[cfgName]) || {};
+    const details = document.createElement("details");
+    details.className = "config-section"; details.open = true;
+    const summary = document.createElement("summary");
+    summary.textContent = `${cfgEntry.label || cfgName} — ${cfgName}`;
+    details.appendChild(summary);
+    for (const param of (cfgEntry.params || [])) {
+      const row = document.createElement("div"); row.className = "param-row";
+      const labelWrap = document.createElement("div");
+      const labelEl = document.createElement("div"); labelEl.className = "param-label";
+      labelEl.textContent = param.label || param.path; labelWrap.appendChild(labelEl);
+      const meta = document.createElement("span"); meta.className = "param-meta";
+      let mt = `${param.path} · ${param.type}`;
+      if ("min" in param || "max" in param) mt += ` · [${param.min ?? "-∞"}, ${param.max ?? "+∞"}]`;
+      if (param.choices) mt += ` · ${JSON.stringify(param.choices)}`;
+      meta.textContent = mt; labelWrap.appendChild(meta);
+      const inp = makeInput(param, cfgVals[param.path]);
+      inp.dataset.cfg = cfgName; inp.dataset.path = param.path; inp.dataset.type = param.type;
+      row.appendChild(labelWrap); row.appendChild(inp); details.appendChild(row);
+    }
+    formArea.appendChild(details);
+  }
+  checkValidity();
+}
+
+function collectUpdates() {
+  const updates = {};
+  let invalid = false;
+  formArea.querySelectorAll(".param-input").forEach(inp => {
+    const { cfg, path, type: t } = inp.dataset;
+    let value;
+    try {
+      if (t === "int")        { value = parseInt(inp.value, 10); if (isNaN(value)) throw new Error(); }
+      else if (t === "float") { value = parseFloat(inp.value);   if (isNaN(value)) throw new Error(); }
+      else if (t === "bool")  { value = inp.value === "true"; }
+      else                    { value = inp.value; }
+    } catch { inp.classList.add("invalid"); invalid = true; return; }
+    if (!updates[cfg]) updates[cfg] = {};
+    updates[cfg][path] = value;
+  });
+  return invalid ? null : updates;
+}
+
+async function loadSchemaAndValues() {
+  if (!activeFolder) return;
+  try {
+    if (!cachedSchema) {
+      const r = await fetch(`${API}/config-overrides/schema`);
+      if (!r.ok) throw new Error(`schema ${r.status}`);
+      cachedSchema = await r.json();
+    }
+    const r2 = await fetch(`${API}/config-overrides/values?folder=${encodeURIComponent(activeFolder)}`);
+    if (!r2.ok) { const d = await r2.json(); throw new Error(d.detail?.message || r2.status); }
+    renderForm(cachedSchema, (await r2.json()).values || {});
+    log("Form populated.", "success");
+  } catch (err) { log(`ERROR: ${err.message}`, "error"); }
+}
+
+btnInit.addEventListener("click", async () => {
+  btnInit.disabled = true;
+  try {
+    const r = await fetch(`${API}/config-overrides/init`, { method: "POST" });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.detail?.message || r.status); }
+    const d = await r.json();
+    log(`Session: ${d.name} (${d.copied_files.length} files)`, "success");
+    setFolder(d.folder);
+    await loadSchemaAndValues();
+  } catch (err) { log(`ERROR: ${err.message}`, "error"); }
+  finally { btnInit.disabled = false; }
+});
+
+btnReload.addEventListener("click", loadSchemaAndValues);
+
+btnDiscard.addEventListener("click", async () => {
+  if (!activeFolder || !confirm(`Delete session ${activeFolder.split("/").pop()}?`)) return;
+  try {
+    const r = await fetch(`${API}/config-overrides/cleanup`, {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ folders: [activeFolder] })
+    });
+    const d = await r.json();
+    log(`Removed: ${d.removed.join(", ") || "(none)"}`, "success");
+    setFolder("");
+  } catch (err) { log(`ERROR: ${err.message}`, "error"); }
+});
+
+btnCleanAll.addEventListener("click", async () => {
+  if (!confirm("Delete ALL gui_override_* sessions?")) return;
+  try {
+    const r = await fetch(`${API}/config-overrides/cleanup`, {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ all: true })
+    });
+    const d = await r.json();
+    log(`Removed ${d.removed.length} session(s)`, "success");
+    setFolder("");
+  } catch (err) { log(`ERROR: ${err.message}`, "error"); }
+});
+
+btnSave.addEventListener("click", async () => {
+  if (!activeFolder) return;
+  const updates = collectUpdates();
+  if (!updates) { log("Fix invalid fields before saving.", "error"); return; }
+  try {
+    const r = await fetch(`${API}/config-overrides/values`, {
+      method: "PUT", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ folder: activeFolder, updates })
+    });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.detail?.message || r.status); }
+    const d = await r.json();
+    log(`Saved: ${d.written.join(", ")}`, "success");
+  } catch (err) { log(`ERROR: ${err.message}`, "error"); }
+});
+
+btnRun.addEventListener("click", async () => {
+  if (!activeFolder) return;
+  btnRun.disabled = true; btnStop.disabled = false; output.className = "console";
+  try {
+    const r = await fetch(`${API}/run/start`, {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ cfg_folder: activeFolder })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail?.message || r.status);
+    log(`Started PID: ${d.pid} — polling logs…`);
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(async () => {
+      try {
+        const ld = await (await fetch(`${API}/run/logs`)).json();
+        output.textContent = ld.logs || "(no logs yet)";
+        output.scrollTop = output.scrollHeight;
+        if (!ld.running) {
+          log(`\n--- Return code: ${ld.return_code}`, ld.return_code === 0 ? "success" : "error");
+          clearInterval(pollTimer); pollTimer = null;
+          btnRun.disabled = false; btnStop.disabled = true;
+        }
+      } catch (err) {
+        log(`ERROR polling: ${err.message}`, "error");
+        clearInterval(pollTimer); pollTimer = null;
+        btnRun.disabled = false; btnStop.disabled = true;
+      }
+    }, 1000);
+  } catch (err) { log(`ERROR: ${err.message}`, "error"); btnRun.disabled = false; btnStop.disabled = true; }
+});
+
+btnStop.addEventListener("click", async () => {
+  btnStop.disabled = true;
+  try {
+    const d = await (await fetch(`${API}/run/stop`, { method: "POST" })).json();
+    log(`Stop: ${d.status} — ${d.message || ""}`);
+  } catch (err) { log(`ERROR: ${err.message}`, "error"); }
+});
+
+// Restore session on page load
+(async () => {
+  if (!activeFolder) return;
+  try {
+    const d = await (await fetch(`${API}/config-overrides/sessions`)).json();
+    if ((d.sessions || []).some(s => s.folder === activeFolder)) {
+      setFolder(activeFolder); await loadSchemaAndValues();
+    } else { log("Stored session no longer exists; cleared.", "error"); setFolder(""); }
+  } catch (err) { log(`Could not restore: ${err.message}`, "error"); setFolder(""); }
+})();
+</script>
+{% endblock %}

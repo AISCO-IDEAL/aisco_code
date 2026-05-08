@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block hint %}Quick orientation to the WP7 v3 GUI.{% endblock %}
+
+{% block content %}
+<section class="placeholder-card" style="display: grid; gap: 14px;">
+  <div>
+    <h2 style="margin: 0; color: var(--text);">Welcome to the WP7 GUI v3</h2>
+    <p style="color: var(--muted); margin: 6px 0 0;">
+      Two paths, modular tools shared between them.
+    </p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+    <a href="/viewer" style="text-decoration: none; color: inherit;">
+      <article class="placeholder-card" style="border-style: solid;">
+        <h3 style="margin: 0 0 6px; color: var(--text);">Viewer</h3>
+        <p style="margin: 0;">Inspect a finished run on local storage — meshes, GIFs, logs.</p>
+      </article>
+    </a>
+
+    <a href="/launcher/config-overrides" style="text-decoration: none; color: inherit;">
+      <article class="placeholder-card" style="border-style: solid;">
+        <h3 style="margin: 0 0 6px; color: var(--text);">Launcher</h3>
+        <p style="margin: 0;">Override configs, launch a WP4 run, watch logs and intermediate artifacts live.</p>
+      </article>
+    </a>
+  </div>
+</section>
+{% endblock %}

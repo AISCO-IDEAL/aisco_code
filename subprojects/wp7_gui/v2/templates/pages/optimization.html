@@ -85,7 +85,7 @@
       padding: 8px;
       background: #f8fcf9;
       display: grid;
-      grid-template-rows: auto 1fr auto auto;
+      grid-template-rows: auto 1fr auto;
       min-height: 0;
       overflow: hidden;
     }
@@ -113,13 +113,8 @@
       width: 100%;
       height: 100%;
       object-fit: contain;
-      object-position: top center;
+      object-position: center;
       display: none;
-    }
-
-    #artifactImage,
-    #solarArtifactImage {
-      transform: translateY(-8px);
     }
 
     .hint {
@@ -136,28 +131,20 @@
       display: none;
     }
 
-    #meshStatus {
-      position: absolute;
-      bottom: 8px;
-      right: 8px;
-      background: rgba(35, 40, 62, 0.9);
-      padding: 4px 8px;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      color: #fff;
-      max-width: 90%;
-      z-index: 10;
-    }
-
-    .mesh-controls {
+    .slider-controls {
       display: grid;
-      gap: 6px;
+      grid-template-columns: auto 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+      margin-top: 6px;
     }
 
-    .mesh-slider-label {
-      font-size: 0.85rem;
+    .slider-label {
+      font-size: 0.82rem;
       color: var(--muted);
-      font-weight: 600;
+      font-weight: 700;
+      text-align: right;
+      min-width: 80px;
     }
 
     input[type="range"] {
@@ -234,8 +221,15 @@
       cursor: not-allowed;
     }
 
-    .mesh-actions {
-      margin-top: -10px;
+    .placeholder {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.92rem;
+      padding: 14px;
     }
 
     @media (max-width: 1300px) {
@@ -257,16 +251,17 @@
         width: min(92vw, var(--visual-card-width));
       }
     }
-  </style>
 
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    @media (max-width: 900px) {
+      .slider-controls {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .slider-label {
+        text-align: left;
       }
     }
-  </script>
+  </style>
 </head>
 
 <body>
@@ -275,396 +270,184 @@
     <section class="card" style="min-height: 0;">
       <div class="visuals-grid">
         <div class="visual-card">
-          <div class="visual-title">Aeroshell Evolution</div>
+          <div class="visual-title">Mesh Assembly Renders (cam1*)</div>
           <div class="image-slot">
-            <img id="artifactImage" alt="mesh assembly gif preview">
+            <img id="cam1Image" alt="mesh assembly cam1 render preview">
           </div>
-          <div class="hint" id="artifactStatus">No GIF loaded yet.</div>
-          <div class="gif-actions">
-            <button id="btnRestartGif" type="button">Restart GIF</button>
+          <div class="hint" id="cam1Status">No cam1 renders found yet.</div>
+          <div class="slider-controls">
+            <button id="btnPrevCam1" type="button">Previous</button>
+            <input type="range" id="cam1Slider" min="0" max="0" value="0" disabled>
+            <button id="btnNextCam1" type="button">Next</button>
+            <div class="slider-label" id="cam1Label">Frame -</div>
           </div>
         </div>
 
         <div class="visual-card">
-          <div class="visual-title">Solar Placement</div>
+          <div class="visual-title">Pressure Field Visualizations</div>
           <div class="image-slot">
-            <img id="solarArtifactImage" alt="solar loss gif preview">
+            <img id="pressureImage" alt="pressure field visualization preview">
           </div>
-          <div class="hint" id="solarArtifactStatus">No solar_loss_rendering GIF loaded yet.</div>
-          <div class="gif-actions">
-            <button id="btnRestartSolarGif" type="button">Restart GIF</button>
+          <div class="hint" id="pressureStatus">No pressure images found yet.</div>
+          <div class="slider-controls">
+            <button id="btnPrevPressure" type="button">Previous</button>
+            <input type="range" id="pressureSlider" min="0" max="0" value="0" disabled>
+            <button id="btnNextPressure" type="button">Next</button>
+            <div class="slider-label" id="pressureLabel">Image -</div>
           </div>
         </div>
 
         <div class="visual-card">
-          <div class="visual-title"> Aeroshell Mesh</div>
-          <div class="image-slot" id="meshContainer" style="position: relative;">
-            <span id="meshPlaceholder"
-              style="color: var(--muted); font-size: 0.9rem; position: absolute; z-index: 1;">No mesh loaded yet</span>
-            <div class="hint" id="meshStatus">No mesh available.</div>
+          <div class="visual-title">Solar Placement Visualization</div>
+          <div class="image-slot">
+            <div class="placeholder">Placeholder for upcoming solar placement visuals.</div>
           </div>
-          <div class="mesh-actions">
-            <div class="mesh-controls">
-              <div class="mesh-slider-label">Epoch Slider</div>
-              <input type="range" id="meshEpochSlider" min="0" max="100" value="0" disabled>
-            </div>
-            <div class="mesh-controls">
-              <div class="mesh-slider-label">Opacity: <span id="meshOpacityValue">1.00</span></div>
-              <input type="range" id="meshOpacitySlider" min="0" max="1" step="0.01" value="1">
-            </div>
-          </div>
+          <div class="hint">Reserved panel for solar-placement image integration.</div>
         </div>
       </div>
     </section>
   </main>
 
   <script>
-    const artifactImage = document.getElementById("artifactImage");
-    const artifactStatus = document.getElementById("artifactStatus");
-    const btnRestartGif = document.getElementById("btnRestartGif");
-    const solarArtifactImage = document.getElementById("solarArtifactImage");
-    const solarArtifactStatus = document.getElementById("solarArtifactStatus");
-    const btnRestartSolarGif = document.getElementById("btnRestartSolarGif");
+    const cam1Image = document.getElementById("cam1Image");
+    const cam1Status = document.getElementById("cam1Status");
+    const cam1Slider = document.getElementById("cam1Slider");
+    const cam1Label = document.getElementById("cam1Label");
+    const btnPrevCam1 = document.getElementById("btnPrevCam1");
+    const btnNextCam1 = document.getElementById("btnNextCam1");
 
-    let gifEntry = null;
-    let currentGifKey = null;
-    let solarGifEntry = null;
-    let currentSolarGifKey = null;
-    let meshes = [];
-    let currentMeshIndex = 0;
-    let meshOpacity = 1.0;
+    const pressureImage = document.getElementById("pressureImage");
+    const pressureStatus = document.getElementById("pressureStatus");
+    const pressureSlider = document.getElementById("pressureSlider");
+    const pressureLabel = document.getElementById("pressureLabel");
+    const btnPrevPressure = document.getElementById("btnPrevPressure");
+    const btnNextPressure = document.getElementById("btnNextPressure");
 
-    // Fetch initial mesh opacity from server config; keep 1.0 on any failure
-    fetch('/mesh-config')
-      .then(r => r.json())
-      .then(cfg => {
-        meshOpacity = typeof cfg.mesh_opacity === 'number' ? cfg.mesh_opacity : 1.0;
-        const slider = document.getElementById('meshOpacitySlider');
-        if (slider) {
-          slider.value = String(meshOpacity);
-          document.getElementById('meshOpacityValue').textContent = meshOpacity.toFixed(2);
-        }
-      })
-      .catch(() => { /* keep default 1.0 */ });
+    let cam1Images = [];
+    let pressureImages = [];
 
     function cacheBustUrl(url) {
       const separator = url.includes('?') ? '&' : '?';
       return `${url}${separator}t=${Date.now()}`;
     }
 
-    function updateGifDisplay() {
-      if (!gifEntry) {
-        artifactImage.style.display = "none";
-        artifactStatus.textContent = "No mesh_assembly_mode GIF found for current run.";
-        currentGifKey = null;
-        btnRestartGif.disabled = true;
+    function updateViewer(items, sliderEl, imageEl, statusEl, labelEl, prevBtn, nextBtn, labelPrefix) {
+      if (!Array.isArray(items) || items.length === 0) {
+        sliderEl.min = "0";
+        sliderEl.max = "0";
+        sliderEl.value = "0";
+        sliderEl.disabled = true;
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        imageEl.style.display = "none";
+        imageEl.removeAttribute("src");
+        labelEl.textContent = `${labelPrefix} -`;
         return;
       }
 
-      if (currentGifKey !== gifEntry.key) {
-        artifactImage.src = cacheBustUrl(gifEntry.playUrl);
-        currentGifKey = gifEntry.key;
-      }
-      artifactImage.style.display = "block";
-      artifactStatus.textContent = "";
-      btnRestartGif.disabled = false;
+      sliderEl.disabled = false;
+      sliderEl.max = String(items.length - 1);
+
+      const rawIdx = Number(sliderEl.value);
+      const idx = Number.isFinite(rawIdx) ? Math.max(0, Math.min(rawIdx, items.length - 1)) : 0;
+      sliderEl.value = String(idx);
+
+      const entry = items[idx];
+      imageEl.src = cacheBustUrl(entry.url);
+      imageEl.style.display = "block";
+
+      const frameOrEpoch = entry.frame_index ?? entry.epoch;
+      labelEl.textContent = Number.isFinite(frameOrEpoch)
+        ? `${labelPrefix} ${frameOrEpoch}`
+        : `${labelPrefix} ${idx + 1}/${items.length}`;
+
+      statusEl.textContent = entry.name || "";
+      prevBtn.disabled = idx <= 0;
+      nextBtn.disabled = idx >= items.length - 1;
     }
 
-    function restartGif() {
-      if (!gifEntry) {
-        return;
+    function refreshCam1Viewer() {
+      if (cam1Images.length === 0) {
+        cam1Status.textContent = "No cam1 renders found in mesh_assembly_mode_v4/renders.";
       }
-      artifactImage.src = cacheBustUrl(gifEntry.playUrl);
-      artifactStatus.textContent = "";
+      updateViewer(cam1Images, cam1Slider, cam1Image, cam1Status, cam1Label, btnPrevCam1, btnNextCam1, "Frame");
     }
 
-    function updateSolarGifDisplay() {
-      if (!solarGifEntry) {
-        solarArtifactImage.style.display = "none";
-        solarArtifactStatus.textContent = "No solar_loss_rendering GIF found for current run.";
-        currentSolarGifKey = null;
-        btnRestartSolarGif.disabled = true;
-        return;
+    function refreshPressureViewer() {
+      if (pressureImages.length === 0) {
+        pressureStatus.textContent = "No pressure-field images found in media/images.";
       }
-
-      if (currentSolarGifKey !== solarGifEntry.key) {
-        solarArtifactImage.src = cacheBustUrl(solarGifEntry.playUrl);
-        currentSolarGifKey = solarGifEntry.key;
-      }
-      solarArtifactImage.style.display = "block";
-      solarArtifactStatus.textContent = "";
-      btnRestartSolarGif.disabled = false;
+      updateViewer(pressureImages, pressureSlider, pressureImage, pressureStatus, pressureLabel, btnPrevPressure, btnNextPressure, "Image");
     }
 
-    function restartSolarGif() {
-      if (!solarGifEntry) {
-        return;
-      }
-      solarArtifactImage.src = cacheBustUrl(solarGifEntry.playUrl);
-      solarArtifactStatus.textContent = "";
+    function setSliderValue(sliderEl, nextValue) {
+      const min = Number(sliderEl.min || "0");
+      const max = Number(sliderEl.max || "0");
+      sliderEl.value = String(Math.max(min, Math.min(max, nextValue)));
     }
-
-    function formatFileSize(bytes) {
-      if (bytes === 0) return "0 B";
-      const k = 1024;
-      const sizes = ["B", "KB", "MB", "GB"];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
-    }
-
-    // Updated updateMeshDisplay to work with Three.js
-    function updateMeshDisplay() {
-      const meshEpochSlider = document.getElementById("meshEpochSlider");
-      const meshStatus = document.getElementById("meshStatus");
-      const meshPlaceholder = document.getElementById("meshPlaceholder");
-
-      if (meshes.length === 0) {
-        meshEpochSlider.disabled = true;
-        meshStatus.textContent = "No mesh available.";
-        meshPlaceholder.style.display = "block";
-        return;
-      }
-
-      meshEpochSlider.disabled = false;
-      meshEpochSlider.max = String(meshes.length - 1);
-
-      const currentMesh = meshes[currentMeshIndex];
-      meshStatus.textContent = currentMesh.name;
-      meshEpochSlider.value = String(currentMeshIndex);
-
-      // Hide the text placeholder
-      meshPlaceholder.style.display = "none";
-
-      // Tell Three.js to render the file
-      if (window.load3DMesh) {
-        window.load3DMesh(currentMesh.url);
-      }
-    }
-
-    function handleMeshSliderChange(event) {
-      currentMeshIndex = Number.parseInt(event.target.value, 10);
-      updateMeshDisplay();
-    }
-
-
 
     async function refreshArtifacts() {
       try {
         const res = await fetch(`/run-local/artifacts?t=${Date.now()}`, { cache: "no-store" });
         const data = await res.json();
 
-        const gifList = data.mesh_assembly_gifs || [];
-        if (gifList.length > 0) {
-          const selectedGif = gifList[0];
-          gifEntry = {
-            key: selectedGif.rel_path || selectedGif.name,
-            name: selectedGif.name,
-            playUrl: selectedGif.url
-          };
-          updateGifDisplay();
-        } else {
-          gifEntry = null;
-          updateGifDisplay();
-        }
+        const prevCam1Name = cam1Images[Number(cam1Slider.value)]?.name;
+        const prevPressureName = pressureImages[Number(pressureSlider.value)]?.name;
 
-        const solarGifList = data.solar_loss_gifs || [];
-        if (solarGifList.length > 0) {
-          const selectedSolarGif = solarGifList.find((entry) => entry.name === "rendering.gif") || solarGifList[0];
-          solarGifEntry = {
-            key: selectedSolarGif.rel_path || selectedSolarGif.name,
-            name: selectedSolarGif.name,
-            playUrl: selectedSolarGif.url
-          };
-          updateSolarGifDisplay();
-        } else {
-          solarGifEntry = null;
-          updateSolarGifDisplay();
-        }
+        cam1Images = Array.isArray(data.cam1_renders) ? data.cam1_renders : [];
+        pressureImages = Array.isArray(data.pressure_field_images) ? data.pressure_field_images : [];
 
-        const meshList = data.meshes || [];
-        if (meshList.length > 0) {
-          const isFirstLoad = meshes.length === 0;
-          // Check if the user is currently looking at the newest available mesh
-          const wasOnLatest = meshes.length > 0 && currentMeshIndex === meshes.length - 1;
-          const hasNewMeshes = meshList.length > meshes.length;
-
-          meshes = meshList; // Update our background data array
-
-          if (isFirstLoad) {
-            // First time loading: jump to the end and render
-            currentMeshIndex = meshes.length - 1;
-            updateMeshDisplay();
-          } else if (hasNewMeshes) {
-            if (wasOnLatest) {
-              // User is watching the live updates: auto-advance to the new one!
-              currentMeshIndex = meshes.length - 1;
-              updateMeshDisplay();
-            } else {
-              // User is inspecting an older mesh: DO NOT interrupt the 3D viewer.
-              // Just silently update the slider's boundary so they can scroll forward later.
-              document.getElementById("meshEpochSlider").max = String(meshes.length - 1);
-            }
+        if (prevCam1Name) {
+          const preservedCam1Index = cam1Images.findIndex((entry) => entry.name === prevCam1Name);
+          if (preservedCam1Index >= 0) {
+            cam1Slider.value = String(preservedCam1Index);
           }
-        } else if (meshes.length !== 0) {
-          // Only clear and update if we previously had meshes and now don't
-          meshes = [];
-          updateMeshDisplay();
         }
 
+        if (prevPressureName) {
+          const preservedPressureIndex = pressureImages.findIndex((entry) => entry.name === prevPressureName);
+          if (preservedPressureIndex >= 0) {
+            pressureSlider.value = String(preservedPressureIndex);
+          }
+        }
+
+        refreshCam1Viewer();
+        refreshPressureViewer();
       } catch (_error) {
         console.error("Failed to fetch artifacts:", _error);
+        cam1Status.textContent = "Failed to load cam1 renders.";
+        pressureStatus.textContent = "Failed to load pressure-field visualizations.";
       }
     }
 
-    btnRestartGif.addEventListener("click", restartGif);
-    btnRestartSolarGif.addEventListener("click", restartSolarGif);
+    cam1Slider.addEventListener("input", refreshCam1Viewer);
+    pressureSlider.addEventListener("input", refreshPressureViewer);
 
-    document.getElementById("meshEpochSlider").addEventListener("input", handleMeshSliderChange);
-
-    document.getElementById("meshOpacitySlider").addEventListener("input", function (e) {
-      meshOpacity = Number.parseFloat(e.target.value);
-      document.getElementById("meshOpacityValue").textContent = meshOpacity.toFixed(2);
-      if (window.applyMeshOpacity) window.applyMeshOpacity(meshOpacity);
+    btnPrevCam1.addEventListener("click", () => {
+      setSliderValue(cam1Slider, Number(cam1Slider.value) - 1);
+      refreshCam1Viewer();
     });
+
+    btnNextCam1.addEventListener("click", () => {
+      setSliderValue(cam1Slider, Number(cam1Slider.value) + 1);
+      refreshCam1Viewer();
+    });
+
+    btnPrevPressure.addEventListener("click", () => {
+      setSliderValue(pressureSlider, Number(pressureSlider.value) - 1);
+      refreshPressureViewer();
+    });
+
+    btnNextPressure.addEventListener("click", () => {
+      setSliderValue(pressureSlider, Number(pressureSlider.value) + 1);
+      refreshPressureViewer();
+    });
+
+    refreshCam1Viewer();
+    refreshPressureViewer();
 
     refreshArtifacts();
     setInterval(refreshArtifacts, 3000);
-  </script>
-
-  <script type="module">
-    import * as THREE from 'three';
-    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-    import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
-
-    let scene, camera, renderer, controls, currentMeshObj;
-    const container = document.getElementById('meshContainer');
-
-    function init3D() {
-      // 1. Setup Scene
-      scene = new THREE.Scene();
-      scene.background = new THREE.Color(0xf1f7f3); // Matches your background CSS
-
-      // 2. Setup Camera
-      camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
-      camera.position.set(0, 0, 3); // Start slightly zoomed out
-
-      // 3. Setup Renderer
-      renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(container.clientWidth, container.clientHeight);
-      container.appendChild(renderer.domElement);
-
-      // 4. Setup Controls (Allows mouse drag to rotate)
-      controls = new OrbitControls(camera, renderer.domElement);
-      controls.enableDamping = true;
-
-      // 5. Setup Lighting
-      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
-      hemiLight.position.set(0, 1, 0);
-      scene.add(hemiLight);
-
-      const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-      dirLight.position.set(1, 1, 1);
-      scene.add(dirLight);
-
-      // 6. Handle resizing
-      window.addEventListener('resize', () => {
-        if (!container) return;
-        camera.aspect = container.clientWidth / container.clientHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(container.clientWidth, container.clientHeight);
-      });
-
-      animate();
-    }
-
-    function animate() {
-      requestAnimationFrame(animate);
-      if (controls) controls.update();
-      if (renderer && scene && camera) renderer.render(scene, camera);
-    }
-
-    // Expose this to your main script
-    // Expose this to your main script
-    window.load3DMesh = function (url) {
-      if (!scene) init3D();
-
-      const loader = new PLYLoader();
-
-      // Add cache-busting to the URL just to be safe
-      const cacheBustedUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
-
-      loader.load(cacheBustedUrl, (geometry) => {
-        console.log("PLY geometry loaded successfully!", geometry);
-
-        geometry.computeVertexNormals();
-        geometry.computeBoundingBox();
-
-        // 1. Bulletproof Centering: Translate the geometry itself, not the mesh container
-        const center = new THREE.Vector3();
-        geometry.boundingBox.getCenter(center);
-        geometry.translate(-center.x, -center.y, -center.z);
-
-        // 2. Re-compute bounding box after moving it to the origin
-        geometry.computeBoundingBox();
-
-        // 3. Calculate safe scale
-        const size = new THREE.Vector3();
-        geometry.boundingBox.getSize(size);
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const safeScale = maxDim > 0 ? (2.0 / maxDim) : 1;
-
-        // Remove old mesh if sliding
-        if (currentMeshObj) {
-          scene.remove(currentMeshObj);
-          currentMeshObj.geometry.dispose();
-          currentMeshObj.material.dispose();
-        }
-
-        // Create material — use vertex colours if present (M1), otherwise grey fallback
-        const hasVertexColors = geometry.attributes.color != null;
-        const opacity = Number.parseFloat(
-          document.getElementById('meshOpacitySlider')?.value ?? '1'
-        );
-        const material = new THREE.MeshStandardMaterial({
-          color: hasVertexColors ? 0xffffff : 0x99A3A4,
-          vertexColors: hasVertexColors,
-          roughness: 0.6,
-          metalness: 0.2,
-          side: THREE.DoubleSide,
-          transparent: opacity < 1.0,
-          depthWrite: opacity >= 1.0,
-          opacity: opacity
-        });
-
-        currentMeshObj = new THREE.Mesh(geometry, material);
-        currentMeshObj.scale.set(safeScale, safeScale, safeScale);
-
-        scene.add(currentMeshObj);
-
-        // 4. Force the camera and controls to look right at the new object
-        camera.position.set(0, 0, 3.5);
-        controls.target.set(0, 0, 0);
-        controls.update();
-
-      },
-        (progress) => {
-          // Optional: logs loading progress
-          // console.log((progress.loaded / progress.total * 100) + '% loaded');
-        },
-        (error) => {
-          console.error("Critical error loading PLY file:", error);
-          alert("Failed to parse the PLY file. Please check the browser console (F12) for the exact error.");
-        });
-    }
-
-    // Allow the opacity slider to update the current mesh without reloading it
-    window.applyMeshOpacity = function (opacity) {
-      if (!currentMeshObj) return;
-      currentMeshObj.material.transparent = opacity < 1.0;
-      currentMeshObj.material.depthWrite = opacity >= 1.0;
-      currentMeshObj.material.opacity = opacity;
-      currentMeshObj.material.needsUpdate = true;
-    };
   </script>
 </body>
 

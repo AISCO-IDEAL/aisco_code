@@ -123,6 +123,13 @@ class TotalLoss:
         # is scheduled out so the other objective can still run CSE with a meaningful partner value.
         self._cse_objective_cache: dict[str, torch.Tensor] = {}
 
+        # Visualisation state — populated each _compute_raw_losses() by
+        # _extract_primary_visu_mesh + _capture_vertex_grads_via_autograd. Read by
+        # the renderer via collect_vertex_grads_for_visualisation(). Mirrors V2.
+        self._visu_primary_v: torch.Tensor | None = None
+        self._visu_primary_f: torch.Tensor | None = None
+        self._visu_per_loss_grads: dict[str, torch.Tensor] = {}
+
         self._init_mesh_infrastructure()
         self._init_active_losses()  # must come before _init_alm_state (needs n_constraints)
         if self._use_alm:
@@ -319,6 +326,108 @@ class TotalLoss:
         self._shared_mesh_extractors = {}
 
     # ------------------------------------------------------------------
+    # per-loss vertex-gradient visualisation (mirrors TotalLossV2)
+    # ------------------------------------------------------------------
+    def _extract_primary_visu_mesh(self, model: TrainModel) -> None:
+        """Extract one primary mesh for the visualiser via any available extractor.
+
+        Reuses the result of `_inject_shared_meshes` when it ran (≥ 2 extractors).
+        Otherwise calls `extract_mesh` on whichever extractor is registered and
+        injects the result back into that extractor with `set_shared_mesh`, so the
+        single mesh-using loss reuses the exact same `(verts, faces)` tensors —
+        which means `autograd.grad(L_k, verts)` is well-defined for that loss.
+        """
+        self._visu_primary_v = None
+        self._visu_primary_f = None
+        extractors = self._find_mesh_extractors()
+        if not extractors:
+            return
+        # If _inject_shared_meshes already extracted a primary, reuse it.
+        for ext in extractors.values():
+            shared = getattr(ext, "_shared_vertices", None)
+            shared_f = getattr(ext, "_shared_faces", None)
+            if shared is not None and shared_f is not None:
+                self._visu_primary_v = shared
+                self._visu_primary_f = shared_f
+                return
+        # Otherwise extract once with the first extractor and pin it.
+        first_ext = next(iter(extractors.values()))
+        verts, faces = first_ext.extract_mesh(model)
+        first_ext.set_shared_mesh(verts, faces)
+        self._shared_mesh_extractors = extractors  # ensure clear_shared_mesh() runs.
+        self._visu_primary_v = verts
+        self._visu_primary_f = faces
+
+    def _capture_vertex_grads_via_autograd(self, raw_losses: dict[str, torch.Tensor]) -> None:
+        """Collect dL/dv for every loss whose extractor produced one this step.
+
+        `MeshSDFExtractor.extract_and_compute_loss` already runs
+        `autograd.grad(loss, v_for_loss)` internally and stashes the result on
+        the extractor as `last_dL_dv` (vertices match the shared primary mesh).
+        We just harvest those tensors here, keyed by loss name. Losses that
+        don't go through `extract_and_compute_loss` are absent from the result.
+
+        The `raw_losses` argument is kept for API compatibility but unused.
+        """
+        del raw_losses
+        self._visu_per_loss_grads = {}
+        self._visu_per_loss_meshes: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
+        for loss_name, ext in self._find_mesh_extractors().items():
+            g = getattr(ext, "last_dL_dv", None)
+            if g is None:
+                continue
+            self._visu_per_loss_grads[loss_name] = g.detach()
+            v = getattr(ext, "last_verts", None)
+            f = getattr(ext, "last_faces", None)
+            if v is not None and f is not None:
+                self._visu_per_loss_meshes[loss_name] = (v.detach(), f.detach())
+
+    def collect_vertex_grads_for_visualisation(
+        self,
+        weights_by_name: dict[str, float] | None = None,
+    ) -> dict[str, Any] | None:
+        """Return per-loss + total dL/dv captured during the last `_compute_raw_losses`.
+
+        Returns None if no loss had an autograd path to the primary mesh. Otherwise:
+            {
+              "vertices":  (V, 3) primary mesh vertices,
+              "faces":     (F, 3) primary mesh faces,
+              "per_loss":  {loss_name: (V, 3) dL/dv},
+              "total":     (V, 3) Σ_k w_k · dL/dv_k,
+            }
+        """
+        if not getattr(self, "_visu_diag_logged", False):
+            self._visu_diag_logged = True
+            v = self._visu_primary_v
+            v_state = "None" if v is None else f"shape={tuple(v.shape)} requires_grad={v.requires_grad} grad_fn={v.grad_fn is not None}"
+            print(
+                f"[VisuDiag V1] primary_mesh={v_state} "
+                f"per_loss_grads_keys={list(self._visu_per_loss_grads.keys())}"
+            )
+        if not self._visu_per_loss_grads or self._visu_primary_v is None:
+            return None
+        # Build "total" only from grads matching the primary mesh shape (losses
+        # with their own MeshSDFExtractor at a different resolution can't be
+        # broadcast-summed). Per-loss panels render on each loss's own mesh
+        # (see `per_loss_meshes`), so they are returned in full regardless.
+        n_primary = int(self._visu_primary_v.shape[0])
+        weights = weights_by_name or {}
+        total: torch.Tensor | None = None
+        for name, g in self._visu_per_loss_grads.items():
+            if g.shape[0] != n_primary:
+                continue
+            w = float(weights.get(name, 1.0))
+            total = g * w if total is None else total + g * w
+        return {
+            "vertices": self._visu_primary_v,
+            "faces": self._visu_primary_f,
+            "per_loss": dict(self._visu_per_loss_grads),
+            "per_loss_meshes": dict(getattr(self, "_visu_per_loss_meshes", {})),
+            "total": total if total is not None else torch.zeros_like(self._visu_primary_v),
+        }
+
+
+    # ------------------------------------------------------------------
     # loss computation
     # ------------------------------------------------------------------
     def _compute_raw_losses(self, model: TrainModel, epoch_name: int, calibration_mode: bool = False) -> dict[str, torch.Tensor]:
@@ -335,6 +444,7 @@ class TotalLoss:
         self._skipped_categories: set[str] = set()
         self._zero_weighted_categories: set[str] = set()
         self._inject_shared_meshes(model)
+        self._extract_primary_visu_mesh(model)
         raw: dict[str, torch.Tensor] = {}
         try:
             for name, instance in self._active_losses.items():
@@ -355,6 +465,7 @@ class TotalLoss:
                     raw[name] = instance.get_loss(model, epoch_name, skip_telemetry=True)
                 else:
                     raw[name] = instance.get_loss(model, epoch_name)
+            self._capture_vertex_grads_via_autograd(raw)
         finally:
             self._clear_shared_meshes()
         self.latest_raw_metrics = raw
@@ -673,6 +784,18 @@ class TotalLoss:
                 if self._use_neural_renderer and self._renderer_manager is not None:
                     try:
                         runtime_assembly_id = self._active_assembly_id()
+                        # Per-loss + total dL/dv from the most recent _compute_raw_losses
+                        # (mirrors diversity_manager._render injection for the concat path).
+                        grads_payload = self.collect_vertex_grads_for_visualisation(
+                            weights_by_name=self._manual_weights,
+                        )
+                        extra_state: dict[str, Any] = {}
+                        if grads_payload is not None:
+                            verts = grads_payload["vertices"]
+                            faces = grads_payload["faces"]
+                            extra_state["vertice_grads_per_loss"] = grads_payload["per_loss"]
+                            extra_state["vertice_meshes_per_loss"] = grads_payload.get("per_loss_meshes", {})
+                            extra_state["vertice_grads_total"] = grads_payload["total"]
                         self._renderer_manager.update(
                             {
                                 "model": model,
@@ -682,6 +805,7 @@ class TotalLoss:
                                 "faces": faces,
                                 "assembly_id": runtime_assembly_id,
                                 "bb_assembly_id": runtime_assembly_id,
+                                **extra_state,
                             }
                         )
                     except Exception as e:

@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar View</title>
+    <style>
+        :root {
+            --bg: #1f2436;
+            --panel: #2a3047;
+            --card: #f7faf8;
+            --accent: #c82121;
+            --muted: #627078;
+            --border: #d8e1db;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: radial-gradient(circle at top left, #2b3554 0%, #1f2436 45%, #171c2e 100%);
+            color: #f2f5f8;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .grid {
+            display: grid;
+            gap: 14px;
+            width: 100%;
+            height: 100%;
+            grid-template-rows: auto 1fr;
+            margin: 0;
+            padding: 16px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border-radius: 14px;
+            padding: 14px;
+            box-shadow: 0 14px 26px rgba(0, 0, 0, 0.22);
+        }
+
+        .title {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        .meta {
+            margin-top: 6px;
+            color: #c7d3db;
+            font-size: 0.9rem;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 10px;
+            color: #11161f;
+            min-height: 0;
+            display: grid;
+            grid-template-rows: 1fr auto;
+            gap: 10px;
+        }
+
+        .slider-controls {
+            display: grid;
+            grid-template-columns: auto 1fr auto auto;
+            gap: 10px;
+            align-items: center;
+            padding: 8px;
+            border-top: 1px solid var(--border);
+            background: #eef4f1;
+        }
+
+        .slider-controls button {
+            border: none;
+            border-radius: 8px;
+            padding: 8px 12px;
+            background: var(--accent);
+            color: #fff;
+            font-size: 0.86rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .slider-controls button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .slider-controls input[type="range"] {
+            width: 100%;
+        }
+
+        .index-badge {
+            font-size: 0.85rem;
+            color: #26303a;
+            font-weight: 700;
+            min-width: 84px;
+            text-align: right;
+        }
+
+        .preview-grid {
+            min-height: 0;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .preview-card {
+            min-height: 0;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: #f1f6f3;
+            overflow: hidden;
+        }
+
+        .preview-title {
+            padding: 8px 10px;
+            background: #e4ece8;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.83rem;
+            font-weight: 700;
+            color: #24323f;
+        }
+
+        .preview {
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: #eef3f0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+        }
+
+        .preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .preview-empty {
+            color: var(--muted);
+            font-size: 0.85rem;
+            text-align: center;
+            padding: 12px;
+        }
+
+        .hint {
+            margin: 8px 0 0;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 980px) {
+            .preview-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .slider-controls {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .index-badge {
+                text-align: left;
+                min-width: 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="grid">
+        <section class="panel">
+            <h1 class="title">Solar Placement View</h1>
+            <div class="meta">Compare MeshSDF gradients across aero, solar, and total with an independent slider per visualization.</div>
+        </section>
+
+        <section class="card">
+            <div class="preview-grid">
+                <article class="preview-card">
+                    <div class="preview-title">MeshSDF_grads_aero</div>
+                    <div class="preview">
+                        <img id="imgAero" alt="MeshSDF grads aero preview">
+                        <div class="preview-empty" id="emptyAero">No image for this frame.</div>
+                    </div>
+                    <div class="slider-controls">
+                        <button id="btnPrevAero" type="button">Previous</button>
+                        <input id="frameSliderAero" type="range" min="0" max="0" value="0" step="1">
+                        <button id="btnNextAero" type="button">Next</button>
+                        <div class="index-badge" id="frameInfoAero">Frame -</div>
+                    </div>
+                </article>
+
+                <article class="preview-card">
+                    <div class="preview-title">MeshSDF_grads_solar</div>
+                    <div class="preview">
+                        <img id="imgSolar" alt="MeshSDF grads solar preview">
+                        <div class="preview-empty" id="emptySolar">No image for this frame.</div>
+                    </div>
+                    <div class="slider-controls">
+                        <button id="btnPrevSolar" type="button">Previous</button>
+                        <input id="frameSliderSolar" type="range" min="0" max="0" value="0" step="1">
+                        <button id="btnNextSolar" type="button">Next</button>
+                        <div class="index-badge" id="frameInfoSolar">Frame -</div>
+                    </div>
+                </article>
+
+                <article class="preview-card">
+                    <div class="preview-title">MeshSDF_grads_total</div>
+                    <div class="preview">
+                        <img id="imgTotal" alt="MeshSDF grads total preview">
+                        <div class="preview-empty" id="emptyTotal">No image for this frame.</div>
+                    </div>
+                    <div class="slider-controls">
+                        <button id="btnPrevTotal" type="button">Previous</button>
+                        <input id="frameSliderTotal" type="range" min="0" max="0" value="0" step="1">
+                        <button id="btnNextTotal" type="button">Next</button>
+                        <div class="index-badge" id="frameInfoTotal">Frame -</div>
+                    </div>
+                </article>
+            </div>
+
+            <p class="hint" id="status">Loading render images...</p>
+        </section>
+    </main>
+
+    <script>
+        const status = document.getElementById("status");
+        const views = {
+            aero: {
+                img: document.getElementById("imgAero"),
+                empty: document.getElementById("emptyAero")
+            },
+            solar: {
+                img: document.getElementById("imgSolar"),
+                empty: document.getElementById("emptySolar")
+            },
+            total: {
+                img: document.getElementById("imgTotal"),
+                empty: document.getElementById("emptyTotal")
+            }
+        };
+
+        const controls = {
+            aero: {
+                slider: document.getElementById("frameSliderAero"),
+                prev: document.getElementById("btnPrevAero"),
+                next: document.getElementById("btnNextAero"),
+                info: document.getElementById("frameInfoAero")
+            },
+            solar: {
+                slider: document.getElementById("frameSliderSolar"),
+                prev: document.getElementById("btnPrevSolar"),
+                next: document.getElementById("btnNextSolar"),
+                info: document.getElementById("frameInfoSolar")
+            },
+            total: {
+                slider: document.getElementById("frameSliderTotal"),
+                prev: document.getElementById("btnPrevTotal"),
+                next: document.getElementById("btnNextTotal"),
+                info: document.getElementById("frameInfoTotal")
+            }
+        };
+
+        let groupIndices = {
+            aero: [],
+            solar: [],
+            total: []
+        };
+
+        let groupedByFrame = {
+            aero: new Map(),
+            solar: new Map(),
+            total: new Map()
+        };
+
+        function updatePreview(groupKey, entry) {
+            const view = views[groupKey];
+            if (!view) {
+                return;
+            }
+
+            if (!entry) {
+                view.img.removeAttribute("src");
+                view.img.style.display = "none";
+                view.empty.style.display = "block";
+                return;
+            }
+
+            view.img.src = `${entry.url}${entry.url.includes("?") ? "&" : "?"}t=${Date.now()}`;
+            view.img.style.display = "block";
+            view.empty.style.display = "none";
+        }
+
+        function setGroupControlsEnabled(groupKey, enabled) {
+            const groupControls = controls[groupKey];
+            if (!groupControls) {
+                return;
+            }
+
+            groupControls.slider.disabled = !enabled;
+            groupControls.prev.disabled = !enabled;
+            groupControls.next.disabled = !enabled;
+        }
+
+        function renderGroupFrame(groupKey) {
+            const indices = groupIndices[groupKey];
+            const groupControls = controls[groupKey];
+
+            if (!groupControls || !indices) {
+                return;
+            }
+
+            if (indices.length === 0) {
+                groupControls.info.textContent = "Frame -";
+                updatePreview(groupKey, null);
+                setGroupControlsEnabled(groupKey, false);
+                groupControls.slider.min = "0";
+                groupControls.slider.max = "0";
+                groupControls.slider.value = "0";
+                return;
+            }
+
+            const sliderPos = Number(groupControls.slider.value);
+            const clampedPos = Math.max(0, Math.min(indices.length - 1, sliderPos));
+            const frameIndex = indices[clampedPos];
+            groupControls.slider.value = String(clampedPos);
+            groupControls.info.dataset.currentFrame = String(frameIndex);
+            groupControls.info.textContent = `Frame ${frameIndex}`;
+
+            updatePreview(groupKey, groupedByFrame[groupKey].get(frameIndex));
+            groupControls.prev.disabled = clampedPos <= 0;
+            groupControls.next.disabled = clampedPos >= indices.length - 1;
+        }
+
+        function buildFrameIndices(frameMap) {
+            const indices = Array.from(frameMap.keys());
+            indices.sort((a, b) => a - b);
+            return indices;
+        }
+
+        function buildFrameMap(entries) {
+            const result = new Map();
+            for (const entry of entries || []) {
+                if (Number.isFinite(entry.index)) {
+                    result.set(entry.index, entry);
+                }
+            }
+            return result;
+        }
+
+        async function refreshSolarView() {
+            try {
+                const response = await fetch(`/solar/renders?t=${Date.now()}`, { cache: "no-store" });
+                const payload = await response.json();
+
+                groupedByFrame = {
+                    aero: buildFrameMap(payload?.groups?.aero || []),
+                    solar: buildFrameMap(payload?.groups?.solar || []),
+                    total: buildFrameMap(payload?.groups?.total || [])
+                };
+
+                groupIndices = {
+                    aero: buildFrameIndices(groupedByFrame.aero),
+                    solar: buildFrameIndices(groupedByFrame.solar),
+                    total: buildFrameIndices(groupedByFrame.total)
+                };
+
+                const totalAvailable = groupIndices.aero.length + groupIndices.solar.length + groupIndices.total.length;
+                if (totalAvailable === 0) {
+                    status.textContent = "No render images found in MeshSDF_grads_aero / MeshSDF_grads_solar / MeshSDF_grads_total.";
+                    renderGroupFrame("aero");
+                    renderGroupFrame("solar");
+                    renderGroupFrame("total");
+                    return;
+                }
+
+                for (const groupKey of ["aero", "solar", "total"]) {
+                    const groupControls = controls[groupKey];
+                    const indices = groupIndices[groupKey];
+
+                    if (!groupControls || !indices) {
+                        continue;
+                    }
+
+                    if (indices.length === 0) {
+                        setGroupControlsEnabled(groupKey, false);
+                        renderGroupFrame(groupKey);
+                        continue;
+                    }
+
+                    const previousFrame = indices.includes(Number(groupControls.info.dataset.currentFrame))
+                        ? Number(groupControls.info.dataset.currentFrame)
+                        : indices[0];
+                    const previousPos = indices.indexOf(previousFrame);
+                    const sliderPos = previousPos >= 0 ? previousPos : 0;
+
+                    groupControls.slider.min = "0";
+                    groupControls.slider.max = String(indices.length - 1);
+                    groupControls.slider.value = String(sliderPos);
+                    groupControls.info.dataset.currentFrame = String(indices[sliderPos]);
+
+                    setGroupControlsEnabled(groupKey, true);
+                    renderGroupFrame(groupKey);
+                }
+
+                const sourceDir = payload.base_dir ? ` Source: ${payload.base_dir}` : "";
+                status.textContent = `Loaded frames - aero: ${groupIndices.aero.length}, solar: ${groupIndices.solar.length}, total: ${groupIndices.total.length}.${sourceDir}`;
+            } catch (_error) {
+                status.textContent = "Failed to load solar render images.";
+                groupIndices = {
+                    aero: [],
+                    solar: [],
+                    total: []
+                };
+                groupedByFrame = {
+                    aero: new Map(),
+                    solar: new Map(),
+                    total: new Map()
+                };
+
+                renderGroupFrame("aero");
+                renderGroupFrame("solar");
+                renderGroupFrame("total");
+            }
+        }
+
+        function bindGroupControls(groupKey) {
+            const groupControls = controls[groupKey];
+            if (!groupControls) {
+                return;
+            }
+
+            groupControls.slider.addEventListener("input", () => {
+                renderGroupFrame(groupKey);
+            });
+
+            groupControls.prev.addEventListener("click", () => {
+                const current = Number(groupControls.slider.value);
+                groupControls.slider.value = String(Math.max(0, current - 1));
+                renderGroupFrame(groupKey);
+            });
+
+            groupControls.next.addEventListener("click", () => {
+                const current = Number(groupControls.slider.value);
+                const max = Number(groupControls.slider.max || "0");
+                groupControls.slider.value = String(Math.min(max, current + 1));
+                renderGroupFrame(groupKey);
+            });
+
+            setGroupControlsEnabled(groupKey, false);
+        }
+
+        bindGroupControls("aero");
+        bindGroupControls("solar");
+        bindGroupControls("total");
+        refreshSolarView();
+        setInterval(refreshSolarView, 4000);
+    </script>
+</body>
+
+</html>

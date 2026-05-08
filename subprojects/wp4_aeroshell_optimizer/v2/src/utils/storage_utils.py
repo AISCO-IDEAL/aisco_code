@@ -12,6 +12,7 @@ import trimesh
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment, detect_environment
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing, str_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.kaolin_conversions import kaolin_to_PLY
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
@@ -53,13 +54,20 @@ def allround_save_data(  # noqa: PLR0915
     # Hash the model_data dictionary
     model_hash_value = dict_hashing(model_data)
     # If storage_path is provided in the function arguments, use it
-    # Otherwise fallback to general_config paths
+    # Otherwise pick a writable path based on the detected runtime environment.
     if not storage_path:
-        run_locally = general_config["general_info"].get("run_locally", "False") == "True"
-        if run_locally:
-            storage_path = general_config["storage_paths"]["local_storage_dir"]
+
+        paths = general_config["storage_paths"]
+        env = detect_environment()
+        if env == Environment.AISCO_BEAST:
+            storage_path = paths.get("beast_storage_dir") or paths.get("local_storage_dir", "./local_storage_dir")
+        elif env == Environment.WSL:
+            storage_path = paths.get("local_storage_dir", "./local_storage_dir")
+        elif env in (Environment.EULER, Environment.SLURM):
+            storage_path = paths["storage_dir"]
         else:
-            storage_path = general_config["storage_paths"]["storage_dir"]
+            run_locally = general_config["general_info"].get("run_locally", "False") == "True"
+            storage_path = paths["local_storage_dir"] if run_locally else paths["storage_dir"]
 
     dir_path = Path(storage_path) / model_hash_value
     os.makedirs(dir_path, exist_ok=True)
