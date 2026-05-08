@@ -23,7 +23,7 @@ import yaml
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.ply_to_gif import (
     generate_gifs_flat,
 )
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.scalar_color_mapping import (
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.scalar_color_mapping import (
     map_scalar_to_rgb_mpl,
 )
 
