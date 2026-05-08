@@ -454,7 +454,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             )
             prof.start()
 
+        enforce_cfg = losses_config.get("general_info", {}).get("enforce_projection", {})
+        activation_ratio = enforce_cfg.get("activation_epoch_ratio", 0.9)
+        activation_epoch = int(num_epochs * activation_ratio)
+
         for epoch in range(num_epochs):
+            if epoch == activation_epoch and hasattr(model, "enforce_layer") and not model.enforce_layer.is_active:
+                if verbose:
+                    print(f"Activating ENFORCE projection layer at epoch {epoch} / {num_epochs}")
+                model.enforce_layer.is_active = True
+
             model.train()
             metrics = trainer.step(epoch=epoch)
 
