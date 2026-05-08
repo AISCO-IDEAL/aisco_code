@@ -12,7 +12,7 @@ command:
 # Optimization setup
 method: bayes  # or "random" if you prefer
 metric:
-  name: val/average_integrated/integrated_drag_error 
+  name: val/average_integrated/integrated_drag_error
   goal: minimize
 
 # Global sweep info (matches your project)
