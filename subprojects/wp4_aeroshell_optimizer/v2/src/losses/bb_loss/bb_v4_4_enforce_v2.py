@@ -26,8 +26,8 @@ class BbV44EnforceV2(BbV44):
 
     def _loss(self, model) -> torch.Tensor:
         if not self.__enforce_registered_v2 and hasattr(model, "register_enforce_constraint"):
-            inner_margin = self._BbV44__inner_margin
-            outer_margin = self._BbV44__outer_margin
+            inner_margin = self._inner_margin
+            outer_margin = self._outer_margin
             violation_fn = self._violation
 
             def inner_constraint(_coords, sdf):
@@ -43,16 +43,16 @@ class BbV44EnforceV2(BbV44):
         target_device = next(model.parameters()).device
         self.device = target_device
 
-        inner_points = self._BbV44__inner_surface_points.to(self.device)
-        outer_points = self._BbV44__outer_surface_points.to(self.device)
+        inner_points = self._inner_surface_points.to(self.device)
+        outer_points = self._outer_surface_points.to(self.device)
 
         sdf_inner = model(inner_points).squeeze(-1)
         sdf_outer = model(outer_points).squeeze(-1)
 
         enforce_layer = getattr(model, "enforce_layer", None)
         if enforce_layer is None or not enforce_layer.is_active:
-            upper_violation = self._violation(sdf_inner + self._BbV44__inner_margin)
-            lower_violation = self._violation(self._BbV44__outer_margin - sdf_outer)
+            upper_violation = self._violation(sdf_inner + self._inner_margin)
+            lower_violation = self._violation(self._outer_margin - sdf_outer)
             return 0.5 * (upper_violation.mean() + lower_violation.mean())
 
         with enforce_layer_context(model, "bb_inner"):

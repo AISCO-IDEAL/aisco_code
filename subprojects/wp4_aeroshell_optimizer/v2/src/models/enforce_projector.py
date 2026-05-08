@@ -74,7 +74,10 @@ def enforce_layer_context(model: nn.Module, context_name: str | None) -> Generat
     """
     prev_context = getattr(model, "current_enforce_context", None)
     try:
-        model.current_enforce_context = context_name
+        # nn.Module.__setattr__ is typed only for Tensor/Module values; for plain Python
+        # attributes it falls through to object.__setattr__ at runtime. Calling it directly
+        # makes that explicit and keeps mypy happy.
+        object.__setattr__(model, "current_enforce_context", context_name)
         yield
     finally:
-        model.current_enforce_context = prev_context
+        object.__setattr__(model, "current_enforce_context", prev_context)
