@@ -39,7 +39,7 @@ model:
     args:
         input_size: 6
         output_size: 1
-        latent_tokens: [128, 16, 8]
+        latent_tokens: [128, 16, 8] # See WP1 Sweeping documentation
         field_output_size: 1
         norm_domain: [[-1, -1, -1], [1, 1, 1]]
         magno:
@@ -48,9 +48,9 @@ model:
             neighbor_strategy: "bidirectional"
             projection_channels: 220
             in_gno_channel_mlp_hidden_layers: [64, 64, 64]
-            out_gno_channel_mlp_hidden_layers: [64]
+            out_gno_channel_mlp_hidden_layers: [64] # See WP1 Sweeping Documentation
             lifting_channels: 13
-            gno_radius: 0.066
+            gno_radius: 0.066 
             gno_use_torch_cluster: true
             attention_type: "cosine"
             use_geoembed: [true, false]
@@ -80,7 +80,7 @@ model:
             use_attn_norm: true
             use_ffn_norm: true
             norm_eps: 1e-06
-            num_layers: 5
+            num_layers: 5 # See WP1 Sweeping Documentation
             positional_embedding: "rope"
             use_long_range_skip: true
 
@@ -90,7 +90,7 @@ model:
                 num_kv_heads: 8
                 use_conditional_norm: false
                 cond_norm_hidden_size: 4
-                atten_dropout: 0.1
+                atten_dropout: 0.1 # See WP1 Sweeping Documentation
                 positional_embedding: "rope"
 
             ffn_config:
@@ -139,7 +139,7 @@ dataset:
     drop_pressure: true        # raw Pa field not needed; model learns on cp (stored as x)
     subsample_nodes: 50000      # deterministically sample up to 50k nodes per load if sample exceeds this
     subsample_strategy: "random"  # "random" | "voxel" | "poisson_disk" | "fps"
-    deterministic_subsampling: false  # true keeps equivalent GAOT2/GAOT3 runs on the same node subsets
+    deterministic_subsampling: true  # true keeps equivalent GAOT2/GAOT3 runs on the same node subsets
     subsampling_seed: 42        # used only when deterministic_subsampling is true
     v_inf: 25.0                # freestream velocity [m/s] used for Cp <-> Pa conversion
     rho: 1.225                 # air density [kg/m³] used for Cp <-> Pa conversion
@@ -160,11 +160,11 @@ dataset:
     viz_abs_diff_vmax: 1.0      # max on error bar (min always 0)
 
 optimizer:
-    name: "adamw" # the option "adam" hasen't been adopted yet to the new config-style
+    name: "adamw" # No other Options
     args:
         lr: 6e-4
         weight_decay: 1e-05
-        epoch: 1000
+        epoch: 50
         loss_scale: 1.0
         eval_every_eps: 5
         viz_every_eps: 25   # visualize every N epochs; defaults to eval_every_eps if omitted
