@@ -23,6 +23,7 @@ Typical usage — per-epoch (diversity loss, only when epoch % cadence == 0)::
                           name=f"diversity_epoch_{epoch:05d}")
 """
 
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import CentralVisManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.points_SDFmesh_to_ply import SamplingVisualizer
 
-__all__ = ["SamplingVisualizer"]
+__all__ = ["CentralVisManager", "SamplingVisualizer"]

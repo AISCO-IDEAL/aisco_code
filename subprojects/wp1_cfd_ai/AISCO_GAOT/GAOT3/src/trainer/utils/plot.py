@@ -145,7 +145,7 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
     save_path: str,
     variable_name: str = "Value",
     point_size: float = 3.0,
-    cmap: str = "jet",
+    cmap: str = "viridis",
     dpi: int = 300,
     view_angle: tuple[float, float] = (20, -120),
     hide_grid: bool = False,
@@ -176,7 +176,7 @@ def plot_3d_comparison_matplotlib(  # noqa: PLR0915, PLR0912
     point_size : float, optional
         Size of the points in the scatter plot (marker size). Defaults to 5.0.
     cmap : str, optional
-        Matplotlib colormap name to use for GTR and PRD. Defaults to "jet".
+        Matplotlib colormap name to use for GTR and PRD. Defaults to "viridis".
     dpi : int, optional
         Dots per inch for the saved image resolution. Defaults to 150.
     view_angle : Tuple[float, float], optional

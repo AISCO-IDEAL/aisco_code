@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import ast
 import copy
 import logging
@@ -5,6 +7,7 @@ import os
 import tempfile
 import warnings
 from dataclasses import replace as _replace
+from typing import TYPE_CHECKING
 
 import pandas as pd
 import torch
@@ -23,11 +26,15 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.scale import rescale, res
 from subprojects.wp4_aeroshell_optimizer import MeshSDFGrads, Visualiser
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
+if TYPE_CHECKING:
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import CentralVisManager
+
 logger = logging.getLogger(__name__)
 
 
 class ModelLoader:
     optimization_state: dict[str, object]
+    vis_manager: CentralVisManager | None
     _DEFAULT_MAIN_CONFIG_PATH = "subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml"
 
     def __init__(self, cfd_config: dict, device: str) -> None:
@@ -270,6 +277,22 @@ class ModelLoader:
         if not self.cfd_config["visualisations"]:
             return
         if pressure_field is None:
+            return
+
+        # CentralVisManager path: write PLY instead of wandb PNG.
+        _vm = getattr(self, "vis_manager", None)
+        if _vm is not None:
+            if pressure_field.dim() == 2 and pressure_field.size(-1) == 1:
+                pressure_field = pressure_field.squeeze(-1)
+            field_pred = pressure_field.detach().cpu().numpy().squeeze()
+            epoch_int = self._to_wandb_step(self.epoch_name) or 0
+            _vm.save_ply(
+                "aero/cp_field",
+                epoch_int,
+                mesh_verts.detach().cpu().numpy(),
+                mesh_faces.detach().cpu().numpy(),
+                scalar_values=field_pred,
+            )
             return
 
         sample = Data(

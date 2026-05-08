@@ -31,6 +31,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import CentralVisManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor
@@ -96,8 +97,9 @@ class WeightedLossResult:
 class TotalLossV2:
     """Aggregates and weights loss components — compute + weight, nothing else."""
 
-    def __init__(self, device: str | torch.device = "cuda") -> None:
+    def __init__(self, device: str | torch.device = "cuda", vis_manager: CentralVisManager | None = None) -> None:
         self._device: torch.device = torch.device(device) if isinstance(device, str) else device
+        self._vis_manager: CentralVisManager | None = vis_manager
 
         general_config: dict[str, Any] = load_config()
         self.losses_config: dict[str, Any] = load_config(
@@ -127,6 +129,11 @@ class TotalLossV2:
 
         self._init_active_losses()
         self._warn_about_dead_weights()
+
+        # Propagate vis_manager to all active child loss instances (e.g. GaotLoss, BbV3, SolarLoss).
+        if self._vis_manager is not None:
+            for _loss_inst in self._all_loss_instances().values():
+                _loss_inst._vis_manager = self._vis_manager
 
     def _init_active_losses(self) -> None:  # noqa: PLR0912, PLR0915
         """Instantiate active losses and build role-grouped internal lookup maps.
