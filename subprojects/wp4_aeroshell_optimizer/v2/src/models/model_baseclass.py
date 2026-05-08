@@ -69,9 +69,6 @@ class BaseModel(nn.Module):
             output = x
         return output * 1000.0
 
-    def on_epoch_start(self, epoch: int, num_epochs: int) -> None:
-        pass
-
     @record_function("ModelBaseclass.optimise")
     def optimise(  # noqa: PLR0912, PLR0915
         self,
@@ -132,7 +129,6 @@ class BaseModel(nn.Module):
         enforce_cfg = loss_function.losses_config.get("general_info", {}).get("enforce_projection", {})
         enforce_activation_epoch = int(num_epochs * enforce_cfg.get("activation_epoch_ratio", 0.9))
         for epoch in range(num_epochs):
-            self.on_epoch_start(epoch, num_epochs)
             if epoch == enforce_activation_epoch and hasattr(self, "enforce_layer") and not self.enforce_layer.is_active:
                 print(f"Activating ENFORCE projection at epoch {epoch} / {num_epochs}")
                 self.enforce_layer.is_active = True

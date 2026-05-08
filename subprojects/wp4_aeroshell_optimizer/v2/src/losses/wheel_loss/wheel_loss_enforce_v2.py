@@ -66,8 +66,10 @@ class WheelLossEnforceV2(ParentLoss):
 
     def _loss(self, model) -> torch.Tensor:
         if not self.__enforce_registered and hasattr(model, "register_enforce_constraint"):
+
             def wheel_constraint(_coords, sdf):
                 return sdf.squeeze(-1).abs()
+
             model.register_enforce_constraint("wheel", wheel_constraint)
             self.__enforce_registered = True
 
@@ -85,9 +87,7 @@ class WheelLossEnforceV2(ParentLoss):
 
         enforce_layer = getattr(model, "enforce_layer", None)
         if enforce_layer is None or not enforce_layer.is_active:
-            primary_loss = torch.nn.functional.huber_loss(
-                sdf_raw, torch.zeros_like(sdf_raw), delta=self.__threshold_huber
-            )
+            primary_loss = torch.nn.functional.huber_loss(sdf_raw, torch.zeros_like(sdf_raw), delta=self.__threshold_huber)
         else:
             with enforce_layer_context(model, "wheel"):
                 target = model(points).squeeze(-1).detach()
