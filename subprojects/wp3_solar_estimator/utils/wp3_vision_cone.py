@@ -1,4 +1,4 @@
-from wp4_aeroshell_optimizer.v2.src.visuals.custom_modes.bounding_box_mode_utils import (
+from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.custom_modes.bounding_box_mode_utils import (
     load_bb_assembly_id,
     load_inner_outer_solids,
     merge_meshes,
@@ -14,7 +14,7 @@ def get_vision_cone_mesh(id_number) -> tuple[torch.Tensor, torch.Tensor]:
     vision_cone: cq.Assembly = vision_nbz(id_number)
     vison_cone_solid = vision_cone.toCompound().Solids()[0]
     print(f"vision cone: {vison_cone_solid}")
-    dev = load_config("general_config.yaml")["general_info"]["device"]
+    dev = load_config(v="v2", cfg_name="general_config.yaml")["general_info"]["device"]
     if dev not in ["cpu", "cuda"]:
         raise ValueError(
             f"Invalid device specified in config: {dev}. Code needs modifying if you'd like to use a different device."
