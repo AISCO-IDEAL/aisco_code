@@ -5,7 +5,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import Parent
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.losses_utils import get_points
 
 
-class EikonalV0(ParentLoss):
+class EikonalV1(ParentLoss):
     def _setup(self) -> None:
         # Fraction of eikonal points that are biased toward the current zero-crossing.
         # 0.0 (default) = legacy behaviour: fixed uniform prism points allocated once.
