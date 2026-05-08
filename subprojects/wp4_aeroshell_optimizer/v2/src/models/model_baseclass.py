@@ -28,6 +28,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import allro
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Wrapper
 
 if TYPE_CHECKING:
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import CentralVisManager
     from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
 
 
@@ -80,6 +81,7 @@ class BaseModel(nn.Module):
         debug_manager: DebugManager | None = None,
         conflict_tracker: GradientConflictTracker | None = None,
         conflict_cadence: int = 0,
+        vis_manager: CentralVisManager | None = None,
         prof: torch.profiler.profile | None = None,
     ) -> None:
         if training_config is None:
@@ -100,7 +102,7 @@ class BaseModel(nn.Module):
 
         # Get device from model parameters since nn.Module doesn't have a .device attribute
         device = str(next(self.parameters()).device)
-        loss_function = TotalLoss(device, renderer_manager=renderer_manager)
+        loss_function = TotalLoss(device, renderer_manager=renderer_manager, vis_manager=vis_manager)
 
         if loss_function._norm_manager.is_enabled():
             assert isinstance(self, SupportsModelContract), (

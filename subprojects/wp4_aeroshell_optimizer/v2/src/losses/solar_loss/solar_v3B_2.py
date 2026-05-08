@@ -29,6 +29,7 @@ class SolarV3B2(ParentLoss):
             epoch_name=self.epoch_name,
             disable_logging=skip_telemetry,
             disable_rendering=skip_telemetry,
+            vis_manager=getattr(self, "_vis_manager", None),
         )
         scaled_loss = raw_loss
 

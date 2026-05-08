@@ -8,7 +8,7 @@ general_info:
   #    WARNING: When ALM="True", manual constraint weights are ignored by design.
   #    Constraint relative importance is controlled by ALM multipliers (initial_lambda, initial_mu, initial_nu).
 
-  
+
   ALM_aggressive_capu: 0.25 # has constraint decreased sufficiently threshold, only used when ALM_aggressive=True. # weights.py: self.use_alm_aggressive
   # ALM parameter mapping order:
   # - Arrays are supported and can be provided in either format:
@@ -249,7 +249,7 @@ cfd:
   gradient_max: 0.1       # Options: any float    Recomendation: 0.1
 
 cfd_local:
-  run_local: true
+  run_local: false
   model_id: local_1777017531      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2 or a key for Version 1
   version: 3              # Options: 1, 2, 3      Recomendation: 3
   visualisations: false   # Options: true, false  Recomendation: false
