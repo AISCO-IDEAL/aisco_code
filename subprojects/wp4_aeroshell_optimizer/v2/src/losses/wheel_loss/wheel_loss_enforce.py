@@ -55,7 +55,10 @@ class WheelLossEnforce(ParentLoss):
         """Sample points on the wheel interface rectangle and compute loss based on sdf_model values at those points. SDF in this area has to be 0."""
         if not self.__enforce_registered and hasattr(model, "register_enforce_constraint"):
             def wheel_constraint(coords, sdf):
-                return torch.nn.functional.huber_loss(sdf.squeeze(-1), torch.zeros_like(sdf.squeeze(-1)), delta=self._threshold_huber)
+                # Per-sample absolute violation — Newton step projects each sample to sdf=0 exactly
+                # in one step (dc/dy = sign(sdf), correction = |sdf|/1 = sdf → sdf_proj = 0).
+                # huber_loss with reduction='mean' would return a scalar, which breaks the Newton step.
+                return sdf.squeeze(-1).abs()
             model.register_enforce_constraint("wheel", wheel_constraint)
             self.__enforce_registered = True
 

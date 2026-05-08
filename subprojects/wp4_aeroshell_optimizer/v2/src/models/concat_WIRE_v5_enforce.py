@@ -16,7 +16,6 @@ class ConcatWIREV5_ENFORCE(ConcatWIREV5):
         enforce_cfg = config.get("general_info", {}).get("enforce_projection", {})
         self.enforce_layer = AdaNPProjector(
             max_iters=enforce_cfg.get("max_iters", 5),
-            step_size=enforce_cfg.get("step_size", 0.1),
             tolerance=enforce_cfg.get("tolerance", 1e-3),
         )
         self.activation_ratio = enforce_cfg.get("activation_epoch_ratio", 0.9)

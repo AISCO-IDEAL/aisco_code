@@ -7,19 +7,23 @@ import torch.nn as nn
 
 class AdaNPProjector(nn.Module):
     """
-    Simplified adaptive neural projection inspired by the ENFORCE paper (arXiv:2502.06774).
+    Adaptive neural projection following the ENFORCE paper (arXiv:2502.06774).
 
-    Iteratively projects SDF outputs toward constraint satisfaction via gradient descent
-    on the constraint violation w.r.t. the SDF values. Gradient checkpointing is intentionally
-    not used here: the projection steps rely on create_graph=True to keep the computation
-    graph intact for backprop through the projection, which is incompatible with torch's
-    checkpoint mechanism.
+    Applies a Newton step on the constraint Jacobian dc/dy to project the network's
+    SDF output onto the constraint boundary. For linear violation functions (relu),
+    a single Newton step achieves exact constraint satisfaction regardless of violation
+    magnitude. For nonlinear violations (softplus), max_iters iterations converge.
+
+    The Jacobian is computed on a detached copy of the SDF output so the computation
+    graph from the network is not extended by the projection. After projection the
+    constraint violation is 0, so the constraint loss and its gradient are both ~0 —
+    equivalent to the IFT backward from the paper. The network continues to receive
+    gradients from CSE and other non-projected losses.
     """
 
-    def __init__(self, max_iters: int = 5, step_size: float = 0.1, tolerance: float = 1e-3):
+    def __init__(self, max_iters: int = 5, tolerance: float = 1e-3):
         super().__init__()
         self.max_iters = max_iters
-        self.step_size = step_size
         self.tolerance = tolerance
         self.is_active = False
         self.constraints: dict[str, Callable] = {}
@@ -28,11 +32,21 @@ class AdaNPProjector(nn.Module):
         self.constraints[context] = fn
 
     def _projection_step(self, constraint_fn: Callable, coords: torch.Tensor, sdf_proj: torch.Tensor) -> torch.Tensor:
-        violation = constraint_fn(coords, sdf_proj)
-        if violation.requires_grad:
-            grad = torch.autograd.grad(violation.sum(), sdf_proj, create_graph=True)[0]
-            sdf_proj = sdf_proj - self.step_size * grad
-        return sdf_proj
+        sdf_work = sdf_proj.detach().requires_grad_(True)
+        violation = constraint_fn(coords, sdf_work)  # [N]
+
+        if violation.sum() < 1e-12:
+            return sdf_proj
+
+        dc_dy = torch.autograd.grad(violation.sum(), sdf_work)[0]  # [N, 1]
+
+        active = violation > 0
+        correction = torch.where(
+            active.unsqueeze(-1),
+            violation.unsqueeze(-1) / dc_dy.abs().clamp(min=1e-8) * dc_dy.sign(),
+            torch.zeros_like(sdf_proj),
+        )
+        return sdf_proj - correction.detach()
 
     def forward(self, coords: torch.Tensor, sdf: torch.Tensor, constraint_context: str | None) -> torch.Tensor:
         if not self.is_active or constraint_context is None or constraint_context not in self.constraints:

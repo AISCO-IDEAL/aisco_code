@@ -129,8 +129,13 @@ class BaseModel(nn.Module):
         mode_cfg: dict = training_config.get("mode", {})
         diagnostic_mode = mode_cfg.get("training_mode", "diagnostic") == "diagnostic"
         print_timing: bool = mode_cfg.get("print_timing", False)
+        enforce_cfg = loss_function.losses_config.get("general_info", {}).get("enforce_projection", {})
+        enforce_activation_epoch = int(num_epochs * enforce_cfg.get("activation_epoch_ratio", 0.9))
         for epoch in range(num_epochs):
             self.on_epoch_start(epoch, num_epochs)
+            if epoch == enforce_activation_epoch and hasattr(self, "enforce_layer") and not self.enforce_layer.is_active:
+                print(f"Activating ENFORCE projection at epoch {epoch} / {num_epochs}")
+                self.enforce_layer.is_active = True
             dbg.begin_iteration(epoch)
 
             optimizer.zero_grad()
