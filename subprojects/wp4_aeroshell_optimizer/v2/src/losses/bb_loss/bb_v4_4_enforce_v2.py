@@ -1,6 +1,7 @@
 import torch
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.bb_loss.bb_v4_4 import BbV44
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.enforce_projector import enforce_layer_context
 
 
 class BbV44EnforceV2(BbV44):
@@ -29,10 +30,10 @@ class BbV44EnforceV2(BbV44):
             outer_margin = self._BbV44__outer_margin
             violation_fn = self._violation
 
-            def inner_constraint(coords, sdf):
+            def inner_constraint(_coords, sdf):
                 return violation_fn(sdf.squeeze(-1) + inner_margin)
 
-            def outer_constraint(coords, sdf):
+            def outer_constraint(_coords, sdf):
                 return violation_fn(outer_margin - sdf.squeeze(-1))
 
             model.register_enforce_constraint("bb_inner", inner_constraint)
@@ -53,8 +54,6 @@ class BbV44EnforceV2(BbV44):
             upper_violation = self._violation(sdf_inner + self._BbV44__inner_margin)
             lower_violation = self._violation(self._BbV44__outer_margin - sdf_outer)
             return 0.5 * (upper_violation.mean() + lower_violation.mean())
-
-        from subprojects.wp4_aeroshell_optimizer.v2.src.models.enforce_projector import enforce_layer_context
 
         with enforce_layer_context(model, "bb_inner"):
             target_inner = model(inner_points).squeeze(-1).detach()

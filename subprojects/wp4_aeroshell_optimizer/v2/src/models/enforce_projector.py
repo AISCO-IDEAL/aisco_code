@@ -1,8 +1,8 @@
 import contextlib
-from typing import Callable, Generator
+from typing import Callable, Generator  # noqa: UP035
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 class AdaNPProjector(nn.Module):

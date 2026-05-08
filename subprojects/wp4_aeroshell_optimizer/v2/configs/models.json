@@ -2,7 +2,7 @@
   "models": {
     "WIREV5_ENFORCE": {
       "model_class": "WIREV5_ENFORCE",
-      "parent_class": "WIREV5",
+      "parent_class": "BaseModel",
       "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v5_enforce.py",
       "config_file": "models/WIRE_v5.yaml",
       "uses_diversity": false,
@@ -10,7 +10,7 @@
     },
     "ConcatWIREV5_ENFORCE": {
       "model_class": "ConcatWIREV5_ENFORCE",
-      "parent_class": "ConcatWIREV5",
+      "parent_class": "ConcatBaseModel",
       "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/concat_WIRE_v5_enforce.py",
       "config_file": "models/concat_WIRE_v5.yaml",
       "uses_diversity": true,

@@ -6,6 +6,7 @@ import yaml
 
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.enforce_projector import enforce_layer_context
 
 
 class WheelLossEnforceV2(ParentLoss):
@@ -65,7 +66,7 @@ class WheelLossEnforceV2(ParentLoss):
 
     def _loss(self, model) -> torch.Tensor:
         if not self.__enforce_registered and hasattr(model, "register_enforce_constraint"):
-            def wheel_constraint(coords, sdf):
+            def wheel_constraint(_coords, sdf):
                 return sdf.squeeze(-1).abs()
             model.register_enforce_constraint("wheel", wheel_constraint)
             self.__enforce_registered = True
@@ -88,8 +89,6 @@ class WheelLossEnforceV2(ParentLoss):
                 sdf_raw, torch.zeros_like(sdf_raw), delta=self.__threshold_huber
             )
         else:
-            from subprojects.wp4_aeroshell_optimizer.v2.src.models.enforce_projector import enforce_layer_context
-
             with enforce_layer_context(model, "wheel"):
                 target = model(points).squeeze(-1).detach()
             primary_loss = (sdf_raw - target).pow(2).mean()
