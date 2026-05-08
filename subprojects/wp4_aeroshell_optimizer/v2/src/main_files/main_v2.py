@@ -210,6 +210,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         )
         if verbose:
             print(f"[latent_space] Latent pretraining complete. Population size: {len(latent_config['latent_population'])}")
+        # GIF generation is owned by CentralVisManager.finalize() (called at end of optimization).
+        # Warn when vis data was collected but finalize() won't see it (manager disabled).
+        if vis_sampling and _vis_manager is None and verbose:
+            print(
+                "[latent_space] Warning: vis_sampling=true but CentralVisManager is disabled "
+                "(central_vis_manager_enabled=false). PLYs were written to the local vis_dir by "
+                "SamplingVisualizer but no GIF will be generated. Enable CentralVisManager to get GIFs."
+            )
 
     else:
         # Standard pretraining: hash-based canonical lookup (Plan 031 / M4).
@@ -397,11 +405,17 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             print(f"GINN config not found (ok for single-model training): {e}")
 
         training_params: dict[str, Any] = training_config["training_params"]
-        learning_rate: float = training_params.get("learning_rate", 1e-3)
-        num_epochs: int = training_params.get("num_epochs", 1000)
+        learning_rate: float = float(training_params.get("learning_rate", 1e-3))
+        num_epochs: int = int(training_params.get("num_epochs", 1000))
 
         if uses_diversity:  # double checks for diversity again, but serves as potential control split once we develop further
-            population_size = len(latent_config["latent_population"]) if latent_space else ginn_config.get("population_size", 4)
+            if latent_space and Z_pretrained is not None:
+                # Use actual checkpoint N — correct even when use_specific_pretraining overrides latent_population length.
+                population_size = Z_pretrained.shape[0]
+            elif latent_space:
+                population_size = len(latent_config["latent_population"])
+            else:
+                population_size = ginn_config.get("population_size", 4)
             z_dim = model.get_model_info_dict()["z_dim"]
         else:
             population_size = 1

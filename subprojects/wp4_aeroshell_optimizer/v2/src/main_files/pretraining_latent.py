@@ -97,6 +97,12 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     perm: list[int] = list(np.argsort(raw_extents)[::-1])  # descending by extent
     verts_np = verts_np[:, perm]
 
+    # --- Winding fix: odd permutations flip coordinate handedness → invert face normals.
+    # Detect parity by counting inversions; if odd, reverse face winding (swap cols 1 & 2).
+    perm_inversions = sum(1 for i in range(3) for j in range(i + 1, 3) if perm[i] > perm[j])
+    if perm_inversions % 2 == 1:
+        faces_np = faces_np[:, [0, 2, 1]]  # restore CCW winding after odd-permutation reflection
+
     # --- X centering: shift so that X_center = 0 (car centred on length axis) ---
     x_center = (float(verts_np[:, 0].max()) + float(verts_np[:, 0].min())) / 2.0
     verts_np[:, 0] -= x_center
@@ -105,9 +111,9 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     y_center = (float(verts_np[:, 1].max()) + float(verts_np[:, 1].min())) / 2.0
     verts_np[:, 1] -= y_center
 
-    # --- Z grounding: shift so Z_min = ground_clearance (100mm) ---
+    # --- Z grounding: shift so Z_min = ground_clearance (90 + 10 = 100mm) ---
     prism = get_outer_prism_bounds_mm()
-    ground_clearance = abs(prism["z"][0])  # = 100.0 mm
+    ground_clearance = abs(prism["z"][0]) + 10.0  # to avoid the pretrained cars to be cut off at the bottom
     z_shift = ground_clearance - float(verts_np[:, 2].min())
     verts_np[:, 2] += z_shift
 
@@ -120,7 +126,7 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     y_center_after = float(ctr[1])
     print(
         f"[PLY Loader] {shape_name}: "
-        f"perm={perm}  "
+        f"perm={perm}  winding_fix={'yes' if perm_inversions % 2 == 1 else 'no'}  "
         f"ext=({extents[0]:.0f},{extents[1]:.0f},{extents[2]:.0f})mm  "
         f"center=({ctr[0]:.0f},{ctr[1]:.0f},{ctr[2]:.0f})mm  "
         f"Z_min={z_min_after:.0f}mm  X_center={x_center_after:.0f}mm  Y_center={y_center_after:.0f}mm"
@@ -414,6 +420,55 @@ def _compute_input_grad_norms(
     return z_norm, xyz_norm, z_detached
 
 
+def _check_state_dict_compatibility(
+    model: SupportsLatentConcat,
+    ckpt_state_dict: dict[str, Any],
+    ckpt_path: Path,
+) -> None:
+    """Raise ValueError if ckpt_state_dict is structurally incompatible with model.
+
+    Checks key sets and per-key tensor shapes.  Called before load_state_dict
+    so the error is actionable rather than a raw PyTorch RuntimeError.
+
+    Args:
+        model: The model instance to load weights into.
+        ckpt_state_dict: The ``model_state_dict`` loaded from a checkpoint.
+        ckpt_path: Path of the checkpoint file (used in error messages only).
+
+    Raises:
+        ValueError: If keys or tensor shapes do not match.
+    """
+    model_keys = set(model.state_dict().keys())
+    ckpt_keys = set(ckpt_state_dict.keys())
+
+    missing = model_keys - ckpt_keys
+    unexpected = ckpt_keys - model_keys
+    if missing or unexpected:
+        raise ValueError(
+            f"Architecture mismatch: checkpoint at '{ckpt_path}' has incompatible keys.\n"
+            f"  Missing in checkpoint : {sorted(missing) if missing else 'none'}\n"
+            f"  Unexpected in checkpoint: {sorted(unexpected) if unexpected else 'none'}\n"
+            "The checkpoint was likely trained with a different model architecture. "
+            "Update specific_pretraining_path in pretraining_latent_config.yaml to a "
+            "checkpoint that matches the current model."
+        )
+
+    shape_mismatches = [
+        f"  '{k}': model={tuple(model.state_dict()[k].shape)}  ckpt={tuple(ckpt_state_dict[k].shape)}"
+        for k in model_keys
+        if model.state_dict()[k].shape != ckpt_state_dict[k].shape
+    ]
+    if shape_mismatches:
+        raise ValueError(
+            f"Architecture mismatch: checkpoint at '{ckpt_path}' has incompatible tensor shapes "
+            f"({len(shape_mismatches)} parameter(s)):\n"
+            + "\n".join(shape_mismatches)
+            + "\nThe checkpoint was likely trained with different hidden_dim or z_dim. "
+            "Update specific_pretraining_path in pretraining_latent_config.yaml to a "
+            "compatible checkpoint."
+        )
+
+
 def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsically sequential; decomposition would obscure control flow
     model: SupportsLatentConcat,
     config: dict[str, Any],
@@ -458,6 +513,33 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     if not isinstance(model, SupportsLatentConcat):
         raise TypeError(f"Model {type(model).__name__} does not implement SupportsLatentConcat. ")
 
+    # --- Specific pretraining path override ---
+    if bool(config.get("use_specific_pretraining", False)):
+        specific_path_raw = config.get("specific_pretraining_path")
+        if not specific_path_raw:
+            raise ValueError(
+                "use_specific_pretraining is true but specific_pretraining_path is not set. "
+                "Set specific_pretraining_path to the absolute path of the .pth file in "
+                "pretraining_latent_config.yaml."
+            )
+        specific_path = Path(specific_path_raw)
+        if not specific_path.exists():
+            raise FileNotFoundError(
+                f"specific_pretraining_path does not exist: {specific_path}. Check the path in pretraining_latent_config.yaml."
+            )
+        ckpt = torch.load(specific_path, map_location=device, weights_only=True)
+        if not isinstance(ckpt, dict) or "model_state_dict" not in ckpt or "z_pretrained" not in ckpt:
+            raise ValueError(
+                f"Checkpoint at '{specific_path}' is missing 'model_state_dict' or 'z_pretrained' keys. "
+                "Ensure the file is a valid latent pretraining checkpoint."
+            )
+        _check_state_dict_compatibility(model, ckpt["model_state_dict"], specific_path)
+        print(f"[latent_pretrain] OK  architecture_compatible  model={model.__class__.__name__}  path={specific_path}")
+        model.load_state_dict(ckpt["model_state_dict"])
+        Z: Tensor = ckpt["z_pretrained"].to(device)
+        print(f"[latent_pretrain] LOAD  path={specific_path}  status=specific_pretraining_override")
+        return model, Z
+
     ckpt_path = checkpoint_path if checkpoint_path is not None else _resolve_checkpoint_path(config, model)
     config_hash = _compute_latent_pretrain_hash(config, model)
     force: bool = bool(config.get("force_pretraining", True))
@@ -477,7 +559,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         if loaded_hash is not None and loaded_hash != config_hash:
             print(f"[latent_pretrain] WARN  hash_mismatch  loaded={loaded_hash}  current={config_hash}  path={ckpt_path}")
         model.load_state_dict(ckpt["model_state_dict"])
-        Z: Tensor = ckpt["z_pretrained"].to(device)
+        Z = ckpt["z_pretrained"].to(device)
         print(f"[latent_pretrain] LOAD  path={ckpt_path}  hash={config_hash}  status=fast_resume")
         return model, Z
 
@@ -517,6 +599,8 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     # 0 = static surface cache (DeepSDF-style: sample once, reuse forever)
     # N > 0 = refresh surface cache every N epochs
     surface_resample_cadence: int = int(loop_cfg.get("surface_resample_cadence", 0))
+    track_band_losses: bool = bool(loop_cfg.get("track_band_losses", False))
+    eikonal_weight: float = float(loop_cfg.get("eikonal_weight", 0.0))
 
     # --- M2: Dual-band near-surface sampling params ---
     # Defaults reproduce the legacy single-band PLY behaviour (50/50 domain/surface, one band).
@@ -529,6 +613,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     near_surface_wide_sigma: float | None = (
         float(loop_cfg["near_surface_wide_sigma"]) if loop_cfg.get("near_surface_wide_sigma") is not None else None
     )
+    interior_boost_fraction: float = float(loop_cfg.get("interior_boost_fraction", 0.0))
 
     # --- Output / visualisation config (read once, shared between loop and post-training) ---
     output_cfg: dict[str, Any] = config.get("output", {})
@@ -601,6 +686,12 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         f"lr={lr}, batch_size_per_shape={batch_size_per_shape} (n_surf={n_surf}, n_dom={n_dom}), device={device}",
         flush=True,
     )
+    if interior_boost_fraction > 0.0:
+        print(
+            f"[latent_pretrain] Interior boost ENABLED: target ≥{interior_boost_fraction:.0%} of domain pts inside mesh "
+            f"(affects PLY shapes only; rejection-samples {interior_boost_fraction * n_dom:.0f} interior pts per slot per epoch).",
+            flush=True,
+        )
 
     # --- Per-epoch visualizer (b): current trained mesh + loss sample points ---
     epoch_vis: SamplingVisualizer | None = None
@@ -644,12 +735,12 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 cached_surface[slot_idx] = (pts_i[n_dom:], gt_i[n_dom:])
 
         # Sample fresh domain pts (uniform bbox) for L1-all loss — every epoch
-        all_domain_pts: list[Tensor] = []
-        all_domain_gt: list[Tensor] = []  # GT SDF for L1-all loss
+        all_domain_pts: list[Tensor] = []  # Domain points evaluated in the model
+        all_domain_gt: list[Tensor] = []  # Ground truth SDF for L1-all loss
         all_domain_z: list[Tensor] = []
-        all_surface_pts: list[Tensor] = []
-        all_surface_gt: list[Tensor] = []
-        all_surface_z: list[Tensor] = []
+        all_surface_pts: list[Tensor] = []  # Surface points evaluated in the model
+        all_surface_gt: list[Tensor] = []  # Ground truth SDF for surface points
+        all_surface_z: list[Tensor] = []  # Latent vectors for surface points
 
         for slot_idx, shape in enumerate(shapes):
             shape_params = _build_shape_params(shape, ply_cache, slot_idx)
@@ -663,6 +754,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 domain_fraction=domain_fraction,
                 near_surface_tight_sigma=near_surface_tight_sigma,
                 near_surface_wide_sigma=near_surface_wide_sigma,
+                interior_min_fraction=interior_boost_fraction,
             )
             domain_pts_i = pts_i[:n_dom]
             # Surface pts: from cache (or refreshed above)
@@ -721,6 +813,45 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         gt_all = torch.cat([surface_gt, domain_gt], dim=0)
         total_loss = l1_fn(pred / 1000.0, gt_all / 1000.0)
         l1_all = total_loss.item()
+
+        # --- Per-band loss instrumentation (monitoring only; backprop still uses total_loss) ---
+        # Gated by training_loop.track_band_losses: true in config (default: false).
+        loss_tight_item = None
+        loss_wide_item = None
+        loss_domain_item = None
+
+        if track_band_losses:
+            if near_surface_wide_sigma is None:
+                # Single-band: all surface points are tight-band
+                loss_tight_item = l1_fn(pred_surface / 1000.0, surface_gt / 1000.0).item()
+            else:
+                # Dual-band: split surface points 50/50 between tight and wide
+                n_tight_per_shape = n_surf // 2
+                tight_indices = torch.tensor(
+                    [s * n_surf + i for s in range(num_shapes) for i in range(n_tight_per_shape)],
+                    device=device,
+                )
+                wide_indices = torch.tensor(
+                    [s * n_surf + i for s in range(num_shapes) for i in range(n_tight_per_shape, n_surf)],
+                    device=device,
+                )
+                loss_tight_item = l1_fn(pred_surface[tight_indices] / 1000.0, surface_gt[tight_indices] / 1000.0).item()
+                loss_wide_item = l1_fn(pred_surface[wide_indices] / 1000.0, surface_gt[wide_indices] / 1000.0).item()
+
+            if num_shapes * n_dom > 0:
+                loss_domain_item = l1_fn(pred[num_shapes * n_surf :] / 1000.0, domain_gt / 1000.0).item()
+
+        # --- Eikonal regularization: ||∇SDF(x)|| = 1 on domain points ---
+        # Gated by training_loop.eikonal_weight > 0 (default: 0.0 = disabled).
+        # Runs a second forward pass on domain pts with create_graph=True.
+        eikonal_loss_item: float | None = None
+        if eikonal_weight > 0.0:
+            eik_pts = domain_pts.detach().requires_grad_(True)
+            eik_pred = model(eik_pts, z=domain_z.detach()).squeeze()
+            (eik_grads,) = torch.autograd.grad(eik_pred.sum(), eik_pts, create_graph=True)
+            eikonal_loss = ((eik_grads.norm(dim=-1) - 1.0) ** 2).mean()
+            eikonal_loss_item = eikonal_loss.item()
+            total_loss = total_loss + eikonal_weight * eikonal_loss
 
         # NaN guard — halt before writing checkpoint
         if not math.isfinite(total_loss.item()):
@@ -781,29 +912,40 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             else:
                 warn_suffix = ""
 
+            eik_suffix = f" | eikonal={eikonal_loss_item:.4f}" if eikonal_loss_item is not None else ""
             tqdm.write(
                 f"[latent_pretrain] Epoch {epoch:5d} | total={total_loss.item():.6f} "
                 f"| slot_losses={[f'{v:.4f}' for v in slot_losses]} "
                 f"| l1_all={l1_all:.6f} | lr={lr_now:.2e}"
                 f" | z_grad={z_grad_norm:.2e} | xyz_grad={xyz_grad_norm:.2e}"
-                f" | ratio={grad_ratio:.2e}{warn_suffix}"
+                f" | ratio={grad_ratio:.2e}{warn_suffix}{eik_suffix}"
             )
             if use_wandb:
-                wandb.log(
-                    {
-                        "latent_pretraining/total_loss": total_loss.item(),
-                        "latent_pretraining/l1_all": l1_all,
-                        "latent_pretraining/lr": lr_now,
-                        "latent_pretraining/latent_grad_norm": z_grad_norm,
-                        "latent_pretraining/spatial_grad_norm": xyz_grad_norm,
-                        "latent_pretraining/grad_norm_ratio": grad_ratio,
-                        **{f"latent_pretraining/slot_{i}_loss": v for i, v in enumerate(slot_losses)},
-                    },
-                    step=epoch,
-                )
+                # Prepare per-band losses for logging
+                wandb_dict = {
+                    "latent_pretraining/total_loss": total_loss.item(),
+                    "latent_pretraining/l1_all": l1_all,
+                    "latent_pretraining/lr": lr_now,
+                    "latent_pretraining/latent_grad_norm": z_grad_norm,
+                    "latent_pretraining/spatial_grad_norm": xyz_grad_norm,
+                    "latent_pretraining/grad_norm_ratio": grad_ratio,
+                    **{f"latent_pretraining/slot_{i}_loss": v for i, v in enumerate(slot_losses)},
+                }
+                # Add per-band losses if available
+                if loss_tight_item is not None:
+                    wandb_dict["latent_pretraining/loss_tight_band"] = loss_tight_item
+                if loss_wide_item is not None:
+                    wandb_dict["latent_pretraining/loss_wide_band"] = loss_wide_item
+                if loss_domain_item is not None:
+                    wandb_dict["latent_pretraining/loss_domain"] = loss_domain_item
+                if eikonal_loss_item is not None:
+                    wandb_dict["latent_pretraining/eikonal_loss"] = eikonal_loss_item
+
+                wandb.log(wandb_dict, step=epoch)
 
     # --- Save checkpoint ---
     ckpt_path.parent.mkdir(parents=True, exist_ok=True)
+    _shape_names = [s.get("name", str(i)) for i, s in enumerate(shapes)]
     torch.save(
         {
             "model_state_dict": model.state_dict(),
@@ -813,16 +955,17 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 "date": datetime.now().isoformat(),
                 "epochs": epochs,
                 "model_class": model.__class__.__name__,
+                "shape_names": _shape_names,
             },
         },
         ckpt_path,
     )
-    print(f"[latent_pretrain] SAVE  path={ckpt_path}  hash={config_hash}  epochs={epochs}  shapes={num_shapes}")
+    print(f"[latent_pretrain] SAVE  path={ckpt_path}  hash={config_hash}  epochs={epochs}  shapes={_shape_names}")
     print(f"[latent_pretrain] All outputs → {run_dir}/")
-    # Write model_info_dict.json sidecar for human-readable audit
+    # Write model_info_dict.json sidecar: model architecture + shape names for human-readable audit
     info_json_path = ckpt_path.parent / "model_info_dict.json"
     with open(info_json_path, "w") as _f:
-        json.dump(model.get_model_info_dict(), _f, indent=2)
+        json.dump({**model.get_model_info_dict(), "shape_names": _shape_names}, _f, indent=2)
     print(f"[latent_pretrain] Wrote model_info_dict.json → {info_json_path}")
 
     # --- Log Z spread ---
@@ -831,9 +974,12 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         mean_dist = sum(pairwise) / len(pairwise)
         print(f"[latent_pretrain] Z pairwise distances: min={min(pairwise):.3f}, mean={mean_dist:.3f}, max={max(pairwise):.3f}")
 
-    # --- Final Mesh Extraction ---
+    # --- Final Mesh Extraction + Topology Summary ---
     pretrained_shapes_dir = run_dir / "pretrained_shapes"
     pretrained_shapes_dir.mkdir(parents=True, exist_ok=True)
+    topo_wandb: dict[str, Any] = {}
+    print("[latent_pretrain] Mesh topology summary (Euler X = 2-2g; genus-0 closed surface -> X=2):")
+    print(f"  {'slot':<5} {'shape':<35} {'verts':>7} {'faces':>7} {'comps':>6} {'euler':>6} {'watertight':>11}")
     for slot_idx in range(num_shapes):
         slot_name = shapes[slot_idx].get("name", str(slot_idx))
         slot_mesh_path = pretrained_shapes_dir / f"slot{slot_idx:02d}_{slot_name}.ply"
@@ -842,11 +988,29 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             model.set_latent_vector(Z[slot_idx].to(device))
             model.eval()
             _extract_mesh(model, slot_mesh_path, device, vis_mesh_res, outer_prism)
+            # --- Topology analysis ---
+            m = trimesh.load(str(slot_mesh_path))
+            if isinstance(m, trimesh.Trimesh):
+                n_comps = len(trimesh.graph.connected_components(m.edges, min_len=1))
+                euler = m.euler_number
+                wt = m.is_watertight
+                print("!!!!Topology analysis:")
+                print(
+                    f"  {slot_idx:<5} {slot_name:<35} {m.vertices.shape[0]:>7} {m.faces.shape[0]:>7}"
+                    f" {n_comps:>6} {euler:>6} {'yes' if wt else 'no':>11}"
+                )
+                topo_wandb[f"mesh_topo/slot{slot_idx}_{slot_name}/components"] = n_comps
+                topo_wandb[f"mesh_topo/slot{slot_idx}_{slot_name}/euler"] = euler
+                topo_wandb[f"mesh_topo/slot{slot_idx}_{slot_name}/watertight"] = int(wt)
+            else:
+                print(f"  {slot_idx:<5} {slot_name:<35} (not a single Trimesh — scene?)")
         except Exception as exc:  # BLE001 not enabled; mesh extraction is non-critical and must not abort the run
             print(
                 f"[latent_pretrain] WARNING: mesh extraction for slot {slot_idx} failed: {exc}. "
                 "Skipping mesh output — checkpoint is still valid."
             )
+    if use_wandb and topo_wandb:
+        wandb.log(topo_wandb, step=epochs)
 
     return model, Z
 
