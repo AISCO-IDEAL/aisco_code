@@ -1,5 +1,8 @@
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.coloring import (
     boolean_to_rgb,
+    map_boolean_mask_to_rgba,
+    map_scalar_to_rgb_mpl,
+    map_scalar_to_rgba,
     scalar_to_rgb,
     solid_rgb,
 )
@@ -8,6 +11,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.fil
     save_scene_glb,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.mesh_ops import (
+    face_rgb_to_flat_mesh,
     face_scalars_to_vertex,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.rendering import (
@@ -22,7 +26,11 @@ __all__ = [
     "scalar_to_rgb",
     "boolean_to_rgb",
     "solid_rgb",
+    "map_scalar_to_rgba",
+    "map_boolean_mask_to_rgba",
+    "map_scalar_to_rgb_mpl",
     "face_scalars_to_vertex",
+    "face_rgb_to_flat_mesh",
     "save_mesh_ply",
     "save_scene_glb",
     "compute_camera_pose",
