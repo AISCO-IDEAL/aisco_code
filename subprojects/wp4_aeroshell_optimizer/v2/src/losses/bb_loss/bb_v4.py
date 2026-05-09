@@ -8,8 +8,8 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.bb_loss.s_d_ffrom_cad_que
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 
 if TYPE_CHECKING:
-    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
     from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
 
 
 class BbV4(ParentLoss):

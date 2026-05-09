@@ -22,15 +22,6 @@ from dataclasses import replace as _replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import (
-    CentralVisManager,
-)
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import (
-    NullVisManager,
-)
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
-    CentralVisManagerV2,
-)
 import torch
 
 import wandb
@@ -45,6 +36,15 @@ from subprojects.wp4_aeroshell_optimizer import (
     load_config,
     multi_log_in_one,
     reformat_wandb_name,
+)
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import (
+    CentralVisManager,
+)
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import (
+    NullVisManager,
+)
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
+    CentralVisManagerV2,
 )
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 

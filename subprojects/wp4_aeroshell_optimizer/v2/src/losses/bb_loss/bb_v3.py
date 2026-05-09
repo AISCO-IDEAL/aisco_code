@@ -12,8 +12,8 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import Parent
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import AutoVisToWandB
 
 if TYPE_CHECKING:
-    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
     from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
 
 
 class BbV3(ParentLoss):

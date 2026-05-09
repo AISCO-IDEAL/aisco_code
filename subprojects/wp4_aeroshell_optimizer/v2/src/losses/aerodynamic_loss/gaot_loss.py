@@ -10,8 +10,8 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.model_loader import ModelLoa
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 
 if TYPE_CHECKING:
-    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
     from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
 
 
 class GaotLoss(ParentLoss):

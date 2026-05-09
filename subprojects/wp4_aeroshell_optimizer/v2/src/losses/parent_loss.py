@@ -13,8 +13,6 @@ import inspect
 import torch
 
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.losses_utils import get_points
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import (
     CentralVisManager,
 )
@@ -24,6 +22,9 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_v
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
     CentralVisManagerV2,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.losses_utils import get_points
+
 
 class ParentLoss:
     def __init__(
