@@ -148,7 +148,7 @@ class BaseModel(nn.Module):
                     if vis_verts is None or vis_faces is None
                     else (vis_verts, vis_faces)
                 )
-                vis_manager.vis_mesh_shape(epoch=epoch, sdf_verts=vis_verts, sdf_faces=vis_faces)
+                vis_manager.vis_mesh_shape(epoch=epoch, verts=vis_verts, faces=vis_faces)
 
             optimizer.zero_grad()
 
