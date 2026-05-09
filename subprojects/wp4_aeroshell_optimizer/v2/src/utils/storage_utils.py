@@ -29,6 +29,7 @@ def allround_save_data(  # noqa: PLR0915
     verbose: bool = True,
     pretraining: bool = False,
     device: str | None = None,
+    z_pretrained: torch.Tensor | None = None,  # When provided, saved alongside model_state_dict in the checkpoint
 ) -> None:
     """
     Save model data to a specified file path in JSON format, with options to save mesh and model state dictionary.
@@ -155,7 +156,13 @@ def allround_save_data(  # noqa: PLR0915
         if model_file_path.exists():
             print(f"Warning: Overwriting existing model at {model_file_path}")
 
-        torch.save(model.state_dict(), model_file_path)
+        if z_pretrained is not None:
+            torch.save(
+                {"model_state_dict": model.state_dict(), "z_pretrained": z_pretrained},
+                model_file_path,
+            )
+        else:
+            torch.save(model.state_dict(), model_file_path)
         if verbose:
             print(f"Model state_dict saved to {model_file_path}")
 

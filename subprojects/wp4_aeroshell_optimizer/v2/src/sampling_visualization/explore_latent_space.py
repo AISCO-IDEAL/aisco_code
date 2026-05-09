@@ -14,7 +14,7 @@ Modes
 
 Usage
 -----
-    python3 explore_latent_space.py \\
+    python3 /cluster/home/kdiehl/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/sampling_visualization/explore_latent_space.py\\
         --checkpoint /cluster/work/fuge/.../pretrained_latent_b08f8ced4e.pth \\
         --out /cluster/work/fuge/AISCO/latent_exploration/b08f8ced4e \\
         [--modes 123] [--n_circle 24] [--n_interp 7] [--resolution 64] [--device cpu]
@@ -419,6 +419,58 @@ def _write_summary(records: list[dict[str, Any]], out_dir: Path, checkpoint_path
 # Checkpoint loading helper (extracted to keep main() under statement limit)
 # ---------------------------------------------------------------------------
 
+# Two checkpoint formats exist in this codebase:
+#
+#   PRETRAINING  (.../latent_pretraining/<run>/pretrained_latent_<hash>.pth)
+#     - ckpt is a dict with keys: model_state_dict, z_pretrained, meta
+#     - model_info_dict.json lives in ckpt.parent (same directory as the .pth)
+#
+#   TRAINING     (.../latent_training/<model_hash>/<run>/models/<run>_epoch<N>.pth)
+#     - ckpt is a flat state_dict (no wrapper dict — bare tensor map)
+#     - Architecture_<hash>.json lives at ckpt.parent.parent.parent (model-hash level)
+#     - no z_pretrained is stored; z vectors are not persisted during the training loop
+#
+# _load_checkpoint_flexible() normalises both into the same interface.
+
+
+def _synthesise_unit_circle_z(z_dim: int, n_pts: int, radius: float, device: torch.device) -> Tensor:
+    """Return a (n_pts, z_dim) tensor of equally-spaced points on a 2D circle embedded in z-space."""
+    Z = torch.zeros(n_pts, z_dim, device=device)
+    for i in range(n_pts):
+        angle = 2.0 * math.pi * i / n_pts
+        Z[i, 0] = radius * math.cos(angle)
+        if z_dim > 1:
+            Z[i, 1] = radius * math.sin(angle)
+    return Z
+
+
+def _find_model_info_json(ckpt_path: Path) -> tuple[Path, str]:
+    """Walk up from ckpt_path through up to 4 parent directories looking for a model-info JSON.
+
+    At each level, checks for:
+      1. model_info_dict.json  (pretraining layout)
+      2. Architecture_*.json   (training layout)
+
+    Returns (json_path, layout) where layout is "pretraining" or "training".
+    Raises FileNotFoundError if neither is found within 4 parent levels.
+    """
+    for level, directory in enumerate(ckpt_path.parents):
+        if level > 4:
+            break
+        candidate = directory / "model_info_dict.json"
+        if candidate.exists():
+            return candidate, "pretraining"
+        matches = sorted(directory.glob("Architecture_*.json"))
+        if matches:
+            return matches[0], "training"
+
+    raise FileNotFoundError(
+        f"No model-info JSON found near '{ckpt_path}'. "
+        "Searched up to 4 parent directories for 'model_info_dict.json' (pretraining) "
+        "or 'Architecture_<hash>.json' (training). "
+        "Ensure the checkpoint is stored under its model directory."
+    )
+
 
 def _load_checkpoint(
     ckpt_path: Path,
@@ -426,17 +478,29 @@ def _load_checkpoint(
 ) -> tuple[Any, Tensor, int, float, list[str], dict[str, list[float]]]:
     """Load model, pretrained Z vectors, shape names, and prism bounds from a checkpoint.
 
+    Accepts both pretraining checkpoints (dict with model_state_dict + z_pretrained)
+    and training checkpoints (bare state dict, no z vectors stored).
+
+    For training checkpoints, z_pretrained is synthesised as a unit-circle at z_radius=2.0
+    with z_dim points (one per latent dimension) since the training loop does not persist
+    the active latent vectors. Modes 2 and 3 will be meaningless in that case but Mode 1
+    (circle scan) works correctly.
+
     Args:
-        ckpt_path: Path to pretrained_latent_*.pth file.
+        ckpt_path: Path to any .pth file (pretraining or training).
         device: Target compute device.
 
     Returns:
         Tuple of (model, Z_pretrained, z_dim, z_radius, shape_names, prism).
     """
-    info_path = ckpt_path.parent / "model_info_dict.json"
-    if not info_path.exists():
-        print(f"ERROR: model_info_dict.json not found next to checkpoint: {info_path}", file=sys.stderr)
+    # --- Locate model-info JSON (format-agnostic) ---
+    try:
+        info_path, layout = _find_model_info_json(ckpt_path)
+    except FileNotFoundError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
+
+    print(f"[load] Layout detected: {layout}  info={info_path}")
 
     with open(info_path) as f:
         model_info = json.load(f)
@@ -446,30 +510,52 @@ def _load_checkpoint(
         f"hidden={model_info['hidden_features']}x{model_info['hidden_layers']}"
     )
     model = _build_model_from_info(model_info, device)
-    ckpt = torch.load(ckpt_path, map_location=device, weights_only=True)
-    model.load_state_dict(ckpt["model_state_dict"])
+
+    raw_ckpt = torch.load(ckpt_path, map_location=device, weights_only=True)
+
+    # --- Normalise state dict (pretraining wraps it; training is flat) ---
+    state_dict = raw_ckpt["model_state_dict"] if isinstance(raw_ckpt, dict) and "model_state_dict" in raw_ckpt else raw_ckpt
+
+    model.load_state_dict(state_dict)
     model.eval()
 
-    Z_pretrained: Tensor = ckpt["z_pretrained"].to(device)
-    n_slots, z_dim = Z_pretrained.shape
-    print(f"Loaded {n_slots} pretrained z vectors (z_dim={z_dim})")
-    for i, z in enumerate(Z_pretrained):
-        r = float(torch.norm(z).item())
-        print(f"  slot {i}: z=[{z[0].item():+.4f}, {z[1].item():+.4f}]  r={r:.4f}")
+    # --- Z vectors ---
+    z_dim: int = model_info["z_dim"]
+    if isinstance(raw_ckpt, dict) and "z_pretrained" in raw_ckpt:
+        Z_pretrained: Tensor = raw_ckpt["z_pretrained"].to(device)
+        n_slots, _ = Z_pretrained.shape
+        print(f"Loaded {n_slots} pretrained z vectors (z_dim={z_dim})")
+        for i, z in enumerate(Z_pretrained):
+            r = float(torch.norm(z).item())
+            print(f"  slot {i}: z=[{z[0].item():+.4f}, {z[1].item():+.4f}]  r={r:.4f}")
+    else:
+        # Training checkpoint: z vectors not stored. Synthesise a unit circle so Mode 1
+        # (circle scan) still gives meaningful geometry. Modes 2/3 will use these anchors.
+        print(
+            "[load] WARN: training checkpoint — z_pretrained not stored. "
+            "Synthesising a 4-point unit circle at r=2.0. "
+            "Modes 2 and 3 will use these synthetic anchors; only Mode 1 gives meaningful geometry."
+        )
+        Z_pretrained = _synthesise_unit_circle_z(z_dim, n_pts=4, radius=2.0, device=device)
+        n_slots = Z_pretrained.shape[0]
 
     z_radii = [float(torch.norm(Z_pretrained[i]).item()) for i in range(n_slots)]
     circle_radii = [r for r in z_radii if r > 0.1]
     z_radius = float(sum(circle_radii) / len(circle_radii)) if circle_radii else 2.0
     print(f"Inferred z_radius = {z_radius:.4f}")
 
-    shapes_dir = ckpt_path.parent / "pretrained_shapes"
+    # --- Shape names: pretraining JSON may carry them; training JSON does not ---
     shape_names: list[str] = []
-    if shapes_dir.exists():
-        for ply in sorted(shapes_dir.glob("slot*.ply")):
-            name_part = ply.stem
-            if "_" in name_part:
-                name_part = name_part.split("_", 1)[1]
-            shape_names.append(name_part)
+    if "shape_names" in model_info:
+        shape_names = list(model_info["shape_names"])
+    else:
+        shapes_dir = ckpt_path.parent.parent / "pretrained_shapes"  # only present for pretraining
+        if shapes_dir.exists():
+            for ply in sorted(shapes_dir.glob("slot*.ply")):
+                name_part = ply.stem
+                if "_" in name_part:
+                    name_part = name_part.split("_", 1)[1]
+                shape_names.append(name_part)
     if not shape_names:
         shape_names = [f"slot{i:02d}" for i in range(n_slots)]
     print(f"Shape names: {shape_names}")

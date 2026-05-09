@@ -508,6 +508,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                     pretraining=False,
                     wandb_run=wandb_name,
                     device=str(device),
+                    z_pretrained=Z_pretrained if latent_space else None,
                 )
 
             run_latent_interpolation(state=interpolation_state, epoch=epoch, stage="periodic", verbose=verbose)
@@ -594,6 +595,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         ),  # Use 420420 to avoid default value that is misleading
         resolution=128,
         device=str(device),
+        z_pretrained=Z_pretrained if latent_space else None,
     )
 
     # Stop profiler after ALL training, rendering, and saving is complete
