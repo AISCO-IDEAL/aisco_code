@@ -27,6 +27,12 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import Sup
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import (
     CentralVisManager,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import (
+    NullVisManager,
+)
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
+    CentralVisManagerV2,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     apply_sweep_overrides,
     get_master_config,
@@ -171,16 +177,34 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
         os.makedirs(rendering_dir, exist_ok=True)
 
-    # Construct CentralVisManager once per run (gated by config flag for rollback safety).
-    _vis_manager: CentralVisManager | None = None
-    if rendering_dir is not None and general_config.get("central_vis_manager_enabled", False):
-        _vis_manager = CentralVisManager(
-            run_dir=rendering_dir,
-            run_id=wandb_name or "unknown",
-        )
-        print(f"[CentralVisManager] enabled → {rendering_dir}")
+    # Construct vis manager once per run.
+    # vis_manager: "v2" | "legacy" | "null" | "disabled" (default)
+    # "v2"       → CentralVisManagerV2 (async PLY writes, ProcessPool GIFs)
+    # "legacy"   → original CentralVisManager (synchronous, for rollback)
+    # "null"     → NullVisManager (no-op; is_enabled() always False — dry-run)
+    # "disabled" → None (no vis manager at all)
+    _vis_mode = general_config.get("vis_manager", "disabled")
+    _vis_manager: CentralVisManagerV2 | CentralVisManager | NullVisManager | None = None
+
+    if _vis_mode in ("v2", "legacy") and rendering_dir is None:
+        # If CVM requested but wandb is off, create fallback vis dir.
+        _fallback_dir = Path(
+            general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+        ) / model_hash / "vis_fallback"
+        rendering_dir = _fallback_dir
+
+    if rendering_dir is not None and _vis_mode in ("v2", "legacy"):
+        _run_id = wandb_name or "unknown"
+        if _vis_mode == "v2":
+            _vis_manager = CentralVisManagerV2(run_dir=rendering_dir, run_id=_run_id)
+        else:
+            _vis_manager = CentralVisManager(run_dir=rendering_dir, run_id=_run_id)
+        print(f"[VisManager:{_vis_mode}] enabled → {rendering_dir}")
+    elif _vis_mode == "null":
+        _vis_manager = NullVisManager()
+        print("[VisManager:null] dry-run mode — all writes are no-ops")
     else:
-        print("[CentralVisManager] disabled (central_vis_manager_enabled=false)")
+        print(f"[VisManager] disabled (vis_manager={_vis_mode!r})")
     # 3b. Handle pretraining.
     # latent_space=true  → pretraining_latent.py (handles fast-resume internally; checkpoint in latent_pretraining dir)
     # latent_space=false → standard pretraining_v1_1.py (checkpoint in pretrained_path)
@@ -214,9 +238,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         # Warn when vis data was collected but finalize() won't see it (manager disabled).
         if vis_sampling and _vis_manager is None and verbose:
             print(
-                "[latent_space] Warning: vis_sampling=true but CentralVisManager is disabled "
-                "(central_vis_manager_enabled=false). PLYs were written to the local vis_dir by "
-                "SamplingVisualizer but no GIF will be generated. Enable CentralVisManager to get GIFs."
+                "[latent_space] Warning: vis_sampling=true but vis manager is disabled "
+                "(vis_manager=disabled). PLYs were written to the local vis_dir by "
+                "SamplingVisualizer but no GIF will be generated. Set vis_manager: v2 to get GIFs."
             )
 
     else:

@@ -136,6 +136,7 @@ class TotalLoss:
         # route their own visualizations through CentralVisManager.
         if self._vis_manager is not None:
             for _loss_inst in self._active_losses.values():
+                # add CVM to all losses
                 _loss_inst._vis_manager = self._vis_manager
         if self._use_alm:
             constraint_names: list[str] = [n for (n, _inst) in self._constraint_losses.values()]
