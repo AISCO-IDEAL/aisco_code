@@ -96,6 +96,13 @@ class _BaseVisManager:
         _log({"event": "cvm_v2_init", "run_id": run_id, "run_dir": str(self.run_dir)})
         self._load_assembly_meshes()
 
+    def is_enabled(self, visual_type: str) -> bool:
+        """Check if a visual type is enabled in the config, with ancestor lookup.
+
+        E.g. 'mesh_shape/slot_00' inherits the 'mesh_shape' config.
+        """
+        return vis_is_enabled(self._visual_types, self._slotted(visual_type))
+
     def _load_assembly_meshes(self) -> None:
         if not vis_is_enabled(self._visual_types, "mesh_assembly_v4"):
             return
