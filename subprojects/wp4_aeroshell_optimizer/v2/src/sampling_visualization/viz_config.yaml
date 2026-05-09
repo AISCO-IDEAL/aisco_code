@@ -76,7 +76,7 @@ visual_types:
       vmax: 1.0
 
     gradient:
-      enabled: true        # deferred — no caller milestone in this plan
+      enabled: false       # aalthaus: did this ever work?
       colormap: "magma"
       interval: 1
       alpha_enabled: null
