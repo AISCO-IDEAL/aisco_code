@@ -10,14 +10,15 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.model_loader import ModelLoa
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 
 if TYPE_CHECKING:
-    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import CentralVisManager
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
 
 
 class GaotLoss(ParentLoss):
     # Set externally by TotalLoss after _init_active_losses(); propagated to
     # self.gaot before each forward call so ModelLoader can route its
-    # Cp-field visualisation through CentralVisManager.
-    _vis_manager: CentralVisManager | None = None
+    # Cp-field visualisation through vis_* methods.
+    _vis_manager: CentralVisManagerV2 | NullVisManager | None = None
 
     def _setup(self) -> None:
         version = self.losses_config["cfd"]["version"] if self.losses_config["cfd"]["version"] is not None else 1

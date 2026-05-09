@@ -61,8 +61,11 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import (
-    CentralVisManager,
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
+    CentralVisManagerV2,
+)
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import (
+    NullVisManager,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
@@ -90,12 +93,12 @@ class TotalLoss:
         dev: str | torch.device = "cuda",
         renderer_manager: VisualisationManager | None = None,
         external_alm: bool = False,  # Whether to do the ALM updates inside the loop or leave them to an external manager (like GINN's diversity manager)
-        vis_manager: CentralVisManager | None = None,
+        vis_manager: CentralVisManagerV2 | NullVisManager | None = None,
     ) -> None:
         self._device: torch.device = torch.device(dev) if isinstance(dev, str) else dev
         self._renderer_manager: VisualisationManager | None = renderer_manager
         self._external_alm: bool = external_alm
-        self._vis_manager: CentralVisManager | None = vis_manager
+        self._vis_manager: CentralVisManagerV2 | NullVisManager | None = vis_manager
 
         # Populated each call to get_total_loss(); maps component name → weighted
         # live tensor.  The training loop calls .backward() per entry.
@@ -722,7 +725,8 @@ class TotalLoss:
                 if torch.is_tensor(faces_vm)
                 else (faces_vm if isinstance(faces_vm, np.ndarray) else None)
             )
-            self._vis_manager.save_ply("mesh_shape", epoch_name, _verts_np, _faces_np)
+            epoch_int = int(epoch_name) if isinstance(epoch_name, (int, float)) else 0
+            self._vis_manager.vis_mesh_shape(epoch_int, verts_vm, faces_vm)
 
         # Legacy renderer path (neural renderer or CAD fallback)
         elif self._use_renderer and self._renderer_manager is not None:

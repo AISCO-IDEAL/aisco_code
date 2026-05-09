@@ -86,7 +86,7 @@ visual_types:
 
   solar:
     selection:
-      enabled: false
+      enabled: true
       colormap: "plasma"    # [0,1] bounded selection weight
       interval: 1
       alpha_enabled: null
@@ -95,7 +95,7 @@ visual_types:
       vmax: 1.0
 
     shading:
-      enabled: false
+      enabled: true
       colormap: "viridis"   # [0,1] bounded shading visibility
       interval: 1
       alpha_enabled: null
