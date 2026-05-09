@@ -64,7 +64,7 @@ general_info:
 #
   deactivate_scheduler_mode: zero_weighted
   loss_normalisation:
-    enabled: False
+    enabled: True
     target_loss_value: 1.0
     target_gradient_norm: 1.0
     # For recalibration: enter the name of the loss as it is called further below and you can set the following keys:
@@ -119,8 +119,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     bb_v4_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]                     # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
     bb_v4_3: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]                    # v4.3 with improved ALM and CSE support
     bb_v4_4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]                    # v4.4 surface-sampled BB constraints on WP2 inner/outer zero-level surfaces
-    bb_v4_4_enforce_v2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4_enforce_v2.py"] # v4.4 + ENFORCE projection + eikonal aux for IFT-style gradient flow at bb sample points
-    bb_v4_sel: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]                  # v4.sel with option to select either inner or outer nbz
+    bb_v4_4_enforce_v2: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4_enforce_v2.py"] # v4.4 + ENFORCE projection + eikonal aux for IFT-style gradient flow at bb sample points
+    bb_v4_sel: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]                  # v4.sel with option to select either inner or outer nbz
     silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]   # version provided by Silvretta, not working well as of 2025 12 15
 
   eikonal:
@@ -138,8 +138,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   connectedness:
     _role: constraint
     _disabled_epochs: []
-    null_loss_connectedness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    connectedness_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
+    null_loss_connectedness: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    connectedness_v1: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
 
 
   developability:
@@ -153,8 +153,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     wheel_loss_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v0.py"]
     wheel_loss_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v1.py"]
     wheel_loss_v2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v2.py"] # new version with position vs. gradient weighting
-    wheel_loss_v3: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v3.py"] # version with improved sampling and more stable gradient formulation
-    wheel_loss_enforce_v2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_enforce_v2.py"] # ENFORCE projection + ground-alignment aux for IFT-style gradient flow at wheel-contact points
+    wheel_loss_v3: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v3.py"] # version with improved sampling and more stable gradient formulation
+    wheel_loss_enforce_v2: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_enforce_v2.py"] # ENFORCE projection + ground-alignment aux for IFT-style gradient flow at wheel-contact points
 
   surface_area:
     _role: aux
@@ -174,9 +174,9 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   diversity:
     _role: diversity
-    null_loss_diversity: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     #Diversity is excluded from grad normalisation: Tune the weight manually here to define trade off between actual loss and diversity requirements
-    field_diversity_v0: [0, 0.01, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+    field_diversity_v0: [1, 0.01, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
 
   total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
@@ -253,7 +253,7 @@ cfd:
   rho: 1.225              # Default: 1.1225       Recomendation: Has to Match the Value used during respective GAOT-Training
   mesh_resolution: 50000  # Default: 50000        Recomendation: Has to Match the Value used during respective GAOT-Training
   gradient_max: 0.1       # Options: any float    Recomendation: 0.1
-  strict_watertightness_check: false # Options: true, false 
+  strict_watertightness_check: false # Options: true, false
 
 cfd_local:
   run_local: false

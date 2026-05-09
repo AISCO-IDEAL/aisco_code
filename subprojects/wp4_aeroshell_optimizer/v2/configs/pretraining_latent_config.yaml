@@ -1,11 +1,11 @@
 use_specific_pretraining: true # if true, skip pretraining and load specific_pretraining_path directly
-specific_pretraining_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/000300_ConcatWIREV5_5cd9fbf79c/pretrained_latent_5cd9fbf79c.pth"
+specific_pretraining_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/000600_ConcatWIREV5_ENFORCE_4510707b13/pretrained_latent_4510707b13.pth"
                           # absolute path to a pretrained_latent_*.pth; only used when use_specific_pretraining=true
 
 ##################################################################
 ### Below only applies if  'use_specific_pretraining' is false ###
 
-model_name: "ConcatWIREV5" # only used for standalone pretraining. If in main loop, the model_name from general_config.yaml is used.
+model_name: "ConcatWIREV5_ENFORCE" # only used for standalone pretraining. If in main loop, the model_name from general_config.yaml is used.
 z_placement: "circle"
 z_radius: 2.0 # circle radius for pretrained latent codes.
               # comparable magnitude to the dominant spatial axis.
@@ -16,9 +16,9 @@ latent_population:
   # Slot 0 → origin (z = [0, 0]).  Slots 1..N-1 → equidistant on circle at z_radius.
   # build_unit_circle_Z hardcodes this ordering, so the sphere must be listed first.
 
-  - name: "sphere_500mm"             
+  - name: "sphere_500mm"
     shape_type: "sphere"
-    radius: 500.0                     
+    radius: 500.0
     side_length: null
     ply_path: null
     ply_scale: null
@@ -55,7 +55,7 @@ latent_population:
     ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/simple_solarcar_watertight_orientated.ply"
     ply_scale: 0.001
     surface_noise_sigma_factor: 0.005
-  
+
 
   - name: "simple_cuboid"
     shape_type: "ply"
@@ -80,10 +80,7 @@ training_loop:
   surface_resample_cadence: 0   # 0 = static (DeepSDF-style, default)
                                 # N = refresh near-surface cache every N epochs
 
-  # --- M2: Dual-band near-surface sampling ---
   # near_surface_fraction + domain_fraction must sum to ≤ 1.0.
-  # Remainder (1 - near_surface_fraction - domain_fraction) goes to exact surface pts.
-  # If near_surface_wide_sigma is absent (null), single-band mode is used (backward-compat).
   near_surface_fraction: 0.30     # fraction of batch for near-surface pts (split between bands)
   domain_fraction: 0.50           # fraction of batch for outer_prism uniform pts (eikonal)
   near_surface_tight_sigma: 0.005 # tight band σ = factor × bbox_extent_mm  (≈25mm at car scale)
@@ -93,17 +90,10 @@ training_loop:
   bbox_scale_factor: 1.0  # Multiply outer_prism bounds by this for domain sampling (scales training distribution).
 
 output:
-  # Canonical base directory for all latent pretraining checkpoints.
-  # Plan 031 / M3: checkpoint path is now fully computed as:
-  #   <base_dir>/<epochs:06d>_<ModelClass>_<config_hash>/pretrained_latent_<config_hash>.pth
   base_dir: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining"
 
-
-  # Cache key includes ply_path stem, ply_scale, sigma params, n_surf → hash-tagged .pt files.
-  # Useful for static cache (surface_resample_cadence: 0): GT SDF is computed once and reused.
-  # Set to an absolute path to enable; null = disabled (always build fresh, never write).
   sdf_cache_dir: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/01_sdf_cache"  # precomputed SDFs from target PLY shapes
-
+                                       # Cache key includes ply_path stem, ply_scale, sigma params, n_surf → hash-tagged .pt files.
 
   sampling_vis: false # used in main loop, use flags in standalone pretraining
   make_gif: false   # used in main loop, use flags in standalone pretraining
