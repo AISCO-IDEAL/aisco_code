@@ -138,10 +138,17 @@ class BaseModel(nn.Module):
                 self.enforce_layer.is_active = True
             dbg.begin_iteration(epoch)
             # get basic visuals (such as mesh assembly)
-
+            vis_verts, vis_faces = None, None
             if vis_manager._is_enabled("mesh_assembly_v4"):
                 vis_verts, vis_faces = visual_mesh_extractor.extract_mesh(sdf_model=self)
                 vis_manager.vis_mesh_assembly_v4(epoch=epoch, sdf_verts=vis_verts, sdf_faces=vis_faces)
+            if vis_manager._is_enabled("mesh_shape"):
+                vis_verts, vis_faces = (
+                    visual_mesh_extractor.extract_mesh(sdf_model=self)
+                    if vis_verts is None or vis_faces is None
+                    else (vis_verts, vis_faces)
+                )
+                vis_manager.vis_mesh_shape(epoch=epoch, sdf_verts=vis_verts, sdf_faces=vis_faces)
 
             optimizer.zero_grad()
 
