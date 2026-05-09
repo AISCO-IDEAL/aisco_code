@@ -32,6 +32,11 @@ extras:
   coordinate_system: false       # merge coordinate-frame axes into each PLY
   coordinate_system_scale: 0.1  # axis length as fraction of bounding-box diagonal
 
+# --- Vis-resolution mesh extraction (make_vis_extractor) ---
+vis_extraction:
+  resolution: 64            # marching-cubes grid resolution for vis; 64 is fast, 128 is high quality
+  bbox_scale_factor: 1.6   # vis bbox = outer-prism bounds scaled by this factor
+
 # --- GIF auto-generation settings (central_vis_manager.finalize) ---
 gif:
   enabled: true
@@ -120,7 +125,7 @@ visual_types:
     enabled: true
     colormap: null          # colours specified per-component via method arguments
     interval: 1
-    alpha_enabled: null
+    alpha_enabled: true
     coordinate_system: null
     vmin: null
     vmax: null

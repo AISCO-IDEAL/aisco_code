@@ -43,22 +43,13 @@ class NullVisManager:
     ) -> None:
         pass
 
-    def vis_mesh_assembly_v4(
-        self,
-        epoch: int,
-        sdf_verts: Any,
-        sdf_faces: Any,
-        inner_verts: Any,
-        inner_faces: Any,
-        outer_verts: Any,
-        outer_faces: Any,
-        *,
-        sdf_color: tuple[float, float, float] = (0.2, 1.0, 1.0),
-        inner_color: tuple[float, float, float] = (1.0, 0.55, 0.0),
-        outer_color: tuple[float, float, float] = (1.0, 0.35, 0.15),
-        sdf_alpha: float = 0.5,
-        outer_alpha: float = 0.2,
-    ) -> None:
+    def set_assembly_meshes(self, *_args: Any, **_kwargs: Any) -> None:
+        pass
+
+    def make_vis_extractor(self, _device: str = "cpu") -> None:
+        return None
+
+    def vis_mesh_assembly_v4(self, epoch: int, sdf_verts: Any, sdf_faces: Any) -> None:
         pass
 
     def save_ply(self, visual_type: str, epoch: int, *_args: Any, **_kwargs: Any) -> None:

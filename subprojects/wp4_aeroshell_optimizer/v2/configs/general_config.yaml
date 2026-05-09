@@ -43,7 +43,7 @@ wandb_general:
 # - "legacy": original synchronous CentralVisManager (for rollback)
 # - "v2": new async CentralVisManagerV2 (ThreadPool PLY writes, ProcessPool GIF renders)
 # - "null": no-op NullVisManager (dry-run; all writes are silent)
-vis_manager: "disabled"
+vis_manager: "v2"
 
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
   storage_dir: "/cluster/work/fuge/AISCO/temp_"  # DEFAULT: /cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage, used in main_v1_1_one_model.py, basic_MLP_v1.py, storage_utils.py

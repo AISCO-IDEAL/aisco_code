@@ -36,6 +36,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.col
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.mesh_ops import (
     face_scalars_to_vertex,
 )
+from subprojects.wp5.unified_mesh_extraction.sdf2mesh import MeshSDFExtractor
 
 _DEFAULT_CONFIG_PATH = Path(__file__).parent / "viz_config.yaml"
 _DARK_BLUE_RGB: tuple[float, float, float] = (0.0, 0.0, 139.0 / 255.0)
@@ -144,9 +145,11 @@ class _BaseVisManager:
         self._ply_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
         self._finalized = False
         self._active_slot: int | None = None
+        self._assembly_meshes: tuple | None = None
         atexit.register(self.finalize)
 
         _log({"event": "cvm_v2_init", "run_id": run_id, "run_dir": str(self.run_dir)})
+        self._load_assembly_meshes()
 
     # --- Config helpers -----------------------------------------------------
 
@@ -201,6 +204,138 @@ class _BaseVisManager:
             slot_idx: Zero-based population index, or None to clear.
         """
         self._active_slot = slot_idx
+
+    def _load_assembly_meshes(self) -> None:
+        """Auto-tessellate the inner/outer bbox solids from regulations and store them.
+
+        Called once from __init__.  Skipped silently if mesh_assembly_v4 is disabled
+        in viz_config.yaml, or if WP2 / the assembly_id cannot be resolved.
+        """
+        if not self._is_enabled("mesh_assembly_v4"):
+            return
+        try:
+            from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.custom_modes.bounding_box_mode_utils import (  # noqa: PLC0415
+                load_bb_assembly_id,
+                load_inner_outer_solids,
+                merge_meshes,
+                solid_to_kaolin_mesh,
+            )
+
+            assembly_id = load_bb_assembly_id()
+            inner_solids, outer_solid = load_inner_outer_solids(assembly_id)
+
+            inner_meshes = [solid_to_kaolin_mesh(s, device="cpu", tolerance=2.0, angular_tolerance=0.4) for s in inner_solids]
+            inner_verts, inner_faces, _ = merge_meshes(inner_meshes)
+            outer_verts, outer_faces = solid_to_kaolin_mesh(outer_solid, device="cpu", tolerance=2.0, angular_tolerance=0.4)
+
+            self.set_assembly_meshes(
+                inner_verts, inner_faces,
+                outer_verts, outer_faces,
+                sdf_color=(0.2, 1.0, 1.0),
+                inner_color=(1.0, 0.5, 0.0),
+                outer_color=(1.0, 0.5, 0.0),
+                sdf_alpha=0.5,
+                outer_alpha=0.2,
+            )
+            _log({"event": "assembly_meshes_loaded", "run_id": self.run_id, "assembly_id": assembly_id})
+        except Exception as exc:
+            _log({"event": "assembly_meshes_load_failed", "run_id": self.run_id, "error": str(exc),
+                  "message": "Call set_assembly_meshes() manually if the assembly cannot be loaded automatically."})
+
+    def set_assembly_meshes(
+        self,
+        inner_verts: Any,
+        inner_faces: Any,
+        outer_verts: Any,
+        outer_faces: Any,
+        *,
+        sdf_color: tuple[float, float, float] = (0.2, 1.0, 1.0),
+        inner_color: tuple[float, float, float] = (1.0, 0.55, 0.0),
+        outer_color: tuple[float, float, float] = (1.0, 0.35, 0.15),
+        sdf_alpha: float = 0.5,
+        outer_alpha: float = 0.2,
+    ) -> None:
+        """Store constant bbox meshes and display colours for vis_mesh_assembly_v4.
+
+        Call once after tessellating the inner/outer bounding-box solids (the
+        expensive kaolin step).  The tensors are converted to CPU immediately so
+        the training thread never has to wait on subsequent vis calls.
+
+        Args:
+            inner_verts / inner_faces: Pre-tessellated inner bounding-box solid.
+            outer_verts / outer_faces: Pre-tessellated outer bounding-box solid.
+            sdf_color: RGB colour for the evolving SDF mesh.
+            inner_color: RGB colour for the inner assembly.
+            outer_color: RGB colour for the outer bounding box.
+            sdf_alpha: Opacity of the SDF mesh in [0, 1].
+            outer_alpha: Opacity of the outer bbox in [0, 1].
+        """
+        import torch  # noqa: PLC0415
+
+        def _cpu(x: Any) -> torch.Tensor:
+            if isinstance(x, torch.Tensor):
+                return x.detach().cpu()
+            return torch.from_numpy(np.asarray(x))
+
+        self._assembly_meshes = (
+            _cpu(inner_verts), _cpu(inner_faces),
+            _cpu(outer_verts), _cpu(outer_faces),
+            sdf_color, inner_color, outer_color, sdf_alpha, outer_alpha,
+        )
+        _log({"event": "assembly_meshes_set", "run_id": self.run_id})
+
+    def make_vis_extractor(self, device: str = "cuda") -> MeshSDFExtractor:
+        """Create a low-resolution MeshSDFExtractor for visualization.
+
+        The bbox is derived automatically from the outer-prism regulations, scaled
+        by ``vis_extraction.bbox_scale_factor`` (default 1.1).  Resolution is read
+        from ``vis_extraction.resolution`` (default 64).  Other extraction
+        parameters (isovalue, batch_size, etc.) are inherited from the unified
+        extractor's own YAML config.
+
+        Use the returned extractor to cheaply extract the SDF mesh once per epoch
+        and reuse it across all vis methods that need one.
+
+        Args:
+            device: Torch device for grid evaluation (``"cpu"`` is fine for vis).
+
+        Returns:
+            A configured MeshSDFExtractor ready to call ``.extract_mesh(model)``.
+        """
+        from subprojects.wp2_assembler.version4.utils.reg_imp import (  # noqa: PLC0415
+            get_outer_prism_bounds_mm,
+            scale_outer_prism,
+        )
+        from subprojects.wp5.unified_mesh_extraction.utils import (  # noqa: PLC0415
+            MeshExtractionConfig,
+            load_mesh_extraction_config,
+        )
+
+        vis_cfg = self._cfg.get("vis_extraction") or {}
+        resolution = int(vis_cfg.get("resolution", 64))
+        bbox_scale = float(vis_cfg.get("bbox_scale_factor", 1.1))
+
+        prism = get_outer_prism_bounds_mm()
+        scaled = scale_outer_prism(prism, bbox_scale)
+        bbox = [
+            [scaled["x"][0], scaled["x"][1]],
+            [scaled["y"][0], scaled["y"][1]],
+            [scaled["z"][0], scaled["z"][1]],
+        ]
+
+        base_cfg = load_mesh_extraction_config()
+        vis_config = MeshExtractionConfig(
+            device=device,
+            isovalue=base_cfg.isovalue,
+            base_resolution=resolution,
+            subdivision_factor=base_cfg.subdivision_factor,
+            max_refine_levels=base_cfg.max_refine_levels,
+            batch_size=base_cfg.batch_size,
+            bbox=bbox,
+            target_num_vertices=None,
+            vertex_count_tolerance=base_cfg.vertex_count_tolerance,
+        )
+        return MeshSDFExtractor(config=vis_config)
 
     def _output_dir(self, visual_type: str) -> Path:
         out_dir = self.run_dir / visual_type
@@ -458,58 +593,36 @@ class CentralVisManagerV2(_BaseVisManager):
         epoch: int,
         sdf_verts: Any,
         sdf_faces: Any,
-        inner_verts: Any,
-        inner_faces: Any,
-        outer_verts: Any,
-        outer_faces: Any,
-        *,
-        sdf_color: tuple[float, float, float] = (0.2, 1.0, 1.0),
-        inner_color: tuple[float, float, float] = (1.0, 0.55, 0.0),
-        outer_color: tuple[float, float, float] = (1.0, 0.35, 0.15),
-        sdf_alpha: float = 0.5,
-        outer_alpha: float = 0.2,
     ) -> None:
-        """Export one epoch of the full mesh assembly as a combined PLY and a named-component GLB.
+        """Export one epoch of the full mesh assembly as a combined PLY and named-component GLB.
 
-        The caller is responsible for tessellating the inner/outer bounding-box
-        solids (expensive, kaolin-based) and caching the result across epochs —
-        the same pattern used by MeshAssemblyModeV4.  This method only does the
-        cheap I/O: combining the three meshes and writing to disk.
+        Call ``set_assembly_meshes`` once before training to supply the constant
+        inner/outer bounding-box meshes and colours.  This method only needs the
+        evolving SDF mesh, which changes every epoch.
 
-        PLY goes to  <run_dir>/mesh_assembly_v4/epoch_XXXXX.ply  (picked up by
-        finalize() for GIF generation).
-        GLB goes to  <run_dir>/mesh_assembly_v4/epoch_XXXXX.glb  (for the
-        three.js viewer; components named sdf_mesh / inner_assembly / outer_bbox).
+        PLY goes to  <run_dir>/mesh_assembly_v4/epoch_XXXXX.ply  (for GIF generation).
+        GLB goes to  <run_dir>/mesh_assembly_v4/epoch_XXXXX.glb  (for the three.js viewer).
 
         Args:
             epoch: Current training epoch.
-            sdf_verts / sdf_faces: The optimised SDF mesh.
-            inner_verts / inner_faces: Pre-tessellated inner bounding-box solid.
-            outer_verts / outer_faces: Pre-tessellated outer bounding-box solid.
-            sdf_color: RGB colour for the SDF mesh component.
-            inner_color: RGB colour for the inner assembly component.
-            outer_color: RGB colour for the outer bounding-box component.
-            sdf_alpha: Opacity of the SDF mesh in [0, 1].
-            outer_alpha: Opacity of the outer bbox in [0, 1].
+            sdf_verts / sdf_faces: The optimised SDF mesh for this epoch.
         """
         vt = self._slotted("mesh_assembly_v4")
         if not self._is_enabled(vt):
             return
 
-        # Convert all inputs to CPU tensors on the calling thread (safe while
-        # training still holds references to the originals).
-        import torch  # noqa: PLC0415 — deferred to keep module import light
-        def _to_tensor(x: Any) -> torch.Tensor:
-            if isinstance(x, torch.Tensor):
-                return x.detach().cpu()
-            return torch.from_numpy(np.asarray(x))
+        if self._assembly_meshes is None:
+            _log({"event": "assembly_meshes_missing", "run_id": self.run_id,
+                  "message": "vis_mesh_assembly_v4 called before assembly meshes were loaded — skipping."})
+            return
 
-        sdf_v = _to_tensor(sdf_verts)
-        sdf_f = _to_tensor(sdf_faces)
-        inn_v = _to_tensor(inner_verts)
-        inn_f = _to_tensor(inner_faces)
-        out_v = _to_tensor(outer_verts)
-        out_f = _to_tensor(outer_faces)
+        inn_v, inn_f, out_v, out_f, sdf_color, inner_color, outer_color, sdf_alpha, outer_alpha = (
+            self._assembly_meshes
+        )
+
+        import torch  # noqa: PLC0415
+        sdf_v = sdf_verts.detach().cpu() if isinstance(sdf_verts, torch.Tensor) else torch.from_numpy(np.asarray(sdf_verts))
+        sdf_f = sdf_faces.detach().cpu() if isinstance(sdf_faces, torch.Tensor) else torch.from_numpy(np.asarray(sdf_faces))
 
         out_dir = self._output_dir(vt)
         ply_path = out_dir / f"epoch_{epoch:05d}.ply"
@@ -533,7 +646,6 @@ class CentralVisManagerV2(_BaseVisManager):
                     inner_alpha=1.0, outer_alpha=outer_alpha, sdf_alpha=sdf_alpha,
                 )
 
-                # GLB with named components for the three.js viewer
                 sdf_rgb = np.tile(np.array(sdf_color, dtype=np.float32), (len(sdf_v), 1))
                 inn_rgb = np.tile(np.array(inner_color, dtype=np.float32), (len(inn_v), 1))
                 out_rgb = np.tile(np.array(outer_color, dtype=np.float32), (len(out_v), 1))

@@ -26,9 +26,10 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import allround_save_data
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Wrapper
-
+from subprojects.wp5.unified_mesh_extraction.sdf2mesh import MeshSDFExtractor
 if TYPE_CHECKING:
     from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import CentralVisManager
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
     from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
 
 
@@ -81,7 +82,7 @@ class BaseModel(nn.Module):
         debug_manager: DebugManager | None = None,
         conflict_tracker: GradientConflictTracker | None = None,
         conflict_cadence: int = 0,
-        vis_manager: CentralVisManager | None = None,
+        vis_manager: CentralVisManager | CentralVisManagerV2 | None = None,
         prof: torch.profiler.profile | None = None,
     ) -> None:
         if training_config is None:
@@ -90,6 +91,7 @@ class BaseModel(nn.Module):
         self.train()
 
         dbg = debug_manager if debug_manager is not None else DebugManager(config={"GLOBAL_DEBUG": False})
+        visual_mesh_extractor: MeshSDFExtractor = vis_manager.make_vis_extractor(device=str(next(self.parameters()).device))
 
         if wandb.run and "learning_rate " in wandb.config:
             learning_rate = wandb.config.learning_rate
@@ -135,6 +137,11 @@ class BaseModel(nn.Module):
                 print(f"Activating ENFORCE projection at epoch {epoch} / {num_epochs}")
                 self.enforce_layer.is_active = True
             dbg.begin_iteration(epoch)
+            # get basic visuals (such as mesh assembly)
+
+            if vis_manager._is_enabled("mesh_assembly_v4"):
+                vis_verts, vis_faces = visual_mesh_extractor.extract_mesh(sdf_model=self)
+                vis_manager.vis_mesh_assembly_v4(epoch=epoch, sdf_verts=vis_verts, sdf_faces=vis_faces)
 
             optimizer.zero_grad()
 
