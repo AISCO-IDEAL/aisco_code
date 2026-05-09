@@ -1,34 +1,36 @@
+use_specific_pretraining: true # if true, skip pretraining and load specific_pretraining_path directly
+specific_pretraining_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/000300_ConcatWIREV5_5cd9fbf79c/pretrained_latent_5cd9fbf79c.pth"
+                          # absolute path to a pretrained_latent_*.pth; only used when use_specific_pretraining=true
+
+##################################################################
+### Below only applies if  'use_specific_pretraining' is false ###
+
 model_name: "ConcatWIREV5" # only used for standalone pretraining. If in main loop, the model_name from general_config.yaml is used.
 z_placement: "circle"
 z_radius: 2.0 # circle radius for pretrained latent codes.
               # comparable magnitude to the dominant spatial axis.
 
-use_specific_pretraining: true # if true, skip pretraining and load specific_pretraining_path directly
-specific_pretraining_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/000300_ConcatWIREV5_5cd9fbf79c/pretrained_latent_5cd9fbf79c.pth"
-                          # absolute path to a pretrained_latent_*.pth; only used when use_specific_pretraining=true
-
 force_pretraining: false # iff false, a hashed pretraining will be used if applicable
-                         # only applied if 'use_specific_pretraining' is false
 
 latent_population:
   # Slot 0 → origin (z = [0, 0]).  Slots 1..N-1 → equidistant on circle at z_radius.
   # build_unit_circle_Z hardcodes this ordering, so the sphere must be listed first.
 
-  # - name: "sphere_500mm"             # slot 0 → z = [0, 0]  (origin / neutral shape)
-  #   shape_type: "sphere"
-  #   radius: 500.0                      # radius in mm; fits well inside outer prism
-  #   side_length: null
-  #   ply_path: null
-  #   ply_scale: null
-  #   surface_noise_sigma_factor: 0.005
-
-  - name: "bunny_orientated2"
-    shape_type: "ply"
-    radius: null
+  - name: "sphere_500mm"             
+    shape_type: "sphere"
+    radius: 500.0                     
     side_length: null
-    ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/bunny_orientated2.ply"
-    ply_scale: 0.001                   # PLY stored in decimetres → convert to mm
+    ply_path: null
+    ply_scale: null
     surface_noise_sigma_factor: 0.005
+
+  # - name: "bunny_orientated2"
+  #   shape_type: "ply"
+  #   radius: null
+  #   side_length: null
+  #   ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/bunny_orientated2.ply"
+  #   ply_scale: 0.001                   # PLY stored in decimetres → convert to mm
+  #   surface_noise_sigma_factor: 0.005
 
   - name: "simple_bullet_pointy"
     shape_type: "ply"
@@ -38,69 +40,38 @@ latent_population:
     ply_scale: 100.0
     surface_noise_sigma_factor: 0.005
 
-  # - name: "simple_bullet_pointy"
-  #   shape_type: "ply"
-  #   radius: null
-  #   side_length: null
-  #   ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/simple_bullet_pointy.ply"
-  #   ply_scale: 100.0
-  #   surface_noise_sigma_factor: 0.005
-
-  # - name: "simple_bullet_pointy"
-  #   shape_type: "ply"
-  #   radius: null
-  #   side_length: null
-  #   ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/simple_bullet_pointy.ply"
-  #   ply_scale: 100.0
-  #   surface_noise_sigma_factor: 0.005
-
-  # - name: "simple_bullet_pointy"
-  #   shape_type: "ply"
-  #   radius: null
-  #   side_length: null
-  #   ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/simple_bullet_pointy.ply"
-  #   ply_scale: 100.0
-  #   surface_noise_sigma_factor: 0.005
-
-  # - name: "simple_bullet_pointy"
-  #   shape_type: "ply"
-  #   radius: null
-  #   side_length: null
-  #   ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/simple_bullet_pointy.ply"
-  #   ply_scale: 100.0
-  #   surface_noise_sigma_factor: 0.005
-
-  # - name: "simple_bullet_pointy"
-  #   shape_type: "ply"
-  #   radius: null
-  #   side_length: null
-  #   ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/simple_bullet_pointy.ply"
-  #   ply_scale: 100.0
-  #   surface_noise_sigma_factor: 0.005
-
-  # - name: "simple_bullet_pointy"
-  #   shape_type: "ply"
-  #   radius: null
-  #   side_length: null
-  #   ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/simple_bullet_pointy.ply"
-  #   ply_scale: 100.0
-  #   surface_noise_sigma_factor: 0.005
-
-  # - name: "simple_cuboid"
-  #   shape_type: "ply"
-  #   radius: null
-  #   side_length: null
-  #   ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/simple_cuboid.ply"
-  #   ply_scale: 100.0
-  #   surface_noise_sigma_factor: 0.005
-
-  - name: "silvretta_no_wheels"
+  - name: "simple_bullet_blunt"
     shape_type: "ply"
     radius: null
     side_length: null
-    ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/silvretta_no_wheels.ply"
+    ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/simple_bullet_blunt2.ply"
+    ply_scale: 100.0
+    surface_noise_sigma_factor: 0.005
+
+  - name: "simple_solarcar"
+    shape_type: "ply"
+    radius: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/simple_solarcar_watertight_orientated.ply"
     ply_scale: 0.001
     surface_noise_sigma_factor: 0.005
+  
+
+  - name: "simple_cuboid"
+    shape_type: "ply"
+    radius: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/simple_cuboid.ply"
+    ply_scale: 100.0
+    surface_noise_sigma_factor: 0.005
+
+  # - name: "silvretta_no_wheels"
+  #   shape_type: "ply"
+  #   radius: null
+  #   side_length: null
+  #   ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/silvretta_no_wheels.ply"
+  #   ply_scale: 0.001
+  #   surface_noise_sigma_factor: 0.005
 training_loop:
   epochs: 600
   learning_rate: 0.0005
@@ -134,8 +105,8 @@ output:
   sdf_cache_dir: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/01_sdf_cache"  # precomputed SDFs from target PLY shapes
 
 
-  sampling_vis: true # used in main loop, use flags in standalone pretraining
-  make_gif: true   # used in main loop, use flags in standalone pretraining
+  sampling_vis: false # used in main loop, use flags in standalone pretraining
+  make_gif: false   # used in main loop, use flags in standalone pretraining
   visualisation_directory: "sampling_vis" # directory name withhin directory of the current hash # only used by standalone pretraining
 
   vis_cadence: 10 # at what interval to visualize the sampling

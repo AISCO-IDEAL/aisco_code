@@ -1,4 +1,4 @@
-population_size: 5 # overwritten if pretraining on latent space is activated in general config
+population_size: 7 # overwritten if pretraining on latent space is activated in general config
 
 # Diversity loss sampling config
 # Points are used for cheap WIRE-only forward passes (no CFD/raytracing).
@@ -9,12 +9,22 @@ diversity_norm_order: 2          # p for L^p field distance
 diversity_neighbor_agg_fn: "min" # 'min' = maximize nearest-neighbour distance (GINN paper Eq. 26)
 
 # Latent population behaviour
-force_z0_to_origin: true         # true keeps first latent vector fixed at origin
+force_z0_to_origin: false         # true keeps first latent vector fixed at origin | use false to align with latent pretraining
 
 # Latent resampling behaviour
 # Mode A: z_resample_cadence=0                    → never resample (fixed population)
 # Mode B: z_resample_cadence>0, z_resample_start_epoch=0  → resample from epoch 0
 # Mode C: z_resample_cadence>0, z_resample_start_epoch>0  → hold pretrained Z for
 #          z_resample_start_epoch epochs, then resample every z_resample_cadence epochs
-z_resample_cadence: 1            # 0 disables resampling, N>0 resamples every N epochs
+z_resample_cadence: 0            # 0 disables resampling, N>0 resamples every N epochs | use 0 to align with latent pretraining spots 
 z_resample_start_epoch: 0        # 0 = Mode B (resample from epoch 1); N>0 = Mode C warm-up
+
+# Gradient clipping (F3 fix for first-step SDF destruction)
+# Set to e.g. 1.0 to cap the total parameter gradient L2-norm before each optimizer step.
+# null disables clipping (legacy behaviour).
+gradient_clip_norm: null
+
+# Post-training mesh saving for population validation.
+# When true, one PLY mesh per latent slot is saved to the run's mesh directory after training.
+# Set to true before submitting Phase 1/2/3 SLURM jobs to inspect all N slots visually.
+save_population_meshes: true

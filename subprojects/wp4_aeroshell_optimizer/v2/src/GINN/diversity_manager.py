@@ -67,9 +67,10 @@ class DiversityTrainer:
         diversity_norm_order: int = 2,
         diversity_neighbor_agg_fn: str = "min",
         force_z0_to_origin: bool = True,
-        z_resample_cadence: int = 0,
+        z_resample_cadence: int = 0,  # so the original pretrained spots remain
         initial_Z: Tensor | None = None,
         z_resample_start_epoch: int = 0,
+        gradient_clip_norm: float | None = None,
         renderer_manager: VisualisationManager | None = None,
         rendering_freq: int | None = None,
         use_neural_renderer: bool = False,
@@ -89,8 +90,10 @@ class DiversityTrainer:
             population_size: Number of latents (N). Set to 1 for single-model training.
             z_dim: Dimensionality of each latent vector.
             device: Compute device.
-            model_lr: Adam learning rate for model parameters.
-            diversity_manager: Optional population-level diversity manager. Set to
+            model_lr: Adam learning rate for model parameters.            gradient_clip_norm: If set, clips the total parameter gradient L2-norm to this
+                value before each optimizer step.  Prevents gradient explosion when eikonal
+                or other losses produce large step sizes on the first few epochs.  ``None``
+                (default) disables clipping (legacy behaviour).            diversity_manager: Optional population-level diversity manager. Set to
                 ``None`` to skip Phase 2 entirely.
             diversity_num_points / diversity_bbox_scale_factor / norm_order / neighbor_agg_fn: trainer-level
                 sampling params passed to the diversity manager compute call.
@@ -181,6 +184,7 @@ class DiversityTrainer:
             self._Z[0] = torch.zeros(z_dim, device=self._device, dtype=torch.float32)
 
         self._model_optimizer: Optimizer = torch.optim.Adam(self._model.parameters(), lr=model_lr)
+        self._gradient_clip_norm: float | None = gradient_clip_norm if gradient_clip_norm and gradient_clip_norm > 0 else None
 
         # Rolling history for the stacked-area competition chart
         self._raw_loss_history: list[dict[str, float]] = []
@@ -386,19 +390,21 @@ class DiversityTrainer:
         list[int],
         dict[str, float],
         dict[str, np.ndarray] | None,
+        dict[str, float],
     ]:
         """
         Iterate over the population and immediately backward each z's loss.
 
         Returns mean scalar loss (for metrics), averaged mean constraints across the
         population (for ALM update; None if no ALM), averaged loss log_data,
-        active constraint indices, averaged per-loss gradient log_data, and optional
-        conflict vectors for the first population member.
+        active constraint indices, averaged per-loss gradient log_data, optional
+        conflict vectors for the first population member, and per-slot raw loss log_data.
         """
         use_alm: bool = self._alm_manager is not None
         all_alm_constraints: list[list[Tensor]] = []
         summed_log_data: dict[str, float] = {}
         summed_grad_log_data: dict[str, float] = {}
+        per_slot_log_data: dict[str, float] = {}
         total_loss_val: float = 0.0
         phase1_conflict_vectors: dict[str, np.ndarray] | None = None
 
@@ -452,6 +458,8 @@ class DiversityTrainer:
             total_loss_val += result.log_data.get("raw_losses/total_loss", result.scalar.item())
             for k, v in result.log_data.items():
                 summed_log_data[k] = summed_log_data.get(k, 0.0) + v
+                if k.startswith("raw_losses/"):
+                    per_slot_log_data[f"slots/slot_{i}/{k}"] = v
 
             if not self._diagnostic_mode:
                 # Performance mode: single combined backward, no per-component grad tracking or conflict capture.
@@ -530,6 +538,7 @@ class DiversityTrainer:
             active_constraint_indices,
             avg_grad_log_data,
             phase1_conflict_vectors,
+            per_slot_log_data,
         )
 
     # ------------------------------------------------------------------
@@ -563,6 +572,7 @@ class DiversityTrainer:
             active_constraint_indices,
             per_loss_gradient_log_data,
             phase1_conflict_vectors,
+            per_slot_log_data,
         ) = self._per_vector_backward(epoch)
 
         # External ALM update — only update multipliers for currently active constraints
@@ -612,6 +622,9 @@ class DiversityTrainer:
         if capture_conflict and self._conflict_tracker is not None and conflict_vectors:
             self._conflict_tracker.save_from_grad_vectors(conflict_vectors, epoch)
 
+        if self._gradient_clip_norm is not None:
+            torch.nn.utils.clip_grad_norm_(self._model.parameters(), self._gradient_clip_norm)
+
         self._model_optimizer.step()
 
         raw_metrics = {
@@ -629,7 +642,7 @@ class DiversityTrainer:
         self._render(epoch, per_vector_loss_val)
 
         # Log once per epoch
-        self._log(avg_log_data, diversity_log_data, per_loss_gradient_log_data, epoch)
+        self._log(avg_log_data, diversity_log_data, per_loss_gradient_log_data, epoch, per_slot_log_data)
         self._total_loss.finalize_epoch_mesh_stats()
 
         metrics: dict[str, float] = {
@@ -656,8 +669,9 @@ class DiversityTrainer:
         diversity_log_data: dict[str, float],
         gradient_log_data: dict[str, float],
         epoch: int,
+        per_slot_log_data: dict[str, float] | None = None,
     ) -> None:
-        """Single wandb.log call with all averaged scalars + ALM multipliers + diversity + gradients."""
+        """Single wandb.log call with all averaged scalars + ALM multipliers + diversity + gradients + per-slot."""
         if not self._use_wandb or wandb.run is None:
             return
 
@@ -667,6 +681,8 @@ class DiversityTrainer:
         log_dict.update(self._norm_manager.get_telemetry())
         log_dict.update(diversity_log_data)
         log_dict.update(gradient_log_data)
+        if per_slot_log_data:
+            log_dict.update(per_slot_log_data)
 
         # Competition charts (avg-of-population)
         raw_floats: dict[str, float] = {

@@ -15,14 +15,14 @@ general_info:
   #   (a) ACTIVE constraint order (only currently enabled constraints), or
   #   (b) FULL configured constraint-category order below.
   # - Full configured constraint-category order in this file:
-  #   [bb, eikonal, smoothness, connectedness, developability]
+  #   [bb, eikonal, connectedness, developability, wheel_loss]
   # - When a middle category is disabled, its slot is skipped automatically.
 
   # Again, the ooder here corresponds to the order of the constraints in this config further below
-  alm_thresholds: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # per-constraint deadzone: if |c_i| < threshold_i, nu/mu/lambda are frozen. Set to null to disable (pure adaptive formula). Ignored in aggressive mode.
-  initial_lambda: [0.01, 0.01, 0.01, 0.01, 0.01, 0.01]  # per-constraint initial lambda(s)
-  initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0, 0.5]  # per-constraint initial mu(s)
-  initial_nu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial nu(s)
+  alm_thresholds: [0.0, 0.0, 0.0, 0.0, 0.0]  # per-constraint deadzone: if |c_i| < threshold_i, nu/mu/lambda are frozen. Set to null to disable (pure adaptive formula). Ignored in aggressive mode.
+  initial_lambda: [0.01, 0.01, 0.01, 0.01, 0.01]  # per-constraint initial lambda(s)
+  initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial mu(s)
+  initial_nu: [1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial nu(s)
   alpha: 0.8  # EMA decay factor for ν update
   gamma: 0.2  # parameter for ALM penalty update
   gamma_aggressive: 1.1  # multiplicative increase factor for μ in aggressive CAPU mode
@@ -64,7 +64,7 @@ general_info:
 #
   deactivate_scheduler_mode: zero_weighted
   loss_normalisation:
-    enabled: True
+    enabled: False
     target_loss_value: 1.0
     target_gradient_norm: 1.0
     # For recalibration: enter the name of the loss as it is called further below and you can set the following keys:
@@ -125,6 +125,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   eikonal:
     _role: constraint
+    _disabled_epochs: [[0,50]]
     null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     eikonal_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
 
@@ -173,9 +174,9 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   diversity:
     _role: diversity
-    null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    null_loss_diversity: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     #Diversity is excluded from grad normalisation: Tune the weight manually here to define trade off between actual loss and diversity requirements
-    field_diversity_v0: [1, 0.01, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+    field_diversity_v0: [0, 0.01, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
 
   total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
@@ -184,6 +185,11 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 domain_pts_sampling: # used in eikonal and smoothness loss  #  parent_loss.py: calls get_outer_prism_bounds_mm() from wp2
   num_points: 1000  #  parent_loss.py
   bbox_size: 5000.0  #  parent_loss.py
+  # F2: fraction of eikonal points biased toward the current zero-crossing (near-surface).
+  # 0.0 = legacy behaviour (fixed uniform prism points, never refreshed).
+  # 0.5 = half near-surface (found via cheap no-grad coarse pass) + half fresh uniform.
+  # Recommended starting value: 0.5 — ensures ~50% of gradient signal comes from surface region.
+  eikonal_near_surface_fraction: 0.0
 
 
 connectedness_config:
@@ -267,7 +273,7 @@ developability_config:
   mesh_isovalue: 0.0
   mesh_batch_size: 8192
   # Post-optimization: runs C++ L-BFGS after the final training epoch
-  post_opt_enabled: True   # Enable post-epoch optimization with subdivisions
+  post_opt_enabled: False   # Enable post-epoch optimization with subdivisions
   post_opt_energy_type: 4   # same as energy_type by default
   post_opt_linesearch: 1    # 0=NONE, 1=OVERTON, 2=BACKTRACK
   post_opt_step_type: 1     # 0=GRADDESC, 1=LBFGS

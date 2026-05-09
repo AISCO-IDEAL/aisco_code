@@ -370,7 +370,7 @@ def apply_sweep_overrides(sweep_params: dict) -> None:  # noqa: PLR0915
                 _apply_single_override(target_key, param_value, infer_type=True)
             continue
 
-        _apply_single_override(key, value, infer_type=False)
+        _apply_single_override(key, value, infer_type=True)
 
 
 def get_master_config() -> dict:

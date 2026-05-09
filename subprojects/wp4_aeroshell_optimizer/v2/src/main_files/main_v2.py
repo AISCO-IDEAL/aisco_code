@@ -45,6 +45,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import (
     allround_save_data,
     reformat_wandb_name,
+    save_population_meshes,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.wandb_utils import patch_wandb_log_for_monotonic_steps
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.ginn_visuals_utils import (
@@ -209,7 +210,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             vis_manager=_vis_manager,
         )
         if verbose:
-            print(f"[latent_space] Latent pretraining complete. Population size: {len(latent_config['latent_population'])}")
+            print(f"[latent_space] Latent pretraining complete. Population size: {Z_pretrained.shape[0]}")
         # GIF generation is owned by CentralVisManager.finalize() (called at end of optimization).
         # Warn when vis data was collected but finalize() won't see it (manager disabled).
         if vis_sampling and _vis_manager is None and verbose:
@@ -548,6 +549,28 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 print(f"Gradient conflict GIF saved to {gif_path}")
         except Exception as e:
             print(f"Warning: Failed to post-process gradient conflict data: {e}")
+
+    # Optional: save one PLY mesh per latent slot for population validation.
+    # Gated by GINN.yaml: save_population_meshes (default false to avoid overhead).
+    if uses_diversity and isinstance(model, SupportsLatentConcat) and ginn_config.get("save_population_meshes", False):
+        final_Z = trainer.get_population()
+        save_population_meshes(
+            model=model,
+            population_z=final_Z,
+            storage_path=(
+                general_config["storage_paths"].get("beast_storage_dir")
+                or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+            )
+            if run_locally
+            else general_config["storage_paths"].get(
+                "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+            ),
+            wandb_run=wandb_name,
+            epoch=training_config["training_params"].get("num_epochs", 420420),
+            resolution=128,
+            verbose=verbose,
+            device=str(device),
+        )
 
     # Reset latent vector to zeros before saving final model.
     if uses_diversity and isinstance(model, SupportsLatentConcat):
