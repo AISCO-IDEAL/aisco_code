@@ -349,7 +349,8 @@ class CentralVisManagerV2(_BaseVisManager):
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
-        rgb = resolve_mesh_rgb(np.asarray(cp_values, np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg)
+        cp_np = _to_f64(cp_values).astype(np.float32).reshape(-1)
+        rgb = resolve_mesh_rgb(cp_np, len(verts_np), len(faces_np), faces_np, verts_np, type_cfg)
         self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
 
     def vis_solar_selection(self, epoch: int, verts: Any, faces: Any, weights: Any) -> None:
