@@ -307,24 +307,13 @@ class _BaseVisManager:
             _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": 0})
             return
 
-        if sys.is_finalizing():
-            _log({"event": "finalize_gif_skipped", "run_id": self.run_id,
-                  "reason": "interpreter_shutdown", "gif_dirs": [str(d) for d in gif_dirs]})
-            return
-
-        gif_workers: int = self._cfg.get("gif", {}).get("pool_workers", 1)
-        gif_futures: list[concurrent.futures.Future[tuple[bool, str, str | None]]] = []
-        with concurrent.futures.ProcessPoolExecutor(max_workers=gif_workers) as pool:
-            for d in gif_dirs:
-                n = sum(1 for f in d.iterdir() if f.name.startswith("epoch_") and f.name.endswith(".ply"))
-                _log({"event": "gif_submitted", "run_id": self.run_id,
-                      "visual_type": str(d.relative_to(self.run_dir)), "n_frames": n})
-                gif_futures.append(pool.submit(render_gif_task, d))
-
-            for f in concurrent.futures.as_completed(gif_futures):
-                ok, path, err = f.result()
-                _log({"event": "gif_completed" if ok else "gif_failed",
-                      "run_id": self.run_id, "path": path, "error": err})
+        for d in gif_dirs:
+            n = sum(1 for f in d.iterdir() if f.name.startswith("epoch_") and f.name.endswith(".ply"))
+            _log({"event": "gif_started", "run_id": self.run_id,
+                  "visual_type": str(d.relative_to(self.run_dir)), "n_frames": n})
+            ok, path, err = render_gif_task(d)
+            _log({"event": "gif_completed" if ok else "gif_failed",
+                  "run_id": self.run_id, "path": path, "error": err})
 
         _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": len(gif_dirs)})
 
