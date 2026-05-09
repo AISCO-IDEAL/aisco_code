@@ -307,6 +307,11 @@ class _BaseVisManager:
             _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": 0})
             return
 
+        if sys.is_finalizing():
+            _log({"event": "finalize_gif_skipped", "run_id": self.run_id,
+                  "reason": "interpreter_shutdown", "gif_dirs": [str(d) for d in gif_dirs]})
+            return
+
         gif_workers: int = self._cfg.get("gif", {}).get("pool_workers", 1)
         gif_futures: list[concurrent.futures.Future[tuple[bool, str, str | None]]] = []
         with concurrent.futures.ProcessPoolExecutor(max_workers=gif_workers) as pool:
