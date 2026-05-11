@@ -91,12 +91,11 @@ def solar_loss_sr(
     soft_mask_original_order = soft_mask[original_order]
 
     if epoch_name is not None:
-        vis_manager.save_ply(
-            "solar/selection",
+        vis_manager.vis_solar_selection(
             int(epoch_name),
-            vertices.detach().cpu().numpy(),
-            faces.detach().cpu().numpy(),
-            scalar_values=soft_mask_original_order.detach().cpu().numpy(),
+            vertices,
+            faces,
+            soft_mask_original_order,
         )
 
     faces_near_boundary = (soft_mask > 0.1) & (soft_mask < 0.9)
