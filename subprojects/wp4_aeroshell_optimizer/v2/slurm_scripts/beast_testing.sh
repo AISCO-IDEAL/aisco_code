@@ -38,7 +38,7 @@
 ##   3. $USER
 ## ---------------------------------------------------------------------------
 
-set -euo pipefail
+set -uo pipefail
 
 umask 0002
 
@@ -154,7 +154,7 @@ fi
 ts "Checkpoint: launching main_v2.py with hard timeout"
 if timeout --signal=TERM --kill-after=30s "${MAIN_TIMEOUT_SECONDS}s" "$PYTHON_BIN" -u subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py \
     --save_model \
-    --problem_id="AISCO_WP4_Test1" 2>&1
+    --problem_id="AISCO_WP4_Test1" 2>&1 #aalthaus, very unhappy with the arguments, don't do anything
 then
     ts "Checkpoint: main_v2.py finished successfully"
 else

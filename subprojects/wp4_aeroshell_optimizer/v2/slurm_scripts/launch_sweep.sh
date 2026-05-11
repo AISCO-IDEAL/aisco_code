@@ -5,8 +5,8 @@
 
 # ---- SLURM directives (must come before any executable code) ---------------
 #SBATCH --partition=gpu
-#SBATCH --job-name=WP4_Sweep
-#SBATCH --time=2:00:00
+#SBATCH --job-name=AISCOModel_Sweep
+#SBATCH --time=00:58:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=rtx_4090:2
@@ -24,9 +24,14 @@ export no_proxy=$(echo "$no_proxy" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export NO_PROXY=$(echo "$NO_PROXY" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/RTParam_Sweep/5q3zwllg"   # <-- EDIT THIS
-COUNT=10                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
-MAX_AGENTS=2                                  # max number of parallel agents (will be capped by available GPUs)
+SWEEP_ID="<EDIT_ME>"   # bare id (abc123xy) or full path (entity/project/id) -- set after `wandb sweep ...`
+SWEEP_ENTITY="aisco"               # used when SWEEP_ID is bare
+SWEEP_PROJECT="AISCOModel_Pretraining_Single"  # used when SWEEP_ID is bare; must match wandb sweep output
+COUNT=10                                       # runs per agent — keep at 1 for the smoke test; bump to 10-20 for the real run
+MAX_AGENTS=1                                   # 1 for smoke test; bump to 2 for the real run
+
+# Never let shell-level WANDB_PROJECT hijack where the agent looks for the sweep.
+unset WANDB_PROJECT
 
 # ---- Job info ---------------------------------------------------------------
 
@@ -70,10 +75,19 @@ if [ "$NUM_GPUS" -gt "$MAX_AGENTS" ]; then
 fi
 echo "[$(date)] Launching $NUM_GPUS agents (max $MAX_AGENTS), up to $COUNT pulls per agent..."
 
+# Normalize sweep target (trim whitespace, support bare or full id).
+SWEEP_ID_CLEANED="$(echo "$SWEEP_ID" | xargs)"
+if [[ "$SWEEP_ID_CLEANED" == */*/* ]]; then
+    SWEEP_TARGET="$SWEEP_ID_CLEANED"
+else
+    SWEEP_TARGET="${SWEEP_ENTITY}/${SWEEP_PROJECT}/${SWEEP_ID_CLEANED}"
+fi
+echo "[$(date)] Sweep target: $SWEEP_TARGET"
+
 for ((i=0; i<NUM_GPUS; i++)); do
     AGENT_LOG="${LOG_DIR}/agent_gpu${i}_${SLURM_JOB_ID}.log"
     echo "[$(date)]   GPU $i → agent starting. Log: $AGENT_LOG"
-    CUDA_VISIBLE_DEVICES=$i wandb agent --count "$COUNT" "$SWEEP_ID" > "$AGENT_LOG" 2>&1 &
+    CUDA_VISIBLE_DEVICES=$i wandb agent --count "$COUNT" "$SWEEP_TARGET" > "$AGENT_LOG" 2>&1 &
     sleep 10  # stagger startup to avoid race on wandb init
 done
 wait

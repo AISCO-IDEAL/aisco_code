@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=WP1_sweep
-#SBATCH --time=24:00:00          # adjust as needed
+#SBATCH --time=240:00:00          # adjust as needed
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G
-#SBATCH --gpus=rtx_4090:1
+#SBATCH --gpus=rtx_5090:1
 #SBATCH --output=/home/aisco/Documents/logs/WP1_sweep_%j.out
 
 module purge
@@ -59,7 +59,7 @@ fi
 #   cd /cluster/home/$USERNAME/AISCO_code
 #   wandb sweep $SWEEP_CONFIG
 #   # Note the generated SWEEP_ID (e.g. aisco/WP1_drag/abcd1234)
-#   SWEEP_ID="aisco/WP1_drag/abcd1234" sbatch subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/slurm_scripts/WP1_sweeping.sh
+#   SWEEP_ID="aisco/WP1_drag/abcd1234" bash subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/slurm_scripts/WP1_sweeping.sh
 
 if [ -z "$SWEEP_ID" ]; then
     echo "ERROR: SWEEP_ID is not set."

@@ -120,9 +120,10 @@ class DiversityLossManager:
         model: SupportsLatentConcat,
         Z: Tensor,
         num_points: int,
-        bbox_size: float,
-        norm_order: int,
-        neighbor_agg_fn: str,
+        bbox_lo: list[float] | None = None,
+        bbox_hi: list[float] | None = None,
+        norm_order: int = 2,
+        neighbor_agg_fn: str = "min",
     ) -> DiversityLossComputeResult:
         if self._loss_instance is None:
             zero = torch.zeros((), device=Z.device, dtype=torch.float32)
@@ -132,7 +133,8 @@ class DiversityLossManager:
             model,
             Z,
             num_points=num_points,
-            bbox_size=bbox_size,
+            bbox_lo=bbox_lo,
+            bbox_hi=bbox_hi,
             norm_order=norm_order,
             neighbor_agg_fn=neighbor_agg_fn,
         )

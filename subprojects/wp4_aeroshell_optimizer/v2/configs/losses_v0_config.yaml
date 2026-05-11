@@ -3,6 +3,12 @@ general_info:
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
   ALM_aggressive: "False" # capu version of ALM
 
+  #    WARNING: When CSE="True", individual objective weights (aero, solar) below are dead code.
+  #    Use cse_weight below to scale the unified CSE objective relative to diversity.
+  #    WARNING: When ALM="True", manual constraint weights are ignored by design.
+  #    Constraint relative importance is controlled by ALM multipliers (initial_lambda, initial_mu, initial_nu).
+
+
   ALM_aggressive_capu: 0.25 # has constraint decreased sufficiently threshold, only used when ALM_aggressive=True. # weights.py: self.use_alm_aggressive
   # ALM parameter mapping order:
   # - Arrays are supported and can be provided in either format:
@@ -13,13 +19,22 @@ general_info:
   # - When a middle category is disabled, its slot is skipped automatically.
 
   # Again, the ooder here corresponds to the order of the constraints in this config further below
-  alm_thresholds: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]  # per-constraint threshold(s)
+  alm_thresholds: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # per-constraint deadzone: if |c_i| < threshold_i, nu/mu/lambda are frozen. Set to null to disable (pure adaptive formula). Ignored in aggressive mode.
   initial_lambda: [0.01, 0.01, 0.01, 0.01, 0.01, 0.01]  # per-constraint initial lambda(s)
-  initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial mu(s)
+  initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0, 0.5]  # per-constraint initial mu(s)
   initial_nu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial nu(s)
-  alpha: 0.99  # EMA decay factor for ν update
-  gamma: 0.01  # parameter for ALM penalty update
+  alpha: 0.8  # EMA decay factor for ν update
+  gamma: 0.2  # parameter for ALM penalty update
   gamma_aggressive: 1.1  # multiplicative increase factor for μ in aggressive CAPU mode
+
+  enforce_projection:
+    activation_epoch_ratio: 0.6
+    max_iters: 10
+    tolerance: 1.0e-3
+
+  cse_weight: 1.0  # Post-normalisation weight on the unified CSE objective (-v_cruise * loss_scale * grad_scale).
+                   # Tune this against diversity weight (field_diversity_v0 config entry below).
+                   # Only active when CSE="True"; individual aero/solar weights are dead code when CSE is on.
   cse_prefactors:  # prefactors applied to objectives before feeding into CSE
     drag: 1.0
     solar: 1.0
@@ -49,7 +64,7 @@ general_info:
 #
   deactivate_scheduler_mode: zero_weighted
   loss_normalisation:
-    enabled: False
+    enabled: True
     target_loss_value: 1.0
     target_gradient_norm: 1.0
     # For recalibration: enter the name of the loss as it is called further below and you can set the following keys:
@@ -90,9 +105,9 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   aero:
     _role: objective
     _sign: minimize
-    _disabled_epochs: [[0,100]]
-    null_loss_aero: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+    _disabled_epochs: []
+    null_loss_aero: [0, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
   bb:
     _role: constraint
@@ -104,6 +119,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     bb_v4_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]                     # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
     bb_v4_3: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]                    # v4.3 with improved ALM and CSE support
     bb_v4_4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]                    # v4.4 surface-sampled BB constraints on WP2 inner/outer zero-level surfaces
+    bb_v4_4_enforce_v2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4_enforce_v2.py"] # v4.4 + ENFORCE projection + eikonal aux for IFT-style gradient flow at bb sample points
     bb_v4_sel: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]                  # v4.sel with option to select either inner or outer nbz
     silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]   # version provided by Silvretta, not working well as of 2025 12 15
 
@@ -113,7 +129,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     eikonal_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
 
   smoothness:
-    _role: constraint
+    _role: aux
     null_loss_smoothness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     smoothness_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
 
@@ -137,22 +153,23 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     wheel_loss_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v1.py"]
     wheel_loss_v2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v2.py"] # new version with position vs. gradient weighting
     wheel_loss_v3: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v3.py"] # version with improved sampling and more stable gradient formulation
+    wheel_loss_enforce_v2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_enforce_v2.py"] # ENFORCE projection + ground-alignment aux for IFT-style gradient flow at wheel-contact points
 
   surface_area:
     _role: aux
-    null_loss_surface_area: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    surface_loss_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
+    null_loss_surface_area: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    surface_loss_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
 
   solar:
     _role: objective
     _sign: maximize
-    _disabled_epochs:  [[0,15]]
-    solar_v3B_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
+    _disabled_epochs:  []
+    solar_v3B_2: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
     solar_v4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
     solar_v5: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
-    null_loss_solar: [1, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    null_loss_solar: [0, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
 
   diversity:
     _role: diversity
@@ -223,19 +240,20 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
   outer_ply_location: "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bb_loss_ply_data/outer.ply"
 
 cfd:
-  model_id: 64641068      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2/3 or a key for Version 1
+  model_id: 65531686      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2/3 or a key for Version 1
   version: 3              # Options: 1, 2, 3      Recomendation: 3
-  visualisations: false   # Options: true, false  Recomendation: false
+  visualisations: true    # Options: true, false  Recomendation: false
   v_inf: 25.0             # Default: 25.0         Recomendation: Has to Match the Value used during respective GAOT-Training
   rho: 1.225              # Default: 1.1225       Recomendation: Has to Match the Value used during respective GAOT-Training
   mesh_resolution: 50000  # Default: 50000        Recomendation: Has to Match the Value used during respective GAOT-Training
   gradient_max: 0.1       # Options: any float    Recomendation: 0.1
+  strict_watertightness_check: false # Options: true, false
 
 cfd_local:
   run_local: false
   model_id: local_1777017531      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2 or a key for Version 1
   version: 3              # Options: 1, 2, 3      Recomendation: 3
-  visualisations: false   # Options: true, false  Recomendation: false
+  visualisations: true    # Options: true, false  Recomendation: false
   v_inf: 25.0             # Default: 25.0         Recomendation: Has to Match the Value used during respective GAOT-Training
   rho: 1.225              # Default: 1.1225       Recomendation: Has to Match the Value used during respective GAOT-Training
   mesh_resolution: 50000  # Default: 50000        Recomendation: Has to Match the Value used during respective GAOT-Training
@@ -263,3 +281,4 @@ wheel_loss_config:
   threshold_huber: 10.0  # Huber loss threshold for wheel loss v3
   threshold_relu: -0.3  # z-gradient threshold for wheel loss v3; gradients above this value are penalized linearly, while gradients below are not penalized (should be negative, e.g. -0.3 means z gradients above -0.3 are penalized, while z gradients of -0.3 or smaller are not penalized)
   manual_z_shift: -5.0 # manual shift applied to z-coordinate of wheel loss sample points, to give more room for the SDF to find a solution
+  enforce_alignment_weight: 0.05 # wheel_loss_enforce_v2 only: weight on the ∇sdf ∥ ẑ ground-tangency aux relative to the primary projection-as-target loss

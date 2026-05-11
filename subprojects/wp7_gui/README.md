@@ -6,16 +6,17 @@ We don't know yet wether we have to use Euler or get a local Computer, so the cu
 ## Minimal browser GUI (WSL -> Windows Firefox)
 
 ### Features
-- Button 1 runs a dummy file (`dummy_logger.js`) and logs numbers `1` to `5` on screen.
-- Button 2 displays a local image (`demo_image.png`) on screen.
-- Button 3 starts `subprojects/wp4_aeroshell_optimizer/v1/slurm_scripts/run_local.sh`.
+- Browser UI is served from `subprojects/wp7_gui/v1/templates/index.html`.
+- Run logs are written to `subprojects/wp7_gui/v1/logs/`.
+- Slow-GIF cache is written to `subprojects/wp7_gui/v1/cache/`.
+- Start button launches the active WP4 optimizer `run_local.sh` via `subprojects.wp4_aeroshell_optimizer`.
 
 ### Run in WSL
 From repo root:
 
 ```bash
 source aisco_env/bin/activate
-python subprojects/wp7_gui/app.py
+python subprojects/wp7_gui/v1/app_v1.py
 ```
 
 ### Open in Windows Firefox
@@ -33,11 +34,15 @@ You can also copy `http://localhost:8000` into Firefox manually on Windows.
 subprojects/wp7_gui/
 ├── __init__.py
 ├── README.md
-├── app.py
 ├── archive/
-└── templates/
-    ├── index.html
-    ├── dummy_logger.js
-    ├── demo_image.png
-    └── demo_image.svg
+└── v1/
+    ├── app_v1.py
+    ├── templates/
+    │   ├── index.html
+    │   ├── logo.png
+    │   ├── ideal.png
+    │   └── aCe.png
+    ├── logs/
+    ├── cache/
+    └── gaot/
 ```

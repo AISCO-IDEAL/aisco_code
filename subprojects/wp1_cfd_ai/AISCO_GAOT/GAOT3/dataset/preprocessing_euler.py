@@ -90,6 +90,22 @@ def parse_force_report(filepath):
     return last_cd, last_force
 
 
+def _case_key_to_save_name(case_key: str) -> str:
+    """Map a Fluent case key to the output folder name used in the processed dataset."""
+    match = re.fullmatch(r"RUN_(\d+)", case_key)
+    if match:
+        return f"euler_run_{int(match.group(1))}"
+    return f"euler_{case_key}"
+
+
+def _save_name_sort_key(save_name: str):
+    """Sort processed samples by their leading numeric identifier when available."""
+    match = re.match(r"^euler_(?:run_)?(\d+)", save_name)
+    if match:
+        return (0, int(match.group(1)), save_name)
+    return (1, save_name)
+
+
 # ---------------------------------------------------------------------------
 #  Fluent HDF5 zone parser
 # ---------------------------------------------------------------------------
@@ -275,18 +291,18 @@ def _interpolate_face_to_vertex(values_per_face, face_nodes, global_to_local, n_
 # ---------------------------------------------------------------------------
 #  Single-run processor
 # ---------------------------------------------------------------------------
-def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, output_dir=OUTPUT_DIR):  # noqa: PLR0915
+def process_single_run(case_key, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, output_dir=OUTPUT_DIR):  # noqa: PLR0915
     """
-    Process one Fluent run into a GAOT-compatible .pt file with pressure field.
+    Process one Fluent case into a GAOT-compatible .pt file with pressure field.
 
     Returns the save name on success, None on failure.
     """
-    cas_path = os.path.join(results_dir, f"RUN_{run_id:03d}_results.cas.h5")
-    dat_path = os.path.join(results_dir, f"RUN_{run_id:03d}_results.dat.h5")
-    force_path = os.path.join(force_dir, f"RUN_{run_id:03d}_force_report.out")
+    cas_path = os.path.join(results_dir, f"{case_key}_results.cas.h5")
+    dat_path = os.path.join(results_dir, f"{case_key}_results.dat.h5")
+    force_path = os.path.join(force_dir, f"{case_key}_force_report.out")
 
     if not os.path.exists(cas_path) or not os.path.exists(dat_path):
-        print(f"  [SKIP] RUN_{run_id:03d}: missing .cas.h5 or .dat.h5")
+        print(f"  [SKIP] {case_key}: missing .cas.h5 or .dat.h5")
         return None
 
     # ---- 1. Parse zone topology ----
@@ -370,20 +386,20 @@ def process_single_run(run_id, results_dir=RESULTS_DIR, force_dir=FORCE_DIR, out
     data.geom_extent = geom_extent
     data.geom_aspect = geom_aspect
     data.conditioning = conditioning
-    data.filename = f"RUN_{run_id:03d}"
+    data.filename = case_key
     data.n_surface_faces = n_faces
 
     apply_canonical_contract(
         data,
         source_dataset="euler",
-        source_case_id=f"RUN_{run_id:03d}",
-        filename=f"RUN_{run_id:03d}",
+        source_case_id=case_key,
+        filename=case_key,
         geom_name="",
         flow_conditions={},
     )
     validate_canonical_contract(data)
 
-    save_name = f"euler_run_{run_id}"
+    save_name = _case_key_to_save_name(case_key)
     save_dir = os.path.join(output_dir, save_name)
     os.makedirs(save_dir, exist_ok=True)
     torch.save(data, os.path.join(save_dir, "data.pt"))
@@ -410,15 +426,15 @@ def process_all_runs(  # noqa: PLR0912, PLR0915 - batch orchestration intentiona
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    # Auto-detect available runs
+    # Auto-detect available cases from all Fluent result files.
     if run_ids is None:
-        cas_files = sorted(glob.glob(os.path.join(results_dir, "RUN_*_results.cas.h5")))
+        cas_files = sorted(glob.glob(os.path.join(results_dir, "*_results.cas.h5")))
         run_ids = []
         for cf in cas_files:
-            m = re.search(r"RUN_(\d+)_results\.cas\.h5", os.path.basename(cf))
-            if m:
-                run_ids.append(int(m.group(1)))
-        run_ids.sort()
+            base = os.path.basename(cf)
+            if base.endswith("_results.cas.h5"):
+                run_ids.append(base[: -len("_results.cas.h5")])
+        run_ids.sort(key=_save_name_sort_key)
 
     if max_runs is not None:
         run_ids = run_ids[:max_runs]
@@ -430,42 +446,45 @@ def process_all_runs(  # noqa: PLR0912, PLR0915 - batch orchestration intentiona
 
     existing_names = []
     run_ids_todo = []
-    for rid in run_ids:
-        save_name = f"euler_run_{rid}"
+    for case_key in run_ids:
+        save_name = _case_key_to_save_name(case_key)
         pt_path = os.path.join(output_dir, save_name, "data.pt")
         if os.path.exists(pt_path):
             existing_names.append(save_name)
         else:
-            run_ids_todo.append(rid)
+            run_ids_todo.append(case_key)
 
     print(f"  Skipping {len(existing_names)} already-processed, {len(run_ids_todo)} remaining.")
 
     order_list_new = []
 
     if num_workers <= 1:
-        for rid in tqdm(run_ids_todo, desc="Processing runs"):
+        for case_key in tqdm(run_ids_todo, desc="Processing runs"):
             try:
-                result = process_single_run(rid, results_dir, force_dir, output_dir)
+                result = process_single_run(case_key, results_dir, force_dir, output_dir)
                 if result is not None:
                     order_list_new.append(result)
             except Exception as e:
-                print(f"  [FAIL] RUN_{rid:03d}: {e}")
+                print(f"  [FAIL] {case_key}: {e}")
                 traceback.print_exc()
     else:
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            futures = {executor.submit(process_single_run, rid, results_dir, force_dir, output_dir): rid for rid in run_ids_todo}
+            futures = {
+                executor.submit(process_single_run, case_key, results_dir, force_dir, output_dir): case_key
+                for case_key in run_ids_todo
+            }
             for future in tqdm(as_completed(futures), total=len(futures), desc="Processing runs"):
-                rid = futures[future]
+                case_key = futures[future]
                 try:
                     result = future.result()
                     if result is not None:
                         order_list_new.append(result)
                 except Exception as e:
-                    print(f"  [FAIL] RUN_{rid:03d}: {e}")
+                    print(f"  [FAIL] {case_key}: {e}")
                     traceback.print_exc()
 
     all_names = existing_names + order_list_new
-    all_names = sorted(set(all_names), key=lambda x: int(x.split("_")[-1]))
+    all_names = sorted(set(all_names), key=_save_name_sort_key)
 
     order_path = os.path.join(output_dir, "order_.txt")
     with open(order_path, "w") as f:

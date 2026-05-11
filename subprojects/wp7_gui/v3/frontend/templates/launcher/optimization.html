@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block hint %}Live run controls — GIFs, 3D mesh, progress, logs.{% endblock %}
+
+{% block head %}
+<script type="importmap">
+  {"imports": {"three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="section-grid" style="grid-template-rows: auto auto 1fr; height: 100%;">
+
+  <!-- Controls -->
+  <div class="dark-card toolbar">
+    <button class="btn" id="btnRun">Launch Run</button>
+    <button class="btn secondary" id="btnStop" disabled>Stop</button>
+    <div style="flex:1; min-width:120px;">
+      <div class="progress-bar-wrap" id="progressWrap">
+        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <div style="font-size:0.78rem; color:var(--muted); margin-top:3px;" id="progressLabel">Idle</div>
+    </div>
+    <div class="console" style="width:220px; max-height:48px; font-size:0.75rem; padding:4px 8px; overflow:hidden;" id="miniLog">—</div>
+  </div>
+
+  <!-- 3-panel visual grid -->
+  <div class="visuals-grid">
+    <!-- Assembly GIF -->
+    <div class="visual-card">
+      <div class="visual-title">Aeroshell Evolution</div>
+      <div class="image-slot" id="gifSlot">
+        <span class="placeholder-text">No GIF yet</span>
+        <img id="gifImg" alt="assembly gif">
+      </div>
+      <div class="hint" id="gifHint"></div>
+      <div><button class="btn" id="btnRestartGif" style="font-size:0.8rem;padding:5px 10px;" disabled>Restart GIF</button></div>
+    </div>
+
+    <!-- Solar GIF -->
+    <div class="visual-card">
+      <div class="visual-title">Solar Placement</div>
+      <div class="image-slot" id="solarSlot">
+        <span class="placeholder-text">No solar GIF yet</span>
+        <img id="solarImg" alt="solar gif">
+      </div>
+      <div class="hint" id="solarHint"></div>
+      <div><button class="btn" id="btnRestartSolar" style="font-size:0.8rem;padding:5px 10px;" disabled>Restart GIF</button></div>
+    </div>
+
+    <!-- Mesh viewer -->
+    <div class="visual-card">
+      <div class="visual-title">Aeroshell Mesh</div>
+      <div class="mesh-container" id="meshContainer">
+        <span id="meshPlaceholder" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#496456;font-size:0.9rem;z-index:1;">No mesh loaded</span>
+        <div class="mesh-status" id="meshStatus" style="display:none;"></div>
+      </div>
+      <div>
+        <div style="font-size:0.82rem; color:#496456; font-weight:600;">Epoch Slider</div>
+        <input type="range" id="meshSlider" min="0" max="0" value="0" disabled>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log console -->
+  <div class="dark-card" style="min-height:0; display:grid; grid-template-rows: auto 1fr; gap:6px;">
+    <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600;">Run Log</div>
+    <div class="console" id="logConsole" style="min-height:0;"></div>
+  </div>
+</div>
+
+<script>
+const API = "/launcher/api";
+let gifEntry = null, gifKey = null;
+let solarEntry = null, solarKey = null;
+let meshes = [], meshIdx = 0;
+let logEventSource = null, artifactEventSource = null;
+let artifactPollTimer = null;
+
+const btnRun        = document.getElementById("btnRun");
+const btnStop       = document.getElementById("btnStop");
+const progressFill  = document.getElementById("progressFill");
+const progressLabel = document.getElementById("progressLabel");
+const miniLog       = document.getElementById("miniLog");
+const gifImg        = document.getElementById("gifImg");
+const gifHint       = document.getElementById("gifHint");
+const btnRestartGif = document.getElementById("btnRestartGif");
+const solarImg      = document.getElementById("solarImg");
+const solarHint     = document.getElementById("solarHint");
+const btnRestartSolar = document.getElementById("btnRestartSolar");
+const meshSlider    = document.getElementById("meshSlider");
+const meshStatus    = document.getElementById("meshStatus");
+const meshPlaceholder = document.getElementById("meshPlaceholder");
+const logConsole    = document.getElementById("logConsole");
+
+function bust(url) { return url + (url.includes("?") ? "&" : "?") + "t=" + Date.now(); }
+
+// ---------- GIF panels ----------
+function setGif(entry, img, hint, btn, keyRef) {
+  if (!entry) { img.style.display = "none"; hint.textContent = "No GIF yet."; btn.disabled = true; return null; }
+  if (keyRef !== entry.key) { img.src = bust(entry.url); img.style.display = "block"; hint.textContent = ""; btn.disabled = false; }
+  return entry.key;
+}
+
+function updateGifs(data) {
+  const glist = data.mesh_assembly_gifs || [];
+  if (glist.length) gifEntry = { key: glist[0].rel_path || glist[0].name, url: glist[0].url };
+  else gifEntry = null;
+  gifKey = setGif(gifEntry, gifImg, gifHint, btnRestartGif, gifKey);
+
+  const slist = data.solar_loss_gifs || [];
+  if (slist.length) {
+    const s = slist.find(e => e.name === "rendering.gif") || slist[0];
+    solarEntry = { key: s.rel_path || s.name, url: s.url };
+  } else solarEntry = null;
+  solarKey = setGif(solarEntry, solarImg, solarHint, btnRestartSolar, solarKey);
+}
+
+// ---------- Mesh viewer (Three.js) ----------
+let scene, camera, renderer, controls, currentObj;
+function init3D() {
+  // lazy import so this only runs when a mesh is actually loaded
+}
+function load3D(url) {
+  import("three").then(({ PerspectiveCamera, Scene, Color, WebGLRenderer, HemisphereLight, DirectionalLight, MeshStandardMaterial, Mesh, Vector3 }) => {
+    import("three/addons/controls/OrbitControls.js").then(({ OrbitControls }) => {
+      import("three/addons/loaders/PLYLoader.js").then(({ PLYLoader }) => {
+        const container = document.getElementById("meshContainer");
+        if (!scene) {
+          scene = new Scene(); scene.background = new Color(0xf1f7f3);
+          camera = new PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+          camera.position.set(0, 0, 3);
+          renderer = new WebGLRenderer({ antialias: true });
+          renderer.setSize(container.clientWidth, container.clientHeight);
+          container.appendChild(renderer.domElement);
+          controls = new OrbitControls(camera, renderer.domElement);
+          controls.enableDamping = true;
+          scene.add(new HemisphereLight(0xffffff, 0x444444, 1.0));
+          const dl = new DirectionalLight(0xffffff, 0.8); dl.position.set(1,1,1); scene.add(dl);
+          window.addEventListener("resize", () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+          });
+          (function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); })();
+        }
+        new PLYLoader().load(bust(url), geo => {
+          geo.computeVertexNormals(); geo.computeBoundingBox();
+          const c = new Vector3(); geo.boundingBox.getCenter(c); geo.translate(-c.x, -c.y, -c.z);
+          geo.computeBoundingBox();
+          const sz = new Vector3(); geo.boundingBox.getSize(sz);
+          const scale = Math.max(sz.x, sz.y, sz.z) > 0 ? 2.0 / Math.max(sz.x, sz.y, sz.z) : 1;
+          if (currentObj) { scene.remove(currentObj); currentObj.geometry.dispose(); currentObj.material.dispose(); }
+          currentObj = new Mesh(geo, new MeshStandardMaterial({ color: 0x99A3A4, roughness: 0.6, metalness: 0.2, side: 2 }));
+          currentObj.scale.set(scale, scale, scale); scene.add(currentObj);
+          camera.position.set(0, 0, 3.5); controls.target.set(0, 0, 0); controls.update();
+          meshPlaceholder.style.display = "none";
+          meshStatus.style.display = "block";
+        }, null, err => console.error("PLY error:", err));
+      });
+    });
+  });
+}
+
+function updateMesh() {
+  if (!meshes.length) { meshSlider.disabled = true; meshStatus.style.display = "none"; meshPlaceholder.style.display = "block"; return; }
+  meshSlider.disabled = false; meshSlider.max = String(meshes.length - 1);
+  meshSlider.value = String(meshIdx);
+  meshStatus.textContent = meshes[meshIdx].name;
+  load3D(meshes[meshIdx].url);
+}
+
+meshSlider.addEventListener("input", e => { meshIdx = parseInt(e.target.value, 10); updateMesh(); });
+
+// ---------- Artifacts fetch (polling fallback + initial load) ----------
+async function fetchArtifacts() {
+  try {
+    const data = await (await fetch(`${API}/run/artifacts?t=${Date.now()}`, { cache: "no-store" })).json();
+    updateGifs(data);
+    const list = data.meshes || [];
+    if (list.length) {
+      const wasLatest = meshes.length > 0 && meshIdx === meshes.length - 1;
+      const first = meshes.length === 0;
+      const grew = list.length > meshes.length;
+      meshes = list;
+      if (first)             { meshIdx = meshes.length - 1; updateMesh(); }
+      else if (grew && wasLatest) { meshIdx = meshes.length - 1; updateMesh(); }
+      else if (grew)         { meshSlider.max = String(meshes.length - 1); }
+    } else if (meshes.length) { meshes = []; updateMesh(); }
+  } catch (e) { console.error("fetchArtifacts:", e); }
+}
+
+// ---------- SSE log stream ----------
+function startSSELog() {
+  if (logEventSource) { logEventSource.close(); }
+  logConsole.textContent = "";
+  logEventSource = new EventSource(`${API}/run/stream/logs`);
+  logEventSource.addEventListener("log", e => {
+    const { line } = JSON.parse(e.data);
+    logConsole.textContent += line + "\n";
+    logConsole.scrollTop = logConsole.scrollHeight;
+    miniLog.textContent = line.slice(-60);
+  });
+  logEventSource.addEventListener("epoch", e => {
+    const { epoch, total } = JSON.parse(e.data);
+    const pct = total > 0 ? Math.min(100, ((epoch + 1) / total) * 100) : 0;
+    progressFill.style.width = pct + "%";
+    progressLabel.textContent = `Epoch ${epoch + 1} / ${total} (${pct.toFixed(1)}%)`;
+  });
+  logEventSource.addEventListener("done", e => {
+    const { return_code } = JSON.parse(e.data);
+    progressLabel.textContent = return_code === 0 ? "Completed." : `Finished (code ${return_code})`;
+    progressFill.style.width = "100%";
+    logEventSource.close(); logEventSource = null;
+    btnRun.disabled = false; btnStop.disabled = true;
+    if (artifactPollTimer) clearInterval(artifactPollTimer);
+    fetchArtifacts();
+  });
+  logEventSource.onerror = () => { logEventSource.close(); logEventSource = null; btnRun.disabled = false; btnStop.disabled = true; };
+}
+
+function startArtifactPoll() {
+  fetchArtifacts();
+  if (artifactPollTimer) clearInterval(artifactPollTimer);
+  artifactPollTimer = setInterval(fetchArtifacts, 3000);
+}
+
+btnRun.addEventListener("click", async () => {
+  btnRun.disabled = true; btnStop.disabled = false;
+  progressFill.style.width = "0%"; progressLabel.textContent = "Starting…";
+  try {
+    const r = await fetch(`${API}/run/start`, { method: "POST", headers: {"Content-Type":"application/json"}, body: "{}" });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail?.message || r.status);
+    miniLog.textContent = `PID ${d.pid}`;
+    startSSELog();
+    startArtifactPoll();
+  } catch (err) {
+    progressLabel.textContent = "Error: " + err.message;
+    btnRun.disabled = false; btnStop.disabled = true;
+  }
+});
+
+btnStop.addEventListener("click", async () => {
+  btnStop.disabled = true;
+  await fetch(`${API}/run/stop`, { method: "POST" });
+  if (logEventSource) { logEventSource.close(); logEventSource = null; }
+  if (artifactPollTimer) { clearInterval(artifactPollTimer); artifactPollTimer = null; }
+  progressLabel.textContent = "Stopped.";
+  btnRun.disabled = false;
+});
+
+btnRestartGif.addEventListener("click", () => { if (gifEntry) { gifImg.src = bust(gifEntry.url); } });
+btnRestartSolar.addEventListener("click", () => { if (solarEntry) { solarImg.src = bust(solarEntry.url); } });
+
+// Load whatever's already on disk when page opens
+fetchArtifacts();
+
+// Check if a run is already live on page load and reconnect the SSE stream
+(async () => {
+  const state = await (await fetch(`${API}/run/state`)).json();
+  if (state.running) { btnRun.disabled = true; btnStop.disabled = false; startSSELog(); startArtifactPoll(); }
+})();
+</script>
+{% endblock %}

@@ -24,11 +24,13 @@ class SolarV3B2(ParentLoss):
 
     def _loss(self, model, skip_telemetry=False):
         # raw_loss is power in watts
+        assert self._vis_manager is not None, "CentralVisManager must be set for SolarV3B2 to compute loss."
         raw_loss = self.solar_estimator.solar_loss(
             model=model,
             epoch_name=self.epoch_name,
             disable_logging=skip_telemetry,
             disable_rendering=skip_telemetry,
+            vis_manager=self._vis_manager,
         )
         scaled_loss = raw_loss
 

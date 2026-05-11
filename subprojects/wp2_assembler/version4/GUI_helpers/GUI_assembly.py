@@ -361,7 +361,8 @@ def add_current_gui_assembly_to_map() -> int | None:
     Add the current GUI parameters to assembly_map.yaml only if all checks pass.
 
     Returns:
-        New assembly ID if the layout was added, otherwise None.
+        New assembly ID if the layout w
+        as added, otherwise None.
     """
     params = read_params()
     messages = _check_validity(params)

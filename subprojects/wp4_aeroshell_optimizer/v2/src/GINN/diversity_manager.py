@@ -14,6 +14,8 @@ single-z trainer with no diversity phase.
 from __future__ import annotations
 
 import math
+import time
+from dataclasses import replace as _dc_replace
 from pathlib import Path
 from typing import Any
 
@@ -24,17 +26,25 @@ import torch
 import trimesh
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
+from torch.profiler import record_function
 
 import wandb
-from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import (
+    NullVisManager,
+)
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
+    CentralVisManagerV2,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 
 class DiversityTrainer:
@@ -56,15 +66,13 @@ class DiversityTrainer:
         model_lr: float = 1e-4,
         diversity_manager: DiversityLossManager | None = None,
         diversity_num_points: int = 2048,
-        diversity_bbox_size: float = 10.0,
+        diversity_bbox_scale_factor: float = 1.0,
         diversity_norm_order: int = 2,
         diversity_neighbor_agg_fn: str = "min",
         force_z0_to_origin: bool = True,
         z_resample_cadence: int = 0,
         initial_Z: Tensor | None = None,
         z_resample_start_epoch: int = 0,
-        mesh_extractor: MeshExtractor | None = None,
-        mesh_extraction_config: dict[str, Any] | None = None,
         renderer_manager: VisualisationManager | None = None,
         rendering_freq: int | None = None,
         use_neural_renderer: bool = False,
@@ -72,6 +80,9 @@ class DiversityTrainer:
         log_dir: Path | None = None,
         conflict_tracker: GradientConflictTracker | None = None,
         conflict_cadence: int = 0,
+        diagnostic_mode: bool = True,
+        print_timing: bool = False,
+        vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
     ) -> None:
         """
         Args:
@@ -84,8 +95,11 @@ class DiversityTrainer:
             model_lr: Adam learning rate for model parameters.
             diversity_manager: Optional population-level diversity manager. Set to
                 ``None`` to skip Phase 2 entirely.
-            diversity_num_points / bbox_size / norm_order / neighbor_agg_fn: trainer-level
+            diversity_num_points / diversity_bbox_scale_factor / norm_order / neighbor_agg_fn: trainer-level
                 sampling params passed to the diversity manager compute call.
+            diversity_bbox_scale_factor: Multiplier applied to the outer_prism bounds before
+                sampling.  ``1.0`` (default) uses the exact outer_prism volume.  Values
+                ``> 1.0`` expand the sample region; ``< 1.0`` shrink it.
             force_z0_to_origin: pin Z[0] at the origin (reference shape in GINN).
             z_resample_cadence: resample Z every N epochs (0 disables resampling).
             initial_Z: Optional pretrained latent population of shape (N, z_dim).  When
@@ -96,8 +110,9 @@ class DiversityTrainer:
                 (backward-compatible with existing behaviour).  Set to a positive value
                 to hold the pretrained Z population for that many epochs before the
                 normal z_resample_cadence logic kicks in.
-            mesh_extractor + mesh_extraction_config + renderer_manager + rendering_freq +
-                use_neural_renderer: rendering wiring. All None/default -> no rendering.
+        mesh_extraction_config: dict removed — extractor is constructed internally using
+                the WP5 unified mesh extractor and scaled outer_prism bounds.
+            renderer_manager + rendering_freq + use_neural_renderer: rendering wiring.
             use_wandb: if False, logging is silently skipped.
             log_dir: directory for transient STL/PNG renders when falling back to CAD vis.
         """
@@ -111,10 +126,14 @@ class DiversityTrainer:
 
         self._conflict_tracker: GradientConflictTracker | None = conflict_tracker
         self._conflict_cadence: int = max(0, int(conflict_cadence))
+        self._diagnostic_mode: bool = diagnostic_mode
+        self._print_timing: bool = print_timing
 
         self._diversity_manager: DiversityLossManager | None = diversity_manager
         self._diversity_num_points: int = diversity_num_points
-        self._diversity_bbox_size: float = diversity_bbox_size
+        _prism = scale_outer_prism(get_outer_prism_bounds_mm(), diversity_bbox_scale_factor)
+        self._diversity_bbox_lo: list[float] = [_prism["x"][0], _prism["y"][0], _prism["z"][0]]
+        self._diversity_bbox_hi: list[float] = [_prism["x"][1], _prism["y"][1], _prism["z"][1]]
         self._diversity_norm_order: int = diversity_norm_order
         self._diversity_neighbor_agg_fn: str = diversity_neighbor_agg_fn
 
@@ -123,14 +142,25 @@ class DiversityTrainer:
         self._z_resample_start_epoch: int = max(0, int(z_resample_start_epoch))
         self._mode_c_transition_logged: bool = False
 
-        self._mesh_extractor: MeshExtractor | None = mesh_extractor
-        self._mesh_extraction_config: dict[str, Any] = mesh_extraction_config or {}
+        self._mesh_extractor: MeshSDFExtractor
+        _mesh_config = load_mesh_extraction_config()
+        _mesh_config = _dc_replace(_mesh_config, device=str(self._device))
+        self._mesh_extractor = MeshSDFExtractor(config=_mesh_config)
+        self._mesh_extractor.set_grid(
+            bbox=[
+                [self._diversity_bbox_lo[0], self._diversity_bbox_hi[0]],
+                [self._diversity_bbox_lo[1], self._diversity_bbox_hi[1]],
+                [self._diversity_bbox_lo[2], self._diversity_bbox_hi[2]],
+            ],
+            resolution=_mesh_config.base_resolution,
+        )
         self._renderer_manager: VisualisationManager | None = renderer_manager
         self._rendering_freq: int | None = rendering_freq
         self._use_neural_renderer: bool = use_neural_renderer
 
         self._use_wandb: bool = use_wandb
         self._log_dir: Path = log_dir or Path("subprojects/wp4_aeroshell_optimizer/v2/logs")
+        self._vis_manager: CentralVisManagerV2 | NullVisManager = vis_manager
 
         generator_device = self._device.type if self._device.type in {"cpu", "cuda"} else "cpu"
         self._resample_generator = torch.Generator(device=generator_device)
@@ -274,7 +304,9 @@ class DiversityTrainer:
                 self._model.set_latent_vector(self._Z[0])
                 bundle = self._total_loss.compute(self._model, epoch_name=0, calibration_mode=True)
                 # weight() without a norm_manager gives us the raw v_cruise-based cse_objective
-                raw_result = self._total_loss.weight(bundle, self._alm_manager, return_components=True, norm_manager=None)
+                raw_result = self._total_loss.weight(
+                    bundle, self._alm_manager, return_components=True, norm_manager=None, calibration_pass=True
+                )
                 if "cse_objective" in raw_result.components:
                     cse_val = abs(raw_result.components["cse_objective"].detach().item())
                     loss_scales["cse_objective"] = self._norm_manager._target_loss / cse_val if cse_val > 0 else 1.0
@@ -301,7 +333,9 @@ class DiversityTrainer:
         self._model.set_latent_vector(self._Z[0])
         bundle = self._total_loss.compute(self._model, epoch_name=0, calibration_mode=True)
         # weight() with norm_manager applies loss_scales; we measure grad norms on top of them
-        result = self._total_loss.weight(bundle, self._alm_manager, return_components=True, norm_manager=self._norm_manager)
+        result = self._total_loss.weight(
+            bundle, self._alm_manager, return_components=True, norm_manager=self._norm_manager, calibration_pass=True
+        )
 
         trainable_params = [p for p in self._model.parameters() if p.requires_grad]
         prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
@@ -330,9 +364,13 @@ class DiversityTrainer:
         self._norm_manager.record_calibration(loss_scales, grad_scales, calibrated_names)
         self._model_optimizer.zero_grad()
 
-        summary_items = [
-            f"{n}(loss={loss_scales.get(n, 1.0):.3g}, grad={grad_scales.get(n, 1.0):.3g})" for n in sorted(calibrated_names)
-        ]
+        summary_items = []
+        for n in sorted(calibrated_names):
+            loss_scale = loss_scales.get(n, 1.0)
+            grad_scale = grad_scales.get(n, 1.0)
+            loss_status = f"loss={loss_scale:.3g}" if n in loss_scales else "loss=default"
+            grad_status = f"grad={grad_scale:.3g}" if n in grad_scales else "grad=fixed/default"
+            summary_items.append(f"{n}({loss_status}, {grad_status})")
         print(f"[LossNormalisation] Calibration complete. {len(calibrated_names)} losses calibrated:")
         for item in summary_items:
             print(f"  ✓ {item}")
@@ -340,6 +378,7 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     # Phase 1 — per-vector backward
     # ------------------------------------------------------------------
+    @record_function("DiversityManager._per_vector_backward")
     def _per_vector_backward(  # noqa: PLR0912, PLR0915
         self,
         epoch: int,
@@ -372,8 +411,11 @@ class DiversityTrainer:
         active_constraint_cats: list[str] = []
         active_constraint_indices: list[int] = []
 
+        t0 = time.perf_counter()
         for i in range(self._population_size):
             self._model.set_latent_vector(self._Z[i])
+            if self._vis_manager is not None:
+                self._vis_manager.set_active_slot(i)
 
             bundle = self._total_loss.compute(self._model, epoch_name=epoch)
 
@@ -382,16 +424,21 @@ class DiversityTrainer:
                 active_constraint_cats = [cat for cat in all_constraint_cats if cat in bundle.constraints]
                 active_constraint_indices = [j for j, cat in enumerate(all_constraint_cats) if cat in bundle.constraints]
 
-            capture_components = (
-                self._conflict_tracker is not None
-                and self._conflict_cadence > 0
-                and epoch % self._conflict_cadence == 0
-                and i == 0
-            )
-            # properly weight losses, return components = True so we can do individual backward calls per component for conflict tracking
-            result = self._total_loss.weight(
-                bundle, alm_manager=self._alm_manager, return_components=True, norm_manager=self._norm_manager
-            )
+            if self._diagnostic_mode:
+                capture_components = (
+                    self._conflict_tracker is not None
+                    and self._conflict_cadence > 0
+                    and epoch % self._conflict_cadence == 0
+                    and i == 0
+                )
+                result = self._total_loss.weight(
+                    bundle, alm_manager=self._alm_manager, return_components=True, norm_manager=self._norm_manager
+                )
+            else:
+                capture_components = False
+                result = self._total_loss.weight(
+                    bundle, alm_manager=self._alm_manager, return_components=False, norm_manager=self._norm_manager
+                )
 
             # Detach ALM-space constraints before backward — graph will be freed.
             # If loss normalisation is enabled, ALM updates operate on normalized
@@ -409,56 +456,67 @@ class DiversityTrainer:
             for k, v in result.log_data.items():
                 summed_log_data[k] = summed_log_data.get(k, 0.0) + v
 
-            # Per-component backward: each component uses retain_graph=False and frees immediately.
-            # Does not call .backward() for the totalloss scalar, but the individual components.
-            # Done because we may want to capture gradient conflicts at the component level,
-            # and doing one backward on the total loss would give us only the combined gradient, not the per-component gradients needed for conflict analysis.
-            # TODO: May add config toggle or smart detection to see if we can get performance boost
-            trainable_params = [p for p in self._model.parameters() if p.requires_grad]
-            prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
-            per_population_conflict_vectors: dict[str, np.ndarray] | None = (
-                {} if capture_components and i == 0 and self._conflict_tracker is not None else None
-            )
+            if not self._diagnostic_mode:
+                # Performance mode: single combined backward, no per-component grad tracking or conflict capture.
+                (result.scalar / self._population_size).backward()
+            else:
+                # Diagnostic mode: per-component backward so we can track per-loss gradient norms and cosine conflict angles.
+                trainable_params = [p for p in self._model.parameters() if p.requires_grad]
+                prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
+                per_population_conflict_vectors: dict[str, np.ndarray] | None = (
+                    {} if capture_components and self._conflict_tracker is not None else None
+                )
 
-            for component_name, weighted_loss in result.components.items():
-                grad_key = f"optimizer_gradients/{component_name}"
-                if not weighted_loss.requires_grad:
+                for component_name, weighted_loss in result.components.items():
+                    grad_key = f"optimizer_gradients/{component_name}"
+                    if not weighted_loss.requires_grad:
+                        summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0)
+                        continue
+                    (weighted_loss / self._population_size).backward(retain_graph=False)
+                    curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
+                    delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
+                    summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0) + delta_norm
+
+                    if per_population_conflict_vectors is not None:
+                        delta_grad = torch.cat(
+                            [(c - pv).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
+                        )
+                        per_population_conflict_vectors[component_name] = delta_grad.numpy()
+
+                    prev_grad = curr_grad
+
+                # Explicit zero-gradient logs for scheduled zero-weighted losses.
+                for category in bundle.zero_weighted:
+                    lookup = (
+                        self._total_loss._objective_by_category.get(category)
+                        or self._total_loss._constraint_by_category.get(category)
+                        or self._total_loss._aux_by_category.get(category)
+                    )
+                    if lookup is None:
+                        continue
+                    if getattr(self._total_loss, "use_cse", False) and category in {
+                        getattr(self._total_loss, "_cse_drag_category", None),
+                        getattr(self._total_loss, "_cse_solar_category", None),
+                    }:
+                        continue
+                    loss_name = lookup[0]
+                    grad_key = f"optimizer_gradients/{loss_name}"
                     summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0)
-                    continue
-                # per-component backward for singel z, with graph freed immediately after for VRAM efficiency; log gradient norms for conflict tracking
-                (weighted_loss / self._population_size).backward(retain_graph=False)
-                curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
-                delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
-                summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0) + delta_norm
 
                 if per_population_conflict_vectors is not None:
-                    delta_grad = torch.cat(
-                        [(c - pv).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
-                    )
-                    per_population_conflict_vectors[component_name] = delta_grad.numpy()
+                    phase1_conflict_vectors = per_population_conflict_vectors
 
-                prev_grad = curr_grad
+        if self._vis_manager is not None:
+            self._vis_manager.set_active_slot(None)
 
-            # Explicit zero-gradient logs for scheduled zero-weighted losses.
-            for category in bundle.zero_weighted:
-                lookup = (
-                    self._total_loss._objective_by_category.get(category)
-                    or self._total_loss._constraint_by_category.get(category)
-                    or self._total_loss._aux_by_category.get(category)
-                )
-                if lookup is None:
-                    continue
-                if getattr(self._total_loss, "use_cse", False) and category in {
-                    getattr(self._total_loss, "_cse_drag_category", None),
-                    getattr(self._total_loss, "_cse_solar_category", None),
-                }:
-                    continue
-                loss_name = lookup[0]
-                grad_key = f"optimizer_gradients/{loss_name}"
-                summed_grad_log_data[grad_key] = summed_grad_log_data.get(grad_key, 0.0)
-
-            if per_population_conflict_vectors is not None:
-                phase1_conflict_vectors = per_population_conflict_vectors
+        if self._print_timing:
+            mode_label = "Diagnostic" if self._diagnostic_mode else "Performance"
+            n_losses = (
+                len(self._total_loss._objective_by_category)
+                + len(self._total_loss._constraint_by_category)
+                + len(self._total_loss._aux_by_category)
+            )
+            print(f"{mode_label} mode backward {n_losses} Losses: {time.perf_counter() - t0:.4f} seconds")
 
         mean_constraints: list[Tensor] | None = None
         if use_alm and all_alm_constraints:
@@ -480,6 +538,7 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     # Main step
     # ------------------------------------------------------------------
+    @record_function("DiversityManager.step")
     def step(self, epoch: int = -1) -> dict[str, float]:
         """
         One full optimization step: Phase 1 -> ALM update -> Phase 2 -> opt.step -> log/render.
@@ -527,7 +586,8 @@ class DiversityTrainer:
                 self._model,
                 self._Z,
                 num_points=self._diversity_num_points,
-                bbox_size=self._diversity_bbox_size,
+                bbox_lo=self._diversity_bbox_lo,
+                bbox_hi=self._diversity_bbox_hi,
                 norm_order=self._diversity_norm_order,
                 neighbor_agg_fn=self._diversity_neighbor_agg_fn,
             )
@@ -809,17 +869,22 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     def _render(self, epoch: int, total_loss_val: float) -> None:
         """Extract mesh from Z[0] and forward to either VisualisationManager or CAD fallback."""
-        if self._mesh_extractor is None:
-            return
         if self._rendering_freq is None or epoch % self._rendering_freq != 0:
             return
 
-        cfg = self._mesh_extraction_config
-        verts, faces = self._mesh_extractor.extract_mesh(
-            model=self._model,
-            isovalue=cfg.get("isovalue", 0.0),
-            batch_size=cfg.get("batch_size", 8192),
-        )
+        verts, faces = self._mesh_extractor.extract_mesh(sdf_model=self._model)
+
+        # Visualization: write PLY for every population slot
+        if self._vis_manager is not None:
+            for i in range(self._population_size):
+                self._model.set_latent_vector(self._Z[i])
+                _verts, _faces = self._mesh_extractor.extract_mesh(sdf_model=self._model)
+                self._vis_manager.set_active_slot(i)
+                self._vis_manager.vis_mesh_shape(epoch, _verts, _faces)
+                self._vis_manager.set_active_slot(None)
+            # Restore model to Z[0] as reference shape
+            self._model.set_latent_vector(self._Z[0])
+            return
 
         if self._use_neural_renderer and self._renderer_manager is not None:
             try:

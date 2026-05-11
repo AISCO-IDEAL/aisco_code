@@ -37,6 +37,10 @@ from subprojects.wp4_aeroshell_optimizer import (
     multi_log_in_one,
     reformat_wandb_name,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
+    CentralVisManagerV2,
+)
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 
@@ -92,6 +96,7 @@ def solar_mesh_loss_v3(
     faces: torch.Tensor,
     sun_direction: torch.Tensor,
     area_budget_mm2: float,
+    vis_manager: CentralVisManagerV2 | NullVisManager,
     solar_irradiance_W_m2: float = 1000.0,
     efficiency: float = 0.25,
     power_output_scale: float = 1.0,
@@ -230,6 +235,18 @@ def solar_mesh_loss_v3(
             render_solar.update(optimization_state=metrics_render)
         if counter == num_epochs and output_dir is not None:
             render_solar.finalize(output_dir)
+
+    # CentralVisManager path: write PLY for solar/selection.
+    if vis_manager is not None and epoch_name is not None:
+        _verts_np = vertices.detach().cpu().numpy()
+        _faces_np = faces.detach().cpu().numpy()
+        vis_manager.save_ply(
+            "solar/selection",
+            int(epoch_name),
+            _verts_np,
+            _faces_np,
+            scalar_values=sorted_soft_mask.detach().cpu().numpy(),
+        )
 
     # Log to wandb if enabled
     if enable_wandb_logging and epoch_name is not None:
@@ -483,6 +500,7 @@ class SolarLossEstimator:
     def solar_loss(  # noqa: PLR0915, PLR0912
         self,
         model: Any,
+        vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
         epoch_name: int | None = None,
         disable_logging: bool = False,
         disable_rendering: bool = False,
@@ -570,6 +588,7 @@ class SolarLossEstimator:
                     num_epochs=self.number_epochs,
                     render_solar=self.renderSolar,
                     selection_threshold_render=self.selection_threshold_render,
+                    vis_manager=vis_manager,
                 )
                 return loss
 
@@ -655,6 +674,7 @@ class SolarLossEstimator:
                 num_epochs=self.number_epochs,
                 render_solar=self.renderSolar,
                 selection_threshold_render=self.selection_threshold_render,
+                vis_manager=vis_manager,
             )
 
         if self.method != "mesh_sdf":

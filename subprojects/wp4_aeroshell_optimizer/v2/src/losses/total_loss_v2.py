@@ -25,11 +25,16 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from torch.profiler import record_function
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
+
+# Enforce only CentralVisManagerV2 or NullVisManager in v2 codepaths
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor
@@ -95,8 +100,13 @@ class WeightedLossResult:
 class TotalLossV2:
     """Aggregates and weights loss components — compute + weight, nothing else."""
 
-    def __init__(self, device: str | torch.device = "cuda") -> None:
+    def __init__(
+        self,
+        device: str | torch.device = "cuda",
+        vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
+    ) -> None:
         self._device: torch.device = torch.device(device) if isinstance(device, str) else device
+        self._vis_manager: CentralVisManagerV2 | NullVisManager = vis_manager
 
         general_config: dict[str, Any] = load_config()
         self.losses_config: dict[str, Any] = load_config(
@@ -122,8 +132,15 @@ class TotalLossV2:
         self.solar_default_value: float = gi["cse_defaults"]["solar"]
         self.drag_default_value: float = gi["cse_defaults"]["drag"]
         self._cse_prefactors: dict[str, float] = gi.get("cse_prefactors", {})
+        self._cse_weight: float = float(gi.get("cse_weight", 1.0))
 
         self._init_active_losses()
+        self._warn_about_dead_weights()
+
+        # Propagate vis_manager to all active child loss instances (e.g. GaotLoss, BbV3, SolarLoss).
+        if self._vis_manager is not None:
+            for _loss_inst in self._all_loss_instances().values():
+                _loss_inst._vis_manager = self._vis_manager
 
     def _init_active_losses(self) -> None:  # noqa: PLR0912, PLR0915
         """Instantiate active losses and build role-grouped internal lookup maps.
@@ -245,6 +262,36 @@ class TotalLossV2:
             disabled_raw = block.get("_disabled_epochs", [])
             self._disabled_epochs[category] = [(int(s), int(e)) for s, e in disabled_raw]
 
+    def _warn_about_dead_weights(self) -> None:
+        """Warn users about config weights that will be ignored due to ALM or CSE modes."""
+        gi: dict[str, Any] = self.losses_config["general_info"]
+        use_cse: bool = gi.get("CSE") == "True"
+        use_alm: bool = gi.get("ALM") == "True"
+
+        if use_cse:
+            dead_objectives = [
+                name
+                for cat, (name, _) in self._objective_by_category.items()
+                if name in self._manual_weights and self._manual_weights[name] != 1.0
+            ]
+            if dead_objectives:
+                print(
+                    f"⚠️  WARNING: CSE is enabled (CSE=True). Individual objective weights for {dead_objectives} "
+                    f"are dead code and will be ignored. Use 'cse_weight' config entry to scale CSE vs diversity."
+                )
+
+        if use_alm:
+            dead_constraints = [
+                name
+                for cat, (name, _) in self._constraint_by_category.items()
+                if name in self._manual_weights and self._manual_weights[name] != 1.0
+            ]
+            if dead_constraints:
+                print(
+                    f"⚠️  WARNING: ALM is enabled (ALM=True). Constraint weights for {dead_constraints} "
+                    f"are dead code and will be ignored. Use 'initial_lambda' and 'initial_mu' config entries to influence constraint strength."
+                )
+
     def _is_category_active(self, category: str, epoch: int) -> bool:
         return all(
             not (start <= epoch and (end == -1 or epoch <= end)) for start, end in self._disabled_epochs.get(category, [])
@@ -347,6 +394,7 @@ class TotalLossV2:
         """Category names for active constraints, in YAML order."""
         return list(self._constraint_by_category.keys())
 
+    @record_function("TotalLossV2.compute")
     def compute(
         self,
         model: SupportsModelContract,
@@ -383,30 +431,34 @@ class TotalLossV2:
                             and category in {self._cse_drag_category, self._cse_solar_category}
                         )
                         if self._deactivate_scheduler_mode == "zero_weighted":
-                            sig = inspect.signature(instance.get_loss)
-                            if "skip_telemetry" in sig.parameters:
-                                bundle.zero_weighted[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
-                            else:
-                                bundle.zero_weighted[category] = instance.get_loss(model, epoch_name)
+                            with record_function(f"loss_{loss_name}"):
+                                sig = inspect.signature(instance.get_loss)
+                                if "skip_telemetry" in sig.parameters:
+                                    bundle.zero_weighted[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+                                else:
+                                    bundle.zero_weighted[category] = instance.get_loss(model, epoch_name)
                         elif not is_cse_managed_objective:
                             self._skipped_log_zeros[f"raw_losses/{loss_name}"] = 0.0
                         continue
-                    sig = inspect.signature(instance.get_loss)
-                    if "skip_telemetry" in sig.parameters:
-                        target_dict[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
-                    else:
-                        target_dict[category] = instance.get_loss(model, epoch_name)
+                    with record_function(f"loss_{loss_name}"):
+                        sig = inspect.signature(instance.get_loss)
+                        if "skip_telemetry" in sig.parameters:
+                            target_dict[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+                        else:
+                            target_dict[category] = instance.get_loss(model, epoch_name)
         finally:
             self._clear_shared_meshes()
 
         return bundle
 
+    @record_function("TotalLossV2.weight")
     def weight(  # noqa: PLR0912, PLR0915
         self,
         bundle: RawLossBundle,
         alm_manager: ALMManager | None = None,
         return_components: bool = False,
         norm_manager: LossNormalisationManager | None = None,
+        calibration_pass: bool = False,
     ) -> WeightedLossResult:
         """Combine raw losses into a backpropable scalar plus a detached log dict.
 
@@ -536,13 +588,14 @@ class TotalLossV2:
                     if norm_manager
                     else 1.0
                 )
-                weighted_components["cse_objective"] = -v_cruise * cse_scale
-                log_data["weighted_losses/cse_objective"] = v_cruise.item()
+                cse_weight = 1.0 if calibration_pass else self._cse_weight
+                weighted_components["cse_objective"] = -v_cruise * cse_scale * cse_weight
+                log_data["weighted_losses/cse_objective"] = (v_cruise * cse_loss_scale * cse_weight).item()
                 log_data["optimizer_losses/cse_objective"] = weighted_components["cse_objective"].detach().item()
         else:
             for category, t in bundle.objectives.items():
                 name: str = self._objective_by_category[category][0]
-                w: float = self._manual_weights.get(name, 1.0)
+                w: float = 1.0 if calibration_pass else self._manual_weights.get(name, 1.0)
                 sign: float = float(self._objective_signs.get(category, 1))
                 combined_scale = (norm_manager.get_loss_scale(name) * norm_manager.get_grad_scale(name)) if norm_manager else 1.0
                 wt: torch.Tensor = sign * w * t * combined_scale
@@ -576,7 +629,7 @@ class TotalLossV2:
         else:
             for category, t in bundle.constraints.items():
                 name = self._constraint_by_category[category][0]
-                w = self._manual_weights.get(name, 1.0)
+                w = 1.0 if calibration_pass else self._manual_weights.get(name, 1.0)
                 combined_scale = (norm_manager.get_loss_scale(name) * norm_manager.get_grad_scale(name)) if norm_manager else 1.0
                 wt = w * t * combined_scale
                 weighted_components[name] = wt
@@ -586,7 +639,7 @@ class TotalLossV2:
         # --- Auxiliaries (always manual) ----------------------------------
         for category, t in bundle.aux.items():
             name = self._aux_by_category[category][0]
-            w = self._manual_weights.get(name, 1.0)
+            w = 1.0 if calibration_pass else self._manual_weights.get(name, 1.0)
             combined_scale = (norm_manager.get_loss_scale(name) * norm_manager.get_grad_scale(name)) if norm_manager else 1.0
             wt = w * t * combined_scale
             weighted_components[name] = wt

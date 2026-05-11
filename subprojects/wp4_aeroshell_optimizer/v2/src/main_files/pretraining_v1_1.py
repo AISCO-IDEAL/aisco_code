@@ -1,5 +1,7 @@
 import importlib
+import json
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +10,7 @@ import torch
 import trimesh
 
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
+from subprojects.wp2_assembler.version4.utils.wp4_utils import get_outer_bb_info
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.ground_truth_masks.simple_geoms import (
     cube_gt,
     ply_gt,
@@ -21,6 +24,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     collect_optimizer_state,
     collect_param_stats,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp5.unified_mesh_extraction import MeshExtractionConfig, MeshSDFExtractor
 
 # --- Module constants (Plan 013 M2) ---
@@ -84,7 +88,7 @@ def _load_ply_mesh(config: dict, device: str, center_mesh: bool = False) -> tupl
 
     # Z grounding: Z_min = ground_clearance
     prism = get_outer_prism_bounds_mm()
-    ground_clearance = abs(prism["z_sampling"][0])
+    ground_clearance = abs(prism["z"][0])
     verts_np[:, 2] += ground_clearance - float(verts_np[:, 2].min())
 
     ply_verts_t = torch.tensor(verts_np, device=device)
@@ -113,7 +117,10 @@ def _compute_gt_target(
     if pretraining_shape == "ply":
         assert ply_verts_t is not None and ply_faces_t is not None
         return ply_gt(input_data, ply_verts_t, ply_faces_t)
-    return sphere_gt(input_data)
+
+    # get centroid for pretraining
+    centroid = torch.Tensor(get_outer_bb_info()["centroid"]).to(input_data.device)
+    return sphere_gt(input_data, centroid)
 
 
 def _compute_eikonal(model, input_data: torch.Tensor, device: str) -> torch.Tensor:
@@ -172,6 +179,81 @@ def _compute_eikonal_latent(
     return torch.tensor(0.0, device=device)
 
 
+def _boost_domain_interior(
+    domain_pts: torch.Tensor,
+    domain_gt: torch.Tensor,
+    interior_min_fraction: float,
+    lo: torch.Tensor,
+    hi: torch.Tensor,
+    ply_verts: torch.Tensor,
+    ply_faces: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Rejection-sample additional interior points until domain batch has ≥ interior_min_fraction negative-SDF pts.
+
+    Evicts exterior (positive-SDF) domain pts to make room, preserving total count.
+    If the mesh fills too little of the prism to satisfy the target, returns best-effort.
+
+    Args:
+        domain_pts: Current domain points [n_domain, 3].
+        domain_gt:  Ground-truth SDF for domain_pts [n_domain].
+        interior_min_fraction: Target fraction of domain pts with SDF < 0 (inside mesh).
+        lo: Prism lower bound [3].
+        hi: Prism upper bound [3].
+        ply_verts: PLY mesh vertices on the same device.
+        ply_faces: PLY mesh face indices on the same device.
+
+    Returns:
+        (domain_pts, domain_gt) with the same shape, but with at least
+        interior_min_fraction × n_domain points inside the mesh.
+    """
+    n_domain = domain_pts.shape[0]
+    target_interior = int(n_domain * interior_min_fraction)
+    interior_mask = domain_gt < 0
+    n_current = int(interior_mask.sum().item())
+    n_deficit = target_interior - n_current
+
+    if n_deficit <= 0:
+        print("[Interior Boost] Interior point requirement already satisfied.")
+        return domain_pts, domain_gt  # already satisfied
+
+    # Oversample 50x the deficit; handles very sparse interiors (bunny: ~4.3% of prism).
+    oversample_n = n_deficit * 50
+    cands = lo + torch.rand(oversample_n, 3, device=domain_pts.device) * (hi - lo)
+    cands_gt = ply_gt(cands, ply_verts, ply_faces)
+    new_mask = cands_gt < 0
+    new_interior_pts = cands[new_mask]
+    new_interior_gt = cands_gt[new_mask]
+
+    n_fill = min(n_deficit, new_interior_pts.shape[0])
+    print(f"[Interior Boost] Filling {n_fill} interior points (deficit: {n_deficit}, found: {new_interior_pts.shape[0]})")
+    if n_fill == 0:
+        print("[Interior Boost] WARNING: No interior points found — mesh too small or not inside prism.")
+        return domain_pts, domain_gt  # no interior found — mesh too small or not inside prism
+
+    # Keep all existing interior pts; trim exterior to make room for n_fill new interior pts.
+    exterior_mask = ~interior_mask
+    n_keep_exterior = max(0, int(exterior_mask.sum().item()) - n_fill)
+
+    result_pts = torch.cat(
+        [
+            domain_pts[interior_mask],
+            domain_pts[exterior_mask][:n_keep_exterior],
+            new_interior_pts[:n_fill],
+        ],
+        dim=0,
+    )
+    result_gt = torch.cat(
+        [
+            domain_gt[interior_mask],
+            domain_gt[exterior_mask][:n_keep_exterior],
+            new_interior_gt[:n_fill],
+        ],
+        dim=0,
+    )
+    # Guard: clamp to n_domain in case of off-by-one from integer rounding
+    return result_pts[:n_domain], result_gt[:n_domain]
+
+
 def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsically sequential; decomposition would obscure control flow
     shape_type: str,
     shape_params: dict,
@@ -182,6 +264,7 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
     domain_fraction: float = 0.50,
     near_surface_tight_sigma: float | None = None,
     near_surface_wide_sigma: float | None = None,
+    interior_min_fraction: float = 0.0,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Sample a surface-concentrated batch of 3D points and ground-truth SDF values.
 
@@ -217,8 +300,8 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
 
         # 50 % uniform domain in outer_prism cuboid (shared across all pretraining shapes)
         prism = get_outer_prism_bounds_mm()
-        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z_sampling"][0]], dtype=torch.float32, device=device)
-        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z_sampling"][1]], dtype=torch.float32, device=device)
+        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z"][0]], dtype=torch.float32, device=device)
+        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z"][1]], dtype=torch.float32, device=device)
         domain_pts = lo + torch.rand(n_domain, 3, device=device) * (hi - lo)
         domain_gt = sphere_gt(domain_pts, coordinates=sphere_center, radius=radius)
 
@@ -260,8 +343,8 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
 
         # 50 % uniform domain in outer_prism cuboid (shared across all pretraining shapes)
         prism = get_outer_prism_bounds_mm()
-        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z_sampling"][0]], dtype=torch.float32, device=device)
-        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z_sampling"][1]], dtype=torch.float32, device=device)
+        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z"][0]], dtype=torch.float32, device=device)
+        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z"][1]], dtype=torch.float32, device=device)
         domain_pts = lo + torch.rand(n_domain, 3, device=device) * (hi - lo)
         domain_gt = cube_gt(domain_pts, coordinates=cube_center, side_length=side)
 
@@ -325,10 +408,16 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
 
         # Domain — sample from the outer-prism cuboid
         prism = get_outer_prism_bounds_mm()
-        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z_sampling"][0]], dtype=torch.float32, device=device)
-        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z_sampling"][1]], dtype=torch.float32, device=device)
+        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z"][0]], dtype=torch.float32, device=device)
+        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z"][1]], dtype=torch.float32, device=device)
         domain_pts = lo + torch.rand(n_domain, 3, device=device) * (hi - lo)
         domain_gt = ply_gt(domain_pts, ply_verts, ply_faces)
+
+        # Interior boost: rejection-sample extra interior pts until target fraction is met.
+        if interior_min_fraction > 0.0:
+            domain_pts, domain_gt = _boost_domain_interior(
+                domain_pts, domain_gt, interior_min_fraction, lo, hi, ply_verts, ply_faces
+            )
 
         # Use CPU arrays for trimesh surface sampling (avoids moving trimesh to device)
         verts_np = shape_params["ply_verts"].numpy()  # already CPU
@@ -403,7 +492,7 @@ def _make_mesh_extractor_config(device: str, mesh_res: int, outer_prism: dict[st
     Args:
         device: Compute device string (e.g. "cuda" or "cpu").
         mesh_res: Marching-cubes grid resolution.
-        outer_prism: Dict from get_outer_prism_bounds_mm() with keys 'x', 'y', 'z_mesh'.
+        outer_prism: Dict from get_outer_prism_bounds_mm() with keys 'x', 'y', 'z'.
     """
     return MeshExtractionConfig(
         device=device,
@@ -411,7 +500,7 @@ def _make_mesh_extractor_config(device: str, mesh_res: int, outer_prism: dict[st
         bbox=[
             [float(outer_prism["x"][0]), float(outer_prism["x"][1])],
             [float(outer_prism["y"][0]), float(outer_prism["y"][1])],
-            [float(outer_prism["z_mesh"][0]), float(outer_prism["z_mesh"][1])],
+            [float(outer_prism["z"][0]), float(outer_prism["z"][1])],
         ],
         base_resolution=mesh_res,
         subdivision_factor=1,
@@ -445,7 +534,7 @@ def _extract_mesh(
             ``return_mesh=True``; must not be ``None`` when ``return_mesh=False``.
         device: Compute device string.
         mesh_res: Marching-cubes grid resolution.
-        outer_prism: Dict from get_outer_prism_bounds_mm() with keys 'x', 'y', 'z_mesh'.
+        outer_prism: Dict from get_outer_prism_bounds_mm() with keys 'x', 'y', 'z'.
         return_mesh: When ``True``, return numpy arrays instead of saving to disk.
 
     Returns:
@@ -457,7 +546,7 @@ def _extract_mesh(
         if not return_mesh:
             x_range = outer_prism["x"][1] - outer_prism["x"][0]
             y_range = outer_prism["y"][1] - outer_prism["y"][0]
-            z_range = outer_prism["z_mesh"][1] - outer_prism["z_mesh"][0]
+            z_range = outer_prism["z"][1] - outer_prism["z"][0]
             print(
                 f"[extract_mesh] Extracting mesh: res={mesh_res}, bounds=X({x_range:.0f})Y({y_range:.0f})Z({z_range:.0f})mm, device={device} ..."
             )
@@ -478,6 +567,59 @@ def _extract_mesh(
     return None
 
 
+def _compute_solitary_pretrain_hash(config: dict[str, Any], model: SupportsModelContract) -> str:
+    """Compute a stable hash over model architecture and all solitary pretraining parameters.
+
+    Covers: full model architecture (via get_model_info_dict), pretraining_shape,
+    and the complete training_loop dict.  For PLY shapes, also includes the PLY stem
+    (not full path, for path-move resilience) and ply_scale.
+
+    Args:
+        config: Dict from the ``pretraining`` section of pretraining_v0_config.yaml.
+        model: Model whose architecture is included in the hash.
+
+    Returns:
+        10-character hex hash string.
+    """
+    pretraining_shape: str = config.get("pretraining_shape", "sphere")
+    key: dict[str, Any] = {
+        "model": model.get_model_info_dict(),
+        "pretraining_shape": pretraining_shape,
+        "training_loop": config.get("training_loop", {}),
+    }
+    if pretraining_shape == "ply":
+        ply_path_raw = config.get("pretraining_ply_path") or config.get("beast_pretraining_ply_path", "")
+        key["ply_stem"] = Path(ply_path_raw).stem if ply_path_raw else ""
+        key["ply_scale"] = config.get("pretraining_ply_scale", 1000.0)
+    return dict_hashing(key)
+
+
+def _resolve_solitary_ckpt_path(
+    config: dict[str, Any],
+    model: SupportsModelContract,
+    base_dir: Path,
+) -> Path:
+    """Return the canonical checkpoint path for a solitary pretraining run.
+
+    Folder structure:
+      <base_dir>/<epochs:06d>_<ModelClass>_<config_hash>/pretrained_<config_hash>.pth
+        model_info_dict.json
+
+    Args:
+        config: Dict from the ``pretraining`` section of pretraining_v0_config.yaml.
+        model: Model whose architecture is included in the hash.
+        base_dir: Root directory for solitary pretraining checkpoints.
+
+    Returns:
+        Absolute Path to the checkpoint file inside the canonical folder.
+    """
+    config_hash = _compute_solitary_pretrain_hash(config, model)
+    epochs: int = int(config.get("training_loop", {}).get("epochs", 0))
+    model_class_name: str = model.__class__.__name__
+    folder_name = f"{epochs:06d}_{model_class_name}_{config_hash}"
+    return base_dir / folder_name / f"pretrained_{config_hash}.pth"
+
+
 # 2026 03 05, eschaerer:
 # look i'm not sure if the changes i made also work on the HPC. Please revert them if they don't
 def pretraining(
@@ -485,6 +627,7 @@ def pretraining(
     pretraining_config_name: str = "pretraining_v0_config.yaml",
     override_config: dict | None = None,
     debug_manager: DebugManager | None = None,
+    canonical_ckpt_path: Path | None = None,
 ) -> SupportsModelContract:
     # Does pretraining, for now only on a sphere
 
@@ -607,4 +750,27 @@ def pretraining(
 
     # ── Debug: cleanup ───────────────────────────────────────────
     dbg.stop()
+
+    # --- Save to canonical checkpoint path if provided (Plan 031 / M4 + M5) ---
+    if canonical_ckpt_path is not None:
+        canonical_ckpt_path.parent.mkdir(parents=True, exist_ok=True)
+        config_hash = _compute_solitary_pretrain_hash(config, model)
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "meta": {
+                    "config_hash": config_hash,
+                    "date": datetime.now().isoformat(),
+                    "epochs": num_epochs,
+                    "model_class": model.__class__.__name__,
+                },
+            },
+            canonical_ckpt_path,
+        )
+        print(f"[pretraining] SAVE  path={canonical_ckpt_path}  hash={config_hash}  epochs={num_epochs}")
+        info_json_path = canonical_ckpt_path.parent / "model_info_dict.json"
+        with open(info_json_path, "w") as _f:
+            json.dump(model.get_model_info_dict(), _f, indent=2)
+        print(f"[pretraining] Wrote model_info_dict.json → {info_json_path}")
+
     return model
