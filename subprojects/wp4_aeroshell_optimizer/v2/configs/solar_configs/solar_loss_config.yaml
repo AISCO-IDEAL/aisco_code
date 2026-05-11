@@ -158,3 +158,20 @@ SolarLossConfigV7:
   rendering: True
   selection_threshold_render: 0.0005
   log_group_name: "solar_loss_metrics"
+
+
+# Rollout losses — SR/SRRT/MR/MRRT
+SolarLossConfigSR:
+  method: "mesh_sdf"
+  bbox: [[-4000.0, 4000.0], [-4000.0, 4000.0], [-4000.0, 4000.0]]
+  resolution: 64
+  isovalue: 0.0
+  area_budget_mm2: 6000000
+  power_conversion_factor: 250
+  sun_dir: [-1.0, 1.0, 0.8]
+  solar_irradiance_W_m2: 1000.0
+  efficiency: 0.25
+  sigmoid_sharpness: 8.0
+  soft_mask_selection_threshold: 0.5
+  soft_mask_full_selection_threshold: 0.95
+  eps: 1e-12
