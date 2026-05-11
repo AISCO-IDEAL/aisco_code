@@ -2,7 +2,7 @@
 # ==============================================================================
 # FAST-RESUME / SPECIFIC CHECKPOINT OVERRIDE
 # ==============================================================================
-use_specific_pretraining: false # if true, skip pretraining and load specific_pretraining_path directly
+use_specific_pretraining: true # if true, skip pretraining and load specific_pretraining_path directly
 specific_pretraining_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/000600_ConcatWIREV5_ENFORCE_8cf5cd14ad/pretrained_latent_8cf5cd14ad.pth"
                           # absolute path to a pretrained_latent_*.pth; only used when use_specific_pretraining=true
 
@@ -35,6 +35,13 @@ active_population:
   - simple_bullet_pointy
   - simple_bullet_pointy
   - simple_bullet_pointy
+  #- silvretta_no_wheels
+  #- bunny_orientated2
+  #- simple_cuboid
+  #- simple_solarcar
+  #- simple_bullet_blunt
+  #- simple_catamaran
+  #- simple_trimaran
 
 model_name: "ConcatWIREV5_ENFORCE" # only used for standalone pretraining. In main loop, model_name from general_config.yaml is used.
 z_placement: "circle"
@@ -140,4 +147,20 @@ shape_library:
     side_length: null
     ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/silvretta_no_wheels.ply"
     ply_scale: 0.001
+    surface_noise_sigma_factor: 0.005
+
+  simple_catamaran:
+    shape_type: ply
+    radius: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/simple_catamaran.ply"
+    ply_scale: 100.0
+    surface_noise_sigma_factor: 0.005
+
+  simple_trimaran:
+    shape_type: ply
+    radius: null
+    side_length: null
+    ply_path: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/00_pretraining_target_shapes/simple_trimaran.ply"
+    ply_scale: 100.0
     surface_noise_sigma_factor: 0.005
