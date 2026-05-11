@@ -16,10 +16,25 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import Di
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
-from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import pretraining_latent
-from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import pretraining
+from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import (
+    _compute_latent_pretrain_hash,
+    pretraining_latent,
+)
+from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
+    _compute_solitary_pretrain_hash,
+    _resolve_solitary_ckpt_path,
+    pretraining,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat, SupportsOptimise
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.ply_to_gif import generate_gifs
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import (
+    CentralVisManager,
+)
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import (
+    NullVisManager,
+)
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
+    CentralVisManagerV2,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     apply_sweep_overrides,
     get_master_config,
@@ -30,7 +45,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import DebugManager
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is_local_machine
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is_cluster
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
@@ -39,7 +54,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import (
     allround_save_data,
-    fetch_pretrained_model,
     reformat_wandb_name,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.wandb_utils import patch_wandb_log_for_monotonic_steps
@@ -112,8 +126,8 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
 
     # 1. Load and register configs
     general_config: dict[str, Any] = load_config(v="v2", cfg_name="general_config.yaml")
-    # Auto-detect environment: override run_locally if /cluster is not accessible
-    if not os.path.isdir("/cluster"):
+    # Auto-detect environment: override run_locally if not on a known cluster
+    if not is_cluster():
         general_config["general_info"]["run_locally"] = "True"
     verbose: bool = general_config.get("general_info", {}).get("verbose", True)
     device: str = general_config.get("general_info", {}).get("device", "cuda" if torch.cuda.is_available() else "cpu")
@@ -128,6 +142,19 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
     debug_manager = DebugManager(config=debug_cfg)
     if verbose:
         print(debug_manager.summary())
+
+    # Setup profiler config
+    profiler_cfg = general_config.get("profiler", {})
+    profile_mode = profiler_cfg.get("profile_mode", False)
+    prof_wait = profiler_cfg.get("wait", 5)
+    prof_warmup = profiler_cfg.get("warmup", 2)
+    prof_active = profiler_cfg.get("active", 10)
+    prof_repeat = profiler_cfg.get("repeat", 1)
+    prof_top_entries = profiler_cfg.get("top_entries", 30)
+    if profile_mode and verbose:
+        print(
+            f"Performance profiler enabled with schedule: wait={prof_wait}, warmup={prof_warmup}, active={prof_active}, repeat={prof_repeat}, top_entries={prof_top_entries}"
+        )
     # 2. Handle wandb init and potential sweep/logging setup.
 
     use_wandb: bool = general_config["wandb_general"].get("use_wandb", False)
@@ -217,6 +244,37 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
         else:
             rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
         os.makedirs(rendering_dir, exist_ok=True)
+
+    # Construct vis manager once per run.
+    # vis_manager: "v2" | "legacy" | "null" | "disabled" (default)  # noqa: ERA001
+    # "v2"       → CentralVisManagerV2 (async PLY writes, ProcessPool GIFs)
+    # "legacy"   → original CentralVisManager (synchronous, for rollback)
+    # "null"     → NullVisManager (no-op; is_enabled() always False — dry-run)
+    # "disabled" → None (no vis manager at all)
+    _vis_mode = general_config.get("vis_manager", "disabled")
+    _vis_manager: CentralVisManagerV2 | CentralVisManager | NullVisManager | None = None
+
+    if _vis_mode in ("v2", "legacy") and rendering_dir is None:
+        # If CVM requested but wandb is off, create fallback vis dir.
+        _fallback_dir = (
+            Path(general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")) / model_hash / "vis_fallback"
+        )
+        rendering_dir = _fallback_dir
+
+    if rendering_dir is not None and _vis_mode in ("v2", "legacy"):
+        _run_id = wandb_name or "unknown"
+        # Only support CentralVisManagerV2 going forward; treat "legacy" as "v2".
+        _vis_manager = CentralVisManagerV2(run_dir=rendering_dir, run_id=_run_id)
+        print(f"[VisManager:{_vis_mode}] enabled → {rendering_dir}")
+    elif _vis_mode == "null":
+        _vis_manager = NullVisManager()
+        print("[VisManager:null] dry-run mode — all writes are no-ops")
+    else:
+        print(f"[VisManager] disabled (vis_manager={_vis_mode!r})")
+        raise ValueError(f"Invalid vis_manager mode: {_vis_mode}. Expected 'v2', 'legacy', 'null', you can't disable it entirely")
+    assert _vis_manager is not None, (
+        "Vis manager should be initialized at this point. Check the logic for vis_manager initialization."
+    )
     # 3b. Handle pretraining.
     # latent_space=true  → pretraining_latent.py (handles fast-resume internally; checkpoint in latent_pretraining dir)
     # latent_space=false → standard pretraining_v1_1.py (checkpoint in pretrained_path)
@@ -232,78 +290,60 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
         latent_cfg_name: str = general_config["active_configs"].get("latent_pretraining", "pretraining_latent_config.yaml")
         latent_config = _load_config(v="v2", cfg_name=latent_cfg_name)
         vis_sampling = latent_config["output"].get("sampling_vis", True)
-        make_gif = latent_config["output"].get("make_gif", False)
 
-        # Checkpoint: same storage root and model-hash subdir as standard pretraining.
-        # This keeps latent pretrained files alongside standard ones and is consistent
-        # with fetch_pretrained_model's search pattern.
-        if run_locally:
-            storage_root = general_config["storage_paths"].get("beast_storage_dir") or general_config["storage_paths"].get(
-                "local_storage_dir", "./local_storage_dir"
-            )
-        else:
-            storage_root = general_config["storage_paths"]["storage_dir"]
-        latent_ckpt_path = Path(storage_root) / model_hash / f"pretrained_latent_{model_hash}.pth"
-
-        # Vis + GIFs live inside the main run dir (same as renders/meshes).
-        vis_run_dir: Path = (rendering_dir / "sampling_vis") if rendering_dir is not None else Path("/tmp/aisco_sampling_vis")
+        # Vis dir: derive from canonical pretraining run folder (never /tmp).
+        # Computed before calling pretraining_latent so GIF generation has the path.
+        pretrained_hash: str = _compute_latent_pretrain_hash(latent_config, model)
         model, Z_pretrained = pretraining_latent(
             model,
             latent_config,
             device,
             use_wandb=use_wandb,
             vis_sampling=vis_sampling,
-            vis_output_dir=vis_run_dir,
-            checkpoint_path=latent_ckpt_path,
+            vis_manager=_vis_manager,
         )
         if verbose:
             print(f"[latent_space] Latent pretraining complete. Population size: {len(latent_config['latent_population'])}")
-        if make_gif and any(vis_run_dir.glob("*.ply")):
-            print("[latent_space] Generating GIFs for latent pretraining visualization...")
-            generate_gifs(
-                input_path=vis_run_dir, output_path=rendering_dir / "gifs" if rendering_dir is not None else vis_run_dir / "gifs"
+        # GIF generation is owned by CentralVisManager.finalize() (called at end of optimization).
+        # Warn when vis data was collected but finalize() won't see it (manager disabled).
+        if vis_sampling and _vis_manager is None and verbose:
+            print(
+                "[latent_space] Warning: vis_sampling=true but vis manager is disabled "
+                "(vis_manager=disabled). PLYs were written to the local vis_dir by "
+                "SamplingVisualizer but no GIF will be generated. Set vis_manager: v2 to get GIFs."
             )
-        elif make_gif and verbose:
-            print("[latent_space] Skipping GIF generation: no PLY files in sampling_vis (fast-resume or vis disabled).")
 
     else:
-        # Standard pretraining: look for an existing checkpoint, then run pretraining_v1_1 if needed.
+        # Standard pretraining: hash-based canonical lookup (Plan 031 / M4).
         pretraining_config_name = general_config["active_configs"].get("pretraining", "pretraining_v0_config.yaml")
         pretraining_config = load_config(v="v2", cfg_name=pretraining_config_name)
         force_pretraining = pretraining_config["pretraining"].get("force_pretraining", False)
 
-        ### get paths
+        # Canonical base dir for solitary pretraining (environment-aware)
         if run_locally:
-            pretrained_path = pretraining_config["pretraining"].get("local_pretraining_model_path", "")
-            if not pretrained_path:  # check if empty path given in pretraining config, if so fallback to general config path
-                pretrained_path = general_config["storage_paths"].get("beast_storage_dir") or general_config["storage_paths"].get(
-                    "local_storage_dir", "./local_storage_dir"
-                )
+            _local_root = general_config["storage_paths"].get("beast_storage_dir") or general_config["storage_paths"].get(
+                "local_storage_dir", "./local_storage_dir"
+            )
+            solitary_base_dir = Path(_local_root) / "pretraining" / "solitary_pretraining"
         else:
-            pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", "")
-            if not pretrained_path:  # check if empty path given in pretraining config, if so fallback to general config path
-                pretrained_path = general_config["storage_paths"].get("storage_dir", "/cluster/work/fuge/AISCO/temp_")
+            solitary_base_dir = Path("/cluster/work/fuge/AISCO/pretraining/solitary_pretraining")
 
-        if verbose:
-            print(f"Pretrained path (from pretraining cfg): {pretrained_path}")
+        pretrained_hash = _compute_solitary_pretrain_hash(pretraining_config, model)
+        pretrained_model_path: Path = _resolve_solitary_ckpt_path(pretraining_config, model, solitary_base_dir)
 
-        ### load pretrained model if exists
-        pretrained_model_path = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
-
-        ### pretraining if model doesn't exist
-        if pretrained_model_path is not None and not force_pretraining:
-            model.load_state_dict(torch.load(pretrained_model_path, map_location=device))
+        if pretrained_model_path.exists() and not force_pretraining:
+            ckpt = torch.load(pretrained_model_path, map_location=device, weights_only=True)
+            if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
+                model.load_state_dict(ckpt["model_state_dict"])
+            else:
+                model.load_state_dict(ckpt)
             if verbose:
-                print(f"Loaded pretrained model of type {model.__class__.__name__} from {pretrained_model_path}")
+                print(f"[pretraining] LOAD  path={pretrained_model_path}  hash={pretrained_hash}  status=fast_resume")
         else:
             if verbose and not force_pretraining:
-                print("No pretrained model found, proceeding by pretraining")
+                print(f"[pretraining] MISS  path={pretrained_model_path}  hash={pretrained_hash}  action=train")
             if verbose and force_pretraining:
-                print("Force pretraining enabled, proceeding by pretraining")
-                if pretrained_model_path:
-                    print(
-                        f"Note: A pretrained model was found at {pretrained_model_path} but will be ignored due to force_pretraining=True"
-                    )
+                print(f"[pretraining] Force pretraining enabled. hash={pretrained_hash}")
 
             print(f"Starting pretraining for model {model.__class__.__name__}")
             if uses_diversity:
@@ -322,17 +362,14 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
                 # Reset active latent vector to zeros before pretraining.
                 model.set_latent_vector(torch.zeros_like(active_latent))
 
-            model = pretraining(model=model, debug_manager=debug_manager)
-
-            allround_save_data(
+            model = pretraining(
                 model=model,
-                storage_path=pretrained_path,
-                save_model=True,
-                save_mesh=True,
-                epoch=None,
-                verbose=verbose,
-                pretraining=True,
+                debug_manager=debug_manager,
+                pretraining_config_name=pretraining_config_name,
+                canonical_ckpt_path=pretrained_model_path,
             )
+    model = model.to(device)
+
     if verbose:
         print(f"Pretraining complete for model: {model_class_name} with Parent class: {parent_class_name}")
         print(f"Detailed settings: {[f'{key}: {value}' for key, value in settings.items()]}")
@@ -340,6 +377,9 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
     # 4. Initialise whatever we need to run the main training loop, e.g. trainer, loss function, etc.
 
     training_config = load_config(v="v2", cfg_name=general_config["active_configs"].get("training", None))
+    _mode_cfg: dict = training_config.get("mode", {})
+    diagnostic_mode: bool = _mode_cfg.get("training_mode", "diagnostic") == "diagnostic"
+    print_timing: bool = _mode_cfg.get("print_timing", False)
 
     # Gradient conflict tracking setup
     conflict_cadence: int = training_config["training_params"].get("gradient_conflict_cadence", 0)
@@ -351,7 +391,10 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
             conflict_output_dir = Path(conflict_output_dir_str)
         elif wandb_name is not None:
             if run_locally:
-                base_dir = Path(general_config["storage_paths"]["local_storage_dir"])
+                base_dir = Path(
+                    general_config["storage_paths"].get("beast_storage_dir")
+                    or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+                )
             else:
                 base_dir = Path(general_config["storage_paths"]["storage_dir"])
             conflict_output_dir = base_dir / model_hash / reformat_wandb_name(wandb_name) / "gradient_conflict"
@@ -371,6 +414,19 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
 
         renderer_manager = VisualisationManager(verbose=verbose, output_dir=rendering_dir)
         print("Model has legacy optimise() method, assuming single batch optimisation is desired. \n Starting training...")
+
+        prof = None
+        if profile_mode:
+            prof = torch.profiler.profile(
+                activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+                schedule=torch.profiler.schedule(wait=prof_wait, warmup=prof_warmup, active=prof_active, repeat=prof_repeat),
+                on_trace_ready=None,
+                record_shapes=True,
+                profile_memory=True,
+                with_stack=True,
+            )
+            prof.start()
+
         model.optimise(
             training_config=training_config,
             renderer_manager=renderer_manager,
@@ -379,11 +435,20 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
             debug_manager=debug_manager,
             conflict_tracker=conflict_tracker,
             conflict_cadence=conflict_cadence,
+            vis_manager=_vis_manager,
+            prof=prof,
         )
 
         # ------------------------------------------------------------------
         # 9. Finalize renderers
         # ------------------------------------------------------------------
+        # CentralVisManager finalize: generate convergence GIFs for all visual types.
+        if _vis_manager is not None:
+            try:
+                _vis_manager.finalize()
+            except Exception as e:
+                print(f"CentralVisManager finalize failed: {e}")
+
         if use_wandb and general_config["wandb_general"].get("use_neural_renderer", False):
             try:
                 renderer_manager.finalize()
@@ -401,7 +466,7 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
         losses_config = load_config(v="v2", cfg_name=general_config["active_configs"]["losses"])
         wandb_cfg: dict[str, Any] = general_config.get("wandb_general", {})
 
-        total_loss = TotalLossV2(device=device)
+        total_loss = TotalLossV2(device=device, vis_manager=_vis_manager)
         diversity_loss_manager = DiversityLossManager(losses_config=losses_config, device=device)
 
         # ALM setup
@@ -434,11 +499,17 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
             print(f"GINN config not found (ok for single-model training): {e}")
 
         training_params: dict[str, Any] = training_config["training_params"]
-        learning_rate: float = training_params.get("learning_rate", 1e-3)
-        num_epochs: int = training_params.get("num_epochs", 1000)
+        learning_rate: float = float(training_params.get("learning_rate", 1e-3))
+        num_epochs: int = int(training_params.get("num_epochs", 1000))
 
         if uses_diversity:  # double checks for diversity again, but serves as potential control split once we develop further
-            population_size = len(latent_config["latent_population"]) if latent_space else ginn_config.get("population_size", 4)
+            if latent_space and Z_pretrained is not None:
+                # Use actual checkpoint N — correct even when use_specific_pretraining overrides latent_population length.
+                population_size = Z_pretrained.shape[0]
+            elif latent_space:
+                population_size = len(latent_config["latent_population"])
+            else:
+                population_size = ginn_config.get("population_size", 4)
             z_dim = model.get_model_info_dict()["z_dim"]
         else:
             population_size = 1
@@ -469,6 +540,9 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
             log_dir=rendering_dir,
             conflict_tracker=conflict_tracker,
             conflict_cadence=conflict_cadence,
+            diagnostic_mode=diagnostic_mode,
+            print_timing=print_timing,
+            vis_manager=_vis_manager,
         )
 
         interpolation_state = setup_latent_interpolator(
@@ -485,7 +559,28 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
             mode = f"diversity (N={population_size})" if uses_diversity else "single-model"
             print(f"Starting {mode} training loop for {num_epochs} epochs...")
 
+        prof = None
+        if profile_mode:
+            prof = torch.profiler.profile(
+                activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+                schedule=torch.profiler.schedule(wait=prof_wait, warmup=prof_warmup, active=prof_active, repeat=prof_repeat),
+                on_trace_ready=None,
+                record_shapes=True,
+                profile_memory=True,
+                with_stack=True,
+            )
+            prof.start()
+
+        enforce_cfg = losses_config.get("general_info", {}).get("enforce_projection", {})
+        activation_ratio = enforce_cfg.get("activation_epoch_ratio", 0.9)
+        activation_epoch = int(num_epochs * activation_ratio)
+
         for epoch in range(num_epochs):
+            if epoch == activation_epoch and hasattr(model, "enforce_layer") and not model.enforce_layer.is_active:
+                if verbose:
+                    print(f"Activating ENFORCE projection layer at epoch {epoch} / {num_epochs}")
+                model.enforce_layer.is_active = True
+
             model.train()
             metrics = trainer.step(epoch=epoch)
 
@@ -514,6 +609,18 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
                     f"Epoch {epoch}/{num_epochs} | per_vector={metrics['per_vector_loss']:.4f} | "
                     f"diversity={metrics['diversity_loss']:.4f} | total={metrics['total_loss']:.4f}"
                 )
+            if prof is not None:
+                prof.step()
+
+        # CentralVisManager finalize: generate convergence GIFs for all visual types.
+        # Must run BEFORE run_latent_interpolation(stage="final") because that call can
+        # SIGABRT on headless SLURM nodes (PyVista/VTK X11 fallback), killing the process
+        # before any subsequent code runs.
+        if _vis_manager is not None:
+            try:
+                _vis_manager.finalize()
+            except Exception as e:
+                print(f"CentralVisManager finalize failed: {e}")
 
         run_latent_interpolation(state=interpolation_state, epoch=num_epochs, stage="final", verbose=verbose)
         cleanup_latent_interpolator(interpolation_state)
@@ -559,6 +666,28 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
         resolution=128,
         device=str(device),
     )
+
+    # Stop profiler after ALL training, rendering, and saving is complete
+    if prof is not None:
+        prof.stop()
+
+        profiler_cfg = general_config.get("profiler", {})
+        if profiler_cfg.get("export_trace", False):
+            trace_path = rendering_dir / "trace.json" if rendering_dir else Path("trace.json")
+            prof.export_chrome_trace(str(trace_path))
+            if verbose:
+                print(f"Exported profiler trace to {trace_path}")
+
+        print("\n" + "=" * 80)
+        print("PROFILER RESULTS: CUDA TIME (GPU Operations)")
+        print("=" * 80)
+        print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=prof_top_entries))
+        print("\n" + "=" * 80)
+        print("PROFILER RESULTS: CPU TIME (Host Operations)")
+        print("=" * 80)
+        print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=prof_top_entries))
+        print("=" * 80 + "\n")
+
     print("Completed job successfully.")
 
 

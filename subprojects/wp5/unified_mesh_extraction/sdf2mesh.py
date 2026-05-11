@@ -355,6 +355,9 @@ class MeshSDFExtractor:
         v, f = _mcubes.marching_cubes(volume, self.isovalue)
         v = np.asarray(v, dtype=np.float32)
         f = np.asarray(f, dtype=np.int64)
+        # PyMCubes winds faces so normals point from high → low field values (inward for
+        # positive-outside SDF).  Reverse the winding to obtain outward-pointing normals.
+        f = f[:, ::-1].copy()
         v[:, 0] = v[:, 0] * spacing[0] + origin[0]
         v[:, 1] = v[:, 1] * spacing[1] + origin[1]
         v[:, 2] = v[:, 2] * spacing[2] + origin[2]

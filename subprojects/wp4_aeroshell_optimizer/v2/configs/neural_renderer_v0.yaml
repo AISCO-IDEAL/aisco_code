@@ -91,7 +91,7 @@ rendering_modes:
       angular_tolerance: 0.4
 
   mesh_assembly_mode_v4: # inner+outer bb + sdf visualisation, fast compute time
-    enabled: true
+    enabled: false
     class_path: "custom_modes.mesh_assembly_mode_v4:MeshAssemblyModeV4"
     config:
       store_wandb: true

@@ -4,6 +4,8 @@ import trimesh
 
 from subprojects.wp2_assembler.version4.components.nbz import call_assembly, max_assembly_id
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
 
 
 def _as_bool(value: object, default: bool = False) -> bool:
@@ -49,6 +51,8 @@ class BbV4Sel(ParentLoss):
     - inner surface points: sdf_model(p) <= -inner_margin
     - outer surface points: sdf_model(p) >= outer_margin
     """
+
+    _vis_manager: CentralVisManagerV2 | NullVisManager | None
 
     def _setup(self) -> None:
         self.__config = self.losses_config["bb_config"]
@@ -147,6 +151,12 @@ class BbV4Sel(ParentLoss):
 
                 # outer surface target: model SDF should be >= outer_margin
                 lower_violation = self._violation(self.__outer_margin - sdf_outer_pred)
+
+                # Visualization: write PLY with per-point violation distances
+                if self._vis_manager is not None:
+                    epoch_int = int(self.epoch_name) if isinstance(self.epoch_name, (int, float)) else 0
+                    self._vis_manager.vis_bb_constraint(epoch_int, outer_points, lower_violation.detach().cpu().numpy())
+
                 return lower_violation.mean()
 
             else:  # default to "both"
@@ -166,5 +176,12 @@ class BbV4Sel(ParentLoss):
                 upper_violation = self._violation(sdf_inner_pred + self.__inner_margin)
                 # outer surface target: model SDF should be >= outer_margin
                 lower_violation = self._violation(self.__outer_margin - sdf_outer_pred)
+
+                # Visualization: write PLY with per-point violation distances
+                if self._vis_manager is not None:
+                    epoch_int = int(self.epoch_name) if isinstance(self.epoch_name, (int, float)) else 0
+                    all_points = torch.cat([inner_points, outer_points], dim=0)
+                    all_violations = torch.cat([upper_violation, lower_violation], dim=0)
+                    self._vis_manager.vis_bb_constraint(epoch_int, all_points, all_violations.detach().cpu().numpy())
 
                 return 0.5 * (upper_violation.mean() + lower_violation.mean())

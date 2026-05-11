@@ -1,0 +1,22 @@
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py
+method: bayes
+entity: aisco
+project: ALM_sweeps
+metric:
+  name: total_loss  # Bayes will minimize this; metric aggregates all active constraints
+  goal: minimize
+parameters:
+  losses_v0_config.general_info.gamma:
+    distribution: log_uniform_values
+    min: 0.02
+    max: 2.0
+  losses_v0_config.general_info.alpha:
+    distribution: uniform
+    min: 0.6
+    max: 0.97
+  losses_v0_config.general_info.initial_lambda:
+    distribution: log_uniform_values
+    min: 0.001
+    max: 0.1
+  losses_v0_config.general_info.ALM_aggressive:
+    value: "False"

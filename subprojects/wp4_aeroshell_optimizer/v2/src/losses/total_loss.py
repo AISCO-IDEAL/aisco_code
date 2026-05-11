@@ -51,6 +51,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import trimesh
+from torch.profiler import record_function
 
 import wandb
 from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import (
@@ -60,6 +61,12 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import (
+    NullVisManager,
+)
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
+    CentralVisManagerV2,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
@@ -86,10 +93,12 @@ class TotalLoss:
         dev: str | torch.device = "cuda",
         renderer_manager: VisualisationManager | None = None,
         external_alm: bool = False,  # Whether to do the ALM updates inside the loop or leave them to an external manager (like GINN's diversity manager)
+        vis_manager: CentralVisManagerV2 | NullVisManager | None = None,
     ) -> None:
         self._device: torch.device = torch.device(dev) if isinstance(dev, str) else dev
         self._renderer_manager: VisualisationManager | None = renderer_manager
         self._external_alm: bool = external_alm
+        self._vis_manager: CentralVisManagerV2 | NullVisManager | None = vis_manager
 
         # Populated each call to get_total_loss(); maps component name → weighted
         # live tensor.  The training loop calls .backward() per entry.
@@ -122,6 +131,7 @@ class TotalLoss:
         # Last-known raw (pre-prefactor) value per CSE objective category, used when that category
         # is scheduled out so the other objective can still run CSE with a meaningful partner value.
         self._cse_objective_cache: dict[str, torch.Tensor] = {}
+        self._cse_weight: float = float(general_info.get("cse_weight", 1.0))
 
         # Visualisation state — populated each _compute_raw_losses() by
         # _extract_primary_visu_mesh + _capture_vertex_grads_via_autograd. Read by
@@ -132,6 +142,12 @@ class TotalLoss:
 
         self._init_mesh_infrastructure()
         self._init_active_losses()  # must come before _init_alm_state (needs n_constraints)
+        # Propagate vis_manager to child loss instances (e.g. GaotLoss) so they can
+        # route their own visualizations through CentralVisManager.
+        if self._vis_manager is not None:
+            for _loss_inst in self._active_losses.values():
+                # add CVM to all losses
+                _loss_inst._vis_manager = self._vis_manager
         if self._use_alm:
             constraint_names: list[str] = [n for (n, _inst) in self._constraint_losses.values()]
             self.alm_manager = ALMManager(
@@ -255,6 +271,36 @@ class TotalLoss:
 
             disabled_raw = block.get("_disabled_epochs", [])
             self._disabled_epochs[category] = [(int(s), int(e)) for s, e in disabled_raw]
+
+    def _warn_about_dead_weights(self) -> None:
+        """Warn users about config weights that will be ignored due to ALM or CSE modes."""
+        gi: dict[str, Any] = self.losses_config["general_info"]
+        use_cse: bool = gi.get("CSE") == "True"
+        use_alm: bool = gi.get("ALM") == "True"
+
+        if use_cse:
+            dead_objectives = [
+                name
+                for cat, (name, _) in self._objective_losses.items()
+                if name in self._manual_weights and self._manual_weights[name] != 1.0
+            ]
+            if dead_objectives:
+                print(
+                    f"⚠️  WARNING: CSE is enabled (CSE=True). Individual objective weights for {dead_objectives} "
+                    f"are dead code and will be ignored. Use 'cse_weight' config entry to scale CSE vs diversity."
+                )
+
+        if use_alm:
+            dead_constraints = [
+                name
+                for cat, (name, _) in self._constraint_losses.items()
+                if name in self._manual_weights and self._manual_weights[name] != 1.0
+            ]
+            if dead_constraints:
+                print(
+                    f"⚠️  WARNING: ALM is enabled (ALM=True). Constraint weights for {dead_constraints} "
+                    f"are dead code and will be ignored. Use 'initial_lambda' and 'initial_mu' config entries to influence constraint strength."
+                )
 
     def _is_category_active(self, category: str, epoch: int) -> bool:
         return all(not (start <= epoch and (end == -1 or epoch <= end)) for start, end in self._disabled_epochs.get(category, []))
@@ -430,6 +476,7 @@ class TotalLoss:
     # ------------------------------------------------------------------
     # loss computation
     # ------------------------------------------------------------------
+    @record_function("TotalLossV1._compute_raw_losses")
     def _compute_raw_losses(self, model: TrainModel, epoch_name: int, calibration_mode: bool = False) -> dict[str, torch.Tensor]:
         """Evaluate every active loss instance and return raw (unweighted) tensors.
 
@@ -508,9 +555,11 @@ class TotalLoss:
 
         return None
 
+    @record_function("TotalLossV1._apply_weighting")
     def _apply_weighting(  # noqa: PLR0912, PLR0915
         self,
         raw_losses: dict[str, torch.Tensor],
+        calibration_pass: bool = False,
     ) -> torch.Tensor:
         """Weight objectives and constraints independently then sum.
 
@@ -593,7 +642,8 @@ class TotalLoss:
                 cse_scale = self._norm_manager.get_loss_scale("cse_objective") * self._norm_manager.get_grad_scale(
                     "cse_objective"
                 )
-                self._last_weighted_losses["cse_objective"] = -v_cruise * cse_scale
+                cse_weight = 1.0 if calibration_pass else self._cse_weight
+                self._last_weighted_losses["cse_objective"] = -v_cruise * cse_scale * cse_weight
         else:
             self._last_cruising_speed = None
             self._last_cruising_speed_diagnostics = None
@@ -603,7 +653,7 @@ class TotalLoss:
                 if cat in zero_weighted_cats:
                     self._last_weighted_losses[name] = torch.zeros((), device=self._device)
                     continue
-                w: float = self._manual_weights.get(name, 1.0)
+                w: float = 1.0 if calibration_pass else self._manual_weights.get(name, 1.0)
                 sign: float = float(self._objective_signs.get(cat, 1))
                 combined_scale = self._norm_manager.get_loss_scale(name) * self._norm_manager.get_grad_scale(name)
                 self._last_weighted_losses[name] = sign * raw_losses[name] * w * combined_scale
@@ -644,7 +694,7 @@ class TotalLoss:
             for cat, (cname, _) in self._constraint_losses.items():
                 if cat in getattr(self, "_skipped_categories", set()):
                     continue  # skip entirely: no gradient, no entry in weighted losses
-                w_c: float = self._manual_weights.get(cname, 1.0)
+                w_c: float = 1.0 if calibration_pass else self._manual_weights.get(cname, 1.0)
                 if cat in getattr(self, "_zero_weighted_categories", set()):
                     self._last_weighted_losses[cname] = torch.zeros((), device=self._device)
                     continue
@@ -659,7 +709,7 @@ class TotalLoss:
             if aux_cat in getattr(self, "_zero_weighted_categories", set()):
                 self._last_weighted_losses[aux_name] = torch.zeros((), device=self._device)
                 continue
-            w_a: float = self._manual_weights.get(aux_name, 1.0)
+            w_a: float = 1.0 if calibration_pass else self._manual_weights.get(aux_name, 1.0)
             combined_scale = self._norm_manager.get_loss_scale(aux_name) * self._norm_manager.get_grad_scale(aux_name)
             self._last_weighted_losses[aux_name] = raw_losses[aux_name] * w_a * combined_scale
 
@@ -770,7 +820,27 @@ class TotalLoss:
         self._pending_wandb_log: dict = log_dict
 
         # --- Mesh extraction & rendering ----------------------------------
-        if self._use_renderer and self._renderer_manager is not None:
+        # CentralVisManager path: independent of renderer_manager
+        if self._vis_manager is not None and (self._rendering_freq is None or epoch_name % self._rendering_freq == 0):
+            verts_vm, faces_vm = self._mesh_extractor.extract_mesh(
+                model=model,
+                isovalue=self._mesh_extraction_config.get("isovalue", 0.0),
+                batch_size=self._mesh_extraction_config.get("batch_size", 8192),
+            )
+            if self._mesh_statistics_enabled:
+                self._mesh_statistics.log_basic_mesh_stats(verts_vm, faces_vm, epoch_name)
+                self._mesh_statistics.log_solar_area_stats(verts_vm, faces_vm, epoch_name)
+            _verts_np = verts_vm.detach().cpu().numpy() if torch.is_tensor(verts_vm) else verts_vm
+            _faces_np: np.ndarray | None = (
+                faces_vm.detach().cpu().numpy()
+                if torch.is_tensor(faces_vm)
+                else (faces_vm if isinstance(faces_vm, np.ndarray) else None)
+            )
+            epoch_int = int(epoch_name) if isinstance(epoch_name, (int, float)) else 0
+            self._vis_manager.vis_mesh_shape(epoch_int, verts_vm, faces_vm)
+
+        # Legacy renderer path (neural renderer or CAD fallback)
+        elif self._use_renderer and self._renderer_manager is not None:
             verts, faces = self._mesh_extractor.extract_mesh(
                 model=model,
                 isovalue=self._mesh_extraction_config.get("isovalue", 0.0),
@@ -781,7 +851,7 @@ class TotalLoss:
                 self._mesh_statistics.log_solar_area_stats(verts, faces, epoch_name)
 
             if self._rendering_freq is not None and epoch_name % self._rendering_freq == 0:
-                if self._use_neural_renderer and self._renderer_manager is not None:
+                if self._use_neural_renderer:
                     try:
                         runtime_assembly_id = self._active_assembly_id()
                         # Per-loss + total dL/dv from the most recent _compute_raw_losses
@@ -812,8 +882,6 @@ class TotalLoss:
                         print(f"Renderer wrapper update failed: {e}")
                 else:
                     self._run_cad_vis(verts, faces, epoch_name)
-        else:
-            print(f"Skipping rendering at epoch {epoch_name} due to rendering frequency setting.")
 
         # --- GPU memory diagnostics (print only; logging is merged in _handle_telemetry) ----
         self._print_memory_diagnostics(epoch_name, device)
@@ -1117,7 +1185,7 @@ class TotalLoss:
                 calibrated_names.add("cse_objective")
                 print(f"  Loss scale for cse_objective: fixed={fixed_cse_loss:.6g}")
             else:
-                self._apply_weighting(raw)
+                self._apply_weighting(raw, calibration_pass=True)
                 if "cse_objective" in self._last_weighted_losses:
                     # loss_scale=1.0 and grad_scale=1.0 at this point, so the value equals -v_cruise
                     raw_cse_val = abs(self._last_weighted_losses["cse_objective"].detach().item())
@@ -1139,7 +1207,7 @@ class TotalLoss:
         print("[LossNormalisation] Computing gradient scales...")
         optimizer.zero_grad()
         raw = self._compute_raw_losses(model, epoch_name=0, calibration_mode=True)
-        self._apply_weighting(raw)  # loss_scales now active; populates _last_weighted_losses
+        self._apply_weighting(raw, calibration_pass=True)  # loss_scales now active; populates _last_weighted_losses
         trainable_params = [p for p in model.parameters() if p.requires_grad]
         prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
 

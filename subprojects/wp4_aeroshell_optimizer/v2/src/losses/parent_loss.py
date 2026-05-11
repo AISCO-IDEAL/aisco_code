@@ -13,6 +13,12 @@ import inspect
 import torch
 
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import (
+    NullVisManager,
+)
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
+    CentralVisManagerV2,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.losses_utils import get_points
 
@@ -34,7 +40,7 @@ class ParentLoss:
             v=self.general_config["general_info"].get("version", "v1"),
             cfg_name=self.general_config["active_configs"]["training"],
         )
-
+        self._vis_manager: CentralVisManagerV2 | NullVisManager | None = None
         # initialise weight
         self.__weight = weight if weight is not None else [0.0, 0.0]
         if self.__weight == [0.0, 0.0] and loss_name:
@@ -52,20 +58,21 @@ class ParentLoss:
             prism = get_outer_prism_bounds_mm()
             scale = float(self.losses_config["domain_pts_sampling"].get("bbox_scale_factor", 1.0))
             scaled_prism = scale_outer_prism(prism, scale)
-            bbox_lo = [
+            self._bbox_lo: list[float] = [
                 scaled_prism["x"][0],
                 scaled_prism["y"][0],
                 scaled_prism["z"][0],
             ]
-            bbox_hi = [
+            self._bbox_hi: list[float] = [
                 scaled_prism["x"][1],
                 scaled_prism["y"][1],
                 scaled_prism["z"][1],
             ]
+            self._num_domain_points: int = self.losses_config["domain_pts_sampling"]["num_points"]
             self.points = get_points(
-                num_points=self.losses_config["domain_pts_sampling"]["num_points"],
-                bbox_lo=bbox_lo,
-                bbox_hi=bbox_hi,
+                num_points=self._num_domain_points,
+                bbox_lo=self._bbox_lo,
+                bbox_hi=self._bbox_hi,
                 device=self.device,
             )
 

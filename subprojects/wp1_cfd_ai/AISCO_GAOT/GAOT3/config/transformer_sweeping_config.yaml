@@ -1,0 +1,32 @@
+program: subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/main.py
+
+# Base arguments for main.py
+command:
+  - ${env}
+  - python
+  - ${program}
+  - -c
+  - subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml
+  - ${args}
+
+method: bayes
+metric:
+  name: val/loss
+  goal: minimize
+
+project: WP1_drag
+entity: aisco
+name: "wp1_gaot_transformer_size_sweep"
+
+parameters:
+  # ========== TRANSFORMER SIZE ==========
+  model.args.transformer.num_layers:
+    distribution: int_uniform
+    min: 4
+    max: 12
+
+
+  model.args.transformer.ffn_config.hidden_size:
+    distribution: int_uniform
+    min: 128
+    max: 1536
