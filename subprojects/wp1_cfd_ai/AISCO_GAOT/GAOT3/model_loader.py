@@ -245,6 +245,10 @@ class ModelLoader:
         verts, faces, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
             sdf_model=sdf_model, loss_fn=self.loss_fn
         )
+        # Store gradients for per-loss visualization in TotalLoss/TotalLossV2.
+        self.extractor.last_dL_dv = dL_dvertices  # type: ignore[attr-defined]
+        self.extractor.last_verts = verts  # type: ignore[attr-defined]
+        self.extractor.last_faces = faces  # type: ignore[attr-defined]
 
         diag = getattr(self, "_last_diagnostics", {})
         diag["mesh_n_vertices"] = int(verts.shape[0]) if verts is not None and verts.numel() > 0 else 0
