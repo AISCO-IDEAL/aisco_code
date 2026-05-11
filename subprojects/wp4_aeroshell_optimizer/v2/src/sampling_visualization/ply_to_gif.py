@@ -33,7 +33,7 @@ import trimesh
 import yaml
 from PIL import Image, ImageDraw, ImageFont
 
-_CFG = yaml.safe_load((Path(__file__).parent / "viz_config.yaml").read_text())
+_CFG = yaml.safe_load((Path(__file__).parents[2] / "configs" / "vis_config.yaml").read_text())
 FPS: int = _CFG["fps"]
 WINDOW_WIDTH: int = _CFG["window_width"]
 WINDOW_HEIGHT: int = _CFG["window_height"]

@@ -24,9 +24,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 impo
     pretraining,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat, SupportsOptimise
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import (
-    CentralVisManager,
-)
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import (
     NullVisManager,
 )
@@ -54,11 +51,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import (
     save_population_meshes,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.wandb_utils import patch_wandb_log_for_monotonic_steps
-from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.ginn_visuals_utils import (
-    cleanup_latent_interpolator,
-    run_latent_interpolation,
-    setup_latent_interpolator,
-)
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
 
 configure_headless_pyvista()
@@ -179,26 +171,23 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         os.makedirs(rendering_dir, exist_ok=True)
 
     # Construct vis manager once per run.
-    # vis_manager: "v2" | "legacy" | "null" | "disabled" (default)  # noqa: ERA001
-    # "v2"       → CentralVisManagerV2 (async PLY writes, ProcessPool GIFs)
-    # "legacy"   → original CentralVisManager (synchronous, for rollback)
-    # "null"     → NullVisManager (no-op; is_enabled() always False — dry-run)
-    # "disabled" → None (no vis manager at all)
+    # vis_manager: "v2" | "null" (default: "disabled" raises ValueError)
+    # "v2"  → CentralVisManagerV2 (async PLY writes, ProcessPool GIFs)
+    # "null" → NullVisManager (no-op; is_enabled() always False — dry-run)
     _vis_mode = general_config.get("vis_manager", "disabled")
-    _vis_manager: CentralVisManagerV2 | CentralVisManager | NullVisManager | None = None
+    _vis_manager: CentralVisManagerV2 | NullVisManager | None = None
 
-    if _vis_mode in ("v2", "legacy") and rendering_dir is None:
+    if _vis_mode == "v2" and rendering_dir is None:
         # If CVM requested but wandb is off, create fallback vis dir.
         _fallback_dir = (
             Path(general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")) / model_hash / "vis_fallback"
         )
         rendering_dir = _fallback_dir
 
-    if rendering_dir is not None and _vis_mode in ("v2", "legacy"):
+    if rendering_dir is not None and _vis_mode == "v2":
         _run_id = wandb_name or "unknown"
-        # Only support CentralVisManagerV2 going forward; treat "legacy" as "v2".
         _vis_manager = CentralVisManagerV2(run_dir=rendering_dir, run_id=_run_id)
-        print(f"[VisManager:{_vis_mode}] enabled → {rendering_dir}")
+        print(f"[VisManager:v2] enabled → {rendering_dir}")
     elif _vis_mode == "null":
         _vis_manager = NullVisManager()
         print("[VisManager:null] dry-run mode — all writes are no-ops")
@@ -222,8 +211,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             )
         latent_cfg_name: str = general_config["active_configs"].get("latent_pretraining", "pretraining_latent_config.yaml")
         latent_config = _load_config(v="v2", cfg_name=latent_cfg_name)
-        vis_sampling = latent_config["output"].get("sampling_vis", True)
-
         # Vis dir: derive from canonical pretraining run folder (never /tmp).
         # Computed before calling pretraining_latent so GIF generation has the path.
         pretrained_hash: str = _compute_latent_pretrain_hash(latent_config, model)
@@ -232,19 +219,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             latent_config,
             device,
             use_wandb=use_wandb,
-            vis_sampling=vis_sampling,
             vis_manager=_vis_manager,
         )
         if verbose:
             print(f"[latent_space] Latent pretraining complete. Population size: {Z_pretrained.shape[0]}")
-        # GIF generation is owned by CentralVisManager.finalize() (called at end of optimization).
-        # Warn when vis data was collected but finalize() won't see it (manager disabled).
-        if vis_sampling and _vis_manager is None and verbose:
-            print(
-                "[latent_space] Warning: vis_sampling=true but vis manager is disabled "
-                "(vis_manager=disabled). PLYs were written to the local vis_dir by "
-                "SamplingVisualizer but no GIF will be generated. Set vis_manager: v2 to get GIFs."
-            )
 
     else:
         # Standard pretraining: hash-based canonical lookup (Plan 031 / M4).
@@ -425,7 +403,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         # GINN / diversity config — absent or uses_diversity=False collapses to single-model mode
         ginn_config: dict[str, Any] = {}
         try:
-            ginn_config = load_config(v="v2", cfg_name="GINN.yaml")
+            ginn_config = load_config(v="v2", cfg_name="training_config.yaml")
         except Exception as e:
             if uses_diversity:
                 raise
@@ -463,7 +441,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             diversity_neighbor_agg_fn=ginn_config.get("diversity_neighbor_agg_fn", "min"),
             force_z0_to_origin=ginn_config.get("force_z0_to_origin", True),
             z_resample_cadence=ginn_config.get("z_resample_cadence", 0),
+            z_resample_mode=ginn_config.get("z_resample_mode", "on_circle"),
             initial_Z=Z_pretrained,
+            Z_pretrained=Z_pretrained,
             z_resample_start_epoch=ginn_config.get("z_resample_start_epoch", 0),
             renderer_manager=renderer_manager,
             rendering_freq=wandb_cfg.get("rendering_frequency"),
@@ -476,17 +456,22 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             diagnostic_mode=diagnostic_mode,
             print_timing=print_timing,
             vis_manager=_vis_manager,
+            vis_cadence_optimisation=int(
+                (_vis_manager.latent_optimisation_cfg if hasattr(_vis_manager, "latent_optimisation_cfg") else {}).get(
+                    "vis_cadence_optimisation", 0
+                )
+            ),
+            vis_strategy=str(
+                (_vis_manager.latent_optimisation_cfg if hasattr(_vis_manager, "latent_optimisation_cfg") else {}).get(
+                    "vis_strategy", "dynamic"
+                )
+            ),
+            vis_all_losses=bool(
+                (_vis_manager.latent_optimisation_cfg if hasattr(_vis_manager, "latent_optimisation_cfg") else {}).get(
+                    "vis_all_losses", False
+                )
+            ),
         )
-
-        interpolation_state = setup_latent_interpolator(
-            model=model,
-            device=device,
-            general_config=general_config,
-            run_locally=run_locally,
-            rendering_dir=rendering_dir,
-            verbose=verbose,
-        )
-        run_latent_interpolation(state=interpolation_state, epoch=0, stage="initial", verbose=verbose)
 
         if verbose:
             mode = f"diversity (N={population_size})" if uses_diversity else "single-model"
@@ -537,7 +522,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                     z_pretrained=Z_pretrained if latent_space else None,
                 )
 
-            run_latent_interpolation(state=interpolation_state, epoch=epoch, stage="periodic", verbose=verbose)
             if verbose and epoch % 50 == 0:  # arbitray number, adjust as needed
                 print(
                     f"Epoch {epoch}/{num_epochs} | per_vector={metrics['per_vector_loss']:.4f} | "
@@ -547,17 +531,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 prof.step()
 
         # CentralVisManager finalize: generate convergence GIFs for all visual types.
-        # Must run BEFORE run_latent_interpolation(stage="final") because that call can
-        # SIGABRT on headless SLURM nodes (PyVista/VTK X11 fallback), killing the process
-        # before any subsequent code runs.
         if _vis_manager is not None:
             try:
                 _vis_manager.finalize()
             except Exception as e:
                 print(f"CentralVisManager finalize failed: {e}")
-
-        run_latent_interpolation(state=interpolation_state, epoch=num_epochs, stage="final", verbose=verbose)
-        cleanup_latent_interpolator(interpolation_state)
 
         if use_wandb and wandb_cfg.get("use_neural_renderer", False):
             try:
@@ -578,7 +556,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             print(f"Warning: Failed to post-process gradient conflict data: {e}")
 
     # Optional: save one PLY mesh per latent slot for population validation.
-    # Gated by GINN.yaml: save_population_meshes (default false to avoid overhead).
+    # Gated by training_config.yaml: save_population_meshes (default false to avoid overhead).
     if uses_diversity and isinstance(model, SupportsLatentConcat) and ginn_config.get("save_population_meshes", False):
         final_Z = trainer.get_population()
         save_population_meshes(

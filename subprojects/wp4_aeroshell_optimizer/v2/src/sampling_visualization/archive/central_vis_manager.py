@@ -27,7 +27,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.scalar_co
     map_scalar_to_rgb_mpl,
 )
 
-_DEFAULT_CONFIG_PATH = Path(__file__).parent / "viz_config.yaml"
+_DEFAULT_CONFIG_PATH = Path(__file__).parents[2] / "configs" / "vis_config.yaml"
 
 # Uniform dark-blue used when no colormap is specified (RGB, float [0,1])
 _DARK_BLUE_RGB: tuple[float, float, float] = (0.0 / 255.0, 0.0 / 255.0, 139.0 / 255.0)

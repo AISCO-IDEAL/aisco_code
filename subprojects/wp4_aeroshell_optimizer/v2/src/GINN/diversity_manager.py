@@ -55,7 +55,7 @@ class DiversityTrainer:
     Phase 2 — cheap WIRE-only diversity backward (all N small graphs held together).
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0915  # init is intrinsically state-heavy; decomposition would obscure wiring
         self,
         model: SupportsLatentConcat,
         total_loss: TotalLossV2,
@@ -84,6 +84,11 @@ class DiversityTrainer:
         diagnostic_mode: bool = True,
         print_timing: bool = False,
         vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
+        Z_pretrained: torch.Tensor | None = None,
+        vis_cadence_optimisation: int = 0,
+        vis_strategy: str = "dynamic",
+        vis_all_losses: bool = False,
+        z_resample_mode: str = "on_circle",
     ) -> None:
         """
         Args:
@@ -165,6 +170,33 @@ class DiversityTrainer:
         self._log_dir: Path = log_dir or Path("subprojects/wp4_aeroshell_optimizer/v2/logs")
         self._vis_manager: CentralVisManagerV2 | NullVisManager = vis_manager
 
+        _valid_vis_strategies = ("static", "dynamic")
+        if vis_strategy not in _valid_vis_strategies:
+            raise ValueError(
+                f"vis_strategy must be one of {_valid_vis_strategies}, got '{vis_strategy}'. "
+                "Set vis_strategy in vis_config.yaml latent_optimisation section."
+            )
+        if vis_strategy == "static" and Z_pretrained is None:
+            raise ValueError(
+                "vis_strategy='static' requires Z_pretrained to be provided so mesh extraction "
+                "uses frozen pretrained positions. Either pass Z_pretrained or set "
+                "vis_strategy='dynamic' in vis_config.yaml latent_optimisation section."
+            )
+        self._vis_strategy: str = vis_strategy
+        self._vis_all_losses: bool = vis_all_losses
+        self._vis_cadence_optimisation: int = max(0, int(vis_cadence_optimisation))
+        # Store a detached copy — not updated by the optimizer
+        self._Z_pretrained: torch.Tensor | None = (
+            Z_pretrained.detach().clone().to(self._device) if Z_pretrained is not None else None
+        )
+        _valid_resample_modes = ("on_circle", "in_circle", "random")
+        if z_resample_mode not in _valid_resample_modes:
+            raise ValueError(
+                f"z_resample_mode must be one of {_valid_resample_modes}, got '{z_resample_mode}'. "
+                "Set z_resample_mode in training_config.yaml."
+            )
+        self._z_resample_mode: str = z_resample_mode
+
         generator_device = self._device.type if self._device.type in {"cpu", "cuda"} else "cpu"
         self._resample_generator = torch.Generator(device=generator_device)
 
@@ -175,7 +207,7 @@ class DiversityTrainer:
                 raise ValueError(
                     f"initial_Z shape {tuple(initial_Z.shape)} does not match expected "
                     f"{expected_shape}. "
-                    f"Set population_size={initial_Z.shape[0]} in GINN.yaml to match the "
+                    f"Set population_size={initial_Z.shape[0]} in training_config.yaml to match the "
                     f"pretrained population, or re-run pretraining with "
                     f"population_size={population_size}."
                 )
@@ -213,13 +245,30 @@ class DiversityTrainer:
             return
 
         self._resample_generator.manual_seed(epoch // self._z_resample_cadence)
-        self._Z[start_idx:] = torch.randn(
-            self._population_size - start_idx,
-            self._z_dim,
-            device=self._device,
-            dtype=torch.float32,
-            generator=self._resample_generator,
-        )
+        n_resample = self._population_size - start_idx
+        if self._z_resample_mode == "on_circle" and self._Z_pretrained is not None:
+            # on_circle: restore each slot to its exact pretrained position on the circle
+            self._Z[start_idx:] = self._Z_pretrained[start_idx:].detach().clone()
+        elif self._z_resample_mode == "in_circle" and self._Z_pretrained is not None and self._z_dim >= 2:
+            # in_circle: sample uniformly inside the pretrained circle disk (2D plane, higher dims = 0)
+            # Radius from pretrained: use max 2D-norm across all slots as the disk boundary
+            r_max = self._Z_pretrained[:, :2].norm(dim=1).max().item()
+            U = torch.rand(n_resample, generator=self._resample_generator, device=self._device)
+            theta = torch.rand(n_resample, generator=self._resample_generator, device=self._device) * (2.0 * math.pi)
+            r = r_max * U.sqrt()  # sqrt for uniform area density
+            new_z = torch.zeros(n_resample, self._z_dim, device=self._device, dtype=torch.float32)
+            new_z[:, 0] = r * theta.cos()
+            new_z[:, 1] = r * theta.sin()
+            self._Z[start_idx:] = new_z
+        else:
+            # random (fallback when pretrained positions are unavailable)
+            self._Z[start_idx:] = torch.randn(
+                n_resample,
+                self._z_dim,
+                device=self._device,
+                dtype=torch.float32,
+                generator=self._resample_generator,
+            )
         if self._force_z0_to_origin:
             self._Z[0] = torch.zeros(self._z_dim, device=self._device, dtype=torch.float32)
 
@@ -885,7 +934,9 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     def _render(self, epoch: int, total_loss_val: float) -> None:
         """Extract mesh from Z[0] and forward to either VisualisationManager or CAD fallback."""
-        if self._rendering_freq is None or epoch % self._rendering_freq != 0:
+        # vis_cadence_optimisation (from vis_config.yaml) takes precedence over legacy rendering_freq
+        _cadence = self._vis_cadence_optimisation if self._vis_cadence_optimisation > 0 else self._rendering_freq
+        if _cadence is None or epoch % _cadence != 0:
             return
 
         verts, faces = self._mesh_extractor.extract_mesh(sdf_model=self._model)
@@ -893,10 +944,15 @@ class DiversityTrainer:
         # Visualization: write PLY for every population slot
         if self._vis_manager is not None:
             for i in range(self._population_size):
-                self._model.set_latent_vector(self._Z[i])
+                # vis_strategy=static: evaluate mesh at original pretrained Z circle positions, not current optimizer Z
+                if self._vis_strategy == "static" and self._Z_pretrained is not None:
+                    self._model.set_latent_vector(self._Z_pretrained[i])
+                else:
+                    self._model.set_latent_vector(self._Z[i])
                 _verts, _faces = self._mesh_extractor.extract_mesh(sdf_model=self._model)
                 self._vis_manager.set_active_slot(i)
                 self._vis_manager.vis_mesh_shape(epoch, _verts, _faces)
+                self._vis_manager.vis_mesh_assembly_v4(epoch, _verts, _faces)
                 self._vis_manager.set_active_slot(None)
             # Restore model to Z[0] as reference shape
             self._model.set_latent_vector(self._Z[0])

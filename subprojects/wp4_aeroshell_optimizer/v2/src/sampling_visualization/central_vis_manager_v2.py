@@ -42,7 +42,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.vis
 )
 from subprojects.wp5.unified_mesh_extraction.sdf2mesh import MeshSDFExtractor
 
-_DEFAULT_CONFIG_PATH = Path(__file__).parent / "viz_config.yaml"
+_DEFAULT_CONFIG_PATH = Path(__file__).parents[2] / "configs" / "vis_config.yaml"
 _DARK_BLUE_RGB: tuple[float, float, float] = (0.0, 0.0, 139.0 / 255.0)
 
 
@@ -95,6 +95,16 @@ class _BaseVisManager:
 
         _log({"event": "cvm_v2_init", "run_id": run_id, "run_dir": str(self.run_dir)})
         self._load_assembly_meshes()
+
+    @property
+    def latent_pretraining_cfg(self) -> dict[str, Any]:
+        """Vis config for pretraining phase, from vis_config.yaml latent_pretraining: section."""
+        return dict(self._cfg.get("latent_pretraining", {}))
+
+    @property
+    def latent_optimisation_cfg(self) -> dict[str, Any]:
+        """Vis config for optimisation phase, from vis_config.yaml latent_optimisation: section."""
+        return dict(self._cfg.get("latent_optimisation", {}))
 
     def is_enabled(self, visual_type: str) -> bool:
         """Check if a visual type is enabled in the config, with ancestor lookup.
@@ -300,7 +310,11 @@ class _BaseVisManager:
         return MeshSDFExtractor(config=vis_config)
 
     def finalize(self) -> None:
-        """Drain pending PLY writes then generate convergence GIFs. Idempotent."""
+        """Drain pending PLY writes then generate convergence GIFs. Idempotent.
+
+        Also respects ``vis_config.latent_pretraining.latent_space_exploration``
+        for any post-training circle survey that was queued before finalize().
+        """
         if self._finalized:
             return
         self._finalized = True
@@ -508,6 +522,64 @@ class CentralVisManagerV2(_BaseVisManager):
         _log({"event": "ply_submitted", "run_id": self.run_id, "visual_type": vt, "epoch": epoch})
 
     # --- Backward-compat shims (old callers; log and drop) ------------------
+
+    def vis_latent_circle_survey(
+        self,
+        model: Any,
+        z_radius: float = 1.0,
+        n_samples: int = 8,
+        device: str = "cpu",
+    ) -> None:
+        """Render a circle survey of the pretrained latent space.
+
+        Iterates ``n_samples`` angles uniformly on the pretrained z-circle, extracts
+        the SDF mesh at each point, and writes a ``vis_mesh_assembly_v4`` PLY+GLB
+        per sample. Gated by ``vis_config.latent_pretraining.latent_space_exploration.enabled``.
+
+        Args:
+            model: A model implementing ``set_latent_vector`` and compatible with
+                ``MeshSDFExtractor.extract_mesh``.
+            z_radius: Radius of the latent circle (should match pretraining radius).
+            n_samples: Number of uniformly-spaced angles to evaluate.
+            device: Torch device for mesh extraction.
+        """
+        import math  # noqa: PLC0415
+
+        import torch  # noqa: PLC0415
+
+        exploration_cfg: dict[str, Any] = self._cfg.get("latent_pretraining", {}).get("latent_space_exploration", {})
+        if not exploration_cfg.get("enabled", False):
+            _log(
+                {
+                    "event": "circle_survey_skipped",
+                    "run_id": self.run_id,
+                    "reason": "latent_space_exploration.enabled=false in vis_config.yaml",
+                }
+            )
+            return
+
+        extractor = self.make_vis_extractor(device=device)
+        angles = [2 * math.pi * i / n_samples for i in range(n_samples)]
+        z_dim = int(getattr(model, "z_dim", 2))
+
+        for idx, angle in enumerate(angles):
+            z = torch.zeros(z_dim, dtype=torch.float32, device=device)
+            if z_dim >= 2:
+                z[0] = z_radius * math.cos(angle)
+                z[1] = z_radius * math.sin(angle)
+            model.set_latent_vector(z)
+            verts, faces = extractor.extract_mesh(sdf_model=model)
+            self.set_active_slot(None)
+            self.vis_mesh_assembly_v4(idx, verts, faces)
+
+        _log(
+            {
+                "event": "circle_survey_completed",
+                "run_id": self.run_id,
+                "n_samples": n_samples,
+                "z_radius": z_radius,
+            }
+        )
 
     def save_ply(self, visual_type: str, epoch: int, *_args: Any, **_kwargs: Any) -> None:
         _log(

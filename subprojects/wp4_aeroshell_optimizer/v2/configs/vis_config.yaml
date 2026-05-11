@@ -1,7 +1,10 @@
-# Visualization configuration
-# Shared by ply_to_gif.py, points_SDFmesh_to_ply.py, and central_vis_manager.py
+# vis_config.yaml
+# Previous name: viz_config.yaml (was in v2/src/sampling_visualization/)
+# Moved to v2/configs/ as part of Plan 041 — Milestone 2.
+# Shared by ply_to_gif.py, points_SDFmesh_to_ply.py, central_vis_manager_v2.py,
+# explore_latent_space.py, and central_vis_manager.py (archived).
 
-# --- GIF rendering (ply_to_gif.py) --- dermasse sali
+# --- GIF rendering (ply_to_gif.py) ---
 fps: 10
 window_width: 1280
 window_height: 720
@@ -25,7 +28,8 @@ latent_space_exploration:
   n_interp: 7         # Mode 3: interpolation steps per adjacent pair (controls PLY count)
   resolution: 64      # marching cubes grid resolution (lower = faster)
   radii: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]  # Mode 2: radii to sweep per pretrained direction
-# --- CentralVisManager extras (central_vis_manager.py) ---
+
+# --- CentralVisManager extras (central_vis_manager_v2.py) ---
 extras:
   alpha_enabled: false           # enable per-vertex RGBA (vs RGB-only) in PLY writes
   alpha_value: 1.0               # global alpha in [0, 1]; only used when alpha_enabled: true
@@ -139,3 +143,41 @@ visual_types:
       coordinate_system: null
       vmin: null
       vmax: null
+
+# ===========================================================================
+# Latent pretraining visualisation
+# ===========================================================================
+latent_pretraining:
+  vis_cadence_pretraining: 10     
+  vis_show_domain_pts: true       # include eikonal domain points in latent sampling vis
+  vis_show_target_pts: "pts"      # "pts" = surface samples, "mesh" = reconstructed mesh
+  mesh_resolution: 128            # marching-cubes resolution for pretraining vis meshes
+  make_gif: false                 # assemble per-epoch PLYs into a GIF at finalize()
+
+  # Latent-space exploration survey (explore_latent_space.py modes 1–3).
+  # Runs at finalize() if enabled: true. Gated to avoid overhead on short runs.
+  latent_space_exploration:
+    enabled: false                # true = run explore_latent_space at finalize()
+    n_circle: 90                  # Mode 1: equally-spaced samples on the pretrained circle
+    n_interp: 7                   # Mode 3: interpolation steps per adjacent pair
+    resolution: 64                # marching cubes resolution
+    radii: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]  # Mode 2: radii to sweep
+
+# ===========================================================================
+# Latent optimisation visualisation
+# ===========================================================================
+latent_optimisation:
+  vis_cadence_optimisation: 10    # write vis snapshot every N optimisation epochs
+  vis_strategy: static            # static/dynamic: vis at original pretrained Z circle or those that are actively being evaluated by losses
+                                  
+  vis_all_losses: true           # Compute cost = N_slots × N_active_losses renders per vis epoch. 
+
+  # Circle survey rendered to a PNG strip at finalize() 
+  vis_latent_circle_survey:
+    enabled: true                
+    n_circle_samples: 90          # number of evenly-spaced angles on the z-circle
+    z_radius: 2.0                 # must match z_radius used in pretraining
+    mesh_resolution: 64           # marching-cubes resolution for circle survey meshes
+    bbox_scale_factor: 1.2        # vis bbox scale (relative to outer prism)
+    layout: "strip"               # "strip" = horizontal PNG strip; "grid" = 2D grid PNG
+    save_plys: true               # for further investigation

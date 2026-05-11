@@ -575,8 +575,8 @@ def _load_checkpoint(
 
 
 def main() -> None:
-    # Load viz_config.yaml defaults for latent_space_exploration section.
-    _viz_cfg_path = Path(__file__).parent / "viz_config.yaml"
+    # Load vis_config.yaml defaults for latent_space_exploration section.
+    _viz_cfg_path = Path(__file__).parents[2] / "configs" / "vis_config.yaml"
     _lse_cfg: dict[str, Any] = {}
     if _viz_cfg_path.exists():
         _lse_cfg = yaml.safe_load(_viz_cfg_path.read_text()).get("latent_space_exploration", {})

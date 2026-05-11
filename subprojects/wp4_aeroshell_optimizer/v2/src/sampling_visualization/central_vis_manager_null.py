@@ -12,6 +12,19 @@ class NullVisManager:
     with zero visualization overhead. Every named method is a silent no-op.
     """
 
+    @property
+    def latent_pretraining_cfg(self) -> dict[str, Any]:
+        """Return empty dict — NullVisManager disables all vis."""
+        return {}
+
+    @property
+    def latent_optimisation_cfg(self) -> dict[str, Any]:
+        """Return empty dict — NullVisManager disables all vis."""
+        return {}
+
+    def vis_latent_circle_survey(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
     def vis_mesh_shape(self, epoch: int, verts: Any, faces: Any) -> None:
         pass
 

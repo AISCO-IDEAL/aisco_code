@@ -15,7 +15,7 @@ import math
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 import torch
@@ -30,20 +30,12 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 impo
     _sample_points_for_shape,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization import SamplingVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import (
     NullVisManager,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
     CentralVisManagerV2,
 )
-
-if TYPE_CHECKING:
-    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.points_SDFmesh_to_ply import (
-        _POINT_COLOUR_GREEN,
-        _POINT_COLOUR_RED,
-        _POINT_COLOUR_WHITE,
-    )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
 from subprojects.wp5.unified_mesh_extraction import clear_mesh_cache
@@ -567,8 +559,6 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     device: str,
     *,
     use_wandb: bool = False,
-    vis_sampling: bool = False,
-    vis_output_dir: Path | None = None,
     checkpoint_path: Path | None = None,
     vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
 ) -> tuple[SupportsLatentConcat, Tensor]:
@@ -712,23 +702,30 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     # --- Output / visualisation config (read once, shared between loop and post-training) ---
     output_cfg: dict[str, Any] = config.get("output", {})
     run_dir: Path = ckpt_path.parent  # Canonical folder containing all outputs
-    visualisation_directory: str = str(output_cfg.get("visualisation_directory", "sampling_vis"))
-    vis_dir: Path = vis_output_dir if vis_output_dir is not None else run_dir / visualisation_directory
     outer_prism_raw = get_outer_prism_bounds_mm()  # Single source of truth for bounding box
     bbox_scale_factor: float = float(loop_cfg.get("bbox_scale_factor", 1.0))  # Scales outer_prism for domain sampling
     outer_prism = scale_outer_prism(outer_prism_raw, bbox_scale_factor)
 
-    vis_cadence: int = int(output_cfg.get("vis_cadence", 0))  # 0 = disabled
-    vis_mesh_res: int = int(output_cfg.get("mesh_resolution", 64))
+    # Vis cadence is authoritative from vis_manager (vis_config.yaml latent_pretraining section)
+    # Fall back to output_cfg for backward compat when vis_manager is NullVisManager.
+    _pretrain_vis_cfg: dict[str, Any] = vis_manager.latent_pretraining_cfg
+    vis_cadence_pretraining: int = int(
+        _pretrain_vis_cfg.get("vis_cadence_pretraining", output_cfg.get("vis_cadence", 0))
+    )  # 0 = disabled
+    vis_mesh_res: int = int(_pretrain_vis_cfg.get("mesh_resolution", output_cfg.get("mesh_resolution", 64)))
 
     # --- M3: Precomputed SDF cache ---
     _sdf_cache_dir_raw = output_cfg.get("sdf_cache_dir")
     sdf_cache_dir: Path | None = Path(_sdf_cache_dir_raw) if _sdf_cache_dir_raw is not None else None
 
     vis_show_domain_pts: bool = bool(
-        output_cfg.get("vis_show_domain_pts", output_cfg.get("vis_show_eikonal_pts", True))
+        _pretrain_vis_cfg.get(
+            "vis_show_domain_pts", output_cfg.get("vis_show_domain_pts", output_cfg.get("vis_show_eikonal_pts", True))
+        )
     )  # GREY: domain pts used for L1-all loss
-    vis_show_target_pts: str = str(output_cfg.get("vis_show_target_pts", "pts"))  # "pts" or "mesh"
+    vis_show_target_pts: str = str(
+        _pretrain_vis_cfg.get("vis_show_target_pts", output_cfg.get("vis_show_target_pts", "pts"))
+    )  # "pts" or "mesh"
 
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -787,12 +784,11 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             flush=True,
         )
 
-    # --- Per-epoch visualizer (b): current trained mesh + loss sample points ---
-    epoch_vis: SamplingVisualizer | None = None
-    if vis_sampling and vis_cadence > 0:
-        epoch_vis = SamplingVisualizer(output_dir=vis_dir, is_static=False)
-        epoch_vis.write_legend(_make_vis_legend(config_hash, vis_cadence, vis_show_domain_pts, surface_resample_cadence))
-        print(f"[latent_pretrain] Per-epoch vis enabled: cadence={vis_cadence}, mesh_res={vis_mesh_res} → {vis_dir}")
+    if vis_cadence_pretraining > 0:
+        print(
+            f"[latent_pretrain] vis_path=CVM2 only (SamplingVisualizer removed)  "
+            f"cadence={vis_cadence_pretraining}, mesh_res={vis_mesh_res}"
+        )
 
     # --- Register run metadata in W&B config (keys sourced from config when present) ---
     if use_wandb:
@@ -968,8 +964,8 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         optimizer.step()
         scheduler.step()
 
-        # --- Per-epoch snapshot (b): current trained mesh + current sampled points ---
-        if vis_sampling and epoch % vis_cadence == 0 and (epoch_vis is not None or vis_manager is not None):
+        # --- Per-epoch snapshot: current trained mesh + current sampled points (CVM2 only) ---
+        if vis_cadence_pretraining > 0 and epoch % vis_cadence_pretraining == 0:
             _write_epoch_vis_snapshot(
                 model=model,
                 Z=Z,
@@ -981,7 +977,6 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 mesh_res=vis_mesh_res,
                 outer_prism=outer_prism,
                 device=device,
-                vis=epoch_vis,
                 vis_manager=vis_manager,
                 show_target_pts=vis_show_target_pts,
                 show_domain_pts=vis_show_domain_pts,
@@ -1137,7 +1132,6 @@ def _write_epoch_vis_snapshot(
     mesh_res: int,
     outer_prism: dict[str, Any],
     device: str,
-    vis: SamplingVisualizer | None,
     *,
     vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
     show_target_pts: str = "pts",
@@ -1146,7 +1140,7 @@ def _write_epoch_vis_snapshot(
     """Write one epoch snapshot: current trained mesh, target surface, and domain pts.
 
     For each slot the combined PLY shows training convergence at a glance.
-    All tensors are moved to CPU before passing to the visualizer.
+    All tensors are moved to CPU before passing to the vis_manager (CVM2 only).
 
     Color coding:
     - **Forest green**: target (either surface-cache pts or target mesh geometry).
@@ -1168,12 +1162,13 @@ def _write_epoch_vis_snapshot(
         surf_pts_i, _ = cached_surface[slot_idx]  # target surface cache pts
         domain_pts_i: Tensor | None = domain_pts_per_slot[slot_idx] if show_domain_pts else None
 
-        # Extract current model surface (red) as numpy arrays
+        # Extract current model surface as numpy arrays
         clear_mesh_cache()
         model.set_latent_vector(Z[slot_idx].to(device))
         model.eval()
         mesh_arrays = _extract_mesh(model, None, device, mesh_res, outer_prism, return_mesh=True)
         model_verts_np: np.ndarray | None = mesh_arrays[0] if mesh_arrays is not None else None
+        model_faces_np: np.ndarray | None = mesh_arrays[1] if mesh_arrays is not None else None
 
         # Determine whether to show the target as a proper triangle mesh (green geometry)
         use_mesh_mode = show_target_pts == "mesh" and shape_type == "ply" and slot_idx in ply_cache
@@ -1185,51 +1180,31 @@ def _write_epoch_vis_snapshot(
                 target_verts_np = ply_verts_t.cpu().numpy()
                 target_faces_np = ply_faces_t.cpu().numpy()
                 model_pts_tensor = torch.from_numpy(model_verts_np) if model_verts_np is not None else torch.zeros(0, 3)
-                # Visualization path (preferred when provided)
-                if vis_manager is not None:
-                    vis_manager.vis_latent_sampling(
-                        epoch,
-                        model_pts_tensor,
-                        slot_idx=slot_idx,
-                        slot_name=slot_name,
-                        secondary_points=domain_pts_i.cpu() if domain_pts_i is not None else None,
-                        mesh_verts=target_verts_np,
-                        mesh_faces=target_faces_np,
-                    )
-                if vis is not None:
-                    vis.save_snapshot(
-                        points_mm=model_pts_tensor,
-                        mesh_verts=target_verts_np,
-                        mesh_faces=target_faces_np,
-                        name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
-                        secondary_points_mm=domain_pts_i.cpu() if domain_pts_i is not None else None,
-                        points_colour=_POINT_COLOUR_RED,
-                        secondary_colour=_POINT_COLOUR_WHITE,
-                        mesh_colour=_POINT_COLOUR_GREEN,
-                    )
+                vis_manager.vis_latent_sampling(
+                    epoch,
+                    model_pts_tensor,
+                    slot_idx=slot_idx,
+                    slot_name=slot_name,
+                    secondary_points=domain_pts_i.cpu() if domain_pts_i is not None else None,
+                    mesh_verts=target_verts_np,
+                    mesh_faces=target_faces_np,
+                )
             else:
                 # "pts" mode (or non-PLY slot): target cache pts (green), model pts (red), domain pts (grey)
-                if vis_manager is not None:
-                    vis_manager.vis_latent_sampling(
-                        epoch,
-                        surf_pts_i.cpu(),
-                        slot_idx=slot_idx,
-                        slot_name=slot_name,
-                        secondary_points=torch.from_numpy(model_verts_np) if model_verts_np is not None else None,
-                        tertiary_points=domain_pts_i.cpu() if domain_pts_i is not None else None,
-                    )
-                if vis is not None:
-                    vis.save_snapshot(
-                        points_mm=surf_pts_i.cpu(),
-                        mesh_verts=None,
-                        mesh_faces=None,
-                        name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
-                        secondary_points_mm=torch.from_numpy(model_verts_np) if model_verts_np is not None else None,
-                        tertiary_points_mm=domain_pts_i.cpu() if domain_pts_i is not None else None,
-                        points_colour=_POINT_COLOUR_GREEN,
-                        secondary_colour=_POINT_COLOUR_RED,
-                        tertiary_colour=_POINT_COLOUR_WHITE,
-                    )
+                vis_manager.vis_latent_sampling(
+                    epoch,
+                    surf_pts_i.cpu(),
+                    slot_idx=slot_idx,
+                    slot_name=slot_name,
+                    secondary_points=torch.from_numpy(model_verts_np) if model_verts_np is not None else None,
+                    tertiary_points=domain_pts_i.cpu() if domain_pts_i is not None else None,
+                )
+
+            # Assembly view: per-slot mesh overlaid on bbox geometry (gracefully skipped if
+            # assembly meshes are not loaded, e.g. in standalone pretraining mode)
+            if model_verts_np is not None and model_faces_np is not None:
+                vis_manager.vis_mesh_assembly_v4(epoch, model_verts_np, model_faces_np)
+
         except Exception as exc:
             print(f"[latent_pretrain] WARNING: epoch vis save failed for slot {slot_idx} ({slot_name}): {exc}")
 

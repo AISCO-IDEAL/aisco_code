@@ -6,6 +6,7 @@ filename (without ``.yaml``) as prefix, e.g.::
 
     losses_v0_config.general_info.initial_lambda   → targets losses_v0_config.yaml
     training_v0_config.training_params.learning_rate → targets training_v0_config.yaml
+    training_config.training_params.learning_rate → targets training_config.yaml
     solar_loss_config.SolarLossConfigV3.method       → targets solar_loss_config.yaml
 
 The registry is populated once at startup via :func:`register_all_configs` and
