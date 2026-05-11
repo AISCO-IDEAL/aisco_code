@@ -1,4 +1,5 @@
 import importlib.util
+import sys
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,8 @@ class AssemblySelectionService:
     """Backend service for WP2 assembly selection sliders and mesh refresh."""
 
     def __init__(self, repo_root: Path) -> None:
+        self._repo_root = repo_root
+        self._project_root = repo_root.parent
         self._wp2_gui_helpers_dir = repo_root / "wp2_assembler" / "version4" / "GUI_helpers"
         self._parameters_path = self._wp2_gui_helpers_dir / "parameters.yaml"
         self._assembly_ply_path = self._wp2_gui_helpers_dir / "assembly.ply"
@@ -83,6 +86,12 @@ class AssemblySelectionService:
     def _load_gui_assembly_module(self) -> Any:
         if self._gui_assembly_module is not None:
             return self._gui_assembly_module
+
+        # Ensure local repository modules are preferred over site-packages.
+        project_root_str = str(self._project_root.resolve())
+        if project_root_str in sys.path:
+            sys.path.remove(project_root_str)
+        sys.path.insert(0, project_root_str)
 
         if not self._gui_assembly_script.exists():
             raise HTTPException(

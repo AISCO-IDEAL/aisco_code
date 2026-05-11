@@ -49,12 +49,6 @@ class SolarV3Selection(RenderingMode):
         self.fps = config["fps"]
 
     def update(self, optimization_state: dict) -> None:
-        # Required injected state. The solar selection loss must publish these keys
-        # into optimization_state for this mode to render. Skip silently otherwise so
-        # an unrelated training run isn't aborted by an irrelevant visualiser.
-        if "threshold" not in optimization_state or "selection_weights" not in optimization_state:
-            return
-
         # use vertices/faces to render (don't track gradients for performance)
         vertices = optimization_state["vertices"].detach()  # is torch tensor of shape (num_vertices, 3)
         faces = optimization_state["faces"].detach()  # is torch tensor of shape (num_faces, 3) with vertex indices for each face

@@ -42,8 +42,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     get_master_config,
     load_config,
     register_all_configs,
-    set_gui_config_folder,
-    switch_to_gui_config,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import DebugManager
@@ -72,12 +70,6 @@ configure_headless_pyvista()
 def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa: PLR0912, PLR0915
 
     print("Starting Main file V2...")
-    if gui_mode:
-        if not cfg_folder:
-            raise ValueError("--uses-gui requires --cfg-folder to point at a GUI override folder.")
-        set_gui_config_folder(cfg_folder)
-        switch_to_gui_config(True)
-        print(f"GUI override mode active. Loading configs from: {cfg_folder}")
 
     # 1. Load and register configs
     general_config: dict[str, Any] = load_config(v="v2", cfg_name="general_config.yaml")

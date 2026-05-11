@@ -52,12 +52,7 @@ def _make_concat_wire_v2() -> Any:
 
 
 def _make_latent_pretrain_config(checkpoint_path: str, force: bool = True) -> dict:
-    """Minimal 2-shape config dict for integration tests.
-
-    ``checkpoint_path`` is treated as the ``base_dir`` (Plan 031 / M3).
-    The helper is kept with the original parameter name to minimise diff in
-    call sites, but it maps to ``output.base_dir``.
-    """
+    """Minimal 2-shape config dict for integration tests."""
     return {
         "model_name": "ConcatWIREV2",
         "z_placement": "unit_circle",
@@ -87,7 +82,7 @@ def _make_latent_pretrain_config(checkpoint_path: str, force: bool = True) -> di
             "eikonal_weight": 0.01,
         },
         "output": {
-            "base_dir": checkpoint_path,
+            "checkpoint_path": checkpoint_path,
             "mesh_resolution": 16,
         },
     }
@@ -524,45 +519,45 @@ class TestLatentSpaceGate:
 
 
 class TestPretrainConfigHash:
-    """Tests for _compute_latent_pretrain_hash and _resolve_checkpoint_path."""
+    """Tests for _compute_pretrain_config_hash and _resolve_checkpoint_path."""
 
     def test_hash_stable_same_config(self) -> None:
         """Same config + model → same hash both times."""
-        _compute_latent_pretrain_hash = _import(PRETRAIN_LATENT, "_compute_latent_pretrain_hash")
+        _compute_pretrain_config_hash = _import(PRETRAIN_LATENT, "_compute_pretrain_config_hash")
         model = _make_concat_wire_v2()
         config = _make_latent_pretrain_config("/tmp/ckpt.pth")
-        h1 = _compute_latent_pretrain_hash(config, model)
-        h2 = _compute_latent_pretrain_hash(config, model)
+        h1 = _compute_pretrain_config_hash(config, model)
+        h2 = _compute_pretrain_config_hash(config, model)
         assert h1 == h2
 
     def test_hash_changes_different_population(self) -> None:
         """Different latent_population shapes → different hash."""
-        _compute_latent_pretrain_hash = _import(PRETRAIN_LATENT, "_compute_latent_pretrain_hash")
+        _compute_pretrain_config_hash = _import(PRETRAIN_LATENT, "_compute_pretrain_config_hash")
         model = _make_concat_wire_v2()
         config_a = _make_latent_pretrain_config("/tmp/ckpt.pth")
         config_b = _make_latent_pretrain_config("/tmp/ckpt.pth")
         config_b["latent_population"][0]["radius"] = 500.0  # different from 1000.0
-        assert _compute_latent_pretrain_hash(config_a, model) != _compute_latent_pretrain_hash(config_b, model)
+        assert _compute_pretrain_config_hash(config_a, model) != _compute_pretrain_config_hash(config_b, model)
 
     def test_hash_changes_different_training_loop(self) -> None:
         """Different training_loop params → different hash."""
-        _compute_latent_pretrain_hash = _import(PRETRAIN_LATENT, "_compute_latent_pretrain_hash")
+        _compute_pretrain_config_hash = _import(PRETRAIN_LATENT, "_compute_pretrain_config_hash")
         model = _make_concat_wire_v2()
         config_a = _make_latent_pretrain_config("/tmp/ckpt.pth")
         config_b = _make_latent_pretrain_config("/tmp/ckpt.pth")
         config_b["training_loop"]["epochs"] = 9999
-        assert _compute_latent_pretrain_hash(config_a, model) != _compute_latent_pretrain_hash(config_b, model)
+        assert _compute_pretrain_config_hash(config_a, model) != _compute_pretrain_config_hash(config_b, model)
 
     def test_resolve_path_embeds_hash(self) -> None:
         """Resolved path's parent folder and filename both contain config hash."""
         _resolve_checkpoint_path = _import(PRETRAIN_LATENT, "_resolve_checkpoint_path")
-        _compute_latent_pretrain_hash = _import(PRETRAIN_LATENT, "_compute_latent_pretrain_hash")
+        _compute_pretrain_config_hash = _import(PRETRAIN_LATENT, "_compute_pretrain_config_hash")
         model = _make_concat_wire_v2()
-        config = _make_latent_pretrain_config("/tmp/base")
-        expected_hash = _compute_latent_pretrain_hash(config, model)
+        config = _make_latent_pretrain_config("/tmp/base/pretrained_latent.pth")
+        expected_hash = _compute_pretrain_config_hash(config, model)
         resolved = _resolve_checkpoint_path(config, model)
-        # Structure: /tmp/base/<epochs>_<ModelClass>_<hash>/pretrained_latent_<hash>.pth
-        assert expected_hash in resolved.parent.name
+        # Structure: /tmp/base/<hash>/pretrained_latent_<hash>.pth
+        assert resolved.parent.name == expected_hash
         assert expected_hash in resolved.stem
         assert resolved.suffix == ".pth"
 
@@ -570,9 +565,9 @@ class TestPretrainConfigHash:
         """Resolved checkpoint is under the configured base directory."""
         _resolve_checkpoint_path = _import(PRETRAIN_LATENT, "_resolve_checkpoint_path")
         model = _make_concat_wire_v2()
-        config = _make_latent_pretrain_config("/some/dir")
+        config = _make_latent_pretrain_config("/some/dir/pretrained_latent.pth")
         resolved = _resolve_checkpoint_path(config, model)
-        # Structure: /some/dir/<epochs>_<ModelClass>_<hash>/pretrained_latent_<hash>.pth
+        # Structure: /some/dir/<hash>/pretrained_latent_<hash>.pth
         assert resolved.parent.parent == Path("/some/dir")
         assert resolved.suffix == ".pth"
         assert "pretrained_latent_" in resolved.name
@@ -1074,183 +1069,3 @@ class TestFieldDiversityPerAxisBounds:
         )
         # With no loss instance configured, returns zero tensor
         assert float(result.raw) == pytest.approx(0.0)
-
-
-# ---------------------------------------------------------------------------
-# Plan 031 — _compute_latent_pretrain_hash (TDD — written before implementation)
-# Tests will fail with AttributeError until _compute_latent_pretrain_hash exists.
-# ---------------------------------------------------------------------------
-
-
-def _make_new_latent_pretrain_config(base_dir: str, force: bool = True) -> dict:
-    """Minimal 2-shape config dict using the new base_dir-based output section."""
-    return {
-        "model_name": "ConcatWIREV2",
-        "z_placement": "unit_circle",
-        "z_radius": 1.0,
-        "force_pretraining": force,
-        "latent_population": [
-            {
-                "name": "sphere_slot_0",
-                "shape_type": "sphere",
-                "radius": 1000.0,
-                "ply_path": None,
-                "side_length": None,
-            },
-            {
-                "name": "cube_slot_1",
-                "shape_type": "cube",
-                "side_length": 2000.0,
-                "ply_path": None,
-                "radius": None,
-            },
-        ],
-        "training_loop": {
-            "epochs": 3,
-            "learning_rate": 1e-4,
-            "batch_size_per_shape": 32,
-            "logging_interval": 1,
-            "bbox_scale_factor": 1.0,
-        },
-        "output": {
-            "base_dir": base_dir,
-            "mesh_resolution": 16,
-        },
-    }
-
-
-class TestLatentPretrainHash:
-    """Tests for _compute_latent_pretrain_hash (Plan 031 / M1+M2).
-
-    Written BEFORE implementation (TDD red phase).
-    Fail with AttributeError until _compute_latent_pretrain_hash exists.
-    """
-
-    def test_hash_stable_same_config(self) -> None:
-        """Same config + model → same hash both times."""
-        _compute_latent_pretrain_hash = _import(PRETRAIN_LATENT, "_compute_latent_pretrain_hash")
-        model = _make_concat_wire_v2()
-        config = _make_new_latent_pretrain_config("/tmp/base")
-        h1 = _compute_latent_pretrain_hash(config, model)
-        h2 = _compute_latent_pretrain_hash(config, model)
-        assert h1 == h2
-
-    def test_hash_changes_when_epoch_changes(self) -> None:
-        """Changing epochs → different hash (epochs in training_loop)."""
-        _compute_latent_pretrain_hash = _import(PRETRAIN_LATENT, "_compute_latent_pretrain_hash")
-        model = _make_concat_wire_v2()
-        config_a = _make_new_latent_pretrain_config("/tmp/base")
-        config_b = _make_new_latent_pretrain_config("/tmp/base")
-        config_b["training_loop"]["epochs"] = 9999
-        assert _compute_latent_pretrain_hash(config_a, model) != _compute_latent_pretrain_hash(config_b, model)
-
-    def test_hash_changes_when_shape_sigma_changes(self) -> None:
-        """Changing surface_noise_sigma_factor on a PLY shape → different hash."""
-        _compute_latent_pretrain_hash = _import(PRETRAIN_LATENT, "_compute_latent_pretrain_hash")
-        model = _make_concat_wire_v2()
-        config_a = _make_new_latent_pretrain_config("/tmp/base")
-        config_b = _make_new_latent_pretrain_config("/tmp/base")
-        # Add a PLY shape to both configs so sigma_factor is meaningful
-        ply_shape = {
-            "name": "ply_slot_2",
-            "shape_type": "ply",
-            "radius": None,
-            "side_length": None,
-            "ply_path": "/some/path/shape.ply",
-            "ply_scale": 100.0,
-            "surface_noise_sigma_factor": 0.005,
-        }
-        config_a["latent_population"].append({**ply_shape})
-        config_b["latent_population"].append({**ply_shape, "surface_noise_sigma_factor": 0.05})
-        assert _compute_latent_pretrain_hash(config_a, model) != _compute_latent_pretrain_hash(config_b, model)
-
-    def test_hash_changes_when_ply_stem_changes(self) -> None:
-        """Renaming the PLY file (different stem) → different hash."""
-        _compute_latent_pretrain_hash = _import(PRETRAIN_LATENT, "_compute_latent_pretrain_hash")
-        model = _make_concat_wire_v2()
-        config_a = _make_new_latent_pretrain_config("/tmp/base")
-        config_b = _make_new_latent_pretrain_config("/tmp/base")
-        ply_shape = {
-            "name": "ply_slot_2",
-            "shape_type": "ply",
-            "radius": None,
-            "side_length": None,
-            "ply_path": "/some/path/shape_A.ply",
-            "ply_scale": 100.0,
-            "surface_noise_sigma_factor": 0.005,
-        }
-        config_a["latent_population"].append({**ply_shape})
-        config_b["latent_population"].append({**ply_shape, "ply_path": "/some/path/shape_B.ply"})
-        assert _compute_latent_pretrain_hash(config_a, model) != _compute_latent_pretrain_hash(config_b, model)
-
-    def test_hash_same_when_only_ply_directory_changes(self) -> None:
-        """Moving a PLY to a different directory (same stem) → same hash (path-move resilient)."""
-        _compute_latent_pretrain_hash = _import(PRETRAIN_LATENT, "_compute_latent_pretrain_hash")
-        model = _make_concat_wire_v2()
-        config_a = _make_new_latent_pretrain_config("/tmp/base")
-        config_b = _make_new_latent_pretrain_config("/tmp/base")
-        ply_shape = {
-            "name": "ply_slot_2",
-            "shape_type": "ply",
-            "radius": None,
-            "side_length": None,
-            "ply_path": "/old/dir/shape_A.ply",
-            "ply_scale": 100.0,
-            "surface_noise_sigma_factor": 0.005,
-        }
-        config_a["latent_population"].append({**ply_shape})
-        config_b["latent_population"].append({**ply_shape, "ply_path": "/new/dir/shape_A.ply"})
-        assert _compute_latent_pretrain_hash(config_a, model) == _compute_latent_pretrain_hash(config_b, model)
-
-    def test_hash_changes_when_bbox_scale_factor_changes(self) -> None:
-        """Changing bbox_scale_factor in training_loop → different hash."""
-        _compute_latent_pretrain_hash = _import(PRETRAIN_LATENT, "_compute_latent_pretrain_hash")
-        model = _make_concat_wire_v2()
-        config_a = _make_new_latent_pretrain_config("/tmp/base")
-        config_b = _make_new_latent_pretrain_config("/tmp/base")
-        config_b["training_loop"]["bbox_scale_factor"] = 1.2
-        assert _compute_latent_pretrain_hash(config_a, model) != _compute_latent_pretrain_hash(config_b, model)
-
-    def test_new_resolve_path_uses_base_dir(self, tmp_path: Path) -> None:
-        """_resolve_checkpoint_path uses base_dir and epoch-prefix folder naming."""
-        _resolve_checkpoint_path = _import(PRETRAIN_LATENT, "_resolve_checkpoint_path")
-        _compute_latent_pretrain_hash = _import(PRETRAIN_LATENT, "_compute_latent_pretrain_hash")
-        model = _make_concat_wire_v2()
-        config = _make_new_latent_pretrain_config(str(tmp_path))
-        resolved = _resolve_checkpoint_path(config, model)
-        config_hash = _compute_latent_pretrain_hash(config, model)
-        # Folder: <base_dir>/<epochs:06d>_<ModelClass>_<hash>/
-        folder = resolved.parent
-        assert folder.parent == tmp_path, f"Expected parent to be base_dir {tmp_path}, got {folder.parent}"
-        # Folder name must contain the hash
-        assert config_hash in folder.name, f"Expected config_hash {config_hash} in folder name {folder.name}"
-        # Folder name must contain epoch prefix (000003 for 3 epochs)
-        assert folder.name.startswith("000003"), f"Expected epoch prefix '000003' in folder name {folder.name}"
-        # Filename must embed hash
-        assert f"pretrained_latent_{config_hash}.pth" == resolved.name
-
-    def test_resolve_path_different_epoch_different_folder(self, tmp_path: Path) -> None:
-        """Two configs with different epoch counts produce different folders."""
-        _resolve_checkpoint_path = _import(PRETRAIN_LATENT, "_resolve_checkpoint_path")
-        model = _make_concat_wire_v2()
-        config_a = _make_new_latent_pretrain_config(str(tmp_path))
-        config_b = _make_new_latent_pretrain_config(str(tmp_path))
-        config_b["training_loop"]["epochs"] = 100
-        path_a = _resolve_checkpoint_path(config_a, model)
-        path_b = _resolve_checkpoint_path(config_b, model)
-        assert path_a != path_b
-        assert path_a.parent.name.startswith("000003")
-        assert path_b.parent.name.startswith("000100")
-
-    def test_full_round_trip_new_path(self, tmp_path: Path) -> None:
-        """Full pretraining run with new config schema → checkpoint at canonical path."""
-        pretraining_latent = _import(PRETRAIN_LATENT, "pretraining_latent")
-        _resolve_checkpoint_path = _import(PRETRAIN_LATENT, "_resolve_checkpoint_path")
-        model = _make_concat_wire_v2()
-        config = _make_new_latent_pretrain_config(str(tmp_path))
-        expected_ckpt = _resolve_checkpoint_path(config, model)
-        pretraining_latent(model, config, "cpu")
-        assert expected_ckpt.exists(), f"Checkpoint not found at {expected_ckpt}"
-        # model_info_dict.json must also be written
-        info_json = expected_ckpt.parent / "model_info_dict.json"
-        assert info_json.exists(), f"model_info_dict.json not found at {info_json}"

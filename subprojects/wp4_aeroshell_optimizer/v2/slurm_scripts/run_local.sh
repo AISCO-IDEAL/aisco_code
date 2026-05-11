@@ -14,7 +14,7 @@ export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH
 umask 0002 # ensure group write permissions for logs and models
 
 
-PROJECT_ROOT="$HOME/AISCO_code"
+PROJECT_ROOT="$HOME/Documents/AISCO_code"
 VENV_DIR="$PROJECT_ROOT/aisco_env"
 
 #------------------------------------------------------------------------------
@@ -55,8 +55,10 @@ export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 export AISCO_CODE_PATH="$PROJECT_ROOT"
 cd "$PROJECT_ROOT"
 
-# Run the python command with CLI arguments passed through
-python3 subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py "$@"
+# Run the python command
+python3 subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py  \
+    --save_model \
+    --problem_id="AISCO_WP4_Test1"
 
 echo "=========================================="
 echo "Finished at: $(date)"

@@ -133,13 +133,6 @@ class TotalLoss:
         self._cse_objective_cache: dict[str, torch.Tensor] = {}
         self._cse_weight: float = float(general_info.get("cse_weight", 1.0))
 
-        # Visualisation state — populated each _compute_raw_losses() by
-        # _extract_primary_visu_mesh + _capture_vertex_grads_via_autograd. Read by
-        # the renderer via collect_vertex_grads_for_visualisation(). Mirrors V2.
-        self._visu_primary_v: torch.Tensor | None = None
-        self._visu_primary_f: torch.Tensor | None = None
-        self._visu_per_loss_grads: dict[str, torch.Tensor] = {}
-
         self._init_mesh_infrastructure()
         self._init_active_losses()  # must come before _init_alm_state (needs n_constraints)
         # Propagate vis_manager to child loss instances (e.g. GaotLoss) so they can
@@ -483,7 +476,6 @@ class TotalLoss:
         self._skipped_categories: set[str] = set()
         self._zero_weighted_categories: set[str] = set()
         self._inject_shared_meshes(model)
-        self._extract_primary_visu_mesh(model)
         raw: dict[str, torch.Tensor] = {}
         try:
             for name, instance in self._active_losses.items():
@@ -504,7 +496,6 @@ class TotalLoss:
                     raw[name] = instance.get_loss(model, epoch_name, skip_telemetry=True)
                 else:
                     raw[name] = instance.get_loss(model, epoch_name)
-            self._capture_vertex_grads_via_autograd(raw)
         finally:
             self._clear_shared_meshes()
         self.latest_raw_metrics = raw
@@ -897,7 +888,6 @@ class TotalLoss:
                                 "faces": faces,
                                 "assembly_id": runtime_assembly_id,
                                 "bb_assembly_id": runtime_assembly_id,
-                                **extra_state,
                             }
                         )
                     except Exception as e:

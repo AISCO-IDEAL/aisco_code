@@ -76,7 +76,7 @@ class SurfaceLossV0(ParentLoss):
         Returns:
             Scalar surrogate loss (gradients flow back to SDF parameters).
         """
-        _verts, _faces, _area_loss, surrogate_loss, _ = self.mesh_extractor.extract_and_compute_loss(
+        _vertices, _faces, _area_loss, surrogate_loss, _ = self.mesh_extractor.extract_and_compute_loss(
             sdf_model=model,
             loss_fn=self._area_loss_fn,
             enable_backward=True,

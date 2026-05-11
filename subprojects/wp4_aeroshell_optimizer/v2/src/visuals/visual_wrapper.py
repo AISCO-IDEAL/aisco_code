@@ -88,10 +88,6 @@ class VisualisationManager:
         # Initialize all rendering modes
         self.rendering_modes: dict[str, RenderingMode] = {}
         self._initialize_rendering_modes(key=key_for_modes)
-        # Detached modes share the same plugin contract (subclass of RenderingMode +
-        # class_path/enabled/config in YAML); load them through the same path so
-        # MeshSDFGrads, ShadingPenalty, etc. become first-class manager members.
-        self._initialize_rendering_modes(key="detached_modes")
 
         if verbose:
             print("Initialized Visualisation Manager")

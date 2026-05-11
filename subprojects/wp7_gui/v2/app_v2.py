@@ -8,10 +8,12 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, ClassVar, cast
+from urllib.parse import quote
 
 import imageio.v2 as imageio
 import uvicorn
@@ -24,6 +26,11 @@ from utilities.config_interface import fetch_wp4_configs
 
 from subprojects.wp7_gui.v2.functions.assembly_selection_service import AssemblySelectionService
 from subprojects.wp7_gui.v2.functions.pretraining_service import PretrainingService
+
+# Prefer repository-local packages over site-packages for GUI/runtime helpers.
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -77,7 +84,8 @@ GUI_PAGE_FILES: dict[str, Path] = {
     "leaderboard": PAGES_DIR / "leaderboard.html",
     "pretraining": PAGES_DIR / "pretraining.html",
     "optimization": PAGES_DIR / "optimization.html",
-    "solar": PAGES_DIR / "solar.html",
+    "gradient_viewer": PAGES_DIR / "gradient_viewer.html",
+    "solar": PAGES_DIR / "gradient_viewer.html",
     "assembly_selection": PAGES_DIR / "assembly_selection.html",
     "testing": PAGES_DIR / "testing.html",
     "config_overrides": PAGES_DIR / "config_overrides.html",
@@ -132,6 +140,12 @@ class CleanupRequest(BaseModel):
 
 
 class GUIRequestHandler:
+    SOLAR_RENDER_GROUPS: ClassVar[dict[str, tuple[str, ...]]] = {
+        "aero": ("MeshSDF_grads_aero",),
+        "solar": ("MeshSDF_grads_solar", "MeshSDF_grad_solar"),
+        "total": ("MeshSDF_grads_total",),
+    }
+
     @staticmethod
     def _coerce_bool(value: object, default: bool = False) -> bool:
         if isinstance(value, bool):
@@ -184,6 +198,98 @@ class GUIRequestHandler:
     @staticmethod
     def handle_pretraining_gif_file(rel_path: str) -> FileResponse:
         return pretraining_service.get_gif_response(rel_path)
+
+    def _get_solar_render_dir_for_group(self, group: str) -> Path | None:
+        folder_candidates = self.SOLAR_RENDER_GROUPS.get(group)
+        if folder_candidates is None:
+            return None
+
+        for folder in folder_candidates:
+            candidate = (SOLAR_RENDERS_ROOT / folder).resolve()
+            if candidate.exists() and candidate.is_dir():
+                return candidate
+        return None
+
+    @staticmethod
+    def _extract_render_frame_index(filename: str) -> int | None:
+        match = re.search(r"cam\d+_(\d+)_", filename)
+        if match is None:
+            return None
+        return int(match.group(1))
+
+    @staticmethod
+    def _natural_sort_key(value: str) -> list[Any]:
+        # Keep visual order aligned with typical folder explorers for numbered filenames.
+        parts = re.split(r"(\d+)", value)
+        return [int(part) if part.isdigit() else part.lower() for part in parts]
+
+    def handle_solar_render_frames(self) -> dict[str, Any]:
+        if not SOLAR_RENDERS_ROOT.exists() or not SOLAR_RENDERS_ROOT.is_dir():
+            return {
+                "base_dir": str(SOLAR_RENDERS_ROOT),
+                "groups": {"aero": [], "solar": [], "total": []},
+                "frame_indices": [],
+                "message": "Solar renders root does not exist.",
+            }
+
+        groups_payload: dict[str, list[dict[str, Any]]] = {}
+        frame_index_values: set[int] = set()
+        valid_ext = {".png", ".jpg", ".jpeg", ".webp"}
+
+        for group_key in ("aero", "solar", "total"):
+            group_dir = self._get_solar_render_dir_for_group(group_key)
+            entries: list[dict[str, Any]] = []
+
+            if group_dir is not None:
+                image_paths = [path for path in group_dir.iterdir() if path.is_file() and path.suffix.lower() in valid_ext]
+
+                image_paths.sort(
+                    key=lambda p: (
+                        self._extract_render_frame_index(p.name) is None,
+                        self._extract_render_frame_index(p.name) or 0,
+                        p.name,
+                    )
+                )
+
+                for image_path in image_paths:
+                    frame_index = self._extract_render_frame_index(image_path.name)
+                    if frame_index is not None:
+                        frame_index_values.add(frame_index)
+
+                    entries.append(
+                        {
+                            "name": image_path.name,
+                            "index": frame_index,
+                            "folder": group_dir.name,
+                            "url": (f"/solar/render-file?group={quote(group_key)}&name={quote(image_path.name)}"),
+                        }
+                    )
+
+            groups_payload[group_key] = entries
+
+        return {
+            "base_dir": str(SOLAR_RENDERS_ROOT),
+            "groups": groups_payload,
+            "frame_indices": sorted(frame_index_values),
+            "message": "Solar renders loaded",
+        }
+
+    def handle_solar_render_file(self, group: str, filename: str) -> FileResponse:
+        group_dir = self._get_solar_render_dir_for_group(group)
+        if group_dir is None:
+            raise HTTPException(status_code=400, detail={"message": f"Invalid group: {group}"})
+
+        requested = (group_dir / filename).resolve()
+        try:
+            requested.relative_to(group_dir)
+        except Exception:
+            raise HTTPException(status_code=400, detail={"message": "Invalid image path"}) from None
+
+        if not requested.exists() or not requested.is_file():
+            raise HTTPException(status_code=404, detail={"message": "Render image not found"})
+
+        mime_type = mimetypes.guess_type(str(requested))[0] or "application/octet-stream"
+        return FileResponse(str(requested), media_type=mime_type, headers={"Cache-Control": "no-store"})
 
     def handle_run_local(self, payload: RunLocalRequest) -> JSONResponse:
         raw_assembly_id = payload.assembly_id
@@ -401,12 +507,16 @@ class GUIRequestHandler:
 
     def handle_run_local_artifacts(self) -> dict[str, Any]:
         storage_root = self._get_storage_root()
+        cam1_renders = self._list_cam1_render_images()
+        pressure_field_images = self._list_pressure_field_images()
         run_dir = self._detect_current_run_dir()
         if run_dir is None:
             return {
                 "run_dir": None,
                 "mesh_assembly_gifs": [],
                 "solar_loss_gifs": [],
+                "cam1_renders": cam1_renders,
+                "pressure_field_images": pressure_field_images,
                 "meshes": [],
                 "storage_root": str(storage_root),
                 "message": "No completed run output directory found yet.",
@@ -464,9 +574,103 @@ class GUIRequestHandler:
             "storage_root": str(storage_root),
             "mesh_assembly_gifs": gifs,
             "solar_loss_gifs": solar_loss_gifs,
+            "cam1_renders": cam1_renders,
+            "pressure_field_images": pressure_field_images,
             "meshes": meshes,
             "message": "Artifacts loaded",
         }
+
+    def _list_cam1_render_images(self) -> list[dict[str, Any]]:
+        if not MESH_ASSEMBLY_RENDERS_DIR.exists() or not MESH_ASSEMBLY_RENDERS_DIR.is_dir():
+            return []
+
+        cam1_candidates: list[Path] = []
+        for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
+            cam1_candidates.extend(MESH_ASSEMBLY_RENDERS_DIR.glob(f"cam1*{ext[1:]}"))
+
+        cam1_candidates.sort(key=lambda p: (self._extract_render_frame_index(p.name) or -1, p.name))
+
+        result: list[dict[str, Any]] = []
+        for image_path in cam1_candidates:
+            rel_path = image_path.resolve().relative_to(SOLAR_RENDERS_ROOT.resolve()).as_posix()
+            result.append(
+                {
+                    "name": image_path.name,
+                    "rel_path": rel_path,
+                    "url": f"/run-local/wandb-visual-file?path={quote(rel_path)}",
+                    "frame_index": self._extract_render_frame_index(image_path.name),
+                }
+            )
+        return result
+
+    def _list_pressure_field_images(self) -> list[dict[str, Any]]:
+        if not PRESSURE_VISUALS_ROOT.exists() or not PRESSURE_VISUALS_ROOT.is_dir():
+            return []
+
+        all_candidates: list[Path] = []
+        for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
+            all_candidates.extend(PRESSURE_VISUALS_ROOT.rglob(ext))
+
+        pressure_candidates = [
+            path for path in all_candidates if "pressure" in path.name.lower() or "pressure" in path.parent.name.lower()
+        ]
+
+        # Fallback for runs where pressure images are stored in the renders tree without explicit naming.
+        if not pressure_candidates:
+            pressure_candidates = [
+                path for path in all_candidates if "mesh_assembly_mode_v4" not in {part.lower() for part in path.parts}
+            ]
+
+        pressure_candidates.sort(
+            key=lambda p: self._natural_sort_key(p.resolve().relative_to(PRESSURE_VISUALS_ROOT.resolve()).as_posix())
+        )
+
+        result: list[dict[str, Any]] = []
+        for image_path in pressure_candidates:
+            rel_path = image_path.resolve().relative_to(PRESSURE_VISUALS_ROOT.resolve()).as_posix()
+            result.append(
+                {
+                    "name": image_path.name,
+                    "rel_path": rel_path,
+                    "url": f"/run-local/wandb-pressure-file?path={quote(rel_path)}",
+                    "epoch": self._extract_render_frame_index(image_path.name),
+                }
+            )
+        return result
+
+    def handle_wandb_visual_file(self, rel_path: str) -> FileResponse:
+        rel_path = rel_path.lstrip("/")
+        if not rel_path:
+            raise HTTPException(status_code=400, detail={"message": "Missing path query parameter"})
+
+        try:
+            requested = (SOLAR_RENDERS_ROOT.resolve() / rel_path).resolve()
+            requested.relative_to(SOLAR_RENDERS_ROOT.resolve())
+        except Exception:
+            raise HTTPException(status_code=400, detail={"message": "Invalid visual path"}) from None
+
+        if not requested.exists() or not requested.is_file():
+            raise HTTPException(status_code=404, detail={"message": "Visual file not found"})
+
+        mime_type = mimetypes.guess_type(str(requested))[0] or "application/octet-stream"
+        return FileResponse(str(requested), media_type=mime_type, headers={"Cache-Control": "no-store"})
+
+    def handle_wandb_pressure_file(self, rel_path: str) -> FileResponse:
+        rel_path = rel_path.lstrip("/")
+        if not rel_path:
+            raise HTTPException(status_code=400, detail={"message": "Missing path query parameter"})
+
+        try:
+            requested = (PRESSURE_VISUALS_ROOT.resolve() / rel_path).resolve()
+            requested.relative_to(PRESSURE_VISUALS_ROOT.resolve())
+        except Exception:
+            raise HTTPException(status_code=400, detail={"message": "Invalid pressure visual path"}) from None
+
+        if not requested.exists() or not requested.is_file():
+            raise HTTPException(status_code=404, detail={"message": "Pressure visual file not found"})
+
+        mime_type = mimetypes.guess_type(str(requested))[0] or "application/octet-stream"
+        return FileResponse(str(requested), media_type=mime_type, headers={"Cache-Control": "no-store"})
 
     def handle_artifact_file(self, rel_path: str) -> FileResponse:
         rel_path = rel_path.lstrip("/")
@@ -676,7 +880,9 @@ class ConfigOverrideManager:
             root = CONFIG_OVERRIDES_ROOT.resolve()
             candidate.relative_to(root)
         except (ValueError, OSError) as error:
-            raise HTTPException(status_code=400, detail={"message": f"Folder is outside the override root: {folder_str}"}) from error
+            raise HTTPException(
+                status_code=400, detail={"message": f"Folder is outside the override root: {folder_str}"}
+            ) from error
         if not candidate.name.startswith(GUI_OVERRIDE_PREFIX):
             raise HTTPException(
                 status_code=400,
@@ -868,7 +1074,9 @@ class ConfigOverrideManager:
 
         if ptype == "string":
             if not isinstance(raw_value, str):
-                raise HTTPException(status_code=400, detail={"message": f"{loc}: expected string, got {type(raw_value).__name__}"})
+                raise HTTPException(
+                    status_code=400, detail={"message": f"{loc}: expected string, got {type(raw_value).__name__}"}
+                )
             return raw_value
 
         if ptype == "enum":
@@ -919,6 +1127,16 @@ def artifact_file_endpoint(path: str = "") -> FileResponse:
     return handler.handle_artifact_file(path)
 
 
+@app.get("/run-local/wandb-visual-file")
+def run_local_wandb_visual_file_endpoint(path: str = "") -> FileResponse:
+    return handler.handle_wandb_visual_file(path)
+
+
+@app.get("/run-local/wandb-pressure-file")
+def run_local_wandb_pressure_file_endpoint(path: str = "") -> FileResponse:
+    return handler.handle_wandb_pressure_file(path)
+
+
 @app.get("/run-local/slow-gif")
 def slow_gif_endpoint(path: str = "", factor: str = "2.5") -> FileResponse:
     return handler.handle_slow_gif(path, factor)
@@ -932,6 +1150,16 @@ def pretraining_gifs_endpoint() -> dict[str, Any]:
 @app.get("/pretraining/gif-file")
 def pretraining_gif_file_endpoint(path: str = "") -> FileResponse:
     return handler.handle_pretraining_gif_file(path)
+
+
+@app.get("/solar/renders")
+def solar_renders_endpoint() -> dict[str, Any]:
+    return handler.handle_solar_render_frames()
+
+
+@app.get("/solar/render-file")
+def solar_render_file_endpoint(group: str = "", name: str = "") -> FileResponse:
+    return handler.handle_solar_render_file(group, name)
 
 
 @app.get("/assembly-selection/params")
@@ -1027,7 +1255,7 @@ else:
 
 def main() -> None:
     host = "0.0.0.0"
-    port = 8002
+    port = 8000
 
     print("--- AISCO GUI Server ---")
     print(f"Serving static files from: {TEMPLATES_DIR}")

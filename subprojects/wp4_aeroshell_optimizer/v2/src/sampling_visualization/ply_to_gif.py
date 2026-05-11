@@ -516,7 +516,7 @@ def generate_gifs(
                 _render_frame(renderer, fp, cam_pose, camera_direction=CAMERA_DIRECTION, add_overlay=True) for fp in file_paths
             ]
             gif_path = output_path / f"slot{slot}_convergence.gif"
-            imageio.mimsave(str(gif_path), frames, fps=FPS)
+            imageio.mimsave(str(gif_path), frames, fps=FPS)  # type: ignore[arg-type]
             print(f"  Saved: {gif_path}")
     finally:
         renderer.delete()

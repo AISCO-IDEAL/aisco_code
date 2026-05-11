@@ -46,6 +46,7 @@ class ModelLoader:
         self.optimization_state = {
             "vertices": None,
             "faces": None,
+            "vertice_grads": None,
         }
 
         self.model_path = self._get_checkpoint_path()

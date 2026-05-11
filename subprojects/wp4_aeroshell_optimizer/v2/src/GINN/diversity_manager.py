@@ -920,7 +920,6 @@ class DiversityTrainer:
                         "faces": faces,
                         "assembly_id": None,
                         "bb_assembly_id": None,
-                        **extra_state,
                     }
                 )
             except Exception as e:

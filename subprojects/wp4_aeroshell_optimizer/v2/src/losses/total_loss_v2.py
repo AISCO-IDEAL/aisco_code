@@ -134,13 +134,6 @@ class TotalLossV2:
         self._cse_prefactors: dict[str, float] = gi.get("cse_prefactors", {})
         self._cse_weight: float = float(gi.get("cse_weight", 1.0))
 
-        # Visualisation state — populated each compute() by _extract_primary_visu_mesh
-        # and _capture_vertex_grads_via_autograd. Read by the renderer via
-        # collect_vertex_grads_for_visualisation().
-        self._visu_primary_v: torch.Tensor | None = None
-        self._visu_primary_f: torch.Tensor | None = None
-        self._visu_per_loss_grads: dict[str, torch.Tensor] = {}
-
         self._init_active_losses()
         self._warn_about_dead_weights()
 
@@ -524,7 +517,6 @@ class TotalLossV2:
             grouped by category.
         """
         self._inject_shared_meshes(model)
-        self._extract_primary_visu_mesh(model)
         bundle = RawLossBundle()
         self._skipped_log_zeros: dict[str, float] = {}
         try:
@@ -558,11 +550,6 @@ class TotalLossV2:
                             target_dict[category] = instance.get_loss(model, epoch_name)
         finally:
             self._clear_shared_meshes()
-
-        # Visualisation hook: capture per-loss dL/dv against the primary mesh.
-        # Cheap (one cached backward subgraph per active loss); silently empty for
-        # losses with no autograd path to the SDF mesh.
-        self._capture_vertex_grads_via_autograd(bundle)
 
         return bundle
 

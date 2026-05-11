@@ -1,2 +1,0 @@
-[WARNING] Collision: wheel_0 and wheel_2 bounding boxes overlap.
-[WARNING] Unstable assembly: seat is not enclosed by the wheel polygon.

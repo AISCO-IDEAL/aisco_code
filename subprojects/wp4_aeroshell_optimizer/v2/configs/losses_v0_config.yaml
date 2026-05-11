@@ -137,12 +137,14 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   connectedness:
     _role: constraint
     _disabled_epochs: []
-    null_loss_connectedness: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    connectedness_v1: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
+    null_loss_connectedness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    connectedness_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
 
 
   developability:
     _role: constraint
+    null_loss_developability: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    developability_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/developability_loss/developability_v0.py"]  # disabled by default (compute=0)
     null_loss_developability: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     developability_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/developability_loss/developability_v0.py"]  # disabled by default (compute=0)
 

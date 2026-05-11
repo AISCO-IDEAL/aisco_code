@@ -111,17 +111,18 @@
         }
 
         .gif-slot {
-            padding: 8px;
+            padding: 4px;
             display: grid;
             place-items: center;
             background: #f0f5f2;
+            overflow: hidden;
         }
 
         .gif-slot img {
             width: 100%;
-            height: auto;
-            max-height: calc(100vh - 220px);
-            object-fit: contain;
+            height: 100%;
+            max-height: none;
+            object-fit: cover;
             border-radius: 8px;
             background: #fff;
             border: 1px solid var(--border);
