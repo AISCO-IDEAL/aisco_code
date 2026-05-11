@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLI Testing</title>
+  <style>
+    :root {
+      --bg: #23283e;
+      --panel: #23283e;
+      --accent: #c82121;
+      --accent-2: #9f1616;
+      --text: #102018;
+      --muted: #496456;
+      --border: #23283e;
+      --shadow: 0 10px 20px rgba(16, 32, 24, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      padding: 0;
+    }
+
+    .page {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 8px;
+      margin: 0;
+      padding: 12px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 12px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 8px;
+      min-height: 0;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .input-group {
+      display: grid;
+      gap: 4px;
+    }
+
+    .input-group label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.9rem;
+      background: #f8fcf9;
+      color: var(--text);
+      font-family: "Courier New", monospace;
+    }
+
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: var(--accent);
+    }
+
+    input[type="text"]:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    button {
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button:hover {
+      background: var(--accent-2);
+    }
+
+    button:disabled {
+      background: #999;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .output {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      background: #f8fcf9;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-family: "Courier New", monospace;
+      font-size: 0.85rem;
+      color: var(--text);
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.4;
+    }
+
+    .output.success {
+      color: #2d5016;
+      background: #e8f5e9;
+    }
+
+    .output.error {
+      color: #7a0e0e;
+      background: #ffebee;
+    }
+
+    .status-line {
+      font-weight: 700;
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid currentColor;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="card">
+      <div class="controls">
+        <div class="input-group">
+        <label for="usesGuiToggle">Uses GUI</label>
+        <input type="checkbox" id="usesGuiToggle" style="width: auto; cursor: pointer;">
+        </div>
+        <div class="input-group">
+            <label for="cfgFolderInput">Config Override Folder</label>
+            <input type="text" id="cfgFolderInput" placeholder="/path/to/config/folder" value="">
+        </div>
+        <button id="btnRunTest">Execute</button>
+        <button id="btnStop" disabled style="background:#777;margin-left:6px;">Stop</button>
+        <button id="btnClear">Clear Output</button>
+      </div>
+    </section>
+
+    <section class="card">
+    <div class="output" id="outputConsole">Ready. Configure overrides and click Execute.</div>
+    </section>
+  </main>
+
+  <script>
+        const usesGuiToggle = document.getElementById("usesGuiToggle");
+        const cfgFolderInput = document.getElementById("cfgFolderInput");
+    const btnRunTest = document.getElementById("btnRunTest");
+        const btnStop = document.getElementById("btnStop");
+    const btnClear = document.getElementById("btnClear");
+    const outputConsole = document.getElementById("outputConsole");
+
+    function appendOutput(text, isError = false) {
+      const timestamp = new Date().toLocaleTimeString();
+      outputConsole.textContent += `[${timestamp}] ${text}\n`;
+      outputConsole.scrollTop = outputConsole.scrollHeight;
+    }
+
+    async function runTest() {
+        const usesGui = usesGuiToggle.checked;
+        const cfgFolder = cfgFolderInput.value.trim();
+
+      btnRunTest.disabled = true;
+      btnRunTest.textContent = "Running...";
+      outputConsole.className = "output";
+      outputConsole.textContent = "";
+
+        const cmdDisplay = `python main_v2.py${usesGui ? ' --uses-gui' : ''}${cfgFolder ? ` --cfg-folder ${cfgFolder}` : ''}`;
+        appendOutput(`Executing: ${cmdDisplay}`);
+      appendOutput("---");
+
+      try {
+        const res = await fetch("/run-local/test-cli", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ uses_gui: usesGui, cfg_folder: cfgFolder })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          outputConsole.className = "output error";
+          appendOutput(`ERROR: ${data.detail?.message || "Unknown error"}`, true);
+          return;
+        }
+
+          // If the backend started a background process, poll the run-local logs
+          if (data.status === "started" || data.status === "running") {
+              appendOutput(`Started PID: ${data.pid}. Polling logs...`);
+              btnStop.disabled = false;
+
+              const pollInterval = 1000;
+              let pollTimer = setInterval(async () => {
+                  try {
+                      const logsRes = await fetch('/run-local/logs');
+                      if (!logsRes.ok) {
+                          appendOutput('Failed to fetch logs', true);
+                          clearInterval(pollTimer);
+                          btnRunTest.disabled = false;
+                          btnRunTest.textContent = 'Execute';
+                          return;
+                      }
+                const logsData = await logsRes.json();
+                const logs = logsData.logs || '';
+                outputConsole.textContent = logs || '(no logs yet)';
+                outputConsole.scrollTop = outputConsole.scrollHeight;
+
+                  if (!logsData.running) {
+                      appendOutput('---');
+                      appendOutput(`Return code: ${logsData.return_code} (${logsData.return_code === 0 ? 'success' : 'finished'})`, logsData.return_code !== 0);
+                      clearInterval(pollTimer);
+                      btnRunTest.disabled = false;
+                      btnRunTest.textContent = 'Execute';
+                      btnStop.disabled = true;
+                  }
+              } catch (err) {
+                  appendOutput(`ERROR polling logs: ${err.message}`, true);
+                  clearInterval(pollTimer);
+                  btnRunTest.disabled = false;
+                  btnRunTest.textContent = 'Execute';
+              }
+          }, pollInterval);
+        } else {
+            // Fallback: server returned immediate stdout/stderr (short runs)
+            if (data.stdout) appendOutput(data.stdout.trim());
+            if (data.stderr) {
+              outputConsole.className = 'output error';
+              appendOutput(data.stderr.trim(), true);
+          }
+            appendOutput('---');
+            outputConsole.className = data.status === 'success' ? 'output success' : 'output error';
+            appendOutput(`Return code: ${data.return_code} (${data.status})`, data.return_code !== 0);
+            btnRunTest.disabled = false;
+            btnRunTest.textContent = 'Execute';
+        }
+
+      } catch (error) {
+        outputConsole.className = "output error";
+          appendOutput(`ERROR: ${error.message}`, true);
+        btnRunTest.disabled = false;
+          btnRunTest.textContent = 'Execute';
+      }
+    }
+
+        async function stopRun() {
+            btnStop.disabled = true;
+            appendOutput('Requesting stop...');
+            try {
+                const res = await fetch('/run-local/stop', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) {
+                    appendOutput(`Stop failed: ${data.detail?.message || 'Unknown'}`, true);
+                    btnStop.disabled = false;
+                    return;
+                }
+                appendOutput(`Stop request: ${data.status} - ${data.message || ''}`);
+            } catch (err) {
+                appendOutput(`ERROR stopping run: ${err.message}`, true);
+                btnStop.disabled = false;
+            }
+        }
+
+    function clearOutput() {
+        outputConsole.textContent = "Ready. Configure overrides and click Execute.";
+      outputConsole.className = "output";
+    }
+
+    btnRunTest.addEventListener("click", runTest);
+        btnStop.addEventListener('click', stopRun);
+    btnClear.addEventListener("click", clearOutput);
+        cfgFolderInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        runTest();
+      }
+    });
+  </script>
+</body>
+</html>

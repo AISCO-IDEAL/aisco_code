@@ -53,6 +53,14 @@ class BbV44EnforceV2(BbV44):
         if enforce_layer is None or not enforce_layer.is_active:
             upper_violation = self._violation(sdf_inner + self._inner_margin)
             lower_violation = self._violation(self._outer_margin - sdf_outer)
+
+            # Visualization: write PLY with per-point violation distances
+            if self._vis_manager is not None:
+                epoch_int = int(self.epoch_name) if isinstance(self.epoch_name, (int, float)) else 0
+                all_points = torch.cat([inner_points, outer_points], dim=0)
+                all_violations = torch.cat([upper_violation, lower_violation], dim=0)
+                self._vis_manager.vis_bb_constraint(epoch_int, all_points, all_violations.detach().cpu().numpy())
+
             return 0.5 * (upper_violation.mean() + lower_violation.mean())
 
         with enforce_layer_context(model, "bb_inner"):

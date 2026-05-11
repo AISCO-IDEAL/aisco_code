@@ -27,14 +27,15 @@ from subprojects.wp4_aeroshell_optimizer import MeshSDFGrads, Visualiser
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 if TYPE_CHECKING:
-    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import CentralVisManager
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
 
 logger = logging.getLogger(__name__)
 
 
 class ModelLoader:
     optimization_state: dict[str, object]
-    vis_manager: CentralVisManager | None
+    vis_manager: CentralVisManagerV2 | NullVisManager | None
     _DEFAULT_MAIN_CONFIG_PATH = "subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml"
 
     def __init__(self, cfd_config: dict, device: str) -> None:
@@ -279,20 +280,13 @@ class ModelLoader:
         if pressure_field is None:
             return
 
-        # CentralVisManager path: write PLY instead of wandb PNG.
+        # Visualization path: write PLY instead of wandb PNG.
         _vm = getattr(self, "vis_manager", None)
         if _vm is not None:
             if pressure_field.dim() == 2 and pressure_field.size(-1) == 1:
                 pressure_field = pressure_field.squeeze(-1)
-            field_pred = pressure_field.detach().cpu().numpy().squeeze()
             epoch_int = self._to_wandb_step(self.epoch_name) or 0
-            _vm.save_ply(
-                "aero/cp_field",
-                epoch_int,
-                mesh_verts.detach().cpu().numpy(),
-                mesh_faces.detach().cpu().numpy(),
-                scalar_values=field_pred,
-            )
+            _vm.vis_aero_cp_field(epoch_int, mesh_verts, mesh_faces, pressure_field)
             return
 
         sample = Data(
@@ -378,8 +372,8 @@ class ModelLoader:
             n_dir_area = area_normals[:, 0]
             face_drag = -p_face * n_dir_area
 
-            front_faces = n_dir_area < 0
-            back_faces = n_dir_area > 0
+            front_faces = n_dir_area > 0
+            back_faces = n_dir_area < 0
             wandb.log(
                 {
                     "cfd/int_drag_front_f": face_drag[front_faces].sum().item(),
