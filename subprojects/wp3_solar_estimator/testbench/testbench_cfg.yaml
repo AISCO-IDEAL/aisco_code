@@ -1,0 +1,11 @@
+loading:
+  ply_path: "/cluster/work/fuge/AISCO/00_meshes_to_keep/original_silvretta_no_wheels_scaled_to_mm.ply"
+  ply_scaling_factor: 1.0
+
+solar_loss:
+  class: "SolarSR"   # SolarV3B | SolarV3B2 | SolarV5 | SolarV6 | SolarV7 | SolarSR
+
+vis_manager:
+  enabled: true
+  run_dir: "./testbench_runs"
+  run_id: "testbench"
