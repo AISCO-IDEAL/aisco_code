@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WP7 GUI</title>
+  <style>
+    :root {
+      --bg: #23283e;
+      --panel: #23283e;
+      --accent: #c82121;
+      --accent-2: #9f1616;
+      --text: #102018;
+      --muted: #496456;
+      --border: #23283e;
+      --shadow: 0 10px 20px rgba(16, 32, 24, 0.08);
+      --visual-card-width: 480px;
+      --visual-media-height: 300px;
+      --visual-gap: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      padding: 0;
+    }
+
+    .page {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-rows: 1fr;
+      gap: 8px;
+      margin: 0;
+      padding: 12px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 8px;
+      overflow: hidden;
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 16px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: var(--accent-2);
+    }
+
+    .visuals-grid {
+      height: 100%;
+      display: grid;
+      grid-template-columns: repeat(3, var(--visual-card-width));
+      justify-content: center;
+      align-content: start;
+      gap: var(--visual-gap);
+    }
+
+    .visual-card {
+      width: var(--visual-card-width);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px;
+      background: #f8fcf9;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .visual-title {
+      font-size: 0.95rem;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .image-slot {
+      width: 100%;
+      height: var(--visual-media-height);
+      min-height: var(--visual-media-height);
+      max-height: var(--visual-media-height);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #f1f7f3;
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+    }
+
+    .image-slot img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center;
+      display: none;
+    }
+
+    .hint {
+      font-size: 0.85rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.1;
+      margin: 0;
+    }
+
+    .hint:empty {
+      display: none;
+    }
+
+    .slider-controls {
+      display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+      margin-top: 6px;
+    }
+
+    .slider-label {
+      font-size: 0.82rem;
+      color: var(--muted);
+      font-weight: 700;
+      text-align: right;
+      min-width: 80px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      opacity: 1 !important;
+    }
+
+    /* Webkit browsers (Chrome, Safari, Edge) */
+    input[type="range"]::-webkit-slider-track {
+      background: #FFB3B3;
+      height: 8px;
+      border-radius: 4px;
+      outline: none;
+      border: 2px solid #ff9999;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #c82121;
+      cursor: pointer;
+      margin-top: -5px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      background: #a61b1b;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Firefox */
+    input[type="range"]::-moz-range-track {
+      background: #FFB3B3;
+      height: 8px;
+      border-radius: 4px;
+      border: 2px solid #ff9999;
+      outline: none;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #c82121;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    input[type="range"]::-moz-range-thumb:hover {
+      background: #a61b1b;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    input[type="range"]:disabled {
+      opacity: 1 !important;
+      cursor: not-allowed;
+    }
+
+    input[type="range"]:disabled::-webkit-slider-thumb {
+      background: #a61b1b;
+      cursor: not-allowed;
+    }
+
+    input[type="range"]:disabled::-moz-range-thumb {
+      background: #a61b1b;
+      cursor: not-allowed;
+    }
+
+    .placeholder {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.92rem;
+      padding: 14px;
+    }
+
+    @media (max-width: 1300px) {
+      .visuals-grid {
+        grid-template-columns: min(92vw, var(--visual-card-width));
+      }
+
+      .visual-card {
+        width: min(92vw, var(--visual-card-width));
+      }
+    }
+
+    @media (max-width: 900px) {
+      .visuals-grid {
+        grid-template-columns: min(92vw, var(--visual-card-width));
+      }
+
+      .visual-card {
+        width: min(92vw, var(--visual-card-width));
+      }
+    }
+
+    @media (max-width: 900px) {
+      .slider-controls {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .slider-label {
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="page">
+
+    <section class="card" style="min-height: 0;">
+      <div class="visuals-grid">
+        <div class="visual-card">
+          <div class="visual-title">Mesh Assembly Renders (cam1*)</div>
+          <div class="image-slot">
+            <img id="cam1Image" alt="mesh assembly cam1 render preview">
+          </div>
+          <div class="hint" id="cam1Status">No cam1 renders found yet.</div>
+          <div class="slider-controls">
+            <button id="btnPrevCam1" type="button">Previous</button>
+            <input type="range" id="cam1Slider" min="0" max="0" value="0" disabled>
+            <button id="btnNextCam1" type="button">Next</button>
+            <div class="slider-label" id="cam1Label">Frame -</div>
+          </div>
+        </div>
+
+        <div class="visual-card">
+          <div class="visual-title">Pressure Field Visualizations</div>
+          <div class="image-slot">
+            <img id="pressureImage" alt="pressure field visualization preview">
+          </div>
+          <div class="hint" id="pressureStatus">No pressure images found yet.</div>
+          <div class="slider-controls">
+            <button id="btnPrevPressure" type="button">Previous</button>
+            <input type="range" id="pressureSlider" min="0" max="0" value="0" disabled>
+            <button id="btnNextPressure" type="button">Next</button>
+            <div class="slider-label" id="pressureLabel">Image -</div>
+          </div>
+        </div>
+
+        <div class="visual-card">
+          <div class="visual-title">Solar Placement Visualization</div>
+          <div class="image-slot">
+            <div class="placeholder">Placeholder for upcoming solar placement visuals.</div>
+          </div>
+          <div class="hint">Reserved panel for solar-placement image integration.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const cam1Image = document.getElementById("cam1Image");
+    const cam1Status = document.getElementById("cam1Status");
+    const cam1Slider = document.getElementById("cam1Slider");
+    const cam1Label = document.getElementById("cam1Label");
+    const btnPrevCam1 = document.getElementById("btnPrevCam1");
+    const btnNextCam1 = document.getElementById("btnNextCam1");
+
+    const pressureImage = document.getElementById("pressureImage");
+    const pressureStatus = document.getElementById("pressureStatus");
+    const pressureSlider = document.getElementById("pressureSlider");
+    const pressureLabel = document.getElementById("pressureLabel");
+    const btnPrevPressure = document.getElementById("btnPrevPressure");
+    const btnNextPressure = document.getElementById("btnNextPressure");
+
+    let cam1Images = [];
+    let pressureImages = [];
+
+    function cacheBustUrl(url) {
+      const separator = url.includes('?') ? '&' : '?';
+      return `${url}${separator}t=${Date.now()}`;
+    }
+
+    function updateViewer(items, sliderEl, imageEl, statusEl, labelEl, prevBtn, nextBtn, labelPrefix) {
+      if (!Array.isArray(items) || items.length === 0) {
+        sliderEl.min = "0";
+        sliderEl.max = "0";
+        sliderEl.value = "0";
+        sliderEl.disabled = true;
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        imageEl.style.display = "none";
+        imageEl.removeAttribute("src");
+        labelEl.textContent = `${labelPrefix} -`;
+        return;
+      }
+
+      sliderEl.disabled = false;
+      sliderEl.max = String(items.length - 1);
+
+      const rawIdx = Number(sliderEl.value);
+      const idx = Number.isFinite(rawIdx) ? Math.max(0, Math.min(rawIdx, items.length - 1)) : 0;
+      sliderEl.value = String(idx);
+
+      const entry = items[idx];
+      imageEl.src = cacheBustUrl(entry.url);
+      imageEl.style.display = "block";
+
+      const frameOrEpoch = entry.frame_index ?? entry.epoch;
+      labelEl.textContent = Number.isFinite(frameOrEpoch)
+        ? `${labelPrefix} ${frameOrEpoch}`
+        : `${labelPrefix} ${idx + 1}/${items.length}`;
+
+      statusEl.textContent = entry.name || "";
+      prevBtn.disabled = idx <= 0;
+      nextBtn.disabled = idx >= items.length - 1;
+    }
+
+    function refreshCam1Viewer() {
+      if (cam1Images.length === 0) {
+        cam1Status.textContent = "No cam1 renders found in mesh_assembly_mode_v4/renders.";
+      }
+      updateViewer(cam1Images, cam1Slider, cam1Image, cam1Status, cam1Label, btnPrevCam1, btnNextCam1, "Frame");
+    }
+
+    function refreshPressureViewer() {
+      if (pressureImages.length === 0) {
+        pressureStatus.textContent = "No pressure-field images found in media/images.";
+      }
+      updateViewer(pressureImages, pressureSlider, pressureImage, pressureStatus, pressureLabel, btnPrevPressure, btnNextPressure, "Image");
+    }
+
+    function setSliderValue(sliderEl, nextValue) {
+      const min = Number(sliderEl.min || "0");
+      const max = Number(sliderEl.max || "0");
+      sliderEl.value = String(Math.max(min, Math.min(max, nextValue)));
+    }
+
+    async function refreshArtifacts() {
+      try {
+        const res = await fetch(`/run-local/artifacts?t=${Date.now()}`, { cache: "no-store" });
+        const data = await res.json();
+
+        const prevCam1Name = cam1Images[Number(cam1Slider.value)]?.name;
+        const prevPressureName = pressureImages[Number(pressureSlider.value)]?.name;
+
+        cam1Images = Array.isArray(data.cam1_renders) ? data.cam1_renders : [];
+        pressureImages = Array.isArray(data.pressure_field_images) ? data.pressure_field_images : [];
+
+        if (prevCam1Name) {
+          const preservedCam1Index = cam1Images.findIndex((entry) => entry.name === prevCam1Name);
+          if (preservedCam1Index >= 0) {
+            cam1Slider.value = String(preservedCam1Index);
+          }
+        }
+
+        if (prevPressureName) {
+          const preservedPressureIndex = pressureImages.findIndex((entry) => entry.name === prevPressureName);
+          if (preservedPressureIndex >= 0) {
+            pressureSlider.value = String(preservedPressureIndex);
+          }
+        }
+
+        refreshCam1Viewer();
+        refreshPressureViewer();
+      } catch (_error) {
+        console.error("Failed to fetch artifacts:", _error);
+        cam1Status.textContent = "Failed to load cam1 renders.";
+        pressureStatus.textContent = "Failed to load pressure-field visualizations.";
+      }
+    }
+
+    cam1Slider.addEventListener("input", refreshCam1Viewer);
+    pressureSlider.addEventListener("input", refreshPressureViewer);
+
+    btnPrevCam1.addEventListener("click", () => {
+      setSliderValue(cam1Slider, Number(cam1Slider.value) - 1);
+      refreshCam1Viewer();
+    });
+
+    btnNextCam1.addEventListener("click", () => {
+      setSliderValue(cam1Slider, Number(cam1Slider.value) + 1);
+      refreshCam1Viewer();
+    });
+
+    btnPrevPressure.addEventListener("click", () => {
+      setSliderValue(pressureSlider, Number(pressureSlider.value) - 1);
+      refreshPressureViewer();
+    });
+
+    btnNextPressure.addEventListener("click", () => {
+      setSliderValue(pressureSlider, Number(pressureSlider.value) + 1);
+      refreshPressureViewer();
+    });
+
+    refreshCam1Viewer();
+    refreshPressureViewer();
+
+    refreshArtifacts();
+    setInterval(refreshArtifacts, 3000);
+  </script>
+</body>
+
+</html>

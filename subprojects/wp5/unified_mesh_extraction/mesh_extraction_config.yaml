@@ -1,6 +1,10 @@
 device: "cuda"
 isovalue: 0.0
-# bbox is intentionally omitted; callers must provide it via set_grid() using outer_prism bounds from WP2.
+# Shared marching-cubes grid used by every loss that goes through
+# MeshSDFExtractor (developability, surface_area, …). Keeping the same
+# bbox + resolution across losses lets `_inject_shared_meshes` deduplicate
+# the extraction and ensures every gradient panel renders on the same body.
+bbox: [[-5000, 5000], [-5000, 5000], [-5000, 5000]]
 base_resolution: 64
 subdivision_factor: 2
 max_refine_levels: 0

@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block hint %}Inspect a finished run from local storage — meshes, GIFs, and progression.{% endblock %}
+
+{% block head %}
+<script type="importmap">
+  {"imports": {"three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+{% endblock %}
+
+{% block content %}
+<div style="display:grid; grid-template-columns:320px 1fr; gap:14px; height:100%; min-height:0;">
+
+  <!-- Run list -->
+  <div class="card" style="display:grid; grid-template-rows:auto auto 1fr; min-height:0;">
+    <div style="font-size:0.88rem; font-weight:700; padding:8px 12px; border-bottom:1px solid var(--border); background:#edf3ef;">
+      Finished Runs
+    </div>
+    <div style="padding:8px 12px; border-bottom:1px solid var(--border); display:flex; gap:8px; align-items:center;">
+      <button class="btn" id="btnRefresh" style="font-size:0.8rem;padding:6px 10px;">Refresh</button>
+      <span style="font-size:0.78rem; color:var(--muted);" id="runCount">—</span>
+    </div>
+    <div class="run-list" id="runList" style="overflow-y:auto; min-height:0; padding:10px 12px; background:#1d2233;"></div>
+  </div>
+
+  <!-- Run detail -->
+  <div class="card" style="display:grid; grid-template-rows:auto 1fr; min-height:0;">
+    <div style="padding:8px 12px; border-bottom:1px solid var(--border); background:#edf3ef; display:flex; align-items:center; gap:10px;">
+      <strong id="detailTitle" style="font-size:0.9rem;">No run selected</strong>
+      <span id="detailMeta" style="font-size:0.78rem; color:var(--muted); margin-left:auto;"></span>
+    </div>
+
+    <div id="detailBody" style="overflow:auto; min-height:0; padding:12px;">
+      <div style="color:#496456; font-style:italic; text-align:center; padding:60px 12px;">
+        Pick a run from the list to inspect its artifacts.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const VIEWER_API = "/viewer/api";
+
+const runListEl = document.getElementById("runList");
+const runCountEl = document.getElementById("runCount");
+const detailTitle = document.getElementById("detailTitle");
+const detailMeta = document.getElementById("detailMeta");
+const detailBody = document.getElementById("detailBody");
+
+let storageRoot = "";
+let selectedRunPath = null;
+let meshes = [], meshIdx = 0;
+
+function fmtTime(ts) { return new Date(ts * 1000).toLocaleString(); }
+function bust(url) { return url + (url.includes("?") ? "&" : "?") + "t=" + Date.now(); }
+
+function relPathFromStorage(absPath) {
+  let rel = absPath;
+  if (storageRoot && absPath.startsWith(storageRoot)) {
+    rel = absPath.slice(storageRoot.length).replace(/^\/+/, "");
+  }
+  return rel;
+}
+
+async function loadRuns() {
+  runListEl.innerHTML = '<div style="padding:14px; color:var(--muted); font-style:italic;">Loading…</div>';
+  try {
+    const d = await (await fetch(`${VIEWER_API}/runs`)).json();
+    storageRoot = d.storage_root || "";
+    const runs = d.runs || [];
+    runCountEl.textContent = `${runs.length} run(s) · ${storageRoot}`;
+    if (!runs.length) {
+      runListEl.innerHTML = '<div style="padding:14px; color:var(--muted); font-style:italic;">No runs found in storage root.</div>';
+      return;
+    }
+    runListEl.innerHTML = "";
+    runs.forEach(r => {
+      const item = document.createElement("div");
+      item.className = "run-item";
+      item.style.cursor = "pointer";
+      item.dataset.path = r.path;
+      item.innerHTML = `
+        <div style="font-weight:600; font-size:0.86rem; word-break:break-all;">${r.name}</div>
+        <div style="font-size:0.74rem; color:var(--muted); margin-top:2px;">${r.model_hash}</div>
+        <div style="font-size:0.72rem; color:var(--muted); margin-top:2px;">${fmtTime(r.mtime)}</div>
+        <div style="margin-top:4px; display:flex; gap:5px; flex-wrap:wrap;">
+          ${r.has_meshes ? '<span class="badge">meshes</span>' : ''}
+          ${r.has_gifs ? '<span class="badge">gifs</span>' : ''}
+        </div>
+      `;
+      item.addEventListener("click", () => selectRun(r));
+      runListEl.appendChild(item);
+    });
+  } catch (err) {
+    runListEl.innerHTML = `<div style="padding:14px; color:var(--accent);">Failed: ${err.message}</div>`;
+  }
+}
+
+async function selectRun(r) {
+  selectedRunPath = r.path;
+  document.querySelectorAll(".run-item").forEach(el => el.classList.toggle("active", el.dataset.path === r.path));
+  detailTitle.textContent = r.name;
+  detailMeta.textContent = `${r.model_hash} · ${fmtTime(r.mtime)}`;
+  detailBody.innerHTML = '<div style="color:var(--muted); font-style:italic; padding:30px;">Loading artifacts…</div>';
+  meshes = []; meshIdx = 0;
+
+  const runId = relPathFromStorage(r.path).split("/").map(encodeURIComponent).join("/");
+  try {
+    const data = await (await fetch(`${VIEWER_API}/runs/${runId}/artifacts`)).json();
+    renderDetail(data);
+  } catch (err) {
+    detailBody.innerHTML = `<div style="color:var(--accent); padding:14px;">Failed to load artifacts: ${err.message}</div>`;
+  }
+}
+
+function renderDetail(data) {
+  const aGifs = data.mesh_assembly_gifs || [];
+  const sGifs = data.solar_loss_gifs || [];
+  meshes = data.meshes || [];
+  meshIdx = meshes.length ? meshes.length - 1 : 0;
+
+  const aGif = aGifs[0];
+  const sGif = sGifs.find(e => e.name === "rendering.gif") || sGifs[0];
+
+  detailBody.innerHTML = `
+    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:14px;">
+
+      <div class="visual-card">
+        <div class="visual-title">Aeroshell Evolution</div>
+        <div class="image-slot">
+          ${aGif
+            ? `<img src="${bust(aGif.url)}" alt="assembly gif" style="display:block;">`
+            : '<span class="placeholder-text">No assembly GIF.</span>'}
+        </div>
+        <div class="hint" style="font-size:0.76rem;">${aGif ? aGif.name : ""}</div>
+      </div>
+
+      <div class="visual-card">
+        <div class="visual-title">Solar Placement</div>
+        <div class="image-slot">
+          ${sGif
+            ? `<img src="${bust(sGif.url)}" alt="solar gif" style="display:block;">`
+            : '<span class="placeholder-text">No solar GIF.</span>'}
+        </div>
+        <div class="hint" style="font-size:0.76rem;">${sGif ? sGif.name : ""}</div>
+      </div>
+
+      <div class="visual-card">
+        <div class="visual-title">Aeroshell Mesh</div>
+        <div class="mesh-container" id="vMeshContainer" style="position:relative;">
+          <span id="vMeshPlaceholder" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#496456;font-size:0.85rem;">
+            ${meshes.length ? "Loading…" : "No meshes."}
+          </span>
+        </div>
+        <div style="font-size:0.78rem; color:#496456;">
+          <span id="vMeshLabel">${meshes.length ? meshes[meshIdx].name : ""}</span>
+        </div>
+        <input type="range" id="vMeshSlider" min="0" max="${Math.max(0, meshes.length - 1)}"
+          value="${meshIdx}" ${meshes.length ? "" : "disabled"}>
+      </div>
+
+    </div>
+  `;
+
+  if (meshes.length) {
+    document.getElementById("vMeshSlider").addEventListener("input", e => {
+      meshIdx = parseInt(e.target.value, 10);
+      document.getElementById("vMeshLabel").textContent = meshes[meshIdx].name;
+      load3D(meshes[meshIdx].url);
+    });
+    load3D(meshes[meshIdx].url);
+  }
+}
+
+// ---------- Three.js mesh viewer ----------
+let vScene, vCamera, vRenderer, vControls, vCurrent;
+
+function load3D(url) {
+  import("three").then(({ Scene, Color, PerspectiveCamera, WebGLRenderer, HemisphereLight, DirectionalLight, MeshStandardMaterial, Mesh, Vector3 }) => {
+    import("three/addons/controls/OrbitControls.js").then(({ OrbitControls }) => {
+      import("three/addons/loaders/PLYLoader.js").then(({ PLYLoader }) => {
+        const container = document.getElementById("vMeshContainer");
+        if (!container) return;
+        if (!vScene || vRenderer.domElement.parentElement !== container) {
+          // Re-init when detail panel was rebuilt
+          vScene = new Scene(); vScene.background = new Color(0xf1f7f3);
+          vCamera = new PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+          vCamera.position.set(0, 0, 3);
+          vRenderer = new WebGLRenderer({ antialias: true });
+          vRenderer.setSize(container.clientWidth, container.clientHeight);
+          container.appendChild(vRenderer.domElement);
+          vControls = new OrbitControls(vCamera, vRenderer.domElement);
+          vControls.enableDamping = true;
+          vScene.add(new HemisphereLight(0xffffff, 0x444444, 1.0));
+          const dl = new DirectionalLight(0xffffff, 0.8); dl.position.set(1,1,1); vScene.add(dl);
+          (function animate() { requestAnimationFrame(animate); vControls.update(); vRenderer.render(vScene, vCamera); })();
+          vCurrent = null;
+        }
+        new PLYLoader().load(bust(url), geo => {
+          geo.computeVertexNormals(); geo.computeBoundingBox();
+          const c = new Vector3(); geo.boundingBox.getCenter(c); geo.translate(-c.x, -c.y, -c.z);
+          geo.computeBoundingBox();
+          const sz = new Vector3(); geo.boundingBox.getSize(sz);
+          const scale = Math.max(sz.x, sz.y, sz.z) > 0 ? 2.0 / Math.max(sz.x, sz.y, sz.z) : 1;
+          if (vCurrent) { vScene.remove(vCurrent); vCurrent.geometry.dispose(); vCurrent.material.dispose(); }
+          vCurrent = new Mesh(geo, new MeshStandardMaterial({ color: 0x99A3A4, roughness: 0.6, metalness: 0.2, side: 2 }));
+          vCurrent.scale.set(scale, scale, scale); vScene.add(vCurrent);
+          vCamera.position.set(0, 0, 3.5); vControls.target.set(0, 0, 0); vControls.update();
+          const ph = document.getElementById("vMeshPlaceholder");
+          if (ph) ph.style.display = "none";
+        }, null, err => console.error("PLY:", err));
+      });
+    });
+  });
+}
+
+document.getElementById("btnRefresh").addEventListener("click", loadRuns);
+loadRuns();
+</script>
+{% endblock %}

@@ -130,6 +130,21 @@ visual_types:
     vmin: null
     vmax: null
 
+  # Per-loss gradient visualisation (`vis_mesh_gradient`). Each call writes
+  # ``mesh_gradients/<loss_key>/epoch_XXXXX.ply`` and finalize() generates the
+  # corresponding GIF; the ancestor lookup means every loss_key inherits this
+  # parent block unless an explicit override is added below it.
+  # Colormap is diverging (RdBu_r: red = grad pushes surface inward, blue =
+  # outward). vmin/vmax null → symmetric ±max(|grad·n|) per epoch.
+  mesh_gradients:
+    enabled: true
+    colormap: "RdBu_r"
+    interval: 1
+    alpha_enabled: null
+    coordinate_system: null
+    vmin: null
+    vmax: null
+
   latent:
     sampling:
       enabled: true

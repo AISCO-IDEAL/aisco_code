@@ -569,6 +569,10 @@ class SolarLossEstimator:
                 loss_fn=wrapper_solar_loss,
                 enable_backward=True,
             )
+            # Store gradients for per-loss visualization in TotalLoss/TotalLossV2.
+            self.extractor.last_dL_dv = dL_dvertices  # type: ignore[attr-defined]
+            self.extractor.last_verts = vertices  # type: ignore[attr-defined]
+            self.extractor.last_faces = faces  # type: ignore[attr-defined]
             if self.rendering and self.render_grads is not None:
                 self.render_grads.update(
                     optimization_state={

@@ -1,0 +1,181 @@
+/* v3 shared shell — colors and shapes match v2 so the visual language stays consistent. */
+
+:root {
+  --bg: #1d2233;
+  --panel: #27314a;
+  --panel-2: #303d5d;
+  --accent: #c82121;
+  --accent-2: #a91b1b;
+  --text: #ecf2f6;
+  --muted: #bac8d0;
+  --border: #2d3a55;
+  --shadow: 0 14px 30px rgba(0, 0, 0, 0.26);
+}
+
+* { box-sizing: border-box; }
+
+html, body { width: 100%; height: 100%; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: var(--text);
+  background: radial-gradient(circle at top left, #344267 0%, #1d2233 45%, #151a28 100%);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.shell {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 10px;
+  padding: 10px;
+}
+
+.top-bar {
+  background: linear-gradient(180deg, #35466d 0%, #2b3754 100%);
+  border-radius: 14px;
+  padding: 10px 14px;
+  box-shadow: var(--shadow);
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+  gap: 10px;
+}
+.top-bar img { height: 40px; object-fit: contain; }
+.top-bar .center { justify-self: center; }
+.top-bar .center img { height: 64px; }
+.top-bar .right { justify-self: end; }
+
+.body-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 10px;
+}
+
+.sidebar {
+  background: linear-gradient(180deg, var(--panel-2) 0%, var(--panel) 100%);
+  border-radius: 14px;
+  padding: 14px;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 10px;
+  box-shadow: var(--shadow);
+  overflow-y: auto;
+}
+
+.sidebar h1 {
+  margin: 0;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #f8d9d9;
+  text-align: center;
+}
+
+.mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mode-switch a {
+  text-decoration: none;
+  text-align: center;
+  padding: 10px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.9rem;
+  border: 1px solid transparent;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+.mode-switch a:hover { background: rgba(255, 255, 255, 0.12); }
+.mode-switch a.active {
+  background: var(--accent);
+  border-color: #ffb0b0;
+  color: #fff;
+}
+
+.sub-nav {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.sub-nav a {
+  text-decoration: none;
+  display: block;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  transition: background 140ms ease, transform 120ms ease;
+}
+.sub-nav a:hover { background: rgba(255, 255, 255, 0.10); transform: translateX(2px); }
+.sub-nav a.active {
+  background: var(--accent);
+  border-color: #ffb0b0;
+  color: #fff;
+}
+
+.sidebar-footer {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.workspace {
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.workspace-top {
+  background: rgba(0, 0, 0, 0.22);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.workspace-top h2 { margin: 0; font-size: 1rem; letter-spacing: 0.03em; }
+.workspace-top .hint { color: var(--muted); font-size: 0.86rem; }
+
+.workspace-body {
+  overflow: auto;
+  padding: 14px;
+  background: #1e2437;
+}
+
+.placeholder-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 22px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+button.primary {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+button.primary:hover { background: var(--accent-2); }
+button.primary:disabled { background: #777; cursor: not-allowed; opacity: 0.6; }

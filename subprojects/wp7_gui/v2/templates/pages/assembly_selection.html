@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assembly Selection</title>
+    <style>
+        :root {
+            --bg: #1f2436;
+            --panel: #2a3047;
+            --card: #f7faf8;
+            --accent: #c82121;
+            --accent-2: #9f1616;
+            --muted: #627078;
+            --text: #11161f;
+            --border: #d8e1db;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: radial-gradient(circle at top left, #2b3554 0%, #1f2436 45%, #171c2e 100%);
+            color: #f2f5f8;
+        }
+
+        .layout {
+            width: 100%;
+            height: 100%;
+            padding: 16px;
+            display: grid;
+            grid-template-rows: auto 1fr;
+            gap: 14px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border-radius: 14px;
+            padding: 14px;
+            box-shadow: 0 14px 26px rgba(0, 0, 0, 0.22);
+        }
+
+        .title {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        .meta {
+            margin-top: 6px;
+            color: #c7d3db;
+            font-size: 0.9rem;
+        }
+
+        .run-controls {
+            margin-top: 10px;
+            display: grid;
+            grid-template-columns: auto auto 1fr auto;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .run-controls button {
+            border: none;
+            border-radius: 8px;
+            padding: 8px 12px;
+            background: var(--accent);
+            color: #fff;
+            font-size: 0.86rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .run-controls button:hover {
+            background: var(--accent-2);
+        }
+
+        .assembly-wrap {
+            display: grid;
+            gap: 4px;
+            min-width: 170px;
+        }
+
+        .assembly-wrap label {
+            font-size: 0.8rem;
+            color: #c7d3db;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .assembly-wrap select {
+            width: 100%;
+            border: 1px solid #a41717;
+            border-radius: 8px;
+            padding: 6px 8px;
+            font-size: 0.86rem;
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .assembly-wrap select:focus {
+            outline: 2px solid var(--accent-2);
+            outline-offset: 1px;
+        }
+
+        #btnRunLocal {
+            background: var(--accent);
+            border: 1px solid #a41717;
+        }
+
+        #btnRunLocal:hover {
+            background: var(--accent-2);
+        }
+
+        .progress-wrap {
+            width: 100%;
+            display: grid;
+            gap: 5px;
+        }
+
+        .progress-label {
+            font-size: 0.82rem;
+            color: #c7d3db;
+            font-weight: 600;
+        }
+
+        .run-controls progress {
+            width: 100%;
+            height: 16px;
+            accent-color: var(--accent);
+            margin: 0;
+        }
+
+        #progressText {
+            font-size: 0.86rem;
+            color: #d7e2ea;
+            min-width: 110px;
+            text-align: right;
+            font-weight: 700;
+        }
+
+        .grid {
+            min-height: 0;
+            display: grid;
+            grid-template-columns: minmax(540px, 1fr) minmax(540px, 1fr);
+            gap: 36px;
+            align-items: start;
+            max-width: none;
+            margin: 80px 0 0;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text);
+            min-width: 0;
+            min-height: 0;
+            height: min(76vh, 760px);
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            background: #edf3ef;
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+
+        .controls {
+            min-height: 0;
+            padding: 10px 12px;
+            overflow: auto;
+            overflow-x: hidden;
+            display: grid;
+            align-content: start;
+            gap: 8px;
+        }
+
+        .section-title {
+            margin: 8px 0 2px;
+            padding-top: 6px;
+            border-top: 1px solid var(--border);
+            font-size: 0.88rem;
+            color: #23313f;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .section-title:first-child {
+            margin-top: 0;
+            border-top: none;
+            padding-top: 0;
+        }
+
+        .slider-row {
+            display: grid;
+            grid-template-columns: 118px minmax(0, 1fr) 64px;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .slider-row label {
+            font-size: 0.82rem;
+            color: var(--muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .slider-row input[type="range"] {
+            width: 100%;
+            min-width: 0;
+            display: block;
+            accent-color: var(--accent);
+        }
+
+        .value {
+            font-size: 0.84rem;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            color: #2a3643;
+        }
+
+        .actions {
+            padding: 10px 12px;
+            border-top: 1px solid var(--border);
+            display: grid;
+            grid-template-columns: auto auto minmax(0, 1fr);
+            align-items: center;
+            gap: 8px;
+            background: #f0f5f2;
+            min-width: 0;
+        }
+
+        .actions button {
+            border: none;
+            border-radius: 8px;
+            padding: 8px 11px;
+            background: var(--accent);
+            color: #fff;
+            font-size: 0.83rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .actions button:hover {
+            background: var(--accent-2);
+        }
+
+        .status {
+            font-size: 0.82rem;
+            color: var(--muted);
+            min-width: 0;
+            width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: none;
+            text-align: right;
+        }
+
+        .viewer-wrap {
+            min-height: 0;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+        }
+
+        .viewer {
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            background: #eef3f0;
+            position: relative;
+        }
+
+        #meshPlaceholder {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            z-index: 1;
+            pointer-events: none;
+            font-size: 0.92rem;
+        }
+
+        .viewer-footer {
+            padding: 10px 12px;
+            border-top: 1px solid var(--border);
+            background: #f0f5f2;
+            color: var(--muted);
+            font-size: 0.82rem;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        @media (max-width: 1100px) {
+            .run-controls {
+                grid-template-columns: 1fr;
+            }
+
+            #progressText {
+                text-align: left;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+                max-width: none;
+            }
+
+            .card {
+                height: auto;
+            }
+
+            .status {
+                max-width: 100%;
+                width: 100%;
+                grid-column: 1 / -1;
+                text-align: left;
+            }
+
+            .slider-row {
+                grid-template-columns: 105px minmax(0, 1fr) 60px;
+            }
+        }
+    </style>
+
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+
+<body>
+    <main class="layout">
+        <section class="panel">
+            <div class="run-controls">
+                <button id="btnRunLocal" type="button">RUN</button>
+                <div class="assembly-wrap">
+                    <label for="assemblyIdSelect">Assembly ID (1-51)</label>
+                    <select id="assemblyIdSelect">
+                        <option value="">Random</option>
+                    </select>
+                </div>
+                <div class="progress-wrap">
+                    <div class="progress-label">Optimization Progress</div>
+                    <progress id="epochProgress" value="0" max="100"></progress>
+                </div>
+                <div id="progressText">0.0%</div>
+            </div>
+        </section>
+
+        <section class="grid">
+            <section class="card">
+                <div class="card-header">Parameter Sliders</div>
+                <div id="controls" class="controls"></div>
+                <div class="actions">
+                    <button id="btnAddWheel" type="button">+ Add wheel</button>
+                    <button id="btnRemoveWheel" type="button">- Remove wheel</button>
+                    <div id="status" class="status">Loading parameters...</div>
+                </div>
+            </section>
+
+            <section class="card viewer-wrap">
+                <div class="card-header">Live Assembly Mesh</div>
+                <div id="meshContainer" class="viewer">
+                    <div id="meshPlaceholder">No assembly mesh loaded yet.</div>
+                </div>
+                <div id="meshMeta" class="viewer-footer">Waiting for first build...</div>
+            </section>
+        </section>
+    </main>
+
+    <script>
+        const controlsContainer = document.getElementById("controls");
+        const statusEl = document.getElementById("status");
+        const meshMeta = document.getElementById("meshMeta");
+        const btnAddWheel = document.getElementById("btnAddWheel");
+        const btnRemoveWheel = document.getElementById("btnRemoveWheel");
+        const btnRunLocal = document.getElementById("btnRunLocal");
+        const assemblyIdSelect = document.getElementById("assemblyIdSelect");
+        const epochProgress = document.getElementById("epochProgress");
+        const progressText = document.getElementById("progressText");
+
+        let params = {};
+        let pendingUpdateTimer = null;
+
+        function initializeAssemblyIdOptions() {
+            for (let id = 1; id <= 51; id += 1) {
+                const option = document.createElement("option");
+                option.value = String(id);
+                option.textContent = String(id);
+                assemblyIdSelect.appendChild(option);
+            }
+        }
+
+        function getSelectedAssemblyId() {
+            const rawValue = String(assemblyIdSelect.value || "").trim();
+            if (!rawValue) {
+                return null;
+            }
+
+            const parsed = Number.parseInt(rawValue, 10);
+            if (!Number.isInteger(parsed) || parsed < 1 || parsed > 51) {
+                return undefined;
+            }
+
+            return parsed;
+        }
+
+        async function startRunLocal() {
+            const selectedAssemblyId = getSelectedAssemblyId();
+            if (selectedAssemblyId === undefined) {
+                return;
+            }
+
+            btnRunLocal.disabled = true;
+            btnRunLocal.textContent = "RUNNING...";
+            try {
+                const payload = selectedAssemblyId === null ? {} : { assembly_id: selectedAssemblyId };
+                const response = await fetch("/run-local", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                await response.json();
+            } catch (_error) {
+                statusEl.textContent = "Failed to start run.";
+            } finally {
+                await refreshProgress();
+            }
+        }
+
+        async function refreshProgress() {
+            try {
+                const response = await fetch(`/run-local/progress?t=${Date.now()}`, { cache: "no-store" });
+                const payload = await response.json();
+
+                const pct = Number(payload.progress_percent || 0);
+                epochProgress.value = pct;
+                progressText.textContent = `${pct.toFixed(1)}%`;
+
+                if (payload.running) {
+                    btnRunLocal.disabled = true;
+                    assemblyIdSelect.disabled = true;
+                    btnRunLocal.textContent = "RUNNING...";
+                } else {
+                    btnRunLocal.disabled = false;
+                    assemblyIdSelect.disabled = false;
+                    btnRunLocal.textContent = "RUN";
+                }
+            } catch (_error) {
+                progressText.textContent = "N/A";
+            }
+        }
+
+        function sectionSortKey(sectionName) {
+            if (sectionName === "seat") {
+                return -1;
+            }
+            if (sectionName.startsWith("wheel_")) {
+                const idx = Number.parseInt(sectionName.split("_")[1], 10);
+                return Number.isFinite(idx) ? idx : 9999;
+            }
+            return 10000;
+        }
+
+        function axisLimits(axis) {
+            if (axis === "z") {
+                return { lo: 0, hi: 600 };
+            }
+            if (axis === "x") {
+                return { lo: -3000, hi: 3000 };
+            }
+            return { lo: -2000, hi: 2000 };
+        }
+
+        function renderControls() {
+            controlsContainer.innerHTML = "";
+            const sections = Object.keys(params).sort((a, b) => sectionSortKey(a) - sectionSortKey(b) || a.localeCompare(b));
+
+            sections.forEach((section) => {
+                const title = document.createElement("h3");
+                title.className = "section-title";
+                title.textContent = section;
+                controlsContainer.appendChild(title);
+
+                ["x", "y", "z"].forEach((axis) => {
+                    const current = Number(params[section]?.[axis] ?? 0);
+                    const { lo, hi } = axisLimits(axis);
+                    const row = document.createElement("div");
+                    row.className = "slider-row";
+                    row.innerHTML = `
+                        <label>${section}.${axis}</label>
+                        <input type="range" min="${lo}" max="${hi}" step="1" value="${current}" data-section="${section}" data-axis="${axis}">
+                        <span class="value" id="lbl_${section}_${axis}">${Math.round(current)}</span>
+                    `;
+                    controlsContainer.appendChild(row);
+
+                    const slider = row.querySelector("input");
+                    slider.addEventListener("input", () => {
+                        const value = Number.parseFloat(slider.value);
+                        params[section][axis] = value;
+                        document.getElementById(`lbl_${section}_${axis}`).textContent = String(Math.round(value));
+                        debounceUpdate();
+                    });
+                });
+            });
+        }
+
+        function debounceUpdate() {
+            clearTimeout(pendingUpdateTimer);
+            statusEl.textContent = "Rebuilding assembly...";
+            pendingUpdateTimer = setTimeout(async () => {
+                await persistAndRebuild();
+            }, 80);
+        }
+
+        async function loadParams() {
+            const response = await fetch(`/assembly-selection/params?t=${Date.now()}`, { cache: "no-store" });
+            if (!response.ok) {
+                throw new Error("Failed to load parameters");
+            }
+
+            params = await response.json();
+            renderControls();
+            statusEl.textContent = "Ready.";
+        }
+
+        async function persistAndRebuild() {
+            try {
+                const response = await fetch("/assembly-selection/update", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(params)
+                });
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    statusEl.textContent = payload?.detail?.message || payload?.message || "Update failed.";
+                    return;
+                }
+
+                statusEl.textContent = payload.message || "Updated.";
+                if (payload.params) {
+                    params = payload.params;
+                    renderControls();
+                }
+                if (window.loadAssemblyMesh) {
+                    window.loadAssemblyMesh();
+                }
+            } catch (_error) {
+                statusEl.textContent = "Failed to update assembly.";
+            }
+        }
+
+        async function addWheel() {
+            statusEl.textContent = "Adding wheel...";
+            try {
+                const response = await fetch("/assembly-selection/add-wheel", { method: "POST" });
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    statusEl.textContent = payload?.detail?.message || payload?.message || "Failed to add wheel.";
+                    return;
+                }
+
+                params = payload.params || params;
+                renderControls();
+                statusEl.textContent = payload.message || "Wheel added.";
+                if (window.loadAssemblyMesh) {
+                    window.loadAssemblyMesh();
+                }
+            } catch (_error) {
+                statusEl.textContent = "Failed to add wheel.";
+            }
+        }
+
+        async function removeWheel() {
+            statusEl.textContent = "Removing wheel...";
+            try {
+                const response = await fetch("/assembly-selection/remove-wheel", { method: "POST" });
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    statusEl.textContent = payload?.detail?.message || payload?.message || "Failed to remove wheel.";
+                    return;
+                }
+
+                params = payload.params || params;
+                renderControls();
+                statusEl.textContent = payload.message || "Wheel removed.";
+                if (window.loadAssemblyMesh) {
+                    window.loadAssemblyMesh();
+                }
+            } catch (_error) {
+                statusEl.textContent = "Failed to remove wheel.";
+            }
+        }
+
+        btnAddWheel.addEventListener("click", addWheel);
+        btnRemoveWheel.addEventListener("click", removeWheel);
+        btnRunLocal.addEventListener("click", startRunLocal);
+
+        window.updateMeshMeta = function (text) {
+            meshMeta.textContent = text;
+        };
+
+        initializeAssemblyIdOptions();
+        refreshProgress();
+        setInterval(refreshProgress, 1000);
+
+        loadParams()
+            .then(() => {
+                if (window.loadAssemblyMesh) {
+                    window.loadAssemblyMesh();
+                }
+            })
+            .catch((_error) => {
+                statusEl.textContent = "Failed to load parameters.";
+            });
+    </script>
+
+    <script type="module">
+        import * as THREE from "three";
+        import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+        import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
+
+        const container = document.getElementById("meshContainer");
+        const placeholder = document.getElementById("meshPlaceholder");
+
+        let scene;
+        let camera;
+        let renderer;
+        let controls;
+        let currentMesh = null;
+
+        function initViewer() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xeef3f0);
+
+            camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 2000);
+            camera.position.set(0, 0, 3.5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.target.set(0, 0, 0);
+
+            const hemi = new THREE.HemisphereLight(0xffffff, 0x404040, 1.0);
+            scene.add(hemi);
+
+            const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+            dir.position.set(1, 1, 1);
+            scene.add(dir);
+
+            window.addEventListener("resize", () => {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (controls) {
+                controls.update();
+            }
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        function setViewerStatus(message) {
+            if (window.updateMeshMeta) {
+                window.updateMeshMeta(message);
+            }
+        }
+
+        window.loadAssemblyMesh = async function () {
+            if (!scene) {
+                initViewer();
+            }
+
+            setViewerStatus("Loading latest assembly.ply...");
+
+            const meshUrl = `/assembly-selection/mesh?t=${Date.now()}`;
+            let blobUrl = null;
+
+            try {
+                const response = await fetch(meshUrl, { cache: "no-store" });
+                if (!response.ok) {
+                    let message = "No mesh available yet. Move a slider to build assembly.ply.";
+                    try {
+                        const payload = await response.json();
+                        message = payload?.detail?.message || payload?.message || message;
+                    } catch (_parseError) {
+                        // keep fallback message
+                    }
+                    placeholder.style.display = "grid";
+                    setViewerStatus(message);
+                    return;
+                }
+
+                const meshBlob = await response.blob();
+                blobUrl = URL.createObjectURL(meshBlob);
+            } catch (_fetchError) {
+                placeholder.style.display = "grid";
+                setViewerStatus("Failed to fetch assembly.ply preview.");
+                return;
+            }
+
+            const loader = new PLYLoader();
+            loader.load(
+                blobUrl,
+                (geometry) => {
+                    geometry.computeVertexNormals();
+                    geometry.computeBoundingBox();
+
+                    const center = new THREE.Vector3();
+                    geometry.boundingBox.getCenter(center);
+                    geometry.translate(-center.x, -center.y, -center.z);
+                    geometry.computeBoundingBox();
+
+                    const size = new THREE.Vector3();
+                    geometry.boundingBox.getSize(size);
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const safeScale = maxDim > 0 ? (2.0 / maxDim) : 1;
+
+                    if (currentMesh) {
+                        scene.remove(currentMesh);
+                        currentMesh.geometry.dispose();
+                        currentMesh.material.dispose();
+                    }
+
+                    const material = new THREE.MeshStandardMaterial({
+                        color: 0x9aa3a8,
+                        roughness: 0.62,
+                        metalness: 0.18,
+                        side: THREE.DoubleSide
+                    });
+
+                    currentMesh = new THREE.Mesh(geometry, material);
+                    currentMesh.scale.set(safeScale, safeScale, safeScale);
+                    scene.add(currentMesh);
+
+                    placeholder.style.display = "none";
+                    camera.position.set(0, 0, 3.5);
+                    controls.target.set(0, 0, 0);
+                    controls.update();
+                    setViewerStatus(`Showing latest assembly.ply at ${new Date().toLocaleTimeString()}`);
+                    if (blobUrl) {
+                        URL.revokeObjectURL(blobUrl);
+                    }
+                },
+                undefined,
+                (_error) => {
+                    placeholder.style.display = "grid";
+                    setViewerStatus("Failed to parse assembly.ply preview mesh.");
+                    if (blobUrl) {
+                        URL.revokeObjectURL(blobUrl);
+                    }
+                }
+            );
+        };
+
+        setInterval(() => {
+            if (window.loadAssemblyMesh) {
+                window.loadAssemblyMesh();
+            }
+        }, 5000);
+    </script>
+</body>
+
+</html>
