@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pretraining</title>
+    <style>
+        :root {
+            --bg: #1f2436;
+            --panel: #2a3047;
+            --card: #f7faf8;
+            --accent: #c82121;
+            --accent-2: #9f1616;
+            --muted: #627078;
+            --text: #11161f;
+            --border: #d8e1db;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: radial-gradient(circle at top left, #2b3554 0%, #1f2436 45%, #171c2e 100%);
+            color: #f2f5f8;
+        }
+
+        .layout {
+            width: 100%;
+            height: 100%;
+            padding: 16px;
+            display: grid;
+            grid-template-rows: auto 1fr;
+            gap: 14px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border-radius: 14px;
+            padding: 14px;
+            box-shadow: 0 14px 26px rgba(0, 0, 0, 0.22);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .title {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        .meta {
+            margin-top: 6px;
+            color: #c7d3db;
+            font-size: 0.9rem;
+        }
+
+        .panel button {
+            border: none;
+            border-radius: 8px;
+            padding: 8px 12px;
+            background: var(--accent);
+            color: #fff;
+            font-size: 0.86rem;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .panel button:hover {
+            background: var(--accent-2);
+        }
+
+        .gallery {
+            min-height: 0;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(300px, 1fr));
+            gap: 12px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .gif-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text);
+            display: grid;
+            grid-template-rows: auto 1fr;
+            overflow: hidden;
+        }
+
+        .gif-header {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            background: #edf3ef;
+            font-size: 0.86rem;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .gif-slot {
+            padding: 4px;
+            display: grid;
+            place-items: center;
+            background: #f0f5f2;
+            overflow: hidden;
+        }
+
+        .gif-slot img {
+            width: 100%;
+            height: 100%;
+            max-height: none;
+            object-fit: cover;
+            border-radius: 8px;
+            background: #fff;
+            border: 1px solid var(--border);
+        }
+
+        .empty-state {
+            width: 100%;
+            height: 100%;
+            min-height: 240px;
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            font-size: 0.9rem;
+            text-align: center;
+            padding: 16px;
+            border: 1px dashed var(--border);
+            border-radius: 8px;
+            background: #f7fbf8;
+        }
+
+        @media (max-width: 980px) {
+            .panel {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .gallery {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="layout">
+        <section class="panel">
+            <div>
+                <h1 class="title">Pretraining GIF Visualizer</h1>
+                <div id="status" class="meta">Loading GIFs...</div>
+            </div>
+            <button id="btnRestart" type="button">Restart GIFs</button>
+        </section>
+
+        <section id="gallery" class="gallery"></section>
+    </main>
+
+    <script>
+        const gallery = document.getElementById("gallery");
+        const statusEl = document.getElementById("status");
+        const btnRestart = document.getElementById("btnRestart");
+
+        function cacheBust(url) {
+            const separator = url.includes("?") ? "&" : "?";
+            return `${url}${separator}t=${Date.now()}`;
+        }
+
+        function buildEndpoint() {
+            return "/pretraining/gifs";
+        }
+
+        function createEmptyCard(labelText) {
+            const card = document.createElement("article");
+            card.className = "gif-card";
+            card.innerHTML = `
+                <div class="gif-header">${labelText}</div>
+                <div class="gif-slot">
+                    <div class="empty-state">No GIF available for this slot.</div>
+                </div>
+            `;
+            return card;
+        }
+
+        function createGifCard(item, index) {
+            const safeTitle = item.name || `GIF ${index + 1}`;
+            const card = document.createElement("article");
+            card.className = "gif-card";
+            card.innerHTML = `
+                <div class="gif-header">${safeTitle}</div>
+                <div class="gif-slot">
+                    <img alt="${safeTitle}" src="${cacheBust(item.url)}" data-base-url="${item.url}">
+                </div>
+            `;
+            return card;
+        }
+
+        function restartLoadedGifs() {
+            const loadedImages = gallery.querySelectorAll("img[data-base-url]");
+            loadedImages.forEach((image) => {
+                const baseUrl = image.dataset.baseUrl;
+                if (baseUrl) {
+                    image.src = cacheBust(baseUrl);
+                }
+            });
+        }
+
+        async function refreshGifs() {
+            statusEl.textContent = "Loading GIFs...";
+            gallery.innerHTML = "";
+
+            try {
+                const response = await fetch(buildEndpoint(), { cache: "no-store" });
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    statusEl.textContent = payload?.detail?.message || "Failed to load pretraining GIFs.";
+                    for (let idx = 0; idx < 4; idx += 1) {
+                        gallery.appendChild(createEmptyCard(`GIF ${idx + 1}`));
+                    }
+                    return;
+                }
+
+                const items = Array.isArray(payload.gifs) ? payload.gifs.slice(0, 4) : [];
+                if (items.length === 0) {
+                    statusEl.textContent = payload.message || "No pretraining GIFs found.";
+                } else {
+                    const sourceDir = payload.source_dir ? ` Source: ${payload.source_dir}` : "";
+                    statusEl.textContent = `Showing ${items.length} GIFs.${sourceDir}`;
+                }
+
+                for (let idx = 0; idx < 4; idx += 1) {
+                    if (idx < items.length) {
+                        gallery.appendChild(createGifCard(items[idx], idx));
+                    } else {
+                        gallery.appendChild(createEmptyCard(`GIF ${idx + 1}`));
+                    }
+                }
+            } catch (_error) {
+                statusEl.textContent = "Failed to load pretraining GIFs.";
+                for (let idx = 0; idx < 4; idx += 1) {
+                    gallery.appendChild(createEmptyCard(`GIF ${idx + 1}`));
+                }
+            }
+        }
+
+        btnRestart.addEventListener("click", restartLoadedGifs);
+        refreshGifs();
+    </script>
+</body>
+
+</html>

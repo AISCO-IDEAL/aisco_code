@@ -14,7 +14,7 @@ From repo root:
 
 ```bash
 source aisco_env/bin/activate
-python subprojects/wp7_gui/app.py
+python subprojects/wp7_gui/v1/app_v1.py
 ```
 
 ### Open in Windows Firefox

@@ -37,11 +37,13 @@ wandb_general:
   rendering_frequency: 1  # total_loss.py: general_config["wandb_general"].get("rendering_frequency")
   wandb_mode: online # online: syncs immediately, offline: saves locally when you run `wandb sync` in the command line
 
-# CentralVisManager rollback gate (Plan 012 / v0.7.0).
-# Set to true to route all mesh/field/solar visualisations through CentralVisManager
-# (writes epoch_XXXXX.ply + auto-generates GIFs on finalize).
-# Defaults to false for backward-compat; flip to true after parity validation.
-central_vis_manager_enabled: false
+# Visualization manager mode.
+# Options: "disabled" (default), "legacy", "v2", "null"
+# - "disabled": no visualization manager
+# - "legacy": original synchronous CentralVisManager (for rollback)
+# - "v2": new async CentralVisManagerV2 (ThreadPool PLY writes, ProcessPool GIF renders)
+# - "null": no-op NullVisManager (dry-run; all writes are silent)
+vis_manager: "v2"
 
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
   storage_dir: "/cluster/work/fuge/AISCO/temp_"  # DEFAULT: /cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage, used in main_v1_1_one_model.py, basic_MLP_v1.py, storage_utils.py
