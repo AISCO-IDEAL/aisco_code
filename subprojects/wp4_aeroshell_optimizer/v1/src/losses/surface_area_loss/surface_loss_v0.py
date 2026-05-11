@@ -93,11 +93,15 @@ class SurfaceLossV0(ParentLoss):
         Returns:
             Scalar surrogate loss (gradients flow back to SDF parameters).
         """
-        _vertices, _faces, _area_loss, surrogate_loss, _ = self.mesh_extractor.extract_and_compute_loss(
+        _vertices, _faces, _area_loss, surrogate_loss, dL_dvertices = self.mesh_extractor.extract_and_compute_loss(
             sdf_model=model,
             loss_fn=self._area_loss_fn,
             enable_backward=True,
         )
+        # Store gradients for per-loss visualization in TotalLoss/TotalLossV2.
+        self.mesh_extractor.last_dL_dv = dL_dvertices  # type: ignore[attr-defined]
+        self.mesh_extractor.last_verts = _vertices  # type: ignore[attr-defined]
+        self.mesh_extractor.last_faces = _faces  # type: ignore[attr-defined]
 
         # Enrich diagnostics with mesh extraction info
         diag = getattr(self, "_last_diagnostics", {})

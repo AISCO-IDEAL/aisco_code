@@ -137,6 +137,9 @@ class TotalLossV2:
         self._init_active_losses()
         self._warn_about_dead_weights()
 
+        # Per-loss vertex gradient buffers (populated by _capture_vertex_grads_via_autograd after compute()).
+        self._visu_per_loss_grads: dict[str, torch.Tensor] = {}
+
         # Propagate vis_manager to all active child loss instances (e.g. GaotLoss, BbV3, SolarLoss).
         if self._vis_manager is not None:
             for _loss_inst in self._all_loss_instances().values():
@@ -365,6 +368,13 @@ class TotalLossV2:
             ext.clear_shared_mesh()
         self._shared_mesh_extractors = {}
 
+    def _reset_extractor_vertex_grad_buffers(self) -> None:
+        """Clear per-step extractor gradient/mesh buffers before loss evaluation."""
+        for ext in self._find_mesh_extractors().values():
+            ext.last_dL_dv = None
+            ext.last_verts = None
+            ext.last_faces = None
+
     def finalize_epoch_mesh_stats(self) -> None:
         """Emit one compact mesh-extraction summary per epoch and reset counters."""
         seen: set[int] = set()
@@ -394,6 +404,66 @@ class TotalLossV2:
         """Category names for active constraints, in YAML order."""
         return list(self._constraint_by_category.keys())
 
+    def collect_vertex_grads_for_visualisation(
+        self,
+        weights_by_name: dict[str, float] | None = None,
+    ) -> dict[str, Any] | None:
+        """Return per-loss dL/dv captured during the last `compute()` call.
+
+        Returns None if no loss had an autograd path to its mesh vertices. Otherwise:
+            {
+              "vertices":         (V, 3) primary mesh vertices (first per-loss mesh),
+              "faces":            (F, 3) primary mesh faces,
+              "per_loss":         {loss_name: (V, 3) dL/dv},
+              "per_loss_meshes":  {loss_name: (verts, faces)} mesh for each loss
+                                  (each loss may use its own extractor),
+            }
+
+        The primary mesh is taken from the first entry in `per_loss_meshes` — the mesh
+        that was actually used when computing that loss. Losses without a mesh autograd
+        path (eikonal, smoothness, …) are silently absent from `per_loss`.
+        """
+        if not getattr(self, "_visu_diag_logged", False):
+            self._visu_diag_logged = True
+            print(f"[VisuDiag V2] per_loss_grads_keys={list(self._visu_per_loss_grads.keys())} per_loss_meshes_keys={list(getattr(self, '_visu_per_loss_meshes', {}).keys())}")
+        _per_loss_meshes = getattr(self, "_visu_per_loss_meshes", {})
+        if not self._visu_per_loss_grads or not _per_loss_meshes:
+            return None
+        # `weights_by_name` is kept on the signature for backward compatibility with callers.
+        del weights_by_name
+        _primary_v, _primary_f = next(iter(_per_loss_meshes.values()))
+        return {
+            "vertices": _primary_v,
+            "faces": _primary_f,
+            "per_loss": dict(self._visu_per_loss_grads),
+            "per_loss_meshes": dict(_per_loss_meshes),
+        }
+
+    def _capture_vertex_grads_via_autograd(self, bundle: RawLossBundle) -> None:
+        """Collect dL/dv for every loss whose extractor produced one this step.
+
+        `MeshSDFExtractor.extract_and_compute_loss` already runs
+        `autograd.grad(loss, v_for_loss)` internally and stashes the result on
+        the extractor as `last_dL_dv` (vertices match the shared primary mesh).
+        We just harvest those tensors here, keyed by loss name. Losses that
+        don't go through `extract_and_compute_loss` (eikonal, smoothness, …)
+        leave `last_dL_dv = None` and are silently absent from the result.
+
+        The `bundle` argument is kept for API compatibility but unused.
+        """
+        del bundle
+        self._visu_per_loss_grads = {}
+        self._visu_per_loss_meshes: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
+        for loss_name, ext in self._find_mesh_extractors().items():
+            g = getattr(ext, "last_dL_dv", None)
+            if g is None:
+                continue
+            self._visu_per_loss_grads[loss_name] = g.detach()
+            v = getattr(ext, "last_verts", None)
+            f = getattr(ext, "last_faces", None)
+            if v is not None and f is not None:
+                self._visu_per_loss_meshes[loss_name] = (v.detach(), f.detach())
+
     @record_function("TotalLossV2.compute")
     def compute(
         self,
@@ -414,6 +484,7 @@ class TotalLossV2:
             RawLossBundle with unweighted objective, constraint, and aux tensors
             grouped by category.
         """
+        self._reset_extractor_vertex_grad_buffers()
         self._inject_shared_meshes(model)
         bundle = RawLossBundle()
         self._skipped_log_zeros: dict[str, float] = {}
@@ -449,6 +520,7 @@ class TotalLossV2:
         finally:
             self._clear_shared_meshes()
 
+        self._capture_vertex_grads_via_autograd(bundle)
         return bundle
 
     @record_function("TotalLossV2.weight")
