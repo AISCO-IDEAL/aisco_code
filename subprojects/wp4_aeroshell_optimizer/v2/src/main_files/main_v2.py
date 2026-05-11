@@ -67,7 +67,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Vi
 configure_headless_pyvista()
 
 
-def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa: PLR0912, PLR0915
+def main(_gui_mode: bool = False, _cfg_folder: str | None = None) -> None:  # noqa: PLR0912, PLR0915
 
     print("Starting Main file V2...")
 
@@ -664,4 +664,4 @@ if __name__ == "__main__":
         assert args.cfg_folder != "", '--uses-gui requires "--cfg-folder PATH" to be set'
     assert " " not in args.cfg_folder, f"Config folder path cannot contain spaces. Received: '{args.cfg_folder}'"
 
-    main(gui_mode=args.uses_gui, cfg_folder=args.cfg_folder)
+    main(_gui_mode=args.uses_gui, _cfg_folder=args.cfg_folder)

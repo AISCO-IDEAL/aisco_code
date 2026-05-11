@@ -201,7 +201,7 @@ def frames_to_gif(
     """
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    imageio.mimsave(str(out), frames, fps=fps)
+    imageio.mimsave(str(out), frames, fps=fps)  # type: ignore[arg-type]
     return out
 
 

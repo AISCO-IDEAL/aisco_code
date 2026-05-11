@@ -98,6 +98,33 @@ GUI_SCHEMA_PATH = GUI_ROOT / "gui_schema.json"
 COPY_EXCLUDE_SUBFOLDERS = ("sweeps",)
 
 
+def _get_default_storage_root() -> Path:
+    """Get the default storage root from configuration or fall back to default."""
+    try:
+        with GENERAL_CONFIG_PATH.open(encoding="utf-8") as f:
+            general_cfg = yaml.safe_load(f) or {}
+        storage_paths = general_cfg.get("storage_paths", {})
+        run_locally = str(general_cfg.get("general_info", {}).get("run_locally", "False")).lower() == "true"
+        
+        if run_locally:
+            raw_root = storage_paths.get("local_storage_dir", str(DEFAULT_LOCAL_STORAGE_DIR))
+        else:
+            raw_root = storage_paths.get("storage_dir", str(DEFAULT_BULK_STORAGE_DIR))
+        
+        root = Path(raw_root)
+        return (REPO_ROOT.parent / root).resolve() if not root.is_absolute() else root.resolve()
+    except Exception:
+        return DEFAULT_LOCAL_STORAGE_DIR.resolve()
+
+
+# Render output paths - these are derived from storage root subdirectories
+# They will be populated with actual render outputs during run execution
+_STORAGE_ROOT = _get_default_storage_root()
+SOLAR_RENDERS_ROOT = _STORAGE_ROOT
+MESH_ASSEMBLY_RENDERS_DIR = _STORAGE_ROOT
+PRESSURE_VISUALS_ROOT = _STORAGE_ROOT
+
+
 class RunLocalRequest(BaseModel):
     """Request payload for launching a local optimization run.
 
