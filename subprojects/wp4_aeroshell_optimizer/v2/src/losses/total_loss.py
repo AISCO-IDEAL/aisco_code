@@ -366,6 +366,13 @@ class TotalLoss:
             ext.clear_shared_mesh()
         self._shared_mesh_extractors = {}
 
+    def _reset_extractor_vertex_grad_buffers(self) -> None:
+        """Clear per-step extractor gradient/mesh buffers before loss evaluation."""
+        for ext in self._find_mesh_extractors().values():
+            ext.last_dL_dv = None
+            ext.last_verts = None
+            ext.last_faces = None
+
     # ------------------------------------------------------------------
     # per-loss vertex-gradient visualisation (mirrors TotalLossV2)
     # ------------------------------------------------------------------
@@ -444,6 +451,7 @@ class TotalLoss:
         """
         self._skipped_categories: set[str] = set()
         self._zero_weighted_categories: set[str] = set()
+        self._reset_extractor_vertex_grad_buffers()
         self._inject_shared_meshes(model)
         raw: dict[str, torch.Tensor] = {}
         try:

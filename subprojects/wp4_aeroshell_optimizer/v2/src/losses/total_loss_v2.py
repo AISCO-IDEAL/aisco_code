@@ -368,6 +368,13 @@ class TotalLossV2:
             ext.clear_shared_mesh()
         self._shared_mesh_extractors = {}
 
+    def _reset_extractor_vertex_grad_buffers(self) -> None:
+        """Clear per-step extractor gradient/mesh buffers before loss evaluation."""
+        for ext in self._find_mesh_extractors().values():
+            ext.last_dL_dv = None
+            ext.last_verts = None
+            ext.last_faces = None
+
     def finalize_epoch_mesh_stats(self) -> None:
         """Emit one compact mesh-extraction summary per epoch and reset counters."""
         seen: set[int] = set()
@@ -477,6 +484,7 @@ class TotalLossV2:
             RawLossBundle with unweighted objective, constraint, and aux tensors
             grouped by category.
         """
+        self._reset_extractor_vertex_grad_buffers()
         self._inject_shared_meshes(model)
         bundle = RawLossBundle()
         self._skipped_log_zeros: dict[str, float] = {}
