@@ -297,6 +297,92 @@ def _load_or_build_surface_cache(
     return surf_pts, surf_gt
 
 
+def _resolve_active_population(config: dict[str, Any]) -> None:
+    """Resolve active_population + shape_library into config["latent_population"].
+
+    Idempotent: if active_population is absent (legacy format with a direct
+    latent_population list), config is left unchanged.
+
+    Args:
+        config: Pretraining config dict, modified in place.
+
+    Raises:
+        ValueError: If a name in active_population is not found in shape_library.
+    """
+    if "active_population" not in config:
+        return
+
+    library: dict[str, Any] = config.get("shape_library", {})
+    if not library:
+        raise ValueError(
+            "active_population is set but shape_library is empty or missing. "
+            "Add shape definitions to shape_library in pretraining_latent_config.yaml."
+        )
+
+    name_counts: dict[str, int] = {}
+    resolved: list[dict[str, Any]] = []
+    for name in config["active_population"]:
+        if name not in library:
+            raise ValueError(
+                f"Shape '{name}' listed in active_population not found in shape_library. "
+                f"Available shapes: {sorted(library.keys())}."
+            )
+        entry = dict(library[name])  # shallow copy — do not mutate the library
+        count = name_counts.get(name, 0)
+        name_counts[name] = count + 1
+        entry["name"] = name if count == 0 else f"{name}_{count + 1}"
+        resolved.append(entry)
+
+    config["latent_population"] = resolved
+
+
+def _compute_circle_validity_fraction(
+    model: SupportsLatentConcat,
+    z_radius: float,
+    z_dim: int,
+    outer_prism: dict[str, Any],
+    device: str,
+    n_probe_angles: int = 36,
+    n_pts: int = 4096,
+) -> tuple[float, int, int]:
+    """Probe what fraction of equally-spaced angles on the z-circle have a valid zero crossing.
+
+    A zero crossing is possible iff the model's SDF minimum over a uniform prism
+    sample is negative.  Uses no marching cubes — very fast.
+
+    Args:
+        model: Pretrained model with set_latent_vector interface.
+        z_radius: Radius of the latent circle to probe.
+        z_dim: Latent dimensionality (must be ≥ 2).
+        outer_prism: Dict with x/y/z bound lists, e.g. {"x": [lo, hi], ...}.
+        device: PyTorch device string.
+        n_probe_angles: Number of equally-spaced angles to test (default 36 = 10° spacing).
+        n_pts: Number of uniform prism samples per angle probe.
+
+    Returns:
+        (fraction_valid, n_valid, n_probe_angles)
+    """
+    lo = torch.tensor([outer_prism["x"][0], outer_prism["y"][0], outer_prism["z"][0]], device=device)
+    hi = torch.tensor([outer_prism["x"][1], outer_prism["y"][1], outer_prism["z"][1]], device=device)
+    pts = lo + torch.rand(n_pts, 3, device=device) * (hi - lo)
+
+    model.eval()
+    n_valid = 0
+    with torch.no_grad():
+        for k in range(n_probe_angles):
+            angle = 2.0 * math.pi * k / n_probe_angles
+            z_vec = torch.zeros(z_dim, device=device)
+            z_vec[0] = z_radius * math.cos(angle)
+            z_vec[1] = z_radius * math.sin(angle)
+            model.set_latent_vector(z_vec)
+            sdf = model(pts).squeeze()
+            if float(sdf.min().item()) < 0.0:
+                n_valid += 1
+    model.train()
+
+    return n_valid / n_probe_angles, n_valid, n_probe_angles
+
+
 def _compute_latent_pretrain_hash(config: dict[str, Any], model: SupportsLatentConcat) -> str:
     """Compute a stable hash over model architecture and all training-significant parameters.
 
@@ -316,6 +402,7 @@ def _compute_latent_pretrain_hash(config: dict[str, Any], model: SupportsLatentC
     Returns:
         10-character hex hash string.
     """
+    _resolve_active_population(config)
     shapes: list[dict[str, Any]] = config.get("latent_population", [])
     shape_entries = [
         {
@@ -512,6 +599,8 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     """
     if not isinstance(model, SupportsLatentConcat):
         raise TypeError(f"Model {type(model).__name__} does not implement SupportsLatentConcat. ")
+
+    _resolve_active_population(config)
 
     # --- Specific pretraining path override ---
     if bool(config.get("use_specific_pretraining", False)):
@@ -973,6 +1062,23 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     if pairwise:
         mean_dist = sum(pairwise) / len(pairwise)
         print(f"[latent_pretrain] Z pairwise distances: min={min(pairwise):.3f}, mean={mean_dist:.3f}, max={max(pairwise):.3f}")
+
+    # --- Circle validity probe ---
+    # Scans N equally-spaced angles on the z-circle. A position is "valid" when SDF min < 0
+    # (zero crossing possible → marching cubes would produce a mesh). Fast: no marching cubes.
+    n_probe_angles: int = int(loop_cfg.get("circle_probe_n_angles", 36))
+    if n_probe_angles > 0:
+        frac_valid, n_valid_angles, n_total_angles = _compute_circle_validity_fraction(
+            model, z_radius, z_dim, outer_prism, device, n_probe_angles
+        )
+        print(
+            f"[latent_pretrain] Circle validity: {n_valid_angles}/{n_total_angles} angles valid "
+            f"({frac_valid:.1%})  — target ≥ 85%"
+        )
+        if use_wandb:
+            import wandb  # noqa: PLC0415
+
+            wandb.log({"latent_pretraining/circle_valid_fraction": frac_valid}, step=epochs)
 
     # --- Final Mesh Extraction + Topology Summary ---
     pretrained_shapes_dir = run_dir / "pretrained_shapes"
