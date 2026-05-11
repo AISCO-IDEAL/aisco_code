@@ -105,12 +105,12 @@ def _get_default_storage_root() -> Path:
             general_cfg = yaml.safe_load(f) or {}
         storage_paths = general_cfg.get("storage_paths", {})
         run_locally = str(general_cfg.get("general_info", {}).get("run_locally", "False")).lower() == "true"
-        
+
         if run_locally:
             raw_root = storage_paths.get("local_storage_dir", str(DEFAULT_LOCAL_STORAGE_DIR))
         else:
             raw_root = storage_paths.get("storage_dir", str(DEFAULT_BULK_STORAGE_DIR))
-        
+
         root = Path(raw_root)
         return (REPO_ROOT.parent / root).resolve() if not root.is_absolute() else root.resolve()
     except Exception:

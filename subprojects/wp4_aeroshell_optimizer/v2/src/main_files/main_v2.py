@@ -656,8 +656,7 @@ if __name__ == "__main__":
     # extras here. Only non-flag extras indicate a real caller bug.
     _bad_extras = [a for a in _ if not a.startswith("--")]
     assert _bad_extras == [], (
-        f"Unexpected non-flag CLI arguments received: {_bad_extras}. "
-        "Check the caller or argument parsing logic."
+        f"Unexpected non-flag CLI arguments received: {_bad_extras}. Check the caller or argument parsing logic."
     )
     # --cfg-folder is only required when running through the GUI override flow.
     if args.uses_gui:

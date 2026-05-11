@@ -66,7 +66,6 @@ class ModelLoader:
             gradient_max=float(cfd_config["gradient_max"]),
         )
 
-
     def _get_dataset_viz_config(self) -> dict:
         dataset_cfg = self.cfd_config.get("dataset", {}) if isinstance(self.cfd_config.get("dataset", {}), dict) else None
         if isinstance(dataset_cfg, dict) and dataset_cfg:
@@ -417,7 +416,6 @@ class ModelLoader:
             mesh_faces=mesh_faces,
             reference_field=reference_field,
         )
-
 
         int_drag_f = cp_field_to_drag(
             cp_field=pressure_field,

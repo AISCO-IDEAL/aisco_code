@@ -446,11 +446,10 @@ class TotalLoss:
         if not getattr(self, "_visu_diag_logged", False):
             self._visu_diag_logged = True
             v = self._visu_primary_v
-            v_state = "None" if v is None else f"shape={tuple(v.shape)} requires_grad={v.requires_grad} grad_fn={v.grad_fn is not None}"
-            print(
-                f"[VisuDiag V1] primary_mesh={v_state} "
-                f"per_loss_grads_keys={list(self._visu_per_loss_grads.keys())}"
+            v_state = (
+                "None" if v is None else f"shape={tuple(v.shape)} requires_grad={v.requires_grad} grad_fn={v.grad_fn is not None}"
             )
+            print(f"[VisuDiag V1] primary_mesh={v_state} per_loss_grads_keys={list(self._visu_per_loss_grads.keys())}")
         if not self._visu_per_loss_grads or self._visu_primary_v is None:
             return None
         del weights_by_name  # kept on the signature for backward compatibility
@@ -460,7 +459,6 @@ class TotalLoss:
             "per_loss": dict(self._visu_per_loss_grads),
             "per_loss_meshes": dict(getattr(self, "_visu_per_loss_meshes", {})),
         }
-
 
     # ------------------------------------------------------------------
     # loss computation
