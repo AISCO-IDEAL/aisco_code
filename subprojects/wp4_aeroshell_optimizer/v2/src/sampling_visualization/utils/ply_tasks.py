@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 import numpy as np
-import open3d as o3d  # type: ignore[import-untyped]
+import open3d as o3d
 
 
 def write_ply_task(

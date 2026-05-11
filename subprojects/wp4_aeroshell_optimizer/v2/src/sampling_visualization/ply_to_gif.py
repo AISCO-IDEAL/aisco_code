@@ -618,7 +618,7 @@ def generate_gifs_flat(
         renderer.delete()
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    imageio.mimsave(str(output_path), frames, fps=gif_fps)  # type: ignore[arg-type]
+    imageio.mimsave(str(output_path), frames, fps=gif_fps)
 
     elapsed = time.monotonic() - t_start
     print(
