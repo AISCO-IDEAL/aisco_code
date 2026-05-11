@@ -1,7 +1,7 @@
 #kdiehl, #eschaerer
 # Welcome to AISCO_code
 You only find technical infos to get you coding here. All conceptual information can be found in `01 Knowledge Base/00 IT Tutorials / AISCO_code` on Obsidian.
-grad echli sali
+
 Lets clone the AISCO_code Repo via SSH:
 `git clone git@github.com:IDEALLab/AISCO_code.git`
 
