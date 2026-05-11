@@ -13,6 +13,7 @@ from torch.profiler import record_function
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     DebugManager,
     collect_alm_state,
@@ -29,7 +30,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Wr
 from subprojects.wp5.unified_mesh_extraction.sdf2mesh import MeshSDFExtractor
 
 if TYPE_CHECKING:
-    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import CentralVisManager
     from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
     from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
 
@@ -83,7 +83,7 @@ class BaseModel(nn.Module):
         debug_manager: DebugManager | None = None,
         conflict_tracker: GradientConflictTracker | None = None,
         conflict_cadence: int = 0,
-        vis_manager: CentralVisManager | CentralVisManagerV2 | None = None,
+        vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
         prof: torch.profiler.profile | None = None,
     ) -> None:
         if training_config is None:
@@ -92,7 +92,16 @@ class BaseModel(nn.Module):
         self.train()
 
         dbg = debug_manager if debug_manager is not None else DebugManager(config={"GLOBAL_DEBUG": False})
-        visual_mesh_extractor: MeshSDFExtractor = vis_manager.make_vis_extractor(device=str(next(self.parameters()).device))
+        # Prepare a MeshSDFExtractor instance. Prefer the vis_manager-provided
+        # extractor when available (CentralVisManagerV2 returns one); otherwise
+        # fall back to a local MeshSDFExtractor. Declare the variable once to
+        # avoid mypy redefinition errors.
+        visual_mesh_extractor: MeshSDFExtractor
+        if vis_manager is not None and hasattr(vis_manager, "make_vis_extractor"):
+            extractor_candidate = vis_manager.make_vis_extractor(str(next(self.parameters()).device))
+            visual_mesh_extractor = extractor_candidate if extractor_candidate is not None else MeshSDFExtractor()
+        else:
+            visual_mesh_extractor = MeshSDFExtractor()
 
         if wandb.run and "learning_rate " in wandb.config:
             learning_rate = wandb.config.learning_rate

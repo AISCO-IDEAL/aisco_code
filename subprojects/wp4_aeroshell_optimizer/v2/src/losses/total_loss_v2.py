@@ -33,6 +33,8 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
+
+# Enforce only CentralVisManagerV2 or NullVisManager in v2 codepaths
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor
@@ -98,9 +100,13 @@ class WeightedLossResult:
 class TotalLossV2:
     """Aggregates and weights loss components — compute + weight, nothing else."""
 
-    def __init__(self, device: str | torch.device = "cuda", vis_manager: CentralVisManagerV2 | NullVisManager | None = None) -> None:
+    def __init__(
+        self,
+        device: str | torch.device = "cuda",
+        vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
+    ) -> None:
         self._device: torch.device = torch.device(device) if isinstance(device, str) else device
-        self._vis_manager: CentralVisManagerV2 | NullVisManager | None = vis_manager
+        self._vis_manager: CentralVisManagerV2 | NullVisManager = vis_manager
 
         general_config: dict[str, Any] = load_config()
         self.losses_config: dict[str, Any] = load_config(

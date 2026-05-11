@@ -20,7 +20,7 @@ import time
 from collections.abc import Callable
 from dataclasses import replace as _replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import torch
 
@@ -37,12 +37,7 @@ from subprojects.wp4_aeroshell_optimizer import (
     multi_log_in_one,
     reformat_wandb_name,
 )
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import (
-    CentralVisManager,
-)
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import (
-    NullVisManager,
-)
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
     CentralVisManagerV2,
 )
@@ -101,7 +96,7 @@ def solar_mesh_loss_v3(
     faces: torch.Tensor,
     sun_direction: torch.Tensor,
     area_budget_mm2: float,
-    vis_manager: CentralVisManager | CentralVisManagerV2,
+    vis_manager: CentralVisManagerV2 | NullVisManager,
     solar_irradiance_W_m2: float = 1000.0,
     efficiency: float = 0.25,
     power_output_scale: float = 1.0,
@@ -118,7 +113,6 @@ def solar_mesh_loss_v3(
     num_epochs: int | None = None,
     render_solar: SolarV3Selection | None = None,
     selection_threshold_render: float = 0.5,
-    
 ) -> torch.Tensor:
     """
     Compute differentiable solar power objective using soft selection.
@@ -506,7 +500,7 @@ class SolarLossEstimator:
     def solar_loss(  # noqa: PLR0915, PLR0912
         self,
         model: Any,
-        vis_manager: CentralVisManagerV2 | CentralVisManager,
+        vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
         epoch_name: int | None = None,
         disable_logging: bool = False,
         disable_rendering: bool = False,

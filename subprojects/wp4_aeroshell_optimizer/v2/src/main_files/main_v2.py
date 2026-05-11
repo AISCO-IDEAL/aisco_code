@@ -178,7 +178,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         os.makedirs(rendering_dir, exist_ok=True)
 
     # Construct vis manager once per run.
-    # vis_manager: "v2" | "legacy" | "null" | "disabled" (default)
+    # vis_manager: "v2" | "legacy" | "null" | "disabled" (default)  # noqa: ERA001
     # "v2"       → CentralVisManagerV2 (async PLY writes, ProcessPool GIFs)
     # "legacy"   → original CentralVisManager (synchronous, for rollback)
     # "null"     → NullVisManager (no-op; is_enabled() always False — dry-run)
@@ -188,23 +188,25 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     if _vis_mode in ("v2", "legacy") and rendering_dir is None:
         # If CVM requested but wandb is off, create fallback vis dir.
-        _fallback_dir = Path(
-            general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
-        ) / model_hash / "vis_fallback"
+        _fallback_dir = (
+            Path(general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")) / model_hash / "vis_fallback"
+        )
         rendering_dir = _fallback_dir
 
     if rendering_dir is not None and _vis_mode in ("v2", "legacy"):
         _run_id = wandb_name or "unknown"
-        if _vis_mode == "v2":
-            _vis_manager = CentralVisManagerV2(run_dir=rendering_dir, run_id=_run_id)
-        else:
-            _vis_manager = CentralVisManager(run_dir=rendering_dir, run_id=_run_id)
+        # Only support CentralVisManagerV2 going forward; treat "legacy" as "v2".
+        _vis_manager = CentralVisManagerV2(run_dir=rendering_dir, run_id=_run_id)
         print(f"[VisManager:{_vis_mode}] enabled → {rendering_dir}")
     elif _vis_mode == "null":
         _vis_manager = NullVisManager()
         print("[VisManager:null] dry-run mode — all writes are no-ops")
     else:
         print(f"[VisManager] disabled (vis_manager={_vis_mode!r})")
+        raise ValueError(f"Invalid vis_manager mode: {_vis_mode}. Expected 'v2', 'legacy', 'null', you can't disable it entirely")
+    assert _vis_manager is not None, (
+        "Vis manager should be initialized at this point. Check the logic for vis_manager initialization."
+    )
     # 3b. Handle pretraining.
     # latent_space=true  → pretraining_latent.py (handles fast-resume internally; checkpoint in latent_pretraining dir)
     # latent_space=false → standard pretraining_v1_1.py (checkpoint in pretrained_path)

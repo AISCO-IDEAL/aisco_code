@@ -110,8 +110,14 @@ class _BaseVisManager:
             self._assembly_meshes = load_assembly_meshes()
             _log({"event": "assembly_meshes_loaded", "run_id": self.run_id})
         except Exception as exc:
-            _log({"event": "assembly_meshes_load_failed", "run_id": self.run_id, "error": str(exc),
-                  "message": "Call set_assembly_meshes() manually if the assembly cannot be loaded automatically."})
+            _log(
+                {
+                    "event": "assembly_meshes_load_failed",
+                    "run_id": self.run_id,
+                    "error": str(exc),
+                    "message": "Call set_assembly_meshes() manually if the assembly cannot be loaded automatically.",
+                }
+            )
 
     def _slotted(self, visual_type: str) -> str:
         if self._active_slot is not None:
@@ -232,9 +238,15 @@ class _BaseVisManager:
             return x.detach().cpu() if isinstance(x, torch.Tensor) else torch.from_numpy(np.asarray(x))
 
         self._assembly_meshes = (
-            _cpu(inner_verts), _cpu(inner_faces),
-            _cpu(outer_verts), _cpu(outer_faces),
-            sdf_color, inner_color, outer_color, sdf_alpha, outer_alpha,
+            _cpu(inner_verts),
+            _cpu(inner_faces),
+            _cpu(outer_verts),
+            _cpu(outer_faces),
+            sdf_color,
+            inner_color,
+            outer_color,
+            sdf_alpha,
+            outer_alpha,
         )
         _log({"event": "assembly_meshes_set", "run_id": self.run_id})
 
@@ -309,11 +321,9 @@ class _BaseVisManager:
 
         for d in gif_dirs:
             n = sum(1 for f in d.iterdir() if f.name.startswith("epoch_") and f.name.endswith(".ply"))
-            _log({"event": "gif_started", "run_id": self.run_id,
-                  "visual_type": str(d.relative_to(self.run_dir)), "n_frames": n})
+            _log({"event": "gif_started", "run_id": self.run_id, "visual_type": str(d.relative_to(self.run_dir)), "n_frames": n})
             ok, path, err = render_gif_task(d)
-            _log({"event": "gif_completed" if ok else "gif_failed",
-                  "run_id": self.run_id, "path": path, "error": err})
+            _log({"event": "gif_completed" if ok else "gif_failed", "run_id": self.run_id, "path": path, "error": err})
 
         _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": len(gif_dirs)})
 
@@ -359,7 +369,9 @@ class CentralVisManagerV2(_BaseVisManager):
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
-        rgb = resolve_mesh_rgb(np.asarray(weights, np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg)
+        rgb = resolve_mesh_rgb(
+            np.asarray(weights, np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg
+        )
         self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
 
     def vis_solar_shading(self, epoch: int, verts: Any, faces: Any, shading: Any) -> None:
@@ -368,7 +380,9 @@ class CentralVisManagerV2(_BaseVisManager):
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
-        rgb = resolve_mesh_rgb(np.asarray(shading, np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg)
+        rgb = resolve_mesh_rgb(
+            np.asarray(shading, np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg
+        )
         self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
 
     def vis_solar_penalty(self, epoch: int, verts: Any, faces: Any, penalty: Any) -> None:
@@ -377,7 +391,9 @@ class CentralVisManagerV2(_BaseVisManager):
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
-        rgb = resolve_mesh_rgb(np.asarray(penalty, np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg)
+        rgb = resolve_mesh_rgb(
+            np.asarray(penalty, np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg
+        )
         self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
 
     def vis_bb_constraint(self, epoch: int, verts: Any, distances: Any) -> None:
@@ -429,15 +445,19 @@ class CentralVisManagerV2(_BaseVisManager):
             return
 
         if self._assembly_meshes is None:
-            _log({"event": "assembly_meshes_missing", "run_id": self.run_id,
-                  "message": "vis_mesh_assembly_v4 called before assembly meshes were loaded — skipping."})
+            _log(
+                {
+                    "event": "assembly_meshes_missing",
+                    "run_id": self.run_id,
+                    "message": "vis_mesh_assembly_v4 called before assembly meshes were loaded — skipping.",
+                }
+            )
             return
 
-        inn_v, inn_f, out_v, out_f, sdf_color, inner_color, outer_color, sdf_alpha, outer_alpha = (
-            self._assembly_meshes
-        )
+        inn_v, inn_f, out_v, out_f, sdf_color, inner_color, outer_color, sdf_alpha, outer_alpha = self._assembly_meshes
 
         import torch  # noqa: PLC0415
+
         sdf_v = sdf_verts.detach().cpu() if isinstance(sdf_verts, torch.Tensor) else torch.from_numpy(np.asarray(sdf_verts))
         sdf_f = sdf_faces.detach().cpu() if isinstance(sdf_faces, torch.Tensor) else torch.from_numpy(np.asarray(sdf_faces))
 
@@ -455,21 +475,31 @@ class CentralVisManagerV2(_BaseVisManager):
                 )
 
                 export_combined_bbox_mesh_ply(
-                    inner_verts=inn_v, inner_faces=inn_f,
-                    outer_verts=out_v, outer_faces=out_f,
-                    sdf_verts=sdf_v, sdf_faces=sdf_f,
+                    inner_verts=inn_v,
+                    inner_faces=inn_f,
+                    outer_verts=out_v,
+                    outer_faces=out_f,
+                    sdf_verts=sdf_v,
+                    sdf_faces=sdf_f,
                     output_path=ply_path,
-                    inner_color=inner_color, outer_color=outer_color, sdf_color=sdf_color,
-                    inner_alpha=1.0, outer_alpha=outer_alpha, sdf_alpha=sdf_alpha,
+                    inner_color=inner_color,
+                    outer_color=outer_color,
+                    sdf_color=sdf_color,
+                    inner_alpha=1.0,
+                    outer_alpha=outer_alpha,
+                    sdf_alpha=sdf_alpha,
                 )
                 sdf_rgb = np.tile(np.array(sdf_color, dtype=np.float32), (len(sdf_v), 1))
                 inn_rgb = np.tile(np.array(inner_color, dtype=np.float32), (len(inn_v), 1))
                 out_rgb = np.tile(np.array(outer_color, dtype=np.float32), (len(out_v), 1))
-                save_scene_glb(glb_path, [
-                    ("sdf_mesh",       sdf_v.numpy(), sdf_f.numpy(), sdf_rgb),
-                    ("inner_assembly", inn_v.numpy(), inn_f.numpy(), inn_rgb),
-                    ("outer_bbox",     out_v.numpy(), out_f.numpy(), out_rgb),
-                ])
+                save_scene_glb(
+                    glb_path,
+                    [
+                        ("sdf_mesh", sdf_v.numpy(), sdf_f.numpy(), sdf_rgb),
+                        ("inner_assembly", inn_v.numpy(), inn_f.numpy(), inn_rgb),
+                        ("outer_bbox", out_v.numpy(), out_f.numpy(), out_rgb),
+                    ],
+                )
                 return (True, str(ply_path), None)
             except Exception as exc:
                 return (False, str(ply_path), str(exc))
@@ -480,9 +510,23 @@ class CentralVisManagerV2(_BaseVisManager):
     # --- Backward-compat shims (old callers; log and drop) ------------------
 
     def save_ply(self, visual_type: str, epoch: int, *_args: Any, **_kwargs: Any) -> None:
-        _log({"event": "deprecated_save_ply", "run_id": self.run_id, "visual_type": visual_type, "epoch": epoch,
-              "message": f"Caller still uses save_ply('{visual_type}', ...) — migrate to the named vis_* method."})
+        _log(
+            {
+                "event": "deprecated_save_ply",
+                "run_id": self.run_id,
+                "visual_type": visual_type,
+                "epoch": epoch,
+                "message": f"Caller still uses save_ply('{visual_type}', ...) — migrate to the named vis_* method.",
+            }
+        )
 
     def save_ply_points(self, visual_type: str, epoch: int, *_args: Any, **_kwargs: Any) -> None:
-        _log({"event": "deprecated_save_ply_points", "run_id": self.run_id, "visual_type": visual_type, "epoch": epoch,
-              "message": f"Caller still uses save_ply_points('{visual_type}', ...) — migrate to vis_latent_sampling()."})
+        _log(
+            {
+                "event": "deprecated_save_ply_points",
+                "run_id": self.run_id,
+                "visual_type": visual_type,
+                "epoch": epoch,
+                "message": f"Caller still uses save_ply_points('{visual_type}', ...) — migrate to vis_latent_sampling().",
+            }
+        )

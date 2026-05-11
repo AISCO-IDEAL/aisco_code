@@ -13,9 +13,6 @@ import inspect
 import torch
 
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import (
-    CentralVisManager,
-)
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import (
     NullVisManager,
 )
@@ -43,7 +40,7 @@ class ParentLoss:
             v=self.general_config["general_info"].get("version", "v1"),
             cfg_name=self.general_config["active_configs"]["training"],
         )
-        self._vis_manager: CentralVisManager | CentralVisManagerV2 | NullVisManager | None = None
+        self._vis_manager: CentralVisManagerV2 | NullVisManager | None = None
         # initialise weight
         self.__weight = weight if weight is not None else [0.0, 0.0]
         if self.__weight == [0.0, 0.0] and loss_name:

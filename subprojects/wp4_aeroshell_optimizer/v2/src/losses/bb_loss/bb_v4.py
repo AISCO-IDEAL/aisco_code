@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 class BbV4(ParentLoss):
     _vis_manager: CentralVisManagerV2 | NullVisManager | None
+
     def _setup(self) -> None:
         self.__config = self.losses_config["bb_config"]
         rng = np.random.default_rng()
@@ -75,8 +76,8 @@ class BbV4(ParentLoss):
             # Visualization: write PLY with per-point violation distances
             if self._vis_manager is not None:
                 epoch_int = int(self.epoch_name) if isinstance(self.epoch_name, (int, float)) else 0
-                total_violation = (upper_violation + lower_violation).detach().cpu().numpy()
-                self._vis_manager.vis_bb_constraint(epoch_int, P, total_violation)
+                total_violation_np = (upper_violation + lower_violation).detach().cpu().numpy()
+                self._vis_manager.vis_bb_constraint(epoch_int, P, total_violation_np)
 
             n_points = sdf_pred.shape[0]
             total_violation = upper_violation + lower_violation

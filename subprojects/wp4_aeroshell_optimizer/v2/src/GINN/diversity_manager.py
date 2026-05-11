@@ -82,7 +82,7 @@ class DiversityTrainer:
         conflict_cadence: int = 0,
         diagnostic_mode: bool = True,
         print_timing: bool = False,
-        vis_manager: CentralVisManagerV2 | NullVisManager | None = None,
+        vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
     ) -> None:
         """
         Args:
@@ -160,7 +160,7 @@ class DiversityTrainer:
 
         self._use_wandb: bool = use_wandb
         self._log_dir: Path = log_dir or Path("subprojects/wp4_aeroshell_optimizer/v2/logs")
-        self._vis_manager: CentralVisManagerV2 | NullVisManager | None = vis_manager
+        self._vis_manager: CentralVisManagerV2 | NullVisManager = vis_manager
 
         generator_device = self._device.type if self._device.type in {"cpu", "cuda"} else "cpu"
         self._resample_generator = torch.Generator(device=generator_device)

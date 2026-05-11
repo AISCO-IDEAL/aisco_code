@@ -15,6 +15,7 @@ def vis_type_config(visual_types: dict[str, Any], visual_type: str) -> dict[str,
     inherits the first parent that has an 'enabled' key — this is how
     'mesh_shape/slot_00' inherits the 'mesh_shape' config.
     """
+
     def _get(key_path: str) -> dict[str, Any] | None:
         parts = key_path.split("/")
         node: Any = visual_types
@@ -71,7 +72,4 @@ def collect_gif_dirs(visual_types: dict[str, Any], run_dir: Path, written_dirs: 
         if d not in candidates:
             candidates.append(d)
 
-    return [
-        d for d in candidates
-        if d.is_dir() and any(flat_pattern.match(f.name) for f in d.iterdir())
-    ]
+    return [d for d in candidates if d.is_dir() and any(flat_pattern.match(f.name) for f in d.iterdir())]

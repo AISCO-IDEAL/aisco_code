@@ -52,11 +52,13 @@ def load_assembly_meshes(
     )
 
     return (
-        _cpu(inner_verts), _cpu(inner_faces),
-        _cpu(outer_verts), _cpu(outer_faces),
-        (0.2, 1.0, 1.0),   # sdf_color  — cyan
-        (1.0, 0.5, 0.0),   # inner_color — orange
-        (1.0, 0.5, 0.0),   # outer_color — orange
-        0.5,                # sdf_alpha
-        0.2,                # outer_alpha
+        _cpu(inner_verts),
+        _cpu(inner_faces),
+        _cpu(outer_verts),
+        _cpu(outer_faces),
+        (0.2, 1.0, 1.0),  # sdf_color  — cyan
+        (1.0, 0.5, 0.0),  # inner_color — orange
+        (1.0, 0.5, 0.0),  # outer_color — orange
+        0.5,  # sdf_alpha
+        0.2,  # outer_alpha
     )

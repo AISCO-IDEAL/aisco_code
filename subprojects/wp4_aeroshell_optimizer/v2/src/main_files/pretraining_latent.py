@@ -15,7 +15,7 @@ import math
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
@@ -37,11 +37,13 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_v
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
     CentralVisManagerV2,
 )
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.points_SDFmesh_to_ply import (
-    _POINT_COLOUR_GREEN,
-    _POINT_COLOUR_RED,
-    _POINT_COLOUR_WHITE,
-)
+
+if TYPE_CHECKING:
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.points_SDFmesh_to_ply import (
+        _POINT_COLOUR_GREEN,
+        _POINT_COLOUR_RED,
+        _POINT_COLOUR_WHITE,
+    )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
 from subprojects.wp5.unified_mesh_extraction import clear_mesh_cache
@@ -481,7 +483,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     vis_sampling: bool = False,
     vis_output_dir: Path | None = None,
     checkpoint_path: Path | None = None,
-    vis_manager: CentralVisManagerV2 | NullVisManager | None = None,
+    vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
 ) -> tuple[SupportsLatentConcat, Tensor]:
     """Run latent-population pretraining for a SupportsLatentConcat model.
 
@@ -1031,7 +1033,7 @@ def _write_epoch_vis_snapshot(
     device: str,
     vis: SamplingVisualizer | None,
     *,
-    vis_manager: CentralVisManager | None = None,
+    vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
     show_target_pts: str = "pts",
     show_domain_pts: bool = True,
 ) -> None:

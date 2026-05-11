@@ -49,7 +49,7 @@ class NullVisManager:
     def make_vis_extractor(self, _device: str = "cpu") -> None:
         return None
 
-    def is_enabled(self, visual_type: str) -> bool:
+    def is_enabled(self, _visual_type: str) -> bool:
         return False
 
     def vis_mesh_assembly_v4(self, epoch: int, sdf_verts: Any, sdf_faces: Any) -> None:
