@@ -1,0 +1,30 @@
+<!-- ===== Arcade attract / cover screen ===== -->
+<div id="arcadeCover" role="button" tabindex="0" aria-label="Press to enter the AISCO GUI" class="arcade-hidden">
+    <div class="arcade-scanlines" aria-hidden="true"></div>
+    <div class="arcade-beam" aria-hidden="true"></div>
+    <div class="arcade-vignette" aria-hidden="true"></div>
+
+    <div class="arcade-content">
+        <!-- Logos -->
+        <div class="arcade-logos">
+            <img src="/static/img/Ideal.png" alt="IDEAL" onerror="this.style.display='none'">
+            <img src="/static/img/logo.png" alt="AISCO" class="arcade-main-logo" onerror="this.style.display='none'">
+            <img src="/static/img/ACE.png" alt="ACE" onerror="this.style.display='none'">
+        </div>
+
+        <!-- Tagline -->
+        <p class="arcade-tagline">Aeroshell Intelligent Shape Computation &mdash; WP7 GUI</p>
+
+        <!-- Animated racing stripes -->
+        <div class="arcade-bars" aria-hidden="true">
+            <span></span><span></span><span></span>
+        </div>
+
+        <!-- Call to action -->
+        <div class="arcade-cta">&#9654;&nbsp;&nbsp;CLICK ANYWHERE TO START&nbsp;&nbsp;&#9664;</div>
+
+        <!-- Idle / return note (populated by JS after first dismiss) -->
+        <div class="arcade-idle-note" id="arcadeIdleNote"></div>
+    </div>
+</div>
+<!-- ===== End arcade cover ===== -->
