@@ -881,12 +881,15 @@ class DiversityTrainer:
             weights_by_name=self._total_loss._manual_weights,
         )
         extra_state: dict[str, Any] = {}
+        per_loss_meshes: dict[str, Any] = {}
+        per_loss_grads: dict[str, Any] = {}
         if grads_payload is not None:
             verts = grads_payload["vertices"]
             faces = grads_payload["faces"]
-            extra_state["vertice_grads_per_loss"] = grads_payload["per_loss"]
-            extra_state["vertice_meshes_per_loss"] = grads_payload.get("per_loss_meshes", {})
-            extra_state["vertice_grads_total"] = grads_payload["total"]
+            per_loss_grads = grads_payload["per_loss"]
+            per_loss_meshes = grads_payload.get("per_loss_meshes", {})
+            extra_state["vertice_grads_per_loss"] = per_loss_grads
+            extra_state["vertice_meshes_per_loss"] = per_loss_meshes
         # Visualization: write PLY for every population slot
         if self._vis_manager is not None:
             for i in range(self._population_size):
@@ -897,7 +900,14 @@ class DiversityTrainer:
                 self._vis_manager.set_active_slot(None)
             # Restore model to Z[0] as reference shape
             self._model.set_latent_vector(self._Z[0])
-            return
+            # Per-loss gradient PLYs go through the central manager (no slot
+            # tag: the diversity loop has already restored the reference Z[0]).
+            for _loss_key, _grads in per_loss_grads.items():
+                _mesh_entry = per_loss_meshes.get(_loss_key)
+                if _mesh_entry is None:
+                    continue
+                _v, _f = _mesh_entry
+                self._vis_manager.vis_mesh_gradient(epoch, _loss_key, _v, _f, _grads)
 
         if self._use_neural_renderer and self._renderer_manager is not None:
             try:
@@ -915,7 +925,9 @@ class DiversityTrainer:
                 )
             except Exception as e:
                 print(f"Renderer wrapper update failed: {e}")
-        else:
+        elif self._vis_manager is None:
+            # Only fall back to CAD visualisation when no other renderer is
+            # active; if vis_manager is set, it already exported PLYs above.
             self._run_cad_vis(verts, faces, epoch)
 
     def _run_cad_vis(self, verts: Any, faces: Any, epoch: int) -> None:

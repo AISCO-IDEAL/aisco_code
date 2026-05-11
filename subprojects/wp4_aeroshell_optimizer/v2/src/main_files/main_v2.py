@@ -3,7 +3,6 @@ This should be the final main file we use for the Project. It should be modular 
 """
 
 import argparse
-import json
 import os
 from pathlib import Path
 from typing import Any
@@ -16,6 +15,9 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import Di
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
+from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.main_v2_utils import (
+    _upload_mesh_gradient_gifs,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import (
     _compute_latent_pretrain_hash,
     pretraining_latent,
@@ -65,53 +67,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.ginn_visual
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
 
 configure_headless_pyvista()
-
-
-def _maybe_run_latent_pretraining(
-    model: Any,
-    general_config: dict[str, Any],
-    device: str,
-    *,
-    use_wandb: bool = False,
-) -> tuple[Any, "torch.Tensor | None"]:
-    """Run latent-population pretraining if configured and model supports it.
-
-    Reads ``general_config["active_configs"]["latent_pretraining"]``.  When the
-    value is an empty string (the default), pretraining is skipped and ``None``
-    is returned as Z.  When a config filename is provided and the model does not
-    implement ``SupportsLatentConcat``, a warning is printed and ``None`` is
-    returned.
-
-    Args:
-        model: The SDF model (any type).
-        general_config: Loaded general_config.yaml dict.
-        device: Runtime device string.
-        use_wandb: Whether W&B is initialised for the current run.  When
-            ``True``, pretraining metrics are logged to the active W&B run.
-
-    Returns:
-        Tuple ``(model, Z_pretrained)`` where ``Z_pretrained`` is the pretrained
-        latent population tensor or ``None`` if pretraining was skipped.
-    """
-    latent_cfg_name: str = general_config.get("active_configs", {}).get("latent_pretraining", "")
-    if not latent_cfg_name:
-        return model, None
-
-    if not isinstance(model, SupportsLatentConcat):
-        print(
-            f"WARNING: latent_pretraining='{latent_cfg_name}' is configured but model "
-            f"{type(model).__name__} does not implement SupportsLatentConcat. "
-            "Skipping latent pretraining."
-        )
-        return model, None
-
-    # Resolve ${LATENT_DATA_ROOT} via JSON round-trip: ~/beast_logs locally, cluster path otherwise.
-    root = str(Path.home() / "beast_logs") if is_local_machine() else "/cluster/work/fuge/AISCO/latent_pretraining"
-    raw = json.dumps(_load_config(v="v2", cfg_name=latent_cfg_name))
-    latent_config = json.loads(raw.replace("${LATENT_DATA_ROOT}", root))
-
-    model, Z_pretrained = pretraining_latent(model, latent_config, device, use_wandb=use_wandb, vis_sampling=False)
-    return model, Z_pretrained
 
 
 def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa: PLR0912, PLR0915
@@ -448,6 +403,7 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
                 _vis_manager.finalize()
             except Exception as e:
                 print(f"CentralVisManager finalize failed: {e}")
+            _upload_mesh_gradient_gifs(_vis_manager, use_wandb)
 
         if use_wandb and general_config["wandb_general"].get("use_neural_renderer", False):
             try:
@@ -621,6 +577,7 @@ def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa
                 _vis_manager.finalize()
             except Exception as e:
                 print(f"CentralVisManager finalize failed: {e}")
+            _upload_mesh_gradient_gifs(_vis_manager, use_wandb)
 
         run_latent_interpolation(state=interpolation_state, epoch=num_epochs, stage="final", verbose=verbose)
         cleanup_latent_interpolator(interpolation_state)

@@ -405,14 +405,15 @@ class TotalLossV2:
         self,
         weights_by_name: dict[str, float] | None = None,
     ) -> dict[str, Any] | None:
-        """Return per-loss + total dL/dv captured during the last `compute()` call.
+        """Return per-loss dL/dv captured during the last `compute()` call.
 
         Returns None if no loss had an autograd path to the primary mesh. Otherwise:
             {
-              "vertices":  (V, 3) primary mesh vertices,
-              "faces":     (F, 3) primary mesh faces,
-              "per_loss":  {loss_name: (V, 3) dL/dv},
-              "total":     (V, 3) Σ_k w_k · dL/dv_k,
+              "vertices":         (V, 3) primary mesh vertices,
+              "faces":            (F, 3) primary mesh faces,
+              "per_loss":         {loss_name: (V, 3) dL/dv},
+              "per_loss_meshes":  {loss_name: (verts, faces)} mesh for each loss
+                                  (each loss may use its own extractor),
             }
 
         The "primary mesh" is owned by TotalLossV2 itself: it is extracted once via
@@ -420,6 +421,10 @@ class TotalLossV2:
         by every loss that goes through that extractor. Losses that don't sample on
         the SDF mesh (eikonal, smoothness, …) have no autograd path to it; they're
         silently absent from `per_loss` rather than producing a misleading panel.
+
+        The previous weighted-sum (`"total"`) entry was removed: it mixed losses
+        defined on meshes with different resolutions and bbox extents, so the
+        combined per-vertex gradient was meaningless.
         """
         if not getattr(self, "_visu_diag_logged", False):
             self._visu_diag_logged = True
@@ -431,24 +436,16 @@ class TotalLossV2:
             )
         if not self._visu_per_loss_grads or self._visu_primary_v is None:
             return None
-        # Build "total" only from grads matching the primary mesh shape (losses
-        # with their own MeshSDFExtractor at a different resolution can't be
-        # broadcast-summed). Per-loss panels render on each loss's own mesh
-        # (see `per_loss_meshes`), so they are returned in full regardless.
-        n_primary = int(self._visu_primary_v.shape[0])
-        weights = weights_by_name or {}
-        total: torch.Tensor | None = None
-        for name, g in self._visu_per_loss_grads.items():
-            if g.shape[0] != n_primary:
-                continue
-            w = float(weights.get(name, 1.0))
-            total = g * w if total is None else total + g * w
+        # The weighted-sum (`__total__`) gradient panel was removed because it
+        # mixes losses with different mesh resolutions and was misleading; only
+        # per-loss panels are produced now. `weights_by_name` is kept on the
+        # signature for backward compatibility with callers.
+        del weights_by_name
         return {
             "vertices": self._visu_primary_v,
             "faces": self._visu_primary_f,
             "per_loss": dict(self._visu_per_loss_grads),
             "per_loss_meshes": dict(getattr(self, "_visu_per_loss_meshes", {})),
-            "total": total if total is not None else torch.zeros_like(self._visu_primary_v),
         }
 
     def _extract_primary_visu_mesh(self, model: SupportsModelContract) -> None:

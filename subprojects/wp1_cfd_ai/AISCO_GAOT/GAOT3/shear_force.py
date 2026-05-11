@@ -116,7 +116,7 @@ class ShearForce:
         if total_area is None or total_area <= 0:
             raise ValueError("Could not calculate average shear force: dataset has no valid mesh area.")
 
-        return total_weighted_shear / total_area
+        return total_weighted_shear / total_area # type: ignore[arg-type]
 
 
 def _load_dataset_config(config_path: Path) -> dict:
