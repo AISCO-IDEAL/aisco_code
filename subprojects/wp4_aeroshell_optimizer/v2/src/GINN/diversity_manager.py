@@ -443,6 +443,7 @@ class DiversityTrainer:
         dict[str, float],
         dict[str, np.ndarray] | None,
         dict[str, float],
+        list[tuple[int, dict[str, Any] | None]],
     ]:
         """
         Iterate over the population and immediately backward each z's loss.
@@ -450,13 +451,15 @@ class DiversityTrainer:
         Returns mean scalar loss (for metrics), averaged mean constraints across the
         population (for ALM update; None if no ALM), averaged loss log_data,
         active constraint indices, averaged per-loss gradient log_data, optional
-        conflict vectors for the first population member, and per-slot raw loss log_data.
+        conflict vectors for the first population member, per-slot raw loss log_data,
+        and per-slot gradient payloads (non-empty only when vis_all_losses=True).
         """
         use_alm: bool = self._alm_manager is not None
         all_alm_constraints: list[list[Tensor]] = []
         summed_log_data: dict[str, float] = {}
         summed_grad_log_data: dict[str, float] = {}
         per_slot_log_data: dict[str, float] = {}
+        per_slot_grad_payloads: list[tuple[int, dict[str, Any] | None]] = []
         total_loss_val: float = 0.0
         phase1_conflict_vectors: dict[str, np.ndarray] | None = None
 
@@ -473,6 +476,14 @@ class DiversityTrainer:
                 self._vis_manager.set_active_slot(i)
 
             bundle = self._total_loss.compute(self._model, epoch_name=epoch)
+
+            # Collect per-slot gradient payload immediately after compute() while extractor
+            # buffers still hold this slot's dL/dv (next compute() call will reset them).
+            if self._vis_all_losses and self._vis_manager is not None:
+                _slot_payload = self._total_loss.collect_vertex_grads_for_visualisation(
+                    weights_by_name=self._total_loss._manual_weights,
+                )
+                per_slot_grad_payloads.append((i, _slot_payload))
 
             # Compute active constraint info for ALM once per epoch (same for all z_i since it depends only on epoch)
             if i == 0:
@@ -591,6 +602,7 @@ class DiversityTrainer:
             avg_grad_log_data,
             phase1_conflict_vectors,
             per_slot_log_data,
+            per_slot_grad_payloads,
         )
 
     # ------------------------------------------------------------------
@@ -625,6 +637,7 @@ class DiversityTrainer:
             per_loss_gradient_log_data,
             phase1_conflict_vectors,
             per_slot_log_data,
+            per_slot_grad_payloads,
         ) = self._per_vector_backward(epoch)
 
         # External ALM update — only update multipliers for currently active constraints
@@ -691,7 +704,7 @@ class DiversityTrainer:
         # Render (reference shape = Z[0])
         if self._population_size > 0:
             self._model.set_latent_vector(self._Z[0])
-        self._render(epoch, per_vector_loss_val)
+        self._render(epoch, per_vector_loss_val, per_slot_grad_payloads=per_slot_grad_payloads)
 
         # Log once per epoch
         self._log(avg_log_data, diversity_log_data, per_loss_gradient_log_data, epoch, per_slot_log_data)
@@ -932,7 +945,12 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     # Rendering
     # ------------------------------------------------------------------
-    def _render(self, epoch: int, total_loss_val: float) -> None:
+    def _render(  # noqa: PLR0912
+        self,
+        epoch: int,
+        total_loss_val: float,
+        per_slot_grad_payloads: list[tuple[int, dict[str, Any] | None]] | None = None,
+    ) -> None:
         """Extract mesh from Z[0] and forward to either VisualisationManager or CAD fallback."""
         # vis_cadence_optimisation (from vis_config.yaml) takes precedence over legacy rendering_freq
         _cadence = self._vis_cadence_optimisation if self._vis_cadence_optimisation > 0 else self._rendering_freq
@@ -972,14 +990,30 @@ class DiversityTrainer:
                 self._vis_manager.set_active_slot(None)
             # Restore model to Z[0] as reference shape
             self._model.set_latent_vector(self._Z[0])
-            # Per-loss gradient PLYs go through the central manager (no slot
-            # tag: the diversity loop has already restored the reference Z[0]).
-            for _loss_key, _grads in per_loss_grads.items():
-                _mesh_entry = per_loss_meshes.get(_loss_key)
-                if _mesh_entry is None:
-                    continue
-                _v, _f = _mesh_entry
-                self._vis_manager.vis_mesh_gradient(epoch, _loss_key, _v, _f, _grads)
+            # Per-slot gradient vis (vis_all_losses=True): each slot gets its own
+            # gradient PLY written under its slot subdirectory.
+            if self._vis_all_losses and per_slot_grad_payloads:
+                for slot_idx, slot_payload in per_slot_grad_payloads:
+                    if slot_payload is None:
+                        continue
+                    slot_per_loss = slot_payload["per_loss"]
+                    slot_meshes = slot_payload.get("per_loss_meshes", {})
+                    self._vis_manager.set_active_slot(slot_idx)
+                    for _loss_key, _grads in slot_per_loss.items():
+                        _mesh_entry = slot_meshes.get(_loss_key)
+                        if _mesh_entry is None:
+                            continue
+                        _v, _f = _mesh_entry
+                        self._vis_manager.vis_mesh_gradient(epoch, _loss_key, _v, _f, _grads)
+                    self._vis_manager.set_active_slot(None)
+            else:
+                # Default: reference-shape gradient (Z[0] perspective, no slot tag).
+                for _loss_key, _grads in per_loss_grads.items():
+                    _mesh_entry = per_loss_meshes.get(_loss_key)
+                    if _mesh_entry is None:
+                        continue
+                    _v, _f = _mesh_entry
+                    self._vis_manager.vis_mesh_gradient(epoch, _loss_key, _v, _f, _grads)
 
         if self._use_neural_renderer and self._renderer_manager is not None:
             try:
