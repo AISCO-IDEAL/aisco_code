@@ -63,6 +63,30 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Vi
 configure_headless_pyvista()
 
 
+def _resolve_wandb_name(name_cfg: Any, run_locally: bool) -> str | None:
+    """Resolve wandb run name from config and runtime environment."""
+    if name_cfg is None:
+        return None
+
+    raw = str(name_cfg).strip()
+    if raw == "":
+        return None
+
+    normalized = raw.lower()
+    if normalized == "local_run_id":
+        return f"local-{os.getpid()}"
+
+    if normalized == "euler_run_id":
+        return f"euler-{os.environ.get('SLURM_JOB_ID', 'no-slurm-id')}"
+
+    if normalized == "auto_run_id":
+        if run_locally:
+            return f"local-{os.getpid()}"
+        return f"euler-{os.environ.get('SLURM_JOB_ID', 'no-slurm-id')}"
+
+    return raw
+
+
 def main() -> None:  # noqa: PLR0912, PLR0915
     print("Starting Main file V2...")
 
@@ -102,9 +126,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     use_wandb: bool = general_config["wandb_general"].get("use_wandb", False)
     if use_wandb:
         try:
+            wandb_name = _resolve_wandb_name(general_config["wandb_general"].get("name"), run_locally)
             wandb.init(
                 entity=general_config["wandb_general"]["entity_name"],
                 project=general_config["wandb_general"]["project_name"],
+                name=wandb_name,
                 config=general_config,
             )
             # keep this for now, not sure if this is any longer required
