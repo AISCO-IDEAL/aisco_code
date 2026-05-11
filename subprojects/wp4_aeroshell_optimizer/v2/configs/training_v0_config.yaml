@@ -1,6 +1,6 @@
 training_params:
   learning_rate: 0.000008  # 000008 for WIREV5, 0.0005 for WIREV2, 0.0001 for basic MLP, 0.0005 for AISCOModel_v0
-  num_epochs: 100 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
+  num_epochs: 10 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
   mesh_save_interval: 20  # basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
   marching_cubes_usage: "True"  # storage_utils.py: general_config["general_info"].get("marching_cubes_usage", "False") (if True, uses marching cubes with threads for mesh extraction, if False uses kaolin-based mesh extraction without threads, which is more stable but slower)
   gradient_conflict_cadence: 0  # Gradient conflict tracking cadence (0 = disabled, N = every N epochs). Stores per-component gradient vectors and cosine similarities to disk.

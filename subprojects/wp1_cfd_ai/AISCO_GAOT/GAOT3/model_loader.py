@@ -66,13 +66,6 @@ class ModelLoader:
             gradient_max=float(cfd_config["gradient_max"]),
         )
 
-        # NOTE: Per-loss gradient visualisation now flows through
-        # `CentralVisManagerV2.vis_mesh_gradient` (driven by
-        # `total_loss[_v2].py`). The legacy GAOT3-private `Visualiser` /
-        # `MeshSDFGrads` pair was removed — it duplicated work, used the
-        # legacy `subprojects.fixed_renderer`, and produced its own
-        # "Aero-Gradients/*" wandb panels which were a parallel pipeline to
-        # `mesh_gradients/*`.
 
     def _get_dataset_viz_config(self) -> dict:
         dataset_cfg = self.cfd_config.get("dataset", {}) if isinstance(self.cfd_config.get("dataset", {}), dict) else None
@@ -421,14 +414,6 @@ class ModelLoader:
             reference_field=reference_field,
         )
 
-        # Sign convention: cp_field is predicted in the GAOT training (model) frame,
-        # which has the x-axis flipped relative to the SDF frame (see _reformat_data).
-        # Integrating cp values against SDF-frame outward normals (c_raw) returns the
-        # x-component of the pressure force in the SDF frame, which is the negative of
-        # the conventional drag (force along freestream direction). Use model-frame
-        # outward normals (batch.c) so pressure_to_drag's orientation step aligns the
-        # area-normals with the freestream direction the cp field was predicted for.
-        integration_normals = batch.c if hasattr(batch, "c") and batch.c is not None else batch.c_raw # noqa: F841
 
         int_drag_f = cp_field_to_drag(
             cp_field=pressure_field,

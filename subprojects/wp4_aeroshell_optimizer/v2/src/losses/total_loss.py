@@ -113,6 +113,10 @@ class TotalLoss:
         self._normalized_loss_history: list[dict[str, float]] = []
         self._weighted_loss_history: list[dict[str, float]] = []
         self._optimizer_loss_history: list[dict[str, float]] = []
+        # Per-loss vertex gradient buffers (populated by _capture_vertex_grads_via_autograd).
+        self._visu_per_loss_grads: dict[str, torch.Tensor] = {}
+        self._visu_primary_v: torch.Tensor | None = None
+        self._visu_primary_f: torch.Tensor | None = None
 
         self._load_configs()
 
@@ -475,6 +479,7 @@ class TotalLoss:
         """
         self._skipped_categories: set[str] = set()
         self._zero_weighted_categories: set[str] = set()
+        self._extract_primary_visu_mesh(model)
         self._inject_shared_meshes(model)
         raw: dict[str, torch.Tensor] = {}
         try:
@@ -498,6 +503,7 @@ class TotalLoss:
                     raw[name] = instance.get_loss(model, epoch_name)
         finally:
             self._clear_shared_meshes()
+        self._capture_vertex_grads_via_autograd(raw)
         self.latest_raw_metrics = raw
         return raw
 

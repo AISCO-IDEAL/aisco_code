@@ -137,6 +137,11 @@ class TotalLossV2:
         self._init_active_losses()
         self._warn_about_dead_weights()
 
+        # Per-loss vertex gradient buffers (populated by _capture_vertex_grads_via_autograd after compute()).
+        self._visu_per_loss_grads: dict[str, torch.Tensor] = {}
+        self._visu_primary_v: torch.Tensor | None = None
+        self._visu_primary_f: torch.Tensor | None = None
+
         # Propagate vis_manager to all active child loss instances (e.g. GaotLoss, BbV3, SolarLoss).
         if self._vis_manager is not None:
             for _loss_inst in self._all_loss_instances().values():
@@ -516,6 +521,7 @@ class TotalLossV2:
             RawLossBundle with unweighted objective, constraint, and aux tensors
             grouped by category.
         """
+        self._extract_primary_visu_mesh(model)
         self._inject_shared_meshes(model)
         bundle = RawLossBundle()
         self._skipped_log_zeros: dict[str, float] = {}
@@ -551,6 +557,7 @@ class TotalLossV2:
         finally:
             self._clear_shared_meshes()
 
+        self._capture_vertex_grads_via_autograd(bundle)
         return bundle
 
     @record_function("TotalLossV2.weight")
