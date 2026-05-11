@@ -112,11 +112,15 @@ class DevelopabilityV0(ParentLoss):
                 return torch.tensor(0.0, device=self.device)
             return self.energy_fn(vertices.double(), faces).to(dtype=torch.float32)
 
-        _verts, _faces, _raw_loss, surrogate_loss, _ = self.mesh_extractor.extract_and_compute_loss(
+        _verts, _faces, _raw_loss, surrogate_loss, dL_dvertices = self.mesh_extractor.extract_and_compute_loss(
             sdf_model=model,
             loss_fn=_developability_loss_fn,
             enable_backward=True,
         )
+        # Store gradients for per-loss visualization in TotalLoss/TotalLossV2.
+        self.mesh_extractor.last_dL_dv = dL_dvertices  # type: ignore[attr-defined]
+        self.mesh_extractor.last_verts = _verts  # type: ignore[attr-defined]
+        self.mesh_extractor.last_faces = _faces  # type: ignore[attr-defined]
         return surrogate_loss
 
     def post_optimize(

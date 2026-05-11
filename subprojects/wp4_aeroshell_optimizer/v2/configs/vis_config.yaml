@@ -134,6 +134,21 @@ visual_types:
     vmin: null
     vmax: null
 
+  # Per-loss gradient visualisation (`vis_mesh_gradient`). Each call writes
+  # ``mesh_gradients/<loss_key>/epoch_XXXXX.ply`` and finalize() generates the
+  # corresponding GIF; the ancestor lookup means every loss_key inherits this
+  # parent block unless an explicit override is added below it.
+  # Colormap is diverging (RdBu_r: red = grad pushes surface inward, blue =
+  # outward). vmin/vmax null → symmetric ±max(|grad·n|) per epoch.
+  mesh_gradients:
+    enabled: true
+    colormap: "RdBu_r"
+    interval: 1
+    alpha_enabled: null
+    coordinate_system: null
+    vmin: null
+    vmax: null
+
   latent:
     sampling:
       enabled: true
@@ -148,7 +163,7 @@ visual_types:
 # Latent pretraining visualisation
 # ===========================================================================
 latent_pretraining:
-  vis_cadence_pretraining: 10     
+  vis_cadence_pretraining: 10
   vis_show_domain_pts: true       # include eikonal domain points in latent sampling vis
   vis_show_target_pts: "pts"      # "pts" = surface samples, "mesh" = reconstructed mesh
   mesh_resolution: 128            # marching-cubes resolution for pretraining vis meshes
@@ -169,12 +184,12 @@ latent_pretraining:
 latent_optimisation:
   vis_cadence_optimisation: 10    # write vis snapshot every N optimisation epochs
   vis_strategy: static            # static/dynamic: vis at original pretrained Z circle or those that are actively being evaluated by losses
-                                  
-  vis_all_losses: true           # Compute cost = N_slots × N_active_losses renders per vis epoch. 
 
-  # Circle survey rendered to a PNG strip at finalize() 
+  vis_all_losses: true           # Compute cost = N_slots × N_active_losses renders per vis epoch.
+
+  # Circle survey rendered to a PNG strip at finalize()
   vis_latent_circle_survey:
-    enabled: true                
+    enabled: true
     n_circle_samples: 90          # number of evenly-spaced angles on the z-circle
     z_radius: 2.0                 # must match z_radius used in pretraining
     mesh_resolution: 64           # marching-cubes resolution for circle survey meshes

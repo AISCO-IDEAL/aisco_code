@@ -19,16 +19,25 @@ from subprojects.wp2_assembler.version4.utils.assemblies_maker import (
 )
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 
-_PARAMS_PATH = Path(__file__).parent / "parameters.yaml"
-_OUTPUT_DIR = Path(__file__).parent
+_PARAMS_PATH = Path(__file__).parent / "parameters.yaml"  # change this for the parameters
+_OUTPUT_DIR = Path(__file__).parent  # change this for the exports
 _PLY_OUTPUT_PATH = _OUTPUT_DIR / "assembly.ply"
+_STEP_OUTPUT_PATH = _OUTPUT_DIR / "assembly.step"
 _CHECKS_OUTPUT_PATH = _OUTPUT_DIR / "checks.txt"
 
 # --- export toggles ---
 _EXPORT_SEAT = True
 _EXPORT_WHEELS = True
-_EXPORT_VISION = False
+_EXPORT_VISION = False  # vision cone
 _EXPORT_OUTER = False
+
+# --- check toggles ---
+_CHECK_DEGENERATE_WHEELS = True  # checks if all wheels have same x, would give a outer bounding box with lenght 0.
+_CHECK_COLLISIONS = True  # checks if the seat or wheels collide with anything
+_CHECK_SEAT_IN_WHEEL_POLYGON = True  # checks if the seat xy is inside the shape made by the wheels. Basically, that the seat is not "hanging". This is so that the assembly makes sense physically, but can be left out.
+_CHECK_SEAT_INSIDE_OUTER = True  # if seat is inside outer bounding box
+_CHECK_WHEELS_INSIDE_OUTER = True  # if wheels are inside outer bounding box
+_CHECK_SEAT_CLEARANCE = True  # seat bottom must stay above the wheel clearance plane
 
 
 def _write_ply(shape: cq.Shape, path: Path) -> None:
@@ -48,18 +57,23 @@ def _write_ply(shape: cq.Shape, path: Path) -> None:
 
 def save_ply(inner: cq.Assembly, outer: cq.Solid, vision: cq.Assembly) -> None:
     solids: list[cq.Shape] = []
+    step_assembly = cq.Assembly(name="assembly")
 
     solids.extend(inner.toCompound().Solids())
+    step_assembly.add(inner, name="inner")
     if _EXPORT_OUTER:
         solids.append(outer)
+        step_assembly.add(outer, name="outer_nbz")
     if _EXPORT_VISION:
         solids.extend(vision.toCompound().Solids())
+        step_assembly.add(vision, name="vision")
 
     if not solids:
-        print("[WARNING] No enabled geometry to export to assembly.ply.")
+        print("[WARNING] No enabled geometry to export to assembly.ply or assembly.step.")
         return
 
     _write_ply(cq.Compound.makeCompound(solids), _PLY_OUTPUT_PATH)
+    step_assembly.save(str(_STEP_OUTPUT_PATH), exportType="STEP")
 
 
 def write_params(params: dict) -> None:
@@ -70,6 +84,12 @@ def write_params(params: dict) -> None:
 def read_params() -> dict:
     with _PARAMS_PATH.open("r") as f:
         return yaml.safe_load(f) or {}
+
+
+def read_checks() -> str:
+    if not _CHECKS_OUTPUT_PATH.exists():
+        return "checks.txt has not been generated yet."
+    return _CHECKS_OUTPUT_PATH.read_text()
 
 
 def _write_checks(messages: list[str]) -> None:
@@ -201,7 +221,7 @@ def _check_validity(params: dict) -> list[str]:
     wheels = {k: v for k, v in params.items() if k.startswith("wheel_")}
 
     # Check 1: all wheels at same x — outer NBZ collapses to zero length
-    if len(wheels) > 1 and len({v["x"] for v in wheels.values()}) == 1:
+    if _CHECK_DEGENERATE_WHEELS and len(wheels) > 1 and len({v["x"] for v in wheels.values()}) == 1:
         warn("[WARNING] Degenerate layout: all wheels share the same X position — outer NBZ has zero length.")
 
     # Check 2: bounding box collisions between seat and wheels
@@ -231,34 +251,36 @@ def _check_validity(params: dict) -> list[str]:
 
     names = list(parts.keys())
     aabbs = {n: aabb(*parts[n]) for n in names}
-    for i in range(len(names)):
-        for j in range(i + 1, len(names)):
-            a, b = names[i], names[j]
-            if overlaps(aabbs[a], aabbs[b]):
-                warn(f"[WARNING] Collision: {a} and {b} bounding boxes overlap.")
+    if _CHECK_COLLISIONS:
+        for i in range(len(names)):
+            for j in range(i + 1, len(names)):
+                a, b = names[i], names[j]
+                if overlaps(aabbs[a], aabbs[b]):
+                    warn(f"[WARNING] Collision: {a} and {b} bounding boxes overlap.")
 
     # Check 3: seat not enclosed by wheel polygon — vehicle would be unstable
     wheel_xy = [(v["x"], v["y"]) for v in wheels.values()]
-    if len(wheel_xy) >= 3 and not point_in_polygon((seat["x"], seat["y"]), wheel_xy):
+    if _CHECK_SEAT_IN_WHEEL_POLYGON and len(wheel_xy) >= 3 and not point_in_polygon((seat["x"], seat["y"]), wheel_xy):
         warn("[WARNING] Unstable assembly: seat is not enclosed by the wheel polygon.")
 
     # Check 4: seat bounding box outside outer NBZ
     seat_aabb = aabbs["seat"]
-    if not aabb_inside_outer_nbz(params, seat_aabb):
+    if _CHECK_SEAT_INSIDE_OUTER and not aabb_inside_outer_nbz(params, seat_aabb):
         warn("[WARNING] Out of bounds: seat bounding box extends outside the outer NBZ.")
 
     wheel_clearance = get_regulation("no_build_zones.outer_prism.wheel_clearance")
 
     # Check 5: wheel bounding boxes outside outer NBZ after wheel-clearance cut
-    for wheel_name in wheels:
-        wheel_aabb = dict(aabbs[wheel_name])
-        wheel_aabb["zmin"] = max(wheel_aabb["zmin"], wheel_clearance)
-        if not aabb_inside_outer_nbz(params, wheel_aabb):
-            warn(f"[WARNING] Out of bounds: {wheel_name} bounding box extends outside the outer NBZ after clearance cut.")
+    if _CHECK_WHEELS_INSIDE_OUTER:
+        for wheel_name in wheels:
+            wheel_aabb = dict(aabbs[wheel_name])
+            wheel_aabb["zmin"] = max(wheel_aabb["zmin"], wheel_clearance)
+            if not aabb_inside_outer_nbz(params, wheel_aabb):
+                warn(f"[WARNING] Out of bounds: {wheel_name} bounding box extends outside the outer NBZ after clearance cut.")
 
     # Check 6: seat bottom below wheel clearance plane
     seat_bottom = seat["z"] - seat_margin["z_down"]
-    if seat_bottom < wheel_clearance:
+    if _CHECK_SEAT_CLEARANCE and seat_bottom < wheel_clearance:
         warn(
             f"[WARNING] Ground violation: seat bottom ({seat_bottom:.1f} mm) is below the wheel clearance plane ({wheel_clearance:.1f} mm)."
         )
@@ -305,12 +327,13 @@ def call_assembly_from_params() -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
 
     seat_solid = inner_solids[0]
     wheel_solids = inner_solids[1:]
+    wheel_names = [k for k in params if k.startswith("wheel_")]
 
-    cut_inner_solids: list[cq.Solid] = [seat_solid]
-    for wheel in wheel_solids:
+    cut_wheel_solids: list[tuple[str, cq.Solid]] = []
+    for wheel_name, wheel in zip(wheel_names, wheel_solids, strict=False):
         cut_wheel = keep_above_z(wheel, wheel_clearance)
         if cut_wheel is not None:
-            cut_inner_solids.append(cut_wheel)
+            cut_wheel_solids.append((wheel_name, cut_wheel))
 
     cut_outer = keep_above_z(_outer_nbz_from_dict(params), ground_clearance)
     if cut_outer is None:
@@ -318,11 +341,11 @@ def call_assembly_from_params() -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
         cut_outer = _outer_nbz_from_dict(params)
 
     cut_inner_assembly = cq.Assembly()
-    if _EXPORT_SEAT and cut_inner_solids:
-        cut_inner_assembly.add(cut_inner_solids[0], name="inner_0")
+    if _EXPORT_SEAT:
+        cut_inner_assembly.add(seat_solid, name="Seat")
     if _EXPORT_WHEELS:
-        for i, s in enumerate(cut_inner_solids[1:], 1):
-            cut_inner_assembly.add(s, name=f"inner_{i}")
+        for wheel_name, wheel_solid in cut_wheel_solids:
+            cut_inner_assembly.add(wheel_solid, name=wheel_name)
     cut_inner_assembly.name = "inner_assembly"
 
     outer_solid = cut_outer.Solids()[0]
@@ -355,4 +378,4 @@ def add_current_gui_assembly_to_map() -> int | None:
 if __name__ == "__main__":
     from subprojects.wp2_assembler.version4.GUI_helpers import _slider_gui
 
-    _slider_gui.run(read_params, write_params, call_assembly_from_params, add_current_gui_assembly_to_map)
+    _slider_gui.run(read_params, write_params, call_assembly_from_params, add_current_gui_assembly_to_map, read_checks)

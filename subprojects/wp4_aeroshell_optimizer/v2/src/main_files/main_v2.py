@@ -2,6 +2,7 @@
 This should be the final main file we use for the Project. It should be modular and easily extendible
 """
 
+import argparse
 import os
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,9 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import Di
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
+from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.main_v2_utils import (
+    _upload_mesh_gradient_gifs,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import (
     _compute_latent_pretrain_hash,
     pretraining_latent,
@@ -56,7 +60,8 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Vi
 configure_headless_pyvista()
 
 
-def main() -> None:  # noqa: PLR0912, PLR0915
+def main(_gui_mode: bool = False, _cfg_folder: str | None = None) -> None:  # noqa: PLR0912, PLR0915
+
     print("Starting Main file V2...")
 
     # 1. Load and register configs
@@ -127,6 +132,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         apply_sweep_overrides(dict(wandb.config))
         # Update wandb dashboard with the full patched master config
         wandb.config.update(get_master_config(), allow_val_change=True)
+
+    # Re-read flags that may have been overridden by the sweep so the rest of
+    # main() respects the overridden values (e.g. latent_space, run_locally).
+    _raw_latent_space = general_config["general_info"].get("latent_space", False)
+    if isinstance(_raw_latent_space, str):
+        latent_space = _raw_latent_space.strip().lower() in {"true", "1", "yes", "on"}
+    else:
+        latent_space = bool(_raw_latent_space)
+    _raw_run_locally = general_config["general_info"].get("run_locally", "False")
+    run_locally = str(_raw_run_locally).strip().lower() in {"true", "1", "yes", "on"}
 
     if verbose:
         print("Successfully loaded and registered all configs")
@@ -359,6 +374,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 _vis_manager.finalize()
             except Exception as e:
                 print(f"CentralVisManager finalize failed: {e}")
+            _upload_mesh_gradient_gifs(_vis_manager, use_wandb)
 
         if use_wandb and general_config["wandb_general"].get("use_neural_renderer", False):
             try:
@@ -536,6 +552,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 _vis_manager.finalize()
             except Exception as e:
                 print(f"CentralVisManager finalize failed: {e}")
+            _upload_mesh_gradient_gifs(_vis_manager, use_wandb)
 
         if use_wandb and wandb_cfg.get("use_neural_renderer", False):
             try:
@@ -627,4 +644,26 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
 
 if __name__ == "__main__":
-    main()
+    # CLI argument parsing (for GUI config override infrastructure)
+    parser = argparse.ArgumentParser(description="AISCO WP4 Aeroshell Optimizer")
+    parser.add_argument("--uses-gui", action="store_true", help="Running from GUI")
+    parser.add_argument("--cfg-folder", type=str, default="", help="Path to config override folder")
+    args, _ = parser.parse_known_args()
+    print(f"CLI arguments received: {args}, type: {type(args)}")
+    print(f"Extras: {_}, type: {type(_)}")
+    # Arguments are available but not used yet - caller will handle them
+    print(f"uses_gui: {args.uses_gui}, cfg_folder: {args.cfg_folder}")
+    # NOTE: When launched by `wandb agent`, the agent appends sweep hyperparameter
+    # overrides as `--key=value` CLI args. These are consumed via `wandb.config`
+    # in `apply_sweep_overrides`, not via argparse, so we tolerate `--...`-style
+    # extras here. Only non-flag extras indicate a real caller bug.
+    _bad_extras = [a for a in _ if not a.startswith("--")]
+    assert _bad_extras == [], (
+        f"Unexpected non-flag CLI arguments received: {_bad_extras}. Check the caller or argument parsing logic."
+    )
+    # --cfg-folder is only required when running through the GUI override flow.
+    if args.uses_gui:
+        assert args.cfg_folder != "", '--uses-gui requires "--cfg-folder PATH" to be set'
+    assert " " not in args.cfg_folder, f"Config folder path cannot contain spaces. Received: '{args.cfg_folder}'"
+
+    main(_gui_mode=args.uses_gui, _cfg_folder=args.cfg_folder)

@@ -601,6 +601,10 @@ class SolarLossEstimator:
                 loss_fn=wrapper_solar_loss,
                 enable_backward=True,
             )
+            # Store gradients for per-loss visualization in TotalLoss/TotalLossV2.
+            self.extractor.last_dL_dv = dL_dvertices  # type: ignore[attr-defined]
+            self.extractor.last_verts = vertices  # type: ignore[attr-defined]
+            self.extractor.last_faces = faces  # type: ignore[attr-defined]
             if str(self.device).startswith("cuda") and torch.cuda.is_available():
                 torch.cuda.synchronize()
             _t1 = time.perf_counter()
