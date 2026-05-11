@@ -17,11 +17,13 @@ from pathlib import Path
 import numpy as np
 import open3d as o3d
 import torch
+import yaml
 
-_MESH_COLOUR_DARK_BLUE: tuple[int, int, int] = (0, 0, 139)
-_POINT_COLOUR_GREEN: tuple[int, int, int] = (34, 139, 34)  # target / surface samples
-_POINT_COLOUR_WHITE: tuple[int, int, int] = (220, 220, 220)  # eikonal domain samples
-_POINT_COLOUR_RED: tuple[int, int, int] = (220, 30, 30)  # model surface prediction
+_CFG = yaml.safe_load((Path(__file__).parent / "viz_config.yaml").read_text())
+_MESH_COLOUR_DARK_BLUE: tuple[int, int, int] = tuple(_CFG["mesh_colour_dark_blue"])
+_POINT_COLOUR_GREEN: tuple[int, int, int] = tuple(_CFG["point_colour_green"])
+_POINT_COLOUR_WHITE: tuple[int, int, int] = tuple(_CFG["point_colour_grey"])
+_POINT_COLOUR_RED: tuple[int, int, int] = tuple(_CFG["point_colour_red"])
 
 
 class SamplingVisualizer:

@@ -2,6 +2,7 @@
 This should be the final main file we use for the Project. It should be modular and easily extendible
 """
 
+import argparse
 import json
 import os
 from pathlib import Path
@@ -10,7 +11,6 @@ from typing import Any
 import torch
 
 import wandb
-from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MeshExtractor
 from subprojects.wp4_aeroshell_optimizer.v2.scripts.postprocess_gradient_conflict import build_conflict_gif
 from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import DiversityTrainer
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
@@ -19,11 +19,14 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import Tota
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import pretraining_latent
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import pretraining
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat, SupportsOptimise
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.ply_to_gif import generate_gifs
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     apply_sweep_overrides,
     get_master_config,
     load_config,
     register_all_configs,
+    set_gui_config_folder,
+    switch_to_gui_config,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import DebugManager
@@ -97,8 +100,15 @@ def _maybe_run_latent_pretraining(
     return model, Z_pretrained
 
 
-def main() -> None:  # noqa: PLR0912, PLR0915
+def main(gui_mode: bool = False, cfg_folder: str | None = None) -> None:  # noqa: PLR0912, PLR0915
+
     print("Starting Main file V2...")
+    if gui_mode:
+        if not cfg_folder:
+            raise ValueError("--uses-gui requires --cfg-folder to point at a GUI override folder.")
+        set_gui_config_folder(cfg_folder)
+        switch_to_gui_config(True)
+        print(f"GUI override mode active. Loading configs from: {cfg_folder}")
 
     # 1. Load and register configs
     general_config: dict[str, Any] = load_config(v="v2", cfg_name="general_config.yaml")
@@ -110,6 +120,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     if str(device).startswith("cuda") and not torch.cuda.is_available():
         print(f"Configured device '{device}' is unavailable. Falling back to CPU.")
         device = "cpu"
+    latent_space: bool = bool(general_config["general_info"].get("latent_space", False))
+    run_locally: bool = general_config["general_info"].get("run_locally", "False") == "True"
 
     # Init Elias' debug manager NOT WORKING PROPERLY ATM, PLEASE CHECK
     debug_cfg = load_config(v="v2", cfg_name="debug.yaml")
@@ -154,11 +166,27 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         # Update wandb dashboard with the full patched master config
         wandb.config.update(get_master_config(), allow_val_change=True)
 
+    # Re-read flags that may have been overridden by the sweep so the rest of
+    # main() respects the overridden values (e.g. latent_space, run_locally).
+    _raw_latent_space = general_config["general_info"].get("latent_space", False)
+    if isinstance(_raw_latent_space, str):
+        latent_space = _raw_latent_space.strip().lower() in {"true", "1", "yes", "on"}
+    else:
+        latent_space = bool(_raw_latent_space)
+    _raw_run_locally = general_config["general_info"].get("run_locally", "False")
+    run_locally = str(_raw_run_locally).strip().lower() in {"true", "1", "yes", "on"}
+
     if verbose:
         print("Successfully loaded and registered all configs")
 
     # 3. Load model and handle pretraining
-    model_name: str = general_config["model_def"]["model_name"]
+    model_name: str
+    if latent_space:
+        model_name = general_config["model_def"]["concat_model_name"]
+        print(f"Using latent space model: {model_name}")
+    else:
+        model_name = general_config["model_def"]["model_name"]
+        print(f"Using standard model: {model_name}")
     model, parent_class_name, model_class_name, settings = smart_model_init(model_name)
 
     # 3a. Find out what parentclass the model has and thus infer what kind of treatment it needs
@@ -171,89 +199,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             "Model is marked with has_optimise=True but does not implement optimise(). "
             "Check models.json and the model implementation."
         )
-
-    # 3b. Handle pretraining if needed.
-    pretraining_config_name = general_config["active_configs"].get("pretraining", "pretraining_v0_config.yaml")
-    pretraining_config = load_config(v="v2", cfg_name=pretraining_config_name)
-    force_pretraining = pretraining_config["pretraining"].get("force_pretraining", False)
-    run_locally = general_config["general_info"].get("run_locally", "False") == "True"
-
-    ### get paths
-    if run_locally:
-        pretrained_path = pretraining_config["pretraining"].get("local_pretraining_model_path", "")
-        if not pretrained_path:  # check if empty path given in pretraining config, if so fallback to general config path
-            pretrained_path = general_config["storage_paths"].get("beast_storage_dir") or general_config["storage_paths"].get(
-                "local_storage_dir", "./local_storage_dir"
-            )
-    else:
-        pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", "")
-        if not pretrained_path:  # check if empty path given in pretraining config, if so fallback to general config path
-            pretrained_path = general_config["storage_paths"].get("storage_dir", "/cluster/work/fuge/AISCO/temp_")
-
-    if verbose:
-        print(f"Pretrained path (from pretraining cfg): {pretrained_path}")
-
-    ### load pretrained model if exists
-    pretrained_model_path = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
-
-    ### pretraining if model doesn't exist
-    if pretrained_model_path is not None and not force_pretraining:
-        model.load_state_dict(torch.load(pretrained_model_path, map_location=device))
-        if verbose:
-            print(f"Loaded pretrained model of type {model.__class__.__name__} from {pretrained_model_path}")
-    else:
-        if verbose and not force_pretraining:
-            print("No pretrained model found, proceeding by pretraining")
-        if verbose and force_pretraining:
-            print("Force pretraining enabled, proceeding by pretraining")
-            if pretrained_model_path:
-                print(
-                    f"Note: A pretrained model was found at {pretrained_model_path} but will be ignored due to force_pretraining=True"
-                )
-
-        print(f"Starting pretraining for model {model.__class__.__name__}")
-        if uses_diversity:
-            if not isinstance(model, SupportsLatentConcat):
-                raise TypeError(
-                    "Model must support latent-vector methods to use diversity training. "
-                    "Check uses_diversity in models.json and the model implementation."
-                )
-
-            active_latent = model.get_latent_vector()
-            if active_latent is None or active_latent.numel() == 0:
-                raise ValueError(
-                    "Latent vector is not initialized. Ensure the model initializes a non-empty latent vector before pretraining."
-                )
-
-            # Reset active latent vector to zeros before pretraining.
-            model.set_latent_vector(torch.zeros_like(active_latent))
-
-        model = pretraining(model=model, debug_manager=debug_manager)
-
-        allround_save_data(
-            model=model,
-            storage_path=pretrained_path,
-            save_model=True,
-            save_mesh=True,
-            epoch=None,
-            verbose=verbose,
-            pretraining=True,
-        )
-
-    # Keep model parameters/buffers on the runtime device expected by losses and data tensors.
-    model = model.to(device)
-
-    if verbose:
-        print(f"Pretraining complete for model: {model_class_name} with Parent class: {parent_class_name}")
-        print(f"Detailed settings: {[f'{key}: {value}' for key, value in settings.items()]}")
-
-    # 3c. Latent-population pretraining (Mode C warm-up).
-    # Only runs when active_configs.latent_pretraining is set to a non-empty config filename.
-    model, Z_pretrained = _maybe_run_latent_pretraining(model, general_config, device, use_wandb=use_wandb)
-
-    # 4. Initialise whatever we need to run the main training loop, e.g. trainer, loss function, etc.
-
-    training_config = load_config(v="v2", cfg_name=general_config["active_configs"].get("training", None))
 
     # Shared rendering-dir logic (used by both legacy and diversity paths)
     model_hash = dict_hashing(model.get_model_info_dict())
@@ -272,6 +217,129 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         else:
             rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
         os.makedirs(rendering_dir, exist_ok=True)
+    # 3b. Handle pretraining.
+    # latent_space=true  → pretraining_latent.py (handles fast-resume internally; checkpoint in latent_pretraining dir)
+    # latent_space=false → standard pretraining_v1_1.py (checkpoint in pretrained_path)
+    Z_pretrained: torch.Tensor | None = None
+    latent_config: dict[str, Any] = {}
+
+    if latent_space:
+        if not isinstance(model, SupportsLatentConcat):
+            raise TypeError(
+                f"latent_space=true requires a SupportsLatentConcat model, got {type(model).__name__}. "
+                "Set model_name to a concat model (e.g. ConcatWIREV2) in general_config.yaml."
+            )
+        latent_cfg_name: str = general_config["active_configs"].get("latent_pretraining", "pretraining_latent_config.yaml")
+        latent_config = _load_config(v="v2", cfg_name=latent_cfg_name)
+        vis_sampling = latent_config["output"].get("sampling_vis", True)
+        make_gif = latent_config["output"].get("make_gif", False)
+
+        # Checkpoint: same storage root and model-hash subdir as standard pretraining.
+        # This keeps latent pretrained files alongside standard ones and is consistent
+        # with fetch_pretrained_model's search pattern.
+        if run_locally:
+            storage_root = general_config["storage_paths"].get("beast_storage_dir") or general_config["storage_paths"].get(
+                "local_storage_dir", "./local_storage_dir"
+            )
+        else:
+            storage_root = general_config["storage_paths"]["storage_dir"]
+        latent_ckpt_path = Path(storage_root) / model_hash / f"pretrained_latent_{model_hash}.pth"
+
+        # Vis + GIFs live inside the main run dir (same as renders/meshes).
+        vis_run_dir: Path = (rendering_dir / "sampling_vis") if rendering_dir is not None else Path("/tmp/aisco_sampling_vis")
+        model, Z_pretrained = pretraining_latent(
+            model,
+            latent_config,
+            device,
+            use_wandb=use_wandb,
+            vis_sampling=vis_sampling,
+            vis_output_dir=vis_run_dir,
+            checkpoint_path=latent_ckpt_path,
+        )
+        if verbose:
+            print(f"[latent_space] Latent pretraining complete. Population size: {len(latent_config['latent_population'])}")
+        if make_gif and any(vis_run_dir.glob("*.ply")):
+            print("[latent_space] Generating GIFs for latent pretraining visualization...")
+            generate_gifs(
+                input_path=vis_run_dir, output_path=rendering_dir / "gifs" if rendering_dir is not None else vis_run_dir / "gifs"
+            )
+        elif make_gif and verbose:
+            print("[latent_space] Skipping GIF generation: no PLY files in sampling_vis (fast-resume or vis disabled).")
+
+    else:
+        # Standard pretraining: look for an existing checkpoint, then run pretraining_v1_1 if needed.
+        pretraining_config_name = general_config["active_configs"].get("pretraining", "pretraining_v0_config.yaml")
+        pretraining_config = load_config(v="v2", cfg_name=pretraining_config_name)
+        force_pretraining = pretraining_config["pretraining"].get("force_pretraining", False)
+
+        ### get paths
+        if run_locally:
+            pretrained_path = pretraining_config["pretraining"].get("local_pretraining_model_path", "")
+            if not pretrained_path:  # check if empty path given in pretraining config, if so fallback to general config path
+                pretrained_path = general_config["storage_paths"].get("beast_storage_dir") or general_config["storage_paths"].get(
+                    "local_storage_dir", "./local_storage_dir"
+                )
+        else:
+            pretrained_path = pretraining_config["pretraining"].get("pretraining_model_path", "")
+            if not pretrained_path:  # check if empty path given in pretraining config, if so fallback to general config path
+                pretrained_path = general_config["storage_paths"].get("storage_dir", "/cluster/work/fuge/AISCO/temp_")
+
+        if verbose:
+            print(f"Pretrained path (from pretraining cfg): {pretrained_path}")
+
+        ### load pretrained model if exists
+        pretrained_model_path = fetch_pretrained_model(model, pretrained_path=pretrained_path, verbose=verbose)
+
+        ### pretraining if model doesn't exist
+        if pretrained_model_path is not None and not force_pretraining:
+            model.load_state_dict(torch.load(pretrained_model_path, map_location=device))
+            if verbose:
+                print(f"Loaded pretrained model of type {model.__class__.__name__} from {pretrained_model_path}")
+        else:
+            if verbose and not force_pretraining:
+                print("No pretrained model found, proceeding by pretraining")
+            if verbose and force_pretraining:
+                print("Force pretraining enabled, proceeding by pretraining")
+                if pretrained_model_path:
+                    print(
+                        f"Note: A pretrained model was found at {pretrained_model_path} but will be ignored due to force_pretraining=True"
+                    )
+
+            print(f"Starting pretraining for model {model.__class__.__name__}")
+            if uses_diversity:
+                if not isinstance(model, SupportsLatentConcat):
+                    raise TypeError(
+                        "Model must support latent-vector methods to use diversity training. "
+                        "Check uses_diversity in models.json and the model implementation."
+                    )
+
+                active_latent = model.get_latent_vector()
+                if active_latent is None or active_latent.numel() == 0:
+                    raise ValueError(
+                        "Latent vector is not initialized. Ensure the model initializes a non-empty latent vector before pretraining."
+                    )
+
+                # Reset active latent vector to zeros before pretraining.
+                model.set_latent_vector(torch.zeros_like(active_latent))
+
+            model = pretraining(model=model, debug_manager=debug_manager)
+
+            allround_save_data(
+                model=model,
+                storage_path=pretrained_path,
+                save_model=True,
+                save_mesh=True,
+                epoch=None,
+                verbose=verbose,
+                pretraining=True,
+            )
+    if verbose:
+        print(f"Pretraining complete for model: {model_class_name} with Parent class: {parent_class_name}")
+        print(f"Detailed settings: {[f'{key}: {value}' for key, value in settings.items()]}")
+
+    # 4. Initialise whatever we need to run the main training loop, e.g. trainer, loss function, etc.
+
+    training_config = load_config(v="v2", cfg_name=general_config["active_configs"].get("training", None))
 
     # Gradient conflict tracking setup
     conflict_cadence: int = training_config["training_params"].get("gradient_conflict_cadence", 0)
@@ -354,22 +422,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 configured_constraint_categories=configured_constraint_categories,
             )
 
-        # Mesh extractor + optional renderer (only used if rendering_freq is set)
-        renderer_cfg = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")
-        mesh_extraction_config: dict[str, Any] = renderer_cfg.get("mesh_extraction", {})
-        mesh_extractor_device = mesh_extraction_config.get("device", str(device))
-        if str(mesh_extractor_device).startswith("cuda") and not torch.cuda.is_available():
-            print(f"Configured mesh extractor device '{mesh_extractor_device}' unavailable. Falling back to CPU.")
-            mesh_extractor_device = "cpu"
-        mesh_extractor = MeshExtractor(
-            algorithm=mesh_extraction_config.get("algorithm", "mc"),
-            device=mesh_extractor_device,
-            verbose=mesh_extraction_config.get("verbose", False),
-        )
-        mesh_extractor.set_grid(
-            bbox=mesh_extraction_config.get("bbox", [[-5000, 5000], [-5000, 5000], [-5000, 5000]]),
-            resolution=mesh_extraction_config.get("resolution", 128),
-        )
         renderer_manager = VisualisationManager(verbose=verbose, output_dir=rendering_dir)
 
         # GINN / diversity config — absent or uses_diversity=False collapses to single-model mode
@@ -386,7 +438,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         num_epochs: int = training_params.get("num_epochs", 1000)
 
         if uses_diversity:  # double checks for diversity again, but serves as potential control split once we develop further
-            population_size = ginn_config.get("population_size", 4)
+            population_size = len(latent_config["latent_population"]) if latent_space else ginn_config.get("population_size", 4)
             z_dim = model.get_model_info_dict()["z_dim"]
         else:
             population_size = 1
@@ -403,17 +455,15 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             model_lr=learning_rate,
             diversity_manager=diversity_loss_manager,
             diversity_num_points=ginn_config.get("diversity_num_points", 2048),
-            diversity_bbox_size=ginn_config.get("diversity_bbox_size", 10.0),
             diversity_norm_order=ginn_config.get("diversity_norm_order", 2),
             diversity_neighbor_agg_fn=ginn_config.get("diversity_neighbor_agg_fn", "min"),
             force_z0_to_origin=ginn_config.get("force_z0_to_origin", True),
             z_resample_cadence=ginn_config.get("z_resample_cadence", 0),
             initial_Z=Z_pretrained,
             z_resample_start_epoch=ginn_config.get("z_resample_start_epoch", 0),
-            mesh_extractor=mesh_extractor,
-            mesh_extraction_config=mesh_extraction_config,
             renderer_manager=renderer_manager,
             rendering_freq=wandb_cfg.get("rendering_frequency"),
+            diversity_bbox_scale_factor=ginn_config.get("bbox_scale_factor", 1.0),
             use_neural_renderer=wandb_cfg.get("use_neural_renderer", False),
             use_wandb=use_wandb,
             log_dir=rendering_dir,
@@ -513,4 +563,27 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
 
 if __name__ == "__main__":
-    main()
+    # CLI argument parsing (for GUI config override infrastructure)
+    parser = argparse.ArgumentParser(description="AISCO WP4 Aeroshell Optimizer")
+    parser.add_argument("--uses-gui", action="store_true", help="Running from GUI")
+    parser.add_argument("--cfg-folder", type=str, default="", help="Path to config override folder")
+    args, _ = parser.parse_known_args()
+    print(f"CLI arguments received: {args}, type: {type(args)}")
+    print(f"Extras: {_}, type: {type(_)}")
+    # Arguments are available but not used yet - caller will handle them
+    print(f"uses_gui: {args.uses_gui}, cfg_folder: {args.cfg_folder}")
+    # NOTE: When launched by `wandb agent`, the agent appends sweep hyperparameter
+    # overrides as `--key=value` CLI args. These are consumed via `wandb.config`
+    # in `apply_sweep_overrides`, not via argparse, so we tolerate `--...`-style
+    # extras here. Only non-flag extras indicate a real caller bug.
+    _bad_extras = [a for a in _ if not a.startswith("--")]
+    assert _bad_extras == [], (
+        f"Unexpected non-flag CLI arguments received: {_bad_extras}. "
+        "Check the caller or argument parsing logic."
+    )
+    # --cfg-folder is only required when running through the GUI override flow.
+    if args.uses_gui:
+        assert args.cfg_folder != "", '--uses-gui requires "--cfg-folder PATH" to be set'
+    assert " " not in args.cfg_folder, f"Config folder path cannot contain spaces. Received: '{args.cfg_folder}'"
+
+    main(gui_mode=args.uses_gui, cfg_folder=args.cfg_folder)

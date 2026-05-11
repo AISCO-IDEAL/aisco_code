@@ -33,7 +33,17 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import ge
 _config_registry: dict[str, dict] = {}
 _registry_initialised: bool = False
 _registry_alias_index: dict[str, set[str]] = {}
+_using_custom_gui_configs: bool = False
+_gui_config_folder: Path | None = None
 
+def switch_to_gui_config(value: bool) -> None:
+    global _using_custom_gui_configs  # noqa: PLW0603
+    _using_custom_gui_configs = value
+
+
+def set_gui_config_folder(folder_path: str) -> None:
+    global _gui_config_folder  # noqa: PLW0603
+    _gui_config_folder = Path(folder_path)
 
 def _cfg_key(cfg_name: str) -> str:
     """Normalise a config filename to a registry key (drop ``.yaml``)."""
@@ -109,13 +119,21 @@ def _load_yaml(v: str, cfg_name: str) -> dict:
     """
     Load a YAML configuration file from disk (no registry, no wandb side-effects) by giving the name/path of the config file, located in the v{x}/configs/ folder.
 
+    When GUI override mode is active (switch_to_gui_config(True) + set_gui_config_folder(...)),
+    the YAML is read from the GUI override folder instead. The override folder mirrors the
+    wp4/configs/ structure, so cfg_name (e.g. "solar_configs/solar_loss_config.yaml") resolves
+    relative to it directly.
+
     Environment-aware path resolution is delegated to device_detection module.
     """
-    config_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
-    if Path.home() == Path("/home/aisco"):  # Checks if running on the Best and corrects Path if necessary
-        config_path = (
-            Path.home() / "Documents" / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
-        )
+    if _using_custom_gui_configs and _gui_config_folder is not None:
+        config_path = _gui_config_folder / cfg_name
+    else:
+        config_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
+        if Path.home() == Path("/home/aisco"):  # Checks if running on the Best and corrects Path if necessary
+            config_path = (
+                Path.home() / "Documents" / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
+            )
     try:
         with config_path.open() as f:
             config = yaml.safe_load(f)
@@ -162,6 +180,40 @@ def register_all_configs(general_config: dict, *, v: str = "v2") -> None:
         "solar_configs/australia.yaml",
         "debug.yaml",
     ]
+
+    model_name = general_config.get("model_def", {}).get("model_name")
+    if isinstance(model_name, str) and model_name:
+        models_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / "models.json"
+        if Path.home() == Path("/home/aisco"):
+            models_path = (
+                Path.home()
+                / "Documents"
+                / "AISCO_code"
+                / "subprojects"
+                / "wp4_aeroshell_optimizer"
+                / v
+                / "configs"
+                / "models.json"
+            )
+
+        with contextlib.suppress(FileNotFoundError, json.JSONDecodeError):
+            with models_path.open() as f:
+                models_registry = json.load(f)
+
+            model_cfg = models_registry.get("models", {}).get(model_name, {}).get("config_file")
+            if isinstance(model_cfg, str) and model_cfg:
+                model_cfg_suffix = ""
+                if "/models/" in model_cfg:
+                    model_cfg_suffix = model_cfg.split("/models/", 1)[1]
+                elif model_cfg.startswith("models/"):
+                    model_cfg_suffix = model_cfg[len("models/") :]
+
+                if model_cfg_suffix:
+                    _standalone.append(f"models/{model_cfg_suffix}")
+
+    # Keep ordering stable while avoiding duplicate registrations.
+    _standalone = list(dict.fromkeys(_standalone))
+
     for cfg_name in _standalone:
         key = _cfg_key(cfg_name)
         if key not in _config_registry:

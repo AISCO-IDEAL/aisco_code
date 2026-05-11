@@ -371,11 +371,16 @@ class TotalLoss:
         """
         del raw_losses
         self._visu_per_loss_grads = {}
+        self._visu_per_loss_meshes: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
         for loss_name, ext in self._find_mesh_extractors().items():
             g = getattr(ext, "last_dL_dv", None)
             if g is None:
                 continue
             self._visu_per_loss_grads[loss_name] = g.detach()
+            v = getattr(ext, "last_verts", None)
+            f = getattr(ext, "last_faces", None)
+            if v is not None and f is not None:
+                self._visu_per_loss_meshes[loss_name] = (v.detach(), f.detach())
 
     def collect_vertex_grads_for_visualisation(
         self,
@@ -401,15 +406,23 @@ class TotalLoss:
             )
         if not self._visu_per_loss_grads or self._visu_primary_v is None:
             return None
+        # Build "total" only from grads matching the primary mesh shape (losses
+        # with their own MeshSDFExtractor at a different resolution can't be
+        # broadcast-summed). Per-loss panels render on each loss's own mesh
+        # (see `per_loss_meshes`), so they are returned in full regardless.
+        n_primary = int(self._visu_primary_v.shape[0])
         weights = weights_by_name or {}
         total: torch.Tensor | None = None
         for name, g in self._visu_per_loss_grads.items():
+            if g.shape[0] != n_primary:
+                continue
             w = float(weights.get(name, 1.0))
             total = g * w if total is None else total + g * w
         return {
             "vertices": self._visu_primary_v,
             "faces": self._visu_primary_f,
             "per_loss": dict(self._visu_per_loss_grads),
+            "per_loss_meshes": dict(getattr(self, "_visu_per_loss_meshes", {})),
             "total": total if total is not None else torch.zeros_like(self._visu_primary_v),
         }
 
@@ -611,10 +624,11 @@ class TotalLoss:
 
         if self._use_alm:
             if not self._external_alm and self.alm_manager is not None:
-                self.alm_manager.update_multipliers(active_constraint_tensors, active_indices=active_constraint_indices)
+                # Compute penalty with current-epoch multipliers first (for gradient), then update for next epoch.
                 alm_penalties = self.alm_manager.compute_penalty(
                     active_constraint_tensors, active_indices=active_constraint_indices
                 )
+                self.alm_manager.update_multipliers(active_constraint_tensors, active_indices=active_constraint_indices)
                 for key, t in alm_penalties.items():
                     # key = "alm_{constraint_name}"; grad_scale is keyed the same way
                     grad_scale = self._norm_manager.get_grad_scale(key)
@@ -780,6 +794,7 @@ class TotalLoss:
                             verts = grads_payload["vertices"]
                             faces = grads_payload["faces"]
                             extra_state["vertice_grads_per_loss"] = grads_payload["per_loss"]
+                            extra_state["vertice_meshes_per_loss"] = grads_payload.get("per_loss_meshes", {})
                             extra_state["vertice_grads_total"] = grads_payload["total"]
                         self._renderer_manager.update(
                             {

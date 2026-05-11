@@ -8,6 +8,7 @@ import torch
 import trimesh
 
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
+from subprojects.wp2_assembler.version4.utils.wp4_utils import get_outer_bb_info
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.ground_truth_masks.simple_geoms import (
     cube_gt,
     ply_gt,
@@ -84,7 +85,7 @@ def _load_ply_mesh(config: dict, device: str, center_mesh: bool = False) -> tupl
 
     # Z grounding: Z_min = ground_clearance
     prism = get_outer_prism_bounds_mm()
-    ground_clearance = abs(prism["z_sampling"][0])
+    ground_clearance = abs(prism["z"][0])
     verts_np[:, 2] += ground_clearance - float(verts_np[:, 2].min())
 
     ply_verts_t = torch.tensor(verts_np, device=device)
@@ -113,7 +114,10 @@ def _compute_gt_target(
     if pretraining_shape == "ply":
         assert ply_verts_t is not None and ply_faces_t is not None
         return ply_gt(input_data, ply_verts_t, ply_faces_t)
-    return sphere_gt(input_data)
+
+    # get centroid for pretraining
+    centroid = torch.Tensor(get_outer_bb_info()["centroid"]).to(input_data.device)
+    return sphere_gt(input_data, centroid)
 
 
 def _compute_eikonal(model, input_data: torch.Tensor, device: str) -> torch.Tensor:
@@ -217,8 +221,8 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
 
         # 50 % uniform domain in outer_prism cuboid (shared across all pretraining shapes)
         prism = get_outer_prism_bounds_mm()
-        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z_sampling"][0]], dtype=torch.float32, device=device)
-        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z_sampling"][1]], dtype=torch.float32, device=device)
+        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z"][0]], dtype=torch.float32, device=device)
+        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z"][1]], dtype=torch.float32, device=device)
         domain_pts = lo + torch.rand(n_domain, 3, device=device) * (hi - lo)
         domain_gt = sphere_gt(domain_pts, coordinates=sphere_center, radius=radius)
 
@@ -260,8 +264,8 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
 
         # 50 % uniform domain in outer_prism cuboid (shared across all pretraining shapes)
         prism = get_outer_prism_bounds_mm()
-        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z_sampling"][0]], dtype=torch.float32, device=device)
-        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z_sampling"][1]], dtype=torch.float32, device=device)
+        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z"][0]], dtype=torch.float32, device=device)
+        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z"][1]], dtype=torch.float32, device=device)
         domain_pts = lo + torch.rand(n_domain, 3, device=device) * (hi - lo)
         domain_gt = cube_gt(domain_pts, coordinates=cube_center, side_length=side)
 
@@ -325,8 +329,8 @@ def _sample_points_for_shape(  # noqa: PLR0915  # per-shape sampling is intrinsi
 
         # Domain — sample from the outer-prism cuboid
         prism = get_outer_prism_bounds_mm()
-        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z_sampling"][0]], dtype=torch.float32, device=device)
-        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z_sampling"][1]], dtype=torch.float32, device=device)
+        lo = torch.tensor([prism["x"][0], prism["y"][0], prism["z"][0]], dtype=torch.float32, device=device)
+        hi = torch.tensor([prism["x"][1], prism["y"][1], prism["z"][1]], dtype=torch.float32, device=device)
         domain_pts = lo + torch.rand(n_domain, 3, device=device) * (hi - lo)
         domain_gt = ply_gt(domain_pts, ply_verts, ply_faces)
 
@@ -403,7 +407,7 @@ def _make_mesh_extractor_config(device: str, mesh_res: int, outer_prism: dict[st
     Args:
         device: Compute device string (e.g. "cuda" or "cpu").
         mesh_res: Marching-cubes grid resolution.
-        outer_prism: Dict from get_outer_prism_bounds_mm() with keys 'x', 'y', 'z_mesh'.
+        outer_prism: Dict from get_outer_prism_bounds_mm() with keys 'x', 'y', 'z'.
     """
     return MeshExtractionConfig(
         device=device,
@@ -411,7 +415,7 @@ def _make_mesh_extractor_config(device: str, mesh_res: int, outer_prism: dict[st
         bbox=[
             [float(outer_prism["x"][0]), float(outer_prism["x"][1])],
             [float(outer_prism["y"][0]), float(outer_prism["y"][1])],
-            [float(outer_prism["z_mesh"][0]), float(outer_prism["z_mesh"][1])],
+            [float(outer_prism["z"][0]), float(outer_prism["z"][1])],
         ],
         base_resolution=mesh_res,
         subdivision_factor=1,
@@ -445,7 +449,7 @@ def _extract_mesh(
             ``return_mesh=True``; must not be ``None`` when ``return_mesh=False``.
         device: Compute device string.
         mesh_res: Marching-cubes grid resolution.
-        outer_prism: Dict from get_outer_prism_bounds_mm() with keys 'x', 'y', 'z_mesh'.
+        outer_prism: Dict from get_outer_prism_bounds_mm() with keys 'x', 'y', 'z'.
         return_mesh: When ``True``, return numpy arrays instead of saving to disk.
 
     Returns:
@@ -457,7 +461,7 @@ def _extract_mesh(
         if not return_mesh:
             x_range = outer_prism["x"][1] - outer_prism["x"][0]
             y_range = outer_prism["y"][1] - outer_prism["y"][0]
-            z_range = outer_prism["z_mesh"][1] - outer_prism["z_mesh"][0]
+            z_range = outer_prism["z"][1] - outer_prism["z"][0]
             print(
                 f"[extract_mesh] Extracting mesh: res={mesh_res}, bounds=X({x_range:.0f})Y({y_range:.0f})Z({z_range:.0f})mm, device={device} ..."
             )

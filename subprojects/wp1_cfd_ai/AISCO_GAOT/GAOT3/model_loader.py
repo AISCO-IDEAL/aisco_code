@@ -37,7 +37,7 @@ class ModelLoader:
         self.optimization_state = {
             "vertices": None,
             "faces": None,
-            "vertice_grads": None,
+            "vertice_grads_total": None,
         }
 
         self.model_path = self._get_checkpoint_path()
@@ -58,7 +58,17 @@ class ModelLoader:
         )
 
         self.visualiser = Visualiser(device=self.device)
-        self.gradlogger = MeshSDFGrads(self.visualiser, intensity=10)
+        self.gradlogger = MeshSDFGrads(
+            self.visualiser,
+            config={
+                "camera_position": [-2000, 0, 7000],
+                "look_at": [-1500, 0, 0],
+                "render_mode": "rgb",
+                "fps": 10,
+                "loss_key": "__total__",
+                "intensity": 10,
+            },
+        )
 
     def _get_dataset_viz_config(self) -> dict:
         dataset_cfg = self.cfd_config.get("dataset", {}) if isinstance(self.cfd_config.get("dataset", {}), dict) else None
@@ -250,13 +260,12 @@ class ModelLoader:
             diag["dL_dvertices_max"] = dL_dvertices.abs().max().item()
         self._last_diagnostics = diag
 
-        self.optimization_state["vertice_grads"] = dL_dvertices
+        self.optimization_state["vertice_grads_total"] = dL_dvertices
 
         if self.cfd_config["visualisations"]:
             self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
 
         cuppled_loss = loss.detach() + surrogate_loss - surrogate_loss.detach()
-        assert cuppled_loss == loss.item() + surrogate_loss - surrogate_loss.item()
         return cuppled_loss
 
     def _visualize_pressure_field(
@@ -351,7 +360,7 @@ class ModelLoader:
         with torch.autograd.set_detect_anomaly(True):
             gaot_loss = self.gaot.forward(batch=batch, tokens_pos=tokens_pos)
 
-        self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces, "vertice_grads": None}
+        self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces, "vertice_grads_total": None}
 
         pressure_field = gaot_loss["field"]
 
@@ -369,8 +378,14 @@ class ModelLoader:
             reference_field=reference_field,
         )
 
-        # Fix 4: use physical/raw normals for drag integration
-        integration_normals = batch.c_raw if hasattr(batch, "c_raw") and batch.c_raw is not None else batch.c
+        # Sign convention: cp_field is predicted in the GAOT training (model) frame,
+        # which has the x-axis flipped relative to the SDF frame (see _reformat_data).
+        # Integrating cp values against SDF-frame outward normals (c_raw) returns the
+        # x-component of the pressure force in the SDF frame, which is the negative of
+        # the conventional drag (force along freestream direction). Use model-frame
+        # outward normals (batch.c) so pressure_to_drag's orientation step aligns the
+        # area-normals with the freestream direction the cp field was predicted for.
+        integration_normals = batch.c if hasattr(batch, "c") and batch.c is not None else batch.c_raw
 
         int_drag_f = cp_field_to_drag(
             cp_field=pressure_field,

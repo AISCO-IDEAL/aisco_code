@@ -90,6 +90,10 @@
             display: block;
         }
 
+        .logo-slot.center img {
+            height: 70px;
+        }
+
         .body-layout {
             min-height: 0;
             display: grid;
@@ -227,6 +231,10 @@
             .top-brand img {
                 height: 30px;
             }
+
+            .logo-slot.center img {
+                height: 52px;
+            }
         }
     </style>
 </head>
@@ -253,9 +261,13 @@
 
                 <nav class="nav" aria-label="GUI pages">
                     <button class="nav-button" data-page="introduction">Introduction</button>
+                    <button class="nav-button" data-page="leaderboard">Leaderboard</button>
+                    <button class="nav-button" data-page="assembly_selection">Assembly Selection</button>
+                    <button class="nav-button" data-page="pretraining">Pretraining</button>
                     <button class="nav-button" data-page="optimization">Optimization Workspace</button>
                     <button class="nav-button" data-page="solar">Solar Viewer</button>
-                    <button class="nav-button" data-page="logs">Run Logs</button>
+                    <button class="nav-button" data-page="testing">🔧 CLI Testing</button>
+                    <button class="nav-button" data-page="config_overrides">⚙ Config Overrides</button>
                 </nav>
 
                 <div class="footer">Single launch, multi-page GUI shell</div>
@@ -278,6 +290,16 @@
                 hint: "Quick orientation to the WP7 GUI and page layout.",
                 src: "/ui/page/introduction"
             },
+            leaderboard: {
+                title: "Leaderboard",
+                hint: "Top 5 entries ranked by CSE with drag and solar output metrics.",
+                src: "/ui/page/leaderboard"
+            },
+            pretraining: {
+                title: "Pretraining",
+                hint: "Displays four pretraining convergence GIFs from PRETRAINING_STORAGE_ROOT.",
+                src: "/ui/page/pretraining"
+            },
             optimization: {
                 title: "Optimization Workspace",
                 hint: "Live run controls, artifacts, and mesh playback.",
@@ -288,10 +310,20 @@
                 hint: "Focused solar placement rendering from latest artifacts.",
                 src: "/ui/page/solar"
             },
-            logs: {
-                title: "Run Logs",
-                hint: "Live textual logs and progress monitoring.",
-                src: "/ui/page/logs"
+            assembly_selection: {
+                title: "Assembly Selection",
+                hint: "Slider-based WP2 assembly controls with live mesh preview.",
+                src: "/ui/page/assembly_selection"
+            },
+            testing: {
+                title: "CLI Testing",
+                hint: "Test CLI argument passthrough and GUI infrastructure.",
+                src: "/ui/page/testing"
+            },
+            config_overrides: {
+                title: "Config Overrides",
+                hint: "Edit whitelisted config values, save to a session folder, then run.",
+                src: "/ui/page/config_overrides"
             }
         };
 

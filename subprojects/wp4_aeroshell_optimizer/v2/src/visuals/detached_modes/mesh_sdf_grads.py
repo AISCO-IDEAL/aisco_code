@@ -47,6 +47,29 @@ class MeshSDFGrads(RenderingMode):
         per_loss = optimization_state.get("vertice_grads_per_loss") or {}
         return per_loss.get(self.loss_key)
 
+    def _select_mesh(
+        self, optimization_state: dict[str, Any]
+    ) -> tuple[torch.Tensor, torch.Tensor] | None:
+        """Return (verts, faces) for `self.loss_key`.
+
+        For per-loss panels we prefer the loss's own mesh (stashed under
+        `vertice_meshes_per_loss[loss_key]`) so the gradient tensor and the
+        rendered geometry line up even when losses use different mesh
+        resolutions. Falls back to the primary mesh in `optimization_state`.
+        """
+        if self.loss_key != TOTAL_KEY:
+            meshes = optimization_state.get("vertice_meshes_per_loss") or {}
+            entry = meshes.get(self.loss_key)
+            if entry is not None:
+                v, f = entry
+                if v is not None and f is not None:
+                    return v, f
+        v = optimization_state.get("vertices")
+        f = optimization_state.get("faces")
+        if v is None or f is None:
+            return None
+        return v, f
+
     def update(self, optimization_state: dict[str, Any]) -> None:
         if not torch.cuda.is_available():
             return
@@ -67,9 +90,24 @@ class MeshSDFGrads(RenderingMode):
             self._diag_logged_hit = True
             print(f"[VisuDiag MeshSDFGrads/{self.loss_key}] first render OK, grads shape={tuple(vertice_grads.shape)}")
 
-        vertices = optimization_state["vertices"].detach()
-        faces = optimization_state["faces"].detach()
+        mesh = self._select_mesh(optimization_state)
+        if mesh is None:
+            return
+        vertices, faces = mesh
+        vertices = vertices.detach()
+        faces = faces.detach()
         if faces.numel() == 0:
+            return
+        if vertice_grads.shape[0] != vertices.shape[0]:
+            # Mesh / grads mismatch (shouldn't happen now that per-loss meshes
+            # are tracked, but stay defensive so one bad loss can't kill the
+            # whole renderer).
+            if not getattr(self, "_diag_logged_shape", False):
+                self._diag_logged_shape = True
+                print(
+                    f"[VisuDiag MeshSDFGrads/{self.loss_key}] mesh/grads mismatch "
+                    f"verts={tuple(vertices.shape)} grads={tuple(vertice_grads.shape)}, skipping."
+                )
             return
 
         # Vertex normals = average of incident face normals.
@@ -85,12 +123,27 @@ class MeshSDFGrads(RenderingMode):
 
         # Per-vertex scalar: positive => grad pushes surface outward.
         dot = torch.einsum("ij,ij->i", vertex_normals, vertice_grads.detach())
+        # Replace any NaN/Inf (degenerate normals on dense meshes can produce them)
+        # before normalising; otherwise the whole frame can come out black.
+        dot = torch.nan_to_num(dot, nan=0.0, posinf=0.0, neginf=0.0)
         norm = torch.clamp(dot / (dot.abs().max() + 1e-8) * self.intensity, -1.0, 1.0)
 
         base = torch.tensor([0.5, 0.5, 0.5], device=faces.device)
         out_color = torch.tensor([0.25, 1.0, 0.25], device=faces.device)  # green: outward push
         in_color = torch.tensor([1.0, 0.0, 0.0], device=faces.device)     # red:   inward push
-        colors = base.unsqueeze(0) + norm.unsqueeze(-1) * (out_color - in_color).unsqueeze(0)
+        # Proper bidirectional lerp: norm=+1 → out_color, 0 → base, -1 → in_color.
+        # The previous formula `base + norm * (out - in)` produced negative / >1
+        # RGB values which the rasteriser renders as black, especially on dense
+        # meshes (e.g. the 50 k-vertex GAOT mesh) where grads have wider tails.
+        norm_unsq = norm.unsqueeze(-1)
+        pos = norm_unsq.clamp(min=0.0)
+        neg = (-norm_unsq).clamp(min=0.0)
+        colors = (
+            base.unsqueeze(0)
+            + pos * (out_color - base).unsqueeze(0)
+            + neg * (in_color - base).unsqueeze(0)
+        )
+        colors = torch.clamp(colors, 0.0, 1.0)
 
         textures = self.visualiser.vertex_colors_to_textures(vertex_colors=colors, faces=faces)
         image = self._render(

@@ -5,8 +5,8 @@
 
 # ---- SLURM directives (must come before any executable code) ---------------
 #SBATCH --partition=gpu
-#SBATCH --job-name=WP4_Sweep
-#SBATCH --time=2:00:00
+#SBATCH --job-name=AISCOModel_Sweep
+#SBATCH --time=00:58:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=rtx_4090:2
@@ -24,7 +24,7 @@ export no_proxy=$(echo "$no_proxy" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export NO_PROXY=$(echo "$NO_PROXY" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="aisco/RTParam_Sweep/5q3zwllg"   # <-- EDIT THIS
+SWEEP_ID="aisco/prefocus-rollout-sweep/nbyf0lks"   # <-- EDIT THIS
 COUNT=10                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
 MAX_AGENTS=2                                  # max number of parallel agents (will be capped by available GPUs)
 
@@ -70,10 +70,19 @@ if [ "$NUM_GPUS" -gt "$MAX_AGENTS" ]; then
 fi
 echo "[$(date)] Launching $NUM_GPUS agents (max $MAX_AGENTS), up to $COUNT pulls per agent..."
 
+# Normalize sweep target (trim whitespace, support bare or full id).
+SWEEP_ID_CLEANED="$(echo "$SWEEP_ID" | xargs)"
+if [[ "$SWEEP_ID_CLEANED" == */*/* ]]; then
+    SWEEP_TARGET="$SWEEP_ID_CLEANED"
+else
+    SWEEP_TARGET="${SWEEP_ENTITY}/${SWEEP_PROJECT}/${SWEEP_ID_CLEANED}"
+fi
+echo "[$(date)] Sweep target: $SWEEP_TARGET"
+
 for ((i=0; i<NUM_GPUS; i++)); do
     AGENT_LOG="${LOG_DIR}/agent_gpu${i}_${SLURM_JOB_ID}.log"
     echo "[$(date)]   GPU $i → agent starting. Log: $AGENT_LOG"
-    CUDA_VISIBLE_DEVICES=$i wandb agent --count "$COUNT" "$SWEEP_ID" > "$AGENT_LOG" 2>&1 &
+    CUDA_VISIBLE_DEVICES=$i wandb agent --count "$COUNT" "$SWEEP_TARGET" > "$AGENT_LOG" 2>&1 &
     sleep 10  # stagger startup to avoid race on wandb init
 done
 wait

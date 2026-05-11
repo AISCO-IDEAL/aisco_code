@@ -55,10 +55,8 @@ export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 export AISCO_CODE_PATH="$PROJECT_ROOT"
 cd "$PROJECT_ROOT"
 
-# Run the python command
-python3 subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py  \
-    --save_model \
-    --problem_id="AISCO_WP4_Test1"
+# Run the python command with CLI arguments passed through
+python3 subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py "$@"
 
 echo "=========================================="
 echo "Finished at: $(date)"

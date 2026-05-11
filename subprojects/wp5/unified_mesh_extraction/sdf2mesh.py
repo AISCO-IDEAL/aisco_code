@@ -68,11 +68,17 @@ class MeshSDFExtractor:
         # Most recent dL/dv computed by `extract_and_compute_loss`, exposed for
         # the visualisation pass (per-loss vertex-gradient renderers).
         self.last_dL_dv: torch.Tensor | None = None
+        # Most recent (verts, faces) on which `last_dL_dv` was computed; used
+        # by per-loss gradient visualisations to render each loss's gradient on
+        # its own mesh (loss extractors may use different mesh resolutions).
+        self.last_verts: torch.Tensor | None = None
+        self.last_faces: torch.Tensor | None = None
         self._stats: dict[str, int | float] = {"calls": 0}
         # `max_refine_levels` is treated as a resolution multiplier on the
         # uniform grid; it yields equivalent quality to adaptive refinement
         # at a fraction of the complexity.
-        self.set_grid(self.config.bbox, self.config.base_resolution)
+        if self.config.bbox is not None:
+            self.set_grid(self.config.bbox, self.config.base_resolution)
 
     def set_grid(self, bbox: Any, resolution: int) -> None:
         """Update bbox and base resolution.
@@ -192,9 +198,11 @@ class MeshSDFExtractor:
             scale = torch.minimum(scale, torch.ones_like(scale))
             dL_dv = dL_dv * scale
 
-        # Stash dL/dv for the visualisation pass (TotalLoss reads it via
-        # collect_vertex_grads_for_visualisation).
+        # Stash dL/dv and the corresponding mesh for the visualisation pass
+        # (TotalLoss reads them via collect_vertex_grads_for_visualisation).
         self.last_dL_dv = dL_dv.detach()
+        self.last_verts = verts.detach()
+        self.last_faces = faces.detach()
 
         return verts, faces, loss, surrogate, dL_dv
 
