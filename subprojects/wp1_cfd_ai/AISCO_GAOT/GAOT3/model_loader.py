@@ -372,8 +372,8 @@ class ModelLoader:
             n_dir_area = area_normals[:, 0]
             face_drag = -p_face * n_dir_area
 
-            front_faces = n_dir_area < 0
-            back_faces = n_dir_area > 0
+            front_faces = n_dir_area > 0
+            back_faces = n_dir_area < 0
             wandb.log(
                 {
                     "cfd/int_drag_front_f": face_drag[front_faces].sum().item(),
