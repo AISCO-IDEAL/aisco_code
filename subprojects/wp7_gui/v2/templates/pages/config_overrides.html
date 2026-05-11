@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Config Overrides</title>
+  <style>
+    :root {
+      --bg: #23283e;
+      --panel: #23283e;
+      --accent: #c82121;
+      --accent-2: #9f1616;
+      --text: #102018;
+      --muted: #496456;
+      --border: #23283e;
+      --shadow: 0 10px 20px rgba(16, 32, 24, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .page {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      gap: 8px;
+      padding: 12px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 12px;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .session-info {
+      flex: 1;
+      min-width: 200px;
+      font-family: "Courier New", monospace;
+      font-size: 0.85rem;
+      color: #f8d9d9;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 6px 10px;
+      border-radius: 8px;
+    }
+    button {
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button:hover { background: var(--accent-2); }
+    button:disabled { background: #777; cursor: not-allowed; opacity: 0.6; }
+    button.secondary { background: #4a5572; }
+    button.secondary:hover { background: #5b6788; }
+    button.danger { background: #6b2020; }
+    button.danger:hover { background: #8b2c2c; }
+    .form-area {
+      background: #f8fcf9;
+      border-radius: 8px;
+      padding: 12px;
+      overflow-y: auto;
+      height: 100%;
+    }
+    .form-area .placeholder {
+      color: var(--muted);
+      font-style: italic;
+      text-align: center;
+      padding: 40px 10px;
+    }
+    .config-section {
+      margin-bottom: 16px;
+      border: 1px solid #d0e0d4;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .config-section > summary {
+      cursor: pointer;
+      padding: 10px 12px;
+      font-weight: 700;
+      color: var(--text);
+      background: #e8f0ea;
+      border-radius: 8px 8px 0 0;
+      list-style: none;
+    }
+    .config-section[open] > summary {
+      border-bottom: 1px solid #d0e0d4;
+    }
+    .param-row {
+      display: grid;
+      grid-template-columns: 1fr 200px;
+      gap: 12px;
+      padding: 8px 12px;
+      align-items: center;
+      border-bottom: 1px solid #f0f4f1;
+    }
+    .param-row:last-child { border-bottom: none; }
+    .param-label {
+      font-size: 0.88rem;
+      color: var(--text);
+    }
+    .param-meta {
+      display: block;
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-family: "Courier New", monospace;
+      margin-top: 2px;
+    }
+    .param-input {
+      border: 1px solid #c5d0c8;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-family: "Courier New", monospace;
+      font-size: 0.86rem;
+      background: #fff;
+    }
+    .param-input.invalid { border-color: var(--accent); background: #ffebee; }
+    .output {
+      width: 100%;
+      max-height: 200px;
+      background: #f8fcf9;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-family: "Courier New", monospace;
+      font-size: 0.82rem;
+      color: var(--text);
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .output.success { color: #2d5016; background: #e8f5e9; }
+    .output.error { color: #7a0e0e; background: #ffebee; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="card toolbar">
+      <button id="btnInit">Start new session</button>
+      <button id="btnReload" class="secondary" disabled>Reload values</button>
+      <div class="session-info" id="sessionInfo">No active session.</div>
+      <button id="btnDiscard" class="danger" disabled>Discard this session</button>
+      <button id="btnCleanAll" class="danger">Clean all sessions</button>
+    </section>
+
+    <section class="card toolbar">
+      <button id="btnSave" disabled>Save changes</button>
+      <button id="btnRun" disabled>Run with overrides</button>
+      <button id="btnStop" class="secondary" disabled>Stop run</button>
+    </section>
+
+    <section class="card" style="display: grid; grid-template-rows: 1fr; min-height: 0;">
+      <div class="form-area" id="formArea">
+        <div class="placeholder">Click "Start new session" to copy configs and begin editing.</div>
+      </div>
+    </section>
+
+    <section class="card" style="max-height: 220px; display: grid; grid-template-rows: auto 1fr; gap: 6px;">
+      <div style="font-size: 0.85rem; color: #f8d9d9; font-weight: 600;">Output</div>
+      <div class="output" id="outputConsole">Ready.</div>
+    </section>
+  </main>
+
+  <script>
+    const STORAGE_KEY = "aiscoOverrideFolder";
+
+    const btnInit = document.getElementById("btnInit");
+    const btnReload = document.getElementById("btnReload");
+    const btnDiscard = document.getElementById("btnDiscard");
+    const btnCleanAll = document.getElementById("btnCleanAll");
+    const btnSave = document.getElementById("btnSave");
+    const btnRun = document.getElementById("btnRun");
+    const btnStop = document.getElementById("btnStop");
+    const sessionInfo = document.getElementById("sessionInfo");
+    const formArea = document.getElementById("formArea");
+    const outputConsole = document.getElementById("outputConsole");
+
+    let activeFolder = localStorage.getItem(STORAGE_KEY) || "";
+    let cachedSchema = null;
+
+    function appendOutput(text, level = "info") {
+      const stamp = new Date().toLocaleTimeString();
+      outputConsole.textContent += `[${stamp}] ${text}\n`;
+      outputConsole.scrollTop = outputConsole.scrollHeight;
+      if (level === "error") outputConsole.className = "output error";
+      else if (level === "success") outputConsole.className = "output success";
+    }
+
+    function setActiveFolder(folder) {
+      activeFolder = folder || "";
+      if (activeFolder) {
+        localStorage.setItem(STORAGE_KEY, activeFolder);
+        const name = activeFolder.split("/").pop();
+        sessionInfo.textContent = `Active: ${name}`;
+        btnReload.disabled = false;
+        btnDiscard.disabled = false;
+        // btnSave is controlled by checkFormValidity(), not here — it stays
+        // disabled until the form is populated and all fields are valid.
+        btnRun.disabled = false;
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+        sessionInfo.textContent = "No active session.";
+        btnReload.disabled = true;
+        btnDiscard.disabled = true;
+        btnSave.disabled = true;
+        btnRun.disabled = true;
+        formArea.innerHTML = '<div class="placeholder">Click "Start new session" to copy configs and begin editing.</div>';
+      }
+    }
+
+    function inputIdFor(cfgName, dottedPath) {
+      return `param::${cfgName}::${dottedPath}`;
+    }
+
+    function renderForm(schema, values) {
+      formArea.innerHTML = "";
+      const configs = schema.configs || {};
+      for (const cfgName of Object.keys(configs)) {
+        const cfgEntry = configs[cfgName];
+        const cfgValues = (values && values[cfgName]) || {};
+        const details = document.createElement("details");
+        details.className = "config-section";
+        details.open = true;
+        const summary = document.createElement("summary");
+        summary.textContent = `${cfgEntry.label || cfgName} — ${cfgName}`;
+        details.appendChild(summary);
+
+        for (const param of (cfgEntry.params || [])) {
+          const row = document.createElement("div");
+          row.className = "param-row";
+
+          const labelWrap = document.createElement("div");
+          const labelEl = document.createElement("div");
+          labelEl.className = "param-label";
+          labelEl.textContent = param.label || param.path;
+          labelWrap.appendChild(labelEl);
+
+          const metaEl = document.createElement("span");
+          metaEl.className = "param-meta";
+          let metaText = `${param.path} · ${param.type}`;
+          if ("min" in param || "max" in param) {
+            metaText += ` · range [${param.min ?? "-∞"}, ${param.max ?? "+∞"}]`;
+          }
+          if (param.choices) metaText += ` · choices ${JSON.stringify(param.choices)}`;
+          metaEl.textContent = metaText;
+          labelWrap.appendChild(metaEl);
+
+          const input = makeInput(param, cfgValues[param.path]);
+          input.id = inputIdFor(cfgName, param.path);
+          input.dataset.cfg = cfgName;
+          input.dataset.path = param.path;
+          input.dataset.type = param.type;
+
+          row.appendChild(labelWrap);
+          row.appendChild(input);
+          details.appendChild(row);
+        }
+        formArea.appendChild(details);
+      }
+      // Evaluate initial state so Save starts enabled/disabled correctly.
+      // checkFormValidity is defined below; hoisting via function declaration is fine.
+      checkFormValidity();
+    }
+
+    // Scans all param inputs and disables Save if any are invalid.
+    // Called after every input/blur/change and after renderForm.
+    function checkFormValidity() {
+      const inputs = formArea.querySelectorAll(".param-input");
+      let allValid = true;
+      inputs.forEach((inp) => {
+        const t = inp.dataset.type;
+        let valid = true;
+        if (t === "int" || t === "float") {
+          const v = t === "int" ? parseInt(inp.value, 10) : parseFloat(inp.value);
+          if (inp.value === "" || Number.isNaN(v)) {
+            valid = false;
+          } else {
+            if (inp.min !== "" && v < parseFloat(inp.min)) valid = false;
+            if (inp.max !== "" && v > parseFloat(inp.max)) valid = false;
+          }
+        }
+        inp.classList.toggle("invalid", !valid);
+        if (!valid) allValid = false;
+      });
+      btnSave.disabled = !allValid || !activeFolder;
+    }
+
+    function makeInput(param, currentValue) {
+      const t = param.type;
+
+      // bool and enum: render as <select> — invalid values are impossible by construction.
+      // For string params with a fixed set of valid values (e.g. model names), use type "enum"
+      // with a "choices" array in gui_schema.json — it also renders as a locked <select>.
+      if (t === "bool") {
+        const sel = document.createElement("select");
+        sel.className = "param-input";
+        for (const v of [true, false]) {
+          const opt = document.createElement("option");
+          opt.value = String(v);
+          opt.textContent = String(v);
+          if (currentValue === v) opt.selected = true;
+          sel.appendChild(opt);
+        }
+        sel.addEventListener("change", checkFormValidity);
+        return sel;
+      }
+      if (t === "enum") {
+        const sel = document.createElement("select");
+        sel.className = "param-input";
+        for (const v of (param.choices || [])) {
+          const opt = document.createElement("option");
+          opt.value = String(v);
+          opt.textContent = String(v);
+          if (currentValue === v) opt.selected = true;
+          sel.appendChild(opt);
+        }
+        sel.addEventListener("change", checkFormValidity);
+        return sel;
+      }
+
+      const inp = document.createElement("input");
+      inp.className = "param-input";
+      if (t === "int" || t === "float") {
+        inp.type = "number";
+        if ("min" in param) inp.min = param.min;
+        if ("max" in param) inp.max = param.max;
+        inp.step = t === "float" ? "any" : "1";
+
+        if (t === "int") {
+          // Strip decimals immediately on each keystroke — the decimal never lands.
+          inp.addEventListener("input", () => {
+            if (inp.value.includes(".")) {
+              inp.value = inp.value.split(".")[0];
+            }
+            checkFormValidity();
+          });
+        } else {
+          inp.addEventListener("input", checkFormValidity);
+        }
+
+        // Clamp to [min, max] silently when the user leaves the field.
+        inp.addEventListener("blur", () => {
+          const v = parseFloat(inp.value);
+          if (!Number.isNaN(v)) {
+            if (inp.min !== "" && v < parseFloat(inp.min)) inp.value = inp.min;
+            if (inp.max !== "" && v > parseFloat(inp.max)) inp.value = inp.max;
+          }
+          checkFormValidity();
+        });
+      } else {
+        inp.type = "text";
+        inp.addEventListener("input", checkFormValidity);
+      }
+      inp.value = currentValue == null ? "" : String(currentValue);
+      return inp;
+    }
+
+    function collectUpdates() {
+      // Returns an object keyed by cfg, with dotted-path -> coerced JS value.
+      const updates = {};
+      const inputs = formArea.querySelectorAll(".param-input");
+      let invalid = false;
+      inputs.forEach((inp) => {
+        inp.classList.remove("invalid");
+        const cfg = inp.dataset.cfg;
+        const path = inp.dataset.path;
+        const t = inp.dataset.type;
+        let raw = inp.value;
+        let value;
+        try {
+          if (t === "int") {
+            if (raw === "") throw new Error("empty");
+            value = parseInt(raw, 10);
+            if (Number.isNaN(value)) throw new Error("nan");
+          } else if (t === "float") {
+            if (raw === "") throw new Error("empty");
+            value = parseFloat(raw);
+            if (Number.isNaN(value)) throw new Error("nan");
+          } else if (t === "bool") {
+            value = raw === "true";
+          } else {
+            value = raw;
+          }
+        } catch (err) {
+          inp.classList.add("invalid");
+          invalid = true;
+          return;
+        }
+        if (!updates[cfg]) updates[cfg] = {};
+        updates[cfg][path] = value;
+      });
+      if (invalid) return null;
+      return updates;
+    }
+
+    async function loadSchemaAndValues() {
+      if (!activeFolder) return;
+      try {
+        if (!cachedSchema) {
+          const schemaRes = await fetch("/config-overrides/schema");
+          if (!schemaRes.ok) throw new Error(`schema fetch failed: ${schemaRes.status}`);
+          cachedSchema = await schemaRes.json();
+        }
+        const valuesRes = await fetch(`/config-overrides/values?folder=${encodeURIComponent(activeFolder)}`);
+        if (!valuesRes.ok) {
+          const data = await valuesRes.json();
+          throw new Error(data.detail?.message || `values fetch failed: ${valuesRes.status}`);
+        }
+        const valuesData = await valuesRes.json();
+        renderForm(cachedSchema, valuesData.values || {});
+        appendOutput("Form populated.");
+      } catch (err) {
+        appendOutput(`ERROR loading form: ${err.message}`, "error");
+      }
+    }
+
+    btnInit.addEventListener("click", async () => {
+      btnInit.disabled = true;
+      try {
+        const res = await fetch("/config-overrides/init", { method: "POST" });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.detail?.message || `init failed: ${res.status}`);
+        }
+        const data = await res.json();
+        appendOutput(`Session created: ${data.name} (${data.copied_files.length} files copied, skipped: ${data.skipped_subfolders.join(", ")})`, "success");
+        setActiveFolder(data.folder);
+        await loadSchemaAndValues();
+      } catch (err) {
+        appendOutput(`ERROR creating session: ${err.message}`, "error");
+      } finally {
+        btnInit.disabled = false;
+      }
+    });
+
+    btnReload.addEventListener("click", loadSchemaAndValues);
+
+    btnDiscard.addEventListener("click", async () => {
+      if (!activeFolder) return;
+      if (!confirm(`Delete session ${activeFolder.split("/").pop()}?`)) return;
+      try {
+        const res = await fetch("/config-overrides/cleanup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ folders: [activeFolder] })
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.detail?.message || `cleanup failed: ${res.status}`);
+        }
+        const data = await res.json();
+        appendOutput(`Removed: ${data.removed.join(", ") || "(none)"}`, "success");
+        setActiveFolder("");
+      } catch (err) {
+        appendOutput(`ERROR discarding: ${err.message}`, "error");
+      }
+    });
+
+    btnCleanAll.addEventListener("click", async () => {
+      if (!confirm("Delete ALL gui_override_* sessions?")) return;
+      try {
+        const res = await fetch("/config-overrides/cleanup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ all: true })
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.detail?.message || `cleanup failed: ${res.status}`);
+        }
+        const data = await res.json();
+        appendOutput(`Removed ${data.removed.length} session(s): ${data.removed.join(", ") || "(none)"}`, "success");
+        setActiveFolder("");
+      } catch (err) {
+        appendOutput(`ERROR cleaning all: ${err.message}`, "error");
+      }
+    });
+
+    btnSave.addEventListener("click", async () => {
+      if (!activeFolder) return;
+      const updates = collectUpdates();
+      if (updates === null) {
+        appendOutput("Some inputs are invalid; fix the highlighted fields.", "error");
+        return;
+      }
+      try {
+        const res = await fetch("/config-overrides/values", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ folder: activeFolder, updates })
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.detail?.message || `save failed: ${res.status}`);
+        }
+        const data = await res.json();
+        appendOutput(`Saved: ${data.written.join(", ")}`, "success");
+      } catch (err) {
+        appendOutput(`ERROR saving: ${err.message}`, "error");
+      }
+    });
+
+    let pollTimer = null;
+
+    btnRun.addEventListener("click", async () => {
+      if (!activeFolder) return;
+      btnRun.disabled = true;
+      btnStop.disabled = false;
+      outputConsole.className = "output";
+      try {
+        const res = await fetch("/run-local/test-cli", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uses_gui: true, cfg_folder: activeFolder })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail?.message || `run failed: ${res.status}`);
+        appendOutput(`Started PID: ${data.pid}. Polling logs...`);
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(async () => {
+          try {
+            const logsRes = await fetch("/run-local/logs");
+            const logsData = await logsRes.json();
+            outputConsole.textContent = logsData.logs || "(no logs yet)";
+            outputConsole.scrollTop = outputConsole.scrollHeight;
+            if (!logsData.running) {
+              appendOutput(`---\nReturn code: ${logsData.return_code}`, logsData.return_code === 0 ? "success" : "error");
+              clearInterval(pollTimer);
+              pollTimer = null;
+              btnRun.disabled = false;
+              btnStop.disabled = true;
+            }
+          } catch (err) {
+            appendOutput(`ERROR polling: ${err.message}`, "error");
+            clearInterval(pollTimer);
+            pollTimer = null;
+            btnRun.disabled = false;
+            btnStop.disabled = true;
+          }
+        }, 1000);
+      } catch (err) {
+        appendOutput(`ERROR running: ${err.message}`, "error");
+        btnRun.disabled = false;
+        btnStop.disabled = true;
+      }
+    });
+
+    btnStop.addEventListener("click", async () => {
+      btnStop.disabled = true;
+      try {
+        const res = await fetch("/run-local/stop", { method: "POST" });
+        const data = await res.json();
+        appendOutput(`Stop: ${data.status} - ${data.message || ""}`);
+      } catch (err) {
+        appendOutput(`ERROR stopping: ${err.message}`, "error");
+      }
+    });
+
+    // On page load, restore the previous active session if its folder still exists.
+    (async function restore() {
+      if (!activeFolder) return;
+      try {
+        const res = await fetch("/config-overrides/sessions");
+        const data = await res.json();
+        const exists = (data.sessions || []).some((s) => s.folder === activeFolder);
+        if (exists) {
+          setActiveFolder(activeFolder);
+          await loadSchemaAndValues();
+        } else {
+          appendOutput("Stored session no longer exists; cleared.", "error");
+          setActiveFolder("");
+        }
+      } catch (err) {
+        appendOutput(`Could not restore session: ${err.message}`, "error");
+        setActiveFolder("");
+      }
+    })();
+  </script>
+</body>
+</html>

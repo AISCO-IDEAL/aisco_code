@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ page_title or "WP7 GUI" }}</title>
+  <link rel="stylesheet" href="/static/css/main.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <main class="shell">
+    <header class="top-bar">
+      <div class="left"><img src="/static/img/Ideal.png" alt="IDEAL" onerror="this.style.display='none'"></div>
+      <div class="center"><img src="/static/img/logo.png" alt="AISCO" onerror="this.style.display='none'"></div>
+      <div class="right"><img src="/static/img/ACE.png" alt="aCe" onerror="this.style.display='none'"></div>
+    </header>
+
+    <div class="body-layout">
+      <aside class="sidebar">
+        <h1>WP7 v3</h1>
+
+        <div class="mode-switch">
+          <a href="/viewer" class="{% if active_mode == 'viewer' %}active{% endif %}">Viewer</a>
+          <a href="/launcher/config-overrides" class="{% if active_mode == 'launcher' %}active{% endif %}">Launcher</a>
+        </div>
+
+        <nav class="sub-nav" aria-label="Sub-navigation">
+          {% if active_mode == 'viewer' %}
+            <a href="/viewer" class="{% if active_page == 'runs' %}active{% endif %}">Finished Runs</a>
+            <a href="/viewer/pretraining" class="{% if active_page == 'pretraining' %}active{% endif %}">Pretraining GIFs</a>
+          {% elif active_mode == 'launcher' %}
+            <a href="/launcher/config-overrides" class="{% if active_page == 'config-overrides' %}active{% endif %}">Config Overrides</a>
+            <a href="/launcher/assembly-selection" class="{% if active_page == 'assembly-selection' %}active{% endif %}">Assembly Selection</a>
+            <a href="/launcher/optimization" class="{% if active_page == 'optimization' %}active{% endif %}">Live Run</a>
+            <a href="/launcher/solar" class="{% if active_page == 'solar' %}active{% endif %}">Solar (Live)</a>
+            <a href="/launcher/testing" class="{% if active_page == 'testing' %}active{% endif %}">CLI Testing</a>
+          {% else %}
+            <a href="/" class="active">Introduction</a>
+          {% endif %}
+        </nav>
+
+        <div class="sidebar-footer">v3 · clean rewrite</div>
+      </aside>
+
+      <section class="workspace">
+        <header class="workspace-top">
+          <h2>{{ page_title or "WP7 GUI" }}</h2>
+          <p class="hint">{% block hint %}{% endblock %}</p>
+        </header>
+        <div class="workspace-body">
+          {% block content %}{% endblock %}
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

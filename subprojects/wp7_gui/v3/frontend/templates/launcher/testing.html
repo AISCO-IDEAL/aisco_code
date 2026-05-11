@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block hint %}Test CLI argument passthrough and run infrastructure.{% endblock %}
+
+{% block content %}
+<div class="section-grid" style="grid-template-rows: auto 1fr; height: 100%;">
+  <div class="dark-card">
+    <div class="toolbar">
+      <div style="display:grid; gap:3px;">
+        <label style="font-size:0.82rem; color:var(--muted); font-weight:600;">Uses GUI</label>
+        <input type="checkbox" id="usesGui" style="width:18px;height:18px;cursor:pointer;accent-color:#c82121;">
+      </div>
+      <div style="display:grid; gap:3px; flex:1; min-width:200px;">
+        <label style="font-size:0.82rem; color:var(--muted); font-weight:600;">Config Override Folder</label>
+        <input type="text" id="cfgFolder" placeholder="/path/to/config/folder"
+          style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:0.88rem;background:#f8fcf9;color:#102018;font-family:'Courier New',monospace;">
+      </div>
+      <button class="btn" id="btnExec">Execute</button>
+      <button class="btn secondary" id="btnStopRun" disabled>Stop</button>
+      <button class="btn secondary" id="btnClear">Clear</button>
+    </div>
+  </div>
+
+  <div class="card" style="display:grid; grid-template-rows:1fr; min-height:0;">
+    <div class="console" id="out">Ready. Configure and click Execute.</div>
+  </div>
+</div>
+
+<script>
+const API = "/launcher/api";
+const usesGui  = document.getElementById("usesGui");
+const cfgInput = document.getElementById("cfgFolder");
+const btnExec  = document.getElementById("btnExec");
+const btnStop  = document.getElementById("btnStopRun");
+const btnClear = document.getElementById("btnClear");
+const out      = document.getElementById("out");
+let pollTimer  = null;
+
+function log(text, level) {
+  const t = new Date().toLocaleTimeString();
+  out.textContent += `[${t}] ${text}\n`;
+  out.scrollTop = out.scrollHeight;
+  if (level === "error") out.className = "console error";
+  else if (level === "success") out.className = "console success";
+}
+
+async function execute() {
+  btnExec.disabled = true; btnExec.textContent = "Running…"; out.className = "console"; out.textContent = "";
+  const cfg = cfgInput.value.trim();
+  log(`Executing: python main_v2.py${usesGui.checked ? " --uses-gui" : ""}${cfg ? " --cfg-folder " + cfg : ""}`);
+  log("---");
+  try {
+    const body = { cfg_folder: cfg };
+    if (usesGui.checked) body.uses_gui = true;
+    const r = await fetch(`${API}/run/start`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail?.message || r.status);
+    log(`PID: ${d.pid} — polling logs…`); btnStop.disabled = false;
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(async () => {
+      try {
+        const ld = await (await fetch(`${API}/run/logs`)).json();
+        out.textContent = ld.logs || "(no logs yet)"; out.scrollTop = out.scrollHeight;
+        if (!ld.running) {
+          const ok = ld.return_code === 0;
+          log(`\n--- Return code: ${ld.return_code} (${ok ? "success" : "finished"})`, ok ? "success" : "error");
+          clearInterval(pollTimer); pollTimer = null;
+          btnExec.disabled = false; btnExec.textContent = "Execute"; btnStop.disabled = true;
+        }
+      } catch (err) {
+        log(`ERROR polling: ${err.message}`, "error");
+        clearInterval(pollTimer); pollTimer = null;
+        btnExec.disabled = false; btnExec.textContent = "Execute";
+      }
+    }, 1000);
+  } catch (err) {
+    log(`ERROR: ${err.message}`, "error");
+    btnExec.disabled = false; btnExec.textContent = "Execute";
+  }
+}
+
+btnExec.addEventListener("click", execute);
+cfgInput.addEventListener("keydown", e => { if (e.key === "Enter") execute(); });
+btnStop.addEventListener("click", async () => {
+  btnStop.disabled = true;
+  try { const d = await (await fetch(`${API}/run/stop`, { method: "POST" })).json(); log(`Stop: ${d.status} — ${d.message || ""}`); }
+  catch (err) { log(`ERROR: ${err.message}`, "error"); }
+});
+btnClear.addEventListener("click", () => { out.textContent = "Ready."; out.className = "console"; });
+</script>
+{% endblock %}
