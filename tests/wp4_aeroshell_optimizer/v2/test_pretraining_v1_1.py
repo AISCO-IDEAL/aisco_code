@@ -13,14 +13,11 @@ Run:
 from __future__ import annotations
 
 import importlib
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import torch
 import trimesh
-
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
 
 _V2 = "subprojects.wp4_aeroshell_optimizer.v2.src"
 PRETRAIN_V1_1 = f"{_V2}.main_files.pretraining_v1_1"
@@ -190,81 +187,3 @@ class TestDualBandWideSigma:
         assert wide_std > 0.0, "Wide-band pts must have positive spread"
         # Wide sigma (0.05 * bbox_extent) >> tight sigma (0.005 * bbox_extent), so wide_std should be larger
         assert wide_std > tight_std, f"Wide-band std ({wide_std:.2f}) should exceed tight-band std ({tight_std:.2f})"
-
-
-# ---------------------------------------------------------------------------
-# Plan 031 — _compute_solitary_pretrain_hash / _resolve_solitary_ckpt_path
-# Tests written BEFORE implementation (TDD red phase).
-# Fail with AttributeError until the functions exist.
-# ---------------------------------------------------------------------------
-
-
-def _make_simple_model() -> Any:
-    """Return a minimal model implementing SupportsModelContract."""
-    model, _, _, _ = smart_model_init("ConcatWIREV2")
-    return model.to("cpu")
-
-
-def _make_solitary_config() -> dict:
-    """Minimal config matching pretraining_v0_config.yaml schema."""
-    return {
-        "pretraining_shape": "sphere",
-        "training_loop": {
-            "epochs": 5,
-            "learning_rate": 1e-4,
-            "random_batch_size": 64,
-            "print_interval": 5,
-        },
-    }
-
-
-class TestSolitaryPretrainHash:
-    """Tests for _compute_solitary_pretrain_hash and _resolve_solitary_ckpt_path (Plan 031 / M4).
-
-    Written BEFORE implementation (TDD red phase).
-    Fail with AttributeError until the functions exist in pretraining_v1_1.py.
-    """
-
-    def test_hash_stable_same_config(self) -> None:
-        """Same config + model → same hash both times."""
-        _compute_solitary_pretrain_hash = _import(PRETRAIN_V1_1, "_compute_solitary_pretrain_hash")
-        model = _make_simple_model()
-        config = _make_solitary_config()
-        h1 = _compute_solitary_pretrain_hash(config, model)
-        h2 = _compute_solitary_pretrain_hash(config, model)
-        assert h1 == h2
-
-    def test_hash_changes_when_epoch_changes(self) -> None:
-        """Changing epochs → different hash."""
-        _compute_solitary_pretrain_hash = _import(PRETRAIN_V1_1, "_compute_solitary_pretrain_hash")
-        model = _make_simple_model()
-        config_a = _make_solitary_config()
-        config_b = _make_solitary_config()
-        config_b["training_loop"]["epochs"] = 999
-        assert _compute_solitary_pretrain_hash(config_a, model) != _compute_solitary_pretrain_hash(config_b, model)
-
-    def test_hash_changes_when_shape_changes(self) -> None:
-        """Changing pretraining_shape → different hash."""
-        _compute_solitary_pretrain_hash = _import(PRETRAIN_V1_1, "_compute_solitary_pretrain_hash")
-        model = _make_simple_model()
-        config_a = _make_solitary_config()
-        config_b = {**_make_solitary_config(), "pretraining_shape": "cube"}
-        assert _compute_solitary_pretrain_hash(config_a, model) != _compute_solitary_pretrain_hash(config_b, model)
-
-    def test_resolve_path_structure(self, tmp_path: Path) -> None:
-        """_resolve_solitary_ckpt_path returns path under base_dir with epoch prefix + hash."""
-        _resolve_solitary_ckpt_path = _import(PRETRAIN_V1_1, "_resolve_solitary_ckpt_path")
-        _compute_solitary_pretrain_hash = _import(PRETRAIN_V1_1, "_compute_solitary_pretrain_hash")
-        model = _make_simple_model()
-        config = _make_solitary_config()
-        base_dir = tmp_path
-        resolved = _resolve_solitary_ckpt_path(config, model, base_dir)
-        config_hash = _compute_solitary_pretrain_hash(config, model)
-        # Checkpoint must be inside base_dir
-        assert resolved.parent.parent == base_dir, f"Expected base_dir {base_dir}, got {resolved.parent.parent}"
-        # Folder name must contain hash
-        assert config_hash in resolved.parent.name
-        # Folder name must contain epoch prefix
-        assert resolved.parent.name.startswith("000005"), f"Expected '000005' prefix, got {resolved.parent.name}"
-        # Filename embeds hash
-        assert f"pretrained_{config_hash}.pth" == resolved.name

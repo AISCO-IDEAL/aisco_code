@@ -16,17 +16,38 @@ from urllib.parse import parse_qs, unquote, urlparse
 import imageio.v2 as imageio
 import yaml
 
-from subprojects.wp4_aeroshell_optimizer import CONFIGS_DIR as _WP4_CONFIGS_DIR
-from subprojects.wp4_aeroshell_optimizer import SLURM_SCRIPTS_DIR as _WP4_SLURM_DIR
-
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 LOGGER = logging.getLogger(__name__)
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 GUI_ROOT = Path(__file__).resolve().parent
+LEGACY_GUI_ROOT = GUI_ROOT.parent
+TEMPLATES_DIR = GUI_ROOT / "templates"
+
+WP4_PACKAGE_ROOT = REPO_ROOT / "wp4_aeroshell_optimizer"
+
+
+def _detect_wp4_active_version() -> str:
+    """Read ACTIVE_VERSION from wp4 package without importing heavy modules."""
+    init_path = WP4_PACKAGE_ROOT / "__init__.py"
+    try:
+        text = init_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "v2"
+
+    match = re.search(r"ACTIVE_VERSION\s*=\s*[\"']([^\"']+)[\"']", text)
+    if match is None:
+        return "v2"
+    return match.group(1)
+
+
+WP4_ACTIVE_VERSION = _detect_wp4_active_version()
+WP4_ACTIVE_ROOT = WP4_PACKAGE_ROOT / WP4_ACTIVE_VERSION
+_WP4_CONFIGS_DIR = WP4_ACTIVE_ROOT / "configs"
+_WP4_SLURM_DIR = WP4_ACTIVE_ROOT / "slurm_scripts"
 
 RUN_LOCAL_SCRIPT = _WP4_SLURM_DIR / "run_local.sh"
 RUN_LOCAL_LOG = GUI_ROOT / "logs" / f"run_local_{timestamp}.log"
@@ -34,6 +55,7 @@ GENERAL_CONFIG_PATH = _WP4_CONFIGS_DIR / "general_config.yaml"
 DEFAULT_LOCAL_STORAGE_DIR = REPO_ROOT.parent / "local_storage_dir"
 DEFAULT_BULK_STORAGE_DIR = Path("/cluster/work/fuge/AISCO/bulk_storage")
 SLOW_GIF_CACHE_DIR = GUI_ROOT / "cache"
+MESH_ASSEMBLY_DIR_CANDIDATES = ("mesh_assembly_mode_v4", "mesh_assembly_mode_v3", "mesh_assembly_mode_v2", "mesh_assembly_mode")
 
 PROCESS_LOCK = threading.Lock()
 STATE: dict[str, subprocess.Popen[str] | None] = {"run_local_process": None}
@@ -135,6 +157,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
 
                 start_stamp = datetime.now().isoformat(timespec="seconds")
                 run_label = "random assembly_id" if assembly_id is None else f"assembly_id={assembly_id}"
+                RUN_LOCAL_LOG.parent.mkdir(parents=True, exist_ok=True)
                 RUN_LOCAL_LOG.write_text(
                     f"[{start_stamp}] Starting run_local.sh ({run_label})\n\n",
                     encoding="utf-8",
@@ -252,12 +275,12 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             )
             return
 
-        mesh_assembly_dir = run_dir / "mesh_assembly_mode_v2"
+        mesh_assembly_dir = self._find_mesh_assembly_dir(run_dir)
         solar_loss_dir = run_dir / "solar_loss_rendering"
         mesh_dir = run_dir / "meshes"
 
         gifs = []
-        if mesh_assembly_dir.exists():
+        if mesh_assembly_dir is not None and mesh_assembly_dir.exists():
             for gif_path in sorted(mesh_assembly_dir.glob("*.gif"), key=lambda p: p.stat().st_mtime, reverse=True):
                 rel_path = gif_path.resolve().relative_to(storage_root.resolve()).as_posix()
                 gifs.append(
@@ -421,8 +444,17 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
             return 100
 
     @staticmethod
+    def _find_mesh_assembly_dir(run_path: Path) -> Path | None:
+        for candidate in MESH_ASSEMBLY_DIR_CANDIDATES:
+            candidate_dir = run_path / candidate
+            if candidate_dir.exists() and candidate_dir.is_dir():
+                return candidate_dir
+        return None
+
+    @staticmethod
     def _has_any_gif_artifacts(run_path: Path) -> bool:
-        mesh_assembly_gifs = list((run_path / "mesh_assembly_mode").glob("*.gif"))
+        mesh_assembly_dir = GUIRequestHandler._find_mesh_assembly_dir(run_path)
+        mesh_assembly_gifs = [] if mesh_assembly_dir is None else list(mesh_assembly_dir.glob("*.gif"))
         solar_loss_gifs = list((run_path / "solar_loss_rendering").glob("*.gif"))
         return bool(mesh_assembly_gifs or solar_loss_gifs)
 
@@ -431,15 +463,23 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
         return self._has_any_gif_artifacts(run_path) or bool(meshes)
 
     def _collect_candidate_logs(self) -> list[Path]:
-        logs_dir = GUI_ROOT / "logs"
         candidate_logs: list[Path] = []
+        logs_dirs = [GUI_ROOT / "logs"]
+        legacy_logs_dir = LEGACY_GUI_ROOT / "logs"
+        if legacy_logs_dir != logs_dirs[0]:
+            logs_dirs.append(legacy_logs_dir)
+
         if RUN_LOCAL_LOG.exists():
             candidate_logs.append(RUN_LOCAL_LOG)
-        if logs_dir.exists():
+
+        for logs_dir in logs_dirs:
+            if not logs_dir.exists():
+                continue
             historical_logs = sorted(logs_dir.glob("run_local_*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
             for path in historical_logs:
                 if path not in candidate_logs:
                     candidate_logs.append(path)
+
         return candidate_logs
 
     def _get_fallback_run_from_logs(self) -> Path | None:
@@ -469,7 +509,7 @@ class GUIRequestHandler(SimpleHTTPRequestHandler):
                 continue
             for child in model_dir.iterdir():
                 has_meshes = (child / "meshes").exists()
-                has_mesh_assembly = (child / "mesh_assembly_mode").exists()
+                has_mesh_assembly = self._find_mesh_assembly_dir(child) is not None
                 if child.is_dir() and (has_meshes or has_mesh_assembly):
                     run_dirs.append(child)
         return run_dirs
@@ -552,7 +592,7 @@ def create_server(host: str, start_port: int, max_tries: int = 20) -> tuple[Thre
 
 
 def main() -> None:
-    templates_dir = Path(__file__).resolve().parent / "templates"
+    templates_dir = TEMPLATES_DIR
 
     if not templates_dir.exists():
         print(f"Warning: {templates_dir} not found. Static files may not serve correctly.")
