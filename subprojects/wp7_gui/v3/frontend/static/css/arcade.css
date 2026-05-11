@@ -20,6 +20,11 @@
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
+    animation-play-state: paused;
+}
+
+#arcadeCover.arcade-hidden * {
+    animation-play-state: paused;
 }
 
 @keyframes arcade-bg-drift {
