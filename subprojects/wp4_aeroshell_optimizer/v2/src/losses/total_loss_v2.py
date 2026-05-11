@@ -139,8 +139,6 @@ class TotalLossV2:
 
         # Per-loss vertex gradient buffers (populated by _capture_vertex_grads_via_autograd after compute()).
         self._visu_per_loss_grads: dict[str, torch.Tensor] = {}
-        self._visu_primary_v: torch.Tensor | None = None
-        self._visu_primary_f: torch.Tensor | None = None
 
         # Propagate vis_manager to all active child loss instances (e.g. GaotLoss, BbV3, SolarLoss).
         if self._vis_manager is not None:
@@ -405,75 +403,34 @@ class TotalLossV2:
     ) -> dict[str, Any] | None:
         """Return per-loss dL/dv captured during the last `compute()` call.
 
-        Returns None if no loss had an autograd path to the primary mesh. Otherwise:
+        Returns None if no loss had an autograd path to its mesh vertices. Otherwise:
             {
-              "vertices":         (V, 3) primary mesh vertices,
+              "vertices":         (V, 3) primary mesh vertices (first per-loss mesh),
               "faces":            (F, 3) primary mesh faces,
               "per_loss":         {loss_name: (V, 3) dL/dv},
               "per_loss_meshes":  {loss_name: (verts, faces)} mesh for each loss
                                   (each loss may use its own extractor),
             }
 
-        The "primary mesh" is owned by TotalLossV2 itself: it is extracted once via
-        any active `MeshSDFExtractor` (see `_extract_primary_visu_mesh`) and reused
-        by every loss that goes through that extractor. Losses that don't sample on
-        the SDF mesh (eikonal, smoothness, …) have no autograd path to it; they're
-        silently absent from `per_loss` rather than producing a misleading panel.
-
-        The previous weighted-sum (`"total"`) entry was removed: it mixed losses
-        defined on meshes with different resolutions and bbox extents, so the
-        combined per-vertex gradient was meaningless.
+        The primary mesh is taken from the first entry in `per_loss_meshes` — the mesh
+        that was actually used when computing that loss. Losses without a mesh autograd
+        path (eikonal, smoothness, …) are silently absent from `per_loss`.
         """
         if not getattr(self, "_visu_diag_logged", False):
             self._visu_diag_logged = True
-            v = self._visu_primary_v
-            v_state = (
-                "None" if v is None else f"shape={tuple(v.shape)} requires_grad={v.requires_grad} grad_fn={v.grad_fn is not None}"
-            )
-            print(f"[VisuDiag V2] primary_mesh={v_state} per_loss_grads_keys={list(self._visu_per_loss_grads.keys())}")
-        if not self._visu_per_loss_grads or self._visu_primary_v is None:
+            print(f"[VisuDiag V2] per_loss_grads_keys={list(self._visu_per_loss_grads.keys())} per_loss_meshes_keys={list(getattr(self, '_visu_per_loss_meshes', {}).keys())}")
+        _per_loss_meshes = getattr(self, "_visu_per_loss_meshes", {})
+        if not self._visu_per_loss_grads or not _per_loss_meshes:
             return None
-        # The weighted-sum (`__total__`) gradient panel was removed because it
-        # mixes losses with different mesh resolutions and was misleading; only
-        # per-loss panels are produced now. `weights_by_name` is kept on the
-        # signature for backward compatibility with callers.
+        # `weights_by_name` is kept on the signature for backward compatibility with callers.
         del weights_by_name
+        _primary_v, _primary_f = next(iter(_per_loss_meshes.values()))
         return {
-            "vertices": self._visu_primary_v,
-            "faces": self._visu_primary_f,
+            "vertices": _primary_v,
+            "faces": _primary_f,
             "per_loss": dict(self._visu_per_loss_grads),
-            "per_loss_meshes": dict(getattr(self, "_visu_per_loss_meshes", {})),
+            "per_loss_meshes": dict(_per_loss_meshes),
         }
-
-    def _extract_primary_visu_mesh(self, model: SupportsModelContract) -> None:
-        """Extract one primary mesh for the visualiser via any available extractor.
-
-        Reuses the result of `_inject_shared_meshes` when it ran (≥ 2 extractors).
-        Otherwise calls `extract_mesh` on whichever extractor is registered and
-        injects the result back into that extractor with `set_shared_mesh`, so the
-        single mesh-using loss reuses the exact same `(verts, faces)` tensors —
-        which means `autograd.grad(L_k, verts)` is well-defined for that loss.
-        """
-        self._visu_primary_v = None
-        self._visu_primary_f = None
-        extractors = self._find_mesh_extractors()
-        if not extractors:
-            return
-        # If _inject_shared_meshes already extracted a primary, reuse it.
-        for ext in extractors.values():
-            shared = getattr(ext, "_shared_vertices", None)
-            shared_f = getattr(ext, "_shared_faces", None)
-            if shared is not None and shared_f is not None:
-                self._visu_primary_v = shared
-                self._visu_primary_f = shared_f
-                return
-        # Otherwise extract once with the first extractor and pin it.
-        first_ext = next(iter(extractors.values()))
-        verts, faces = first_ext.extract_mesh(model)
-        first_ext.set_shared_mesh(verts, faces)
-        self._shared_mesh_extractors = extractors  # ensure clear_shared_mesh() runs.
-        self._visu_primary_v = verts
-        self._visu_primary_f = faces
 
     def _capture_vertex_grads_via_autograd(self, bundle: RawLossBundle) -> None:
         """Collect dL/dv for every loss whose extractor produced one this step.
@@ -520,7 +477,6 @@ class TotalLossV2:
             RawLossBundle with unweighted objective, constraint, and aux tensors
             grouped by category.
         """
-        self._extract_primary_visu_mesh(model)
         self._inject_shared_meshes(model)
         bundle = RawLossBundle()
         self._skipped_log_zeros: dict[str, float] = {}

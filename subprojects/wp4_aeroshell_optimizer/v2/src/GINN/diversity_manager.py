@@ -872,11 +872,9 @@ class DiversityTrainer:
         if self._rendering_freq is None or epoch % self._rendering_freq != 0:
             return
 
-        verts, faces = self._mesh_extractor.extract_mesh(sdf_model=self._model)
-
-        # Pull per-loss dL/dv buffers stashed during the most recent compute().
-        # When available we prefer the loss-extracted mesh so vertex grads align
-        # exactly with the rendered geometry.
+        # Reuse the mesh already captured by the gradient pipeline; only
+        # fall back to a fresh extraction when no grad payload is available
+        # (calibration mode, first epoch before any extractor ran, etc.).
         grads_payload = self._total_loss.collect_vertex_grads_for_visualisation(
             weights_by_name=self._total_loss._manual_weights,
         )
@@ -890,6 +888,8 @@ class DiversityTrainer:
             per_loss_meshes = grads_payload.get("per_loss_meshes", {})
             extra_state["vertice_grads_per_loss"] = per_loss_grads
             extra_state["vertice_meshes_per_loss"] = per_loss_meshes
+        else:
+            verts, faces = self._mesh_extractor.extract_mesh(sdf_model=self._model)
         # Visualization: write PLY for every population slot
         if self._vis_manager is not None:
             for i in range(self._population_size):
