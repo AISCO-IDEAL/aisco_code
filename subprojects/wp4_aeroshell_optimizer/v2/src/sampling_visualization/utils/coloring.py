@@ -183,3 +183,50 @@ def solid_rgb(n_verts: int, rgb: tuple[float, float, float]) -> np.ndarray:
         (N, 3) float32 array with the same color repeated for every vertex.
     """
     return np.tile(np.array(rgb, dtype=np.float32), (n_verts, 1))
+
+
+_DARK_BLUE: tuple[float, float, float] = (0.0, 0.0, 139.0 / 255.0)
+
+
+def resolve_mesh_rgb(
+    scalars: np.ndarray | None,
+    n_verts: int,
+    n_faces: int,
+    faces_np: np.ndarray | None,
+    verts_np: np.ndarray,
+    type_cfg: dict,
+) -> np.ndarray:
+    """Map per-vertex or per-face scalars to an (N, 3) float32 RGB array.
+
+    Falls back to uniform dark-blue when scalars are None, colormap is null,
+    or the scalar shape doesn't match vertices or faces.
+
+    Args:
+        scalars: 1-D scalar array (n_verts or n_faces entries), or None.
+        n_verts: Number of mesh vertices.
+        n_faces: Number of mesh faces.
+        faces_np: (F, 3) int face index array, needed for face→vertex averaging.
+        verts_np: (V, 3) float vertex array, needed for area-weighted averaging.
+        type_cfg: Visual-type config dict with 'colormap', 'vmin', 'vmax' keys.
+    """
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.mesh_ops import (  # noqa: PLC0415
+        face_scalars_to_vertex,
+    )
+
+    if scalars is None:
+        return solid_rgb(n_verts, _DARK_BLUE)
+
+    sv = np.asarray(scalars, dtype=np.float32).reshape(-1)
+
+    if sv.shape[0] == n_verts:
+        vertex_scalars = sv
+    elif sv.shape[0] == n_faces and faces_np is not None:
+        vertex_scalars = face_scalars_to_vertex(sv, faces_np, verts_np)
+    else:
+        return solid_rgb(n_verts, _DARK_BLUE)
+
+    colormap: str | None = type_cfg.get("colormap")
+    if colormap is None:
+        return solid_rgb(n_verts, _DARK_BLUE)
+
+    return map_scalar_to_rgb_mpl(vertex_scalars, colormap, vmin=type_cfg.get("vmin"), vmax=type_cfg.get("vmax"))

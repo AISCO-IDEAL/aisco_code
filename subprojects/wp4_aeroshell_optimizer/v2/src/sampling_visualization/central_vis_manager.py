@@ -242,6 +242,12 @@ class CentralVisManager:
     # Public API
     # ------------------------------------------------------------------
 
+    def is_enabled(self, visual_type: str) -> bool:
+        """Return True if visual_type is enabled in config (fast, no I/O)."""
+        if self._active_slot is not None and "/slot_" not in visual_type:
+            visual_type = f"{visual_type}/slot_{self._active_slot:02d}"
+        return self._type_config(visual_type) is not None
+
     def set_active_slot(self, slot_idx: int | None) -> None:
         """Set (or clear) the active population slot.
 

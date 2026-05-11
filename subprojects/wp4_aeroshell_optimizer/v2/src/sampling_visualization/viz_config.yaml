@@ -32,11 +32,17 @@ extras:
   coordinate_system: false       # merge coordinate-frame axes into each PLY
   coordinate_system_scale: 0.1  # axis length as fraction of bounding-box diagonal
 
+# --- Vis-resolution mesh extraction (make_vis_extractor) ---
+vis_extraction:
+  resolution: 64            # marching-cubes grid resolution for vis; 64 is fast, 128 is high quality
+  bbox_scale_factor: 1.6   # vis bbox = outer-prism bounds scaled by this factor
+
 # --- GIF auto-generation settings (central_vis_manager.finalize) ---
 gif:
   enabled: true
   fps: 10
-  max_frames: 200   # downsample sequence if it exceeds this; null = no limit
+  max_frames: 200     # downsample sequence if it exceeds this; null = no limit
+  pool_workers: 1     # subprocess count for GIF rendering; keep at 1 on HPC (EGL context conflicts)
 
 # --- Per-visual-type settings ---
 # Keys follow the visual_type string passed to CentralVisManager.save_ply().
@@ -70,7 +76,7 @@ visual_types:
       vmax: 1.0
 
     gradient:
-      enabled: true        # deferred — no caller milestone in this plan
+      enabled: false       # aalthaus: did this ever work?
       colormap: "magma"
       interval: 1
       alpha_enabled: null
@@ -113,6 +119,15 @@ visual_types:
     alpha_enabled: null
     coordinate_system: null
     vmin: 0.0
+    vmax: null
+
+  mesh_assembly_v4:
+    enabled: true
+    colormap: null          # colours specified per-component via method arguments
+    interval: 1
+    alpha_enabled: true
+    coordinate_system: null
+    vmin: null
     vmax: null
 
   latent:

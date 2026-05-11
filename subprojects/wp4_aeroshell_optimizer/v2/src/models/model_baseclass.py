@@ -13,6 +13,7 @@ from torch.profiler import record_function
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     DebugManager,
     collect_alm_state,
@@ -26,9 +27,10 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import allround_save_data
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Wrapper
+from subprojects.wp5.unified_mesh_extraction.sdf2mesh import MeshSDFExtractor
 
 if TYPE_CHECKING:
-    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager import CentralVisManager
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
     from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
 
 
@@ -81,7 +83,7 @@ class BaseModel(nn.Module):
         debug_manager: DebugManager | None = None,
         conflict_tracker: GradientConflictTracker | None = None,
         conflict_cadence: int = 0,
-        vis_manager: CentralVisManager | None = None,
+        vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
         prof: torch.profiler.profile | None = None,
     ) -> None:
         if training_config is None:
@@ -90,6 +92,16 @@ class BaseModel(nn.Module):
         self.train()
 
         dbg = debug_manager if debug_manager is not None else DebugManager(config={"GLOBAL_DEBUG": False})
+        # Prepare a MeshSDFExtractor instance. Prefer the vis_manager-provided
+        # extractor when available (CentralVisManagerV2 returns one); otherwise
+        # fall back to a local MeshSDFExtractor. Declare the variable once to
+        # avoid mypy redefinition errors.
+        visual_mesh_extractor: MeshSDFExtractor
+        if vis_manager is not None and hasattr(vis_manager, "make_vis_extractor"):
+            extractor_candidate = vis_manager.make_vis_extractor(str(next(self.parameters()).device))
+            visual_mesh_extractor = extractor_candidate if extractor_candidate is not None else MeshSDFExtractor()
+        else:
+            visual_mesh_extractor = MeshSDFExtractor()
 
         if wandb.run and "learning_rate " in wandb.config:
             learning_rate = wandb.config.learning_rate
@@ -135,6 +147,18 @@ class BaseModel(nn.Module):
                 print(f"Activating ENFORCE projection at epoch {epoch} / {num_epochs}")
                 self.enforce_layer.is_active = True
             dbg.begin_iteration(epoch)
+            # get basic visuals (such as mesh assembly)
+            vis_verts, vis_faces = None, None
+            if vis_manager.is_enabled("mesh_assembly_v4"):
+                vis_verts, vis_faces = visual_mesh_extractor.extract_mesh(sdf_model=self)
+                vis_manager.vis_mesh_assembly_v4(epoch=epoch, sdf_verts=vis_verts, sdf_faces=vis_faces)
+            if vis_manager.is_enabled("mesh_shape"):
+                vis_verts, vis_faces = (
+                    visual_mesh_extractor.extract_mesh(sdf_model=self)
+                    if vis_verts is None or vis_faces is None
+                    else (vis_verts, vis_faces)
+                )
+                vis_manager.vis_mesh_shape(epoch=epoch, verts=vis_verts, faces=vis_faces)
 
             optimizer.zero_grad()
 
