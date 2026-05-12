@@ -55,7 +55,7 @@ def _write_ply(shape: cq.Shape, path: Path) -> None:
             f.write(f"3 {tri[0]} {tri[1]} {tri[2]}\n")
 
 
-def save_ply(inner: cq.Assembly, outer: cq.Solid, vision: cq.Assembly) -> None:
+def save_ply(inner: cq.Assembly, outer: cq.Solid, vision: cq.Assembly, output_dir: Path | None = None) -> None:
     solids: list[cq.Shape] = []
     step_assembly = cq.Assembly(name="assembly")
 
@@ -72,8 +72,12 @@ def save_ply(inner: cq.Assembly, outer: cq.Solid, vision: cq.Assembly) -> None:
         print("[WARNING] No enabled geometry to export to assembly.ply or assembly.step.")
         return
 
-    _write_ply(cq.Compound.makeCompound(solids), _PLY_OUTPUT_PATH)
-    step_assembly.save(str(_STEP_OUTPUT_PATH), exportType="STEP")
+    ply_path = (output_dir / "assembly.ply") if output_dir else _PLY_OUTPUT_PATH
+    step_path = (output_dir / "assembly.step") if output_dir else _STEP_OUTPUT_PATH
+    if output_dir:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    _write_ply(cq.Compound.makeCompound(solids), ply_path)
+    step_assembly.save(str(step_path), exportType="STEP")
 
 
 def write_params(params: dict) -> None:
@@ -81,8 +85,9 @@ def write_params(params: dict) -> None:
         yaml.dump(params, f, default_flow_style=False)
 
 
-def read_params() -> dict:
-    with _PARAMS_PATH.open("r") as f:
+def read_params(params_path: Path | None = None) -> dict:
+    source_path = params_path or _PARAMS_PATH
+    with source_path.open("r") as f:
         return yaml.safe_load(f) or {}
 
 
@@ -92,8 +97,10 @@ def read_checks() -> str:
     return _CHECKS_OUTPUT_PATH.read_text()
 
 
-def _write_checks(messages: list[str]) -> None:
-    with _CHECKS_OUTPUT_PATH.open("w") as f:
+def _write_checks(messages: list[str], output_dir: Path | None = None) -> None:
+    checks_path = (output_dir / "checks.txt") if output_dir else _CHECKS_OUTPUT_PATH
+    checks_path.parent.mkdir(parents=True, exist_ok=True)
+    with checks_path.open("w") as f:
         if messages:
             f.write("\n".join(messages))
             f.write("\n")
@@ -210,7 +217,7 @@ def _vision_nbz_from_dict(params: dict) -> cq.Assembly:
     return assy
 
 
-def _check_validity(params: dict) -> list[str]:
+def _check_validity(params: dict, output_dir: Path | None = None) -> list[str]:
     messages: list[str] = []
 
     def warn(message: str) -> None:
@@ -285,17 +292,23 @@ def _check_validity(params: dict) -> list[str]:
             f"[WARNING] Ground violation: seat bottom ({seat_bottom:.1f} mm) is below the wheel clearance plane ({wheel_clearance:.1f} mm)."
         )
 
-    _write_checks(messages)
+    _write_checks(messages, output_dir=output_dir)
     return messages
 
 
-def call_assembly_from_params() -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
+def call_assembly_from_params(output_dir: Path | None = None) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
     """
     Reads parameters.yaml and returns the same tuple as call_assembly() in nbz.py:
     (cut_inner_assembly, cut_outer_nbz_solid, vision_assembly)
+
+    Args:
+        output_dir: Optional directory to write assembly.ply, assembly.step, and checks.txt.
+            If provided, parameters are also read from output_dir/parameters.yaml.
+            If None, reads/writes in the wp2 folder (backward compatible default).
     """
-    params = read_params()
-    _check_validity(params)
+    params_path = (output_dir / "parameters.yaml") if output_dir else None
+    params = read_params(params_path=params_path)
+    _check_validity(params, output_dir=output_dir)
 
     ground_clearance = get_regulation("no_build_zones.outer_prism.ground_clearance")
     wheel_clearance = get_regulation("no_build_zones.outer_prism.wheel_clearance")
@@ -352,20 +365,24 @@ def call_assembly_from_params() -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
     vision = _vision_nbz_from_dict(params) if _EXPORT_VISION else cq.Assembly()
 
     result = cut_inner_assembly, outer_solid, vision
-    save_ply(*result)
+    save_ply(*result, output_dir=output_dir)
     return result
 
 
-def add_current_gui_assembly_to_map() -> int | None:
+def add_current_gui_assembly_to_map(output_dir: Path | None = None) -> int | None:
     """
     Add the current GUI parameters to assembly_map.yaml only if all checks pass.
 
+    Args:
+        output_dir: Optional directory for writing checks.txt (passed to _check_validity).
+            If provided, parameters are read from output_dir/parameters.yaml.
+
     Returns:
-        New assembly ID if the layout w
-        as added, otherwise None.
+        New assembly ID if the layout was added, otherwise None.
     """
-    params = read_params()
-    messages = _check_validity(params)
+    params_path = (output_dir / "parameters.yaml") if output_dir else None
+    params = read_params(params_path=params_path)
+    messages = _check_validity(params, output_dir=output_dir)
     if messages:
         print("[INVALID] Current GUI assembly was not added to assembly_map.yaml.")
         return None
