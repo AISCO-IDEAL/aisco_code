@@ -190,7 +190,7 @@ SolarLossConfigSRRT:
   _lambda: 1.0
   eps: 1e-12
   use_activation_checkpointing: false
-  raytracing_version: "v3"  # Uses RaytracingConfigV3 from raytracing_config.yaml
+  raytracing_version: "v4"  # Uses RaytracingConfigV3 from raytracing_config.yaml
 
 # V2: uses RaytracingConfigV4 (chunk-level checkpointing, O(F) memory) at resolution 128.
 # To activate: set raytracing_version: "v4" in SolarLossConfigSRRT, or point active_configs.solar
