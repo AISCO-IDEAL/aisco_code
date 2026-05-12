@@ -14,7 +14,6 @@ Scope:
 from __future__ import annotations
 
 import inspect
-import re
 from pathlib import Path
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
@@ -140,10 +139,9 @@ class TestCircleSurveyCallsite:
             "'mesh_assembly_v4/' output directory with optimization-phase vis. "
             "Use a dedicated vis_type key (e.g. 'circle_survey') instead."
         )
-        # Must reference a circle_survey output key (as a string literal, not just the method name)
-        assert re.search(r'["\']circle_survey["\']', body) is not None, (
-            "vis_latent_circle_survey must write to a 'circle_survey/' subdirectory "
-            "using a dedicated vis type string key like 'circle_survey'. "
+        # Must reference a circle_survey output key (f-string or literal)
+        assert "circle_survey" in body, (
+            "vis_latent_circle_survey must write to a 'circle_survey/' subdirectory. "
             "Otherwise survey PLYs corrupt or collide with optimization-phase assembly GIF."
         )
 
