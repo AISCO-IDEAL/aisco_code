@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=Main_v2
-#SBATCH --time=01:00:00                   # Extended for adaptive mesh extraction (L=4)
+#SBATCH --job-name=CVM2_Diversity_gradients_per_slot
+#SBATCH --time=06:00:00                   # Extended for adaptive mesh extraction (L=4)
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=8G                  # Total 40G memory
@@ -88,6 +88,10 @@ export no_proxy=$(echo "${no_proxy:-}" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export NO_PROXY=$(echo "${NO_PROXY:-}" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export PYTHONUNBUFFERED=TRUE
 ## export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True # Allow PyTorch to expand GPU memory allocation as needed
+# Redirect W&B local run data to scratch to avoid home-directory quota issues
+export WANDB_DIR="/cluster/scratch/$USERNAME/wandb_runs"
+export WANDB_CACHE_DIR="/cluster/scratch/$USERNAME/wandb_cache"
+mkdir -p "$WANDB_DIR" "$WANDB_CACHE_DIR"
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:${PYTHONPATH:-}"
 cd /cluster/home/$USERNAME/AISCO_code/
 ts "Checkpoint: changed directory to $(pwd)"
@@ -96,9 +100,7 @@ ts "Checkpoint: changed directory to $(pwd)"
 #python -m src.main
 
 ts "Checkpoint: launching main_v2.py with hard timeout"
-if timeout --signal=TERM --kill-after=30s 13800s "$PYTHON_BIN" -u subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py \
-    --save_model \
-    --problem_id="AISCO_WP4_Test1"  2>&1
+if timeout --signal=TERM --kill-after=30s 13800s "$PYTHON_BIN" -u subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py 2>&1
 then
     ts "Checkpoint: main_v2.py finished successfully"
 else
@@ -109,6 +111,19 @@ else
         ts "ERROR: main_v2.py exited non-zero (rc=$rc)"
     fi
     exit "$rc"
+fi
+
+# Rename log file to include W&B run name if available
+RUN_NAME_FILE="/tmp/wandb_run_name_${SLURM_JOB_ID}.txt"
+if [ -f "$RUN_NAME_FILE" ]; then
+    WANDB_RUN_NAME=$(cat "$RUN_NAME_FILE")
+    ORIGINAL_LOG="${LOG_DIR}/${SLURM_JOB_NAME}_${SLURM_JOB_ID}.out"
+    RENAMED_LOG="${LOG_DIR}/${SLURM_JOB_NAME}_${SLURM_JOB_ID}_${WANDB_RUN_NAME}.out"
+    if [ -f "$ORIGINAL_LOG" ]; then
+        mv "$ORIGINAL_LOG" "$RENAMED_LOG"
+        ts "Log file renamed: ${SLURM_JOB_NAME}_${SLURM_JOB_ID}.out → ${SLURM_JOB_NAME}_${SLURM_JOB_ID}_${WANDB_RUN_NAME}.out"
+    fi
+    rm -f "$RUN_NAME_FILE"
 fi
 #------------------------------------------------------------------------------
 # Print job end information

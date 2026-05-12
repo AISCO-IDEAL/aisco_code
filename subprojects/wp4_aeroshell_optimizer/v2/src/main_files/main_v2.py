@@ -46,6 +46,9 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.log_file_renamer import (
+    write_wandb_run_name_to_file,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
     configure_headless_pyvista,
 )
@@ -107,6 +110,10 @@ def main(_gui_mode: bool = False, _cfg_folder: str | None = None) -> None:  # no
             )
             # keep this for now, not sure if this is any longer required
             patch_wandb_log_for_monotonic_steps()
+
+            # Write W&B run name to file for shell script log renaming
+            write_wandb_run_name_to_file()
+
             # Separate axes keep training and rendering logs chronological
             # without forcing everything onto W&B's global step.
             wandb.define_metric("training_epoch")
