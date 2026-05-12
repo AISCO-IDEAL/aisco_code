@@ -17,7 +17,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager im
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.main_v2_utils import (
     _upload_mesh_gradient_gifs,
-    _resolve_wandb_name
+    _resolve_wandb_name,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import (
     _compute_latent_pretrain_hash,
@@ -66,9 +66,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.ginn_visual
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
 
 configure_headless_pyvista()
-
-
-
 
 
 def main(_gui_mode: bool = False, _cfg_folder: str = "") -> None:  # noqa: PLR0912, PLR0915
