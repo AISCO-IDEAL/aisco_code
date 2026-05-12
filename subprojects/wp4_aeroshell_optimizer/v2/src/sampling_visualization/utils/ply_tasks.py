@@ -49,3 +49,17 @@ def render_gif_task(type_dir: Path) -> tuple[bool, str, str | None]:
         return (True, str(type_dir), None)
     except Exception as exc:
         return (False, str(type_dir), str(exc))
+
+
+def render_survey_task(survey_dir: Path, layout: str = "strip") -> tuple[bool, str, str | None]:
+    """Render all epoch_XXXXX.ply files in *survey_dir* to a single survey.png."""
+    os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
+    try:
+        from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.survey_png import (  # noqa: PLC0415
+            generate_survey_png,
+        )
+
+        out = generate_survey_png(survey_dir, layout=layout)
+        return (True, str(out), None)
+    except Exception as exc:
+        return (False, str(survey_dir), str(exc))

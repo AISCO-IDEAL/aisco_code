@@ -32,6 +32,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.col
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.ply_tasks import (
     render_gif_task,
+    render_survey_task,
     write_ply_task,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.vis_config_helpers import (
@@ -328,8 +329,31 @@ class _BaseVisManager:
                 _log({"event": "ply_write_failed", "run_id": self.run_id, "path": path, "error": err})
         self._ply_pool.shutdown(wait=False)
 
-        gif_dirs = collect_gif_dirs(self._visual_types, self.run_dir, self._written_dirs)
-        if not gif_dirs:
+        # Circle survey snapshots: each circle_survey/epoch_XXXXX/ dir becomes a
+        # single composite PNG (strip or grid) — not a GIF.
+        survey_layout = str(
+            self._cfg.get("latent_optimisation", {})
+            .get("vis_latent_circle_survey", {})
+            .get("layout", "strip")
+        )
+        survey_dirs = sorted(
+            d for d in self._written_dirs
+            if d.is_dir()
+            and d.relative_to(self.run_dir).parts[0] == "circle_survey"
+            and any(f.name.startswith("epoch_") and f.name.endswith(".ply") for f in d.iterdir())
+        )
+        for d in survey_dirs:
+            n = sum(1 for f in d.iterdir() if f.name.startswith("epoch_") and f.name.endswith(".ply"))
+            _log({"event": "survey_png_started", "run_id": self.run_id, "dir": str(d.relative_to(self.run_dir)), "n_plys": n})
+            ok, path, err = render_survey_task(d, layout=survey_layout)
+            _log({"event": "survey_png_completed" if ok else "survey_png_failed", "run_id": self.run_id, "path": path, "error": err})
+
+        # All other visual types: convergence GIFs.
+        gif_dirs = [
+            d for d in collect_gif_dirs(self._visual_types, self.run_dir, self._written_dirs)
+            if d not in survey_dirs and d.parent not in survey_dirs
+        ]
+        if not gif_dirs and not survey_dirs:
             _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": 0})
             return
 
@@ -339,7 +363,7 @@ class _BaseVisManager:
             ok, path, err = render_gif_task(d)
             _log({"event": "gif_completed" if ok else "gif_failed", "run_id": self.run_id, "path": path, "error": err})
 
-        _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": len(gif_dirs)})
+        _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": len(gif_dirs), "survey_count": len(survey_dirs)})
 
     def __del__(self) -> None:
         with contextlib.suppress(Exception):
@@ -613,6 +637,7 @@ class CentralVisManagerV2(_BaseVisManager):
         z_radius: float = 1.0,
         n_samples: int = 8,
         device: str = "cpu",
+        epoch: int = 0,
     ) -> None:
         """Render a circle survey of the pretrained latent space.
 
@@ -625,8 +650,9 @@ class CentralVisManagerV2(_BaseVisManager):
 
         The per-survey mesh resolution is read from
         ``latent_optimisation.vis_latent_circle_survey.mesh_resolution`` (default 64).
-        The output directory is ``circle_survey/`` — separate from
-        ``mesh_assembly_v4/`` so survey PLYs never corrupt the optimisation GIF.
+        Each call writes to ``circle_survey/epoch_{epoch:05d}/`` so successive
+        cadence calls accumulate as separate subdirs and ``finalize()`` generates
+        one GIF per snapshot.  Separate from ``mesh_assembly_v4/``.
 
         Args:
             model: A model implementing ``set_latent_vector`` and compatible with
@@ -658,7 +684,9 @@ class CentralVisManagerV2(_BaseVisManager):
         mesh_resolution = int(survey_cfg.get("mesh_resolution", 64))
         extractor = self._make_survey_extractor(device=device, resolution=mesh_resolution)
 
-        vt = "circle_survey"
+        # Each call gets its own epoch-tagged subdir so cadence calls don't overwrite
+        # each other, and finalize() generates one GIF per snapshot.
+        vt = f"circle_survey/epoch_{epoch:05d}"
 
         angles = [2 * math.pi * i / n_samples for i in range(n_samples)]
         z_dim = int(getattr(model, "z_dim", 2))
@@ -690,7 +718,9 @@ class CentralVisManagerV2(_BaseVisManager):
 
             rgb = solid_rgb(len(verts_np), _DARK_BLUE_RGB)
             out_dir = self._output_dir(vt)
-            out_path = out_dir / f"angle_{idx:03d}.ply"
+            # epoch_XXXXX.ply naming so collect_gif_dirs / generate_gifs_flat
+            # pick up this dir without any special-casing.
+            out_path = out_dir / f"epoch_{idx:05d}.ply"
             future = self._ply_pool.submit(write_ply_task, out_path, verts_np, faces_np, rgb, False, 0.0)
             self._pending_ply.append(future)
             _log(
