@@ -212,55 +212,17 @@
   // ---------- Progress polling ----------
 
   // ---------- Three.js mesh viewer ----------
-  let scene3d, camera3d, renderer3d, controls3d, currentMesh3d;
-
-  function ensureViewer() {
-    if (scene3d) return;
-    import("three").then(({ Scene, Color, PerspectiveCamera, WebGLRenderer, HemisphereLight, DirectionalLight, MeshStandardMaterial, Mesh, Vector3 }) => {
-      import("three/addons/controls/OrbitControls.js").then(({ OrbitControls }) => {
-        const container = document.getElementById("meshContainer");
-        scene3d = new Scene(); scene3d.background = new Color(0xeef3f0);
-        camera3d = new PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 2000);
-        camera3d.position.set(0, 0, 3.5);
-        renderer3d = new WebGLRenderer({ antialias: true });
-        renderer3d.setSize(container.clientWidth, container.clientHeight);
-        container.appendChild(renderer3d.domElement);
-        controls3d = new OrbitControls(camera3d, renderer3d.domElement);
-        controls3d.enableDamping = true;
-        scene3d.add(new HemisphereLight(0xffffff, 0x404040, 1.0));
-        const dl = new DirectionalLight(0xffffff, 0.8); dl.position.set(1, 1, 1); scene3d.add(dl);
-        window.addEventListener("resize", () => {
-          camera3d.aspect = container.clientWidth / container.clientHeight;
-          camera3d.updateProjectionMatrix();
-          renderer3d.setSize(container.clientWidth, container.clientHeight);
-        });
-        (function animate() { requestAnimationFrame(animate); controls3d.update(); renderer3d.render(scene3d, camera3d); })();
-      });
-    });
-  }
+  let meshViewer = null;
 
   function loadAssemblyMesh() {
-    import("three").then(({ MeshStandardMaterial, Mesh, Vector3 }) => {
-      import("three/addons/loaders/PLYLoader.js").then(({ PLYLoader }) => {
-        ensureViewer();
-        meshMeta.textContent = "Loading assembly.ply…";
-        const url = `${API}/assembly-selection/mesh?pipeline=${pipeline}&t=${Date.now()}`;
-        new PLYLoader().load(url, geo => {
-          geo.computeVertexNormals(); geo.computeBoundingBox();
-          const c = new Vector3(); geo.boundingBox.getCenter(c); geo.translate(-c.x, -c.y, -c.z);
-          geo.computeBoundingBox();
-          const sz = new Vector3(); geo.boundingBox.getSize(sz);
-          const scale = Math.max(sz.x, sz.y, sz.z) > 0 ? 2.0 / Math.max(sz.x, sz.y, sz.z) : 1;
-          if (currentMesh3d) { scene3d.remove(currentMesh3d); currentMesh3d.geometry.dispose(); currentMesh3d.material.dispose(); }
-          currentMesh3d = new Mesh(geo, new MeshStandardMaterial({ color: 0x9aa3a8, roughness: 0.62, metalness: 0.18, side: 2 }));
-          currentMesh3d.scale.set(scale, scale, scale); scene3d.add(currentMesh3d);
-          camera3d.position.set(0, 0, 3.5); controls3d.target.set(0, 0, 0); controls3d.update();
-          meshPlaceholder.style.display = "none";
-          meshMeta.textContent = `Showing assembly.ply · ${new Date().toLocaleTimeString()}`;
-        }, null, () => {
-          meshPlaceholder.style.display = "block";
-          meshMeta.textContent = "No mesh yet. Move a slider to build assembly.ply.";
-        });
+    const container = document.getElementById("meshContainer");
+    const url = `${API}/assembly-selection/mesh?pipeline=${pipeline}&t=${Date.now()}`;
+    meshMeta.textContent = "Loading assembly.ply…";
+    import("/static/js/mesh_viewer.js").then(({ initMeshViewer }) => {
+      if (!meshViewer) meshViewer = initMeshViewer(container);
+      meshViewer.loadMesh(url, () => {
+        meshPlaceholder.style.display = "none";
+        meshMeta.textContent = `Showing assembly.ply · ${new Date().toLocaleTimeString()}`;
       });
     });
   }

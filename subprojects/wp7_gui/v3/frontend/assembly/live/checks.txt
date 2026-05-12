@@ -1,2 +1,1 @@
-[WARNING] Unstable assembly: seat is not enclosed by the wheel polygon.
-[WARNING] Out of bounds: seat bounding box extends outside the outer NBZ.
+OK: no check warnings.

@@ -79,13 +79,7 @@
   const formArea = document.getElementById("formArea");
   const output = document.getElementById("outputConsole");
 
-  function log(text, level = "info") {
-    const stamp = new Date().toLocaleTimeString();
-    output.textContent += `[${stamp}] ${text}\n`;
-    output.scrollTop = output.scrollHeight;
-    if (level === "error") output.className = "console error";
-    else if (level === "success") output.className = "console success";
-  }
+  const log = makeConsoleLogger(output);
 
   function updateNextHref() {
     if (!btnNext) return;

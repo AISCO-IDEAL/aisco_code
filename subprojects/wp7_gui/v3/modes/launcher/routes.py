@@ -11,13 +11,13 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from subprojects.wp7_gui.v3.core import fs_poller, sse, stdout_stream
+from subprojects.wp7_gui.v3.core import fs_poller, log_parser, sse
 from subprojects.wp7_gui.v3.core.process_manager import ProcessManager
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
 from subprojects.wp7_gui.v3.shared.assembly_selection import AssemblySelectionService
 from subprojects.wp7_gui.v3.shared.config_overrides import ConfigOverrideManager
-from subprojects.wp7_gui.v3.shared.run_paths import detect_current_run_dir, get_storage_root
+from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, detect_current_run_dir
 
 router = APIRouter(prefix="/launcher", tags=["launcher"])
 _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
@@ -35,16 +35,23 @@ _assembly_service_live = AssemblySelectionService(SETTINGS.repo_root, subdir="li
 _assembly_service_completed = AssemblySelectionService(SETTINGS.repo_root, subdir="completed")
 
 
+# Assembly ID validation bounds — keep in sync with schema/gui_schema.json
+_ASSEMBLY_ID_MIN = 1
+_ASSEMBLY_ID_MAX = 51
+
+
 def _assembly(pipeline: str) -> AssemblySelectionService:
-    return _assembly_service_completed if pipeline == "completed" else _assembly_service_live
+    if pipeline == "completed":
+        return _assembly_service_completed
+    if pipeline == "live":
+        return _assembly_service_live
+    raise ValueError(f"Unknown pipeline value '{pipeline}'. Expected 'live' or 'completed'.")
 
 _SUBPAGES = {
     "config-overrides": ("Launcher — Config Overrides", "launcher/config_overrides.html"),
     "assembly-selection": ("Launcher — Assembly Selection", "launcher/assembly_selection.html"),
     "optimization": ("Launcher — Live Run", "launcher/optimization.html"),
     "output": ("Launcher — Output", "launcher/output.html"),
-    "solar": ("Launcher — Solar (Live)", "launcher/solar.html"),
-    "testing": ("Launcher — CLI Testing", "launcher/testing.html"),
 }
 
 
@@ -69,14 +76,6 @@ class CleanupRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def _storage_root():
-    return get_storage_root(
-        SETTINGS.general_config_path,
-        SETTINGS.default_local_storage_dir,
-        SETTINGS.default_bulk_storage_dir,
-        SETTINGS.repo_root.parent,
-    )
-
 
 def _get_total_epochs() -> int:
     try:
@@ -136,8 +135,8 @@ def run_start(payload: RunStartRequest) -> JSONResponse:
             assembly_id = int(str(payload.assembly_id).strip())
         except (TypeError, ValueError):
             raise HTTPException(status_code=400, detail={"message": "assembly_id must be an integer"}) from None
-        if not 1 <= assembly_id <= 51:
-            raise HTTPException(status_code=400, detail={"message": "assembly_id must be 1-51"})
+        if not _ASSEMBLY_ID_MIN <= assembly_id <= _ASSEMBLY_ID_MAX:
+            raise HTTPException(status_code=400, detail={"message": f"assembly_id must be {_ASSEMBLY_ID_MIN}-{_ASSEMBLY_ID_MAX}"})
 
     extra_args: list[str] = []
     if payload.cfg_folder:
@@ -180,7 +179,7 @@ def run_state() -> dict[str, Any]:
 def run_logs() -> dict[str, Any]:
     state = _process_manager.get_state()
     log_path = state["log_path"]
-    logs, truncated = stdout_stream.tail_log(log_path) if log_path else ("", False)
+    logs, truncated = log_parser.tail_log(log_path) if log_path else ("", False)
     return {
         "logs": logs,
         "running": state["running"],
@@ -195,7 +194,7 @@ def run_progress() -> dict[str, Any]:
     state = _process_manager.get_state()
     log_path = state["log_path"]
     progress = (
-        stdout_stream.get_progress(log_path, _get_total_epochs())
+        log_parser.get_progress(log_path, _get_total_epochs())
         if log_path
         else {"num_epochs": _get_total_epochs(), "current_epoch": -1, "progress_percent": 0.0, "completed": False}
     )
@@ -204,7 +203,7 @@ def run_progress() -> dict[str, Any]:
 
 @router.get("/api/run/artifacts")
 def run_artifacts() -> dict[str, Any]:
-    storage_root = _storage_root()
+    storage_root = default_storage_root()
     run_dir = detect_current_run_dir(storage_root)
     if run_dir is None:
         return {
@@ -226,13 +225,13 @@ async def run_stream_logs() -> StreamingResponse:
             state = _process_manager.get_state()
             log_path = state["log_path"]
             if log_path and log_path.exists():
-                text, _ = stdout_stream.tail_log(log_path)
+                text, _ = log_parser.tail_log(log_path)
                 if len(text) != last_size:
                     new_lines = text[last_size:]
                     last_size = len(text)
                     for line in new_lines.splitlines():
                         yield sse.event("log", {"line": line})
-                    epoch = stdout_stream.parse_epoch(text)
+                    epoch = log_parser.parse_epoch(text)
                     if epoch >= 0:
                         yield sse.event("epoch", {"epoch": epoch, "total": _get_total_epochs()})
             if not state["running"]:
@@ -249,7 +248,7 @@ async def run_stream_artifacts() -> StreamingResponse:
         seen: dict[str, float] = {}
         while True:
             state = _process_manager.get_state()
-            storage_root = _storage_root()
+            storage_root = default_storage_root()
             run_dir = detect_current_run_dir(storage_root)
             if run_dir is not None:
                 new_events, seen = fs_poller.poll_once(run_dir, seen)

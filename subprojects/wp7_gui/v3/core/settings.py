@@ -38,15 +38,6 @@ class Settings:
     host: str
     port: int
 
-    # v2-compatible constants
-    gui_override_prefix: str = "gui_override_"
-    copy_exclude_subfolders: tuple[str, ...] = ("sweeps",)
-    mesh_assembly_dir_candidates: tuple[str, ...] = (
-        "mesh_assembly_mode_v4",
-        "mesh_assembly_mode_v3",
-        "mesh_assembly_mode_v2",
-        "mesh_assembly_mode",
-    )
     assembly_id_env_var: str = "AISCO_ASSEMBLY_ID"
 
 
@@ -87,7 +78,7 @@ def build_settings() -> Settings:
         cache_dir=gui_root / "cache",
         config_overrides_root=gui_root / "config_overrides",
         host="0.0.0.0",
-        port=8001,
+        port=8000,
     )
 
 

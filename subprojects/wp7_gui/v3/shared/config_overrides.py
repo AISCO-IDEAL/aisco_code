@@ -27,7 +27,7 @@ def _fetch_wp4_config_paths(wp4_configs_dir: Path, exclude: tuple[str, ...] = _C
         return all_yamls
     excluded_dirs = {(wp4_configs_dir / sub).resolve() for sub in exclude}
     return [
-        p for p in all_yamls if not any(str(p.resolve()).startswith(str(ex) + "/") or p.resolve() == ex for ex in excluded_dirs)
+        p for p in all_yamls if not any(p.resolve().is_relative_to(ex) or p.resolve() == ex for ex in excluded_dirs)
     ]
 
 

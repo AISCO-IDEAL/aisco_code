@@ -50,21 +50,10 @@
   const detailMeta = document.getElementById("detailMeta");
   const detailBody = document.getElementById("detailBody");
 
-  let storageRoot = "";
   let selectedRunPath = null;
   let meshes = [], meshIdx = 0;
 
   function fmtTime(ts) { return new Date(ts * 1000).toLocaleString(); }
-  function bust(url) { return url + (url.includes("?") ? "&" : "?") + "t=" + Date.now(); }
-
-  function relPathFromStorage(absPath) {
-    let rel = absPath;
-    if (storageRoot && absPath.startsWith(storageRoot)) {
-      rel = absPath.slice(storageRoot.length).replace(/^\/+/, "");
-    }
-    return rel;
-  }
-
   // Read cfg_session from URL — set by the Viewer pipeline flow
   const _urlParams = new URLSearchParams(window.location.search);
   const cfgSession = _urlParams.get("cfg_session") || null;
@@ -76,9 +65,8 @@
         ? `${VIEWER_API}/runs?cfg_session=${encodeURIComponent(cfgSession)}`
         : `${VIEWER_API}/runs`;
       const d = await (await fetch(runsUrl)).json();
-      storageRoot = d.storage_root || "";
       const runs = d.runs || [];
-      runCountEl.textContent = `${runs.length} run(s) · ${storageRoot}`;
+      runCountEl.textContent = `${runs.length} run(s)`;
       if (!runs.length) {
         runListEl.innerHTML = '<div style="padding:14px; color:var(--muted); font-style:italic;">No runs found in storage root.</div>';
         return;
@@ -118,7 +106,7 @@
     detailBody.innerHTML = '<div style="color:var(--muted); font-style:italic; padding:30px;">Loading artifacts…</div>';
     meshes = []; meshIdx = 0;
 
-    const runId = relPathFromStorage(r.path).split("/").map(encodeURIComponent).join("/");
+    const runId = r.run_id.split("/").map(encodeURIComponent).join("/");
     try {
       const data = await (await fetch(`${VIEWER_API}/runs/${runId}/artifacts`)).json();
       renderDetail(data);
@@ -128,6 +116,7 @@
   }
 
   function renderDetail(data) {
+    meshViewer = null;  // container is rebuilt below — force re-init
     const aGifs = data.mesh_assembly_gifs || [];
     const sGifs = data.solar_loss_gifs || [];
     meshes = data.meshes || [];
@@ -187,43 +176,18 @@
   }
 
   // ---------- Three.js mesh viewer ----------
-  let vScene, vCamera, vRenderer, vControls, vCurrent;
+  // meshViewer is reset to null each time renderDetail rebuilds the DOM so
+  // initMeshViewer attaches to the fresh container element.
+  let meshViewer = null;
 
   function load3D(url) {
-    import("three").then(({ Scene, Color, PerspectiveCamera, WebGLRenderer, HemisphereLight, DirectionalLight, MeshStandardMaterial, Mesh, Vector3 }) => {
-      import("three/addons/controls/OrbitControls.js").then(({ OrbitControls }) => {
-        import("three/addons/loaders/PLYLoader.js").then(({ PLYLoader }) => {
-          const container = document.getElementById("vMeshContainer");
-          if (!container) return;
-          if (!vScene || vRenderer.domElement.parentElement !== container) {
-            // Re-init when detail panel was rebuilt
-            vScene = new Scene(); vScene.background = new Color(0xf1f7f3);
-            vCamera = new PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
-            vCamera.position.set(0, 0, 3);
-            vRenderer = new WebGLRenderer({ antialias: true });
-            vRenderer.setSize(container.clientWidth, container.clientHeight);
-            container.appendChild(vRenderer.domElement);
-            vControls = new OrbitControls(vCamera, vRenderer.domElement);
-            vControls.enableDamping = true;
-            vScene.add(new HemisphereLight(0xffffff, 0x444444, 1.0));
-            const dl = new DirectionalLight(0xffffff, 0.8); dl.position.set(1, 1, 1); vScene.add(dl);
-            (function animate() { requestAnimationFrame(animate); vControls.update(); vRenderer.render(vScene, vCamera); })();
-            vCurrent = null;
-          }
-          new PLYLoader().load(bust(url), geo => {
-            geo.computeVertexNormals(); geo.computeBoundingBox();
-            const c = new Vector3(); geo.boundingBox.getCenter(c); geo.translate(-c.x, -c.y, -c.z);
-            geo.computeBoundingBox();
-            const sz = new Vector3(); geo.boundingBox.getSize(sz);
-            const scale = Math.max(sz.x, sz.y, sz.z) > 0 ? 2.0 / Math.max(sz.x, sz.y, sz.z) : 1;
-            if (vCurrent) { vScene.remove(vCurrent); vCurrent.geometry.dispose(); vCurrent.material.dispose(); }
-            vCurrent = new Mesh(geo, new MeshStandardMaterial({ color: 0x99A3A4, roughness: 0.6, metalness: 0.2, side: 2 }));
-            vCurrent.scale.set(scale, scale, scale); vScene.add(vCurrent);
-            vCamera.position.set(0, 0, 3.5); vControls.target.set(0, 0, 0); vControls.update();
-            const ph = document.getElementById("vMeshPlaceholder");
-            if (ph) ph.style.display = "none";
-          }, null, err => console.error("PLY:", err));
-        });
+    const container = document.getElementById("vMeshContainer");
+    if (!container) return;
+    import("/static/js/mesh_viewer.js").then(({ initMeshViewer }) => {
+      if (!meshViewer) meshViewer = initMeshViewer(container);
+      meshViewer.loadMesh(bust(url), () => {
+        const ph = document.getElementById("vMeshPlaceholder");
+        if (ph) ph.style.display = "none";
       });
     });
   }

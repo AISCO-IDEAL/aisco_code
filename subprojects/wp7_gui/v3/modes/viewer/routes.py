@@ -12,20 +12,11 @@ from fastapi.templating import Jinja2Templates
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
 from subprojects.wp7_gui.v3.shared.pretraining import PretrainingService
-from subprojects.wp7_gui.v3.shared.run_paths import get_storage_root, list_all_runs
+from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, list_all_runs
 
 router = APIRouter(prefix="/viewer", tags=["viewer"])
 _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
 _pretraining = PretrainingService(SETTINGS.pretraining_storage_root)
-
-
-def _storage_root():
-    return get_storage_root(
-        SETTINGS.general_config_path,
-        SETTINGS.default_local_storage_dir,
-        SETTINGS.default_bulk_storage_dir,
-        SETTINGS.repo_root.parent,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +53,7 @@ def viewer_pretraining(request: Request):
 # ---------------------------------------------------------------------------
 @router.get("/api/runs")
 def api_list_runs(cfg_session: str | None = None) -> dict[str, Any]:
-    storage_root = _storage_root()
+    storage_root = default_storage_root()
     runs = list_all_runs(storage_root)
     if cfg_session is not None:
         runs = [r for r in runs if r.get("cfg_session") == cfg_session]
@@ -76,7 +67,7 @@ def api_run_artifacts(run_id: str) -> dict[str, Any]:
     run_id is the URL-encoded relative path from storage_root:
     e.g.  model_hash%2Fwandb_run_name
     """
-    storage_root = _storage_root()
+    storage_root = default_storage_root()
     run_dir = (storage_root / unquote(run_id)).resolve()
     try:
         run_dir.relative_to(storage_root.resolve())

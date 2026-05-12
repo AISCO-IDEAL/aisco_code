@@ -92,5 +92,13 @@
     const state = await (await fetch(`${API}/run/state`)).json();
     if (state.running) { btnRun.disabled = true; btnStop.disabled = false; startSSELog(); }
   })();
+
+  // 3h: Inform the user when no config override session is active (intentional UX fix)
+  if (!localStorage.getItem("aiscoOverrideFolderV3")) {
+    const notice = document.createElement("div");
+    notice.style.cssText = "font-size:0.82rem;color:#f8d9d9;padding:4px 10px;background:rgba(200,100,0,0.25);border-radius:4px;white-space:nowrap;";
+    notice.textContent = "No config override session active \u2014 go to Config Overrides to set one.";
+    document.querySelector(".toolbar").appendChild(notice);
+  }
 </script>
 {% endblock %}
