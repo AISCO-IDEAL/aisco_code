@@ -7,6 +7,7 @@ import torch.nn.functional as F  # noqa: N812
 import yaml
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.solar_loss.solar_SR import SolarSR
+from subprojects.wp4_aeroshell_optimizer.v2.src.losses.solar_loss.solar_SRRT import SolarSRRT
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.solar_loss.solar_v3B import SolarV3B
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.solar_loss.solar_v3B_2 import SolarV3B2
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.solar_loss.solar_v5 import SolarV5
@@ -124,6 +125,7 @@ SOLAR_LOSS_REGISTRY = {
     "SolarV6":   SolarV6,
     "SolarV7":   SolarV7,
     "SolarSR":   SolarSR,
+    "SolarSRRT": SolarSRRT,
 }
 
 
