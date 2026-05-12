@@ -15,7 +15,11 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is
 
 
 def _resolve_wandb_name(name_cfg: Any, run_locally: bool) -> str | None:  # noqa: PLR0911
-    """Resolve wandb run name from config and runtime environment."""
+    """Resolve wandb run name from config and runtime environment.
+    
+    Returns None to let wandb auto-generate a name, which is then appended with
+    the SLURM job ID if on Euler.
+    """
     if name_cfg is None:
         return None
 
@@ -36,6 +40,11 @@ def _resolve_wandb_name(name_cfg: Any, run_locally: bool) -> str | None:  # noqa
             return f"local-{os.getpid()}"
         slurm_job_id = os.environ.get("SLURM_JOB_ID")
         return f"euler-{slurm_job_id}" if slurm_job_id else None
+
+    if not run_locally:
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        if slurm_job_id and not raw.endswith(f"_{slurm_job_id}"):
+            return f"{raw}_{slurm_job_id}"
 
     return raw
 

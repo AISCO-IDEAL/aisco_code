@@ -114,6 +114,14 @@ def main(_gui_mode: bool = False, _cfg_folder: str = "") -> None:  # noqa: PLR09
                 name=wandb_run_name,
                 config=general_config,
             )
+            # On Euler, append job ID to wandb's auto-generated name for uniqueness
+            if not run_locally:
+                slurm_job_id = os.environ.get("SLURM_JOB_ID")
+                if slurm_job_id and wandb.run is not None:
+                    generated_name = wandb.run.name
+                    if generated_name and not generated_name.endswith(f"_{slurm_job_id}"):
+                        new_name = f"{generated_name}_{slurm_job_id}"
+                        wandb.run.name = new_name
             # keep this for now, not sure if this is any longer required
             patch_wandb_log_for_monotonic_steps()
             # Separate axes keep training and rendering logs chronological
