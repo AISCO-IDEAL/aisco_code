@@ -97,6 +97,12 @@ def solar_loss_sr(
             faces,
             soft_mask_original_order,
         )
+        vis_manager.vis_solar_quality(
+            int(epoch_name),
+            vertices,
+            faces,
+            sorted_quality[original_order],
+        )
 
     faces_near_boundary = (soft_mask > 0.1) & (soft_mask < 0.9)
     budget_crossover_idx = (

@@ -362,6 +362,22 @@ class CentralVisManagerV2(_BaseVisManager):
         cp_np = _to_f64(cp_values).astype(np.float32).reshape(-1)
         rgb = resolve_mesh_rgb(cp_np, len(verts_np), len(faces_np), faces_np, verts_np, type_cfg)
         self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
+    
+    def vis_solar_quality(self, epoch: int, verts: Any, faces: Any, quality_values: Any) -> None:
+        
+        vt = self._slotted("solar/quality")
+        type_cfg = vis_type_config(self._visual_types, vt)
+        if type_cfg is None:
+            return
+        verts_np, faces_np = _to_f64(verts), _to_i32(faces)
+        quality_np = _to_f64(quality_values).astype(np.float32).reshape(-1)
+        #scale quality from -1,1 to 0,1 for better colormap resolution
+        quality_np = (quality_np + 1.0) / 2.0
+        rgb = resolve_mesh_rgb(quality_np, len(verts_np), len(faces_np), faces_np, verts_np, type_cfg)
+        self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
+
+    """
+
 
     def vis_solar_selection(self, epoch: int, verts: Any, faces: Any, weights: Any) -> None:
         vt = self._slotted("solar/selection")

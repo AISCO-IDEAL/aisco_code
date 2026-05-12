@@ -85,6 +85,14 @@ visual_types:
       vmax: null
 
   solar:
+    quality: 
+      enabled: true
+      colormap: "hot"    # [0,1] bounded selection weight
+      interval: 1
+      alpha_enabled: null
+      coordinate_system: null
+      vmin: 0.0
+      vmax: 1.0
     selection:
       enabled: true
       colormap: "bwr"    # [0,1] bounded selection weight
