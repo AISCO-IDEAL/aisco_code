@@ -111,10 +111,10 @@ def main(_gui_mode: bool = False, _cfg_folder: str | None = None) -> None:  # no
             # keep this for now, not sure if this is any longer required
             patch_wandb_log_for_monotonic_steps()
 
-            # Rename log file IMMEDIATELY after W&B init to include run name
-            print("[CHECKPOINT] About to call rename_log_file_with_wandb_run_name()", flush=True)
+            # Rename log file immediately to include W&B run name.
+            # On Linux, renaming an open file follows the inode, so SLURM
+            # continues writing to the file under its new name.
             rename_log_file_with_wandb_run_name()
-            print("[CHECKPOINT] rename_log_file_with_wandb_run_name() completed", flush=True)
 
             # Separate axes keep training and rendering logs chronological
             # without forcing everything onto W&B's global step.
@@ -259,6 +259,7 @@ def main(_gui_mode: bool = False, _cfg_folder: str | None = None) -> None:  # no
                     z_radius=float(_survey_cfg.get("z_radius", 2.0)),
                     n_samples=int(_survey_cfg.get("n_circle_samples", 90)),
                     device=str(device),
+                    epoch=0,
                 )
 
     else:

@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=main_v2 #CVM2_Diversity_gradients_per_slot
+#SBATCH --job-name=CVM2_Diversity_gradients_per_slot_grid_vis
 #SBATCH --time=01:00:00                   # Extended for adaptive mesh extraction (L=4)
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=8G                  # Total 40G memory
 #SBATCH --gpus=pro_6000:1
-#SBATCH --output=/cluster/scratch/%u/logs/%x_%j_temp.out
+#SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=%u@ethz.ch
 ## run this command: sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts/main_testing.sh
