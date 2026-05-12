@@ -1,8 +1,7 @@
 """
 Solar SR wrapper: single fixed sun direction, no raytracing.
 
-Returns positive solar power in watts (scaled by power_conversion_factor).
-Gradients are preserved through the mesh_sdf surrogate path.
+Returns solar power in watts. Gradients are preserved through the mesh_sdf surrogate path.
 """
 
 from __future__ import annotations
@@ -27,10 +26,8 @@ class SolarSR(ParentLoss):
         cfg = load_config(v="v2", cfg_name=cfg_path)["SolarLossConfigSR"]
 
         self.area_budget_mm2 = float(cfg["area_budget_mm2"])
-        self.power_conversion_factor = float(cfg.get("power_conversion_factor", 1.0))
         self.sun_dir = torch.tensor(cfg["sun_dir"], dtype=torch.float32)
-        self.solar_irradiance_W_m2 = float(cfg.get("solar_irradiance_W_m2", 1000.0))
-        self.efficiency = float(cfg.get("efficiency", 0.25))
+        self.effective_irradiance_W_m2 = float(cfg.get("effective_irradiance_W_m2", 250.0))
         self.sigmoid_sharpness = float(cfg.get("sigmoid_sharpness", 10.0))
         self.soft_mask_selection_threshold = float(cfg.get("soft_mask_selection_threshold", 0.5))
         self.soft_mask_full_selection_threshold = float(cfg.get("soft_mask_full_selection_threshold", 0.95))
@@ -58,8 +55,7 @@ class SolarSR(ParentLoss):
                 faces,
                 sun_dir,
                 area_budget_mm2=self.area_budget_mm2,
-                solar_irradiance_W_m2=self.solar_irradiance_W_m2,
-                efficiency=self.efficiency,
+                effective_irradiance_W_m2=self.effective_irradiance_W_m2,
                 sigmoid_sharpness=self.sigmoid_sharpness,
                 soft_mask_selection_threshold=self.soft_mask_selection_threshold,
                 soft_mask_full_selection_threshold=self.soft_mask_full_selection_threshold,
@@ -75,15 +71,11 @@ class SolarSR(ParentLoss):
             loss_fn=loss_fn,
             enable_backward=True,
         )
-        scaled_loss = loss * self.power_conversion_factor
 
         with torch.no_grad():
             self._last_diagnostics = {
-                "loss_value_raw": loss.item(),
-                "loss_value_scaled": scaled_loss.item(),
-                "power_conversion_factor": self.power_conversion_factor,
+                "loss_value_watts": loss.item(),
                 **self._pending_diagnostics,
             }
 
-        # Straight-through merge: forward = real watts, backward = surrogate gradient
-        return surrogate_loss * self.power_conversion_factor + (scaled_loss - surrogate_loss * self.power_conversion_factor).detach()
+        return surrogate_loss + (loss - surrogate_loss).detach()

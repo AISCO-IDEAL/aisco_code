@@ -113,12 +113,21 @@ visual_types:
 
     penalty:
       enabled: true
-      colormap: "turbo"      # penalty intensity, lower-bounded at 0
+      colormap: "turbo"      # per-face power lost to shading, lower-bounded at 0
       interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
       vmax: null            # auto upper bound per epoch
+
+    numerical_factor:
+      enabled: true
+      colormap: "plasma"    # [0,1] effective loss multiplier after λ/κ applied to visibility
+      interval: 1
+      alpha_enabled: null
+      coordinate_system: null
+      vmin: 0.0
+      vmax: 1.0
 
   bb_constraint:
     enabled: true          # disabled by default — confirm with user before enabling

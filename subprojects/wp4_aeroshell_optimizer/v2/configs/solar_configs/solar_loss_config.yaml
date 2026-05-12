@@ -167,10 +167,8 @@ SolarLossConfigSR:
   resolution: 64
   isovalue: 0.0
   area_budget_mm2: 6000000
-  power_conversion_factor: 250
   sun_dir: [-1.0, 1.0, 0.8]
-  solar_irradiance_W_m2: 1000.0
-  efficiency: 0.25
+  effective_irradiance_W_m2: 250.0  # W/m² electrical output for perfectly-aligned area (irradiance × panel efficiency)
   sigmoid_sharpness: 8.0
   soft_mask_selection_threshold: 0.5
   soft_mask_full_selection_threshold: 0.95
@@ -182,10 +180,8 @@ SolarLossConfigSRRT:
   resolution: 64
   isovalue: 0.0
   area_budget_mm2: 6000000
-  power_conversion_factor: 250
   sun_dir: [-1.0, 1.0, 0.8]
-  solar_irradiance_W_m2: 1000.0
-  efficiency: 0.25
+  effective_irradiance_W_m2: 250.0  # W/m² electrical output for perfectly-aligned area (irradiance × panel efficiency)
   sigmoid_sharpness: 8.0
   soft_mask_selection_threshold: 0.5
   soft_mask_full_selection_threshold: 0.95

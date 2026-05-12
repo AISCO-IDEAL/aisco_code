@@ -2,7 +2,7 @@
 SR_SolarLoss: single fixed sun direction, no raytracing.
 
 Computes differentiable solar power (watts) via soft face selection:
-  power = Σ area_m2 * clamp(cos(sun_angle), 0) * irradiance * efficiency * soft_mask
+  power = Σ area_m2 * clamp(cos(sun_angle), 0) * effective_irradiance_W_m2 * soft_mask
 """
 
 from __future__ import annotations
@@ -27,8 +27,7 @@ def solar_loss_sr(
     faces: torch.Tensor,
     sun_dir: torch.Tensor,
     area_budget_mm2: float,
-    solar_irradiance_W_m2: float = 1000.0,
-    efficiency: float = 0.25,
+    effective_irradiance_W_m2: float = 250.0,
     sigmoid_sharpness: float = 10.0,
     soft_mask_selection_threshold: float = 0.5,
     soft_mask_full_selection_threshold: float = 0.95,
@@ -47,14 +46,13 @@ def solar_loss_sr(
         faces: (M, 3) triangle face indices
         sun_dir: (3,) sun direction vector (normalised internally)
         area_budget_mm2: maximum selectable area in mm²
-        solar_irradiance_W_m2: solar irradiance at surface in W/m²
-        efficiency: system efficiency factor (0–1)
+        effective_irradiance_W_m2: electrical power output per m² of perfectly-aligned area (irradiance × panel efficiency)
         sigmoid_sharpness: steepness of the soft budget boundary sigmoid
         soft_mask_selection_threshold: mask threshold for counting "selected" faces in diagnostics
         soft_mask_full_selection_threshold: mask threshold for counting "fully selected" faces in diagnostics
         epsilon: numerical stability floor
         vis_manager: CentralVisManagerV2 or NullVisManager; pass NullVisManager() to skip PLY export
-        epoch_name: epoch index forwarded to vis_manager.save_ply; PLY skipped when None
+        epoch_name: epoch index forwarded to vis_manager methods; PLY skipped when None
 
     Returns:
         (power_watts, diagnostics) where diagnostics is a dict of detached scalar metrics:
@@ -83,26 +81,15 @@ def solar_loss_sr(
     distance_to_budget = (area_budget_m2 - cumulative_area_m2) / max(area_budget_m2, epsilon)
     soft_mask = torch.sigmoid(sigmoid_sharpness * distance_to_budget)
 
-    power_per_face = sorted_areas_m2 * torch.clamp(sorted_quality, min=0.0) * solar_irradiance_W_m2 * efficiency
+    power_per_face = sorted_areas_m2 * torch.clamp(sorted_quality, min=0.0) * effective_irradiance_W_m2
     power_watts = (power_per_face * soft_mask).sum()
 
-    # Restore soft_mask to original face order for vis
     original_order = torch.argsort(quality_order_desc)
     soft_mask_original_order = soft_mask[original_order]
 
     if epoch_name is not None:
-        vis_manager.vis_solar_selection(
-            int(epoch_name),
-            vertices,
-            faces,
-            soft_mask_original_order,
-        )
-        vis_manager.vis_solar_quality(
-            int(epoch_name),
-            vertices,
-            faces,
-            sorted_quality[original_order],
-        )
+        vis_manager.vis_solar_selection(int(epoch_name), vertices, faces, soft_mask_original_order)
+        vis_manager.vis_solar_quality(int(epoch_name), vertices, faces, sorted_quality[original_order])
 
     faces_near_boundary = (soft_mask > 0.1) & (soft_mask < 0.9)
     budget_crossover_idx = (

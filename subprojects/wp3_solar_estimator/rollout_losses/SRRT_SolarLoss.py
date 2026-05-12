@@ -36,8 +36,7 @@ def solar_loss_srrt(  # noqa: PLR0912, PLR0915
     sun_dir: torch.Tensor,
     area_budget_mm2: float,
     raytracing_cfg: dict[str, Any],
-    solar_irradiance_W_m2: float = 1000.0,
-    efficiency: float = 0.25,
+    effective_irradiance_W_m2: float = 250.0,
     sigmoid_sharpness: float = 10.0,
     soft_mask_selection_threshold: float = 0.5,
     soft_mask_full_selection_threshold: float = 0.95,
@@ -61,8 +60,7 @@ def solar_loss_srrt(  # noqa: PLR0912, PLR0915
         sun_dir: (3,) sun direction vector (normalised internally)
         area_budget_mm2: maximum selectable area in mm²
         raytracing_cfg: dict with a "mesh" sub-dict passed directly to mesh_visibility_v3
-        solar_irradiance_W_m2: solar irradiance at surface in W/m²
-        efficiency: system efficiency factor (0–1)
+        effective_irradiance_W_m2: electrical power output per m² of perfectly-aligned area (irradiance × panel efficiency)
         sigmoid_sharpness: steepness of the soft budget boundary sigmoid
         soft_mask_selection_threshold: mask threshold for counting "selected" faces in diagnostics
         soft_mask_full_selection_threshold: mask threshold for counting "fully selected" faces in diagnostics
@@ -115,44 +113,27 @@ def solar_loss_srrt(  # noqa: PLR0912, PLR0915
     def _compute_power(vtx: torch.Tensor) -> torch.Tensor:
         visibility, _, _ = mesh_visibility_v3(vtx, faces, sun_dir_unit, mesh_cfg=mesh_cfg, normal_source="mesh")
         numerical_factor = 1 - _lambda * torch.pow(1 + epsilon - visibility, 1 / kappa)
-        power_per_face = (
-            face_area_m2
-            * torch.clamp(illumination_quality, min=0.0)
-            * numerical_factor
-            * solar_irradiance_W_m2
-            * efficiency
-        )
+        power_per_face = face_area_m2 * torch.clamp(illumination_quality, min=0.0) * numerical_factor * effective_irradiance_W_m2
         return (power_per_face * soft_mask_original_order).sum()
 
     if use_activation_checkpointing and vertices.requires_grad:
         power_watts = checkpoint(_compute_power, vertices, use_reentrant=False)
+        # Checkpoint returns only the scalar — run a separate no_grad pass to get
+        # intermediate tensors (visibility, numerical_factor) for vis and diagnostics.
         with torch.no_grad():
             visibility_for_vis, _, _ = mesh_visibility_v3(
                 vertices, faces, sun_dir_unit, mesh_cfg=mesh_cfg, normal_source="mesh"
             )
             numerical_factor_for_vis = 1 - _lambda * torch.pow(1 + epsilon - visibility_for_vis, 1 / kappa)
-            power_per_face_for_vis = (
-                face_area_m2
-                * torch.clamp(illumination_quality, min=0.0)
-                * numerical_factor_for_vis
-                * solar_irradiance_W_m2
-                * efficiency
-            )
     else:
         visibility_for_vis, _, _ = mesh_visibility_v3(
             vertices, faces, sun_dir_unit, mesh_cfg=mesh_cfg, normal_source="mesh"
         )
         numerical_factor_for_vis = 1 - _lambda * torch.pow(1 + epsilon - visibility_for_vis, 1 / kappa)
-        power_per_face_for_vis = (
-            face_area_m2
-            * torch.clamp(illumination_quality, min=0.0)
-            * numerical_factor_for_vis
-            * solar_irradiance_W_m2
-            * efficiency
-        )
-        power_watts = (power_per_face_for_vis * soft_mask_original_order).sum()
+        power_per_face_no_mask = face_area_m2 * torch.clamp(illumination_quality, min=0.0) * numerical_factor_for_vis * effective_irradiance_W_m2
+        power_watts = (power_per_face_no_mask * soft_mask_original_order).sum()
         visibility_for_vis = visibility_for_vis.detach()
-        power_per_face_for_vis = power_per_face_for_vis.detach()
+        numerical_factor_for_vis = numerical_factor_for_vis.detach()
 
     penalty_scalar = torch.zeros((), device=vertices.device, dtype=vertices.dtype)
     if shading_penalty_weight > 0:
@@ -169,9 +150,10 @@ def solar_loss_srrt(  # noqa: PLR0912, PLR0915
         vis_manager.vis_solar_quality(int(epoch_name), vertices, faces, sorted_quality[original_order].detach())
         vis_manager.vis_solar_selection(int(epoch_name), vertices, faces, soft_mask_original_order)
         vis_manager.vis_solar_shading(int(epoch_name), vertices, faces, visibility_for_vis)
+        vis_manager.vis_solar_numerical_factor(int(epoch_name), vertices, faces, numerical_factor_for_vis)
         vis_manager.vis_solar_penalty(
             int(epoch_name), vertices, faces,
-            (power_per_face_for_vis * soft_mask_original_order.detach()),
+            (1 - numerical_factor_for_vis) * torch.clamp(illumination_quality, min=0.0) * soft_mask_original_order,
         )
 
     faces_near_boundary = (soft_mask_sorted > 0.1) & (soft_mask_sorted < 0.9)
