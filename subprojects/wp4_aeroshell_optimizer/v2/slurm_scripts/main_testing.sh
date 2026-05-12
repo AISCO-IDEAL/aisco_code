@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=test_output_name #CVM2_Diversity_gradients_per_slot
-#SBATCH --time=00:01:20                   # Extended for adaptive mesh extraction (L=4)
+#SBATCH --job-name=main_v2 #CVM2_Diversity_gradients_per_slot
+#SBATCH --time=01:00:00                   # Extended for adaptive mesh extraction (L=4)
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=8G                  # Total 40G memory
