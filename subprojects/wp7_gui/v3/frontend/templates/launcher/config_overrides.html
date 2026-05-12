@@ -89,10 +89,10 @@
 
   function updateNextHref() {
     if (!btnNext) return;
-    if (pipeline === "viewer") {
+    if (pipeline === "completed") {
       const basename = activeFolder ? activeFolder.split("/").pop() : null;
       const cfgParam = basename ? `&cfg_session=${encodeURIComponent(basename)}` : "";
-      btnNext.href = `/launcher/output?pipeline=viewer${cfgParam}`;
+      btnNext.href = `/launcher/output?pipeline=completed${cfgParam}`;
     } else {
       btnNext.href = "/launcher/optimization?pipeline=live";
     }
@@ -201,7 +201,7 @@
         meta.textContent = mt; labelWrap.appendChild(meta);
         const inp = makeInput(param, cfgVals[param.path]);
         inp.dataset.cfg = cfgName; inp.dataset.path = param.path; inp.dataset.type = param.type;
-        if (pipeline === 'viewer') inp.disabled = true;
+        if (pipeline === 'completed') inp.disabled = true;
         row.appendChild(labelWrap); row.appendChild(inp); details.appendChild(row);
       }
       formArea.appendChild(details);
@@ -339,7 +339,7 @@
 
   // Restore session on page load
   (async () => {
-    if (pipeline === 'viewer') return; // handled by session picker below
+    if (pipeline === 'completed') return; // handled by session picker below
     if (!activeFolder) return;
     try {
       const d = await (await fetch(`${API}/config-overrides/sessions`)).json();
@@ -349,8 +349,8 @@
     } catch (err) { log(`Could not restore: ${err.message}`, "error"); setFolder(""); }
   })();
 
-  // Viewer mode: populate session picker and auto-load last active session
-  if (pipeline === 'viewer') {
+  // Completed pipeline: populate session picker and auto-load last active session
+  if (pipeline === 'completed') {
     (async () => {
       const picker = document.getElementById('sessionPicker');
       if (!picker) return;

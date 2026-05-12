@@ -76,6 +76,7 @@
 
 <script>
   const API = "/launcher/api";
+  const pipeline = "{{ pipeline }}";
 
   const slidersArea = document.getElementById("slidersArea");
   const sliderStatus = document.getElementById("sliderStatus");
@@ -142,7 +143,7 @@
 
   async function loadChecks() {
     try {
-      const r = await fetch(`${API}/assembly-selection/checks?t=${Date.now()}`, { cache: "no-store" });
+      const r = await fetch(`${API}/assembly-selection/checks?pipeline=${pipeline}&t=${Date.now()}`, { cache: "no-store" });
       if (!r.ok) return;
       const d = await r.json();
       checksLight.style.background = d.ok ? "#2e9c58" : "#c82121";
@@ -164,7 +165,7 @@
 
   async function loadParams() {
     try {
-      const r = await fetch(`${API}/assembly-selection/params?t=${Date.now()}`, { cache: "no-store" });
+      const r = await fetch(`${API}/assembly-selection/params?pipeline=${pipeline}&t=${Date.now()}`, { cache: "no-store" });
       if (!r.ok) throw new Error(r.status);
       params = await r.json();
       renderSliders();
@@ -178,7 +179,7 @@
 
   async function persistAndRebuild() {
     try {
-      const r = await fetch(`${API}/assembly-selection/update`, {
+      const r = await fetch(`${API}/assembly-selection/update?pipeline=${pipeline}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params)
       });
       const d = await r.json();
@@ -194,7 +195,7 @@
   async function wheelAction(endpoint) {
     sliderStatus.textContent = endpoint.includes("add") ? "Adding wheel…" : "Removing wheel…";
     try {
-      const r = await fetch(`${API}/assembly-selection/${endpoint}`, { method: "POST" });
+      const r = await fetch(`${API}/assembly-selection/${endpoint}?pipeline=${pipeline}`, { method: "POST" });
       const d = await r.json();
       if (!r.ok) { sliderStatus.textContent = d?.detail?.message || "Failed."; return; }
       params = d.params || params;
@@ -243,7 +244,7 @@
       import("three/addons/loaders/PLYLoader.js").then(({ PLYLoader }) => {
         ensureViewer();
         meshMeta.textContent = "Loading assembly.ply…";
-        const url = `${API}/assembly-selection/mesh?t=${Date.now()}`;
+        const url = `${API}/assembly-selection/mesh?pipeline=${pipeline}&t=${Date.now()}`;
         new PLYLoader().load(url, geo => {
           geo.computeVertexNormals(); geo.computeBoundingBox();
           const c = new Vector3(); geo.boundingBox.getCenter(c); geo.translate(-c.x, -c.y, -c.z);

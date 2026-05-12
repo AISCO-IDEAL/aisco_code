@@ -31,7 +31,12 @@ _config_manager = ConfigOverrideManager(
     schema_path=SETTINGS.schema_path,
     wp4_configs_dir=SETTINGS.wp4_configs_dir,
 )
-_assembly_service = AssemblySelectionService(SETTINGS.repo_root)
+_assembly_service_live = AssemblySelectionService(SETTINGS.repo_root, subdir="live")
+_assembly_service_completed = AssemblySelectionService(SETTINGS.repo_root, subdir="completed")
+
+
+def _assembly(pipeline: str) -> AssemblySelectionService:
+    return _assembly_service_completed if pipeline == "completed" else _assembly_service_live
 
 _SUBPAGES = {
     "config-overrides": ("Launcher — Config Overrides", "launcher/config_overrides.html"),
@@ -297,30 +302,30 @@ def cfg_cleanup(payload: CleanupRequest) -> dict[str, Any]:
 # Assembly-selection API
 # ---------------------------------------------------------------------------
 @router.get("/api/assembly-selection/params")
-def assembly_params() -> dict[str, dict[str, float]]:
-    return _assembly_service.get_params()
+def assembly_params(pipeline: str = "live") -> dict[str, dict[str, float]]:
+    return _assembly(pipeline).get_params()
 
 
 @router.post("/api/assembly-selection/update")
-def assembly_update(payload: dict[str, Any]) -> dict[str, Any]:
-    return _assembly_service.update_params(payload)
+def assembly_update(payload: dict[str, Any], pipeline: str = "live") -> dict[str, Any]:
+    return _assembly(pipeline).update_params(payload)
 
 
 @router.post("/api/assembly-selection/add-wheel")
-def assembly_add_wheel() -> dict[str, Any]:
-    return _assembly_service.add_wheel()
+def assembly_add_wheel(pipeline: str = "live") -> dict[str, Any]:
+    return _assembly(pipeline).add_wheel()
 
 
 @router.post("/api/assembly-selection/remove-wheel")
-def assembly_remove_wheel() -> dict[str, Any]:
-    return _assembly_service.remove_wheel()
+def assembly_remove_wheel(pipeline: str = "live") -> dict[str, Any]:
+    return _assembly(pipeline).remove_wheel()
 
 
 @router.get("/api/assembly-selection/mesh")
-def assembly_mesh() -> FileResponse:
-    return _assembly_service.get_mesh_response()
+def assembly_mesh(pipeline: str = "live") -> FileResponse:
+    return _assembly(pipeline).get_mesh_response()
 
 
 @router.get("/api/assembly-selection/checks")
-def assembly_checks() -> dict:
-    return _assembly_service.get_checks()
+def assembly_checks(pipeline: str = "live") -> dict:
+    return _assembly(pipeline).get_checks()

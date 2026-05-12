@@ -15,7 +15,7 @@
         {% if pipeline == 'live' %}
         <a href="/launcher/optimization?pipeline=live" class="btn secondary">← Back to Run</a>
         {% else %}
-        <a href="/launcher/config-overrides?pipeline=viewer" class="btn secondary">← Back</a>
+        <a href="/launcher/config-overrides?pipeline=completed" class="btn secondary">← Back</a>
         {% endif %}
         <div style="flex:1;"></div>
         <a href="/" class="btn">Done — Home</a>
@@ -76,7 +76,7 @@
     const LAUNCHER_API = "/launcher/api";
     const VIEWER_API = "/viewer/api";
 
-    // Read cfg_session from URL query string (viewer pipeline only)
+    // Read cfg_session from URL query string (completed pipeline only)
     const _urlParams = new URLSearchParams(window.location.search);
     const cfgSession = _urlParams.get("cfg_session") || null;
 

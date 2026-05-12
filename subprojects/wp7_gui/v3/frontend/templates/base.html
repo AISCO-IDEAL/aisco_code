@@ -33,8 +33,8 @@
           <a href="/" class="{% if not active_mode %}active{% endif %}">Home</a>
           <a href="/launcher/assembly-selection?pipeline=live"
             class="{% if active_mode == 'launcher' and _pl == 'live' %}active{% endif %}">Live</a>
-          <a href="/launcher/assembly-selection?pipeline=viewer"
-            class="{% if active_mode == 'launcher' and _pl == 'viewer' %}active{% endif %}">Completed</a>
+          <a href="/launcher/assembly-selection?pipeline=completed"
+            class="{% if active_mode == 'launcher' and _pl == 'completed' %}active{% endif %}">Completed</a>
           <a href="/viewer" class="{% if active_mode == 'viewer' %}active{% endif %}">Archive</a>
         </div>
 
@@ -47,12 +47,12 @@
           <a href="/launcher/optimization?pipeline=live"
             class="{% if active_page == 'optimization' %}active{% endif %}">Live Run</a>
           <a href="/launcher/output?pipeline=live" class="{% if active_page == 'output' %}active{% endif %}">Output</a>
-          {% elif active_mode == 'launcher' and _pl == 'viewer' %}
-          <a href="/launcher/assembly-selection?pipeline=viewer"
+          {% elif active_mode == 'launcher' and _pl == 'completed' %}
+          <a href="/launcher/assembly-selection?pipeline=completed"
             class="{% if active_page == 'assembly-selection' %}active{% endif %}">Assembly Selection</a>
-          <a href="/launcher/config-overrides?pipeline=viewer"
+          <a href="/launcher/config-overrides?pipeline=completed"
             class="{% if active_page == 'config-overrides' %}active{% endif %}">Config Overrides</a>
-          <a href="/launcher/output?pipeline=viewer"
+          <a href="/launcher/output?pipeline=completed"
             class="{% if active_page == 'output' %}active{% endif %}">Output</a>
           {% elif active_mode == 'viewer' %}
           <a href="/viewer" class="{% if active_page == 'runs' %}active{% endif %}">Finished Runs</a>
