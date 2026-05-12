@@ -1,6 +1,6 @@
 import torch
 
-from subprojects.wp2_assembler.version4.components.nbz import call_assembly, max_assembly_id
+from subprojects.wp2_assembler.version4.components.nbz import call_assembly
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.assembly_id_utils import resolve_assembly_id
 

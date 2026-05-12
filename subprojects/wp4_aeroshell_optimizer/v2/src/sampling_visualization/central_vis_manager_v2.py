@@ -331,26 +331,36 @@ class _BaseVisManager:
 
         # Circle survey snapshots: each circle_survey/epoch_XXXXX/ dir becomes a
         # single composite PNG (strip or grid) — not a GIF.
-        survey_layout = str(
-            self._cfg.get("latent_optimisation", {})
-            .get("vis_latent_circle_survey", {})
-            .get("layout", "strip")
-        )
+        survey_layout = str(self._cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {}).get("layout", "strip"))
         survey_dirs = sorted(
-            d for d in self._written_dirs
+            d
+            for d in self._written_dirs
             if d.is_dir()
             and d.relative_to(self.run_dir).parts[0] == "circle_survey"
-            and any(f.name.startswith("epoch_") and f.name.endswith(".ply") for f in d.iterdir())
+            and any(
+                (f.name.startswith("angle_") or f.name.startswith("x_") or f.name.startswith("r")) and f.name.endswith(".ply")
+                for f in d.iterdir()
+            )
         )
         for d in survey_dirs:
-            n = sum(1 for f in d.iterdir() if f.name.startswith("epoch_") and f.name.endswith(".ply"))
+            n = sum(
+                1 for f in d.iterdir() if (f.name.startswith("angle_") or f.name.startswith("x_")) and f.name.endswith(".ply")
+            )
             _log({"event": "survey_png_started", "run_id": self.run_id, "dir": str(d.relative_to(self.run_dir)), "n_plys": n})
             ok, path, err = render_survey_task(d, layout=survey_layout)
-            _log({"event": "survey_png_completed" if ok else "survey_png_failed", "run_id": self.run_id, "path": path, "error": err})
+            _log(
+                {
+                    "event": "survey_png_completed" if ok else "survey_png_failed",
+                    "run_id": self.run_id,
+                    "path": path,
+                    "error": err,
+                }
+            )
 
         # All other visual types: convergence GIFs.
         gif_dirs = [
-            d for d in collect_gif_dirs(self._visual_types, self.run_dir, self._written_dirs)
+            d
+            for d in collect_gif_dirs(self._visual_types, self.run_dir, self._written_dirs)
             if d not in survey_dirs and d.parent not in survey_dirs
         ]
         if not gif_dirs and not survey_dirs:
@@ -639,35 +649,39 @@ class CentralVisManagerV2(_BaseVisManager):
         device: str = "cpu",
         epoch: int = 0,
     ) -> None:
-        """Render a circle survey of the pretrained latent space.
+        """Render a latent space survey of the pretrained model.
 
-        Iterates ``n_samples`` angles uniformly on the pretrained z-circle, extracts
-        the SDF mesh at each point, and writes a PLY per sample to
-        ``<run_dir>/circle_survey/angle_NNN.ply``.  Gated by
-        ``vis_config.latent_optimisation.vis_latent_circle_survey.enabled`` and also
-        accepts the legacy ``vis_config.latent_pretraining.latent_space_exploration.enabled``
-        gate.
+        Three layouts supported:
+        - ``layout='strip'``: samples uniformly on a circle of radius ``z_radius``,
+          writes ``angle_{idx:03d}.ply`` per sample.
+        - ``layout='grid'``: samples an NxN Cartesian grid in the region
+          [-z_radius, +z_radius]^2, writes ``x_{x_idx:02d}_y_{y_idx:02d}.ply`` per sample.
+        - ``layout='pizza'``: samples concentric circles at radii from
+          ``pizza_r_min`` to ``pizza_r_max`` (``pizza_r_steps`` rings), each ring
+          with ``n_samples`` angles.  Writes ``r{r_idx:02d}_a{angle_idx:03d}.ply``
+          (polar coordinates).  Rendered as a grid (rows = radii, cols = angles).
 
-        The per-survey mesh resolution is read from
-        ``latent_optimisation.vis_latent_circle_survey.mesh_resolution`` (default 64).
-        Each call writes to ``circle_survey/epoch_{epoch:05d}/`` so successive
+        Gated by ``vis_config.latent_optimisation.vis_latent_circle_survey.enabled``.
+        Each survey call writes to ``circle_survey/epoch_{epoch:05d}/`` so successive
         cadence calls accumulate as separate subdirs and ``finalize()`` generates
-        one GIF per snapshot.  Separate from ``mesh_assembly_v4/``.
+        one PNG per snapshot.
 
         Args:
             model: A model implementing ``set_latent_vector`` and compatible with
                 ``MeshSDFExtractor.extract_mesh``.
-            z_radius: Radius of the latent circle (should match pretraining radius).
-            n_samples: Number of uniformly-spaced angles to evaluate.
+            z_radius: Radius of the latent circle (strip) or half-width of the
+                Cartesian grid (grid mode).  Unused in pizza mode (use ``pizza_r_max``).
+            n_samples: Number of angle samples. For strip/pizza: samples per circle.
+                For grid: roughly sqrt(n_samples) per side (so n_samples ≈ grid_size^2).
             device: Torch device for mesh extraction.
+            epoch: Training epoch index (embedded in output subdir path).
         """
         import math  # noqa: PLC0415
 
         import torch  # noqa: PLC0415
 
-        # Check gate: latent_optimisation.vis_latent_circle_survey.enabled
+        # Check gate
         survey_cfg: dict[str, Any] = self._cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {})
-        # Legacy gate: latent_pretraining.latent_space_exploration.enabled
         legacy_cfg: dict[str, Any] = self._cfg.get("latent_pretraining", {}).get("latent_space_exploration", {})
         enabled = survey_cfg.get("enabled", legacy_cfg.get("enabled", False))
         if not enabled:
@@ -680,32 +694,60 @@ class CentralVisManagerV2(_BaseVisManager):
             )
             return
 
-        # Build a vis extractor at the configured resolution for the survey
         mesh_resolution = int(survey_cfg.get("mesh_resolution", 64))
         extractor = self._make_survey_extractor(device=device, resolution=mesh_resolution)
+        layout = str(survey_cfg.get("layout", "strip"))
 
-        # Each call gets its own epoch-tagged subdir so cadence calls don't overwrite
-        # each other, and finalize() generates one GIF per snapshot.
         vt = f"circle_survey/epoch_{epoch:05d}"
-
-        angles = [2 * math.pi * i / n_samples for i in range(n_samples)]
         z_dim = int(getattr(model, "z_dim", 2))
 
-        for idx, angle in enumerate(angles):
+        # Generate sample points based on layout
+        if layout == "grid":
+            # Cartesian grid: sample [-z_radius, +z_radius] x [-z_radius, +z_radius]
+            grid_size = max(1, math.ceil(math.sqrt(n_samples)))
+            samples = []
+            for y_idx in range(grid_size):
+                for x_idx in range(grid_size):
+                    # Map grid indices to [-z_radius, +z_radius]
+                    x = -z_radius + 2 * z_radius * x_idx / max(1, grid_size - 1) if grid_size > 1 else 0.0
+                    y = -z_radius + 2 * z_radius * y_idx / max(1, grid_size - 1) if grid_size > 1 else 0.0
+                    samples.append((x_idx, y_idx, x, y, f"x_{x_idx:02d}_y_{y_idx:02d}"))
+        elif layout == "pizza":
+            # Concentric circles: radii from pizza_r_min to pizza_r_max (pizza_r_steps rings),
+            # n_samples angles per ring.  Named with polar coords.
+            r_min = float(survey_cfg.get("pizza_r_min", 0.5))
+            r_max = float(survey_cfg.get("pizza_r_max", z_radius))
+            r_steps = max(1, int(survey_cfg.get("pizza_r_steps", 4)))
+            radii = [r_min + (r_max - r_min) * r_i / max(1, r_steps - 1) for r_i in range(r_steps)] if r_steps > 1 else [r_max]
+            angles = [2 * math.pi * a_i / n_samples for a_i in range(n_samples)]
+            samples = [
+                (a_i, r_i, r * math.cos(angle), r * math.sin(angle), f"r{r_i:02d}_a{a_i:03d}")
+                for r_i, r in enumerate(radii)
+                for a_i, angle in enumerate(angles)
+            ]
+        else:  # strip (circle)
+            angles = [2 * math.pi * i / n_samples for i in range(n_samples)]
+            samples = [
+                (i, 0, z_radius * math.cos(angle), z_radius * math.sin(angle), f"angle_{i:03d}") for i, angle in enumerate(angles)
+            ]
+
+        for _idx_a, _idx_b, z0, z1, filename in samples:
             z = torch.zeros(z_dim, dtype=torch.float32, device=device)
+            if z_dim >= 1:
+                z[0] = z0
             if z_dim >= 2:
-                z[0] = z_radius * math.cos(angle)
-                z[1] = z_radius * math.sin(angle)
+                z[1] = z1
             model.set_latent_vector(z)
+
             try:
                 verts, faces = extractor.extract_mesh(sdf_model=model)
             except Exception as exc:
                 _log(
                     {
-                        "event": "circle_survey_mesh_failed",
+                        "event": "survey_mesh_failed",
                         "run_id": self.run_id,
-                        "idx": idx,
-                        "angle_deg": round(math.degrees(angle), 1),
+                        "layout": layout,
+                        "sample": filename,
                         "error": str(exc),
                     }
                 )
@@ -718,26 +760,25 @@ class CentralVisManagerV2(_BaseVisManager):
 
             rgb = solid_rgb(len(verts_np), _DARK_BLUE_RGB)
             out_dir = self._output_dir(vt)
-            # epoch_XXXXX.ply naming so collect_gif_dirs / generate_gifs_flat
-            # pick up this dir without any special-casing.
-            out_path = out_dir / f"epoch_{idx:05d}.ply"
+            out_path = out_dir / f"{filename}.ply"
             future = self._ply_pool.submit(write_ply_task, out_path, verts_np, faces_np, rgb, False, 0.0)
             self._pending_ply.append(future)
             _log(
                 {
-                    "event": "circle_survey_ply_submitted",
+                    "event": "survey_ply_submitted",
                     "run_id": self.run_id,
-                    "idx": idx,
-                    "angle_deg": round(math.degrees(angle), 1),
+                    "layout": layout,
+                    "sample": filename,
                     "path": str(out_path),
                 }
             )
 
         _log(
             {
-                "event": "circle_survey_completed",
+                "event": "survey_completed",
                 "run_id": self.run_id,
-                "n_samples": n_samples,
+                "layout": layout,
+                "n_samples": len(samples),
                 "z_radius": z_radius,
             }
         )

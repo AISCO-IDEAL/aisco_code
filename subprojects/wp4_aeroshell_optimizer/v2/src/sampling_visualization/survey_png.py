@@ -29,9 +29,10 @@ _POINT_SIZE: int = _CFG["point_size"]
 _BACKGROUND_COLOR: list[float] = _CFG["background_color"]
 
 _FLAT_PATTERN = re.compile(r"^epoch_?(\d{5})\.ply$")
+_SURVEY_PATTERN = re.compile(r"^(angle_\d{3}|x_\d{2}_y_\d{2}|r\d{2}_a\d{3})\.ply$")
 
 
-def generate_survey_png( # noqa: PLR0912
+def generate_survey_png(  # noqa: PLR0915
     input_dir: Path,
     output_path: Path | None = None,
     layout: str = "strip",
@@ -39,13 +40,13 @@ def generate_survey_png( # noqa: PLR0912
     thumb_h: int | None = None,
     cam_json: Path | None = None,
 ) -> Path:
-    """Render all ``epoch_XXXXX.ply`` files in *input_dir* to a single composite PNG.
+    """Render all ``angle_XXX.ply`` files in *input_dir* to a single composite PNG.
 
     Each PLY is rendered to a thumbnail; thumbnails are assembled side-by-side
     (``layout='strip'``) or in a roughly-square grid (``layout='grid'``).
 
     Args:
-        input_dir: Directory containing ``epoch_XXXXX.ply`` files.
+        input_dir: Directory containing ``angle_XXX.ply`` files.
         output_path: Destination PNG path.  Defaults to
             ``input_dir / "survey.png"``.
         layout: ``"strip"`` (single row) or ``"grid"`` (NxN grid).
@@ -60,7 +61,7 @@ def generate_survey_png( # noqa: PLR0912
         Path to the written PNG.
 
     Raises:
-        ValueError: If no ``epoch_XXXXX.ply`` files are found in *input_dir*.
+        ValueError: If no ``angle_XXX.ply`` files are found in *input_dir*.
     """
     from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.ply_to_gif import (  # noqa: PLC0415
         _compute_camera_pose,
@@ -78,15 +79,35 @@ def generate_survey_png( # noqa: PLR0912
     tw = thumb_w or max(_WINDOW_WIDTH // 4, 64)
     th = thumb_h or max(_WINDOW_HEIGHT // 4, 64)
 
-    matches: list[tuple[int, Path]] = []
-    for fpath in input_dir.iterdir():
-        m = _FLAT_PATTERN.match(fpath.name)
-        if m:
-            matches.append((int(m.group(1)), fpath))
+    matches = [fpath for fpath in input_dir.iterdir() if _SURVEY_PATTERN.match(fpath.name)]
     if not matches:
-        raise ValueError(f"No epoch_XXXXX.ply files found in {input_dir}.")
-    matches.sort(key=lambda x: x[0])
-    file_paths = [fp for _, fp in matches]
+        raise ValueError(f"No survey PLY files found in {input_dir}. Expected angle_XXX.ply, x_YY_y_ZZ.ply, or rRR_aAAA.ply.")
+
+    # Sort: if all match angle pattern, sort numerically by angle.
+    # If all match grid pattern, sort by y then x index.
+    # Mixed patterns shouldn't happen in practice.
+    def _sort_key(fpath: Path) -> tuple:
+        name = fpath.stem
+        if name.startswith("angle_"):
+            # angle_XXX -> (0, XXX)
+            return (0, int(name.split("_")[1]))
+        elif name.startswith("x_"):
+            # x_YY_y_ZZ -> (1, YY, ZZ)
+            parts = name.split("_")
+            x_idx = int(parts[1])
+            y_idx = int(parts[3])
+            return (1, y_idx, x_idx)  # sort by y, then x (row-major order)
+        elif name.startswith("r") and "_a" in name:
+            # r{r_idx:02d}_a{angle_idx:03d} -> (2, r_idx, angle_idx)
+            # Row = radius ring, col = angle (row-major: r outer loop)
+            r_part, a_part = name.split("_a")
+            r_idx = int(r_part[1:])  # strip leading 'r'
+            a_idx = int(a_part)
+            return (2, r_idx, a_idx)
+        return (3, 0)  # fallback
+
+    matches.sort(key=_sort_key)
+    file_paths = matches
     n = len(file_paths)
 
     # Camera: shared pose computed from the union of all vertex positions.
@@ -119,7 +140,13 @@ def generate_survey_png( # noqa: PLR0912
         renderer.delete()
 
     # Assemble composite canvas.
-    if layout == "grid":
+    if layout == "pizza":
+        # rows = distinct radii, cols = angles per ring
+        r_indices = sorted({_sort_key(fp)[1] for fp in file_paths if _sort_key(fp)[0] == 2})
+        a_indices = sorted({_sort_key(fp)[2] for fp in file_paths if _sort_key(fp)[0] == 2})
+        rows = len(r_indices) if r_indices else 1
+        cols = len(a_indices) if a_indices else n
+    elif layout == "grid":
         cols = math.ceil(math.sqrt(n))
         rows = math.ceil(n / cols)
     else:  # strip

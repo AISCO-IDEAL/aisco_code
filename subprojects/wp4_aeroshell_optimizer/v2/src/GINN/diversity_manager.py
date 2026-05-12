@@ -1017,9 +1017,7 @@ class DiversityTrainer:
 
         # Circle survey: every N optimisation epochs, sweep the pretrained z-circle.
         if isinstance(self._vis_manager, CentralVisManagerV2):
-            _survey_cfg: dict = (
-                self._vis_manager.latent_optimisation_cfg.get("vis_latent_circle_survey", {})
-            )
+            _survey_cfg: dict = self._vis_manager.latent_optimisation_cfg.get("vis_latent_circle_survey", {})
             _survey_enabled = _survey_cfg.get("enabled", False)
             _survey_cadence = int(_survey_cfg.get("cadence", 0))
             if _survey_enabled and _survey_cadence > 0 and epoch % _survey_cadence == 0:

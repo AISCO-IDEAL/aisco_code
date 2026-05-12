@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import trimesh
 
-from subprojects.wp2_assembler.version4.components.nbz import call_assembly, max_assembly_id
+from subprojects.wp2_assembler.version4.components.nbz import call_assembly
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2

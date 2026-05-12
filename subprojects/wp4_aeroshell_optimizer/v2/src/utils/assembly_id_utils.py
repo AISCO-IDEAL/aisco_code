@@ -60,6 +60,4 @@ def resolve_assembly_id(config: dict[str, Any]) -> int:
 
     # Invalid value
     else:
-        raise ValueError(
-            f"Invalid value for random_assembly_id: {random_assembly_id_str} (expected 'True' or 'False')"
-        )
+        raise ValueError(f"Invalid value for random_assembly_id: {random_assembly_id_str} (expected 'True' or 'False')")

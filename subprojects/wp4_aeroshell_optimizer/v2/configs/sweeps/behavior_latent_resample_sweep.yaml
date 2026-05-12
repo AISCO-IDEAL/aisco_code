@@ -38,8 +38,8 @@ parameters:
     values: [0, 200]
 
   # Supporting latent knob: whether to lock first slot at origin.
-  training_config.force_z0_to_origin:
-    values: [false, true]
+  # training_config.force_z0_to_origin:
+  #   values: [false, true]
 
   # Population size to test with different resample strategies.
   training_config.population_size:
