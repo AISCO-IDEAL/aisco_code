@@ -110,11 +110,11 @@ def main(_gui_mode: bool = False, _cfg_folder: str = "") -> None:  # noqa: PLR09
     use_wandb: bool = general_config["wandb_general"].get("use_wandb", False)
     if use_wandb:
         try:
-            wandb_name = _resolve_wandb_name(general_config["wandb_general"].get("name"), run_locally)
+            wandb_run_name = _resolve_wandb_name(general_config["wandb_general"].get("name"), run_locally)
             wandb.init(
                 entity=general_config["wandb_general"]["entity_name"],
                 project=general_config["wandb_general"]["project_name"],
-                name=wandb_name,
+                name=wandb_run_name,
                 config=general_config,
             )
             # keep this for now, not sure if this is any longer required

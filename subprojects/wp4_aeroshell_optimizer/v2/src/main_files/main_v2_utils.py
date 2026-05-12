@@ -13,6 +13,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import Sup
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is_local_machine
 
+
 def _resolve_wandb_name(name_cfg: Any, run_locally: bool) -> str | None:
     """Resolve wandb run name from config and runtime environment."""
     if name_cfg is None:
@@ -27,12 +28,14 @@ def _resolve_wandb_name(name_cfg: Any, run_locally: bool) -> str | None:
         return f"local-{os.getpid()}"
 
     if normalized == "euler_run_id":
-        return f"euler-{os.environ.get('SLURM_JOB_ID', 'no-slurm-id')}"
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        return f"euler-{slurm_job_id}" if slurm_job_id else None
 
     if normalized == "auto_run_id":
         if run_locally:
             return f"local-{os.getpid()}"
-        return f"euler-{os.environ.get('SLURM_JOB_ID', 'no-slurm-id')}"
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        return f"euler-{slurm_job_id}" if slurm_job_id else None
 
     return raw
 
