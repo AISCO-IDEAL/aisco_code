@@ -287,13 +287,6 @@ class Optimiser:
             return
         try:
             training_context.save_ckpt()
-            training_context.tracker.save_checkpoint_artifact(
-                epoch=epoch + 1,
-                train_loss=avg_train_loss,
-                val_loss=val_loss,
-                is_best=False,
-                config_dict=training_context.full_config_dict,
-            )
             if training_context.setup_config.get("test_during_training", False):
                 training_context.test()
         except Exception as exc:

@@ -16,13 +16,7 @@ class CheckpointHandler:
         self.config: dict = config
 
     def load_for_training(self, trainer) -> None:
-        if self.config["setup"].get("resume_from_artifact") is not None:
-            metadata = trainer.load_from_artifact(self.config["setup"]["resume_from_artifact"])
-            if metadata:
-                logging.getLogger(__name__).info(f"Loaded from artifact: {metadata}")
-            else:
-                logging.getLogger(__name__).warning("Failed to load from artifact, skipping...")
-        elif self.config["setup"].get("resume_from_ckpt") is not None:
+        if self.config["setup"].get("resume_from_ckpt") is not None:
             trainer.load_ckpt(path=self.config["setup"]["resume_from_ckpt"])
         elif self.config["setup"]["ckpt"]:
             trainer.load_ckpt()
@@ -33,13 +27,6 @@ class CheckpointHandler:
         load_ckpt(path, model=trainer.model)
         return trainer
 
-    def load_artifact(self, trainer, artifact_name: str) -> dict | None:
-        ckpt_path, metadata = trainer.tracker.download_artifact(artifact_name)
-        if ckpt_path:
-            self.load_checkpoint(trainer, ckpt_path)
-            logging.getLogger(__name__).info(f"Successfully loaded model from artifact: {artifact_name}")
-        return metadata
-
     def save_checkpoint(self, trainer, path: str | None = None):
         if path is None:
             path = self.config["path"]["ckpt_path"]
@@ -48,13 +35,7 @@ class CheckpointHandler:
         return trainer
 
     def load_for_testing(self, trainer) -> None:
-        if self.config["setup"].get("resume_from_artifact") is not None:
-            metadata = trainer.load_from_artifact(self.config["setup"]["resume_from_artifact"])
-            if metadata:
-                logging.getLogger(__name__).info(f"Loaded from artifact: {metadata}")
-            else:
-                logging.getLogger(__name__).warning("Failed to load from artifact, skipping...")
-        elif self.config["setup"].get("resume_from_ckpt") is not None:
+        if self.config["setup"].get("resume_from_ckpt") is not None:
             trainer.load_ckpt(path=self.config["setup"]["resume_from_ckpt"])
         else:
             trainer.load_ckpt()
