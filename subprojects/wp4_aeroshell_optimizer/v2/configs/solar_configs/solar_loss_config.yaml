@@ -189,14 +189,15 @@ SolarLossConfigSRRT:
   kappa: 1.0
   _lambda: 1.0
   eps: 1e-12
-  use_activation_checkpointing: true
+  use_activation_checkpointing: false
   raytracing_cfg:
     mesh:
-      origin_offset_eps: 1.0
+      origin_offset_eps: 1e-2
       sun_distance_factor: 2.0
       face_chunk_size: 512
       smoothing_mode: "soft_barycentric_transmittance"
       face_samples: 1
       sample_pattern: "centroid"
       depth_normalization: "bbox"
-      transmittance_beta: 2.0
+      transmittance_beta: 0.000001
+      transmittance_kappa: 4.0
