@@ -166,6 +166,7 @@ def solar_loss_srrt(  # noqa: PLR0912, PLR0915
         power_watts = power_watts - penalty_scalar
 
     if epoch_name is not None:
+        vis_manager.vis_solar_quality(int(epoch_name), vertices, faces, sorted_quality[original_order])
         vis_manager.vis_solar_selection(int(epoch_name), vertices, faces, soft_mask_original_order)
         vis_manager.vis_solar_shading(int(epoch_name), vertices, faces, visibility_for_vis)
         vis_manager.vis_solar_penalty(
