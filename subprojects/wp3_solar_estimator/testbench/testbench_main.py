@@ -208,7 +208,7 @@ def single_solar_test():
     skip_telemetry = not vis_enabled
     print(f"\nRunning loss evaluation (skip_telemetry={skip_telemetry})...")
     t0 = time.perf_counter()
-    result = solar_loss.get_loss(model=sdf_model, epoch_name="-42", skip_telemetry=skip_telemetry)
+    result = solar_loss.get_loss(model=sdf_model, epoch_name=-42, skip_telemetry=skip_telemetry)
     elapsed = time.perf_counter() - t0
 
     print(f"\nSolar loss : {result.item():.4f} W")
