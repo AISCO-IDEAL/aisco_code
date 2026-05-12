@@ -68,7 +68,7 @@ class Optimiser:
                 )
                 if current_loss < best_loss:
                     best_loss, best_epoch, best_state = current_loss, epoch, deepcopy(training_context.model.state_dict())
-                self._periodic_save(training_context, epoch, avg_train_loss, val_metrics["loss"])
+                self._periodic_save(training_context, epoch)
         if best_state is not None:
             training_context.model.load_state_dict(best_state)
         if not disable_pbar:
@@ -278,7 +278,7 @@ class Optimiser:
         )
         csv_file.flush()
 
-    def _periodic_save(self, training_context, epoch: int, avg_train_loss: float, val_loss: float) -> None:
+    def _periodic_save(self, training_context, epoch: int) -> None:
         if (
             self.config["optimizer"]["args"].get("save_every_epochs", 0) <= 0
             or (epoch + 1) % self.config["optimizer"]["args"]["save_every_epochs"] != 0
