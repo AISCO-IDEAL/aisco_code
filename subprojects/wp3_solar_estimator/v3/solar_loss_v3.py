@@ -459,6 +459,10 @@ class SolarLossEstimator:
                 loss_fn=wrapper_solar_loss,
                 enable_backward=True,
             )
+            # Store gradients for per-loss visualization in TotalLoss/TotalLossV2.
+            self.extractor.last_dL_dv = _vertice_grads  # type: ignore[attr-defined]
+            self.extractor.last_verts = _verts  # type: ignore[attr-defined]
+            self.extractor.last_faces = faces  # type: ignore[attr-defined]
 
         else:
             print(f"Using non-MeshSDF method for Solar loss ({self.method}), should be fully differentiable")

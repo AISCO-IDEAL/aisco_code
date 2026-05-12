@@ -181,15 +181,13 @@ rendering_modes:
 
 detached_modes:
   enabled: true
-  MeshSDF_grads:
-    enabled: True
-    class_path: "detached_modes.mesh_sdf_grads:MeshSDFGrads"
-    config:
-      camera_position: [-2000,0,7000] # [0, -7500, 3250]
-      look_at: [-1500, 0, 0]
-      render_mode: "rgb"
-      fps: 10
-      #render_interval: 10
+  # NOTE: Per-loss `MeshSDF_grads_*` blocks were removed. Mesh-gradient
+  # visualisation is now produced exclusively by the central PLY pipeline
+  # (`CentralVisManagerV2.vis_mesh_gradient`). Output files live under
+  # `<run_dir>/mesh_gradients/<loss_key>/epoch_*.ply` and are uploaded to wandb
+  # under the `mesh_gradients/<loss_key>` key in `main_v2.py` after finalize().
+  # See `viz_config.yaml` -> `visual_types.mesh_gradients` to tune colormap and
+  # cadence.
 
   solar_v3_selection:
       enabled: True

@@ -17,6 +17,9 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import Di
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
+from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.main_v2_utils import (
+    _upload_mesh_gradient_gifs,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import (
     _compute_latent_pretrain_hash,
     pretraining_latent,
@@ -119,6 +122,7 @@ def _configure_cfg_env(cfg_folder: Path | None) -> str:
 
 
 def main() -> None:  # noqa: PLR0912, PLR0915
+
     print("Starting Main file V2...")
 
     # 0. Parse CLI args and configure override env var before any config load.
@@ -203,6 +207,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         apply_sweep_overrides(dict(wandb.config))
         # Update wandb dashboard with the full patched master config
         wandb.config.update(get_master_config(), allow_val_change=True)
+
+    # Re-read flags that may have been overridden by the sweep so the rest of
+    # main() respects the overridden values (e.g. latent_space, run_locally).
+    _raw_latent_space = general_config["general_info"].get("latent_space", False)
+    if isinstance(_raw_latent_space, str):
+        latent_space = _raw_latent_space.strip().lower() in {"true", "1", "yes", "on"}
+    else:
+        latent_space = bool(_raw_latent_space)
+    _raw_run_locally = general_config["general_info"].get("run_locally", "False")
+    run_locally = str(_raw_run_locally).strip().lower() in {"true", "1", "yes", "on"}
 
     if verbose:
         print("Successfully loaded and registered all configs")
@@ -449,6 +463,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 _vis_manager.finalize()
             except Exception as e:
                 print(f"CentralVisManager finalize failed: {e}")
+            _upload_mesh_gradient_gifs(_vis_manager, use_wandb)
 
         if use_wandb and general_config["wandb_general"].get("use_neural_renderer", False):
             try:
@@ -622,6 +637,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 _vis_manager.finalize()
             except Exception as e:
                 print(f"CentralVisManager finalize failed: {e}")
+            _upload_mesh_gradient_gifs(_vis_manager, use_wandb)
 
         run_latent_interpolation(state=interpolation_state, epoch=num_epochs, stage="final", verbose=verbose)
         cleanup_latent_interpolator(interpolation_state)

@@ -72,9 +72,6 @@ GENERAL_CONFIG_PATH = _WP4_CONFIGS_DIR / "general_config.yaml"
 DEFAULT_LOCAL_STORAGE_DIR = REPO_ROOT.parent / "local_storage_dir"
 DEFAULT_BULK_STORAGE_DIR = Path("/cluster/work/fuge/AISCO/bulk_storage")
 PRETRAINING_STORAGE_ROOT = Path("/home/aisco/pretraining_gifs")
-SOLAR_RENDERS_ROOT = Path("/home/aisco/Documents/AISCO_code/wandb/run-20260430_064014-rkflw9m0/files/media/images/renders")
-PRESSURE_VISUALS_ROOT = Path("/home/aisco/Documents/AISCO_code/wandb/run-20260430_064014-rkflw9m0/files/media/images")
-MESH_ASSEMBLY_RENDERS_DIR = SOLAR_RENDERS_ROOT / "mesh_assembly_mode_v4"
 SLOW_GIF_CACHE_DIR = GUI_ROOT / "cache"
 MESH_ASSEMBLY_DIR_CANDIDATES = ("mesh_assembly_mode_v4", "mesh_assembly_mode_v3", "mesh_assembly_mode_v2", "mesh_assembly_mode")
 
@@ -99,6 +96,33 @@ CONFIG_OVERRIDES_ROOT = GUI_ROOT / "config_overrides"
 GUI_OVERRIDE_PREFIX = "gui_override_"
 GUI_SCHEMA_PATH = GUI_ROOT / "gui_schema.json"
 COPY_EXCLUDE_SUBFOLDERS = ("sweeps",)
+
+
+def _get_default_storage_root() -> Path:
+    """Get the default storage root from configuration or fall back to default."""
+    try:
+        with GENERAL_CONFIG_PATH.open(encoding="utf-8") as f:
+            general_cfg = yaml.safe_load(f) or {}
+        storage_paths = general_cfg.get("storage_paths", {})
+        run_locally = str(general_cfg.get("general_info", {}).get("run_locally", "False")).lower() == "true"
+
+        if run_locally:
+            raw_root = storage_paths.get("local_storage_dir", str(DEFAULT_LOCAL_STORAGE_DIR))
+        else:
+            raw_root = storage_paths.get("storage_dir", str(DEFAULT_BULK_STORAGE_DIR))
+
+        root = Path(raw_root)
+        return (REPO_ROOT.parent / root).resolve() if not root.is_absolute() else root.resolve()
+    except Exception:
+        return DEFAULT_LOCAL_STORAGE_DIR.resolve()
+
+
+# Render output paths - these are derived from storage root subdirectories
+# They will be populated with actual render outputs during run execution
+_STORAGE_ROOT = _get_default_storage_root()
+SOLAR_RENDERS_ROOT = _STORAGE_ROOT
+MESH_ASSEMBLY_RENDERS_DIR = _STORAGE_ROOT
+PRESSURE_VISUALS_ROOT = _STORAGE_ROOT
 
 
 class RunLocalRequest(BaseModel):
