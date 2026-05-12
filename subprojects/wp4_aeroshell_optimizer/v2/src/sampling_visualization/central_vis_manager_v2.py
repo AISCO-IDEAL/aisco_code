@@ -617,8 +617,16 @@ class CentralVisManagerV2(_BaseVisManager):
         """Render a circle survey of the pretrained latent space.
 
         Iterates ``n_samples`` angles uniformly on the pretrained z-circle, extracts
-        the SDF mesh at each point, and writes a ``vis_mesh_assembly_v4`` PLY+GLB
-        per sample. Gated by ``vis_config.latent_pretraining.latent_space_exploration.enabled``.
+        the SDF mesh at each point, and writes a PLY per sample to
+        ``<run_dir>/circle_survey/angle_NNN.ply``.  Gated by
+        ``vis_config.latent_optimisation.vis_latent_circle_survey.enabled`` and also
+        accepts the legacy ``vis_config.latent_pretraining.latent_space_exploration.enabled``
+        gate.
+
+        The per-survey mesh resolution is read from
+        ``latent_optimisation.vis_latent_circle_survey.mesh_resolution`` (default 64).
+        The output directory is ``circle_survey/`` — separate from
+        ``mesh_assembly_v4/`` so survey PLYs never corrupt the optimisation GIF.
 
         Args:
             model: A model implementing ``set_latent_vector`` and compatible with
@@ -631,18 +639,27 @@ class CentralVisManagerV2(_BaseVisManager):
 
         import torch  # noqa: PLC0415
 
-        exploration_cfg: dict[str, Any] = self._cfg.get("latent_pretraining", {}).get("latent_space_exploration", {})
-        if not exploration_cfg.get("enabled", False):
+        # Check gate: latent_optimisation.vis_latent_circle_survey.enabled
+        survey_cfg: dict[str, Any] = self._cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {})
+        # Legacy gate: latent_pretraining.latent_space_exploration.enabled
+        legacy_cfg: dict[str, Any] = self._cfg.get("latent_pretraining", {}).get("latent_space_exploration", {})
+        enabled = survey_cfg.get("enabled", legacy_cfg.get("enabled", False))
+        if not enabled:
             _log(
                 {
                     "event": "circle_survey_skipped",
                     "run_id": self.run_id,
-                    "reason": "latent_space_exploration.enabled=false in vis_config.yaml",
+                    "reason": "vis_latent_circle_survey.enabled=false in vis_config.yaml",
                 }
             )
             return
 
-        extractor = self.make_vis_extractor(device=device)
+        # Build a vis extractor at the configured resolution for the survey
+        mesh_resolution = int(survey_cfg.get("mesh_resolution", 64))
+        extractor = self._make_survey_extractor(device=device, resolution=mesh_resolution)
+
+        vt = "circle_survey"
+
         angles = [2 * math.pi * i / n_samples for i in range(n_samples)]
         z_dim = int(getattr(model, "z_dim", 2))
 
@@ -652,9 +669,39 @@ class CentralVisManagerV2(_BaseVisManager):
                 z[0] = z_radius * math.cos(angle)
                 z[1] = z_radius * math.sin(angle)
             model.set_latent_vector(z)
-            verts, faces = extractor.extract_mesh(sdf_model=model)
-            self.set_active_slot(None)
-            self.vis_mesh_assembly_v4(idx, verts, faces)
+            try:
+                verts, faces = extractor.extract_mesh(sdf_model=model)
+            except Exception as exc:
+                _log(
+                    {
+                        "event": "circle_survey_mesh_failed",
+                        "run_id": self.run_id,
+                        "idx": idx,
+                        "angle_deg": round(math.degrees(angle), 1),
+                        "error": str(exc),
+                    }
+                )
+                continue
+
+            verts_np = _to_f64(verts)
+            faces_np = _to_i32(faces)
+            if verts_np.shape[0] == 0 or faces_np.shape[0] == 0:
+                continue
+
+            rgb = solid_rgb(len(verts_np), _DARK_BLUE_RGB)
+            out_dir = self._output_dir(vt)
+            out_path = out_dir / f"angle_{idx:03d}.ply"
+            future = self._ply_pool.submit(write_ply_task, out_path, verts_np, faces_np, rgb, False, 0.0)
+            self._pending_ply.append(future)
+            _log(
+                {
+                    "event": "circle_survey_ply_submitted",
+                    "run_id": self.run_id,
+                    "idx": idx,
+                    "angle_deg": round(math.degrees(angle), 1),
+                    "path": str(out_path),
+                }
+            )
 
         _log(
             {
@@ -664,6 +711,43 @@ class CentralVisManagerV2(_BaseVisManager):
                 "z_radius": z_radius,
             }
         )
+
+    def _make_survey_extractor(self, device: str, resolution: int) -> MeshSDFExtractor:
+        """Create a MeshSDFExtractor at the given resolution for the circle survey."""
+        from subprojects.wp2_assembler.version4.utils.reg_imp import (  # noqa: PLC0415
+            get_outer_prism_bounds_mm,
+            scale_outer_prism,
+        )
+        from subprojects.wp5.unified_mesh_extraction.utils import (  # noqa: PLC0415
+            MeshExtractionConfig,
+            load_mesh_extraction_config,
+        )
+
+        vis_cfg = self._cfg.get("vis_extraction") or {}
+        survey_cfg = self._cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {})
+        bbox_scale = float(survey_cfg.get("bbox_scale_factor", vis_cfg.get("bbox_scale_factor", 1.3)))
+
+        prism = get_outer_prism_bounds_mm()
+        scaled = scale_outer_prism(prism, bbox_scale)
+        bbox = [
+            [scaled["x"][0], scaled["x"][1]],
+            [scaled["y"][0], scaled["y"][1]],
+            [scaled["z"][0], scaled["z"][1]],
+        ]
+
+        base_cfg = load_mesh_extraction_config()
+        vis_config = MeshExtractionConfig(
+            device=device,
+            isovalue=base_cfg.isovalue,
+            base_resolution=resolution,
+            subdivision_factor=base_cfg.subdivision_factor,
+            max_refine_levels=base_cfg.max_refine_levels,
+            batch_size=base_cfg.batch_size,
+            bbox=bbox,
+            target_num_vertices=None,
+            vertex_count_tolerance=base_cfg.vertex_count_tolerance,
+        )
+        return MeshSDFExtractor(config=vis_config)
 
     def save_ply(self, visual_type: str, epoch: int, *_args: Any, **_kwargs: Any) -> None:
         _log(

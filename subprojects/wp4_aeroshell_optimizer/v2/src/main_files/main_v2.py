@@ -248,6 +248,19 @@ def main(_gui_mode: bool = False, _cfg_folder: str | None = None) -> None:  # no
         if verbose:
             print(f"[latent_space] Latent pretraining complete. Population size: {Z_pretrained.shape[0]}")
 
+        # Circle survey: evaluate the model at N angles on the pretrained z-circle.
+        # Runs after pretraining regardless of whether a checkpoint was loaded,
+        # so the survey always reflects the current latent state.
+        if _vis_manager is not None and isinstance(_vis_manager, CentralVisManagerV2):
+            _survey_cfg: dict = _vis_manager.latent_optimisation_cfg.get("vis_latent_circle_survey", {})
+            if _survey_cfg.get("enabled", False):
+                _vis_manager.vis_latent_circle_survey(
+                    model=model,
+                    z_radius=float(_survey_cfg.get("z_radius", 2.0)),
+                    n_samples=int(_survey_cfg.get("n_circle_samples", 90)),
+                    device=str(device),
+                )
+
     else:
         # Standard pretraining: hash-based canonical lookup (Plan 031 / M4).
         pretraining_config_name = general_config["active_configs"].get("pretraining", "pretraining_v0_config.yaml")

@@ -55,5 +55,5 @@ def _maybe_run_latent_pretraining(
     raw = json.dumps(_load_config(v="v2", cfg_name=latent_cfg_name))
     latent_config = json.loads(raw.replace("${LATENT_DATA_ROOT}", root))
 
-    model, Z_pretrained = pretraining_latent(model, latent_config, device, use_wandb=use_wandb, vis_sampling=False)
+    model, Z_pretrained = pretraining_latent(model, latent_config, device, use_wandb=use_wandb)
     return model, Z_pretrained

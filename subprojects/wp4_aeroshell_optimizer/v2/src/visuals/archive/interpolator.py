@@ -38,6 +38,11 @@ from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bou
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
+try:
+    from typing import cast
+except ImportError:
+    cast = lambda typ, val: val  # type: ignore[assignment]
+
 
 class Interpolator:
     """
@@ -592,7 +597,9 @@ if __name__ == "__main__":
     _args = _parse_cli()
     _device = _args.device or ("cuda" if torch.cuda.is_available() else "cpu")
 
-    _model, _, _, _ = smart_model_init(_args.model_name)
+    _model_raw, _model_id, _task_id, _model_config = smart_model_init(_args.model_name)
+    # cast to SupportsLatentConcat: this script assumes a latent model
+    _model: SupportsLatentConcat = cast(SupportsLatentConcat, _model_raw)
     _ckpt = torch.load(_args.checkpoint, map_location=_device, weights_only=True)
     if not isinstance(_ckpt, dict) or "model_state_dict" not in _ckpt:
         raise ValueError("Checkpoint must contain 'model_state_dict'. Use a latent pretraining checkpoint.")
