@@ -421,7 +421,9 @@ class TotalLoss:
         """
         if not getattr(self, "_visu_diag_logged", False):
             self._visu_diag_logged = True
-            print(f"[VisuDiag V1] per_loss_grads_keys={list(self._visu_per_loss_grads.keys())} per_loss_meshes_keys={list(getattr(self, '_visu_per_loss_meshes', {}).keys())}")
+            print(
+                f"[VisuDiag V1] per_loss_grads_keys={list(self._visu_per_loss_grads.keys())} per_loss_meshes_keys={list(getattr(self, '_visu_per_loss_meshes', {}).keys())}"
+            )
         _per_loss_meshes = getattr(self, "_visu_per_loss_meshes", {})
         if not self._visu_per_loss_grads or not _per_loss_meshes:
             return None

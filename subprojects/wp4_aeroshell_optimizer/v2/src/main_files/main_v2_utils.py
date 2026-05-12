@@ -14,7 +14,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_c
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is_local_machine
 
 
-def _resolve_wandb_name(name_cfg: Any, run_locally: bool) -> str | None: # noqa: PLR0911
+def _resolve_wandb_name(name_cfg: Any, run_locally: bool) -> str | None:  # noqa: PLR0911
     """Resolve wandb run name from config and runtime environment."""
     if name_cfg is None:
         return None
@@ -38,6 +38,7 @@ def _resolve_wandb_name(name_cfg: Any, run_locally: bool) -> str | None: # noqa:
         return f"euler-{slurm_job_id}" if slurm_job_id else None
 
     return raw
+
 
 def _upload_mesh_gradient_gifs(vis_manager: Any, use_wandb: bool) -> None:
     """Upload finalize-generated mesh-gradient GIFs to wandb."""
