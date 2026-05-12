@@ -47,7 +47,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import sma
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.log_file_renamer import (
-    write_wandb_run_name_to_file,
+    rename_log_file_with_wandb_run_name,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
     configure_headless_pyvista,
@@ -111,8 +111,10 @@ def main(_gui_mode: bool = False, _cfg_folder: str | None = None) -> None:  # no
             # keep this for now, not sure if this is any longer required
             patch_wandb_log_for_monotonic_steps()
 
-            # Write W&B run name to file for shell script log renaming
-            write_wandb_run_name_to_file()
+            # Rename log file IMMEDIATELY after W&B init to include run name
+            print("[CHECKPOINT] About to call rename_log_file_with_wandb_run_name()", flush=True)
+            rename_log_file_with_wandb_run_name()
+            print("[CHECKPOINT] rename_log_file_with_wandb_run_name() completed", flush=True)
 
             # Separate axes keep training and rendering logs chronological
             # without forcing everything onto W&B's global step.
