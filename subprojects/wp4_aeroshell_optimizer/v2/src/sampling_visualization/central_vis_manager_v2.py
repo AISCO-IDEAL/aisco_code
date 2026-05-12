@@ -27,9 +27,11 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.ass
     load_assembly_meshes,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.coloring import (
+    map_scalar_to_rgb_mpl,
     resolve_mesh_rgb,
     solid_rgb,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.mesh_ops import face_rgb_to_flat_mesh
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.ply_tasks import (
     render_gif_task,
     write_ply_task,
@@ -145,6 +147,19 @@ class _BaseVisManager:
         future = self._ply_pool.submit(write_ply_task, out_path, verts_np, faces_np, rgb_np, add_coord, coord_scale)
         self._pending_ply.append(future)
         _log({"event": "ply_submitted", "run_id": self.run_id, "visual_type": visual_type, "epoch": epoch})
+
+    def _submit_ply_flat_faces(
+        self,
+        visual_type: str,
+        epoch: int,
+        verts_np: np.ndarray,
+        faces_np: np.ndarray,
+        face_scalars: np.ndarray,
+        type_cfg: dict[str, Any],
+    ) -> None:
+        face_rgb = map_scalar_to_rgb_mpl(face_scalars, type_cfg["colormap"], vmin=type_cfg.get("vmin"), vmax=type_cfg.get("vmax"))
+        flat_verts, flat_faces, flat_rgb = face_rgb_to_flat_mesh(face_rgb, faces_np, verts_np)
+        self._submit_ply(visual_type, epoch, flat_verts, flat_faces, flat_rgb, type_cfg)
 
     def _submit_ply_points(
         self,
@@ -364,20 +379,14 @@ class CentralVisManagerV2(_BaseVisManager):
         self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
     
     def vis_solar_quality(self, epoch: int, verts: Any, faces: Any, quality_values: Any) -> None:
-        
         vt = self._slotted("solar/quality")
         type_cfg = vis_type_config(self._visual_types, vt)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
-        quality_np = _to_f64(quality_values).astype(np.float32).reshape(-1)
-        #scale quality from -1,1 to 0,1 for better colormap resolution
-        quality_np = (quality_np + 1.0) / 2.0
-        rgb = resolve_mesh_rgb(quality_np, len(verts_np), len(faces_np), faces_np, verts_np, type_cfg)
-        self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
-
-    
-
+        # Scale from [-1, 1] to [0, 1] before applying colormap so the full range is used
+        quality_np = (_to_f64(quality_values).astype(np.float32).reshape(-1) + 1.0) / 2.0
+        self._submit_ply_flat_faces(vt, epoch, verts_np, faces_np, quality_np, type_cfg)
 
     def vis_solar_selection(self, epoch: int, verts: Any, faces: Any, weights: Any) -> None:
         vt = self._slotted("solar/selection")
@@ -385,10 +394,7 @@ class CentralVisManagerV2(_BaseVisManager):
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
-        rgb = resolve_mesh_rgb(
-            np.asarray(_to_f64(weights), np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg
-        )
-        self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
+        self._submit_ply_flat_faces(vt, epoch, verts_np, faces_np, _to_f64(weights).astype(np.float32).reshape(-1), type_cfg)
 
     def vis_solar_shading(self, epoch: int, verts: Any, faces: Any, shading: Any) -> None:
         vt = self._slotted("solar/shading")
@@ -396,10 +402,7 @@ class CentralVisManagerV2(_BaseVisManager):
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
-        rgb = resolve_mesh_rgb(
-            np.asarray(_to_f64(shading), np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg
-        )
-        self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
+        self._submit_ply_flat_faces(vt, epoch, verts_np, faces_np, _to_f64(shading).astype(np.float32).reshape(-1), type_cfg)
 
     def vis_solar_penalty(self, epoch: int, verts: Any, faces: Any, penalty: Any) -> None:
         vt = self._slotted("solar/penalty")
@@ -407,10 +410,7 @@ class CentralVisManagerV2(_BaseVisManager):
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
-        rgb = resolve_mesh_rgb(
-            np.asarray(_to_f64(penalty), np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg
-        )
-        self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
+        self._submit_ply_flat_faces(vt, epoch, verts_np, faces_np, _to_f64(penalty).astype(np.float32).reshape(-1), type_cfg)
 
     def vis_solar_numerical_factor(self, epoch: int, verts: Any, faces: Any, numerical_factor: Any) -> None:
         vt = self._slotted("solar/numerical_factor")
@@ -418,10 +418,7 @@ class CentralVisManagerV2(_BaseVisManager):
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
-        rgb = resolve_mesh_rgb(
-            np.asarray(_to_f64(numerical_factor), np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg
-        )
-        self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
+        self._submit_ply_flat_faces(vt, epoch, verts_np, faces_np, _to_f64(numerical_factor).astype(np.float32).reshape(-1), type_cfg)
 
     def vis_bb_constraint(self, epoch: int, verts: Any, distances: Any) -> None:
         """Bounding-box constraint violations. verts is a point cloud (no faces)."""
