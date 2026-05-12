@@ -14,7 +14,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_c
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is_local_machine
 
 
-def _resolve_wandb_name(name_cfg: Any, run_locally: bool) -> str | None:
+def _resolve_wandb_name(name_cfg: Any, run_locally: bool) -> str | None: # noqa: PLR0911
     """Resolve wandb run name from config and runtime environment."""
     if name_cfg is None:
         return None
