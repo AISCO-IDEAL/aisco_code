@@ -62,10 +62,10 @@ after the script has finished run
 `source aisco_env/bin/activate`
 `python3 -m pip install -e '.[all]' --no-build-isolation`
 To fix a the setup problem in WP1 also run this at the end:
-`module purge`  
-`module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6 eth_proxy`  
-`source /cluster/home/$USER/AISCO_code/aisco_env/bin/activate`  
-`python -m pip uninstall -y torch-cluster`  
+`module purge`
+`module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6 eth_proxy`
+`source /cluster/home/$USER/AISCO_code/aisco_env/bin/activate`
+`python -m pip uninstall -y torch-cluster`
 `python -m pip install --no-cache-dir torch-cluster -f https://data.pyg.org/whl/torch-2.4.0+cu121.html`
 -> congrats, you are all set!
 

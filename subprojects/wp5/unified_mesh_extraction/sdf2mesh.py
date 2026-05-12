@@ -65,6 +65,10 @@ class MeshSDFExtractor:
         self._cached_resolution: int | None = None
         self._shared_vertices: torch.Tensor | None = None
         self._shared_faces: torch.Tensor | None = None
+        # Latest per-call buffers consumed by TotalLoss V1/V2 visualisation hooks.
+        self.last_dL_dv: torch.Tensor | None = None
+        self.last_verts: torch.Tensor | None = None
+        self.last_faces: torch.Tensor | None = None
         self._stats: dict[str, int | float] = {"calls": 0}
         # `max_refine_levels` is treated as a resolution multiplier on the
         # uniform grid; it yields equivalent quality to adaptive refinement
@@ -163,11 +167,19 @@ class MeshSDFExtractor:
              projection). Its `.backward()` yields correct gradients w.r.t. the
              SDF parameters even though marching cubes itself is not differentiable.
         """
+        # Clear previous step buffers so skipped/non-backward paths cannot leak stale data.
+        self.last_dL_dv = None
+        self.last_verts = None
+        self.last_faces = None
+
         verts, faces = self.extract_mesh(sdf_model)
         if verts.numel() == 0 or faces.numel() == 0:
             _LOGGER.warning("Empty mesh; returning penalty loss.")
             ev = torch.zeros((1, 3), device=self.device)
             ef = torch.zeros((1, 3), dtype=torch.int64, device=self.device)
+            self.last_verts = ev
+            self.last_faces = ef
+            self.last_dL_dv = None
             return (
                 ev,
                 ef,
@@ -179,6 +191,9 @@ class MeshSDFExtractor:
         v_for_loss = verts.detach().requires_grad_(True)
         loss = loss_fn(v_for_loss, faces)
         if not enable_backward:
+            self.last_verts = verts
+            self.last_faces = faces
+            self.last_dL_dv = None
             return verts, faces, loss, torch.zeros((), device=self.device), torch.zeros_like(verts)
 
         (dL_dv,) = torch.autograd.grad(loss, v_for_loss, torch.ones_like(loss))
@@ -189,6 +204,11 @@ class MeshSDFExtractor:
             scale = self.gradient_max / (norms + 1e-8)
             scale = torch.minimum(scale, torch.ones_like(scale))
             dL_dv = dL_dv * scale
+
+        # Persist latest mesh + dL/dv for TotalLoss.collect_vertex_grads_for_visualisation.
+        self.last_verts = verts
+        self.last_faces = faces
+        self.last_dL_dv = dL_dv
 
         return verts, faces, loss, surrogate, dL_dv
 

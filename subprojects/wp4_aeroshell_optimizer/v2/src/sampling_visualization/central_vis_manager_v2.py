@@ -406,6 +406,90 @@ class CentralVisManagerV2(_BaseVisManager):
         rgb = resolve_mesh_rgb(np.asarray(distances, np.float32).reshape(-1), len(verts_np), 0, None, verts_np, type_cfg)
         self._submit_ply(vt, epoch, verts_np, None, rgb, type_cfg)
 
+    def vis_mesh_gradient(
+        self,
+        epoch: int,
+        loss_key: str,
+        verts: Any,
+        faces: Any,
+        dL_dv: Any,
+    ) -> None:
+        """Render per-vertex `dL/dv · n` for one loss as a coloured PLY.
+
+        The per-vertex outward normal is computed from face normals; the dot
+        product with `dL/dv` is normalised to a symmetric range and mapped
+        through the configured diverging colormap (vmin/vmax are inferred
+        per-epoch by default — see ``visual_types.mesh_gradients``).
+
+        Args:
+            epoch:    Training epoch index — embedded in the PLY filename.
+            loss_key: Name of the loss whose gradient is being visualised.
+                      Becomes the sub-folder name under ``mesh_gradients/``.
+            verts:    (V, 3) mesh vertices (tensor or array).
+            faces:    (F, 3) triangle indices (tensor or array).
+            dL_dv:    (V, 3) gradient of the loss w.r.t. `verts`.
+        """
+        vt = self._slotted(f"mesh_gradients/{loss_key}")
+        type_cfg = vis_type_config(self._visual_types, vt)
+        if type_cfg is None:
+            return
+
+        verts_np = _to_f64(verts)
+        faces_np = _to_i32(faces)
+        grads_np = _to_f64(dL_dv)
+        if verts_np.shape[0] == 0 or faces_np.shape[0] == 0:
+            return
+        if grads_np.shape != verts_np.shape:
+            _log(
+                {
+                    "event": "vis_mesh_gradient_shape_mismatch",
+                    "run_id": self.run_id,
+                    "loss_key": loss_key,
+                    "verts": list(verts_np.shape),
+                    "grads": list(grads_np.shape),
+                }
+            )
+            return
+
+        # Vertex normals = sum of incident face normals (no need to weight by
+        # area; the projection onto dL/dv only needs a direction).
+        e1 = verts_np[faces_np[:, 1]] - verts_np[faces_np[:, 0]]
+        e2 = verts_np[faces_np[:, 2]] - verts_np[faces_np[:, 0]]
+        face_n = np.cross(e1, e2)
+        face_n_norm = np.linalg.norm(face_n, axis=1, keepdims=True)
+        face_n /= np.maximum(face_n_norm, 1e-12)
+        vert_n = np.zeros_like(verts_np)
+        np.add.at(vert_n, faces_np[:, 0], face_n)
+        np.add.at(vert_n, faces_np[:, 1], face_n)
+        np.add.at(vert_n, faces_np[:, 2], face_n)
+        vert_n_norm = np.linalg.norm(vert_n, axis=1, keepdims=True)
+        vert_n /= np.maximum(vert_n_norm, 1e-12)
+
+        dot = np.einsum("ij,ij->i", vert_n, grads_np).astype(np.float32)
+        dot = np.nan_to_num(dot, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # Symmetric range around zero so a diverging colormap (e.g. RdBu_r,
+        # coolwarm) is centred on "no force". vmin/vmax in the YAML override
+        # this; null in YAML means "use the data-driven symmetric range".
+        cfg_vmin = type_cfg.get("vmin")
+        cfg_vmax = type_cfg.get("vmax")
+        if cfg_vmin is None or cfg_vmax is None:
+            amp = float(np.max(np.abs(dot))) if dot.size else 0.0
+            amp = amp if amp > 0.0 else 1.0
+            vmin_eff = -amp if cfg_vmin is None else float(cfg_vmin)
+            vmax_eff = amp if cfg_vmax is None else float(cfg_vmax)
+        else:
+            vmin_eff, vmax_eff = float(cfg_vmin), float(cfg_vmax)
+
+        # Build an effective per-type config with the resolved bounds so
+        # resolve_mesh_rgb honours them without mutating the cached YAML dict.
+        eff_cfg = dict(type_cfg)
+        eff_cfg["vmin"] = vmin_eff
+        eff_cfg["vmax"] = vmax_eff
+
+        rgb = resolve_mesh_rgb(dot, len(verts_np), len(faces_np), faces_np, verts_np, eff_cfg)
+        self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
+
     def vis_latent_sampling(
         self,
         epoch: int,

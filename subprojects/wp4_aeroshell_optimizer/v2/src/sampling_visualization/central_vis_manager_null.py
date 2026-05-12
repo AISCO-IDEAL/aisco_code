@@ -30,6 +30,16 @@ class NullVisManager:
     def vis_bb_constraint(self, epoch: int, verts: Any, distances: Any) -> None:
         pass
 
+    def vis_mesh_gradient(
+        self,
+        epoch: int,
+        loss_key: str,
+        verts: Any,
+        faces: Any,
+        dL_dv: Any,
+    ) -> None:
+        pass
+
     def vis_latent_sampling(
         self,
         epoch: int,

@@ -32,17 +32,17 @@ wandb_general:
   use_wandb: True # main_v1_1_one_model.py, total_loss.py
   project_name: "temp_" # DEFAULT: "WP4_default"  # main_v1_1_one_model.py: wandb.init(project=...)
   entity_name: "aisco"  # main_v1_1_one_model.py: wandb.init(entity=...)
+  name: "auto_run_id"  # wandb.init(name=...): auto_run_id | local_run_id | euler_run_id | <custom_name> | ""
   use_renderer: True  # total_loss.py: general_config["wandb_general"].get("use_renderer", True)
   use_neural_renderer: True  # total_loss.py, main_v1_1_one_model.py: general_config["wandb_general"].get("use_neural_renderer", False)
   rendering_frequency: 1  # total_loss.py: general_config["wandb_general"].get("rendering_frequency")
   wandb_mode: online # online: syncs immediately, offline: saves locally when you run `wandb sync` in the command line
 
-# Visualization manager mode.
-# Options: "disabled" (default), "legacy", "v2", "null"
-# - "disabled": no visualization manager
-# - "legacy": original synchronous CentralVisManager (for rollback)
-# - "v2": new async CentralVisManagerV2 (ThreadPool PLY writes, ProcessPool GIF renders)
-# - "null": no-op NullVisManager (dry-run; all writes are silent)
+# vis_manager: "v2" | "legacy" | "null"
+#   "v2"     → CentralVisManagerV2 (async PLY writes, ProcessPool GIFs) — production default
+#   "legacy" → original CentralVisManager (synchronous, for rollback)
+#   "null"   → NullVisManager (no-op; dry-run, no PLY/GIF outputs)
+# Note: there is no "disabled" mode; main_v2 requires a vis manager to be present.
 vis_manager: "v2"
 
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
