@@ -56,7 +56,7 @@ class ModelLoader:
         mesh_cfg = _replace(
             mesh_cfg,
             device=self.device,
-            bbox=[[-3e3, 3e3], [-3e3, 3e3], [-3e3, 3e3]],
+            bbox=[[-4e3, 4e3], [-4e3, 4e3], [-4e3, 4e3]],
             isovalue=0.0,
             target_num_vertices=int(cfd_config["mesh_resolution"]),
             vertex_count_tolerance=float(cfd_config.get("mesh_resolution_tolerance", 0.1)),
