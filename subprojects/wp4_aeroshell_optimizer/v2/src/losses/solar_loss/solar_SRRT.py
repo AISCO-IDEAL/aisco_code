@@ -11,6 +11,7 @@ from dataclasses import replace as _replace
 
 import torch
 
+from subprojects.wp3_solar_estimator.raytracing.diffable.version4.mesh_ray_visibility_v4 import mesh_visibility_v4
 from subprojects.wp3_solar_estimator.rollout_losses.SRRT_SolarLoss import solar_loss_srrt
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
@@ -57,6 +58,8 @@ class SolarSRRT(ParentLoss):
         self.raytracing_cfg = dict(rt_cfg[key])
         self._pending_diagnostics: dict = {}
 
+        self._mesh_visibility_fn = mesh_visibility_v4 if raytracing_version == "v4" else None
+
     def _loss(self, model, skip_telemetry: bool = False) -> torch.Tensor:
         vis_manager = self._vis_manager if self._vis_manager is not None else NullVisManager()
         sun_dir = self.sun_dir.to(self.device)
@@ -79,6 +82,7 @@ class SolarSRRT(ParentLoss):
                 use_activation_checkpointing=self.use_activation_checkpointing,
                 vis_manager=vis_manager if not skip_telemetry else NullVisManager(),
                 epoch_name=self.epoch_name,
+                mesh_visibility_fn=self._mesh_visibility_fn,
             )
             self._pending_diagnostics = diagnostics
             return loss

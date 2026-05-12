@@ -14,12 +14,13 @@ face normal by this amount before casting toward the sun).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import torch
 from torch.utils.checkpoint import checkpoint
 
-from subprojects.wp3_solar_estimator.raytracing.diffable.version3.mesh_ray_visibility_v3 import mesh_visibility_v3
+from subprojects.wp3_solar_estimator.raytracing.diffable.version3.mesh_ray_visibility_v3 import mesh_visibility_v3 as _default_mesh_visibility
 from subprojects.wp3_solar_estimator.utils.rollout_utils.mesh_area_normals import compute_face_areas_and_normals
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
@@ -47,6 +48,7 @@ def solar_loss_srrt(  # noqa: PLR0912, PLR0915
     use_activation_checkpointing: bool = True,
     vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),  # noqa: B008
     epoch_name: int | None = None,
+    mesh_visibility_fn: Callable | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """
     Single-ray solar power objective with mesh raytracing visibility.
@@ -80,6 +82,8 @@ def solar_loss_srrt(  # noqa: PLR0912, PLR0915
             selected_faces, fully_selected_faces, transition_zone_faces,
             budget_crossover_idx, mean_visibility, shading_penalty
     """
+    _vis_fn = mesh_visibility_fn if mesh_visibility_fn is not None else _default_mesh_visibility
+
     if faces.numel() == 0 or vertices.numel() == 0:
         print("Warning: empty mesh in solar_loss_srrt, returning zero power")
         zero = torch.zeros((), device=vertices.device, dtype=vertices.dtype)
@@ -111,7 +115,7 @@ def solar_loss_srrt(  # noqa: PLR0912, PLR0915
     mesh_cfg = raytracing_cfg["mesh"]
 
     def _compute_power(vtx: torch.Tensor) -> torch.Tensor:
-        visibility, _, _ = mesh_visibility_v3(vtx, faces, sun_dir_unit, mesh_cfg=mesh_cfg, normal_source="mesh")
+        visibility, _, _ = _vis_fn(vtx, faces, sun_dir_unit, mesh_cfg=mesh_cfg, normal_source="mesh")
         numerical_factor = 1 - _lambda * torch.pow(1 + epsilon - visibility, 1 / kappa)
         power_per_face = face_area_m2 * torch.clamp(illumination_quality, min=0.0) * numerical_factor * effective_irradiance_W_m2
         return (power_per_face * soft_mask_original_order).sum()
@@ -121,12 +125,12 @@ def solar_loss_srrt(  # noqa: PLR0912, PLR0915
         # Checkpoint returns only the scalar — run a separate no_grad pass to get
         # intermediate tensors (visibility, numerical_factor) for vis and diagnostics.
         with torch.no_grad():
-            visibility_for_vis, _, _ = mesh_visibility_v3(
+            visibility_for_vis, _, _ = _vis_fn(
                 vertices, faces, sun_dir_unit, mesh_cfg=mesh_cfg, normal_source="mesh"
             )
             numerical_factor_for_vis = 1 - _lambda * torch.pow(1 + epsilon - visibility_for_vis, 1 / kappa)
     else:
-        visibility_for_vis, _, _ = mesh_visibility_v3(
+        visibility_for_vis, _, _ = _vis_fn(
             vertices, faces, sun_dir_unit, mesh_cfg=mesh_cfg, normal_source="mesh"
         )
         numerical_factor_for_vis = 1 - _lambda * torch.pow(1 + epsilon - visibility_for_vis, 1 / kappa)

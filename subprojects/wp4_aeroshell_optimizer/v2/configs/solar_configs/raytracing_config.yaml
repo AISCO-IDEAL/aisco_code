@@ -93,3 +93,33 @@ RaytracingConfigV3:
     diagnostics_log_histograms: False
     diagnostics_sample_limit: 4096
     diagnostics_quantiles: [0.01, 0.05, 0.5, 0.95, 0.99]
+
+RaytracingConfigV4:
+  method: "mesh"
+  normal_source: "mesh"
+  path: "subprojects.wp3_solar_estimator.raytracing.diffable.version4"
+
+  mesh:
+    miss_t: 1e8
+    beta: 1.0
+    gamma: 20.0
+    margin_factor: 8e-3
+    origin_offset_eps: 1e-2
+    sun_distance_factor: 1.0
+    face_chunk_size: 50
+    blocker_chunk_size: 100
+    smoothing_mode: "soft_barycentric_transmittance"
+    face_samples: 7
+    sample_pattern: "barycentric_ring"
+    depth_normalization: "bbox"
+    transmittance_beta: 0.000001
+    transmittance_kappa: 4.0
+    bary_softness_tau: 2.5
+    t_softness_tau: 300
+    eps: 1e-8
+    use_chunk_checkpoint: true   # primary memory fix: O(F²) → O(F) autograd graph
+    use_torch_compile: false     # fuse inner kernels; first call ~30-60s compile
+    diagnostics_enabled: False
+    diagnostics_log_histograms: False
+    diagnostics_sample_limit: 4096
+    diagnostics_quantiles: [0.01, 0.05, 0.5, 0.95, 0.99]
