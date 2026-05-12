@@ -14,6 +14,16 @@ import logging
 import sys
 from pathlib import Path
 
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+from subprojects.wp7_gui.v3.core.settings import SETTINGS
+from subprojects.wp7_gui.v3.modes.launcher.routes import router as launcher_router
+from subprojects.wp7_gui.v3.modes.viewer.routes import router as viewer_router
+from subprojects.wp7_gui.v3.shared.api_router import router as api_router
+
 # Ensure the repo root (AISCO_code/) is on sys.path so that the
 # `subprojects.*` package imports resolve regardless of CWD or how this
 # file is invoked.
@@ -21,15 +31,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import uvicorn  # noqa: E402
-from fastapi import FastAPI, Request  # noqa: E402
-from fastapi.staticfiles import StaticFiles  # noqa: E402
-from fastapi.templating import Jinja2Templates  # noqa: E402
 
-from subprojects.wp7_gui.v3.core.settings import SETTINGS  # noqa: E402
-from subprojects.wp7_gui.v3.modes.launcher.routes import router as launcher_router  # noqa: E402
-from subprojects.wp7_gui.v3.modes.viewer.routes import router as viewer_router  # noqa: E402
-from subprojects.wp7_gui.v3.shared.api_router import router as api_router  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 LOGGER = logging.getLogger(__name__)
