@@ -16,8 +16,8 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.main_v2_utils import (
-    _upload_mesh_gradient_gifs,
     _resolve_wandb_name,
+    _upload_mesh_gradient_gifs,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import (
     _compute_latent_pretrain_hash,
