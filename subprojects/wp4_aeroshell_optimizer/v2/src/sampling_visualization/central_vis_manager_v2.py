@@ -392,7 +392,7 @@ class CentralVisManagerV2(_BaseVisManager):
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
         rgb = resolve_mesh_rgb(
-            np.asarray(penalty, np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg
+            np.asarray(_to_f64(penalty), np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg
         )
         self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
 
