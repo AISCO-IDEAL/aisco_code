@@ -187,9 +187,13 @@ latent_optimisation:
 
   vis_all_losses: true           # Compute cost = N_slots × N_active_losses renders per vis epoch.
 
-  # Circle survey rendered to a PNG strip at finalize()
+  # Circle survey: sweep N angles on the pretrained z-circle and render a GIF.
+  # Called once after pretraining (epoch 0) and then every `cadence` optimisation
+  # epochs. Each call writes to circle_survey/epoch_XXXXX/ so finalize() generates
+  # one GIF per survey snapshot.
   vis_latent_circle_survey:
     enabled: true
+    cadence: 5                    # run survey every N optimisation epochs (0 = only after pretraining)
     n_circle_samples: 90          # number of evenly-spaced angles on the z-circle
     z_radius: 2.0                 # must match z_radius used in pretraining
     mesh_resolution: 64           # marching-cubes resolution for circle survey meshes

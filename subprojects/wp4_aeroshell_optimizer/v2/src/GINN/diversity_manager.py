@@ -945,7 +945,7 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     # Rendering
     # ------------------------------------------------------------------
-    def _render(  # noqa: PLR0912
+    def _render(  # noqa: PLR0912, PLR0915
         self,
         epoch: int,
         total_loss_val: float,
@@ -1014,6 +1014,22 @@ class DiversityTrainer:
                         continue
                     _v, _f = _mesh_entry
                     self._vis_manager.vis_mesh_gradient(epoch, _loss_key, _v, _f, _grads)
+
+        # Circle survey: every N optimisation epochs, sweep the pretrained z-circle.
+        if isinstance(self._vis_manager, CentralVisManagerV2):
+            _survey_cfg: dict = (
+                self._vis_manager.latent_optimisation_cfg.get("vis_latent_circle_survey", {})
+            )
+            _survey_enabled = _survey_cfg.get("enabled", False)
+            _survey_cadence = int(_survey_cfg.get("cadence", 0))
+            if _survey_enabled and _survey_cadence > 0 and epoch % _survey_cadence == 0:
+                self._vis_manager.vis_latent_circle_survey(
+                    model=self._model,
+                    z_radius=float(_survey_cfg.get("z_radius", 2.0)),
+                    n_samples=int(_survey_cfg.get("n_circle_samples", 90)),
+                    device=str(self._device),
+                    epoch=epoch,
+                )
 
         if self._use_neural_renderer and self._renderer_manager is not None:
             try:
