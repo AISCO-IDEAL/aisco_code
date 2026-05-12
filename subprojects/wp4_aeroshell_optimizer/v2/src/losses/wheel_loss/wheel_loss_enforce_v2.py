@@ -1,14 +1,13 @@
 import math
 from pathlib import Path
 
-from AISCO_code.subprojects.wp2_assembler.version4.components.nbz import max_assembly_id
 import torch
 import yaml
-import numpy as np
 
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.enforce_projector import enforce_layer_context
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.assembly_id_utils import resolve_assembly_id
 
 
 class WheelLossEnforceV2(ParentLoss):
@@ -32,23 +31,8 @@ class WheelLossEnforceV2(ParentLoss):
     def _setup(self) -> None:
         self.__config = self.losses_config["wheel_loss_config"]
         self.__bb_config = self.losses_config["bb_config"]
-        ### fixed assembly ID ###
-        if self.__bb_config.get("random_assembly_id", "False") == "False":
-            self.assembly_id = int(self.__bb_config.get("assembly_id", 1))
-        ### random assembly ID ###
-        elif self.__bb_config.get("random_assembly_id", "False") == "True":
-            max_id = max_assembly_id()
-            self.assembly_id = int(np.random.default_rng().integers(0, max_id + 1))
-            if not 0 <= self.assembly_id <= max_id:
-                raise ValueError(f"assembly_id must be in range 0..{max_id}, got {self.assembly_id}")
-        ### else: config error ###
-        else:
-            raise ValueError(
-                f"Invalid value for random_assembly_id: {self.__bb_config['random_assembly_id']} (expected 'True' or 'False')"
-            )
-
-        print(f"[BbV43] Using assembly_id={self.assembly_id}")
-        self.assembly_id = int(self.__bb_config.get("assembly_id", 1))
+        self.assembly_id = resolve_assembly_id(self.__bb_config)
+        print(f"[WheelLossEnforceV2] Using assembly_id={self.assembly_id}")
         self._manual_z_shift = self.__config.get("manual_z_shift", 0.0)
         self.__threshold_huber = float(self.__config.get("threshold_huber", 10.0))
         self.__alignment_weight = float(self.__config.get("enforce_alignment_weight", 0.05))

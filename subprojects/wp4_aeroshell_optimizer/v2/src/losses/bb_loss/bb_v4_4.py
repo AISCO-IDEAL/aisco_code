@@ -4,6 +4,7 @@ import trimesh
 
 from subprojects.wp2_assembler.version4.components.nbz import call_assembly, max_assembly_id
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.assembly_id_utils import resolve_assembly_id
 
 
 def _as_bool(value: object, default: bool = False) -> bool:
@@ -54,23 +55,8 @@ class BbV44(ParentLoss):
         self.__config = self.losses_config["bb_config"]
         self.__analytic_cfg = self.__config.get("analytic_options", {})
         self.__surface_cfg = self.__config.get("surface_sampling", {})
-
-        ### fixed assembly ID ###
-        if self.__config.get("random_assembly_id", "False") == "False":
-            self.assembly_id = int(self.__config.get("assembly_id", 1))
-        ### random assembly ID ###
-        elif self.__config["random_assembly_id"] == "True":
-            max_id = max_assembly_id()
-            self.assembly_id = int(np.random.default_rng().integers(0, max_id + 1))
-            if not 0 <= self.assembly_id <= max_id:
-                raise ValueError(f"assembly_id must be in range 0..{max_id}, got {self.assembly_id}")
-        ### else: config error ###
-        else:
-            raise ValueError(
-                f"Invalid value for random_assembly_id: {self.__config['random_assembly_id']} (expected 'True' or 'False')"
-            )
-
-        print(f"[BbV43] Using assembly_id={self.assembly_id}")
+        self.assembly_id = resolve_assembly_id(self.__config)
+        print(f"[BbV44] Using assembly_id={self.assembly_id}")
 
         tess_tolerance = float(self.__config.get("tessellation_tolerance", 2.0))
         tess_angular_tolerance = float(self.__config.get("tessellation_angular_tolerance", 0.4))
