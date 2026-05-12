@@ -1,3 +1,2 @@
 [WARNING] Unstable assembly: seat is not enclosed by the wheel polygon.
-[WARNING] Out of bounds: wheel_0 bounding box extends outside the outer NBZ after clearance cut.
-[WARNING] Out of bounds: wheel_2 bounding box extends outside the outer NBZ after clearance cut.
+[WARNING] Out of bounds: seat bounding box extends outside the outer NBZ.

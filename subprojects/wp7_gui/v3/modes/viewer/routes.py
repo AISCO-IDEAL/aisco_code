@@ -61,9 +61,11 @@ def viewer_pretraining(request: Request):
 # Runs API
 # ---------------------------------------------------------------------------
 @router.get("/api/runs")
-def api_list_runs() -> dict[str, Any]:
+def api_list_runs(cfg_session: str | None = None) -> dict[str, Any]:
     storage_root = _storage_root()
     runs = list_all_runs(storage_root)
+    if cfg_session is not None:
+        runs = [r for r in runs if r.get("cfg_session") == cfg_session]
     return {"storage_root": str(storage_root), "runs": runs}
 
 

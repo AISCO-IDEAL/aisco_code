@@ -10,23 +10,11 @@
 {% block content %}
 <div class="section-grid" style="grid-template-rows: auto 1fr; height: 100%;">
 
-  <!-- Run toolbar -->
+  <!-- Wizard navigation -->
   <div class="dark-card toolbar">
-    <button class="btn" id="btnRun">Launch Run</button>
-    <button class="btn secondary" id="btnStop" disabled>Stop</button>
-    <div style="display:grid; gap:3px; min-width:160px;">
-      <label style="font-size:0.8rem; color:var(--muted); font-weight:600;">Assembly ID (1–51)</label>
-      <select id="assemblyId"
-        style="border:1px solid #a41717;border-radius:8px;padding:6px 8px;font-size:0.86rem;background:var(--accent);color:#fff;">
-        <option value="">Random</option>
-      </select>
-    </div>
-    <div style="flex:1; min-width:120px;">
-      <div class="progress-bar-wrap" id="progressWrap">
-        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
-      </div>
-      <div style="font-size:0.78rem; color:var(--muted); margin-top:3px;" id="progressLabel">Idle</div>
-    </div>
+    <a href="/" class="btn secondary">← Back to Home</a>
+    <div style="flex:1;"></div>
+    <a href="/launcher/config-overrides?pipeline={{ pipeline }}" class="btn">Next →</a>
   </div>
 
   <!-- Two-column grid: sliders | mesh viewer -->
@@ -89,11 +77,6 @@
 <script>
   const API = "/launcher/api";
 
-  const btnRun = document.getElementById("btnRun");
-  const btnStop = document.getElementById("btnStop");
-  const assemblyId = document.getElementById("assemblyId");
-  const progressFill = document.getElementById("progressFill");
-  const progressLabel = document.getElementById("progressLabel");
   const slidersArea = document.getElementById("slidersArea");
   const sliderStatus = document.getElementById("sliderStatus");
   const meshMeta = document.getElementById("meshMeta");
@@ -104,14 +87,6 @@
 
   let params = {};
   let debounceTimer = null;
-  let progressPoll = null;
-
-  // Populate assembly ID dropdown
-  for (let i = 1; i <= 51; i++) {
-    const opt = document.createElement("option");
-    opt.value = String(i); opt.textContent = String(i);
-    assemblyId.appendChild(opt);
-  }
 
   // ---------- Slider rendering ----------
   function sectionSort(name) {
@@ -234,54 +209,6 @@
   document.getElementById("btnRemoveWheel").addEventListener("click", () => wheelAction("remove-wheel"));
 
   // ---------- Progress polling ----------
-  async function refreshProgress() {
-    try {
-      const d = await (await fetch(`${API}/run/state`)).json();
-      if (d.running) {
-        btnRun.disabled = true; btnStop.disabled = false;
-        btnRun.textContent = "Running…"; assemblyId.disabled = true;
-        if (d.return_code == null) progressLabel.textContent = "Running…";
-      } else {
-        btnRun.disabled = false; btnStop.disabled = true;
-        btnRun.textContent = "Launch Run"; assemblyId.disabled = false;
-        if (d.return_code != null) {
-          progressLabel.textContent = d.return_code === 0 ? "Completed." : `Finished (code ${d.return_code})`;
-          progressFill.style.width = "100%";
-        }
-      }
-    } catch { }
-  }
-
-  // ---------- Run start / stop ----------
-  btnRun.addEventListener("click", async () => {
-    btnRun.disabled = true; btnStop.disabled = false; btnRun.textContent = "Running…";
-    assemblyId.disabled = true; progressFill.style.width = "0%"; progressLabel.textContent = "Starting…";
-    try {
-      const body = {};
-      const raw = String(assemblyId.value || "").trim();
-      if (raw) body.assembly_id = parseInt(raw, 10);
-      const r = await fetch(`${API}/run/start`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.detail?.message || r.status);
-      progressLabel.textContent = `PID ${d.pid}`;
-    } catch (err) {
-      progressLabel.textContent = "Error: " + err.message;
-      btnRun.disabled = false; btnStop.disabled = true; btnRun.textContent = "Launch Run"; assemblyId.disabled = false;
-    }
-  });
-
-  btnStop.addEventListener("click", async () => {
-    btnStop.disabled = true;
-    await fetch(`${API}/run/stop`, { method: "POST" });
-    progressLabel.textContent = "Stopped.";
-    btnRun.disabled = false; btnRun.textContent = "Launch Run"; assemblyId.disabled = false;
-  });
-
-  // Poll run state every 2s
-  progressPoll = setInterval(refreshProgress, 2000);
-  refreshProgress();
 
   // ---------- Three.js mesh viewer ----------
   let scene3d, camera3d, renderer3d, controls3d, currentMesh3d;

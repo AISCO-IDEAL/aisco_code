@@ -99,6 +99,15 @@ def detect_current_run_dir(storage_root: Path) -> Path | None:
     return max(run_dirs, key=lambda p: p.stat().st_mtime)
 
 
+def read_cfg_session(run_path: Path) -> str | None:
+    """Return the basename of the cfg session tagged in gui_cfg_session.txt, or None."""
+    tag_file = run_path / "gui_cfg_session.txt"
+    try:
+        return Path(tag_file.read_text(encoding="utf-8").strip()).name
+    except OSError:
+        return None
+
+
 def list_all_runs(storage_root: Path) -> list[dict[str, object]]:
     """Return all run dirs with metadata, sorted newest-first."""
     run_dirs = collect_run_dirs(storage_root)
@@ -110,6 +119,8 @@ def list_all_runs(storage_root: Path) -> list[dict[str, object]]:
             "mtime": d.stat().st_mtime,
             "has_gifs": has_any_gif_artifacts(d),
             "has_meshes": (d / "meshes").exists(),
+            "cfg_session": read_cfg_session(d),
+            "run_id": f"{d.parent.name}/{d.name}",
         }
         for d in sorted(run_dirs, key=lambda p: p.stat().st_mtime, reverse=True)
     ]

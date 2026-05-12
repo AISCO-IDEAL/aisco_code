@@ -37,6 +37,7 @@ _SUBPAGES = {
     "config-overrides": ("Launcher — Config Overrides", "launcher/config_overrides.html"),
     "assembly-selection": ("Launcher — Assembly Selection", "launcher/assembly_selection.html"),
     "optimization": ("Launcher — Live Run", "launcher/optimization.html"),
+    "output": ("Launcher — Output", "launcher/output.html"),
     "solar": ("Launcher — Solar (Live)", "launcher/solar.html"),
     "testing": ("Launcher — CLI Testing", "launcher/testing.html"),
 }
@@ -89,7 +90,7 @@ def _get_total_epochs() -> int:
 # Page routes
 # ---------------------------------------------------------------------------
 @router.get("")
-def launcher_index(request: Request):
+def launcher_index(request: Request, pipeline: str = "live"):
     return _templates.TemplateResponse(
         request,
         "launcher/index.html",
@@ -97,12 +98,13 @@ def launcher_index(request: Request):
             "active_mode": "launcher",
             "active_page": "config-overrides",
             "page_title": "Launcher",
+            "pipeline": pipeline,
         },
     )
 
 
 @router.get("/{page_key}", name="launcher_subpage")
-def launcher_subpage(request: Request, page_key: str):
+def launcher_subpage(request: Request, page_key: str, pipeline: str = "live"):
     if page_key not in _SUBPAGES:
         raise HTTPException(status_code=404, detail={"message": f"Unknown launcher page '{page_key}'"})
     title, template = _SUBPAGES[page_key]
@@ -113,6 +115,7 @@ def launcher_subpage(request: Request, page_key: str):
             "active_mode": "launcher",
             "active_page": page_key,
             "page_title": title,
+            "pipeline": pipeline,
         },
     )
 

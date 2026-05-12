@@ -28,24 +28,36 @@
       <aside class="sidebar">
         <h1>WP7 v3</h1>
 
+        {% set _pl = pipeline | default('') %}
         <div class="mode-switch">
-          <a href="/viewer" class="{% if active_mode == 'viewer' %}active{% endif %}">Viewer</a>
-          <a href="/launcher/config-overrides" class="{% if active_mode == 'launcher' %}active{% endif %}">Launcher</a>
+          <a href="/" class="{% if not active_mode %}active{% endif %}">Home</a>
+          <a href="/launcher/assembly-selection?pipeline=live"
+            class="{% if active_mode == 'launcher' and _pl == 'live' %}active{% endif %}">Live</a>
+          <a href="/launcher/assembly-selection?pipeline=viewer"
+            class="{% if active_mode == 'launcher' and _pl == 'viewer' %}active{% endif %}">Completed</a>
+          <a href="/viewer" class="{% if active_mode == 'viewer' %}active{% endif %}">Archive</a>
         </div>
 
         <nav class="sub-nav" aria-label="Sub-navigation">
-          {% if active_mode == 'viewer' %}
+          {% if active_mode == 'launcher' and _pl == 'live' %}
+          <a href="/launcher/assembly-selection?pipeline=live"
+            class="{% if active_page == 'assembly-selection' %}active{% endif %}">Assembly Selection</a>
+          <a href="/launcher/config-overrides?pipeline=live"
+            class="{% if active_page == 'config-overrides' %}active{% endif %}">Config Overrides</a>
+          <a href="/launcher/optimization?pipeline=live"
+            class="{% if active_page == 'optimization' %}active{% endif %}">Live Run</a>
+          <a href="/launcher/output?pipeline=live" class="{% if active_page == 'output' %}active{% endif %}">Output</a>
+          {% elif active_mode == 'launcher' and _pl == 'viewer' %}
+          <a href="/launcher/assembly-selection?pipeline=viewer"
+            class="{% if active_page == 'assembly-selection' %}active{% endif %}">Assembly Selection</a>
+          <a href="/launcher/config-overrides?pipeline=viewer"
+            class="{% if active_page == 'config-overrides' %}active{% endif %}">Config Overrides</a>
+          <a href="/launcher/output?pipeline=viewer"
+            class="{% if active_page == 'output' %}active{% endif %}">Output</a>
+          {% elif active_mode == 'viewer' %}
           <a href="/viewer" class="{% if active_page == 'runs' %}active{% endif %}">Finished Runs</a>
           <a href="/viewer/pretraining" class="{% if active_page == 'pretraining' %}active{% endif %}">Pretraining
             GIFs</a>
-          {% elif active_mode == 'launcher' %}
-          <a href="/launcher/config-overrides"
-            class="{% if active_page == 'config-overrides' %}active{% endif %}">Config Overrides</a>
-          <a href="/launcher/assembly-selection"
-            class="{% if active_page == 'assembly-selection' %}active{% endif %}">Assembly Selection</a>
-          <a href="/launcher/optimization" class="{% if active_page == 'optimization' %}active{% endif %}">Live Run</a>
-          <a href="/launcher/solar" class="{% if active_page == 'solar' %}active{% endif %}">Solar (Live)</a>
-          <a href="/launcher/testing" class="{% if active_page == 'testing' %}active{% endif %}">CLI Testing</a>
           {% else %}
           <a href="/" class="active">Introduction</a>
           {% endif %}
