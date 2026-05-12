@@ -1,5 +1,5 @@
 loading:
-  ply_path: "/cluster/work/fuge/AISCO/00_meshes_to_keep/original_silvretta_no_wheels_scaled_to_mm.ply"
+  ply_path: "/home/aisco/Documents/AISCO_code/subprojects/wp3_solar_estimator/testbench/meshes/original_silvretta_no_wheels_scaled_to_mm.ply"
   ply_scaling_factor: 1.0
 
 solar_loss:
@@ -7,5 +7,5 @@ solar_loss:
 
 vis_manager:
   enabled: true
-  run_dir: "/cluster/work/fuge/AISCO/wp3_solar_estimator/testbench_runs"
+  run_dir: "/home/aisco/Documents/AISCO_code/subprojects/wp3_solar_estimator/testbench/test_runs"
   run_id: "testbench"
