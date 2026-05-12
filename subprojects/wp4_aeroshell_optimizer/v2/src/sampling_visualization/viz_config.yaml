@@ -87,7 +87,7 @@ visual_types:
   solar:
     selection:
       enabled: true
-      colormap: "plasma"    # [0,1] bounded selection weight
+      colormap: "bwr"    # [0,1] bounded selection weight
       interval: 1
       alpha_enabled: null
       coordinate_system: null
@@ -105,7 +105,7 @@ visual_types:
 
     penalty:
       enabled: true
-      colormap: "Reds"      # penalty intensity, lower-bounded at 0
+      colormap: "turbo"      # penalty intensity, lower-bounded at 0
       interval: 1
       alpha_enabled: null
       coordinate_system: null
