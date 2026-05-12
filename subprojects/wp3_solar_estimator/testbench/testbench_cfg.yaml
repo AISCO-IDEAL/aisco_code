@@ -5,6 +5,10 @@ loading:
 solar_loss:
   class: "SolarSR"   # SolarV3B | SolarV3B2 | SolarV5 | SolarV6 | SolarV7 | SolarSR
 
+sdf_model:
+  grid_resolution: 128     # R — precomputes an R³ SDF grid once; higher = more accurate, more VRAM during precompute
+  cache_dir: "sdf_cache"   # relative to testbench folder; set to null to disable disk caching
+
 vis_manager:
   enabled: true
   run_dir: "/home/aisco/Documents/AISCO_code/subprojects/wp3_solar_estimator/testbench/test_runs"
