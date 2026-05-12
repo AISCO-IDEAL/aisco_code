@@ -1,5 +1,6 @@
 import hashlib
 import time
+from datetime import datetime
 from pathlib import Path
 
 import torch
@@ -142,13 +143,29 @@ def load_ply_file(ply_path: str, scaling_factor: float) -> tuple[torch.Tensor, t
     return verts, faces
 
 
-def setup_vis_manager(cfg: dict):
+def setup_vis_manager(cfg: dict, loss_class: str | None = None) -> tuple:
+    """Setup visualizer manager and return (manager, save_dir).
+    
+    Returns:
+        (vis_manager, save_dir_path) where save_dir_path is None if vis is disabled
+    """
     if cfg["vis_manager"]["enabled"]:
-        # Resolve relative run_dir against the testbench folder, not CWD
-        run_dir = Path(__file__).parent / cfg["vis_manager"]["run_dir"]
-        return CentralVisManagerV2(run_dir=run_dir, run_id=cfg["vis_manager"]["run_id"])
+        # Resolve base run_dir
+        base_run_dir = Path(cfg["vis_manager"]["run_dir"])
+        base_run_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate unique run_id with timestamp and loss class name
+        if loss_class is not None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            unique_dir_name = f"{timestamp}_{loss_class}"
+            run_dir = base_run_dir / unique_dir_name
+        else:
+            run_dir = base_run_dir / cfg["vis_manager"]["run_id"]
+        
+        vis_manager = CentralVisManagerV2(run_dir=run_dir, run_id="data")
+        return vis_manager, run_dir
     else:
-        return NullVisManager()
+        return NullVisManager(), None
 
 
 def get_device() -> str:
@@ -172,7 +189,10 @@ def single_solar_test():
     verts, faces = load_ply_file(ply_path, ply_scaling)
     print(f"  {verts.shape[0]} vertices, {faces.shape[0]} faces")
 
-    vis_manager = setup_vis_manager(cfg)
+    vis_manager, save_dir = setup_vis_manager(cfg, loss_class=loss_class)
+    
+    if save_dir is not None:
+        print(f"\nVisualizer will save files to: {save_dir}")
 
     print(f"\nInitialising {loss_class}...")
     loss_cls = SOLAR_LOSS_REGISTRY[loss_class]
