@@ -71,7 +71,7 @@ configure_headless_pyvista()
 
 
 
-def main() -> None:  # noqa: PLR0912, PLR0915
+def main(_gui_mode: bool = False, _cfg_folder: str = "") -> None:  # noqa: PLR0912, PLR0915
     print("Starting Main file V2...")
 
     # 1. Load and register configs
