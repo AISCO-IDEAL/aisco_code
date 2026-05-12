@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 
 class AssemblySelectionService:
     def __init__(self, repo_root: Path) -> None:
-        self._script = repo_root / "wp7_gui" / "v3" / "shared" / "GUI_assembly.py"
+        self._script = repo_root / "wp2_assembler" / "version4" / "GUI_helpers" / "GUI_assembly.py"
         # GUI_assembly.py writes all I/O to frontend/assembly/
         self._assembly_dir = repo_root / "wp7_gui" / "v3" / "frontend" / "assembly"
         self._params_path = self._assembly_dir / "parameters.yaml"
@@ -63,7 +63,7 @@ class AssemblySelectionService:
         if fn is None:
             raise HTTPException(status_code=500, detail={"message": "GUI_assembly.py missing call_assembly_from_params"})
         try:
-            fn()
+            fn(output_dir=self._assembly_dir)
         except Exception as exc:
             raise HTTPException(status_code=500, detail={"message": f"Assembly rebuild failed: {exc}"}) from exc
 
