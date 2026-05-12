@@ -24,7 +24,7 @@ from torch import Tensor
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
-from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, get_regulation, scale_outer_prism
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
     _extract_mesh,
     _sample_points_for_shape,
@@ -108,10 +108,9 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     y_center = (float(verts_np[:, 1].max()) + float(verts_np[:, 1].min())) / 2.0
     verts_np[:, 1] -= y_center
 
-    # --- Z grounding: shift so Z_min = ground_clearance (90 + 10 = 100mm) ---
-    prism = get_outer_prism_bounds_mm()
-    ground_clearance = abs(prism["z"][0]) + 10.0  # to avoid the pretrained cars to be cut off at the bottom
-    z_shift = ground_clearance - float(verts_np[:, 2].min())
+    # --- Z grounding: shift so Z_min = wheel_clearance (100mm) ---
+    wheel_clearance = float(get_regulation("no_build_zones.outer_prism.wheel_clearance"))
+    z_shift = wheel_clearance - float(verts_np[:, 2].min())
     verts_np[:, 2] += z_shift
 
     # --- Telemetry ---
@@ -130,6 +129,7 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     )
 
     # --- Outer-prism violation warnings ---
+    prism = get_outer_prism_bounds_mm()
     prism_length = prism["x"][1] - prism["x"][0]
     prism_width = prism["y"][1] - prism["y"][0]
     prism_height = float(prism["z"][1])
