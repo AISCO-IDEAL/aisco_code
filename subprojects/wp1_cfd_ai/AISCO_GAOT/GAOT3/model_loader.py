@@ -23,7 +23,6 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.trainer.utils.plot import plot_3d_comparison_matplotlib
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.pressure_integration import cp_field_to_drag
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.scale import rescale, rescale_new
-from subprojects.wp4_aeroshell_optimizer import MeshSDFGrads, Visualiser
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 if TYPE_CHECKING:
@@ -66,9 +65,6 @@ class ModelLoader:
             config=mesh_cfg,
             gradient_max=float(cfd_config["gradient_max"]),
         )
-
-        self.visualiser = Visualiser(device=self.device)
-        self.gradlogger = MeshSDFGrads(self.visualiser, intensity=10)
 
     def _get_dataset_viz_config(self) -> dict:
         dataset_cfg = self.cfd_config.get("dataset", {}) if isinstance(self.cfd_config.get("dataset", {}), dict) else None
@@ -248,6 +244,10 @@ class ModelLoader:
         verts, faces, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
             sdf_model=sdf_model, loss_fn=self.loss_fn
         )
+        # Store gradients for per-loss visualization in TotalLoss/TotalLossV2.
+        self.extractor.last_dL_dv = dL_dvertices  # type: ignore[attr-defined]
+        self.extractor.last_verts = verts  # type: ignore[attr-defined]
+        self.extractor.last_faces = faces  # type: ignore[attr-defined]
 
         diag = getattr(self, "_last_diagnostics", {})
         diag["mesh_n_vertices"] = int(verts.shape[0]) if verts is not None and verts.numel() > 0 else 0
@@ -259,11 +259,6 @@ class ModelLoader:
             diag["dL_dvertices_norm"] = dL_dvertices.norm().item()
             diag["dL_dvertices_max"] = dL_dvertices.abs().max().item()
         self._last_diagnostics = diag
-
-        self.optimization_state["vertice_grads"] = dL_dvertices
-
-        if self.cfd_config["visualisations"]:
-            self.gradlogger.log_single_image_to_wandb(self.optimization_state, epoch_name=self.epoch_name)
 
         cuppled_loss = loss.detach() + surrogate_loss - surrogate_loss.detach()
         return cuppled_loss
@@ -404,7 +399,7 @@ class ModelLoader:
         with torch.autograd.set_detect_anomaly(True):
             gaot_loss = self.gaot.forward(batch=batch, tokens_pos=tokens_pos)
 
-        self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces, "vertice_grads": None}
+        self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces}
 
         pressure_field = gaot_loss["field"]
 
@@ -470,7 +465,9 @@ class ModelLoader:
         face_normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
 
-        sdf_values = self.sdf_model(face_centers + face_normals * 50).squeeze(-1)
+        # SDF evaluation is only used to determine normal flipping, not for loss gradients
+        with torch.no_grad():
+            sdf_values = self.sdf_model(face_centers + face_normals * 50).squeeze(-1)
         normals_flipped = sdf_values < 0
         face_normals[normals_flipped] *= -1
         self._normals_flipped_count = int(normals_flipped.sum().item())

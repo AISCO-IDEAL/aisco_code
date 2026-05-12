@@ -24,14 +24,9 @@ export no_proxy=$(echo "$no_proxy" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export NO_PROXY=$(echo "$NO_PROXY" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 
 # ---- Configurable variables ------------------------------------------------
-SWEEP_ID="<EDIT_ME>"   # bare id (abc123xy) or full path (entity/project/id) -- set after `wandb sweep ...`
-SWEEP_ENTITY="aisco"               # used when SWEEP_ID is bare
-SWEEP_PROJECT="AISCOModel_Pretraining_Single"  # used when SWEEP_ID is bare; must match wandb sweep output
-COUNT=10                                       # runs per agent — keep at 1 for the smoke test; bump to 10-20 for the real run
-MAX_AGENTS=1                                   # 1 for smoke test; bump to 2 for the real run
-
-# Never let shell-level WANDB_PROJECT hijack where the agent looks for the sweep.
-unset WANDB_PROJECT
+SWEEP_ID="aisco/prefocus-rollout-sweep/nbyf0lks"   # <-- EDIT THIS
+COUNT=10                                      # runs per agent (no empty space, otherwise it will recognise count as empty string)
+MAX_AGENTS=2                                  # max number of parallel agents (will be capped by available GPUs)
 
 # ---- Job info ---------------------------------------------------------------
 
