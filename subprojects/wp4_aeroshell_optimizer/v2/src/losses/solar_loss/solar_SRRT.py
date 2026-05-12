@@ -48,7 +48,13 @@ class SolarSRRT(ParentLoss):
         self.extractor = MeshSDFExtractor(config=mesh_cfg_extract)
         self.extractor.set_grid(cfg["bbox"], mesh_cfg_extract.base_resolution)
 
-        self.raytracing_cfg = cfg.get("raytracing_cfg", {})
+        # Load raytracing config from raytracing_config.yaml (single source of truth)
+        raytracing_version = cfg.get("raytracing_version", "v3")
+        rt_cfg = load_config(v="v2", cfg_name="solar_configs/raytracing_config.yaml")
+        key = f"RaytracingConfig{raytracing_version.upper()}"
+        if key not in rt_cfg:
+            raise ValueError(f"Unknown raytracing_version '{raytracing_version}' in raytracing_config.yaml")
+        self.raytracing_cfg = dict(rt_cfg[key])
         self._pending_diagnostics: dict = {}
 
     def _loss(self, model, skip_telemetry: bool = False) -> torch.Tensor:
