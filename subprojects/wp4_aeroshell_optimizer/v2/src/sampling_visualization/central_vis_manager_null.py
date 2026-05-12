@@ -27,6 +27,12 @@ class NullVisManager:
     def vis_solar_penalty(self, epoch: int, verts: Any, faces: Any, penalty: Any) -> None:
         pass
 
+    def vis_solar_numerical_factor(self, epoch: int, verts: Any, faces: Any, numerical_factors: Any) -> None:
+        pass
+
+    def vis_solar_quality(self, epoch: int, verts: Any, faces: Any, quality: Any) -> None:
+        pass
+
     def vis_bb_constraint(self, epoch: int, verts: Any, distances: Any) -> None:
         pass
 

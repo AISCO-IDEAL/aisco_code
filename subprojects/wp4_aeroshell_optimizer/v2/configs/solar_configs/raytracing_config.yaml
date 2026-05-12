@@ -118,7 +118,7 @@ RaytracingConfigV4:
     t_softness_tau: 300
     eps: 1e-8
     use_chunk_checkpoint: true   # primary memory fix: O(F²) → O(F) autograd graph
-    use_torch_compile: false     # fuse inner kernels; first call ~30-60s compile
+    use_torch_compile: true     # fuse inner kernels; first call ~30-60s compile
     diagnostics_enabled: False
     diagnostics_log_histograms: False
     diagnostics_sample_limit: 4096

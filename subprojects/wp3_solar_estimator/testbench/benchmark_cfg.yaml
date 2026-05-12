@@ -1,20 +1,19 @@
 loading:
-  ply_path: "/cluster/home/aalthaus/AISCO_code/subprojects/wp4_aeroshell_optimizer/data/test_meshes/sdf_mesh_11_17_09_50.ply"
+  ply_path: "/home/aisco/Documents/AISCO_code/subprojects/wp3_solar_estimator/testbench/meshes/original_silvretta_no_wheels_scaled_to_mm.ply"
   ply_scaling_factor: 1.0
 
 solar_loss:
   class: "SolarSRRT"   # SolarV3 | SolarV3B2 | SolarV5 | SolarV6 | SolarV7 | SolarSR
 
-sdf_model:
-  grid_resolution: 128     # R — precomputes an R³ SDF grid once; higher = more accurate, more VRAM during precompute
+sdf_model:    # R — precomputes an R³ SDF grid once; higher = more accurate, more VRAM during precompute
   cache_dir: "sdf_cache"   # relative to testbench folder; set to null to disable disk caching
 
 benchmark:
-  warmup_steps: 10
-  active_steps: 50
+  warmup_steps: 5
+  active_steps: 25
 
 profiler:
-  enabled: true
+  enabled: false
   trace_dir: "traces"
   record_shapes: true
   profile_memory: true

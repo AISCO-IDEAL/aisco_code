@@ -82,10 +82,13 @@ def run_benchmark():
         torch.cuda.empty_cache()
         
     for i in range(warmup_steps):
-        loss = solar_loss.get_loss(model=sdf_model, epoch_name=f"warmup_{i}", skip_telemetry=True)
+        step_start = time.perf_counter()
+        loss = solar_loss.get_loss(model=sdf_model, epoch_name=i, skip_telemetry=True)
         loss.backward()
         if verts.grad is not None:
             verts.grad.zero_()
+        step_time_ms = (time.perf_counter() - step_start) * 1000
+        print(f"Warmup step {i}: {step_time_ms:.2f} ms")
             
     print(f"--- Starting Active Tuning & Profiling ({active_steps} steps) ---")
     if torch.cuda.is_available():
@@ -113,7 +116,10 @@ def run_benchmark():
     
     with ctx if ctx is not None else nullcontext() as p:
         for step in range(active_steps):
-            loss = solar_loss.get_loss(model=sdf_model, epoch_name=f"step_{step}", skip_telemetry=True)
+            # also record each iteration time for better insights into compile:
+            step_start = time.perf_counter()
+            
+            loss = solar_loss.get_loss(model=sdf_model, epoch_name=step+1000, skip_telemetry=True)
             loss.backward()
             
             # Print at the first step that gradients successfully reached vertices
@@ -125,6 +131,9 @@ def run_benchmark():
                 
             if ctx is not None:
                 p.step()
+            
+            step_time_ms = (time.perf_counter() - step_start) * 1000
+            print(f"Step {step}: {step_time_ms:.2f} ms")
                 
     end_event.record()
     if torch.cuda.is_available():
