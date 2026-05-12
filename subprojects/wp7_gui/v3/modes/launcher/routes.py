@@ -47,6 +47,7 @@ def _assembly(pipeline: str) -> AssemblySelectionService:
         return _assembly_service_live
     raise ValueError(f"Unknown pipeline value '{pipeline}'. Expected 'live' or 'completed'.")
 
+
 _SUBPAGES = {
     "config-overrides": ("Launcher — Config Overrides", "launcher/config_overrides.html"),
     "assembly-selection": ("Launcher — Assembly Selection", "launcher/assembly_selection.html"),
@@ -76,6 +77,7 @@ class CleanupRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _get_total_epochs() -> int:
     try:

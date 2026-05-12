@@ -214,18 +214,28 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         if _cfg_folder is not None:
             try:
                 (rendering_dir / "gui_cfg_session.txt").write_text(str(_cfg_folder), encoding="utf-8")
-                print(json.dumps({
-                    "event": "gui_run_tagged",
-                    "cfg_session": Path(_cfg_folder).name,
-                    "rendering_dir": str(rendering_dir),
-                    "level": "info",
-                }), flush=True)
+                print(
+                    json.dumps(
+                        {
+                            "event": "gui_run_tagged",
+                            "cfg_session": Path(_cfg_folder).name,
+                            "rendering_dir": str(rendering_dir),
+                            "level": "info",
+                        }
+                    ),
+                    flush=True,
+                )
             except OSError as _gui_tag_err:
-                print(json.dumps({
-                    "event": "gui_run_tag_failed",
-                    "reason": str(_gui_tag_err),
-                    "level": "warning",
-                }), flush=True)
+                print(
+                    json.dumps(
+                        {
+                            "event": "gui_run_tag_failed",
+                            "reason": str(_gui_tag_err),
+                            "level": "warning",
+                        }
+                    ),
+                    flush=True,
+                )
 
     # Construct vis manager once per run.
     # vis_manager: "v2" | "legacy" | "null" | "disabled" (default)  # noqa: ERA001
