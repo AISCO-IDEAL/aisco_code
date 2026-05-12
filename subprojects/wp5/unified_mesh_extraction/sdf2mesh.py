@@ -197,13 +197,14 @@ class MeshSDFExtractor:
             return verts, faces, loss, torch.zeros((), device=self.device), torch.zeros_like(verts)
 
         (dL_dv,) = torch.autograd.grad(loss, v_for_loss, torch.ones_like(loss))
-        surrogate = self.compute_gradient_flow(verts, dL_dv, sdf_model)
 
         if self.gradient_max is not None:
             norms = torch.norm(dL_dv, dim=1, keepdim=True)
             scale = self.gradient_max / (norms + 1e-8)
             scale = torch.minimum(scale, torch.ones_like(scale))
             dL_dv = dL_dv * scale
+
+        surrogate = self.compute_gradient_flow(verts, dL_dv, sdf_model)
 
         # Persist latest mesh + dL/dv for TotalLoss.collect_vertex_grads_for_visualisation.
         self.last_verts = verts

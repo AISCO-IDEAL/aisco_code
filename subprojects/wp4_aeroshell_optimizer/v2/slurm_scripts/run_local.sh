@@ -58,7 +58,8 @@ cd "$PROJECT_ROOT"
 # Run the python command
 python3 subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py  \
     --save_model \
-    --problem_id="AISCO_WP4_Test1"
+    --problem_id="AISCO_WP4_Test1" \
+    "$@"
 
 echo "=========================================="
 echo "Finished at: $(date)"

@@ -12,9 +12,15 @@
   --shadow: 0 14px 30px rgba(0, 0, 0, 0.26);
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html, body { width: 100%; height: 100%; }
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
 
 body {
   margin: 0;
@@ -45,10 +51,23 @@ body {
   align-items: center;
   gap: 10px;
 }
-.top-bar img { height: 40px; object-fit: contain; }
-.top-bar .center { justify-self: center; }
-.top-bar .center img { height: 64px; }
-.top-bar .right { justify-self: end; }
+
+.top-bar img {
+  height: 40px;
+  object-fit: contain;
+}
+
+.top-bar .center {
+  justify-self: center;
+}
+
+.top-bar .center img {
+  height: 64px;
+}
+
+.top-bar .right {
+  justify-self: end;
+}
 
 .body-layout {
   min-height: 0;
@@ -95,7 +114,11 @@ body {
   border: 1px solid transparent;
   transition: background 140ms ease, border-color 140ms ease;
 }
-.mode-switch a:hover { background: rgba(255, 255, 255, 0.12); }
+
+.mode-switch a:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .mode-switch a.active {
   background: var(--accent);
   border-color: #ffb0b0;
@@ -120,7 +143,12 @@ body {
   border: 1px solid transparent;
   transition: background 140ms ease, transform 120ms ease;
 }
-.sub-nav a:hover { background: rgba(255, 255, 255, 0.10); transform: translateX(2px); }
+
+.sub-nav a:hover {
+  background: rgba(255, 255, 255, 0.10);
+  transform: translateX(2px);
+}
+
 .sub-nav a.active {
   background: var(--accent);
   border-color: #ffb0b0;
@@ -150,8 +178,17 @@ body {
   align-items: center;
   justify-content: space-between;
 }
-.workspace-top h2 { margin: 0; font-size: 1rem; letter-spacing: 0.03em; }
-.workspace-top .hint { color: var(--muted); font-size: 0.86rem; }
+
+.workspace-top h2 {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+}
+
+.workspace-top .hint {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
 
 .workspace-body {
   overflow: auto;
@@ -177,5 +214,15 @@ button.primary {
   font-weight: 700;
   cursor: pointer;
 }
-button.primary:hover { background: var(--accent-2); }
-button.primary:disabled { background: #777; cursor: not-allowed; opacity: 0.6; }
+
+button.primary:hover {
+  background: var(--accent-2);
+}
+
+button.primary:disabled {
+  background: #777;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Arcade cover styles → frontend/static/css/arcade.css */

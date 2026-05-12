@@ -321,7 +321,7 @@ class ModelLoader:
                 point_size=2.0,
                 cmap="jet",
                 dpi=150,
-                view_angle=(20, -120),
+                view_angle=(20, 120),
                 hide_grid=False,
                 equal_aspect=False,
                 show_abs_diff=field_ref is not None,
@@ -331,7 +331,7 @@ class ModelLoader:
                 fixed_axis_limits=self._viz_fixed_axis_limits,
             )
             wandb_payload = {
-                "Pressure-Field visualisation": wandb.Image(
+                "cfd/Pressure-Field visualisation": wandb.Image(
                     tmp_path,
                     caption=f"opt {fname} {title_epoch}",
                 )
@@ -367,8 +367,8 @@ class ModelLoader:
             n_dir_area = area_normals[:, 0]
             face_drag = -p_face * n_dir_area
 
-            front_faces = n_dir_area < 0
-            back_faces = n_dir_area > 0
+            front_faces = n_dir_area > 0
+            back_faces = n_dir_area < 0
             wandb.log(
                 {
                     "cfd/int_drag_front_f": face_drag[front_faces].sum().item(),

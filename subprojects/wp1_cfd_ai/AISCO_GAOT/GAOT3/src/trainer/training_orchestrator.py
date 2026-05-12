@@ -109,14 +109,6 @@ class TrainingOrchestrator:
                 {"best/loss": result["best"]["loss"], "best/epoch": result["best"]["epoch"], "training_time": result["time"]}
             )
             self.save_ckpt()
-            if self.config["setup"]["wandb"]:
-                self.tracker.save_checkpoint_artifact(
-                    epoch=result["best"]["epoch"],
-                    train_loss=result["best"]["loss"],
-                    val_loss=result.get("best", {}).get("loss"),
-                    is_best=True,
-                    config_dict=self.full_config_dict,
-                )
             torch.cuda.empty_cache()
 
     def train_step(self, batch):
@@ -136,9 +128,6 @@ class TrainingOrchestrator:
 
     def load_ckpt(self, path: str | None = None):
         return CheckpointHandler(self.config).load_checkpoint(self, path)
-
-    def load_from_artifact(self, artifact_name: str):
-        return CheckpointHandler(self.config).load_artifact(self, artifact_name)
 
     def _setup_logging(self) -> None:
         level = os.environ.get("LOG_LEVEL", "INFO")

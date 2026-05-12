@@ -19,7 +19,9 @@ from __future__ import annotations
 import contextlib
 import copy
 import json
+import os
 import re
+import warnings
 from pathlib import Path
 from warnings import warn
 
@@ -110,7 +112,29 @@ def _load_yaml(v: str, cfg_name: str) -> dict:
     Load a YAML configuration file from disk (no registry, no wandb side-effects) by giving the name/path of the config file, located in the v{x}/configs/ folder.
 
     Environment-aware path resolution is delegated to device_detection module.
+    When AISCO_CFG_FOLDER is set, that directory is checked first; the default
+    device-specific path is used as a fallback if the file is absent there.
     """
+    # --- Session-folder override (M3: cfg-folder gap fix) ---
+    session_dir_str = os.environ.get("AISCO_CFG_FOLDER")
+    if session_dir_str:
+        session_path = Path(session_dir_str) / cfg_name
+        if session_path.exists():
+            warnings.warn(
+                f"config_loaded: {cfg_name!r} loaded from session folder (AISCO_CFG_FOLDER).",
+                stacklevel=2,
+            )
+            try:
+                with session_path.open() as f:
+                    return yaml.safe_load(f)
+            except yaml.YAMLError as e:
+                raise yaml.YAMLError(f"Error parsing session config at {session_path}: {e}") from e
+        else:
+            warnings.warn(
+                f"config_fallback: {cfg_name!r} not found in session folder ({session_dir_str}); loading from default path.",
+                stacklevel=2,
+            )
+    # --- Device-specific default paths ---
     config_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / cfg_name
     if Path.home() == Path("/home/aisco"):  # Checks if running on the Best and corrects Path if necessary
         config_path = (
