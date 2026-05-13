@@ -220,7 +220,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
         os.makedirs(rendering_dir, exist_ok=True)
 
-        # M1: GUI cfg-session tag — links this run dir to the launcher config session
+        # writes the path to the GUI config folder into the output folder
         if _cfg_folder is not None:
             try:
                 (rendering_dir / "gui_cfg_session.txt").write_text(str(_cfg_folder), encoding="utf-8")
