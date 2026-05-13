@@ -43,6 +43,16 @@ CAMERA_ELEVATION_ANGLE: float = _CFG["camera_elevation_angle"]
 POINT_SIZE: int = _CFG["point_size"]
 BACKGROUND_COLOR: list[float] = _CFG["background_color"]
 
+# Per-component color overrides for the combined bbox+SDF PLY format.
+# Order matches the alpha-sorted split: [inner_bbox, sdf/aeroshell, outer_bbox].
+# Each entry is (rgb_or_None, alpha_or_None); None means keep the baked PLY color.
+_ASSEMBLY_CFG = _CFG.get("visual_types", {}).get("mesh_assembly_v4", {})
+_COMPONENT_COLORS: list[tuple[list[float] | None, float | None]] = [
+    (_ASSEMBLY_CFG.get("inner_color"), None),
+    (_ASSEMBLY_CFG.get("sdf_color"),   _ASSEMBLY_CFG.get("sdf_alpha")),
+    (_ASSEMBLY_CFG.get("outer_color"), _ASSEMBLY_CFG.get("outer_alpha")),
+]
+
 _SLOT_PATTERN = re.compile(r"slot(\d{2})_.*?_epoch(\d{5})\.ply")
 _FLAT_PATTERN = re.compile(r"^epoch_?(\d{5})\.ply$")
 
@@ -78,7 +88,7 @@ def _extract_vertex_colors(geo: object) -> np.ndarray | None:
     return colors.clip(0.0, 1.0).astype(np.float32)
 
 
-def _trimesh_to_pyrender(geo: object) -> pyrender.Mesh | None:
+def _trimesh_to_pyrender(geo: object, wireframe: bool = False) -> pyrender.Mesh | None:
     """Convert one trimesh geometry to a pyrender.Mesh, preserving vertex colors.
 
     For solid meshes (has faces), delegates to pyrender.Mesh.from_trimesh which
@@ -87,12 +97,13 @@ def _trimesh_to_pyrender(geo: object) -> pyrender.Mesh | None:
 
     Args:
         geo: A trimesh.Trimesh or trimesh.PointCloud.
+        wireframe: If True, render the mesh as a wireframe (no face fill, no Z-buffer write).
 
     Returns:
         pyrender.Mesh ready to add to a scene, or None if geometry is empty.
     """
     if isinstance(geo, trimesh.Trimesh) and len(geo.faces) > 0:
-        return pyrender.Mesh.from_trimesh(geo, smooth=False)
+        return pyrender.Mesh.from_trimesh(geo, smooth=False, wireframe=wireframe)
 
     # Point-cloud path: Trimesh with zero faces, or PointCloud
     if isinstance(geo, (trimesh.Trimesh, trimesh.PointCloud)):
@@ -111,12 +122,81 @@ def _trimesh_to_pyrender(geo: object) -> pyrender.Mesh | None:
     return pyrender.Mesh(primitives=[pyrender.Primitive(positions=points, color_0=colors, mode=pyrender.GLTF.POINTS)])
 
 
+def _split_combined_bbox_mesh(
+    geo: trimesh.Trimesh,
+) -> list[tuple[trimesh.Trimesh, bool]] | None:
+    """Detect and split the combined inner+outer+SDF PLY format.
+
+    ``export_combined_bbox_mesh_ply`` merges three components into one trimesh
+    with distinct per-vertex alpha values:
+
+    * inner bbox  → alpha ≈ 255  (opaque)
+    * aeroshell   → alpha ≈ 128  (50 % opacity)
+    * outer bbox  → alpha ≈ 51   (20 % opacity)
+
+    Returns ``None`` when fewer than 3 distinct alpha groups are present (i.e.
+    this is a normal single-component PLY).  Otherwise returns a list of
+    ``(sub_mesh, wireframe)`` tuples in the correct pyrender render order::
+
+        [(inner, False), (aeroshell, False), (outer, True)]
+
+    Render order matters because pyrender writes to the depth buffer even in
+    BLEND mode.  Placing the outer bbox last as a wireframe prevents it from
+    occluding the aeroshell via Z-buffer writes.
+    """
+    colors = np.asarray(geo.visual.vertex_colors, dtype=np.uint8)
+    if colors.ndim != 2 or colors.shape[1] < 4:
+        return None
+
+    alpha = colors[:, 3]
+    # Sort highest first: [inner≈255, aeroshell≈128, outer≈51]
+    unique_alphas = sorted(set(alpha.tolist()), reverse=True)
+    if len(unique_alphas) < 3:
+        return None
+
+    verts = np.asarray(geo.vertices)
+    faces = np.asarray(geo.faces, dtype=np.int64)
+
+    result: list[tuple[trimesh.Trimesh, bool]] = []
+    for i, alpha_val in enumerate(unique_alphas[:3]):
+        wireframe = i == 2  # only the lowest-alpha group (outer bbox) is wireframe
+        v_mask = alpha == alpha_val
+        v_idx = np.where(v_mask)[0]
+        if len(v_idx) == 0:
+            continue
+        v_min, v_max = int(v_idx.min()), int(v_idx.max())
+        f_mask = np.all((faces >= v_min) & (faces <= v_max), axis=1)
+        if not f_mask.any():
+            continue
+        sub = trimesh.Trimesh(
+            vertices=verts[v_min : v_max + 1],
+            faces=faces[f_mask] - v_min,
+            vertex_colors=colors[v_min : v_max + 1],
+            process=False,
+        )
+        # Apply color overrides from vis_config.yaml if configured.
+        if i < len(_COMPONENT_COLORS):
+            cfg_rgb, cfg_alpha = _COMPONENT_COLORS[i]
+            if cfg_rgb is not None:
+                r, g, b = (int(c * 255) for c in cfg_rgb)
+                a = int(cfg_alpha * 255) if cfg_alpha is not None else alpha_val
+                sub.visual.vertex_colors = np.full(
+                    (len(sub.vertices), 4), [r, g, b, a], dtype=np.uint8
+                )
+        result.append((sub, wireframe))
+
+    return result if len(result) >= 2 else None
+
+
 def _load_pyrender_geometries(fpath: Path) -> list[pyrender.Mesh]:
     """Load all geometries from a PLY as separate pyrender.Mesh objects.
 
     Returns one Mesh per trimesh sub-geometry so that each retains its own
     vertex colors. Handles solid mesh, point cloud, and Scene files without
-    triggering Open3D geometry-type warnings.
+    triggering Open3D geometry-type warnings.  The combined bbox+SDF format
+    produced by ``export_combined_bbox_mesh_ply`` is detected automatically
+    and split into three separate meshes rendered in the correct depth order
+    (inner opaque → aeroshell transparent → outer bbox wireframe).
 
     Args:
         fpath: Path to the PLY file.
@@ -135,6 +215,16 @@ def _load_pyrender_geometries(fpath: Path) -> list[pyrender.Mesh]:
 
     result = []
     for geo in geos:
+        # Detect the combined inner+outer+SDF format and split it so each
+        # component can be rendered with the correct depth/wireframe settings.
+        if isinstance(geo, trimesh.Trimesh) and len(geo.faces) > 0:
+            split = _split_combined_bbox_mesh(geo)
+            if split is not None:
+                for sub_geo, wf in split:
+                    mesh = _trimesh_to_pyrender(sub_geo, wireframe=wf)
+                    if mesh is not None:
+                        result.append(mesh)
+                continue
         mesh = _trimesh_to_pyrender(geo)
         if mesh is not None:
             result.append(mesh)

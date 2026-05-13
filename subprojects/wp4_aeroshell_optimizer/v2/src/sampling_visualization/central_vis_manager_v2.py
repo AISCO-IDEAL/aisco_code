@@ -118,7 +118,22 @@ class _BaseVisManager:
         if not vis_is_enabled(self._visual_types, "mesh_assembly_v4"):
             return
         try:
-            self._assembly_meshes = load_assembly_meshes()
+            inner_v, inner_f, outer_v, outer_f, _, _, _, _, _ = load_assembly_meshes()
+            # Read colors/alphas from config; fall back to defaults if not present
+            cfg = self._visual_types.get("mesh_assembly_v4", {})
+            sdf_color = tuple(cfg.get("sdf_color", [0.2, 1.0, 1.0]))  # type: ignore[arg-type]
+            sdf_alpha = float(cfg.get("sdf_alpha", 0.5))
+            inner_color = tuple(cfg.get("inner_color", [1.0, 0.5, 0.0]))  # type: ignore[arg-type]
+            outer_color = tuple(cfg.get("outer_color", [1.0, 0.35, 0.15]))  # type: ignore[arg-type]
+            outer_alpha = float(cfg.get("outer_alpha", 0.2))
+            self.set_assembly_meshes(
+                inner_v, inner_f, outer_v, outer_f,
+                sdf_color=sdf_color,
+                inner_color=inner_color,
+                outer_color=outer_color,
+                sdf_alpha=sdf_alpha,
+                outer_alpha=outer_alpha,
+            )
             _log({"event": "assembly_meshes_loaded", "run_id": self.run_id})
         except Exception as exc:
             _log(
