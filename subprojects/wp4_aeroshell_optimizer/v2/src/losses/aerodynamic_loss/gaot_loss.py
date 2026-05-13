@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING
 
 import torch
+from subprojects.wp4_aeroshell_optimiser.v2.src.utils.device_detection import Environment, detect_environment
 
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.model_loader import ModelLoader as ModelLoader2
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.model_loader import ModelLoader as ModelLoader3
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.model_loader import ModelLoader as ModelLoader1
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
-from subprojects.wp4_aeroshell_optimiser.v2.src.utils.device_detection import detect_environment, Environment
 
 if TYPE_CHECKING:
     from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
@@ -26,19 +27,18 @@ class GaotLoss(ParentLoss):
 
         self.gaot: ModelLoader1 | ModelLoader2 | ModelLoader3
         if version == 1:
-            warnings.warn("You are using an old Version of the GAOT")
+            warnings.warn("You are using an old Version of the GAOT", stacklevel=2)
             self.gaot = ModelLoader1(cfd_config=self.losses_config["cfd"], device=self.device)
         elif version == 2:
-            warnings.warn("You are using an old Version of the GAOT")
+            warnings.warn("You are using an old Version of the GAOT", stacklevel=2)
             self.gaot = ModelLoader2(cfd_config=self.losses_config["cfd"], device=self.device)
         elif version == 3:
-            if detect_environment()==Environment.AISCO_BEAST:
+            if detect_environment() == Environment.AISCO_BEAST:
                 self.gaot = ModelLoader3(cfd_config=self.losses_config["cfd_local"], device=self.device)
             else:
                 self.gaot = ModelLoader3(cfd_config=self.losses_config["cfd"], device=self.device)
         else:
             raise ValueError(f"Gaot Loss Version {version} is not implemented")
-
 
     def _loss(self, model) -> torch.Tensor:
         # Propagate CentralVisManager to the underlying model loader so it can
