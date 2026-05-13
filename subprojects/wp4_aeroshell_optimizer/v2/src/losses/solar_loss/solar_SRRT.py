@@ -38,6 +38,7 @@ class SolarSRRT(ParentLoss):
         self._lambda = float(cfg.get("_lambda", 1.0))
         self.epsilon = float(cfg.get("eps", 1e-12))
         self.use_activation_checkpointing = bool(cfg.get("use_activation_checkpointing", True))
+        self.smooth_gradient_iters = int(cfg.get("smooth_gradient_iters", 0))
 
         mesh_cfg_extract = load_mesh_extraction_config()
         mesh_cfg_extract = _replace(
@@ -91,6 +92,7 @@ class SolarSRRT(ParentLoss):
             sdf_model=model,
             loss_fn=loss_fn,
             enable_backward=True,
+            smooth_vertex_gradients_iters=self.smooth_gradient_iters,
         )
 
         with torch.no_grad():

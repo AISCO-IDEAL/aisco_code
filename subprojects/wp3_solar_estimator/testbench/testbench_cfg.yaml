@@ -13,3 +13,4 @@ vis_manager:
   enabled: true
   run_dir: "/cluster/work/fuge/AISCO/wp3_solar_estimator/testbench_runs"
   run_id: "testbench"
+  true_scale: false

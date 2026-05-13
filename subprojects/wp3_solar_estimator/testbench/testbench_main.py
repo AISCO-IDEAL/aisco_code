@@ -213,7 +213,7 @@ def single_solar_test():
 
     print(f"\nSolar loss : {result.item():.4f} W")
     print(f"Elapsed    : {elapsed:.2f}s")
-
+    true_scale = cfg["vis_manager"]["true_scale"]
     if vis_enabled and hasattr(solar_loss, "extractor") and solar_loss.extractor.last_dL_dv is not None:
         vis_manager.vis_mesh_gradient(
             -42,
@@ -221,7 +221,7 @@ def single_solar_test():
             solar_loss.extractor.last_verts,
             solar_loss.extractor.last_faces,
             solar_loss.extractor.last_dL_dv,
-            true_scale=False,
+            true_scale=true_scale,
         )
 
     vis_manager.finalize()

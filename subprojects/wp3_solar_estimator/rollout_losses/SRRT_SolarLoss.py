@@ -151,9 +151,7 @@ def solar_loss_srrt(
         # (1 - numerical_factor) is large when visibility is low.
         penalty_scalar = (
             shading_penalty_weight
-            * (
-                (1 - numerical_factor_for_vis.detach()) * torch.clamp(illumination_quality, min=0.0) * soft_mask_original_order
-            ).sum()
+            * ((1 - numerical_factor_for_vis) * torch.clamp(illumination_quality, min=0.0) * soft_mask_original_order).sum()
         )
         power_watts = power_watts - penalty_scalar
 

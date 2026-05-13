@@ -150,6 +150,7 @@ class MeshSDFExtractor:
         sdf_model: SDFModel,
         loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
         enable_backward: bool = True,
+        smooth_vertex_gradients_iters: int = 0,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Extract mesh, compute `loss_fn(v, f)`, and a surrogate whose backward
         pass routes gradients into the SDF parameters.
@@ -203,6 +204,16 @@ class MeshSDFExtractor:
             scale = self.gradient_max / (norms + 1e-8)
             scale = torch.minimum(scale, torch.ones_like(scale))
             dL_dv = dL_dv * scale
+
+        for _ in range(smooth_vertex_gradients_iters):
+            v0, v1, v2 = faces[:, 0], faces[:, 1], faces[:, 2]
+            edges_from = torch.cat([v0, v1, v2, v1, v2, v0])
+            edges_to = torch.cat([v1, v2, v0, v0, v1, v2])
+            neighbor_sum = torch.zeros_like(dL_dv)
+            neighbor_count = torch.zeros(dL_dv.shape[0], 1, device=dL_dv.device, dtype=dL_dv.dtype)
+            neighbor_sum.scatter_add_(0, edges_to.unsqueeze(-1).expand(-1, 3), dL_dv[edges_from])
+            neighbor_count.scatter_add_(0, edges_to.unsqueeze(-1), torch.ones(len(edges_to), 1, device=dL_dv.device, dtype=dL_dv.dtype))
+            dL_dv = 0.5 * dL_dv + 0.5 * neighbor_sum / neighbor_count.clamp_min(1)
 
         surrogate = self.compute_gradient_flow(verts, dL_dv, sdf_model)
 

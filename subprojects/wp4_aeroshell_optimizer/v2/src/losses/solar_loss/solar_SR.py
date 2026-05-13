@@ -32,6 +32,7 @@ class SolarSR(ParentLoss):
         self.soft_mask_selection_threshold = float(cfg.get("soft_mask_selection_threshold", 0.5))
         self.soft_mask_full_selection_threshold = float(cfg.get("soft_mask_full_selection_threshold", 0.95))
         self.epsilon = float(cfg.get("eps", 1e-12))
+        self.smooth_gradient_iters = int(cfg.get("smooth_gradient_iters", 0))
 
         mesh_cfg = load_mesh_extraction_config()
         mesh_cfg = _replace(
@@ -70,6 +71,7 @@ class SolarSR(ParentLoss):
             sdf_model=model,
             loss_fn=loss_fn,
             enable_backward=True,
+            smooth_vertex_gradients_iters=self.smooth_gradient_iters,
         )
 
         with torch.no_grad():
