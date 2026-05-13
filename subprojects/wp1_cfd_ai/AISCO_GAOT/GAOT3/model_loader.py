@@ -239,6 +239,104 @@ class ModelLoader:
         pressure_pa = q_inf * p
         return (-pressure_pa * normals[:, 0] * area_per_vertex).sum()
 
+    def _smooth_cp_field_if_enabled(
+        self,
+        pressure_field: torch.Tensor,
+        batch: Batch,
+        mesh_verts: torch.Tensor,
+        mesh_faces: torch.Tensor,
+    ) -> torch.Tensor:
+        cfg = self.cfd_config.get("cp_smoothing", {})
+        if not isinstance(cfg, dict) or not bool(cfg.get("enabled", False)):
+            return pressure_field
+
+        original_shape = pressure_field.shape
+        p = pressure_field.squeeze(-1) if pressure_field.dim() > 1 else pressure_field
+        if p.shape[0] != mesh_verts.shape[0]:
+            raise ValueError(f"Pressure field length {p.shape[0]} does not match vertex count {mesh_verts.shape[0]}.")
+
+        iterations = max(0, int(cfg.get("iterations", 3)))
+        if iterations == 0 or mesh_faces.numel() == 0:
+            return pressure_field
+
+        min_strength = max(0.0, min(1.0, float(cfg.get("min_strength", 0.0))))
+        max_strength = max(0.0, min(1.0, float(cfg.get("max_strength", 0.35))))
+        if min_strength > max_strength:
+            min_strength, max_strength = max_strength, min_strength
+        curvature_quantile = max(0.0, min(1.0, float(cfg.get("curvature_quantile", 0.95))))
+        curvature_power = max(0.0, float(cfg.get("curvature_power", 2.0)))
+
+        faces = mesh_faces.to(device=p.device, dtype=torch.long)
+        src = torch.cat([faces[:, 0], faces[:, 1], faces[:, 1], faces[:, 2], faces[:, 2], faces[:, 0]], dim=0)
+        dst = torch.cat([faces[:, 1], faces[:, 0], faces[:, 2], faces[:, 1], faces[:, 0], faces[:, 2]], dim=0)
+
+        num_verts = p.shape[0]
+        degree = torch.zeros(num_verts, device=p.device, dtype=p.dtype)
+        degree = degree.index_add(0, dst, torch.ones_like(src, dtype=p.dtype)).clamp_min(1.0)
+
+        normals = batch.c_raw if hasattr(batch, "c_raw") and batch.c_raw is not None else batch.c
+        normals = torch.nn.functional.normalize(normals.to(device=p.device, dtype=p.dtype), dim=-1)
+        edge_curvature = (1.0 - (normals[src] * normals[dst]).sum(dim=-1)).clamp_min(0.0)
+        curvature = torch.zeros(num_verts, device=p.device, dtype=p.dtype)
+        curvature = curvature.index_add(0, dst, edge_curvature) / degree
+
+        curvature_scale = torch.quantile(curvature.detach().float(), curvature_quantile).to(device=p.device, dtype=p.dtype)
+        curvature_scale = curvature_scale.clamp_min(torch.finfo(p.dtype).eps)
+        curvature_norm = (curvature / curvature_scale).clamp(0.0, 1.0)
+        smoothing_strength = min_strength + (max_strength - min_strength) * (1.0 - curvature_norm).pow(curvature_power)
+
+        p_smoothed = p
+        for _ in range(iterations):
+            neighbour_sum = torch.zeros_like(p_smoothed)
+            neighbour_sum = neighbour_sum.index_add(0, dst, p_smoothed[src])
+            neighbour_mean = neighbour_sum / degree
+            p_smoothed = p_smoothed + smoothing_strength * (neighbour_mean - p_smoothed)
+
+        if bool(cfg.get("preserve_drag", True)):
+            q_inf = 0.5 * self.cfd_config["rho"] * self.cfd_config["v_inf"] ** 2
+            pressure_integration_mode = self.cfd_config.get("pressure_integration_mode", "face")
+            if pressure_integration_mode == "face":
+                face = faces.T
+                pos = batch.pos_raw.to(device=p.device, dtype=p.dtype)
+                integration_normals = batch.c.to(device=p.device, dtype=p.dtype)
+                v0 = pos[face[0]]
+                v1 = pos[face[1]]
+                v2 = pos[face[2]]
+                area_normals = 0.5 * torch.cross(v1 - v0, v2 - v0, dim=-1)
+                outward_n = (integration_normals[face[0]] + integration_normals[face[1]] + integration_normals[face[2]]) / 3.0
+                dot_prod = (area_normals * outward_n).sum(dim=-1, keepdim=True)
+                area_normals = torch.where(dot_prod < 0, -area_normals, area_normals)
+                per_face_weight = -q_inf * area_normals[:, 0] / 3.0
+                drag_weights = torch.zeros(num_verts, device=p.device, dtype=p.dtype)
+                drag_weights = drag_weights.index_add(0, face[0], per_face_weight)
+                drag_weights = drag_weights.index_add(0, face[1], per_face_weight)
+                drag_weights = drag_weights.index_add(0, face[2], per_face_weight)
+            elif pressure_integration_mode == "sdf_vertex_constant_area":
+                normals_sdf = self._compute_sdf_vertex_normals(
+                    mesh_verts,
+                    detach_normals=bool(self.cfd_config.get("pressure_integration_detach_sdf_normals", True)),
+                ).to(device=p.device, dtype=p.dtype)
+                verts_m = mesh_verts.to(device=p.device, dtype=p.dtype) * 1e-3
+                v0 = verts_m[faces[:, 0]]
+                v1 = verts_m[faces[:, 1]]
+                v2 = verts_m[faces[:, 2]]
+                face_areas = 0.5 * torch.cross(v1 - v0, v2 - v0, dim=-1).norm(dim=-1)
+                area_per_vertex = (2.0 * face_areas.mean()).detach()
+                drag_weights = -q_inf * normals_sdf[:, 0] * area_per_vertex
+            else:
+                drag_weights = None
+
+            if drag_weights is not None:
+                drag_weight_norm = (drag_weights * drag_weights).sum()
+                if torch.isfinite(drag_weight_norm) and drag_weight_norm.detach().abs().item() > torch.finfo(p.dtype).eps:
+                    raw_drag = (p * drag_weights).sum()
+                    smoothed_drag = (p_smoothed * drag_weights).sum()
+                    p_smoothed = p_smoothed + (raw_drag - smoothed_drag) * drag_weights / drag_weight_norm
+
+        if len(original_shape) == 2 and original_shape[-1] == 1:
+            return p_smoothed.unsqueeze(-1)
+        return p_smoothed.reshape(original_shape)
+
     def loss_fn(self, mesh_verts: torch.Tensor, mesh_faces: torch.Tensor) -> torch.Tensor:
 
         self._check_watertightness(mesh_verts, mesh_faces)
@@ -255,6 +353,9 @@ class ModelLoader:
         self.optimization_state = {"vertices": mesh_verts, "faces": mesh_faces}
 
         pressure_field = gaot_loss["field"]
+        cp_smoothing_cfg = self.cfd_config.get("cp_smoothing", {})
+        if isinstance(cp_smoothing_cfg, dict) and bool(cp_smoothing_cfg.get("enabled", False)):
+            pressure_field = self._smooth_cp_field_if_enabled(pressure_field, batch, mesh_verts, mesh_faces)
 
         self._visualize_pressure_field(
             pressure_field=pressure_field,
