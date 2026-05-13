@@ -72,7 +72,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Vi
 configure_headless_pyvista()
 
 
-def main(_gui_mode: bool = False, _cfg_folder: str = "") -> None:  # noqa: PLR0912, PLR0915
+def main() -> None:  # noqa: PLR0912, PLR0915
     print("Starting Main file V2...")
 
     # 0. Parse CLI args and configure override env var before any config load.
