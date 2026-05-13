@@ -212,6 +212,17 @@ def main(_gui_mode: bool = False, _cfg_folder: str | None = None) -> None:  # no
         _run_id = wandb_name or "unknown"
         _vis_manager = CentralVisManagerV2(run_dir=rendering_dir, run_id=_run_id)
         print(f"[VisManager:v2] enabled → {rendering_dir}")
+        # Optionally derive circle-survey layout from z_resample_mode.
+        # Gated by vis_config: latent_optimisation.vis_latent_circle_survey.layout_from_resample_mode.
+        try:
+            _survey_vis_cfg = _vis_manager._cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {})
+            if _survey_vis_cfg.get("layout_from_resample_mode", False):
+                _tc = _load_config(v="v2", cfg_name="training_config.yaml")
+                _z_mode = _tc.get("z_resample_mode", "on_circle")
+                _derived_layout = "pizza" if _z_mode == "in_circle" else "strip"
+                _vis_manager._cfg.setdefault("latent_optimisation", {}).setdefault("vis_latent_circle_survey", {})["layout"] = _derived_layout
+        except Exception:
+            pass
     elif _vis_mode == "null":
         _vis_manager = NullVisManager()
         print("[VisManager:null] dry-run mode — all writes are no-ops")

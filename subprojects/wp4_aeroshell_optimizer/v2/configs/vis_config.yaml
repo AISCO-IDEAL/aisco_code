@@ -204,6 +204,7 @@ latent_optimisation:
     z_radius: 2.0                 # must match z_radius used in pretraining
     mesh_resolution: 64           # marching-cubes resolution for circle survey meshes
     bbox_scale_factor: 1.2        # vis bbox scale (relative to outer prism)
+    layout_from_resample_mode: true  # true = derive layout from z_resample_mode (on_circle→strip, in_circle→pizza); false = use layout above
     layout: "strip"               # "strip" = horizontal PNG strip; "grid" = 2D Cartesian grid PNG; "pizza" = concentric circles grid PNG
     save_plys: true               # for further investigation
     # pizza-mode only (ignored for strip/grid):
