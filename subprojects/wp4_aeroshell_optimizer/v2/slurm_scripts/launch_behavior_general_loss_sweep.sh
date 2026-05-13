@@ -18,7 +18,7 @@ set -euo pipefail
 umask 0002
 
 # ---- Configure this after `wandb sweep ...` --------------------------------
-SWEEP_ID="aisco/behavior-general-loss-schedule/gpm28ou2"  # full id: entity/project/sweep_id
+SWEEP_ID="aisco/behavior-general-loss-schedule/uthde7da"  # full id: entity/project/sweep_id
 COUNT=8
 
 export no_proxy=$(echo "${no_proxy:-}" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
@@ -36,7 +36,7 @@ export PYTHONPATH="/cluster/home/${USERNAME}/AISCO_code/subprojects:${PYTHONPATH
 export PYTHONPATH="/cluster/home/${USERNAME}/AISCO_code:${PYTHONPATH}"
 cd /cluster/home/${USERNAME}/AISCO_code
 
-if [[ "$SWEEP_ID" == "aisco/behavior-general-loss-schedule/gpm28ou2" || -z "$SWEEP_ID" ]]; then
+if [[ "$SWEEP_ID" == "aisco/behavior-general-loss-schedule/uthde7da" || -z "$SWEEP_ID" ]]; then
     echo "ERROR: set SWEEP_ID to the id returned by 'wandb sweep ...'"
     exit 1
 fi
