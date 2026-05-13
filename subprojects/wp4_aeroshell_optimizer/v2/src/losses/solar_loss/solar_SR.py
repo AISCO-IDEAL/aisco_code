@@ -66,7 +66,7 @@ class SolarSR(ParentLoss):
             self._pending_diagnostics = diagnostics
             return loss
 
-        vertices, faces, loss, surrogate_loss, dL_dv = self.extractor.extract_and_compute_loss(
+        _vertices, _faces, loss, surrogate_loss, _dL_dv = self.extractor.extract_and_compute_loss(
             sdf_model=model,
             loss_fn=loss_fn,
             enable_backward=True,

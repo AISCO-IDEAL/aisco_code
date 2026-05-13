@@ -377,7 +377,7 @@ class CentralVisManagerV2(_BaseVisManager):
         cp_np = _to_f64(cp_values).astype(np.float32).reshape(-1)
         rgb = resolve_mesh_rgb(cp_np, len(verts_np), len(faces_np), faces_np, verts_np, type_cfg)
         self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
-    
+
     def vis_solar_quality(self, epoch: int, verts: Any, faces: Any, quality_values: Any) -> None:
         vt = self._slotted("solar/quality")
         type_cfg = vis_type_config(self._visual_types, vt)
@@ -418,7 +418,9 @@ class CentralVisManagerV2(_BaseVisManager):
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
-        self._submit_ply_flat_faces(vt, epoch, verts_np, faces_np, _to_f64(numerical_factor).astype(np.float32).reshape(-1), type_cfg)
+        self._submit_ply_flat_faces(
+            vt, epoch, verts_np, faces_np, _to_f64(numerical_factor).astype(np.float32).reshape(-1), type_cfg
+        )
 
     def vis_bb_constraint(self, epoch: int, verts: Any, distances: Any) -> None:
         """Bounding-box constraint violations. verts is a point cloud (no faces)."""

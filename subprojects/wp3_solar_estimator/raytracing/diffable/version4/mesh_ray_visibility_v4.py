@@ -511,11 +511,25 @@ def mesh_visibility_v4(  # noqa: PLR0912, PLR0915
             chunk_nrm_s = normals[start:end]
 
             if use_chunk_checkpoint:
-                def _chunk_fn(cv0, cv1, cv2, cn, _sun, _rd, tv0, tv1, tv2,
-                              _off, _L, _ds, _bary, _fo=start):  # _fo=start binds NOW, not at call time
+
+                def _chunk_fn(
+                    cv0, cv1, cv2, cn, _sun, _rd, tv0, tv1, tv2, _off, _L, _ds, _bary, _fo=start
+                ):  # _fo=start binds NOW, not at call time
                     return _chunk_vis_fn(
-                        cv0, cv1, cv2, cn, _sun, _rd, tv0, tv1, tv2,
-                        _off, _L, _ds, _bary, _fo,
+                        cv0,
+                        cv1,
+                        cv2,
+                        cn,
+                        _sun,
+                        _rd,
+                        tv0,
+                        tv1,
+                        tv2,
+                        _off,
+                        _L,
+                        _ds,
+                        _bary,
+                        _fo,
                         blocker_chunk_size=blocker_chunk_size,
                         transmittance_beta=transmittance_beta,
                         transmittance_kappa=transmittance_kappa,
@@ -524,18 +538,40 @@ def mesh_visibility_v4(  # noqa: PLR0912, PLR0915
                         margin=margin,
                         eps=eps,
                     )
+
                 chunk_visibility = checkpoint(
                     _chunk_fn,
-                    chunk_v0_s, chunk_v1_s, chunk_v2_s, chunk_nrm_s,
-                    sun, ray_dir, tri_v0, tri_v1, tri_v2,
-                    offset, L, depth_scale, bary,
+                    chunk_v0_s,
+                    chunk_v1_s,
+                    chunk_v2_s,
+                    chunk_nrm_s,
+                    sun,
+                    ray_dir,
+                    tri_v0,
+                    tri_v1,
+                    tri_v2,
+                    offset,
+                    L,
+                    depth_scale,
+                    bary,
                     use_reentrant=False,
                 )
             else:
                 chunk_visibility = _chunk_vis_fn(
-                    chunk_v0_s, chunk_v1_s, chunk_v2_s, chunk_nrm_s,
-                    sun, ray_dir, tri_v0, tri_v1, tri_v2,
-                    offset, L, depth_scale, bary, start,
+                    chunk_v0_s,
+                    chunk_v1_s,
+                    chunk_v2_s,
+                    chunk_nrm_s,
+                    sun,
+                    ray_dir,
+                    tri_v0,
+                    tri_v1,
+                    tri_v2,
+                    offset,
+                    L,
+                    depth_scale,
+                    bary,
+                    start,
                     blocker_chunk_size=blocker_chunk_size,
                     transmittance_beta=transmittance_beta,
                     transmittance_kappa=transmittance_kappa,

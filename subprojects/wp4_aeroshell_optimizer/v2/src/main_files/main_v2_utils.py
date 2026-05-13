@@ -16,7 +16,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is
 
 def _resolve_wandb_name(name_cfg: Any, run_locally: bool) -> str | None:  # noqa: PLR0911
     """Resolve wandb run name from config and runtime environment.
-    
+
     Returns None to let wandb auto-generate a name, which is then appended with
     the SLURM job ID if on Euler.
     """

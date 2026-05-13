@@ -20,7 +20,9 @@ from typing import Any
 import torch
 from torch.utils.checkpoint import checkpoint
 
-from subprojects.wp3_solar_estimator.raytracing.diffable.version3.mesh_ray_visibility_v3 import mesh_visibility_v3 as _default_mesh_visibility
+from subprojects.wp3_solar_estimator.raytracing.diffable.version3.mesh_ray_visibility_v3 import (
+    mesh_visibility_v3 as _default_mesh_visibility,
+)
 from subprojects.wp3_solar_estimator.utils.rollout_utils.mesh_area_normals import compute_face_areas_and_normals
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
@@ -31,7 +33,7 @@ def _efficient_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
     return torch.cumsum(x.cpu(), dim=dim).to(x.device)
 
 
-def solar_loss_srrt(  # noqa: PLR0912, PLR0915
+def solar_loss_srrt(
     vertices: torch.Tensor,
     faces: torch.Tensor,
     sun_dir: torch.Tensor,
@@ -46,7 +48,7 @@ def solar_loss_srrt(  # noqa: PLR0912, PLR0915
     _lambda: float = 1.0,
     epsilon: float = 1e-12,
     use_activation_checkpointing: bool = True,
-    vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),  # noqa: B008
+    vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
     epoch_name: int | None = None,
     mesh_visibility_fn: Callable | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
@@ -88,13 +90,19 @@ def solar_loss_srrt(  # noqa: PLR0912, PLR0915
         print("Warning: empty mesh in solar_loss_srrt, returning zero power")
         zero = torch.zeros((), device=vertices.device, dtype=vertices.dtype)
         return zero, {
-            "total_power_watts": 0.0, "selected_area_m2": 0.0, "total_area_m2": 0.0,
-            "total_faces": 0, "selected_faces": 0, "fully_selected_faces": 0,
-            "transition_zone_faces": 0, "budget_crossover_idx": 0,
-            "mean_visibility": 0.0, "shading_penalty": 0.0,
+            "total_power_watts": 0.0,
+            "selected_area_m2": 0.0,
+            "total_area_m2": 0.0,
+            "total_faces": 0,
+            "selected_faces": 0,
+            "fully_selected_faces": 0,
+            "transition_zone_faces": 0,
+            "budget_crossover_idx": 0,
+            "mean_visibility": 0.0,
+            "shading_penalty": 0.0,
         }
 
-    face_area_mm2, face_area_m2, face_normals_unit = compute_face_areas_and_normals(vertices, faces, epsilon)
+    _face_area_mm2, face_area_m2, face_normals_unit = compute_face_areas_and_normals(vertices, faces, epsilon)
 
     sun_dir_unit = sun_dir / torch.linalg.norm(sun_dir).clamp_min(epsilon)
     illumination_quality = (face_normals_unit * sun_dir_unit).sum(-1)
@@ -125,16 +133,14 @@ def solar_loss_srrt(  # noqa: PLR0912, PLR0915
         # Checkpoint returns only the scalar — run a separate no_grad pass to get
         # intermediate tensors (visibility, numerical_factor) for vis and diagnostics.
         with torch.no_grad():
-            visibility_for_vis, _, _ = _vis_fn(
-                vertices, faces, sun_dir_unit, mesh_cfg=mesh_cfg, normal_source="mesh"
-            )
+            visibility_for_vis, _, _ = _vis_fn(vertices, faces, sun_dir_unit, mesh_cfg=mesh_cfg, normal_source="mesh")
             numerical_factor_for_vis = 1 - _lambda * torch.pow(1 + epsilon - visibility_for_vis, 1 / kappa)
     else:
-        visibility_for_vis, _, _ = _vis_fn(
-            vertices, faces, sun_dir_unit, mesh_cfg=mesh_cfg, normal_source="mesh"
-        )
+        visibility_for_vis, _, _ = _vis_fn(vertices, faces, sun_dir_unit, mesh_cfg=mesh_cfg, normal_source="mesh")
         numerical_factor_for_vis = 1 - _lambda * torch.pow(1 + epsilon - visibility_for_vis, 1 / kappa)
-        power_per_face_no_mask = face_area_m2 * torch.clamp(illumination_quality, min=0.0) * numerical_factor_for_vis * effective_irradiance_W_m2
+        power_per_face_no_mask = (
+            face_area_m2 * torch.clamp(illumination_quality, min=0.0) * numerical_factor_for_vis * effective_irradiance_W_m2
+        )
         power_watts = (power_per_face_no_mask * soft_mask_original_order).sum()
         visibility_for_vis = visibility_for_vis.detach()
         numerical_factor_for_vis = numerical_factor_for_vis.detach()
@@ -143,11 +149,12 @@ def solar_loss_srrt(  # noqa: PLR0912, PLR0915
     if shading_penalty_weight > 0:
         # Penalty reduces the objective when illuminated faces are occluded.
         # (1 - numerical_factor) is large when visibility is low.
-        penalty_scalar = shading_penalty_weight * (
-            (1 - numerical_factor_for_vis.detach())
-            * torch.clamp(illumination_quality, min=0.0)
-            * soft_mask_original_order
-        ).sum()
+        penalty_scalar = (
+            shading_penalty_weight
+            * (
+                (1 - numerical_factor_for_vis.detach()) * torch.clamp(illumination_quality, min=0.0) * soft_mask_original_order
+            ).sum()
+        )
         power_watts = power_watts - penalty_scalar
 
     if epoch_name is not None:
@@ -156,7 +163,9 @@ def solar_loss_srrt(  # noqa: PLR0912, PLR0915
         vis_manager.vis_solar_shading(int(epoch_name), vertices, faces, visibility_for_vis)
         vis_manager.vis_solar_numerical_factor(int(epoch_name), vertices, faces, numerical_factor_for_vis)
         vis_manager.vis_solar_penalty(
-            int(epoch_name), vertices, faces,
+            int(epoch_name),
+            vertices,
+            faces,
             (1 - numerical_factor_for_vis) * torch.clamp(illumination_quality, min=0.0) * soft_mask_original_order,
         )
 

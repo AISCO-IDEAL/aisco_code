@@ -105,8 +105,8 @@ class MeshSDFCallable:
         bbox_min = self._bbox_min.to(pts.device)
         bbox_max = self._bbox_max.to(pts.device)
         pts_norm = 2.0 * (pts - bbox_min) / (bbox_max - bbox_min) - 1.0  # (N, 3)
-        grid = self._sdf_grid.to(pts.device)[None, None]    # (1, 1, D, H, W)
-        sample_coords = pts_norm.view(1, 1, 1, -1, 3)       # (1, 1, 1, N, 3)
+        grid = self._sdf_grid.to(pts.device)[None, None]  # (1, 1, D, H, W)
+        sample_coords = pts_norm.view(1, 1, 1, -1, 3)  # (1, 1, 1, N, 3)
         result = F.grid_sample(grid, sample_coords, mode="bilinear", padding_mode="border", align_corners=True)
         return result.view(-1)  # (N,)
 
@@ -120,12 +120,12 @@ class MeshSDFCallable:
 
 
 SOLAR_LOSS_REGISTRY = {
-    "SolarV3B":  SolarV3B,
+    "SolarV3B": SolarV3B,
     "SolarV3B2": SolarV3B2,
-    "SolarV5":   SolarV5,
-    "SolarV6":   SolarV6,
-    "SolarV7":   SolarV7,
-    "SolarSR":   SolarSR,
+    "SolarV5": SolarV5,
+    "SolarV6": SolarV6,
+    "SolarV7": SolarV7,
+    "SolarSR": SolarSR,
     "SolarSRRT": SolarSRRT,
 }
 
@@ -145,7 +145,7 @@ def load_ply_file(ply_path: str, scaling_factor: float) -> tuple[torch.Tensor, t
 
 def setup_vis_manager(cfg: dict, loss_class: str | None = None) -> tuple:
     """Setup visualizer manager and return (manager, save_dir).
-    
+
     Returns:
         (vis_manager, save_dir_path) where save_dir_path is None if vis is disabled
     """
@@ -153,7 +153,7 @@ def setup_vis_manager(cfg: dict, loss_class: str | None = None) -> tuple:
         # Resolve base run_dir
         base_run_dir = Path(cfg["vis_manager"]["run_dir"])
         base_run_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Generate unique run_id with timestamp and loss class name
         if loss_class is not None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -161,7 +161,7 @@ def setup_vis_manager(cfg: dict, loss_class: str | None = None) -> tuple:
             run_dir = base_run_dir / unique_dir_name
         else:
             run_dir = base_run_dir / cfg["vis_manager"]["run_id"]
-        
+
         vis_manager = CentralVisManagerV2(run_dir=run_dir, run_id="data")
         return vis_manager, run_dir
     else:
@@ -190,7 +190,7 @@ def single_solar_test():
     print(f"  {verts.shape[0]} vertices, {faces.shape[0]} faces")
 
     vis_manager, save_dir = setup_vis_manager(cfg, loss_class=loss_class)
-    
+
     if save_dir is not None:
         print(f"\nVisualizer will save files to: {save_dir}")
 

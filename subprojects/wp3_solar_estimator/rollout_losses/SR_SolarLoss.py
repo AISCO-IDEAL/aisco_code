@@ -32,7 +32,7 @@ def solar_loss_sr(
     soft_mask_selection_threshold: float = 0.5,
     soft_mask_full_selection_threshold: float = 0.95,
     epsilon: float = 1e-12,
-    vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),  # noqa: B008
+    vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
     epoch_name: int | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """
@@ -62,9 +62,16 @@ def solar_loss_sr(
     if faces.numel() == 0 or vertices.numel() == 0:
         print("Warning: empty mesh in solar_loss_sr, returning zero power")
         zero = torch.zeros((), device=vertices.device, dtype=vertices.dtype)
-        return zero, {"total_power_watts": 0.0, "selected_area_m2": 0.0, "total_area_m2": 0.0,
-                      "total_faces": 0, "selected_faces": 0, "fully_selected_faces": 0,
-                      "transition_zone_faces": 0, "budget_crossover_idx": 0}
+        return zero, {
+            "total_power_watts": 0.0,
+            "selected_area_m2": 0.0,
+            "total_area_m2": 0.0,
+            "total_faces": 0,
+            "selected_faces": 0,
+            "fully_selected_faces": 0,
+            "transition_zone_faces": 0,
+            "budget_crossover_idx": 0,
+        }
 
     _, face_area_m2, face_normals_unit = compute_face_areas_and_normals(vertices, faces, epsilon)
 
