@@ -34,12 +34,10 @@ logger = logging.getLogger(__name__)
 class ModelLoader:
     optimization_state: dict[str, object]
     vis_manager: CentralVisManagerV2 | NullVisManager | None
-    _DEFAULT_MAIN_CONFIG_PATH = "subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml"
 
     def __init__(self, cfd_config: dict, device: str) -> None:
         self.cfd_config = cfd_config
         self.device = device
-        self._init_viz_consistency_settings()
         self.shear_force_calculator = ShearForce(unit="mm^2")
 
         self.optimization_state = {
@@ -64,81 +62,6 @@ class ModelLoader:
             config=mesh_cfg,
             gradient_max=float(cfd_config["gradient_max"]),
         )
-
-    def _get_dataset_viz_config(self) -> dict:
-        dataset_cfg = self.cfd_config.get("dataset", {}) if isinstance(self.cfd_config.get("dataset", {}), dict) else None
-        if isinstance(dataset_cfg, dict) and dataset_cfg:
-            return dataset_cfg
-
-        main_config_path = self.cfd_config.get("main_config_path", self._DEFAULT_MAIN_CONFIG_PATH)
-        if not os.path.isabs(main_config_path):
-            main_config_path = os.path.join(os.getcwd(), main_config_path)
-        if not os.path.exists(main_config_path):
-            raise FileNotFoundError(
-                "Could not resolve dataset visualization settings. "
-                f"Expected cfd_config['dataset'] or main config at {main_config_path}."
-            )
-
-        with open(main_config_path) as f:
-            cfg = yaml.safe_load(f)
-        if not isinstance(cfg, dict):
-            raise TypeError(f"Main config at {main_config_path} must be a dictionary.")
-
-        loaded_dataset_cfg = cfg.get("dataset", {})
-        if not isinstance(loaded_dataset_cfg, dict):
-            raise TypeError(f"Expected 'dataset' section in {main_config_path} to be a dictionary.")
-        return loaded_dataset_cfg
-
-    def _init_viz_consistency_settings(self):
-        """Build fixed axis and color ranges exactly like GAOT3 trainer/stat.py."""
-        dataset_cfg = self._get_dataset_viz_config()
-
-        axis_cfg = dataset_cfg.get("viz_axis_limits")
-        if axis_cfg is not None:
-            parsed_limits: dict[str, tuple[float, float]] = {}
-            for axis_name in ("x", "y", "z"):
-                axis_range = axis_cfg.get(axis_name) if isinstance(axis_cfg, dict) else None
-                if axis_range is None or len(axis_range) != 2:
-                    raise ValueError(f"dataset.viz_axis_limits.{axis_name} must be a 2-element range [min, max].")
-                axis_min = float(axis_range[0])
-                axis_max = float(axis_range[1])
-                if axis_max <= axis_min:
-                    raise ValueError(f"Invalid dataset.viz_axis_limits.{axis_name}: min={axis_min} must be < max={axis_max}.")
-                parsed_limits[axis_name] = (axis_min, axis_max)
-            self._viz_fixed_axis_limits = parsed_limits
-        else:
-            self._viz_fixed_axis_limits = {
-                "x": (-3.0, 3.0),
-                "y": (-3.0, 3.0),
-                "z": (-3.0, 3.0),
-            }
-
-        vmin = dataset_cfg.get("viz_field_vmin")
-        vmax = dataset_cfg.get("viz_field_vmax")
-        diff_vmax = dataset_cfg.get("viz_abs_diff_vmax")
-
-        if vmin is None or vmax is None:
-            raise ValueError("dataset.viz_field_vmin and dataset.viz_field_vmax are required for visualization.")
-        if diff_vmax is None:
-            raise ValueError("dataset.viz_abs_diff_vmax is required for visualization.")
-
-        vmin_f = float(vmin)
-        vmax_f = float(vmax)
-        diff_vmax_f = float(diff_vmax)
-        if vmax_f <= vmin_f:
-            raise ValueError(f"Invalid viz field range: viz_field_vmin={vmin_f} must be < viz_field_vmax={vmax_f}.")
-        if diff_vmax_f <= 0.0:
-            raise ValueError(f"Invalid viz_abs_diff_vmax={diff_vmax_f}; it must be > 0.")
-
-        self._viz_fixed_clim_common = (vmin_f, vmax_f)
-        self._viz_fixed_clim_diff = (0.0, diff_vmax_f)
-
-    @staticmethod
-    def _to_wandb_step(value):
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
 
     def _get_checkpoint_path(self):
         try:
@@ -243,21 +166,9 @@ class ModelLoader:
         verts, faces, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
             sdf_model=sdf_model, loss_fn=self.loss_fn
         )
-        # Store gradients for per-loss visualization in TotalLoss/TotalLossV2.
         self.extractor.last_dL_dv = dL_dvertices  # type: ignore[attr-defined]
         self.extractor.last_verts = verts  # type: ignore[attr-defined]
         self.extractor.last_faces = faces  # type: ignore[attr-defined]
-
-        diag = getattr(self, "_last_diagnostics", {})
-        diag["mesh_n_vertices"] = int(verts.shape[0]) if verts is not None and verts.numel() > 0 else 0
-        diag["mesh_n_faces"] = int(faces.shape[0]) if faces is not None and faces.numel() > 0 else 0
-        diag["raw_loss"] = loss.item()
-        diag["surrogate_loss"] = surrogate_loss.item()
-        diag["mesh_empty"] = verts is None or verts.numel() == 0
-        if dL_dvertices is not None and dL_dvertices.numel() > 0:
-            diag["dL_dvertices_norm"] = dL_dvertices.norm().item()
-            diag["dL_dvertices_max"] = dL_dvertices.abs().max().item()
-        self._last_diagnostics = diag
 
         cuppled_loss = loss.detach() + surrogate_loss - surrogate_loss.detach()
         return cuppled_loss
@@ -267,83 +178,18 @@ class ModelLoader:
         pressure_field: torch.Tensor,
         mesh_verts: torch.Tensor,
         mesh_faces: torch.Tensor,
-        reference_field: torch.Tensor | None = None,
     ) -> None:
         if not self.cfd_config["visualisations"]:
             return
         if pressure_field is None:
             return
 
-        # Visualization path: write PLY instead of wandb PNG.
         _vm = getattr(self, "vis_manager", None)
         if _vm is not None:
             if pressure_field.dim() == 2 and pressure_field.size(-1) == 1:
                 pressure_field = pressure_field.squeeze(-1)
-            epoch_int = self._to_wandb_step(self.epoch_name) or 0
-            _vm.vis_aero_cp_field(epoch_int, mesh_verts, mesh_faces, pressure_field)
+            _vm.vis_aero_cp_field(self.epoch_name, mesh_verts, mesh_faces, pressure_field)
             return
-
-        sample = Data(
-            pos=mesh_verts.detach() * 1e-3,
-            x=None,
-            face=mesh_faces.detach().T,
-        )
-
-        loader = PyGDataLoader([sample], batch_size=1, shuffle=False)
-        batch = next(iter(loader)).to(self.device)
-
-        coords_tensor = batch.pos_raw if hasattr(batch, "pos_raw") else batch.pos
-        coords = coords_tensor.detach().cpu().numpy()
-        fname = getattr(self, "epoch_name", "mesh")
-
-        if pressure_field.dim() == 2 and pressure_field.size(-1) == 1:
-            pressure_field = pressure_field.squeeze(-1)
-        if reference_field is not None and reference_field.dim() == 2 and reference_field.size(-1) == 1:
-            reference_field = reference_field.squeeze(-1)
-
-        field_pred = pressure_field.detach().cpu().numpy().squeeze()
-        field_ref = None if reference_field is None else reference_field.detach().cpu().numpy().squeeze()
-
-        # we don't have a numeric epoch here, only a name
-        title_epoch = getattr(self, "epoch_name", "opt_step")
-        with tempfile.NamedTemporaryFile(suffix=".png", prefix="pressure_field_", delete=False) as tmp_file:
-            tmp_path = tmp_file.name
-
-        step_val = self._to_wandb_step(self.epoch_name)
-        try:
-            plot_3d_comparison_matplotlib(
-                coords=coords,
-                u_gtr=field_ref,
-                u_prd=field_pred,
-                save_path=tmp_path,
-                variable_name="Pressure",
-                point_size=2.0,
-                cmap="jet",
-                dpi=150,
-                view_angle=(20, 120),
-                hide_grid=False,
-                equal_aspect=False,
-                show_abs_diff=field_ref is not None,
-                show_input_shape=False,
-                fixed_clim_common=self._viz_fixed_clim_common,
-                fixed_clim_diff=self._viz_fixed_clim_diff,
-                fixed_axis_limits=self._viz_fixed_axis_limits,
-            )
-            wandb_payload = {
-                "cfd/Pressure-Field visualisation": wandb.Image(
-                    tmp_path,
-                    caption=f"opt {fname} {title_epoch}",
-                )
-            }
-            if step_val is None:
-                wandb.log(wandb_payload)
-            else:
-                wandb.log(wandb_payload, step=step_val)
-        finally:
-            try:  # noqa: SIM105
-                os.remove(tmp_path)
-            except OSError:
-                pass
 
     def _log_front_back_pressure_drag(self, pressure_field: torch.Tensor, batch: Batch, mesh_faces: torch.Tensor) -> None:
         with torch.no_grad():
@@ -397,21 +243,64 @@ class ModelLoader:
         p_face = q_inf * (p[face[0]] + p[face[1]] + p[face[2]]) / 3.0
         return (-p_face * area_normals[:, 0]).sum()
 
+    def _compute_sdf_vertex_normals(
+        self,
+        mesh_verts: torch.Tensor,
+        *,
+        detach_normals: bool = True,
+    ) -> torch.Tensor:
+        verts_for_normals = mesh_verts.detach().requires_grad_(True) if detach_normals else mesh_verts
+        if not verts_for_normals.requires_grad:
+            verts_for_normals = verts_for_normals.detach().requires_grad_(True)
+
+        sdf_values = self.sdf_model(verts_for_normals)
+        if sdf_values.dim() > 1:
+            sdf_values = sdf_values.squeeze(-1)
+
+        (sdf_grads,) = torch.autograd.grad(
+            sdf_values,
+            verts_for_normals,
+            torch.ones_like(sdf_values),
+            create_graph=not detach_normals,
+        )
+        normals = torch.nn.functional.normalize(sdf_grads, dim=-1)
+        normals = normals.clone()
+        normals[:, 0] *= -1.0
+        return normals.detach() if detach_normals else normals
+
+    def _integrate_pressure_drag_sdf_normals(
+        self,
+        pressure_field: torch.Tensor,
+        mesh_verts: torch.Tensor,
+        mesh_faces: torch.Tensor,
+        *,
+        detach_normals: bool = True,
+    ) -> torch.Tensor:
+        p = pressure_field.squeeze(-1) if pressure_field.dim() > 1 else pressure_field
+        if p.shape[0] != mesh_verts.shape[0]:
+            raise ValueError(f"Pressure field length {p.shape[0]} does not match vertex count {mesh_verts.shape[0]}.")
+
+        normals = self._compute_sdf_vertex_normals(mesh_verts, detach_normals=detach_normals)
+
+        verts_m = mesh_verts * 1e-3
+        v0 = verts_m[mesh_faces[:, 0]]
+        v1 = verts_m[mesh_faces[:, 1]]
+        v2 = verts_m[mesh_faces[:, 2]]
+        face_areas = 0.5 * torch.cross(v1 - v0, v2 - v0, dim=-1).norm(dim=-1)
+        area_per_vertex = (2.0 * face_areas.mean()).detach()
+
+        q_inf = 0.5 * self.cfd_config["rho"] * self.cfd_config["v_inf"] ** 2
+        pressure_pa = q_inf * p
+        return (-pressure_pa * normals[:, 0] * area_per_vertex).sum()
+
     def loss_fn(self, mesh_verts, mesh_faces):
-        if mesh_verts is None or mesh_verts.shape[0] == 0:
-            return torch.tensor(0.0, device=self.device)
 
         self._check_watertightness(mesh_verts, mesh_faces)
 
-        step_val = self._to_wandb_step(self.epoch_name)
-        if step_val is None:
-            wandb.log({"cfd/Aero-resolution": mesh_verts.shape[0]})
-        else:
-            wandb.log({"cfd/Aero-resolution": mesh_verts.shape[0]}, step=step_val)
+        wandb.log({"cfd/Aero-resolution": mesh_verts.shape[0]}, step=self.epoch_name)
 
         batch = self._reformat_data(mesh_verts, mesh_faces)
 
-        # Fix 5: use reconstructed latent tokens from training context
         tokens_pos = self._latent_tokens
 
         with torch.autograd.set_detect_anomaly(True):
@@ -421,42 +310,27 @@ class ModelLoader:
 
         pressure_field = gaot_loss["field"]
 
-        reference_field = None
-        if isinstance(gaot_loss, dict):
-            for key in ("field_target", "field_gt", "target_field", "gt_field"):
-                if key in gaot_loss and gaot_loss[key] is not None:
-                    reference_field = gaot_loss[key]
-                    break
-
         self._visualize_pressure_field(
             pressure_field=pressure_field,
             mesh_verts=mesh_verts,
             mesh_faces=mesh_faces,
-            reference_field=reference_field,
         )
 
-        int_drag_f = self._integrate_pressure_drag(pressure_field, batch, mesh_faces)
-        self._log_front_back_pressure_drag(pressure_field=pressure_field, batch=batch, mesh_faces=mesh_faces)
-
-        with torch.no_grad():
-            self._last_diagnostics = {
-                "drag_value": int_drag_f.item(),
-                "drag_is_nan": bool(torch.isnan(int_drag_f).any()),
-                "drag_is_inf": bool(torch.isinf(int_drag_f).any()),
-                "pressure_field_min": pressure_field.min().item(),
-                "pressure_field_max": pressure_field.max().item(),
-                "pressure_field_mean": pressure_field.mean().item(),
-                "pressure_field_std": pressure_field.std().item(),
-                "pressure_field_nan_count": int(torch.isnan(pressure_field).sum().item()),
-                "pressure_field_inf_count": int(torch.isinf(pressure_field).sum().item()),
-                "n_input_vertices": int(mesh_verts.shape[0]),
-                "n_input_faces": int(mesh_faces.shape[0]),
-                "normals_flipped_count": getattr(self, "_normals_flipped_count", 0),
-            }
-            if hasattr(batch, "scale_factors") and batch.scale_factors is not None:
-                self._last_diagnostics["scale_factors"] = batch.scale_factors.detach().cpu().flatten().tolist()
-            if hasattr(batch, "bbox_center") and batch.bbox_center is not None:
-                self._last_diagnostics["bbox_center"] = batch.bbox_center.detach().cpu().flatten().tolist()
+        pressure_integration_mode = self.cfd_config.get("pressure_integration_mode", "face")
+        if pressure_integration_mode == "face":
+            int_drag_f = self._integrate_pressure_drag(pressure_field, batch, mesh_faces)
+            self._log_front_back_pressure_drag(pressure_field=pressure_field, batch=batch, mesh_faces=mesh_faces)
+        elif pressure_integration_mode == "sdf_vertex_constant_area":
+            int_drag_f = self._integrate_pressure_drag_sdf_normals(
+                pressure_field=pressure_field,
+                mesh_verts=mesh_verts,
+                mesh_faces=mesh_faces,
+                detach_normals=bool(self.cfd_config.get("pressure_integration_detach_sdf_normals", True)),
+            )
+        else:
+            raise ValueError(
+                f"Unknown pressure_integration_mode={pressure_integration_mode!r}. Expected 'face' or 'sdf_vertex_constant_area'."
+            )
 
         shearforce = self.shear_force_calculator.calculate_shear_force(mesh_verts, mesh_faces)
         wandb.log({"cfd/Shearforce:": shearforce}, step=self.epoch_name)
@@ -467,7 +341,6 @@ class ModelLoader:
         optim_verts = mesh_verts.to(self.device)
         mesh_faces = mesh_faces.to(self.device)
 
-        # Compute normals in the original/native SDF frame
         v0 = optim_verts[mesh_faces[:, 0]]
         v1 = optim_verts[mesh_faces[:, 1]]
         v2 = optim_verts[mesh_faces[:, 2]]
@@ -476,7 +349,6 @@ class ModelLoader:
         face_normals = torch.cross(v1 - v0, v2 - v0, dim=-1)
         face_normals = torch.nn.functional.normalize(face_normals, dim=-1)
 
-        # SDF evaluation is only used to determine normal flipping, not for loss gradients
         with torch.no_grad():
             sdf_values = self.sdf_model(face_centers + face_normals * 50).squeeze(-1)
         normals_flipped = sdf_values < 0
@@ -518,26 +390,4 @@ class ModelLoader:
         v = verts.shape[0]
         f = faces.shape[0]
         d = v - f / 2
-
-        if d == 2:
-            print("CFD-AI Check: Mesh is likely watertight (Euler characteristic check passed).")
-        elif d > 2:
-            if d > 12 and self.cfd_config.get("strict_watertightness_check", False):
-                print(
-                    "You can disable the strict watertightness check in the config to avoid this error and only get a warning instead. But if you do so, CFD-AI does not guarantee any reasonable behavior on non-watertight meshes. Proceed with caution and consider improving the mesh quality."
-                )
-                raise ValueError(f"CFD-AI Check: Mesh is likely not watertight (Euler characteristic check failed with d={d}).")
-            else:
-                warnings.warn(
-                    f"CFD-AI Check: Mesh may not be watertight (Euler characteristic check failed with d={d}).", stacklevel=2
-                )
-        elif d < -8 and self.cfd_config.get("strict_watertightness_check", False):
-            print(
-                "You can disable the strict watertightness check in the config to avoid this error and only get a warning instead. But if you do so, CFD-AI does not guarantee any reasonable behavior on non-watertight meshes. Proceed with caution and consider improving the mesh quality."
-            )
-            raise ValueError(f"CFD-AI Check: Mesh is likely not watertight (Euler characteristic check failed with d={d}).")
-        else:
-            warnings.warn(
-                f"CFD-AI Check: Mesh may not be watertight (Euler characteristic check failed with d={d}).", stacklevel=2
-            )
         wandb.log({"cfd/Mesh Quality (Target:2)": d}, step=self.epoch_name)
