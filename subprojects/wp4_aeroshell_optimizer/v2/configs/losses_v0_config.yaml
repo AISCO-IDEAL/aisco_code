@@ -100,7 +100,7 @@ general_info:
 # How to add a new objective:
 # - Add category with `_role: objective` and optional `_sign: maximize|minimize`.
 # - For CSE mode, update `general_info.cse_params.drag_category` / `solar_category` if needed.
-losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically loads all losses with compute=1
+losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically loads all losses with compute=1git p
   # NOTE: that for each loss class, only one version should have compute=True
   aero:
     _role: objective
@@ -137,8 +137,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   connectedness:
     _role: constraint
     _disabled_epochs: []
-    null_loss_connectedness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    connectedness_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
+    null_loss_connectedness: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    connectedness_v1: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
 
 
   developability:
