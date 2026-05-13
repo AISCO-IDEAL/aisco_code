@@ -221,10 +221,26 @@
   document.getElementById("btnRemoveWheel").addEventListener("click", () => wheelAction("remove-wheel"));
 
   // ---------- Generate assembly ----------
+  const PENDING_ID_KEY = "aiscoPendingAssemblyIdV3";
+  const OVERRIDE_FOLDER_KEY = "aiscoOverrideFolderV3";
+  const LOSSES_CFG = "losses_v0_config.yaml";
+  const ASSEMBLY_ID_PATH = "bb_config.assembly_id";
+
   const btnGenerate = document.getElementById("btnGenerate");
   const generateStatus = document.getElementById("generateStatus");
   const generateId = document.getElementById("generateId");
   const generateIdValue = document.getElementById("generateIdValue");
+
+  async function writeAssemblyIdToSession(folder, assemblyMapId) {
+    const body = { folder, updates: { [LOSSES_CFG]: { [ASSEMBLY_ID_PATH]: assemblyMapId } } };
+    const r = await fetch(`${API}/config-overrides/values`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+    });
+    if (!r.ok) {
+      const d = await r.json();
+      throw new Error(d?.detail?.message || `HTTP ${r.status}`);
+    }
+  }
 
   btnGenerate.addEventListener("click", async () => {
     btnGenerate.disabled = true;
@@ -241,10 +257,25 @@
         generateStatus.textContent = d.message;
         generateStatus.style.color = "#b04a1a";
       } else {
-        generateStatus.textContent = d.message;
-        generateStatus.style.color = "#2e7a47";
-        generateIdValue.textContent = d.assembly_map_id;
+        const mapId = d.assembly_map_id;
+        generateIdValue.textContent = mapId;
         generateId.style.display = "";
+
+        const activeFolder = localStorage.getItem(OVERRIDE_FOLDER_KEY) || "";
+        if (activeFolder) {
+          try {
+            await writeAssemblyIdToSession(activeFolder, mapId);
+            generateStatus.textContent = `${d.message} → written to config session.`;
+            localStorage.removeItem(PENDING_ID_KEY);
+          } catch (writeErr) {
+            generateStatus.textContent = `${d.message} (config write failed: ${writeErr.message})`;
+            localStorage.setItem(PENDING_ID_KEY, String(mapId));
+          }
+        } else {
+          generateStatus.textContent = `${d.message} ID saved — will be applied when a config session is started.`;
+          localStorage.setItem(PENDING_ID_KEY, String(mapId));
+        }
+        generateStatus.style.color = "#2e7a47";
       }
     } catch (err) {
       generateStatus.textContent = "Request failed: " + err.message;

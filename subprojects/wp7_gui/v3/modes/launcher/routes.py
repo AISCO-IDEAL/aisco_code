@@ -37,7 +37,7 @@ _assembly_service_completed = AssemblySelectionService(SETTINGS.repo_root, subdi
 
 # Assembly ID validation bounds — keep in sync with schema/gui_schema.json
 _ASSEMBLY_ID_MIN = 1
-_ASSEMBLY_ID_MAX = 51
+_ASSEMBLY_ID_MAX = 99999
 
 
 def _assembly(pipeline: str) -> AssemblySelectionService:

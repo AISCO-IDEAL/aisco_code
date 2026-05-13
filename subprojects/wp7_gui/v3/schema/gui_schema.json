@@ -42,7 +42,7 @@
           "label": "Assembly ID (bb_config)",
           "type": "int",
           "min": 1,
-          "max": 51
+          "max": 99999
         }
       ]
     }

@@ -59,6 +59,9 @@
 
 <script>
   const STORAGE_KEY = "aiscoOverrideFolderV3";
+  const PENDING_ID_KEY = "aiscoPendingAssemblyIdV3";
+  const LOSSES_CFG = "losses_v0_config.yaml";
+  const ASSEMBLY_ID_PATH = "bb_config.assembly_id";
   const API = "/launcher/api";
   const pipeline = "{{ pipeline }}";
 
@@ -243,6 +246,27 @@
       const d = await r.json();
       log(`Session: ${d.name} (${d.copied_files.length} files)`, "success");
       setFolder(d.folder);
+
+      // Apply pending assembly ID from assembly-selection page, if any
+      const pendingId = localStorage.getItem(PENDING_ID_KEY);
+      if (pendingId !== null) {
+        const mapId = parseInt(pendingId, 10);
+        if (!isNaN(mapId)) {
+          try {
+            const wr = await fetch(`${API}/config-overrides/values`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ folder: d.folder, updates: { [LOSSES_CFG]: { [ASSEMBLY_ID_PATH]: mapId } } }),
+            });
+            if (!wr.ok) { const wd = await wr.json(); throw new Error(wd.detail?.message || wr.status); }
+            log(`Assembly ID ${mapId} written to ${LOSSES_CFG}.`, "success");
+            localStorage.removeItem(PENDING_ID_KEY);
+          } catch (writeErr) {
+            log(`WARNING: Could not write pending assembly ID ${mapId}: ${writeErr.message}`, "error");
+          }
+        }
+      }
+
       await loadSchemaAndValues();
     } catch (err) { log(`ERROR: ${err.message}`, "error"); }
     finally { btnInit.disabled = false; }
