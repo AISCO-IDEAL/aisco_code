@@ -56,15 +56,16 @@
           </nav>
           {% endif %}
 
-          <a href="/viewer" class="mode-btn{% if active_mode == 'viewer' %} mode-btn--active{% endif %}">Archive</a>
-          {% if active_mode == 'viewer' %}
-          <nav class="sub-nav" aria-label="Archive sub-navigation">
-            <a href="/viewer" class="{% if active_page == 'runs' %}active{% endif %}">Finished Runs</a>
-            <a href="/viewer/pretraining" class="{% if active_page == 'pretraining' %}active{% endif %}">Pretraining
-              GIFs</a>
-          </nav>
-          {% endif %}
         </div>
+
+        <a href="/viewer" class="mode-btn{% if active_mode == 'viewer' %} mode-btn--active{% endif %}">Archive</a>
+        {% if active_mode == 'viewer' %}
+        <nav class="sub-nav" aria-label="Archive sub-navigation">
+          <a href="/viewer" class="{% if active_page == 'runs' %}active{% endif %}">Finished Runs</a>
+          <a href="/viewer/pretraining" class="{% if active_page == 'pretraining' %}active{% endif %}">Pretraining
+            GIFs</a>
+        </nav>
+        {% endif %}
       </aside>
 
       <section class="workspace">
