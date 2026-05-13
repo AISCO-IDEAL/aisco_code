@@ -17,13 +17,13 @@
   <div class="dark-card toolbar">
     {% if pipeline == 'live' %}
     <button class="btn" id="btnInit">Start new session</button>
-    <button class="btn secondary" id="btnReload" disabled>Reload values</button>
+    <button class="btn secondary" id="btnReload" disabled>Reset to defaults</button>
     <div class="session-info" id="sessionInfo">No active session.</div>
     <button class="btn danger" id="btnDiscard" disabled>Discard session</button>
     <button class="btn danger" id="btnCleanAll">Clean all sessions</button>
     {% else %}
     <button class="btn" id="btnInit">Start new session</button>
-    <button class="btn secondary" id="btnReload" disabled>Reload values</button>
+    <button class="btn secondary" id="btnReload" disabled>Reset to defaults</button>
     <div class="session-info" id="sessionInfo">No active session.</div>
     <button class="btn" id="btnSave" disabled>Save changes</button>
     <button class="btn danger" id="btnDiscard" disabled>Discard session</button>
@@ -272,7 +272,20 @@
     finally { btnInit.disabled = false; }
   });
 
-  btnReload?.addEventListener("click", loadSchemaAndValues);
+  btnReload?.addEventListener("click", async () => {
+    if (!activeFolder) return;
+    if (!confirm("Reset all configs in this session to WP4 defaults? Unsaved edits will be lost.")) return;
+    try {
+      const r = await fetch(`${API}/config-overrides/reset`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder: activeFolder }),
+      });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.detail?.message || r.status); }
+      const d = await r.json();
+      log(`Reset ${d.reset_files.length} file(s) to defaults.`, "success");
+      await loadSchemaAndValues();
+    } catch (err) { log(`ERROR: ${err.message}`, "error"); }
+  });
 
   btnDiscard?.addEventListener("click", async () => {
     if (!activeFolder || !confirm(`Delete session ${activeFolder.split("/").pop()}?`)) return;

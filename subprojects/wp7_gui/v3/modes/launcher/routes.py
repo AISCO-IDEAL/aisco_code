@@ -30,6 +30,7 @@ _config_manager = ConfigOverrideManager(
     root=SETTINGS.config_overrides_root,
     schema_path=SETTINGS.schema_path,
     wp4_configs_dir=SETTINGS.wp4_configs_dir,
+    assembly_map_path=SETTINGS.repo_root / "wp2_assembler" / "version4" / "config" / "assembly_map.yaml",
 )
 _assembly_service_live = AssemblySelectionService(SETTINGS.repo_root, subdir="live")
 _assembly_service_completed = AssemblySelectionService(SETTINGS.repo_root, subdir="completed")
@@ -72,6 +73,10 @@ class OverrideValuesRequest(BaseModel):
 class CleanupRequest(BaseModel):
     folders: list[str] | None = None
     all: bool = False
+
+
+class FolderRequest(BaseModel):
+    folder: str
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +292,11 @@ def cfg_values_get(folder: str = "") -> dict[str, Any]:
 @router.put("/api/config-overrides/values")
 def cfg_values_put(payload: OverrideValuesRequest) -> dict[str, Any]:
     return _config_manager.set_values(payload.folder, payload.updates)
+
+
+@router.post("/api/config-overrides/reset")
+def cfg_reset(payload: FolderRequest) -> dict[str, Any]:
+    return _config_manager.reset_session(payload.folder)
 
 
 @router.get("/api/config-overrides/sessions")

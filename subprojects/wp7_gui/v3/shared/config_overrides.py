@@ -125,10 +125,30 @@ def _validate_value(param: dict[str, Any], raw: Any, loc: str) -> Any:  # noqa: 
 
 
 class ConfigOverrideManager:
-    def __init__(self, root: Path, schema_path: Path, wp4_configs_dir: Path) -> None:
+    def __init__(self, root: Path, schema_path: Path, wp4_configs_dir: Path, assembly_map_path: Path | None = None) -> None:
         self._root = root
         self._schema_path = schema_path
         self._wp4_configs_dir = wp4_configs_dir
+        self._assembly_map_path = assembly_map_path
+
+    def _max_assembly_id(self) -> int | None:
+        if self._assembly_map_path is None or not self._assembly_map_path.exists():
+            return None
+        try:
+            data = yaml.safe_load(self._assembly_map_path.read_text(encoding="utf-8")) or {}
+            return max(int(k) for k in data) if data else None
+        except Exception:
+            return None
+
+    def _get_schema(self) -> dict[str, Any]:
+        schema = _load_schema(self._schema_path)
+        max_id = self._max_assembly_id()
+        if max_id is not None:
+            for cfg_entry in schema.get("configs", {}).values():
+                for param in cfg_entry.get("params", []):
+                    if param.get("path") == "bb_config.assembly_id":
+                        param["max"] = max_id
+        return schema
 
     def init_session(self) -> dict[str, Any]:
         self._root.mkdir(parents=True, exist_ok=True)
@@ -154,12 +174,26 @@ class ConfigOverrideManager:
             "skipped_subfolders": list(_COPY_EXCLUDE),
         }
 
+    def reset_session(self, folder_str: str) -> dict[str, Any]:
+        session_dir = _resolve_session(folder_str, self._root)
+        if not session_dir.exists():
+            raise HTTPException(status_code=404, detail={"message": f"Session not found: {session_dir.name}"})
+        sources = _fetch_wp4_config_paths(self._wp4_configs_dir)
+        reset: list[str] = []
+        for src in sources:
+            rel = src.relative_to(self._wp4_configs_dir)
+            dst = session_dir / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            reset.append(str(rel))
+        return {"folder": str(session_dir), "reset_files": reset}
+
     def get_schema(self) -> dict[str, Any]:
-        return _load_schema(self._schema_path)
+        return self._get_schema()
 
     def get_values(self, folder_str: str) -> dict[str, Any]:
         session_dir = _resolve_session(folder_str, self._root)
-        schema = _load_schema(self._schema_path)
+        schema = self._get_schema()
         result: dict[str, dict[str, Any]] = {}
         for cfg_name, cfg_entry in schema.get("configs", {}).items():
             yaml_path = session_dir / cfg_name
@@ -172,7 +206,7 @@ class ConfigOverrideManager:
 
     def set_values(self, folder_str: str, updates: dict[str, dict[str, Any]]) -> dict[str, Any]:
         session_dir = _resolve_session(folder_str, self._root)
-        schema = _load_schema(self._schema_path)
+        schema = self._get_schema()
         schema_configs = schema.get("configs", {})
 
         validated: dict[str, list[tuple[list[str], Any]]] = {}
