@@ -9,14 +9,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from subprojects.wp7_gui.v3.shared.run_paths import MESH_ASSEMBLY_CANDIDATES
+
 # Subdirectories and glob patterns to watch inside a run dir.
 _WATCH_SPECS: list[tuple[str, str]] = [
     ("meshes", "*.ply"),
     ("meshes", "*.poly"),
-    ("mesh_assembly_mode_v4", "*.gif"),
-    ("mesh_assembly_mode_v3", "*.gif"),
-    ("mesh_assembly_mode_v2", "*.gif"),
-    ("mesh_assembly_mode", "*.gif"),
+    *[(d, "*.gif") for d in MESH_ASSEMBLY_CANDIDATES],
     ("solar_loss_rendering", "*.gif"),
     ("gradient_conflict", "*.gif"),
 ]
@@ -30,7 +29,7 @@ def poll_once(
 
     Args:
         run_dir: the `<storage_root>/<model_hash>/<wandb_run>` directory
-        seen_mtimes: path→mtime mapping from the previous call (mutated in place)
+        seen_mtimes: path→mtime mapping from the previous call (not mutated; a copy is returned)
 
     Returns:
         (new_events, updated_mtimes) where each event is

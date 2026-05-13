@@ -14,10 +14,11 @@ from fastapi.responses import FileResponse
 
 
 class AssemblySelectionService:
-    def __init__(self, repo_root: Path) -> None:
+    def __init__(self, repo_root: Path, subdir: str = "") -> None:
         self._script = repo_root / "wp2_assembler" / "version4" / "GUI_helpers" / "GUI_assembly.py"
-        # GUI_assembly.py writes all I/O to frontend/assembly/
-        self._assembly_dir = repo_root / "wp7_gui" / "v3" / "frontend" / "assembly"
+        # GUI_assembly.py writes all I/O to frontend/assembly/<subdir>/
+        base = repo_root / "wp7_gui" / "v3" / "frontend" / "assembly"
+        self._assembly_dir = base / subdir if subdir else base
         self._params_path = self._assembly_dir / "parameters.yaml"
         self._assembly_ply = self._assembly_dir / "assembly.ply"
         self._lock = threading.Lock()

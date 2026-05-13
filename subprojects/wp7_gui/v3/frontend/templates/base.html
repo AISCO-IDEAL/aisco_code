@@ -8,8 +8,7 @@
   <link rel="stylesheet" href="/static/css/main.css">
   <link rel="stylesheet" href="/static/css/components.css">
   <link rel="stylesheet" href="/static/css/arcade.css">
-  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
-  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="/static/js/utils.js"></script>
   {% block head %}{% endblock %}
 </head>
 
@@ -26,32 +25,48 @@
 
     <div class="body-layout">
       <aside class="sidebar">
-        <h1>WP7 v3</h1>
 
-        <div class="mode-switch">
-          <a href="/viewer" class="{% if active_mode == 'viewer' %}active{% endif %}">Viewer</a>
-          <a href="/launcher/config-overrides" class="{% if active_mode == 'launcher' %}active{% endif %}">Launcher</a>
+        {% set _pl = pipeline | default('') %}
+        <div class="sidebar-main">
+          {% if not active_mode %}
+          <a href="/" class="mode-btn mode-btn--active">Home</a>
+          {% elif active_mode == 'launcher' and _pl == 'live' %}
+          <a href="/launcher/assembly-selection?pipeline=live" class="mode-btn mode-btn--active">Live</a>
+          <nav class="sub-nav" aria-label="Live sub-navigation">
+            <a href="/launcher/assembly-selection?pipeline=live"
+              class="{% if active_page == 'assembly-selection' %}active{% endif %}">Assembly Selection</a>
+            <a href="/launcher/config-overrides?pipeline=live"
+              class="{% if active_page == 'config-overrides' %}active{% endif %}">Config Overrides</a>
+            <a href="/launcher/optimization?pipeline=live"
+              class="{% if active_page == 'optimization' %}active{% endif %}">Live Run</a>
+            <a href="/launcher/output?pipeline=live"
+              class="{% if active_page == 'output' %}active{% endif %}">Output</a>
+          </nav>
+          {% elif active_mode == 'launcher' and _pl == 'completed' %}
+          <a href="/launcher/assembly-selection?pipeline=completed" class="mode-btn mode-btn--active">Completed</a>
+          <nav class="sub-nav" aria-label="Completed sub-navigation">
+            <a href="/launcher/assembly-selection?pipeline=completed"
+              class="{% if active_page == 'assembly-selection' %}active{% endif %}">Assembly Selection</a>
+            <a href="/launcher/config-overrides?pipeline=completed"
+              class="{% if active_page == 'config-overrides' %}active{% endif %}">Config Overrides</a>
+            <a href="/launcher/output?pipeline=completed"
+              class="{% if active_page == 'output' %}active{% endif %}">Output</a>
+          </nav>
+          {% elif active_mode == 'viewer' %}
+          <a href="/viewer" class="mode-btn mode-btn--active">Archive</a>
+          <nav class="sub-nav" aria-label="Archive sub-navigation">
+            <a href="/viewer" class="{% if active_page == 'runs' %}active{% endif %}">Finished Runs</a>
+            <a href="/viewer/pretraining" class="{% if active_page == 'pretraining' %}active{% endif %}">Pretraining
+              GIFs</a>
+          </nav>
+          {% endif %}
         </div>
 
-        <nav class="sub-nav" aria-label="Sub-navigation">
-          {% if active_mode == 'viewer' %}
-          <a href="/viewer" class="{% if active_page == 'runs' %}active{% endif %}">Finished Runs</a>
-          <a href="/viewer/pretraining" class="{% if active_page == 'pretraining' %}active{% endif %}">Pretraining
-            GIFs</a>
-          {% elif active_mode == 'launcher' %}
-          <a href="/launcher/config-overrides"
-            class="{% if active_page == 'config-overrides' %}active{% endif %}">Config Overrides</a>
-          <a href="/launcher/assembly-selection"
-            class="{% if active_page == 'assembly-selection' %}active{% endif %}">Assembly Selection</a>
-          <a href="/launcher/optimization" class="{% if active_page == 'optimization' %}active{% endif %}">Live Run</a>
-          <a href="/launcher/solar" class="{% if active_page == 'solar' %}active{% endif %}">Solar (Live)</a>
-          <a href="/launcher/testing" class="{% if active_page == 'testing' %}active{% endif %}">CLI Testing</a>
-          {% else %}
-          <a href="/" class="active">Introduction</a>
-          {% endif %}
-        </nav>
-
-        <div class="sidebar-footer">v3 · clean rewrite</div>
+        {% if active_mode == 'viewer' %}
+        <a href="/" class="mode-btn">Home</a>
+        {% else %}
+        <a href="/viewer" class="mode-btn">Archive</a>
+        {% endif %}
       </aside>
 
       <section class="workspace">
