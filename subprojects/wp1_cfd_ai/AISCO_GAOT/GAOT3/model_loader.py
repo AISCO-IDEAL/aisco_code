@@ -18,8 +18,8 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.metadata import DATA
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.scale import rescale, rescale_new
-from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 if TYPE_CHECKING:
     from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
@@ -68,7 +68,7 @@ class ModelLoader:
                 return path_dict.get("ckpt_path")
         raise ValueError("Wrong ID for GAOT-Model")
 
-    def _load_model(self) -> None:  # Noqa: PLR0912, PLR0915
+    def _load_model(self) -> None:
         config_path = self.model_path.replace("model.pt", "config.yaml")
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"Model config not found at {config_path}. Expected config.yaml next to model.pt.")
@@ -239,7 +239,7 @@ class ModelLoader:
         pressure_pa = q_inf * p
         return (-pressure_pa * normals[:, 0] * area_per_vertex).sum()
 
-    def _smooth_cp_field_if_enabled(
+    def _smooth_cp_field_if_enabled(  # Noqa:PLR0915
         self,
         pressure_field: torch.Tensor,
         batch: Batch,
