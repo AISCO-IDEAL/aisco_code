@@ -79,6 +79,7 @@
     // Read cfg_session from URL query string (completed pipeline only)
     const _urlParams = new URLSearchParams(window.location.search);
     const cfgSession = _urlParams.get("cfg_session") || null;
+    const cfgFolder = _urlParams.get("cfg_folder") || null;
 
     let gifEntry = null, gifKey = null;
     let solarEntry = null, solarKey = null;
@@ -162,18 +163,21 @@
     }
 
     async function fetchViewerArtifacts() {
-        if (!cfgSession) {
-            statusLabel.textContent = "No cfg_session — browse the Viewer for completed runs.";
+        if (!cfgSession && !cfgFolder) {
+            statusLabel.textContent = "No session — browse the Viewer for completed runs.";
             return;
         }
         try {
-            // Step 1: find matching run
-            const runsResp = await fetch(`${VIEWER_API}/runs?cfg_session=${encodeURIComponent(cfgSession)}`);
+            // Step 1: find matching run, using cfg_folder for storage root if provided
+            const runsParams = new URLSearchParams();
+            if (cfgFolder) runsParams.set("cfg_folder", cfgFolder);
+            if (cfgSession) runsParams.set("cfg_session", cfgSession);
+            const runsResp = await fetch(`${VIEWER_API}/runs?${runsParams}`);
             if (!runsResp.ok) throw new Error(`runs ${runsResp.status}`);
             const runsData = await runsResp.json();
             const runs = runsData.runs || [];
             if (!runs.length) {
-                statusLabel.textContent = `No completed run found for session "${cfgSession}".`;
+                statusLabel.textContent = `No completed run found for this session.`;
                 return;
             }
             const run = runs[0];

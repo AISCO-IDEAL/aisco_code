@@ -65,6 +65,20 @@ def default_storage_root() -> Path:
     )
 
 
+def get_storage_root_for_session(session_dir: Path | None) -> Path:
+    """Resolve storage root from a session's general_config.yaml, falling back to default."""
+    if session_dir is not None:
+        session_cfg = session_dir / "general_config.yaml"
+        if session_cfg.exists():
+            return get_storage_root(
+                session_cfg,
+                SETTINGS.default_local_storage_dir,
+                SETTINGS.default_bulk_storage_dir,
+                SETTINGS.repo_root.parent,
+            )
+    return default_storage_root()
+
+
 def find_mesh_assembly_dir(run_path: Path) -> Path | None:
     for candidate in MESH_ASSEMBLY_CANDIDATES:
         d = run_path / candidate

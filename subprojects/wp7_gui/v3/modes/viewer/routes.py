@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
@@ -12,11 +13,27 @@ from fastapi.templating import Jinja2Templates
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
 from subprojects.wp7_gui.v3.shared.pretraining import PretrainingService
-from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, list_all_runs
+from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, get_storage_root_for_session, list_all_runs
 
 router = APIRouter(prefix="/viewer", tags=["viewer"])
 _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
 _pretraining = PretrainingService(SETTINGS.pretraining_storage_root)
+
+_OVERRIDE_PREFIX = "gui_override_"
+
+
+def _resolve_cfg_folder(cfg_folder: str | None) -> Path | None:
+    """Validate and resolve a cfg_folder query param to a Path, or None if invalid."""
+    if not cfg_folder:
+        return None
+    try:
+        candidate = Path(cfg_folder).resolve()
+        candidate.relative_to(SETTINGS.config_overrides_root.resolve())
+        if not candidate.name.startswith(_OVERRIDE_PREFIX):
+            return None
+        return candidate if candidate.is_dir() else None
+    except ValueError:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -52,8 +69,9 @@ def viewer_pretraining(request: Request):
 # Runs API
 # ---------------------------------------------------------------------------
 @router.get("/api/runs")
-def api_list_runs(cfg_session: str | None = None) -> dict[str, Any]:
-    storage_root = default_storage_root()
+def api_list_runs(cfg_session: str | None = None, cfg_folder: str | None = None) -> dict[str, Any]:
+    session_dir = _resolve_cfg_folder(cfg_folder)
+    storage_root = get_storage_root_for_session(session_dir)
     runs = list_all_runs(storage_root)
     if cfg_session is not None:
         runs = [r for r in runs if r.get("cfg_session") == cfg_session]

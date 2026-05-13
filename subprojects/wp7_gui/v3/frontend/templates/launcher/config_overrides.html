@@ -22,13 +22,12 @@
     <button class="btn danger" id="btnDiscard" disabled>Discard session</button>
     <button class="btn danger" id="btnCleanAll">Clean all sessions</button>
     {% else %}
-    <label style="font-size:0.82rem;color:var(--muted);font-weight:600;white-space:nowrap;">Session:</label>
-    <select id="sessionPicker"
-      style="border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:0.84rem;background:#1d2233;color:var(--text);min-width:220px;">
-      <option value="">— select session —</option>
-    </select>
+    <button class="btn" id="btnInit">Start new session</button>
     <button class="btn secondary" id="btnReload" disabled>Reload values</button>
-    <div class="session-info" id="sessionInfo" style="flex:1;">No session selected.</div>
+    <div class="session-info" id="sessionInfo">No active session.</div>
+    <button class="btn" id="btnSave" disabled>Save changes</button>
+    <button class="btn danger" id="btnDiscard" disabled>Discard session</button>
+    <button class="btn danger" id="btnCleanAll">Clean all sessions</button>
     {% endif %}
   </div>
 
@@ -86,7 +85,8 @@
     if (pipeline === "completed") {
       const basename = activeFolder ? activeFolder.split("/").pop() : null;
       const cfgParam = basename ? `&cfg_session=${encodeURIComponent(basename)}` : "";
-      btnNext.href = `/launcher/output?pipeline=completed${cfgParam}`;
+      const folderParam = activeFolder ? `&cfg_folder=${encodeURIComponent(activeFolder)}` : "";
+      btnNext.href = `/launcher/output?pipeline=completed${cfgParam}${folderParam}`;
     } else {
       btnNext.href = "/launcher/optimization?pipeline=live";
     }
@@ -195,7 +195,6 @@
         meta.textContent = mt; labelWrap.appendChild(meta);
         const inp = makeInput(param, cfgVals[param.path]);
         inp.dataset.cfg = cfgName; inp.dataset.path = param.path; inp.dataset.type = param.type;
-        if (pipeline === 'completed') inp.disabled = true;
         row.appendChild(labelWrap); row.appendChild(inp); details.appendChild(row);
       }
       formArea.appendChild(details);
@@ -333,7 +332,6 @@
 
   // Restore session on page load
   (async () => {
-    if (pipeline === 'completed') return; // handled by session picker below
     if (!activeFolder) return;
     try {
       const d = await (await fetch(`${API}/config-overrides/sessions`)).json();
@@ -342,32 +340,6 @@
       } else { log("Stored session no longer exists; cleared.", "error"); setFolder(""); }
     } catch (err) { log(`Could not restore: ${err.message}`, "error"); setFolder(""); }
   })();
-
-  // Completed pipeline: populate session picker and auto-load last active session
-  if (pipeline === 'completed') {
-    (async () => {
-      const picker = document.getElementById('sessionPicker');
-      if (!picker) return;
-      try {
-        const d = await (await fetch(`${API}/config-overrides/sessions`)).json();
-        (d.sessions || []).forEach(s => {
-          const opt = document.createElement('option');
-          opt.value = s.folder;
-          opt.textContent = s.name;
-          if (s.folder === activeFolder) opt.selected = true;
-          picker.appendChild(opt);
-        });
-        if (picker.value) {
-          setFolder(picker.value);
-          await loadSchemaAndValues();
-        }
-      } catch (err) { log(`Could not load sessions: ${err.message}`, 'error'); }
-      picker.addEventListener('change', async () => {
-        setFolder(picker.value || '');
-        if (picker.value) await loadSchemaAndValues();
-      });
-    })();
-  }
 
   updateNextHref();
 </script>
