@@ -33,7 +33,7 @@ class ModelLoader:
         self.vis_manager: CentralVisManagerV2 | NullVisManager | None
         self.shear_force_calculator = ShearForce(unit="mm^2")
 
-        self.optimization_state = {
+        self.optimization_state: dict[str, torch.Tensor | None] = {
             "vertices": None,
             "faces": None,
             "vertice_grads": None,
@@ -431,7 +431,7 @@ class ModelLoader:
 
         return Batch.from_data_list([data]).to(self.device)
 
-    def _check_watertightness(self, verts: torch.Tensor, faces: torch.tensor) -> None:
+    def _check_watertightness(self, verts: torch.Tensor, faces: torch.Tensor) -> None:
         # Check number of vertecies and faces
         v = verts.shape[0]
         f = faces.shape[0]
