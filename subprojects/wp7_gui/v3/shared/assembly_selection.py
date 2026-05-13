@@ -159,9 +159,7 @@ class AssemblySelectionService:
             try:
                 assembly_map_id = fn(output_dir=self._assembly_dir)
             except Exception as exc:
-                raise HTTPException(
-                    status_code=500, detail={"message": f"add_to_map failed: {exc}"}
-                ) from exc
+                raise HTTPException(status_code=500, detail={"message": f"add_to_map failed: {exc}"}) from exc
         if assembly_map_id is None:
             return {
                 "status": "rejected",
