@@ -32,7 +32,8 @@
 !subprojects/**/case_template/**
 # Whitelist OpenFOAM case template (extensionless dict files not covered by file-type patterns below)
 !subprojects/**/case_template/**
-!subprojects/wp7_gui/templates
+# GUI whitelist folders
+!subprojects/wp7_gui/v3/frontend/static/img/**
 # Blacklist data folder
 subprojects/**/data/
 tests/**/data/
