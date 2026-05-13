@@ -72,7 +72,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Vi
 configure_headless_pyvista()
 
 
-def main(_gui_mode: bool = False, _cfg_folder: str = "") -> None:  # noqa: PLR0912, PLR0915
+def main() -> None:  # noqa: PLR0912, PLR0915
     print("Starting Main file V2...")
 
     # 0. Parse CLI args and configure override env var before any config load.
@@ -219,6 +219,33 @@ def main(_gui_mode: bool = False, _cfg_folder: str = "") -> None:  # noqa: PLR09
         else:
             rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
         os.makedirs(rendering_dir, exist_ok=True)
+
+        # writes the path to the GUI config folder into the output folder
+        if _cfg_folder is not None:
+            try:
+                (rendering_dir / "gui_cfg_session.txt").write_text(str(_cfg_folder), encoding="utf-8")
+                print(
+                    json.dumps(
+                        {
+                            "event": "gui_run_tagged",
+                            "cfg_session": Path(_cfg_folder).name,
+                            "rendering_dir": str(rendering_dir),
+                            "level": "info",
+                        }
+                    ),
+                    flush=True,
+                )
+            except OSError as _gui_tag_err:
+                print(
+                    json.dumps(
+                        {
+                            "event": "gui_run_tag_failed",
+                            "reason": str(_gui_tag_err),
+                            "level": "warning",
+                        }
+                    ),
+                    flush=True,
+                )
 
     # Construct vis manager once per run.
     # vis_manager: "v2" | "legacy" | "null" | "disabled" (default)  # noqa: ERA001
