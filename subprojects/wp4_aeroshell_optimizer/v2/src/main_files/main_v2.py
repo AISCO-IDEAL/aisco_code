@@ -20,6 +20,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.main_v2_gui_utils imp
     _parse_cfg_args,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.main_v2_utils import (
+    _resolve_wandb_name,
     _upload_mesh_gradient_gifs,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import (
@@ -71,8 +72,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Vi
 configure_headless_pyvista()
 
 
-def main() -> None:  # noqa: PLR0912, PLR0915
-
+def main(_gui_mode: bool = False, _cfg_folder: str = "") -> None:  # noqa: PLR0912, PLR0915
     print("Starting Main file V2...")
 
     # 0. Parse CLI args and configure override env var before any config load.
@@ -125,11 +125,21 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     use_wandb: bool = general_config["wandb_general"].get("use_wandb", False)
     if use_wandb:
         try:
+            wandb_run_name = _resolve_wandb_name(general_config["wandb_general"].get("name"), run_locally)
             wandb.init(
                 entity=general_config["wandb_general"]["entity_name"],
                 project=general_config["wandb_general"]["project_name"],
+                name=wandb_run_name,
                 config=general_config,
             )
+            # On Euler, append job ID to wandb's auto-generated name for uniqueness
+            if not run_locally:
+                slurm_job_id = os.environ.get("SLURM_JOB_ID")
+                if slurm_job_id and wandb.run is not None:
+                    generated_name = wandb.run.name
+                    if generated_name and not generated_name.endswith(f"_{slurm_job_id}"):
+                        new_name = f"{generated_name}_{slurm_job_id}"
+                        wandb.run.name = new_name
             # keep this for now, not sure if this is any longer required
             patch_wandb_log_for_monotonic_steps()
             # Separate axes keep training and rendering logs chronological

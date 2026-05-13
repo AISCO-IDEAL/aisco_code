@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,41 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent im
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is_local_machine
+
+
+def _resolve_wandb_name(name_cfg: Any, run_locally: bool) -> str | None:  # noqa: PLR0911
+    """Resolve wandb run name from config and runtime environment.
+    
+    Returns None to let wandb auto-generate a name, which is then appended with
+    the SLURM job ID if on Euler.
+    """
+    if name_cfg is None:
+        return None
+
+    raw = str(name_cfg).strip()
+    if raw == "":
+        return None
+
+    normalized = raw.lower()
+    if normalized == "local_run_id":
+        return f"local-{os.getpid()}"
+
+    if normalized == "euler_run_id":
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        return f"euler-{slurm_job_id}" if slurm_job_id else None
+
+    if normalized == "auto_run_id":
+        if run_locally:
+            return f"local-{os.getpid()}"
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        return f"euler-{slurm_job_id}" if slurm_job_id else None
+
+    if not run_locally:
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        if slurm_job_id and not raw.endswith(f"_{slurm_job_id}"):
+            return f"{raw}_{slurm_job_id}"
+
+    return raw
 
 
 def _upload_mesh_gradient_gifs(vis_manager: Any, use_wandb: bool) -> None:
