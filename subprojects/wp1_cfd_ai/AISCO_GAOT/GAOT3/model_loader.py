@@ -19,6 +19,7 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.pyg_transforms impor
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.scale import rescale, rescale_new
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
 
 if TYPE_CHECKING:
     from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
@@ -55,7 +56,7 @@ class ModelLoader:
             gradient_max=float(cfd_config["gradient_max"]),
         )
 
-    def _get_checkpoint_path(self):
+    def _get_checkpoint_path(self) -> str:
         try:
             df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
         except FileNotFoundError:
@@ -75,26 +76,13 @@ class ModelLoader:
         with open(config_path) as f:
             config = yaml.safe_load(f)
 
-        if not isinstance(config, dict):
-            raise TypeError("Loaded config must be a dictionary.")
-
         self._og_config = copy.deepcopy(config)
 
-        if "model" not in config or "args" not in config["model"]:
-            raise KeyError("Expected config['model']['args'] in saved config.")
-
         model_args = config["model"]["args"]
-
-        if "magno" not in model_args:
-            raise KeyError("Expected 'magno' section in model args.")
-        if "transformer" not in model_args:
-            raise KeyError("Expected 'transformer' section in model args.")
 
         model_args["magno"]["precompute_edges"] = False
 
         norm_eps = model_args["transformer"].get("norm_eps")
-        if norm_eps is None:
-            raise KeyError("Expected transformer.norm_eps in model args.")
         model_args["transformer"]["norm_eps"] = float(norm_eps)
 
         self.gaot = GAOT3D(config=model_args).to(self.device)
@@ -152,7 +140,7 @@ class ModelLoader:
         else:
             self._latent_tokens = rescale(latent_queries, (-1, 1)).to(self.device)
 
-    def forward(self, sdf_model, epoch_name):
+    def forward(self, sdf_model: BaseModel, epoch_name: int) -> torch.Tensor:
         self.epoch_name = epoch_name
         self.sdf_model = sdf_model
         verts, faces, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
@@ -205,7 +193,6 @@ class ModelLoader:
     def _compute_sdf_vertex_normals(
         self,
         mesh_verts: torch.Tensor,
-        *,
         detach_normals: bool = True,
     ) -> torch.Tensor:
         verts_for_normals = mesh_verts.detach().requires_grad_(True) if detach_normals else mesh_verts
@@ -252,7 +239,7 @@ class ModelLoader:
         pressure_pa = q_inf * p
         return (-pressure_pa * normals[:, 0] * area_per_vertex).sum()
 
-    def loss_fn(self, mesh_verts, mesh_faces):
+    def loss_fn(self, mesh_verts: torch.Tensor, mesh_faces: torch.Tensor) -> torch.Tensor:
 
         self._check_watertightness(mesh_verts, mesh_faces)
 
@@ -295,7 +282,7 @@ class ModelLoader:
         wandb.log({"cfd/int_drag_f": int_drag_f}, step=self.epoch_name)
         return int_drag_f + shearforce
 
-    def _reformat_data(self, mesh_verts, mesh_faces):
+    def _reformat_data(self, mesh_verts: torch.Tensor, mesh_faces: torch.Tensor) -> Batch:
         optim_verts = mesh_verts.to(self.device)
         mesh_faces = mesh_faces.to(self.device)
 
@@ -343,7 +330,7 @@ class ModelLoader:
 
         return Batch.from_data_list([data]).to(self.device)
 
-    def _check_watertightness(self, verts, faces) -> None:
+    def _check_watertightness(self, verts: torch.Tensor, faces: torch.tensor) -> None:
         # Check number of vertecies and faces
         v = verts.shape[0]
         f = faces.shape[0]
