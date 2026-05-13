@@ -75,16 +75,18 @@ class ProcessManager:
                     process_env[key] = value
 
             log_handle = log_path.open("a", encoding="utf-8")
-            process = subprocess.Popen(
-                ["bash", str(run_local_script), *(extra_args or [])],
-                cwd=str(repo_parent_dir),
-                stdout=log_handle,
-                stderr=subprocess.STDOUT,
-                text=True,
-                env=process_env,
-                start_new_session=True,
-            )
-            log_handle.close()
+            try:
+                process = subprocess.Popen(
+                    ["bash", str(run_local_script), *(extra_args or [])],
+                    cwd=str(repo_parent_dir),
+                    stdout=log_handle,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    env=process_env,
+                    start_new_session=True,
+                )
+            finally:
+                log_handle.close()
 
             self._process = process
             self._log_path = log_path

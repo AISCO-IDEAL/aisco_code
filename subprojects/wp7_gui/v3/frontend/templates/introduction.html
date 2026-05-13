@@ -1,30 +1,61 @@
 {% extends "base.html" %}
 
-{% block hint %}Quick orientation to the WP7 v3 GUI.{% endblock %}
+{% block hint %}Choose your pipeline to get started.{% endblock %}
 
 {% block content %}
-<section class="placeholder-card" style="display: grid; gap: 14px;">
-  <div>
-    <h2 style="margin: 0; color: var(--text);">Welcome to the WP7 GUI v3</h2>
-    <p style="color: var(--muted); margin: 6px 0 0;">
-      Two paths, modular tools shared between them.
-    </p>
+<div
+  style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:32px; padding:20px;">
+
+  <div style="text-align:center;">
+    <h2 style="margin:0 0 6px; font-size:1.6rem; letter-spacing:.06em; color:var(--text);">SELECT PIPELINE</h2>
+    <p style="color:var(--muted); margin:0; font-size:0.9rem;">What would you like to do?</p>
   </div>
 
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-    <a href="/viewer" style="text-decoration: none; color: inherit;">
-      <article class="placeholder-card" style="border-style: solid;">
-        <h3 style="margin: 0 0 6px; color: var(--text);">Viewer</h3>
-        <p style="margin: 0;">Inspect a finished run on local storage — meshes, GIFs, logs.</p>
-      </article>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; width:100%; max-width:760px;">
+
+    <a href="/launcher/assembly-selection?pipeline=live" style="text-decoration:none; color:inherit;">
+      <div style="
+        background:linear-gradient(135deg,#1a2744 0%,#0d1120 100%);
+        border:2px solid #c82121;
+        border-radius:12px;
+        padding:36px 28px;
+        text-align:center;
+        cursor:pointer;
+        transition:border-color .2s, box-shadow .2s;
+        box-shadow:0 0 0 0 rgba(200,33,33,0);
+      " onmouseover="this.style.borderColor='#ff4444';this.style.boxShadow='0 0 18px 2px rgba(200,33,33,0.45)';"
+        onmouseout="this.style.borderColor='#c82121';this.style.boxShadow='none';">
+        <div style="font-size:2.4rem; margin-bottom:14px;">&#9654;</div>
+        <div style="font-size:1.15rem; font-weight:800; letter-spacing:.08em; color:#ff6b6b; margin-bottom:10px;">LIVE
+          OPTIMISATION</div>
+        <div style="font-size:0.82rem; color:#8fa3b1; line-height:1.5;">
+          Configure geometry, set overrides,<br>launch a WP4 run, and watch it live.
+        </div>
+      </div>
     </a>
 
-    <a href="/launcher/config-overrides" style="text-decoration: none; color: inherit;">
-      <article class="placeholder-card" style="border-style: solid;">
-        <h3 style="margin: 0 0 6px; color: var(--text);">Launcher</h3>
-        <p style="margin: 0;">Override configs, launch a WP4 run, watch logs and intermediate artifacts live.</p>
-      </article>
+    <a href="/launcher/assembly-selection?pipeline=completed" style="text-decoration:none; color:inherit;">
+      <div style="
+        background:linear-gradient(135deg,#1a2744 0%,#0d1120 100%);
+        border:2px solid #27a06b;
+        border-radius:12px;
+        padding:36px 28px;
+        text-align:center;
+        cursor:pointer;
+        transition:border-color .2s, box-shadow .2s;
+        box-shadow:0 0 0 0 rgba(39,160,107,0);
+      " onmouseover="this.style.borderColor='#44ffaa';this.style.boxShadow='0 0 18px 2px rgba(39,160,107,0.45)';"
+        onmouseout="this.style.borderColor='#27a06b';this.style.boxShadow='none';">
+        <div style="font-size:2.4rem; margin-bottom:14px;">&#128190;</div>
+        <div style="font-size:1.15rem; font-weight:800; letter-spacing:.08em; color:#44e89a; margin-bottom:10px;">
+          COMPLETED RUNS</div>
+        <div style="font-size:0.82rem; color:#8fa3b1; line-height:1.5;">
+          Browse finished run directories,<br>inspect GIFs, meshes, and artifacts.
+        </div>
+      </div>
     </a>
+
   </div>
-</section>
+
+</div>
 {% endblock %}
