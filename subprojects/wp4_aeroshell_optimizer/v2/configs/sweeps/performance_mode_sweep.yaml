@@ -16,5 +16,5 @@ method: grid
 
 
 parameters:
-  training_v0_config.mode.training_mode:
+  training_config.mode.training_mode:
     values: ["performance","diagnostic"]

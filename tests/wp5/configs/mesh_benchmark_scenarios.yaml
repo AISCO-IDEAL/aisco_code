@@ -38,12 +38,10 @@ runs:
         updates:
           wandb_general.use_wandb: false
           general_info.verbose: "False"
-      - file: subprojects/wp4_aeroshell_optimizer/v2/configs/training_v0_config.yaml
+      - file: subprojects/wp4_aeroshell_optimizer/v2/configs/training_config.yaml
         updates:
           training_params.num_epochs: 5
           training_params.mesh_save_interval: 1000
-      - file: subprojects/wp4_aeroshell_optimizer/v2/configs/GINN.yaml
-        updates:
           population_size: 2
 cases:
   - name: mesh_sdf

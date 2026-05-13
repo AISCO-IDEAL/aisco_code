@@ -1,7 +1,10 @@
-# Visualization configuration
-# Shared by ply_to_gif.py, points_SDFmesh_to_ply.py, and central_vis_manager.py
+# vis_config.yaml
+# Previous name: viz_config.yaml (was in v2/src/sampling_visualization/)
+# Moved to v2/configs/ as part of Plan 041 — Milestone 2.
+# Shared by ply_to_gif.py, points_SDFmesh_to_ply.py, central_vis_manager_v2.py,
+# explore_latent_space.py, and central_vis_manager.py (archived).
 
-# --- GIF rendering (ply_to_gif.py) --- dermasse sali
+# --- GIF rendering (ply_to_gif.py) ---
 fps: 10
 window_width: 1280
 window_height: 720
@@ -21,11 +24,12 @@ point_colour_red: [220, 30, 30]     # model surface prediction
 
 # --- Latent space exploration (explore_latent_space.py) ---
 latent_space_exploration:
-  n_circle: 24        # Mode 1: equally-spaced samples on the pretrained circle
+  n_circle: 90        # Mode 1: equally-spaced samples on the pretrained circle
   n_interp: 7         # Mode 3: interpolation steps per adjacent pair (controls PLY count)
   resolution: 64      # marching cubes grid resolution (lower = faster)
   radii: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]  # Mode 2: radii to sweep per pretrained direction
-# --- CentralVisManager extras (central_vis_manager.py) ---
+
+# --- CentralVisManager extras (central_vis_manager_v2.py) ---
 extras:
   alpha_enabled: false           # enable per-vertex RGBA (vs RGB-only) in PLY writes
   alpha_value: 1.0               # global alpha in [0, 1]; only used when alpha_enabled: true
@@ -129,6 +133,12 @@ visual_types:
     coordinate_system: null
     vmin: null
     vmax: null
+    # Per-component colours (RGB in [0, 1]) and opacities (in [0, 1]):
+    sdf_color: [1.0, 0.0, 0.5]       # aeroshell mesh — cyan
+    sdf_alpha: 0.5                   # aeroshell opacity
+    inner_color: [0.0, 1.0, 0.0]     # inner assembly — green
+    outer_color: [0.6, 0.35, 0.30]   # outer bbox — orange-red
+    outer_alpha: 0.2                 # outer bbox opacity
 
   # Per-loss gradient visualisation (`vis_mesh_gradient`). Each call writes
   # ``mesh_gradients/<loss_key>/epoch_XXXXX.ply`` and finalize() generates the
@@ -154,3 +164,49 @@ visual_types:
       coordinate_system: null
       vmin: null
       vmax: null
+
+# ===========================================================================
+# Latent pretraining visualisation
+# ===========================================================================
+latent_pretraining:
+  vis_cadence_pretraining: 10
+  vis_show_domain_pts: true       # include eikonal domain points in latent sampling vis
+  vis_show_target_pts: "pts"      # "pts" = surface samples, "mesh" = reconstructed mesh
+  mesh_resolution: 128            # marching-cubes resolution for pretraining vis meshes
+  make_gif: false                 # assemble per-epoch PLYs into a GIF at finalize()
+
+  # Latent-space exploration survey (explore_latent_space.py modes 1–3).
+  # Runs at finalize() if enabled: true. Gated to avoid overhead on short runs.
+  latent_space_exploration:
+    enabled: false                # true = run explore_latent_space at finalize()
+    n_circle: 90                  # Mode 1: equally-spaced samples on the pretrained circle
+    n_interp: 7                   # Mode 3: interpolation steps per adjacent pair
+    resolution: 64                # marching cubes resolution
+    radii: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]  # Mode 2: radii to sweep
+
+# ===========================================================================
+# Latent optimisation visualisation
+# ===========================================================================
+latent_optimisation:
+  vis_cadence_optimisation: 10    # write vis snapshot every N optimisation epochs
+  vis_strategy: static            # static/dynamic: vis at original pretrained Z circle or those that are actively being evaluated by losses
+
+  vis_all_losses: true           # Compute cost = N_slots × N_active_losses renders per vis epoch.
+
+  # Circle survey: sweep N angles on the pretrained z-circle and render a GIF.
+  # Called once after pretraining (epoch 0) and then every `cadence` optimisation
+  # epochs. Each call writes to circle_survey/epoch_XXXXX/ so finalize() generates
+  # one GIF per survey snapshot.
+  vis_latent_circle_survey:
+    enabled: true
+    cadence: 5                    # run survey every N optimisation epochs (0 = only after pretraining)
+    n_circle_samples: 90          # number of evenly-spaced angles on the z-circle
+    z_radius: 2.0                 # must match z_radius used in pretraining
+    mesh_resolution: 64           # marching-cubes resolution for circle survey meshes
+    bbox_scale_factor: 1.2        # vis bbox scale (relative to outer prism)
+    layout: "strip"               # "strip" = horizontal PNG strip; "grid" = 2D Cartesian grid PNG; "pizza" = concentric circles grid PNG
+    save_plys: true               # for further investigation
+    # pizza-mode only (ignored for strip/grid):
+    pizza_r_min: 0.5              # innermost radius
+    pizza_r_max: 2.0              # outermost radius
+    pizza_r_steps: 4              # number of concentric circles

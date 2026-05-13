@@ -9,12 +9,17 @@ Usage:
 
 import argparse
 import http.server
+import json
 import threading
 import webbrowser
 from pathlib import Path
 from urllib.parse import urlparse
 
+import yaml
+
 _VIEWER_HTML = Path(__file__).parent / "index.html"
+# vis_config.yaml lives at v2/configs/ — four parents up from this file.
+_VIS_CONFIG_PATH = Path(__file__).parents[3] / "configs" / "vis_config.yaml"
 
 
 class _Handler(http.server.BaseHTTPRequestHandler):
@@ -36,6 +41,16 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         elif path == "/model.glb":
             body = self.glb_path.read_bytes()
             self._respond(200, "model/gltf-binary", body)
+        elif path == "/config.json":
+            # Expose mesh_assembly_v4 color/alpha settings so the viewer can
+            # override baked-in vertex colors without needing a re-export.
+            try:
+                vis_cfg = yaml.safe_load(_VIS_CONFIG_PATH.read_text())
+                assembly_cfg = vis_cfg.get("visual_types", {}).get("mesh_assembly_v4", {})
+            except Exception:
+                assembly_cfg = {}
+            body = json.dumps(assembly_cfg).encode()
+            self._respond(200, "application/json", body)
         else:
             self.send_error(404)
 

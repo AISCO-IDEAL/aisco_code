@@ -43,19 +43,22 @@ def get_outer_prism_bounds_mm() -> dict[str, tuple[float, float]]:
     any change to the regulation values propagates automatically to all callers.
 
     Returns:
-        Dict with four keys:
-          - ``"x"``: ``(lo, hi)`` along the car-length axis (symmetric, ±length/2).
-          - ``"y"``: ``(lo, hi)`` along the lateral axis (symmetric, ±width/2).
-          - ``"z"``: ``(lo, hi)`` between ground clearence and height.
+        Dict with three keys — each value is ``(lo, hi)``:
+          - ``"x"``: car-length axis, symmetric around origin (±length/2).
+          - ``"y"``: lateral axis, symmetric around origin (±width/2).
+          - ``"z"``: height axis, from ground (0 mm) to max height.
+
+        For wheel_clearance or ground_clearance use
+        ``get_regulation("no_build_zones.outer_prism.wheel_clearance")`` etc.
     """
     half_length = float(get_regulation("no_build_zones.outer_prism.length")) / 2.0
     half_width = float(get_regulation("no_build_zones.outer_prism.width")) / 2.0
     height = float(get_regulation("no_build_zones.outer_prism.height"))
-    ground_clearance = float(get_regulation("no_build_zones.outer_prism.ground_clearance"))
+    ground = float(get_regulation("no_build_zones.outer_prism.ground"))
     return {
         "x": (-half_length, half_length),
         "y": (-half_width, half_width),
-        "z": (ground_clearance, height),
+        "z": (ground, height),
     }
 
 
@@ -68,8 +71,7 @@ def scale_outer_prism(outer_prism: dict[str, tuple[float, float]], scale_factor:
     (z) the centre is preserved instead of the origin.
 
     Args:
-        outer_prism: Dict from ``get_outer_prism_bounds_mm()`` with keys
-            ``'x'``, ``'y'``, ``'z'``.
+        outer_prism: Dict from ``get_outer_prism_bounds_mm()`` with keys ``'x'``, ``'y'``, ``'z'``.
         scale_factor: Multiplicative factor for each half-span.  ``1.0`` returns
             the input unchanged.  ``> 1.0`` expands; ``< 1.0`` shrinks.
 
