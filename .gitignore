@@ -112,6 +112,7 @@ ipython_config.py
 # WP7 GUI config-override session folders (timestamped per session)
 subprojects/wp7_gui/v2/config_overrides/gui_override_*/
 subprojects/wp7_gui/v3/config_overrides/gui_override_*/
+subprojects/wp7_gui/v3/config_overrides/
 
 # WP2 assembler GUI checks scratch file
 subprojects/wp2_assembler/version4/GUI_helpers/checks.txt

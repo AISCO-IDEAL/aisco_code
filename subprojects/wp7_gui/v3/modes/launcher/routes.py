@@ -79,6 +79,11 @@ class FolderRequest(BaseModel):
     folder: str
 
 
+class RenameRequest(BaseModel):
+    folder: str
+    run_name: str
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -297,6 +302,11 @@ def cfg_values_put(payload: OverrideValuesRequest) -> dict[str, Any]:
 @router.post("/api/config-overrides/reset")
 def cfg_reset(payload: FolderRequest) -> dict[str, Any]:
     return _config_manager.reset_session(payload.folder)
+
+
+@router.post("/api/config-overrides/rename")
+def cfg_rename(payload: RenameRequest) -> dict[str, Any]:
+    return _config_manager.rename_session(payload.folder, payload.run_name)
 
 
 @router.get("/api/config-overrides/sessions")

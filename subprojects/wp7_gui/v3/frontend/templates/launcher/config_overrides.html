@@ -177,8 +177,37 @@
     return inp;
   }
 
+  function extractRunName(folder) {
+    const basename = folder.split("/").pop();
+    const m = basename.match(/^(.+?)_(\d{8}_\d{6})(?:_\d+)?$/);
+    if (!m) return "";
+    return m[1] === "gui_override" ? "" : m[1];
+  }
+
   function renderForm(schema, values) {
     formArea.innerHTML = "";
+
+    // Run name field (top of form, always shown when a session is active)
+    const nameSection = document.createElement("details");
+    nameSection.className = "config-section"; nameSection.open = true;
+    const nameSummary = document.createElement("summary");
+    nameSummary.textContent = "Session";
+    nameSection.appendChild(nameSummary);
+    const nameRow = document.createElement("div"); nameRow.className = "param-row";
+    const nameLabelWrap = document.createElement("div");
+    const nameLabelEl = document.createElement("div"); nameLabelEl.className = "param-label";
+    nameLabelEl.textContent = "Run name"; nameLabelWrap.appendChild(nameLabelEl);
+    const nameMetaEl = document.createElement("span"); nameMetaEl.className = "param-meta";
+    nameMetaEl.textContent = "Renames the session folder to <name>_<timestamp> on save · string";
+    nameLabelWrap.appendChild(nameMetaEl);
+    const nameInp = document.createElement("input");
+    nameInp.id = "runNameFormInput"; nameInp.className = "param-input";
+    nameInp.type = "text"; nameInp.placeholder = "(no custom name)";
+    nameInp.value = extractRunName(activeFolder);
+    nameInp.addEventListener("input", checkValidity);
+    nameRow.appendChild(nameLabelWrap); nameRow.appendChild(nameInp);
+    nameSection.appendChild(nameRow);
+    formArea.appendChild(nameSection);
     for (const [cfgName, cfgEntry] of Object.entries(schema.configs || {})) {
       const cfgVals = (values && values[cfgName]) || {};
       const details = document.createElement("details");
@@ -210,6 +239,7 @@
     let invalid = false;
     formArea.querySelectorAll(".param-input").forEach(inp => {
       const { cfg, path, type: t } = inp.dataset;
+      if (!cfg || !path) return;
       let value;
       try {
         if (t === "int") { value = parseInt(inp.value, 10); if (isNaN(value)) throw new Error(); }
@@ -241,7 +271,8 @@
   btnInit?.addEventListener("click", async () => {
     btnInit.disabled = true;
     try {
-      const r = await fetch(`${API}/config-overrides/init`, { method: "POST" });
+      const initUrl = `${API}/config-overrides/init`;
+      const r = await fetch(initUrl, { method: "POST" });
       if (!r.ok) { const d = await r.json(); throw new Error(d.detail?.message || r.status); }
       const d = await r.json();
       log(`Session: ${d.name} (${d.copied_files.length} files)`, "success");
@@ -301,7 +332,7 @@
   });
 
   btnCleanAll?.addEventListener("click", async () => {
-    if (!confirm("Delete ALL gui_override_* sessions?")) return;
+    if (!confirm("Delete ALL sessions?")) return;
     try {
       const r = await fetch(`${API}/config-overrides/cleanup`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -318,6 +349,21 @@
     const updates = collectUpdates();
     if (!updates) { log("Fix invalid fields before saving.", "error"); return; }
     try {
+      // Rename session folder if a new run name was entered
+      const newName = (document.getElementById("runNameFormInput")?.value || "").trim();
+      const currentName = extractRunName(activeFolder);
+      if (newName && newName !== currentName) {
+        const rr = await fetch(`${API}/config-overrides/rename`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ folder: activeFolder, run_name: newName }),
+        });
+        if (!rr.ok) { const rd = await rr.json(); throw new Error(rd.detail?.message || rr.status); }
+        const rd = await rr.json();
+        activeFolder = rd.new_folder;
+        localStorage.setItem(STORAGE_KEY, activeFolder);
+        sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
+        log(`Renamed to: ${activeFolder.split("/").pop()}`, "success");
+      }
       const r = await fetch(`${API}/config-overrides/values`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ folder: activeFolder, updates })
