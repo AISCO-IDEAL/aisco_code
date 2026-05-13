@@ -21,7 +21,6 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.metadata import DATA
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.trainer.utils.plot import plot_3d_comparison_matplotlib
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.pressure_integration import cp_field_to_drag
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.scale import rescale, rescale_new
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
@@ -379,6 +378,25 @@ class ModelLoader:
                 step=self.epoch_name,
             )
 
+    def _integrate_pressure_drag(self, pressure_field: torch.Tensor, batch: Batch, mesh_faces: torch.Tensor) -> torch.Tensor:
+        p = pressure_field.squeeze(-1) if pressure_field.dim() > 1 else pressure_field
+        face = mesh_faces.T
+        pos = batch.pos_raw
+        normals = batch.c
+
+        v0 = pos[face[0]]
+        v1 = pos[face[1]]
+        v2 = pos[face[2]]
+        area_normals = 0.5 * torch.cross(v1 - v0, v2 - v0, dim=-1)
+
+        outward_n = (normals[face[0]] + normals[face[1]] + normals[face[2]]) / 3.0
+        dot_prod = (area_normals * outward_n).sum(dim=-1, keepdim=True)
+        area_normals = torch.where(dot_prod < 0, -area_normals, area_normals)
+
+        q_inf = 0.5 * self.cfd_config["rho"] * self.cfd_config["v_inf"] ** 2
+        p_face = q_inf * (p[face[0]] + p[face[1]] + p[face[2]]) / 3.0
+        return (-p_face * area_normals[:, 0]).sum()
+
     def loss_fn(self, mesh_verts, mesh_faces):
         if mesh_verts is None or mesh_verts.shape[0] == 0:
             return torch.tensor(0.0, device=self.device)
@@ -417,14 +435,7 @@ class ModelLoader:
             reference_field=reference_field,
         )
 
-        int_drag_f = cp_field_to_drag(
-            cp_field=pressure_field,
-            normals=batch.c,
-            face=mesh_faces.T,
-            pos=batch.pos_raw,
-            v_inf=self.cfd_config["v_inf"],
-            rho=self.cfd_config["rho"],
-        )
+        int_drag_f = self._integrate_pressure_drag(pressure_field, batch, mesh_faces)
         self._log_front_back_pressure_drag(pressure_field=pressure_field, batch=batch, mesh_faces=mesh_faces)
 
         with torch.no_grad():
