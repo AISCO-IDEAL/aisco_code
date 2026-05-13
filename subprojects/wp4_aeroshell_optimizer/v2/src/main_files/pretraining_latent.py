@@ -36,6 +36,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_v
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
     CentralVisManagerV2,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment, detect_environment
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
 from subprojects.wp5.unified_mesh_extraction import clear_mesh_cache
@@ -599,18 +600,25 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
 
     # --- Specific pretraining path override ---
     if bool(config.get("use_specific_pretraining", False)):
-        specific_path_raw = config.get("specific_pretraining_path")
+        env = detect_environment()
+        use_euler_path = env in (Environment.EULER, Environment.SLURM)
+        preferred_key = "specific_pretraining_path_euler" if use_euler_path else "specific_pretraining_path_local"
+
+        # Backward compatibility: fall back to legacy single key if split keys are absent.
+        specific_path_raw = config.get(preferred_key) or config.get("specific_pretraining_path")
         if not specific_path_raw:
             raise ValueError(
-                "use_specific_pretraining is true but specific_pretraining_path is not set. "
-                "Set specific_pretraining_path to the absolute path of the .pth file in "
+                "use_specific_pretraining is true but no specific pretraining path is configured. "
+                f"Expected '{preferred_key}' (or legacy 'specific_pretraining_path') in "
                 "pretraining_latent_config.yaml."
             )
         specific_path = Path(specific_path_raw)
         if not specific_path.exists():
             raise FileNotFoundError(
-                f"specific_pretraining_path does not exist: {specific_path}. Check the path in pretraining_latent_config.yaml."
+                f"Configured path '{preferred_key}' does not exist: {specific_path}. "
+                "Check pretraining_latent_config.yaml."
             )
+        print(f"[latent_pretrain] Environment={env.value}  selected_path_key={preferred_key}")
         ckpt = torch.load(specific_path, map_location=device, weights_only=True)
         if not isinstance(ckpt, dict) or "model_state_dict" not in ckpt or "z_pretrained" not in ckpt:
             raise ValueError(

@@ -17,30 +17,80 @@
 set -euo pipefail
 umask 0002
 
+ts() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
+
 # ---- Configure this after `wandb sweep ...` --------------------------------
-SWEEP_ID="aisco/behavior-general-loss-schedule/gpm28ou2"  # full id: entity/project/sweep_id
+SWEEP_ID="aisco/behavior-general-loss-schedule/uthde7da"  # full id: entity/project/sweep_id
 COUNT=8
 
 export no_proxy=$(echo "${no_proxy:-}" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export NO_PROXY=$(echo "${NO_PROXY:-}" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 
-module purge
-module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6 eth_proxy
+if command -v module >/dev/null 2>&1; then
+    module purge
+    module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6 eth_proxy
+    ts "Checkpoint: environment modules loaded"
+else
+    ts "Checkpoint: 'module' command not found; running local mode"
+fi
 
-USERNAME="$(whoami)"
-VENV_DIR="/cluster/home/${USERNAME}/AISCO_code/aisco_env"
+SOURCE_PATH="${BASH_SOURCE[0]:-$0}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "$SOURCE_PATH")")" && pwd)"
+
+# Resolve project root robustly even when this script is copied to /tmp by a runner.
+PROJECT_ROOT=""
+for CANDIDATE in \
+    "${AISCO_PROJECT_ROOT:-}" \
+    "$(cd -- "$SCRIPT_DIR/../../../../.." 2>/dev/null && pwd || true)" \
+    "$PWD" \
+    "$HOME/Documents/AISCO_code" \
+    "$HOME/AISCO_code"
+do
+    [[ -z "$CANDIDATE" ]] && continue
+    if [[ -f "$CANDIDATE/pyproject.toml" && -d "$CANDIDATE/subprojects" ]]; then
+        PROJECT_ROOT="$CANDIDATE"
+        break
+    fi
+done
+
+if [[ -z "$PROJECT_ROOT" ]]; then
+    ts "ERROR: could not resolve project root"
+    ts "Hint: export AISCO_PROJECT_ROOT to your repo path (example: $HOME/Documents/AISCO_code)"
+    exit 1
+fi
+
+if [[ -n "${AISCO_VENV_DIR:-}" ]]; then
+    VENV_DIR="$AISCO_VENV_DIR"
+else
+    VENV_DIR="$PROJECT_ROOT/aisco_env"
+fi
+
+if [[ ! -x "$VENV_DIR/bin/python" ]]; then
+    ts "ERROR: Python env not found: $VENV_DIR"
+    ts "Hint: set AISCO_VENV_DIR or create env at $PROJECT_ROOT/aisco_env"
+    exit 1
+fi
+
 source "$VENV_DIR/bin/activate"
+PYTHON_BIN="$VENV_DIR/bin/python"
+ts "Checkpoint: virtualenv activated ($VENV_DIR)"
+ts "Checkpoint: python executable = $PYTHON_BIN"
+"$PYTHON_BIN" --version
 
 export PYTHONUNBUFFERED=TRUE
-export PYTHONPATH="/cluster/home/${USERNAME}/AISCO_code/subprojects:${PYTHONPATH:-}"
-export PYTHONPATH="/cluster/home/${USERNAME}/AISCO_code:${PYTHONPATH}"
-cd /cluster/home/${USERNAME}/AISCO_code
+export PYTHONPATH="$PROJECT_ROOT/subprojects:${PYTHONPATH:-}"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH}"
+cd "$PROJECT_ROOT"
+ts "Checkpoint: changed directory to $(pwd)"
 
-if [[ "$SWEEP_ID" == "aisco/behavior-general-loss-schedule/gpm28ou2" || -z "$SWEEP_ID" ]]; then
+SWEEP_ID_CLEANED="$(echo "$SWEEP_ID" | xargs)"
+if [[ -z "$SWEEP_ID_CLEANED" || "$SWEEP_ID_CLEANED" == "REPLACE_WITH_SWEEP_ID" ]]; then
     echo "ERROR: set SWEEP_ID to the id returned by 'wandb sweep ...'"
     exit 1
 fi
 
-echo "[$(date)] Starting single-agent sweep on GPU 0 for $SWEEP_ID (count=$COUNT)"
-CUDA_VISIBLE_DEVICES=0 wandb agent --count "$COUNT" "$SWEEP_ID"
+echo "[$(date)] Starting single-agent sweep on GPU 0 for $SWEEP_ID_CLEANED (count=$COUNT)"
+CUDA_VISIBLE_DEVICES=0 wandb agent --count "$COUNT" "$SWEEP_ID_CLEANED"
 echo "[$(date)] Sweep agent finished"
