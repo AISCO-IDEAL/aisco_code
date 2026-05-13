@@ -1,5 +1,5 @@
 loading:
-  ply_path: "/home/aisco/Documents/AISCO_code/subprojects/wp3_solar_estimator/testbench/meshes/original_silvretta_no_wheels_scaled_to_mm.ply"
+  ply_path: "/cluster/work/fuge/AISCO/00_meshes_to_keep/original_silvretta_no_wheels_scaled_to_mm.ply"
   ply_scaling_factor: 1.0
 
 solar_loss:
@@ -9,8 +9,8 @@ sdf_model:    # R — precomputes an R³ SDF grid once; higher = more accurate, 
   cache_dir: "sdf_cache"   # relative to testbench folder; set to null to disable disk caching
 
 benchmark:
-  warmup_steps: 5
-  active_steps: 25
+  warmup_steps: 3
+  active_steps: 5
 
 profiler:
   enabled: false

@@ -72,9 +72,6 @@ class SolarSR(ParentLoss):
             enable_backward=True,
         )
 
-        if self.epoch_name is not None:
-            vis_manager.vis_mesh_gradient(self.epoch_name, "solar_sr", vertices, faces, dL_dv)
-
         with torch.no_grad():
             self._last_diagnostics = {
                 "loss_value_watts": loss.item(),

@@ -87,14 +87,11 @@ class SolarSRRT(ParentLoss):
             self._pending_diagnostics = diagnostics
             return loss
 
-        vertices, faces, loss, surrogate_loss, dL_dv = self.extractor.extract_and_compute_loss(
+        _, _, loss, surrogate_loss, _ = self.extractor.extract_and_compute_loss(
             sdf_model=model,
             loss_fn=loss_fn,
             enable_backward=True,
         )
-
-        if self.epoch_name is not None:
-            vis_manager.vis_mesh_gradient(self.epoch_name, "solar_srrt", vertices, faces, dL_dv)
 
         with torch.no_grad():
             self._last_diagnostics = {

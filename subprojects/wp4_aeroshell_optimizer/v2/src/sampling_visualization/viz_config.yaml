@@ -104,7 +104,7 @@ visual_types:
 
     shading:
       enabled: true
-      colormap: "viridis"   # [0,1] bounded shading visibility
+      colormap: "jet"   # [0,1] bounded shading visibility
       interval: 1
       alpha_enabled: null
       coordinate_system: null
@@ -113,7 +113,7 @@ visual_types:
 
     penalty:
       enabled: true
-      colormap: "turbo"      # per-face power lost to shading, lower-bounded at 0
+      colormap: "jet"      # per-face power lost to shading, lower-bounded at 0
       interval: 1
       alpha_enabled: null
       coordinate_system: null
@@ -122,7 +122,7 @@ visual_types:
 
     numerical_factor:
       enabled: true
-      colormap: "plasma"    # [0,1] effective loss multiplier after λ/κ applied to visibility
+      colormap: "jet"    # [0,1] effective loss multiplier after λ/κ applied to visibility
       interval: 1
       alpha_enabled: null
       coordinate_system: null
@@ -155,7 +155,7 @@ visual_types:
   # outward). vmin/vmax null → symmetric ±max(|grad·n|) per epoch.
   mesh_gradients:
     enabled: true
-    colormap: "RdBu_r"
+    colormap: "vanimo"
     interval: 1
     alpha_enabled: null
     coordinate_system: null

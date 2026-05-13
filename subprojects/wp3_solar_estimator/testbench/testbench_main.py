@@ -213,6 +213,17 @@ def single_solar_test():
 
     print(f"\nSolar loss : {result.item():.4f} W")
     print(f"Elapsed    : {elapsed:.2f}s")
+
+    if vis_enabled and hasattr(solar_loss, "extractor") and solar_loss.extractor.last_dL_dv is not None:
+        vis_manager.vis_mesh_gradient(
+            -42,
+            loss_class.lower(),
+            solar_loss.extractor.last_verts,
+            solar_loss.extractor.last_faces,
+            solar_loss.extractor.last_dL_dv,
+            true_scale=False,
+        )
+
     vis_manager.finalize()
 
 

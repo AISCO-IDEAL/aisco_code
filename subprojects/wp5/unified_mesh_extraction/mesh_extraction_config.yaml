@@ -5,9 +5,9 @@ isovalue: 0.0
 # bbox + resolution across losses lets `_inject_shared_meshes` deduplicate
 # the extraction and ensures every gradient panel renders on the same body.
 bbox: [[-5000, 5000], [-5000, 5000], [-5000, 5000]]
-base_resolution: 100
+base_resolution: 50
 subdivision_factor: 2
-max_refine_levels: 0
+max_refine_levels: 1
 batch_size: 65536
 target_num_vertices: null  # set to an integer to hit a specific vertex count (opt-in)
 vertex_count_tolerance: 0.1  # fraction tolerance around target_num_vertices (0.1 = ±10%)

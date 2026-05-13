@@ -430,14 +430,7 @@ class CentralVisManagerV2(_BaseVisManager):
         rgb = resolve_mesh_rgb(np.asarray(distances, np.float32).reshape(-1), len(verts_np), 0, None, verts_np, type_cfg)
         self._submit_ply(vt, epoch, verts_np, None, rgb, type_cfg)
 
-    def vis_mesh_gradient(
-        self,
-        epoch: int,
-        loss_key: str,
-        verts: Any,
-        faces: Any,
-        dL_dv: Any,
-    ) -> None:
+    def vis_mesh_gradient(self, epoch: int, loss_key: str, verts: Any, faces: Any, dL_dv: Any, true_scale: bool = True) -> None:
         """Render per-vertex `dL/dv · n` for one loss as a coloured PLY.
 
         The per-vertex outward normal is computed from face normals; the dot
@@ -452,6 +445,7 @@ class CentralVisManagerV2(_BaseVisManager):
             verts:    (V, 3) mesh vertices (tensor or array).
             faces:    (F, 3) triangle indices (tensor or array).
             dL_dv:    (V, 3) gradient of the loss w.r.t. `verts`.
+            true_scale: If True, the raw dot product is visualized; if False, the color range is normalized so 0 is in the middle, and the max/min values of the dot product are at the ends of the colormap. Setting this to False can make it easier to see the relative distribution of positive vs negative gradients, especially when the magnitudes are different.
         """
         vt = self._slotted(f"mesh_gradients/{loss_key}")
         type_cfg = vis_type_config(self._visual_types, vt)
@@ -498,10 +492,22 @@ class CentralVisManagerV2(_BaseVisManager):
         cfg_vmin = type_cfg.get("vmin")
         cfg_vmax = type_cfg.get("vmax")
         if cfg_vmin is None or cfg_vmax is None:
-            amp = float(np.max(np.abs(dot))) if dot.size else 0.0
-            amp = amp if amp > 0.0 else 1.0
-            vmin_eff = -amp if cfg_vmin is None else float(cfg_vmin)
-            vmax_eff = amp if cfg_vmax is None else float(cfg_vmax)
+            if true_scale:
+                amp = float(np.max(np.abs(dot))) if dot.size else 0.0
+                amp = amp if amp > 0.0 else 1.0
+                vmin_eff = -amp if cfg_vmin is None else float(cfg_vmin)
+                vmax_eff = amp if cfg_vmax is None else float(cfg_vmax)
+            else:
+                # scale so dot=0 is in the middle of the colormap, and the max/min values of dot are at the ends (1,-1)of the colormap.
+                vmin_eff = 0.0
+                vmax_eff = 1.0
+                delta = vmax_eff - vmin_eff
+                dot_min = float(np.min(dot))
+                dot_max = float(np.max(dot))
+                if dot_max > 0:
+                    dot = np.where(dot > 0, dot / dot_max * delta / 2 + 0.5, dot)
+                if dot_min < 0:
+                    dot = np.where(dot < 0, dot / (-dot_min) * delta / 2, dot)
         else:
             vmin_eff, vmax_eff = float(cfg_vmin), float(cfg_vmax)
 
