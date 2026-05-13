@@ -43,6 +43,7 @@ class NullVisManager:
         verts: Any,
         faces: Any,
         dL_dv: Any,
+        true_scale: bool = True,
     ) -> None:
         pass
 

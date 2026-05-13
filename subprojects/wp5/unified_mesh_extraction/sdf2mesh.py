@@ -212,7 +212,9 @@ class MeshSDFExtractor:
             neighbor_sum = torch.zeros_like(dL_dv)
             neighbor_count = torch.zeros(dL_dv.shape[0], 1, device=dL_dv.device, dtype=dL_dv.dtype)
             neighbor_sum.scatter_add_(0, edges_to.unsqueeze(-1).expand(-1, 3), dL_dv[edges_from])
-            neighbor_count.scatter_add_(0, edges_to.unsqueeze(-1), torch.ones(len(edges_to), 1, device=dL_dv.device, dtype=dL_dv.dtype))
+            neighbor_count.scatter_add_(
+                0, edges_to.unsqueeze(-1), torch.ones(len(edges_to), 1, device=dL_dv.device, dtype=dL_dv.dtype)
+            )
             dL_dv = 0.5 * dL_dv + 0.5 * neighbor_sum / neighbor_count.clamp_min(1)
 
         surrogate = self.compute_gradient_flow(verts, dL_dv, sdf_model)

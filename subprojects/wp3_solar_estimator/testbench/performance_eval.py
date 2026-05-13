@@ -116,6 +116,7 @@ def run_benchmark():  # noqa: PLR0912, PLR0915
     start_event.record()
 
     with ctx if ctx is not None else nullcontext() as p:
+        assert p is not None
         for step in range(active_steps):
             # also record each iteration time for better insights into compile:
             step_start = time.perf_counter()
