@@ -39,12 +39,26 @@ fi
 SOURCE_PATH="${BASH_SOURCE[0]:-$0}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "$SOURCE_PATH")")" && pwd)"
 
-# Expected repo layout: <root>/subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts
-PROJECT_ROOT_CANDIDATE="$(cd -- "$SCRIPT_DIR/../../../../.." && pwd)"
-if [[ -f "$PROJECT_ROOT_CANDIDATE/pyproject.toml" && -d "$PROJECT_ROOT_CANDIDATE/subprojects" ]]; then
-    PROJECT_ROOT="$PROJECT_ROOT_CANDIDATE"
-else
-    PROJECT_ROOT="$PWD"
+# Resolve project root robustly even when this script is copied to /tmp by a runner.
+PROJECT_ROOT=""
+for CANDIDATE in \
+    "${AISCO_PROJECT_ROOT:-}" \
+    "$(cd -- "$SCRIPT_DIR/../../../../.." 2>/dev/null && pwd || true)" \
+    "$PWD" \
+    "$HOME/Documents/AISCO_code" \
+    "$HOME/AISCO_code"
+do
+    [[ -z "$CANDIDATE" ]] && continue
+    if [[ -f "$CANDIDATE/pyproject.toml" && -d "$CANDIDATE/subprojects" ]]; then
+        PROJECT_ROOT="$CANDIDATE"
+        break
+    fi
+done
+
+if [[ -z "$PROJECT_ROOT" ]]; then
+    ts "ERROR: could not resolve project root"
+    ts "Hint: export AISCO_PROJECT_ROOT to your repo path (example: $HOME/Documents/AISCO_code)"
+    exit 1
 fi
 
 if [[ -n "${AISCO_VENV_DIR:-}" ]]; then
