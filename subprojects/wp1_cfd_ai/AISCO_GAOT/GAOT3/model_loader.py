@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import ast
 import copy
-import logging
 import os
-import tempfile
 import warnings
 from dataclasses import replace as _replace
 from typing import TYPE_CHECKING
@@ -13,14 +11,12 @@ import pandas as pd
 import torch
 import yaml
 from torch_geometric.data import Batch, Data
-from torch_geometric.loader import DataLoader as PyGDataLoader
 
 import wandb
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.metadata import DATASET_METADATA
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.model.gaot_3d import GAOT3D
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.trainer.utils.plot import plot_3d_comparison_matplotlib
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.scale import rescale, rescale_new
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
@@ -28,16 +24,12 @@ if TYPE_CHECKING:
     from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
     from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
 
-logger = logging.getLogger(__name__)
-
 
 class ModelLoader:
-    optimization_state: dict[str, object]
-    vis_manager: CentralVisManagerV2 | NullVisManager | None
-
     def __init__(self, cfd_config: dict, device: str) -> None:
         self.cfd_config = cfd_config
         self.device = device
+        self.vis_manager: CentralVisManagerV2 | NullVisManager | None
         self.shear_force_calculator = ShearForce(unit="mm^2")
 
         self.optimization_state = {
@@ -191,39 +183,6 @@ class ModelLoader:
             _vm.vis_aero_cp_field(self.epoch_name, mesh_verts, mesh_faces, pressure_field)
             return
 
-    def _log_front_back_pressure_drag(self, pressure_field: torch.Tensor, batch: Batch, mesh_faces: torch.Tensor) -> None:
-        with torch.no_grad():
-            p = pressure_field.squeeze(-1) if pressure_field.dim() > 1 else pressure_field
-            face = mesh_faces.T
-            pos = batch.pos_raw
-            normals = batch.c
-
-            v0 = pos[face[0]]
-            v1 = pos[face[1]]
-            v2 = pos[face[2]]
-            area_normals = 0.5 * torch.cross(v1 - v0, v2 - v0, dim=-1)
-
-            outward_n = (normals[face[0]] + normals[face[1]] + normals[face[2]]) / 3.0
-            dot_prod = (area_normals * outward_n).sum(dim=-1, keepdim=True)
-            area_normals = torch.where(dot_prod < 0, -area_normals, area_normals)
-
-            q_inf = 0.5 * self.cfd_config["rho"] * self.cfd_config["v_inf"] ** 2
-            p_face = q_inf * (p[face[0]] + p[face[1]] + p[face[2]]) / 3.0
-            n_dir_area = area_normals[:, 0]
-            face_drag = -p_face * n_dir_area
-
-            front_faces = n_dir_area > 0
-            back_faces = n_dir_area < 0
-            wandb.log(
-                {
-                    "cfd/int_drag_front_f": face_drag[front_faces].sum().item(),
-                    "cfd/int_drag_back_f": face_drag[back_faces].sum().item(),
-                    "cfd/front_face_count": int(front_faces.sum().item()),
-                    "cfd/back_face_count": int(back_faces.sum().item()),
-                },
-                step=self.epoch_name,
-            )
-
     def _integrate_pressure_drag(self, pressure_field: torch.Tensor, batch: Batch, mesh_faces: torch.Tensor) -> torch.Tensor:
         p = pressure_field.squeeze(-1) if pressure_field.dim() > 1 else pressure_field
         face = mesh_faces.T
@@ -319,7 +278,6 @@ class ModelLoader:
         pressure_integration_mode = self.cfd_config.get("pressure_integration_mode", "face")
         if pressure_integration_mode == "face":
             int_drag_f = self._integrate_pressure_drag(pressure_field, batch, mesh_faces)
-            self._log_front_back_pressure_drag(pressure_field=pressure_field, batch=batch, mesh_faces=mesh_faces)
         elif pressure_integration_mode == "sdf_vertex_constant_area":
             int_drag_f = self._integrate_pressure_drag_sdf_normals(
                 pressure_field=pressure_field,
@@ -352,7 +310,6 @@ class ModelLoader:
         with torch.no_grad():
             sdf_values = self.sdf_model(face_centers + face_normals * 50).squeeze(-1)
         normals_flipped = sdf_values < 0
-        # face_normals[normals_flipped] *= -1
         self._normals_flipped_count = int(normals_flipped.sum().item())
         wandb.log({"cfd/unhealthy normals:": self._normals_flipped_count}, step=self.epoch_name)
 
