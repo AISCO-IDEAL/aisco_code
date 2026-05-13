@@ -393,7 +393,6 @@ class ModelLoader:
 
         batch = self._reformat_data(mesh_verts, mesh_faces)
 
-        # Fix 5: use reconstructed latent tokens from training context
         tokens_pos = self._latent_tokens
 
         with torch.autograd.set_detect_anomaly(True):
@@ -469,8 +468,9 @@ class ModelLoader:
         with torch.no_grad():
             sdf_values = self.sdf_model(face_centers + face_normals * 50).squeeze(-1)
         normals_flipped = sdf_values < 0
-        face_normals[normals_flipped] *= -1
+        # face_normals[normals_flipped] *= -1
         self._normals_flipped_count = int(normals_flipped.sum().item())
+        wandb.log({"cfd/unhealthy normals:": self._normals_flipped_count}, step=self.epoch_name)
 
         num_verts = optim_verts.shape[0]
         all_idx = mesh_faces.reshape(-1)
