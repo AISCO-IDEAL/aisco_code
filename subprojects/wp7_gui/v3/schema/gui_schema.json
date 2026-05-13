@@ -37,6 +37,19 @@
           "ui": "number"
         }
       ]
+    },
+    "losses_v0_config.yaml": {
+      "label": "Losses",
+      "params": [
+        {
+          "path": "bb_config.assembly_id",
+          "label": "Assembly ID (bb_config)",
+          "type": "int",
+          "min": 1,
+          "max": 51,
+          "ui": "number"
+        }
+      ]
     }
   }
 }

@@ -2,7 +2,7 @@
 This should be the final main file we use for the Project. It should be modular and easily extendible
 """
 
-import argparse
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -15,9 +15,13 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import Di
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
+from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.main_v2_gui_utils import (
+    _configure_cfg_env,
+    _parse_cfg_args,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.main_v2_utils import (
+    _resolve_wandb_name,
     _upload_mesh_gradient_gifs,
-    _resolve_wandb_name
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent import (
     _compute_latent_pretrain_hash,
@@ -68,11 +72,22 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Vi
 configure_headless_pyvista()
 
 
-
-
-
 def main(_gui_mode: bool = False, _cfg_folder: str = "") -> None:  # noqa: PLR0912, PLR0915
     print("Starting Main file V2...")
+
+    # 0. Parse CLI args and configure override env var before any config load.
+    _cfg_folder, _uses_gui = _parse_cfg_args()
+    _config_source = _configure_cfg_env(_cfg_folder)
+    print(
+        json.dumps(
+            {
+                "event": "run_start",
+                "cfg_folder": str(_cfg_folder) if _cfg_folder is not None else None,
+                "config_source": _config_source,
+                "level": "info",
+            }
+        )
+    )
 
     # 1. Load and register configs
     general_config: dict[str, Any] = load_config(v="v2", cfg_name="general_config.yaml")
@@ -110,13 +125,21 @@ def main(_gui_mode: bool = False, _cfg_folder: str = "") -> None:  # noqa: PLR09
     use_wandb: bool = general_config["wandb_general"].get("use_wandb", False)
     if use_wandb:
         try:
-            wandb_name = _resolve_wandb_name(general_config["wandb_general"].get("name"), run_locally)
+            wandb_run_name = _resolve_wandb_name(general_config["wandb_general"].get("name"), run_locally)
             wandb.init(
                 entity=general_config["wandb_general"]["entity_name"],
                 project=general_config["wandb_general"]["project_name"],
-                name=wandb_name,
+                name=wandb_run_name,
                 config=general_config,
             )
+            # On Euler, append job ID to wandb's auto-generated name for uniqueness
+            if not run_locally:
+                slurm_job_id = os.environ.get("SLURM_JOB_ID")
+                if slurm_job_id and wandb.run is not None:
+                    generated_name = wandb.run.name
+                    if generated_name and not generated_name.endswith(f"_{slurm_job_id}"):
+                        new_name = f"{generated_name}_{slurm_job_id}"
+                        wandb.run.name = new_name
             # keep this for now, not sure if this is any longer required
             patch_wandb_log_for_monotonic_steps()
             # Separate axes keep training and rendering logs chronological
@@ -646,26 +669,4 @@ def main(_gui_mode: bool = False, _cfg_folder: str = "") -> None:  # noqa: PLR09
 
 
 if __name__ == "__main__":
-    # CLI argument parsing (for GUI config override infrastructure)
-    parser = argparse.ArgumentParser(description="AISCO WP4 Aeroshell Optimizer")
-    parser.add_argument("--uses-gui", action="store_true", help="Running from GUI")
-    parser.add_argument("--cfg-folder", type=str, default="", help="Path to config override folder")
-    args, _ = parser.parse_known_args()
-    print(f"CLI arguments received: {args}, type: {type(args)}")
-    print(f"Extras: {_}, type: {type(_)}")
-    # Arguments are available but not used yet - caller will handle them
-    print(f"uses_gui: {args.uses_gui}, cfg_folder: {args.cfg_folder}")
-    # NOTE: When launched by `wandb agent`, the agent appends sweep hyperparameter
-    # overrides as `--key=value` CLI args. These are consumed via `wandb.config`
-    # in `apply_sweep_overrides`, not via argparse, so we tolerate `--...`-style
-    # extras here. Only non-flag extras indicate a real caller bug.
-    _bad_extras = [a for a in _ if not a.startswith("--")]
-    assert _bad_extras == [], (
-        f"Unexpected non-flag CLI arguments received: {_bad_extras}. Check the caller or argument parsing logic."
-    )
-    # --cfg-folder is only required when running through the GUI override flow.
-    if args.uses_gui:
-        assert args.cfg_folder != "", '--uses-gui requires "--cfg-folder PATH" to be set'
-    assert " " not in args.cfg_folder, f"Config folder path cannot contain spaces. Received: '{args.cfg_folder}'"
-
-    main(_gui_mode=args.uses_gui, _cfg_folder=args.cfg_folder)
+    main()

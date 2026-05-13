@@ -316,3 +316,8 @@ def assembly_remove_wheel() -> dict[str, Any]:
 @router.get("/api/assembly-selection/mesh")
 def assembly_mesh() -> FileResponse:
     return _assembly_service.get_mesh_response()
+
+
+@router.get("/api/assembly-selection/checks")
+def assembly_checks() -> dict:
+    return _assembly_service.get_checks()

@@ -16,7 +16,8 @@
     <button class="btn secondary" id="btnStop" disabled>Stop</button>
     <div style="display:grid; gap:3px; min-width:160px;">
       <label style="font-size:0.8rem; color:var(--muted); font-weight:600;">Assembly ID (1–51)</label>
-      <select id="assemblyId" style="border:1px solid #a41717;border-radius:8px;padding:6px 8px;font-size:0.86rem;background:var(--accent);color:#fff;">
+      <select id="assemblyId"
+        style="border:1px solid #a41717;border-radius:8px;padding:6px 8px;font-size:0.86rem;background:var(--accent);color:#fff;">
         <option value="">Random</option>
       </select>
     </div>
@@ -33,28 +34,51 @@
 
     <!-- Sliders card -->
     <div class="card" style="display:grid; grid-template-rows:auto 1fr auto; min-height:0;">
-      <div style="font-size:0.88rem; font-weight:700; padding:8px 12px; border-bottom:1px solid var(--border); background:#edf3ef;">
+      <div
+        style="font-size:0.88rem; font-weight:700; padding:8px 12px; border-bottom:1px solid var(--border); background:#edf3ef;">
         Parameter Sliders
       </div>
-      <div id="slidersArea" style="overflow-y:auto; padding:10px 12px; display:grid; align-content:start; gap:6px;"></div>
-      <div style="padding:10px 12px; border-top:1px solid var(--border); background:#f0f5f2; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <div id="slidersArea" style="overflow-y:auto; padding:10px 12px; display:grid; align-content:start; gap:6px;">
+      </div>
+      <div
+        style="padding:10px 12px; border-top:1px solid var(--border); background:#f0f5f2; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
         <button class="btn" id="btnAddWheel" style="font-size:0.83rem;padding:7px 11px;">+ Add wheel</button>
-        <button class="btn secondary" id="btnRemoveWheel" style="font-size:0.83rem;padding:7px 11px;">− Remove wheel</button>
-        <span style="margin-left:auto; font-size:0.82rem; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:50%;" id="sliderStatus">Loading…</span>
+        <button class="btn secondary" id="btnRemoveWheel" style="font-size:0.83rem;padding:7px 11px;">− Remove
+          wheel</button>
+        <span
+          style="margin-left:auto; font-size:0.82rem; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:50%;"
+          id="sliderStatus">Loading…</span>
+      </div>
+
+      <!-- Checks / warnings panel -->
+      <div id="checksPanel"
+        style="padding:10px 12px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:6px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span id="checksLight"
+            style="display:inline-block; width:12px; height:12px; border-radius:50%; background:#aaa; flex-shrink:0;"></span>
+          <span id="checksLabel" style="font-size:0.82rem; font-weight:600; color:var(--muted);">Checking
+            assembly…</span>
+        </div>
+        <ul id="checksList"
+          style="margin:0; padding:0 0 0 20px; font-size:0.80rem; color:#b04a1a; list-style:disc; display:none;"></ul>
       </div>
     </div>
 
     <!-- Mesh viewer card -->
     <div class="card" style="display:grid; grid-template-rows:auto 1fr auto; min-height:0;">
-      <div style="font-size:0.88rem; font-weight:700; padding:8px 12px; border-bottom:1px solid var(--border); background:#edf3ef;">
+      <div
+        style="font-size:0.88rem; font-weight:700; padding:8px 12px; border-bottom:1px solid var(--border); background:#edf3ef;">
         Live Assembly Mesh
       </div>
       <div class="mesh-container" id="meshContainer" style="position:relative; min-height:0;">
-        <span id="meshPlaceholder" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#496456;font-size:0.9rem;z-index:1;">
+        <span id="meshPlaceholder"
+          style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#496456;font-size:0.9rem;z-index:1;">
           No mesh loaded. Move a slider to build assembly.ply.
         </span>
       </div>
-      <div style="padding:8px 12px; border-top:1px solid var(--border); background:#f0f5f2; font-size:0.82rem; color:var(--muted);" id="meshMeta">
+      <div
+        style="padding:8px 12px; border-top:1px solid var(--border); background:#f0f5f2; font-size:0.82rem; color:var(--muted);"
+        id="meshMeta">
         Waiting for first build…
       </div>
     </div>
@@ -63,58 +87,61 @@
 </div>
 
 <script>
-const API = "/launcher/api";
+  const API = "/launcher/api";
 
-const btnRun        = document.getElementById("btnRun");
-const btnStop       = document.getElementById("btnStop");
-const assemblyId    = document.getElementById("assemblyId");
-const progressFill  = document.getElementById("progressFill");
-const progressLabel = document.getElementById("progressLabel");
-const slidersArea   = document.getElementById("slidersArea");
-const sliderStatus  = document.getElementById("sliderStatus");
-const meshMeta      = document.getElementById("meshMeta");
-const meshPlaceholder = document.getElementById("meshPlaceholder");
+  const btnRun = document.getElementById("btnRun");
+  const btnStop = document.getElementById("btnStop");
+  const assemblyId = document.getElementById("assemblyId");
+  const progressFill = document.getElementById("progressFill");
+  const progressLabel = document.getElementById("progressLabel");
+  const slidersArea = document.getElementById("slidersArea");
+  const sliderStatus = document.getElementById("sliderStatus");
+  const meshMeta = document.getElementById("meshMeta");
+  const meshPlaceholder = document.getElementById("meshPlaceholder");
+  const checksLight = document.getElementById("checksLight");
+  const checksLabel = document.getElementById("checksLabel");
+  const checksList = document.getElementById("checksList");
 
-let params = {};
-let debounceTimer = null;
-let progressPoll = null;
+  let params = {};
+  let debounceTimer = null;
+  let progressPoll = null;
 
-// Populate assembly ID dropdown
-for (let i = 1; i <= 51; i++) {
-  const opt = document.createElement("option");
-  opt.value = String(i); opt.textContent = String(i);
-  assemblyId.appendChild(opt);
-}
+  // Populate assembly ID dropdown
+  for (let i = 1; i <= 51; i++) {
+    const opt = document.createElement("option");
+    opt.value = String(i); opt.textContent = String(i);
+    assemblyId.appendChild(opt);
+  }
 
-// ---------- Slider rendering ----------
-function sectionSort(name) {
-  if (name === "seat") return -1;
-  if (name.startsWith("wheel_")) { const n = parseInt(name.split("_")[1], 10); return isFinite(n) ? n : 9999; }
-  return 10000;
-}
+  // ---------- Slider rendering ----------
+  function sectionSort(name) {
+    if (name === "seat") return -1;
+    if (name.startsWith("wheel_")) { const n = parseInt(name.split("_")[1], 10); return isFinite(n) ? n : 9999; }
+    return 10000;
+  }
 
-function axisRange(axis) {
-  if (axis === "z") return [0, 600];
-  if (axis === "x") return [-3000, 3000];
-  return [-2000, 2000];
-}
+  function axisRange(axis) {
+    if (axis === "z") return [0, 600];
+    if (axis === "x") return [-3000, 3000];
+    return [-2000, 2000];
+  }
 
-function renderSliders() {
-  slidersArea.innerHTML = "";
-  const sections = Object.keys(params).sort((a, b) => sectionSort(a) - sectionSort(b) || a.localeCompare(b));
-  sections.forEach(section => {
-    const title = document.createElement("div");
-    title.style.cssText = "font-size:0.85rem;color:#23313f;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-top:8px;padding-top:6px;border-top:1px solid var(--border);";
-    title.textContent = section;
-    if (sections.indexOf(section) === 0) { title.style.borderTop = "none"; title.style.marginTop = "0"; }
-    slidersArea.appendChild(title);
+  function renderSliders() {
+    slidersArea.innerHTML = "";
+    const sections = Object.keys(params).sort((a, b) => sectionSort(a) - sectionSort(b) || a.localeCompare(b));
+    sections.forEach(section => {
+      const title = document.createElement("div");
+      title.style.cssText = "font-size:0.85rem;color:#23313f;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-top:8px;padding-top:6px;border-top:1px solid var(--border);";
+      title.textContent = section;
+      if (sections.indexOf(section) === 0) { title.style.borderTop = "none"; title.style.marginTop = "0"; }
+      slidersArea.appendChild(title);
 
-    ["x", "y", "z"].forEach(axis => {
-      const val = Number(params[section]?.[axis] ?? 0);
-      const [lo, hi] = axisRange(axis);
-      const row = document.createElement("div");
-      row.style.cssText = "display:grid;grid-template-columns:110px 1fr 58px;align-items:center;gap:8px;";
-      row.innerHTML = `
+      ["x", "y", "z"].forEach(axis => {
+        const val = Number(params[section]?.[axis] ?? 0);
+        const [lo, hi] = axisRange(axis);
+        const row = document.createElement("div");
+        row.style.cssText = "display:grid;grid-template-columns:110px 1fr 58px;align-items:center;gap:8px;";
+        row.innerHTML = `
         <label style="font-size:0.82rem;color:var(--muted);">${section}.${axis}</label>
         <input type="range" min="${lo}" max="${hi}" step="1" value="${val}"
           data-section="${section}" data-axis="${axis}"
@@ -122,169 +149,194 @@ function renderSliders() {
         <span style="font-size:0.83rem;text-align:right;font-variant-numeric:tabular-nums;color:#2a3643;"
           id="lbl_${section}_${axis}">${Math.round(val)}</span>
       `;
-      const slider = row.querySelector("input");
-      slider.addEventListener("input", () => {
-        const v = parseFloat(slider.value);
-        params[section][axis] = v;
-        document.getElementById(`lbl_${section}_${axis}`).textContent = String(Math.round(v));
+        const slider = row.querySelector("input");
+        slider.addEventListener("input", () => {
+          const v = parseFloat(slider.value);
+          params[section][axis] = v;
+          document.getElementById(`lbl_${section}_${axis}`).textContent = String(Math.round(v));
+        });
+        slider.addEventListener("change", () => {
+          clearTimeout(debounceTimer);
+          sliderStatus.textContent = "Rebuilding assembly…";
+          debounceTimer = setTimeout(persistAndRebuild, 80);
+        });
+        slidersArea.appendChild(row);
       });
-      slider.addEventListener("change", () => {
-        clearTimeout(debounceTimer);
-        sliderStatus.textContent = "Rebuilding assembly…";
-        debounceTimer = setTimeout(persistAndRebuild, 80);
-      });
-      slidersArea.appendChild(row);
     });
-  });
-}
-
-async function loadParams() {
-  try {
-    const r = await fetch(`${API}/assembly-selection/params?t=${Date.now()}`, { cache: "no-store" });
-    if (!r.ok) throw new Error(r.status);
-    params = await r.json();
-    renderSliders();
-    sliderStatus.textContent = "Ready.";
-    loadAssemblyMesh();
-  } catch (err) {
-    sliderStatus.textContent = "Failed to load params: " + err.message;
   }
-}
 
-async function persistAndRebuild() {
-  try {
-    const r = await fetch(`${API}/assembly-selection/update`, {
-      method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(params)
-    });
-    const d = await r.json();
-    if (!r.ok) { sliderStatus.textContent = d?.detail?.message || "Update failed."; return; }
-    sliderStatus.textContent = d.message || "Updated.";
-    if (d.params) { params = d.params; renderSliders(); }
-    loadAssemblyMesh();
-  } catch { sliderStatus.textContent = "Failed to update assembly."; }
-}
-
-// ---------- Add / Remove wheel ----------
-async function wheelAction(endpoint) {
-  sliderStatus.textContent = endpoint.includes("add") ? "Adding wheel…" : "Removing wheel…";
-  try {
-    const r = await fetch(`${API}/assembly-selection/${endpoint}`, { method: "POST" });
-    const d = await r.json();
-    if (!r.ok) { sliderStatus.textContent = d?.detail?.message || "Failed."; return; }
-    params = d.params || params;
-    renderSliders();
-    sliderStatus.textContent = d.message || "Done.";
-    loadAssemblyMesh();
-  } catch { sliderStatus.textContent = "Request failed."; }
-}
-
-document.getElementById("btnAddWheel").addEventListener("click", () => wheelAction("add-wheel"));
-document.getElementById("btnRemoveWheel").addEventListener("click", () => wheelAction("remove-wheel"));
-
-// ---------- Progress polling ----------
-async function refreshProgress() {
-  try {
-    const d = await (await fetch(`${API}/run/state`)).json();
-    if (d.running) {
-      btnRun.disabled = true; btnStop.disabled = false;
-      btnRun.textContent = "Running…"; assemblyId.disabled = true;
-      if (d.return_code == null) progressLabel.textContent = "Running…";
-    } else {
-      btnRun.disabled = false; btnStop.disabled = true;
-      btnRun.textContent = "Launch Run"; assemblyId.disabled = false;
-      if (d.return_code != null) {
-        progressLabel.textContent = d.return_code === 0 ? "Completed." : `Finished (code ${d.return_code})`;
-        progressFill.style.width = "100%";
+  async function loadChecks() {
+    try {
+      const r = await fetch(`${API}/assembly-selection/checks?t=${Date.now()}`, { cache: "no-store" });
+      if (!r.ok) return;
+      const d = await r.json();
+      checksLight.style.background = d.ok ? "#2e9c58" : "#c82121";
+      checksLabel.textContent = d.ok ? "No warnings — assembly looks good." : `${d.warnings.length} warning${d.warnings.length > 1 ? "s" : ""}`;
+      checksLabel.style.color = d.ok ? "#2e7a47" : "#b04a1a";
+      checksList.innerHTML = "";
+      if (d.warnings.length) {
+        d.warnings.forEach(w => {
+          const li = document.createElement("li");
+          li.textContent = w.replace(/^\[WARNING\]\s*/i, "");
+          checksList.appendChild(li);
+        });
+        checksList.style.display = "";
+      } else {
+        checksList.style.display = "none";
       }
-    }
-  } catch {}
-}
-
-// ---------- Run start / stop ----------
-btnRun.addEventListener("click", async () => {
-  btnRun.disabled = true; btnStop.disabled = false; btnRun.textContent = "Running…";
-  assemblyId.disabled = true; progressFill.style.width = "0%"; progressLabel.textContent = "Starting…";
-  try {
-    const body = {};
-    const raw = String(assemblyId.value || "").trim();
-    if (raw) body.assembly_id = parseInt(raw, 10);
-    const r = await fetch(`${API}/run/start`, {
-      method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body)
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail?.message || r.status);
-    progressLabel.textContent = `PID ${d.pid}`;
-  } catch (err) {
-    progressLabel.textContent = "Error: " + err.message;
-    btnRun.disabled = false; btnStop.disabled = true; btnRun.textContent = "Launch Run"; assemblyId.disabled = false;
+    } catch { }
   }
-});
 
-btnStop.addEventListener("click", async () => {
-  btnStop.disabled = true;
-  await fetch(`${API}/run/stop`, { method: "POST" });
-  progressLabel.textContent = "Stopped.";
-  btnRun.disabled = false; btnRun.textContent = "Launch Run"; assemblyId.disabled = false;
-});
+  async function loadParams() {
+    try {
+      const r = await fetch(`${API}/assembly-selection/params?t=${Date.now()}`, { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      params = await r.json();
+      renderSliders();
+      sliderStatus.textContent = "Ready.";
+      loadAssemblyMesh();
+      loadChecks();
+    } catch (err) {
+      sliderStatus.textContent = "Failed to load params: " + err.message;
+    }
+  }
 
-// Poll run state every 2s
-progressPoll = setInterval(refreshProgress, 2000);
-refreshProgress();
+  async function persistAndRebuild() {
+    try {
+      const r = await fetch(`${API}/assembly-selection/update`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params)
+      });
+      const d = await r.json();
+      if (!r.ok) { sliderStatus.textContent = d?.detail?.message || "Update failed."; return; }
+      sliderStatus.textContent = d.message || "Updated.";
+      if (d.params) { params = d.params; renderSliders(); }
+      loadAssemblyMesh();
+      loadChecks();
+    } catch { sliderStatus.textContent = "Failed to update assembly."; }
+  }
 
-// ---------- Three.js mesh viewer ----------
-let scene3d, camera3d, renderer3d, controls3d, currentMesh3d;
+  // ---------- Add / Remove wheel ----------
+  async function wheelAction(endpoint) {
+    sliderStatus.textContent = endpoint.includes("add") ? "Adding wheel…" : "Removing wheel…";
+    try {
+      const r = await fetch(`${API}/assembly-selection/${endpoint}`, { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) { sliderStatus.textContent = d?.detail?.message || "Failed."; return; }
+      params = d.params || params;
+      renderSliders();
+      sliderStatus.textContent = d.message || "Done.";
+      loadAssemblyMesh();
+      loadChecks();
+    } catch { sliderStatus.textContent = "Request failed."; }
+  }
 
-function ensureViewer() {
-  if (scene3d) return;
-  import("three").then(({ Scene, Color, PerspectiveCamera, WebGLRenderer, HemisphereLight, DirectionalLight, MeshStandardMaterial, Mesh, Vector3 }) => {
-    import("three/addons/controls/OrbitControls.js").then(({ OrbitControls }) => {
-      const container = document.getElementById("meshContainer");
-      scene3d = new Scene(); scene3d.background = new Color(0xeef3f0);
-      camera3d = new PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 2000);
-      camera3d.position.set(0, 0, 3.5);
-      renderer3d = new WebGLRenderer({ antialias: true });
-      renderer3d.setSize(container.clientWidth, container.clientHeight);
-      container.appendChild(renderer3d.domElement);
-      controls3d = new OrbitControls(camera3d, renderer3d.domElement);
-      controls3d.enableDamping = true;
-      scene3d.add(new HemisphereLight(0xffffff, 0x404040, 1.0));
-      const dl = new DirectionalLight(0xffffff, 0.8); dl.position.set(1,1,1); scene3d.add(dl);
-      window.addEventListener("resize", () => {
-        camera3d.aspect = container.clientWidth / container.clientHeight;
-        camera3d.updateProjectionMatrix();
+  document.getElementById("btnAddWheel").addEventListener("click", () => wheelAction("add-wheel"));
+  document.getElementById("btnRemoveWheel").addEventListener("click", () => wheelAction("remove-wheel"));
+
+  // ---------- Progress polling ----------
+  async function refreshProgress() {
+    try {
+      const d = await (await fetch(`${API}/run/state`)).json();
+      if (d.running) {
+        btnRun.disabled = true; btnStop.disabled = false;
+        btnRun.textContent = "Running…"; assemblyId.disabled = true;
+        if (d.return_code == null) progressLabel.textContent = "Running…";
+      } else {
+        btnRun.disabled = false; btnStop.disabled = true;
+        btnRun.textContent = "Launch Run"; assemblyId.disabled = false;
+        if (d.return_code != null) {
+          progressLabel.textContent = d.return_code === 0 ? "Completed." : `Finished (code ${d.return_code})`;
+          progressFill.style.width = "100%";
+        }
+      }
+    } catch { }
+  }
+
+  // ---------- Run start / stop ----------
+  btnRun.addEventListener("click", async () => {
+    btnRun.disabled = true; btnStop.disabled = false; btnRun.textContent = "Running…";
+    assemblyId.disabled = true; progressFill.style.width = "0%"; progressLabel.textContent = "Starting…";
+    try {
+      const body = {};
+      const raw = String(assemblyId.value || "").trim();
+      if (raw) body.assembly_id = parseInt(raw, 10);
+      const r = await fetch(`${API}/run/start`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail?.message || r.status);
+      progressLabel.textContent = `PID ${d.pid}`;
+    } catch (err) {
+      progressLabel.textContent = "Error: " + err.message;
+      btnRun.disabled = false; btnStop.disabled = true; btnRun.textContent = "Launch Run"; assemblyId.disabled = false;
+    }
+  });
+
+  btnStop.addEventListener("click", async () => {
+    btnStop.disabled = true;
+    await fetch(`${API}/run/stop`, { method: "POST" });
+    progressLabel.textContent = "Stopped.";
+    btnRun.disabled = false; btnRun.textContent = "Launch Run"; assemblyId.disabled = false;
+  });
+
+  // Poll run state every 2s
+  progressPoll = setInterval(refreshProgress, 2000);
+  refreshProgress();
+
+  // ---------- Three.js mesh viewer ----------
+  let scene3d, camera3d, renderer3d, controls3d, currentMesh3d;
+
+  function ensureViewer() {
+    if (scene3d) return;
+    import("three").then(({ Scene, Color, PerspectiveCamera, WebGLRenderer, HemisphereLight, DirectionalLight, MeshStandardMaterial, Mesh, Vector3 }) => {
+      import("three/addons/controls/OrbitControls.js").then(({ OrbitControls }) => {
+        const container = document.getElementById("meshContainer");
+        scene3d = new Scene(); scene3d.background = new Color(0xeef3f0);
+        camera3d = new PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 2000);
+        camera3d.position.set(0, 0, 3.5);
+        renderer3d = new WebGLRenderer({ antialias: true });
         renderer3d.setSize(container.clientWidth, container.clientHeight);
-      });
-      (function animate() { requestAnimationFrame(animate); controls3d.update(); renderer3d.render(scene3d, camera3d); })();
-    });
-  });
-}
-
-function loadAssemblyMesh() {
-  import("three").then(({ MeshStandardMaterial, Mesh, Vector3 }) => {
-    import("three/addons/loaders/PLYLoader.js").then(({ PLYLoader }) => {
-      ensureViewer();
-      meshMeta.textContent = "Loading assembly.ply…";
-      const url = `${API}/assembly-selection/mesh?t=${Date.now()}`;
-      new PLYLoader().load(url, geo => {
-        geo.computeVertexNormals(); geo.computeBoundingBox();
-        const c = new Vector3(); geo.boundingBox.getCenter(c); geo.translate(-c.x, -c.y, -c.z);
-        geo.computeBoundingBox();
-        const sz = new Vector3(); geo.boundingBox.getSize(sz);
-        const scale = Math.max(sz.x, sz.y, sz.z) > 0 ? 2.0 / Math.max(sz.x, sz.y, sz.z) : 1;
-        if (currentMesh3d) { scene3d.remove(currentMesh3d); currentMesh3d.geometry.dispose(); currentMesh3d.material.dispose(); }
-        currentMesh3d = new Mesh(geo, new MeshStandardMaterial({ color: 0x9aa3a8, roughness: 0.62, metalness: 0.18, side: 2 }));
-        currentMesh3d.scale.set(scale, scale, scale); scene3d.add(currentMesh3d);
-        camera3d.position.set(0, 0, 3.5); controls3d.target.set(0, 0, 0); controls3d.update();
-        meshPlaceholder.style.display = "none";
-        meshMeta.textContent = `Showing assembly.ply · ${new Date().toLocaleTimeString()}`;
-      }, null, () => {
-        meshPlaceholder.style.display = "block";
-        meshMeta.textContent = "No mesh yet. Move a slider to build assembly.ply.";
+        container.appendChild(renderer3d.domElement);
+        controls3d = new OrbitControls(camera3d, renderer3d.domElement);
+        controls3d.enableDamping = true;
+        scene3d.add(new HemisphereLight(0xffffff, 0x404040, 1.0));
+        const dl = new DirectionalLight(0xffffff, 0.8); dl.position.set(1, 1, 1); scene3d.add(dl);
+        window.addEventListener("resize", () => {
+          camera3d.aspect = container.clientWidth / container.clientHeight;
+          camera3d.updateProjectionMatrix();
+          renderer3d.setSize(container.clientWidth, container.clientHeight);
+        });
+        (function animate() { requestAnimationFrame(animate); controls3d.update(); renderer3d.render(scene3d, camera3d); })();
       });
     });
-  });
-}
+  }
 
-loadParams();
+  function loadAssemblyMesh() {
+    import("three").then(({ MeshStandardMaterial, Mesh, Vector3 }) => {
+      import("three/addons/loaders/PLYLoader.js").then(({ PLYLoader }) => {
+        ensureViewer();
+        meshMeta.textContent = "Loading assembly.ply…";
+        const url = `${API}/assembly-selection/mesh?t=${Date.now()}`;
+        new PLYLoader().load(url, geo => {
+          geo.computeVertexNormals(); geo.computeBoundingBox();
+          const c = new Vector3(); geo.boundingBox.getCenter(c); geo.translate(-c.x, -c.y, -c.z);
+          geo.computeBoundingBox();
+          const sz = new Vector3(); geo.boundingBox.getSize(sz);
+          const scale = Math.max(sz.x, sz.y, sz.z) > 0 ? 2.0 / Math.max(sz.x, sz.y, sz.z) : 1;
+          if (currentMesh3d) { scene3d.remove(currentMesh3d); currentMesh3d.geometry.dispose(); currentMesh3d.material.dispose(); }
+          currentMesh3d = new Mesh(geo, new MeshStandardMaterial({ color: 0x9aa3a8, roughness: 0.62, metalness: 0.18, side: 2 }));
+          currentMesh3d.scale.set(scale, scale, scale); scene3d.add(currentMesh3d);
+          camera3d.position.set(0, 0, 3.5); controls3d.target.set(0, 0, 0); controls3d.update();
+          meshPlaceholder.style.display = "none";
+          meshMeta.textContent = `Showing assembly.ply · ${new Date().toLocaleTimeString()}`;
+        }, null, () => {
+          meshPlaceholder.style.display = "block";
+          meshMeta.textContent = "No mesh yet. Move a slider to build assembly.ply.";
+        });
+      });
+    });
+  }
+
+  loadParams();
 </script>
 {% endblock %}
