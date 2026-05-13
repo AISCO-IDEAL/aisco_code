@@ -330,3 +330,8 @@ def assembly_mesh(pipeline: str = "live") -> FileResponse:
 @router.get("/api/assembly-selection/checks")
 def assembly_checks(pipeline: str = "live") -> dict:
     return _assembly(pipeline).get_checks()
+
+
+@router.post("/api/assembly-selection/generate")
+def assembly_generate(pipeline: str = "live") -> dict[str, Any]:
+    return _assembly(pipeline).add_to_map()

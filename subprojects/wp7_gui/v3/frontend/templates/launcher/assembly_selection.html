@@ -50,6 +50,17 @@
         <ul id="checksList"
           style="margin:0; padding:0 0 0 20px; font-size:0.80rem; color:#b04a1a; list-style:disc; display:none;"></ul>
       </div>
+
+      <!-- Generate assembly panel -->
+      <div id="generatePanel"
+        style="padding:10px 12px; border-top:1px solid var(--border); background:#f0f5f2; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button class="btn" id="btnGenerate" style="font-size:0.83rem;padding:7px 11px;">Generate Assembly</button>
+        <span id="generateStatus" style="font-size:0.82rem; color:var(--muted);"></span>
+        <span id="generateId"
+          style="margin-left:auto; font-size:0.82rem; font-weight:700; color:#2e7a47; display:none;">
+          Map ID: <span id="generateIdValue"></span>
+        </span>
+      </div>
     </div>
 
     <!-- Mesh viewer card -->
@@ -209,7 +220,39 @@
   document.getElementById("btnAddWheel").addEventListener("click", () => wheelAction("add-wheel"));
   document.getElementById("btnRemoveWheel").addEventListener("click", () => wheelAction("remove-wheel"));
 
-  // ---------- Progress polling ----------
+  // ---------- Generate assembly ----------
+  const btnGenerate = document.getElementById("btnGenerate");
+  const generateStatus = document.getElementById("generateStatus");
+  const generateId = document.getElementById("generateId");
+  const generateIdValue = document.getElementById("generateIdValue");
+
+  btnGenerate.addEventListener("click", async () => {
+    btnGenerate.disabled = true;
+    generateStatus.textContent = "Generating…";
+    generateStatus.style.color = "var(--muted)";
+    generateId.style.display = "none";
+    try {
+      const r = await fetch(`${API}/assembly-selection/generate?pipeline=${pipeline}`, { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) {
+        generateStatus.textContent = d?.detail?.message || "Generate failed.";
+        generateStatus.style.color = "#b04a1a";
+      } else if (d.status === "rejected") {
+        generateStatus.textContent = d.message;
+        generateStatus.style.color = "#b04a1a";
+      } else {
+        generateStatus.textContent = d.message;
+        generateStatus.style.color = "#2e7a47";
+        generateIdValue.textContent = d.assembly_map_id;
+        generateId.style.display = "";
+      }
+    } catch (err) {
+      generateStatus.textContent = "Request failed: " + err.message;
+      generateStatus.style.color = "#b04a1a";
+    } finally {
+      btnGenerate.disabled = false;
+    }
+  });
 
   // ---------- Three.js mesh viewer ----------
   let meshViewer = null;
