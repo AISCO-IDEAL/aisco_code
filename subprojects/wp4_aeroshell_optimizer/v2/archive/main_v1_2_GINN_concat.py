@@ -31,7 +31,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import (
     allround_save_data,
     fetch_pretrained_model,
 )
-from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.interpolator import (
+from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.archive.interpolator import (
     Interpolator,
 )
 

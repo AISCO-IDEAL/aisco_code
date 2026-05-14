@@ -20,6 +20,7 @@ from torch import Tensor
 import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.pyvista_headless import (
     ensure_pyvista_headless,
+    is_headless_runtime,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.custom_modes.mesh_assembly_mode_v4 import (
     MeshAssemblyModeV4,
@@ -29,15 +30,18 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.tim_render 
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visualiser import Visualiser
 
-# Import after checking availability to give helpful error message
-try:
-    pv = ensure_pyvista_headless()
-except ImportError as exc:
-    raise ImportError("PyVista is required for interpolator. Install with: pip install pyvista") from exc
+# pyvista is imported lazily inside _ensure_pyvista_ready() to avoid triggering
+# VTK's X11 initialisation on headless HPC nodes at import time.
+_pv = None  # module-level cache; populated on first use of the pyvista backend
 
-from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
+
+try:
+    from typing import cast
+except ImportError:
+    cast = lambda typ, val: val  # type: ignore[assignment]
 
 
 class Interpolator:
@@ -52,16 +56,20 @@ class Interpolator:
         model: Trained neural SDF model with set_latent_vector() method
         config: Dict with keys:
             - grid_resolution: int, points per latent dimension (e.g., 10 for 10x10)
-            - latent_range: [min, max], bounds for z[0] and z[1]
+            - latent_range: [min, max], bounds for z[0] and z[1] (grid mode only)
             - mesh_resolution: int, marching cubes grid resolution (e.g., 128)
-
+            - bbox_scale_factor: float, scale applied to the WP2 outer prism bbox (default 1.0)
             - isovalue: float, SDF level set (default 0.0)
+            - sample_mode: "grid" or "circle"
+            - z_radius: float, circle radius matching pretraining z_radius (default 2.0)
+            - n_circle_samples: int, number of circle samples (default 12)
+            - save_plys: bool, write PLY files for each sample to save_dir/plys/
             - camera_view: str, camera angle (iso, front, back, left, right, top, bottom)
             - mesh_color: str, PyVista color (e.g., "lightgrey")
             - window_size: (width, height) tuple for rendered images
             - save_dir: Path for saving intermediate/final images
             - upload_to_wandb: bool, whether to upload grid to WandB
-            - render_backend: "pyvista" (default) or "mesh_assembly_mode_v4"
+            - render_backend: "mesh_assembly_mode_v4" (default) or "pyvista" (fallback)
             - mesh_assembly_mode_config: optional dict passed to MeshAssemblyModeV4
             - mesh_visualiser: optional dict used for Visualiser(...) kwargs
         device: torch device (cuda or cpu)
@@ -86,9 +94,12 @@ class Interpolator:
         self.mesh_resolution = int(config.get("mesh_resolution", 128))
         self.isovalue = float(config.get("isovalue", 0.0))
 
-        # Build WP5 mesh extractor using outer_prism bounds from WP2 (no hardcoded bbox)
+        # Build WP5 mesh extractor using outer_prism bounds from WP2 with optional scaling.
+        # bbox_scale_factor > 1.0 expands the evaluation domain (useful for geometries that
+        # slightly exceed the nominal prism), < 1.0 contracts it for faster extraction.
+        _bbox_scale_factor = float(config.get("bbox_scale_factor", 1.0))
         _mesh_config = load_mesh_extraction_config()
-        _prism = get_outer_prism_bounds_mm()
+        _prism = scale_outer_prism(get_outer_prism_bounds_mm(), _bbox_scale_factor)
         _mesh_config = _dc_replace(_mesh_config, device=str(self.device), isovalue=self.isovalue)
         self.mc_extractor = MeshSDFExtractor(config=_mesh_config)
         self.mc_extractor.set_grid(
@@ -114,6 +125,10 @@ class Interpolator:
         self.upload = config.get("upload_to_wandb", True)
         self.verbose = config.get("verbose", False)
         self.render_backend = str(config.get("render_backend", "pyvista")).strip().lower()
+        self.sample_mode = str(config.get("sample_mode", "grid")).strip().lower()
+        self.z_radius = float(config.get("z_radius", 2.0))
+        self.n_circle_samples = int(config.get("n_circle_samples", 12))
+        self.save_plys = bool(config.get("save_plys", False))
         self._pyvista_preflight_done = False
 
         # Optional mesh-assembly mode backend state
@@ -144,29 +159,55 @@ class Interpolator:
         """Initialize the selected render backend and run required preflight checks."""
         if self.render_backend == "mesh_assembly_mode_v4":
             self._init_mesh_assembly_backend()
+            # mesh_assembly_mode_v4 is the production backend.  PyVista is only
+            # activated below when explicitly requested or after a fallback.
 
         if self.render_backend == "pyvista":
+            # PyVista path: used when render_backend is explicitly set to "pyvista",
+            # or after _disable_mesh_backend() downgrades from mesh_assembly_mode_v4.
             self._ensure_pyvista_ready()
 
     def _ensure_pyvista_ready(self) -> None:
-        """Run the PyVista preflight once."""
+        """Import and configure PyVista for off-screen rendering, or raise if not available."""
+        global _pv  # noqa: PLW0603
+        if _pv is not None:
+            return
+        if is_headless_runtime():
+            raise RuntimeError(
+                "PyVista rendering is not available on this headless node (no X server / no OSMesa VTK). "
+                "Use render_backend: mesh_assembly_mode_v4 or disable rendering."
+            )
+        try:
+            _pv = ensure_pyvista_headless()
+        except ImportError as exc:
+            raise ImportError("PyVista is required for pyvista backend. Install with: pip install pyvista") from exc
         if not self._pyvista_preflight_done:
             self._run_render_preflight()
             self._pyvista_preflight_done = True
 
     def _disable_mesh_backend(self, reason: str) -> None:
-        """Downgrade to PyVista backend after a mesh-backend failure."""
+        """Downgrade to PyVista backend after a mesh-backend failure, or disable rendering on headless nodes."""
+        if is_headless_runtime():
+            # Headless compute nodes have no X server / OSMesa VTK — pyvista will abort.
+            # Disable rendering entirely rather than crashing.
+            print(f"Warning: {reason}. Headless node detected — rendering disabled for this run.")
+            self._mesh_assembly_mode = None
+            self.render_backend = "none"
+            return
         print(f"Warning: {reason}. Falling back to PyVista backend.")
         self._mesh_assembly_mode = None
         self.render_backend = "pyvista"
         self._ensure_pyvista_ready()
 
     def _run_render_preflight(self) -> None:
-        """Run a tiny off-screen render probe to validate backend before main loop."""
+        """Run a tiny off-screen render probe to validate PyVista before the main loop."""
+        global _pv
+        if _pv is None:
+            raise RuntimeError("_run_render_preflight called before PyVista was imported via _ensure_pyvista_ready.")
         probe_failed = False
         try:
-            probe_plotter = pv.Plotter(off_screen=True, window_size=(128, 128))
-            probe_plotter.add_mesh(pv.Sphere(radius=1.0), color="white")
+            probe_plotter = _pv.Plotter(off_screen=True, window_size=(128, 128))
+            probe_plotter.add_mesh(_pv.Sphere(radius=1.0), color="white")
             probe_image = probe_plotter.screenshot(transparent_background=False)
             probe_plotter.close()
 
@@ -229,36 +270,37 @@ class Interpolator:
         Returns:
             PIL Image of final 2D grid layout
         """
-        print(f"Generating {self.grid_resolution}x{self.grid_resolution} interpolation grid...")
-
-        # Generate latent coordinate grid
-        z0_values = np.linspace(self.latent_range[0], self.latent_range[1], self.grid_resolution)
-        z1_values = np.linspace(self.latent_range[0], self.latent_range[1], self.grid_resolution)
-
-        # Store image paths for grid assembly
-        grid_images = []
-
-        # Sweep through latent space
-        for i, z0 in enumerate(z0_values):
-            row_images = []
-            for j, z1 in enumerate(z1_values):
+        if self.sample_mode == "circle":
+            n = self.n_circle_samples
+            print(f"Generating circle strip ({n} points, r={self.z_radius})...")
+            angles = np.linspace(0.0, 2.0 * np.pi, n, endpoint=False)
+            strip: list[Image.Image] = []
+            for idx, angle in enumerate(angles):
+                z0 = float(self.z_radius * np.cos(angle))
+                z1 = float(self.z_radius * np.sin(angle))
                 if self.verbose:
-                    print(f"  Point ({i + 1}/{self.grid_resolution}, {j + 1}/{self.grid_resolution}): z=[{z0:.3f}, {z1:.3f}]")
+                    print(f"  [{idx + 1}/{n}] angle={np.degrees(angle):.1f}° z=[{z0:.3f}, {z1:.3f}]")
+                ply_label = f"circle_{idx:02d}" if self.save_plys else None
+                image = self._extract_and_render_at_latent(z0, z1, epoch, ply_label=ply_label)
+                strip.append(image or Image.new("RGB", self.window_size, (200, 200, 200)))
+            final_grid = self._assemble_grid([strip])
+        else:
+            print(f"Generating {self.grid_resolution}x{self.grid_resolution} interpolation grid...")
+            z0_values = np.linspace(self.latent_range[0], self.latent_range[1], self.grid_resolution)
+            z1_values = np.linspace(self.latent_range[0], self.latent_range[1], self.grid_resolution)
+            grid_images = []
+            for i, z0 in enumerate(z0_values):
+                row_images = []
+                for j, z1 in enumerate(z1_values):
+                    if self.verbose:
+                        print(f"  Point ({i + 1}/{self.grid_resolution}, {j + 1}/{self.grid_resolution}): z=[{z0:.3f}, {z1:.3f}]")
+                    ply_label = f"grid_r{i:02d}_c{j:02d}" if self.save_plys else None
+                    image = self._extract_and_render_at_latent(z0, z1, epoch, ply_label=ply_label)
+                    row_images.append(image or Image.new("RGB", self.window_size, (200, 200, 200)))
+                grid_images.append(row_images)
+            final_grid = self._assemble_grid(grid_images)
 
-                # Extract and render mesh at this latent point
-                image = self._extract_and_render_at_latent(z0, z1, epoch)
-                if image is not None:
-                    row_images.append(image)
-                else:
-                    # Create blank image if extraction fails
-                    row_images.append(Image.new("RGB", self.window_size, (200, 200, 200)))
-
-            grid_images.append(row_images)
-
-        # Assemble grid layout
-        final_grid = self._assemble_grid(grid_images)
         self._grid_image = final_grid
-
         print("Grid generation complete!")
         return final_grid
 
@@ -266,27 +308,23 @@ class Interpolator:
         """Clear any cached images to free memory."""
         self._grid_image = None
 
-    def _extract_and_render_at_latent(self, z0: float, z1: float, epoch: int = 0) -> Image.Image | None:
-        """
-        Extract mesh at latent coordinates (z0, z1) and render to image.
+    def _save_ply(self, verts: Tensor, faces: Tensor, label: str) -> None:
+        """Save mesh as PLY to save_dir/plys/{label}.ply."""
+        import trimesh  # noqa: PLC0415
 
-        Args:
-            z0: First latent coordinate value
-            z1: Second latent coordinate value
-            epoch: Current training epoch, forwarded to the render backend for labelling
+        ply_dir = self.save_dir / "plys"
+        ply_dir.mkdir(parents=True, exist_ok=True)
+        mesh = trimesh.Trimesh(
+            vertices=verts.detach().cpu().numpy(),
+            faces=faces.detach().cpu().numpy(),
+        )
+        out_path = ply_dir / f"{label}.ply"
+        mesh.export(str(out_path))
+        if self.verbose:
+            print(f"    Saved PLY: {out_path}")
 
-        Returns:
-            PIL Image of rendered mesh, or None if extraction failed
-        """
-        if self.z_dim is None:
-            raise RuntimeError("Interpolator z_dim is not initialized")
-
-        # Create latent vector: [z0, z1, 0, 0, ..., 0]
-        z_vector = torch.zeros(self.z_dim, device=self.device)
-        z_vector[0] = z0
-        z_vector[1] = z1
-
-        mesh_data: tuple[Tensor, Tensor] | None
+    def _extract_and_render_z_vector(self, z_vector: Tensor, epoch: int = 0, ply_label: str | None = None) -> Image.Image | None:
+        """Set full z_vector on model, extract mesh, optionally save PLY, render to image."""
         with torch.no_grad():
             self.model.set_latent_vector(z_vector)
             mesh_data = self._extract_mesh()
@@ -295,6 +333,9 @@ class Interpolator:
             return None
 
         verts, faces = mesh_data
+        if ply_label is not None and self.save_plys:
+            self._save_ply(verts, faces, ply_label)
+
         image = self._render_mesh_to_image(verts, faces, epoch)
         if image is None:
             return None
@@ -303,6 +344,17 @@ class Interpolator:
             print(f"First non-empty mesh rendered successfully: {len(verts)} vertices, {len(faces)} faces")
             self._has_logged_first_nonempty_render = True
         return image
+
+    def _extract_and_render_at_latent(
+        self, z0: float, z1: float, epoch: int = 0, ply_label: str | None = None
+    ) -> Image.Image | None:
+        """Build z_vector from z0/z1 (other dims zero) and delegate to _extract_and_render_z_vector."""
+        if self.z_dim is None:
+            raise RuntimeError("Interpolator z_dim is not initialized")
+        z_vector = torch.zeros(self.z_dim, device=self.device)
+        z_vector[0] = z0
+        z_vector[1] = z1
+        return self._extract_and_render_z_vector(z_vector, epoch, ply_label)
 
     def _extract_mesh(self) -> tuple[Tensor, Tensor] | None:
         """Extract a mesh from the current model state."""
@@ -328,8 +380,11 @@ class Interpolator:
             epoch: Current training epoch, forwarded to mesh_assembly_mode_v4 for labelling
 
         Returns:
-            PIL Image of rendered mesh, or None if rendering failed
+            PIL Image of rendered mesh, or None if rendering failed or disabled
         """
+        if self.render_backend == "none":
+            return None
+
         if self.render_backend == "mesh_assembly_mode_v4" and self._mesh_assembly_mode is not None:
             try:
                 return self._resize_to_window(self._render_mesh_to_image_with_mesh_assembly(verts, faces, epoch))
@@ -376,6 +431,9 @@ class Interpolator:
 
     def _render_mesh_to_image_with_pyvista(self, verts: Tensor, faces: Tensor) -> Image.Image:
         """Render mesh to image using PyVista via tim_render helper."""
+        global _pv
+        if _pv is None:
+            self._ensure_pyvista_ready()
         plotter = render_mesh(
             verts=verts,
             faces=faces,
@@ -497,3 +555,91 @@ class Interpolator:
         self._grid_image = None
         if hasattr(self, "mc_extractor"):
             del self.mc_extractor
+
+
+if __name__ == "__main__":
+    import argparse
+
+    from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
+    from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
+
+    def _parse_cli() -> argparse.Namespace:
+        p = argparse.ArgumentParser(
+            description="Standalone latent-space visualizer: render PLY/PNG from a trained checkpoint.",
+        )
+        p.add_argument("--checkpoint", required=True, help="Path to .pt checkpoint (must contain model_state_dict).")
+        p.add_argument("--model-name", required=True, dest="model_name", help="Model name as registered in models.json.")
+        p.add_argument(
+            "--config",
+            default="postprocessing_interpolator_config.yaml",
+            help="Interpolator config filename (basename inside v2 configs dir).",
+        )
+        p.add_argument("--out-dir", default=None, dest="out_dir", help="Output directory override.")
+        p.add_argument("--device", default=None, help="Compute device (cpu/cuda). Default: auto-detect.")
+        p.add_argument("--epoch", type=int, default=0, help="Epoch label forwarded to render backend.")
+        mode = p.add_mutually_exclusive_group()
+        mode.add_argument(
+            "--z-from-checkpoint",
+            action="store_true",
+            dest="z_from_checkpoint",
+            help="Render each pretrained slot from ckpt['z_pretrained'] as a PLY (uses full z vectors).",
+        )
+        mode.add_argument(
+            "--z-vectors",
+            nargs="+",
+            dest="z_vectors",
+            metavar="Z",
+            help="Explicit z vectors as comma-separated floats, e.g. '0.5,1.5' '-1.0,0.0'. "
+            "Values are zero-padded to model z_dim.",
+        )
+        return p.parse_args()
+
+    _args = _parse_cli()
+    _device = _args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+
+    _model_raw, _model_id, _task_id, _model_config = smart_model_init(_args.model_name)
+    # cast to SupportsLatentConcat: this script assumes a latent model
+    _model: SupportsLatentConcat = cast(SupportsLatentConcat, _model_raw)
+    _ckpt = torch.load(_args.checkpoint, map_location=_device, weights_only=True)
+    if not isinstance(_ckpt, dict) or "model_state_dict" not in _ckpt:
+        raise ValueError("Checkpoint must contain 'model_state_dict'. Use a latent pretraining checkpoint.")
+    _model.load_state_dict(_ckpt["model_state_dict"])
+    _model.eval()
+    _model.to(_device)
+
+    _loaded_cfg = load_config(v="v2", cfg_name=_args.config)
+    _interp_cfg: dict = dict(_loaded_cfg.get("interpolator", {}))
+    if _args.out_dir:
+        _interp_cfg["save_dir"] = _args.out_dir
+    _interp_cfg.setdefault("upload_to_wandb", False)
+    _interp_cfg["save_plys"] = True  # always save PLYs in standalone mode
+
+    _interp = Interpolator(model=_model, config=_interp_cfg, device=_device)
+
+    if _interp.z_dim is None:
+        raise RuntimeError("Model has no z_dim — ensure you are using a latent model (e.g. ConcatWIREV2).")
+
+    if _args.z_from_checkpoint:
+        if "z_pretrained" not in _ckpt:
+            raise ValueError(
+                "Checkpoint does not contain 'z_pretrained'. Use a latent pretraining checkpoint or pass --z-vectors instead."
+            )
+        _Z = _ckpt["z_pretrained"].to(_device)
+        for _slot_idx in range(len(_Z)):
+            _interp._extract_and_render_z_vector(_Z[_slot_idx], epoch=_args.epoch, ply_label=f"slot_{_slot_idx:02d}")
+        print(f"[standalone] Exported {len(_Z)} PLYs to {_interp.save_dir / 'plys'}")
+
+    elif _args.z_vectors:
+        for _idx, _zv_str in enumerate(_args.z_vectors):
+            _parts = [float(x) for x in _zv_str.split(",")]
+            _z_vec = torch.zeros(_interp.z_dim, device=_device)
+            for _d, _val in enumerate(_parts[: _interp.z_dim]):
+                _z_vec[_d] = _val
+            _interp._extract_and_render_z_vector(_z_vec, epoch=_args.epoch, ply_label=f"z{_idx:02d}")
+        print(f"[standalone] Exported {len(_args.z_vectors)} PLYs to {_interp.save_dir / 'plys'}")
+
+    else:
+        _grid = _interp.generate_interpolation_grid(epoch=_args.epoch)
+        _out_path = _interp.save_dir / "standalone_grid.png"
+        _grid.save(_out_path)
+        print(f"[standalone] Grid saved to {_out_path}")

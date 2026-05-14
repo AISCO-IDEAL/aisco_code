@@ -34,6 +34,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.col
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.mesh_ops import face_rgb_to_flat_mesh
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.ply_tasks import (
     render_gif_task,
+    render_survey_task,
     write_ply_task,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.vis_config_helpers import (
@@ -44,7 +45,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.vis
 )
 from subprojects.wp5.unified_mesh_extraction.sdf2mesh import MeshSDFExtractor
 
-_DEFAULT_CONFIG_PATH = Path(__file__).parent / "viz_config.yaml"
+_DEFAULT_CONFIG_PATH = Path(__file__).parents[2] / "configs" / "vis_config.yaml"
 _DARK_BLUE_RGB: tuple[float, float, float] = (0.0, 0.0, 139.0 / 255.0)
 
 
@@ -98,6 +99,16 @@ class _BaseVisManager:
         _log({"event": "cvm_v2_init", "run_id": run_id, "run_dir": str(self.run_dir)})
         self._load_assembly_meshes()
 
+    @property
+    def latent_pretraining_cfg(self) -> dict[str, Any]:
+        """Vis config for pretraining phase, from vis_config.yaml latent_pretraining: section."""
+        return dict(self._cfg.get("latent_pretraining", {}))
+
+    @property
+    def latent_optimisation_cfg(self) -> dict[str, Any]:
+        """Vis config for optimisation phase, from vis_config.yaml latent_optimisation: section."""
+        return dict(self._cfg.get("latent_optimisation", {}))
+
     def is_enabled(self, visual_type: str) -> bool:
         """Check if a visual type is enabled in the config, with ancestor lookup.
 
@@ -109,7 +120,22 @@ class _BaseVisManager:
         if not vis_is_enabled(self._visual_types, "mesh_assembly_v4"):
             return
         try:
-            self._assembly_meshes = load_assembly_meshes()
+            inner_v, inner_f, outer_v, outer_f, _, _, _, _, _ = load_assembly_meshes()
+            # Read colors/alphas from config; fall back to defaults if not present
+            cfg = self._visual_types.get("mesh_assembly_v4", {})
+            sdf_color = tuple(cfg.get("sdf_color", [0.2, 1.0, 1.0]))  # type: ignore[arg-type]
+            sdf_alpha = float(cfg.get("sdf_alpha", 0.5))
+            inner_color = tuple(cfg.get("inner_color", [1.0, 0.5, 0.0]))  # type: ignore[arg-type]
+            outer_color = tuple(cfg.get("outer_color", [1.0, 0.35, 0.15]))  # type: ignore[arg-type]
+            outer_alpha = float(cfg.get("outer_alpha", 0.2))
+            self.set_assembly_meshes(
+                inner_v, inner_f, outer_v, outer_f,
+                sdf_color=sdf_color,
+                inner_color=inner_color,
+                outer_color=outer_color,
+                sdf_alpha=sdf_alpha,
+                outer_alpha=outer_alpha,
+            )
             _log({"event": "assembly_meshes_loaded", "run_id": self.run_id})
         except Exception as exc:
             _log(
@@ -315,7 +341,11 @@ class _BaseVisManager:
         return MeshSDFExtractor(config=vis_config)
 
     def finalize(self) -> None:
-        """Drain pending PLY writes then generate convergence GIFs. Idempotent."""
+        """Drain pending PLY writes then generate convergence GIFs. Idempotent.
+
+        Also respects ``vis_config.latent_pretraining.latent_space_exploration``
+        for any post-training circle survey that was queued before finalize().
+        """
         if self._finalized:
             return
         self._finalized = True
@@ -329,8 +359,41 @@ class _BaseVisManager:
                 _log({"event": "ply_write_failed", "run_id": self.run_id, "path": path, "error": err})
         self._ply_pool.shutdown(wait=False)
 
-        gif_dirs = collect_gif_dirs(self._visual_types, self.run_dir, self._written_dirs)
-        if not gif_dirs:
+        # Circle survey snapshots: each circle_survey/epoch_XXXXX/ dir becomes a
+        # single composite PNG (strip or grid) — not a GIF.
+        survey_layout = str(self._cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {}).get("layout", "strip"))
+        survey_dirs = sorted(
+            d
+            for d in self._written_dirs
+            if d.is_dir()
+            and d.relative_to(self.run_dir).parts[0] == "circle_survey"
+            and any(
+                (f.name.startswith("angle_") or f.name.startswith("x_") or f.name.startswith("r")) and f.name.endswith(".ply")
+                for f in d.iterdir()
+            )
+        )
+        for d in survey_dirs:
+            n = sum(
+                1 for f in d.iterdir() if (f.name.startswith("angle_") or f.name.startswith("x_")) and f.name.endswith(".ply")
+            )
+            _log({"event": "survey_png_started", "run_id": self.run_id, "dir": str(d.relative_to(self.run_dir)), "n_plys": n})
+            ok, path, err = render_survey_task(d, layout=survey_layout)
+            _log(
+                {
+                    "event": "survey_png_completed" if ok else "survey_png_failed",
+                    "run_id": self.run_id,
+                    "path": path,
+                    "error": err,
+                }
+            )
+
+        # All other visual types: convergence GIFs.
+        gif_dirs = [
+            d
+            for d in collect_gif_dirs(self._visual_types, self.run_dir, self._written_dirs)
+            if d not in survey_dirs and d.parent not in survey_dirs
+        ]
+        if not gif_dirs and not survey_dirs:
             _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": 0})
             return
 
@@ -340,7 +403,7 @@ class _BaseVisManager:
             ok, path, err = render_gif_task(d)
             _log({"event": "gif_completed" if ok else "gif_failed", "run_id": self.run_id, "path": path, "error": err})
 
-        _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": len(gif_dirs)})
+        _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": len(gif_dirs), "survey_count": len(survey_dirs)})
 
     def __del__(self) -> None:
         with contextlib.suppress(Exception):
@@ -624,6 +687,185 @@ class CentralVisManagerV2(_BaseVisManager):
         _log({"event": "ply_submitted", "run_id": self.run_id, "visual_type": vt, "epoch": epoch})
 
     # --- Backward-compat shims (old callers; log and drop) ------------------
+
+    def vis_latent_circle_survey(
+        self,
+        model: Any,
+        z_radius: float = 1.0,
+        n_samples: int = 8,
+        device: str = "cpu",
+        epoch: int = 0,
+    ) -> None:
+        """Render a latent space survey of the pretrained model.
+
+        Three layouts supported:
+        - ``layout='strip'``: samples uniformly on a circle of radius ``z_radius``,
+          writes ``angle_{idx:03d}.ply`` per sample.
+        - ``layout='grid'``: samples an NxN Cartesian grid in the region
+          [-z_radius, +z_radius]^2, writes ``x_{x_idx:02d}_y_{y_idx:02d}.ply`` per sample.
+        - ``layout='pizza'``: samples concentric circles at radii from
+          ``pizza_r_min`` to ``pizza_r_max`` (``pizza_r_steps`` rings), each ring
+          with ``n_samples`` angles.  Writes ``r{r_idx:02d}_a{angle_idx:03d}.ply``
+          (polar coordinates).  Rendered as a grid (rows = radii, cols = angles).
+
+        Gated by ``vis_config.latent_optimisation.vis_latent_circle_survey.enabled``.
+        Each survey call writes to ``circle_survey/epoch_{epoch:05d}/`` so successive
+        cadence calls accumulate as separate subdirs and ``finalize()`` generates
+        one PNG per snapshot.
+
+        Args:
+            model: A model implementing ``set_latent_vector`` and compatible with
+                ``MeshSDFExtractor.extract_mesh``.
+            z_radius: Radius of the latent circle (strip) or half-width of the
+                Cartesian grid (grid mode).  Unused in pizza mode (use ``pizza_r_max``).
+            n_samples: Number of angle samples. For strip/pizza: samples per circle.
+                For grid: roughly sqrt(n_samples) per side (so n_samples ≈ grid_size^2).
+            device: Torch device for mesh extraction.
+            epoch: Training epoch index (embedded in output subdir path).
+        """
+        import math  # noqa: PLC0415
+
+        import torch  # noqa: PLC0415
+
+        # Check gate
+        survey_cfg: dict[str, Any] = self._cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {})
+        legacy_cfg: dict[str, Any] = self._cfg.get("latent_pretraining", {}).get("latent_space_exploration", {})
+        enabled = survey_cfg.get("enabled", legacy_cfg.get("enabled", False))
+        if not enabled:
+            _log(
+                {
+                    "event": "circle_survey_skipped",
+                    "run_id": self.run_id,
+                    "reason": "vis_latent_circle_survey.enabled=false in vis_config.yaml",
+                }
+            )
+            return
+
+        mesh_resolution = int(survey_cfg.get("mesh_resolution", 64))
+        extractor = self._make_survey_extractor(device=device, resolution=mesh_resolution)
+        layout = str(survey_cfg.get("layout", "strip"))
+
+        vt = f"circle_survey/epoch_{epoch:05d}"
+        z_dim = int(getattr(model, "z_dim", 2))
+
+        # Generate sample points based on layout
+        if layout == "grid":
+            # Cartesian grid: sample [-z_radius, +z_radius] x [-z_radius, +z_radius]
+            grid_size = max(1, math.ceil(math.sqrt(n_samples)))
+            samples = []
+            for y_idx in range(grid_size):
+                for x_idx in range(grid_size):
+                    # Map grid indices to [-z_radius, +z_radius]
+                    x = -z_radius + 2 * z_radius * x_idx / max(1, grid_size - 1) if grid_size > 1 else 0.0
+                    y = -z_radius + 2 * z_radius * y_idx / max(1, grid_size - 1) if grid_size > 1 else 0.0
+                    samples.append((x_idx, y_idx, x, y, f"x_{x_idx:02d}_y_{y_idx:02d}"))
+        elif layout == "pizza":
+            # Concentric circles: radii from pizza_r_min to pizza_r_max (pizza_r_steps rings),
+            # n_samples angles per ring.  Named with polar coords.
+            r_min = float(survey_cfg.get("pizza_r_min", 0.5))
+            r_max = float(survey_cfg.get("pizza_r_max", z_radius))
+            r_steps = max(1, int(survey_cfg.get("pizza_r_steps", 4)))
+            radii = [r_min + (r_max - r_min) * r_i / max(1, r_steps - 1) for r_i in range(r_steps)] if r_steps > 1 else [r_max]
+            angles = [2 * math.pi * a_i / n_samples for a_i in range(n_samples)]
+            samples = [
+                (a_i, r_i, r * math.cos(angle), r * math.sin(angle), f"r{r_i:02d}_a{a_i:03d}")
+                for r_i, r in enumerate(radii)
+                for a_i, angle in enumerate(angles)
+            ]
+        else:  # strip (circle)
+            angles = [2 * math.pi * i / n_samples for i in range(n_samples)]
+            samples = [
+                (i, 0, z_radius * math.cos(angle), z_radius * math.sin(angle), f"angle_{i:03d}") for i, angle in enumerate(angles)
+            ]
+
+        for _idx_a, _idx_b, z0, z1, filename in samples:
+            z = torch.zeros(z_dim, dtype=torch.float32, device=device)
+            if z_dim >= 1:
+                z[0] = z0
+            if z_dim >= 2:
+                z[1] = z1
+            model.set_latent_vector(z)
+
+            try:
+                verts, faces = extractor.extract_mesh(sdf_model=model)
+            except Exception as exc:
+                _log(
+                    {
+                        "event": "survey_mesh_failed",
+                        "run_id": self.run_id,
+                        "layout": layout,
+                        "sample": filename,
+                        "error": str(exc),
+                    }
+                )
+                continue
+
+            verts_np = _to_f64(verts)
+            faces_np = _to_i32(faces)
+            if verts_np.shape[0] == 0 or faces_np.shape[0] == 0:
+                continue
+
+            rgb = solid_rgb(len(verts_np), _DARK_BLUE_RGB)
+            out_dir = self._output_dir(vt)
+            out_path = out_dir / f"{filename}.ply"
+            future = self._ply_pool.submit(write_ply_task, out_path, verts_np, faces_np, rgb, False, 0.0)
+            self._pending_ply.append(future)
+            _log(
+                {
+                    "event": "survey_ply_submitted",
+                    "run_id": self.run_id,
+                    "layout": layout,
+                    "sample": filename,
+                    "path": str(out_path),
+                }
+            )
+
+        _log(
+            {
+                "event": "survey_completed",
+                "run_id": self.run_id,
+                "layout": layout,
+                "n_samples": len(samples),
+                "z_radius": z_radius,
+            }
+        )
+
+    def _make_survey_extractor(self, device: str, resolution: int) -> MeshSDFExtractor:
+        """Create a MeshSDFExtractor at the given resolution for the circle survey."""
+        from subprojects.wp2_assembler.version4.utils.reg_imp import (  # noqa: PLC0415
+            get_outer_prism_bounds_mm,
+            scale_outer_prism,
+        )
+        from subprojects.wp5.unified_mesh_extraction.utils import (  # noqa: PLC0415
+            MeshExtractionConfig,
+            load_mesh_extraction_config,
+        )
+
+        vis_cfg = self._cfg.get("vis_extraction") or {}
+        survey_cfg = self._cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {})
+        bbox_scale = float(survey_cfg.get("bbox_scale_factor", vis_cfg.get("bbox_scale_factor", 1.3)))
+
+        prism = get_outer_prism_bounds_mm()
+        scaled = scale_outer_prism(prism, bbox_scale)
+        bbox = [
+            [scaled["x"][0], scaled["x"][1]],
+            [scaled["y"][0], scaled["y"][1]],
+            [scaled["z"][0], scaled["z"][1]],
+        ]
+
+        base_cfg = load_mesh_extraction_config()
+        vis_config = MeshExtractionConfig(
+            device=device,
+            isovalue=base_cfg.isovalue,
+            base_resolution=resolution,
+            subdivision_factor=base_cfg.subdivision_factor,
+            max_refine_levels=base_cfg.max_refine_levels,
+            batch_size=base_cfg.batch_size,
+            bbox=bbox,
+            target_num_vertices=None,
+            vertex_count_tolerance=base_cfg.vertex_count_tolerance,
+        )
+        return MeshSDFExtractor(config=vis_config)
 
     def save_ply(self, visual_type: str, epoch: int, *_args: Any, **_kwargs: Any) -> None:
         _log(

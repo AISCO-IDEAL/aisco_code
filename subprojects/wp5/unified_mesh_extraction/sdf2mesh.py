@@ -100,8 +100,10 @@ class MeshSDFExtractor:
           1) Fast path: if `TotalLoss` injected a shared mesh via
              `set_shared_mesh`, return it verbatim (zero re-extraction).
           2) Move the model to `self.device` if it is an `nn.Module`.
-          3) Build a cache key from `(id(model), param_version, bbox, resolution,
-             isovalue, target vertex count, tolerance, device)`.
+          3) Build a cache key from `(id(model), param_version, z_key, bbox, resolution,
+             isovalue, target vertex count, tolerance, device)`. ``z_key`` is the
+             current value of ``model._active_z`` (latent vector), so population-mode
+             callers that switch the latent vector between slots produce separate entries.
           4) Return immediately on cache hit.
           5) On miss, purge stale entries for the same model whose param
              version has bumped (keeps the cache small and coherent).
@@ -118,9 +120,16 @@ class MeshSDFExtractor:
 
         model_id = id(sdf_model)
         version = _model_version(sdf_model)
+        # Include the active latent vector in the key so that population-mode
+        # callers (DiversityTrainer, vis_latent_circle_survey) get separate
+        # cache entries per slot.  set_latent_vector() writes to a registered
+        # *buffer*, not a parameter, so _version is unchanged across slots.
+        _z_buf = getattr(sdf_model, "_active_z", None)
+        z_key = tuple(_z_buf.detach().cpu().tolist()) if isinstance(_z_buf, torch.Tensor) and _z_buf.numel() > 0 else None
         key = (
             model_id,
             version,
+            z_key,
             tuple(tuple(ax) for ax in self.bbox),
             self.effective_resolution,
             self.isovalue,

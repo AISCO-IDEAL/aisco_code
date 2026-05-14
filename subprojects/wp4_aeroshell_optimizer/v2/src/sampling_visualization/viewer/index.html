@@ -1,32 +1,61 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <title>Mesh Viewer</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #fff; overflow: hidden; font-family: monospace; }
-    canvas { display: block; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #fff;
+      overflow: hidden;
+      font-family: monospace;
+    }
+
+    canvas {
+      display: block;
+    }
+
     #filename {
-      position: absolute; top: 10px; left: 10px;
-      background: rgba(0,0,0,0.55); color: #fff;
-      padding: 6px 12px; border-radius: 4px; font-size: 13px;
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 13px;
       pointer-events: none;
     }
+
     #drop-hint {
-      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      background: rgba(0,0,0,0.65); color: #fff;
-      padding: 24px 36px; border-radius: 8px; font-size: 16px;
-      text-align: center; line-height: 1.8; pointer-events: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.65);
+      color: #fff;
+      padding: 24px 36px;
+      border-radius: 8px;
+      font-size: 16px;
+      text-align: center;
+      line-height: 1.8;
+      pointer-events: none;
     }
   </style>
 </head>
+
 <body>
   <div id="filename">no model loaded</div>
   <div id="drop-hint">
     Drop a .glb file here<br>
     <span style="font-size:13px;opacity:0.7">or serve with <code>python -m http.server 8080</code><br>
-    and open <code>?model=../path/to/file.glb</code></span>
+      and open <code>?model=../path/to/file.glb</code></span>
   </div>
 
   <script type="importmap">
@@ -40,7 +69,7 @@
 
   <script type="module">
     import * as THREE from 'three';
-    import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import GUI from 'https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm';
 
@@ -71,6 +100,26 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
+    // --- Color config from vis_config.yaml (served as /config.json) ---
+    // Maps GLB mesh name → { rgb: [r,g,b] in [0,1], alpha: float }
+    // If /config.json is unavailable, all entries remain null → vertex colors used as-is.
+    let MESH_COLORS = {
+      sdf_mesh: { rgb: null, alpha: null },
+      inner_assembly: { rgb: null, alpha: null },
+      outer_bbox: { rgb: null, alpha: null },
+    };
+    try {
+      const resp = await fetch('/config.json');
+      if (resp.ok) {
+        const cfg = await resp.json();
+        if (cfg.sdf_color) MESH_COLORS.sdf_mesh.rgb = cfg.sdf_color;
+        if (cfg.sdf_alpha != null) MESH_COLORS.sdf_mesh.alpha = cfg.sdf_alpha;
+        if (cfg.inner_color) MESH_COLORS.inner_assembly.rgb = cfg.inner_color;
+        if (cfg.outer_color) MESH_COLORS.outer_bbox.rgb = cfg.outer_color;
+        if (cfg.outer_alpha != null) MESH_COLORS.outer_bbox.alpha = cfg.outer_alpha;
+      }
+    } catch (_) { /* /config.json only available when served via serve.py */ }
+
     // --- GUI ---
     let gui = new GUI({ title: 'Mesh Components' });
 
@@ -91,17 +140,15 @@
         if (!obj.isMesh) return;
         const label = obj.name || `mesh_${obj.id}`;
         const folder = gui.addFolder(label);
-        const state = { visible: true, opacity: 1.0 };
+        // Initial opacity: from config if available, else from material
+        const mat = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+        const initOpacity = mat ? mat.opacity : 1.0;
+        const state = { visible: true, opacity: initOpacity };
 
         folder.add(state, 'visible').name('Visible').onChange(v => { obj.visible = v; });
         folder.add(state, 'opacity', 0, 1, 0.01).name('Opacity').onChange(v => {
-          if (Array.isArray(obj.material)) {
-            obj.material.forEach(m => { m.transparent = v < 1.0; m.opacity = v; m.needsUpdate = true; });
-          } else {
-            obj.material.transparent = v < 1.0;
-            obj.material.opacity = v;
-            obj.material.needsUpdate = true;
-          }
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+          mats.forEach(m => { m.opacity = v; m.depthWrite = v >= 0.99; m.needsUpdate = true; });
         });
         folder.open();
       });
@@ -114,9 +161,14 @@
       const size = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
       controls.target.copy(center);
-      camera.position.copy(center).addScaledVector(new THREE.Vector3(1, 0.6, 1).normalize(), maxDim * 2.5);
+      // Geometry uses Z-up (Z = height, X = length, Y = width).
+      // Set camera up to Z so X/Y appear as the horizontal ground plane.
+      camera.up.set(0, 0, 1);
+      // Position camera from +Y direction slightly elevated — gives a side view
+      // where X is horizontal and Z is vertical.
+      camera.position.copy(center).addScaledVector(new THREE.Vector3(0.4, 1, 0.4).normalize(), maxDim * 2.5);
       camera.near = maxDim * 0.001;
-      camera.far  = maxDim * 100;
+      camera.far = maxDim * 100;
       camera.updateProjectionMatrix();
       controls.update();
     }
@@ -134,15 +186,30 @@
         currentRoot = gltf.scene;
         scene.add(currentRoot);
 
-        // Ensure vertex colors are active and meshes are double-sided
+        // Build a fresh MeshBasicMaterial per mesh so:
+        //   • Opacity sliders are fully independent (no shared-material coupling).
+        //   • Mesh is flat/unlit — no shading artefacts.
+        //   • If vis_config.yaml defines a color for this mesh name, that color
+        //     overrides the baked-in vertex colors from the GLB — meaning you can
+        //     change colors at any time by editing vis_config.yaml and restarting
+        //     serve.py, without needing to re-export the GLB files.
         currentRoot.traverse(obj => {
           if (!obj.isMesh) return;
-          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-          mats.forEach(m => {
-            m.vertexColors = true;
-            m.side = THREE.DoubleSide;
-            m.needsUpdate = true;
+          const cfgEntry = MESH_COLORS[obj.name];
+          const overrideRgb = cfgEntry?.rgb ?? null;
+          const overrideAlpha = cfgEntry?.alpha ?? null;
+          const srcMat = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+          const baseAlpha = overrideAlpha ?? (typeof srcMat?.opacity === 'number' ? srcMat.opacity : 1.0);
+          const newMat = new THREE.MeshBasicMaterial({
+            // Use solid override color when configured; otherwise keep baked vertex colors.
+            vertexColors: overrideRgb === null,
+            color: overrideRgb ? new THREE.Color(...overrideRgb) : 0xffffff,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: baseAlpha,
+            depthWrite: baseAlpha >= 0.99,
           });
+          obj.material = newMat;
         });
 
         fitCamera(currentRoot);
@@ -176,4 +243,5 @@
     })();
   </script>
 </body>
+
 </html>

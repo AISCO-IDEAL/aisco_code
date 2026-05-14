@@ -8,6 +8,7 @@ no_build_zones:
     width: 2300   # mm
     ground_clearance: 90 # mm - minimum clearance for chassis, has to be smaller than wheel clearance, so that SDF canbe placed between the cut outer bb and the cut wheel.
     wheel_clearance: 100 # mm - minimum clearance for wheels, has to be smaller than seat z-coordinate, so that the seat is not affected by the cut. For current assemblies z seat is set to 101 mm.
+    ground: 0 # mm
 
   wheel_based_rules:
     front_overhang: 0.6       # percentage, with 1 = 100%
