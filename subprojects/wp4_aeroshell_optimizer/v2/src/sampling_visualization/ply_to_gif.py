@@ -773,9 +773,7 @@ def generate_gifs_slotted(base_dir: Path, max_frames: int | None = None) -> None
         slot_name = f"slot_{slot_idx:02d}"
         try:
             slot_files: list[Path] = [
-                ep_dir / slot_name / "mesh.ply"
-                for ep_dir in epoch_subdirs
-                if (ep_dir / slot_name / "mesh.ply").exists()
+                ep_dir / slot_name / "mesh.ply" for ep_dir in epoch_subdirs if (ep_dir / slot_name / "mesh.ply").exists()
             ]
             if not slot_files:
                 continue

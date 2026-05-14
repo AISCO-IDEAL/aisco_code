@@ -13,12 +13,13 @@ T7: main_v2.py source references the layout_from_resample_mode key.
 
 from __future__ import annotations
 
-import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
+
+import subprojects.wp4_aeroshell_optimizer.v2.src.main_files.main_v2 as main_mod
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -35,6 +36,7 @@ MAIN_V2_SOURCE = _MAIN_V2_PATH.read_text()
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_cvm_mock(initial_layout: str = "strip") -> MagicMock:
     """Return a mock that mimics _vis_manager._cfg with the given initial layout."""
     mock = MagicMock()
@@ -50,8 +52,7 @@ def _make_cvm_mock(initial_layout: str = "strip") -> MagicMock:
 
 
 def _apply_layout_derivation(vis_manager_cfg: dict, z_resample_mode: str, toggle: bool) -> None:
-    """Inline replica of the logic added to main_v2.py — lets us test it in isolation."""
-    survey_vis_cfg = vis_manager_cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {})
+    """Inline replica of the logic added to main_v2.py - lets us test it in isolation."""
     if not toggle:
         return
     derived = "pizza" if z_resample_mode == "in_circle" else "strip"
@@ -62,11 +63,11 @@ def _apply_layout_derivation(vis_manager_cfg: dict, z_resample_mode: str, toggle
 # T1: vis_config.yaml declares the toggle
 # ---------------------------------------------------------------------------
 
+
 class TestVisConfigDeclaresToggle:
     def test_key_present(self) -> None:
         assert "layout_from_resample_mode" in SURVEY_CFG, (
-            "vis_config.yaml must declare layout_from_resample_mode under "
-            "latent_optimisation.vis_latent_circle_survey"
+            "vis_config.yaml must declare layout_from_resample_mode under latent_optimisation.vis_latent_circle_survey"
         )
 
     def test_key_is_bool(self) -> None:
@@ -76,8 +77,9 @@ class TestVisConfigDeclaresToggle:
 
 
 # ---------------------------------------------------------------------------
-# T2–T4: derivation logic correctness
+# T2-T4: derivation logic correctness
 # ---------------------------------------------------------------------------
+
 
 class TestLayoutDerivation:
     @pytest.mark.parametrize(
@@ -85,46 +87,38 @@ class TestLayoutDerivation:
         [
             ("in_circle", "pizza"),
             ("on_circle", "strip"),
-            ("random",    "strip"),   # unrecognised → fallback strip
+            ("random", "strip"),  # unrecognised -> fallback strip
         ],
     )
     def test_derived_layout(self, z_mode: str, expected_layout: str) -> None:
         cfg: dict = {}
         _apply_layout_derivation(cfg, z_mode, toggle=True)
         actual = cfg["latent_optimisation"]["vis_latent_circle_survey"]["layout"]
-        assert actual == expected_layout, (
-            f"z_resample_mode={z_mode!r}: expected layout={expected_layout!r}, got {actual!r}"
-        )
+        assert actual == expected_layout, f"z_resample_mode={z_mode!r}: expected layout={expected_layout!r}, got {actual!r}"
 
 
 # ---------------------------------------------------------------------------
 # T5: toggle=False leaves layout unchanged
 # ---------------------------------------------------------------------------
 
+
 class TestToggleDisabled:
     @pytest.mark.parametrize("z_mode", ["in_circle", "on_circle", "random"])
     def test_layout_unchanged_when_toggle_false(self, z_mode: str) -> None:
-        cfg: dict = {
-            "latent_optimisation": {
-                "vis_latent_circle_survey": {"layout": "grid"}
-            }
-        }
+        cfg: dict = {"latent_optimisation": {"vis_latent_circle_survey": {"layout": "grid"}}}
         _apply_layout_derivation(cfg, z_mode, toggle=False)
         actual = cfg["latent_optimisation"]["vis_latent_circle_survey"]["layout"]
-        assert actual == "grid", (
-            f"layout must stay 'grid' when toggle=False, got {actual!r} for z_mode={z_mode!r}"
-        )
+        assert actual == "grid", f"layout must stay 'grid' when toggle=False, got {actual!r} for z_mode={z_mode!r}"
 
 
 # ---------------------------------------------------------------------------
-# T6: exception in _load_config → silent no-op, no crash
+# T6: exception in _load_config -> silent no-op, no crash
 # ---------------------------------------------------------------------------
+
 
 class TestExceptionSilenced:
     def test_no_crash_on_load_config_failure(self) -> None:
         """If _load_config raises, the layout must remain at its configured value."""
-        import subprojects.wp4_aeroshell_optimizer.v2.src.main_files.main_v2 as main_mod
-
         original_cfg = {
             "latent_optimisation": {
                 "vis_latent_circle_survey": {
@@ -135,7 +129,7 @@ class TestExceptionSilenced:
         }
 
         mock_cvm = MagicMock()
-        mock_cvm._cfg = {k: v for k, v in original_cfg.items()}  # shallow copy is fine for this test
+        mock_cvm._cfg = dict(original_cfg)  # shallow copy is fine for this test
 
         def _raise(*_a, **_kw):
             raise RuntimeError("simulated config-load failure")
@@ -147,20 +141,21 @@ class TestExceptionSilenced:
                     tc = main_mod._load_config(v="v2", cfg_name="training_config.yaml")  # will raise
                     z_mode = tc.get("z_resample_mode", "on_circle")
                     derived = "pizza" if z_mode == "in_circle" else "strip"
-                    mock_cvm._cfg.setdefault("latent_optimisation", {}).setdefault("vis_latent_circle_survey", {})["layout"] = derived
+                    mock_cvm._cfg.setdefault("latent_optimisation", {}).setdefault("vis_latent_circle_survey", {})["layout"] = (
+                        derived
+                    )
             except Exception:
                 pass  # the real code wraps in try/except — mirrored here
 
         # layout must be unchanged
         layout = mock_cvm._cfg["latent_optimisation"]["vis_latent_circle_survey"]["layout"]
-        assert layout == "strip", (
-            f"Layout must remain 'strip' after a failed _load_config call, got {layout!r}"
-        )
+        assert layout == "strip", f"Layout must remain 'strip' after a failed _load_config call, got {layout!r}"
 
 
 # ---------------------------------------------------------------------------
 # T7: main_v2.py source references layout_from_resample_mode
 # ---------------------------------------------------------------------------
+
 
 class TestMainV2SourceReferencesToggle:
     def test_key_referenced_in_main(self) -> None:

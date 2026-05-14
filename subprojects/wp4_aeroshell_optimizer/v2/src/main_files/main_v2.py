@@ -2,6 +2,7 @@
 This should be the final main file we use for the Project. It should be modular and easily extendible
 """
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -285,7 +286,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 _tc = _load_config(v="v2", cfg_name="training_config.yaml")
                 _z_mode = _tc.get("z_resample_mode", "on_circle")
                 _derived_layout = "pizza" if _z_mode == "in_circle" else "strip"
-                _vis_manager._cfg.setdefault("latent_optimisation", {}).setdefault("vis_latent_circle_survey", {})["layout"] = _derived_layout
+                _vis_manager._cfg.setdefault("latent_optimisation", {}).setdefault("vis_latent_circle_survey", {})["layout"] = (
+                    _derived_layout
+                )
         except Exception:
             pass
     elif _vis_mode == "null":
@@ -332,12 +335,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             # Computed before calling pretraining_latent so GIF generation has the path.
             pretrained_hash = _compute_latent_pretrain_hash(latent_config, model)
             model, Z_pretrained = pretraining_latent(
-            model,
-            latent_config,
-            device,
-            use_wandb=use_wandb,
-            vis_manager=_vis_manager,
-        )
+                model,
+                latent_config,
+                device,
+                use_wandb=use_wandb,
+                vis_manager=_vis_manager,
+            )
         if verbose:
             print(f"[latent_space] Latent pretraining complete. Population size: {Z_pretrained.shape[0]}")
 
@@ -633,9 +636,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                     stop_reason = f"sentinel file detected at {sentinel_path}"
                     try:
                         sentinel_path.unlink()
-                    except OSError:
-                        # Best-effort cleanup: keep stop behavior even if unlink fails.
-                        pass
+                        if verbose:
+                            print(f"Early stop sentinel deleted automatically: {sentinel_path}")
+                    except OSError as exc:
+                        if verbose:
+                            print(f"Early stop sentinel could not be deleted: {sentinel_path} ({exc})")
                     break
 
                 if epoch == activation_epoch and hasattr(model, "enforce_layer") and not model.enforce_layer.is_active:
@@ -676,10 +681,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         except KeyboardInterrupt:
             stop_reason = "keyboard interrupt (Ctrl+C or W&B stop signal)"
             if use_wandb and wandb.run is not None and hasattr(wandb, "mark_preempting"):
-                try:
+                with contextlib.suppress(Exception):
                     wandb.mark_preempting()
-                except Exception:
-                    pass
 
         if stop_reason and verbose:
             print(f"Early stopping triggered: {stop_reason}. Proceeding with finalize and artifact export.")

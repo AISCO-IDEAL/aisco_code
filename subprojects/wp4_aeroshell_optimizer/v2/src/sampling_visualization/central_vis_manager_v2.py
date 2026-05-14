@@ -16,11 +16,13 @@ import atexit
 import concurrent.futures
 import contextlib
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import torch
 import yaml
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.points_SDFmesh_to_ply import SamplingVisualizer
@@ -373,7 +375,9 @@ class _BaseVisManager:
 
             # Circle survey snapshots: each circle_survey/epoch_XXXXX/ dir becomes a
             # single composite PNG (strip or grid) — not a GIF.
-            survey_layout = str(self._cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {}).get("layout", "strip"))
+            survey_layout = str(
+                self._cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {}).get("layout", "strip")
+            )
             survey_dirs = sorted(
                 d
                 for d in self._written_dirs
@@ -412,7 +416,14 @@ class _BaseVisManager:
 
             for d in gif_dirs:
                 n = sum(1 for f in d.iterdir() if f.name.startswith("epoch_") and f.name.endswith(".ply"))
-                _log({"event": "gif_started", "run_id": self.run_id, "visual_type": str(d.relative_to(self.run_dir)), "n_frames": n})
+                _log(
+                    {
+                        "event": "gif_started",
+                        "run_id": self.run_id,
+                        "visual_type": str(d.relative_to(self.run_dir)),
+                        "n_frames": n,
+                    }
+                )
                 ok, path, err = render_gif_task(d)
                 _log({"event": "gif_completed" if ok else "gif_failed", "run_id": self.run_id, "path": path, "error": err})
 
@@ -453,7 +464,15 @@ class _BaseVisManager:
                     }
                 )
 
-            _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": len(gif_dirs), "survey_count": len(survey_dirs), "slotted_gif_count": len(slotted_gif_dirs)})
+            _log(
+                {
+                    "event": "finalize_completed",
+                    "run_id": self.run_id,
+                    "gif_count": len(gif_dirs),
+                    "survey_count": len(survey_dirs),
+                    "slotted_gif_count": len(slotted_gif_dirs),
+                }
+            )
             self._finalized = True
         finally:
             self._finalizing = False
@@ -784,11 +803,6 @@ class CentralVisManagerV2(_BaseVisManager):
             device: Torch device for mesh extraction.
             epoch: Training epoch index (embedded in output subdir path).
         """
-        import math  # noqa: PLC0415
-
-        import torch  # noqa: PLC0415
-
-        # Check gate
         survey_cfg: dict[str, Any] = self._cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {})
         legacy_cfg: dict[str, Any] = self._cfg.get("latent_pretraining", {}).get("latent_space_exploration", {})
         enabled = survey_cfg.get("enabled", legacy_cfg.get("enabled", False))
@@ -808,123 +822,22 @@ class CentralVisManagerV2(_BaseVisManager):
 
         vt = f"circle_survey/epoch_{epoch:05d}"
         z_dim = int(getattr(model, "z_dim", 2))
+        samples = self._build_survey_samples(
+            layout=layout,
+            z_radius=z_radius,
+            n_samples=n_samples,
+            survey_cfg=survey_cfg,
+        )
 
-        # Generate sample points based on layout
-        if layout == "grid":
-            # Cartesian grid: sample [-z_radius, +z_radius] x [-z_radius, +z_radius]
-            grid_size = max(1, math.ceil(math.sqrt(n_samples)))
-            samples = []
-            for y_idx in range(grid_size):
-                for x_idx in range(grid_size):
-                    # Map grid indices to [-z_radius, +z_radius]
-                    x = -z_radius + 2 * z_radius * x_idx / max(1, grid_size - 1) if grid_size > 1 else 0.0
-                    y = -z_radius + 2 * z_radius * y_idx / max(1, grid_size - 1) if grid_size > 1 else 0.0
-                    samples.append((x_idx, y_idx, x, y, f"x_{x_idx:02d}_y_{y_idx:02d}"))
-        elif layout == "pizza":
-            # Concentric circles: radii from pizza_r_min to pizza_r_max (pizza_r_steps rings),
-            # n_samples angles per ring.  Named with polar coords.
-            r_min = float(survey_cfg.get("pizza_r_min", 0.5))
-            r_max = float(survey_cfg.get("pizza_r_max", z_radius))
-            r_steps = max(1, int(survey_cfg.get("pizza_r_steps", 4)))
-            radii = [r_min + (r_max - r_min) * r_i / max(1, r_steps - 1) for r_i in range(r_steps)] if r_steps > 1 else [r_max]
-            angles = [2 * math.pi * a_i / n_samples for a_i in range(n_samples)]
-            samples = [
-                (a_i, r_i, r * math.cos(angle), r * math.sin(angle), f"r{r_i:02d}_a{a_i:03d}")
-                for r_i, r in enumerate(radii)
-                for a_i, angle in enumerate(angles)
-            ]
-        else:  # strip (circle)
-            angles = [2 * math.pi * i / n_samples for i in range(n_samples)]
-            samples = [
-                (i, 0, z_radius * math.cos(angle), z_radius * math.sin(angle), f"angle_{i:03d}") for i, angle in enumerate(angles)
-            ]
-
-        for _idx_a, _idx_b, z0, z1, filename in samples:
-            z = torch.zeros(z_dim, dtype=torch.float32, device=device)
-            if z_dim >= 1:
-                z[0] = z0
-            if z_dim >= 2:
-                z[1] = z1
-            model.set_latent_vector(z)
-
-            try:
-                verts, faces = extractor.extract_mesh(sdf_model=model)
-            except Exception as exc:
-                _log(
-                    {
-                        "event": "survey_mesh_failed",
-                        "run_id": self.run_id,
-                        "layout": layout,
-                        "sample": filename,
-                        "error": str(exc),
-                    }
-                )
-                continue
-
-            verts_np = _to_f64(verts)
-            faces_np = _to_i32(faces)
-            if verts_np.shape[0] == 0 or faces_np.shape[0] == 0:
-                continue
-
-            out_dir = self._output_dir(vt)
-            out_path = out_dir / f"{filename}.ply"
-
-            if self._assembly_meshes is not None:
-                inn_v, inn_f, out_v, out_f, sdf_color, inner_color, outer_color, sdf_alpha, outer_alpha = self._assembly_meshes
-                sdf_v_t = torch.from_numpy(verts_np.astype(np.float32))
-                sdf_f_t = torch.from_numpy(faces_np.astype(np.int64))
-
-                def _combined_task(
-                    _out_path: Path = out_path,
-                    _inn_v: Any = inn_v,
-                    _inn_f: Any = inn_f,
-                    _out_v: Any = out_v,
-                    _out_f: Any = out_f,
-                    _sdf_v: Any = sdf_v_t,
-                    _sdf_f: Any = sdf_f_t,
-                    _sdf_color: Any = sdf_color,
-                    _inner_color: Any = inner_color,
-                    _outer_color: Any = outer_color,
-                    _sdf_alpha: float = sdf_alpha,
-                    _outer_alpha: float = outer_alpha,
-                ) -> tuple[bool, str, str | None]:
-                    try:
-                        from subprojects.wp4_aeroshell_optimizer.v2.src.utils.combined_ply_export import (  # noqa: PLC0415
-                            export_combined_bbox_mesh_ply,
-                        )
-
-                        export_combined_bbox_mesh_ply(
-                            inner_verts=_inn_v,
-                            inner_faces=_inn_f,
-                            outer_verts=_out_v,
-                            outer_faces=_out_f,
-                            sdf_verts=_sdf_v,
-                            sdf_faces=_sdf_f,
-                            output_path=_out_path,
-                            inner_color=_inner_color,
-                            outer_color=_outer_color,
-                            sdf_color=_sdf_color,
-                            inner_alpha=1.0,
-                            outer_alpha=_outer_alpha,
-                            sdf_alpha=_sdf_alpha,
-                        )
-                        return (True, str(_out_path), None)
-                    except Exception as exc:
-                        return (False, str(_out_path), str(exc))
-
-                future = self._ply_pool.submit(_combined_task)
-            else:
-                rgb = solid_rgb(len(verts_np), _DARK_BLUE_RGB)
-                future = self._ply_pool.submit(write_ply_task, out_path, verts_np, faces_np, rgb, False, 0.0)
-            self._pending_ply.append(future)
-            _log(
-                {
-                    "event": "survey_ply_submitted",
-                    "run_id": self.run_id,
-                    "layout": layout,
-                    "sample": filename,
-                    "path": str(out_path),
-                }
+        for sample in samples:
+            self._process_survey_sample(
+                model=model,
+                extractor=extractor,
+                device=device,
+                z_dim=z_dim,
+                sample=sample,
+                layout=layout,
+                vt=vt,
             )
 
         _log(
@@ -936,6 +849,144 @@ class CentralVisManagerV2(_BaseVisManager):
                 "z_radius": z_radius,
             }
         )
+
+    def _build_survey_samples(
+        self,
+        layout: str,
+        z_radius: float,
+        n_samples: int,
+        survey_cfg: dict[str, Any],
+    ) -> list[tuple[int, int, float, float, str]]:
+        if layout == "grid":
+            grid_size = max(1, math.ceil(math.sqrt(n_samples)))
+            samples: list[tuple[int, int, float, float, str]] = []
+            for y_idx in range(grid_size):
+                for x_idx in range(grid_size):
+                    x = -z_radius + 2 * z_radius * x_idx / max(1, grid_size - 1) if grid_size > 1 else 0.0
+                    y = -z_radius + 2 * z_radius * y_idx / max(1, grid_size - 1) if grid_size > 1 else 0.0
+                    samples.append((x_idx, y_idx, x, y, f"x_{x_idx:02d}_y_{y_idx:02d}"))
+            return samples
+
+        if layout == "pizza":
+            r_min = float(survey_cfg.get("pizza_r_min", 0.5))
+            r_max = float(survey_cfg.get("pizza_r_max", z_radius))
+            r_steps = max(1, int(survey_cfg.get("pizza_r_steps", 4)))
+            radii = [r_min + (r_max - r_min) * r_i / max(1, r_steps - 1) for r_i in range(r_steps)] if r_steps > 1 else [r_max]
+            angles = [2 * math.pi * a_i / n_samples for a_i in range(n_samples)]
+            return [
+                (a_i, r_i, r * math.cos(angle), r * math.sin(angle), f"r{r_i:02d}_a{a_i:03d}")
+                for r_i, r in enumerate(radii)
+                for a_i, angle in enumerate(angles)
+            ]
+
+        angles = [2 * math.pi * i / n_samples for i in range(n_samples)]
+        return [
+            (i, 0, z_radius * math.cos(angle), z_radius * math.sin(angle), f"angle_{i:03d}") for i, angle in enumerate(angles)
+        ]
+
+    def _process_survey_sample(
+        self,
+        model: Any,
+        extractor: MeshSDFExtractor,
+        device: str,
+        z_dim: int,
+        sample: tuple[int, int, float, float, str],
+        layout: str,
+        vt: str,
+    ) -> None:
+        _idx_a, _idx_b, z0, z1, filename = sample
+        z = torch.zeros(z_dim, dtype=torch.float32, device=device)
+        if z_dim >= 1:
+            z[0] = z0
+        if z_dim >= 2:
+            z[1] = z1
+        model.set_latent_vector(z)
+
+        try:
+            verts, faces = extractor.extract_mesh(sdf_model=model)
+        except Exception as exc:
+            _log(
+                {
+                    "event": "survey_mesh_failed",
+                    "run_id": self.run_id,
+                    "layout": layout,
+                    "sample": filename,
+                    "error": str(exc),
+                }
+            )
+            return
+
+        verts_np = _to_f64(verts)
+        faces_np = _to_i32(faces)
+        if verts_np.shape[0] == 0 or faces_np.shape[0] == 0:
+            return
+
+        out_path = self._output_dir(vt) / f"{filename}.ply"
+        future = self._submit_survey_ply(out_path=out_path, verts_np=verts_np, faces_np=faces_np)
+        self._pending_ply.append(future)
+        _log(
+            {
+                "event": "survey_ply_submitted",
+                "run_id": self.run_id,
+                "layout": layout,
+                "sample": filename,
+                "path": str(out_path),
+            }
+        )
+
+    def _submit_survey_ply(
+        self,
+        out_path: Path,
+        verts_np: np.ndarray,
+        faces_np: np.ndarray,
+    ) -> concurrent.futures.Future[tuple[bool, str, str | None]]:
+        if self._assembly_meshes is None:
+            rgb = solid_rgb(len(verts_np), _DARK_BLUE_RGB)
+            return self._ply_pool.submit(write_ply_task, out_path, verts_np, faces_np, rgb, False, 0.0)
+
+        inn_v, inn_f, out_v, out_f, sdf_color, inner_color, outer_color, sdf_alpha, outer_alpha = self._assembly_meshes
+        sdf_v_t = torch.from_numpy(verts_np.astype(np.float32))
+        sdf_f_t = torch.from_numpy(faces_np.astype(np.int64))
+
+        def _combined_task(
+            _out_path: Path = out_path,
+            _inn_v: Any = inn_v,
+            _inn_f: Any = inn_f,
+            _out_v: Any = out_v,
+            _out_f: Any = out_f,
+            _sdf_v: Any = sdf_v_t,
+            _sdf_f: Any = sdf_f_t,
+            _sdf_color: Any = sdf_color,
+            _inner_color: Any = inner_color,
+            _outer_color: Any = outer_color,
+            _sdf_alpha: float = sdf_alpha,
+            _outer_alpha: float = outer_alpha,
+        ) -> tuple[bool, str, str | None]:
+            try:
+                from subprojects.wp4_aeroshell_optimizer.v2.src.utils.combined_ply_export import (  # noqa: PLC0415
+                    export_combined_bbox_mesh_ply,
+                )
+
+                export_combined_bbox_mesh_ply(
+                    inner_verts=_inn_v,
+                    inner_faces=_inn_f,
+                    outer_verts=_out_v,
+                    outer_faces=_out_f,
+                    sdf_verts=_sdf_v,
+                    sdf_faces=_sdf_f,
+                    output_path=_out_path,
+                    inner_color=_inner_color,
+                    outer_color=_outer_color,
+                    sdf_color=_sdf_color,
+                    inner_alpha=1.0,
+                    outer_alpha=_outer_alpha,
+                    sdf_alpha=_sdf_alpha,
+                )
+                return (True, str(_out_path), None)
+            except Exception as exc:
+                return (False, str(_out_path), str(exc))
+
+        return self._ply_pool.submit(_combined_task)
 
     def _make_survey_extractor(self, device: str, resolution: int) -> MeshSDFExtractor:
         """Create a MeshSDFExtractor at the given resolution for the circle survey."""

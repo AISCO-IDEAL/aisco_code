@@ -168,7 +168,7 @@ class DiversityTrainer:
             resolution=_mesh_config.base_resolution,
         )
         # Separate vis extractor with a larger bbox (vis_extraction.bbox_scale_factor from
-        # vis_config.yaml, default 1.6×) so the mesh is never clipped at the outer-prism
+        # vis_config.yaml, default 1.6x) so the mesh is never clipped at the outer-prism
         # boundary when the shape reaches maximum length at high epochs.
         # _mesh_extractor keeps the tight diversity bbox for loss domain sampling.
         self._vis_mesh_extractor: MeshSDFExtractor
