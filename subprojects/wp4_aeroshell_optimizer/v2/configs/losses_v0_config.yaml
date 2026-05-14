@@ -259,7 +259,7 @@ cfd:
   strict_watertightness_check: false # Options: true, false
 
 cfd_local:
-  run_local: true
+  run_local: false
   model_id: local_1777017531      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2 or a key for Version 1
   version: 3              # Options: 1, 2, 3      Recomendation: 3
   visualisations: true    # Options: true, false  Recomendation: false
