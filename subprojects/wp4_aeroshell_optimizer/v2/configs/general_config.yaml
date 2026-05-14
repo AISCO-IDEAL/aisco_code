@@ -52,7 +52,7 @@ early_stopping:
   # Final path is auto-built as:
   #   /home/aisco/<sentinel_relative_path>          on local Beast/WSL
   #   /cluster/work/fuge/<sentinel_relative_path>   on Euler/SLURM
-  sentinel_relative_path: "AISCO/00_early_stopping/STOP_RUN"
+  sentinel_relative_path: "AISCO/STOP_RUN"
 
 
 # master example of how to reference other config files:
