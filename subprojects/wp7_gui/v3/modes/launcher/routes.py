@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -26,7 +27,9 @@ _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
 # Singletons shared across requests
 # ---------------------------------------------------------------------------
 _process_manager = ProcessManager(SETTINGS.logs_dir)
-_active_cfg_folder: str = ""  # updated on each run/start so the SSE stream can resolve epochs
+_runtime_state: dict[str, str] = {
+    "active_cfg_folder": ""
+}  # updated on each run/start so progress/SSE can resolve epochs
 _config_manager = ConfigOverrideManager(
     root=SETTINGS.config_overrides_root,
     schema_path=SETTINGS.schema_path,
@@ -95,7 +98,6 @@ def _get_total_epochs(cfg_folder: str = "") -> int:
     # 1. Try the override folder first (when a config session is active)
     if cfg_folder:
         try:
-            from pathlib import Path
             override_dir = Path(cfg_folder)
             # Resolve the training config name from the override's general_config.yaml
             gen_path = override_dir / "general_config.yaml"
@@ -166,8 +168,7 @@ def launcher_subpage(request: Request, page_key: str, pipeline: str = "live"):
 # ---------------------------------------------------------------------------
 @router.post("/api/run/start")
 def run_start(payload: RunStartRequest) -> JSONResponse:
-    global _active_cfg_folder
-    _active_cfg_folder = payload.cfg_folder.strip() if payload.cfg_folder else ""
+    _runtime_state["active_cfg_folder"] = payload.cfg_folder.strip() if payload.cfg_folder else ""
     assembly_id: int | None = None
     if payload.assembly_id not in (None, ""):
         try:
@@ -232,10 +233,16 @@ def run_logs() -> dict[str, Any]:
 def run_progress() -> dict[str, Any]:
     state = _process_manager.get_state()
     log_path = state["log_path"]
+    active_cfg_folder = _runtime_state["active_cfg_folder"]
     progress = (
-        log_parser.get_progress(log_path, _get_total_epochs(_active_cfg_folder))
+        log_parser.get_progress(log_path, _get_total_epochs(active_cfg_folder))
         if log_path
-        else {"num_epochs": _get_total_epochs(_active_cfg_folder), "current_epoch": -1, "progress_percent": 0.0, "completed": False}
+        else {
+            "num_epochs": _get_total_epochs(active_cfg_folder),
+            "current_epoch": -1,
+            "progress_percent": 0.0,
+            "completed": False,
+        }
     )
     return {**progress, "running": state["running"], "return_code": state["return_code"]}
 
@@ -272,7 +279,8 @@ async def run_stream_logs() -> StreamingResponse:
                         yield sse.event("log", {"line": line})
                     epoch = log_parser.parse_epoch(text)
                     if epoch >= 0:
-                        yield sse.event("epoch", {"epoch": epoch, "total": _get_total_epochs(_active_cfg_folder)})
+                        active_cfg_folder = _runtime_state["active_cfg_folder"]
+                        yield sse.event("epoch", {"epoch": epoch, "total": _get_total_epochs(active_cfg_folder)})
             if not state["running"]:
                 yield sse.event("done", {"return_code": state["return_code"]})
                 break

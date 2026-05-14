@@ -10,16 +10,18 @@ from pathlib import Path
 from subprojects.wp7_gui.v3.shared.run_paths import extract_epoch, find_mesh_assembly_dir
 
 # Sub-directories whose GIFs are already captured by dedicated top-level keys.
-_HANDLED_DIRS = frozenset({
-    "mesh_assembly_v4",
-    "mesh_assembly_mode_v4",
-    "mesh_assembly_mode_v3",
-    "mesh_assembly_mode_v2",
-    "mesh_assembly_mode",
-    "solar_loss_rendering",
-    "meshes",
-    "models",
-})
+_HANDLED_DIRS = frozenset(
+    {
+        "mesh_assembly_v4",
+        "mesh_assembly_mode_v4",
+        "mesh_assembly_mode_v3",
+        "mesh_assembly_mode_v2",
+        "mesh_assembly_mode",
+        "solar_loss_rendering",
+        "meshes",
+        "models",
+    }
+)
 
 
 def _humanize_path(rel: str) -> str:
@@ -28,7 +30,9 @@ def _humanize_path(rel: str) -> str:
     return " \u2013 ".join(parts)
 
 
-def list_artifacts(run_dir: Path, storage_root: Path) -> dict[str, object]:
+# This aggregator intentionally scans multiple artifact types and directory depths
+# in one pass to keep API payload construction in a single place.
+def list_artifacts(run_dir: Path, storage_root: Path) -> dict[str, object]:  # noqa: PLR0912, PLR0915
     """Return artifact lists for a given run directory.
 
     Returns:
@@ -98,23 +102,27 @@ def list_artifacts(run_dir: Path, storage_root: Path) -> dict[str, object]:
         preferred = subdir / "animation.gif"
         if preferred.is_file():
             r = _rel(preferred)
-            extra_gifs.append({
-                "label": label,
-                "name": preferred.name,
-                "rel_path": r,
-                "url": f"/api/artifacts/file?path={r}",
-                "slow_url": f"/api/artifacts/slow-gif?path={r}&factor=2.5",
-            })
-        else:
-            for gif in sorted(subdir.glob("*.gif")):
-                r = _rel(gif)
-                extra_gifs.append({
+            extra_gifs.append(
+                {
                     "label": label,
-                    "name": gif.name,
+                    "name": preferred.name,
                     "rel_path": r,
                     "url": f"/api/artifacts/file?path={r}",
                     "slow_url": f"/api/artifacts/slow-gif?path={r}&factor=2.5",
-                })
+                }
+            )
+        else:
+            for gif in sorted(subdir.glob("*.gif")):
+                r = _rel(gif)
+                extra_gifs.append(
+                    {
+                        "label": label,
+                        "name": gif.name,
+                        "rel_path": r,
+                        "url": f"/api/artifacts/file?path={r}",
+                        "slow_url": f"/api/artifacts/slow-gif?path={r}&factor=2.5",
+                    }
+                )
                 break  # one representative GIF per dir
 
     if run_dir_resolved.exists():
@@ -148,18 +156,22 @@ def list_artifacts(run_dir: Path, storage_root: Path) -> dict[str, object]:
         for p in ply_files:
             r = _rel(p)
             epoch = extract_epoch(p.name)
-            plys.append({
-                "name": p.name,
-                "rel_path": r,
-                "url": f"/api/artifacts/file?path={r}",
-                "epoch": epoch,
-            })
+            plys.append(
+                {
+                    "name": p.name,
+                    "rel_path": r,
+                    "url": f"/api/artifacts/file?path={r}",
+                    "epoch": epoch,
+                }
+            )
         plys.sort(key=lambda m: m["epoch"] if m["epoch"] is not None else -1)
         if plys:
-            extra_ply_groups.append({
-                "label": label,
-                "ply_files": plys,
-            })
+            extra_ply_groups.append(
+                {
+                    "label": label,
+                    "ply_files": plys,
+                }
+            )
 
     if run_dir_resolved.exists():
         try:
