@@ -109,6 +109,7 @@ where = ["."]
 include = ["subprojects*"]
 
 [tool.ruff]
+respect-gitignore = false
 # Exclude a variety of commonly ignored directories.
 exclude = [
     ".bzr",
@@ -132,6 +133,7 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
+    "aisco_env",
     "**/archive/**",
     "**/subprojects/fixed_renderer/**",
     "**/visuals/testing.py",
