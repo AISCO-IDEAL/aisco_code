@@ -156,6 +156,15 @@ def main(_gui_mode: bool = False, _cfg_folder: str | None = None) -> None:  # no
     if verbose:
         print("Successfully loaded and registered all configs")
 
+    # Early-stopping sentinel path is configured relative to an auto-detected root.
+    # Root is /home/aisco on local Beast/WSL and /cluster/work/fuge on Euler/SLURM.
+    early_stop_cfg = general_config.get("early_stopping", {})
+    sentinel_rel = str(early_stop_cfg.get("sentinel_relative_path", "AISCO/00_early_stopping/STOP_RUN"))
+    sentinel_root = Path("/cluster/work/fuge") if is_cluster() else Path("/home/aisco")
+    sentinel_path = sentinel_root / Path(sentinel_rel)
+    if verbose:
+        print(f"Early stopping sentinel enabled: {sentinel_path}")
+
     # 3. Load model and handle pretraining
     model_name: str
     if latent_space:
@@ -562,42 +571,63 @@ def main(_gui_mode: bool = False, _cfg_folder: str | None = None) -> None:  # no
         activation_ratio = enforce_cfg.get("activation_epoch_ratio", 0.9)
         activation_epoch = int(num_epochs * activation_ratio)
 
-        for epoch in range(num_epochs):
-            if epoch == activation_epoch and hasattr(model, "enforce_layer") and not model.enforce_layer.is_active:
-                if verbose:
-                    print(f"Activating ENFORCE projection layer at epoch {epoch} / {num_epochs}")
-                model.enforce_layer.is_active = True
+        stop_reason: str | None = None
+        try:
+            for epoch in range(num_epochs):
+                if sentinel_path.exists():
+                    stop_reason = f"sentinel file detected at {sentinel_path}"
+                    try:
+                        sentinel_path.unlink()
+                    except OSError:
+                        # Best-effort cleanup: keep stop behavior even if unlink fails.
+                        pass
+                    break
 
-            model.train()
-            metrics = trainer.step(epoch=epoch)
+                if epoch == activation_epoch and hasattr(model, "enforce_layer") and not model.enforce_layer.is_active:
+                    if verbose:
+                        print(f"Activating ENFORCE projection layer at epoch {epoch} / {num_epochs}")
+                    model.enforce_layer.is_active = True
 
-            mesh_save_interval = training_config["training_params"].get("mesh_save_interval", 50)
-            if (epoch + 1) % mesh_save_interval == 0:
-                allround_save_data(
-                    model=model,
-                    storage_path=(
-                        general_config["storage_paths"].get("beast_storage_dir")
-                        or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+                model.train()
+                metrics = trainer.step(epoch=epoch)
+
+                mesh_save_interval = training_config["training_params"].get("mesh_save_interval", 50)
+                if (epoch + 1) % mesh_save_interval == 0:
+                    allround_save_data(
+                        model=model,
+                        storage_path=(
+                            general_config["storage_paths"].get("beast_storage_dir")
+                            or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+                        )
+                        if run_locally
+                        else general_config["storage_paths"]["storage_dir"],
+                        save_model=True,
+                        save_mesh=True,
+                        epoch=epoch + 1,
+                        verbose=general_config["general_info"].get("verbose", False),
+                        pretraining=False,
+                        wandb_run=wandb_name,
+                        device=str(device),
+                        z_pretrained=Z_pretrained if latent_space else None,
                     )
-                    if run_locally
-                    else general_config["storage_paths"]["storage_dir"],
-                    save_model=True,
-                    save_mesh=True,
-                    epoch=epoch + 1,
-                    verbose=general_config["general_info"].get("verbose", False),
-                    pretraining=False,
-                    wandb_run=wandb_name,
-                    device=str(device),
-                    z_pretrained=Z_pretrained if latent_space else None,
-                )
 
-            if verbose and epoch % 50 == 0:  # arbitray number, adjust as needed
-                print(
-                    f"Epoch {epoch}/{num_epochs} | per_vector={metrics['per_vector_loss']:.4f} | "
-                    f"diversity={metrics['diversity_loss']:.4f} | total={metrics['total_loss']:.4f}"
-                )
-            if prof is not None:
-                prof.step()
+                if verbose and epoch % 50 == 0:  # arbitray number, adjust as needed
+                    print(
+                        f"Epoch {epoch}/{num_epochs} | per_vector={metrics['per_vector_loss']:.4f} | "
+                        f"diversity={metrics['diversity_loss']:.4f} | total={metrics['total_loss']:.4f}"
+                    )
+                if prof is not None:
+                    prof.step()
+        except KeyboardInterrupt:
+            stop_reason = "keyboard interrupt (Ctrl+C or W&B stop signal)"
+            if use_wandb and wandb.run is not None and hasattr(wandb, "mark_preempting"):
+                try:
+                    wandb.mark_preempting()
+                except Exception:
+                    pass
+
+        if stop_reason and verbose:
+            print(f"Early stopping triggered: {stop_reason}. Proceeding with finalize and artifact export.")
 
         # CentralVisManager finalize: generate convergence GIFs for all visual types.
         if _vis_manager is not None:
