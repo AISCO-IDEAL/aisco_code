@@ -3,8 +3,7 @@
 %}Browse config values used for a completed run (read-only).{% endif %}{% endblock %}
 
 {% block content %}
-<div class="section-grid"
-  style="grid-template-rows: {{ 'auto auto auto 1fr auto' if pipeline == 'live' else 'auto auto 1fr auto' }}; height: 100%;">
+<div class="section-grid" style="grid-template-rows: auto auto 1fr auto; height: 100%;">
 
   <!-- Wizard navigation -->
   <div class="dark-card toolbar">
@@ -19,6 +18,7 @@
     <button class="btn" id="btnInit">Start new session</button>
     <button class="btn secondary" id="btnReload" disabled>Reset to defaults</button>
     <div class="session-info" id="sessionInfo">No active session.</div>
+    <button class="btn" id="btnSave" disabled>Save changes</button>
     <button class="btn danger" id="btnDiscard" disabled>Discard session</button>
     <button class="btn danger" id="btnCleanAll">Clean all sessions</button>
     {% else %}
@@ -30,15 +30,6 @@
     <button class="btn danger" id="btnCleanAll">Clean all sessions</button>
     {% endif %}
   </div>
-
-  {% if pipeline == 'live' %}
-  <!-- Run toolbar -->
-  <div class="dark-card toolbar">
-    <button class="btn" id="btnSave" disabled>Save changes</button>
-    <button class="btn" id="btnRun" disabled>Run with overrides</button>
-    <button class="btn secondary" id="btnStop" disabled>Stop run</button>
-  </div>
-  {% endif %}
 
   <!-- Config form -->
   <div class="card" style="overflow-y: auto; min-height: 0;">
@@ -67,15 +58,12 @@
 
   let activeFolder = localStorage.getItem(STORAGE_KEY) || "";
   let cachedSchema = null;
-  let pollTimer = null;
 
   const btnInit = document.getElementById("btnInit");
   const btnReload = document.getElementById("btnReload");
   const btnDiscard = document.getElementById("btnDiscard");
   const btnCleanAll = document.getElementById("btnCleanAll");
   const btnSave = document.getElementById("btnSave");
-  const btnRun = document.getElementById("btnRun");
-  const btnStop = document.getElementById("btnStop");
   const btnNext = document.getElementById("btnNext");
   const sessionInfo = document.getElementById("sessionInfo");
   const formArea = document.getElementById("formArea");
@@ -102,15 +90,12 @@
       sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
       if (btnReload) btnReload.disabled = false;
       if (btnDiscard) btnDiscard.disabled = false;
-      if (btnRun) btnRun.disabled = false;
     } else {
       localStorage.removeItem(STORAGE_KEY);
       sessionInfo.textContent = "No active session.";
       if (btnReload) btnReload.disabled = true;
       if (btnDiscard) btnDiscard.disabled = true;
       if (btnSave) btnSave.disabled = true;
-      if (btnRun) btnRun.disabled = true;
-      formArea.innerHTML = '<div style="color:#496456;font-style:italic;text-align:center;padding:40px 10px;">Click "Start new session" to copy configs and begin editing.</div>';
     }
     updateNextHref();
   }
@@ -371,45 +356,6 @@
       if (!r.ok) { const d = await r.json(); throw new Error(d.detail?.message || r.status); }
       const d = await r.json();
       log(`Saved: ${d.written.join(", ")}`, "success");
-    } catch (err) { log(`ERROR: ${err.message}`, "error"); }
-  });
-
-  btnRun?.addEventListener("click", async () => {
-    if (!activeFolder) return;
-    btnRun.disabled = true; btnStop.disabled = false; output.className = "console";
-    try {
-      const r = await fetch(`${API}/run/start`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cfg_folder: activeFolder })
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.detail?.message || r.status);
-      log(`Started PID: ${d.pid} — polling logs…`);
-      if (pollTimer) clearInterval(pollTimer);
-      pollTimer = setInterval(async () => {
-        try {
-          const ld = await (await fetch(`${API}/run/logs`)).json();
-          output.textContent = ld.logs || "(no logs yet)";
-          output.scrollTop = output.scrollHeight;
-          if (!ld.running) {
-            log(`\n--- Return code: ${ld.return_code}`, ld.return_code === 0 ? "success" : "error");
-            clearInterval(pollTimer); pollTimer = null;
-            btnRun.disabled = false; btnStop.disabled = true;
-          }
-        } catch (err) {
-          log(`ERROR polling: ${err.message}`, "error");
-          clearInterval(pollTimer); pollTimer = null;
-          btnRun.disabled = false; btnStop.disabled = true;
-        }
-      }, 1000);
-    } catch (err) { log(`ERROR: ${err.message}`, "error"); btnRun.disabled = false; btnStop.disabled = true; }
-  });
-
-  btnStop?.addEventListener("click", async () => {
-    btnStop.disabled = true;
-    try {
-      const d = await (await fetch(`${API}/run/stop`, { method: "POST" })).json();
-      log(`Stop: ${d.status} — ${d.message || ""}`);
     } catch (err) { log(`ERROR: ${err.message}`, "error"); }
   });
 
