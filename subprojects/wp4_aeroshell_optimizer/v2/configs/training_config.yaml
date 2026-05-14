@@ -3,7 +3,7 @@
 # ===========================================================================
 training_params:
   learning_rate: 0.000008  # 0.000008 for WIREV5, 0.0005 for WIREV2 and ConcatWireV2, 0.0001 for basic MLP, 0.0005 for AISCOModel_v0
-  num_epochs: 100 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
+  num_epochs: 1000 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
   mesh_save_interval: 20  # basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
   marching_cubes_usage: "True"  # storage_utils.py: general_config["general_info"].get("marching_cubes_usage", "False") (if True, uses marching cubes with threads for mesh extraction, if False uses kaolin-based mesh extraction without threads, which is more stable but slower)
   gradient_conflict_cadence: 0  # Gradient conflict tracking cadence (0 = disabled, N = every N epochs). Stores per-component gradient vectors and cosine similarities to disk.
@@ -17,7 +17,7 @@ mode:
 # GINN / Diversity parameters (merged from GINN.yaml)
 # ===========================================================================
 
-pretrain_population_size: true # optimisation loop uses same population size as pretraining
+pretrain_population_size: false # optimisation loop uses same population size as pretraining
 population_size: 7  # used only when pretrain_population_size: false
 
 # Initial Z placement when pretrain_population_size: false.
@@ -26,7 +26,7 @@ population_size: 7  # used only when pretrain_population_size: false
 #   z_init_mode: wider_circle  → slots randomly sampled within a circle of radius
 #                                 r_init_scale * r_pretraining (wider than training)
 z_init_mode: circle           # circle | wider_circle; used only when pretrain_population_size: false
-r_init_scale: 1.2             # radius multiplier for wider_circle mode
+r_init_scale: 1.0             # radius multiplier for wider_circle mode
 
 # ---------------------------------------------------------------------------
 # Diversity loss sampling config
@@ -58,6 +58,7 @@ force_z0_to_origin: false         # true keeps first latent vector fixed at orig
 #          z_resample_start_epoch epochs, then resample every z_resample_cadence epochs
 z_resample_cadence: 0            # 0 disables resampling, N>0 resamples every N epochs | use 0 to align with latent pretraining spots
 z_resample_start_epoch: 0        # 0 = Mode B (resample from epoch 1); N>0 = Mode C warm-up
+z_resample_stop_epoch: -1        # -1 = never stop resampling; N>0 = freeze Z from epoch N onward (Phase 2 transition)
 z_resample_mode: on_circle        # on_circle | in_circle | random; mode used when z_resample_cadence > 0
 
 # ---------------------------------------------------------------------------
