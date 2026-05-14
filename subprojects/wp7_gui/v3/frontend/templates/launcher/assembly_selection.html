@@ -261,19 +261,19 @@
         generateIdValue.textContent = mapId;
         generateId.style.display = "";
 
+        // Always persist the latest assembly ID so "Start new session" can apply it.
+        localStorage.setItem(PENDING_ID_KEY, String(mapId));
+
         const activeFolder = localStorage.getItem(OVERRIDE_FOLDER_KEY) || "";
         if (activeFolder) {
           try {
             await writeAssemblyIdToSession(activeFolder, mapId);
             generateStatus.textContent = `${d.message} → written to config session.`;
-            localStorage.removeItem(PENDING_ID_KEY);
           } catch (writeErr) {
             generateStatus.textContent = `${d.message} (config write failed: ${writeErr.message})`;
-            localStorage.setItem(PENDING_ID_KEY, String(mapId));
           }
         } else {
           generateStatus.textContent = `${d.message} ID saved — will be applied when a config session is started.`;
-          localStorage.setItem(PENDING_ID_KEY, String(mapId));
         }
         generateStatus.style.color = "#2e7a47";
       }

@@ -10,7 +10,7 @@
  * template's {% block head %} before this module is imported).
  */
 
-import { PerspectiveCamera, Scene, Color, WebGLRenderer, HemisphereLight, DirectionalLight, MeshStandardMaterial, Mesh, Vector3 } from "three";
+import { PerspectiveCamera, Scene, Color, WebGLRenderer, HemisphereLight, DirectionalLight, MeshStandardMaterial, MeshPhongMaterial, Mesh, Vector3 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
 
@@ -63,6 +63,18 @@ export function initMeshViewer(containerEl) {
         new PLYLoader().load(
             url,
             (geo) => {
+                // DEBUG: Log what attributes the geometry has
+                console.log("Loaded geometry attributes:", Object.keys(geo.attributes));
+                if (geo.hasAttribute("color")) {
+                    console.log("✓ Color attribute found");
+                    const colorAttr = geo.getAttribute("color");
+                    console.log(`  - Array type: ${colorAttr.array.constructor.name}`);
+                    console.log(`  - Item size: ${colorAttr.itemSize}`);
+                    console.log(`  - First 9 values (RGB, RGB, RGB): ${Array.from(colorAttr.array.slice(0, 9))}`);
+                } else {
+                    console.log("✗ No color attribute");
+                }
+
                 geo.computeVertexNormals();
                 geo.computeBoundingBox();
                 const c = new Vector3();
@@ -77,13 +89,37 @@ export function initMeshViewer(containerEl) {
                     currentObj.geometry.dispose();
                     currentObj.material.dispose();
                 }
-                currentObj = new Mesh(geo, new MeshStandardMaterial({ color: 0x99A3A4, roughness: 0.6, metalness: 0.2, side: 2 }));
+                // Use vertex colors if available, otherwise fall back to grey
+                const hasVertexColors = geo.hasAttribute("color");
+                let material;
+                if (hasVertexColors) {
+                    // MeshPhongMaterial shows vertex colors more clearly than MeshStandardMaterial
+                    material = new MeshPhongMaterial({
+                        vertexColors: true,
+                        side: 2,
+                        shininess: 30,
+                    });
+                } else {
+                    // Fallback to grey for meshes without color data
+                    material = new MeshStandardMaterial({
+                        color: 0x99A3A4,
+                        roughness: 0.6,
+                        metalness: 0.2,
+                        side: 2,
+                    });
+                }
+                currentObj = new Mesh(geo, material);
                 currentObj.scale.set(scale, scale, scale);
                 scene.add(currentObj);
                 camera.position.set(0, 0, 3.5);
                 controls.target.set(0, 0, 0);
                 controls.update();
-                if (onLoad) onLoad();
+                if (onLoad) {
+                    onLoad({
+                        hasVertexColors,
+                        attributes: Object.keys(geo.attributes || {}),
+                    });
+                }
             },
             null,
             (err) => console.error("PLY load error:", err),

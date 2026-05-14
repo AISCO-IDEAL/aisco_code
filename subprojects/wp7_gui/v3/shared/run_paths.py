@@ -17,6 +17,7 @@ from subprojects.wp7_gui.v3.core.settings import SETTINGS
 LOGGER = logging.getLogger(__name__)
 
 MESH_ASSEMBLY_CANDIDATES = (
+    "mesh_assembly_v4",
     "mesh_assembly_mode_v4",
     "mesh_assembly_mode_v3",
     "mesh_assembly_mode_v2",

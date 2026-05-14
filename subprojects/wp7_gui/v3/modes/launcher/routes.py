@@ -26,6 +26,7 @@ _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
 # Singletons shared across requests
 # ---------------------------------------------------------------------------
 _process_manager = ProcessManager(SETTINGS.logs_dir)
+_active_cfg_folder: str = ""  # updated on each run/start so the SSE stream can resolve epochs
 _config_manager = ConfigOverrideManager(
     root=SETTINGS.config_overrides_root,
     schema_path=SETTINGS.schema_path,
@@ -89,7 +90,31 @@ class RenameRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _get_total_epochs() -> int:
+def _get_total_epochs(cfg_folder: str = "") -> int:
+    """Return num_epochs, preferring the active override folder over wp4 defaults."""
+    # 1. Try the override folder first (when a config session is active)
+    if cfg_folder:
+        try:
+            from pathlib import Path
+            override_dir = Path(cfg_folder)
+            # Resolve the training config name from the override's general_config.yaml
+            gen_path = override_dir / "general_config.yaml"
+            training_name = "training_v0_config.yaml"
+            if gen_path.exists():
+                with gen_path.open(encoding="utf-8") as f:
+                    gen = yaml.safe_load(f) or {}
+                training_name = gen.get("active_configs", {}).get("training", training_name)
+            training_path = override_dir / training_name
+            if training_path.exists():
+                with training_path.open(encoding="utf-8") as f:
+                    tcfg = yaml.safe_load(f) or {}
+                epochs = tcfg.get("training_params", {}).get("num_epochs")
+                if epochs is not None:
+                    return int(epochs)
+        except Exception:
+            pass  # fall through to defaults
+
+    # 2. Fall back to wp4 defaults
     try:
         with SETTINGS.general_config_path.open(encoding="utf-8") as f:
             gen = yaml.safe_load(f) or {}
@@ -141,6 +166,8 @@ def launcher_subpage(request: Request, page_key: str, pipeline: str = "live"):
 # ---------------------------------------------------------------------------
 @router.post("/api/run/start")
 def run_start(payload: RunStartRequest) -> JSONResponse:
+    global _active_cfg_folder
+    _active_cfg_folder = payload.cfg_folder.strip() if payload.cfg_folder else ""
     assembly_id: int | None = None
     if payload.assembly_id not in (None, ""):
         try:
@@ -206,9 +233,9 @@ def run_progress() -> dict[str, Any]:
     state = _process_manager.get_state()
     log_path = state["log_path"]
     progress = (
-        log_parser.get_progress(log_path, _get_total_epochs())
+        log_parser.get_progress(log_path, _get_total_epochs(_active_cfg_folder))
         if log_path
-        else {"num_epochs": _get_total_epochs(), "current_epoch": -1, "progress_percent": 0.0, "completed": False}
+        else {"num_epochs": _get_total_epochs(_active_cfg_folder), "current_epoch": -1, "progress_percent": 0.0, "completed": False}
     )
     return {**progress, "running": state["running"], "return_code": state["return_code"]}
 
@@ -245,7 +272,7 @@ async def run_stream_logs() -> StreamingResponse:
                         yield sse.event("log", {"line": line})
                     epoch = log_parser.parse_epoch(text)
                     if epoch >= 0:
-                        yield sse.event("epoch", {"epoch": epoch, "total": _get_total_epochs()})
+                        yield sse.event("epoch", {"epoch": epoch, "total": _get_total_epochs(_active_cfg_folder)})
             if not state["running"]:
                 yield sse.event("done", {"return_code": state["return_code"]})
                 break
