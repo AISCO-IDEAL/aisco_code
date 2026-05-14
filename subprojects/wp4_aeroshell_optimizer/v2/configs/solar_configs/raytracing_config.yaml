@@ -106,7 +106,7 @@ RaytracingConfigV4:
     margin_factor: 8e-3
     origin_offset_eps: 1e-2
     sun_distance_factor: 1.0
-    face_chunk_size: 100
+    face_chunk_size: 1000
     blocker_chunk_size: 1000
     smoothing_mode: "soft_barycentric_transmittance"
     face_samples: 7
@@ -117,8 +117,8 @@ RaytracingConfigV4:
     bary_softness_tau: 2.5
     t_softness_tau: 300
     eps: 1e-8
-    use_chunk_checkpoint: true   # primary memory fix: O(F²) → O(F) autograd graph
-    use_torch_compile: true     # fuse inner kernels; first call ~30-60s compile
+    use_chunk_checkpoint: True   # primary memory fix: O(F²) → O(F) autograd graph
+    use_torch_compile: True     # fuse inner kernels; first call up to ~30-60s compile
     diagnostics_enabled: False
     diagnostics_log_histograms: False
     diagnostics_sample_limit: 4096
