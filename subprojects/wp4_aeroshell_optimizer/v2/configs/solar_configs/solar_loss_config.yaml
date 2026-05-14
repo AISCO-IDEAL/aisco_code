@@ -8,10 +8,10 @@
 #   last_updated: 2026-01-19  # NOT USED — never read by any code
 #   description: "Configuration file for solar loss functions."  # NOT USED — never read by any code
 
-# NOT USED — ENTIRE SECTION: general_config is never read by any code
-general_config:
-  # replaced in SolarLossConfigV3: solar_angle: [0.0,1.0,1.0] # This is the direction in which a perfect solar cell should point, i.e. [0,0,1] if the sun shines from above
-  area_budget: 4000000 #in mm^3
+# # NOT USED — ENTIRE SECTION: general_config is never read by any code
+# general_config:
+#   # replaced in SolarLossConfigV3: solar_angle: [0.0,1.0,1.0] # This is the direction in which a perfect solar cell should point, i.e. [0,0,1] if the sun shines from above
+#   area_budget: 4000000 #in mm^3
 
 # USED !!!
 SolarLossConfigV3:
@@ -173,7 +173,7 @@ SolarLossConfigSR:
   soft_mask_selection_threshold: 0.5
   soft_mask_full_selection_threshold: 0.95
   eps: 1e-12
-  smooth_gradient_iters: 6  # Laplacian smoothing passes on dL/dv before SDF projection; 0 = off
+  smooth_gradient_iters: 3  # Laplacian smoothing passes on dL/dv before SDF projection; 0 = off
 
 SolarLossConfigSRRT:
   method: "mesh_sdf" # Do not touch
