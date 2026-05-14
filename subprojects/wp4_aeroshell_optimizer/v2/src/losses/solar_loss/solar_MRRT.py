@@ -39,9 +39,10 @@ class SolarMRRT(ParentLoss):
         self.use_activation_checkpointing = bool(cfg.get("use_activation_checkpointing", True))
         self.smooth_gradient_iters = int(cfg.get("smooth_gradient_iters", 0))
 
-        source = cfg.get("solar_vector_source", "route_v2")
-        if source == "route_v2":
-            from subprojects.wp3_solar_estimator.australia.route_v3 import RouteV3
+        source = cfg.get("solar_vector_source", "route_v3")
+        if source == "route_v3":
+            from subprojects.wp3_solar_estimator.australia.route_v3 import RouteV3  # noqa: PLC0415 , avoid unnecessary import
+
             route = RouteV3(cfg_path=cfg.get("route_cfg_path", "solar_configs/australia.yaml"), mode="race")
             self.solar_vectors = route.solar_vectors(subsample=cfg.get("subsample_n") or None)
         elif source == "custom":

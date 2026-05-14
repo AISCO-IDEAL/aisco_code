@@ -28,7 +28,7 @@ def _efficient_cumsum(x: torch.Tensor, dim: int = 0) -> torch.Tensor:
     return torch.cumsum(x.cpu(), dim=dim).to(x.device)
 
 
-def solar_loss_mrrt(
+def solar_loss_mrrt(  # noqa: PLR0915
     vertices: torch.Tensor,
     faces: torch.Tensor,
     solar_vectors: torch.Tensor,
@@ -110,7 +110,6 @@ def solar_loss_mrrt(
 
     quality_order_desc = torch.argsort(avg_quality, descending=True)
     sorted_areas_m2 = face_area_m2[quality_order_desc]
-    sorted_avg_quality = avg_quality[quality_order_desc]
 
     cumulative_area_m2 = _efficient_cumsum(sorted_areas_m2, dim=0)
     area_budget_m2 = area_budget_mm2 * 1e-6
@@ -135,6 +134,7 @@ def solar_loss_mrrt(
             def _get_vis(vtx: torch.Tensor) -> torch.Tensor:
                 vis, _, _ = _vis_fn(vtx, faces, s, mesh_cfg=mesh_cfg, normal_source="mesh")
                 return vis
+
             return _get_vis
 
         if use_activation_checkpointing and vertices.requires_grad:
@@ -155,8 +155,7 @@ def solar_loss_mrrt(
         if shading_penalty_weight > 0:
             nf_k_diag = 1 - _lambda * torch.pow(1 + epsilon - vis_k_diag, 1 / kappa)
             penalty_acc = penalty_acc + (
-                shading_penalty_weight
-                * ((1 - nf_k_diag) * torch.clamp(quality_k.detach(), min=0.0) * soft_mask_original).sum()
+                shading_penalty_weight * ((1 - nf_k_diag) * torch.clamp(quality_k.detach(), min=0.0) * soft_mask_original).sum()
             )
 
     power_watts = power_acc / K

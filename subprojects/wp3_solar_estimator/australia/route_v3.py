@@ -7,7 +7,10 @@ import pytz
 import torch
 
 from subprojects.wp3_solar_estimator.australia.routeloader import Routeloader
-from subprojects.wp3_solar_estimator.australia.sun import get_solar_car_vec, get_solar_car_vecs_batch, get_solar_car_vecs_one_to_one
+from subprojects.wp3_solar_estimator.australia.sun import (
+    get_solar_car_vecs_batch,
+    get_solar_car_vecs_one_to_one,
+)
 from subprojects.wp4_aeroshell_optimizer import load_config
 
 
@@ -74,9 +77,7 @@ class RouteV3:
                     current_time += time_delta
 
                 if current_time > self.end_time:
-                    raise ValueError(
-                        f"Generated time {current_time} exceeds expected end time {self.end_time}."
-                    )
+                    raise ValueError(f"Generated time {current_time} exceeds expected end time {self.end_time}.")
 
         else:  # time_sweep
             interval = config["route_generation"]["intervals"]
@@ -86,9 +87,7 @@ class RouteV3:
             self.start_time = tz.localize(self.start_time)
             self.times = [
                 self.start_time
-                + datetime.timedelta(
-                    hours=racing_window[0] + i * (racing_window[1] - racing_window[0]) / num_solar_samples
-                )
+                + datetime.timedelta(hours=racing_window[0] + i * (racing_window[1] - racing_window[0]) / num_solar_samples)
                 for i in range(num_solar_samples)
             ]
 
@@ -157,10 +156,14 @@ class RouteV3:
         az_stats = self.azimuth_stats()
         print(f"RouteV3 summary (mode={self._mode!r})")
         print(f"  route points: {self.num_points}, solar vectors: {len(vecs)}")
-        print(f"  elevation (deg): min={elev_stats['min']:.1f}  max={elev_stats['max']:.1f}  "
-              f"mean={elev_stats['mean']:.1f}  std={elev_stats['std']:.1f}")
-        print(f"  azimuth   (deg): min={az_stats['min']:.1f}  max={az_stats['max']:.1f}  "
-              f"mean={az_stats['mean']:.1f}  std={az_stats['std']:.1f}")
+        print(
+            f"  elevation (deg): min={elev_stats['min']:.1f}  max={elev_stats['max']:.1f}  "
+            f"mean={elev_stats['mean']:.1f}  std={elev_stats['std']:.1f}"
+        )
+        print(
+            f"  azimuth   (deg): min={az_stats['min']:.1f}  max={az_stats['max']:.1f}  "
+            f"mean={az_stats['mean']:.1f}  std={az_stats['std']:.1f}"
+        )
         print(f"  below horizon: {self.below_horizon_count()}")
 
     # --- backward-compat helpers ---
