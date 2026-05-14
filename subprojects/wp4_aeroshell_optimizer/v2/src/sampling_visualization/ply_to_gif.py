@@ -49,7 +49,7 @@ BACKGROUND_COLOR: list[float] = _CFG["background_color"]
 _ASSEMBLY_CFG = _CFG.get("visual_types", {}).get("mesh_assembly_v4", {})
 _COMPONENT_COLORS: list[tuple[list[float] | None, float | None]] = [
     (_ASSEMBLY_CFG.get("inner_color"), None),
-    (_ASSEMBLY_CFG.get("sdf_color"),   _ASSEMBLY_CFG.get("sdf_alpha")),
+    (_ASSEMBLY_CFG.get("sdf_color"), _ASSEMBLY_CFG.get("sdf_alpha")),
     (_ASSEMBLY_CFG.get("outer_color"), _ASSEMBLY_CFG.get("outer_alpha")),
 ]
 
@@ -180,9 +180,7 @@ def _split_combined_bbox_mesh(
             if cfg_rgb is not None:
                 r, g, b = (int(c * 255) for c in cfg_rgb)
                 a = int(cfg_alpha * 255) if cfg_alpha is not None else alpha_val
-                sub.visual.vertex_colors = np.full(
-                    (len(sub.vertices), 4), [r, g, b, a], dtype=np.uint8
-                )
+                sub.visual.vertex_colors = np.full((len(sub.vertices), 4), [r, g, b, a], dtype=np.uint8)
         result.append((sub, wireframe))
 
     return result if len(result) >= 2 else None

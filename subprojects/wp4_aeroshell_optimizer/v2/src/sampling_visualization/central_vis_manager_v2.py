@@ -129,7 +129,10 @@ class _BaseVisManager:
             outer_color = tuple(cfg.get("outer_color", [1.0, 0.35, 0.15]))  # type: ignore[arg-type]
             outer_alpha = float(cfg.get("outer_alpha", 0.2))
             self.set_assembly_meshes(
-                inner_v, inner_f, outer_v, outer_f,
+                inner_v,
+                inner_f,
+                outer_v,
+                outer_f,
                 sdf_color=sdf_color,
                 inner_color=inner_color,
                 outer_color=outer_color,
