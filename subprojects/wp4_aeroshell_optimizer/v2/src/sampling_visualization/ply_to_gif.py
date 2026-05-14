@@ -771,63 +771,78 @@ def generate_gifs_slotted(base_dir: Path, max_frames: int | None = None) -> None
 
     for slot_idx in sorted(slot_indices):
         slot_name = f"slot_{slot_idx:02d}"
-        slot_files: list[Path] = [
-            ep_dir / slot_name / "mesh.ply"
-            for ep_dir in epoch_subdirs
-            if (ep_dir / slot_name / "mesh.ply").exists()
-        ]
-        if not slot_files:
-            continue
-
-        if max_frames is not None and len(slot_files) > max_frames:
-            indices = np.round(np.linspace(0, len(slot_files) - 1, max_frames)).astype(int)
-            slot_files = [slot_files[i] for i in indices]
-
-        print(
-            json.dumps(
-                {
-                    "event": "gif_slotted_render_started",
-                    "base_dir": str(base_dir),
-                    "slot": slot_name,
-                    "n_frames": len(slot_files),
-                }
-            )
-        )
-
-        all_verts = [v for v in (_get_vertices(fp) for fp in slot_files) if v is not None]
-        if not all_verts:
-            continue
-        cam_pose = _compute_camera_pose(
-            np.vstack(all_verts),
-            direction=CAMERA_DIRECTION,
-            distance_mult=CAMERA_DISTANCE_MULTIPLIER,
-            elevation_angle=CAMERA_ELEVATION_ANGLE,
-        )
-
-        gif_fps: int = _CFG.get("gif", {}).get("fps", FPS)
-        renderer = pyrender.OffscreenRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, point_size=POINT_SIZE)
         try:
-            frames = [
-                _render_frame(renderer, fp, cam_pose, camera_direction=CAMERA_DIRECTION, add_overlay=True)
-                for fp in slot_files
+            slot_files: list[Path] = [
+                ep_dir / slot_name / "mesh.ply"
+                for ep_dir in epoch_subdirs
+                if (ep_dir / slot_name / "mesh.ply").exists()
             ]
-        finally:
-            renderer.delete()
+            if not slot_files:
+                continue
 
-        # Write animation.gif alongside the PLY in the last epoch's slot dir.
-        output_path = last_epoch_dir / slot_name / "animation.gif"
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        imageio.mimsave(str(output_path), frames, fps=gif_fps)  # type: ignore[arg-type]
+            if max_frames is not None and len(slot_files) > max_frames:
+                indices = np.round(np.linspace(0, len(slot_files) - 1, max_frames)).astype(int)
+                slot_files = [slot_files[i] for i in indices]
 
-        print(
-            json.dumps(
-                {
-                    "event": "gif_slotted_render_completed",
-                    "output_path": str(output_path),
-                    "n_frames": len(frames),
-                }
+            print(
+                json.dumps(
+                    {
+                        "event": "gif_slotted_render_started",
+                        "base_dir": str(base_dir),
+                        "slot": slot_name,
+                        "n_frames": len(slot_files),
+                    }
+                )
             )
-        )
+
+            all_verts = [v for v in (_get_vertices(fp) for fp in slot_files) if v is not None]
+            if not all_verts:
+                continue
+            cam_pose = _compute_camera_pose(
+                np.vstack(all_verts),
+                direction=CAMERA_DIRECTION,
+                distance_mult=CAMERA_DISTANCE_MULTIPLIER,
+                elevation_angle=CAMERA_ELEVATION_ANGLE,
+            )
+
+            gif_fps: int = _CFG.get("gif", {}).get("fps", FPS)
+            renderer = pyrender.OffscreenRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, point_size=POINT_SIZE)
+            try:
+                frames = [
+                    _render_frame(renderer, fp, cam_pose, camera_direction=CAMERA_DIRECTION, add_overlay=True)
+                    for fp in slot_files
+                ]
+            finally:
+                renderer.delete()
+
+            # Write animation.gif alongside the PLY in the last epoch's slot dir.
+            output_path = last_epoch_dir / slot_name / "animation.gif"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            imageio.mimsave(str(output_path), frames, fps=gif_fps)  # type: ignore[arg-type]
+
+            print(
+                json.dumps(
+                    {
+                        "event": "gif_slotted_render_completed",
+                        "output_path": str(output_path),
+                        "slot": slot_name,
+                        "n_frames": len(frames),
+                    }
+                )
+            )
+        except BaseException as exc:
+            print(
+                json.dumps(
+                    {
+                        "event": "gif_slotted_render_failed",
+                        "base_dir": str(base_dir),
+                        "slot": slot_name,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
+                )
+            )
+            continue
 
 
 def parse_args() -> argparse.Namespace:

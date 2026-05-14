@@ -47,7 +47,7 @@ def render_gif_task(type_dir: Path) -> tuple[bool, str, str | None]:
 
         generate_gifs_flat(type_dir)
         return (True, str(type_dir), None)
-    except Exception as exc:
+    except BaseException as exc:
         return (False, str(type_dir), str(exc))
 
 
@@ -65,7 +65,7 @@ def render_slotted_gif_task(base_dir: Path) -> tuple[bool, str, str | None]:
 
         generate_gifs_slotted(base_dir)
         return (True, str(base_dir), None)
-    except Exception as exc:
+    except BaseException as exc:
         return (False, str(base_dir), str(exc))
 
 
@@ -79,5 +79,5 @@ def render_survey_task(survey_dir: Path, layout: str = "strip") -> tuple[bool, s
 
         out = generate_survey_png(survey_dir, layout=layout)
         return (True, str(out), None)
-    except Exception as exc:
+    except BaseException as exc:
         return (False, str(survey_dir), str(exc))

@@ -94,6 +94,7 @@ class _BaseVisManager:
         self._pending_ply: list[concurrent.futures.Future[tuple[bool, str, str | None]]] = []
         self._ply_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
         self._finalized = False
+        self._finalizing = False
         self._active_slot: int | None = None
         self._assembly_meshes: tuple | None = None
         atexit.register(self.finalize)
@@ -356,101 +357,106 @@ class _BaseVisManager:
         Also respects ``vis_config.latent_pretraining.latent_space_exploration``
         for any post-training circle survey that was queued before finalize().
         """
-        if self._finalized:
+        if self._finalized or self._finalizing:
             return
-        self._finalized = True
+        self._finalizing = True
 
-        _log({"event": "finalize_started", "run_id": self.run_id, "pending_ply": len(self._pending_ply)})
+        try:
+            _log({"event": "finalize_started", "run_id": self.run_id, "pending_ply": len(self._pending_ply)})
 
-        done, _ = concurrent.futures.wait(self._pending_ply) if self._pending_ply else (set(), set())
-        for f in done:
-            ok, path, err = f.result()
-            if not ok:
-                _log({"event": "ply_write_failed", "run_id": self.run_id, "path": path, "error": err})
-        self._ply_pool.shutdown(wait=False)
+            done, _ = concurrent.futures.wait(self._pending_ply) if self._pending_ply else (set(), set())
+            for f in done:
+                ok, path, err = f.result()
+                if not ok:
+                    _log({"event": "ply_write_failed", "run_id": self.run_id, "path": path, "error": err})
+            self._ply_pool.shutdown(wait=False)
 
-        # Circle survey snapshots: each circle_survey/epoch_XXXXX/ dir becomes a
-        # single composite PNG (strip or grid) — not a GIF.
-        survey_layout = str(self._cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {}).get("layout", "strip"))
-        survey_dirs = sorted(
-            d
-            for d in self._written_dirs
-            if d.is_dir()
-            and d.relative_to(self.run_dir).parts[0] == "circle_survey"
-            and any(
-                (f.name.startswith("angle_") or f.name.startswith("x_") or f.name.startswith("r")) and f.name.endswith(".ply")
-                for f in d.iterdir()
+            # Circle survey snapshots: each circle_survey/epoch_XXXXX/ dir becomes a
+            # single composite PNG (strip or grid) — not a GIF.
+            survey_layout = str(self._cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {}).get("layout", "strip"))
+            survey_dirs = sorted(
+                d
+                for d in self._written_dirs
+                if d.is_dir()
+                and d.relative_to(self.run_dir).parts[0] == "circle_survey"
+                and any(
+                    (f.name.startswith("angle_") or f.name.startswith("x_") or f.name.startswith("r")) and f.name.endswith(".ply")
+                    for f in d.iterdir()
+                )
             )
-        )
-        for d in survey_dirs:
-            n = sum(
-                1 for f in d.iterdir() if (f.name.startswith("angle_") or f.name.startswith("x_")) and f.name.endswith(".ply")
-            )
-            _log({"event": "survey_png_started", "run_id": self.run_id, "dir": str(d.relative_to(self.run_dir)), "n_plys": n})
-            ok, path, err = render_survey_task(d, layout=survey_layout)
-            _log(
-                {
-                    "event": "survey_png_completed" if ok else "survey_png_failed",
-                    "run_id": self.run_id,
-                    "path": path,
-                    "error": err,
-                }
-            )
+            for d in survey_dirs:
+                n = sum(
+                    1 for f in d.iterdir() if (f.name.startswith("angle_") or f.name.startswith("x_")) and f.name.endswith(".ply")
+                )
+                _log({"event": "survey_png_started", "run_id": self.run_id, "dir": str(d.relative_to(self.run_dir)), "n_plys": n})
+                ok, path, err = render_survey_task(d, layout=survey_layout)
+                _log(
+                    {
+                        "event": "survey_png_completed" if ok else "survey_png_failed",
+                        "run_id": self.run_id,
+                        "path": path,
+                        "error": err,
+                    }
+                )
 
-        # All other visual types: convergence GIFs.
-        gif_dirs = [
-            d
-            for d in collect_gif_dirs(self._visual_types, self.run_dir, self._written_dirs)
-            if d not in survey_dirs and d.parent not in survey_dirs
-        ]
-        if not gif_dirs and not survey_dirs:
-            _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": 0})
-            return
+            # All other visual types: convergence GIFs.
+            gif_dirs = [
+                d
+                for d in collect_gif_dirs(self._visual_types, self.run_dir, self._written_dirs)
+                if d not in survey_dirs and d.parent not in survey_dirs
+            ]
+            if not gif_dirs and not survey_dirs:
+                _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": 0})
+                self._finalized = True
+                return
 
-        for d in gif_dirs:
-            n = sum(1 for f in d.iterdir() if f.name.startswith("epoch_") and f.name.endswith(".ply"))
-            _log({"event": "gif_started", "run_id": self.run_id, "visual_type": str(d.relative_to(self.run_dir)), "n_frames": n})
-            ok, path, err = render_gif_task(d)
-            _log({"event": "gif_completed" if ok else "gif_failed", "run_id": self.run_id, "path": path, "error": err})
+            for d in gif_dirs:
+                n = sum(1 for f in d.iterdir() if f.name.startswith("epoch_") and f.name.endswith(".ply"))
+                _log({"event": "gif_started", "run_id": self.run_id, "visual_type": str(d.relative_to(self.run_dir)), "n_frames": n})
+                ok, path, err = render_gif_task(d)
+                _log({"event": "gif_completed" if ok else "gif_failed", "run_id": self.run_id, "path": path, "error": err})
 
-        # Epoch-first slotted layout: base_dir/epoch_XXXXX/slot_XX.ply → per-slot GIFs.
-        # Detect written base dirs that contain epoch_XXXXX/ subdirs with slot PLYs.
-        import re as _re  # noqa: PLC0415
+            # Epoch-first slotted layout: base_dir/epoch_XXXXX/slot_XX.ply → per-slot GIFs.
+            # Detect written base dirs that contain epoch_XXXXX/ subdirs with slot PLYs.
+            import re as _re  # noqa: PLC0415
 
-        _epoch_dir_pat = _re.compile(r"^epoch_(\d{5})$")
-        _slot_subdir_pat = _re.compile(r"^slot_(\d{2})$")
-        slotted_gif_dirs: list[Path] = []
-        for base_dir in sorted(self._written_dirs):
-            if not base_dir.is_dir():
-                continue
-            has_slot_subdirs = any(
-                sd.is_dir() and _slot_subdir_pat.match(sd.name)
-                for ep_dir in base_dir.iterdir()
-                if ep_dir.is_dir() and _epoch_dir_pat.match(ep_dir.name)
-                for sd in ep_dir.iterdir()
-            )
-            if has_slot_subdirs:
-                slotted_gif_dirs.append(base_dir)
+            _epoch_dir_pat = _re.compile(r"^epoch_(\d{5})$")
+            _slot_subdir_pat = _re.compile(r"^slot_(\d{2})$")
+            slotted_gif_dirs: list[Path] = []
+            for base_dir in sorted(self._written_dirs):
+                if not base_dir.is_dir():
+                    continue
+                has_slot_subdirs = any(
+                    sd.is_dir() and _slot_subdir_pat.match(sd.name)
+                    for ep_dir in base_dir.iterdir()
+                    if ep_dir.is_dir() and _epoch_dir_pat.match(ep_dir.name)
+                    for sd in ep_dir.iterdir()
+                )
+                if has_slot_subdirs:
+                    slotted_gif_dirs.append(base_dir)
 
-        for base_dir in slotted_gif_dirs:
-            _log(
-                {
-                    "event": "slotted_gif_started",
-                    "run_id": self.run_id,
-                    "visual_type": str(base_dir.relative_to(self.run_dir)),
-                }
-            )
-            ok, path, err = render_slotted_gif_task(base_dir)
-            _log(
-                {
-                    "event": "slotted_gif_completed" if ok else "slotted_gif_failed",
-                    "run_id": self.run_id,
-                    "path": path,
-                    "error": err,
-                }
-            )
+            for base_dir in slotted_gif_dirs:
+                _log(
+                    {
+                        "event": "slotted_gif_started",
+                        "run_id": self.run_id,
+                        "visual_type": str(base_dir.relative_to(self.run_dir)),
+                    }
+                )
+                ok, path, err = render_slotted_gif_task(base_dir)
+                _log(
+                    {
+                        "event": "slotted_gif_completed" if ok else "slotted_gif_failed",
+                        "run_id": self.run_id,
+                        "path": path,
+                        "error": err,
+                    }
+                )
 
-        _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": len(gif_dirs), "survey_count": len(survey_dirs), "slotted_gif_count": len(slotted_gif_dirs)})
+            _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": len(gif_dirs), "survey_count": len(survey_dirs), "slotted_gif_count": len(slotted_gif_dirs)})
+            self._finalized = True
+        finally:
+            self._finalizing = False
 
     def __del__(self) -> None:
         with contextlib.suppress(Exception):
