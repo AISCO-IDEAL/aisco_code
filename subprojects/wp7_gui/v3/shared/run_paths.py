@@ -121,17 +121,23 @@ def collect_run_dirs(storage_root: Path) -> list[Path]:
     return run_dirs
 
 
-def detect_current_run_dir(storage_root: Path) -> Path | None:
-    """Return the most-recently-modified run dir that has artifacts."""
+def detect_current_run_dir(storage_root: Path, preferred_cfg_session: str | None = None) -> Path | None:
+    """Return the current run dir.
+
+    Selection policy:
+    1) If preferred_cfg_session is provided, return the newest run tagged with
+       that GUI config session.
+    2) Otherwise, return the newest run by modification time.
+    """
     run_dirs = collect_run_dirs(storage_root)
     if not run_dirs:
         return None
-    with_gifs = [p for p in run_dirs if has_any_gif_artifacts(p)]
-    if with_gifs:
-        return max(with_gifs, key=lambda p: p.stat().st_mtime)
-    with_artifacts = [p for p in run_dirs if has_display_artifacts(p)]
-    if with_artifacts:
-        return max(with_artifacts, key=lambda p: p.stat().st_mtime)
+
+    if preferred_cfg_session:
+        tagged = [p for p in run_dirs if read_cfg_session(p) == preferred_cfg_session]
+        if tagged:
+            return max(tagged, key=lambda p: p.stat().st_mtime)
+
     return max(run_dirs, key=lambda p: p.stat().st_mtime)
 
 

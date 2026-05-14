@@ -99,7 +99,7 @@ def _get_total_epochs(cfg_folder: str = "") -> int:
             override_dir = Path(cfg_folder)
             # Resolve the training config name from the override's general_config.yaml
             gen_path = override_dir / "general_config.yaml"
-            training_name = "training_v0_config.yaml"
+            training_name = "training_config.yaml"
             if gen_path.exists():
                 with gen_path.open(encoding="utf-8") as f:
                     gen = yaml.safe_load(f) or {}
@@ -118,7 +118,7 @@ def _get_total_epochs(cfg_folder: str = "") -> int:
     try:
         with SETTINGS.general_config_path.open(encoding="utf-8") as f:
             gen = yaml.safe_load(f) or {}
-        training_name = gen.get("active_configs", {}).get("training", "training_v0_config.yaml")
+        training_name = gen.get("active_configs", {}).get("training", "training_config.yaml")
         training_path = SETTINGS.wp4_configs_dir / training_name
         with training_path.open(encoding="utf-8") as f:
             tcfg = yaml.safe_load(f) or {}
@@ -248,7 +248,8 @@ def run_progress() -> dict[str, Any]:
 @router.get("/api/run/artifacts")
 def run_artifacts() -> dict[str, Any]:
     storage_root = default_storage_root()
-    run_dir = detect_current_run_dir(storage_root)
+    active_cfg_session = Path(_runtime_state["active_cfg_folder"]).name if _runtime_state["active_cfg_folder"] else None
+    run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=active_cfg_session)
     if run_dir is None:
         return {
             "run_dir": None,
@@ -294,7 +295,8 @@ async def run_stream_artifacts() -> StreamingResponse:
         while True:
             state = _process_manager.get_state()
             storage_root = default_storage_root()
-            run_dir = detect_current_run_dir(storage_root)
+            active_cfg_session = Path(_runtime_state["active_cfg_folder"]).name if _runtime_state["active_cfg_folder"] else None
+            run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=active_cfg_session)
             if run_dir is not None:
                 new_events, seen = fs_poller.poll_once(run_dir, seen)
                 for ev in new_events:
