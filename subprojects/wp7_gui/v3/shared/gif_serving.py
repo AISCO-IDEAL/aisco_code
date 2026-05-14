@@ -16,7 +16,7 @@ def _resolve_under_root(storage_root: Path, rel_path: str) -> Path | None:
     try:
         resolved = (storage_root / rel_path.lstrip("/")).resolve()
         resolved.relative_to(storage_root.resolve())
-    except Exception:
+    except (ValueError, OSError):
         return None
     return resolved
 

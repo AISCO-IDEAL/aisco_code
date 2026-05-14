@@ -16,40 +16,38 @@
 </div>
 
 <script>
-const grid = document.getElementById("grid");
-const info = document.getElementById("info");
+  const grid = document.getElementById("grid");
+  const info = document.getElementById("info");
 
-function bust(u) { return u + (u.includes("?") ? "&" : "?") + "t=" + Date.now(); }
-
-async function load() {
-  grid.innerHTML = '<div style="color:#496456; font-style:italic; padding:30px; grid-column:1/-1; text-align:center;">Loading…</div>';
-  try {
-    const d = await (await fetch("/viewer/api/pretraining/gifs")).json();
-    const gifs = d.gifs || [];
-    info.textContent = `${gifs.length} GIF(s)${d.storage_root ? " · " + d.storage_root : ""}`;
-    if (!gifs.length) {
-      grid.innerHTML = '<div style="color:#496456; font-style:italic; padding:30px; grid-column:1/-1; text-align:center;">No pretraining GIFs found.</div>';
-      return;
-    }
-    grid.innerHTML = "";
-    gifs.forEach(g => {
-      const card = document.createElement("div");
-      card.className = "visual-card";
-      card.innerHTML = `
+  async function load() {
+    grid.innerHTML = '<div style="color:#496456; font-style:italic; padding:30px; grid-column:1/-1; text-align:center;">Loading…</div>';
+    try {
+      const d = await (await fetch("/viewer/api/pretraining/gifs")).json();
+      const gifs = d.gifs || [];
+      info.textContent = `${gifs.length} GIF(s)`;
+      if (!gifs.length) {
+        grid.innerHTML = '<div style="color:#496456; font-style:italic; padding:30px; grid-column:1/-1; text-align:center;">No pretraining GIFs found.</div>';
+        return;
+      }
+      grid.innerHTML = "";
+      gifs.forEach(g => {
+        const card = document.createElement("div");
+        card.className = "visual-card";
+        card.innerHTML = `
         <div class="visual-title">${g.name || "(unnamed)"}</div>
         <div class="image-slot">
           <img src="${bust(g.url)}" alt="${g.name}" style="display:block;">
         </div>
         <div class="hint" style="font-size:0.76rem; word-break:break-all;">${g.rel_path || ""}</div>
       `;
-      grid.appendChild(card);
-    });
-  } catch (err) {
-    grid.innerHTML = `<div style="color:var(--accent); padding:14px; grid-column:1/-1;">Failed: ${err.message}</div>`;
+        grid.appendChild(card);
+      });
+    } catch (err) {
+      grid.innerHTML = `<div style="color:var(--accent); padding:14px; grid-column:1/-1;">Failed: ${err.message}</div>`;
+    }
   }
-}
 
-document.getElementById("btnRefresh").addEventListener("click", load);
-load();
+  document.getElementById("btnRefresh").addEventListener("click", load);
+  load();
 </script>
 {% endblock %}

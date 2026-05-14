@@ -68,7 +68,7 @@ class Optimiser:
                 )
                 if current_loss < best_loss:
                     best_loss, best_epoch, best_state = current_loss, epoch, deepcopy(training_context.model.state_dict())
-                self._periodic_save(training_context, epoch, avg_train_loss, val_metrics["loss"])
+                self._periodic_save(training_context, epoch)
         if best_state is not None:
             training_context.model.load_state_dict(best_state)
         if not disable_pbar:
@@ -278,7 +278,7 @@ class Optimiser:
         )
         csv_file.flush()
 
-    def _periodic_save(self, training_context, epoch: int, avg_train_loss: float, val_loss: float) -> None:
+    def _periodic_save(self, training_context, epoch: int) -> None:
         if (
             self.config["optimizer"]["args"].get("save_every_epochs", 0) <= 0
             or (epoch + 1) % self.config["optimizer"]["args"]["save_every_epochs"] != 0
@@ -287,13 +287,6 @@ class Optimiser:
             return
         try:
             training_context.save_ckpt()
-            training_context.tracker.save_checkpoint_artifact(
-                epoch=epoch + 1,
-                train_loss=avg_train_loss,
-                val_loss=val_loss,
-                is_best=False,
-                config_dict=training_context.full_config_dict,
-            )
             if training_context.setup_config.get("test_during_training", False):
                 training_context.test()
         except Exception as exc:

@@ -14,11 +14,13 @@ from fastapi.responses import FileResponse
 
 
 class AssemblySelectionService:
-    def __init__(self, repo_root: Path) -> None:
-        self._wp2_dir = repo_root / "wp2_assembler" / "version4" / "GUI_helpers"
-        self._params_path = self._wp2_dir / "parameters.yaml"
-        self._assembly_ply = self._wp2_dir / "assembly.ply"
-        self._script = self._wp2_dir / "GUI_assembly.py"
+    def __init__(self, repo_root: Path, subdir: str = "") -> None:
+        self._script = repo_root / "wp2_assembler" / "version4" / "GUI_helpers" / "GUI_assembly.py"
+        # GUI_assembly.py writes all I/O to frontend/assembly/<subdir>/
+        base = repo_root / "wp7_gui" / "v3" / "frontend" / "assembly"
+        self._assembly_dir = base / subdir if subdir else base
+        self._params_path = self._assembly_dir / "parameters.yaml"
+        self._assembly_ply = self._assembly_dir / "assembly.ply"
         self._lock = threading.Lock()
         self._module: Any | None = None
 
@@ -62,7 +64,7 @@ class AssemblySelectionService:
         if fn is None:
             raise HTTPException(status_code=500, detail={"message": "GUI_assembly.py missing call_assembly_from_params"})
         try:
-            fn()
+            fn(output_dir=self._assembly_dir)
         except Exception as exc:
             raise HTTPException(status_code=500, detail={"message": f"Assembly rebuild failed: {exc}"}) from exc
 
@@ -132,3 +134,14 @@ class AssemblySelectionService:
         if not self._assembly_ply.is_file():
             raise HTTPException(status_code=404, detail={"message": f"assembly.ply not found at {self._assembly_ply}"})
         return FileResponse(str(self._assembly_ply), media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
+
+    def get_checks(self) -> dict:
+        checks_path = self._assembly_dir / "checks.txt"
+        if not checks_path.exists():
+            return {"warnings": [], "ok": True}
+        try:
+            lines = checks_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return {"warnings": [], "ok": True}
+        warnings = [warn.strip() for warn in lines if warn.strip().upper().startswith("[WARNING]")]
+        return {"warnings": warnings, "ok": len(warnings) == 0}
