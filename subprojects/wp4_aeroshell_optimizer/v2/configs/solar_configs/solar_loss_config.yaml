@@ -191,8 +191,8 @@ SolarLossConfigSRRT:
   _lambda: 1.0
   eps: 1e-12
   use_activation_checkpointing: false
-  skip_diagnostic_rt_pass: false  # Skip second RT pass when checkpointing; trades diagnostics for speed
-  skip_backface_receivers: false  # Skip RT for back-facing faces (normal · sun_dir ≤ 0); requires full occluder coverage
+  skip_diagnostic_rt_pass: true  # Skip second RT pass when checkpointing; trades diagnostics for speed
+  skip_backface_receivers: true  # Skip RT for back-facing faces (normal · sun_dir ≤ 0); requires full occluder coverage
   raytracing_version: "v4"  # Uses RaytracingConfigV3 from raytracing_config.yaml
   smooth_gradient_iters: 8  # Laplacian smoothing passes on dL/dv before SDF projection; 0 = off
 
@@ -208,6 +208,7 @@ SolarLossConfigMR:
   soft_mask_full_selection_threshold: 0.95
   eps: 1e-12
   solar_vector_source: route_v3  # "route_v3" | "custom"
+  route_mode: "race"  # "race" | other modes from RouteV3; only used when solar_vector_source=route_v3
   custom_vectors_key: route_test  # key in test_solar_vectors.yaml; only used when solar_vector_source=custom
   subsample_n: null  # integer to subsample route vectors; null = use all
   smooth_gradient_iters: 6
@@ -227,8 +228,11 @@ SolarLossConfigMRRT:
   _lambda: 1.0
   eps: 1e-12
   use_activation_checkpointing: true
+  skip_diagnostic_rt_pass: true  # Skip second RT pass when checkpointing; trades diagnostics for speed
+  skip_backface_receivers: true  # Skip RT for back-facing faces per direction; requires full occluder coverage
   raytracing_version: "v4"
   solar_vector_source: route_v3  # "route_v3" | "custom"
+  route_mode: "race"  # "race" | other modes from RouteV3; only used when solar_vector_source=route_v3
   custom_vectors_key: route_test  # key in test_solar_vectors.yaml; only used when solar_vector_source=custom
   subsample_n: null  # integer to subsample route vectors; null = use all
   smooth_gradient_iters: 8

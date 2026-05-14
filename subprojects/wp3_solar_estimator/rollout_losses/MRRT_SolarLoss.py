@@ -14,8 +14,8 @@ from typing import Any
 import torch
 from torch.utils.checkpoint import checkpoint
 
-from subprojects.wp3_solar_estimator.raytracing.diffable.version3.mesh_ray_visibility_v3 import (
-    mesh_visibility_v3 as _default_mesh_visibility,
+from subprojects.wp3_solar_estimator.raytracing.diffable.version4.mesh_ray_visibility_v4 import (
+    mesh_visibility_v4 as _default_mesh_visibility,
 )
 from subprojects.wp3_solar_estimator.utils.rollout_utils.mesh_area_normals import compute_face_areas_and_normals
 from subprojects.wp3_solar_estimator.utils.solar_utils import averaging_solar_quality
@@ -43,6 +43,8 @@ def solar_loss_mrrt(  # noqa: PLR0915
     _lambda: float = 1.0,
     epsilon: float = 1e-12,
     use_activation_checkpointing: bool = True,
+    skip_diagnostic_rt_pass: bool = False,
+    skip_backface_receivers: bool = False,
     vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
     epoch_name: int | None = None,
     mesh_visibility_fn: Callable | None = None,
@@ -60,7 +62,7 @@ def solar_loss_mrrt(  # noqa: PLR0915
         faces: (M, 3) triangle face indices
         solar_vectors: (K, 3) sun direction vectors (normalised internally)
         area_budget_mm2: maximum selectable area in mm²
-        raytracing_cfg: dict with a "mesh" sub-dict passed directly to mesh_visibility_v3/v4
+        raytracing_cfg: dict with a "mesh" sub-dict passed directly to mesh_visibility_v4
         effective_irradiance_W_m2: electrical power output per m² of perfectly-aligned area
         sigmoid_sharpness: steepness of the soft budget boundary sigmoid
         soft_mask_selection_threshold: mask threshold for "selected" faces in diagnostics
@@ -71,9 +73,13 @@ def solar_loss_mrrt(  # noqa: PLR0915
         epsilon: numerical stability floor
         use_activation_checkpointing: when True and vertices.requires_grad, wraps each per-direction
             visibility compute in torch.utils.checkpoint; a second detached pass produces diagnostics
+        skip_diagnostic_rt_pass: when True and activation checkpointing is on, skips the second detached
+            RT pass; trades diagnostics (visibility, numerical_factor, penalty visuals) for speed
+        skip_backface_receivers: when True, filters receiver faces to sun-facing-only per direction
+            (where face_normal · sun_dir > 0); requires full occluder coverage
         vis_manager: pass NullVisManager() to skip PLY export
         epoch_name: epoch index forwarded to vis_manager; skipped when None
-        mesh_visibility_fn: override default mesh_visibility_v3 (e.g. pass mesh_visibility_v4)
+        mesh_visibility_fn: override default mesh_visibility_v4
 
     Returns:
         (power_watts, diagnostics) where diagnostics keys:
@@ -108,6 +114,12 @@ def solar_loss_mrrt(  # noqa: PLR0915
 
     avg_quality = averaging_solar_quality(face_normals_unit, solar_vectors_unit)  # (F,)
 
+    if skip_diagnostic_rt_pass and shading_penalty_weight > 0:
+        raise ValueError(
+            "skip_diagnostic_rt_pass=True is incompatible with shading_penalty_weight > 0 "
+            "when activation checkpointing is active"
+        )
+
     quality_order_desc = torch.argsort(avg_quality, descending=True)
     sorted_areas_m2 = face_area_m2[quality_order_desc]
 
@@ -123,59 +135,99 @@ def solar_loss_mrrt(  # noqa: PLR0915
     power_acc = torch.zeros((), device=vertices.device, dtype=vertices.dtype)
     visibility_acc = torch.zeros(faces.shape[0], device=vertices.device, dtype=vertices.dtype)
     penalty_acc = torch.zeros((), device=vertices.device, dtype=vertices.dtype)
+    sun_facing_acc = torch.zeros(faces.shape[0], device=vertices.device, dtype=vertices.dtype) if skip_backface_receivers else None
 
     for k in range(K):
         sun_k = solar_vectors_unit[k]
         quality_k = (face_normals_unit * sun_k).sum(-1)
 
+        sun_facing_indices_k = torch.where(quality_k > 0)[0] if skip_backface_receivers else None
+
         # Factory avoids Python late-binding closure bug: without this, all K closures would
         # capture the final value of sun_k at backward time rather than the value at loop iteration k.
-        def _make_vis_fn(s: torch.Tensor) -> Callable[[torch.Tensor], torch.Tensor]:
+        def _make_vis_fn(s: torch.Tensor, sfidx: torch.Tensor | None) -> Callable[[torch.Tensor], torch.Tensor]:
             def _get_vis(vtx: torch.Tensor) -> torch.Tensor:
-                vis, _, _ = _vis_fn(vtx, faces, s, mesh_cfg=mesh_cfg, normal_source="mesh")
+                if sfidx is not None:
+                    vis_rt, _, _ = _vis_fn(
+                        vtx, faces[sfidx], s,
+                        mesh_cfg=mesh_cfg, normal_source="mesh",
+                        occluder_faces=faces, receiver_face_indices=sfidx,
+                    )
+                    vis = torch.zeros(faces.shape[0], device=vtx.device, dtype=vtx.dtype)
+                    vis[sfidx] = vis_rt
+                else:
+                    vis, _, _ = _vis_fn(vtx, faces, s, mesh_cfg=mesh_cfg, normal_source="mesh")
                 return vis
 
             return _get_vis
 
         if use_activation_checkpointing and vertices.requires_grad:
-            vis_k = checkpoint(_make_vis_fn(sun_k), vertices, use_reentrant=False)
-            with torch.no_grad():
-                vis_k_diag, _, _ = _vis_fn(vertices, faces, sun_k, mesh_cfg=mesh_cfg, normal_source="mesh")
-                vis_k_diag = vis_k_diag.detach()
+            vis_k = checkpoint(_make_vis_fn(sun_k, sun_facing_indices_k), vertices, use_reentrant=False)
+            if skip_diagnostic_rt_pass:
+                vis_k_diag = None
+            else:
+                with torch.no_grad():
+                    if sun_facing_indices_k is not None:
+                        vis_rt, _, _ = _vis_fn(
+                            vertices, faces[sun_facing_indices_k], sun_k,
+                            mesh_cfg=mesh_cfg, normal_source="mesh",
+                            occluder_faces=faces, receiver_face_indices=sun_facing_indices_k,
+                        )
+                        vis_k_diag = torch.zeros(faces.shape[0], device=vertices.device, dtype=vertices.dtype)
+                        vis_k_diag[sun_facing_indices_k] = vis_rt.detach()
+                    else:
+                        vis_k_diag, _, _ = _vis_fn(vertices, faces, sun_k, mesh_cfg=mesh_cfg, normal_source="mesh")
+                        vis_k_diag = vis_k_diag.detach()
         else:
-            vis_k_diag, _, _ = _vis_fn(vertices, faces, sun_k, mesh_cfg=mesh_cfg, normal_source="mesh")
+            if sun_facing_indices_k is not None:
+                vis_rt, _, _ = _vis_fn(
+                    vertices, faces[sun_facing_indices_k], sun_k,
+                    mesh_cfg=mesh_cfg, normal_source="mesh",
+                    occluder_faces=faces, receiver_face_indices=sun_facing_indices_k,
+                )
+                vis_k_diag = torch.zeros(faces.shape[0], device=vertices.device, dtype=vertices.dtype)
+                vis_k_diag[sun_facing_indices_k] = vis_rt
+            else:
+                vis_k_diag, _, _ = _vis_fn(vertices, faces, sun_k, mesh_cfg=mesh_cfg, normal_source="mesh")
             vis_k = vis_k_diag
             vis_k_diag = vis_k_diag.detach()
 
         nf_k = 1 - _lambda * torch.pow(1 + epsilon - vis_k, 1 / kappa)
         p_k = face_area_m2 * torch.clamp(quality_k, min=0.0) * nf_k * effective_irradiance_W_m2
         power_acc = power_acc + (p_k * soft_mask_original).sum()
-        visibility_acc = visibility_acc + vis_k_diag
 
-        if shading_penalty_weight > 0:
-            nf_k_diag = 1 - _lambda * torch.pow(1 + epsilon - vis_k_diag, 1 / kappa)
-            penalty_acc = penalty_acc + (
-                shading_penalty_weight * ((1 - nf_k_diag) * torch.clamp(quality_k.detach(), min=0.0) * soft_mask_original).sum()
-            )
+        if vis_k_diag is not None:
+            visibility_acc = visibility_acc + vis_k_diag
+            if shading_penalty_weight > 0:
+                nf_k_diag = 1 - _lambda * torch.pow(1 + epsilon - vis_k_diag, 1 / kappa)
+                penalty_acc = penalty_acc + (
+                    shading_penalty_weight * ((1 - nf_k_diag) * torch.clamp(quality_k.detach(), min=0.0) * soft_mask_original).sum()
+                )
+
+        if sun_facing_acc is not None:
+            sun_facing_acc = sun_facing_acc + (quality_k > 0).float()
 
     power_watts = power_acc / K
     if shading_penalty_weight > 0:
         power_watts = power_watts - penalty_acc / K
 
-    mean_visibility = visibility_acc / K  # (F,)
+    mean_visibility = (visibility_acc / K) if not skip_diagnostic_rt_pass else None  # (F,) or None
 
     if epoch_name is not None:
         vis_manager.vis_solar_quality(int(epoch_name), vertices, faces, avg_quality)
         vis_manager.vis_solar_selection(int(epoch_name), vertices, faces, soft_mask_original)
-        vis_manager.vis_solar_shading(int(epoch_name), vertices, faces, mean_visibility)
-        numerical_factor_mean = 1 - _lambda * torch.pow(1 + epsilon - mean_visibility, 1 / kappa)
-        vis_manager.vis_solar_numerical_factor(int(epoch_name), vertices, faces, numerical_factor_mean)
-        vis_manager.vis_solar_penalty(
-            int(epoch_name),
-            vertices,
-            faces,
-            (1 - numerical_factor_mean) * torch.clamp(avg_quality, min=0.0) * soft_mask_original,
-        )
+        if skip_backface_receivers and sun_facing_acc is not None:
+            vis_manager.vis_solar_receiver_mask(int(epoch_name), vertices, faces, sun_facing_acc / K)
+        if mean_visibility is not None:
+            vis_manager.vis_solar_shading(int(epoch_name), vertices, faces, mean_visibility)
+            numerical_factor_mean = 1 - _lambda * torch.pow(1 + epsilon - mean_visibility, 1 / kappa)
+            vis_manager.vis_solar_numerical_factor(int(epoch_name), vertices, faces, numerical_factor_mean)
+            vis_manager.vis_solar_penalty(
+                int(epoch_name),
+                vertices,
+                faces,
+                (1 - numerical_factor_mean) * torch.clamp(avg_quality, min=0.0) * soft_mask_original,
+            )
 
     faces_near_boundary = (soft_mask_sorted > 0.1) & (soft_mask_sorted < 0.9)
     budget_crossover_idx = (
@@ -193,7 +245,7 @@ def solar_loss_mrrt(  # noqa: PLR0915
         "fully_selected_faces": int((soft_mask_sorted > soft_mask_full_selection_threshold).sum().item()),
         "transition_zone_faces": int(faces_near_boundary.sum().item()),
         "budget_crossover_idx": int(budget_crossover_idx),
-        "mean_visibility": float(mean_visibility.mean().item()),
+        "mean_visibility": float("nan") if mean_visibility is None else float(mean_visibility.mean().item()),
         "shading_penalty": float((penalty_acc / K).item()) if shading_penalty_weight > 0 else 0.0,
         "num_solar_vectors": K,
     }
