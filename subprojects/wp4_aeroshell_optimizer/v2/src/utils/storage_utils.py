@@ -10,7 +10,7 @@ import torch
 import trimesh
 
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm
-from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
+from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat, SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is_local_machine
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing, str_hashing
@@ -29,6 +29,7 @@ def allround_save_data(  # noqa: PLR0915
     verbose: bool = True,
     pretraining: bool = False,
     device: str | None = None,
+    z_pretrained: torch.Tensor | None = None,  # When provided, saved alongside model_state_dict in the checkpoint
 ) -> None:
     """
     Save model data to a specified file path in JSON format, with options to save mesh and model state dictionary.
@@ -155,9 +156,93 @@ def allround_save_data(  # noqa: PLR0915
         if model_file_path.exists():
             print(f"Warning: Overwriting existing model at {model_file_path}")
 
-        torch.save(model.state_dict(), model_file_path)
+        if z_pretrained is not None:
+            torch.save(
+                {"model_state_dict": model.state_dict(), "z_pretrained": z_pretrained},
+                model_file_path,
+            )
+        else:
+            torch.save(model.state_dict(), model_file_path)
         if verbose:
             print(f"Model state_dict saved to {model_file_path}")
+
+
+def save_population_meshes(
+    model: SupportsLatentConcat,
+    population_z: torch.Tensor,
+    storage_path: str,
+    wandb_run: str | None,
+    epoch: int | None,
+    resolution: int = 128,
+    verbose: bool = True,
+    device: str | None = None,
+) -> None:
+    """Save one PLY mesh per latent slot after population training.
+
+    Iterates over all rows in ``population_z``, sets the model's active latent
+    vector, extracts the mesh via :class:`MeshSDFExtractor`, and writes a PLY
+    file to the run's mesh directory.  The model is *not* mutated: each
+    extraction uses ``copy.deepcopy(model)``.
+
+    Args:
+        model: Trained model implementing ``SupportsLatentConcat``
+            (which also satisfies ``SupportsModelContract``).
+        population_z: Float tensor of shape ``(N, z_dim)`` containing the
+            final latent vectors for all N population slots.
+        storage_path: Root storage directory (same value passed to
+            ``allround_save_data``).
+        wandb_run: W&B run name used to resolve the mesh subdirectory.
+        epoch: Final epoch number, embedded in each filename.
+        resolution: Marching-cubes grid resolution (default 128).
+        verbose: Whether to print per-slot progress.
+        device: Torch device string for mesh extraction (e.g. ``"cuda"``).
+
+    Returns:
+        None
+    """
+    n_slots = population_z.shape[0]
+    if n_slots == 0:
+        return
+
+    model_hash_value = dict_hashing(model.get_model_info_dict())
+    wname = reformat_wandb_name(wandb_run) if wandb_run is not None and "-" in wandb_run else wandb_run or model_hash_value
+    epoch_str = "no_epoch" if epoch is None else f"epoch{epoch:04d}"
+
+    mesh_dir = Path(storage_path) / model_hash_value / wname / "meshes"
+    os.makedirs(mesh_dir, exist_ok=True)
+
+    mesh_config = load_mesh_extraction_config()
+    mesh_config = replace(mesh_config, base_resolution=resolution)
+    if device is not None:
+        mesh_config = replace(mesh_config, device=device)
+
+    mesh_device = str(mesh_config.device)
+    if mesh_device.startswith("cuda") and not torch.cuda.is_available():
+        if verbose:
+            print(f"[population_meshes] Configured device '{mesh_device}' unavailable. Falling back to CPU.")
+        mesh_device = "cpu"
+        mesh_config = replace(mesh_config, device=mesh_device)
+
+    extractor = MeshSDFExtractor(config=mesh_config)
+    _prism = get_outer_prism_bounds_mm()
+    extractor.set_grid(
+        bbox=[[_prism["x"][0], _prism["x"][1]], [_prism["y"][0], _prism["y"][1]], [_prism["z"][0], _prism["z"][1]]],
+        resolution=mesh_config.base_resolution,
+    )
+
+    for i in range(n_slots):
+        z_vec = population_z[i]
+        slot_model = copy.deepcopy(model)
+        slot_model.set_latent_vector(z_vec.clone())
+        verts, faces = extractor.extract_mesh(slot_model)
+
+        z0 = z_vec[0].item()
+        z1 = z_vec[1].item() if z_vec.numel() > 1 else 0.0
+        filename = f"slot_{i}_z{z0:.2f}_{z1:.2f}_{epoch_str}.ply"
+
+        kaolin_to_PLY(verts, faces, filename=filename, mesh_dir=mesh_dir, verbose=verbose)
+        if verbose:
+            print(f"[population_meshes] Slot {i} mesh saved: {mesh_dir / filename}")
 
 
 def fetch_pretrained_model(

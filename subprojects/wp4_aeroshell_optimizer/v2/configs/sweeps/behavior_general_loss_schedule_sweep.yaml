@@ -1,0 +1,63 @@
+# ============================================================================
+# Sweep: Behaviour probe for training + objective scheduling
+#
+# Purpose:
+#   Understand optimisation behaviour under different learning-rate / epoch
+#   budgets and objective schedules (drag-only, solar-only, both aligned,
+#   both staggered), while also comparing scheduler execution modes.
+#
+# Notes:
+#   - CSE is pinned to True to match production objective composition.
+#   - Schedules are long-horizon (hundreds to thousands of epochs).
+# ============================================================================
+
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py
+entity: aisco
+project: behavior-general-loss-schedule
+
+method: bayes
+metric:
+  goal: minimize
+  name: raw_losses/total_loss
+
+early_terminate:
+  type: hyperband
+  min_iter: 120
+  eta: 2
+
+parameters:
+  # Keep CSE always enabled per study requirements.
+  losses_v0_config.general_info.CSE:
+    value: "True"
+
+  # Training budget and step size.
+  training_config.training_params.learning_rate:
+    distribution: log_uniform_values
+    min: 0.000003
+    max: 0.00003
+
+  training_config.training_params.num_epochs:
+    values: [400, 800, 1200, 2000]
+
+  losses_v0_config.general_info.deactivate_scheduler_mode:
+    values: ["skip", "zero_weighted"]
+
+  # Drag (aero) schedule windows for long runs:
+  # []                = always on
+  # [[0,399]]         = off early, on later
+  # [[400,-1]]        = on early, off later
+  # [[0,-1]]          = always off (solar-only regime)
+  losses_v0_config.losses.aero._disabled_epochs:
+    values:
+      - []
+      - [[0, 399]]
+      - [[400, -1]]
+      - [[0, -1]]
+
+  # Solar schedule windows (same semantics as drag).
+  losses_v0_config.losses.solar._disabled_epochs:
+    values:
+      - []
+      - [[0, 399]]
+      - [[400, -1]]
+      - [[0, -1]]

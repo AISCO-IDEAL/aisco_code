@@ -7,6 +7,7 @@ import yaml
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.enforce_projector import enforce_layer_context
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.assembly_id_utils import resolve_assembly_id
 
 
 class WheelLossEnforceV2(ParentLoss):
@@ -29,7 +30,9 @@ class WheelLossEnforceV2(ParentLoss):
 
     def _setup(self) -> None:
         self.__config = self.losses_config["wheel_loss_config"]
-        self.assembly_id = int(self.losses_config["bb_config"].get("assembly_id", 1))
+        self.__bb_config = self.losses_config["bb_config"]
+        self.assembly_id = resolve_assembly_id(self.__bb_config)
+        print(f"[WheelLossEnforceV2] Using assembly_id={self.assembly_id}")
         self._manual_z_shift = self.__config.get("manual_z_shift", 0.0)
         self.__threshold_huber = float(self.__config.get("threshold_huber", 10.0))
         self.__alignment_weight = float(self.__config.get("enforce_alignment_weight", 0.05))

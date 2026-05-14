@@ -12,6 +12,19 @@ class NullVisManager:
     with zero visualization overhead. Every named method is a silent no-op.
     """
 
+    @property
+    def latent_pretraining_cfg(self) -> dict[str, Any]:
+        """Return empty dict — NullVisManager disables all vis."""
+        return {}
+
+    @property
+    def latent_optimisation_cfg(self) -> dict[str, Any]:
+        """Return empty dict — NullVisManager disables all vis."""
+        return {}
+
+    def vis_latent_circle_survey(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
     def vis_mesh_shape(self, epoch: int, verts: Any, faces: Any) -> None:
         pass
 
@@ -27,6 +40,12 @@ class NullVisManager:
     def vis_solar_penalty(self, epoch: int, verts: Any, faces: Any, penalty: Any) -> None:
         pass
 
+    def vis_solar_numerical_factor(self, epoch: int, verts: Any, faces: Any, numerical_factors: Any) -> None:
+        pass
+
+    def vis_solar_quality(self, epoch: int, verts: Any, faces: Any, quality: Any) -> None:
+        pass
+
     def vis_bb_constraint(self, epoch: int, verts: Any, distances: Any) -> None:
         pass
 
@@ -37,6 +56,7 @@ class NullVisManager:
         verts: Any,
         faces: Any,
         dL_dv: Any,
+        true_scale: bool = True,
     ) -> None:
         pass
 

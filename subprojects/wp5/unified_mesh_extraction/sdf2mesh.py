@@ -100,8 +100,10 @@ class MeshSDFExtractor:
           1) Fast path: if `TotalLoss` injected a shared mesh via
              `set_shared_mesh`, return it verbatim (zero re-extraction).
           2) Move the model to `self.device` if it is an `nn.Module`.
-          3) Build a cache key from `(id(model), param_version, bbox, resolution,
-             isovalue, target vertex count, tolerance, device)`.
+          3) Build a cache key from `(id(model), param_version, z_key, bbox, resolution,
+             isovalue, target vertex count, tolerance, device)`. ``z_key`` is the
+             current value of ``model._active_z`` (latent vector), so population-mode
+             callers that switch the latent vector between slots produce separate entries.
           4) Return immediately on cache hit.
           5) On miss, purge stale entries for the same model whose param
              version has bumped (keeps the cache small and coherent).
@@ -118,9 +120,16 @@ class MeshSDFExtractor:
 
         model_id = id(sdf_model)
         version = _model_version(sdf_model)
+        # Include the active latent vector in the key so that population-mode
+        # callers (DiversityTrainer, vis_latent_circle_survey) get separate
+        # cache entries per slot.  set_latent_vector() writes to a registered
+        # *buffer*, not a parameter, so _version is unchanged across slots.
+        _z_buf = getattr(sdf_model, "_active_z", None)
+        z_key = tuple(_z_buf.detach().cpu().tolist()) if isinstance(_z_buf, torch.Tensor) and _z_buf.numel() > 0 else None
         key = (
             model_id,
             version,
+            z_key,
             tuple(tuple(ax) for ax in self.bbox),
             self.effective_resolution,
             self.isovalue,
@@ -150,6 +159,7 @@ class MeshSDFExtractor:
         sdf_model: SDFModel,
         loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
         enable_backward: bool = True,
+        smooth_vertex_gradients_iters: int = 0,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Extract mesh, compute `loss_fn(v, f)`, and a surrogate whose backward
         pass routes gradients into the SDF parameters.
@@ -203,6 +213,18 @@ class MeshSDFExtractor:
             scale = self.gradient_max / (norms + 1e-8)
             scale = torch.minimum(scale, torch.ones_like(scale))
             dL_dv = dL_dv * scale
+
+        for _ in range(smooth_vertex_gradients_iters):
+            v0, v1, v2 = faces[:, 0], faces[:, 1], faces[:, 2]
+            edges_from = torch.cat([v0, v1, v2, v1, v2, v0])
+            edges_to = torch.cat([v1, v2, v0, v0, v1, v2])
+            neighbor_sum = torch.zeros_like(dL_dv)
+            neighbor_count = torch.zeros(dL_dv.shape[0], 1, device=dL_dv.device, dtype=dL_dv.dtype)
+            neighbor_sum.scatter_add_(0, edges_to.unsqueeze(-1).expand(-1, 3), dL_dv[edges_from])
+            neighbor_count.scatter_add_(
+                0, edges_to.unsqueeze(-1), torch.ones(len(edges_to), 1, device=dL_dv.device, dtype=dL_dv.dtype)
+            )
+            dL_dv = 0.5 * dL_dv + 0.5 * neighbor_sum / neighbor_count.clamp_min(1)
 
         surrogate = self.compute_gradient_flow(verts, dL_dv, sdf_model)
 

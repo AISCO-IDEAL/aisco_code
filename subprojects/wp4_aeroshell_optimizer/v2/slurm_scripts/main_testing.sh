@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=Main_v2
+#SBATCH --job-name=CVM2_Diversity_gradients_per_slot_grid_vis
 #SBATCH --time=01:00:00                   # Extended for adaptive mesh extraction (L=4)
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
@@ -88,7 +88,13 @@ export no_proxy=$(echo "${no_proxy:-}" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export NO_PROXY=$(echo "${NO_PROXY:-}" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export PYTHONUNBUFFERED=TRUE
 ## export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True # Allow PyTorch to expand GPU memory allocation as needed
+# Redirect W&B local run data to scratch to avoid home-directory quota issues
+export WANDB_DIR="/cluster/scratch/$USERNAME/wandb_runs"
+export WANDB_CACHE_DIR="/cluster/scratch/$USERNAME/wandb_cache"
+mkdir -p "$WANDB_DIR" "$WANDB_CACHE_DIR"
 export PYTHONPATH="/cluster/home/$USERNAME/AISCO_code/subprojects:${PYTHONPATH:-}"
+# Pass log directory and job info to Python script for log renaming with W&B run name
+export SLURM_LOG_DIR="$LOG_DIR"
 cd /cluster/home/$USERNAME/AISCO_code/
 ts "Checkpoint: changed directory to $(pwd)"
 
@@ -96,19 +102,17 @@ ts "Checkpoint: changed directory to $(pwd)"
 #python -m src.main
 
 ts "Checkpoint: launching main_v2.py with hard timeout"
-if timeout --signal=TERM --kill-after=30s 13800s "$PYTHON_BIN" -u subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py \
-    --save_model \
-    --problem_id="AISCO_WP4_Test1"  2>&1
+EXIT_CODE=0
+if ! timeout --signal=TERM --kill-after=30s 13800s "$PYTHON_BIN" -u subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py 2>&1
 then
-    ts "Checkpoint: main_v2.py finished successfully"
-else
-    rc=$?
-    if [ "$rc" -eq 124 ]; then
+    EXIT_CODE=$?
+    if [ "$EXIT_CODE" -eq 124 ]; then
         ts "ERROR: main_v2.py hit timeout (13800s)"
     else
-        ts "ERROR: main_v2.py exited non-zero (rc=$rc)"
+        ts "ERROR: main_v2.py exited non-zero (EXIT_CODE=$EXIT_CODE)"
     fi
-    exit "$rc"
+else
+    ts "Checkpoint: main_v2.py finished successfully"
 fi
 #------------------------------------------------------------------------------
 # Print job end information
@@ -117,3 +121,6 @@ echo "=========================================="
 echo "Job ended on: $(date)"
 echo "Total elapsed time: $SECONDS seconds"
 echo "=========================================="
+
+# Exit with the original exit code
+exit "$EXIT_CODE"

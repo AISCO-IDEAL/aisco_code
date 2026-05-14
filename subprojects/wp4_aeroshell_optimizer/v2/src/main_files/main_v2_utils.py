@@ -16,7 +16,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is
 
 def _resolve_wandb_name(name_cfg: Any, run_locally: bool) -> str | None:  # noqa: PLR0911
     """Resolve wandb run name from config and runtime environment.
-    
+
     Returns None to let wandb auto-generate a name, which is then appended with
     the SLURM job ID if on Euler.
     """
@@ -91,5 +91,5 @@ def _maybe_run_latent_pretraining(
     raw = json.dumps(_load_config(v="v2", cfg_name=latent_cfg_name))
     latent_config = json.loads(raw.replace("${LATENT_DATA_ROOT}", root))
 
-    model, Z_pretrained = pretraining_latent(model, latent_config, device, use_wandb=use_wandb, vis_sampling=False)
+    model, Z_pretrained = pretraining_latent(model, latent_config, device, use_wandb=use_wandb)
     return model, Z_pretrained

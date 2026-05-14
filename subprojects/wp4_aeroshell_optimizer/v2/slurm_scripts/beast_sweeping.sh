@@ -47,8 +47,30 @@ ts() {
 export no_proxy=$(echo "${no_proxy:-}" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 export NO_PROXY=$(echo "${NO_PROXY:-}" | sed 's/api\.wandb\.ai,\?//g; s/,$//')
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../../../../" && pwd)"
+SOURCE_PATH="${BASH_SOURCE[0]:-$0}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "$SOURCE_PATH")")" && pwd)"
+
+# Resolve project root robustly even when this script is copied to /tmp by a runner.
+PROJECT_ROOT=""
+for CANDIDATE in \
+    "${AISCO_PROJECT_ROOT:-}" \
+    "$(cd -- "$SCRIPT_DIR/../../../../.." 2>/dev/null && pwd || true)" \
+    "$PWD" \
+    "$HOME/Documents/AISCO_code" \
+    "$HOME/AISCO_code"
+do
+    [[ -z "$CANDIDATE" ]] && continue
+    if [[ -f "$CANDIDATE/pyproject.toml" && -d "$CANDIDATE/subprojects" ]]; then
+        PROJECT_ROOT="$CANDIDATE"
+        break
+    fi
+done
+
+if [[ -z "$PROJECT_ROOT" ]]; then
+    ts "ERROR: could not resolve project root"
+    ts "Hint: export AISCO_PROJECT_ROOT to your repo path (example: $HOME/Documents/AISCO_code)"
+    exit 1
+fi
 
 if command -v module >/dev/null 2>&1; then
     module purge

@@ -516,7 +516,9 @@ class TotalLossV2:
                     with record_function(f"loss_{loss_name}"):
                         sig = inspect.signature(instance.get_loss)
                         if "skip_telemetry" in sig.parameters:
-                            target_dict[category] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+                            target_dict[category] = instance.get_loss(
+                                model, epoch_name, skip_telemetry=True
+                            )  # Note by aalthaus: might be a bug in here, might need to be set to false if visuals are handled cleanly
                         else:
                             target_dict[category] = instance.get_loss(model, epoch_name)
         finally:

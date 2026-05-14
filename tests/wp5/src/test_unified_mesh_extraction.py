@@ -82,3 +82,62 @@ def test_active_cell_extraction_surface_area_stays_close_to_dense_baseline() -> 
     assert faces.shape[0] > 0
     assert math.isfinite(adaptive_area)
     assert abs(adaptive_area - dense_area) / dense_area < 0.05
+
+
+class _LatentSphereSDF(torch.nn.Module):
+    """Sphere whose radius is controlled by a registered buffer `_active_z[0]`.
+
+    Mimics ConcatBaseModel: `set_latent_vector` replaces the buffer reference
+    (not an in-place op) so `_version` of model parameters is unchanged between
+    calls — exactly the scenario that exposed the slot-collision cache bug.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Dummy trainable parameter so _model_version() has something to read.
+        self._dummy_param = torch.nn.Parameter(torch.zeros(1))
+        self.register_buffer("_active_z", torch.tensor([1000.0]), persistent=False)
+
+    def set_latent_vector(self, z: torch.Tensor) -> None:
+        self._active_z = z
+
+    def forward(self, points: torch.Tensor) -> torch.Tensor:
+        radius = self._active_z[0].item()
+        return torch.linalg.norm(points, dim=-1) - radius
+
+
+def test_extract_mesh_differentiates_latent_slots() -> None:
+    """Regression: extract_mesh must return distinct meshes for different latent
+    vectors even when model parameters (and therefore _version) are unchanged.
+
+    Prior to the fix, the cache key did not include _active_z, so all slots after
+    the first returned the same (slot-0) mesh within one optimizer step.
+    """
+    base_config = load_mesh_extraction_config()
+    test_config = replace(base_config, device="cpu", base_resolution=8, max_refine_levels=1, batch_size=512)
+    _bbox = [[-2000.0, 2000.0], [-2000.0, 2000.0], [-2000.0, 2000.0]]
+
+    extractor = MeshSDFExtractor(config=test_config)
+    extractor.set_grid(bbox=_bbox, resolution=test_config.base_resolution)
+
+    model = _LatentSphereSDF()
+
+    # Slot 0: small sphere (radius 500)
+    model.set_latent_vector(torch.tensor([500.0]))
+    v0, _ = extractor.extract_mesh(model)
+    area0 = compute_surface_area(v0, _).item() if v0.numel() > 0 else 0.0
+
+    # Slot 1: large sphere (radius 1500) — same model, no optimizer.step()
+    model.set_latent_vector(torch.tensor([1500.0]))
+    v1, _ = extractor.extract_mesh(model)
+    area1 = compute_surface_area(v1, _).item() if v1.numel() > 0 else 0.0
+
+    # Areas should differ by ~9x (4π·r² ratio = (1500/500)² = 9)
+    assert v0.shape != v1.shape or not torch.allclose(v0, v1), (
+        "extract_mesh returned the same mesh for two different latent vectors. "
+        "The mesh cache is not differentiating on _active_z."
+    )
+    assert area1 > area0 * 4, (
+        f"Expected area1 >> area0 (large vs small sphere), got area0={area0:.0f}, area1={area1:.0f}. "
+        "Cache is not differentiating on _active_z."
+    )

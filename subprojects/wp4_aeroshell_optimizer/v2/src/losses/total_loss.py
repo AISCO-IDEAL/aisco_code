@@ -472,7 +472,7 @@ class TotalLoss:
                     continue
                 sig = inspect.signature(instance.get_loss)
                 if "skip_telemetry" in sig.parameters:
-                    raw[name] = instance.get_loss(model, epoch_name, skip_telemetry=True)
+                    raw[name] = instance.get_loss(model, epoch_name, skip_telemetry=False)
                 else:
                     raw[name] = instance.get_loss(model, epoch_name)
         finally:
@@ -832,7 +832,8 @@ class TotalLoss:
                     if _mesh_entry is None:
                         continue
                     _v, _f = _mesh_entry
-                    self._vis_manager.vis_mesh_gradient(epoch_int, _loss_key, _v, _f, _grads)
+                    _true_scale = "solar" not in _loss_key.lower()  # hardcoded to make solar gradient direction mroe visible
+                    self._vis_manager.vis_mesh_gradient(epoch_int, _loss_key, _v, _f, _grads, true_scale=_true_scale)
 
         # Neural-renderer / CAD fallback path. Runs whether or not the central
         # vis_manager is active, so detached MeshSDF_grads_* modes keep getting
