@@ -73,7 +73,6 @@ class DiversityTrainer:
         z_resample_cadence: int = 0,  # so the original pretrained spots remain
         initial_Z: Tensor | None = None,
         z_resample_start_epoch: int = 0,
-        z_resample_stop_epoch: int = -1,
         gradient_clip_norm: float | None = None,
         renderer_manager: VisualisationManager | None = None,
         rendering_freq: int | None = None,
@@ -119,8 +118,6 @@ class DiversityTrainer:
                 (backward-compatible with existing behaviour).  Set to a positive value
                 to hold the pretrained Z population for that many epochs before the
                 normal z_resample_cadence logic kicks in.
-            z_resample_stop_epoch: Last epoch at which resampling is allowed (inclusive).
-                -1 (default) means no upper bound (backward-compatible).
         mesh_extraction_config: dict removed — extractor is constructed internally using
                 the WP5 unified mesh extractor and scaled outer_prism bounds.
             renderer_manager + rendering_freq + use_neural_renderer: rendering wiring.
@@ -151,7 +148,6 @@ class DiversityTrainer:
         self._force_z0_to_origin: bool = force_z0_to_origin
         self._z_resample_cadence: int = max(0, int(z_resample_cadence))
         self._z_resample_start_epoch: int = max(0, int(z_resample_start_epoch))
-        self._z_resample_stop_epoch: int = int(z_resample_stop_epoch)
         self._mode_c_transition_logged: bool = False
 
         self._mesh_extractor: MeshSDFExtractor
@@ -642,14 +638,7 @@ class DiversityTrainer:
         if self._norm_manager.is_enabled() and not self._norm_manager.is_calibrated():
             self._calibrate()
 
-        _stop = self._z_resample_stop_epoch
-        if (
-            self._z_resample_cadence > 0
-            and epoch > 0
-            and epoch >= self._z_resample_start_epoch
-            and (_stop < 0 or epoch <= _stop)
-            and epoch % self._z_resample_cadence == 0
-        ):
+        if self._z_resample_cadence > 0 and epoch > 0 and epoch % self._z_resample_cadence == 0:
             self._resample_population(epoch)
             # Slot identity breaks after resampling — disable per-slot line charts permanently.
             self._per_slot_charts_active = False
@@ -858,7 +847,6 @@ class DiversityTrainer:
         keys = [f"slot_{i}" for i in range(n_slots)]
         result: dict[str, Any] = {}
         for loss_name, history in self._per_slot_loss_history.items():
-            # history: list[list[float]], shape (T, n_slots); transpose to (n_slots, T) for line_series
             ys = [[history[t][i] for t in range(len(history))] for i in range(n_slots)]
             result[f"raw_losses_individual_slots/{loss_name}"] = wandb.plot.line_series(
                 xs=xs,

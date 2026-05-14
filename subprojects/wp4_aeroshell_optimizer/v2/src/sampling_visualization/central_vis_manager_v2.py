@@ -170,13 +170,13 @@ class _BaseVisManager:
         add_coord = resolve_bool(type_cfg.get("coordinate_system"), self._extras.get("coordinate_system"))
         coord_scale = float(self._extras.get("coordinate_system_scale", 0.1))
         if self._active_slot is not None:
-            # Epoch-first layout: <base_type>/epoch_XXXXX/slot_XX.ply
+            # Epoch-first layout: <base_type>/epoch_XXXXX/slot_XX/mesh.ply
             slot_suffix = f"/slot_{self._active_slot:02d}"
             base_type = visual_type.removesuffix(slot_suffix)
-            epoch_dir = self.run_dir / base_type / f"epoch_{epoch:05d}"
-            epoch_dir.mkdir(parents=True, exist_ok=True)
+            slot_dir = self.run_dir / base_type / f"epoch_{epoch:05d}" / f"slot_{self._active_slot:02d}"
+            slot_dir.mkdir(parents=True, exist_ok=True)
             self._written_dirs.add(self.run_dir / base_type)
-            out_path = epoch_dir / f"slot_{self._active_slot:02d}.ply"
+            out_path = slot_dir / "mesh.ply"
         else:
             out_path = self._output_dir(visual_type) / f"epoch_{epoch:05d}.ply"
         future = self._ply_pool.submit(write_ply_task, out_path, verts_np, faces_np, rgb_np, add_coord, coord_scale)
@@ -400,23 +400,18 @@ class _BaseVisManager:
         import re as _re  # noqa: PLC0415
 
         _epoch_dir_pat = _re.compile(r"^epoch_(\d{5})$")
-        _slot_file_pat = _re.compile(r"^slot_(\d{2})\.ply$")
+        _slot_subdir_pat = _re.compile(r"^slot_(\d{2})$")
         slotted_gif_dirs: list[Path] = []
         for base_dir in sorted(self._written_dirs):
             if not base_dir.is_dir():
                 continue
-            has_epoch_subdirs = any(
-                d.is_dir() and _epoch_dir_pat.match(d.name) for d in base_dir.iterdir()
-            )
-            if not has_epoch_subdirs:
-                continue
-            has_slot_plys = any(
-                _slot_file_pat.match(f.name)
+            has_slot_subdirs = any(
+                sd.is_dir() and _slot_subdir_pat.match(sd.name)
                 for ep_dir in base_dir.iterdir()
                 if ep_dir.is_dir() and _epoch_dir_pat.match(ep_dir.name)
-                for f in ep_dir.iterdir()
+                for sd in ep_dir.iterdir()
             )
-            if has_slot_plys:
+            if has_slot_subdirs:
                 slotted_gif_dirs.append(base_dir)
 
         for base_dir in slotted_gif_dirs:
@@ -658,12 +653,12 @@ class CentralVisManagerV2(_BaseVisManager):
         sdf_f = sdf_faces.detach().cpu() if isinstance(sdf_faces, torch.Tensor) else torch.from_numpy(np.asarray(sdf_faces))
 
         if self._active_slot is not None:
-            # Epoch-first layout: mesh_assembly_v4/epoch_XXXXX/slot_XX.{ply,glb}
-            epoch_dir = self.run_dir / "mesh_assembly_v4" / f"epoch_{epoch:05d}"
-            epoch_dir.mkdir(parents=True, exist_ok=True)
+            # Epoch-first layout: mesh_assembly_v4/epoch_XXXXX/slot_XX/mesh.{ply,glb}
+            slot_dir = self.run_dir / "mesh_assembly_v4" / f"epoch_{epoch:05d}" / f"slot_{self._active_slot:02d}"
+            slot_dir.mkdir(parents=True, exist_ok=True)
             self._written_dirs.add(self.run_dir / "mesh_assembly_v4")
-            ply_path = epoch_dir / f"slot_{self._active_slot:02d}.ply"
-            glb_path = epoch_dir / f"slot_{self._active_slot:02d}.glb"
+            ply_path = slot_dir / "mesh.ply"
+            glb_path = slot_dir / "mesh.glb"
         else:
             out_dir = self._output_dir(vt)
             ply_path = out_dir / f"epoch_{epoch:05d}.ply"

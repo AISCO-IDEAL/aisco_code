@@ -724,22 +724,23 @@ def generate_gifs_flat(
 
 
 _EPOCH_DIR_PATTERN = re.compile(r"^epoch_(\d{5})$")
-_SLOT_EPOCH_FILE_PATTERN = re.compile(r"^slot_(\d{2})\.ply$")
+_SLOT_SUBDIR_PATTERN = re.compile(r"^slot_(\d{2})$")
 
 
 def generate_gifs_slotted(base_dir: Path, max_frames: int | None = None) -> None:
     """Generate per-slot animation GIFs from an epoch-first directory layout.
 
     Scans ``base_dir`` for subdirectories named ``epoch_XXXXX/``, collects
-    ``slot_XX.ply`` files from each, and writes
-    ``base_dir/slot_XX_animation.gif`` for every slot index found.
+    ``slot_XX/mesh.ply`` files from each epoch, and writes
+    ``epoch_LAST/slot_XX/animation.gif`` into the last epoch's slot directory,
+    alongside its ``mesh.ply``.
 
     This is the counterpart of :func:`generate_gifs_flat` for the epoch-first
     diversity-training layout produced when ``set_active_slot()`` is active.
 
     Args:
         base_dir: Directory whose immediate subdirs follow ``epoch_XXXXX/``
-            and contain ``slot_XX.ply`` files.
+            and contain ``slot_XX/mesh.ply`` files.
         max_frames: Maximum GIF frames per slot.  ``None`` falls back to the
             vis_config ``gif.max_frames`` setting, then no limit.
 
@@ -756,24 +757,26 @@ def generate_gifs_slotted(base_dir: Path, max_frames: int | None = None) -> None
 
     slot_indices: set[int] = set()
     for ep_dir in epoch_subdirs:
-        for f in ep_dir.iterdir():
-            m = _SLOT_EPOCH_FILE_PATTERN.match(f.name)
-            if m:
+        for sd in ep_dir.iterdir():
+            m = _SLOT_SUBDIR_PATTERN.match(sd.name)
+            if m and sd.is_dir() and (sd / "mesh.ply").exists():
                 slot_indices.add(int(m.group(1)))
 
     if not slot_indices:
-        raise ValueError(f"No slot_XX.ply files found under epoch subdirectories in {base_dir}.")
+        raise ValueError(f"No slot_XX/mesh.ply files found under epoch subdirectories in {base_dir}.")
 
     if max_frames is None:
         gif_cfg = _CFG.get("gif", {})
         max_frames = gif_cfg.get("max_frames")
 
+    last_epoch_dir = epoch_subdirs[-1]
+
     for slot_idx in sorted(slot_indices):
         slot_name = f"slot_{slot_idx:02d}"
         slot_files: list[Path] = [
-            ep_dir / f"{slot_name}.ply"
+            ep_dir / slot_name / "mesh.ply"
             for ep_dir in epoch_subdirs
-            if (ep_dir / f"{slot_name}.ply").exists()
+            if (ep_dir / slot_name / "mesh.ply").exists()
         ]
         if not slot_files:
             continue
@@ -813,7 +816,8 @@ def generate_gifs_slotted(base_dir: Path, max_frames: int | None = None) -> None
         finally:
             renderer.delete()
 
-        output_path = base_dir / f"{slot_name}_animation.gif"
+        # Write animation.gif alongside the PLY in the last epoch's slot dir.
+        output_path = last_epoch_dir / slot_name / "animation.gif"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         imageio.mimsave(str(output_path), frames, fps=gif_fps)  # type: ignore[arg-type]
 
