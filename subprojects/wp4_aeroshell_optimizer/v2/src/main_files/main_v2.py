@@ -27,7 +27,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent im
     _compute_latent_pretrain_hash,
     pretraining_latent,
 )
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
     _compute_solitary_pretrain_hash,
     _resolve_solitary_ckpt_path,
@@ -52,6 +51,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.log_file_renamer import (
     rename_log_file_with_wandb_run_name,
 )
