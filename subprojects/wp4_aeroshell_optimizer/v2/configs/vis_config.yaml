@@ -89,9 +89,17 @@ visual_types:
       vmax: null
 
   solar:
+    quality: 
+      enabled: true
+      colormap: "hot"    # [0,1] bounded selection weight
+      interval: 1
+      alpha_enabled: null
+      coordinate_system: null
+      vmin: 0.0
+      vmax: 1.0
     selection:
       enabled: true
-      colormap: "plasma"    # [0,1] bounded selection weight
+      colormap: "bwr"    # [0,1] bounded selection weight
       interval: 1
       alpha_enabled: null
       coordinate_system: null
@@ -100,7 +108,7 @@ visual_types:
 
     shading:
       enabled: true
-      colormap: "viridis"   # [0,1] bounded shading visibility
+      colormap: "jet"   # [0,1] bounded shading visibility
       interval: 1
       alpha_enabled: null
       coordinate_system: null
@@ -109,12 +117,21 @@ visual_types:
 
     penalty:
       enabled: true
-      colormap: "Reds"      # penalty intensity, lower-bounded at 0
+      colormap: "jet"      # per-face power lost to shading, lower-bounded at 0
       interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
       vmax: null            # auto upper bound per epoch
+
+    numerical_factor:
+      enabled: true
+      colormap: "jet"    # [0,1] effective loss multiplier after λ/κ applied to visibility
+      interval: 1
+      alpha_enabled: null
+      coordinate_system: null
+      vmin: 0.0
+      vmax: 1.0
 
   bb_constraint:
     enabled: true          # disabled by default — confirm with user before enabling
@@ -148,7 +165,7 @@ visual_types:
   # outward). vmin/vmax null → symmetric ±max(|grad·n|) per epoch.
   mesh_gradients:
     enabled: true
-    colormap: "RdBu_r"
+    colormap: "vanimo"
     interval: 1
     alpha_enabled: null
     coordinate_system: null

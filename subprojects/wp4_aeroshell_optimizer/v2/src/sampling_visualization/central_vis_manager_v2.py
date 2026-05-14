@@ -27,9 +27,11 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.ass
     load_assembly_meshes,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.coloring import (
+    map_scalar_to_rgb_mpl,
     resolve_mesh_rgb,
     solid_rgb,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.mesh_ops import face_rgb_to_flat_mesh
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.ply_tasks import (
     render_gif_task,
     render_survey_task,
@@ -127,7 +129,10 @@ class _BaseVisManager:
             outer_color = tuple(cfg.get("outer_color", [1.0, 0.35, 0.15]))  # type: ignore[arg-type]
             outer_alpha = float(cfg.get("outer_alpha", 0.2))
             self.set_assembly_meshes(
-                inner_v, inner_f, outer_v, outer_f,
+                inner_v,
+                inner_f,
+                outer_v,
+                outer_f,
                 sdf_color=sdf_color,
                 inner_color=inner_color,
                 outer_color=outer_color,
@@ -171,6 +176,19 @@ class _BaseVisManager:
         future = self._ply_pool.submit(write_ply_task, out_path, verts_np, faces_np, rgb_np, add_coord, coord_scale)
         self._pending_ply.append(future)
         _log({"event": "ply_submitted", "run_id": self.run_id, "visual_type": visual_type, "epoch": epoch})
+
+    def _submit_ply_flat_faces(
+        self,
+        visual_type: str,
+        epoch: int,
+        verts_np: np.ndarray,
+        faces_np: np.ndarray,
+        face_scalars: np.ndarray,
+        type_cfg: dict[str, Any],
+    ) -> None:
+        face_rgb = map_scalar_to_rgb_mpl(face_scalars, type_cfg["colormap"], vmin=type_cfg.get("vmin"), vmax=type_cfg.get("vmax"))
+        flat_verts, flat_faces, flat_rgb = face_rgb_to_flat_mesh(face_rgb, faces_np, verts_np)
+        self._submit_ply(visual_type, epoch, flat_verts, flat_faces, flat_rgb, type_cfg)
 
     def _submit_ply_points(
         self,
@@ -426,16 +444,23 @@ class CentralVisManagerV2(_BaseVisManager):
         rgb = resolve_mesh_rgb(cp_np, len(verts_np), len(faces_np), faces_np, verts_np, type_cfg)
         self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
 
+    def vis_solar_quality(self, epoch: int, verts: Any, faces: Any, quality_values: Any) -> None:
+        vt = self._slotted("solar/quality")
+        type_cfg = vis_type_config(self._visual_types, vt)
+        if type_cfg is None:
+            return
+        verts_np, faces_np = _to_f64(verts), _to_i32(faces)
+        # Scale from [-1, 1] to [0, 1] before applying colormap so the full range is used
+        quality_np = (_to_f64(quality_values).astype(np.float32).reshape(-1) + 1.0) / 2.0
+        self._submit_ply_flat_faces(vt, epoch, verts_np, faces_np, quality_np, type_cfg)
+
     def vis_solar_selection(self, epoch: int, verts: Any, faces: Any, weights: Any) -> None:
         vt = self._slotted("solar/selection")
         type_cfg = vis_type_config(self._visual_types, vt)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
-        rgb = resolve_mesh_rgb(
-            np.asarray(weights, np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg
-        )
-        self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
+        self._submit_ply_flat_faces(vt, epoch, verts_np, faces_np, _to_f64(weights).astype(np.float32).reshape(-1), type_cfg)
 
     def vis_solar_shading(self, epoch: int, verts: Any, faces: Any, shading: Any) -> None:
         vt = self._slotted("solar/shading")
@@ -443,10 +468,7 @@ class CentralVisManagerV2(_BaseVisManager):
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
-        rgb = resolve_mesh_rgb(
-            np.asarray(shading, np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg
-        )
-        self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
+        self._submit_ply_flat_faces(vt, epoch, verts_np, faces_np, _to_f64(shading).astype(np.float32).reshape(-1), type_cfg)
 
     def vis_solar_penalty(self, epoch: int, verts: Any, faces: Any, penalty: Any) -> None:
         vt = self._slotted("solar/penalty")
@@ -454,10 +476,17 @@ class CentralVisManagerV2(_BaseVisManager):
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
-        rgb = resolve_mesh_rgb(
-            np.asarray(penalty, np.float32).reshape(-1), len(verts_np), len(faces_np), faces_np, verts_np, type_cfg
+        self._submit_ply_flat_faces(vt, epoch, verts_np, faces_np, _to_f64(penalty).astype(np.float32).reshape(-1), type_cfg)
+
+    def vis_solar_numerical_factor(self, epoch: int, verts: Any, faces: Any, numerical_factor: Any) -> None:
+        vt = self._slotted("solar/numerical_factor")
+        type_cfg = vis_type_config(self._visual_types, vt)
+        if type_cfg is None:
+            return
+        verts_np, faces_np = _to_f64(verts), _to_i32(faces)
+        self._submit_ply_flat_faces(
+            vt, epoch, verts_np, faces_np, _to_f64(numerical_factor).astype(np.float32).reshape(-1), type_cfg
         )
-        self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
 
     def vis_bb_constraint(self, epoch: int, verts: Any, distances: Any) -> None:
         """Bounding-box constraint violations. verts is a point cloud (no faces)."""
@@ -469,14 +498,7 @@ class CentralVisManagerV2(_BaseVisManager):
         rgb = resolve_mesh_rgb(np.asarray(distances, np.float32).reshape(-1), len(verts_np), 0, None, verts_np, type_cfg)
         self._submit_ply(vt, epoch, verts_np, None, rgb, type_cfg)
 
-    def vis_mesh_gradient(
-        self,
-        epoch: int,
-        loss_key: str,
-        verts: Any,
-        faces: Any,
-        dL_dv: Any,
-    ) -> None:
+    def vis_mesh_gradient(self, epoch: int, loss_key: str, verts: Any, faces: Any, dL_dv: Any, true_scale: bool = True) -> None:
         """Render per-vertex `dL/dv · n` for one loss as a coloured PLY.
 
         The per-vertex outward normal is computed from face normals; the dot
@@ -491,6 +513,7 @@ class CentralVisManagerV2(_BaseVisManager):
             verts:    (V, 3) mesh vertices (tensor or array).
             faces:    (F, 3) triangle indices (tensor or array).
             dL_dv:    (V, 3) gradient of the loss w.r.t. `verts`.
+            true_scale: If True, the raw dot product is visualized; if False, the color range is normalized so 0 is in the middle, and the max/min values of the dot product are at the ends of the colormap. Setting this to False can make it easier to see the relative distribution of positive vs negative gradients, especially when the magnitudes are different.
         """
         vt = self._slotted(f"mesh_gradients/{loss_key}")
         type_cfg = vis_type_config(self._visual_types, vt)
@@ -537,10 +560,22 @@ class CentralVisManagerV2(_BaseVisManager):
         cfg_vmin = type_cfg.get("vmin")
         cfg_vmax = type_cfg.get("vmax")
         if cfg_vmin is None or cfg_vmax is None:
-            amp = float(np.max(np.abs(dot))) if dot.size else 0.0
-            amp = amp if amp > 0.0 else 1.0
-            vmin_eff = -amp if cfg_vmin is None else float(cfg_vmin)
-            vmax_eff = amp if cfg_vmax is None else float(cfg_vmax)
+            if true_scale:
+                amp = float(np.max(np.abs(dot))) if dot.size else 0.0
+                amp = amp if amp > 0.0 else 1.0
+                vmin_eff = -amp if cfg_vmin is None else float(cfg_vmin)
+                vmax_eff = amp if cfg_vmax is None else float(cfg_vmax)
+            else:
+                # scale so dot=0 is in the middle of the colormap, and the max/min values of dot are at the ends (1,-1)of the colormap.
+                vmin_eff = 0.0
+                vmax_eff = 1.0
+                delta = vmax_eff - vmin_eff
+                dot_min = float(np.min(dot))
+                dot_max = float(np.max(dot))
+                if dot_max > 0:
+                    dot = np.where(dot > 0, dot / dot_max * delta / 2 + 0.5, dot)
+                if dot_min < 0:
+                    dot = np.where(dot < 0, dot / (-dot_min) * delta / 2, dot)
         else:
             vmin_eff, vmax_eff = float(cfg_vmin), float(cfg_vmax)
 

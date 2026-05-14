@@ -236,17 +236,10 @@ def solar_mesh_loss_v3(
         if counter == num_epochs and output_dir is not None:
             render_solar.finalize(output_dir)
 
-    # CentralVisManager path: write PLY for solar/selection.
+    # CentralVisManager path: write PLY for solar/quality and solar/selection.
     if vis_manager is not None and epoch_name is not None:
-        _verts_np = vertices.detach().cpu().numpy()
-        _faces_np = faces.detach().cpu().numpy()
-        vis_manager.save_ply(
-            "solar/selection",
-            int(epoch_name),
-            _verts_np,
-            _faces_np,
-            scalar_values=sorted_soft_mask.detach().cpu().numpy(),
-        )
+        vis_manager.vis_solar_quality(epoch_name, vertices, faces, illumination_quality)
+        vis_manager.vis_solar_selection(epoch_name, vertices, faces, sorted_soft_mask)
 
     # Log to wandb if enabled
     if enable_wandb_logging and epoch_name is not None:
@@ -605,6 +598,8 @@ class SolarLossEstimator:
             self.extractor.last_dL_dv = dL_dvertices  # type: ignore[attr-defined]
             self.extractor.last_verts = vertices  # type: ignore[attr-defined]
             self.extractor.last_faces = faces  # type: ignore[attr-defined]
+            if epoch_name is not None:
+                vis_manager.vis_mesh_gradient(epoch_name, "solar_v3b2", vertices, faces, dL_dvertices, true_scale=False)
             if str(self.device).startswith("cuda") and torch.cuda.is_available():
                 torch.cuda.synchronize()
             _t1 = time.perf_counter()
