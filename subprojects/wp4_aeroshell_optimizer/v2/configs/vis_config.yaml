@@ -6,7 +6,7 @@
 
 # --- GIF rendering (ply_to_gif.py) ---
 fps: 10
-window_width: 1280
+window_width: 1280 # pixels; only used for GIF & PNG rendering. Increase for higher-res images, but beware of OOM errors on HPC.
 window_height: 720
 
 camera_direction: "Y"        # which axis the camera looks along: X, Y, or Z
