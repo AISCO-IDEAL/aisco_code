@@ -191,6 +191,8 @@ SolarLossConfigSRRT:
   _lambda: 1.0
   eps: 1e-12
   use_activation_checkpointing: false
+  skip_diagnostic_rt_pass: false  # Skip second RT pass when checkpointing; trades diagnostics for speed
+  skip_backface_receivers: false  # Skip RT for back-facing faces (normal · sun_dir ≤ 0); requires full occluder coverage
   raytracing_version: "v4"  # Uses RaytracingConfigV3 from raytracing_config.yaml
   smooth_gradient_iters: 8  # Laplacian smoothing passes on dL/dv before SDF projection; 0 = off
 
