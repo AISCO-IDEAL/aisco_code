@@ -3,20 +3,7 @@ general_info:
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
   ALM_aggressive: "False" # capu version of ALM
 
-  #    WARNING: When CSE="True", individual objective weights (aero, solar) below are dead code.
-  #    Use cse_weight below to scale the unified CSE objective relative to diversity.
-  #    WARNING: When ALM="True", manual constraint weights are ignored by design.
-  #    Constraint relative importance is controlled by ALM multipliers (initial_lambda, initial_mu, initial_nu).
-
-
   ALM_aggressive_capu: 0.25 # has constraint decreased sufficiently threshold, only used when ALM_aggressive=True. # weights.py: self.use_alm_aggressive
-  # ALM parameter mapping order:
-  # - Arrays are supported and can be provided in either format:
-  #   (a) ACTIVE constraint order (only currently enabled constraints), or
-  #   (b) FULL configured constraint-category order below.
-  # - Full configured constraint-category order in this file:
-  #   [bb, eikonal, connectedness, developability, wheel_loss]
-  # - When a middle category is disabled, its slot is skipped automatically.
 
   # Again, the ooder here corresponds to the order of the constraints in this config further below
   alm_thresholds: [0.0, 0.0, 0.0, 0.0, 0.0]  # per-constraint deadzone: if |c_i| < threshold_i, nu/mu/lambda are frozen. Set to null to disable (pure adaptive formula). Ignored in aggressive mode.
@@ -33,8 +20,6 @@ general_info:
     tolerance: 1.0e-3
 
   cse_weight: 1.0  # Post-normalisation weight on the unified CSE objective (-v_cruise * loss_scale * grad_scale).
-                   # Tune this against diversity weight (field_diversity_v0 config entry below).
-                   # Only active when CSE="True"; individual aero/solar weights are dead code when CSE is on.
   cse_prefactors:  # prefactors applied to objectives before feeding into CSE
     drag: 1.0
     solar: 1.0
@@ -50,34 +35,11 @@ general_info:
     max_iter: 12
     tol: 1.0e-4
 
-# Dynamic loading rules (TotalLoss V1 and V2):
-# 1) Every category block should define `_role`: objective|constraint|aux|diversity.
-# 2) Keep exactly one active loss variant (`compute=1`) per non-diversity category.
-# 3) Keys starting with `_` are metadata and are not treated as losses.
-# 4) Constraint ordering for ALM is the YAML category order of active `_role: constraint` blocks.
-#
-# How to add a new constraint without code changes:
-# - Add a new category block under `losses`, set `_role: constraint`.
-# - Add your loss variant as: name: [1, weight, "path/to/file.py"].
-# - Optionally set old variant(s) to compute=0 in the same category.
-# - No TotalLoss code edits required.
-#
-  deactivate_scheduler_mode: zero_weighted
+  deactivate_scheduler_mode: skip # "skip" (default) or "zero_weighted". See losses section below for details.
   loss_normalisation:
     enabled: False
     target_loss_value: 1.0
     target_gradient_norm: 1.0
-    # For recalibration: enter the name of the loss as it is called further below and you can set the following keys:
-      #min_abs_value: 1.0e-6 #only gets calibrated once value is above this
-      #consecutive_epochs: 1 #how many consecutive epochs the minimum magnitude needs to be reached to trigger calibration
-      #warmup_epochs: 0 #do not trigger before
-      #cooldown_epochs: 0 # if recalibrates, wait so long until it may recalibrate
-      #max_recalibrations: 1
-      # Optional hard overrides per loss:
-      # fixed_loss_scale: 1.0  # if set, loss-scale calibration is skipped for this loss
-      # fixed_grad_scale: 1.0  # if set, grad-scale calibration is skipped for this loss
-      # If both are set for all active losses, the whole calibration pass is skipped.
-
 
     recalibration_rules:
       connectedness_v1:
@@ -85,21 +47,6 @@ general_info:
         fixed_grad_scale: 100.0
         fixed_loss_scale: 1.0
 
-  # Epoch scheduler: "skip" (default) or "zero_weighted".
-  # "skip": inactive losses are not computed; logged as 0. ALM multipliers frozen.
-  # "zero_weighted": inactive losses are computed and logged at their real value, but
-  #   contribute 0 to the gradient. ALM multipliers still frozen.
-  # Per-category blackout windows are set with _disabled_epochs in each loss block.
-  # Example:  _disabled_epochs: [[0, 99]]       # off epochs 0-99, active from 100 onward
-  #           _disabled_epochs: [[0, 49], [500, 699]]  # off in two windows; -1 as end = until training ends
-
-
-
-
-
-# How to add a new objective:
-# - Add category with `_role: objective` and optional `_sign: maximize|minimize`.
-# - For CSE mode, update `general_info.cse_params.drag_category` / `solar_category` if needed.
 losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically loads all losses with compute=1
   # NOTE: that for each loss class, only one version should have compute=True
   aero:
@@ -111,13 +58,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   bb:
     _role: constraint
-    # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v1.py"]
-    # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v2.py"]                    # not working as of 2025 12 15
     null_loss_bb: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    bb_v3: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"]                         # new version with random assembly_id for more variety y
-    bb_v4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"]                        # assembler version4 with ground clearance validation
-    bb_v4_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]                     # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
-    bb_v4_3: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]                    # v4.3 with improved ALM and CSE support
     bb_v4_4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]                    # v4.4 surface-sampled BB constraints on WP2 inner/outer zero-level surfaces
     bb_v4_4_enforce_v2: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4_enforce_v2.py"] # v4.4 + ENFORCE projection + eikonal aux for IFT-style gradient flow at bb sample points
     bb_v4_sel: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]                  # v4.sel with option to select either inner or outer nbz
@@ -128,6 +69,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _disabled_epochs: [[0,50]]
     null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     eikonal_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
+    eikonal_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v1.py"]
 
   smoothness:
     _role: aux
@@ -151,9 +93,6 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: constraint
     _disabled_epochs: [[0,400]]
     null_loss_wheel: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    wheel_loss_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v0.py"]
-    wheel_loss_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v1.py"]
-    wheel_loss_v2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v2.py"] # new version with position vs. gradient weighting
     wheel_loss_v3: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v3.py"] # version with improved sampling and more stable gradient formulation
     wheel_loss_enforce_v2: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_enforce_v2.py"] # ENFORCE projection + ground-alignment aux for IFT-style gradient flow at wheel-contact points
 
@@ -165,14 +104,10 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   solar:
     _role: objective
     _sign: maximize
-    _disabled_epochs:  []
+    _disabled_epochs: [[0, 600]]
     solar_v3B_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
-    solar_v4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
-    solar_v5: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
-    solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
-    solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
-    solar_s_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
-    solar_s_r_r_t: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
+    solar_s_r: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
+    solar_s_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
     null_loss_solar: [0, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
 
   diversity:
