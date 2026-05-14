@@ -27,9 +27,7 @@ _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
 # Singletons shared across requests
 # ---------------------------------------------------------------------------
 _process_manager = ProcessManager(SETTINGS.logs_dir)
-_runtime_state: dict[str, str] = {
-    "active_cfg_folder": ""
-}  # updated on each run/start so progress/SSE can resolve epochs
+_runtime_state: dict[str, str] = {"active_cfg_folder": ""}  # updated on each run/start so progress/SSE can resolve epochs
 _config_manager = ConfigOverrideManager(
     root=SETTINGS.config_overrides_root,
     schema_path=SETTINGS.schema_path,
