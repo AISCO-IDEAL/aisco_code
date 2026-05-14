@@ -723,6 +723,111 @@ def generate_gifs_flat(
     )
 
 
+_EPOCH_DIR_PATTERN = re.compile(r"^epoch_(\d{5})$")
+_SLOT_EPOCH_FILE_PATTERN = re.compile(r"^slot_(\d{2})\.ply$")
+
+
+def generate_gifs_slotted(base_dir: Path, max_frames: int | None = None) -> None:
+    """Generate per-slot animation GIFs from an epoch-first directory layout.
+
+    Scans ``base_dir`` for subdirectories named ``epoch_XXXXX/``, collects
+    ``slot_XX.ply`` files from each, and writes
+    ``base_dir/slot_XX_animation.gif`` for every slot index found.
+
+    This is the counterpart of :func:`generate_gifs_flat` for the epoch-first
+    diversity-training layout produced when ``set_active_slot()`` is active.
+
+    Args:
+        base_dir: Directory whose immediate subdirs follow ``epoch_XXXXX/``
+            and contain ``slot_XX.ply`` files.
+        max_frames: Maximum GIF frames per slot.  ``None`` falls back to the
+            vis_config ``gif.max_frames`` setting, then no limit.
+
+    Raises:
+        ValueError: If no ``epoch_XXXXX/`` subdirectories are found.
+    """
+    base_dir = Path(base_dir)
+    epoch_subdirs = sorted(
+        (d for d in base_dir.iterdir() if d.is_dir() and _EPOCH_DIR_PATTERN.match(d.name)),
+        key=lambda d: d.name,
+    )
+    if not epoch_subdirs:
+        raise ValueError(f"No epoch_XXXXX/ subdirectories found in {base_dir}.")
+
+    slot_indices: set[int] = set()
+    for ep_dir in epoch_subdirs:
+        for f in ep_dir.iterdir():
+            m = _SLOT_EPOCH_FILE_PATTERN.match(f.name)
+            if m:
+                slot_indices.add(int(m.group(1)))
+
+    if not slot_indices:
+        raise ValueError(f"No slot_XX.ply files found under epoch subdirectories in {base_dir}.")
+
+    if max_frames is None:
+        gif_cfg = _CFG.get("gif", {})
+        max_frames = gif_cfg.get("max_frames")
+
+    for slot_idx in sorted(slot_indices):
+        slot_name = f"slot_{slot_idx:02d}"
+        slot_files: list[Path] = [
+            ep_dir / f"{slot_name}.ply"
+            for ep_dir in epoch_subdirs
+            if (ep_dir / f"{slot_name}.ply").exists()
+        ]
+        if not slot_files:
+            continue
+
+        if max_frames is not None and len(slot_files) > max_frames:
+            indices = np.round(np.linspace(0, len(slot_files) - 1, max_frames)).astype(int)
+            slot_files = [slot_files[i] for i in indices]
+
+        print(
+            json.dumps(
+                {
+                    "event": "gif_slotted_render_started",
+                    "base_dir": str(base_dir),
+                    "slot": slot_name,
+                    "n_frames": len(slot_files),
+                }
+            )
+        )
+
+        all_verts = [v for v in (_get_vertices(fp) for fp in slot_files) if v is not None]
+        if not all_verts:
+            continue
+        cam_pose = _compute_camera_pose(
+            np.vstack(all_verts),
+            direction=CAMERA_DIRECTION,
+            distance_mult=CAMERA_DISTANCE_MULTIPLIER,
+            elevation_angle=CAMERA_ELEVATION_ANGLE,
+        )
+
+        gif_fps: int = _CFG.get("gif", {}).get("fps", FPS)
+        renderer = pyrender.OffscreenRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, point_size=POINT_SIZE)
+        try:
+            frames = [
+                _render_frame(renderer, fp, cam_pose, camera_direction=CAMERA_DIRECTION, add_overlay=True)
+                for fp in slot_files
+            ]
+        finally:
+            renderer.delete()
+
+        output_path = base_dir / f"{slot_name}_animation.gif"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        imageio.mimsave(str(output_path), frames, fps=gif_fps)  # type: ignore[arg-type]
+
+        print(
+            json.dumps(
+                {
+                    "event": "gif_slotted_render_completed",
+                    "output_path": str(output_path),
+                    "n_frames": len(frames),
+                }
+            )
+        )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Render PLY file sequences to GIFs. Cluster-safe (EGL headless).")
     parser.add_argument("--input", type=str, help="Input folder containing PLY files.")
