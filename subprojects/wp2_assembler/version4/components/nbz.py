@@ -108,13 +108,28 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
     if cut_outer_nbz is None:
         raise ValueError(f"Outer NBZ was completely removed for assembly {id_number}.")
 
+    outer_solid = cut_outer_nbz.Solids()[0]
+
+    # Recenter both inner and outer to x=0, y=0.
+    # The outer NBZ is built from wheel positions, so its x-center is at the axle
+    # midpoint (e.g. +800 mm for a front-axle-at-2900 layout), not at the coordinate
+    # origin.  Shifting here aligns the assembly with the SDF training domain, eikonal
+    # regularisation domain, and mesh extractor grid (all centred at x=0, y=0).
+    outer_bbox = outer_solid.BoundingBox()
+    cx = (outer_bbox.xmin + outer_bbox.xmax) / 2.0
+    cy = (outer_bbox.ymin + outer_bbox.ymax) / 2.0
+    if abs(cx) > 0.001 or abs(cy) > 0.001:
+        offset = cq.Vector(-cx, -cy, 0.0)
+        outer_solid = outer_solid.translate(offset)
+        cut_inner_solids = [s.translate(offset) for s in cut_inner_solids]
+
     cut_inner_assembly = cq.Assembly()
     for i, s in enumerate(cut_inner_solids):
-        cut_inner_assembly.add(s, name=f"{'inner'}_{i}")
+        cut_inner_assembly.add(s, name=f"inner_{i}")
 
     cut_inner_assembly.name = "inner_assembly"
 
-    return cut_inner_assembly, cut_outer_nbz.Solids()[0], vision_nbz(id_number)
+    return cut_inner_assembly, outer_solid, vision_nbz(id_number)
 
 
 def max_assembly_id() -> int:
