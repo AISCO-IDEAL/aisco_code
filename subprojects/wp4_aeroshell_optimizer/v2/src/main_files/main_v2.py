@@ -22,6 +22,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_latent im
     _compute_latent_pretrain_hash,
     pretraining_latent,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
     _compute_solitary_pretrain_hash,
     _resolve_solitary_ckpt_path,
@@ -246,10 +247,27 @@ def main(_gui_mode: bool = False, _cfg_folder: str | None = None) -> None:  # no
             )
         latent_cfg_name: str = general_config["active_configs"].get("latent_pretraining", "pretraining_latent_config.yaml")
         latent_config = _load_config(v="v2", cfg_name=latent_cfg_name)
-        # Vis dir: derive from canonical pretraining run folder (never /tmp).
-        # Computed before calling pretraining_latent so GIF generation has the path.
-        pretrained_hash: str = _compute_latent_pretrain_hash(latent_config, model)
-        model, Z_pretrained = pretraining_latent(
+
+        _skip_pretraining: bool = bool(general_config["general_info"].get("skip_pretraining", False))
+        if _skip_pretraining:
+            # Build a synthetic reference circle (same geometry as pretraining would produce)
+            # without running any SDF supervision. Phase 1 of training then uses in_circle
+            # resampling to explore the latent disk before objectives are turned on.
+            _pop_size_raw = len(latent_config.get("active_population", []) or []) or 7
+            _z_radius_raw = float(latent_config.get("z_radius", 2.0))
+            _z_dim_raw = model.get_model_info_dict()["z_dim"]
+            Z_pretrained = build_unit_circle_Z(int(_pop_size_raw), _z_dim_raw, float(_z_radius_raw), device)
+            pretrained_hash = "skip_pretraining"
+            if verbose:
+                print(
+                    f"[skip_pretraining] Bypassed latent pretraining. "
+                    f"Synthetic circle Z: {Z_pretrained.shape}, radius={_z_radius_raw}"
+                )
+        else:
+            # Vis dir: derive from canonical pretraining run folder (never /tmp).
+            # Computed before calling pretraining_latent so GIF generation has the path.
+            pretrained_hash = _compute_latent_pretrain_hash(latent_config, model)
+            model, Z_pretrained = pretraining_latent(
             model,
             latent_config,
             device,
@@ -495,6 +513,7 @@ def main(_gui_mode: bool = False, _cfg_folder: str | None = None) -> None:  # no
             initial_Z=Z_pretrained,
             Z_pretrained=Z_pretrained,
             z_resample_start_epoch=ginn_config.get("z_resample_start_epoch", 0),
+            z_resample_stop_epoch=ginn_config.get("z_resample_stop_epoch", -1),
             renderer_manager=renderer_manager,
             rendering_freq=wandb_cfg.get("rendering_frequency"),
             diversity_bbox_scale_factor=ginn_config.get("bbox_scale_factor", 1.0),
