@@ -23,6 +23,7 @@ from typing import Any
 import numpy as np
 import yaml
 
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.points_SDFmesh_to_ply import SamplingVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.assembly_loader import (
     load_assembly_meshes,
 )
@@ -43,8 +44,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.vis
     vis_type_config,
 )
 from subprojects.wp5.unified_mesh_extraction.sdf2mesh import MeshSDFExtractor
-
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.points_SDFmesh_to_ply import SamplingVisualizer  
 
 _DEFAULT_CONFIG_PATH = Path(__file__).parents[2] / "configs" / "vis_config.yaml"
 _DARK_BLUE_RGB: tuple[float, float, float] = (0.0, 0.0, 139.0 / 255.0)
