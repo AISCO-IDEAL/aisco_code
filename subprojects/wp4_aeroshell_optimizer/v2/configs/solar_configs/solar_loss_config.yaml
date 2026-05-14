@@ -194,3 +194,40 @@ SolarLossConfigSRRT:
   raytracing_version: "v4"  # Uses RaytracingConfigV3 from raytracing_config.yaml
   smooth_gradient_iters: 8  # Laplacian smoothing passes on dL/dv before SDF projection; 0 = off
 
+SolarLossConfigMR:
+  method: "mesh_sdf"  # Do not touch
+  bbox: [[-4000.0, 4000.0], [-4000.0, 4000.0], [-4000.0, 4000.0]]
+  resolution: 64
+  isovalue: 0.0
+  area_budget_mm2: 6000000
+  effective_irradiance_W_m2: 250.0
+  sigmoid_sharpness: 8.0
+  soft_mask_selection_threshold: 0.5
+  soft_mask_full_selection_threshold: 0.95
+  eps: 1e-12
+  solar_vector_source: route_v3  # "route_v3" | "custom"
+  custom_vectors_key: route_test  # key in test_solar_vectors.yaml; only used when solar_vector_source=custom
+  subsample_n: null  # integer to subsample route vectors; null = use all
+  smooth_gradient_iters: 6
+
+SolarLossConfigMRRT:
+  method: "mesh_sdf"  # Do not touch
+  bbox: [[-4000.0, 4000.0], [-4000.0, 4000.0], [-4000.0, 4000.0]]
+  resolution: 64
+  isovalue: 0.0
+  area_budget_mm2: 6000000
+  effective_irradiance_W_m2: 250.0
+  sigmoid_sharpness: 8.0
+  soft_mask_selection_threshold: 0.5
+  soft_mask_full_selection_threshold: 0.95
+  shading_penalty_weight: 0.0
+  kappa: 1.0
+  _lambda: 1.0
+  eps: 1e-12
+  use_activation_checkpointing: true
+  raytracing_version: "v4"
+  solar_vector_source: route_v3  # "route_v3" | "custom"
+  custom_vectors_key: route_test  # key in test_solar_vectors.yaml; only used when solar_vector_source=custom
+  subsample_n: null  # integer to subsample route vectors; null = use all
+  smooth_gradient_iters: 8
+
