@@ -32,6 +32,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.col
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.ply_tasks import (
     render_gif_task,
+    render_slotted_gif_task,
     render_survey_task,
     write_ply_task,
 )
@@ -42,6 +43,8 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.vis
     vis_type_config,
 )
 from subprojects.wp5.unified_mesh_extraction.sdf2mesh import MeshSDFExtractor
+
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.points_SDFmesh_to_ply import SamplingVisualizer  
 
 _DEFAULT_CONFIG_PATH = Path(__file__).parents[2] / "configs" / "vis_config.yaml"
 _DARK_BLUE_RGB: tuple[float, float, float] = (0.0, 0.0, 139.0 / 255.0)
@@ -167,7 +170,16 @@ class _BaseVisManager:
     ) -> None:
         add_coord = resolve_bool(type_cfg.get("coordinate_system"), self._extras.get("coordinate_system"))
         coord_scale = float(self._extras.get("coordinate_system_scale", 0.1))
-        out_path = self._output_dir(visual_type) / f"epoch_{epoch:05d}.ply"
+        if self._active_slot is not None:
+            # Epoch-first layout: <base_type>/epoch_XXXXX/slot_XX.ply
+            slot_suffix = f"/slot_{self._active_slot:02d}"
+            base_type = visual_type.removesuffix(slot_suffix)
+            epoch_dir = self.run_dir / base_type / f"epoch_{epoch:05d}"
+            epoch_dir.mkdir(parents=True, exist_ok=True)
+            self._written_dirs.add(self.run_dir / base_type)
+            out_path = epoch_dir / f"slot_{self._active_slot:02d}.ply"
+        else:
+            out_path = self._output_dir(visual_type) / f"epoch_{epoch:05d}.ply"
         future = self._ply_pool.submit(write_ply_task, out_path, verts_np, faces_np, rgb_np, add_coord, coord_scale)
         self._pending_ply.append(future)
         _log({"event": "ply_submitted", "run_id": self.run_id, "visual_type": visual_type, "epoch": epoch})
@@ -186,10 +198,6 @@ class _BaseVisManager:
 
         def _task() -> tuple[bool, str, str | None]:
             try:
-                from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.points_SDFmesh_to_ply import (  # noqa: PLC0415
-                    SamplingVisualizer,
-                )
-
                 sv = SamplingVisualizer(output_dir=out_dir, is_static=False)
                 path = sv.save_snapshot(
                     points_mm=points,
@@ -218,7 +226,7 @@ class _BaseVisManager:
 
         Call ``set_active_slot(i)`` before computing member i's loss; every vis
         method called while a slot is active writes to
-        ``<visual_type>/slot_{i:02d}/epoch_XXXXX.ply`` instead of
+        ``<visual_type>/epoch_XXXXX/slot_{i:02d}.ply`` instead of
         ``<visual_type>/epoch_XXXXX.ply``.  The config entry for the parent
         type (e.g. ``mesh_shape``) is inherited automatically via the ancestor
         lookup in ``vis_type_config``.
@@ -388,7 +396,49 @@ class _BaseVisManager:
             ok, path, err = render_gif_task(d)
             _log({"event": "gif_completed" if ok else "gif_failed", "run_id": self.run_id, "path": path, "error": err})
 
-        _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": len(gif_dirs), "survey_count": len(survey_dirs)})
+        # Epoch-first slotted layout: base_dir/epoch_XXXXX/slot_XX.ply → per-slot GIFs.
+        # Detect written base dirs that contain epoch_XXXXX/ subdirs with slot PLYs.
+        import re as _re  # noqa: PLC0415
+
+        _epoch_dir_pat = _re.compile(r"^epoch_(\d{5})$")
+        _slot_file_pat = _re.compile(r"^slot_(\d{2})\.ply$")
+        slotted_gif_dirs: list[Path] = []
+        for base_dir in sorted(self._written_dirs):
+            if not base_dir.is_dir():
+                continue
+            has_epoch_subdirs = any(
+                d.is_dir() and _epoch_dir_pat.match(d.name) for d in base_dir.iterdir()
+            )
+            if not has_epoch_subdirs:
+                continue
+            has_slot_plys = any(
+                _slot_file_pat.match(f.name)
+                for ep_dir in base_dir.iterdir()
+                if ep_dir.is_dir() and _epoch_dir_pat.match(ep_dir.name)
+                for f in ep_dir.iterdir()
+            )
+            if has_slot_plys:
+                slotted_gif_dirs.append(base_dir)
+
+        for base_dir in slotted_gif_dirs:
+            _log(
+                {
+                    "event": "slotted_gif_started",
+                    "run_id": self.run_id,
+                    "visual_type": str(base_dir.relative_to(self.run_dir)),
+                }
+            )
+            ok, path, err = render_slotted_gif_task(base_dir)
+            _log(
+                {
+                    "event": "slotted_gif_completed" if ok else "slotted_gif_failed",
+                    "run_id": self.run_id,
+                    "path": path,
+                    "error": err,
+                }
+            )
+
+        _log({"event": "finalize_completed", "run_id": self.run_id, "gif_count": len(gif_dirs), "survey_count": len(survey_dirs), "slotted_gif_count": len(slotted_gif_dirs)})
 
     def __del__(self) -> None:
         with contextlib.suppress(Exception):
@@ -608,9 +658,17 @@ class CentralVisManagerV2(_BaseVisManager):
         sdf_v = sdf_verts.detach().cpu() if isinstance(sdf_verts, torch.Tensor) else torch.from_numpy(np.asarray(sdf_verts))
         sdf_f = sdf_faces.detach().cpu() if isinstance(sdf_faces, torch.Tensor) else torch.from_numpy(np.asarray(sdf_faces))
 
-        out_dir = self._output_dir(vt)
-        ply_path = out_dir / f"epoch_{epoch:05d}.ply"
-        glb_path = out_dir / f"epoch_{epoch:05d}.glb"
+        if self._active_slot is not None:
+            # Epoch-first layout: mesh_assembly_v4/epoch_XXXXX/slot_XX.{ply,glb}
+            epoch_dir = self.run_dir / "mesh_assembly_v4" / f"epoch_{epoch:05d}"
+            epoch_dir.mkdir(parents=True, exist_ok=True)
+            self._written_dirs.add(self.run_dir / "mesh_assembly_v4")
+            ply_path = epoch_dir / f"slot_{self._active_slot:02d}.ply"
+            glb_path = epoch_dir / f"slot_{self._active_slot:02d}.glb"
+        else:
+            out_dir = self._output_dir(vt)
+            ply_path = out_dir / f"epoch_{epoch:05d}.ply"
+            glb_path = out_dir / f"epoch_{epoch:05d}.glb"
 
         def _task() -> tuple[bool, str, str | None]:
             try:
@@ -773,10 +831,56 @@ class CentralVisManagerV2(_BaseVisManager):
             if verts_np.shape[0] == 0 or faces_np.shape[0] == 0:
                 continue
 
-            rgb = solid_rgb(len(verts_np), _DARK_BLUE_RGB)
             out_dir = self._output_dir(vt)
             out_path = out_dir / f"{filename}.ply"
-            future = self._ply_pool.submit(write_ply_task, out_path, verts_np, faces_np, rgb, False, 0.0)
+
+            if self._assembly_meshes is not None:
+                inn_v, inn_f, out_v, out_f, sdf_color, inner_color, outer_color, sdf_alpha, outer_alpha = self._assembly_meshes
+                sdf_v_t = torch.from_numpy(verts_np.astype(np.float32))
+                sdf_f_t = torch.from_numpy(faces_np.astype(np.int64))
+
+                def _combined_task(
+                    _out_path: Path = out_path,
+                    _inn_v: Any = inn_v,
+                    _inn_f: Any = inn_f,
+                    _out_v: Any = out_v,
+                    _out_f: Any = out_f,
+                    _sdf_v: Any = sdf_v_t,
+                    _sdf_f: Any = sdf_f_t,
+                    _sdf_color: Any = sdf_color,
+                    _inner_color: Any = inner_color,
+                    _outer_color: Any = outer_color,
+                    _sdf_alpha: float = sdf_alpha,
+                    _outer_alpha: float = outer_alpha,
+                ) -> tuple[bool, str, str | None]:
+                    try:
+                        from subprojects.wp4_aeroshell_optimizer.v2.src.utils.combined_ply_export import (  # noqa: PLC0415
+                            export_combined_bbox_mesh_ply,
+                        )
+
+                        export_combined_bbox_mesh_ply(
+                            inner_verts=_inn_v,
+                            inner_faces=_inn_f,
+                            outer_verts=_out_v,
+                            outer_faces=_out_f,
+                            sdf_verts=_sdf_v,
+                            sdf_faces=_sdf_f,
+                            output_path=_out_path,
+                            inner_color=_inner_color,
+                            outer_color=_outer_color,
+                            sdf_color=_sdf_color,
+                            inner_alpha=1.0,
+                            outer_alpha=_outer_alpha,
+                            sdf_alpha=_sdf_alpha,
+                        )
+                        return (True, str(_out_path), None)
+                    except Exception as exc:
+                        return (False, str(_out_path), str(exc))
+
+                future = self._ply_pool.submit(_combined_task)
+            else:
+                rgb = solid_rgb(len(verts_np), _DARK_BLUE_RGB)
+                future = self._ply_pool.submit(write_ply_task, out_path, verts_np, faces_np, rgb, False, 0.0)
             self._pending_ply.append(future)
             _log(
                 {
