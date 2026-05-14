@@ -123,7 +123,7 @@ def solar_loss_srrt(
     soft_mask_original_order = soft_mask_sorted[original_order]
 
     mesh_cfg = raytracing_cfg["mesh"]
-    sun_facing_mask = illumination_quality > 0 if skip_backface_receivers else None
+    sun_facing_mask = illumination_quality > 0
 
     def _compute_power(vtx: torch.Tensor) -> torch.Tensor:
         if skip_backface_receivers:
@@ -214,7 +214,7 @@ def solar_loss_srrt(
         vis_manager.vis_solar_selection(int(epoch_name), vertices, faces, soft_mask_original_order)
         if skip_backface_receivers:
             vis_manager.vis_solar_receiver_mask(int(epoch_name), vertices, faces, sun_facing_mask.float())
-        if visibility_for_vis is not None:
+        if visibility_for_vis is not None and numerical_factor_for_vis is not None:
             vis_manager.vis_solar_shading(int(epoch_name), vertices, faces, visibility_for_vis)
             vis_manager.vis_solar_numerical_factor(int(epoch_name), vertices, faces, numerical_factor_for_vis)
             vis_manager.vis_solar_penalty(
