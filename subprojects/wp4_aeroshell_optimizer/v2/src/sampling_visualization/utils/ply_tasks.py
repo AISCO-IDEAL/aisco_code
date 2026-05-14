@@ -51,6 +51,24 @@ def render_gif_task(type_dir: Path) -> tuple[bool, str, str | None]:
         return (False, str(type_dir), str(exc))
 
 
+def render_slotted_gif_task(base_dir: Path) -> tuple[bool, str, str | None]:
+    """Generate per-slot GIFs from an epoch-first directory layout.
+
+    Expects ``base_dir`` to contain ``epoch_XXXXX/`` subdirectories, each
+    holding ``slot_XX.ply`` files.  Writes ``slot_XX_animation.gif`` per slot.
+    """
+    os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
+    try:
+        from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.ply_to_gif import (  # noqa: PLC0415
+            generate_gifs_slotted,
+        )
+
+        generate_gifs_slotted(base_dir)
+        return (True, str(base_dir), None)
+    except Exception as exc:
+        return (False, str(base_dir), str(exc))
+
+
 def render_survey_task(survey_dir: Path, layout: str = "strip") -> tuple[bool, str, str | None]:
     """Render all epoch_XXXXX.ply files in *survey_dir* to a single survey.png."""
     os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
