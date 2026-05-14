@@ -615,8 +615,7 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         specific_path = Path(specific_path_raw)
         if not specific_path.exists():
             raise FileNotFoundError(
-                f"Configured path '{preferred_key}' does not exist: {specific_path}. "
-                "Check pretraining_latent_config.yaml."
+                f"Configured path '{preferred_key}' does not exist: {specific_path}. Check pretraining_latent_config.yaml."
             )
         print(f"[latent_pretrain] Environment={env.value}  selected_path_key={preferred_key}")
         ckpt = torch.load(specific_path, map_location=device, weights_only=True)

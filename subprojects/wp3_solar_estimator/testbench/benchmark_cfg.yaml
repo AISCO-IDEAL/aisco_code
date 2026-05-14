@@ -1,0 +1,20 @@
+loading:
+  ply_path: "/cluster/work/fuge/AISCO/00_meshes_to_keep/original_silvretta_no_wheels_scaled_to_mm.ply"
+  ply_scaling_factor: 1.0
+
+solar_loss:
+  class: "SolarSRRT"   # SolarV3 | SolarV3B2 | SolarV5 | SolarV6 | SolarV7 | SolarSR
+
+sdf_model:    # R — precomputes an R³ SDF grid once; higher = more accurate, more VRAM during precompute
+  cache_dir: "sdf_cache"   # relative to testbench folder; set to null to disable disk caching
+
+benchmark:
+  warmup_steps: 3
+  active_steps: 5
+
+profiler:
+  enabled: false
+  trace_dir: "traces"
+  record_shapes: true
+  profile_memory: true
+  with_stack: true
