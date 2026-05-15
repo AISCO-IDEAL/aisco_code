@@ -36,7 +36,7 @@ class SolarMR(ParentLoss):
 
         source = cfg.get("solar_vector_source", "route_v3")
         if source == "route_v3":
-            from subprojects.wp3_solar_estimator.australia.route_v3 import RouteV3  # noqa: PLC0415 , avoid unnecessary import
+            from subprojects.wp3_solar_estimator.australia.route_v3 import RouteV3  # noqa: PLC0415  avoid unnecessary import
 
             route_mode = cfg.get("route_mode", "race")
             route = RouteV3(cfg_path=cfg.get("route_cfg_path", "solar_configs/australia.yaml"), mode=route_mode)
