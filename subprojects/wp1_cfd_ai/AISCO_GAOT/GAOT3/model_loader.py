@@ -176,6 +176,13 @@ class ModelLoader:
         face = mesh_faces.T
         pos = batch.pos_raw
         normals = batch.c
+        cp_smoothing_cfg = self.cfd_config.get("cp_smoothing", {})
+        detach_integration_geometry = (
+            isinstance(cp_smoothing_cfg, dict) and bool(cp_smoothing_cfg.get("detach_integration_geometry", False))
+        )
+        if detach_integration_geometry:
+            pos = pos.detach()
+            normals = normals.detach()
 
         v0 = pos[face[0]]
         v1 = pos[face[1]]
@@ -265,6 +272,7 @@ class ModelLoader:
             min_strength, max_strength = max_strength, min_strength
         curvature_quantile = max(0.0, min(1.0, float(cfg.get("curvature_quantile", 0.95))))
         curvature_power = max(0.0, float(cfg.get("curvature_power", 2.0)))
+        detach_smoothing_weights = bool(cfg.get("detach_smoothing_weights", cfg.get("detach_integration_geometry", False)))
 
         faces = mesh_faces.to(device=p.device, dtype=torch.long)
         src = torch.cat([faces[:, 0], faces[:, 1], faces[:, 1], faces[:, 2], faces[:, 2], faces[:, 0]], dim=0)
@@ -276,6 +284,8 @@ class ModelLoader:
 
         normals = batch.c_raw if hasattr(batch, "c_raw") and batch.c_raw is not None else batch.c
         normals = torch.nn.functional.normalize(normals.to(device=p.device, dtype=p.dtype), dim=-1)
+        if detach_smoothing_weights:
+            normals = normals.detach()
         edge_curvature = (1.0 - (normals[src] * normals[dst]).sum(dim=-1)).clamp_min(0.0)
         curvature = torch.zeros(num_verts, device=p.device, dtype=p.dtype)
         curvature = curvature.index_add(0, dst, edge_curvature) / degree
@@ -284,6 +294,8 @@ class ModelLoader:
         curvature_scale = curvature_scale.clamp_min(torch.finfo(p.dtype).eps)
         curvature_norm = (curvature / curvature_scale).clamp(0.0, 1.0)
         smoothing_strength = min_strength + (max_strength - min_strength) * (1.0 - curvature_norm).pow(curvature_power)
+        if detach_smoothing_weights:
+            smoothing_strength = smoothing_strength.detach()
 
         p_smoothed = p
         for _ in range(iterations):
@@ -299,6 +311,9 @@ class ModelLoader:
                 face = faces.T
                 pos = batch.pos_raw.to(device=p.device, dtype=p.dtype)
                 integration_normals = batch.c.to(device=p.device, dtype=p.dtype)
+                if bool(cfg.get("detach_integration_geometry", False)):
+                    pos = pos.detach()
+                    integration_normals = integration_normals.detach()
                 v0 = pos[face[0]]
                 v1 = pos[face[1]]
                 v2 = pos[face[2]]
