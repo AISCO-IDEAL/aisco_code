@@ -237,7 +237,8 @@ class DiversityTrainer:
         self._optimizer_loss_history: list[dict[str, float]] = []
 
         # Per-slot raw-loss line charts (one interactive line per slot, one chart per loss).
-        # Disabled permanently the first time z-resampling fires (slots lose identity).
+        # History is reset on each resample; epoch indices always store the real epoch number so
+        # the x-axis is continuous across windows (e.g. window-1: [0..4], window-2: [5..9], …).
         self._per_slot_loss_history: dict[str, list[list[float]]] = {}  # loss_name -> [epoch_0_vals, epoch_1_vals, ...]
         self._per_slot_epoch_indices: list[int] = []
         self._per_slot_charts_active: bool = True
@@ -640,8 +641,11 @@ class DiversityTrainer:
 
         if self._z_resample_cadence > 0 and epoch > 0 and epoch % self._z_resample_cadence == 0:
             self._resample_population(epoch)
-            # Slot identity breaks after resampling — disable per-slot line charts permanently.
-            self._per_slot_charts_active = False
+            # Slot identity changes on resample — clear accumulated history so the new window
+            # starts fresh.  Epoch indices use real epoch numbers so the x-axis stays continuous
+            # across windows (window-2 starts at epoch N, not at 0).
+            self._per_slot_loss_history.clear()
+            self._per_slot_epoch_indices.clear()
 
         self._model_optimizer.zero_grad()
 
