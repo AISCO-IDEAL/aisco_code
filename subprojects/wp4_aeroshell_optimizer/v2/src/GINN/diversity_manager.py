@@ -73,6 +73,7 @@ class DiversityTrainer:
         z_resample_cadence: int = 0,  # so the original pretrained spots remain
         initial_Z: Tensor | None = None,
         z_resample_start_epoch: int = 0,
+        z_resample_stop_epoch: int = -1,
         gradient_clip_norm: float | None = None,
         renderer_manager: VisualisationManager | None = None,
         rendering_freq: int | None = None,
@@ -148,6 +149,7 @@ class DiversityTrainer:
         self._force_z0_to_origin: bool = force_z0_to_origin
         self._z_resample_cadence: int = max(0, int(z_resample_cadence))
         self._z_resample_start_epoch: int = max(0, int(z_resample_start_epoch))
+        self._z_resample_stop_epoch: int = int(z_resample_stop_epoch)
         self._mode_c_transition_logged: bool = False
 
         self._mesh_extractor: MeshSDFExtractor
@@ -639,7 +641,15 @@ class DiversityTrainer:
         if self._norm_manager.is_enabled() and not self._norm_manager.is_calibrated():
             self._calibrate()
 
-        if self._z_resample_cadence > 0 and epoch > 0 and epoch % self._z_resample_cadence == 0:
+        _stop_epoch = self._z_resample_stop_epoch
+        _resample_allowed = (
+            self._z_resample_cadence > 0
+            and epoch > 0
+            and epoch >= self._z_resample_start_epoch
+            and (_stop_epoch < 0 or epoch < _stop_epoch)
+            and epoch % self._z_resample_cadence == 0
+        )
+        if _resample_allowed:
             self._resample_population(epoch)
             # Slot identity changes on resample — clear accumulated history so the new window
             # starts fresh.  Epoch indices use real epoch numbers so the x-axis stays continuous
