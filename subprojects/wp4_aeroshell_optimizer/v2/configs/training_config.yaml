@@ -2,7 +2,7 @@
 # Training hyper-parameters (from training_v0_config.yaml)
 # ===========================================================================
 training_params:
-  learning_rate: 0.00001  # 0.000008 for WIREV5, 0.0005 for WIREV2 and ConcatWireV2, 0.0001 for basic MLP, 0.0005 for AISCOModel_v0
+  learning_rate: 0.000008  # 0.000008 for WIREV5, 0.0005 for WIREV2 and ConcatWireV2, 0.0001 for basic MLP, 0.0005 for AISCOModel_v0
   optimizer: "adam"  # key from optimizers.json — adam | adamw | sgd_momentum | lbfgs
   num_epochs: 1000 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
   mesh_save_interval: 20  # basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
