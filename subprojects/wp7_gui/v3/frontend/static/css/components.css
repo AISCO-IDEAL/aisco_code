@@ -215,7 +215,7 @@
 /* ---------- Three.js mesh container ---------- */
 .mesh-container {
   width: 100%;
-  height: 280px;
+  height: 800px;
   border: 1px solid #d0dcd4;
   border-radius: 8px;
   background: #f1f7f3;

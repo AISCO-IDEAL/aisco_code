@@ -10,6 +10,7 @@ import yaml
 
 from subprojects.wp2_assembler.version4.components.inner.seat import Seat
 from subprojects.wp2_assembler.version4.components.inner.wheels import Wheels
+from subprojects.wp2_assembler.version4.components.nbz import _get_seat_type, _load_occupant_cell
 from subprojects.wp2_assembler.version4.components.outer.outer_nbz import aabb_inside_outer_nbz
 from subprojects.wp2_assembler.version4.components.vision import vision_box
 from subprojects.wp2_assembler.version4.utils.assemblies_maker import (
@@ -110,14 +111,19 @@ def _write_checks(messages: list[str], output_dir: Path | None = None) -> None:
 
 def _inner_nbz_from_dict(params: dict) -> cq.Assembly:
     wheel = Wheels().create_wheel()
-    seat = Seat().create_seat()
+    seat_pos = params["seat"]
 
     assembly = cq.Assembly(name="inner_nbz_gui")
-    assembly.add(
-        seat,
-        loc=cq.Location(cq.Vector(params["seat"]["x"], params["seat"]["y"], params["seat"]["z"])),
-        name="Seat",
-    )
+    if _get_seat_type() == "occupant_cell":
+        seat = _load_occupant_cell(seat_pos["x"], seat_pos["y"], seat_pos["z"])
+        assembly.add(seat, name="Seat")
+    else:
+        seat = Seat().create_seat()
+        assembly.add(
+            seat,
+            loc=cq.Location(cq.Vector(seat_pos["x"], seat_pos["y"], seat_pos["z"])),
+            name="Seat",
+        )
     for key, val in params.items():
         if key.startswith("wheel_"):
             assembly.add(

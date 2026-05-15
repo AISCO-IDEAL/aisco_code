@@ -226,6 +226,7 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     rand: 400  #
   random_assembly_id: "False"  # if True
   assembly_id: 42 # used in wheel_loss and bb loss
+  seat_type: "regulations" # "regulations" | "occupant_cell"
   render_until_blue: "False"
   sdf_device: cuda  # mesh-backed BB SDF compute device
   # v4.2 specific:

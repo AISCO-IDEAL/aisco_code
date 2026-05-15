@@ -5,6 +5,47 @@
 <script type="importmap">
   {"imports": {"three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"}}
 </script>
+<style>
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: transparent;
+    outline: none;
+  }
+
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    background: #c8d0da;
+  }
+
+  input[type="range"]::-moz-range-track {
+    height: 4px;
+    border-radius: 2px;
+    background: #c8d0da;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin-top: -5px;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    cursor: pointer;
+  }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -49,6 +90,17 @@
         </div>
         <ul id="checksList"
           style="margin:0; padding:0 0 0 20px; font-size:0.80rem; color:#b04a1a; list-style:disc; display:none;"></ul>
+      </div>
+
+      <!-- Generate assembly panel -->
+      <div id="generatePanel"
+        style="padding:10px 12px; border-top:1px solid var(--border); background:#f0f5f2; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button class="btn" id="btnGenerate" style="font-size:0.83rem;padding:7px 11px;">Generate Assembly</button>
+        <span id="generateStatus" style="font-size:0.82rem; color:var(--muted);"></span>
+        <span id="generateId"
+          style="margin-left:auto; font-size:0.82rem; font-weight:700; color:#2e7a47; display:none;">
+          Map ID: <span id="generateIdValue"></span>
+        </span>
       </div>
     </div>
 
@@ -113,10 +165,11 @@
       slidersArea.appendChild(title);
 
       ["x", "y", "z"].forEach(axis => {
+        if (axis === "z" && section.startsWith("wheel_")) return;
         const val = Number(params[section]?.[axis] ?? 0);
         const [lo, hi] = axisRange(axis);
         const row = document.createElement("div");
-        row.style.cssText = "display:grid;grid-template-columns:110px 1fr 58px;align-items:center;gap:8px;";
+        row.style.cssText = "display:grid;grid-template-columns:110px 1fr 58px;align-items:center;gap:8px;margin-bottom:10px;";
         row.innerHTML = `
         <label style="font-size:0.82rem;color:var(--muted);">${section}.${axis}</label>
         <input type="range" min="${lo}" max="${hi}" step="1" value="${val}"
@@ -209,7 +262,70 @@
   document.getElementById("btnAddWheel").addEventListener("click", () => wheelAction("add-wheel"));
   document.getElementById("btnRemoveWheel").addEventListener("click", () => wheelAction("remove-wheel"));
 
-  // ---------- Progress polling ----------
+  // ---------- Generate assembly ----------
+  const PENDING_ID_KEY = "aiscoPendingAssemblyIdV3";
+  const OVERRIDE_FOLDER_KEY = "aiscoOverrideFolderV3";
+  const LOSSES_CFG = "losses_v0_config.yaml";
+  const ASSEMBLY_ID_PATH = "bb_config.assembly_id";
+
+  const btnGenerate = document.getElementById("btnGenerate");
+  const generateStatus = document.getElementById("generateStatus");
+  const generateId = document.getElementById("generateId");
+  const generateIdValue = document.getElementById("generateIdValue");
+
+  async function writeAssemblyIdToSession(folder, assemblyMapId) {
+    const body = { folder, updates: { [LOSSES_CFG]: { [ASSEMBLY_ID_PATH]: assemblyMapId } } };
+    const r = await fetch(`${API}/config-overrides/values`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+    });
+    if (!r.ok) {
+      const d = await r.json();
+      throw new Error(d?.detail?.message || `HTTP ${r.status}`);
+    }
+  }
+
+  btnGenerate.addEventListener("click", async () => {
+    btnGenerate.disabled = true;
+    generateStatus.textContent = "Generating…";
+    generateStatus.style.color = "var(--muted)";
+    generateId.style.display = "none";
+    try {
+      const r = await fetch(`${API}/assembly-selection/generate?pipeline=${pipeline}`, { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) {
+        generateStatus.textContent = d?.detail?.message || "Generate failed.";
+        generateStatus.style.color = "#b04a1a";
+      } else if (d.status === "rejected") {
+        generateStatus.textContent = d.message;
+        generateStatus.style.color = "#b04a1a";
+      } else {
+        const mapId = d.assembly_map_id;
+        generateIdValue.textContent = mapId;
+        generateId.style.display = "";
+
+        // Always persist the latest assembly ID so "Start new session" can apply it.
+        localStorage.setItem(PENDING_ID_KEY, String(mapId));
+
+        const activeFolder = localStorage.getItem(OVERRIDE_FOLDER_KEY) || "";
+        if (activeFolder) {
+          try {
+            await writeAssemblyIdToSession(activeFolder, mapId);
+            generateStatus.textContent = `${d.message} → written to config session.`;
+          } catch (writeErr) {
+            generateStatus.textContent = `${d.message} (config write failed: ${writeErr.message})`;
+          }
+        } else {
+          generateStatus.textContent = `${d.message} ID saved — will be applied when a config session is started.`;
+        }
+        generateStatus.style.color = "#2e7a47";
+      }
+    } catch (err) {
+      generateStatus.textContent = "Request failed: " + err.message;
+      generateStatus.style.color = "#b04a1a";
+    } finally {
+      btnGenerate.disabled = false;
+    }
+  });
 
   // ---------- Three.js mesh viewer ----------
   let meshViewer = null;
