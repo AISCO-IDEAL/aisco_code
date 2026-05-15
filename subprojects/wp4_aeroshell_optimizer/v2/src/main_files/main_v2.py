@@ -2,6 +2,7 @@
 This should be the final main file we use for the Project. It should be modular and easily extendible
 """
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -51,6 +52,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.log_file_renamer import (
     rename_log_file_with_wandb_run_name,
 )
@@ -183,6 +185,15 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     if verbose:
         print("Successfully loaded and registered all configs")
 
+    # Early-stopping sentinel path is configured relative to an auto-detected root.
+    # Root is /home/aisco on local Beast/WSL and /cluster/work/fuge on Euler/SLURM.
+    early_stop_cfg = general_config.get("early_stopping", {})
+    sentinel_rel = str(early_stop_cfg.get("sentinel_relative_path", "AISCO/00_early_stopping/STOP_RUN"))
+    sentinel_root = Path("/cluster/work/fuge") if is_cluster() else Path("/home/aisco")
+    sentinel_path = sentinel_root / Path(sentinel_rel)
+    if verbose:
+        print(f"Early stopping sentinel enabled: {sentinel_path}")
+
     # 3. Load model and handle pretraining
     model_name: str
     if latent_space:
@@ -267,6 +278,19 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         _run_id = wandb_name or "unknown"
         _vis_manager = CentralVisManagerV2(run_dir=rendering_dir, run_id=_run_id)
         print(f"[VisManager:v2] enabled → {rendering_dir}")
+        # Optionally derive circle-survey layout from z_resample_mode.
+        # Gated by vis_config: latent_optimisation.vis_latent_circle_survey.layout_from_resample_mode.
+        try:
+            _survey_vis_cfg = _vis_manager._cfg.get("latent_optimisation", {}).get("vis_latent_circle_survey", {})
+            if _survey_vis_cfg.get("layout_from_resample_mode", False):
+                _tc = _load_config(v="v2", cfg_name="training_config.yaml")
+                _z_mode = _tc.get("z_resample_mode", "on_circle")
+                _derived_layout = "pizza" if _z_mode == "in_circle" else "strip"
+                _vis_manager._cfg.setdefault("latent_optimisation", {}).setdefault("vis_latent_circle_survey", {})["layout"] = (
+                    _derived_layout
+                )
+        except Exception:
+            pass
     elif _vis_mode == "null":
         _vis_manager = NullVisManager()
         print("[VisManager:null] dry-run mode — all writes are no-ops")
@@ -290,16 +314,33 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             )
         latent_cfg_name: str = general_config["active_configs"].get("latent_pretraining", "pretraining_latent_config.yaml")
         latent_config = _load_config(v="v2", cfg_name=latent_cfg_name)
-        # Vis dir: derive from canonical pretraining run folder (never /tmp).
-        # Computed before calling pretraining_latent so GIF generation has the path.
-        pretrained_hash: str = _compute_latent_pretrain_hash(latent_config, model)
-        model, Z_pretrained = pretraining_latent(
-            model,
-            latent_config,
-            device,
-            use_wandb=use_wandb,
-            vis_manager=_vis_manager,
-        )
+
+        _skip_pretraining: bool = bool(general_config["general_info"].get("skip_pretraining", False))
+        if _skip_pretraining:
+            # Build a synthetic reference circle (same geometry as pretraining would produce)
+            # without running any SDF supervision. Phase 1 of training then uses in_circle
+            # resampling to explore the latent disk before objectives are turned on.
+            _pop_size_raw = len(latent_config.get("active_population", []) or []) or 7
+            _z_radius_raw = float(latent_config.get("z_radius", 2.0))
+            _z_dim_raw = model.get_model_info_dict()["z_dim"]
+            Z_pretrained = build_unit_circle_Z(int(_pop_size_raw), _z_dim_raw, float(_z_radius_raw), device)
+            pretrained_hash = "skip_pretraining"
+            if verbose:
+                print(
+                    f"[skip_pretraining] Bypassed latent pretraining. "
+                    f"Synthetic circle Z: {Z_pretrained.shape}, radius={_z_radius_raw}"
+                )
+        else:
+            # Vis dir: derive from canonical pretraining run folder (never /tmp).
+            # Computed before calling pretraining_latent so GIF generation has the path.
+            pretrained_hash = _compute_latent_pretrain_hash(latent_config, model)
+            model, Z_pretrained = pretraining_latent(
+                model,
+                latent_config,
+                device,
+                use_wandb=use_wandb,
+                vis_manager=_vis_manager,
+            )
         if verbose:
             print(f"[latent_space] Latent pretraining complete. Population size: {Z_pretrained.shape[0]}")
 
@@ -540,6 +581,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             initial_Z=Z_pretrained,
             Z_pretrained=Z_pretrained,
             z_resample_start_epoch=ginn_config.get("z_resample_start_epoch", 0),
+            z_resample_stop_epoch=ginn_config.get("z_resample_stop_epoch", -1),
             renderer_manager=renderer_manager,
             rendering_freq=wandb_cfg.get("rendering_frequency"),
             diversity_bbox_scale_factor=ginn_config.get("bbox_scale_factor", 1.0),
@@ -588,42 +630,63 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         activation_ratio = enforce_cfg.get("activation_epoch_ratio", 0.9)
         activation_epoch = int(num_epochs * activation_ratio)
 
-        for epoch in range(num_epochs):
-            if epoch == activation_epoch and hasattr(model, "enforce_layer") and not model.enforce_layer.is_active:
-                if verbose:
-                    print(f"Activating ENFORCE projection layer at epoch {epoch} / {num_epochs}")
-                model.enforce_layer.is_active = True
+        stop_reason: str | None = None
+        try:
+            for epoch in range(num_epochs):
+                if sentinel_path.exists():
+                    stop_reason = f"sentinel file detected at {sentinel_path}"
+                    try:
+                        sentinel_path.unlink()
+                        if verbose:
+                            print(f"Early stop sentinel deleted automatically: {sentinel_path}")
+                    except OSError as exc:
+                        if verbose:
+                            print(f"Early stop sentinel could not be deleted: {sentinel_path} ({exc})")
+                    break
 
-            model.train()
-            metrics = trainer.step(epoch=epoch)
+                if epoch == activation_epoch and hasattr(model, "enforce_layer") and not model.enforce_layer.is_active:
+                    if verbose:
+                        print(f"Activating ENFORCE projection layer at epoch {epoch} / {num_epochs}")
+                    model.enforce_layer.is_active = True
 
-            mesh_save_interval = training_config["training_params"].get("mesh_save_interval", 50)
-            if (epoch + 1) % mesh_save_interval == 0:
-                allround_save_data(
-                    model=model,
-                    storage_path=(
-                        general_config["storage_paths"].get("beast_storage_dir")
-                        or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+                model.train()
+                metrics = trainer.step(epoch=epoch)
+
+                mesh_save_interval = training_config["training_params"].get("mesh_save_interval", 50)
+                if (epoch + 1) % mesh_save_interval == 0:
+                    allround_save_data(
+                        model=model,
+                        storage_path=(
+                            general_config["storage_paths"].get("beast_storage_dir")
+                            or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+                        )
+                        if run_locally
+                        else general_config["storage_paths"]["storage_dir"],
+                        save_model=True,
+                        save_mesh=True,
+                        epoch=epoch + 1,
+                        verbose=general_config["general_info"].get("verbose", False),
+                        pretraining=False,
+                        wandb_run=wandb_name,
+                        device=str(device),
+                        z_pretrained=Z_pretrained if latent_space else None,
                     )
-                    if run_locally
-                    else general_config["storage_paths"]["storage_dir"],
-                    save_model=True,
-                    save_mesh=True,
-                    epoch=epoch + 1,
-                    verbose=general_config["general_info"].get("verbose", False),
-                    pretraining=False,
-                    wandb_run=wandb_name,
-                    device=str(device),
-                    z_pretrained=Z_pretrained if latent_space else None,
-                )
 
-            if verbose and epoch % 50 == 0:  # arbitray number, adjust as needed
-                print(
-                    f"Epoch {epoch}/{num_epochs} | per_vector={metrics['per_vector_loss']:.4f} | "
-                    f"diversity={metrics['diversity_loss']:.4f} | total={metrics['total_loss']:.4f}"
-                )
-            if prof is not None:
-                prof.step()
+                if verbose and epoch % 50 == 0:  # arbitray number, adjust as needed
+                    print(
+                        f"Epoch {epoch}/{num_epochs} | per_vector={metrics['per_vector_loss']:.4f} | "
+                        f"diversity={metrics['diversity_loss']:.4f} | total={metrics['total_loss']:.4f}"
+                    )
+                if prof is not None:
+                    prof.step()
+        except KeyboardInterrupt:
+            stop_reason = "keyboard interrupt (Ctrl+C or W&B stop signal)"
+            if use_wandb and wandb.run is not None and hasattr(wandb, "mark_preempting"):
+                with contextlib.suppress(Exception):
+                    wandb.mark_preempting()
+
+        if stop_reason and verbose:
+            print(f"Early stopping triggered: {stop_reason}. Proceeding with finalize and artifact export.")
 
         # CentralVisManager finalize: generate convergence GIFs for all visual types.
         if _vis_manager is not None:

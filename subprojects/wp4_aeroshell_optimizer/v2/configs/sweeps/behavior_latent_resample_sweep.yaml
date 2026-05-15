@@ -43,4 +43,4 @@ parameters:
 
   # Population size to test with different resample strategies.
   training_config.population_size:
-    values: [7, 10]
+    values: [7, 10, 20, 30]

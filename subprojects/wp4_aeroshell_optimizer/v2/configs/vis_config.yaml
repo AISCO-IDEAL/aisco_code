@@ -6,7 +6,7 @@
 
 # --- GIF rendering (ply_to_gif.py) ---
 fps: 10
-window_width: 1280
+window_width: 1280 # pixels; only used for GIF & PNG rendering. Increase for higher-res images, but beware of OOM errors on HPC.
 window_height: 720
 
 camera_direction: "Y"        # which axis the camera looks along: X, Y, or Z
@@ -89,7 +89,7 @@ visual_types:
       vmax: null
 
   solar:
-    quality: 
+    quality:
       enabled: true
       colormap: "hot"    # [0,1] bounded selection weight
       interval: 1
@@ -230,6 +230,7 @@ latent_optimisation:
     z_radius: 2.0                 # must match z_radius used in pretraining
     mesh_resolution: 64           # marching-cubes resolution for circle survey meshes
     bbox_scale_factor: 1.2        # vis bbox scale (relative to outer prism)
+    layout_from_resample_mode: true  # true = derive layout from z_resample_mode (on_circle→strip, in_circle→pizza); false = use layout above
     layout: "strip"               # "strip" = horizontal PNG strip; "grid" = 2D Cartesian grid PNG; "pizza" = concentric circles grid PNG
     save_plys: true               # for further investigation
     # pizza-mode only (ignored for strip/grid):

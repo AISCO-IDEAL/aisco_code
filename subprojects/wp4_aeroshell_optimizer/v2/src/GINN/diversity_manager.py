@@ -75,6 +75,7 @@ class DiversityTrainer:
         z_resample_cadence: int = 0,  # so the original pretrained spots remain
         initial_Z: Tensor | None = None,
         z_resample_start_epoch: int = 0,
+        z_resample_stop_epoch: int = -1,
         gradient_clip_norm: float | None = None,
         renderer_manager: VisualisationManager | None = None,
         rendering_freq: int | None = None,
@@ -124,6 +125,9 @@ class DiversityTrainer:
                 (backward-compatible with existing behaviour).  Set to a positive value
                 to hold the pretrained Z population for that many epochs before the
                 normal z_resample_cadence logic kicks in.
+            z_resample_stop_epoch: Last epoch at which resampling is allowed (-1
+                disables the stop, i.e. resampling continues forever).  When >= 0,
+                resampling is frozen from this epoch onward (Phase 2 transition).
         mesh_extraction_config: dict removed — extractor is constructed internally using
                 the WP5 unified mesh extractor and scaled outer_prism bounds.
             renderer_manager + rendering_freq + use_neural_renderer: rendering wiring.
@@ -154,6 +158,7 @@ class DiversityTrainer:
         self._force_z0_to_origin: bool = force_z0_to_origin
         self._z_resample_cadence: int = max(0, int(z_resample_cadence))
         self._z_resample_start_epoch: int = max(0, int(z_resample_start_epoch))
+        self._z_resample_stop_epoch: int = int(z_resample_stop_epoch)
         self._mode_c_transition_logged: bool = False
 
         self._mesh_extractor: MeshSDFExtractor
@@ -168,6 +173,11 @@ class DiversityTrainer:
             ],
             resolution=_mesh_config.base_resolution,
         )
+        # Separate vis extractor with a larger bbox (vis_extraction.bbox_scale_factor from
+        # vis_config.yaml, default 1.6x) so the mesh is never clipped at the outer-prism
+        # boundary when the shape reaches maximum length at high epochs.
+        # _mesh_extractor keeps the tight diversity bbox for loss domain sampling.
+        self._vis_mesh_extractor: MeshSDFExtractor
         self._renderer_manager: VisualisationManager | None = renderer_manager
         self._rendering_freq: int | None = rendering_freq
         self._use_neural_renderer: bool = use_neural_renderer
@@ -175,6 +185,10 @@ class DiversityTrainer:
         self._use_wandb: bool = use_wandb
         self._log_dir: Path = log_dir or Path("subprojects/wp4_aeroshell_optimizer/v2/logs")
         self._vis_manager: CentralVisManagerV2 | NullVisManager = vis_manager
+        if isinstance(self._vis_manager, CentralVisManagerV2):
+            self._vis_mesh_extractor = self._vis_manager.make_vis_extractor(device=str(self._device))
+        else:
+            self._vis_mesh_extractor = self._mesh_extractor
 
         _valid_vis_strategies = ("static", "dynamic")
         if vis_strategy not in _valid_vis_strategies:
@@ -235,6 +249,12 @@ class DiversityTrainer:
         self._normalized_loss_history: list[dict[str, float]] = []
         self._weighted_loss_history: list[dict[str, float]] = []
         self._optimizer_loss_history: list[dict[str, float]] = []
+
+        # Per-slot raw-loss line charts (one interactive line per slot, one chart per loss).
+        # Disabled permanently the first time z-resampling fires (slots lose identity).
+        self._per_slot_loss_history: dict[str, list[list[float]]] = {}  # loss_name -> [epoch_0_vals, epoch_1_vals, ...]
+        self._per_slot_epoch_indices: list[int] = []
+        self._per_slot_charts_active: bool = True
 
         norm_cfg = self._total_loss.losses_config.get("general_info", {}).get("loss_normalisation", {})
         self._norm_manager = LossNormalisationManager(norm_cfg)
@@ -632,8 +652,11 @@ class DiversityTrainer:
         if self._norm_manager.is_enabled() and not self._norm_manager.is_calibrated():
             self._calibrate()
 
-        if self._z_resample_cadence > 0 and epoch > 0 and epoch % self._z_resample_cadence == 0:
+        _stop = self._z_resample_stop_epoch
+        if self._z_resample_cadence > 0 and epoch > 0 and epoch % self._z_resample_cadence == 0 and (_stop < 0 or epoch < _stop):
             self._resample_population(epoch)
+            # Slot identity breaks after resampling — disable per-slot line charts permanently.
+            self._per_slot_charts_active = False
 
         capture_conflict = (
             self._conflict_tracker is not None and self._conflict_cadence > 0 and epoch % self._conflict_cadence == 0
@@ -805,8 +828,8 @@ class DiversityTrainer:
         log_dict.update(self._norm_manager.get_telemetry())
         log_dict.update(diversity_log_data)
         log_dict.update(gradient_log_data)
-        if per_slot_log_data:
-            log_dict.update(per_slot_log_data)
+        # Note: per-slot raw scalars are NOT added to log_dict to avoid hundreds of individual
+        # wandb panels. They are instead aggregated into per-loss line charts below.
 
         # Competition charts (avg-of-population)
         raw_floats: dict[str, float] = {
@@ -837,9 +860,67 @@ class DiversityTrainer:
             epoch,
         )
 
-        # Merge competition charts into single log call to avoid WandB step corruption
+        # Per-slot line charts (one interactive line per slot, one chart per raw loss)
+        slot_log = self._log_slot_line_charts(per_slot_log_data or {}, epoch)
+
+        # Merge competition charts + slot charts into single log call to avoid WandB step corruption
         log_dict.update(competition_log)
+        log_dict.update(slot_log)
         wandb.log(log_dict, step=epoch)
+
+    def _log_slot_line_charts(
+        self,
+        per_slot_log_data: dict[str, float],
+        epoch: int,
+    ) -> dict[str, Any]:
+        """Build one wandb.plot.line_series chart per raw loss, with one line per latent slot.
+
+        Returns a dict ready to merge into the main wandb.log call.
+        Silently returns {} when per-slot charting is disabled (resampling has fired)
+        or when wandb is not active.
+        """
+        if not self._per_slot_charts_active or not per_slot_log_data:
+            return {}
+        if not self._use_wandb or wandb.run is None:
+            return {}
+
+        # Parse: "slots/slot_{i}/raw_losses/{loss_name}" -> {loss_name: {slot_idx: value}}
+        slot_values: dict[str, dict[int, float]] = {}
+        for key, val in per_slot_log_data.items():
+            # Expected format: slots/slot_<i>/raw_losses/<loss_name>
+            parts = key.split("/")
+            if len(parts) < 4 or parts[0] != "slots" or not parts[1].startswith("slot_") or parts[2] != "raw_losses":
+                continue
+            try:
+                slot_idx = int(parts[1].removeprefix("slot_"))
+            except ValueError:
+                continue
+            loss_name = "/".join(parts[3:])
+            slot_values.setdefault(loss_name, {})[slot_idx] = val
+
+        if not slot_values:
+            return {}
+
+        # Build / extend per-slot history
+        self._per_slot_epoch_indices.append(epoch)
+        n_slots = self._population_size
+        for loss_name, by_slot in slot_values.items():
+            epoch_vals = [by_slot.get(i, float("nan")) for i in range(n_slots)]
+            self._per_slot_loss_history.setdefault(loss_name, []).append(epoch_vals)
+
+        xs = self._per_slot_epoch_indices
+        keys = [f"slot_{i}" for i in range(n_slots)]
+        result: dict[str, Any] = {}
+        for loss_name, history in self._per_slot_loss_history.items():
+            ys = [[history[t][i] for t in range(len(history))] for i in range(n_slots)]
+            result[f"raw_losses_individual_slots/{loss_name}"] = wandb.plot.line_series(
+                xs=xs,
+                ys=ys,
+                keys=keys,
+                title=loss_name,
+                xname="epoch",
+            )
+        return result
 
     def _log_competition_charts(  # noqa: PLR0915
         self,
@@ -1042,7 +1123,7 @@ class DiversityTrainer:
                     self._model.set_latent_vector(self._Z_pretrained[i])
                 else:
                     self._model.set_latent_vector(self._Z[i])
-                _verts, _faces = self._mesh_extractor.extract_mesh(sdf_model=self._model)
+                _verts, _faces = self._vis_mesh_extractor.extract_mesh(sdf_model=self._model)
                 self._vis_manager.set_active_slot(i)
                 self._vis_manager.vis_mesh_shape(epoch, _verts, _faces)
                 self._vis_manager.vis_mesh_assembly_v4(epoch, _verts, _faces)

@@ -155,6 +155,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   wheel_loss:
     _role: constraint
+    _disabled_epochs: [[0,400]]
     null_loss_wheel: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     wheel_loss_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v0.py"]
     wheel_loss_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v1.py"]
@@ -233,6 +234,7 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     rand: 400  #
   random_assembly_id: "False"  # if True
   assembly_id: 42 # used in wheel_loss and bb loss
+  seat_type: "regulations" # "regulations" | "occupant_cell"
   render_until_blue: "False"
   sdf_device: cuda  # mesh-backed BB SDF compute device
   # v4.2 specific:
