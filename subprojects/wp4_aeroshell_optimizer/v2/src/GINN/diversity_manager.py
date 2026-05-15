@@ -41,6 +41,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_v
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
     CentralVisManagerV2,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import build_optimizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
@@ -64,6 +65,7 @@ class DiversityTrainer:
         z_dim: int,
         device: torch.device | str = "cuda",
         model_lr: float = 1e-4,
+        optimizer_config: dict | None = None,
         diversity_manager: DiversityLossManager | None = None,
         diversity_num_points: int = 2048,
         diversity_bbox_scale_factor: float = 1.0,
@@ -99,7 +101,11 @@ class DiversityTrainer:
             population_size: Number of latents (N). Set to 1 for single-model training.
             z_dim: Dimensionality of each latent vector.
             device: Compute device.
-            model_lr: Adam learning rate for model parameters.            gradient_clip_norm: If set, clips the total parameter gradient L2-norm to this
+            model_lr: Learning rate — used only when optimizer_config is None (backward compat).
+            optimizer_config: The training_params sub-dict from training_config.yaml. When provided,
+                the optimizer type and lr are loaded from it via optimizers.json. Falls back to Adam
+                with model_lr when None.
+            gradient_clip_norm: If set, clips the total parameter gradient L2-norm to this
                 value before each optimizer step.  Prevents gradient explosion when eikonal
                 or other losses produce large step sizes on the first few epochs.  ``None``
                 (default) disables clipping (legacy behaviour).            diversity_manager: Optional population-level diversity manager. Set to
@@ -232,7 +238,10 @@ class DiversityTrainer:
         if self._force_z0_to_origin and self._population_size > 0:
             self._Z[0] = torch.zeros(z_dim, device=self._device, dtype=torch.float32)
 
-        self._model_optimizer: Optimizer = torch.optim.Adam(self._model.parameters(), lr=model_lr)
+        if optimizer_config is not None:
+            self._model_optimizer: Optimizer = build_optimizer(self._model.parameters(), optimizer_config)
+        else:
+            self._model_optimizer = torch.optim.Adam(self._model.parameters(), lr=model_lr)
         self._gradient_clip_norm: float | None = gradient_clip_norm if gradient_clip_norm and gradient_clip_norm > 0 else None
 
         # Rolling history for the stacked-area competition chart
@@ -629,7 +638,7 @@ class DiversityTrainer:
     # Main step
     # ------------------------------------------------------------------
     @record_function("DiversityManager.step")
-    def step(self, epoch: int = -1) -> dict[str, float]:
+    def step(self, epoch: int = -1) -> dict[str, float]:  # noqa: PLR0915, PLR0912
         """
         One full optimization step: Phase 1 -> ALM update -> Phase 2 -> opt.step -> log/render.
         Returns: dict of metrics for the caller (stripped prefix for convenience), containing:
@@ -649,71 +658,121 @@ class DiversityTrainer:
             # Slot identity breaks after resampling — disable per-slot line charts permanently.
             self._per_slot_charts_active = False
 
-        self._model_optimizer.zero_grad()
+        capture_conflict = (
+            self._conflict_tracker is not None and self._conflict_cadence > 0 and epoch % self._conflict_cadence == 0
+        )
+        diversity_loss_val: float = 0.0
+        diversity_weighted_loss_val: float = 0.0
+        diversity_log_data: dict[str, float] = {}
+        conflict_vectors: dict[str, np.ndarray] = {}
 
-        # Phase 1 — per-vector expensive backward
-        (
-            per_vector_loss_val,
-            mean_constraints,
-            avg_log_data,
-            active_constraint_indices,
-            per_loss_gradient_log_data,
-            phase1_conflict_vectors,
-            per_slot_log_data,
-            per_slot_grad_payloads,
-        ) = self._per_vector_backward(epoch)
+        if isinstance(self._model_optimizer, torch.optim.LBFGS):
+            # L-BFGS needs all gradient-accumulating passes inside a closure.
+            # With max_iter=1 and no line search the closure runs exactly once per step,
+            # so Phase 1 + Phase 2 results are captured via a dict for use outside.
+            _captured: dict = {}
+
+            def closure() -> torch.Tensor:
+                self._model_optimizer.zero_grad()
+                _captured["phase1"] = self._per_vector_backward(epoch)
+
+                if self._diversity_manager is not None and self._diversity_manager.should_compute(self._population_size):
+                    diversity_result = self._diversity_manager.compute(
+                        self._model,
+                        self._Z,
+                        num_points=self._diversity_num_points,
+                        bbox_lo=self._diversity_bbox_lo,
+                        bbox_hi=self._diversity_bbox_hi,
+                        norm_order=self._diversity_norm_order,
+                        neighbor_agg_fn=self._diversity_neighbor_agg_fn,
+                    )
+                    diversity_result.weighted.backward(retain_graph=False)
+                    _captured["diversity"] = diversity_result
+
+                if self._gradient_clip_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(self._model.parameters(), self._gradient_clip_norm)
+                return torch.tensor(_captured["phase1"][0], dtype=torch.float32, device=self._device)
+
+            self._model_optimizer.step(closure)
+            (
+                per_vector_loss_val,
+                mean_constraints,
+                avg_log_data,
+                active_constraint_indices,
+                per_loss_gradient_log_data,
+                phase1_conflict_vectors,
+                per_slot_log_data,
+                per_slot_grad_payloads,
+            ) = _captured["phase1"]
+            conflict_vectors = dict(phase1_conflict_vectors or {})
+
+            if "diversity" in _captured:
+                div_result = _captured["diversity"]
+                diversity_loss_val = float(div_result.raw.detach().item())
+                diversity_weighted_loss_val = float(div_result.weighted.detach().item())
+                diversity_log_data = self._diversity_manager.build_log_data(diversity_loss_val)  # type: ignore[union-attr]
+            elif self._diversity_manager is not None and self._diversity_manager.enabled:
+                per_loss_gradient_log_data[f"optimizer_gradients/{self._diversity_manager.loss_name}"] = 0.0
+
+        else:
+            self._model_optimizer.zero_grad()
+
+            # Phase 1 — per-vector expensive backward
+            (
+                per_vector_loss_val,
+                mean_constraints,
+                avg_log_data,
+                active_constraint_indices,
+                per_loss_gradient_log_data,
+                phase1_conflict_vectors,
+                per_slot_log_data,
+                per_slot_grad_payloads,
+            ) = self._per_vector_backward(epoch)
+            conflict_vectors = dict(phase1_conflict_vectors or {})
+
+            # Phase 2 — cheap diversity backward
+            if self._diversity_manager is not None and self._diversity_manager.should_compute(self._population_size):
+                diversity_result = self._diversity_manager.compute(
+                    self._model,
+                    self._Z,
+                    num_points=self._diversity_num_points,
+                    bbox_lo=self._diversity_bbox_lo,
+                    bbox_hi=self._diversity_bbox_hi,
+                    norm_order=self._diversity_norm_order,
+                    neighbor_agg_fn=self._diversity_neighbor_agg_fn,
+                )
+
+                trainable_params = [p for p in self._model.parameters() if p.requires_grad]
+                prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
+                diversity_result.weighted.backward(retain_graph=False)
+                curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
+                delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
+                diversity_grad_key = f"optimizer_gradients/{self._diversity_manager.loss_name}"
+                per_loss_gradient_log_data[diversity_grad_key] = delta_norm
+
+                if capture_conflict and self._conflict_tracker is not None:
+                    diversity_delta = torch.cat(
+                        [(c - pv).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
+                    )
+                    conflict_vectors[self._diversity_manager.loss_name] = diversity_delta.numpy()
+
+                diversity_loss_val = float(diversity_result.raw.detach().item())
+                diversity_weighted_loss_val = float(diversity_result.weighted.detach().item())
+                diversity_log_data = self._diversity_manager.build_log_data(diversity_loss_val)
+            elif self._diversity_manager is not None and self._diversity_manager.enabled:
+                per_loss_gradient_log_data[f"optimizer_gradients/{self._diversity_manager.loss_name}"] = 0.0
+
+            if self._gradient_clip_norm is not None:
+                torch.nn.utils.clip_grad_norm_(self._model.parameters(), self._gradient_clip_norm)
+
+            self._model_optimizer.step()
 
         # External ALM update — only update multipliers for currently active constraints
         if mean_constraints is not None and self._alm_manager is not None:
             self._alm_manager.update_multipliers(mean_constraints, active_indices=active_constraint_indices)
 
-        capture_conflict = (
-            self._conflict_tracker is not None and self._conflict_cadence > 0 and epoch % self._conflict_cadence == 0
-        )
-
-        # Phase 2 — cheap diversity backward
-        diversity_loss_val: float = 0.0
-        diversity_weighted_loss_val: float = 0.0
-        diversity_log_data: dict[str, float] = {}
-        conflict_vectors: dict[str, np.ndarray] = dict(phase1_conflict_vectors or {})
-        if self._diversity_manager is not None and self._diversity_manager.should_compute(self._population_size):
-            diversity_result = self._diversity_manager.compute(
-                self._model,
-                self._Z,
-                num_points=self._diversity_num_points,
-                bbox_lo=self._diversity_bbox_lo,
-                bbox_hi=self._diversity_bbox_hi,
-                norm_order=self._diversity_norm_order,
-                neighbor_agg_fn=self._diversity_neighbor_agg_fn,
-            )
-
-            trainable_params = [p for p in self._model.parameters() if p.requires_grad]
-            prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
-            diversity_result.weighted.backward(retain_graph=False)
-            curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
-            delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
-            diversity_grad_key = f"optimizer_gradients/{self._diversity_manager.loss_name}"
-            per_loss_gradient_log_data[diversity_grad_key] = delta_norm
-
-            if capture_conflict and self._conflict_tracker is not None:
-                diversity_delta = torch.cat(
-                    [(c - pv).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
-                )
-                conflict_vectors[self._diversity_manager.loss_name] = diversity_delta.numpy()
-
-            diversity_loss_val = float(diversity_result.raw.detach().item())
-            diversity_weighted_loss_val = float(diversity_result.weighted.detach().item())
-            diversity_log_data = self._diversity_manager.build_log_data(diversity_loss_val)
-        elif self._diversity_manager is not None and self._diversity_manager.enabled:
-            per_loss_gradient_log_data[f"optimizer_gradients/{self._diversity_manager.loss_name}"] = 0.0
-
         if capture_conflict and self._conflict_tracker is not None and conflict_vectors:
             self._conflict_tracker.save_from_grad_vectors(conflict_vectors, epoch)
-
-        if self._gradient_clip_norm is not None:
-            torch.nn.utils.clip_grad_norm_(self._model.parameters(), self._gradient_clip_norm)
-
-        self._model_optimizer.step()
 
         raw_metrics = {
             name.removeprefix("raw_losses/"): value for name, value in avg_log_data.items() if name.startswith("raw_losses/")
