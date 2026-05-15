@@ -15,7 +15,7 @@ import math
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 import torch
@@ -24,26 +24,19 @@ from torch import Tensor
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
-from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, get_regulation, scale_outer_prism
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
     _extract_mesh,
     _sample_points_for_shape,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
-from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization import SamplingVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import (
     NullVisManager,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
     CentralVisManagerV2,
 )
-
-if TYPE_CHECKING:
-    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.points_SDFmesh_to_ply import (
-        _POINT_COLOUR_GREEN,
-        _POINT_COLOUR_RED,
-        _POINT_COLOUR_WHITE,
-    )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment, detect_environment
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
 from subprojects.wp5.unified_mesh_extraction import clear_mesh_cache
@@ -116,10 +109,9 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     y_center = (float(verts_np[:, 1].max()) + float(verts_np[:, 1].min())) / 2.0
     verts_np[:, 1] -= y_center
 
-    # --- Z grounding: shift so Z_min = ground_clearance (90 + 10 = 100mm) ---
-    prism = get_outer_prism_bounds_mm()
-    ground_clearance = abs(prism["z"][0]) + 10.0  # to avoid the pretrained cars to be cut off at the bottom
-    z_shift = ground_clearance - float(verts_np[:, 2].min())
+    # --- Z grounding: shift so Z_min = wheel_clearance (100mm) ---
+    wheel_clearance = float(get_regulation("no_build_zones.outer_prism.wheel_clearance"))
+    z_shift = wheel_clearance - float(verts_np[:, 2].min())
     verts_np[:, 2] += z_shift
 
     # --- Telemetry ---
@@ -138,6 +130,7 @@ def _load_ply_tensors(ply_path: str, ply_scale: float = 1.0) -> tuple[Tensor, Te
     )
 
     # --- Outer-prism violation warnings ---
+    prism = get_outer_prism_bounds_mm()
     prism_length = prism["x"][1] - prism["x"][0]
     prism_width = prism["y"][1] - prism["y"][0]
     prism_height = float(prism["z"][1])
@@ -302,6 +295,92 @@ def _load_or_build_surface_cache(
     return surf_pts, surf_gt
 
 
+def _resolve_active_population(config: dict[str, Any]) -> None:
+    """Resolve active_population + shape_library into config["latent_population"].
+
+    Idempotent: if active_population is absent (legacy format with a direct
+    latent_population list), config is left unchanged.
+
+    Args:
+        config: Pretraining config dict, modified in place.
+
+    Raises:
+        ValueError: If a name in active_population is not found in shape_library.
+    """
+    if "active_population" not in config:
+        return
+
+    library: dict[str, Any] = config.get("shape_library", {})
+    if not library:
+        raise ValueError(
+            "active_population is set but shape_library is empty or missing. "
+            "Add shape definitions to shape_library in pretraining_latent_config.yaml."
+        )
+
+    name_counts: dict[str, int] = {}
+    resolved: list[dict[str, Any]] = []
+    for name in config["active_population"]:
+        if name not in library:
+            raise ValueError(
+                f"Shape '{name}' listed in active_population not found in shape_library. "
+                f"Available shapes: {sorted(library.keys())}."
+            )
+        entry = dict(library[name])  # shallow copy — do not mutate the library
+        count = name_counts.get(name, 0)
+        name_counts[name] = count + 1
+        entry["name"] = name if count == 0 else f"{name}_{count + 1}"
+        resolved.append(entry)
+
+    config["latent_population"] = resolved
+
+
+def _compute_circle_validity_fraction(
+    model: SupportsLatentConcat,
+    z_radius: float,
+    z_dim: int,
+    outer_prism: dict[str, Any],
+    device: str,
+    n_probe_angles: int = 36,
+    n_pts: int = 4096,
+) -> tuple[float, int, int]:
+    """Probe what fraction of equally-spaced angles on the z-circle have a valid zero crossing.
+
+    A zero crossing is possible iff the model's SDF minimum over a uniform prism
+    sample is negative.  Uses no marching cubes — very fast.
+
+    Args:
+        model: Pretrained model with set_latent_vector interface.
+        z_radius: Radius of the latent circle to probe.
+        z_dim: Latent dimensionality (must be ≥ 2).
+        outer_prism: Dict with x/y/z bound lists, e.g. {"x": [lo, hi], ...}.
+        device: PyTorch device string.
+        n_probe_angles: Number of equally-spaced angles to test (default 36 = 10° spacing).
+        n_pts: Number of uniform prism samples per angle probe.
+
+    Returns:
+        (fraction_valid, n_valid, n_probe_angles)
+    """
+    lo = torch.tensor([outer_prism["x"][0], outer_prism["y"][0], outer_prism["z"][0]], device=device)
+    hi = torch.tensor([outer_prism["x"][1], outer_prism["y"][1], outer_prism["z"][1]], device=device)
+    pts = lo + torch.rand(n_pts, 3, device=device) * (hi - lo)
+
+    model.eval()
+    n_valid = 0
+    with torch.no_grad():
+        for k in range(n_probe_angles):
+            angle = 2.0 * math.pi * k / n_probe_angles
+            z_vec = torch.zeros(z_dim, device=device)
+            z_vec[0] = z_radius * math.cos(angle)
+            z_vec[1] = z_radius * math.sin(angle)
+            model.set_latent_vector(z_vec)
+            sdf = model(pts).squeeze()
+            if float(sdf.min().item()) < 0.0:
+                n_valid += 1
+    model.train()
+
+    return n_valid / n_probe_angles, n_valid, n_probe_angles
+
+
 def _compute_latent_pretrain_hash(config: dict[str, Any], model: SupportsLatentConcat) -> str:
     """Compute a stable hash over model architecture and all training-significant parameters.
 
@@ -321,6 +400,7 @@ def _compute_latent_pretrain_hash(config: dict[str, Any], model: SupportsLatentC
     Returns:
         10-character hex hash string.
     """
+    _resolve_active_population(config)
     shapes: list[dict[str, Any]] = config.get("latent_population", [])
     shape_entries = [
         {
@@ -480,8 +560,6 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     device: str,
     *,
     use_wandb: bool = False,
-    vis_sampling: bool = False,
-    vis_output_dir: Path | None = None,
     checkpoint_path: Path | None = None,
     vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
 ) -> tuple[SupportsLatentConcat, Tensor]:
@@ -518,20 +596,28 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     if not isinstance(model, SupportsLatentConcat):
         raise TypeError(f"Model {type(model).__name__} does not implement SupportsLatentConcat. ")
 
+    _resolve_active_population(config)
+
     # --- Specific pretraining path override ---
     if bool(config.get("use_specific_pretraining", False)):
-        specific_path_raw = config.get("specific_pretraining_path")
+        env = detect_environment()
+        use_euler_path = env in (Environment.EULER, Environment.SLURM)
+        preferred_key = "specific_pretraining_path_euler" if use_euler_path else "specific_pretraining_path_local"
+
+        # Backward compatibility: fall back to legacy single key if split keys are absent.
+        specific_path_raw = config.get(preferred_key) or config.get("specific_pretraining_path")
         if not specific_path_raw:
             raise ValueError(
-                "use_specific_pretraining is true but specific_pretraining_path is not set. "
-                "Set specific_pretraining_path to the absolute path of the .pth file in "
+                "use_specific_pretraining is true but no specific pretraining path is configured. "
+                f"Expected '{preferred_key}' (or legacy 'specific_pretraining_path') in "
                 "pretraining_latent_config.yaml."
             )
         specific_path = Path(specific_path_raw)
         if not specific_path.exists():
             raise FileNotFoundError(
-                f"specific_pretraining_path does not exist: {specific_path}. Check the path in pretraining_latent_config.yaml."
+                f"Configured path '{preferred_key}' does not exist: {specific_path}. Check pretraining_latent_config.yaml."
             )
+        print(f"[latent_pretrain] Environment={env.value}  selected_path_key={preferred_key}")
         ckpt = torch.load(specific_path, map_location=device, weights_only=True)
         if not isinstance(ckpt, dict) or "model_state_dict" not in ckpt or "z_pretrained" not in ckpt:
             raise ValueError(
@@ -623,23 +709,30 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
     # --- Output / visualisation config (read once, shared between loop and post-training) ---
     output_cfg: dict[str, Any] = config.get("output", {})
     run_dir: Path = ckpt_path.parent  # Canonical folder containing all outputs
-    visualisation_directory: str = str(output_cfg.get("visualisation_directory", "sampling_vis"))
-    vis_dir: Path = vis_output_dir if vis_output_dir is not None else run_dir / visualisation_directory
     outer_prism_raw = get_outer_prism_bounds_mm()  # Single source of truth for bounding box
     bbox_scale_factor: float = float(loop_cfg.get("bbox_scale_factor", 1.0))  # Scales outer_prism for domain sampling
     outer_prism = scale_outer_prism(outer_prism_raw, bbox_scale_factor)
 
-    vis_cadence: int = int(output_cfg.get("vis_cadence", 0))  # 0 = disabled
-    vis_mesh_res: int = int(output_cfg.get("mesh_resolution", 64))
+    # Vis cadence is authoritative from vis_manager (vis_config.yaml latent_pretraining section)
+    # Fall back to output_cfg for backward compat when vis_manager is NullVisManager.
+    _pretrain_vis_cfg: dict[str, Any] = vis_manager.latent_pretraining_cfg
+    vis_cadence_pretraining: int = int(
+        _pretrain_vis_cfg.get("vis_cadence_pretraining", output_cfg.get("vis_cadence", 0))
+    )  # 0 = disabled
+    vis_mesh_res: int = int(_pretrain_vis_cfg.get("mesh_resolution", output_cfg.get("mesh_resolution", 64)))
 
     # --- M3: Precomputed SDF cache ---
     _sdf_cache_dir_raw = output_cfg.get("sdf_cache_dir")
     sdf_cache_dir: Path | None = Path(_sdf_cache_dir_raw) if _sdf_cache_dir_raw is not None else None
 
     vis_show_domain_pts: bool = bool(
-        output_cfg.get("vis_show_domain_pts", output_cfg.get("vis_show_eikonal_pts", True))
+        _pretrain_vis_cfg.get(
+            "vis_show_domain_pts", output_cfg.get("vis_show_domain_pts", output_cfg.get("vis_show_eikonal_pts", True))
+        )
     )  # GREY: domain pts used for L1-all loss
-    vis_show_target_pts: str = str(output_cfg.get("vis_show_target_pts", "pts"))  # "pts" or "mesh"
+    vis_show_target_pts: str = str(
+        _pretrain_vis_cfg.get("vis_show_target_pts", output_cfg.get("vis_show_target_pts", "pts"))
+    )  # "pts" or "mesh"
 
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -698,12 +791,11 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             flush=True,
         )
 
-    # --- Per-epoch visualizer (b): current trained mesh + loss sample points ---
-    epoch_vis: SamplingVisualizer | None = None
-    if vis_sampling and vis_cadence > 0:
-        epoch_vis = SamplingVisualizer(output_dir=vis_dir, is_static=False)
-        epoch_vis.write_legend(_make_vis_legend(config_hash, vis_cadence, vis_show_domain_pts, surface_resample_cadence))
-        print(f"[latent_pretrain] Per-epoch vis enabled: cadence={vis_cadence}, mesh_res={vis_mesh_res} → {vis_dir}")
+    if vis_cadence_pretraining > 0:
+        print(
+            f"[latent_pretrain] vis_path=CVM2 only (SamplingVisualizer removed)  "
+            f"cadence={vis_cadence_pretraining}, mesh_res={vis_mesh_res}"
+        )
 
     # --- Register run metadata in W&B config (keys sourced from config when present) ---
     if use_wandb:
@@ -879,8 +971,8 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         optimizer.step()
         scheduler.step()
 
-        # --- Per-epoch snapshot (b): current trained mesh + current sampled points ---
-        if vis_sampling and epoch % vis_cadence == 0 and (epoch_vis is not None or vis_manager is not None):
+        # --- Per-epoch snapshot: current trained mesh + current sampled points (CVM2 only) ---
+        if vis_cadence_pretraining > 0 and epoch % vis_cadence_pretraining == 0:
             _write_epoch_vis_snapshot(
                 model=model,
                 Z=Z,
@@ -892,7 +984,6 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
                 mesh_res=vis_mesh_res,
                 outer_prism=outer_prism,
                 device=device,
-                vis=epoch_vis,
                 vis_manager=vis_manager,
                 show_target_pts=vis_show_target_pts,
                 show_domain_pts=vis_show_domain_pts,
@@ -979,6 +1070,23 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
         mean_dist = sum(pairwise) / len(pairwise)
         print(f"[latent_pretrain] Z pairwise distances: min={min(pairwise):.3f}, mean={mean_dist:.3f}, max={max(pairwise):.3f}")
 
+    # --- Circle validity probe ---
+    # Scans N equally-spaced angles on the z-circle. A position is "valid" when SDF min < 0
+    # (zero crossing possible → marching cubes would produce a mesh). Fast: no marching cubes.
+    n_probe_angles: int = int(loop_cfg.get("circle_probe_n_angles", 36))
+    if n_probe_angles > 0:
+        frac_valid, n_valid_angles, n_total_angles = _compute_circle_validity_fraction(
+            model, z_radius, z_dim, outer_prism, device, n_probe_angles
+        )
+        print(
+            f"[latent_pretrain] Circle validity: {n_valid_angles}/{n_total_angles} angles valid "
+            f"({frac_valid:.1%})  — target ≥ 85%"
+        )
+        if use_wandb:
+            import wandb  # noqa: PLC0415
+
+            wandb.log({"latent_pretraining/circle_valid_fraction": frac_valid}, step=epochs)
+
     # --- Final Mesh Extraction + Topology Summary ---
     pretrained_shapes_dir = run_dir / "pretrained_shapes"
     pretrained_shapes_dir.mkdir(parents=True, exist_ok=True)
@@ -1031,7 +1139,6 @@ def _write_epoch_vis_snapshot(
     mesh_res: int,
     outer_prism: dict[str, Any],
     device: str,
-    vis: SamplingVisualizer | None,
     *,
     vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
     show_target_pts: str = "pts",
@@ -1040,7 +1147,7 @@ def _write_epoch_vis_snapshot(
     """Write one epoch snapshot: current trained mesh, target surface, and domain pts.
 
     For each slot the combined PLY shows training convergence at a glance.
-    All tensors are moved to CPU before passing to the visualizer.
+    All tensors are moved to CPU before passing to the vis_manager (CVM2 only).
 
     Color coding:
     - **Forest green**: target (either surface-cache pts or target mesh geometry).
@@ -1062,12 +1169,13 @@ def _write_epoch_vis_snapshot(
         surf_pts_i, _ = cached_surface[slot_idx]  # target surface cache pts
         domain_pts_i: Tensor | None = domain_pts_per_slot[slot_idx] if show_domain_pts else None
 
-        # Extract current model surface (red) as numpy arrays
+        # Extract current model surface as numpy arrays
         clear_mesh_cache()
         model.set_latent_vector(Z[slot_idx].to(device))
         model.eval()
         mesh_arrays = _extract_mesh(model, None, device, mesh_res, outer_prism, return_mesh=True)
         model_verts_np: np.ndarray | None = mesh_arrays[0] if mesh_arrays is not None else None
+        model_faces_np: np.ndarray | None = mesh_arrays[1] if mesh_arrays is not None else None
 
         # Determine whether to show the target as a proper triangle mesh (green geometry)
         use_mesh_mode = show_target_pts == "mesh" and shape_type == "ply" and slot_idx in ply_cache
@@ -1079,51 +1187,31 @@ def _write_epoch_vis_snapshot(
                 target_verts_np = ply_verts_t.cpu().numpy()
                 target_faces_np = ply_faces_t.cpu().numpy()
                 model_pts_tensor = torch.from_numpy(model_verts_np) if model_verts_np is not None else torch.zeros(0, 3)
-                # Visualization path (preferred when provided)
-                if vis_manager is not None:
-                    vis_manager.vis_latent_sampling(
-                        epoch,
-                        model_pts_tensor,
-                        slot_idx=slot_idx,
-                        slot_name=slot_name,
-                        secondary_points=domain_pts_i.cpu() if domain_pts_i is not None else None,
-                        mesh_verts=target_verts_np,
-                        mesh_faces=target_faces_np,
-                    )
-                if vis is not None:
-                    vis.save_snapshot(
-                        points_mm=model_pts_tensor,
-                        mesh_verts=target_verts_np,
-                        mesh_faces=target_faces_np,
-                        name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
-                        secondary_points_mm=domain_pts_i.cpu() if domain_pts_i is not None else None,
-                        points_colour=_POINT_COLOUR_RED,
-                        secondary_colour=_POINT_COLOUR_WHITE,
-                        mesh_colour=_POINT_COLOUR_GREEN,
-                    )
+                vis_manager.vis_latent_sampling(
+                    epoch,
+                    model_pts_tensor,
+                    slot_idx=slot_idx,
+                    slot_name=slot_name,
+                    secondary_points=domain_pts_i.cpu() if domain_pts_i is not None else None,
+                    mesh_verts=target_verts_np,
+                    mesh_faces=target_faces_np,
+                )
             else:
                 # "pts" mode (or non-PLY slot): target cache pts (green), model pts (red), domain pts (grey)
-                if vis_manager is not None:
-                    vis_manager.vis_latent_sampling(
-                        epoch,
-                        surf_pts_i.cpu(),
-                        slot_idx=slot_idx,
-                        slot_name=slot_name,
-                        secondary_points=torch.from_numpy(model_verts_np) if model_verts_np is not None else None,
-                        tertiary_points=domain_pts_i.cpu() if domain_pts_i is not None else None,
-                    )
-                if vis is not None:
-                    vis.save_snapshot(
-                        points_mm=surf_pts_i.cpu(),
-                        mesh_verts=None,
-                        mesh_faces=None,
-                        name=f"slot{slot_idx:02d}_{slot_name}_epoch{epoch:05d}",
-                        secondary_points_mm=torch.from_numpy(model_verts_np) if model_verts_np is not None else None,
-                        tertiary_points_mm=domain_pts_i.cpu() if domain_pts_i is not None else None,
-                        points_colour=_POINT_COLOUR_GREEN,
-                        secondary_colour=_POINT_COLOUR_RED,
-                        tertiary_colour=_POINT_COLOUR_WHITE,
-                    )
+                vis_manager.vis_latent_sampling(
+                    epoch,
+                    surf_pts_i.cpu(),
+                    slot_idx=slot_idx,
+                    slot_name=slot_name,
+                    secondary_points=torch.from_numpy(model_verts_np) if model_verts_np is not None else None,
+                    tertiary_points=domain_pts_i.cpu() if domain_pts_i is not None else None,
+                )
+
+            # Assembly view: per-slot mesh overlaid on bbox geometry (gracefully skipped if
+            # assembly meshes are not loaded, e.g. in standalone pretraining mode)
+            if model_verts_np is not None and model_faces_np is not None:
+                vis_manager.vis_mesh_assembly_v4(epoch, model_verts_np, model_faces_np)
+
         except Exception as exc:
             print(f"[latent_pretrain] WARNING: epoch vis save failed for slot {slot_idx} ({slot_name}): {exc}")
 

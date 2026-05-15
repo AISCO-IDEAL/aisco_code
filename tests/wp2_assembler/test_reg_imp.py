@@ -16,7 +16,7 @@ class TestGetOuterPrismBoundsMm:
 
     def test_returns_required_keys(self) -> None:
         bounds = get_outer_prism_bounds_mm()
-        assert set(bounds.keys()) == {"x", "y", "z_sampling", "z_mesh"}
+        assert set(bounds.keys()) == {"x", "y", "z"}
 
     def test_x_bounds(self) -> None:
         """X-axis (length): symmetric around origin, half of 5800mm."""
@@ -28,15 +28,10 @@ class TestGetOuterPrismBoundsMm:
         bounds = get_outer_prism_bounds_mm()
         assert bounds["y"] == pytest.approx((-1150.0, 1150.0))
 
-    def test_z_sampling_bounds(self) -> None:
-        """Z-axis for sampling: includes below-ground buffer of ground_clearance=100mm."""
+    def test_z_bounds(self) -> None:
+        """Z-axis: from ground (0 mm) to max height (1650 mm)."""
         bounds = get_outer_prism_bounds_mm()
-        assert bounds["z_sampling"] == pytest.approx((-100.0, 1650.0))
-
-    def test_z_mesh_bounds(self) -> None:
-        """Z-axis for mesh extraction: from ground (0) to top (1650mm)."""
-        bounds = get_outer_prism_bounds_mm()
-        assert bounds["z_mesh"] == pytest.approx((0.0, 1650.0))
+        assert bounds["z"] == pytest.approx((0.0, 1650.0))
 
     def test_all_values_are_floats(self) -> None:
         bounds = get_outer_prism_bounds_mm()

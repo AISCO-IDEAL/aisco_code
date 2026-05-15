@@ -29,7 +29,7 @@ parameters:
   ### model ###
   basic_MLP_v1.hidden:
     values: [32, 64, 128]
-  training_v0_config.training_params.learning_rate:
+  training_config.training_params.learning_rate:
     distribution: log_uniform_values
     min: 0.00001
     max: 0.01

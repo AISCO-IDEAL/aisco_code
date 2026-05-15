@@ -55,7 +55,7 @@ class DiversityTrainer:
     Phase 2 — cheap WIRE-only diversity backward (all N small graphs held together).
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0915  # init is intrinsically state-heavy; decomposition would obscure wiring
         self,
         model: SupportsLatentConcat,
         total_loss: TotalLossV2,
@@ -70,9 +70,11 @@ class DiversityTrainer:
         diversity_norm_order: int = 2,
         diversity_neighbor_agg_fn: str = "min",
         force_z0_to_origin: bool = True,
-        z_resample_cadence: int = 0,
+        z_resample_cadence: int = 0,  # so the original pretrained spots remain
         initial_Z: Tensor | None = None,
         z_resample_start_epoch: int = 0,
+        z_resample_stop_epoch: int = -1,
+        gradient_clip_norm: float | None = None,
         renderer_manager: VisualisationManager | None = None,
         rendering_freq: int | None = None,
         use_neural_renderer: bool = False,
@@ -83,6 +85,11 @@ class DiversityTrainer:
         diagnostic_mode: bool = True,
         print_timing: bool = False,
         vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
+        Z_pretrained: torch.Tensor | None = None,
+        vis_cadence_optimisation: int = 0,
+        vis_strategy: str = "dynamic",
+        vis_all_losses: bool = False,
+        z_resample_mode: str = "on_circle",
     ) -> None:
         """
         Args:
@@ -92,8 +99,10 @@ class DiversityTrainer:
             population_size: Number of latents (N). Set to 1 for single-model training.
             z_dim: Dimensionality of each latent vector.
             device: Compute device.
-            model_lr: Adam learning rate for model parameters.
-            diversity_manager: Optional population-level diversity manager. Set to
+            model_lr: Adam learning rate for model parameters.            gradient_clip_norm: If set, clips the total parameter gradient L2-norm to this
+                value before each optimizer step.  Prevents gradient explosion when eikonal
+                or other losses produce large step sizes on the first few epochs.  ``None``
+                (default) disables clipping (legacy behaviour).            diversity_manager: Optional population-level diversity manager. Set to
                 ``None`` to skip Phase 2 entirely.
             diversity_num_points / diversity_bbox_scale_factor / norm_order / neighbor_agg_fn: trainer-level
                 sampling params passed to the diversity manager compute call.
@@ -110,6 +119,9 @@ class DiversityTrainer:
                 (backward-compatible with existing behaviour).  Set to a positive value
                 to hold the pretrained Z population for that many epochs before the
                 normal z_resample_cadence logic kicks in.
+            z_resample_stop_epoch: Last epoch at which resampling is allowed (-1
+                disables the stop, i.e. resampling continues forever).  When >= 0,
+                resampling is frozen from this epoch onward (Phase 2 transition).
         mesh_extraction_config: dict removed — extractor is constructed internally using
                 the WP5 unified mesh extractor and scaled outer_prism bounds.
             renderer_manager + rendering_freq + use_neural_renderer: rendering wiring.
@@ -140,6 +152,7 @@ class DiversityTrainer:
         self._force_z0_to_origin: bool = force_z0_to_origin
         self._z_resample_cadence: int = max(0, int(z_resample_cadence))
         self._z_resample_start_epoch: int = max(0, int(z_resample_start_epoch))
+        self._z_resample_stop_epoch: int = int(z_resample_stop_epoch)
         self._mode_c_transition_logged: bool = False
 
         self._mesh_extractor: MeshSDFExtractor
@@ -154,6 +167,11 @@ class DiversityTrainer:
             ],
             resolution=_mesh_config.base_resolution,
         )
+        # Separate vis extractor with a larger bbox (vis_extraction.bbox_scale_factor from
+        # vis_config.yaml, default 1.6x) so the mesh is never clipped at the outer-prism
+        # boundary when the shape reaches maximum length at high epochs.
+        # _mesh_extractor keeps the tight diversity bbox for loss domain sampling.
+        self._vis_mesh_extractor: MeshSDFExtractor
         self._renderer_manager: VisualisationManager | None = renderer_manager
         self._rendering_freq: int | None = rendering_freq
         self._use_neural_renderer: bool = use_neural_renderer
@@ -161,6 +179,37 @@ class DiversityTrainer:
         self._use_wandb: bool = use_wandb
         self._log_dir: Path = log_dir or Path("subprojects/wp4_aeroshell_optimizer/v2/logs")
         self._vis_manager: CentralVisManagerV2 | NullVisManager = vis_manager
+        if isinstance(self._vis_manager, CentralVisManagerV2):
+            self._vis_mesh_extractor = self._vis_manager.make_vis_extractor(device=str(self._device))
+        else:
+            self._vis_mesh_extractor = self._mesh_extractor
+
+        _valid_vis_strategies = ("static", "dynamic")
+        if vis_strategy not in _valid_vis_strategies:
+            raise ValueError(
+                f"vis_strategy must be one of {_valid_vis_strategies}, got '{vis_strategy}'. "
+                "Set vis_strategy in vis_config.yaml latent_optimisation section."
+            )
+        if vis_strategy == "static" and Z_pretrained is None:
+            raise ValueError(
+                "vis_strategy='static' requires Z_pretrained to be provided so mesh extraction "
+                "uses frozen pretrained positions. Either pass Z_pretrained or set "
+                "vis_strategy='dynamic' in vis_config.yaml latent_optimisation section."
+            )
+        self._vis_strategy: str = vis_strategy
+        self._vis_all_losses: bool = vis_all_losses
+        self._vis_cadence_optimisation: int = max(0, int(vis_cadence_optimisation))
+        # Store a detached copy — not updated by the optimizer
+        self._Z_pretrained: torch.Tensor | None = (
+            Z_pretrained.detach().clone().to(self._device) if Z_pretrained is not None else None
+        )
+        _valid_resample_modes = ("on_circle", "in_circle", "random")
+        if z_resample_mode not in _valid_resample_modes:
+            raise ValueError(
+                f"z_resample_mode must be one of {_valid_resample_modes}, got '{z_resample_mode}'. "
+                "Set z_resample_mode in training_config.yaml."
+            )
+        self._z_resample_mode: str = z_resample_mode
 
         generator_device = self._device.type if self._device.type in {"cpu", "cuda"} else "cpu"
         self._resample_generator = torch.Generator(device=generator_device)
@@ -172,7 +221,7 @@ class DiversityTrainer:
                 raise ValueError(
                     f"initial_Z shape {tuple(initial_Z.shape)} does not match expected "
                     f"{expected_shape}. "
-                    f"Set population_size={initial_Z.shape[0]} in GINN.yaml to match the "
+                    f"Set population_size={initial_Z.shape[0]} in training_config.yaml to match the "
                     f"pretrained population, or re-run pretraining with "
                     f"population_size={population_size}."
                 )
@@ -184,12 +233,19 @@ class DiversityTrainer:
             self._Z[0] = torch.zeros(z_dim, device=self._device, dtype=torch.float32)
 
         self._model_optimizer: Optimizer = torch.optim.Adam(self._model.parameters(), lr=model_lr)
+        self._gradient_clip_norm: float | None = gradient_clip_norm if gradient_clip_norm and gradient_clip_norm > 0 else None
 
         # Rolling history for the stacked-area competition chart
         self._raw_loss_history: list[dict[str, float]] = []
         self._normalized_loss_history: list[dict[str, float]] = []
         self._weighted_loss_history: list[dict[str, float]] = []
         self._optimizer_loss_history: list[dict[str, float]] = []
+
+        # Per-slot raw-loss line charts (one interactive line per slot, one chart per loss).
+        # Disabled permanently the first time z-resampling fires (slots lose identity).
+        self._per_slot_loss_history: dict[str, list[list[float]]] = {}  # loss_name -> [epoch_0_vals, epoch_1_vals, ...]
+        self._per_slot_epoch_indices: list[int] = []
+        self._per_slot_charts_active: bool = True
 
         norm_cfg = self._total_loss.losses_config.get("general_info", {}).get("loss_normalisation", {})
         self._norm_manager = LossNormalisationManager(norm_cfg)
@@ -209,13 +265,30 @@ class DiversityTrainer:
             return
 
         self._resample_generator.manual_seed(epoch // self._z_resample_cadence)
-        self._Z[start_idx:] = torch.randn(
-            self._population_size - start_idx,
-            self._z_dim,
-            device=self._device,
-            dtype=torch.float32,
-            generator=self._resample_generator,
-        )
+        n_resample = self._population_size - start_idx
+        if self._z_resample_mode == "on_circle" and self._Z_pretrained is not None:
+            # on_circle: restore each slot to its exact pretrained position on the circle
+            self._Z[start_idx:] = self._Z_pretrained[start_idx:].detach().clone()
+        elif self._z_resample_mode == "in_circle" and self._Z_pretrained is not None and self._z_dim >= 2:
+            # in_circle: sample uniformly inside the pretrained circle disk (2D plane, higher dims = 0)
+            # Radius from pretrained: use max 2D-norm across all slots as the disk boundary
+            r_max = self._Z_pretrained[:, :2].norm(dim=1).max().item()
+            U = torch.rand(n_resample, generator=self._resample_generator, device=self._device)
+            theta = torch.rand(n_resample, generator=self._resample_generator, device=self._device) * (2.0 * math.pi)
+            r = r_max * U.sqrt()  # sqrt for uniform area density
+            new_z = torch.zeros(n_resample, self._z_dim, device=self._device, dtype=torch.float32)
+            new_z[:, 0] = r * theta.cos()
+            new_z[:, 1] = r * theta.sin()
+            self._Z[start_idx:] = new_z
+        else:
+            # random (fallback when pretrained positions are unavailable)
+            self._Z[start_idx:] = torch.randn(
+                n_resample,
+                self._z_dim,
+                device=self._device,
+                dtype=torch.float32,
+                generator=self._resample_generator,
+            )
         if self._force_z0_to_origin:
             self._Z[0] = torch.zeros(self._z_dim, device=self._device, dtype=torch.float32)
 
@@ -389,19 +462,24 @@ class DiversityTrainer:
         list[int],
         dict[str, float],
         dict[str, np.ndarray] | None,
+        dict[str, float],
+        list[tuple[int, dict[str, Any] | None]],
     ]:
         """
         Iterate over the population and immediately backward each z's loss.
 
         Returns mean scalar loss (for metrics), averaged mean constraints across the
         population (for ALM update; None if no ALM), averaged loss log_data,
-        active constraint indices, averaged per-loss gradient log_data, and optional
-        conflict vectors for the first population member.
+        active constraint indices, averaged per-loss gradient log_data, optional
+        conflict vectors for the first population member, per-slot raw loss log_data,
+        and per-slot gradient payloads (non-empty only when vis_all_losses=True).
         """
         use_alm: bool = self._alm_manager is not None
         all_alm_constraints: list[list[Tensor]] = []
         summed_log_data: dict[str, float] = {}
         summed_grad_log_data: dict[str, float] = {}
+        per_slot_log_data: dict[str, float] = {}
+        per_slot_grad_payloads: list[tuple[int, dict[str, Any] | None]] = []
         total_loss_val: float = 0.0
         phase1_conflict_vectors: dict[str, np.ndarray] | None = None
 
@@ -418,6 +496,14 @@ class DiversityTrainer:
                 self._vis_manager.set_active_slot(i)
 
             bundle = self._total_loss.compute(self._model, epoch_name=epoch)
+
+            # Collect per-slot gradient payload immediately after compute() while extractor
+            # buffers still hold this slot's dL/dv (next compute() call will reset them).
+            if self._vis_all_losses and self._vis_manager is not None:
+                _slot_payload = self._total_loss.collect_vertex_grads_for_visualisation(
+                    weights_by_name=self._total_loss._manual_weights,
+                )
+                per_slot_grad_payloads.append((i, _slot_payload))
 
             # Compute active constraint info for ALM once per epoch (same for all z_i since it depends only on epoch)
             if i == 0:
@@ -455,6 +541,8 @@ class DiversityTrainer:
             total_loss_val += result.log_data.get("raw_losses/total_loss", result.scalar.item())
             for k, v in result.log_data.items():
                 summed_log_data[k] = summed_log_data.get(k, 0.0) + v
+                if k.startswith("raw_losses/"):
+                    per_slot_log_data[f"slots/slot_{i}/{k}"] = v
 
             if not self._diagnostic_mode:
                 # Performance mode: single combined backward, no per-component grad tracking or conflict capture.
@@ -533,6 +621,8 @@ class DiversityTrainer:
             active_constraint_indices,
             avg_grad_log_data,
             phase1_conflict_vectors,
+            per_slot_log_data,
+            per_slot_grad_payloads,
         )
 
     # ------------------------------------------------------------------
@@ -553,8 +643,11 @@ class DiversityTrainer:
         if self._norm_manager.is_enabled() and not self._norm_manager.is_calibrated():
             self._calibrate()
 
-        if self._z_resample_cadence > 0 and epoch > 0 and epoch % self._z_resample_cadence == 0:
+        _stop = self._z_resample_stop_epoch
+        if self._z_resample_cadence > 0 and epoch > 0 and epoch % self._z_resample_cadence == 0 and (_stop < 0 or epoch < _stop):
             self._resample_population(epoch)
+            # Slot identity breaks after resampling — disable per-slot line charts permanently.
+            self._per_slot_charts_active = False
 
         self._model_optimizer.zero_grad()
 
@@ -566,6 +659,8 @@ class DiversityTrainer:
             active_constraint_indices,
             per_loss_gradient_log_data,
             phase1_conflict_vectors,
+            per_slot_log_data,
+            per_slot_grad_payloads,
         ) = self._per_vector_backward(epoch)
 
         # External ALM update — only update multipliers for currently active constraints
@@ -615,6 +710,9 @@ class DiversityTrainer:
         if capture_conflict and self._conflict_tracker is not None and conflict_vectors:
             self._conflict_tracker.save_from_grad_vectors(conflict_vectors, epoch)
 
+        if self._gradient_clip_norm is not None:
+            torch.nn.utils.clip_grad_norm_(self._model.parameters(), self._gradient_clip_norm)
+
         self._model_optimizer.step()
 
         raw_metrics = {
@@ -629,10 +727,10 @@ class DiversityTrainer:
         # Render (reference shape = Z[0])
         if self._population_size > 0:
             self._model.set_latent_vector(self._Z[0])
-        self._render(epoch, per_vector_loss_val)
+        self._render(epoch, per_vector_loss_val, per_slot_grad_payloads=per_slot_grad_payloads)
 
         # Log once per epoch
-        self._log(avg_log_data, diversity_log_data, per_loss_gradient_log_data, epoch)
+        self._log(avg_log_data, diversity_log_data, per_loss_gradient_log_data, epoch, per_slot_log_data)
         self._total_loss.finalize_epoch_mesh_stats()
 
         metrics: dict[str, float] = {
@@ -659,8 +757,9 @@ class DiversityTrainer:
         diversity_log_data: dict[str, float],
         gradient_log_data: dict[str, float],
         epoch: int,
+        per_slot_log_data: dict[str, float] | None = None,
     ) -> None:
-        """Single wandb.log call with all averaged scalars + ALM multipliers + diversity + gradients."""
+        """Single wandb.log call with all averaged scalars + ALM multipliers + diversity + gradients + per-slot."""
         if not self._use_wandb or wandb.run is None:
             return
 
@@ -670,6 +769,8 @@ class DiversityTrainer:
         log_dict.update(self._norm_manager.get_telemetry())
         log_dict.update(diversity_log_data)
         log_dict.update(gradient_log_data)
+        # Note: per-slot raw scalars are NOT added to log_dict to avoid hundreds of individual
+        # wandb panels. They are instead aggregated into per-loss line charts below.
 
         # Competition charts (avg-of-population)
         raw_floats: dict[str, float] = {
@@ -700,9 +801,67 @@ class DiversityTrainer:
             epoch,
         )
 
-        # Merge competition charts into single log call to avoid WandB step corruption
+        # Per-slot line charts (one interactive line per slot, one chart per raw loss)
+        slot_log = self._log_slot_line_charts(per_slot_log_data or {}, epoch)
+
+        # Merge competition charts + slot charts into single log call to avoid WandB step corruption
         log_dict.update(competition_log)
+        log_dict.update(slot_log)
         wandb.log(log_dict, step=epoch)
+
+    def _log_slot_line_charts(
+        self,
+        per_slot_log_data: dict[str, float],
+        epoch: int,
+    ) -> dict[str, Any]:
+        """Build one wandb.plot.line_series chart per raw loss, with one line per latent slot.
+
+        Returns a dict ready to merge into the main wandb.log call.
+        Silently returns {} when per-slot charting is disabled (resampling has fired)
+        or when wandb is not active.
+        """
+        if not self._per_slot_charts_active or not per_slot_log_data:
+            return {}
+        if not self._use_wandb or wandb.run is None:
+            return {}
+
+        # Parse: "slots/slot_{i}/raw_losses/{loss_name}" -> {loss_name: {slot_idx: value}}
+        slot_values: dict[str, dict[int, float]] = {}
+        for key, val in per_slot_log_data.items():
+            # Expected format: slots/slot_<i>/raw_losses/<loss_name>
+            parts = key.split("/")
+            if len(parts) < 4 or parts[0] != "slots" or not parts[1].startswith("slot_") or parts[2] != "raw_losses":
+                continue
+            try:
+                slot_idx = int(parts[1].removeprefix("slot_"))
+            except ValueError:
+                continue
+            loss_name = "/".join(parts[3:])
+            slot_values.setdefault(loss_name, {})[slot_idx] = val
+
+        if not slot_values:
+            return {}
+
+        # Build / extend per-slot history
+        self._per_slot_epoch_indices.append(epoch)
+        n_slots = self._population_size
+        for loss_name, by_slot in slot_values.items():
+            epoch_vals = [by_slot.get(i, float("nan")) for i in range(n_slots)]
+            self._per_slot_loss_history.setdefault(loss_name, []).append(epoch_vals)
+
+        xs = self._per_slot_epoch_indices
+        keys = [f"slot_{i}" for i in range(n_slots)]
+        result: dict[str, Any] = {}
+        for loss_name, history in self._per_slot_loss_history.items():
+            ys = [[history[t][i] for t in range(len(history))] for i in range(n_slots)]
+            result[f"raw_losses_individual_slots/{loss_name}"] = wandb.plot.line_series(
+                xs=xs,
+                ys=ys,
+                keys=keys,
+                title=loss_name,
+                xname="epoch",
+            )
+        return result
 
     def _log_competition_charts(  # noqa: PLR0915
         self,
@@ -867,9 +1026,16 @@ class DiversityTrainer:
     # ------------------------------------------------------------------
     # Rendering
     # ------------------------------------------------------------------
-    def _render(self, epoch: int, total_loss_val: float) -> None:
+    def _render(  # noqa: PLR0912, PLR0915
+        self,
+        epoch: int,
+        total_loss_val: float,
+        per_slot_grad_payloads: list[tuple[int, dict[str, Any] | None]] | None = None,
+    ) -> None:
         """Extract mesh from Z[0] and forward to either VisualisationManager or CAD fallback."""
-        if self._rendering_freq is None or epoch % self._rendering_freq != 0:
+        # vis_cadence_optimisation (from vis_config.yaml) takes precedence over legacy rendering_freq
+        _cadence = self._vis_cadence_optimisation if self._vis_cadence_optimisation > 0 else self._rendering_freq
+        if _cadence is None or epoch % _cadence != 0:
             return
 
         # Reuse the mesh already captured by the gradient pipeline; only
@@ -893,21 +1059,56 @@ class DiversityTrainer:
         # Visualization: write PLY for every population slot
         if self._vis_manager is not None:
             for i in range(self._population_size):
-                self._model.set_latent_vector(self._Z[i])
-                _verts, _faces = self._mesh_extractor.extract_mesh(sdf_model=self._model)
+                # vis_strategy=static: evaluate mesh at original pretrained Z circle positions, not current optimizer Z
+                if self._vis_strategy == "static" and self._Z_pretrained is not None:
+                    self._model.set_latent_vector(self._Z_pretrained[i])
+                else:
+                    self._model.set_latent_vector(self._Z[i])
+                _verts, _faces = self._vis_mesh_extractor.extract_mesh(sdf_model=self._model)
                 self._vis_manager.set_active_slot(i)
                 self._vis_manager.vis_mesh_shape(epoch, _verts, _faces)
+                self._vis_manager.vis_mesh_assembly_v4(epoch, _verts, _faces)
                 self._vis_manager.set_active_slot(None)
             # Restore model to Z[0] as reference shape
             self._model.set_latent_vector(self._Z[0])
-            # Per-loss gradient PLYs go through the central manager (no slot
-            # tag: the diversity loop has already restored the reference Z[0]).
-            for _loss_key, _grads in per_loss_grads.items():
-                _mesh_entry = per_loss_meshes.get(_loss_key)
-                if _mesh_entry is None:
-                    continue
-                _v, _f = _mesh_entry
-                self._vis_manager.vis_mesh_gradient(epoch, _loss_key, _v, _f, _grads)
+            # Per-slot gradient vis (vis_all_losses=True): each slot gets its own
+            # gradient PLY written under its slot subdirectory.
+            if self._vis_all_losses and per_slot_grad_payloads:
+                for slot_idx, slot_payload in per_slot_grad_payloads:
+                    if slot_payload is None:
+                        continue
+                    slot_per_loss = slot_payload["per_loss"]
+                    slot_meshes = slot_payload.get("per_loss_meshes", {})
+                    self._vis_manager.set_active_slot(slot_idx)
+                    for _loss_key, _grads in slot_per_loss.items():
+                        _mesh_entry = slot_meshes.get(_loss_key)
+                        if _mesh_entry is None:
+                            continue
+                        _v, _f = _mesh_entry
+                        self._vis_manager.vis_mesh_gradient(epoch, _loss_key, _v, _f, _grads)
+                    self._vis_manager.set_active_slot(None)
+            else:
+                # Default: reference-shape gradient (Z[0] perspective, no slot tag).
+                for _loss_key, _grads in per_loss_grads.items():
+                    _mesh_entry = per_loss_meshes.get(_loss_key)
+                    if _mesh_entry is None:
+                        continue
+                    _v, _f = _mesh_entry
+                    self._vis_manager.vis_mesh_gradient(epoch, _loss_key, _v, _f, _grads)
+
+        # Circle survey: every N optimisation epochs, sweep the pretrained z-circle.
+        if isinstance(self._vis_manager, CentralVisManagerV2):
+            _survey_cfg: dict = self._vis_manager.latent_optimisation_cfg.get("vis_latent_circle_survey", {})
+            _survey_enabled = _survey_cfg.get("enabled", False)
+            _survey_cadence = int(_survey_cfg.get("cadence", 0))
+            if _survey_enabled and _survey_cadence > 0 and epoch % _survey_cadence == 0:
+                self._vis_manager.vis_latent_circle_survey(
+                    model=self._model,
+                    z_radius=float(_survey_cfg.get("z_radius", 2.0)),
+                    n_samples=int(_survey_cfg.get("n_circle_samples", 90)),
+                    device=str(self._device),
+                    epoch=epoch,
+                )
 
         if self._use_neural_renderer and self._renderer_manager is not None:
             try:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,7 @@ from fastapi import HTTPException
 
 _OVERRIDE_PREFIX = "gui_override_"
 _COPY_EXCLUDE = ("sweeps",)
+_TIMESTAMP_RE = re.compile(r"_(\d{8}_\d{6})(?:_\d+)?$")
 
 
 def _fetch_wp4_config_paths(wp4_configs_dir: Path, exclude: tuple[str, ...] = _COPY_EXCLUDE) -> list[Path]:
@@ -44,11 +46,6 @@ def _resolve_session(folder_str: str, root: Path) -> Path:
         candidate.relative_to(root.resolve())
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=400, detail={"message": f"Folder outside override root: {folder_str}"}) from exc
-    if not candidate.name.startswith(_OVERRIDE_PREFIX):
-        raise HTTPException(
-            status_code=400,
-            detail={"message": f"Folder must start with '{_OVERRIDE_PREFIX}': {candidate.name}"},
-        )
     return candidate
 
 
@@ -125,10 +122,30 @@ def _validate_value(param: dict[str, Any], raw: Any, loc: str) -> Any:  # noqa: 
 
 
 class ConfigOverrideManager:
-    def __init__(self, root: Path, schema_path: Path, wp4_configs_dir: Path) -> None:
+    def __init__(self, root: Path, schema_path: Path, wp4_configs_dir: Path, assembly_map_path: Path | None = None) -> None:
         self._root = root
         self._schema_path = schema_path
         self._wp4_configs_dir = wp4_configs_dir
+        self._assembly_map_path = assembly_map_path
+
+    def _max_assembly_id(self) -> int | None:
+        if self._assembly_map_path is None or not self._assembly_map_path.exists():
+            return None
+        try:
+            data = yaml.safe_load(self._assembly_map_path.read_text(encoding="utf-8")) or {}
+            return max(int(k) for k in data) if data else None
+        except Exception:
+            return None
+
+    def _get_schema(self) -> dict[str, Any]:
+        schema = _load_schema(self._schema_path)
+        max_id = self._max_assembly_id()
+        if max_id is not None:
+            for cfg_entry in schema.get("configs", {}).values():
+                for param in cfg_entry.get("params", []):
+                    if param.get("path") == "bb_config.assembly_id":
+                        param["max"] = max_id
+        return schema
 
     def init_session(self) -> dict[str, Any]:
         self._root.mkdir(parents=True, exist_ok=True)
@@ -154,12 +171,43 @@ class ConfigOverrideManager:
             "skipped_subfolders": list(_COPY_EXCLUDE),
         }
 
+    def reset_session(self, folder_str: str) -> dict[str, Any]:
+        session_dir = _resolve_session(folder_str, self._root)
+        if not session_dir.exists():
+            raise HTTPException(status_code=404, detail={"message": f"Session not found: {session_dir.name}"})
+        sources = _fetch_wp4_config_paths(self._wp4_configs_dir)
+        reset: list[str] = []
+        for src in sources:
+            rel = src.relative_to(self._wp4_configs_dir)
+            dst = session_dir / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            reset.append(str(rel))
+        return {"folder": str(session_dir), "reset_files": reset}
+
+    def rename_session(self, folder_str: str, run_name: str) -> dict[str, Any]:
+        session_dir = _resolve_session(folder_str, self._root)
+        if not session_dir.exists():
+            raise HTTPException(status_code=404, detail={"message": f"Session not found: {session_dir.name}"})
+        safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in run_name.strip())[:40].strip("_")
+        if not safe_name:
+            raise HTTPException(status_code=400, detail={"message": "run_name must not be empty after sanitisation"})
+        m = _TIMESTAMP_RE.search(session_dir.name)
+        if not m:
+            raise HTTPException(status_code=400, detail={"message": f"Cannot extract timestamp from folder: {session_dir.name}"})
+        timestamp = m.group(1)
+        new_dir = self._root / f"{safe_name}_{timestamp}"
+        if new_dir.exists() and new_dir.resolve() != session_dir.resolve():
+            raise HTTPException(status_code=409, detail={"message": f"Session '{safe_name}_{timestamp}' already exists"})
+        session_dir.rename(new_dir)
+        return {"old_folder": str(session_dir), "new_folder": str(new_dir), "name": safe_name}
+
     def get_schema(self) -> dict[str, Any]:
-        return _load_schema(self._schema_path)
+        return self._get_schema()
 
     def get_values(self, folder_str: str) -> dict[str, Any]:
         session_dir = _resolve_session(folder_str, self._root)
-        schema = _load_schema(self._schema_path)
+        schema = self._get_schema()
         result: dict[str, dict[str, Any]] = {}
         for cfg_name, cfg_entry in schema.get("configs", {}).items():
             yaml_path = session_dir / cfg_name
@@ -172,7 +220,7 @@ class ConfigOverrideManager:
 
     def set_values(self, folder_str: str, updates: dict[str, dict[str, Any]]) -> dict[str, Any]:
         session_dir = _resolve_session(folder_str, self._root)
-        schema = _load_schema(self._schema_path)
+        schema = self._get_schema()
         schema_configs = schema.get("configs", {})
 
         validated: dict[str, list[tuple[list[str], Any]]] = {}
@@ -212,7 +260,7 @@ class ConfigOverrideManager:
         sessions = [
             {"name": e.name, "folder": str(e), "mtime": e.stat().st_mtime}
             for e in sorted(self._root.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
-            if e.is_dir() and e.name.startswith(_OVERRIDE_PREFIX)
+            if e.is_dir()
         ]
         return {"sessions": sessions}
 
@@ -222,7 +270,7 @@ class ConfigOverrideManager:
             if not self._root.exists():
                 return {"removed": []}
             for e in self._root.iterdir():
-                if e.is_dir() and e.name.startswith(_OVERRIDE_PREFIX):
+                if e.is_dir():
                     shutil.rmtree(e)
                     removed.append(e.name)
             return {"removed": removed}

@@ -6,7 +6,7 @@
 
   <!-- Controls -->
   <div class="dark-card toolbar">
-    <button class="btn" id="btnRun">Launch Run</button>
+    <button class="btn" id="btnRun">Run with Overrides</button>
     <button class="btn secondary" id="btnStop" disabled>Stop</button>
     <div style="flex:1; min-width:120px;">
       <div class="progress-bar-wrap" id="progressWrap">
@@ -65,10 +65,15 @@
   }
 
   btnRun.addEventListener("click", async () => {
+    const cfgFolder = localStorage.getItem("aiscoOverrideFolderV3") || "";
+    if (!cfgFolder) {
+      progressLabel.textContent = "No config override session — go to Config Overrides first.";
+      return;
+    }
     btnRun.disabled = true; btnStop.disabled = false;
     progressFill.style.width = "0%"; progressLabel.textContent = "Starting…";
     try {
-      const r = await fetch(`${API}/run/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const r = await fetch(`${API}/run/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cfg_folder: cfgFolder }) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail?.message || r.status);
       miniLog.textContent = `PID ${d.pid}`;
@@ -93,12 +98,23 @@
     if (state.running) { btnRun.disabled = true; btnStop.disabled = false; startSSELog(); }
   })();
 
-  // 3h: Inform the user when no config override session is active (intentional UX fix)
-  if (!localStorage.getItem("aiscoOverrideFolderV3")) {
-    const notice = document.createElement("div");
-    notice.style.cssText = "font-size:0.82rem;color:#f8d9d9;padding:4px 10px;background:rgba(200,100,0,0.25);border-radius:4px;white-space:nowrap;";
-    notice.textContent = "No config override session active \u2014 go to Config Overrides to set one.";
-    document.querySelector(".toolbar").appendChild(notice);
-  }
+  // Show session info in toolbar
+  (function updateSessionBadge() {
+    const cfgFolder = localStorage.getItem("aiscoOverrideFolderV3") || "";
+    const toolbar = document.querySelector(".toolbar");
+    const badge = document.createElement("div");
+    badge.style.cssText = "font-size:0.82rem;padding:4px 10px;border-radius:4px;white-space:nowrap;";
+    if (cfgFolder) {
+      badge.style.color = "#b8f0b8";
+      badge.style.background = "rgba(0,120,0,0.25)";
+      badge.textContent = "Session: " + cfgFolder.split("/").pop();
+    } else {
+      badge.style.color = "#f8d9d9";
+      badge.style.background = "rgba(200,100,0,0.25)";
+      badge.textContent = "No config override session \u2014 go to Config Overrides to set one.";
+      btnRun.disabled = true;
+    }
+    toolbar.insertBefore(badge, toolbar.querySelector("a"));
+  })();
 </script>
 {% endblock %}

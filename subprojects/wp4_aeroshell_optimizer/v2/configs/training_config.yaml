@@ -1,0 +1,75 @@
+# ===========================================================================
+# Training hyper-parameters (from training_v0_config.yaml)
+# ===========================================================================
+training_params:
+  learning_rate: 0.000008  # 0.000008 for WIREV5, 0.0005 for WIREV2 and ConcatWireV2, 0.0001 for basic MLP, 0.0005 for AISCOModel_v0
+  num_epochs: 1000 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
+  mesh_save_interval: 20  # basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
+  marching_cubes_usage: "True"  # storage_utils.py: general_config["general_info"].get("marching_cubes_usage", "False") (if True, uses marching cubes with threads for mesh extraction, if False uses kaolin-based mesh extraction without threads, which is more stable but slower)
+  gradient_conflict_cadence: 0  # Gradient conflict tracking cadence (0 = disabled, N = every N epochs). Stores per-component gradient vectors and cosine similarities to disk.
+  gradient_conflict_output_dir: ""  # Output directory for gradient conflict data. If empty, defaults to <storage_dir>/<model_hash>/<wandb_run>/gradient_conflict/
+
+mode:
+  training_mode: "diagnostic"  # "performance" or "diagnostic"
+  print_timing: true  # print backward timing per epoch (useful when benchmarking performance vs diagnostic mode)
+
+# ===========================================================================
+# GINN / Diversity parameters (merged from GINN.yaml)
+# ===========================================================================
+
+pretrain_population_size: false # optimisation loop uses same population size as pretraining
+population_size: 7  # used only when pretrain_population_size: false
+
+# Initial Z placement when pretrain_population_size: false.
+#   z_init_mode: circle        → slots placed at evenly-spaced angles on the
+#                                 pretraining z-circle (same radius)
+#   z_init_mode: wider_circle  → slots randomly sampled within a circle of radius
+#                                 r_init_scale * r_pretraining (wider than training)
+z_init_mode: circle           # circle | wider_circle; used only when pretrain_population_size: false
+r_init_scale: 1.0             # radius multiplier for wider_circle mode
+
+# ---------------------------------------------------------------------------
+# Diversity loss sampling config
+# ---------------------------------------------------------------------------
+# Points are used for cheap WIRE-only forward passes (no CFD/raytracing).
+# With 20 GB VRAM this can be set high; 2048 is a conservative default.
+bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; 1.0 = full outer_prism
+diversity_num_points: 4096
+diversity_norm_order: 2          # p for L^p field distance
+diversity_neighbor_agg_fn: "min" # 'min' = maximize nearest-neighbour distance (GINN paper Eq. 26)
+
+# ---------------------------------------------------------------------------
+# Latent population behaviour
+# ---------------------------------------------------------------------------
+force_z0_to_origin: false         # true keeps first latent vector fixed at origin | use false to align with latent pretraining
+
+# ---------------------------------------------------------------------------
+# Latent resampling behaviour
+# ---------------------------------------------------------------------------
+
+# z_resample_mode: on_circle → restore each Z slot to its exact pretrained position on the circle
+# z_resample_mode: in_circle → resample each Z slot to a random point inside the pretrained circle disk
+#                               (uniform area density: r = r_max * sqrt(U), random angle)
+# z_resample_mode: random   → resample Z positions from isotropic Gaussian (no pretrained reference needed)
+#
+# Mode A: z_resample_cadence=0                    → never resample (fixed population)
+# Mode B: z_resample_cadence>0, z_resample_start_epoch=0  → resample from epoch 0
+# Mode C: z_resample_cadence>0, z_resample_start_epoch>0  → hold pretrained Z for
+#          z_resample_start_epoch epochs, then resample every z_resample_cadence epochs
+z_resample_cadence: 0            # 0 disables resampling, N>0 resamples every N epochs | use 0 to align with latent pretraining spots
+z_resample_start_epoch: 0        # 0 = Mode B (resample from epoch 1); N>0 = Mode C warm-up
+z_resample_stop_epoch: -1        # -1 = never stop resampling; N>0 = freeze Z from epoch N onward (Phase 2 transition)
+z_resample_mode: on_circle        # on_circle | in_circle | random; mode used when z_resample_cadence > 0
+
+# ---------------------------------------------------------------------------
+# Gradient clipping (F3 fix for first-step SDF destruction)
+# ---------------------------------------------------------------------------
+# Set to e.g. 1.0 to cap the total parameter gradient L2-norm before each optimizer step.
+# null disables clipping (legacy behaviour).
+gradient_clip_norm: null
+
+# ---------------------------------------------------------------------------
+# Post-training mesh saving for population validation.
+# ---------------------------------------------------------------------------
+# When true, one PLY mesh per latent slot is saved to the run's mesh directory after training.
+save_population_meshes: true

@@ -360,7 +360,7 @@ def run_all(base: Path) -> list[Result]:  # noqa: PLR0915  # sweep function - in
 
     i1_buf = io.StringIO()
     with redirect_stdout(i1_buf):
-        pretraining_latent(i1_model, i1_latent_config, "cpu", use_wandb=False, vis_sampling=False)
+        pretraining_latent(i1_model, i1_latent_config, "cpu", use_wandb=False)
     i1_out = i1_buf.getvalue()
 
     # Direct-call path must equal the main_v2-alias path (same function, different import name)

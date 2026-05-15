@@ -19,7 +19,7 @@ import open3d as o3d
 import torch
 import yaml
 
-_CFG = yaml.safe_load((Path(__file__).parent / "viz_config.yaml").read_text())
+_CFG = yaml.safe_load((Path(__file__).parents[2] / "configs" / "vis_config.yaml").read_text())
 _MESH_COLOUR_DARK_BLUE: tuple[int, int, int] = tuple(_CFG["mesh_colour_dark_blue"])
 _POINT_COLOUR_GREEN: tuple[int, int, int] = tuple(_CFG["point_colour_green"])
 _POINT_COLOUR_WHITE: tuple[int, int, int] = tuple(_CFG["point_colour_grey"])

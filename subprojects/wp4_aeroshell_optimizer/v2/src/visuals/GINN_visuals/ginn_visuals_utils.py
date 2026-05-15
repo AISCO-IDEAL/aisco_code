@@ -10,7 +10,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import refor
 
 if TYPE_CHECKING:
     from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsLatentConcat
-    from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.interpolator import Interpolator
+    from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.archive.interpolator import Interpolator
 
 
 InterpolationStage = Literal["initial", "periodic", "final"]
@@ -58,7 +58,7 @@ def setup_latent_interpolator(
     save_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.GINN_visuals.interpolator import (  # noqa: PLC0415
+        from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.archive.interpolator import (  # noqa: PLC0415
             Interpolator,
         )
 

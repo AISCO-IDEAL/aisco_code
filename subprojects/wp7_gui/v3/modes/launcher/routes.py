@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -26,10 +27,12 @@ _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
 # Singletons shared across requests
 # ---------------------------------------------------------------------------
 _process_manager = ProcessManager(SETTINGS.logs_dir)
+_runtime_state: dict[str, str] = {"active_cfg_folder": ""}  # updated on each run/start so progress/SSE can resolve epochs
 _config_manager = ConfigOverrideManager(
     root=SETTINGS.config_overrides_root,
     schema_path=SETTINGS.schema_path,
     wp4_configs_dir=SETTINGS.wp4_configs_dir,
+    assembly_map_path=SETTINGS.repo_root / "wp2_assembler" / "version4" / "config" / "assembly_map.yaml",
 )
 _assembly_service_live = AssemblySelectionService(SETTINGS.repo_root, subdir="live")
 _assembly_service_completed = AssemblySelectionService(SETTINGS.repo_root, subdir="completed")
@@ -37,7 +40,7 @@ _assembly_service_completed = AssemblySelectionService(SETTINGS.repo_root, subdi
 
 # Assembly ID validation bounds — keep in sync with schema/gui_schema.json
 _ASSEMBLY_ID_MIN = 1
-_ASSEMBLY_ID_MAX = 51
+_ASSEMBLY_ID_MAX = 99999
 
 
 def _assembly(pipeline: str) -> AssemblySelectionService:
@@ -74,16 +77,48 @@ class CleanupRequest(BaseModel):
     all: bool = False
 
 
+class FolderRequest(BaseModel):
+    folder: str
+
+
+class RenameRequest(BaseModel):
+    folder: str
+    run_name: str
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _get_total_epochs() -> int:
+def _get_total_epochs(cfg_folder: str = "") -> int:
+    """Return num_epochs, preferring the active override folder over wp4 defaults."""
+    # 1. Try the override folder first (when a config session is active)
+    if cfg_folder:
+        try:
+            override_dir = Path(cfg_folder)
+            # Resolve the training config name from the override's general_config.yaml
+            gen_path = override_dir / "general_config.yaml"
+            training_name = "training_config.yaml"
+            if gen_path.exists():
+                with gen_path.open(encoding="utf-8") as f:
+                    gen = yaml.safe_load(f) or {}
+                training_name = gen.get("active_configs", {}).get("training", training_name)
+            training_path = override_dir / training_name
+            if training_path.exists():
+                with training_path.open(encoding="utf-8") as f:
+                    tcfg = yaml.safe_load(f) or {}
+                epochs = tcfg.get("training_params", {}).get("num_epochs")
+                if epochs is not None:
+                    return int(epochs)
+        except Exception:
+            pass  # fall through to defaults
+
+    # 2. Fall back to wp4 defaults
     try:
         with SETTINGS.general_config_path.open(encoding="utf-8") as f:
             gen = yaml.safe_load(f) or {}
-        training_name = gen.get("active_configs", {}).get("training", "training_v0_config.yaml")
+        training_name = gen.get("active_configs", {}).get("training", "training_config.yaml")
         training_path = SETTINGS.wp4_configs_dir / training_name
         with training_path.open(encoding="utf-8") as f:
             tcfg = yaml.safe_load(f) or {}
@@ -131,6 +166,7 @@ def launcher_subpage(request: Request, page_key: str, pipeline: str = "live"):
 # ---------------------------------------------------------------------------
 @router.post("/api/run/start")
 def run_start(payload: RunStartRequest) -> JSONResponse:
+    _runtime_state["active_cfg_folder"] = payload.cfg_folder.strip() if payload.cfg_folder else ""
     assembly_id: int | None = None
     if payload.assembly_id not in (None, ""):
         try:
@@ -195,10 +231,16 @@ def run_logs() -> dict[str, Any]:
 def run_progress() -> dict[str, Any]:
     state = _process_manager.get_state()
     log_path = state["log_path"]
+    active_cfg_folder = _runtime_state["active_cfg_folder"]
     progress = (
-        log_parser.get_progress(log_path, _get_total_epochs())
+        log_parser.get_progress(log_path, _get_total_epochs(active_cfg_folder))
         if log_path
-        else {"num_epochs": _get_total_epochs(), "current_epoch": -1, "progress_percent": 0.0, "completed": False}
+        else {
+            "num_epochs": _get_total_epochs(active_cfg_folder),
+            "current_epoch": -1,
+            "progress_percent": 0.0,
+            "completed": False,
+        }
     )
     return {**progress, "running": state["running"], "return_code": state["return_code"]}
 
@@ -206,7 +248,8 @@ def run_progress() -> dict[str, Any]:
 @router.get("/api/run/artifacts")
 def run_artifacts() -> dict[str, Any]:
     storage_root = default_storage_root()
-    run_dir = detect_current_run_dir(storage_root)
+    active_cfg_session = Path(_runtime_state["active_cfg_folder"]).name if _runtime_state["active_cfg_folder"] else None
+    run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=active_cfg_session)
     if run_dir is None:
         return {
             "run_dir": None,
@@ -235,7 +278,8 @@ async def run_stream_logs() -> StreamingResponse:
                         yield sse.event("log", {"line": line})
                     epoch = log_parser.parse_epoch(text)
                     if epoch >= 0:
-                        yield sse.event("epoch", {"epoch": epoch, "total": _get_total_epochs()})
+                        active_cfg_folder = _runtime_state["active_cfg_folder"]
+                        yield sse.event("epoch", {"epoch": epoch, "total": _get_total_epochs(active_cfg_folder)})
             if not state["running"]:
                 yield sse.event("done", {"return_code": state["return_code"]})
                 break
@@ -251,7 +295,8 @@ async def run_stream_artifacts() -> StreamingResponse:
         while True:
             state = _process_manager.get_state()
             storage_root = default_storage_root()
-            run_dir = detect_current_run_dir(storage_root)
+            active_cfg_session = Path(_runtime_state["active_cfg_folder"]).name if _runtime_state["active_cfg_folder"] else None
+            run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=active_cfg_session)
             if run_dir is not None:
                 new_events, seen = fs_poller.poll_once(run_dir, seen)
                 for ev in new_events:
@@ -287,6 +332,16 @@ def cfg_values_get(folder: str = "") -> dict[str, Any]:
 @router.put("/api/config-overrides/values")
 def cfg_values_put(payload: OverrideValuesRequest) -> dict[str, Any]:
     return _config_manager.set_values(payload.folder, payload.updates)
+
+
+@router.post("/api/config-overrides/reset")
+def cfg_reset(payload: FolderRequest) -> dict[str, Any]:
+    return _config_manager.reset_session(payload.folder)
+
+
+@router.post("/api/config-overrides/rename")
+def cfg_rename(payload: RenameRequest) -> dict[str, Any]:
+    return _config_manager.rename_session(payload.folder, payload.run_name)
 
 
 @router.get("/api/config-overrides/sessions")
@@ -330,3 +385,8 @@ def assembly_mesh(pipeline: str = "live") -> FileResponse:
 @router.get("/api/assembly-selection/checks")
 def assembly_checks(pipeline: str = "live") -> dict:
     return _assembly(pipeline).get_checks()
+
+
+@router.post("/api/assembly-selection/generate")
+def assembly_generate(pipeline: str = "live") -> dict[str, Any]:
+    return _assembly(pipeline).add_to_map()

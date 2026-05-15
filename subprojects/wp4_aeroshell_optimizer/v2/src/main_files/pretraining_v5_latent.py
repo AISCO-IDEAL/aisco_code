@@ -193,7 +193,7 @@ def main() -> None:  # noqa: PLR0912,PLR0915
             print("[pretraining_v5_latent] W&B initialized, but no run URL found.")
 
     # Run pretraining
-    model, Z = pretraining_latent(model, config, device, use_wandb=use_wandb, vis_sampling=args.vis_sampling)
+    model, Z = pretraining_latent(model, config, device, use_wandb=use_wandb)
 
     if use_wandb:
         wandb.finish()

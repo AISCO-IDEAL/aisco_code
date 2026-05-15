@@ -3,7 +3,7 @@ general_info:
   device: "cuda"  #  main_v2
   run_locally: "False" # automatically detected, don't touch
   verbose: "True"  #  basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
-  latent_space: false  # true = use pretraining_latent.py pipeline; model must be SupportsLatentConcat (e.g. ConcatWIREV2)
+  latent_space: true  # true = use pretraining_latent.py pipeline; model must be SupportsLatentConcat (e.g. ConcatWIREV2)
 
 profiler:
   profile_mode: False
@@ -21,10 +21,9 @@ model_def:
 active_configs:
   losses: "losses_v0_config.yaml"  #  total_loss.py, parent_loss.py, visual modes (assembly_mode, mesh_assembly_mode_v2)
   pretraining: "pretraining_v0_config.yaml"  #  main_v1_1_one_model.py: general_config["active_configs"].get("pretraining", ...)
-  training: "training_v0_config.yaml"  #  main_v1_1_one_model.py, parent_loss.py: general_config["active_configs"]["training"]
+  training: "training_config.yaml"  #  main_v1_1_one_model.py, parent_loss.py: general_config["active_configs"]["training"]
   # model_params: "WIRE_v2.yaml"  #  main_v1_1_one_model.py: general_config["active_configs"]["model_params"] # WIRE_v2.yaml or concat_WIRE_v2.yaml
   neural_renderer: "neural_renderer_v0.yaml"  #  visual_wrapper.py, total_loss.py
-  interpolator: "postprocessing_interpolator_config.yaml"  # latent-space interpolation monitoring
   solar: "solar_configs/solar_loss_config.yaml" # Used in all solar versions above V3s
   latent_pretraining: "pretraining_latent_config.yaml"  # Used by pretraining_latent.py
 
@@ -48,7 +47,13 @@ vis_manager: "v2"
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
   storage_dir: "/cluster/work/fuge/AISCO/temp_"  # DEFAULT: /cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage, used in main_v1_1_one_model.py, basic_MLP_v1.py, storage_utils.py
   local_storage_dir: "./local_storage_dir" # only used for testing on local machine, not on cluster  #  main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
-  beast_storage_dir: "/home/aisco/temp_" # only used for testing on local machine, not on cluster, used when run_locally=True  # main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
+  beast_storage_dir: "/home/aisco/AISCO/beast_sync_wp4" # only used for testing on local machine, not on cluster, used when run_locally=True  # main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
+
+early_stopping:
+  # Final path is auto-built as:
+  #   /home/aisco/<sentinel_relative_path>          on local Beast/WSL
+  #   /cluster/work/fuge/<sentinel_relative_path>   on Euler/SLURM
+  sentinel_relative_path: "AISCO/STOP_RUN"
 
 
 # master example of how to reference other config files:

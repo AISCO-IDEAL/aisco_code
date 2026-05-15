@@ -8,7 +8,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="section-grid" style="grid-template-rows: auto auto 1fr; height: 100%;">
+<div class="section-grid" style="grid-template-rows: auto auto 1fr auto auto; height: 100%; overflow-y: auto;">
 
     <!-- Wizard navigation -->
     <div class="dark-card toolbar">
@@ -63,7 +63,13 @@
         </div>
     </div>
 
-    <!-- Status bar -->
+    <!-- Extra PLY mesh groups (live pipeline only) -->
+    {% if pipeline == 'live' %}
+    <div id="extraPlySection" style="display:none;">
+        <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600; margin-bottom:6px;">Additional Outputs</div>
+        <div class="visuals-grid" id="extraPlyGrid"></div>
+    </div>
+    {% endif %}
     <div class="dark-card" style="min-height:0; display:flex; align-items:center; gap:12px; padding:8px 12px;">
         <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600;" id="statusLabel">Loading artifacts…</div>
     </div>
@@ -75,6 +81,114 @@
     const pipeline = "{{ pipeline }}";
     const LAUNCHER_API = "/launcher/api";
     const VIEWER_API = "/viewer/api";
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260514";
+
+    // ---------- Extra PLY mesh groups (live pipeline) ----------
+    const extraPlySection = pipeline === "live" ? document.getElementById("extraPlySection") : null;
+    const extraPlyGrid = pipeline === "live" ? document.getElementById("extraPlyGrid") : null;
+    let plyGroupState = {};  // label -> { files: [], idx: 0, viewer: null, playing: false, playInterval: null }
+
+    function createPlyGroup(group) {
+        const label = group.label;
+        const files = group.ply_files || [];
+        if (!files.length) return;
+
+        const state = {
+            files: files,
+            idx: 0,
+            viewer: null,
+            playing: false,
+            playInterval: null,
+        };
+        plyGroupState[label] = state;
+
+        const card = document.createElement("div");
+        card.className = "visual-card";
+        card.dataset.label = label;
+        card.innerHTML = `
+                <div class="visual-title">${label}</div>
+                <div class="mesh-container" style="position:relative; height:300px; background:#f1f7f3; border-radius:8px; overflow:hidden;">
+                    <span class="placeholder-text" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#496456;font-size:0.9rem;z-index:1;">Loading…</span>
+                    <div class="mesh-status" style="position:absolute;bottom:8px;left:8px;font-size:0.75rem;color:#496456;z-index:2;background:rgba(255,255,255,0.8);padding:2px 6px;border-radius:4px;display:none;"></div>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center; font-size:0.82rem;">
+                    <input type="range" class="epoch-slider" min="0" max="${files.length - 1}" value="0" style="flex:1;">
+                    <button class="play-btn" style="font-size:0.8rem;padding:4px 8px; width:50px;">Play</button>
+                </div>
+            `;
+
+        const slider = card.querySelector(".epoch-slider");
+        const playBtn = card.querySelector(".play-btn");
+        const container = card.querySelector(".mesh-container");
+        const placeholder = card.querySelector(".placeholder-text");
+        const statusDiv = card.querySelector(".mesh-status");
+
+        // Load .ply on slider change
+        slider.addEventListener("input", e => {
+            if (state.playing) state.playing = false;
+            playBtn.textContent = "Play";
+            state.idx = parseInt(e.target.value, 10);
+            loadPlyForGroup(label, container, placeholder, statusDiv);
+        });
+
+        // Play/pause button
+        playBtn.addEventListener("click", () => {
+            if (state.playing) {
+                state.playing = false;
+                clearInterval(state.playInterval);
+                playBtn.textContent = "Play";
+            } else {
+                state.playing = true;
+                playBtn.textContent = "Pause";
+                state.playInterval = setInterval(() => {
+                    state.idx = (state.idx + 1) % state.files.length;
+                    slider.value = String(state.idx);
+                    loadPlyForGroup(label, container, placeholder, statusDiv);
+                    if (state.idx === 0) {
+                        state.playing = false;
+                        clearInterval(state.playInterval);
+                        playBtn.textContent = "Play";
+                    }
+                }, 500);  // 500ms per frame = 2 fps
+            }
+        });
+
+        extraPlyGrid.appendChild(card);
+        state.container = container;
+        state.placeholder = placeholder;
+        state.statusDiv = statusDiv;
+
+        // Load first epoch
+        loadPlyForGroup(label, container, placeholder, statusDiv);
+    }
+
+    function loadPlyForGroup(label, container, placeholder, statusDiv) {
+        const state = plyGroupState[label];
+        if (!state || state.idx < 0 || state.idx >= state.files.length) return;
+
+        const file = state.files[state.idx];
+        import(MESH_VIEWER_MODULE).then(({ initMeshViewer }) => {
+            if (!state.viewer) state.viewer = initMeshViewer(container);
+            state.viewer.loadMesh(bust(file.url), (info) => {
+                placeholder.style.display = "none";
+                statusDiv.style.display = "block";
+                const vc = info && info.hasVertexColors ? "yes" : "no";
+                statusDiv.textContent = `${file.name} (${state.idx + 1}/${state.files.length}) · VC:${vc}`;
+            });
+        }).catch(e => console.error("Failed to load mesh viewer:", e));
+    }
+
+    function updateExtraPlyGroups(data) {
+        if (pipeline !== "live") return;
+        const groups = data.extra_ply_groups || [];
+        if (!groups.length) return;
+        extraPlySection.style.display = "block";
+        groups.forEach(group => {
+            if (!plyGroupState[group.label]) {
+                createPlyGroup(group);
+            }
+        });
+    }
 
     // Read cfg_session from URL query string (completed pipeline only)
     const _urlParams = new URLSearchParams(window.location.search);
@@ -116,17 +230,20 @@
             solarEntry = { key: s.rel_path || s.name, url: s.url };
         } else solarEntry = null;
         solarKey = setGif(solarEntry, solarImg, solarHint, btnRestartSolar, solarKey);
+        updateExtraPlyGroups(data);
     }
 
     // ---------- Mesh viewer (Three.js) ----------
     let meshViewer = null;
     function load3D(url) {
         const container = document.getElementById("meshContainer");
-        import("/static/js/mesh_viewer.js").then(({ initMeshViewer }) => {
+        import(MESH_VIEWER_MODULE).then(({ initMeshViewer }) => {
             if (!meshViewer) meshViewer = initMeshViewer(container);
-            meshViewer.loadMesh(bust(url), () => {
+            meshViewer.loadMesh(bust(url), (info) => {
                 meshPlaceholder.style.display = "none";
                 meshStatus.style.display = "block";
+                const vc = info && info.hasVertexColors ? "yes" : "no";
+                meshStatus.textContent = `${meshes[meshIdx].name} · VC:${vc}`;
             });
         });
     }
@@ -135,7 +252,7 @@
         if (!meshes.length) { meshSlider.disabled = true; meshStatus.style.display = "none"; meshPlaceholder.style.display = "block"; return; }
         meshSlider.disabled = false; meshSlider.max = String(meshes.length - 1);
         meshSlider.value = String(meshIdx);
-        meshStatus.textContent = meshes[meshIdx].name;
+        meshStatus.textContent = `${meshes[meshIdx].name} · VC:...`;
         load3D(meshes[meshIdx].url);
     }
 

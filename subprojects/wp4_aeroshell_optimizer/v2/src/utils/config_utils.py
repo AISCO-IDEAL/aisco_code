@@ -6,6 +6,7 @@ filename (without ``.yaml``) as prefix, e.g.::
 
     losses_v0_config.general_info.initial_lambda   → targets losses_v0_config.yaml
     training_v0_config.training_params.learning_rate → targets training_v0_config.yaml
+    training_config.training_params.learning_rate → targets training_config.yaml
     solar_loss_config.SolarLossConfigV3.method       → targets solar_loss_config.yaml
 
 The registry is populated once at startup via :func:`register_all_configs` and
@@ -394,7 +395,7 @@ def apply_sweep_overrides(sweep_params: dict) -> None:  # noqa: PLR0915
                 _apply_single_override(target_key, param_value, infer_type=True)
             continue
 
-        _apply_single_override(key, value, infer_type=False)
+        _apply_single_override(key, value, infer_type=True)
 
 
 def get_master_config() -> dict:

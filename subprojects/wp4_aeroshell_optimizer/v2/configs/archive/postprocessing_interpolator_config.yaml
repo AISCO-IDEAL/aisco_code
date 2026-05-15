@@ -12,11 +12,11 @@ interpolator:
 
   # Marching cubes extraction resolution
   # Higher = better mesh quality but slower (128 = 128³ SDF evaluation grid)
-  mesh_resolution: 128
+  mesh_resolution: 64
 
   # Extraction bbox is derived from the WP2 outer prism (get_outer_prism_bounds_mm)
   # and scaled by bbox_scale_factor (default 1.0).  No manual bbox bounds needed.
-  bbox_scale_factor: 1.0
+  bbox_scale_factor: 1.2
 
   # SDF level-set value (typically 0.0 for implicit surface)
   isovalue: 0.0
@@ -78,7 +78,7 @@ interpolator:
 
   # Circle mode — must match z_radius in pretraining_latent_config.yaml
   z_radius: 2.0
-  n_circle_samples: 12
+  n_circle_samples: 7
 
   # Write PLY files for each sample to save_dir/plys/ (always true in standalone mode)
-  save_plys: false
+  save_plys: true
