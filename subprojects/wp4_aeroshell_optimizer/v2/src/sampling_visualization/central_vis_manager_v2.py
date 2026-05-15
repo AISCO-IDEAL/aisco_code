@@ -121,6 +121,22 @@ class _BaseVisManager:
         """
         return vis_is_enabled(self._visual_types, self._slotted(visual_type))
 
+    def is_due(self, visual_type: str, epoch: int) -> bool:
+        """Return True when a visual type is enabled and due on this epoch."""
+        type_cfg = vis_type_config(self._visual_types, self._slotted(visual_type))
+        if type_cfg is None:
+            return False
+        interval = type_cfg.get("interval", 1)
+        if interval is None:
+            return True
+        try:
+            interval_int = int(interval)
+        except (TypeError, ValueError):
+            interval_int = 1
+        if interval_int <= 0:
+            return False
+        return int(epoch) % interval_int == 0
+
     def _load_assembly_meshes(self) -> None:
         if not vis_is_enabled(self._visual_types, "mesh_assembly_v4"):
             return
@@ -511,6 +527,44 @@ class CentralVisManagerV2(_BaseVisManager):
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
         cp_np = _to_f64(cp_values).astype(np.float32).reshape(-1)
         rgb = resolve_mesh_rgb(cp_np, len(verts_np), len(faces_np), faces_np, verts_np, type_cfg)
+        self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
+
+    def vis_aero_sdf_influence(self, epoch: int, method: str, variant: str, verts: Any, faces: Any, values: Any) -> None:
+        vt = self._slotted(f"aero/sdf_influence/{method}/{variant}")
+        type_cfg = vis_type_config(self._visual_types, vt)
+        if type_cfg is None:
+            return
+
+        verts_np, faces_np = _to_f64(verts), _to_i32(faces)
+        values_np = _to_f64(values).astype(np.float32).reshape(-1)
+        if verts_np.shape[0] == 0 or faces_np.shape[0] == 0:
+            return
+        if values_np.shape[0] != verts_np.shape[0]:
+            _log(
+                {
+                    "event": "vis_aero_sdf_influence_shape_mismatch",
+                    "run_id": self.run_id,
+                    "method": method,
+                    "variant": variant,
+                    "verts": list(verts_np.shape),
+                    "values": list(values_np.shape),
+                }
+            )
+            return
+
+        values_np = np.nan_to_num(values_np, nan=0.0, posinf=0.0, neginf=0.0)
+        eff_cfg = dict(type_cfg)
+        cfg_vmin = eff_cfg.get("vmin")
+        cfg_vmax = eff_cfg.get("vmax")
+        if cfg_vmin is None or cfg_vmax is None:
+            amp = float(np.max(np.abs(values_np))) if values_np.size else 0.0
+            amp = amp if amp > 0.0 else 1.0
+            if cfg_vmin is None:
+                eff_cfg["vmin"] = -amp
+            if cfg_vmax is None:
+                eff_cfg["vmax"] = amp
+
+        rgb = resolve_mesh_rgb(values_np, len(verts_np), len(faces_np), faces_np, verts_np, eff_cfg)
         self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
 
     def vis_solar_quality(self, epoch: int, verts: Any, faces: Any, quality_values: Any) -> None:

@@ -47,6 +47,9 @@ class GaotLoss(ParentLoss):
             # Propagate to the underlying model loader (GAOT3 only in practice;
             # setattr avoids mypy union-attr error on ModelLoader1/2).
             setattr(self.gaot, "vis_manager", self._vis_manager)  # noqa: B010
+        if isinstance(self.gaot, ModelLoader3):
+            learning_rate = self.training_config.get("training_params", {}).get("learning_rate", 1e-3)
+            self.gaot.sdf_influence_learning_rate = float(learning_rate)
         result = self.gaot.forward(sdf_model=model, epoch_name=self.epoch_name)
         # Propagate diagnostics from the underlying GAOT model loader
         self._last_diagnostics = getattr(self.gaot, "_last_diagnostics", {})

@@ -31,6 +31,9 @@ class NullVisManager:
     def vis_aero_cp_field(self, epoch: int, verts: Any, faces: Any, cp_values: Any) -> None:
         pass
 
+    def vis_aero_sdf_influence(self, epoch: int, method: str, variant: str, verts: Any, faces: Any, values: Any) -> None:
+        pass
+
     def vis_solar_selection(self, epoch: int, verts: Any, faces: Any, weights: Any) -> None:
         pass
 
@@ -80,6 +83,9 @@ class NullVisManager:
         return None
 
     def is_enabled(self, _visual_type: str) -> bool:
+        return False
+
+    def is_due(self, _visual_type: str, _epoch: int) -> bool:
         return False
 
     def vis_mesh_assembly_v4(self, epoch: int, sdf_verts: Any, sdf_faces: Any) -> None:

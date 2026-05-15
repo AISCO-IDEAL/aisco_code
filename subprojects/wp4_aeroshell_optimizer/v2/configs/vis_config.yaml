@@ -88,6 +88,15 @@ visual_types:
       vmin: null
       vmax: null
 
+    sdf_influence:
+      enabled: true
+      colormap: "RdYlGn"  # negative=red, zero=yellow, positive=green
+      interval: 10
+      alpha_enabled: null
+      coordinate_system: true
+      vmin: null
+      vmax: null
+
   solar:
     quality:
       enabled: true

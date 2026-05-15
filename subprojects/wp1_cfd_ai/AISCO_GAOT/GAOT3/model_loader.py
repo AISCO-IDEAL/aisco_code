@@ -14,6 +14,7 @@ from torch_geometric.data import Batch, Data
 
 import wandb
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.sdf_influence import compute_sdf_parameter_influence
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.metadata import DATASET_METADATA
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.model.gaot_3d import GAOT3D
@@ -31,6 +32,9 @@ class ModelLoader:
         self.cfd_config = cfd_config
         self.device = device
         self.vis_manager: CentralVisManagerV2 | NullVisManager | None
+        self.vis_manager = None
+        self.sdf_influence_learning_rate = float(cfd_config.get("sdf_influence_learning_rate", 1e-3))
+        self.sdf_influence_chunk_size = int(cfd_config.get("sdf_influence_chunk_size", 8192))
         self.shear_force_calculator = ShearForce(unit="mm^2")
 
         self.optimization_state: dict[str, torch.Tensor | None] = {
@@ -149,9 +153,89 @@ class ModelLoader:
         self.extractor.last_dL_dv = dL_dvertices  # type: ignore[attr-defined]
         self.extractor.last_verts = verts  # type: ignore[attr-defined]
         self.extractor.last_faces = faces  # type: ignore[attr-defined]
+        self._visualize_sdf_influence(
+            sdf_model=sdf_model,
+            surrogate_loss=surrogate_loss,
+            mesh_verts=verts,
+            mesh_faces=faces,
+        )
 
         cuppled_loss = loss.detach() + surrogate_loss - surrogate_loss.detach()
         return cuppled_loss
+
+    def _due_sdf_influence_streams(self, epoch: int) -> list[tuple[str, str]]:
+        if not self.cfd_config["visualisations"]:
+            return []
+        _vm = getattr(self, "vis_manager", None)
+        is_due = getattr(_vm, "is_due", None)
+        if not callable(is_due):
+            return []
+        streams = [
+            ("jvp", "raw_gradient"),
+            ("jvp", "update_direction"),
+            ("finite", "raw_gradient"),
+            ("finite", "update_direction"),
+        ]
+        return [(method, variant) for method, variant in streams if is_due(f"aero/sdf_influence/{method}/{variant}", epoch)]
+
+    def _collect_sdf_parameter_grads(
+        self,
+        sdf_model: BaseModel,
+        surrogate_loss: torch.Tensor,
+    ) -> dict[str, torch.Tensor | None] | None:
+        if not surrogate_loss.requires_grad:
+            return None
+        trainable_params = [(name, param) for name, param in sdf_model.named_parameters() if param.requires_grad]
+        if not trainable_params:
+            return None
+        names = [name for name, _param in trainable_params]
+        params = [param for _name, param in trainable_params]
+        grads = torch.autograd.grad(
+            surrogate_loss,
+            params,
+            retain_graph=True,
+            allow_unused=True,
+        )
+        grad_map = dict(zip(names, grads, strict=True))
+        if all(grad is None for grad in grad_map.values()):
+            return None
+        return grad_map
+
+    def _visualize_sdf_influence(
+        self,
+        sdf_model: BaseModel,
+        surrogate_loss: torch.Tensor,
+        mesh_verts: torch.Tensor,
+        mesh_faces: torch.Tensor,
+    ) -> None:
+        if mesh_verts is None or mesh_faces is None or mesh_verts.numel() == 0 or mesh_faces.numel() == 0:
+            return
+        epoch = int(self.epoch_name)
+        streams = self._due_sdf_influence_streams(epoch)
+        if not streams:
+            return
+
+        _vm = getattr(self, "vis_manager", None)
+        if _vm is None:
+            return
+
+        try:
+            param_grads = self._collect_sdf_parameter_grads(sdf_model, surrogate_loss)
+            if param_grads is None:
+                return
+            fields = compute_sdf_parameter_influence(
+                sdf_model,
+                mesh_verts,
+                param_grads,
+                learning_rate=self.sdf_influence_learning_rate,
+                chunk_size=self.sdf_influence_chunk_size,
+            )
+            for method, variant in streams:
+                values = fields.get(f"{method}/{variant}")
+                if values is not None:
+                    _vm.vis_aero_sdf_influence(epoch, method, variant, mesh_verts, mesh_faces, values)
+        except Exception as exc:
+            warnings.warn(f"Skipping GAOT SDF-influence visualisation after error: {exc}", stacklevel=2)
 
     def _visualize_pressure_field(
         self,
