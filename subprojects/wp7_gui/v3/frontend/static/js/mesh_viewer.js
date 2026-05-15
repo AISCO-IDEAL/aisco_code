@@ -34,6 +34,8 @@ export function initMeshViewer(containerEl) {
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+    let onControlsChange = null;
+    let suppressControlsCallback = false;
 
     scene.add(new HemisphereLight(0xffffff, 0x444444, 1.0));
     const dl = new DirectionalLight(0xffffff, 0.8);
@@ -53,6 +55,45 @@ export function initMeshViewer(containerEl) {
         controls.update();
         renderer.render(scene, camera);
     })();
+
+    controls.addEventListener("change", () => {
+        if (suppressControlsCallback) {
+            return;
+        }
+        if (typeof onControlsChange === "function") {
+            onControlsChange(getViewState());
+        }
+    });
+
+    function getViewState() {
+        return {
+            camera: {
+                x: camera.position.x,
+                y: camera.position.y,
+                z: camera.position.z,
+            },
+            target: {
+                x: controls.target.x,
+                y: controls.target.y,
+                z: controls.target.z,
+            },
+        };
+    }
+
+    function setViewState(viewState) {
+        if (!viewState || !viewState.camera || !viewState.target) {
+            return;
+        }
+        suppressControlsCallback = true;
+        camera.position.set(viewState.camera.x, viewState.camera.y, viewState.camera.z);
+        controls.target.set(viewState.target.x, viewState.target.y, viewState.target.z);
+        controls.update();
+        suppressControlsCallback = false;
+    }
+
+    function setOnControlsChange(callback) {
+        onControlsChange = callback;
+    }
 
     /**
      * Load (or replace) the PLY mesh at url.
@@ -133,5 +174,5 @@ export function initMeshViewer(containerEl) {
         );
     }
 
-    return { loadMesh };
+    return { loadMesh, getViewState, setViewState, setOnControlsChange };
 }
