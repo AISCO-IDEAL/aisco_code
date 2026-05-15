@@ -23,11 +23,11 @@ import re
 from pathlib import Path
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import DiversityTrainer
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import get_config_base_path
 
-DIVERSITY_MANAGER_PATH = Path(
-    "/cluster/home/kdiehl/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/GINN/diversity_manager.py"
-)
-MAIN_V2_PATH = Path("/cluster/home/kdiehl/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py")
+_REPO = get_config_base_path() / "AISCO_code"
+DIVERSITY_MANAGER_PATH = _REPO / "subprojects/wp4_aeroshell_optimizer/v2/src/GINN/diversity_manager.py"
+MAIN_V2_PATH = _REPO / "subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py"
 
 
 def _load_source(path: Path) -> str:
@@ -200,7 +200,7 @@ class TestZResampleModeRename:
 
     def test_training_config_uses_on_circle(self) -> None:
         """training_config.yaml must use on_circle (not bare circle) for z_resample_mode."""
-        cfg_path = Path("/cluster/home/kdiehl/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/configs/training_config.yaml")
+        cfg_path = _REPO / "subprojects/wp4_aeroshell_optimizer/v2/configs/training_config.yaml"
         content = cfg_path.read_text()
         assert "z_resample_mode: on_circle" in content, (
             "training_config.yaml should have z_resample_mode: on_circle (renamed from circle)."
