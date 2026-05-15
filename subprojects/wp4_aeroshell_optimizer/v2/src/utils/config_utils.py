@@ -26,6 +26,7 @@ import warnings
 from pathlib import Path
 from warnings import warn
 
+import torch
 import yaml
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import get_run_locally_value
@@ -432,6 +433,44 @@ def load_config(v: str = "v2", cfg_name: str = "general_config.yaml") -> dict:
     config = _config_registry[key] if _registry_initialised and key in _config_registry else _load_yaml(v, cfg_name)
 
     return config
+
+
+def build_optimizer(params, training_params: dict, v: str = "v2") -> torch.optim.Optimizer:
+    """Load optimizer preset from optimizers.json and instantiate it.
+
+    Args:
+        params: Model parameters (e.g. model.parameters()).
+        training_params: The training_params sub-dict from training_config.yaml.
+            Must contain 'learning_rate'; 'optimizer' defaults to 'adam'.
+        v: WP4 version subfolder (default: 'v2').
+    """
+    opt_key = training_params.get("optimizer", "adam")
+    global_lr = training_params.get("learning_rate", 1e-3)
+
+    optimizers_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / "optimizers.json"
+    if Path.home() == Path("/home/aisco"):
+        optimizers_path = (
+            Path.home()
+            / "Documents"
+            / "AISCO_code"
+            / "subprojects"
+            / "wp4_aeroshell_optimizer"
+            / v
+            / "configs"
+            / "optimizers.json"
+        )
+
+    with optimizers_path.open() as f:
+        registry = json.load(f)
+
+    entry = registry["optimizers"].get(opt_key)
+    if entry is None:
+        raise ValueError(f"Unknown optimizer '{opt_key}'. Available: {list(registry['optimizers'])}")
+
+    # Per-entry lr overrides the global learning_rate (e.g. L-BFGS needs lr~1.0, not 1e-5).
+    lr = entry.get("lr", global_lr)
+    cls = getattr(torch.optim, entry["class"])
+    return cls(params, lr=lr, **entry.get("kwargs", {}))
 
 
 def print_config(config: dict) -> None:

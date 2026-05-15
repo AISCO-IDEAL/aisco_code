@@ -143,6 +143,15 @@ visual_types:
       vmax: 1.0
       solid_color_rgb: [1.0, 0.3137, 0.3020]
 
+    receiver_mask:
+      enabled: true
+      colormap: "RdYlGn"  # 0=back-facing (skipped), 1=sun-facing (raytraced)
+      interval: 1
+      alpha_enabled: null
+      coordinate_system: null
+      vmin: 0.0
+      vmax: 1.0
+
   bb_constraint:
     enabled: true          # disabled by default — confirm with user before enabling
     colormap: "Reds"        # violation magnitude, lower-bounded at 0

@@ -1,0 +1,21 @@
+{
+  "optimizers": {
+    "adam": {
+      "class": "Adam",
+      "kwargs": {}
+    },
+    "sgd_momentum": {
+      "class": "SGD",
+      "kwargs": { "momentum": 0.9, "nesterov": true }
+    },
+    "lbfgs": {
+      "class": "LBFGS",
+      "lr": 0.1,
+      "kwargs": {
+        "history_size": 4,
+        "max_iter": 1,
+        "line_search_fn": null
+      }
+    }
+  }
+}

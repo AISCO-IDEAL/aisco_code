@@ -205,6 +205,7 @@ def _compute_visibility_for_chunk_v2(
     margin: torch.Tensor,
     miss_t: float,
     blocker_chunk_size: int,
+    chunk_global_indices: torch.Tensor,
     device: torch.device,
     dtype: torch.dtype,
 ) -> torch.Tensor:
@@ -221,7 +222,7 @@ def _compute_visibility_for_chunk_v2(
     # All-pairs intersection is computed as CxB blocks over occluder faces.
     # We then aggregate logsumexp blockwise to match the full CxF softmin.
     local_size = end - start
-    global_indices = torch.arange(start, end, device=device)
+    global_indices = chunk_global_indices
     running_lse = torch.full((local_size,), float("-inf"), device=device, dtype=dtype)
     F_count = tri_v0.shape[0]
 
@@ -271,7 +272,7 @@ def _compute_visibility_for_chunk_soft_v4(
     L: torch.Tensor,
     depth_scale: torch.Tensor,
     bary: torch.Tensor,
-    face_offset: int,
+    chunk_global_indices: torch.Tensor,
     *,
     blocker_chunk_size: int,
     transmittance_beta: float,
@@ -296,7 +297,7 @@ def _compute_visibility_for_chunk_soft_v4(
 
     ray_origins = chunk_points + offset * chunk_normals[:, None, :] + L * sun  # (C, K, 3)
     ray_origins_flat = ray_origins.reshape(C * K, 3)
-    ray_face_indices = torch.arange(face_offset, face_offset + C, device=chunk_v0.device).repeat_interleave(K)  # (C*K,)
+    ray_face_indices = chunk_global_indices.repeat_interleave(K)  # (C*K,)
 
     R = ray_origins_flat.shape[0]
     occlusion_mass = torch.zeros((R,), device=chunk_v0.device, dtype=tri_v0.dtype)
@@ -359,6 +360,8 @@ def mesh_visibility_v4(  # noqa: PLR0912, PLR0915
     normals: torch.Tensor | None = None,
     sdf_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
     normal_source: str = "mesh",
+    occluder_faces: torch.Tensor | None = None,
+    receiver_face_indices: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Differentiable per-face visibility using mesh ray-triangle intersections.
@@ -370,20 +373,25 @@ def mesh_visibility_v4(  # noqa: PLR0912, PLR0915
 
     Args:
         vertices:           (V, 3) mesh vertex positions
-        faces:              (F, 3) triangle face indices
+        faces:              (R, 3) triangle face indices for receivers; R=F by default
         sun_dir:            (3,) unit vector **toward** the sun
-        normals:            (F, 3) optional precomputed face normals (overrides normal_source)
+        normals:            (R, 3) optional precomputed face normals (overrides normal_source)
         sdf_fn:             SDF callable (required when normal_source="sdf")
         normal_source:      "mesh" — normals from cross product of edges
                             "sdf"  — normals from ∇f evaluated at face centres
         mesh_cfg:           mesh configuration dictionary. Same keys as v3 plus:
                              - "use_chunk_checkpoint" (bool, default False)
                              - "use_torch_compile" (bool, default False)
+        occluder_faces:     (O, 3) optional face indices for occluders (all triangles blocking rays).
+                            If None, uses faces (all receivers are also occluders).
+                            If provided, receiver_face_indices must also be given.
+        receiver_face_indices: (R,) original indices of each receiver face in the full mesh.
+                            Required when occluder_faces is provided; used for self-intersection suppression.
 
     Returns:
-        visibility:  (F,) soft visibility per face in [0, 1]
-        normals:     (F, 3) unit face normals used
-        centroids:   (F, 3) face centroids
+        visibility:  (R,) soft visibility per receiver face in [0, 1]
+        normals:     (R, 3) unit face normals used
+        centroids:   (R, 3) face centroids
     """
     print("Using 'mesh_visibility' version 4")
     if normal_source not in {"mesh", "sdf"}:
@@ -424,6 +432,9 @@ def mesh_visibility_v4(  # noqa: PLR0912, PLR0915
     if depth_normalization not in {"bbox", "ray_length"}:
         raise ValueError("mesh_cfg['depth_normalization'] must be 'bbox' or 'ray_length'")
 
+    if (occluder_faces is None) != (receiver_face_indices is None):
+        raise ValueError("occluder_faces and receiver_face_indices must both be provided or both be None")
+
     device = vertices.device
     F_count = faces.shape[0]
 
@@ -458,7 +469,12 @@ def mesh_visibility_v4(  # noqa: PLR0912, PLR0915
     depth_scale = depth_scale.clamp(min=1e-12)
 
     # -- Triangle vertices (all triangles are potential occluders) --------------
-    tri_v0, tri_v1, tri_v2 = v0, v1, v2  # (F, 3) each
+    if occluder_faces is not None:
+        tri_v0 = vertices[occluder_faces[:, 0]]
+        tri_v1 = vertices[occluder_faces[:, 1]]
+        tri_v2 = vertices[occluder_faces[:, 2]]
+    else:
+        tri_v0, tri_v1, tri_v2 = v0, v1, v2  # (F, 3) each
 
     # -- Optional multi-sample face points for smooth mode ---------------------
     bary = _sample_face_barycentric(
@@ -483,6 +499,10 @@ def mesh_visibility_v4(  # noqa: PLR0912, PLR0915
 
     for start in range(0, F_count, face_chunk_size):
         end = min(start + face_chunk_size, F_count)
+        if receiver_face_indices is not None:
+            chunk_global_indices = receiver_face_indices[start:end]
+        else:
+            chunk_global_indices = torch.arange(start, end, device=device)
         if smoothing_mode == "v2_sigmoid":
             chunk_visibility = _compute_visibility_for_chunk_v2(
                 start=start,
@@ -501,6 +521,7 @@ def mesh_visibility_v4(  # noqa: PLR0912, PLR0915
                 margin=margin,
                 miss_t=miss_t,
                 blocker_chunk_size=blocker_chunk_size,
+                chunk_global_indices=chunk_global_indices,
                 device=device,
                 dtype=vertices.dtype,
             )
@@ -513,8 +534,8 @@ def mesh_visibility_v4(  # noqa: PLR0912, PLR0915
             if use_chunk_checkpoint:
 
                 def _chunk_fn(
-                    cv0, cv1, cv2, cn, _sun, _rd, tv0, tv1, tv2, _off, _L, _ds, _bary, _fo=start
-                ):  # _fo=start binds NOW, not at call time
+                    cv0, cv1, cv2, cn, _sun, _rd, tv0, tv1, tv2, _off, _L, _ds, _bary, _cgi=chunk_global_indices
+                ):  # _cgi=chunk_global_indices binds NOW, not at call time
                     return _chunk_vis_fn(
                         cv0,
                         cv1,
@@ -529,7 +550,7 @@ def mesh_visibility_v4(  # noqa: PLR0912, PLR0915
                         _L,
                         _ds,
                         _bary,
-                        _fo,
+                        _cgi,
                         blocker_chunk_size=blocker_chunk_size,
                         transmittance_beta=transmittance_beta,
                         transmittance_kappa=transmittance_kappa,
@@ -571,7 +592,7 @@ def mesh_visibility_v4(  # noqa: PLR0912, PLR0915
                     L,
                     depth_scale,
                     bary,
-                    start,
+                    chunk_global_indices,
                     blocker_chunk_size=blocker_chunk_size,
                     transmittance_beta=transmittance_beta,
                     transmittance_kappa=transmittance_kappa,

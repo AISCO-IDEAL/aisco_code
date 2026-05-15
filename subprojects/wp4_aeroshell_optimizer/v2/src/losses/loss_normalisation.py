@@ -107,7 +107,7 @@ class LossNormalisationManager:
         return rule.fixed_loss_scale
 
     def get_fixed_grad_scale(self, name: str) -> float | None:
-        rule = self._recalibration_rules.get(name)
+        rule = self._recalibration_rules.get(name) or self._recalibration_rules.get(name.removeprefix("alm_"))
         if rule is None:
             return None
         return rule.fixed_grad_scale
@@ -131,7 +131,10 @@ class LossNormalisationManager:
         """Returns the calibrated gradient scale for a component, or 1.0 if not calibrated."""
         if not self._enabled or not self._is_calibrated:
             return 1.0
-        return self._grad_scales.get(name, 1.0)
+        if name in self._grad_scales:
+            return self._grad_scales[name]
+        fixed = self.get_fixed_grad_scale(name)
+        return fixed if fixed is not None else 1.0
 
     def record_calibration(
         self,
