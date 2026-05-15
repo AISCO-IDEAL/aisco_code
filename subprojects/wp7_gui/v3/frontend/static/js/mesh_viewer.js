@@ -111,7 +111,14 @@ export function initMeshViewer(containerEl) {
                 currentObj = new Mesh(geo, material);
                 currentObj.scale.set(scale, scale, scale);
                 scene.add(currentObj);
-                camera.position.set(0, 0, 3.5);
+                // Compute camera distance so the scaled mesh fills ~90% of the
+                // viewport in whichever axis is tighter (accounts for aspect ratio).
+                const vFovHalf = 25 * Math.PI / 180; // half of the 50° FOV
+                const aspect = containerEl.clientWidth / Math.max(containerEl.clientHeight, 1);
+                const hFovHalf = Math.atan(Math.tan(vFovHalf) * aspect);
+                const dFitW = (sz.x * scale / 2) / Math.tan(hFovHalf);
+                const dFitH = (sz.y * scale / 2) / Math.tan(vFovHalf);
+                camera.position.set(0, 0, Math.max(dFitW, dFitH) * 1.4);
                 controls.target.set(0, 0, 0);
                 controls.update();
                 if (onLoad) {

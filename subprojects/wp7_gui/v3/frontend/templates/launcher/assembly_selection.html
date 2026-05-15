@@ -5,6 +5,47 @@
 <script type="importmap">
   {"imports": {"three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"}}
 </script>
+<style>
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: transparent;
+    outline: none;
+  }
+
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    background: #c8d0da;
+  }
+
+  input[type="range"]::-moz-range-track {
+    height: 4px;
+    border-radius: 2px;
+    background: #c8d0da;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin-top: -5px;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    cursor: pointer;
+  }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -124,10 +165,11 @@
       slidersArea.appendChild(title);
 
       ["x", "y", "z"].forEach(axis => {
+        if (axis === "z" && section.startsWith("wheel_")) return;
         const val = Number(params[section]?.[axis] ?? 0);
         const [lo, hi] = axisRange(axis);
         const row = document.createElement("div");
-        row.style.cssText = "display:grid;grid-template-columns:110px 1fr 58px;align-items:center;gap:8px;";
+        row.style.cssText = "display:grid;grid-template-columns:110px 1fr 58px;align-items:center;gap:8px;margin-bottom:10px;";
         row.innerHTML = `
         <label style="font-size:0.82rem;color:var(--muted);">${section}.${axis}</label>
         <input type="range" min="${lo}" max="${hi}" step="1" value="${val}"
