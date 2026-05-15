@@ -171,14 +171,26 @@ class ModelLoader:
             _vm.vis_aero_cp_field(self.epoch_name, mesh_verts, mesh_faces, pressure_field)
             return
 
+    def _pressure_backprop_mode(self) -> str:
+        mode = str(self.cfd_config.get("pressure_backprop_mode", "full"))
+        valid_modes = {"full", "geometry_only", "geometry_area_only", "geometry_normal_only"}
+        if mode not in valid_modes:
+            raise ValueError(
+                f"Unknown pressure_backprop_mode={mode!r}. Expected one of {sorted(valid_modes)}."
+            )
+        return mode
+
     def _integrate_pressure_drag(self, pressure_field: torch.Tensor, batch: Batch, mesh_faces: torch.Tensor) -> torch.Tensor:
         p = pressure_field.squeeze(-1) if pressure_field.dim() > 1 else pressure_field
         face = mesh_faces.T
         pos = batch.pos_raw
         normals = batch.c
+        pressure_backprop_mode = self._pressure_backprop_mode()
         cp_smoothing_cfg = self.cfd_config.get("cp_smoothing", {})
         detach_integration_geometry = (
-            isinstance(cp_smoothing_cfg, dict) and bool(cp_smoothing_cfg.get("detach_integration_geometry", False))
+            pressure_backprop_mode == "full"
+            and isinstance(cp_smoothing_cfg, dict)
+            and bool(cp_smoothing_cfg.get("detach_integration_geometry", False))
         )
         if detach_integration_geometry:
             pos = pos.detach()
@@ -187,11 +199,19 @@ class ModelLoader:
         v0 = pos[face[0]]
         v1 = pos[face[1]]
         v2 = pos[face[2]]
-        area_normals = 0.5 * torch.cross(v1 - v0, v2 - v0, dim=-1)
+        raw_area_normals = 0.5 * torch.cross(v1 - v0, v2 - v0, dim=-1)
+        area = raw_area_normals.norm(dim=-1, keepdim=True)
+        unit_normals = raw_area_normals / area.clamp_min(torch.finfo(raw_area_normals.dtype).eps)
 
         outward_n = (normals[face[0]] + normals[face[1]] + normals[face[2]]) / 3.0
-        dot_prod = (area_normals * outward_n).sum(dim=-1, keepdim=True)
-        area_normals = torch.where(dot_prod < 0, -area_normals, area_normals)
+        dot_prod = (unit_normals * outward_n).sum(dim=-1, keepdim=True)
+        unit_normals = torch.where(dot_prod < 0, -unit_normals, unit_normals)
+
+        if pressure_backprop_mode == "geometry_area_only":
+            unit_normals = unit_normals.detach()
+        elif pressure_backprop_mode == "geometry_normal_only":
+            area = area.detach()
+        area_normals = area * unit_normals
 
         q_inf = 0.5 * self.cfd_config["rho"] * self.cfd_config["v_inf"] ** 2
         p_face = q_inf * (p[face[0]] + p[face[1]] + p[face[2]]) / 3.0
@@ -378,15 +398,26 @@ class ModelLoader:
             mesh_faces=mesh_faces,
         )
 
+        pressure_backprop_mode = self._pressure_backprop_mode()
+        pressure_field_for_integration = pressure_field if pressure_backprop_mode == "full" else pressure_field.detach()
+
         pressure_integration_mode = self.cfd_config.get("pressure_integration_mode", "face")
         if pressure_integration_mode == "face":
-            int_drag_f = self._integrate_pressure_drag(pressure_field, batch, mesh_faces)
+            int_drag_f = self._integrate_pressure_drag(pressure_field_for_integration, batch, mesh_faces)
         elif pressure_integration_mode == "sdf_vertex_constant_area":
+            if pressure_backprop_mode == "geometry_area_only":
+                raise ValueError(
+                    "pressure_backprop_mode='geometry_area_only' is not supported with "
+                    "pressure_integration_mode='sdf_vertex_constant_area' because area is detached there."
+                )
+            detach_normals = bool(self.cfd_config.get("pressure_integration_detach_sdf_normals", True))
+            if pressure_backprop_mode in {"geometry_only", "geometry_normal_only"}:
+                detach_normals = False
             int_drag_f = self._integrate_pressure_drag_sdf_normals(
-                pressure_field=pressure_field,
+                pressure_field=pressure_field_for_integration,
                 mesh_verts=mesh_verts,
                 mesh_faces=mesh_faces,
-                detach_normals=bool(self.cfd_config.get("pressure_integration_detach_sdf_normals", True)),
+                detach_normals=detach_normals,
             )
         else:
             raise ValueError(
