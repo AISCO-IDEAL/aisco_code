@@ -651,6 +651,11 @@ class DiversityTrainer:
         )
         if _resample_allowed:
             self._resample_population(epoch)
+            print(
+                "[GINN] Latent resampling triggered at "
+                f"epoch={epoch} (mode={self._z_resample_mode}, cadence={self._z_resample_cadence})",
+                flush=True,
+            )
             # Slot identity changes on resample — clear accumulated history so the new window
             # starts fresh.  Epoch indices use real epoch numbers so the x-axis stays continuous
             # across windows (window-2 starts at epoch N, not at 0).
