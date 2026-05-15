@@ -186,13 +186,14 @@ def run_benchmark():  # noqa: PLR0912, PLR0915
     for _ in range(5):
         # Call the actual raytracing loss function directly with fixed mesh
         # This bypasses the extractor and SDF eval entirely
-        if hasattr(solar_loss, 'raytracing_cfg'):  # SRRT/MRRT classes have this
+        if hasattr(solar_loss, "raytracing_cfg"):  # SRRT/MRRT classes have this
             from subprojects.wp3_solar_estimator.rollout_losses.MRRT_SolarLoss import solar_loss_mrrt
             from subprojects.wp3_solar_estimator.rollout_losses.SRRT_SolarLoss import solar_loss_srrt
 
-            if 'MRRT' in solar_loss.__class__.__name__:
+            if "MRRT" in solar_loss.__class__.__name__:
                 loss_rt, _ = solar_loss_mrrt(
-                    mesh_verts, mesh_faces,
+                    mesh_verts,
+                    mesh_faces,
                     solar_loss.solar_vectors.to(device),
                     area_budget_mm2=solar_loss.area_budget_mm2,
                     raytracing_cfg=solar_loss.raytracing_cfg,
@@ -207,11 +208,12 @@ def run_benchmark():  # noqa: PLR0912, PLR0915
                     skip_backface_receivers=solar_loss.skip_backface_receivers,
                     vis_manager=NullVisManager(),
                     epoch_name=None,
-                    mesh_visibility_fn=solar_loss._mesh_visibility_fn if hasattr(solar_loss, '_mesh_visibility_fn') else None,
+                    mesh_visibility_fn=solar_loss._mesh_visibility_fn if hasattr(solar_loss, "_mesh_visibility_fn") else None,
                 )
-            elif 'SRRT' in solar_loss.__class__.__name__:
+            elif "SRRT" in solar_loss.__class__.__name__:
                 loss_rt, _ = solar_loss_srrt(
-                    mesh_verts, mesh_faces,
+                    mesh_verts,
+                    mesh_faces,
                     solar_loss.sun_dir.to(device),
                     area_budget_mm2=solar_loss.area_budget_mm2,
                     raytracing_cfg=solar_loss.raytracing_cfg,
@@ -226,7 +228,7 @@ def run_benchmark():  # noqa: PLR0912, PLR0915
                     skip_backface_receivers=solar_loss.skip_backface_receivers,
                     vis_manager=NullVisManager(),
                     epoch_name=None,
-                    mesh_visibility_fn=solar_loss._mesh_visibility_fn if hasattr(solar_loss, '_mesh_visibility_fn') else None,
+                    mesh_visibility_fn=solar_loss._mesh_visibility_fn if hasattr(solar_loss, "_mesh_visibility_fn") else None,
                 )
             loss_rt.backward()
             if mesh_verts.grad is not None:
@@ -239,9 +241,10 @@ def run_benchmark():  # noqa: PLR0912, PLR0915
     for step in range(active_steps):
         step_start = time.perf_counter()
 
-        if 'MRRT' in solar_loss.__class__.__name__:
+        if "MRRT" in solar_loss.__class__.__name__:
             loss_rt, _ = solar_loss_mrrt(
-                mesh_verts, mesh_faces,
+                mesh_verts,
+                mesh_faces,
                 solar_loss.solar_vectors.to(device),
                 area_budget_mm2=solar_loss.area_budget_mm2,
                 raytracing_cfg=solar_loss.raytracing_cfg,
@@ -256,11 +259,12 @@ def run_benchmark():  # noqa: PLR0912, PLR0915
                 skip_backface_receivers=solar_loss.skip_backface_receivers,
                 vis_manager=NullVisManager(),
                 epoch_name=None,
-                mesh_visibility_fn=solar_loss._mesh_visibility_fn if hasattr(solar_loss, '_mesh_visibility_fn') else None,
+                mesh_visibility_fn=solar_loss._mesh_visibility_fn if hasattr(solar_loss, "_mesh_visibility_fn") else None,
             )
-        elif 'SRRT' in solar_loss.__class__.__name__:
+        elif "SRRT" in solar_loss.__class__.__name__:
             loss_rt, _ = solar_loss_srrt(
-                mesh_verts, mesh_faces,
+                mesh_verts,
+                mesh_faces,
                 solar_loss.sun_dir.to(device),
                 area_budget_mm2=solar_loss.area_budget_mm2,
                 raytracing_cfg=solar_loss.raytracing_cfg,
@@ -275,7 +279,7 @@ def run_benchmark():  # noqa: PLR0912, PLR0915
                 skip_backface_receivers=solar_loss.skip_backface_receivers,
                 vis_manager=NullVisManager(),
                 epoch_name=None,
-                mesh_visibility_fn=solar_loss._mesh_visibility_fn if hasattr(solar_loss, '_mesh_visibility_fn') else None,
+                mesh_visibility_fn=solar_loss._mesh_visibility_fn if hasattr(solar_loss, "_mesh_visibility_fn") else None,
             )
 
         loss_rt.backward()
@@ -303,7 +307,7 @@ def run_benchmark():  # noqa: PLR0912, PLR0915
     print(f"Avg forward+backward pass : {vis_avg_time_ms:.2f} ms")
     print(f"Peak VRAM allocated       : {vis_peak_vram:.2f} MB")
     print(f"Peak VRAM reserved        : {vis_reserved_vram:.2f} MB")
-    print(f"RATIO (raytracing / total): {vis_avg_time_ms/avg_time_ms*100:.1f}% of full get_loss time")
+    print(f"RATIO (raytracing / total): {vis_avg_time_ms / avg_time_ms * 100:.1f}% of full get_loss time")
 
     if prof_enabled:
         trace_files = list(trace_dir.glob("*.pt.trace.json"))

@@ -24,6 +24,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     collect_optimizer_state,
     collect_param_stats,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import build_optimizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import allround_save_data
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Wrapper
@@ -109,7 +110,7 @@ class BaseModel(nn.Module):
         else:
             learning_rate = training_config["training_params"].get("learning_rate", 1e-3)
 
-        optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
+        optimizer = build_optimizer(self.parameters(), training_config["training_params"])
         num_epochs = training_config["training_params"].get("num_epochs", 1000)
 
         # Get device from model parameters since nn.Module doesn't have a .device attribute
@@ -129,7 +130,7 @@ class BaseModel(nn.Module):
             device=device,
             num_epochs=num_epochs,
             learning_rate=learning_rate,
-            optimizer_type="Adam",
+            optimizer_type=type(optimizer).__name__,
             loss_config={
                 "use_alm": getattr(loss_function, "_use_alm", False),
                 "use_cse": getattr(loss_function, "_use_cse", False),
@@ -160,17 +161,39 @@ class BaseModel(nn.Module):
                 )
                 vis_manager.vis_mesh_shape(epoch=epoch, verts=vis_verts, faces=vis_faces)
 
-            optimizer.zero_grad()
-
-            loss_function.get_total_loss(model=self, epoch_name=epoch)
-
             t0 = time.perf_counter()
             per_component_grad_norms: dict[str, float] = {}
             grad_log_dict: dict[str, float] = {}
 
-            if not diagnostic_mode:
+            if isinstance(optimizer, torch.optim.LBFGS):
+                # L-BFGS requires the forward + backward pass inside a closure.
+                # With max_iter=1 and no line search it is called exactly once per step.
+                _closure_captures: dict = {}
+
+                def _lbfgs_closure() -> torch.Tensor:
+                    optimizer.zero_grad()
+                    loss_function.get_total_loss(model=self, epoch_name=epoch)
+                    backpropable = {k: v for k, v in loss_function._last_weighted_losses.items() if v.requires_grad}
+                    scalar = sum(backpropable.values()) if backpropable else torch.tensor(0.0, device=device)
+                    scalar.backward()
+                    _closure_captures["total_weighted_loss"] = (
+                        sum(v.item() for v in backpropable.values()) if backpropable else 0.0
+                    )
+                    if wandb.run:
+                        pending = getattr(loss_function, "_pending_wandb_log", {})
+                        _closure_captures["pending"] = pending.copy()
+                        loss_function._pending_wandb_log = {}
+                    return scalar
+
+                optimizer.step(_lbfgs_closure)
+                total_weighted_loss = _closure_captures.get("total_weighted_loss", 0.0)
+                if wandb.run:
+                    wandb.log(_closure_captures.get("pending", {}), step=epoch)
+            elif not diagnostic_mode:
                 # Performance mode: single combined backward, no per-component grad tracking.
                 # Gradient conflict tracking and per-loss wandb gradient logs are disabled.
+                optimizer.zero_grad()
+                loss_function.get_total_loss(model=self, epoch_name=epoch)
                 backpropable = {k: v for k, v in loss_function._last_weighted_losses.items() if v.requires_grad}
                 total_weighted_loss = sum(v.item() for v in backpropable.values())
                 if backpropable:
@@ -183,6 +206,8 @@ class BaseModel(nn.Module):
                 # Diagnostic mode: per-component backward so we can track per-loss gradient norms
                 # and cosine conflict angles. Each graph is freed immediately (retain_graph=False);
                 # param.grad accumulates across calls — identical to backward() on the summed total.
+                optimizer.zero_grad()
+                loss_function.get_total_loss(model=self, epoch_name=epoch)
                 trainable_params = [p for p in self.parameters() if p.requires_grad]
                 prev_grad = [torch.zeros_like(p) for p in trainable_params]
                 log_grad_mem = loss_function._gradient_memory_diagnostics
@@ -320,7 +345,8 @@ class BaseModel(nn.Module):
                     wandb_run=wandb_name,
                 )
 
-            optimizer.step()
+            if not isinstance(optimizer, torch.optim.LBFGS):
+                optimizer.step()
 
             dbg.end_iteration(
                 epoch,

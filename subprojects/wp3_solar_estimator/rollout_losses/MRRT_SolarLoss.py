@@ -122,7 +122,9 @@ def solar_loss_mrrt(  # noqa: PLR0915
     power_acc = torch.zeros((), device=vertices.device, dtype=vertices.dtype)
     visibility_acc = torch.zeros(faces.shape[0], device=vertices.device, dtype=vertices.dtype)
     penalty_acc = torch.zeros((), device=vertices.device, dtype=vertices.dtype)
-    sun_facing_acc = torch.zeros(faces.shape[0], device=vertices.device, dtype=vertices.dtype) if skip_backface_receivers else None
+    sun_facing_acc = (
+        torch.zeros(faces.shape[0], device=vertices.device, dtype=vertices.dtype) if skip_backface_receivers else None
+    )
 
     for k in range(K):
         sun_k = solar_vectors_unit[k]
@@ -132,9 +134,13 @@ def solar_loss_mrrt(  # noqa: PLR0915
 
         if sun_facing_indices_k is not None:
             vis_rt, _, _ = _vis_fn(
-                vertices, faces[sun_facing_indices_k], sun_k,
-                mesh_cfg=mesh_cfg, normal_source="mesh",
-                occluder_faces=faces, receiver_face_indices=sun_facing_indices_k,
+                vertices,
+                faces[sun_facing_indices_k],
+                sun_k,
+                mesh_cfg=mesh_cfg,
+                normal_source="mesh",
+                occluder_faces=faces,
+                receiver_face_indices=sun_facing_indices_k,
             )
             vis_k = torch.zeros(faces.shape[0], device=vertices.device, dtype=vertices.dtype)
             vis_k[sun_facing_indices_k] = vis_rt

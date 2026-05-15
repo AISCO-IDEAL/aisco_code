@@ -1,5 +1,5 @@
 general_info:
-  CSE: "True"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
+  CSE: "False"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
   ALM_aggressive: "False" # capu version of ALM
 
@@ -20,7 +20,7 @@ general_info:
 
   # Again, the ooder here corresponds to the order of the constraints in this config further below
   alm_thresholds: [0.0, 0.0, 0.0, 0.0, 0.0]  # per-constraint deadzone: if |c_i| < threshold_i, nu/mu/lambda are frozen. Set to null to disable (pure adaptive formula). Ignored in aggressive mode.
-  initial_lambda: [0.01, 0.01, 0.01, 0.01, 0.01]  # per-constraint initial lambda(s)
+  initial_lambda: [1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial lambda(s)
   initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial mu(s)
   initial_nu: [1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial nu(s)
   alpha: 0.8  # EMA decay factor for ν update
@@ -28,7 +28,7 @@ general_info:
   gamma_aggressive: 1.1  # multiplicative increase factor for μ in aggressive CAPU mode
 
   enforce_projection:
-    activation_epoch_ratio: 0.6
+    activation_epoch_ratio: 0.1
     max_iters: 10
     tolerance: 1.0e-3
 
@@ -62,9 +62,9 @@ general_info:
 # - Optionally set old variant(s) to compute=0 in the same category.
 # - No TotalLoss code edits required.
 #
-  deactivate_scheduler_mode: zero_weighted
+  deactivate_scheduler_mode: skip
   loss_normalisation:
-    enabled: False
+    enabled: True
     target_loss_value: 1.0
     target_gradient_norm: 1.0
     # For recalibration: enter the name of the loss as it is called further below and you can set the following keys:
@@ -84,6 +84,12 @@ general_info:
         #experimental values by aalthaus
         fixed_grad_scale: 100.0
         fixed_loss_scale: 1.0
+      wheel_loss_enforce_v2:
+        fixed_grad_scale: 0.1
+        fixed_loss_scale: 0.000001
+      bb_v4_4_enforce_v2:
+        fixed_grad_scale: 0.01
+        fixed_loss_scale: 0.00001
 
   # Epoch scheduler: "skip" (default) or "zero_weighted".
   # "skip": inactive losses are not computed; logged as 0. ALM multipliers frozen.
@@ -125,7 +131,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   eikonal:
     _role: constraint
-    _disabled_epochs: [[0,50]]
+    _disabled_epochs: []
     null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     eikonal_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
 
@@ -159,19 +165,19 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   surface_area:
     _role: aux
     null_loss_surface_area: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    surface_loss_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
+    surface_loss_v0: [1, 3.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
 
   solar:
     _role: objective
     _sign: maximize
-    _disabled_epochs:  []
+    _disabled_epochs:  [[0,50]]
     solar_v3B_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
     solar_v4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
     solar_v5: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
-    solar_s_r: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
-    solar_s_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
+    solar_s_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
+    solar_s_r_r_t: [1, 5.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
     solar_m_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MR.py"]  # multi ray
     solar_m_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MRRT.py"]  # multi ray ray tracing
     null_loss_solar: [0, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
@@ -292,4 +298,4 @@ wheel_loss_config:
   threshold_huber: 10.0  # Huber loss threshold for wheel loss v3
   threshold_relu: -0.3  # z-gradient threshold for wheel loss v3; gradients above this value are penalized linearly, while gradients below are not penalized (should be negative, e.g. -0.3 means z gradients above -0.3 are penalized, while z gradients of -0.3 or smaller are not penalized)
   manual_z_shift: -5.0 # manual shift applied to z-coordinate of wheel loss sample points, to give more room for the SDF to find a solution
-  enforce_alignment_weight: 0.05 # wheel_loss_enforce_v2 only: weight on the ∇sdf ∥ ẑ ground-tangency aux relative to the primary projection-as-target loss
+  enforce_alignment_weight: 0.4 # wheel_loss_enforce_v2 only: weight on the ∇sdf ∥ ẑ ground-tangency aux relative to the primary projection-as-target loss

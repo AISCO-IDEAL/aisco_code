@@ -494,7 +494,9 @@ class CentralVisManagerV2(_BaseVisManager):
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
-        self._submit_ply_flat_faces(vt, epoch, verts_np, faces_np, _to_f64(receiver_mask).astype(np.float32).reshape(-1), type_cfg)
+        self._submit_ply_flat_faces(
+            vt, epoch, verts_np, faces_np, _to_f64(receiver_mask).astype(np.float32).reshape(-1), type_cfg
+        )
 
     def vis_bb_constraint(self, epoch: int, verts: Any, distances: Any) -> None:
         """Bounding-box constraint violations. verts is a point cloud (no faces)."""
