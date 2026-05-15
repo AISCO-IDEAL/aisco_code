@@ -8,21 +8,37 @@
 {% endblock %}
 
 {% block content %}
-<div class="section-grid" style="grid-template-rows: auto auto 1fr auto auto; height: 100%; overflow-y: auto;">
+<div class="section-grid" style="position:relative; grid-template-rows: auto auto;">
 
-    <div class="dark-card toolbar">
+    <div class="dark-card toolbar" style="position:relative;">
         {% if pipeline == 'live' %}
         <a href="/launcher/optimization?pipeline=live" class="btn secondary">← Back to Run</a>
         {% else %}
         <a href="/launcher/config-overrides?pipeline=completed" class="btn secondary">← Back</a>
         {% endif %}
+        <button class="btn secondary" id="btnEditPanels">Edit Panels</button>
         <div style="flex:1;"></div>
         <a href="/" class="btn">Done — Home</a>
+        <div class="dark-card" id="panelEditorCard"
+            style="display:none; position:absolute; top:calc(100% + 8px); right:0; z-index:20; width:min(680px, calc(100vw - 48px)); gap:10px; padding:10px 12px; box-shadow:0 18px 38px rgba(0,0,0,0.22);">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div style="font-size:0.82rem; color:#f8d9d9; font-weight:700;">Panel Visibility</div>
+                <div style="font-size:0.75rem; color:var(--muted);">Session-only. Resets on reload.</div>
+                <div style="flex:1;"></div>
+                <button class="btn secondary" id="btnClosePanelEditor"
+                    style="padding:4px 10px; font-size:0.8rem;">Close</button>
+            </div>
+            <div id="panelEditorList"
+                style="display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px;"></div>
+            <div id="panelEmptyState" style="display:none; font-size:0.78rem; color:var(--muted);">No panels selected.
+                Use
+                Edit Panels to choose what to display.</div>
+        </div>
     </div>
 
     {% if pipeline != 'live' %}
-    <div class="visuals-grid">
-        <div class="visual-card">
+    <div class="visuals-grid visuals-grid--two-col visuals-grid--four-up">
+        <div class="visual-card" data-panel-id="panel_cp_field">
             <div class="visual-title">Aeroshell Evolution</div>
             <div class="image-slot" id="gifSlot">
                 <span class="placeholder-text">No GIF yet</span>
@@ -33,7 +49,7 @@
                     GIF</button></div>
         </div>
 
-        <div class="visual-card">
+        <div class="visual-card" data-panel-id="panel_solar_placement">
             <div class="visual-title">Solar Placement</div>
             <div class="image-slot" id="solarSlot">
                 <span class="placeholder-text">No solar GIF yet</span>
@@ -44,7 +60,7 @@
                     GIF</button></div>
         </div>
 
-        <div class="visual-card">
+        <div class="visual-card" data-panel-id="panel_mesh_shape">
             <div class="visual-title">Aeroshell Mesh</div>
             <div class="mesh-container" id="meshContainer">
                 <span id="meshPlaceholder"
@@ -61,7 +77,7 @@
     {% endif %}
 
     {% if pipeline == 'live' %}
-    <div id="extraPlySection" style="display:none;">
+    <div id="extraPlySection" style="display:none;" data-panel-id="panel_mesh_shape">
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px; flex-wrap:wrap;">
             <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600;">Live Mesh Outputs</div>
             <label style="display:flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--muted);">
@@ -69,13 +85,11 @@
                 Sync camera across mesh boxes
             </label>
         </div>
-        <div class="visuals-grid" id="extraPlyGrid"></div>
+        <div class="visuals-grid visuals-grid--two-col visuals-grid--four-up" id="extraPlyGrid"></div>
     </div>
     {% endif %}
 
-    <div class="dark-card" style="min-height:0; display:flex; align-items:center; gap:12px; padding:8px 12px;">
-        <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600;" id="statusLabel">Loading artifacts…</div>
-    </div>
+    <div id="statusLabel" hidden>Loading artifacts…</div>
 
 </div>
 
@@ -85,8 +99,29 @@
     const LAUNCHER_API = "/launcher/api";
     const VIEWER_API = "/viewer/api";
     const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260514";
+    const DISCOVERED_DEFAULT_VISIBLE = false;
+
+    const PANEL_DEFAULTS = {
+        completed: {
+            panel_cp_field: { label: "Cp Field", defaultVisible: true },
+            panel_mesh_shape: { label: "Mesh Shape", defaultVisible: true },
+            panel_solar_placement: { label: "Solar Placement", defaultVisible: false },
+            panel_aeroshell_evolution: { label: "Aeroshell Evolution", defaultVisible: false },
+        },
+        live: {
+            panel_cp_field: { label: "Cp Field", defaultVisible: true },
+            panel_mesh_shape: { label: "Mesh Shape", defaultVisible: true },
+        },
+    };
+    const modeKey = isLive ? "live" : "completed";
+    const modePanelDefaults = PANEL_DEFAULTS[modeKey];
 
     const statusLabel = document.getElementById("statusLabel");
+    const btnEditPanels = document.getElementById("btnEditPanels");
+    const panelEditorCard = document.getElementById("panelEditorCard");
+    const panelEditorList = document.getElementById("panelEditorList");
+    const panelEmptyState = document.getElementById("panelEmptyState");
+    const btnClosePanelEditor = document.getElementById("btnClosePanelEditor");
 
     const extraPlySection = isLive ? document.getElementById("extraPlySection") : null;
     const extraPlyGrid = isLive ? document.getElementById("extraPlyGrid") : null;
@@ -94,6 +129,96 @@
 
     let plyGroupState = {};
     let latestSyncedViewState = null;
+    const panelDefs = {};
+    const panelVisibility = {};
+
+    function slugifyPanelPart(text) {
+        return String(text || "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "_")
+            .replace(/^_+|_+$/g, "");
+    }
+
+    function panelIdForLiveGroup(label) {
+        return `panel_live_discovered_${slugifyPanelPart(label)}`;
+    }
+
+    function setPanelDefault(panelId, label, defaultVisible, element) {
+        panelDefs[panelId] = {
+            id: panelId,
+            label,
+            defaultVisible,
+            element,
+        };
+        panelVisibility[panelId] = defaultVisible;
+        if (element) {
+            element.style.display = defaultVisible ? "" : "none";
+        }
+    }
+
+    function setPanelVisibility(panelId, visible) {
+        const def = panelDefs[panelId];
+        if (!def) {
+            return;
+        }
+        panelVisibility[panelId] = !!visible;
+        if (def.element) {
+            def.element.style.display = visible ? "" : "none";
+        }
+        const livePrefix = "panel_live_discovered_";
+        if (panelId.startsWith(livePrefix)) {
+            Object.entries(plyGroupState).forEach(([groupLabel, state]) => {
+                if (panelIdForLiveGroup(groupLabel) !== panelId) {
+                    return;
+                }
+                if (!visible && state.playing) {
+                    state.playing = false;
+                    clearInterval(state.playInterval);
+                    const playBtn = state.card ? state.card.querySelector(".play-btn") : null;
+                    if (playBtn) {
+                        playBtn.textContent = "Play";
+                    }
+                }
+                if (visible && state.card && state.container && state.placeholder && state.statusDiv && !state.loadedOnce) {
+                    loadPlyForGroup(groupLabel, state.container, state.placeholder, state.statusDiv);
+                }
+            });
+        }
+        refreshPanelEmptyState();
+    }
+
+    function refreshPanelEmptyState() {
+        const availableDefs = Object.values(panelDefs).filter((def) => !!def.element);
+        const visibleCount = availableDefs.filter((def) => !!panelVisibility[def.id]).length;
+        panelEmptyState.style.display = visibleCount === 0 ? "block" : "none";
+    }
+
+    function renderPanelEditor() {
+        panelEditorList.innerHTML = "";
+        Object.values(panelDefs).forEach((def) => {
+            if (!def.element) {
+                return;
+            }
+            const row = document.createElement("label");
+            row.style.display = "flex";
+            row.style.alignItems = "center";
+            row.style.gap = "8px";
+            row.style.fontSize = "0.78rem";
+            row.style.color = "var(--muted)";
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = !!panelVisibility[def.id];
+            checkbox.addEventListener("change", () => {
+                setPanelVisibility(def.id, checkbox.checked);
+            });
+            row.appendChild(checkbox);
+            const text = document.createElement("span");
+            text.textContent = def.label;
+            row.appendChild(text);
+            panelEditorList.appendChild(row);
+        });
+        refreshPanelEmptyState();
+    }
 
     function bust(url) {
         const sep = url.includes("?") ? "&" : "?";
@@ -114,6 +239,13 @@
         if (extraPlySection) {
             extraPlySection.style.display = "none";
         }
+        Object.keys(panelDefs).forEach((panelId) => {
+            if (panelId.startsWith("panel_live_discovered_")) {
+                delete panelDefs[panelId];
+                delete panelVisibility[panelId];
+            }
+        });
+        renderPanelEditor();
     }
 
     function broadcastViewState(sourceLabel, viewState) {
@@ -168,6 +300,7 @@
                 }
             }
             state.viewer.loadMesh(bust(file.url), (info) => {
+                state.loadedOnce = true;
                 placeholder.style.display = "none";
                 statusDiv.style.display = "block";
                 const vc = info && info.hasVertexColors ? "yes" : "no";
@@ -198,15 +331,22 @@
             viewer: null,
             playing: false,
             playInterval: null,
+            card: null,
+            container: null,
+            placeholder: null,
+            statusDiv: null,
+            loadedOnce: false,
         };
         plyGroupState[label] = state;
+        const panelId = panelIdForLiveGroup(label);
 
         const card = document.createElement("div");
         card.className = "visual-card";
         card.dataset.label = label;
+        card.dataset.panelId = panelId;
         card.innerHTML = `
             <div class="visual-title">${label}</div>
-            <div class="mesh-container" style="position:relative; height:300px; background:#f1f7f3; border-radius:8px; overflow:hidden;">
+            <div class="mesh-container mesh-container--four-up" style="position:relative; background:#f1f7f3; border-radius:8px; overflow:hidden;">
                 <span class="placeholder-text" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#496456;font-size:0.9rem;z-index:1;">Loading…</span>
                 <div class="mesh-status" style="position:absolute;bottom:8px;left:8px;font-size:0.75rem;color:#496456;z-index:2;background:rgba(255,255,255,0.8);padding:2px 6px;border-radius:4px;display:none;"></div>
             </div>
@@ -221,6 +361,10 @@
         const container = card.querySelector(".mesh-container");
         const placeholder = card.querySelector(".placeholder-text");
         const statusDiv = card.querySelector(".mesh-status");
+        state.card = card;
+        state.container = container;
+        state.placeholder = placeholder;
+        state.statusDiv = statusDiv;
 
         slider.addEventListener("input", (e) => {
             if (state.playing) {
@@ -254,7 +398,11 @@
         });
 
         extraPlyGrid.appendChild(card);
-        loadPlyForGroup(label, container, placeholder, statusDiv);
+        setPanelDefault(panelId, `Live: ${label}`, DISCOVERED_DEFAULT_VISIBLE, card);
+        renderPanelEditor();
+        if (panelVisibility[panelId]) {
+            loadPlyForGroup(label, container, placeholder, statusDiv);
+        }
     }
 
     function updateExtraPlyGroups(data) {
@@ -294,6 +442,19 @@
     const meshSlider = isLive ? null : document.getElementById("meshSlider");
     const meshStatus = isLive ? null : document.getElementById("meshStatus");
     const meshPlaceholder = isLive ? null : document.getElementById("meshPlaceholder");
+
+    if (!isLive) {
+        const staticCards = Array.from(document.querySelectorAll("[data-panel-id]"));
+        staticCards.forEach((card) => {
+            const panelId = card.getAttribute("data-panel-id");
+            const defaultDef = modePanelDefaults[panelId] || { label: panelId, defaultVisible: false };
+            setPanelDefault(panelId, defaultDef.label, !!defaultDef.defaultVisible, card);
+        });
+    } else if (extraPlySection) {
+        const liveMeshDef = modePanelDefaults.panel_mesh_shape || { label: "Mesh Shape", defaultVisible: true };
+        setPanelDefault("panel_mesh_shape", liveMeshDef.label, !!liveMeshDef.defaultVisible, extraPlySection);
+    }
+    renderPanelEditor();
 
     function setGif(entry, img, hint, btn, keyRef) {
         if (!entry) {
@@ -438,6 +599,13 @@
             }
         });
     }
+
+    btnEditPanels.addEventListener("click", () => {
+        panelEditorCard.style.display = panelEditorCard.style.display === "none" ? "grid" : "none";
+    });
+    btnClosePanelEditor.addEventListener("click", () => {
+        panelEditorCard.style.display = "none";
+    });
 
     if (isLive) {
         fetch(`${LAUNCHER_API}/run/state`).then((r) => r.json()).then((state) => {
