@@ -3,13 +3,13 @@ import os
 import time
 from contextlib import nullcontext
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import torch
 import yaml
 
-from subprojects.wp3_solar_estimator.rollout_losses.MRRT_SolarLoss import solar_loss_mrrt  # noqa: F401
-from subprojects.wp3_solar_estimator.rollout_losses.SRRT_SolarLoss import solar_loss_srrt  # noqa: F401
+from subprojects.wp3_solar_estimator.rollout_losses.MRRT_SolarLoss import solar_loss_mrrt
+from subprojects.wp3_solar_estimator.rollout_losses.SRRT_SolarLoss import solar_loss_srrt
 from subprojects.wp3_solar_estimator.testbench.testbench_main import SOLAR_LOSS_REGISTRY, get_device, load_ply_file
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.blendednet.gpu_sdf import mesh_sdf
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
@@ -74,7 +74,7 @@ def run_benchmark():  # noqa: PLR0912, PLR0915
 
     print(f"Initialising {loss_class}...")
     loss_cls = SOLAR_LOSS_REGISTRY[loss_class]
-    solar_loss = loss_cls(device=device, weight=[1.0, 1.0])
+    solar_loss: Any = loss_cls(device=device, weight=[1.0, 1.0])
     solar_loss._vis_manager = NullVisManager()
 
     # Provide model that computes exact mesh SDF every call so gradients flow directly to `verts`
@@ -187,9 +187,6 @@ def run_benchmark():  # noqa: PLR0912, PLR0915
         # Call the actual raytracing loss function directly with fixed mesh
         # This bypasses the extractor and SDF eval entirely
         if hasattr(solar_loss, "raytracing_cfg"):  # SRRT/MRRT classes have this
-            from subprojects.wp3_solar_estimator.rollout_losses.MRRT_SolarLoss import solar_loss_mrrt
-            from subprojects.wp3_solar_estimator.rollout_losses.SRRT_SolarLoss import solar_loss_srrt
-
             if "MRRT" in solar_loss.__class__.__name__:
                 loss_rt, _ = solar_loss_mrrt(
                     mesh_verts,

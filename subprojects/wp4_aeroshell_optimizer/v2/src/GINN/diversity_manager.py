@@ -31,7 +31,6 @@ from torch.profiler import record_function
 import wandb
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import build_optimizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss_v2 import TotalLossV2
@@ -42,6 +41,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_v
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
     CentralVisManagerV2,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import build_optimizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
@@ -227,7 +227,7 @@ class DiversityTrainer:
         if optimizer_config is not None:
             self._model_optimizer: Optimizer = build_optimizer(self._model.parameters(), optimizer_config)
         else:
-            self._model_optimizer: Optimizer = torch.optim.Adam(self._model.parameters(), lr=model_lr)
+            self._model_optimizer = torch.optim.Adam(self._model.parameters(), lr=model_lr)
         self._gradient_clip_norm: float | None = gradient_clip_norm if gradient_clip_norm and gradient_clip_norm > 0 else None
 
         # Rolling history for the stacked-area competition chart
@@ -618,7 +618,7 @@ class DiversityTrainer:
     # Main step
     # ------------------------------------------------------------------
     @record_function("DiversityManager.step")
-    def step(self, epoch: int = -1) -> dict[str, float]:
+    def step(self, epoch: int = -1) -> dict[str, float]:  # noqa: PLR0915, PLR0912
         """
         One full optimization step: Phase 1 -> ALM update -> Phase 2 -> opt.step -> log/render.
         Returns: dict of metrics for the caller (stripped prefix for convenience), containing:

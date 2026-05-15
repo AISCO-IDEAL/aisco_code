@@ -14,6 +14,7 @@ import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import build_optimizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     DebugManager,
     collect_alm_state,
@@ -24,7 +25,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     collect_optimizer_state,
     collect_param_stats,
 )
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import build_optimizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import allround_save_data
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Wrapper
@@ -171,17 +171,18 @@ class BaseModel(nn.Module):
                 _closure_captures: dict = {}
 
                 def _lbfgs_closure() -> torch.Tensor:
+                    # for the lbfgs optimizer, requires closure
                     optimizer.zero_grad()
-                    loss_function.get_total_loss(model=self, epoch_name=epoch)
+                    loss_function.get_total_loss(model=self, epoch_name=epoch)  # noqa: B023
                     backpropable = {k: v for k, v in loss_function._last_weighted_losses.items() if v.requires_grad}
                     scalar = sum(backpropable.values()) if backpropable else torch.tensor(0.0, device=device)
                     scalar.backward()
-                    _closure_captures["total_weighted_loss"] = (
+                    _closure_captures["total_weighted_loss"] = (  # noqa: B023
                         sum(v.item() for v in backpropable.values()) if backpropable else 0.0
                     )
                     if wandb.run:
                         pending = getattr(loss_function, "_pending_wandb_log", {})
-                        _closure_captures["pending"] = pending.copy()
+                        _closure_captures["pending"] = pending.copy()  # noqa: B023
                         loss_function._pending_wandb_log = {}
                     return scalar
 
