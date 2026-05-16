@@ -256,6 +256,9 @@ class VTKMeshDataset(Dataset):
         self.order_file = order_file
         self.dataset_config = dataset_config
         self.split = split
+        self.allowed_dataset_prefixes = self._parse_allowed_dataset_prefixes(
+            dataset_config.get("allowed_dataset_prefixes", None)
+        )
         self.active_variables = dataset_config.get("active_variables", None)
         self.drop_pressure = dataset_config.get("drop_pressure", False)
         self.subsample_nodes = dataset_config.get("subsample_nodes", None)
@@ -276,13 +279,19 @@ class VTKMeshDataset(Dataset):
 
     @property
     def processed_file_names(self):
-        with open(self.order_file) as f:
-            order_list = [line.strip() for line in f if line.strip()]
+        order_list = self._read_filtered_order_filenames()
         return [f"{fname}.pt" for fname in order_list]
 
     def _load_split_indices(self):
         with open(self.order_file) as f:
             all_filenames = [line.strip() for line in f if line.strip()]
+        all_filenames = self._filter_filenames_by_allowed_prefixes(all_filenames)
+
+        if self.allowed_dataset_prefixes is not None and not all_filenames:
+            raise ValueError(
+                "allowed_dataset_prefixes selected no samples from order_file: "
+                f"{sorted(self.allowed_dataset_prefixes)}"
+            )
 
         total_samples = len(all_filenames)
         train_size = self.dataset_config["train_size"]
@@ -325,9 +334,10 @@ class VTKMeshDataset(Dataset):
         test_size: int,
     ) -> np.ndarray:
         validation_names = self._read_validation_file_names()
+        validation_names = self._filter_filenames_by_allowed_prefixes(validation_names)
         order_name_to_index = {self._normalize_sample_name(name): index for index, name in enumerate(all_filenames)}
 
-        if not validation_names:
+        if not validation_names and self.allowed_dataset_prefixes is None:
             raise ValueError("Handpicked validation list is empty.")
 
         duplicate_names = sorted(name for name, count in Counter(validation_names).items() if count > 1)
@@ -419,6 +429,41 @@ class VTKMeshDataset(Dataset):
                 line = line[1:].strip()
             names.append(self._normalize_sample_name(line.strip("'\"")))
         return names
+
+    def _read_filtered_order_filenames(self) -> list[str]:
+        with open(self.order_file) as f:
+            return self._filter_filenames_by_allowed_prefixes([line.strip() for line in f if line.strip()])
+
+    @staticmethod
+    def _parse_allowed_dataset_prefixes(raw_prefixes) -> set[str] | None:
+        if raw_prefixes is None:
+            return None
+        if isinstance(raw_prefixes, (str, int)):
+            raw_prefixes = [raw_prefixes]
+
+        prefixes = {str(prefix).strip() for prefix in raw_prefixes if str(prefix).strip()}
+        if not prefixes:
+            return None
+        invalid = sorted(prefix for prefix in prefixes if not prefix.isdigit())
+        if invalid:
+            raise ValueError(f"allowed_dataset_prefixes must contain only digits, got: {invalid}")
+        return prefixes
+
+    def _filter_filenames_by_allowed_prefixes(self, filenames: list[str]) -> list[str]:
+        if self.allowed_dataset_prefixes is None:
+            return filenames
+        return [name for name in filenames if self._dataset_prefix_from_sample_name(name) in self.allowed_dataset_prefixes]
+
+    @classmethod
+    def _dataset_prefix_from_sample_name(cls, name: str) -> str | None:
+        sample_name = cls._normalize_sample_name(name)
+        if not sample_name.startswith("sample_"):
+            return None
+        suffix = sample_name.removeprefix("sample_")
+        if len(suffix) <= 5 or not suffix.isdigit():
+            return None
+        prefix = suffix[:-5]
+        return prefix if prefix else None
 
     @staticmethod
     def _normalize_sample_name(name: str) -> str:
