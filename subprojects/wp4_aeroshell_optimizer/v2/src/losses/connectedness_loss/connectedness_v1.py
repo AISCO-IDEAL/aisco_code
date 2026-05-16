@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 import torch
 
+from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 
 
@@ -53,11 +54,14 @@ class ConnectednessV1(ParentLoss):
         if self.ph_smoothing_kernel % 2 == 0:
             self.ph_smoothing_kernel += 1
 
-        default_bbox_size: float = float(domain_pts_config.get("bbox_size", 10.0))
-        default_bbox: list[list[float]] = [[-0.5 * default_bbox_size, 0.5 * default_bbox_size] for _ in range(self.grid_dim)]
-        bbox: list[list[float]] = connectedness_config.get("bbox", default_bbox)
-        if len(bbox) != self.grid_dim:
-            raise ValueError(f"connectedness_config.bbox must have {self.grid_dim} entries, got {len(bbox)}.")
+        prism = get_outer_prism_bounds_mm()
+        scale = float(domain_pts_config.get("bbox_scale_factor", 1.0))
+        scaled_prism = scale_outer_prism(prism, scale)
+        bbox: list[list[float]] = [
+            [scaled_prism["x"][0], scaled_prism["x"][1]],
+            [scaled_prism["y"][0], scaled_prism["y"][1]],
+            [scaled_prism["z"][0], scaled_prism["z"][1]],
+        ]
 
         self.grid_shape: tuple[int, ...] = (self.grid_resolution,) * self.grid_dim
         axes = [
