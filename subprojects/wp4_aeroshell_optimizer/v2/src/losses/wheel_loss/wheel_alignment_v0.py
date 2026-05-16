@@ -4,6 +4,7 @@ from pathlib import Path
 import torch
 import yaml
 
+from subprojects.wp2_assembler.version4.components.nbz import get_training_frame_offset
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.assembly_id_utils import resolve_assembly_id
@@ -31,6 +32,7 @@ class WheelAlignmentV0(ParentLoss):
         params = assembly_map[self.assembly_id]
 
         wheel_coords = [(p["x"], p["y"], p["z"]) for key, p in params.items() if key.startswith("wheel_")]
+        cx, cy, cz = get_training_frame_offset(self.assembly_id)
 
         width = get_regulation("wheel.tire_width")
         radius = get_regulation("wheel.tire_diameter") / 2
@@ -47,9 +49,9 @@ class WheelAlignmentV0(ParentLoss):
 
         wheel_point_grids = []
         for wx, wy, wz in wheel_coords:
-            xs = wx + grid_dx * L
-            ys = wy + grid_dy * (width / 2)
-            zs = torch.full_like(xs, wz + radius - C + self._manual_z_shift)
+            xs = (wx - cx) + grid_dx * L
+            ys = (wy - cy) + grid_dy * (width / 2)
+            zs = torch.full_like(xs, (wz - cz) + radius - C + self._manual_z_shift)
             wheel_point_grids.append(torch.stack([xs, ys, zs], dim=-1))
 
         self.points = torch.cat(wheel_point_grids, dim=0)
@@ -67,7 +69,9 @@ class WheelAlignmentV0(ParentLoss):
             retain_graph=True,
         )[0]
 
-        ground_normal = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=grad_sdf.dtype)
+        # SDF convention: negative inside, positive outside.
+        # At the wheel contact patch, the car interior is above → ∇SDF points downward.
+        ground_normal = torch.tensor([0.0, 0.0, -1.0], device=device, dtype=grad_sdf.dtype)
         grad_unit = grad_sdf / grad_sdf.norm(dim=-1, keepdim=True).clamp(min=1e-8)
         angle_dev_sq = (1.0 - (grad_unit * ground_normal).sum(dim=-1)).pow(2)
 
