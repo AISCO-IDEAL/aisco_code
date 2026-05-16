@@ -8,6 +8,7 @@ if str(GAOT3_ROOT) not in sys.path:
     sys.path.insert(0, str(GAOT3_ROOT))
 
 from src.dataloader.pyg_datasets import VTKMeshDataset
+from src.trainer.data_pipeline.statistics_handler import StatisticsHandler
 
 
 def _write_order(root: Path, sample_names: list[str]) -> Path:
@@ -86,3 +87,15 @@ def test_handpicked_validation_ignores_disallowed_prefixes(tmp_path: Path):
     )
 
     assert dataset.split_filenames == ["sample_100002.pt"]
+
+
+def test_stats_file_name_without_prefix_filter_uses_legacy_name():
+    dataset_config = {"name": "united_clean_datasets", "allowed_dataset_prefixes": None}
+
+    assert StatisticsHandler._stats_file_name(dataset_config) == "united_clean_datasets_norm_stats.pt"
+
+
+def test_stats_file_name_with_prefix_filter_is_prefix_specific():
+    dataset_config = {"name": "united_clean_datasets", "allowed_dataset_prefixes": [3, 1]}
+
+    assert StatisticsHandler._stats_file_name(dataset_config) == "united_clean_datasets_prefixes_1_3_norm_stats.pt"
