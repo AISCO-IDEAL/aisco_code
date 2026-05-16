@@ -3,10 +3,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import torch
+from torch_geometric.data import Data
+
 GAOT3_ROOT = Path(__file__).resolve().parents[1]
 if str(GAOT3_ROOT) not in sys.path:
     sys.path.insert(0, str(GAOT3_ROOT))
 
+from src.dataloader.metadata import DATASET_METADATA, get_dataset_metadata
 from src.dataloader.pyg_datasets import VTKMeshDataset
 from src.trainer.data_pipeline.statistics_handler import StatisticsHandler
 
@@ -99,3 +103,40 @@ def test_stats_file_name_with_prefix_filter_is_prefix_specific():
     dataset_config = {"name": "united_clean_datasets", "allowed_dataset_prefixes": [3, 1]}
 
     assert StatisticsHandler._stats_file_name(dataset_config) == "united_clean_datasets_prefixes_1_3_norm_stats.pt"
+
+
+def test_unknown_metaname_infers_and_caches_prefix_specific_metadata(tmp_path: Path):
+    sample_names = ["sample_100001", "sample_300001", "sample_100002"]
+    (tmp_path / "order_.txt").write_text("\n".join(sample_names) + "\n", encoding="utf-8")
+    torch.save(
+        Data(pos=torch.tensor([[0.0, 1.0, 2.0], [2.0, 3.0, 4.0]]), x=torch.tensor([[0.1], [0.2]])),
+        tmp_path / "sample_100001.pt",
+    )
+    torch.save(
+        Data(pos=torch.tensor([[-10.0, -10.0, -10.0]]), x=torch.tensor([[3.0]])),
+        tmp_path / "sample_300001.pt",
+    )
+    torch.save(
+        Data(pos=torch.tensor([[-1.0, 2.0, 1.5], [3.0, 5.0, 6.0]]), x=torch.tensor([[0.3], [0.4]])),
+        tmp_path / "sample_100002.pt",
+    )
+
+    metaname = "incompressible_fluids/test_dynamic_prefix_metadata"
+    DATASET_METADATA.pop(metaname, None)
+    try:
+        metadata = get_dataset_metadata(
+            {
+                "name": "dynamic_dataset",
+                "metaname": metaname,
+                "base_path": str(tmp_path),
+                "processed_folder": "",
+                "order_file_name": None,
+                "allowed_dataset_prefixes": [1],
+                "force_recompute_metadata": True,
+            }
+        )
+    finally:
+        DATASET_METADATA.pop(metaname, None)
+
+    assert metadata.domain_x == ([-1.0, 1.0, 1.5], [3.0, 5.0, 6.0])
+    assert (tmp_path / "dynamic_dataset_prefixes_1_metadata.json").is_file()

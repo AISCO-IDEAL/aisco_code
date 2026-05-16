@@ -1,8 +1,13 @@
 """Utility functions for reading the datasets."""
 
+import json
+import logging
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
+
+import torch
 
 
 @dataclass
@@ -406,3 +411,242 @@ DATASET_METADATA = {
         global_std=[269.949],
     ),
 }
+
+
+def get_dataset_metadata(dataset_config: dict) -> Metadata:
+    """Return static metadata or infer it for newly assembled PyG datasets."""
+    metaname = dataset_config["metaname"]
+    if metaname in DATASET_METADATA:
+        return DATASET_METADATA[metaname]
+
+    logger = logging.getLogger(__name__)
+    metadata_file = _metadata_file_path(dataset_config)
+    force_recompute = dataset_config.get(
+        "force_recompute_metadata",
+        dataset_config.get("force_recompute_stats", False),
+    )
+
+    if not force_recompute:
+        cached = _load_dynamic_metadata(metadata_file)
+        if cached is not None:
+            DATASET_METADATA[metaname] = cached
+            logger.info("Loaded dynamic dataset metadata from %s", metadata_file)
+            return cached
+
+    logger.info(
+        "Dataset metadata %r is not registered; inferring it from %s",
+        metaname,
+        dataset_config["base_path"],
+    )
+    metadata = _infer_dynamic_metadata(dataset_config)
+    DATASET_METADATA[metaname] = metadata
+    _save_dynamic_metadata(metadata_file, metadata)
+    logger.info("Saved dynamic dataset metadata to %s", metadata_file)
+    return metadata
+
+
+def _metadata_file_path(dataset_config: dict) -> str:
+    return os.path.join(dataset_config["base_path"], _metadata_file_name(dataset_config))
+
+
+def _metadata_file_name(dataset_config: dict) -> str:
+    prefixes = _normalized_dataset_prefixes(dataset_config.get("allowed_dataset_prefixes"))
+    if prefixes is None:
+        return f"{dataset_config['name']}_metadata.json"
+    return f"{dataset_config['name']}_prefixes_{'_'.join(prefixes)}_metadata.json"
+
+
+def _load_dynamic_metadata(metadata_file: str) -> Metadata | None:
+    if not os.path.isfile(metadata_file):
+        return None
+    try:
+        with open(metadata_file, encoding="utf-8") as handle:
+            payload = json.load(handle)
+        return Metadata(
+            periodic=payload.get("periodic", False),
+            group_u=payload.get("group_u", "u"),
+            group_c=payload.get("group_c"),
+            group_x=payload.get("group_x", "x"),
+            type="gaot",
+            fix_x=payload.get("fix_x", False),
+            domain_x=(payload["domain_x"][0], payload["domain_x"][1]),
+            domain_t=payload.get("domain_t"),
+            active_variables=payload.get("active_variables"),
+            chunked_variables=payload.get("chunked_variables"),
+            num_variable_chunks=payload.get("num_variable_chunks", 1),
+            signed=payload.get("signed", {"u": [False], "c": [None]}),
+            names=payload.get("names", {"u": ["$c_p$"], "c": [None]}),
+            global_mean=payload.get("global_mean", [0.0]),
+            global_std=payload.get("global_std", [1.0]),
+        )
+    except Exception as exc:  # noqa: BLE001 - stale cache should not block a fresh scan
+        logging.getLogger(__name__).warning("Ignoring invalid metadata cache %s: %s", metadata_file, exc)
+        return None
+
+
+def _save_dynamic_metadata(metadata_file: str, metadata: Metadata) -> None:
+    payload = {
+        "periodic": metadata.periodic,
+        "group_u": metadata.group_u,
+        "group_c": metadata.group_c,
+        "group_x": metadata.group_x,
+        "type": metadata.type,
+        "fix_x": metadata.fix_x,
+        "domain_x": [list(metadata.domain_x[0]), list(metadata.domain_x[1])],
+        "domain_t": metadata.domain_t,
+        "active_variables": metadata.active_variables,
+        "chunked_variables": metadata.chunked_variables,
+        "num_variable_chunks": metadata.num_variable_chunks,
+        "signed": metadata.signed,
+        "names": metadata.names,
+        "global_mean": metadata.global_mean,
+        "global_std": metadata.global_std,
+    }
+    os.makedirs(os.path.dirname(metadata_file), exist_ok=True)
+    tmp_file = f"{metadata_file}.{os.getpid()}.tmp"
+    with open(tmp_file, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=4)
+        handle.write("\n")
+    os.replace(tmp_file, metadata_file)
+
+
+def _infer_dynamic_metadata(dataset_config: dict) -> Metadata:
+    order_file = _order_file_path(dataset_config)
+    if not os.path.isfile(order_file):
+        raise FileNotFoundError(
+            f"Metadata inference needs the dataset order file, but it does not exist: {order_file}"
+        )
+
+    with open(order_file, encoding="utf-8") as handle:
+        sample_names = [_normalize_sample_name(line.strip()) for line in handle if line.strip()]
+    sample_names = _filter_names_by_allowed_prefixes(sample_names, dataset_config.get("allowed_dataset_prefixes"))
+    if not sample_names:
+        raise ValueError(
+            "allowed_dataset_prefixes selected no samples while inferring metadata: "
+            f"{dataset_config.get('allowed_dataset_prefixes')}"
+        )
+
+    processed_dir = _processed_dir(dataset_config)
+    pos_min = None
+    pos_max = None
+    target_dim = None
+    usable_samples = 0
+    missing_samples = []
+
+    for sample_name in sample_names:
+        sample_path = _sample_path(processed_dir, sample_name)
+        if sample_path is None:
+            missing_samples.append(sample_name)
+            continue
+
+        data = torch.load(sample_path, map_location="cpu", weights_only=False)
+        if not hasattr(data, "pos") or data.pos is None:
+            raise ValueError(f"Sample has no pos tensor and cannot be used for metadata: {sample_path}")
+        pos = torch.as_tensor(data.pos).detach().cpu().float()
+        sample_min = pos.amin(dim=0)
+        sample_max = pos.amax(dim=0)
+        pos_min = sample_min if pos_min is None else torch.minimum(pos_min, sample_min)
+        pos_max = sample_max if pos_max is None else torch.maximum(pos_max, sample_max)
+        target_dim = target_dim or _infer_target_dim(data, dataset_config)
+        usable_samples += 1
+
+    if missing_samples:
+        logging.getLogger(__name__).warning(
+            "Skipped %s missing samples while inferring metadata. First missing samples: %s",
+            len(missing_samples),
+            missing_samples[:5],
+        )
+    if usable_samples == 0 or pos_min is None or pos_max is None:
+        raise ValueError(f"No usable .pt samples found under {processed_dir} while inferring metadata.")
+
+    target_dim = target_dim or 1
+    target_names = ["$c_p$"] if target_dim == 1 else [f"target_{index}" for index in range(target_dim)]
+    return Metadata(
+        periodic=False,
+        group_u="u",
+        group_c=None,
+        group_x="x",
+        type="gaot",
+        fix_x=False,
+        domain_x=(pos_min.tolist(), pos_max.tolist()),
+        domain_t=None,
+        active_variables=None,
+        chunked_variables=None,
+        num_variable_chunks=1,
+        signed={"u": [False] * target_dim, "c": [None]},
+        names={"u": target_names, "c": [None]},
+        global_mean=[0.0] * target_dim,
+        global_std=[1.0] * target_dim,
+    )
+
+
+def _order_file_path(dataset_config: dict) -> str:
+    order_file_name = dataset_config.get("order_file_name")
+    if order_file_name:
+        return os.path.join(dataset_config["base_path"], order_file_name)
+    return os.path.join(
+        dataset_config["base_path"],
+        f"order_{dataset_config.get('processed_folder') or ''}.txt",
+    )
+
+
+def _processed_dir(dataset_config: dict) -> str:
+    return os.path.join(dataset_config["base_path"], dataset_config.get("processed_folder") or "")
+
+
+def _sample_path(processed_dir: str, sample_name: str) -> str | None:
+    direct_path = os.path.join(processed_dir, f"{sample_name}.pt")
+    if os.path.isfile(direct_path):
+        return direct_path
+    nested_path = os.path.join(processed_dir, sample_name, "data.pt")
+    if os.path.isfile(nested_path):
+        return nested_path
+    return None
+
+
+def _infer_target_dim(data, dataset_config: dict) -> int:
+    for attr_name in ("x", "y", "cp", "pressure"):
+        value = getattr(data, attr_name, None)
+        if isinstance(value, torch.Tensor):
+            if value.dim() <= 1:
+                return 1
+            return int(value.shape[-1])
+    active_heads = dataset_config.get("active_heads") or []
+    return max(1, len(active_heads))
+
+
+def _filter_names_by_allowed_prefixes(sample_names: list[str], raw_prefixes) -> list[str]:
+    prefixes = _normalized_dataset_prefixes(raw_prefixes)
+    if prefixes is None:
+        return sample_names
+    prefix_set = set(prefixes)
+    return [name for name in sample_names if _dataset_prefix_from_sample_name(name) in prefix_set]
+
+
+def _normalized_dataset_prefixes(raw_prefixes) -> list[str] | None:
+    if raw_prefixes is None:
+        return None
+    if isinstance(raw_prefixes, (str, int)):
+        raw_prefixes = [raw_prefixes]
+    prefixes = {str(prefix).strip() for prefix in raw_prefixes if str(prefix).strip()}
+    if not prefixes:
+        return None
+    invalid = sorted(prefix for prefix in prefixes if not prefix.isdigit())
+    if invalid:
+        raise ValueError(f"allowed_dataset_prefixes must contain only digits, got: {invalid}")
+    return sorted(prefixes, key=int)
+
+
+def _dataset_prefix_from_sample_name(name: str) -> str | None:
+    sample_name = _normalize_sample_name(name)
+    if not sample_name.startswith("sample_"):
+        return None
+    suffix = sample_name.removeprefix("sample_")
+    if len(suffix) <= 5 or not suffix.isdigit():
+        return None
+    prefix = suffix[:-5]
+    return prefix if prefix else None
+
+
+def _normalize_sample_name(name: str) -> str:
+    return name.strip().removesuffix(".pt")
