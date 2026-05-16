@@ -71,8 +71,12 @@ class ConnectednessV1(ParentLoss):
         building_maxs = np.array([prism["x"][1], prism["y"][1], prism["z"][1]], dtype=np.float64)
         span = sample_maxs - sample_mins
         vox_scale = (self.grid_resolution - 1) / span
-        self._building_voxel_min: np.ndarray = np.clip((building_mins - sample_mins) * vox_scale, 0, self.grid_resolution - 1)[: self.grid_dim]
-        self._building_voxel_max: np.ndarray = np.clip((building_maxs - sample_mins) * vox_scale, 0, self.grid_resolution - 1)[: self.grid_dim]
+        self._building_voxel_min: np.ndarray = np.clip((building_mins - sample_mins) * vox_scale, 0, self.grid_resolution - 1)[
+            : self.grid_dim
+        ]
+        self._building_voxel_max: np.ndarray = np.clip((building_maxs - sample_mins) * vox_scale, 0, self.grid_resolution - 1)[
+            : self.grid_dim
+        ]
 
         self.grid_shape: tuple[int, ...] = (self.grid_resolution,) * self.grid_dim
         axes = [
@@ -230,7 +234,9 @@ class ConnectednessV1(ParentLoss):
 
         elim_components = extra_components[~inside_mask]
         if elim_components.shape[0] > 0:
-            outside_birth_coords = np.clip(elim_components[:, 3 : 3 + self.grid_dim].astype(np.int64), 0, self.grid_resolution - 1)
+            outside_birth_coords = np.clip(
+                elim_components[:, 3 : 3 + self.grid_dim].astype(np.int64), 0, self.grid_resolution - 1
+            )
             elim_indices = np.unique(np.ravel_multi_index(outside_birth_coords.T, self.grid_shape)).astype(np.int64)
         else:
             elim_indices = empty

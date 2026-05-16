@@ -518,7 +518,7 @@ def get_optimizer_telemetry(optimizer: torch.optim.Optimizer) -> dict[str, float
         "optimizer/second_moment_max": max(v_maxes),
         "optimizer/effective_lr_mean": sum(eff_lr_means) / len(eff_lr_means),
         "optimizer/effective_lr_min": min(eff_lr_mins),
-        "optimizer/first_moment_norm": m_sq_sum ** 0.5,
+        "optimizer/first_moment_norm": m_sq_sum**0.5,
         "optimizer/step_count": float(step_count),
     }
 
