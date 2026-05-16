@@ -41,7 +41,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_v
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
     CentralVisManagerV2,
 )
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import build_optimizer
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import build_optimizer, get_optimizer_telemetry
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
@@ -826,6 +826,7 @@ class DiversityTrainer:
         if self._alm_manager is not None:
             log_dict.update(self._alm_manager.get_telemetry())
         log_dict.update(self._norm_manager.get_telemetry())
+        log_dict.update(get_optimizer_telemetry(self._model_optimizer))
         log_dict.update(diversity_log_data)
         log_dict.update(gradient_log_data)
         # Note: per-slot raw scalars are NOT added to log_dict to avoid hundreds of individual

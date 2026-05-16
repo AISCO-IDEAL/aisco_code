@@ -571,6 +571,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             device=device,
             model_lr=learning_rate,
             optimizer_config=training_config["training_params"],
+            gradient_clip_norm=training_config.get("gradient_clip_norm"),
             diversity_manager=diversity_loss_manager,
             diversity_num_points=ginn_config.get("diversity_num_points", 2048),
             diversity_norm_order=ginn_config.get("diversity_norm_order", 2),
