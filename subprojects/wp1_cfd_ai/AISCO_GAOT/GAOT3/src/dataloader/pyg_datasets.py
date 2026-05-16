@@ -334,11 +334,10 @@ class VTKMeshDataset(Dataset):
         test_size: int,
     ) -> np.ndarray:
         validation_names = self._read_validation_file_names()
+        if not validation_names:
+            raise ValueError("Handpicked validation list is empty.")
         validation_names = self._filter_filenames_by_allowed_prefixes(validation_names)
         order_name_to_index = {self._normalize_sample_name(name): index for index, name in enumerate(all_filenames)}
-
-        if not validation_names and self.allowed_dataset_prefixes is None:
-            raise ValueError("Handpicked validation list is empty.")
 
         duplicate_names = sorted(name for name, count in Counter(validation_names).items() if count > 1)
         if duplicate_names:
