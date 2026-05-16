@@ -1,348 +1,750 @@
 {% extends "base.html" %}
-{% block hint %}Configure assembly geometry, visualise the mesh live, then launch a run.{% endblock %}
+{% block hint %}Configure assembly geometry with drag-and-drop and live autosave, then continue to config overrides.{%
+endblock %}
 
 {% block head %}
 <script type="importmap">
   {"imports": {"three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"}}
 </script>
 <style>
-  input[type="range"] {
-    -webkit-appearance: none;
-    appearance: none;
-    height: 4px;
-    background: transparent;
-    outline: none;
-  }
+    :root {
+        --sel-border: #d7dde5;
+        --sel-panel: #f7f9fc;
+        --sel-text: #111827;
+        --sel-muted: #667085;
+        --sel-blue: #2563eb;
+        --sel-green: #138a43;
+        --sel-red: #b42318;
+    }
 
-  input[type="range"]::-webkit-slider-runnable-track {
-    height: 4px;
-    border-radius: 2px;
-    background: #c8d0da;
-  }
+    .selection-root {
+        width: 100%;
+        color: var(--sel-text);
+        font-family: Arial, sans-serif;
+    }
 
-  input[type="range"]::-moz-range-track {
-    height: 4px;
-    border-radius: 2px;
-    background: #c8d0da;
-  }
+    .selection-layout {
+        display: grid;
+        grid-template-columns: minmax(520px, 1fr) minmax(520px, 1fr);
+        gap: 18px;
+        align-items: start;
+    }
 
-  input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: var(--accent);
-    margin-top: -5px;
-    cursor: pointer;
-  }
+    .left-card,
+    .mesh-card {
+        border: 1px solid var(--sel-border);
+        border-radius: 6px;
+        background: #fff;
+        overflow: hidden;
+    }
 
-  input[type="range"]::-moz-range-thumb {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    border: none;
-    background: var(--accent);
-    cursor: pointer;
-  }
+    .left-title,
+    .mesh-title {
+        font-size: 13px;
+        font-weight: 700;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--sel-border);
+        background: var(--sel-panel);
+        color: var(--sel-muted);
+    }
+
+    .left-body {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 10px;
+    }
+
+    #preview {
+        width: 100%;
+        height: 620px;
+        display: block;
+        border: 1px solid var(--sel-border);
+        border-radius: 6px;
+        background: #fbfcff;
+        cursor: grab;
+        touch-action: none;
+    }
+
+    #preview.dragging {
+        cursor: grabbing;
+    }
+
+    .selection-table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        border: 1px solid var(--sel-border);
+        border-radius: 6px;
+        overflow: hidden;
+        background: #fff;
+    }
+
+    .selection-table th,
+    .selection-table td {
+        border-bottom: 1px solid var(--sel-border);
+        padding: 7px;
+        text-align: left;
+        font-size: 13px;
+        color: var(--sel-text);
+    }
+
+    .selection-table th {
+        background: var(--sel-panel);
+        color: var(--sel-muted);
+        font-weight: 600;
+    }
+
+    .selection-table tr:last-child td {
+        border-bottom: 0;
+    }
+
+    .selection-table input[type="number"] {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid var(--sel-border);
+        border-radius: 4px;
+        padding: 6px;
+        font: inherit;
+        color: var(--sel-text);
+        background: #fff;
+    }
+
+    .part-name {
+        font-family: monospace;
+        font-weight: 600;
+    }
+
+    .selection-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+
+    .selection-actions button {
+        border: 1px solid var(--sel-border);
+        border-radius: 6px;
+        background: #fff;
+        padding: 8px 10px;
+        cursor: pointer;
+        font: inherit;
+        font-size: 13px;
+        color: var(--sel-text);
+    }
+
+    .selection-actions button.primary {
+        grid-column: span 2;
+        border-color: var(--sel-blue);
+        background: var(--sel-blue);
+        color: #fff;
+    }
+
+    .selection-actions button:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    #status {
+        color: var(--sel-muted);
+        min-height: 20px;
+        font-size: 13px;
+    }
+
+    #checks {
+        min-height: 96px;
+        margin: 0;
+        padding: 10px;
+        border: 1px solid var(--sel-border);
+        border-radius: 6px;
+        background: var(--sel-panel);
+        white-space: pre-wrap;
+        font: 12px/1.35 monospace;
+    }
+
+    #map-status {
+        min-height: 20px;
+        font-size: 13px;
+        color: var(--sel-muted);
+    }
+
+    #map-id {
+        min-height: 18px;
+        font-size: 13px;
+        color: var(--sel-green);
+        font-weight: 700;
+    }
+
+    .ok {
+        color: var(--sel-green);
+    }
+
+    .bad {
+        color: var(--sel-red);
+    }
+
+    #meshContainer {
+        width: 100%;
+        height: 620px;
+        border-bottom: 1px solid var(--sel-border);
+        background: #eef3f0;
+        overflow: hidden;
+        position: relative;
+    }
+
+    #meshPlaceholder {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: #496456;
+        font-size: 13px;
+        z-index: 1;
+        text-align: center;
+    }
+
+    #meshMeta {
+        padding: 8px 10px;
+        font-size: 12px;
+        color: var(--sel-muted);
+        background: #f0f5f2;
+    }
+
+    .mesh-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 10px;
+        border-top: 1px solid var(--sel-border);
+        background: #fff;
+    }
+
+    @media (max-width: 900px) {
+        .selection-layout {
+            grid-template-columns: 1fr;
+        }
+
+        #preview,
+        #meshContainer {
+            height: 520px;
+        }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="section-grid" style="grid-template-rows: auto 1fr; height: 100%;">
+    <div class="dark-card toolbar">
+        <a href="/" class="btn secondary">← Back to Home</a>
+        <div style="flex:1;"></div>
+        <a href="/launcher/config-overrides?pipeline={{ pipeline }}" class="btn">Next →</a>
+    </div>
 
-  <!-- Wizard navigation -->
-  <div class="dark-card toolbar">
-    <a href="/" class="btn secondary">← Back to Home</a>
-    <div style="flex:1;"></div>
-    <a href="/launcher/config-overrides?pipeline={{ pipeline }}" class="btn">Next →</a>
-  </div>
+    <div class="card" style="padding:14px; min-height:0; overflow:auto;">
+        <div class="selection-root">
+            <div class="selection-layout">
+                <div class="left-card">
+                    <div class="left-title">Assembly Editor (Autosave)</div>
+                    <div class="left-body">
+                        <canvas id="preview" width="760" height="620"></canvas>
 
-  <!-- Two-column grid: sliders | mesh viewer -->
-  <div style="display:grid; grid-template-columns:minmax(320px,1fr) minmax(320px,1fr); gap:14px; min-height:0;">
+                        <table class="selection-table">
+                            <thead>
+                                <tr>
+                                    <th>Part</th>
+                                    <th>X</th>
+                                    <th>Y</th>
+                                    <th>Z</th>
+                                </tr>
+                            </thead>
+                            <tbody id="controls"></tbody>
+                        </table>
 
-    <!-- Sliders card -->
-    <div class="card" style="display:grid; grid-template-rows:auto 1fr auto; min-height:0;">
-      <div
-        style="font-size:0.88rem; font-weight:700; padding:8px 12px; border-bottom:1px solid var(--border); background:#edf3ef;">
-        Parameter Sliders
-      </div>
-      <div id="slidersArea" style="overflow-y:auto; padding:10px 12px; display:grid; align-content:start; gap:6px;">
-      </div>
-      <div
-        style="padding:10px 12px; border-top:1px solid var(--border); background:#f0f5f2; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-        <button class="btn" id="btnAddWheel" style="font-size:0.83rem;padding:7px 11px;">+ Add wheel</button>
-        <button class="btn secondary" id="btnRemoveWheel" style="font-size:0.83rem;padding:7px 11px;">− Remove
-          wheel</button>
-        <span
-          style="margin-left:auto; font-size:0.82rem; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:50%;"
-          id="sliderStatus">Loading…</span>
-      </div>
+                        <div class="selection-actions">
+                            <button id="btnAddWheel">+ Add wheel</button>
+                            <button id="btnRemoveWheel">- Remove wheel</button>
+                        </div>
 
-      <!-- Checks / warnings panel -->
-      <div id="checksPanel"
-        style="padding:10px 12px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:6px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span id="checksLight"
-            style="display:inline-block; width:12px; height:12px; border-radius:50%; background:#aaa; flex-shrink:0;"></span>
-          <span id="checksLabel" style="font-size:0.82rem; font-weight:600; color:var(--muted);">Checking
-            assembly…</span>
+                        <div id="status">Loading...</div>
+                    </div>
+                </div>
+
+                <div class="mesh-card">
+                    <div class="mesh-title">Generated Aeroshell Mesh</div>
+                    <div id="meshContainer">
+                        <span id="meshPlaceholder">No mesh loaded yet. Autosave will refresh this panel.</span>
+                    </div>
+                    <div id="meshMeta">Waiting for first mesh...</div>
+                    <div class="mesh-controls">
+                        <pre id="checks">checks.txt will appear here.</pre>
+                        <button class="primary" id="btnAddToMap">Add to assembly map</button>
+                        <div id="map-status"></div>
+                        <div id="map-id"></div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <ul id="checksList"
-          style="margin:0; padding:0 0 0 20px; font-size:0.80rem; color:#b04a1a; list-style:disc; display:none;"></ul>
-      </div>
-
-      <!-- Generate assembly panel -->
-      <div id="generatePanel"
-        style="padding:10px 12px; border-top:1px solid var(--border); background:#f0f5f2; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-        <button class="btn" id="btnGenerate" style="font-size:0.83rem;padding:7px 11px;">Generate Assembly</button>
-        <span id="generateStatus" style="font-size:0.82rem; color:var(--muted);"></span>
-        <span id="generateId"
-          style="margin-left:auto; font-size:0.82rem; font-weight:700; color:#2e7a47; display:none;">
-          Map ID: <span id="generateIdValue"></span>
-        </span>
-      </div>
     </div>
-
-    <!-- Mesh viewer card -->
-    <div class="card" style="display:grid; grid-template-rows:auto 1fr auto; min-height:0;">
-      <div
-        style="font-size:0.88rem; font-weight:700; padding:8px 12px; border-bottom:1px solid var(--border); background:#edf3ef;">
-        Live Assembly Mesh
-      </div>
-      <div class="mesh-container" id="meshContainer" style="position:relative; min-height:0;">
-        <span id="meshPlaceholder"
-          style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#496456;font-size:0.9rem;z-index:1;">
-          No mesh loaded. Move a slider to build assembly.ply.
-        </span>
-      </div>
-      <div
-        style="padding:8px 12px; border-top:1px solid var(--border); background:#f0f5f2; font-size:0.82rem; color:var(--muted);"
-        id="meshMeta">
-        Waiting for first build…
-      </div>
-    </div>
-
-  </div>
 </div>
 
 <script>
-  const API = "/launcher/api";
-  const pipeline = "{{ pipeline }}";
+    const API = "/launcher/api";
+    const pipeline = "{{ pipeline }}";
 
-  const slidersArea = document.getElementById("slidersArea");
-  const sliderStatus = document.getElementById("sliderStatus");
-  const meshMeta = document.getElementById("meshMeta");
-  const meshPlaceholder = document.getElementById("meshPlaceholder");
-  const checksLight = document.getElementById("checksLight");
-  const checksLabel = document.getElementById("checksLabel");
-  const checksList = document.getElementById("checksList");
+    let params = {};
+    let dragPart = null;
+    let hoverPart = null;
+    let meshViewer = null;
+    let autosaveTimer = null;
+    let saveInFlight = false;
+    let saveQueued = false;
+    let addToMapInFlight = false;
 
-  let params = {};
-  let debounceTimer = null;
+    const statusEl = document.getElementById("status");
+    const checksEl = document.getElementById("checks");
+    const mapStatusEl = document.getElementById("map-status");
+    const mapIdEl = document.getElementById("map-id");
+    const btnAddToMap = document.getElementById("btnAddToMap");
+    const meshContainer = document.getElementById("meshContainer");
+    const meshPlaceholder = document.getElementById("meshPlaceholder");
+    const meshMeta = document.getElementById("meshMeta");
 
-  // ---------- Slider rendering ----------
-  function sectionSort(name) {
-    if (name === "seat") return -1;
-    if (name.startsWith("wheel_")) { const n = parseInt(name.split("_")[1], 10); return isFinite(n) ? n : 9999; }
-    return 10000;
-  }
+    const canvas = document.getElementById("preview");
+    const ctx = canvas.getContext("2d");
 
-  function axisRange(axis) {
-    if (axis === "z") return [0, 600];
-    if (axis === "x") return [-3000, 3000];
-    return [-2000, 2000];
-  }
+    const bounds = { xmin: -3000, xmax: 3000, ymin: -2200, ymax: 2200 };
+    const wheelRadius = 145;
+    const seatHalfX = 330;
+    const seatHalfY = 180;
 
-  function renderSliders() {
-    slidersArea.innerHTML = "";
-    const sections = Object.keys(params).sort((a, b) => sectionSort(a) - sectionSort(b) || a.localeCompare(b));
-    sections.forEach(section => {
-      const title = document.createElement("div");
-      title.style.cssText = "font-size:0.85rem;color:#23313f;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-top:8px;padding-top:6px;border-top:1px solid var(--border);";
-      title.textContent = section;
-      if (sections.indexOf(section) === 0) { title.style.borderTop = "none"; title.style.marginTop = "0"; }
-      slidersArea.appendChild(title);
+    function loadAssemblyMesh() {
+        const url = `${API}/assembly-selection/mesh?pipeline=${pipeline}&t=${Date.now()}`;
+        meshMeta.textContent = "Loading assembly.ply...";
+        import("/static/js/mesh_viewer.js").then(({ initMeshViewer }) => {
+            if (!meshViewer) {
+                meshViewer = initMeshViewer(meshContainer);
+            }
+            meshViewer.loadMesh(url, () => {
+                meshPlaceholder.style.display = "none";
+                meshMeta.textContent = `Showing assembly.ply at ${new Date().toLocaleTimeString()}`;
+            });
+        }).catch(() => {
+            meshMeta.textContent = "Unable to load mesh viewer.";
+        });
+    }
 
-      ["x", "y", "z"].forEach(axis => {
-        if (axis === "z" && section.startsWith("wheel_")) return;
-        const val = Number(params[section]?.[axis] ?? 0);
-        const [lo, hi] = axisRange(axis);
-        const row = document.createElement("div");
-        row.style.cssText = "display:grid;grid-template-columns:110px 1fr 58px;align-items:center;gap:8px;margin-bottom:10px;";
-        row.innerHTML = `
-        <label style="font-size:0.82rem;color:var(--muted);">${section}.${axis}</label>
-        <input type="range" min="${lo}" max="${hi}" step="1" value="${val}"
-          data-section="${section}" data-axis="${axis}"
-          style="width:100%;accent-color:var(--accent);">
-        <span style="font-size:0.83rem;text-align:right;font-variant-numeric:tabular-nums;color:#2a3643;"
-          id="lbl_${section}_${axis}">${Math.round(val)}</span>
+    function orderedParts() {
+        return Object.entries(params).sort(([a], [b]) => {
+            if (a === "seat") return -1;
+            if (b === "seat") return 1;
+            const ai = parseInt(a.split("_")[1] || "0", 10);
+            const bi = parseInt(b.split("_")[1] || "0", 10);
+            return ai - bi;
+        });
+    }
+
+    function inputCell(part, axis, value) {
+        return `
+      <td>
+        <input type="number" step="1" value="${Math.round(value)}"
+          data-key="${part}" data-axis="${axis}" oninput="onEdit(this)">
+      </td>
+    `;
+    }
+
+    function renderTable() {
+        const body = document.getElementById("controls");
+        body.innerHTML = "";
+        for (const [part, vals] of orderedParts()) {
+            const row = document.createElement("tr");
+            row.innerHTML = `
+        <td class="part-name">${part}</td>
+        ${inputCell(part, "x", vals.x)}
+        ${inputCell(part, "y", vals.y)}
+        ${inputCell(part, "z", vals.z)}
       `;
-        const slider = row.querySelector("input");
-        slider.addEventListener("input", () => {
-          const v = parseFloat(slider.value);
-          params[section][axis] = v;
-          document.getElementById(`lbl_${section}_${axis}`).textContent = String(Math.round(v));
-        });
-        slider.addEventListener("change", () => {
-          clearTimeout(debounceTimer);
-          sliderStatus.textContent = "Rebuilding assembly…";
-          debounceTimer = setTimeout(persistAndRebuild, 80);
-        });
-        slidersArea.appendChild(row);
-      });
-    });
-  }
-
-  async function loadChecks() {
-    try {
-      const r = await fetch(`${API}/assembly-selection/checks?pipeline=${pipeline}&t=${Date.now()}`, { cache: "no-store" });
-      if (!r.ok) return;
-      const d = await r.json();
-      checksLight.style.background = d.ok ? "#2e9c58" : "#c82121";
-      checksLabel.textContent = d.ok ? "No warnings — assembly looks good." : `${d.warnings.length} warning${d.warnings.length > 1 ? "s" : ""}`;
-      checksLabel.style.color = d.ok ? "#2e7a47" : "#b04a1a";
-      checksList.innerHTML = "";
-      if (d.warnings.length) {
-        d.warnings.forEach(w => {
-          const li = document.createElement("li");
-          li.textContent = w.replace(/^\[WARNING\]\s*/i, "");
-          checksList.appendChild(li);
-        });
-        checksList.style.display = "";
-      } else {
-        checksList.style.display = "none";
-      }
-    } catch { }
-  }
-
-  async function loadParams() {
-    try {
-      const r = await fetch(`${API}/assembly-selection/params?pipeline=${pipeline}&t=${Date.now()}`, { cache: "no-store" });
-      if (!r.ok) throw new Error(r.status);
-      params = await r.json();
-      renderSliders();
-      sliderStatus.textContent = "Ready.";
-      loadAssemblyMesh();
-      loadChecks();
-    } catch (err) {
-      sliderStatus.textContent = "Failed to load params: " + err.message;
-    }
-  }
-
-  async function persistAndRebuild() {
-    try {
-      const r = await fetch(`${API}/assembly-selection/update?pipeline=${pipeline}`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params)
-      });
-      const d = await r.json();
-      if (!r.ok) { sliderStatus.textContent = d?.detail?.message || "Update failed."; return; }
-      sliderStatus.textContent = d.message || "Updated.";
-      if (d.params) { params = d.params; renderSliders(); }
-      loadAssemblyMesh();
-      loadChecks();
-    } catch { sliderStatus.textContent = "Failed to update assembly."; }
-  }
-
-  // ---------- Add / Remove wheel ----------
-  async function wheelAction(endpoint) {
-    sliderStatus.textContent = endpoint.includes("add") ? "Adding wheel…" : "Removing wheel…";
-    try {
-      const r = await fetch(`${API}/assembly-selection/${endpoint}?pipeline=${pipeline}`, { method: "POST" });
-      const d = await r.json();
-      if (!r.ok) { sliderStatus.textContent = d?.detail?.message || "Failed."; return; }
-      params = d.params || params;
-      renderSliders();
-      sliderStatus.textContent = d.message || "Done.";
-      loadAssemblyMesh();
-      loadChecks();
-    } catch { sliderStatus.textContent = "Request failed."; }
-  }
-
-  document.getElementById("btnAddWheel").addEventListener("click", () => wheelAction("add-wheel"));
-  document.getElementById("btnRemoveWheel").addEventListener("click", () => wheelAction("remove-wheel"));
-
-  // ---------- Generate assembly ----------
-  const PENDING_ID_KEY = "aiscoPendingAssemblyIdV3";
-  const OVERRIDE_FOLDER_KEY = "aiscoOverrideFolderV3";
-  const LOSSES_CFG = "losses_v0_config.yaml";
-  const ASSEMBLY_ID_PATH = "bb_config.assembly_id";
-
-  const btnGenerate = document.getElementById("btnGenerate");
-  const generateStatus = document.getElementById("generateStatus");
-  const generateId = document.getElementById("generateId");
-  const generateIdValue = document.getElementById("generateIdValue");
-
-  async function writeAssemblyIdToSession(folder, assemblyMapId) {
-    const body = { folder, updates: { [LOSSES_CFG]: { [ASSEMBLY_ID_PATH]: assemblyMapId } } };
-    const r = await fetch(`${API}/config-overrides/values`, {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-    });
-    if (!r.ok) {
-      const d = await r.json();
-      throw new Error(d?.detail?.message || `HTTP ${r.status}`);
-    }
-  }
-
-  btnGenerate.addEventListener("click", async () => {
-    btnGenerate.disabled = true;
-    generateStatus.textContent = "Generating…";
-    generateStatus.style.color = "var(--muted)";
-    generateId.style.display = "none";
-    try {
-      const r = await fetch(`${API}/assembly-selection/generate?pipeline=${pipeline}`, { method: "POST" });
-      const d = await r.json();
-      if (!r.ok) {
-        generateStatus.textContent = d?.detail?.message || "Generate failed.";
-        generateStatus.style.color = "#b04a1a";
-      } else if (d.status === "rejected") {
-        generateStatus.textContent = d.message;
-        generateStatus.style.color = "#b04a1a";
-      } else {
-        const mapId = d.assembly_map_id;
-        generateIdValue.textContent = mapId;
-        generateId.style.display = "";
-
-        // Always persist the latest assembly ID so "Start new session" can apply it.
-        localStorage.setItem(PENDING_ID_KEY, String(mapId));
-
-        const activeFolder = localStorage.getItem(OVERRIDE_FOLDER_KEY) || "";
-        if (activeFolder) {
-          try {
-            await writeAssemblyIdToSession(activeFolder, mapId);
-            generateStatus.textContent = `${d.message} → written to config session.`;
-          } catch (writeErr) {
-            generateStatus.textContent = `${d.message} (config write failed: ${writeErr.message})`;
-          }
-        } else {
-          generateStatus.textContent = `${d.message} ID saved — will be applied when a config session is started.`;
+            body.appendChild(row);
         }
-        generateStatus.style.color = "#2e7a47";
-      }
-    } catch (err) {
-      generateStatus.textContent = "Request failed: " + err.message;
-      generateStatus.style.color = "#b04a1a";
-    } finally {
-      btnGenerate.disabled = false;
     }
-  });
 
-  // ---------- Three.js mesh viewer ----------
-  let meshViewer = null;
+    function scheduleAutosave(delayMs = 220) {
+        clearTimeout(autosaveTimer);
+        autosaveTimer = setTimeout(() => {
+            persistAutosave();
+        }, delayMs);
+    }
 
-  function loadAssemblyMesh() {
-    const container = document.getElementById("meshContainer");
-    const url = `${API}/assembly-selection/mesh?pipeline=${pipeline}&t=${Date.now()}`;
-    meshMeta.textContent = "Loading assembly.ply…";
-    import("/static/js/mesh_viewer.js").then(({ initMeshViewer }) => {
-      if (!meshViewer) meshViewer = initMeshViewer(container);
-      meshViewer.loadMesh(url, () => {
-        meshPlaceholder.style.display = "none";
-        meshMeta.textContent = `Showing assembly.ply · ${new Date().toLocaleTimeString()}`;
-      });
+    window.onEdit = function onEdit(el) {
+        const key = el.dataset.key;
+        const axis = el.dataset.axis;
+        if (!params[key]) {
+            return;
+        }
+        params[key][axis] = parseFloat(el.value || "0");
+        drawPreview();
+        scheduleAutosave(260);
+    };
+
+    function toCanvas(x, y) {
+        const pad = 42;
+        const sx = (canvas.width - 2 * pad) / (bounds.xmax - bounds.xmin);
+        const sy = (canvas.height - 2 * pad) / (bounds.ymax - bounds.ymin);
+        const s = Math.min(sx, sy);
+        const cx = pad + (x - bounds.xmin) * s;
+        const cy = canvas.height - pad - (y - bounds.ymin) * s;
+        return { x: cx, y: cy, s };
+    }
+
+    function fromCanvas(cx, cy) {
+        const origin = toCanvas(bounds.xmin, bounds.ymin);
+        const x = bounds.xmin + (cx - origin.x) / origin.s;
+        const y = bounds.ymin + (origin.y - cy) / origin.s;
+        return { x: Math.round(x), y: Math.round(y) };
+    }
+
+    function drawGrid() {
+        const zero = toCanvas(0, 0);
+        ctx.strokeStyle = "#e5e7eb";
+        ctx.lineWidth = 1;
+
+        for (let x = -3000; x <= 3000; x += 1000) {
+            const p = toCanvas(x, 0);
+            ctx.beginPath();
+            ctx.moveTo(p.x, 20);
+            ctx.lineTo(p.x, canvas.height - 20);
+            ctx.stroke();
+        }
+
+        for (let y = -2000; y <= 2000; y += 1000) {
+            const p = toCanvas(0, y);
+            ctx.beginPath();
+            ctx.moveTo(20, p.y);
+            ctx.lineTo(canvas.width - 20, p.y);
+            ctx.stroke();
+        }
+
+        ctx.strokeStyle = "#9ca3af";
+        ctx.beginPath();
+        ctx.moveTo(zero.x, 20);
+        ctx.lineTo(zero.x, canvas.height - 20);
+        ctx.moveTo(20, zero.y);
+        ctx.lineTo(canvas.width - 20, zero.y);
+        ctx.stroke();
+    }
+
+    function drawLabel(text, x, y) {
+        ctx.font = "12px monospace";
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#374151";
+        ctx.fillText(text, x, y);
+    }
+
+    function drawWheelPolygon() {
+        const wheels = orderedParts().filter(([part]) => part.startsWith("wheel_"));
+        if (wheels.length < 3) {
+            return;
+        }
+        ctx.strokeStyle = "#93c5fd";
+        ctx.fillStyle = "rgba(147, 197, 253, 0.14)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        wheels.forEach(([_, vals], i) => {
+            const p = toCanvas(vals.x, vals.y);
+            if (i === 0) {
+                ctx.moveTo(p.x, p.y);
+            } else {
+                ctx.lineTo(p.x, p.y);
+            }
+        });
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    function drawWheel(part, vals) {
+        const p = toCanvas(vals.x, vals.y);
+        const r = Math.max(8, wheelRadius * p.s);
+        ctx.fillStyle = part === hoverPart ? "#1d4ed8" : "#111827";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        drawLabel(part, p.x, p.y - r - 8);
+    }
+
+    function drawSeat(part, vals) {
+        const p = toCanvas(vals.x, vals.y);
+        const w = seatHalfX * 2 * p.s;
+        const h = seatHalfY * 2 * p.s;
+        ctx.fillStyle = part === hoverPart ? "#f97316" : "#f59e0b";
+        ctx.fillRect(p.x - w / 2, p.y - h / 2, w, h);
+        ctx.strokeStyle = "#92400e";
+        ctx.strokeRect(p.x - w / 2, p.y - h / 2, w, h);
+        drawLabel(part, p.x, p.y - h / 2 - 8);
+    }
+
+    function drawPreview() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawGrid();
+        drawWheelPolygon();
+        for (const [part, vals] of orderedParts()) {
+            if (part === "seat") {
+                drawSeat(part, vals);
+            } else {
+                drawWheel(part, vals);
+            }
+        }
+    }
+
+    function hitTest(cx, cy) {
+        const parts = orderedParts().reverse();
+        for (const [part, vals] of parts) {
+            const p = toCanvas(vals.x, vals.y);
+            if (part === "seat") {
+                const hw = seatHalfX * p.s;
+                const hh = seatHalfY * p.s;
+                if (Math.abs(cx - p.x) <= hw && Math.abs(cy - p.y) <= hh) {
+                    return part;
+                }
+            } else {
+                const r = Math.max(10, wheelRadius * p.s);
+                if (Math.hypot(cx - p.x, cy - p.y) <= r) {
+                    return part;
+                }
+            }
+        }
+        return null;
+    }
+
+    function pointerPos(event) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: (event.clientX - rect.left) * canvas.width / rect.width,
+            y: (event.clientY - rect.top) * canvas.height / rect.height
+        };
+    }
+
+    canvas.addEventListener("pointerdown", (event) => {
+        const p = pointerPos(event);
+        dragPart = hitTest(p.x, p.y);
+        if (!dragPart) {
+            return;
+        }
+        canvas.setPointerCapture(event.pointerId);
+        canvas.classList.add("dragging");
     });
-  }
 
-  loadParams();
+    canvas.addEventListener("pointermove", (event) => {
+        const p = pointerPos(event);
+        if (dragPart) {
+            const world = fromCanvas(p.x, p.y);
+            params[dragPart].x = world.x;
+            params[dragPart].y = world.y;
+            renderTable();
+            drawPreview();
+            scheduleAutosave(140);
+            return;
+        }
+        hoverPart = hitTest(p.x, p.y);
+        drawPreview();
+    });
+
+    function endDrag(event) {
+        if (!dragPart) {
+            return;
+        }
+        dragPart = null;
+        canvas.classList.remove("dragging");
+        try {
+            canvas.releasePointerCapture(event.pointerId);
+        } catch (_) { }
+        scheduleAutosave(20);
+    }
+
+    canvas.addEventListener("pointerup", endDrag);
+    canvas.addEventListener("pointercancel", endDrag);
+
+    function updateAddToMapButton(hasWarnings) {
+        if (addToMapInFlight) {
+            btnAddToMap.disabled = true;
+            return;
+        }
+        btnAddToMap.disabled = hasWarnings;
+        btnAddToMap.title = hasWarnings ? "Resolve warnings before adding to the assembly map." : "";
+    }
+
+    async function loadChecks() {
+        try {
+            const r = await fetch(`${API}/assembly-selection/checks?pipeline=${pipeline}&t=${Date.now()}`, { cache: "no-store" });
+            if (!r.ok) {
+                checksEl.textContent = "checks.txt is not available.";
+                checksEl.className = "";
+                updateAddToMapButton(true);
+                return;
+            }
+            const d = await r.json();
+            const warnings = Array.isArray(d.warnings) ? d.warnings : [];
+            if (!warnings.length) {
+                checksEl.textContent = "OK: No warnings.";
+                checksEl.className = "ok";
+                updateAddToMapButton(false);
+                return;
+            }
+            checksEl.textContent = warnings.join("\n");
+            checksEl.className = "bad";
+            updateAddToMapButton(true);
+        } catch (_err) {
+            checksEl.textContent = "Failed to load checks.";
+            checksEl.className = "bad";
+            updateAddToMapButton(true);
+        }
+    }
+
+    async function persistAutosave() {
+        if (saveInFlight) {
+            saveQueued = true;
+            return;
+        }
+        saveInFlight = true;
+        statusEl.textContent = "Autosaving...";
+        try {
+            const r = await fetch(`${API}/assembly-selection/update?pipeline=${pipeline}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(params)
+            });
+            const d = await r.json();
+            if (!r.ok) {
+                statusEl.textContent = d?.detail?.message || "Autosave failed.";
+                await loadChecks();
+                return;
+            }
+            statusEl.textContent = d.message || "Autosaved.";
+            if (d.params) {
+                params = d.params;
+            }
+            renderTable();
+            drawPreview();
+            loadAssemblyMesh();
+            await loadChecks();
+        } catch (_err) {
+            statusEl.textContent = "Autosave request failed.";
+        } finally {
+            saveInFlight = false;
+            if (saveQueued) {
+                saveQueued = false;
+                persistAutosave();
+            }
+        }
+    }
+
+    async function loadParams() {
+        try {
+            const r = await fetch(`${API}/assembly-selection/params?pipeline=${pipeline}&t=${Date.now()}`, { cache: "no-store" });
+            if (!r.ok) {
+                throw new Error(r.status);
+            }
+            params = await r.json();
+            renderTable();
+            drawPreview();
+            statusEl.textContent = "Ready. Autosave enabled.";
+            loadAssemblyMesh();
+            await loadChecks();
+        } catch (err) {
+            statusEl.textContent = "Failed to load params: " + err.message;
+        }
+    }
+
+    async function wheelAction(endpoint) {
+        statusEl.textContent = endpoint.includes("add") ? "Adding wheel..." : "Removing wheel...";
+        mapStatusEl.textContent = "";
+        mapIdEl.textContent = "";
+        try {
+            const r = await fetch(`${API}/assembly-selection/${endpoint}?pipeline=${pipeline}`, { method: "POST" });
+            const d = await r.json();
+            if (!r.ok) {
+                statusEl.textContent = d?.detail?.message || "Failed.";
+                await loadChecks();
+                return;
+            }
+            params = d.params || params;
+            renderTable();
+            drawPreview();
+            loadAssemblyMesh();
+            statusEl.textContent = d.message || "Done.";
+            await loadChecks();
+        } catch (_err) {
+            statusEl.textContent = "Request failed.";
+        }
+    }
+
+    document.getElementById("btnAddWheel").addEventListener("click", () => wheelAction("add-wheel"));
+    document.getElementById("btnRemoveWheel").addEventListener("click", () => wheelAction("remove-wheel"));
+
+    const PENDING_ID_KEY = "aiscoPendingAssemblyIdV3";
+    const OVERRIDE_FOLDER_KEY = "aiscoOverrideFolderV3";
+    const LOSSES_CFG = "losses_v0_config.yaml";
+    const ASSEMBLY_ID_PATH = "bb_config.assembly_id";
+
+    async function writeAssemblyIdToSession(folder, assemblyMapId) {
+        const body = { folder, updates: { [LOSSES_CFG]: { [ASSEMBLY_ID_PATH]: assemblyMapId } } };
+        const r = await fetch(`${API}/config-overrides/values`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+        if (!r.ok) {
+            const d = await r.json();
+            throw new Error(d?.detail?.message || `HTTP ${r.status}`);
+        }
+    }
+
+    btnAddToMap.addEventListener("click", async () => {
+        if (btnAddToMap.disabled) {
+            return;
+        }
+        addToMapInFlight = true;
+        btnAddToMap.disabled = true;
+        mapStatusEl.textContent = "Adding to assembly map...";
+        mapStatusEl.style.color = "var(--sel-muted)";
+        mapIdEl.textContent = "";
+
+        try {
+            const r = await fetch(`${API}/assembly-selection/generate?pipeline=${pipeline}`, { method: "POST" });
+            const d = await r.json();
+
+            if (!r.ok) {
+                mapStatusEl.textContent = d?.detail?.message || "Generate failed.";
+                mapStatusEl.style.color = "var(--sel-red)";
+            } else if (d.status === "rejected") {
+                mapStatusEl.textContent = d.message;
+                mapStatusEl.style.color = "var(--sel-red)";
+            } else {
+                const mapId = d.assembly_map_id;
+                mapIdEl.textContent = `Map ID: ${mapId}`;
+
+                localStorage.setItem(PENDING_ID_KEY, String(mapId));
+
+                const activeFolder = localStorage.getItem(OVERRIDE_FOLDER_KEY) || "";
+                if (activeFolder) {
+                    try {
+                        await writeAssemblyIdToSession(activeFolder, mapId);
+                        mapStatusEl.textContent = `${d.message} -> written to config session.`;
+                    } catch (writeErr) {
+                        mapStatusEl.textContent = `${d.message} (config write failed: ${writeErr.message})`;
+                    }
+                } else {
+                    mapStatusEl.textContent = `${d.message} ID saved; it will be applied when a config session is started.`;
+                }
+                mapStatusEl.style.color = "var(--sel-green)";
+            }
+        } catch (err) {
+            mapStatusEl.textContent = "Request failed: " + err.message;
+            mapStatusEl.style.color = "var(--sel-red)";
+        } finally {
+            addToMapInFlight = false;
+            await loadChecks();
+        }
+    });
+
+    loadParams();
 </script>
 {% endblock %}
