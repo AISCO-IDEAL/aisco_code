@@ -112,6 +112,7 @@ class BaseModel(nn.Module):
 
         optimizer = build_optimizer(self.parameters(), training_config["training_params"])
         num_epochs = training_config["training_params"].get("num_epochs", 1000)
+        gradient_clip_norm: float | None = training_config["training_params"].get("gradient_clip_norm", None)
 
         # Get device from model parameters since nn.Module doesn't have a .device attribute
         device = str(next(self.parameters()).device)
@@ -273,7 +274,7 @@ class BaseModel(nn.Module):
             if print_timing:
                 mode_label = "Diagnostic" if diagnostic_mode else "Performance"
                 n_losses = len(loss_function._last_weighted_losses)
-                print(f"{mode_label} mode backward {n_losses} Losses: {time.perf_counter() - t0:.4f} seconds")
+                print(f"{mode_label} forward/backward of {n_losses} Losses: {time.perf_counter() - t0:.4f} seconds")
 
             grad_norm = sum(p.grad.detach().pow(2).sum().item() for p in self.parameters() if p.grad is not None) ** 0.5
             lr = optimizer.param_groups[0]["lr"]
@@ -347,6 +348,8 @@ class BaseModel(nn.Module):
                 )
 
             if not isinstance(optimizer, torch.optim.LBFGS):
+                if gradient_clip_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), gradient_clip_norm)
                 optimizer.step()
 
             dbg.end_iteration(

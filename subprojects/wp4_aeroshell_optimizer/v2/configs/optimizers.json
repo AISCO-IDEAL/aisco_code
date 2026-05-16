@@ -4,6 +4,15 @@
       "class": "Adam",
       "kwargs": {}
     },
+    "adam_fast": {
+      "class": "Adam",
+      "kwargs": {
+        "betas": [
+          0.9,
+          0.99
+        ]
+      }
+    },
     "sgd_momentum": {
       "class": "SGD",
       "kwargs": { "momentum": 0.9, "nesterov": true }
@@ -12,7 +21,7 @@
       "class": "LBFGS",
       "lr": 0.1,
       "kwargs": {
-        "history_size": 4,
+        "history_size": 50,
         "max_iter": 1,
         "line_search_fn": null
       }
