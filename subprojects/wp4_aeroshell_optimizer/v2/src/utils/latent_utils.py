@@ -49,7 +49,7 @@ def build_unit_circle_Z(  # noqa: N802  # Z is conventional notation for latent 
     return Z
 
 
-def build_random_disk_Z(
+def build_random_disk_Z(  # noqa: N802
     num_shapes: int,
     z_dim: int,
     radius: float,

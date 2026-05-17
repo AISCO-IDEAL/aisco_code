@@ -86,16 +86,13 @@ general_info:
         fixed_grad_scale: 0.1
         fixed_loss_scale: 1.0
        
-      bb_v6:
-        min_abs_value: 0.1       # trigger recal once raw loss exceeds 0.1
-        consecutive_epochs: 1    # 2 epochs in a row above threshold → recal
-        max_recalibrations: 1    # one re-cal is enough; subsequent spikes ignored
+      
       #wheel_loss_enforce_v2:
       #  fixed_grad_scale: 0.1
       #  fixed_loss_scale: 0.000001
-      #bb_v4_4_enforce_v2:
-      #  fixed_grad_scale: 0.01
-      #  fixed_loss_scale: 0.00001
+      bb_outer_v0:
+        fixed_grad_scale: 0.004
+        fixed_loss_scale: 0.00035
 
   # Epoch scheduler: "skip" (default) or "zero_weighted".
   # "skip": inactive losses are not computed; logged as 0. ALM multipliers frozen.
@@ -213,10 +210,10 @@ domain_pts_sampling: # used in eikonal and smoothness loss  #  parent_loss.py: c
 
 
 connectedness_config:
-  eval_period: 1  # evaluate PH loss every N epochs (expensive persistent homology computation)
+  eval_period: 3  # evaluate PH loss every N epochs (expensive persistent homology computation)
   return_cached_on_skip: "False"  # if True, reuse last computed scalar on skipped epochs
   grid_dim: 3
-  grid_resolution: 128
+  grid_resolution: 64
   bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2
   iso_level: 0.0
   target_betti_dim0: 1  # enforce one connected component
@@ -305,7 +302,7 @@ developability_config:
   post_opt_output_dir: "postprocessed_meshes"  # Relative to storage_dir from general_config
 
 surface_area_config:
-  min_area_m2: 20   # loss is ~0 below this; penalizes area above (set to 0.0 to always penalize)
+  min_area_m2: 10   # loss is ~0 below this; penalizes area above (set to 0.0 to always penalize)
   softplus_k: 1.0     # sharpness of the softplus; ~1/k is the transition width in m²
 
 wheel_loss_config:

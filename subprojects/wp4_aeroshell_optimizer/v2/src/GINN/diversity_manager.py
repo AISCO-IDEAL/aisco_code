@@ -56,7 +56,7 @@ class DiversityTrainer:
     Phase 2 — cheap WIRE-only diversity backward (all N small graphs held together).
     """
 
-    def __init__(  # noqa: PLR0915  # init is intrinsically state-heavy; decomposition would obscure wiring
+    def __init__(  # noqa: PLR0912, PLR0915
         self,
         model: SupportsLatentConcat,
         total_loss: TotalLossV2,
@@ -792,7 +792,7 @@ class DiversityTrainer:
             per_slot_grad_payloads,
         )
 
-    def _backward_l2_two_pass(  # noqa: PLR0915
+    def _backward_l2_two_pass(  # noqa: PLR0912, PLR0915
         self,
         epoch: int,
     ) -> tuple[

@@ -3,7 +3,7 @@ general_info:
   device: "cuda"  #  main_v2
   run_locally: "False" # automatically detected, don't touch
   verbose: "True"  #  basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
-  latent_space: false  # true = use pretraining_latent.py pipeline; model must be SupportsLatentConcat (e.g. ConcatWIREV2)
+  latent_space: true  # true = use pretraining_latent.py pipeline; model must be SupportsLatentConcat (e.g. ConcatWIREV2)
 
 profiler:
   profile_mode: False
@@ -15,7 +15,7 @@ profiler:
   export_trace: False # WARNING: This will dump a GB sized JSON file onto work/fuge. Use only when necessary and set active = 1
 
 model_def:
-  model_name: "WIREV5_ENFORCE"  #  main_v2.py, dynamic model selection, should refer to models.json
+  model_name: "WIREV5"  #  main_v2.py, dynamic model selection, should refer to models.json
   concat_model_name: "ConcatWIREV5"
 
 active_configs:
