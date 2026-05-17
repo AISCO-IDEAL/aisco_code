@@ -609,6 +609,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                     "vis_all_losses", False
                 )
             ),
+            aggregation_method=training_config["training_params"]["multi_shape_aggregation"]["method"],
+            l2_backward_strategy=training_config["training_params"]["multi_shape_aggregation"]["l2_backward_strategy"],
         )
 
         if verbose:
