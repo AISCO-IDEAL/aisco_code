@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --job-name=CVM2_Diversity_gradients_per_slot_grid_vis
-#SBATCH --time=04:00:00                   # Extended for adaptive mesh extraction (L=4)
+#SBATCH --time=12:00:00                   # Extended for adaptive mesh extraction (L=4)
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
@@ -101,16 +101,12 @@ ts "Checkpoint: changed directory to $(pwd)"
 
 #python -m src.main
 
-ts "Checkpoint: launching main_v2.py with hard timeout"
+ts "Checkpoint: launching main_v2.py"
 EXIT_CODE=0
-if ! timeout --signal=TERM --kill-after=30s 13800s "$PYTHON_BIN" -u subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py 2>&1
+if ! "$PYTHON_BIN" -u subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py 2>&1
 then
     EXIT_CODE=$?
-    if [ "$EXIT_CODE" -eq 124 ]; then
-        ts "ERROR: main_v2.py hit timeout (13800s)"
-    else
-        ts "ERROR: main_v2.py exited non-zero (EXIT_CODE=$EXIT_CODE)"
-    fi
+    ts "ERROR: main_v2.py exited non-zero (EXIT_CODE=$EXIT_CODE)"
 else
     ts "Checkpoint: main_v2.py finished successfully"
 fi
