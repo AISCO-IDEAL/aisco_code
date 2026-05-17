@@ -845,19 +845,21 @@ class DiversityTrainer:
         c_per_z_detached: list[list[Tensor]] = []
 
         t0 = time.perf_counter()
-        # Pass 1 — no-grad forward to collect c values (with loss_scale applied).
-        with torch.no_grad():
-            for i in range(N):
-                self._model.set_latent_vector(self._Z[i])
-                bundle = self._total_loss.compute(self._model, epoch_name=epoch, skip_vis=True)
-                if i == 0:
-                    active_constraint_cats = [cat for cat in all_constraint_cats if cat in bundle.constraints]
-                    active_constraint_indices = [j for j, cat in enumerate(all_constraint_cats) if cat in bundle.constraints]
-                member_c: list[Tensor] = []
-                for cat in active_constraint_cats:
-                    c_name = self._total_loss._constraint_by_category[cat][0]
-                    member_c.append((bundle.constraints[cat] * self._norm_manager.get_loss_scale(c_name)).clone())
-                c_per_z_detached.append(member_c)
+        # Pass 1 — forward to collect detached c values (with loss_scale applied).
+        # NOTE: torch.no_grad() removed because mesh-extraction losses (e.g. solar_SR) call
+        # torch.autograd.grad() internally and require a live computation graph. Pass 1 never
+        # calls .backward(), so no spurious gradients accumulate; the graph is GC'd each iter.
+        for i in range(N):
+            self._model.set_latent_vector(self._Z[i])
+            bundle = self._total_loss.compute(self._model, epoch_name=epoch, skip_vis=True)
+            if i == 0:
+                active_constraint_cats = [cat for cat in all_constraint_cats if cat in bundle.constraints]
+                active_constraint_indices = [j for j, cat in enumerate(all_constraint_cats) if cat in bundle.constraints]
+            member_c: list[Tensor] = []
+            for cat in active_constraint_cats:
+                c_name = self._total_loss._constraint_by_category[cat][0]
+                member_c.append((bundle.constraints[cat] * self._norm_manager.get_loss_scale(c_name)).detach().clone())
+            c_per_z_detached.append(member_c)
 
         # Build detached aggregation weights once.
         num_c = len(active_constraint_cats)
