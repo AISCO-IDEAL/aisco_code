@@ -750,10 +750,10 @@ class DiversityTrainer:
             per_z_non_alm.append(non_alm)
 
             total_loss_val += result.log_data.get("raw_losses/total_loss", result.scalar.item())
-            for k, v in result.log_data.items():
-                summed_log_data[k] = summed_log_data.get(k, 0.0) + v
-                if k.startswith("raw_losses/"):
-                    per_slot_log_data[f"slots/slot_{i}/{k}"] = v
+            for log_k, log_v in result.log_data.items():
+                summed_log_data[log_k] = summed_log_data.get(log_k, 0.0) + log_v
+                if log_k.startswith("raw_losses/"):
+                    per_slot_log_data[f"slots/slot_{i}/{log_k}"] = log_v
 
         if self._vis_manager is not None:
             self._vis_manager.set_active_slot(None)
@@ -762,6 +762,7 @@ class DiversityTrainer:
         alm_penalty: Tensor = torch.tensor(0.0, device=self._device)
         c_l2_live: list[Tensor] = []
         if use_alm and active_constraint_cats:
+            assert self._alm_manager is not None
             for k in range(len(active_constraint_cats)):
                 c_stack = torch.stack([per_z_c_scaled[i][k] for i in range(N)])
                 c_l2_live.append(torch.sqrt(c_stack.pow(2).sum() + 1e-12))
@@ -857,6 +858,7 @@ class DiversityTrainer:
         c_l2_detached: list[Tensor] = []
         weights: list[list[Tensor]] = []  # weights[i][k]
         if use_alm and num_c > 0:
+            assert self._alm_manager is not None
             for k in range(num_c):
                 c_stack = torch.stack([c_per_z_detached[i][k] for i in range(N)])
                 c_l2_detached.append(torch.sqrt(c_stack.pow(2).sum() + 1e-12))
@@ -896,10 +898,10 @@ class DiversityTrainer:
             (alm_term + non_alm / N).backward()
 
             total_loss_val += result.log_data.get("raw_losses/total_loss", result.scalar.item())
-            for k, v in result.log_data.items():
-                summed_log_data[k] = summed_log_data.get(k, 0.0) + v
-                if k.startswith("raw_losses/"):
-                    per_slot_log_data[f"slots/slot_{i}/{k}"] = v
+            for log_k, log_v in result.log_data.items():
+                summed_log_data[log_k] = summed_log_data.get(log_k, 0.0) + log_v
+                if log_k.startswith("raw_losses/"):
+                    per_slot_log_data[f"slots/slot_{i}/{log_k}"] = log_v
 
         if self._vis_manager is not None:
             self._vis_manager.set_active_slot(None)
