@@ -75,7 +75,7 @@ general_info:
         #experimental values by aalthaus
         fixed_grad_scale: 0.1
         fixed_loss_scale: 1.0
-      
+
 
       #wheel_loss_enforce_v2:
       #  fixed_grad_scale: 0.1
@@ -167,8 +167,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     solar_v5: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
-    solar_s_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
-    solar_s_r_r_t: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
+    solar_s_r: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
+    solar_s_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
     solar_m_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MR.py"]  # multi ray
     solar_m_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MRRT.py"]  # multi ray ray tracing
     null_loss_solar: [0, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
@@ -177,7 +177,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: diversity
     null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     #Diversity is excluded from grad normalisation: Tune the weight manually here to define trade off between actual loss and diversity requirements
-    field_diversity_v0: [1, 0.0001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+    field_diversity_v0: [1, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
 
   total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
@@ -195,7 +195,7 @@ domain_pts_sampling: # used in eikonal and smoothness loss  #  parent_loss.py: c
 
 connectedness_config:
   eval_period: 5  # evaluate PH loss every N epochs (expensive persistent homology computation)
-  return_cached_on_skip: "False"  # if True, reuse last computed scalar on skipped epochs
+  return_cached_on_skip: "True"  # if True, reuse last computed scalar on skipped epochs
   grid_dim: 3
   grid_resolution: 64
   bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2
