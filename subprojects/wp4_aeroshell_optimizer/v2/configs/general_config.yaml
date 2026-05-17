@@ -1,11 +1,7 @@
-# ===========================================================================
-# General info and miscallenous settings
-# ===========================================================================
-# general
 general_info:
   version: "v2"  #  OUTDATED Comment: total_loss.py, parent_loss.py: load_config(v=general_config["general_info"]["version"], ...)
   device: "cuda"  #  main_v2
-  run_locally: "False" # DONT'T TOUCH, automatically detected
+  run_locally: "False" # automatically detected, don't touch
   verbose: "True"  #  basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
   latent_space: true  # true = use pretraining_latent.py pipeline; model must be SupportsLatentConcat (e.g. ConcatWIREV2)
 
@@ -33,10 +29,32 @@ active_configs:
 
 wandb_general:
   use_wandb: True # main_v1_1_one_model.py, total_loss.py
-  project_name: "ginn_latent_space" # DEFAULT: "temp_"  # main_v1_1_one_model.py: wandb.init(project=...)
+  project_name: "latent_space_training" # DEFAULT: "temp_"  # main_v1_1_one_model.py: wandb.init(project=...)
   entity_name: "aisco"  # main_v1_1_one_model.py: wandb.init(entity=...)
-  name: ""  # leave as ""; auto-generated wandb name is appended with _<SLURM_JOB_ID>,  wandb.init(name=...): "":
-  # use_renderer: True  # total_loss.py: general_config["wandb_general"].get("use_renderer", True)
-  # use_neural_renderer: True  # total_loss.py, main_v1_1_one_model.py: general_config["wandb_general"].get("use_neural_renderer", False)
-  # rendering_frequency: 1  # total_loss.py: general_config["wandb_general"].get("rendering_frequency")
+  name: ""  # leave as ""; wandb.init(name=...): "": auto-generated wandb name is appended with _<SLURM_JOB_ID>
+  use_renderer: True  # total_loss.py: general_config["wandb_general"].get("use_renderer", True)
+  use_neural_renderer: True  # total_loss.py, main_v1_1_one_model.py: general_config["wandb_general"].get("use_neural_renderer", False)
+  rendering_frequency: 1  # total_loss.py: general_config["wandb_general"].get("rendering_frequency")
   wandb_mode: online # online: syncs immediately, offline: saves locally when you run `wandb sync` in the command line
+
+vis_manager: "v2"
+
+storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
+  storage_dir: "/cluster/work/fuge/AISCO/temp_"  # DEFAULT: /cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage, used in main_v1_1_one_model.py, basic_MLP_v1.py, storage_utils.py
+  local_storage_dir: "./local_storage_dir" # only used for testing on local machine, not on cluster  #  main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
+  beast_storage_dir: "/home/aisco/AISCO/beast_sync_wp4" # only used for testing on local machine, not on cluster, used when run_locally=True  # main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
+
+early_stopping:
+  # Final path is auto-built as:
+  #   /home/aisco/<sentinel_relative_path>          on local Beast/WSL
+  #   /cluster/work/fuge/<sentinel_relative_path>   on Euler/SLURM
+  sentinel_relative_path: "AISCO/STOP_RUN"
+
+
+# master example of how to reference other config files:
+#         general_config = load_config()
+#         training_config = load_config(
+#             v=general_config["general_info"]["version"],
+#             cfg_name=general_config["active_configs"]["training"],
+#         )
+#         pointgrid_params = training_config["pointgrid_params"]

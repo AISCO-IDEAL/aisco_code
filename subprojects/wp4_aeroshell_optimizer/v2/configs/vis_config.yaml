@@ -4,7 +4,7 @@
 # Shared by ply_to_gif.py, points_SDFmesh_to_ply.py, central_vis_manager_v2.py,
 # explore_latent_space.py, and central_vis_manager.py (archived).
 
-# --- Corporate identity --- 
+# --- Corporate identity ---
 # not used in code, serves as reference (corporate identity of aCe)
 corporate_identity:
   font_family: "Questrial"
@@ -65,7 +65,7 @@ visual_types:
   mesh_shape:
     enabled: true
     colormap: null          # uniform dark-blue — shape is the information
-    interval: 1
+    interval: 10
     alpha_enabled: true
     coordinate_system: null
     vmin: null
@@ -76,7 +76,7 @@ visual_types:
     cp_field:
       enabled: true
       colormap: "RdBu_r"     # diverging; aligned with corporate red/light-blue contrast
-      interval: 1
+      interval: 10
       alpha_enabled: null
       coordinate_system: true
       vmin: -2.0            # fixed range for cross-epoch comparability
@@ -97,7 +97,7 @@ visual_types:
     quality:
       enabled: true
       colormap: "Reds"   # [0,1] bounded selection weight (corporate red ramp)
-      interval: 1
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -106,7 +106,7 @@ visual_types:
     selection:
       enabled: true
       colormap: "RdBu_r"  # [0,1] bounded selection weight
-      interval: 1
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -116,7 +116,7 @@ visual_types:
     shading:
       enabled: true
       colormap: "Blues" # [0,1] bounded shading visibility (corporate light-blue family)
-      interval: 1
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -126,7 +126,7 @@ visual_types:
     penalty:
       enabled: true
       colormap: "Reds"     # per-face power lost to shading, lower-bounded at 0
-      interval: 1
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -136,7 +136,7 @@ visual_types:
     numerical_factor:
       enabled: true
       colormap: "Reds"   # [0,1] effective loss multiplier after λ/κ applied to visibility
-      interval: 1
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -146,7 +146,7 @@ visual_types:
     receiver_mask:
       enabled: true
       colormap: "RdYlGn"  # 0=back-facing (skipped), 1=sun-facing (raytraced)
-      interval: 1
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -155,7 +155,7 @@ visual_types:
   bb_constraint:
     enabled: true          # disabled by default — confirm with user before enabling
     colormap: "Reds"        # violation magnitude, lower-bounded at 0
-    interval: 1
+    interval: 10
     alpha_enabled: null
     coordinate_system: null
     vmin: 0.0
@@ -165,7 +165,7 @@ visual_types:
   mesh_assembly_v4:
     enabled: true
     colormap: null          # colours specified per-component via method arguments
-    interval: 1
+    interval: 10
     alpha_enabled: true
     coordinate_system: null
     vmin: null
@@ -209,7 +209,7 @@ visual_types:
 # Latent pretraining visualisation
 # ===========================================================================
 latent_pretraining:
-  vis_cadence_pretraining: 10
+  vis_cadence_pretraining: 100
   vis_show_domain_pts: true       # include eikonal domain points in latent sampling vis
   vis_show_target_pts: "pts"      # "pts" = surface samples, "mesh" = reconstructed mesh
   mesh_resolution: 128            # marching-cubes resolution for pretraining vis meshes
@@ -236,7 +236,7 @@ latent_space_exploration:
   n_interp: 7         # Mode 3: interpolation steps per adjacent pair (controls PLY count)
   resolution: 64      # marching cubes grid resolution (lower = faster)
   radii: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]  # Mode 2: radii to sweep per pretrained direction
-  
+
 # ===========================================================================
 # Latent optimisation visualisation
 # ===========================================================================
@@ -252,7 +252,7 @@ latent_optimisation:
   # one GIF per survey snapshot.
   vis_latent_circle_survey:
     enabled: true
-    cadence: 5                    # run survey every N optimisation epochs (0 = only after pretraining)
+    cadence: 100                    # run survey every N optimisation epochs (0 = only after pretraining)
     n_circle_samples: 90          # number of evenly-spaced angles on the z-circle
     z_radius: 2.0                 # must match z_radius used in pretraining
     mesh_resolution: 64           # marching-cubes resolution for circle survey meshes
