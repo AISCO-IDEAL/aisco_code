@@ -214,7 +214,7 @@ latent_pretraining:
 # Latent optimisation visualisation
 # ===========================================================================
 latent_optimisation:
-  vis_cadence_optimisation: 10    # write vis snapshot every N optimisation epochs
+  vis_cadence_optimisation: 100    # write vis snapshot every N optimisation epochs
   vis_strategy: static            # static/dynamic: vis at original pretrained Z circle or those that are actively being evaluated by losses
 
   vis_all_losses: true           # Compute cost = N_slots × N_active_losses renders per vis epoch.
@@ -224,14 +224,14 @@ latent_optimisation:
   # epochs. Each call writes to circle_survey/epoch_XXXXX/ so finalize() generates
   # one GIF per survey snapshot.
   vis_latent_circle_survey:
-    enabled: true
+    enabled: false
     cadence: 5                    # run survey every N optimisation epochs (0 = only after pretraining)
     n_circle_samples: 90          # number of evenly-spaced angles on the z-circle
     z_radius: 2.0                 # must match z_radius used in pretraining
     mesh_resolution: 64           # marching-cubes resolution for circle survey meshes
     bbox_scale_factor: 1.2        # vis bbox scale (relative to outer prism)
     layout_from_resample_mode: true  # true = derive layout from z_resample_mode (on_circle→strip, in_circle→pizza); false = use layout above
-    layout: "strip"               # "strip" = horizontal PNG strip; "grid" = 2D Cartesian grid PNG; "pizza" = concentric circles grid PNG
+    layout: "pizza"               # "strip" = horizontal PNG strip; "grid" = 2D Cartesian grid PNG; "pizza" = concentric circles grid PNG
     save_plys: true               # for further investigation
     # pizza-mode only (ignored for strip/grid):
     pizza_r_min: 0.5              # innermost radius

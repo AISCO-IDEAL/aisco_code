@@ -1,7 +1,7 @@
 general_info:
   CSE: "False"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
-  ALM_aggressive: "False" # capu version of ALM
+  ALM_aggressive: "True" # capu version of ALM
 
   #    WARNING: When CSE="True", individual objective weights (aero, solar) below are dead code.
   #    Use cse_weight below to scale the unified CSE objective relative to diversity.
@@ -91,7 +91,7 @@ general_info:
       #  fixed_grad_scale: 0.1
       #  fixed_loss_scale: 0.000001
       bb_outer_v0:
-        fixed_grad_scale: 0.004
+        fixed_grad_scale: 0.008
         fixed_loss_scale: 0.00035
 
   # Epoch scheduler: "skip" (default) or "zero_weighted".
@@ -129,7 +129,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     bb_v4_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]                     # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
     bb_v4_3: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]                    # v4.3 with improved ALM and CSE support
     bb_v4_4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]                    # v4.4 surface-sampled BB constraints on WP2 inner/outer zero-level surfaces
-    bb_v4_4_enforce_v2: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4_enforce_v2.py"] # v4.4 + ENFORCE projection + eikonal aux for IFT-style gradient flow at bb sample points
+    bb_v4_4_enforce_v2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4_enforce_v2.py"] # v4.4 + ENFORCE projection + eikonal aux for IFT-style gradient flow at bb sample points
     bb_v4_sel: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]                  # v4.sel with option to select either inner or outer nbz
     silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]   # version provided by Silvretta, not working well as of 2025 12 15
     ### bb_v5, bb_v6, bb_v7 all rely on assembler v4
@@ -206,7 +206,12 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: diversity
     null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     #Diversity is excluded from grad normalisation: Tune the weight manually here to define trade off between actual loss and diversity requirements
-    field_diversity_v0: [1, 0.01, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+    field_diversity_v0:         [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+    # Constraint-aware variants — flip compute=1 on exactly one of these to activate.
+    # See field_diversity_{masked,surface,hybrid}_v0_config blocks below for cutoffs (mm) and knobs.
+    field_diversity_masked_v0:  [1, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_masked_v0.py"]
+    field_diversity_surface_v0: [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_surface_v0.py"]
+    field_diversity_hybrid_v0:  [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_hybrid_v0.py"]
 
   total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
@@ -222,8 +227,34 @@ domain_pts_sampling: # used in eikonal and smoothness loss  #  parent_loss.py: c
   eikonal_near_surface_fraction: 0.0
 
 
+# Constraint-aware diversity variants. Cutoffs are in SDF coordinates (mm).
+# Tag convention used by the visualizer: 1=wheel, 2=bb_inner.
+field_diversity_masked_v0_config:
+  wheel_cutoff_mm: 350.0      # keep diversity samples this far from any wheel-contact point (mm). Wheel is SDF=0 equality — generous radius.
+  bb_inner_cutoff_mm: 350.0    # keep diversity samples this far from inner-prism (seat + bb-inner components) surface (mm). Inner-bb is inequality — tighter is fine.
+  wheel_sampling_density: 10  # matches wheel_loss_config.sampling_density
+  bb_inner_target_point_count: 20000
+  max_div: null               # null = disabled. Set negative (e.g. -0.1) for GINN-style clamp.
+  max_resample_iters: 8       # safety cap on rejection-sampling top-up loop
+
+field_diversity_surface_v0_config:
+  wheel_cutoff_mm: 350.0
+  bb_inner_cutoff_mm: 350.0
+  wheel_sampling_density: 10
+  bb_inner_target_point_count: 20000
+  surface_resample_cadence: 50  # re-extract per-shape surface via marching cubes every N get_loss calls
+  surface_subsample_n: 4096     # max retained vertices per shape after subsample
+  mc_resolution: 64             # marching-cubes grid resolution
+  mc_bbox_scale: 1.0            # outer-prism bbox multiplier for the extractor
+  max_div: null
+
+field_diversity_hybrid_v0_config:
+  w_vol: 0.1                 # weight on the masked-volumetric sub-loss
+  w_surf: 0.9                # weight on the masked-surface sub-loss
+  max_div: null              # clamp applied once on the weighted sum
+
 connectedness_config:
-  eval_period: 3  # evaluate PH loss every N epochs (expensive persistent homology computation)
+  eval_period: 5  # evaluate PH loss every N epochs (expensive persistent homology computation)
   return_cached_on_skip: "False"  # if True, reuse last computed scalar on skipped epochs
   grid_dim: 3
   grid_resolution: 64
