@@ -473,6 +473,56 @@ def build_optimizer(params, training_params: dict, v: str = "v2") -> torch.optim
     return cls(params, lr=lr, **entry.get("kwargs", {}))
 
 
+def get_optimizer_telemetry(optimizer: torch.optim.Optimizer) -> dict[str, float]:
+    """Aggregate stats from optimizer state for wandb logging.
+
+    For Adam/AdamW: returns mean/max second moment, mean/min effective LR,
+    L2 norm of first moment, and step count. Useful to diagnose effective-LR
+    decay (Adam saturation) when constraints plateau.
+
+    Returns empty dict for optimizers without exp_avg/exp_avg_sq state
+    (SGD, LBFGS) or before the first step has run.
+    """
+    state = optimizer.state
+    if not state:
+        return {}
+
+    lr = optimizer.param_groups[0].get("lr", 0.0)
+    eps = optimizer.param_groups[0].get("eps", 1e-8)
+
+    v_means: list[float] = []
+    v_maxes: list[float] = []
+    eff_lr_means: list[float] = []
+    eff_lr_mins: list[float] = []
+    m_sq_sum: float = 0.0
+    step_count: int = 0
+
+    for st in state.values():
+        v_t = st.get("exp_avg_sq")
+        m_t = st.get("exp_avg")
+        if v_t is None or m_t is None:
+            continue
+        v_means.append(v_t.mean().item())
+        v_maxes.append(v_t.max().item())
+        eff_lr = lr / (v_t.sqrt() + eps)
+        eff_lr_means.append(eff_lr.mean().item())
+        eff_lr_mins.append(eff_lr.min().item())
+        m_sq_sum += m_t.pow(2).sum().item()
+        step_count = max(step_count, int(st.get("step", 0)))
+
+    if not v_means:
+        return {}
+
+    return {
+        "optimizer/second_moment_mean": sum(v_means) / len(v_means),
+        "optimizer/second_moment_max": max(v_maxes),
+        "optimizer/effective_lr_mean": sum(eff_lr_means) / len(eff_lr_means),
+        "optimizer/effective_lr_min": min(eff_lr_mins),
+        "optimizer/first_moment_norm": m_sq_sum**0.5,
+        "optimizer/step_count": float(step_count),
+    }
+
+
 def print_config(config: dict) -> None:
     print("\n=== Loaded Configuration ===")
     print("Config Contents:")

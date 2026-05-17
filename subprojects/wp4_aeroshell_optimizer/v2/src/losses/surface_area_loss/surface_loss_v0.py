@@ -1,5 +1,7 @@
-"""Aims to reduce surface area, with a softplus activation that weakens near TARGET_AREA_M2.
-# SDF coordinates are in mm; surface area is converted to m² before applying the activation.
+"""Reduces surface area via a softplus penalty that is near-zero below a configurable threshold.
+
+SDF coordinates are in mm; surface area is converted to m² before applying the activation.
+Threshold and sharpness are set via `surface_area_config` in losses_v0_config.yaml.
 """
 
 from dataclasses import replace as _dc_replace
@@ -16,20 +18,21 @@ class SurfaceLossV0(ParentLoss):
 
     Extracts a triangle mesh from the SDF via Marching Cubes, computes the
     total surface area in m² (SDF space is in mm), and applies a softplus
-    activation centred at TARGET_AREA_M2:
+    penalty that pushes surface area down:
 
-        loss = softplus( SOFTPLUS_K * (area_m2 - TARGET_AREA_M2) )
+        loss = softplus( softplus_k * (area_m2 - min_area_m2) )
 
-    This gives a smooth, near-zero penalty when area <= target, and a
-    linearly growing penalty when area >> target. Gradients are propagated
-    back to the SDF network via the full MeshSDF surrogate gradient flow.
+    Near-zero when area <= min_area_m2, linearly growing when area >> min_area_m2.
+    Configure min_area_m2 and softplus_k via `surface_area_config` in losses_v0_config.yaml.
     """
 
-    TARGET_AREA_M2: float = 15.0  # desired upper-bound surface area [m²]
     MM2_TO_M2: float = 1e-6  # unit conversion: mm² → m²
-    SOFTPLUS_K: float = 1.0  # sharpness; 1.0 gives ~1 m² transition width
 
     def _setup(self) -> None:
+        cfg = self.losses_config.get("surface_area_config", {})
+        self._min_area_m2: float = cfg.get("min_area_m2", 10.0)
+        self._softplus_k: float = cfg.get("softplus_k", 1.0)
+
         mesh_config = load_mesh_extraction_config()
         mesh_config = _dc_replace(mesh_config, device=self.device)
         self.mesh_extractor = MeshSDFExtractor(config=mesh_config)
@@ -65,7 +68,7 @@ class SurfaceLossV0(ParentLoss):
         area_mm2 = 0.5 * torch.norm(cross, dim=1).sum()  # scalar, mm²
         area_m2 = area_mm2 * self.MM2_TO_M2  # scalar, m²
 
-        return F.softplus(self.SOFTPLUS_K * (area_m2 - self.TARGET_AREA_M2))
+        return F.softplus(self._softplus_k * (area_m2 - self._min_area_m2))
 
     def _loss(self, model) -> torch.Tensor:
         """Extract mesh and return MeshSDF surrogate loss with gradient flow.

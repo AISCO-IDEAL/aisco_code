@@ -22,6 +22,24 @@
 
 set -euo pipefail
 
+# Cleanup function to terminate all background agent processes on exit
+cleanup() {
+    local pids
+    pids=$(jobs -p 2>/dev/null || true)
+    if [[ -n "$pids" ]]; then
+        echo "[cleanup] terminating background agents..." >&2
+        kill $pids 2>/dev/null || true
+        sleep 2
+        pids=$(jobs -p 2>/dev/null || true)
+        if [[ -n "$pids" ]]; then
+            echo "[cleanup] force-killing remaining agents..." >&2
+            kill -9 $pids 2>/dev/null || true
+        fi
+    fi
+}
+
+trap cleanup SIGTERM SIGINT EXIT
+
 umask 0002
 
 # Slack recipient: env var (set by beast-submit) > $1 > $USER

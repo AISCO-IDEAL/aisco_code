@@ -7,38 +7,9 @@ general_info:
   device: "cuda"  #  main_v2
   run_locally: "False" # DONT'T TOUCH, automatically detected
   verbose: "True"  #  basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
-  latent_space: true # true = use pretraining_latent.py pipeline; model must be SupportsLatentConcat (e.g. ConcatWIREV2)
-  skip_pretraining: false  # true = bypass latent pretraining; initialise Z as synthetic circle (no SDF supervision)
-# visualisation
-vis_manager: "v2" # "v2" (DEFAULT) for CentralVisManagerV2 | "legacy" for original CentralVisManager | "null" for NullVisManager (no-op; dry-run, no PLY/GIF outputs)
-# storage paths
-storage_paths: 
-  storage_dir: "/cluster/work/fuge/AISCO/temp_"  # DEFAULT (EULER) /cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage, used in main_v1_1_one_model.py, basic_MLP_v1.py, storage_utils.py
-  local_storage_dir: "./local_storage_dir" # MATTHEWs PC only used for testing on local machine, not on cluster  #  main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
-  beast_storage_dir: "/home/aisco/AISCO/beast_sync_wp4" # AISCO PCs, only used for testing on local machine, not on cluster, used when run_locally=True  # main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
-# early stopping
-early_stopping:
-  sentinel_relative_path: "AISCO/STOP_RUN"
-# ===========================================================================
-# model usage
-# ===========================================================================
-model_def: # refers to models.json
-  model_name: "WIREV5_ENFORCE"  #  used in main_v2.py, dynamic model selection 
-  concat_model_name: "ConcatWIREV5_ENFORCE"
-# ===========================================================================
-# config usage
-# ===========================================================================
-active_configs:
-  losses: "losses_v0_config.yaml"  #  total_loss.py, parent_loss.py, visual modes (assembly_mode, mesh_assembly_mode_v2)
-  pretraining: "pretraining_v0_config.yaml"  #  main_v1_1_one_model.py: general_config["active_configs"].get("pretraining", ...)
-  latent_pretraining: "pretraining_latent_config.yaml"  # Used by pretraining_latent.py
-  training: "training_config.yaml"  #  main_v1_1_one_model.py, parent_loss.py: general_config["active_configs"]["training"]
-  neural_renderer: "neural_renderer_v0.yaml"  #  visual_wrapper.py, total_loss.py
-  solar: "solar_configs/solar_loss_config.yaml" # Used in all solar versions above V3s
-# ===========================================================================
-# performance analysis
-# ===========================================================================
-profiler: 
+  latent_space: true  # true = use pretraining_latent.py pipeline; model must be SupportsLatentConcat (e.g. ConcatWIREV2)
+
+profiler:
   profile_mode: False
   wait: 5
   warmup: 2
@@ -47,16 +18,25 @@ profiler:
   top_entries: 50  # Number of top entries to print in profiler output tables
   export_trace: False # WARNING: This will dump a GB sized JSON file onto work/fuge. Use only when necessary and set active = 1
 
-# ===========================================================================
-# wandb settings
-# ===========================================================================
+model_def:
+  model_name: "WIREV5"  #  main_v2.py, dynamic model selection, should refer to models.json
+  concat_model_name: "ConcatWIREV5"
+
+active_configs:
+  losses: "losses_v0_config.yaml"  #  total_loss.py, parent_loss.py, visual modes (assembly_mode, mesh_assembly_mode_v2)
+  pretraining: "pretraining_v0_config.yaml"  #  main_v1_1_one_model.py: general_config["active_configs"].get("pretraining", ...)
+  training: "training_config.yaml"  #  main_v1_1_one_model.py, parent_loss.py: general_config["active_configs"]["training"]
+  # model_params: "WIRE_v2.yaml"  #  main_v1_1_one_model.py: general_config["active_configs"]["model_params"] # WIRE_v2.yaml or concat_WIRE_v2.yaml
+  neural_renderer: "neural_renderer_v0.yaml"  #  visual_wrapper.py, total_loss.py
+  solar: "solar_configs/solar_loss_config.yaml" # Used in all solar versions above V3s
+  latent_pretraining: "pretraining_latent_config.yaml"  # Used by pretraining_latent.py
+
 wandb_general:
   use_wandb: True # main_v1_1_one_model.py, total_loss.py
   project_name: "ginn_latent_space" # DEFAULT: "temp_"  # main_v1_1_one_model.py: wandb.init(project=...)
   entity_name: "aisco"  # main_v1_1_one_model.py: wandb.init(entity=...)
-  name: ""  # leave as ""; auto-generated wandb name is appended with _<SLURM_JOB_ID>,  wandb.init(name=...): "": 
+  name: ""  # leave as ""; auto-generated wandb name is appended with _<SLURM_JOB_ID>,  wandb.init(name=...): "":
   # use_renderer: True  # total_loss.py: general_config["wandb_general"].get("use_renderer", True)
   # use_neural_renderer: True  # total_loss.py, main_v1_1_one_model.py: general_config["wandb_general"].get("use_neural_renderer", False)
   # rendering_frequency: 1  # total_loss.py: general_config["wandb_general"].get("rendering_frequency")
   wandb_mode: online # online: syncs immediately, offline: saves locally when you run `wandb sync` in the command line
-

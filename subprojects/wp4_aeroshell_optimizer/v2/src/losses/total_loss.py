@@ -43,6 +43,7 @@ import inspect
 import math
 import time
 from collections import defaultdict
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, TypeAlias
 
@@ -54,9 +55,6 @@ import trimesh
 from torch.profiler import record_function
 
 import wandb
-from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import (
-    MeshExtractor,
-)
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager
@@ -71,7 +69,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_c
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import load_class_from_path
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
-from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 TrainModel: TypeAlias = SupportsModelContract
 
@@ -178,18 +176,9 @@ class TotalLoss:
 
     def _init_mesh_infrastructure(self) -> None:
         dev_str = str(self._device)
-        renderer_config: dict[str, Any] = load_config(v="v1", cfg_name="neural_renderer_v0.yaml")
-        self._mesh_extraction_config: dict[str, Any] = renderer_config.get("mesh_extraction", {})
-
-        self._mesh_extractor: MeshExtractor = MeshExtractor(
-            algorithm=self._mesh_extraction_config.get("algorithm", "mc"),
-            device=self._mesh_extraction_config.get("device", dev_str),
-            verbose=self._mesh_extraction_config.get("verbose", False),
-        )
-        self._mesh_extractor.set_grid(
-            bbox=self._mesh_extraction_config.get("bbox", [[-5000, 5000], [-5000, 5000], [-5000, 5000]]),
-            resolution=self._mesh_extraction_config.get("resolution", 128),
-        )
+        _mesh_config = load_mesh_extraction_config()
+        _mesh_config = replace(_mesh_config, device=dev_str)
+        self._mesh_extractor: MeshSDFExtractor = MeshSDFExtractor(config=_mesh_config)
         # Import locally to avoid circular import during module initialization
         from subprojects.wp3_solar_estimator.validation.statistics import MeshStatistics  # noqa: PLC0415
 
@@ -830,11 +819,7 @@ class TotalLoss:
                 verts_vm = _grads_payload["vertices"]
                 faces_vm = _grads_payload["faces"]
             else:
-                verts_vm, faces_vm = self._mesh_extractor.extract_mesh(
-                    model=model,
-                    isovalue=self._mesh_extraction_config.get("isovalue", 0.0),
-                    batch_size=self._mesh_extraction_config.get("batch_size", 8192),
-                )
+                verts_vm, faces_vm = self._mesh_extractor.extract_mesh(sdf_model=model)
             if self._mesh_statistics_enabled:
                 self._mesh_statistics.log_basic_mesh_stats(verts_vm, faces_vm, epoch_name)
                 self._mesh_statistics.log_solar_area_stats(verts_vm, faces_vm, epoch_name)
@@ -863,11 +848,7 @@ class TotalLoss:
         # vis_manager is active, so detached MeshSDF_grads_* modes keep getting
         # per-loss vertex gradient frames.
         if self._use_renderer and self._renderer_manager is not None and _rendering_active:
-            verts, faces = self._mesh_extractor.extract_mesh(
-                model=model,
-                isovalue=self._mesh_extraction_config.get("isovalue", 0.0),
-                batch_size=self._mesh_extraction_config.get("batch_size", 8192),
-            )
+            verts, faces = self._mesh_extractor.extract_mesh(sdf_model=model)
             if self._mesh_statistics_enabled:
                 self._mesh_statistics.log_basic_mesh_stats(verts, faces, epoch_name)
                 self._mesh_statistics.log_solar_area_stats(verts, faces, epoch_name)
