@@ -216,3 +216,12 @@ class NullLossSurfaceArea(_BaseNullLoss):
 
 class NullLossConnectedness(_BaseNullLoss):
     """Null loss for connectedness constraints."""
+
+class NullLossWheel(_BaseNullLoss):
+    """Null loss for wheel constraints."""
+
+class NullLossBbInner(_BaseNullLoss):
+    """Null loss for inner bounding box constraints."""
+
+class NullLossBbOuter(_BaseNullLoss):
+    """Null loss for outer bounding box constraints."""
