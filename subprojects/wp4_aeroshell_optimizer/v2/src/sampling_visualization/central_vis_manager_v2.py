@@ -500,7 +500,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_mesh_shape(self, epoch: int, verts: Any, faces: Any) -> None:
         vt = self._slotted("mesh_shape")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np = _to_f64(verts)
@@ -508,7 +508,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_aero_cp_field(self, epoch: int, verts: Any, faces: Any, cp_values: Any) -> None:
         vt = self._slotted("aero/cp_field")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
@@ -518,7 +518,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_solar_quality(self, epoch: int, verts: Any, faces: Any, quality_values: Any) -> None:
         vt = self._slotted("solar/quality")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
@@ -528,7 +528,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_solar_selection(self, epoch: int, verts: Any, faces: Any, weights: Any) -> None:
         vt = self._slotted("solar/selection")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
@@ -536,7 +536,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_solar_shading(self, epoch: int, verts: Any, faces: Any, shading: Any) -> None:
         vt = self._slotted("solar/shading")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
@@ -544,7 +544,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_solar_penalty(self, epoch: int, verts: Any, faces: Any, penalty: Any) -> None:
         vt = self._slotted("solar/penalty")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
@@ -552,7 +552,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_solar_numerical_factor(self, epoch: int, verts: Any, faces: Any, numerical_factor: Any) -> None:
         vt = self._slotted("solar/numerical_factor")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
@@ -562,7 +562,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_solar_receiver_mask(self, epoch: int, verts: Any, faces: Any, receiver_mask: Any) -> None:
         vt = self._slotted("solar/receiver_mask")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
@@ -573,7 +573,7 @@ class CentralVisManagerV2(_BaseVisManager):
     def vis_bb_constraint(self, epoch: int, verts: Any, distances: Any) -> None:
         """Bounding-box constraint violations. verts is a point cloud (no faces)."""
         vt = self._slotted("bb_constraint")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np = _to_f64(verts)
@@ -598,7 +598,7 @@ class CentralVisManagerV2(_BaseVisManager):
             true_scale: If True, the raw dot product is visualized; if False, the color range is normalized so 0 is in the middle, and the max/min values of the dot product are at the ends of the colormap. Setting this to False can make it easier to see the relative distribution of positive vs negative gradients, especially when the magnitudes are different.
         """
         vt = self._slotted(f"mesh_gradients/{loss_key}")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
 
@@ -687,7 +687,7 @@ class CentralVisManagerV2(_BaseVisManager):
         sub-path directly (independent of set_active_slot for the diversity loop).
         """
         vt = f"latent/sampling/slot{slot_idx:02d}_{slot_name}" if slot_idx is not None else "latent/sampling"
-        if not vis_is_enabled(self._visual_types, vt):
+        if not vis_is_enabled(self._visual_types, vt, epoch):
             return
         self._submit_ply_points(vt, epoch, points, secondary_points, tertiary_points, mesh_verts, mesh_faces)
 
@@ -705,7 +705,7 @@ class CentralVisManagerV2(_BaseVisManager):
             sdf_verts / sdf_faces: The optimised SDF mesh for this epoch.
         """
         vt = self._slotted("mesh_assembly_v4")
-        if not vis_is_enabled(self._visual_types, vt):
+        if not vis_is_enabled(self._visual_types, vt, epoch):
             return
 
         if self._assembly_meshes is None:

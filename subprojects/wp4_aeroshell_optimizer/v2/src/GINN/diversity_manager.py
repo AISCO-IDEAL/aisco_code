@@ -679,7 +679,7 @@ class DiversityTrainer:
             per_slot_grad_payloads,
         )
 
-    def _backward_l2_single_pass(  # noqa: PLR0915
+    def _backward_l2_single_pass(  # noqa: PLR0912, PLR0915
         self,
         epoch: int,
     ) -> tuple[
@@ -727,6 +727,14 @@ class DiversityTrainer:
                 self._vis_manager.set_active_slot(i)
 
             bundle = self._total_loss.compute(self._model, epoch_name=epoch)
+
+            # Collect per-slot gradient payload immediately after compute() while extractor
+            # buffers still hold this slot's dL/dv (next compute() call will reset them).
+            if self._vis_all_losses and self._vis_manager is not None:
+                _slot_payload = self._total_loss.collect_vertex_grads_for_visualisation(
+                    weights_by_name=self._total_loss._manual_weights,
+                )
+                per_slot_grad_payloads.append((i, _slot_payload))
 
             if i == 0:
                 active_constraint_cats = [cat for cat in all_constraint_cats if cat in bundle.constraints]
@@ -841,7 +849,7 @@ class DiversityTrainer:
         with torch.no_grad():
             for i in range(N):
                 self._model.set_latent_vector(self._Z[i])
-                bundle = self._total_loss.compute(self._model, epoch_name=epoch)
+                bundle = self._total_loss.compute(self._model, epoch_name=epoch, skip_vis=True)
                 if i == 0:
                     active_constraint_cats = [cat for cat in all_constraint_cats if cat in bundle.constraints]
                     active_constraint_indices = [j for j, cat in enumerate(all_constraint_cats) if cat in bundle.constraints]
@@ -878,6 +886,15 @@ class DiversityTrainer:
                 self._vis_manager.set_active_slot(i)
 
             bundle = self._total_loss.compute(self._model, epoch_name=epoch)
+
+            # Collect per-slot gradient payload immediately after compute() while extractor
+            # buffers still hold this slot's dL/dv (next compute() call will reset them).
+            if self._vis_all_losses and self._vis_manager is not None:
+                _slot_payload = self._total_loss.collect_vertex_grads_for_visualisation(
+                    weights_by_name=self._total_loss._manual_weights,
+                )
+                per_slot_grad_payloads.append((i, _slot_payload))
+
             result = self._total_loss.weight(
                 bundle, alm_manager=self._alm_manager, return_components=True, norm_manager=self._norm_manager
             )
