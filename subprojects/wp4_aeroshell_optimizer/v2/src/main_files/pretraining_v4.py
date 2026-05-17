@@ -28,7 +28,6 @@ import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 import wandb
-from subprojects.wp3_solar_estimator.mesh_extractors.non_diff_algos.marching_cubes import MarchingCubesExtractor
 from subprojects.wp4_aeroshell_optimizer.v2.src.main_files.pretraining_v1_1 import (
     _apply_override_config,
     _compute_eikonal,
@@ -44,16 +43,17 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.kaolin_conversions import kaolin_to_PLY
+from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 
-def _extract_mesh(model: SupportsModelContract, pth_path: Path, device: str, mesh_res: int, mesh_box: int) -> None:
+def _extract_mesh(model: SupportsModelContract, pth_path: Path, _device: str, mesh_res: int, mesh_box: int) -> None:
     """
     Extract a PLY mesh from a trained SDF model and save it alongside the checkpoint.
 
     Args:
         model: Trained model satisfying SupportsModelContract (in eval mode).
         pth_path: Path to the saved checkpoint (used to derive .ply output path).
-        device: Device string, e.g. "cuda" or "cpu".
+        device: Device string, e.g. "cuda" or "cpu". #aalthaus, not sure if this argument is and will ever be used?
         mesh_res: Marching-cubes grid resolution.
         mesh_box: Half-extent of the marching-cubes bounding box in mm.
 
@@ -63,12 +63,12 @@ def _extract_mesh(model: SupportsModelContract, pth_path: Path, device: str, mes
     """
     ply_path = pth_path.with_suffix(".ply")
     print(f"[mesh] Starting post-training mesh extraction (res={mesh_res}, box=\u00b1{mesh_box}mm) ...")
-    extractor = MarchingCubesExtractor(device=device, verbose=True)
+    extractor = MeshSDFExtractor(config=load_mesh_extraction_config())
     extractor.set_grid(
         bbox=[[-mesh_box, mesh_box], [-mesh_box, mesh_box], [-mesh_box, mesh_box]],
         resolution=mesh_res,
     )
-    verts, faces = extractor.extract_mesh(model, isovalue=0.0, batch_size=8192)
+    verts, faces = extractor.extract_mesh(sdf_model=model)
     n_verts = verts.shape[0]
     print(f"[mesh] Extracted: {n_verts} vertices, {faces.shape[0]} faces")
     if n_verts == 0:

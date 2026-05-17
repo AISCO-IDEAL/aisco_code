@@ -151,16 +151,13 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
 
     outer_solid = cut_outer_nbz.Solids()[0]
 
-    # Recenter both inner and outer to x=0, y=0.
-    # The outer NBZ is built from wheel positions, so its x-center is at the axle
-    # midpoint (e.g. +800 mm for a front-axle-at-2900 layout), not at the coordinate
-    # origin.  Shifting here aligns the assembly with the SDF training domain, eikonal
-    # regularisation domain, and mesh extractor grid (all centred at x=0, y=0).
-    outer_bbox = outer_solid.BoundingBox()
-    cx = (outer_bbox.xmin + outer_bbox.xmax) / 2.0
-    cy = (outer_bbox.ymin + outer_bbox.ymax) / 2.0
-    if abs(cx) > 0.001 or abs(cy) > 0.001:
-        offset = cq.Vector(-cx, -cy, 0.0)
+    # Recenter both inner and outer to x=0, y=0 using the canonical training frame offset.
+    # See get_training_frame_offset() for the definition and rationale.
+    # Note: z-clipping above does not affect the x/y centroid, so computing the offset
+    # from the unclipped outer_nbz (inside get_training_frame_offset) gives identical cx, cy.
+    cx, cy, cz = get_training_frame_offset(id_number)
+    if abs(cx) > 0.001 or abs(cy) > 0.001 or abs(cz) > 0.001:
+        offset = cq.Vector(-cx, -cy, -cz)
         outer_solid = outer_solid.translate(offset)
         cut_inner_solids = [s.translate(offset) for s in cut_inner_solids]
 
@@ -200,6 +197,28 @@ def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float]
         (inner_bounding_box.xmin, inner_bounding_box.ymin, inner_bounding_box.zmin),
         (inner_bounding_box.xmax, inner_bounding_box.ymax, inner_bounding_box.zmax),
     )
+
+
+def get_training_frame_offset(id_number: int) -> tuple[float, float, float]:
+    """
+    Returns (cx, cy, cz) — the shift that call_assembly() subtracts from all raw assembly
+    coordinates to align geometry with the SDF training domain.
+
+    Any loss or visualiser that needs assembly-relative positions (e.g. wheel contact
+    points) must subtract this offset from raw assembly_map coordinates before evaluating
+    the model. Using raw coordinates without this correction silently places samples in
+    the wrong location and the model will produce geometry artefacts at those points.
+
+    Training domain coords:  x_train = x_raw - cx,  y_train = y_raw - cy,  z_train = z_raw - cz
+
+    Currently cz = 0 (ground plane kept at z = 0), but it is included here so that any
+    future z-shift from WP2 only requires updating this function.
+    """
+    raw_bbox = outer_nbz(id_number).BoundingBox()
+    cx = (raw_bbox.xmin + raw_bbox.xmax) / 2.0
+    cy = (raw_bbox.ymin + raw_bbox.ymax) / 2.0
+    cz = 0.0
+    return cx, cy, cz
 
 
 def vision_nbz(id_number):
