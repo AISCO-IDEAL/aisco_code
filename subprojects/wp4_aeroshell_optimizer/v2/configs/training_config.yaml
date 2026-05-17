@@ -42,7 +42,7 @@ mode:
 # ===========================================================================
 
 pretrain_population_size: false # optimisation loop uses same population size as pretraining
-population_size: 8  # used only when pretrain_population_size: false
+population_size: 16  # used only when pretrain_population_size: false
 
 # Initial Z placement when pretrain_population_size: false.
 #   z_init_mode: circle        → slots placed at evenly-spaced angles on the
