@@ -184,6 +184,30 @@ class TotalLoss:
 
         self._mesh_statistics = MeshStatistics(device=dev_str, use_wandb=self._use_wandb)
 
+    @staticmethod
+    def _parse_disabled_epoch_windows(disabled_raw: Any) -> list[tuple[int, int]]:
+        """Normalize disabled-epoch config to a list of (start, end) integer pairs.
+
+        Accepted forms:
+        - [start, end]
+        - [[start, end], [start, end], ...]
+        Invalid entries are ignored.
+        """
+        if isinstance(disabled_raw, (list, tuple)) and len(disabled_raw) == 2 and not isinstance(disabled_raw[0], (list, tuple)):
+            s, e = disabled_raw
+            return [(int(s), int(e))]
+
+        if not isinstance(disabled_raw, (list, tuple)):
+            return []
+
+        windows: list[tuple[int, int]] = []
+        for pair in disabled_raw:
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                continue
+            s, e = pair
+            windows.append((int(s), int(e)))
+        return windows
+
     def _init_active_losses(self) -> None:
         """Load every active loss and classify by YAML role metadata.
 
@@ -254,7 +278,7 @@ class TotalLoss:
                 self._loss_name_to_category[loss_name] = category
 
             disabled_raw = block.get("_disabled_epochs", [])
-            self._disabled_epochs[category] = [(int(s), int(e)) for s, e in disabled_raw]
+            self._disabled_epochs[category] = self._parse_disabled_epoch_windows(disabled_raw)
 
     def _warn_about_dead_weights(self) -> None:
         """Warn users about config weights that will be ignored due to ALM or CSE modes."""

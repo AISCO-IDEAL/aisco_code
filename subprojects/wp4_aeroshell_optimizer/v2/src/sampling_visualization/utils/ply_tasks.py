@@ -55,7 +55,8 @@ def render_slotted_gif_task(base_dir: Path) -> tuple[bool, str, str | None]:
     """Generate per-slot GIFs from an epoch-first directory layout.
 
     Expects ``base_dir`` to contain ``epoch_XXXXX/`` subdirectories, each
-    holding ``slot_XX.ply`` files.  Writes ``slot_XX_animation.gif`` per slot.
+    holding ``slot_XX_mesh.ply`` files (legacy ``slot_XX/mesh.ply`` is also
+    accepted). Writes ``slot_XX_animation.gif`` per slot.
     """
     os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
     try:

@@ -127,9 +127,6 @@ class DiversityTrainer:
                 (backward-compatible with existing behaviour).  Set to a positive value
                 to hold the pretrained Z population for that many epochs before the
                 normal z_resample_cadence logic kicks in.
-            z_resample_stop_epoch: Last epoch at which resampling is allowed (-1
-                disables the stop, i.e. resampling continues forever).  When >= 0,
-                resampling is frozen from this epoch onward (Phase 2 transition).
         mesh_extraction_config: dict removed — extractor is constructed internally using
                 the WP5 unified mesh extractor and scaled outer_prism bounds.
             renderer_manager + rendering_freq + use_neural_renderer: rendering wiring.
@@ -269,7 +266,8 @@ class DiversityTrainer:
         self._optimizer_loss_history: list[dict[str, float]] = []
 
         # Per-slot raw-loss line charts (one interactive line per slot, one chart per loss).
-        # Disabled permanently the first time z-resampling fires (slots lose identity).
+        # History is reset on each resample; epoch indices always store the real epoch number so
+        # the x-axis is continuous across windows (e.g. window-1: [0..4], window-2: [5..9], …).
         self._per_slot_loss_history: dict[str, list[list[float]]] = {}  # loss_name -> [epoch_0_vals, epoch_1_vals, ...]
         self._per_slot_epoch_indices: list[int] = []
         self._per_slot_charts_active: bool = True
@@ -681,7 +679,7 @@ class DiversityTrainer:
             per_slot_grad_payloads,
         )
 
-    def _backward_l2_single_pass(  # noqa: PLR0915
+    def _backward_l2_single_pass(  # noqa: PLR0912, PLR0915
         self,
         epoch: int,
     ) -> tuple[
@@ -729,6 +727,14 @@ class DiversityTrainer:
                 self._vis_manager.set_active_slot(i)
 
             bundle = self._total_loss.compute(self._model, epoch_name=epoch)
+
+            # Collect per-slot gradient payload immediately after compute() while extractor
+            # buffers still hold this slot's dL/dv (next compute() call will reset them).
+            if self._vis_all_losses and self._vis_manager is not None:
+                _slot_payload = self._total_loss.collect_vertex_grads_for_visualisation(
+                    weights_by_name=self._total_loss._manual_weights,
+                )
+                per_slot_grad_payloads.append((i, _slot_payload))
 
             if i == 0:
                 active_constraint_cats = [cat for cat in all_constraint_cats if cat in bundle.constraints]
@@ -839,19 +845,21 @@ class DiversityTrainer:
         c_per_z_detached: list[list[Tensor]] = []
 
         t0 = time.perf_counter()
-        # Pass 1 — no-grad forward to collect c values (with loss_scale applied).
-        with torch.no_grad():
-            for i in range(N):
-                self._model.set_latent_vector(self._Z[i])
-                bundle = self._total_loss.compute(self._model, epoch_name=epoch)
-                if i == 0:
-                    active_constraint_cats = [cat for cat in all_constraint_cats if cat in bundle.constraints]
-                    active_constraint_indices = [j for j, cat in enumerate(all_constraint_cats) if cat in bundle.constraints]
-                member_c: list[Tensor] = []
-                for cat in active_constraint_cats:
-                    c_name = self._total_loss._constraint_by_category[cat][0]
-                    member_c.append((bundle.constraints[cat] * self._norm_manager.get_loss_scale(c_name)).clone())
-                c_per_z_detached.append(member_c)
+        # Pass 1 — forward to collect detached c values (with loss_scale applied).
+        # NOTE: torch.no_grad() removed because mesh-extraction losses (e.g. solar_SR) call
+        # torch.autograd.grad() internally and require a live computation graph. Pass 1 never
+        # calls .backward(), so no spurious gradients accumulate; the graph is GC'd each iter.
+        for i in range(N):
+            self._model.set_latent_vector(self._Z[i])
+            bundle = self._total_loss.compute(self._model, epoch_name=epoch, skip_vis=True)
+            if i == 0:
+                active_constraint_cats = [cat for cat in all_constraint_cats if cat in bundle.constraints]
+                active_constraint_indices = [j for j, cat in enumerate(all_constraint_cats) if cat in bundle.constraints]
+            member_c: list[Tensor] = []
+            for cat in active_constraint_cats:
+                c_name = self._total_loss._constraint_by_category[cat][0]
+                member_c.append((bundle.constraints[cat] * self._norm_manager.get_loss_scale(c_name)).detach().clone())
+            c_per_z_detached.append(member_c)
 
         # Build detached aggregation weights once.
         num_c = len(active_constraint_cats)
@@ -880,6 +888,15 @@ class DiversityTrainer:
                 self._vis_manager.set_active_slot(i)
 
             bundle = self._total_loss.compute(self._model, epoch_name=epoch)
+
+            # Collect per-slot gradient payload immediately after compute() while extractor
+            # buffers still hold this slot's dL/dv (next compute() call will reset them).
+            if self._vis_all_losses and self._vis_manager is not None:
+                _slot_payload = self._total_loss.collect_vertex_grads_for_visualisation(
+                    weights_by_name=self._total_loss._manual_weights,
+                )
+                per_slot_grad_payloads.append((i, _slot_payload))
+
             result = self._total_loss.weight(
                 bundle, alm_manager=self._alm_manager, return_components=True, norm_manager=self._norm_manager
             )
@@ -940,11 +957,26 @@ class DiversityTrainer:
         if self._norm_manager.is_enabled() and not self._norm_manager.is_calibrated():
             self._calibrate()
 
-        _stop = self._z_resample_stop_epoch
-        if self._z_resample_cadence > 0 and epoch > 0 and epoch % self._z_resample_cadence == 0 and (_stop < 0 or epoch < _stop):
+        _stop_epoch = self._z_resample_stop_epoch
+        _resample_allowed = (
+            self._z_resample_cadence > 0
+            and epoch > 0
+            and epoch >= self._z_resample_start_epoch
+            and (_stop_epoch < 0 or epoch < _stop_epoch)
+            and epoch % self._z_resample_cadence == 0
+        )
+        if _resample_allowed:
             self._resample_population(epoch)
-            # Slot identity breaks after resampling — disable per-slot line charts permanently.
-            self._per_slot_charts_active = False
+            print(
+                "[GINN] Latent resampling triggered at "
+                f"epoch={epoch} (mode={self._z_resample_mode}, cadence={self._z_resample_cadence})",
+                flush=True,
+            )
+            # Slot identity changes on resample — clear accumulated history so the new window
+            # starts fresh.  Epoch indices use real epoch numbers so the x-axis stays continuous
+            # across windows (window-2 starts at epoch N, not at 0).
+            self._per_slot_loss_history.clear()
+            self._per_slot_epoch_indices.clear()
 
         capture_conflict = (
             self._conflict_tracker is not None and self._conflict_cadence > 0 and epoch % self._conflict_cadence == 0
