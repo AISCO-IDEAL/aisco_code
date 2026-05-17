@@ -1,6 +1,5 @@
 general_info:
-  CSE: "False"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
-  CSE: "False"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
+  CSE: "True"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
   ALM_aggressive: "False" # capu version of ALM
 
