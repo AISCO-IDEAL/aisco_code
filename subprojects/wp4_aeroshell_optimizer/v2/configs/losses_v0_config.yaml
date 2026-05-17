@@ -1,5 +1,5 @@
 general_info:
-  CSE: "False"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
+  CSE: "True"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
   ALM_aggressive: "False" # capu version of ALM
 
@@ -95,7 +95,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   bb_inner:
     _role: constraint
-    # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v1.py"]
+     # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v1.py"]
     # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v2.py"]                    # not working as of 2025 12 15
     null_loss_bb: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     bb_v3: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"]                         # new version with random assembly_id for more variety y
@@ -252,22 +252,46 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
 cfd:
   model_id: 65531686      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2/3 or a key for Version 1
   version: 3              # Options: 1, 2, 3      Recomendation: 3
-  visualisations: true    # Options: true, false  Recomendation: false
+  visualisations: true    # Options: true, false  Recomendation: true
   v_inf: 25.0             # Default: 25.0         Recomendation: Has to Match the Value used during respective GAOT-Training
-  rho: 1.225              # Default: 1.1225       Recomendation: Has to Match the Value used during respective GAOT-Training
+  rho: 1.225              # Default: 1.225       Recomendation: Has to Match the Value used during respective GAOT-Training
   mesh_resolution: 50000  # Default: 50000        Recomendation: Has to Match the Value used during respective GAOT-Training
-  gradient_max: 0.1       # Options: any float    Recomendation: 0.1
-  strict_watertightness_check: false # Options: true, false
+  gradient_max: 0.001       # Options: any float    Recomendation: 0.1
+  pressure_integration_mode: "face" # "sdf_vertex_constant_area"
+  pressure_integration_detach_sdf_normals: false 
+  pressure_backprop_mode: "geometry_only"  # Options: pressure_backprop_mode: "full", "geometry_only", "geometry_area_only", "geometry_normal_only" 
+  cp_smoothing:
+    enabled: true
+    preserve_drag: false
+    iterations: 50
+    max_strength: 1.0
+    min_strength: 1.0
+    curvature_power: 0.0
+    detach_integration_geometry: false
+
+
+
+
 
 cfd_local:
-  run_local: false
-  model_id: local_1777017531      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2 or a key for Version 1
+  model_id: 65531686      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2/3 or a key for Version 1
   version: 3              # Options: 1, 2, 3      Recomendation: 3
-  visualisations: true    # Options: true, false  Recomendation: false
+  visualisations: true    # Options: true, false  Recomendation: true
   v_inf: 25.0             # Default: 25.0         Recomendation: Has to Match the Value used during respective GAOT-Training
-  rho: 1.225              # Default: 1.1225       Recomendation: Has to Match the Value used during respective GAOT-Training
+  rho: 1.225              # Default: 1.225       Recomendation: Has to Match the Value used during respective GAOT-Training
   mesh_resolution: 50000  # Default: 50000        Recomendation: Has to Match the Value used during respective GAOT-Training
-  gradient_max: 0.1
+  gradient_max: 0.001       # Options: any float    Recomendation: 0.1
+  pressure_integration_mode: "face" # "sdf_vertex_constant_area"
+  pressure_integration_detach_sdf_normals: false 
+  pressure_backprop_mode: "geometry_only"  # Options: pressure_backprop_mode: "full", "geometry_only", "geometry_area_only", "geometry_normal_only" 
+  cp_smoothing:
+    enabled: true
+    preserve_drag: false
+    iterations: 50
+    max_strength: 1.0
+    min_strength: 1.0
+    curvature_power: 0.0
+    detach_integration_geometry: false
 
 developability_config:
   # Energy type: 0=HINGE, 1=MINWIDTH, 2=OLDHINGE, 3=OLDMINWIDTH, 4=PAIRWISENORMALS, 5=MAXPAIRWISENORMALS
