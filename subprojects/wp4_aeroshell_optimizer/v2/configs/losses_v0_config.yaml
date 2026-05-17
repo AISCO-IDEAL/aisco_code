@@ -121,11 +121,24 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   bb_inner:
     _role: constraint
     _disabled_epochs: []
+    null_loss_bb_inner: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+
+    ### legacy bb losses
+    bb_v3: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"]                         # new version with random assembly_id for more variety y
+    bb_v4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"]                        # assembler version4 with ground clearance validation
+    bb_v4_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]                     # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
+    bb_v4_3: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]                    # v4.3 with improved ALM and CSE support
+    bb_v4_4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]                    # v4.4 surface-sampled BB constraints on WP2 inner/outer zero-level surfaces
+    bb_v4_4_enforce_v2: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4_enforce_v2.py"] # v4.4 + ENFORCE projection + eikonal aux for IFT-style gradient flow at bb sample points
+    bb_v4_sel: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]                  # v4.sel with option to select either inner or outer nbz
+    silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]   # version provided by Silvretta, not working well as of 2025 12 15
+    ### bb_v5, bb_v6, bb_v7 all rely on assembler v4
     bb_inner_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_inner_v0.py"]  # GINN L2-norm: inner prism containment only, independent ALM slot
 
   bb_outer:
     _role: constraint
     _disabled_epochs: []
+    null_loss_bb_outer: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     bb_outer_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_outer_v0.py"]  # GINN L2-norm: outer prism fit only, independent ALM slot
 
   eikonal:
