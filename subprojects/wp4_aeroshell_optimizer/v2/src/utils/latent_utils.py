@@ -47,3 +47,47 @@ def build_unit_circle_Z(  # noqa: N802  # Z is conventional notation for latent 
         Z[k + 1, 1] = radius * math.sin(angle)
 
     return Z
+
+
+def build_random_disk_Z(
+    num_shapes: int,
+    z_dim: int,
+    radius: float,
+    device: str | torch.device,
+) -> Tensor:
+    """Build a population of latent vectors randomly sampled inside a disk.
+
+    z₀ is always placed at the origin (consistent with force_z0_to_origin=True).
+    Remaining z₁ … z_{N-1} are sampled uniformly inside the disk of the given
+    radius in the (z[0], z[1]) plane; all other dimensions are set to zero.
+
+    Args:
+        num_shapes: Total number of latent slots N (including z₀ at origin).
+        z_dim: Dimensionality of each latent vector. Must be ≥ 2 for disk placement.
+        radius: Radius of the disk. Typically 1.0 or 2.0.
+        device: PyTorch device string or device object.
+
+    Returns:
+        Tensor of shape (num_shapes, z_dim) with no gradient.
+    """
+    if z_dim < 2 and num_shapes > 1:
+        raise ValueError(
+            f"z_dim must be ≥ 2 to place shapes in a disk, got z_dim={z_dim}. Reduce num_shapes to 1 or increase z_dim."
+        )
+
+    Z = torch.zeros(num_shapes, z_dim, device=device, dtype=torch.float32)
+
+    if num_shapes == 1:
+        return Z
+
+    # z₁ … z_{N-1} sampled uniformly in the disk (using sqrt trick for uniform area density).
+    n_disk = num_shapes - 1
+    # Random radii and angles
+    r_sqrt = torch.sqrt(torch.rand(n_disk, device=device, dtype=torch.float32))
+    theta = 2.0 * math.pi * torch.rand(n_disk, device=device, dtype=torch.float32)
+
+    r = radius * r_sqrt
+    Z[1:, 0] = r * torch.cos(theta)
+    Z[1:, 1] = r * torch.sin(theta)
+
+    return Z
