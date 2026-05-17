@@ -127,9 +127,6 @@ class DiversityTrainer:
                 (backward-compatible with existing behaviour).  Set to a positive value
                 to hold the pretrained Z population for that many epochs before the
                 normal z_resample_cadence logic kicks in.
-            z_resample_stop_epoch: Last epoch at which resampling is allowed (-1
-                disables the stop, i.e. resampling continues forever).  When >= 0,
-                resampling is frozen from this epoch onward (Phase 2 transition).
         mesh_extraction_config: dict removed — extractor is constructed internally using
                 the WP5 unified mesh extractor and scaled outer_prism bounds.
             renderer_manager + rendering_freq + use_neural_renderer: rendering wiring.
@@ -269,7 +266,8 @@ class DiversityTrainer:
         self._optimizer_loss_history: list[dict[str, float]] = []
 
         # Per-slot raw-loss line charts (one interactive line per slot, one chart per loss).
-        # Disabled permanently the first time z-resampling fires (slots lose identity).
+        # History is reset on each resample; epoch indices always store the real epoch number so
+        # the x-axis is continuous across windows (e.g. window-1: [0..4], window-2: [5..9], …).
         self._per_slot_loss_history: dict[str, list[list[float]]] = {}  # loss_name -> [epoch_0_vals, epoch_1_vals, ...]
         self._per_slot_epoch_indices: list[int] = []
         self._per_slot_charts_active: bool = True
@@ -940,11 +938,26 @@ class DiversityTrainer:
         if self._norm_manager.is_enabled() and not self._norm_manager.is_calibrated():
             self._calibrate()
 
-        _stop = self._z_resample_stop_epoch
-        if self._z_resample_cadence > 0 and epoch > 0 and epoch % self._z_resample_cadence == 0 and (_stop < 0 or epoch < _stop):
+        _stop_epoch = self._z_resample_stop_epoch
+        _resample_allowed = (
+            self._z_resample_cadence > 0
+            and epoch > 0
+            and epoch >= self._z_resample_start_epoch
+            and (_stop_epoch < 0 or epoch < _stop_epoch)
+            and epoch % self._z_resample_cadence == 0
+        )
+        if _resample_allowed:
             self._resample_population(epoch)
-            # Slot identity breaks after resampling — disable per-slot line charts permanently.
-            self._per_slot_charts_active = False
+            print(
+                "[GINN] Latent resampling triggered at "
+                f"epoch={epoch} (mode={self._z_resample_mode}, cadence={self._z_resample_cadence})",
+                flush=True,
+            )
+            # Slot identity changes on resample — clear accumulated history so the new window
+            # starts fresh.  Epoch indices use real epoch numbers so the x-axis stays continuous
+            # across windows (window-2 starts at epoch N, not at 0).
+            self._per_slot_loss_history.clear()
+            self._per_slot_epoch_indices.clear()
 
         capture_conflict = (
             self._conflict_tracker is not None and self._conflict_cadence > 0 and epoch % self._conflict_cadence == 0

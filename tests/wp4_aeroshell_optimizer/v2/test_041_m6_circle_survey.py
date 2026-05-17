@@ -18,15 +18,12 @@ from pathlib import Path
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import CentralVisManagerV2
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import get_config_base_path
 
-CENTRAL_VIS_V2_PATH = Path(
-    "/cluster/home/kdiehl/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/sampling_visualization/central_vis_manager_v2.py"
-)
-CENTRAL_VIS_NULL_PATH = Path(
-    "/cluster/home/kdiehl/AISCO_code/subprojects/wp4_aeroshell_optimizer"
-    "/v2/src/sampling_visualization/central_vis_manager_null.py"
-)
-MAIN_V2_PATH = Path("/cluster/home/kdiehl/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py")
+_REPO = get_config_base_path() / "AISCO_code"
+CENTRAL_VIS_V2_PATH = _REPO / "subprojects/wp4_aeroshell_optimizer/v2/src/sampling_visualization/central_vis_manager_v2.py"
+CENTRAL_VIS_NULL_PATH = _REPO / "subprojects/wp4_aeroshell_optimizer/v2/src/sampling_visualization/central_vis_manager_null.py"
+MAIN_V2_PATH = _REPO / "subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py"
 
 
 def _load_source(path: Path) -> str:
