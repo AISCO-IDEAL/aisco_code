@@ -60,13 +60,22 @@ general_info:
     enabled: True
     target_loss_value: 1.0
     target_gradient_norm: 1.0
-
+    # For recalibration: enter the name of the loss as it is called further below and you can set the following keys:
+      #min_abs_value: 1.0e-6 #only gets calibrated once value is above this
+      #consecutive_epochs: 1 #how many consecutive epochs the minimum magnitude needs to be reached to trigger calibration
+      #warmup_epochs: 0 #do not trigger before
+      #cooldown_epochs: 0 # if recalibrates, wait so long until it may recalibrate
+      #max_recalibrations: 1
+      # Optional hard overrides per loss:
+      # fixed_loss_scale: 1.0  # if set, loss-scale calibration is skipped for this loss
+      # fixed_grad_scale: 1.0  # if set, grad-scale calibration is skipped for this loss
+      # If both are set for all active losses, the whole calibration pass is skipped.
     recalibration_rules:
       connectedness_v1:
         #experimental values by aalthaus
         fixed_grad_scale: 0.1
         fixed_loss_scale: 1.0
-
+      
 
       #wheel_loss_enforce_v2:
       #  fixed_grad_scale: 0.1
