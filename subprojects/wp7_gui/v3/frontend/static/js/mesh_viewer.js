@@ -34,6 +34,8 @@ export function initMeshViewer(containerEl) {
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+    let onControlsChange = null;
+    let suppressControlsCallback = false;
 
     scene.add(new HemisphereLight(0xffffff, 0x444444, 1.0));
     const dl = new DirectionalLight(0xffffff, 0.8);
@@ -53,6 +55,45 @@ export function initMeshViewer(containerEl) {
         controls.update();
         renderer.render(scene, camera);
     })();
+
+    controls.addEventListener("change", () => {
+        if (suppressControlsCallback) {
+            return;
+        }
+        if (typeof onControlsChange === "function") {
+            onControlsChange(getViewState());
+        }
+    });
+
+    function getViewState() {
+        return {
+            camera: {
+                x: camera.position.x,
+                y: camera.position.y,
+                z: camera.position.z,
+            },
+            target: {
+                x: controls.target.x,
+                y: controls.target.y,
+                z: controls.target.z,
+            },
+        };
+    }
+
+    function setViewState(viewState) {
+        if (!viewState || !viewState.camera || !viewState.target) {
+            return;
+        }
+        suppressControlsCallback = true;
+        camera.position.set(viewState.camera.x, viewState.camera.y, viewState.camera.z);
+        controls.target.set(viewState.target.x, viewState.target.y, viewState.target.z);
+        controls.update();
+        suppressControlsCallback = false;
+    }
+
+    function setOnControlsChange(callback) {
+        onControlsChange = callback;
+    }
 
     /**
      * Load (or replace) the PLY mesh at url.
@@ -111,7 +152,14 @@ export function initMeshViewer(containerEl) {
                 currentObj = new Mesh(geo, material);
                 currentObj.scale.set(scale, scale, scale);
                 scene.add(currentObj);
-                camera.position.set(0, 0, 3.5);
+                // Compute camera distance so the scaled mesh fills ~90% of the
+                // viewport in whichever axis is tighter (accounts for aspect ratio).
+                const vFovHalf = 25 * Math.PI / 180; // half of the 50° FOV
+                const aspect = containerEl.clientWidth / Math.max(containerEl.clientHeight, 1);
+                const hFovHalf = Math.atan(Math.tan(vFovHalf) * aspect);
+                const dFitW = (sz.x * scale / 2) / Math.tan(hFovHalf);
+                const dFitH = (sz.y * scale / 2) / Math.tan(vFovHalf);
+                camera.position.set(0, 0, Math.max(dFitW, dFitH) * 1.4);
                 controls.target.set(0, 0, 0);
                 controls.update();
                 if (onLoad) {
@@ -126,5 +174,5 @@ export function initMeshViewer(containerEl) {
         );
     }
 
-    return { loadMesh };
+    return { loadMesh, getViewState, setViewState, setOnControlsChange };
 }

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block hint %}Inspect a finished run from local storage — meshes, GIFs, and progression.{% endblock %}
+{% block hint %}Inspect finished runs and browse all generated mesh artifacts.{% endblock %}
 
 {% block head %}
 <script type="importmap">
@@ -8,191 +8,344 @@
 {% endblock %}
 
 {% block content %}
-<div style="display:grid; grid-template-columns:320px 1fr; gap:14px; height:100%; min-height:0;">
+<div class="section-grid" style="grid-template-rows: auto auto 1fr auto; height: 100%; overflow-y: auto;">
 
-  <!-- Run list -->
-  <div class="card" style="display:grid; grid-template-rows:auto auto 1fr; min-height:0;">
-    <div
-      style="font-size:0.88rem; font-weight:700; padding:8px 12px; border-bottom:1px solid var(--border); background:#edf3ef;">
-      Finished Runs
-    </div>
-    <div style="padding:8px 12px; border-bottom:1px solid var(--border); display:flex; gap:8px; align-items:center;">
-      <button class="btn" id="btnRefresh" style="font-size:0.8rem;padding:6px 10px;">Refresh</button>
-      <span style="font-size:0.78rem; color:var(--muted);" id="runCount">—</span>
-    </div>
-    <div class="run-list" id="runList" style="overflow-y:auto; min-height:0; padding:10px 12px; background:#1d2233;">
-    </div>
-  </div>
-
-  <!-- Run detail -->
-  <div class="card" style="display:grid; grid-template-rows:auto 1fr; min-height:0;">
-    <div
-      style="padding:8px 12px; border-bottom:1px solid var(--border); background:#edf3ef; display:flex; align-items:center; gap:10px;">
-      <strong id="detailTitle" style="font-size:0.9rem;">No run selected</strong>
-      <span id="detailMeta" style="font-size:0.78rem; color:var(--muted); margin-left:auto;"></span>
+    <div class="dark-card toolbar">
+        <a href="/" class="btn secondary"><- Back to Home</a>
+                <div style="flex:1;"></div>
+                <button class="btn" id="btnRefresh">Refresh</button>
     </div>
 
-    <div id="detailBody" style="overflow:auto; min-height:0; padding:12px;">
-      <div style="color:#496456; font-style:italic; text-align:center; padding:60px 12px;">
-        Pick a run from the list to inspect its artifacts.
-      </div>
+    <div class="dark-card" style="display:grid; gap:8px; min-height:0; padding:10px 12px;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div style="font-size:0.82rem; color:#f8d9d9; font-weight:700;">Finished Runs</div>
+            <span id="runCount" style="font-size:0.78rem; color:var(--muted);">Loading...</span>
+            <span id="selectedMeta"
+                style="font-size:0.78rem; color:var(--muted); margin-left:auto; text-align:right;"></span>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <label for="runSelect" style="font-size:0.78rem; color:var(--muted);">Select run:</label>
+            <select id="runSelect"
+                style="min-width:340px; max-width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border); background:#f8fcf9; color:#23313f;">
+                <option value="">Loading...</option>
+            </select>
+            <label
+                style="display:flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--muted); margin-left:8px;">
+                <input type="checkbox" id="cameraSyncToggle">
+                Sync camera across mesh boxes
+            </label>
+        </div>
     </div>
-  </div>
+
+    <div id="meshGroupsSection" style="display:none;">
+        <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600; margin-bottom:6px;">Mesh Outputs</div>
+        <div class="visuals-grid" id="meshGroupsGrid"></div>
+    </div>
+
+    <div class="dark-card" style="min-height:0; display:flex; align-items:center; gap:12px; padding:8px 12px;">
+        <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600;" id="statusLabel">Loading runs...</div>
+    </div>
 
 </div>
 
 <script>
-  const VIEWER_API = "/viewer/api";
+    const VIEWER_API = "/viewer/api";
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260514";
 
-  const runListEl = document.getElementById("runList");
-  const runCountEl = document.getElementById("runCount");
-  const detailTitle = document.getElementById("detailTitle");
-  const detailMeta = document.getElementById("detailMeta");
-  const detailBody = document.getElementById("detailBody");
+    const runSelectEl = document.getElementById("runSelect");
+    const runCountEl = document.getElementById("runCount");
+    const selectedMetaEl = document.getElementById("selectedMeta");
+    const statusLabel = document.getElementById("statusLabel");
+    const cameraSyncToggleEl = document.getElementById("cameraSyncToggle");
+    const meshGroupsSection = document.getElementById("meshGroupsSection");
+    const meshGroupsGrid = document.getElementById("meshGroupsGrid");
 
-  let selectedRunPath = null;
-  let meshes = [], meshIdx = 0;
+    const urlParams = new URLSearchParams(window.location.search);
+    const cfgSession = urlParams.get("cfg_session") || null;
 
-  function fmtTime(ts) { return new Date(ts * 1000).toLocaleString(); }
-  // Read cfg_session from URL — set by the Viewer pipeline flow
-  const _urlParams = new URLSearchParams(window.location.search);
-  const cfgSession = _urlParams.get("cfg_session") || null;
+    let runsByPath = new Map();
+    let selectedRunPath = null;
+    let plyGroupState = {};
+    let latestSyncedViewState = null;
 
-  async function loadRuns() {
-    runListEl.innerHTML = '<div style="padding:14px; color:var(--muted); font-style:italic;">Loading…</div>';
-    try {
-      const runsUrl = cfgSession
-        ? `${VIEWER_API}/runs?cfg_session=${encodeURIComponent(cfgSession)}`
-        : `${VIEWER_API}/runs`;
-      const d = await (await fetch(runsUrl)).json();
-      const runs = d.runs || [];
-      runCountEl.textContent = `${runs.length} run(s)`;
-      if (!runs.length) {
-        runListEl.innerHTML = '<div style="padding:14px; color:var(--muted); font-style:italic;">No runs found in storage root.</div>';
-        return;
-      }
-      runListEl.innerHTML = "";
-      runs.forEach(r => {
-        const item = document.createElement("div");
-        item.className = "run-item";
-        item.style.cursor = "pointer";
-        item.dataset.path = r.path;
-        item.innerHTML = `
-        <div style="font-weight:600; font-size:0.86rem; word-break:break-all;">${r.name}</div>
-        <div style="font-size:0.74rem; color:var(--muted); margin-top:2px;">${r.model_hash}</div>
-        <div style="font-size:0.72rem; color:var(--muted); margin-top:2px;">${fmtTime(r.mtime)}</div>
-        <div style="margin-top:4px; display:flex; gap:5px; flex-wrap:wrap;">
-          ${r.has_meshes ? '<span class="badge">meshes</span>' : ''}
-          ${r.has_gifs ? '<span class="badge">gifs</span>' : ''}
-        </div>
-      `;
-        item.addEventListener("click", () => selectRun(r));
-        runListEl.appendChild(item);
-      });
-      // Auto-select the single matching run when arriving via cfg_session pipeline
-      if (cfgSession && runs.length === 1) {
-        selectRun(runs[0]);
-      }
-    } catch (err) {
-      runListEl.innerHTML = `<div style="padding:14px; color:var(--accent);">Failed: ${err.message}</div>`;
+    function fmtTime(ts) {
+        return new Date(ts * 1000).toLocaleString();
     }
-  }
 
-  async function selectRun(r) {
-    selectedRunPath = r.path;
-    document.querySelectorAll(".run-item").forEach(el => el.classList.toggle("active", el.dataset.path === r.path));
-    detailTitle.textContent = r.name;
-    detailMeta.textContent = `${r.model_hash} · ${fmtTime(r.mtime)}`;
-    detailBody.innerHTML = '<div style="color:var(--muted); font-style:italic; padding:30px;">Loading artifacts…</div>';
-    meshes = []; meshIdx = 0;
-
-    const runId = r.run_id.split("/").map(encodeURIComponent).join("/");
-    try {
-      const data = await (await fetch(`${VIEWER_API}/runs/${runId}/artifacts`)).json();
-      renderDetail(data);
-    } catch (err) {
-      detailBody.innerHTML = `<div style="color:var(--accent); padding:14px;">Failed to load artifacts: ${err.message}</div>`;
+    function bust(url) {
+        const sep = url.includes("?") ? "&" : "?";
+        return `${url}${sep}t=${Date.now()}`;
     }
-  }
 
-  function renderDetail(data) {
-    meshViewer = null;  // container is rebuilt below — force re-init
-    const aGifs = data.mesh_assembly_gifs || [];
-    const sGifs = data.solar_loss_gifs || [];
-    meshes = data.meshes || [];
-    meshIdx = meshes.length ? meshes.length - 1 : 0;
-
-    const aGif = aGifs[0];
-    const sGif = sGifs.find(e => e.name === "rendering.gif") || sGifs[0];
-
-    detailBody.innerHTML = `
-    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:14px;">
-
-      <div class="visual-card">
-        <div class="visual-title">Aeroshell Evolution</div>
-        <div class="image-slot">
-          ${aGif
-        ? `<img src="${bust(aGif.url)}" alt="assembly gif" style="display:block;">`
-        : '<span class="placeholder-text">No assembly GIF.</span>'}
-        </div>
-        <div class="hint" style="font-size:0.76rem;">${aGif ? aGif.name : ""}</div>
-      </div>
-
-      <div class="visual-card">
-        <div class="visual-title">Solar Placement</div>
-        <div class="image-slot">
-          ${sGif
-        ? `<img src="${bust(sGif.url)}" alt="solar gif" style="display:block;">`
-        : '<span class="placeholder-text">No solar GIF.</span>'}
-        </div>
-        <div class="hint" style="font-size:0.76rem;">${sGif ? sGif.name : ""}</div>
-      </div>
-
-      <div class="visual-card">
-        <div class="visual-title">Aeroshell Mesh</div>
-        <div class="mesh-container" id="vMeshContainer" style="position:relative;">
-          <span id="vMeshPlaceholder" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#496456;font-size:0.85rem;">
-            ${meshes.length ? "Loading…" : "No meshes."}
-          </span>
-        </div>
-        <div style="font-size:0.78rem; color:#496456;">
-          <span id="vMeshLabel">${meshes.length ? meshes[meshIdx].name : ""}</span>
-        </div>
-        <input type="range" id="vMeshSlider" min="0" max="${Math.max(0, meshes.length - 1)}"
-          value="${meshIdx}" ${meshes.length ? "" : "disabled"}>
-      </div>
-
-    </div>
-  `;
-
-    if (meshes.length) {
-      document.getElementById("vMeshSlider").addEventListener("input", e => {
-        meshIdx = parseInt(e.target.value, 10);
-        document.getElementById("vMeshLabel").textContent = meshes[meshIdx].name;
-        load3D(meshes[meshIdx].url);
-      });
-      load3D(meshes[meshIdx].url);
+    function clearMeshGroups() {
+        Object.values(plyGroupState).forEach((state) => {
+            if (state.playInterval) {
+                clearInterval(state.playInterval);
+            }
+        });
+        plyGroupState = {};
+        latestSyncedViewState = null;
+        meshGroupsGrid.innerHTML = "";
+        meshGroupsSection.style.display = "none";
     }
-  }
 
-  // ---------- Three.js mesh viewer ----------
-  // meshViewer is reset to null each time renderDetail rebuilds the DOM so
-  // initMeshViewer attaches to the fresh container element.
-  let meshViewer = null;
+    function broadcastViewState(sourceLabel, viewState) {
+        if (!cameraSyncToggleEl.checked || !viewState) {
+            return;
+        }
+        latestSyncedViewState = viewState;
+        Object.entries(plyGroupState).forEach(([label, state]) => {
+            if (label === sourceLabel || !state.viewer) {
+                return;
+            }
+            state.viewer.setViewState(viewState);
+        });
+    }
 
-  function load3D(url) {
-    const container = document.getElementById("vMeshContainer");
-    if (!container) return;
-    import("/static/js/mesh_viewer.js").then(({ initMeshViewer }) => {
-      if (!meshViewer) meshViewer = initMeshViewer(container);
-      meshViewer.loadMesh(bust(url), () => {
-        const ph = document.getElementById("vMeshPlaceholder");
-        if (ph) ph.style.display = "none";
-      });
+    function applyViewStateToAll(viewState) {
+        if (!viewState) {
+            return;
+        }
+        Object.values(plyGroupState).forEach((state) => {
+            if (state.viewer) {
+                state.viewer.setViewState(viewState);
+            }
+        });
+    }
+
+    function getAnyExistingViewState() {
+        const states = Object.values(plyGroupState);
+        for (let i = 0; i < states.length; i += 1) {
+            if (states[i].viewer) {
+                return states[i].viewer.getViewState();
+            }
+        }
+        return null;
+    }
+
+    function loadPlyForGroup(label, container, placeholder, statusDiv) {
+        const state = plyGroupState[label];
+        if (!state || state.idx < 0 || state.idx >= state.files.length) {
+            return;
+        }
+
+        const file = state.files[state.idx];
+        import(MESH_VIEWER_MODULE)
+            .then(({ initMeshViewer }) => {
+                if (!state.viewer) {
+                    state.viewer = initMeshViewer(container);
+                    state.viewer.setOnControlsChange((viewState) => {
+                        broadcastViewState(label, viewState);
+                    });
+                    if (cameraSyncToggleEl.checked && latestSyncedViewState) {
+                        state.viewer.setViewState(latestSyncedViewState);
+                    }
+                }
+                state.viewer.loadMesh(bust(file.url), (info) => {
+                    placeholder.style.display = "none";
+                    statusDiv.style.display = "block";
+                    const vc = info && info.hasVertexColors ? "yes" : "no";
+                    statusDiv.textContent = `${file.name} (${state.idx + 1}/${state.files.length}) - VC:${vc}`;
+                    if (cameraSyncToggleEl.checked) {
+                        const stateToApply = latestSyncedViewState || state.viewer.getViewState();
+                        latestSyncedViewState = stateToApply;
+                        broadcastViewState(label, stateToApply);
+                    }
+                });
+            })
+            .catch((e) => {
+                statusDiv.style.display = "block";
+                statusDiv.textContent = `Viewer error: ${e.message}`;
+            });
+    }
+
+    function createPlyGroup(group) {
+        const label = group.label;
+        const files = group.ply_files || [];
+        if (!files.length) {
+            return;
+        }
+
+        const state = {
+            files: files,
+            idx: files.length > 1 ? files.length - 1 : 0,
+            viewer: null,
+            playing: false,
+            playInterval: null,
+        };
+        plyGroupState[label] = state;
+
+        const card = document.createElement("div");
+        card.className = "visual-card";
+        card.dataset.label = label;
+        card.innerHTML = `
+      <div class="visual-title">${label}</div>
+      <div class="mesh-container" style="position:relative; height:300px; background:#f1f7f3; border-radius:8px; overflow:hidden;">
+        <span class="placeholder-text" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#496456;font-size:0.9rem;z-index:1;">Loading...</span>
+        <div class="mesh-status" style="position:absolute;bottom:8px;left:8px;font-size:0.75rem;color:#496456;z-index:2;background:rgba(255,255,255,0.8);padding:2px 6px;border-radius:4px;display:none;"></div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center; font-size:0.82rem;">
+        <input type="range" class="epoch-slider" min="0" max="${files.length - 1}" value="${state.idx}" style="flex:1;">
+        <button class="play-btn" style="font-size:0.8rem;padding:4px 8px; width:54px;" ${files.length > 1 ? "" : "disabled"}>Play</button>
+      </div>
+    `;
+
+        const slider = card.querySelector(".epoch-slider");
+        const playBtn = card.querySelector(".play-btn");
+        const container = card.querySelector(".mesh-container");
+        const placeholder = card.querySelector(".placeholder-text");
+        const statusDiv = card.querySelector(".mesh-status");
+
+        slider.addEventListener("input", (e) => {
+            if (state.playing) {
+                state.playing = false;
+                clearInterval(state.playInterval);
+                playBtn.textContent = "Play";
+            }
+            state.idx = parseInt(e.target.value, 10);
+            loadPlyForGroup(label, container, placeholder, statusDiv);
+        });
+
+        playBtn.addEventListener("click", () => {
+            if (state.playing) {
+                state.playing = false;
+                clearInterval(state.playInterval);
+                playBtn.textContent = "Play";
+                return;
+            }
+
+            state.playing = true;
+            playBtn.textContent = "Pause";
+            state.playInterval = setInterval(() => {
+                state.idx = (state.idx + 1) % state.files.length;
+                slider.value = String(state.idx);
+                loadPlyForGroup(label, container, placeholder, statusDiv);
+                if (state.idx === state.files.length - 1) {
+                    state.playing = false;
+                    clearInterval(state.playInterval);
+                    playBtn.textContent = "Play";
+                }
+            }, 500);
+        });
+
+        meshGroupsGrid.appendChild(card);
+        loadPlyForGroup(label, container, placeholder, statusDiv);
+    }
+
+    function renderMeshGroups(data, runName) {
+        clearMeshGroups();
+
+        const groups = [];
+        const baseMeshes = data.meshes || [];
+        if (baseMeshes.length) {
+            groups.push({
+                label: "Aeroshell Mesh",
+                ply_files: baseMeshes,
+            });
+        }
+
+        const extraGroups = data.extra_ply_groups || [];
+        extraGroups.forEach((g) => groups.push(g));
+
+        if (!groups.length) {
+            statusLabel.textContent = `${runName}: no mesh outputs found.`;
+            return;
+        }
+
+        meshGroupsSection.style.display = "block";
+        groups.forEach((group) => createPlyGroup(group));
+        statusLabel.textContent = `${runName}: showing ${groups.length} mesh box(es).`;
+    }
+
+    async function selectRun(path) {
+        const run = runsByPath.get(path);
+        if (!run) {
+            clearMeshGroups();
+            selectedMetaEl.textContent = "";
+            statusLabel.textContent = "Select a run to inspect artifacts.";
+            return;
+        }
+
+        selectedRunPath = path;
+        selectedMetaEl.textContent = `${run.model_hash} - ${fmtTime(run.mtime)}`;
+        statusLabel.textContent = "Loading artifacts...";
+
+        const runId = run.run_id.split("/").map(encodeURIComponent).join("/");
+        try {
+            const data = await (await fetch(`${VIEWER_API}/runs/${runId}/artifacts`)).json();
+            renderMeshGroups(data, run.name);
+        } catch (err) {
+            clearMeshGroups();
+            statusLabel.textContent = `Failed to load artifacts: ${err.message}`;
+        }
+    }
+
+    async function loadRuns() {
+        clearMeshGroups();
+        runSelectEl.innerHTML = '<option value="">Loading...</option>';
+        selectedMetaEl.textContent = "";
+        statusLabel.textContent = "Loading runs...";
+
+        try {
+            const runsUrl = cfgSession
+                ? `${VIEWER_API}/runs?cfg_session=${encodeURIComponent(cfgSession)}`
+                : `${VIEWER_API}/runs`;
+            const d = await (await fetch(runsUrl)).json();
+            const runs = d.runs || [];
+
+            runsByPath = new Map();
+            runCountEl.textContent = `${runs.length} run(s)`;
+
+            if (!runs.length) {
+                runSelectEl.innerHTML = '<option value="">No runs found</option>';
+                statusLabel.textContent = "No archived runs found.";
+                return;
+            }
+
+            runSelectEl.innerHTML = '<option value="">-- Select a finished run --</option>';
+            runs.forEach((r) => {
+                runsByPath.set(r.path, r);
+                const option = document.createElement("option");
+                option.value = r.path;
+                option.textContent = `${r.name} (${fmtTime(r.mtime)})`;
+                runSelectEl.appendChild(option);
+            });
+
+            if (selectedRunPath && runsByPath.has(selectedRunPath)) {
+                runSelectEl.value = selectedRunPath;
+                selectRun(selectedRunPath);
+                return;
+            }
+
+            if (cfgSession && runs.length === 1) {
+                runSelectEl.value = runs[0].path;
+                selectRun(runs[0].path);
+            } else {
+                statusLabel.textContent = "Runs loaded. Select one to display all mesh outputs.";
+            }
+        } catch (err) {
+            runSelectEl.innerHTML = '<option value="">Failed to load runs</option>';
+            statusLabel.textContent = `Failed to load runs: ${err.message}`;
+        }
+    }
+
+    runSelectEl.addEventListener("change", (e) => {
+        selectRun(e.target.value);
     });
-  }
 
-  document.getElementById("btnRefresh").addEventListener("click", loadRuns);
-  loadRuns();
+    cameraSyncToggleEl.addEventListener("change", () => {
+        if (!cameraSyncToggleEl.checked) {
+            return;
+        }
+        const initialState = latestSyncedViewState || getAnyExistingViewState();
+        if (initialState) {
+            latestSyncedViewState = initialState;
+            applyViewStateToAll(initialState);
+        }
+    });
+
+    document.getElementById("btnRefresh").addEventListener("click", loadRuns);
+
+    loadRuns();
 </script>
 {% endblock %}
