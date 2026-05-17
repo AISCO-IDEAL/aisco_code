@@ -196,7 +196,7 @@ class ModelLoader:
             retain_graph=True,
             allow_unused=True,
         )
-        grad_map = dict(zip(names, grads, strict=True))
+        grad_map: dict[str, torch.Tensor | None] = dict(zip(names, grads, strict=True))
         if all(grad is None for grad in grad_map.values()):
             return None
         return grad_map
