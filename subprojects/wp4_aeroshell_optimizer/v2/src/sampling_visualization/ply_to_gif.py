@@ -380,11 +380,7 @@ def _resolve_overlay_epoch(fpath: Path) -> int:
         return epoch
 
     if not _EPOCH_PARSE_WARNING_EMITTED[0]:
-        print(
-            "Warning: Could not parse epoch from PLY path for GIF overlay. "
-            "Falling back to epoch 00000. Example path: "
-            f"{fpath}"
-        )
+        print(f"Warning: Could not parse epoch from PLY path for GIF overlay. Falling back to epoch 00000. Example path: {fpath}")
         _EPOCH_PARSE_WARNING_EMITTED[0] = True
     return 0
 
