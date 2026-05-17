@@ -96,10 +96,9 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   bb_inner:
     _role: constraint
-    _disabled_epochs: []
-    null_loss_bb_inner: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-
-    ### legacy bb losses
+     # bb_v1: [0,100, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v1.py"]
+    # bb_v2: [0, 1000, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v2.py"]                    # not working as of 2025 12 15
+    null_loss_bb: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     bb_v3: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v3.py"]                         # new version with random assembly_id for more variety y
     bb_v4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4.py"]                        # assembler version4 with ground clearance validation
     bb_v4_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]                     # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
