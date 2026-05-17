@@ -5,6 +5,7 @@ This should be the final main file we use for the Project. It should be modular 
 import contextlib
 import json
 import os
+import signal
 from pathlib import Path
 from typing import Any
 
@@ -450,6 +451,19 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         if verbose:
             print(f"Gradient conflict tracking enabled (cadence={conflict_cadence}, output={conflict_output_dir}")
 
+    # 5. Register SIGTERM handler for graceful early stop (applies to both training paths)
+    # This ensures wandb Stop Run button works even under sweep launchers that use timeout/SIGTERM.
+    stop_requested_by_signal = False
+
+    def _sigterm_handler(_signum: int, _frame: object | None) -> None:
+        nonlocal stop_requested_by_signal
+        stop_requested_by_signal = True
+        if verbose:
+            print("SIGTERM received: will stop at next epoch boundary and run finalize.")
+
+    previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+
     # 5. Run main training loop
 
     if has_optimise:
@@ -634,6 +648,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         stop_reason: str | None = None
         try:
             for epoch in range(num_epochs):
+                if stop_requested_by_signal:
+                    stop_reason = "SIGTERM received"
+                    break
+
                 if sentinel_path.exists():
                     stop_reason = f"sentinel file detected at {sentinel_path}"
                     try:
@@ -702,6 +720,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 renderer_manager.finalize()
             except Exception as e:
                 print(f"Manager finalize failed: {e}")
+
+    # Restore previous SIGTERM handler after all training paths complete.
+    signal.signal(signal.SIGTERM, previous_sigterm_handler)
 
     # 6. Saving of files and postprocessing
 
