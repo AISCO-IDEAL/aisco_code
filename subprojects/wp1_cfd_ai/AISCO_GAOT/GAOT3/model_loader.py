@@ -348,7 +348,7 @@ class ModelLoader:
         pressure_pa = q_inf * p
         return (-pressure_pa * normals[:, 0] * area_per_vertex).sum()
 
-    def _smooth_cp_field_if_enabled(  # Noqa:PLR0915
+    def _smooth_cp_field_if_enabled(  # Noqa:PLR0915,PLR0912
         self,
         pressure_field: torch.Tensor,
         batch: Batch,

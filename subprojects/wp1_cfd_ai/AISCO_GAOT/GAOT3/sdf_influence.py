@@ -71,7 +71,7 @@ def compute_sdf_parameter_influence(
         points = eval_vertices[start : start + chunk_size]
 
         def _chunk_forward(params: dict[str, torch.Tensor]) -> torch.Tensor:
-            return _forward_with(params, points)
+            return _forward_with(params, points)  # Noqa:B023
 
         _base_values, jvp_raw = torch.func.jvp(_chunk_forward, (base_params,), (raw_tangent,))
         jvp_raw_chunks.append(jvp_raw.detach())
