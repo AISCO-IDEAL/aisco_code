@@ -31,7 +31,7 @@ training_params:
   #                  forwards. Same final θ.grad as single_pass.
   multi_shape_aggregation:
     method: "l2_norm"  # mean | l2_norm
-    l2_backward_strategy: "single_pass"  # single_pass | two_pass (both only used when method=l2_norm)
+    l2_backward_strategy: "two_pass"  # single_pass | two_pass (both only used when method=l2_norm)
 
 mode:
   training_mode: "diagnostic"  # "performance" or "diagnostic"
