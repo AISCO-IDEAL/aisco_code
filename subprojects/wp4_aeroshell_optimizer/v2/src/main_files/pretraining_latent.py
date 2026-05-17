@@ -38,7 +38,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_v
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment, detect_environment
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_unit_circle_Z
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.latent_utils import build_random_disk_Z, build_unit_circle_Z
 from subprojects.wp5.unified_mesh_extraction import clear_mesh_cache
 
 
@@ -676,10 +676,14 @@ def pretraining_latent(  # noqa: PLR0912, PLR0915  # training loop is intrinsica
             ply_cache[slot_idx] = _load_ply_tensors(str(shape["ply_path"]), ply_scale)
             print(f"[latent_pretrain] Slot {slot_idx}: loaded PLY '{shape['ply_path']}' scale={ply_scale}")
 
-    # --- Build circle Z ---
+    # --- Build Z (placement determined by z_placement config) ---
     z_dim: int = model.get_model_info_dict()["z_dim"]
     z_radius: float = float(config.get("z_radius", 1.0))
-    Z = build_unit_circle_Z(num_shapes, z_dim, z_radius, device)
+    z_placement: str = config.get("z_placement", "circle")
+    if z_placement == "random_disk":
+        Z = build_random_disk_Z(num_shapes, z_dim, z_radius, device)
+    else:
+        Z = build_unit_circle_Z(num_shapes, z_dim, z_radius, device)
 
     # --- Training hyper-parameters ---
     loop_cfg: dict[str, Any] = config["training_loop"]
