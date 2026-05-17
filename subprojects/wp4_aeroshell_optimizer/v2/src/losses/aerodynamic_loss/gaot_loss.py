@@ -4,7 +4,7 @@ import warnings
 from typing import TYPE_CHECKING
 
 import torch
-from subprojects.wp4_aeroshell_optimiser.v2.src.utils.device_detection import Environment, detect_environment
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment, detect_environment
 
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.model_loader import ModelLoader as ModelLoader2
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.model_loader import ModelLoader as ModelLoader3
