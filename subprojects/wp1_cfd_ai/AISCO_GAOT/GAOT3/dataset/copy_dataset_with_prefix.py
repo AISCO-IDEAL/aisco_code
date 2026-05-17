@@ -56,9 +56,7 @@ def _resolve_sample_path(source_folder: Path, sample_name: str) -> Path:
     if flat_path.is_file():
         return flat_path
 
-    raise FileNotFoundError(
-        f"Could not find sample '{sample_name}'. Expected {flat_path} or {nested_path / 'data.pt'}"
-    )
+    raise FileNotFoundError(f"Could not find sample '{sample_name}'. Expected {flat_path} or {nested_path / 'data.pt'}")
 
 
 def _collect_existing_sample_names(target_folder: Path, target_order_names: list[str]) -> set[str]:

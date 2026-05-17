@@ -13,8 +13,8 @@ import yaml
 from torch_geometric.data import Batch, Data
 
 import wandb
-from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.sdf_influence import compute_sdf_parameter_influence
+from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.metadata import DATASET_METADATA
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.model.gaot_3d import GAOT3D
@@ -259,9 +259,7 @@ class ModelLoader:
         mode = str(self.cfd_config.get("pressure_backprop_mode", "full"))
         valid_modes = {"full", "geometry_only", "geometry_area_only", "geometry_normal_only"}
         if mode not in valid_modes:
-            raise ValueError(
-                f"Unknown pressure_backprop_mode={mode!r}. Expected one of {sorted(valid_modes)}."
-            )
+            raise ValueError(f"Unknown pressure_backprop_mode={mode!r}. Expected one of {sorted(valid_modes)}.")
         return mode
 
     def _integrate_pressure_drag(self, pressure_field: torch.Tensor, batch: Batch, mesh_faces: torch.Tensor) -> torch.Tensor:

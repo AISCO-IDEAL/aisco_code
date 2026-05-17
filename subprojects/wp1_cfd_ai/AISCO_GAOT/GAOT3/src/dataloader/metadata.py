@@ -479,7 +479,7 @@ def _load_dynamic_metadata(metadata_file: str) -> Metadata | None:
             global_mean=payload.get("global_mean", [0.0]),
             global_std=payload.get("global_std", [1.0]),
         )
-    except Exception as exc:  # noqa: BLE001 - stale cache should not block a fresh scan
+    except Exception as exc:
         logging.getLogger(__name__).warning("Ignoring invalid metadata cache %s: %s", metadata_file, exc)
         return None
 
@@ -513,9 +513,7 @@ def _save_dynamic_metadata(metadata_file: str, metadata: Metadata) -> None:
 def _infer_dynamic_metadata(dataset_config: dict) -> Metadata:
     order_file = _order_file_path(dataset_config)
     if not os.path.isfile(order_file):
-        raise FileNotFoundError(
-            f"Metadata inference needs the dataset order file, but it does not exist: {order_file}"
-        )
+        raise FileNotFoundError(f"Metadata inference needs the dataset order file, but it does not exist: {order_file}")
 
     with open(order_file, encoding="utf-8") as handle:
         sample_names = [_normalize_sample_name(line.strip()) for line in handle if line.strip()]
@@ -645,7 +643,7 @@ def _dataset_prefix_from_sample_name(name: str) -> str | None:
     if len(suffix) <= 5 or not suffix.isdigit():
         return None
     prefix = suffix[:-5]
-    return prefix if prefix else None
+    return prefix or None
 
 
 def _normalize_sample_name(name: str) -> str:

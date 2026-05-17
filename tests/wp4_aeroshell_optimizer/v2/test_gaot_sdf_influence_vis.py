@@ -42,7 +42,7 @@ def test_vis_aero_sdf_influence_maps_negative_red_positive_green(monkeypatch) ->
     manager = _make_vis_manager_stub()
     captured: dict[str, np.ndarray] = {}
 
-    def fake_submit(visual_type, epoch, verts_np, faces_np, rgb_np, type_cfg):  # noqa: ANN001
+    def fake_submit(visual_type, epoch, verts_np, faces_np, rgb_np, type_cfg):
         captured["visual_type"] = visual_type
         captured["rgb"] = rgb_np
 

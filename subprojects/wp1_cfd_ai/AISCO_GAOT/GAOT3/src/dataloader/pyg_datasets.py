@@ -256,9 +256,7 @@ class VTKMeshDataset(Dataset):
         self.order_file = order_file
         self.dataset_config = dataset_config
         self.split = split
-        self.allowed_dataset_prefixes = self._parse_allowed_dataset_prefixes(
-            dataset_config.get("allowed_dataset_prefixes", None)
-        )
+        self.allowed_dataset_prefixes = self._parse_allowed_dataset_prefixes(dataset_config.get("allowed_dataset_prefixes", None))
         self.active_variables = dataset_config.get("active_variables", None)
         self.drop_pressure = dataset_config.get("drop_pressure", False)
         self.subsample_nodes = dataset_config.get("subsample_nodes", None)
@@ -289,8 +287,7 @@ class VTKMeshDataset(Dataset):
 
         if self.allowed_dataset_prefixes is not None and not all_filenames:
             raise ValueError(
-                "allowed_dataset_prefixes selected no samples from order_file: "
-                f"{sorted(self.allowed_dataset_prefixes)}"
+                f"allowed_dataset_prefixes selected no samples from order_file: {sorted(self.allowed_dataset_prefixes)}"
             )
 
         total_samples = len(all_filenames)
@@ -462,7 +459,7 @@ class VTKMeshDataset(Dataset):
         if len(suffix) <= 5 or not suffix.isdigit():
             return None
         prefix = suffix[:-5]
-        return prefix if prefix else None
+        return prefix or None
 
     @staticmethod
     def _normalize_sample_name(name: str) -> str:
