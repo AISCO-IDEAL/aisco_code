@@ -4,12 +4,6 @@ general_info:
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
   ALM_aggressive: "False" # capu version of ALM
 
-  #    WARNING: When CSE="True", individual objective weights (aero, solar) below are dead code.
-  #    Use cse_weight below to scale the unified CSE objective relative to diversity.
-  #    WARNING: When ALM="True", manual constraint weights are ignored by design.
-  #    Constraint relative importance is controlled by ALM multipliers (initial_lambda, initial_mu, initial_nu).
-
-
   ALM_aggressive_capu: 0.2 # has constraint decreased sufficiently threshold, only used when ALM_aggressive=True. # weights.py: self.use_alm_aggressive
   # ALM parameter mapping order:
   # - Arrays are supported and can be provided in either format:
@@ -35,8 +29,6 @@ general_info:
     tolerance: 1.0e-3
 
   cse_weight: 1.0  # Post-normalisation weight on the unified CSE objective (-v_cruise * loss_scale * grad_scale).
-                   # Tune this against diversity weight (field_diversity_v0 config entry below).
-                   # Only active when CSE="True"; individual aero/solar weights are dead code when CSE is on.
   cse_prefactors:  # prefactors applied to objectives before feeding into CSE
     drag: 1.0
     solar: 1.0
@@ -79,15 +71,13 @@ general_info:
       # fixed_loss_scale: 1.0  # if set, loss-scale calibration is skipped for this loss
       # fixed_grad_scale: 1.0  # if set, grad-scale calibration is skipped for this loss
       # If both are set for all active losses, the whole calibration pass is skipped.
-
-
     recalibration_rules:
       connectedness_v1:
         #experimental values by aalthaus
         fixed_grad_scale: 0.1
         fixed_loss_scale: 1.0
-       
       
+
       #wheel_loss_enforce_v2:
       #  fixed_grad_scale: 0.1
       #  fixed_loss_scale: 0.000001
@@ -95,32 +85,11 @@ general_info:
         fixed_grad_scale: 0.004
         fixed_loss_scale: 0.00035
 
-  # Epoch scheduler: "skip" (default) or "zero_weighted".
-  # "skip": inactive losses are not computed; logged as 0. ALM multipliers frozen.
-  # "zero_weighted": inactive losses are computed and logged at their real value, but
-  #   contribute 0 to the gradient. ALM multipliers still frozen.
-  # Per-category blackout windows are set with _disabled_epochs in each loss block.
-  # Example:  _disabled_epochs: [[0, 99]]       # off epochs 0-99, active from 100 onward
-  #           _disabled_epochs: [[0, 49], [500, 699]]  # off in two windows; -1 as end = until training ends
-
-
-
-
-
-# How to add a new objective:
-# - Add category with `_role: objective` and optional `_sign: maximize|minimize`.
-# - For CSE mode, update `general_info.cse_params.drag_category` / `solar_category` if needed.
-losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically loads all losses with compute=1git p
+losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically loads all losses with compute=1
   # NOTE: that for each loss class, only one version should have compute=True
   aero:
     _role: objective
     _sign: minimize
-    _disabled_epochs: []
-    null_loss_aero: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
-
-  bb_inner:
-    _role: constraint
     _disabled_epochs: []
     null_loss_aero: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
@@ -136,7 +105,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     bb_v4_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_2.py"]                     # v4.2 with fast mesh-backed SDF from CadQuery tessellation (tesselation = "Zerlegung")
     bb_v4_3: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_3.py"]                    # v4.3 with improved ALM and CSE support
     bb_v4_4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4.py"]                    # v4.4 surface-sampled BB constraints on WP2 inner/outer zero-level surfaces
-    bb_v4_4_enforce_v2: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4_enforce_v2.py"] # v4.4 + ENFORCE projection + eikonal aux for IFT-style gradient flow at bb sample points
+    bb_v4_4_enforce_v2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_4_enforce_v2.py"] # v4.4 + ENFORCE projection + eikonal aux for IFT-style gradient flow at bb sample points
     bb_v4_sel: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]                  # v4.sel with option to select either inner or outer nbz
     silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]   # version provided by Silvretta, not working well as of 2025 12 15
     ### bb_v5, bb_v6, bb_v7 all rely on assembler v4
@@ -153,6 +122,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _disabled_epochs: []
     null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     eikonal_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
+    eikonal_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v1.py"]
 
   smoothness:
     _role: aux
@@ -176,9 +146,6 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: constraint
     _disabled_epochs: []
     null_loss_wheel: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    wheel_loss_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v0.py"]
-    wheel_loss_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v1.py"]
-    wheel_loss_v2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v2.py"] # new version with position vs. gradient weighting
     wheel_loss_v3: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_v3.py"] # version with improved sampling and more stable gradient formulation
     wheel_loss_enforce_v2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_loss_enforce_v2.py"] # ENFORCE projection + ground-alignment aux for IFT-style gradient flow at wheel-contact points
     wheel_interface_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_interface_v0.py"] # GINN-style L2-norm wheel position constraint, separate from alignment
@@ -190,7 +157,6 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   surface_area:
     _role: aux
-    _disabled_epochs: [[0,200]]
     null_loss_surface_area: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     surface_loss_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
 
@@ -204,16 +170,16 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
     solar_s_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
-    solar_s_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
+    solar_s_r_r_t: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
     solar_m_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MR.py"]  # multi ray
     solar_m_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MRRT.py"]  # multi ray ray tracing
-    null_loss_solar: [1, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    null_loss_solar: [0, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
 
   diversity:
     _role: diversity
     null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     #Diversity is excluded from grad normalisation: Tune the weight manually here to define trade off between actual loss and diversity requirements
-    field_diversity_v0: [1, 0.01, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+    field_diversity_v0: [1, 0.0001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
 
   total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
@@ -230,7 +196,7 @@ domain_pts_sampling: # used in eikonal and smoothness loss  #  parent_loss.py: c
 
 
 connectedness_config:
-  eval_period: 3  # evaluate PH loss every N epochs (expensive persistent homology computation)
+  eval_period: 5  # evaluate PH loss every N epochs (expensive persistent homology computation)
   return_cached_on_skip: "False"  # if True, reuse last computed scalar on skipped epochs
   grid_dim: 3
   grid_resolution: 64
@@ -313,7 +279,7 @@ developability_config:
   mesh_isovalue: 0.0
   mesh_batch_size: 8192
   # Post-optimization: runs C++ L-BFGS after the final training epoch
-  post_opt_enabled: False   # Enable post-epoch optimization with subdivisions
+  post_opt_enabled: True   # Enable post-epoch optimization with subdivisions
   post_opt_energy_type: 4   # same as energy_type by default
   post_opt_linesearch: 1    # 0=NONE, 1=OVERTON, 2=BACKTRACK
   post_opt_step_type: 1     # 0=GRADDESC, 1=LBFGS
