@@ -15,9 +15,7 @@ def _resolve_device(device: str | torch.device | None = None) -> torch.device:
     if resolved.type == "cuda" and not torch.cuda.is_available():
         return torch.device("cpu")
     if resolved.type not in {"cpu", "cuda"}:
-        raise ValueError(
-            f"Invalid device specified: {resolved}. Code needs modifying if you'd like to use a different device."
-        )
+        raise ValueError(f"Invalid device specified: {resolved}. Code needs modifying if you'd like to use a different device.")
     return resolved
 
 
@@ -68,9 +66,7 @@ def mesh_intersection(
     return new_verts, new_faces
 
 
-def _face_inside_mask(
-    cone_verts: torch.Tensor, cone_faces: torch.Tensor, verts: torch.Tensor, faces: torch.Tensor
-):
+def _face_inside_mask(cone_verts: torch.Tensor, cone_faces: torch.Tensor, verts: torch.Tensor, faces: torch.Tensor):
     """Return a bool mask of shape (num_faces,) — True where all 3 vertices are inside the cone."""
     import numpy as np  # noqa: PLC0415
     import open3d as o3d  # noqa: PLC0415
@@ -95,7 +91,9 @@ def render_vis_cone(
     verts, faces = get_vision_cone_mesh(id_number, device=device)
     print(f"Vision cone mesh: {len(verts)} vertices, {len(faces)} faces on {verts.device}")
     verts_np = verts.cpu().numpy()
-    saved_path = save_scene_glb(out_path, [("vision_cone", verts_np, faces.cpu().numpy(), solid_rgb(len(verts_np), (0.9, 0.1, 0.9)))])
+    saved_path = save_scene_glb(
+        out_path, [("vision_cone", verts_np, faces.cpu().numpy(), solid_rgb(len(verts_np), (0.9, 0.1, 0.9)))]
+    )
     print(f"Saved to {saved_path}")
     return saved_path
 
@@ -153,14 +151,19 @@ if __name__ == "__main__":
 
     import trimesh
 
-    _PLY = "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/wp4_runs/9f0d75f6d9/43_solar-smoke/aero/cp_field/epoch_00030.ply"
+    _PLY = (
+        "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/wp4_runs/9f0d75f6d9/43_solar-smoke/aero/cp_field/epoch_00030.ply"
+    )
     mesh = trimesh.load(_PLY, force="mesh")
     aero_verts = torch.as_tensor(mesh.vertices, dtype=torch.float32)
     aero_faces = torch.as_tensor(mesh.faces, dtype=torch.long)
 
     cone_verts, cone_faces = get_vision_cone_mesh(0, device="cpu")
     render_intersection(
-        cone_verts, cone_faces, aero_verts, aero_faces,
+        cone_verts,
+        cone_faces,
+        aero_verts,
+        aero_faces,
         out_dir="/cluster/home/fsanche/AISCO_code/local_storage_dir/wp3_vision_cone",
         timestamp=datetime.now().strftime("%Y%m%d_%H%M%S"),
     )
