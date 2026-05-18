@@ -1,7 +1,7 @@
 general_info:
   CSE: "True"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
-  ALM_aggressive: "False" # capu version of ALM
+  ALM_aggressive: "True" # capu version of ALM
 
   ALM_aggressive_capu: 0.2 # has constraint decreased sufficiently threshold, only used when ALM_aggressive=True. # weights.py: self.use_alm_aggressive
   # ALM parameter mapping order:
@@ -81,7 +81,7 @@ general_info:
       #  fixed_grad_scale: 0.1
       #  fixed_loss_scale: 0.000001
       bb_outer_v0:
-        fixed_grad_scale: 0.004
+        fixed_grad_scale: 0.008
         fixed_loss_scale: 0.00035
 
 losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically loads all losses with compute=1
@@ -90,7 +90,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: objective
     _sign: minimize
     _disabled_epochs: []
-    null_loss_aero: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    null_loss_aero: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]  # weight=50.0 is the drag surrogate constant returned by the null loss; training weight is forced to 0.0 by TotalLossV2 (is_null_loss marker)
     gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
   bb_inner:
@@ -167,8 +167,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     solar_v5: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
-    solar_s_r: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
-    solar_s_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
+    solar_s_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
+    solar_s_r_r_t: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
     solar_m_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MR.py"]  # multi ray
     solar_m_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MRRT.py"]  # multi ray ray tracing
     null_loss_solar: [0, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
@@ -177,7 +177,12 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: diversity
     null_loss_diversity: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     #Diversity is excluded from grad normalisation: Tune the weight manually here to define trade off between actual loss and diversity requirements
-    field_diversity_v0: [1, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+    field_diversity_v0:         [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
+    # Constraint-aware variants — flip compute=1 on exactly one of these to activate.
+    # See field_diversity_{masked,surface,hybrid}_v0_config blocks below for cutoffs (mm) and knobs.
+    field_diversity_masked_v0:  [1, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_masked_v0.py"]
+    field_diversity_surface_v0: [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_surface_v0.py"]
+    field_diversity_hybrid_v0:  [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_hybrid_v0.py"]
 
   total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
     total_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/total_loss.py"]  # SKIPPED — total_loss.py skips category "total" explicitly
@@ -192,6 +197,32 @@ domain_pts_sampling: # used in eikonal and smoothness loss  #  parent_loss.py: c
   # Recommended starting value: 0.5 — ensures ~50% of gradient signal comes from surface region.
   eikonal_near_surface_fraction: 0.0
 
+
+# Constraint-aware diversity variants. Cutoffs are in SDF coordinates (mm).
+# Tag convention used by the visualizer: 1=wheel, 2=bb_inner.
+field_diversity_masked_v0_config:
+  wheel_cutoff_mm: 350.0      # keep diversity samples this far from any wheel-contact point (mm). Wheel is SDF=0 equality — generous radius.
+  bb_inner_cutoff_mm: 350.0    # keep diversity samples this far from inner-prism (seat + bb-inner components) surface (mm). Inner-bb is inequality — tighter is fine.
+  wheel_sampling_density: 10  # matches wheel_loss_config.sampling_density
+  bb_inner_target_point_count: 20000
+  max_div: null               # null = disabled. Set negative (e.g. -0.1) for GINN-style clamp.
+  max_resample_iters: 8       # safety cap on rejection-sampling top-up loop
+
+field_diversity_surface_v0_config:
+  wheel_cutoff_mm: 350.0
+  bb_inner_cutoff_mm: 350.0
+  wheel_sampling_density: 10
+  bb_inner_target_point_count: 20000
+  surface_resample_cadence: 50  # re-extract per-shape surface via marching cubes every N get_loss calls
+  surface_subsample_n: 4096     # max retained vertices per shape after subsample
+  mc_resolution: 64             # marching-cubes grid resolution
+  mc_bbox_scale: 1.0            # outer-prism bbox multiplier for the extractor
+  max_div: null
+
+field_diversity_hybrid_v0_config:
+  w_vol: 0.1                 # weight on the masked-volumetric sub-loss
+  w_surf: 0.9                # weight on the masked-surface sub-loss
+  max_div: null              # clamp applied once on the weighted sum
 
 connectedness_config:
   eval_period: 5  # evaluate PH loss every N epochs (expensive persistent homology computation)

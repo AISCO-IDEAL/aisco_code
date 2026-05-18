@@ -30,6 +30,7 @@ def field_diversity_loss(
     y: Tensor,
     norm_order: int = 2,
     neighbor_agg_fn: str = "min",
+    max_div: float | None = None,
 ) -> Tensor:
     """Diversity loss over SDF fields — negated so minimizing maximizes diversity.
 
@@ -43,6 +44,10 @@ def field_diversity_loss(
             'min'  — maximize distance to nearest neighbor (most principled, matches GINN paper)
             'mean' — maximize mean distance to all others
             'sum'  — maximize sum of distances to all others
+        max_div: optional GINN-style clamp. If set (negative value, e.g. -0.1), the
+            loss becomes `clamp(loss - max_div, min=0)` — the diversity gradient turns
+            off once shapes are "different enough", preventing the population from
+            being pulled further apart at the expense of other objectives.
     Returns:
         Scalar loss (negative → minimizing pushes shapes apart).
     """
@@ -61,4 +66,7 @@ def field_diversity_loss(
         raise NotImplementedError(f"neighbor_agg_fn '{neighbor_agg_fn}' not implemented")
 
     # sqrt prevents one large distance from dominating; .mean().square() for smooth gradient
-    return (-1.0) * dists.sqrt().mean().square()
+    loss = (-1.0) * dists.sqrt().mean().square()
+    if max_div is not None:
+        loss = torch.clamp(loss - max_div, min=0.0)
+    return loss
