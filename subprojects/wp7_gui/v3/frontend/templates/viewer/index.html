@@ -65,12 +65,13 @@
 
 <script>
     const VIEWER_API = "/viewer/api";
-    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260514";
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260518";
     const DISCOVERED_DEFAULT_VISIBLE = false;
     const PANEL_DEFAULTS = {
         runs: {
             panel_cp_field: { label: "Cp Field", defaultVisible: true },
-            panel_mesh_shape: { label: "Mesh Shape", defaultVisible: true },
+            panel_mesh_shape: { label: "Aeroshell Mesh", defaultVisible: true },
+            panel_mesh_shape_glb: { label: "Aeroshell Mesh GLB", defaultVisible: false },
         },
     };
 
@@ -260,18 +261,26 @@
                         state.viewer.setViewState(latestSyncedViewState);
                     }
                 }
-                state.viewer.loadMesh(bust(file.url), (info) => {
-                    state.loadedOnce = true;
-                    placeholder.style.display = "none";
-                    statusDiv.style.display = "block";
-                    const vc = info && info.hasVertexColors ? "yes" : "no";
-                    statusDiv.textContent = `${file.name} (${state.idx + 1}/${state.files.length}) - VC:${vc}`;
-                    if (cameraSyncToggleEl.checked) {
-                        const stateToApply = latestSyncedViewState || state.viewer.getViewState();
-                        latestSyncedViewState = stateToApply;
-                        broadcastViewState(label, stateToApply);
-                    }
-                });
+                state.viewer.loadMesh(
+                    bust(file.url),
+                    (info) => {
+                        state.loadedOnce = true;
+                        placeholder.style.display = "none";
+                        statusDiv.style.display = "block";
+                        const vc = info && info.hasVertexColors ? "yes" : "no";
+                        statusDiv.textContent = `${file.name} (${state.idx + 1}/${state.files.length}) - VC:${vc}`;
+                        if (cameraSyncToggleEl.checked) {
+                            const stateToApply = latestSyncedViewState || state.viewer.getViewState();
+                            latestSyncedViewState = stateToApply;
+                            broadcastViewState(label, stateToApply);
+                        }
+                    },
+                    (err) => {
+                        placeholder.style.display = "none";
+                        statusDiv.style.display = "block";
+                        statusDiv.textContent = `Load failed for ${file.name}: ${err?.message || err}`;
+                    },
+                );
             })
             .catch((e) => {
                 statusDiv.style.display = "block";
@@ -377,10 +386,20 @@
         const baseMeshes = data.meshes || [];
         if (baseMeshes.length) {
             groups.push({
-                label: "Aeroshell Mesh",
+                label: "Aeroshell Mesh (PLY)",
                 ply_files: baseMeshes,
                 panel_id: "panel_mesh_shape",
                 default_visible: !!PANEL_DEFAULTS.runs.panel_mesh_shape.defaultVisible,
+            });
+        }
+
+        const baseGlbMeshes = data.meshes_glb || [];
+        if (baseGlbMeshes.length) {
+            groups.push({
+                label: "Aeroshell Mesh (GLB)",
+                ply_files: baseGlbMeshes,
+                panel_id: "panel_mesh_shape_glb",
+                default_visible: !!PANEL_DEFAULTS.runs.panel_mesh_shape_glb.defaultVisible,
             });
         }
 

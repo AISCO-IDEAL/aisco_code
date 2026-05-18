@@ -98,19 +98,20 @@
     const isLive = pipeline === "live";
     const LAUNCHER_API = "/launcher/api";
     const VIEWER_API = "/viewer/api";
-    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260514";
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260518";
     const DISCOVERED_DEFAULT_VISIBLE = false;
 
     const PANEL_DEFAULTS = {
         completed: {
             panel_cp_field: { label: "Cp Field", defaultVisible: true },
-            panel_mesh_shape: { label: "Mesh Shape", defaultVisible: true },
+            panel_mesh_shape: { label: "Aeroshell Mesh", defaultVisible: true },
             panel_solar_placement: { label: "Solar Placement", defaultVisible: false },
             panel_aeroshell_evolution: { label: "Aeroshell Evolution", defaultVisible: false },
         },
         live: {
             panel_cp_field: { label: "Cp Field", defaultVisible: true },
-            panel_mesh_shape: { label: "Mesh Shape", defaultVisible: true },
+            panel_mesh_shape: { label: "Aeroshell Mesh", defaultVisible: true },
+            panel_mesh_shape_glb: { label: "Aeroshell Mesh GLB", defaultVisible: false },
         },
     };
     const modeKey = isLive ? "live" : "completed";
@@ -299,18 +300,26 @@
                     state.viewer.setViewState(latestSyncedViewState);
                 }
             }
-            state.viewer.loadMesh(bust(file.url), (info) => {
-                state.loadedOnce = true;
-                placeholder.style.display = "none";
-                statusDiv.style.display = "block";
-                const vc = info && info.hasVertexColors ? "yes" : "no";
-                statusDiv.textContent = `${file.name} (${state.idx + 1}/${state.files.length}) · VC:${vc}`;
-                if (cameraSyncToggleEl && cameraSyncToggleEl.checked) {
-                    const stateToApply = latestSyncedViewState || state.viewer.getViewState();
-                    latestSyncedViewState = stateToApply;
-                    broadcastViewState(label, stateToApply);
-                }
-            });
+            state.viewer.loadMesh(
+                bust(file.url),
+                (info) => {
+                    state.loadedOnce = true;
+                    placeholder.style.display = "none";
+                    statusDiv.style.display = "block";
+                    const vc = info && info.hasVertexColors ? "yes" : "no";
+                    statusDiv.textContent = `${file.name} (${state.idx + 1}/${state.files.length}) · VC:${vc}`;
+                    if (cameraSyncToggleEl && cameraSyncToggleEl.checked) {
+                        const stateToApply = latestSyncedViewState || state.viewer.getViewState();
+                        latestSyncedViewState = stateToApply;
+                        broadcastViewState(label, stateToApply);
+                    }
+                },
+                (err) => {
+                    placeholder.style.display = "none";
+                    statusDiv.style.display = "block";
+                    statusDiv.textContent = `Load failed for ${file.name}: ${err?.message || err}`;
+                },
+            );
         }).catch((e) => {
             console.error("Failed to load mesh viewer:", e);
             statusDiv.style.display = "block";
@@ -338,7 +347,11 @@
             loadedOnce: false,
         };
         plyGroupState[label] = state;
-        const panelId = panelIdForLiveGroup(label);
+        const panelId = group.panel_id || panelIdForLiveGroup(label);
+        const panelLabel = group.panel_label || `Live: ${label}`;
+        const defaultVisible = Object.prototype.hasOwnProperty.call(group, "default_visible")
+            ? !!group.default_visible
+            : DISCOVERED_DEFAULT_VISIBLE;
 
         const card = document.createElement("div");
         card.className = "visual-card";
@@ -398,7 +411,7 @@
         });
 
         extraPlyGrid.appendChild(card);
-        setPanelDefault(panelId, `Live: ${label}`, DISCOVERED_DEFAULT_VISIBLE, card);
+        setPanelDefault(panelId, panelLabel, defaultVisible, card);
         renderPanelEditor();
         if (panelVisibility[panelId]) {
             loadPlyForGroup(label, container, placeholder, statusDiv);
@@ -409,14 +422,62 @@
         if (!isLive || !extraPlySection) {
             return;
         }
-        const groups = data.extra_ply_groups || [];
+        const groups = [];
+
+        const baseMeshes = Array.isArray(data.meshes) ? data.meshes : [];
+        if (baseMeshes.length) {
+            groups.push({
+                label: "Aeroshell Mesh (PLY)",
+                ply_files: baseMeshes,
+                panel_id: "panel_mesh_shape",
+                panel_label: "Aeroshell Mesh",
+                default_visible: !!modePanelDefaults.panel_mesh_shape?.defaultVisible,
+            });
+        }
+
+        const baseGlbMeshes = Array.isArray(data.meshes_glb) ? data.meshes_glb : [];
+        if (baseGlbMeshes.length) {
+            groups.push({
+                label: "Aeroshell Mesh (GLB)",
+                ply_files: baseGlbMeshes,
+                panel_id: "panel_mesh_shape_glb",
+                panel_label: "Aeroshell Mesh GLB",
+                default_visible: !!modePanelDefaults.panel_mesh_shape_glb?.defaultVisible,
+            });
+        }
+
+        const discovered = Array.isArray(data.extra_ply_groups) ? data.extra_ply_groups : [];
+        discovered.forEach((group) => groups.push(group));
+
         if (!groups.length) {
             return;
         }
         extraPlySection.style.display = "block";
         groups.forEach((group) => {
-            if (!plyGroupState[group.label]) {
+            const existing = plyGroupState[group.label];
+            if (!existing) {
                 createPlyGroup(group);
+                return;
+            }
+
+            const nextFiles = Array.isArray(group.ply_files) ? group.ply_files : [];
+            if (!nextFiles.length) {
+                return;
+            }
+
+            existing.files = nextFiles;
+            if (existing.idx >= nextFiles.length) {
+                existing.idx = nextFiles.length - 1;
+            }
+
+            const slider = existing.card ? existing.card.querySelector(".epoch-slider") : null;
+            const playBtn = existing.card ? existing.card.querySelector(".play-btn") : null;
+            if (slider) {
+                slider.max = String(nextFiles.length - 1);
+                slider.value = String(existing.idx);
+            }
+            if (playBtn) {
+                playBtn.disabled = nextFiles.length <= 1;
             }
         });
     }
@@ -497,12 +558,20 @@
         const container = document.getElementById("meshContainer");
         import(MESH_VIEWER_MODULE).then(({ initMeshViewer }) => {
             if (!meshViewer) meshViewer = initMeshViewer(container);
-            meshViewer.loadMesh(bust(url), (info) => {
-                meshPlaceholder.style.display = "none";
-                meshStatus.style.display = "block";
-                const vc = info && info.hasVertexColors ? "yes" : "no";
-                meshStatus.textContent = `${meshes[meshIdx].name} · VC:${vc}`;
-            });
+            meshViewer.loadMesh(
+                bust(url),
+                (info) => {
+                    meshPlaceholder.style.display = "none";
+                    meshStatus.style.display = "block";
+                    const vc = info && info.hasVertexColors ? "yes" : "no";
+                    meshStatus.textContent = `${meshes[meshIdx].name} · VC:${vc}`;
+                },
+                (err) => {
+                    meshPlaceholder.style.display = "none";
+                    meshStatus.style.display = "block";
+                    meshStatus.textContent = `Load failed: ${err?.message || err}`;
+                },
+            );
         });
     }
 
@@ -576,7 +645,7 @@
             if (!artResp.ok) throw new Error(`artifacts ${artResp.status}`);
             const artData = await artResp.json();
             updateGifs(artData);
-            meshes = artData.meshes || [];
+            meshes = (artData.meshes || []).concat(artData.meshes_glb || []);
             if (meshes.length) {
                 meshIdx = meshes.length - 1;
                 updateMesh();
