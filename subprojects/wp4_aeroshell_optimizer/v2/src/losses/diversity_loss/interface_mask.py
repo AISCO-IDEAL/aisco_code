@@ -26,10 +26,7 @@ from torch import Tensor
 from subprojects.wp2_assembler.version4.components.nbz import call_assembly, get_training_frame_offset
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
 
-
-_ASSEMBLY_MAP_PATH = (
-    Path(__file__).parents[6] / "subprojects/wp2_assembler/version4/config/assembly_map.yaml"
-)
+_ASSEMBLY_MAP_PATH = Path(__file__).parents[6] / "subprojects/wp2_assembler/version4/config/assembly_map.yaml"
 
 
 def build_wheel_interface_points(

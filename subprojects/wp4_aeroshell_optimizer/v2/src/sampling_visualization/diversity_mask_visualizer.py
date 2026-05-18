@@ -40,20 +40,25 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss.field_dive
     FieldDiversityMaskedV0,
 )
 
-_DEFAULT_CONFIG_PATH = (
-    Path(__file__).parents[2] / "configs" / "losses_v0_config.yaml"
-)
+_DEFAULT_CONFIG_PATH = Path(__file__).parents[2] / "configs" / "losses_v0_config.yaml"
 
 
 # Each trace declares its base size; the size slider multiplies these.
 _TRACE_SPECS: list[dict] = [
-    {"key": "raw",            "name": "raw samples",          "color": "lightgrey", "size": 1.5, "opacity": 0.5, "group": "samples"},
-    {"key": "kept",           "name": "kept (free region)",   "color": "green",     "size": 2.0, "opacity": 1.0, "group": "samples"},
-    {"key": "kept_topped_up", "name": "kept (after top-up)",  "color": "limegreen", "size": 1.5, "opacity": 0.4, "group": "samples"},
-    {"key": "dropped_wheel",  "name": "dropped @ wheel",      "color": "blue",      "size": 2.5, "opacity": 1.0, "group": "samples"},
-    {"key": "dropped_bb",     "name": "dropped @ bb_inner",   "color": "magenta",   "size": 2.0, "opacity": 1.0, "group": "samples"},
-    {"key": "wheel_pts",      "name": "wheel mask points",    "color": "red",       "size": 3.5, "opacity": 1.0, "group": "masks"},
-    {"key": "bb_pts",         "name": "bb_inner mask points", "color": "orange",    "size": 1.5, "opacity": 0.7, "group": "masks"},
+    {"key": "raw", "name": "raw samples", "color": "lightgrey", "size": 1.5, "opacity": 0.5, "group": "samples"},
+    {"key": "kept", "name": "kept (free region)", "color": "green", "size": 2.0, "opacity": 1.0, "group": "samples"},
+    {
+        "key": "kept_topped_up",
+        "name": "kept (after top-up)",
+        "color": "limegreen",
+        "size": 1.5,
+        "opacity": 0.4,
+        "group": "samples",
+    },
+    {"key": "dropped_wheel", "name": "dropped @ wheel", "color": "blue", "size": 2.5, "opacity": 1.0, "group": "samples"},
+    {"key": "dropped_bb", "name": "dropped @ bb_inner", "color": "magenta", "size": 2.0, "opacity": 1.0, "group": "samples"},
+    {"key": "wheel_pts", "name": "wheel mask points", "color": "red", "size": 3.5, "opacity": 1.0, "group": "masks"},
+    {"key": "bb_pts", "name": "bb_inner mask points", "color": "orange", "size": 1.5, "opacity": 0.7, "group": "masks"},
 ]
 
 
@@ -63,19 +68,37 @@ def _outer_prism_box() -> go.Scatter3d:
     y0, y1 = p["y"]
     z0, z1 = p["z"]
     corners = [
-        (x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0), (x0, y0, z0),
-        (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1), (x0, y0, z1),
+        (x0, y0, z0),
+        (x1, y0, z0),
+        (x1, y1, z0),
+        (x0, y1, z0),
+        (x0, y0, z0),
+        (x0, y0, z1),
+        (x1, y0, z1),
+        (x1, y1, z1),
+        (x0, y1, z1),
+        (x0, y0, z1),
         (None, None, None),
-        (x1, y0, z0), (x1, y0, z1), (None, None, None),
-        (x1, y1, z0), (x1, y1, z1), (None, None, None),
-        (x0, y1, z0), (x0, y1, z1),
+        (x1, y0, z0),
+        (x1, y0, z1),
+        (None, None, None),
+        (x1, y1, z0),
+        (x1, y1, z1),
+        (None, None, None),
+        (x0, y1, z0),
+        (x0, y1, z1),
     ]
     xs = [c[0] for c in corners]
     ys = [c[1] for c in corners]
     zs = [c[2] for c in corners]
     return go.Scatter3d(
-        x=xs, y=ys, z=zs, mode="lines",
-        name="outer prism", legendgroup="frame", showlegend=True,
+        x=xs,
+        y=ys,
+        z=zs,
+        mode="lines",
+        name="outer prism",
+        legendgroup="frame",
+        showlegend=True,
         line={"color": "black", "width": 2},
     )
 
@@ -110,7 +133,9 @@ def build_figure(loss: FieldDiversityMaskedV0, num_points: int, bb_inner_render_
         pts = data[spec["key"]].detach().cpu().numpy()
         fig.add_trace(
             go.Scatter3d(
-                x=pts[:, 0], y=pts[:, 1], z=pts[:, 2],
+                x=pts[:, 0],
+                y=pts[:, 1],
+                z=pts[:, 2],
                 mode="markers",
                 name=spec["name"],
                 legendgroup=spec["group"],
@@ -126,7 +151,7 @@ def build_figure(loss: FieldDiversityMaskedV0, num_points: int, bb_inner_render_
     base_sizes = [s["size"] for s in _TRACE_SPECS]
     slider_steps = []
     for mult in [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 8.0]:
-        slider_steps.append(
+        slider_steps.append(  # noqa: PERF401 weird ruff rule about comprehension
             {
                 "label": f"{mult:g}x",
                 "method": "restyle",
@@ -158,7 +183,7 @@ def build_figure(loss: FieldDiversityMaskedV0, num_points: int, bb_inner_render_
         sliders=[
             {
                 "active": 3,  # 1.0x
-                "currentvalue": {"prefix": "Marker size ×"},
+                "currentvalue": {"prefix": "Marker size x"},
                 "pad": {"t": 40},
                 "steps": slider_steps,
             }
@@ -209,13 +234,22 @@ def main() -> None:
         ),
     )
     parser.add_argument("--assembly_id", type=int, default=None, help="Override bb_config.assembly_id from the config.")
-    parser.add_argument("--wheel_cutoff_mm", type=float, default=None, help="Override field_diversity_masked_v0_config.wheel_cutoff_mm.")
-    parser.add_argument("--bb_inner_cutoff_mm", type=float, default=None, help="Override field_diversity_masked_v0_config.bb_inner_cutoff_mm.")
+    parser.add_argument(
+        "--wheel_cutoff_mm", type=float, default=None, help="Override field_diversity_masked_v0_config.wheel_cutoff_mm."
+    )
+    parser.add_argument(
+        "--bb_inner_cutoff_mm", type=float, default=None, help="Override field_diversity_masked_v0_config.bb_inner_cutoff_mm."
+    )
     parser.add_argument("--wheel_sampling_density", type=int, default=None)
     parser.add_argument("--bb_inner_target_point_count", type=int, default=None)
     parser.add_argument("--num_points", type=int, default=4000, help="Raw diversity samples to draw for the check.")
     parser.add_argument("--bb_inner_render_n", type=int, default=4000, help="Downsample bb_inner cloud for the plot.")
-    parser.add_argument("--out", type=str, default=None, help="Output HTML path. Default: <script_dir>/diversity_mask_visualizer_out/mask_check.html")
+    parser.add_argument(
+        "--out",
+        type=str,
+        default=None,
+        help="Output HTML path. Default: <script_dir>/diversity_mask_visualizer_out/mask_check.html",
+    )
     args = parser.parse_args()
 
     with Path(args.config).open("r") as f:
