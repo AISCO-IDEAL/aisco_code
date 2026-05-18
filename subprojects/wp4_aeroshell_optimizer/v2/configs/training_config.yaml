@@ -59,6 +59,8 @@ gradient_clipping:
   auto_clip_hist_len: 50
   auto_clip_min_len: 50
 
+#used in optimise() path
+gradient_clip_norm: 100
 # ===========================================================================
 # GINN / Diversity parameters (merged from GINN.yaml)
 # ===========================================================================
@@ -107,12 +109,8 @@ z_resample_start_epoch: 0        # 0 = Mode B (resample from epoch 1); N>0 = Mod
 z_resample_stop_epoch: -1        # -1 = never stop resampling; N>0 = freeze Z from epoch N onward (Phase 2 transition)
 z_resample_mode: in_circle        # on_circle | in_circle | random; mode used when z_resample_cadence > 0
 
-# ===========================================================================
-# Gradient clipping (F3 fix for first-step SDF destruction)
-# ===========================================================================
-# Set to e.g. 1.0 to cap the total parameter gradient L2-norm before each optimizer step.
-# null disables clipping (legacy behaviour).
-gradient_clip_norm: 100
+
+
 
 # ===========================================================================
 # Post-training mesh saving for population validation.
