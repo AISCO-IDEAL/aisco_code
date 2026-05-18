@@ -27,7 +27,7 @@ setup:
     wandb_entity: aisco
     wandb_group: united_all_cp_field
     wandb_mode: online
-    wandb_tags: ["euler", "OpenFoam"]
+    wandb_tags: ["euler", "OpenFoam", "OF New"]
     wandb_watch_model: false
     wandb_notes: "Default Note"
 
@@ -116,15 +116,15 @@ dataset:
     name: "GloryToTheGAOT"
     metaname: "incompressible_fluids/GloryToTheGAOT"
     base_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/GloryToTheGAOT"
-    allowed_dataset_prefixes: [4, 5]  # e.g. [1, 3, 5]; null or [] = use all samples 1:Blended Wing ,2:BlendedWing Denormalized, 3:Drivaer ,4: Euler ,5: OpenFoam
+    allowed_dataset_prefixes: [4, 5, 6]  # e.g. [1, 3, 5]; null or [] = use all samples 1:Blended Wing ,2:BlendedWing Denormalized, 3:Drivaer ,4: Euler ,5: OpenFoam, 6: OF Federico Neu
     processed_folder: ""
     force_recompute_stats: true   # norm_stats.pt was computed when x=pressure (Pa); recompute for x=Cp
     rand_dataset: true
-    handpicked_val: true
+    handpicked_val: false
     val_files_path: "/cluster/home/${oc.env:USER}/AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/val_files.yaml"
-    train_size: 300
-    val_size: 33
-    test_size: 30
+    train_size: 588
+    val_size: 53
+    test_size: 10
     batch_size: 16  # reduced from 12 to avoid OOM on larger CP-full meshes
     num_workers: 8
     shuffle: true

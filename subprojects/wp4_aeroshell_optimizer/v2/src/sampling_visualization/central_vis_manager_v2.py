@@ -34,6 +34,11 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.col
     resolve_mesh_rgb,
     solid_rgb,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.gradient_color_semantics import (
+    normalize_signed_to_unit_interval,
+    optimizer_update_normal_scalar,
+    optimizer_update_sdf_displacement,
+)
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.mesh_ops import face_rgb_to_flat_mesh
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.ply_tasks import (
     render_gif_task,
@@ -687,12 +692,13 @@ class CentralVisManagerV2(_BaseVisManager):
         vert_n_norm = np.linalg.norm(vert_n, axis=1, keepdims=True)
         vert_n /= np.maximum(vert_n_norm, 1e-12)
 
-        dot = np.einsum("ij,ij->i", vert_n, grads_np).astype(np.float32)
-        dot = np.nan_to_num(dot, nan=0.0, posinf=0.0, neginf=0.0)
+        dot = optimizer_update_normal_scalar(vert_n, grads_np)
+        if "solar" in loss_key.lower():
+            dot = -dot
 
-        # Symmetric range around zero so a diverging colormap (e.g. RdBu_r,
-        # coolwarm) is centred on "no force". vmin/vmax in the YAML override
-        # this; null in YAML means "use the data-driven symmetric range".
+        # Symmetric range around zero so the diverging colormap is centred on
+        # neutral/no normal update. vmin/vmax in the YAML override this; null
+        # in YAML means "use the data-driven symmetric range".
         cfg_vmin = type_cfg.get("vmin")
         cfg_vmax = type_cfg.get("vmax")
         if cfg_vmin is None or cfg_vmax is None:
@@ -702,16 +708,11 @@ class CentralVisManagerV2(_BaseVisManager):
                 vmin_eff = -amp if cfg_vmin is None else float(cfg_vmin)
                 vmax_eff = amp if cfg_vmax is None else float(cfg_vmax)
             else:
-                # scale so dot=0 is in the middle of the colormap, and the max/min values of dot are at the ends (1,-1)of the colormap.
+                # Scale so dot=0 is in the middle of the colormap, and the
+                # observed max/min values land at the green/red ends.
                 vmin_eff = 0.0
                 vmax_eff = 1.0
-                delta = vmax_eff - vmin_eff
-                dot_min = float(np.min(dot))
-                dot_max = float(np.max(dot))
-                if dot_max > 0:
-                    dot = np.where(dot > 0, dot / dot_max * delta / 2 + 0.5, dot)
-                if dot_min < 0:
-                    dot = np.where(dot < 0, dot / (-dot_min) * delta / 2, dot)
+                dot = normalize_signed_to_unit_interval(dot)
         else:
             vmin_eff, vmax_eff = float(cfg_vmin), float(cfg_vmax)
 
