@@ -121,6 +121,22 @@ class _BaseVisManager:
         """
         return vis_is_enabled(self._visual_types, self._slotted(visual_type))
 
+    def is_due(self, visual_type: str, epoch: int) -> bool:
+        """Return True when a visual type is enabled and due on this epoch."""
+        type_cfg = vis_type_config(self._visual_types, self._slotted(visual_type))
+        if type_cfg is None:
+            return False
+        interval = type_cfg.get("interval", 1)
+        if interval is None:
+            return True
+        try:
+            interval_int = int(interval)
+        except (TypeError, ValueError):
+            interval_int = 1
+        if interval_int <= 0:
+            return False
+        return int(epoch) % interval_int == 0
+
     def _load_assembly_meshes(self) -> None:
         if not vis_is_enabled(self._visual_types, "mesh_assembly_v4"):
             return
@@ -178,13 +194,13 @@ class _BaseVisManager:
         add_coord = resolve_bool(type_cfg.get("coordinate_system"), self._extras.get("coordinate_system"))
         coord_scale = float(self._extras.get("coordinate_system_scale", 0.1))
         if self._active_slot is not None:
-            # Epoch-first layout: <base_type>/epoch_XXXXX/slot_XX/mesh.ply
+            # Epoch-first slotted layout: <base_type>/epoch_XXXXX/slot_XX_mesh.ply
             slot_suffix = f"/slot_{self._active_slot:02d}"
             base_type = visual_type.removesuffix(slot_suffix)
-            slot_dir = self.run_dir / base_type / f"epoch_{epoch:05d}" / f"slot_{self._active_slot:02d}"
-            slot_dir.mkdir(parents=True, exist_ok=True)
+            epoch_dir = self.run_dir / base_type / f"epoch_{epoch:05d}"
+            epoch_dir.mkdir(parents=True, exist_ok=True)
             self._written_dirs.add(self.run_dir / base_type)
-            out_path = slot_dir / "mesh.ply"
+            out_path = epoch_dir / f"slot_{self._active_slot:02d}_mesh.ply"
         else:
             out_path = self._output_dir(visual_type) / f"epoch_{epoch:05d}.ply"
         future = self._ply_pool.submit(write_ply_task, out_path, verts_np, faces_np, rgb_np, add_coord, coord_scale)
@@ -427,23 +443,26 @@ class _BaseVisManager:
                 ok, path, err = render_gif_task(d)
                 _log({"event": "gif_completed" if ok else "gif_failed", "run_id": self.run_id, "path": path, "error": err})
 
-            # Epoch-first slotted layout: base_dir/epoch_XXXXX/slot_XX.ply → per-slot GIFs.
-            # Detect written base dirs that contain epoch_XXXXX/ subdirs with slot PLYs.
+            # Epoch-first slotted layout: base_dir/epoch_XXXXX/slot_XX_mesh.ply
+            # (legacy support also accepts epoch_XXXXX/slot_XX/mesh.ply).
+            # Detect written base dirs that contain epoch_XXXXX/ subdirs with slot meshes.
             import re as _re  # noqa: PLC0415
 
             _epoch_dir_pat = _re.compile(r"^epoch_(\d{5})$")
+            _slot_mesh_pat = _re.compile(r"^slot_(\d{2})_mesh\.ply$")
             _slot_subdir_pat = _re.compile(r"^slot_(\d{2})$")
             slotted_gif_dirs: list[Path] = []
             for base_dir in sorted(self._written_dirs):
                 if not base_dir.is_dir():
                     continue
-                has_slot_subdirs = any(
-                    sd.is_dir() and _slot_subdir_pat.match(sd.name)
+                has_slot_meshes = any(
+                    (item.is_file() and _slot_mesh_pat.match(item.name))
+                    or (item.is_dir() and _slot_subdir_pat.match(item.name) and (item / "mesh.ply").exists())
                     for ep_dir in base_dir.iterdir()
                     if ep_dir.is_dir() and _epoch_dir_pat.match(ep_dir.name)
-                    for sd in ep_dir.iterdir()
+                    for item in ep_dir.iterdir()
                 )
-                if has_slot_subdirs:
+                if has_slot_meshes:
                     slotted_gif_dirs.append(base_dir)
 
             for base_dir in slotted_gif_dirs:
@@ -497,7 +516,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_mesh_shape(self, epoch: int, verts: Any, faces: Any) -> None:
         vt = self._slotted("mesh_shape")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np = _to_f64(verts)
@@ -505,7 +524,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_aero_cp_field(self, epoch: int, verts: Any, faces: Any, cp_values: Any) -> None:
         vt = self._slotted("aero/cp_field")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
@@ -513,9 +532,47 @@ class CentralVisManagerV2(_BaseVisManager):
         rgb = resolve_mesh_rgb(cp_np, len(verts_np), len(faces_np), faces_np, verts_np, type_cfg)
         self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
 
+    def vis_aero_sdf_influence(self, epoch: int, method: str, variant: str, verts: Any, faces: Any, values: Any) -> None:
+        vt = self._slotted(f"aero/sdf_influence/{method}/{variant}")
+        type_cfg = vis_type_config(self._visual_types, vt)
+        if type_cfg is None:
+            return
+
+        verts_np, faces_np = _to_f64(verts), _to_i32(faces)
+        values_np = _to_f64(values).astype(np.float32).reshape(-1)
+        if verts_np.shape[0] == 0 or faces_np.shape[0] == 0:
+            return
+        if values_np.shape[0] != verts_np.shape[0]:
+            _log(
+                {
+                    "event": "vis_aero_sdf_influence_shape_mismatch",
+                    "run_id": self.run_id,
+                    "method": method,
+                    "variant": variant,
+                    "verts": list(verts_np.shape),
+                    "values": list(values_np.shape),
+                }
+            )
+            return
+
+        values_np = np.nan_to_num(values_np, nan=0.0, posinf=0.0, neginf=0.0)
+        eff_cfg = dict(type_cfg)
+        cfg_vmin = eff_cfg.get("vmin")
+        cfg_vmax = eff_cfg.get("vmax")
+        if cfg_vmin is None or cfg_vmax is None:
+            amp = float(np.max(np.abs(values_np))) if values_np.size else 0.0
+            amp = amp if amp > 0.0 else 1.0
+            if cfg_vmin is None:
+                eff_cfg["vmin"] = -amp
+            if cfg_vmax is None:
+                eff_cfg["vmax"] = amp
+
+        rgb = resolve_mesh_rgb(values_np, len(verts_np), len(faces_np), faces_np, verts_np, eff_cfg)
+        self._submit_ply(vt, epoch, verts_np, faces_np, rgb, type_cfg)
+
     def vis_solar_quality(self, epoch: int, verts: Any, faces: Any, quality_values: Any) -> None:
         vt = self._slotted("solar/quality")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
@@ -525,7 +582,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_solar_selection(self, epoch: int, verts: Any, faces: Any, weights: Any) -> None:
         vt = self._slotted("solar/selection")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
@@ -533,7 +590,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_solar_shading(self, epoch: int, verts: Any, faces: Any, shading: Any) -> None:
         vt = self._slotted("solar/shading")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
@@ -541,7 +598,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_solar_penalty(self, epoch: int, verts: Any, faces: Any, penalty: Any) -> None:
         vt = self._slotted("solar/penalty")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
@@ -549,7 +606,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_solar_numerical_factor(self, epoch: int, verts: Any, faces: Any, numerical_factor: Any) -> None:
         vt = self._slotted("solar/numerical_factor")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np, faces_np = _to_f64(verts), _to_i32(faces)
@@ -557,10 +614,20 @@ class CentralVisManagerV2(_BaseVisManager):
             vt, epoch, verts_np, faces_np, _to_f64(numerical_factor).astype(np.float32).reshape(-1), type_cfg
         )
 
+    def vis_solar_receiver_mask(self, epoch: int, verts: Any, faces: Any, receiver_mask: Any) -> None:
+        vt = self._slotted("solar/receiver_mask")
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
+        if type_cfg is None:
+            return
+        verts_np, faces_np = _to_f64(verts), _to_i32(faces)
+        self._submit_ply_flat_faces(
+            vt, epoch, verts_np, faces_np, _to_f64(receiver_mask).astype(np.float32).reshape(-1), type_cfg
+        )
+
     def vis_bb_constraint(self, epoch: int, verts: Any, distances: Any) -> None:
         """Bounding-box constraint violations. verts is a point cloud (no faces)."""
         vt = self._slotted("bb_constraint")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
         verts_np = _to_f64(verts)
@@ -585,7 +652,7 @@ class CentralVisManagerV2(_BaseVisManager):
             true_scale: If True, the raw dot product is visualized; if False, the color range is normalized so 0 is in the middle, and the max/min values of the dot product are at the ends of the colormap. Setting this to False can make it easier to see the relative distribution of positive vs negative gradients, especially when the magnitudes are different.
         """
         vt = self._slotted(f"mesh_gradients/{loss_key}")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
 
@@ -674,7 +741,7 @@ class CentralVisManagerV2(_BaseVisManager):
         sub-path directly (independent of set_active_slot for the diversity loop).
         """
         vt = f"latent/sampling/slot{slot_idx:02d}_{slot_name}" if slot_idx is not None else "latent/sampling"
-        if not vis_is_enabled(self._visual_types, vt):
+        if not vis_is_enabled(self._visual_types, vt, epoch):
             return
         self._submit_ply_points(vt, epoch, points, secondary_points, tertiary_points, mesh_verts, mesh_faces)
 
@@ -692,7 +759,7 @@ class CentralVisManagerV2(_BaseVisManager):
             sdf_verts / sdf_faces: The optimised SDF mesh for this epoch.
         """
         vt = self._slotted("mesh_assembly_v4")
-        if not vis_is_enabled(self._visual_types, vt):
+        if not vis_is_enabled(self._visual_types, vt, epoch):
             return
 
         if self._assembly_meshes is None:
@@ -713,12 +780,12 @@ class CentralVisManagerV2(_BaseVisManager):
         sdf_f = sdf_faces.detach().cpu() if isinstance(sdf_faces, torch.Tensor) else torch.from_numpy(np.asarray(sdf_faces))
 
         if self._active_slot is not None:
-            # Epoch-first layout: mesh_assembly_v4/epoch_XXXXX/slot_XX/mesh.{ply,glb}
-            slot_dir = self.run_dir / "mesh_assembly_v4" / f"epoch_{epoch:05d}" / f"slot_{self._active_slot:02d}"
-            slot_dir.mkdir(parents=True, exist_ok=True)
+            # Epoch-first slotted layout: mesh_assembly_v4/epoch_XXXXX/slot_XX_mesh.{ply,glb}
+            epoch_dir = self.run_dir / "mesh_assembly_v4" / f"epoch_{epoch:05d}"
+            epoch_dir.mkdir(parents=True, exist_ok=True)
             self._written_dirs.add(self.run_dir / "mesh_assembly_v4")
-            ply_path = slot_dir / "mesh.ply"
-            glb_path = slot_dir / "mesh.glb"
+            ply_path = epoch_dir / f"slot_{self._active_slot:02d}_mesh.ply"
+            glb_path = epoch_dir / f"slot_{self._active_slot:02d}_mesh.glb"
         else:
             out_dir = self._output_dir(vt)
             ply_path = out_dir / f"epoch_{epoch:05d}.ply"

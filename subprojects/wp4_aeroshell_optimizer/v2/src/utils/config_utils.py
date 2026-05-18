@@ -26,6 +26,7 @@ import warnings
 from pathlib import Path
 from warnings import warn
 
+import torch
 import yaml
 
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import get_run_locally_value
@@ -432,6 +433,94 @@ def load_config(v: str = "v2", cfg_name: str = "general_config.yaml") -> dict:
     config = _config_registry[key] if _registry_initialised and key in _config_registry else _load_yaml(v, cfg_name)
 
     return config
+
+
+def build_optimizer(params, training_params: dict, v: str = "v2") -> torch.optim.Optimizer:
+    """Load optimizer preset from optimizers.json and instantiate it.
+
+    Args:
+        params: Model parameters (e.g. model.parameters()).
+        training_params: The training_params sub-dict from training_config.yaml.
+            Must contain 'learning_rate'; 'optimizer' defaults to 'adam'.
+        v: WP4 version subfolder (default: 'v2').
+    """
+    opt_key = training_params.get("optimizer", "adam")
+    global_lr = training_params.get("learning_rate", 1e-3)
+
+    optimizers_path = Path.home() / "AISCO_code" / "subprojects" / "wp4_aeroshell_optimizer" / v / "configs" / "optimizers.json"
+    if Path.home() == Path("/home/aisco"):
+        optimizers_path = (
+            Path.home()
+            / "Documents"
+            / "AISCO_code"
+            / "subprojects"
+            / "wp4_aeroshell_optimizer"
+            / v
+            / "configs"
+            / "optimizers.json"
+        )
+
+    with optimizers_path.open() as f:
+        registry = json.load(f)
+
+    entry = registry["optimizers"].get(opt_key)
+    if entry is None:
+        raise ValueError(f"Unknown optimizer '{opt_key}'. Available: {list(registry['optimizers'])}")
+
+    # Per-entry lr overrides the global learning_rate (e.g. L-BFGS needs lr~1.0, not 1e-5).
+    lr = entry.get("lr", global_lr)
+    cls = getattr(torch.optim, entry["class"])
+    return cls(params, lr=lr, **entry.get("kwargs", {}))
+
+
+def get_optimizer_telemetry(optimizer: torch.optim.Optimizer) -> dict[str, float]:
+    """Aggregate stats from optimizer state for wandb logging.
+
+    For Adam/AdamW: returns mean/max second moment, mean/min effective LR,
+    L2 norm of first moment, and step count. Useful to diagnose effective-LR
+    decay (Adam saturation) when constraints plateau.
+
+    Returns empty dict for optimizers without exp_avg/exp_avg_sq state
+    (SGD, LBFGS) or before the first step has run.
+    """
+    state = optimizer.state
+    if not state:
+        return {}
+
+    lr = optimizer.param_groups[0].get("lr", 0.0)
+    eps = optimizer.param_groups[0].get("eps", 1e-8)
+
+    v_means: list[float] = []
+    v_maxes: list[float] = []
+    eff_lr_means: list[float] = []
+    eff_lr_mins: list[float] = []
+    m_sq_sum: float = 0.0
+    step_count: int = 0
+
+    for st in state.values():
+        v_t = st.get("exp_avg_sq")
+        m_t = st.get("exp_avg")
+        if v_t is None or m_t is None:
+            continue
+        v_means.append(v_t.mean().item())
+        v_maxes.append(v_t.max().item())
+        eff_lr = lr / (v_t.sqrt() + eps)
+        eff_lr_means.append(eff_lr.mean().item())
+        eff_lr_mins.append(eff_lr.min().item())
+        m_sq_sum += m_t.pow(2).sum().item()
+        step_count = max(step_count, int(st.get("step", 0)))
+
+    if not v_means:
+        return {}
+
+    return {
+        "optimizer/second_moment_mean": sum(v_means) / len(v_means),
+        "optimizer/second_moment_max": max(v_maxes),
+        "optimizer/effective_lr_mean": sum(eff_lr_means) / len(eff_lr_means),
+        "optimizer/effective_lr_min": min(eff_lr_mins),
+        "optimizer/first_moment_norm": m_sq_sum**0.5,
+        "optimizer/step_count": float(step_count),
+    }
 
 
 def print_config(config: dict) -> None:

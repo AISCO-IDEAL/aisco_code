@@ -55,7 +55,7 @@ def test_weights_alm_no_grad_graph_isolation_and_in_place_updates():
         torch.tensor([0.2, 0.4, 0.6], dtype=torch.float64),
     ],
 )
-def test_weights_alm_branches_keep_graph_disconnected(_thresholds):
+def test_weights_alm_branches_keep_graph_disconnected(thresholds):
     lamdas = torch.tensor([0.0, 0.0, 0.0], dtype=torch.float64, requires_grad=True)
     mus = torch.tensor([1.0, 1.0, 1.0], dtype=torch.float64)
     nus = torch.tensor([1.0, 1.0, 1.0], dtype=torch.float64)
@@ -70,7 +70,7 @@ def test_weights_alm_branches_keep_graph_disconnected(_thresholds):
         gamma=1.0,
         gamma_aggressive=1.1,
         constrained_losses=constrained_losses,
-        thresholds=None,
+        thresholds=thresholds,
         use_alm_aggressive=False,
     )
 

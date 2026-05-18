@@ -37,7 +37,7 @@ class SolarSRRT(ParentLoss):
         self.kappa = float(cfg.get("kappa", 1.0))
         self._lambda = float(cfg.get("_lambda", 1.0))
         self.epsilon = float(cfg.get("eps", 1e-12))
-        self.use_activation_checkpointing = bool(cfg.get("use_activation_checkpointing", True))
+        self.skip_backface_receivers = bool(cfg.get("skip_backface_receivers", False))
         self.smooth_gradient_iters = int(cfg.get("smooth_gradient_iters", 0))
 
         mesh_cfg_extract = load_mesh_extraction_config()
@@ -80,7 +80,7 @@ class SolarSRRT(ParentLoss):
                 kappa=self.kappa,
                 _lambda=self._lambda,
                 epsilon=self.epsilon,
-                use_activation_checkpointing=self.use_activation_checkpointing,
+                skip_backface_receivers=self.skip_backface_receivers,
                 vis_manager=vis_manager if not skip_telemetry else NullVisManager(),
                 epoch_name=self.epoch_name,
                 mesh_visibility_fn=self._mesh_visibility_fn,
