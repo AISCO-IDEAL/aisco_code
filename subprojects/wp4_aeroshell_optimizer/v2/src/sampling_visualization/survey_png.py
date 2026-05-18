@@ -32,7 +32,7 @@ _FLAT_PATTERN = re.compile(r"^epoch_?(\d{5})\.ply$")
 _SURVEY_PATTERN = re.compile(r"^(angle_\d{3}|x_\d{2}_y_\d{2}|r\d{2}_a\d{3})\.ply$")
 
 
-def generate_survey_png(  # noqa: PLR0915
+def generate_survey_png(  # noqa: PLR0915, PLR0912
     input_dir: Path,
     output_path: Path | None = None,
     layout: str = "strip",

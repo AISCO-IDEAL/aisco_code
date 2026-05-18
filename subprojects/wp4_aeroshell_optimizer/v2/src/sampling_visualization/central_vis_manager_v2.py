@@ -37,7 +37,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.col
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.gradient_color_semantics import (
     normalize_signed_to_unit_interval,
     optimizer_update_normal_scalar,
-    optimizer_update_sdf_displacement,
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.mesh_ops import face_rgb_to_flat_mesh
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.ply_tasks import (

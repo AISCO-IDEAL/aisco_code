@@ -37,7 +37,7 @@ general_info:
   initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial mu(s)
   initial_nu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial nu(s)
   alpha: 0.8  # EMA decay factor for ν update
-  gamma: 1.6  # parameter for ALM penalty update
+  gamma: 0.3  # parameter for ALM penalty update
   gamma_aggressive: 1.1  # multiplicative increase factor for μ in aggressive CAPU mode
 
   enforce_projection:
@@ -205,8 +205,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     field_diversity_v0:         [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
     # Constraint-aware variants — flip compute=1 on exactly one of these to activate.
     # See field_diversity_{masked,surface,hybrid}_v0_config blocks below for cutoffs (mm) and knobs.
-    field_diversity_masked_v0:  [1, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_masked_v0.py"]
-    field_diversity_surface_v0: [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_surface_v0.py"]
+    field_diversity_masked_v0:  [1, 0.03, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_masked_v0.py"]
+    field_diversity_surface_v0: [0, 0.03, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_surface_v0.py"]
     field_diversity_hybrid_v0:  [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_hybrid_v0.py"]
 
   total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
@@ -237,7 +237,7 @@ field_diversity_surface_v0_config:
   wheel_cutoff_mm: 350.0
   bb_inner_cutoff_mm: 350.0
   wheel_sampling_density: 10
-  bb_inner_target_point_count: 20000
+  bb_inner_target_point_count: 10000
   surface_resample_cadence: 50  # re-extract per-shape surface via marching cubes every N get_loss calls
   surface_subsample_n: 4096     # max retained vertices per shape after subsample
   mc_resolution: 64             # marching-cubes grid resolution
@@ -250,8 +250,8 @@ field_diversity_hybrid_v0_config:
   max_div: null              # clamp applied once on the weighted sum
 
 connectedness_config:
-  eval_period: 5  # evaluate PH loss every N epochs (expensive persistent homology computation)
-  return_cached_on_skip: "True"  # if True, reuse last computed scalar on skipped epochs
+  eval_period: 15  # evaluate PH loss every N epochs (expensive persistent homology computation)
+  return_cached_on_skip: "False"  # if True, reuse last computed scalar on skipped epochs
   grid_dim: 3
   grid_resolution: 64
   bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2
@@ -306,8 +306,8 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
   analytic_options:
     penalty: "relu"  # "relu" (default) or "softplus"
     softplus_beta: 10.0  # only used when penalty="softplus"
-    inner_margin: 0.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
-    outer_margin: 0.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
+    inner_margin: 35.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
+    outer_margin: 15.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
     inner_tolerance: 0.0  # GINN-style "satisfied" deadband on aggregated bb_inner L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
     outer_tolerance: 0.0  # same for bb_outer
     topk_fraction: 0.6  # (BbV5/BbV6) fraction of worst-violating points to include in loss reduction; 0.1 = top 10%
