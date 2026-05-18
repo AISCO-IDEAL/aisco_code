@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING
 
 import torch
@@ -8,6 +9,7 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.model_loader import ModelLoader as 
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.model_loader import ModelLoader as ModelLoader3
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.model_loader import ModelLoader as ModelLoader1
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment, detect_environment
 
 if TYPE_CHECKING:
     from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
@@ -25,11 +27,13 @@ class GaotLoss(ParentLoss):
 
         self.gaot: ModelLoader1 | ModelLoader2 | ModelLoader3
         if version == 1:
+            warnings.warn("You are using an old Version of the GAOT", stacklevel=2)
             self.gaot = ModelLoader1(cfd_config=self.losses_config["cfd"], device=self.device)
         elif version == 2:
+            warnings.warn("You are using an old Version of the GAOT", stacklevel=2)
             self.gaot = ModelLoader2(cfd_config=self.losses_config["cfd"], device=self.device)
         elif version == 3:
-            if self.losses_config["cfd_local"]["run_local"]:
+            if detect_environment() == Environment.AISCO_BEAST:
                 self.gaot = ModelLoader3(cfd_config=self.losses_config["cfd_local"], device=self.device)
             else:
                 self.gaot = ModelLoader3(cfd_config=self.losses_config["cfd"], device=self.device)
@@ -43,6 +47,9 @@ class GaotLoss(ParentLoss):
             # Propagate to the underlying model loader (GAOT3 only in practice;
             # setattr avoids mypy union-attr error on ModelLoader1/2).
             setattr(self.gaot, "vis_manager", self._vis_manager)  # noqa: B010
+        if isinstance(self.gaot, ModelLoader3):
+            learning_rate = self.training_config.get("training_params", {}).get("learning_rate", 1e-3)
+            self.gaot.sdf_influence_learning_rate = float(learning_rate)
         result = self.gaot.forward(sdf_model=model, epoch_name=self.epoch_name)
         # Propagate diagnostics from the underlying GAOT model loader
         self._last_diagnostics = getattr(self.gaot, "_last_diagnostics", {})

@@ -3,7 +3,7 @@ general_info:
   device: "cuda"  #  main_v2
   run_locally: "False" # automatically detected, don't touch
   verbose: "True"  #  basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
-  latent_space: false  # true = use pretraining_latent.py pipeline; model must be SupportsLatentConcat (e.g. ConcatWIREV2)
+  latent_space: true  # true = use pretraining_latent.py pipeline; model must be SupportsLatentConcat (e.g. ConcatWIREV2)
 
 profiler:
   profile_mode: False
@@ -15,7 +15,7 @@ profiler:
   export_trace: False # WARNING: This will dump a GB sized JSON file onto work/fuge. Use only when necessary and set active = 1
 
 model_def:
-  model_name: "WIREV5_ENFORCE"  #  main_v2.py, dynamic model selection, should refer to models.json
+  model_name: "WIREV5" # main_v2.py, dynamic model selection, should refer to models.json
   concat_model_name: "ConcatWIREV5"
 
 active_configs:
@@ -29,7 +29,7 @@ active_configs:
 
 wandb_general:
   use_wandb: True # main_v1_1_one_model.py, total_loss.py
-  project_name: "temp_" # DEFAULT: "temp_"  # main_v1_1_one_model.py: wandb.init(project=...)
+  project_name: "temp_" # DEFAULT: "temp_" # main_v1_1_one_model.py: wandb.init(project=...)
   entity_name: "aisco"  # main_v1_1_one_model.py: wandb.init(entity=...)
   name: ""  # leave as ""; wandb.init(name=...): "": auto-generated wandb name is appended with _<SLURM_JOB_ID>
   use_renderer: True  # total_loss.py: general_config["wandb_general"].get("use_renderer", True)
@@ -37,11 +37,6 @@ wandb_general:
   rendering_frequency: 1  # total_loss.py: general_config["wandb_general"].get("rendering_frequency")
   wandb_mode: online # online: syncs immediately, offline: saves locally when you run `wandb sync` in the command line
 
-# vis_manager: "v2" | "legacy" | "null"
-#   "v2"     → CentralVisManagerV2 (async PLY writes, ProcessPool GIFs) — production default
-#   "legacy" → original CentralVisManager (synchronous, for rollback)
-#   "null"   → NullVisManager (no-op; dry-run, no PLY/GIF outputs)
-# Note: there is no "disabled" mode; main_v2 requires a vis manager to be present.
 vis_manager: "v2"
 
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code

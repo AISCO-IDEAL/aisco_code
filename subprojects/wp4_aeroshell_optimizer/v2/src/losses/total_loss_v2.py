@@ -472,6 +472,7 @@ class TotalLossV2:
         model: SupportsModelContract,
         epoch_name: int = 0,
         calibration_mode: bool = False,
+        skip_vis: bool = False,
     ) -> RawLossBundle:
         """Evaluate every active loss instance and return raw (unweighted) tensors.
 
@@ -481,6 +482,11 @@ class TotalLossV2:
             calibration_mode: If True, bypass epoch scheduling and compute all losses regardless
                 of _disabled_epochs. Used by LossNormalisationManager to calibrate scale factors
                 for losses that are not yet active at epoch 0.
+            skip_vis: When True, passes skip_telemetry=True to any loss whose ``_loss`` method
+                accepts it, suppressing inline visualisation writes for that call.  Set to True
+                for no-grad passes (e.g. l2_two_pass Pass 1) where no slot is active and writing
+                PLY files would be incorrect.  Defaults to False so visualisation is enabled by
+                default; the vis_manager's per-type ``interval`` check then governs actual cadence.
 
         Returns:
             RawLossBundle with unweighted objective, constraint, and aux tensors
@@ -516,9 +522,7 @@ class TotalLossV2:
                     with record_function(f"loss_{loss_name}"):
                         sig = inspect.signature(instance.get_loss)
                         if "skip_telemetry" in sig.parameters:
-                            target_dict[category] = instance.get_loss(
-                                model, epoch_name, skip_telemetry=True
-                            )  # Note by aalthaus: might be a bug in here, might need to be set to false if visuals are handled cleanly
+                            target_dict[category] = instance.get_loss(model, epoch_name, skip_telemetry=skip_vis)
                         else:
                             target_dict[category] = instance.get_loss(model, epoch_name)
         finally:
