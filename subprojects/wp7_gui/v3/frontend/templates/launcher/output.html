@@ -293,6 +293,7 @@
         import(MESH_VIEWER_MODULE).then(({ initMeshViewer }) => {
             if (!state.viewer) {
                 state.viewer = initMeshViewer(container);
+                state.viewer.setGlbControlsHost(state.glbControlsDiv);
                 state.viewer.setOnControlsChange((viewState) => {
                     broadcastViewState(label, viewState);
                 });
@@ -344,6 +345,7 @@
             container: null,
             placeholder: null,
             statusDiv: null,
+            glbControlsDiv: null,
             loadedOnce: false,
         };
         plyGroupState[label] = state;
@@ -363,6 +365,7 @@
                 <span class="placeholder-text" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#496456;font-size:0.9rem;z-index:1;">Loading…</span>
                 <div class="mesh-status" style="position:absolute;bottom:8px;left:8px;font-size:0.75rem;color:#496456;z-index:2;background:rgba(255,255,255,0.8);padding:2px 6px;border-radius:4px;display:none;"></div>
             </div>
+            <div class="glb-controls" style="display:none; margin-top:8px; padding:6px 8px; border:1px solid #dce8df; border-radius:6px; background:#f7fbf8; gap:6px;"></div>
             <div style="display:flex; gap:8px; align-items:center; font-size:0.82rem;">
                 <input type="range" class="epoch-slider" min="0" max="${files.length - 1}" value="0" style="flex:1;">
                 <button class="play-btn" style="font-size:0.8rem;padding:4px 8px; width:50px;">Play</button>
@@ -374,10 +377,12 @@
         const container = card.querySelector(".mesh-container");
         const placeholder = card.querySelector(".placeholder-text");
         const statusDiv = card.querySelector(".mesh-status");
+        const glbControlsDiv = card.querySelector(".glb-controls");
         state.card = card;
         state.container = container;
         state.placeholder = placeholder;
         state.statusDiv = statusDiv;
+        state.glbControlsDiv = glbControlsDiv;
 
         slider.addEventListener("input", (e) => {
             if (state.playing) {

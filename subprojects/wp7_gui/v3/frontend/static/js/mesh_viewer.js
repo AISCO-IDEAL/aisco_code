@@ -59,6 +59,7 @@ export function initMeshViewer(containerEl) {
     controls.enableDamping = true;
     let onControlsChange = null;
     let suppressControlsCallback = false;
+    let glbControlsHost = null;
 
     scene.add(new HemisphereLight(0xffffff, 0x444444, 1.0));
     scene.add(new AmbientLight(0xffffff, 0.6));
@@ -73,6 +74,7 @@ export function initMeshViewer(containerEl) {
     });
 
     let currentObj = null;
+    let currentGlbComponents = [];
 
     (function animate() {
         requestAnimationFrame(animate);
@@ -134,6 +136,110 @@ export function initMeshViewer(containerEl) {
                 }
             });
         });
+    }
+
+    function clearGlbComponents() {
+        currentGlbComponents = [];
+    }
+
+    function getMeshComponents() {
+        return currentGlbComponents.map((entry) => {
+            const mats = Array.isArray(entry.mesh.material) ? entry.mesh.material : [entry.mesh.material];
+            const firstOpacity = mats.length && typeof mats[0]?.opacity === "number" ? mats[0].opacity : 1.0;
+            return {
+                key: entry.key,
+                name: entry.name,
+                visible: entry.mesh.visible,
+                opacity: firstOpacity,
+            };
+        });
+    }
+
+    function setMeshComponentState(key, nextState) {
+        const entry = currentGlbComponents.find((item) => item.key === key);
+        if (!entry || !nextState) {
+            return;
+        }
+        if (Object.prototype.hasOwnProperty.call(nextState, "visible")) {
+            entry.mesh.visible = !!nextState.visible;
+        }
+        if (Object.prototype.hasOwnProperty.call(nextState, "opacity")) {
+            const opacity = Math.min(1, Math.max(0, Number(nextState.opacity)));
+            const mats = Array.isArray(entry.mesh.material) ? entry.mesh.material : [entry.mesh.material];
+            mats.forEach((m) => {
+                if (!m) {
+                    return;
+                }
+                m.opacity = opacity;
+                m.transparent = true;
+                m.depthWrite = opacity >= 0.99;
+                m.needsUpdate = true;
+            });
+        }
+    }
+
+    function renderGlbControls() {
+        if (!glbControlsHost) {
+            return;
+        }
+        glbControlsHost.innerHTML = "";
+        const components = getMeshComponents();
+        if (!components.length) {
+            glbControlsHost.style.display = "none";
+            return;
+        }
+        glbControlsHost.style.display = "block";
+
+        components.forEach((component) => {
+            const row = document.createElement("div");
+            row.style.display = "grid";
+            row.style.gridTemplateColumns = "auto 1fr";
+            row.style.alignItems = "center";
+            row.style.columnGap = "8px";
+            row.style.rowGap = "4px";
+
+            const visible = document.createElement("input");
+            visible.type = "checkbox";
+            visible.checked = !!component.visible;
+            visible.title = "Visible";
+
+            const name = document.createElement("span");
+            name.textContent = component.name;
+            name.style.fontSize = "0.72rem";
+            name.style.whiteSpace = "nowrap";
+            name.style.overflow = "hidden";
+            name.style.textOverflow = "ellipsis";
+
+            const opacityLabel = document.createElement("span");
+            opacityLabel.textContent = "Opacity";
+            opacityLabel.style.fontSize = "0.68rem";
+            opacityLabel.style.opacity = "0.8";
+
+            const opacity = document.createElement("input");
+            opacity.type = "range";
+            opacity.min = "0";
+            opacity.max = "1";
+            opacity.step = "0.01";
+            opacity.value = String(component.opacity);
+
+            visible.addEventListener("change", () => {
+                setMeshComponentState(component.key, { visible: visible.checked });
+            });
+            opacity.addEventListener("input", () => {
+                setMeshComponentState(component.key, { opacity: parseFloat(opacity.value) });
+            });
+
+            row.appendChild(visible);
+            row.appendChild(name);
+            row.appendChild(opacityLabel);
+            row.appendChild(opacity);
+            glbControlsHost.appendChild(row);
+        });
+    }
+
+    function setGlbControlsHost(hostEl) {
+        glbControlsHost = hostEl || null;
+        renderGlbControls();
     }
 
     function frameScaledObject(sizeVec) {
@@ -207,6 +313,7 @@ export function initMeshViewer(containerEl) {
 
                         let hasVertexColors = false;
                         let meshCount = 0;
+                        const glbComponents = [];
                         root.traverse((node) => {
                             if (!node.isMesh || !node.geometry) {
                                 return;
@@ -227,6 +334,11 @@ export function initMeshViewer(containerEl) {
                                 opacity: baseAlpha,
                                 depthWrite: baseAlpha >= 0.99,
                             });
+                            glbComponents.push({
+                                key: node.uuid,
+                                name: node.name || `mesh_${node.id}`,
+                                mesh: node,
+                            });
                         });
 
                         if (meshCount === 0) {
@@ -241,13 +353,16 @@ export function initMeshViewer(containerEl) {
                             disposeObject(currentObj);
                         }
                         currentObj = root;
+                        currentGlbComponents = glbComponents;
                         scene.add(currentObj);
                         fitGlbCamera(currentObj);
+                        renderGlbControls();
 
                         if (onLoad) {
                             onLoad({
                                 hasVertexColors,
                                 attributes: hasVertexColors ? ["color"] : [],
+                                meshComponents: getMeshComponents(),
                             });
                         }
                     },
@@ -278,6 +393,7 @@ export function initMeshViewer(containerEl) {
                     scene.remove(currentObj);
                     disposeObject(currentObj);
                 }
+                clearGlbComponents();
                 const hasVertexColors = geo.hasAttribute("color");
                 const material = hasVertexColors
                     ? new MeshPhongMaterial({ vertexColors: true, side: DoubleSide, shininess: 30 })
@@ -286,10 +402,12 @@ export function initMeshViewer(containerEl) {
                 currentObj.scale.set(scale, scale, scale);
                 scene.add(currentObj);
                 frameScaledObject(size.clone().multiplyScalar(scale));
+                renderGlbControls();
                 if (onLoad) {
                     onLoad({
                         hasVertexColors,
                         attributes: Object.keys(geo.attributes || {}),
+                        meshComponents: [],
                     });
                 }
             },
@@ -302,5 +420,5 @@ export function initMeshViewer(containerEl) {
         );
     }
 
-    return { loadMesh, getViewState, setViewState, setOnControlsChange };
+    return { loadMesh, getViewState, setViewState, setOnControlsChange, setGlbControlsHost, getMeshComponents, setMeshComponentState };
 }

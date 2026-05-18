@@ -8,8 +8,7 @@ from __future__ import annotations
 
 import yaml
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared import gif_serving
