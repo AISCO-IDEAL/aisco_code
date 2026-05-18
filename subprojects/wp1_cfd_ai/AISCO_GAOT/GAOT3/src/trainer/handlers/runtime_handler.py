@@ -10,7 +10,7 @@ from typing import Any
 import torch
 import torch.distributed as dist
 
-from ...dataloader.metadata import DATASET_METADATA
+from ...dataloader.metadata import get_dataset_metadata
 from ..utils.setup import manual_seed
 
 
@@ -25,7 +25,7 @@ class RuntimeHandler:
         trainer.dataset_config = self.config["dataset"]
         trainer.optimizer_config = self.config["optimizer"]
         trainer.path_config = self.config["path"]
-        trainer.metadata = DATASET_METADATA[trainer.dataset_config["metaname"]]
+        trainer.metadata = get_dataset_metadata(trainer.dataset_config)
         self._prepare_distributed(trainer)
         manual_seed(trainer.setup_config["seed"] + trainer.setup_config["rank"])
         self._prepare_dtype(trainer)

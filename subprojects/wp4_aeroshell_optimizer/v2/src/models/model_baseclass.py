@@ -14,7 +14,7 @@ import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLoss
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import build_optimizer
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import build_optimizer, get_optimizer_telemetry
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     DebugManager,
     collect_alm_state,
@@ -112,6 +112,7 @@ class BaseModel(nn.Module):
 
         optimizer = build_optimizer(self.parameters(), training_config["training_params"])
         num_epochs = training_config["training_params"].get("num_epochs", 1000)
+        gradient_clip_norm: float | None = training_config.get("gradient_clip_norm")
 
         # Get device from model parameters since nn.Module doesn't have a .device attribute
         device = str(next(self.parameters()).device)
@@ -189,7 +190,10 @@ class BaseModel(nn.Module):
                 optimizer.step(_lbfgs_closure)
                 total_weighted_loss = _closure_captures.get("total_weighted_loss", 0.0)
                 if wandb.run:
-                    wandb.log(_closure_captures.get("pending", {}), step=epoch)
+                    wandb.log(
+                        {**_closure_captures.get("pending", {}), **get_optimizer_telemetry(optimizer)},
+                        step=epoch,
+                    )
             elif not diagnostic_mode:
                 # Performance mode: single combined backward, no per-component grad tracking.
                 # Gradient conflict tracking and per-loss wandb gradient logs are disabled.
@@ -201,7 +205,7 @@ class BaseModel(nn.Module):
                     sum(backpropable.values()).backward()
                 if wandb.run:
                     pending = getattr(loss_function, "_pending_wandb_log", {})
-                    wandb.log(pending, step=epoch)
+                    wandb.log({**pending, **get_optimizer_telemetry(optimizer)}, step=epoch)
                     loss_function._pending_wandb_log = {}
             else:
                 # Diagnostic mode: per-component backward so we can track per-loss gradient norms
@@ -264,7 +268,7 @@ class BaseModel(nn.Module):
 
                 if wandb.run:
                     pending = getattr(loss_function, "_pending_wandb_log", {})
-                    wandb.log({**pending, **grad_log_dict}, step=epoch)
+                    wandb.log({**pending, **grad_log_dict, **get_optimizer_telemetry(optimizer)}, step=epoch)
                     loss_function._pending_wandb_log = {}
 
                 if capture_conflict and per_component_grad_vectors and conflict_tracker is not None:
@@ -273,7 +277,7 @@ class BaseModel(nn.Module):
             if print_timing:
                 mode_label = "Diagnostic" if diagnostic_mode else "Performance"
                 n_losses = len(loss_function._last_weighted_losses)
-                print(f"{mode_label} mode backward {n_losses} Losses: {time.perf_counter() - t0:.4f} seconds")
+                print(f"{mode_label} forward/backward of {n_losses} Losses: {time.perf_counter() - t0:.4f} seconds")
 
             grad_norm = sum(p.grad.detach().pow(2).sum().item() for p in self.parameters() if p.grad is not None) ** 0.5
             lr = optimizer.param_groups[0]["lr"]
@@ -347,6 +351,8 @@ class BaseModel(nn.Module):
                 )
 
             if not isinstance(optimizer, torch.optim.LBFGS):
+                if gradient_clip_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), gradient_clip_norm)
                 optimizer.step()
 
             dbg.end_iteration(
