@@ -1,22 +1,36 @@
+from pathlib import Path
+
 import torch
 
 
-def get_vision_cone_mesh(id_number) -> tuple[torch.Tensor, torch.Tensor]:
-    from subprojects.wp2_assembler.version4.components.nbz import vision_nbz
-    from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config
-    from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.custom_modes.bounding_box_mode_utils import (
+def _resolve_device(device: str | torch.device | None = None) -> torch.device:
+    if device is not None:
+        resolved = torch.device(device)
+    else:
+        from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config  # noqa: PLC0415
+
+        configured_device = load_config(v="v2", cfg_name="general_config.yaml")["general_info"]["device"]
+        resolved = torch.device(configured_device)
+
+    if resolved.type == "cuda" and not torch.cuda.is_available():
+        return torch.device("cpu")
+    if resolved.type not in {"cpu", "cuda"}:
+        raise ValueError(
+            f"Invalid device specified: {resolved}. Code needs modifying if you'd like to use a different device."
+        )
+    return resolved
+
+
+def get_vision_cone_mesh(id_number: int, device: str | torch.device | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+    from subprojects.wp2_assembler.version4.components.nbz import vision_nbz  # noqa: PLC0415
+    from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.custom_modes.bounding_box_mode_utils import (  # noqa: PLC0415
         solid_to_kaolin_mesh,
     )
 
     vision_cone = vision_nbz(id_number)
-    vison_cone_solid = vision_cone.toCompound().Solids()[0]
-    print(f"vision cone: {vison_cone_solid}")
-    dev = load_config(v="v2", cfg_name="general_config.yaml")["general_info"]["device"]
-    if dev not in ["cpu", "cuda"]:
-        raise ValueError(
-            f"Invalid device specified in config: {dev}. Code needs modifying if you'd like to use a different device."
-        )
-    verts, faces = solid_to_kaolin_mesh(vison_cone_solid, device=dev)
+    vision_cone_solid = vision_cone.toCompound().Solids()[0]
+    dev = _resolve_device(device)
+    verts, faces = solid_to_kaolin_mesh(vision_cone_solid, device=str(dev))
     return verts, faces
 
 
@@ -24,112 +38,129 @@ def mesh_intersection(
     verts1: torch.Tensor, faces1: torch.Tensor, vertices2: torch.Tensor, faces2: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Compute the intersection of two meshes defined by their vertices and faces.
+    Return the faces of mesh2 whose vertices all lie inside mesh1's volume.
 
-    :param verts1: Vertices of the first mesh (N1 x 3)
-    :param faces1: Faces of the first mesh (M1 x 3)
-    :param vertices2: Vertices of the second mesh (N2 x 3)
-    :param faces2: Faces of the second mesh (M2 x 3)
-    :return: A tuple containing the vertices and faces of the intersected mesh.
+    :param verts1: Vertices of the containing mesh / vision cone (N1 x 3)
+    :param faces1: Faces of the containing mesh / vision cone (M1 x 3)
+    :param vertices2: Vertices of the mesh to clip (N2 x 3)
+    :param faces2: Faces of the mesh to clip (M2 x 3)
+    :return: Vertices and faces of mesh2 that are fully inside mesh1.
     """
-    import trimesh
+    import numpy as np  # noqa: PLC0415
 
     device = verts1.device
     dtype = verts1.dtype
+    verts2_np = vertices2.detach().cpu().numpy()
+    faces2_np = faces2.detach().cpu().numpy()
 
-    mesh1 = trimesh.Trimesh(vertices=verts1.detach().cpu().numpy(), faces=faces1.detach().cpu().numpy(), process=False)
-    mesh2 = trimesh.Trimesh(
-        vertices=vertices2.detach().cpu().numpy(), faces=faces2.detach().cpu().numpy(), process=False
+    face_mask = _face_inside_mask(verts1, faces1, vertices2, faces2)
+    selected_faces = faces2_np[face_mask]
+
+    if len(selected_faces) == 0:
+        return torch.empty((0, 3), device=device, dtype=dtype), torch.empty((0, 3), device=device, dtype=faces1.dtype)
+
+    used_idx = np.unique(selected_faces)
+    remap = np.zeros(len(verts2_np), dtype=np.int64)
+    remap[used_idx] = np.arange(len(used_idx))
+
+    new_verts = torch.as_tensor(verts2_np[used_idx], device=device, dtype=dtype)
+    new_faces = torch.as_tensor(remap[selected_faces], device=device, dtype=faces1.dtype)
+    return new_verts, new_faces
+
+
+def _face_inside_mask(
+    cone_verts: torch.Tensor, cone_faces: torch.Tensor, verts: torch.Tensor, faces: torch.Tensor
+):
+    """Return a bool mask of shape (num_faces,) — True where all 3 vertices are inside the cone."""
+    import numpy as np  # noqa: PLC0415
+    import open3d as o3d  # noqa: PLC0415
+
+    cone_o3d = o3d.t.geometry.TriangleMesh(
+        vertex_positions=o3d.core.Tensor(cone_verts.detach().cpu().numpy().astype(np.float32)),
+        triangle_indices=o3d.core.Tensor(cone_faces.detach().cpu().numpy().astype(np.int32)),
     )
-
-    result = trimesh.boolean.intersection([mesh1, mesh2])
-    if result is None or result.is_empty:
-        empty_verts = torch.empty((0, 3), device=device, dtype=dtype)
-        empty_faces = torch.empty((0, 3), device=device, dtype=faces1.dtype)
-        return empty_verts, empty_faces
-
-    if isinstance(result, trimesh.Scene):
-        result = trimesh.util.concatenate(tuple(result.geometry.values()))
-
-    verts = torch.as_tensor(result.vertices, device=device, dtype=dtype)
-    faces = torch.as_tensor(result.faces, device=device, dtype=faces1.dtype)
-    return verts, faces
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(cone_o3d)
+    inside = scene.compute_occupancy(o3d.core.Tensor(verts.detach().cpu().numpy().astype(np.float32))).numpy().astype(bool)
+    return inside[faces.detach().cpu().numpy()].all(axis=1)
 
 
-def render_vis_cone(id_number, out_path: str = "/cluster/home/aalthaus/vision_cone.glb"):
-    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils import save_scene_glb, solid_rgb
+def render_vis_cone(
+    id_number: int,
+    out_path: str | Path = "vision_cone.glb",
+    device: str | torch.device | None = None,
+) -> Path:
+    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils import save_scene_glb, solid_rgb  # noqa: PLC0415
 
-    verts, faces = get_vision_cone_mesh(id_number)
-    print(f"Vision cone vertices:\n{verts}\nVision cone faces:\n{faces}\n")
+    verts, faces = get_vision_cone_mesh(id_number, device=device)
+    print(f"Vision cone mesh: {len(verts)} vertices, {len(faces)} faces on {verts.device}")
     verts_np = verts.cpu().numpy()
-    save_scene_glb(out_path, [("vision_cone", verts_np, faces.cpu().numpy(), solid_rgb(len(verts_np), (0.9, 0.1, 0.9)))])
-    print(f"Saved to {out_path} — open with: python -m http.server 8080 (then viewer/?model={out_path})")
+    saved_path = save_scene_glb(out_path, [("vision_cone", verts_np, faces.cpu().numpy(), solid_rgb(len(verts_np), (0.9, 0.1, 0.9)))])
+    print(f"Saved to {saved_path}")
+    return saved_path
 
 
-def _box_mesh(center: tuple[float, float, float], size: float) -> tuple[torch.Tensor, torch.Tensor]:
-    x, y, z = center
-    h = size / 2
-    verts = torch.tensor(
-        [
-            [x - h, y - h, z - h],
-            [x + h, y - h, z - h],
-            [x + h, y + h, z - h],
-            [x - h, y + h, z - h],
-            [x - h, y - h, z + h],
-            [x + h, y - h, z + h],
-            [x + h, y + h, z + h],
-            [x - h, y + h, z + h],
-        ],
-        dtype=torch.float32,
+def render_intersection(
+    cone_verts: torch.Tensor,
+    cone_faces: torch.Tensor,
+    mesh_verts: torch.Tensor,
+    mesh_faces: torch.Tensor,
+    out_dir: str | Path,
+    timestamp: str,
+) -> tuple[Path, Path]:
+    """Split mesh into selected (inside cone) and non-selected faces; save as two GLBs.
+
+    Returns (selected_path, not_selected_path).
+    """
+    import numpy as np  # noqa: PLC0415
+    import trimesh  # noqa: PLC0415
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    verts_np = mesh_verts.detach().cpu().numpy()
+    faces_np = mesh_faces.detach().cpu().numpy()
+
+    mask = _face_inside_mask(cone_verts, cone_faces, mesh_verts, mesh_faces)
+
+    def _save(path: Path, face_indices: "np.ndarray", rgb: tuple[int, int, int]) -> Path:
+        used_idx = np.unique(face_indices)
+        remap = np.zeros(len(verts_np), dtype=np.int64)
+        remap[used_idx] = np.arange(len(used_idx))
+        sub_verts = verts_np[used_idx]
+        sub_faces = remap[face_indices]
+        mesh = trimesh.Trimesh(vertices=sub_verts, faces=sub_faces, process=False)
+        mesh.visual.face_colors = np.tile(np.array([*rgb, 255], dtype=np.uint8), (len(sub_faces), 1))
+        mesh.export(str(path))
+        return path
+
+    selected_faces = faces_np[mask]
+    not_selected_faces = faces_np[~mask]
+
+    sel_path = _save(out_dir / f"selected_{timestamp}.glb", selected_faces, (26, 230, 77))
+    not_sel_path = _save(out_dir / f"not_selected_{timestamp}.glb", not_selected_faces, (26, 102, 230))
+
+    print(
+        f"Saved to {out_dir}\n"
+        f"  selected (inside cone):  {mask.sum()} faces → {sel_path.name}\n"
+        f"  not selected (outside):  {(~mask).sum()} faces → {not_sel_path.name}"
     )
-    faces = torch.tensor(
-        [
-            [0, 2, 1],
-            [0, 3, 2],
-            [4, 5, 6],
-            [4, 6, 7],
-            [0, 1, 5],
-            [0, 5, 4],
-            [1, 2, 6],
-            [1, 6, 5],
-            [2, 3, 7],
-            [2, 7, 6],
-            [3, 0, 4],
-            [3, 4, 7],
-        ],
-        dtype=torch.long,
-    )
-    return verts, faces
-
-
-def _save_test_scene(out_path: str, meshes: list[tuple[str, torch.Tensor, torch.Tensor, tuple[float, float, float]]]):
-    import trimesh
-
-    scene = trimesh.Scene()
-    for name, verts, faces, rgb in meshes:
-        mesh = trimesh.Trimesh(vertices=verts.cpu().numpy(), faces=faces.cpu().numpy(), process=False)
-        color = [*rgb, 1.0]
-        mesh.visual = trimesh.visual.TextureVisuals(
-            material=trimesh.visual.material.PBRMaterial(baseColorFactor=color, doubleSided=True)
-        )
-        scene.add_geometry(mesh, geom_name=name)
-    scene.export(out_path)
+    return sel_path, not_sel_path
 
 
 if __name__ == "__main__":
-    out_path = "vision_cone_intersection_test.glb"
-    verts1, faces1 = _box_mesh(center=(0.0, 0.0, 0.0), size=2.0)
-    verts2, faces2 = _box_mesh(center=(0.7, 0.7, 0.7), size=2.0)
-    verts_i, faces_i = mesh_intersection(verts1, faces1, verts2, faces2)
+    from datetime import datetime
 
-    _save_test_scene(
-        out_path,
-        [
-            ("box_1", verts1, faces1, (0.1, 0.4, 0.9)),
-            ("box_2", verts2, faces2, (0.9, 0.5, 0.1)),
-            ("intersection", verts_i, faces_i, (0.1, 0.9, 0.3)),
-        ],
+    import trimesh
+
+    _PLY = "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/wp4_runs/9f0d75f6d9/43_solar-smoke/aero/cp_field/epoch_00030.ply"
+    mesh = trimesh.load(_PLY, force="mesh")
+    aero_verts = torch.as_tensor(mesh.vertices, dtype=torch.float32)
+    aero_faces = torch.as_tensor(mesh.faces, dtype=torch.long)
+
+    cone_verts, cone_faces = get_vision_cone_mesh(0, device="cpu")
+    render_intersection(
+        cone_verts, cone_faces, aero_verts, aero_faces,
+        out_dir="/cluster/home/fsanche/AISCO_code/local_storage_dir/wp3_vision_cone",
+        timestamp=datetime.now().strftime("%Y%m%d_%H%M%S"),
     )
-
-    print(f"Saved visual intersection test to {out_path}")
-    print("Blue/orange are the input boxes. Green is their intersection.")
