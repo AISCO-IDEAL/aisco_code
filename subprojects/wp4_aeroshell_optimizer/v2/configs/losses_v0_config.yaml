@@ -1,5 +1,5 @@
 general_info:
-  CSE: "True"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
+  CSE: "False"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
 
   # ---------------------------------------------------------------------------
@@ -20,7 +20,7 @@ general_info:
   # "linear_augmented"              : (λ + 0.5μ)·c — GINN-style; both multipliers
   #   retain 1/c amplification. ~25× stronger gradient at c≈0.01 vs quadratic.
   # Both formulas are numerically equal at c=1.0 (the loss-normalisation calibration point).
-  alm_formula: "linear_augmented"   # activate GINN-style linear penalty formula
+  alm_formula: "quadratic_augmented"   # activate GINN-style linear penalty formula
 
   # ALM parameter mapping order:
   # - Arrays are supported and can be provided in either format:
@@ -37,7 +37,7 @@ general_info:
   initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial mu(s)
   initial_nu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial nu(s)
   alpha: 0.8  # EMA decay factor for ν update
-  gamma: 0.6  # parameter for ALM penalty update
+  gamma: 1.6  # parameter for ALM penalty update
   gamma_aggressive: 1.1  # multiplicative increase factor for μ in aggressive CAPU mode
 
   enforce_projection:
@@ -98,11 +98,13 @@ general_info:
       #wheel_loss_enforce_v2:
       #  fixed_grad_scale: 0.1
       #  fixed_loss_scale: 0.000001
+      bb_inner_v1:                    # ← ADD THIS
+        fixed_grad_scale: 0.05
       bb_outer_v0:
         fixed_grad_scale: 0.008
         fixed_loss_scale: 0.00035
       bb_outer_v1:
-        fixed_grad_scale: 0.008
+        fixed_grad_scale: 0.05
         fixed_loss_scale: 0.00035
 
 losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically loads all losses with compute=1
@@ -111,7 +113,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: objective
     _sign: minimize
     _disabled_epochs: []
-    null_loss_aero: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]  # weight=50.0 is the drag surrogate constant returned by the null loss; training weight is forced to 0.0 by TotalLossV2 (is_null_loss marker)
+    null_loss_aero: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]  # weight=50.0 is the drag surrogate constant returned by the null loss; training weight is forced to 0.0 by TotalLossV2 (is_null_loss marker)
     gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
   bb_inner:
@@ -194,7 +196,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     solar_s_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
     solar_m_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MR.py"]  # multi ray
     solar_m_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MRRT.py"]  # multi ray ray tracing
-    null_loss_solar: [1, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    null_loss_solar: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
 
   diversity:
     _role: diversity
@@ -295,19 +297,19 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     # constraint violations after training don't translate into clipping of the real geometry.
     # Feasibility: inner_outward_offset_mm + outer_bottom_offset_mm must stay below
     # (seat_z − ground_clearance) ≈ 11 mm, else bb_inner and bb_outer fight each other under the seat.
-    inner_outward_offset_mm: 25.0     # BbInnerV1: outward offset along surface normals (wheels feel bigger)
-    outer_inward_offset_mm: 15.0      # BbOuterV1: inward offset on non-bottom faces (top, sides, ramps)
-    outer_bottom_offset_mm: 5.0      # BbOuterV1: inward offset on flat ground face only; keep small or 0
+    inner_outward_offset_mm: 0.0     # BbInnerV1: outward offset along surface normals (wheels feel bigger)
+    outer_inward_offset_mm: 0.0      # BbOuterV1: inward offset on non-bottom faces (top, sides, ramps)
+    outer_bottom_offset_mm: 0.0      # BbOuterV1: inward offset on flat ground face only; keep small or 0
     mask_downward_normal_threshold: 0.99  # dot(normal, -ẑ) above this counts as flat-down face
     cap_z_tolerance_mm: 0.5          # BbInnerV1: face at z < wheel_clearance + tol AND downward-normal = wheel cap (masked)
   # v4.3 analytic specific:
   analytic_options:
-    penalty: "softplus"  # "relu" (default) or "softplus"
+    penalty: "relu"  # "relu" (default) or "softplus"
     softplus_beta: 10.0  # only used when penalty="softplus"
     inner_margin: 0.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
     outer_margin: 0.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
-    inner_tolerance: 350.0  # GINN-style "satisfied" deadband on aggregated bb_inner L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
-    outer_tolerance: 190.0  # same for bb_outer
+    inner_tolerance: 0.0  # GINN-style "satisfied" deadband on aggregated bb_inner L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
+    outer_tolerance: 0.0  # same for bb_outer
     topk_fraction: 0.6  # (BbV5/BbV6) fraction of worst-violating points to include in loss reduction; 0.1 = top 10%
   # v4.sel nbz selection:
   nbz_selection: "both"  # "outer", or "both"

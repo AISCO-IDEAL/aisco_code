@@ -297,6 +297,8 @@ class DiversityTrainer:
         self._normalized_loss_history: list[dict[str, float]] = []
         self._weighted_loss_history: list[dict[str, float]] = []
         self._optimizer_loss_history: list[dict[str, float]] = []
+        # Rolling history for the gradient competition stacked-area chart (diagnostic mode only)
+        self._grad_norm_history: list[dict[str, float]] = []
 
         # Per-slot raw-loss line charts (one interactive line per slot, one chart per loss).
         # History is reset on each resample; epoch indices always store the real epoch number so
@@ -1224,11 +1226,17 @@ class DiversityTrainer:
             for k, v in log_dict.items()
             if k.startswith("optimizer_losses/") and k != "optimizer_losses/total_loss"
         }
+        grad_norm_floats: dict[str, float] = {
+            k.removeprefix("optimizer_gradients/"): v
+            for k, v in log_dict.items()
+            if k.startswith("optimizer_gradients/") and not k.startswith("optimizer_gradients/total")
+        }
         competition_log = self._log_competition_charts(
             raw_floats,
             normalized_floats,
             weighted_floats,
             optimizer_floats,
+            grad_norm_floats,
             epoch,
         )
 
@@ -1300,6 +1308,7 @@ class DiversityTrainer:
         normalized_floats: dict[str, float],
         weighted_floats: dict[str, float],
         optimizer_floats: dict[str, float],
+        grad_norm_floats: dict[str, float],
         epoch: int,
     ) -> dict[str, Any]:
         """Generate pie/bar/radar/stacked-area charts of loss shares; return dict for WandB."""
@@ -1310,6 +1319,8 @@ class DiversityTrainer:
         self._normalized_loss_history.append(dict(normalized_floats))
         self._weighted_loss_history.append(dict(weighted_floats))
         self._optimizer_loss_history.append(dict(optimizer_floats))
+        if grad_norm_floats:
+            self._grad_norm_history.append(dict(grad_norm_floats))
 
         competition_log: dict[str, Any] = {}
 
@@ -1451,6 +1462,31 @@ class DiversityTrainer:
             fig_f.tight_layout()
             competition_log["loss_competition/stacked_area"] = wandb.Image(fig_f)
             plt.close(fig_f)
+
+        if len(self._grad_norm_history) >= 2:
+            grad_epochs_so_far = list(range(len(self._grad_norm_history)))
+            fig_g, ax_g = plt.subplots(figsize=(10, 4))
+            all_grad_k = list(dict.fromkeys(k for d in self._grad_norm_history for k in d))
+            grad_matrix = np.array([[d.get(k, 0.0) for k in all_grad_k] for d in self._grad_norm_history])
+            row_sums = grad_matrix.sum(axis=1, keepdims=True)
+            row_sums[row_sums == 0] = 1.0
+            grad_matrix_pct = grad_matrix / row_sums * 100
+            tab_colors = matplotlib.colormaps["tab10"].colors  # type: ignore[attr-defined]
+            ax_g.stackplot(
+                grad_epochs_so_far,
+                grad_matrix_pct.T,
+                labels=all_grad_k,
+                colors=[tab_colors[i % len(tab_colors)] for i in range(len(all_grad_k))],
+                alpha=0.85,
+            )
+            ax_g.set_ylabel("% share of gradient norm")
+            ax_g.set_xlabel("Epoch")
+            ax_g.set_title("Gradient Norm Competition Over Training")
+            ax_g.legend(loc="upper left", fontsize=8, ncol=2)
+            ax_g.set_ylim(0, 100)
+            fig_g.tight_layout()
+            competition_log["gradient_competition/stacked_area"] = wandb.Image(fig_g)
+            plt.close(fig_g)
 
         return competition_log
 
