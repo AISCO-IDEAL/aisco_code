@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
@@ -12,6 +13,7 @@ from fastapi.templating import Jinja2Templates
 
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
+from subprojects.wp7_gui.v3.shared.panel_visibility import load_panel_visibility_defaults
 from subprojects.wp7_gui.v3.shared.pretraining import PretrainingService
 from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, get_storage_root_for_session, list_all_runs
 
@@ -48,6 +50,9 @@ def viewer_index(request: Request):
             "active_mode": "viewer",
             "active_page": "runs",
             "page_title": "Viewer — Runs",
+            "panel_visibility_defaults_json": json.dumps(
+                load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)
+            ),
         },
     )
 

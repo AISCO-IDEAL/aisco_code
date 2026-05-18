@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
 from subprojects.wp7_gui.v3.shared.assembly_selection import AssemblySelectionService
 from subprojects.wp7_gui.v3.shared.config_overrides import ConfigOverrideManager
+from subprojects.wp7_gui.v3.shared.panel_visibility import load_panel_visibility_defaults
 from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, detect_current_run_dir
 
 router = APIRouter(prefix="/launcher", tags=["launcher"])
@@ -140,6 +142,9 @@ def launcher_index(request: Request, pipeline: str = "live"):
             "active_page": "config-overrides",
             "page_title": "Launcher",
             "pipeline": pipeline,
+            "panel_visibility_defaults_json": json.dumps(
+                load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)
+            ),
         },
     )
 
@@ -157,6 +162,9 @@ def launcher_subpage(request: Request, page_key: str, pipeline: str = "live"):
             "active_page": page_key,
             "page_title": title,
             "pipeline": pipeline,
+            "panel_visibility_defaults_json": json.dumps(
+                load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)
+            ),
         },
     )
 

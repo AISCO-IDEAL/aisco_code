@@ -66,14 +66,9 @@
 <script>
     const VIEWER_API = "/viewer/api";
     const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260518_4";
-    const DISCOVERED_DEFAULT_VISIBLE = false;
-    const PANEL_DEFAULTS = {
-        runs: {
-            panel_cp_field: { label: "Cp Field", defaultVisible: true },
-            panel_mesh_shape: { label: "Aeroshell Mesh", defaultVisible: true },
-            panel_mesh_shape_glb: { label: "Aeroshell Mesh GLB", defaultVisible: false },
-        },
-    };
+    const PANEL_VISIBILITY_DEFAULTS = {{ panel_visibility_defaults_json | safe }};
+    const DISCOVERED_DEFAULT_VISIBLE = !!PANEL_VISIBILITY_DEFAULTS.discovered_default_visible;
+    const PANEL_DEFAULTS = PANEL_VISIBILITY_DEFAULTS.viewer;
 
     const runSelectEl = document.getElementById("runSelect");
     const runCountEl = document.getElementById("runCount");
