@@ -73,7 +73,7 @@ def compute_sdf_parameter_influence(
         def _chunk_forward(params: dict[str, torch.Tensor]) -> torch.Tensor:
             return _forward_with(params, points)  # Noqa:B023
 
-        _base_values, jvp_raw = torch.func.jvp(_chunk_forward, (base_params,), (raw_tangent,))
+        _base_values, jvp_raw = torch.func.jvp(_chunk_forward, (base_params,), (raw_tangent,))  # type: ignore[misc]
         jvp_raw_chunks.append(jvp_raw.detach())
 
         with torch.no_grad():
