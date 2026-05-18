@@ -735,16 +735,10 @@ class DiversityTrainer:
         each divided by N as in the mean path), then backwards once through the
         full combined loss. Memory cost scales ~N× over the mean path.
         """
-        if not self._l2_grad_log_warned:
-            print(
-                "[DiversityTrainer] l2_norm aggregation: per-component grad-norm and "
-                "conflict-vector logging not available; logging zeros."
-            )
-            self._l2_grad_log_warned = True
-
         N = self._population_size
         use_alm = self._alm_manager is not None
         summed_log_data: dict[str, float] = {}
+        per_loss_gradient_log_data: dict[str, float] = {}
         per_slot_log_data: dict[str, float] = {}
         per_slot_grad_payloads: list[tuple[int, dict[str, Any] | None]] = []
         total_loss_val: float = 0.0
@@ -753,7 +747,7 @@ class DiversityTrainer:
         active_constraint_cats: list[str] = []
         active_constraint_indices: list[int] = []
         per_z_c_scaled: list[list[Tensor]] = []
-        per_z_non_alm: list[Tensor] = []
+        non_alm_component_terms: dict[str, Tensor] = {}
 
         t0 = time.perf_counter()
         for i in range(N):
@@ -784,11 +778,14 @@ class DiversityTrainer:
             result = self._total_loss.weight(
                 bundle, alm_manager=self._alm_manager, return_components=True, norm_manager=self._norm_manager
             )
-            non_alm = sum(
-                (v for k, v in result.components.items() if not k.startswith("alm_")),
-                torch.tensor(0.0, device=self._device),
-            )
-            per_z_non_alm.append(non_alm)
+            for component_name, component_tensor in result.components.items():
+                if component_name.startswith("alm_"):
+                    continue
+                scaled_component = component_tensor / N
+                if component_name in non_alm_component_terms:
+                    non_alm_component_terms[component_name] = non_alm_component_terms[component_name] + scaled_component
+                else:
+                    non_alm_component_terms[component_name] = scaled_component
 
             total_loss_val += result.log_data.get("raw_losses/total_loss", result.scalar.item())
             for log_k, log_v in result.log_data.items():
@@ -800,7 +797,7 @@ class DiversityTrainer:
             self._vis_manager.set_active_slot(None)
 
         aggregated_constraints: list[Tensor] | None = None
-        alm_penalty: Tensor = torch.tensor(0.0, device=self._device)
+        alm_component_terms: dict[str, Tensor] = {}
         c_l2_live: list[Tensor] = []
         if use_alm and active_constraint_cats:
             assert self._alm_manager is not None
@@ -816,14 +813,52 @@ class DiversityTrainer:
                 grad_scale = self._norm_manager.get_grad_scale(f"alm_{c_name}")
                 if _use_linear_formula:
                     # (λ + 0.5μ)·c — GINN-style; both multipliers amplify at 1/c near convergence
-                    alm_penalty = alm_penalty + grad_scale * (lam + 0.5 * mu) * c_l2_live[k]
+                    alm_component_terms[f"alm_{c_name}"] = grad_scale * (lam + 0.5 * mu) * c_l2_live[k]
                 else:
                     # λ·c + 0.5μ·c² — standard quadratic ALM
-                    alm_penalty = alm_penalty + grad_scale * (lam * c_l2_live[k] + 0.5 * mu * c_l2_live[k].pow(2))
+                    alm_component_terms[f"alm_{c_name}"] = grad_scale * (lam * c_l2_live[k] + 0.5 * mu * c_l2_live[k].pow(2))
             aggregated_constraints = [c.detach() for c in c_l2_live]
 
-        non_alm_total = sum(per_z_non_alm, torch.tensor(0.0, device=self._device)) / N
-        (alm_penalty + non_alm_total).backward()
+        component_terms: dict[str, Tensor] = {}
+        component_terms.update(non_alm_component_terms)
+        component_terms.update(alm_component_terms)
+
+        trainable_params = [p for p in self._model.parameters() if p.requires_grad]
+        accumulated_grads: list[Tensor | None] = [None for _ in trainable_params]
+
+        component_items = list(component_terms.items())
+        for component_index, (component_name, component_tensor) in enumerate(component_items):
+            if not component_tensor.requires_grad:
+                per_loss_gradient_log_data[f"optimizer_gradients/{component_name}"] = 0.0
+                continue
+
+            grads = torch.autograd.grad(
+                component_tensor,
+                trainable_params,
+                retain_graph=component_index < len(component_items) - 1,
+                create_graph=False,
+                allow_unused=True,
+            )
+            grad_sq_sum = 0.0
+            for param_idx, grad in enumerate(grads):
+                if grad is None:
+                    continue
+                grad_detached = grad.detach()
+                current_accum = accumulated_grads[param_idx]
+                if current_accum is None:
+                    accumulated_grads[param_idx] = grad_detached.clone()
+                else:
+                    accumulated_grads[param_idx] = current_accum + grad_detached
+                grad_sq_sum += float(grad_detached.pow(2).sum().item())
+            per_loss_gradient_log_data[f"optimizer_gradients/{component_name}"] = grad_sq_sum**0.5
+
+        for param_idx, param in enumerate(trainable_params):
+            param.grad = accumulated_grads[param_idx]
+
+        for component_name in component_terms:
+            key = f"optimizer_gradients/{component_name}"
+            if key not in per_loss_gradient_log_data:
+                per_loss_gradient_log_data[key] = 0.0
 
         if self._print_timing:
             print(f"L2 single-pass backward: {time.perf_counter() - t0:.4f} seconds")
@@ -834,7 +869,7 @@ class DiversityTrainer:
             aggregated_constraints,
             avg_log_data,
             active_constraint_indices,
-            {},
+            per_loss_gradient_log_data,
             None,
             per_slot_log_data,
             per_slot_grad_payloads,
@@ -866,16 +901,10 @@ class DiversityTrainer:
         between the two passes. Recommended: keep `bb`-style mesh sampling fixed
         across an epoch (done at _setup), and treat any unexpected drift as a bug.
         """
-        if not self._l2_grad_log_warned:
-            print(
-                "[DiversityTrainer] l2_norm aggregation: per-component grad-norm and "
-                "conflict-vector logging not available; logging zeros."
-            )
-            self._l2_grad_log_warned = True
-
         N = self._population_size
         use_alm = self._alm_manager is not None
         summed_log_data: dict[str, float] = {}
+        per_loss_gradient_log_data: dict[str, float] = {}
         per_slot_log_data: dict[str, float] = {}
         per_slot_grad_payloads: list[tuple[int, dict[str, Any] | None]] = []
         total_loss_val: float = 0.0
@@ -884,6 +913,9 @@ class DiversityTrainer:
         active_constraint_cats: list[str] = []
         active_constraint_indices: list[int] = []
         c_per_z_detached: list[list[Tensor]] = []
+        trainable_params = [p for p in self._model.parameters() if p.requires_grad]
+        total_grad_accum: list[Tensor | None] = [None for _ in trainable_params]
+        component_grad_accum: dict[str, list[Tensor | None]] = {}
 
         t0 = time.perf_counter()
         # Pass 1 — forward to collect detached c values (with loss_scale applied).
@@ -947,19 +979,43 @@ class DiversityTrainer:
             result = self._total_loss.weight(
                 bundle, alm_manager=self._alm_manager, return_components=True, norm_manager=self._norm_manager
             )
-            non_alm = sum(
-                (v for k, v in result.components.items() if not k.startswith("alm_")),
-                torch.tensor(0.0, device=self._device),
-            )
+            component_terms: dict[str, Tensor] = {}
+            for component_name, component_tensor in result.components.items():
+                if component_name.startswith("alm_"):
+                    continue
+                component_terms[component_name] = component_tensor / N
 
-            alm_term: Tensor = torch.tensor(0.0, device=self._device)
             if use_alm and num_c > 0:
                 for k, cat in enumerate(active_constraint_cats):
                     c_name = self._total_loss._constraint_by_category[cat][0]
                     c_live_scaled = bundle.constraints[cat] * self._norm_manager.get_loss_scale(c_name)
-                    alm_term = alm_term + weights[i][k] * c_live_scaled
+                    component_terms[f"alm_{c_name}"] = weights[i][k] * c_live_scaled
 
-            (alm_term + non_alm / N).backward()
+            component_items = list(component_terms.items())
+            for component_index, (component_name, component_tensor) in enumerate(component_items):
+                if component_name not in component_grad_accum:
+                    component_grad_accum[component_name] = [None for _ in trainable_params]
+                if not component_tensor.requires_grad:
+                    continue
+                grads = torch.autograd.grad(
+                    component_tensor,
+                    trainable_params,
+                    retain_graph=component_index < len(component_items) - 1,
+                    create_graph=False,
+                    allow_unused=True,
+                )
+                for param_idx, grad in enumerate(grads):
+                    if grad is None:
+                        continue
+                    grad_detached = grad.detach()
+                    total_current = total_grad_accum[param_idx]
+                    total_grad_accum[param_idx] = (
+                        grad_detached.clone() if total_current is None else total_current + grad_detached
+                    )
+                    component_current = component_grad_accum[component_name][param_idx]
+                    component_grad_accum[component_name][param_idx] = (
+                        grad_detached.clone() if component_current is None else component_current + grad_detached
+                    )
 
             total_loss_val += result.log_data.get("raw_losses/total_loss", result.scalar.item())
             for log_k, log_v in result.log_data.items():
@@ -969,6 +1025,21 @@ class DiversityTrainer:
 
         if self._vis_manager is not None:
             self._vis_manager.set_active_slot(None)
+
+        for param_idx, param in enumerate(trainable_params):
+            grad_value = total_grad_accum[param_idx]
+            if grad_value is None:
+                param.grad = torch.zeros_like(param)
+            else:
+                assert grad_value is not None
+                param.grad = grad_value
+
+        for component_name, grad_list in component_grad_accum.items():
+            grad_sq_sum = 0.0
+            for component_grad in grad_list:
+                if component_grad is not None:
+                    grad_sq_sum += float(component_grad.pow(2).sum().item())
+            per_loss_gradient_log_data[f"optimizer_gradients/{component_name}"] = grad_sq_sum**0.5
 
         if self._print_timing:
             print(f"L2 two-pass backward: {time.perf_counter() - t0:.4f} seconds")
@@ -980,7 +1051,7 @@ class DiversityTrainer:
             aggregated_constraints,
             avg_log_data,
             active_constraint_indices,
-            {},
+            per_loss_gradient_log_data,
             None,
             per_slot_log_data,
             per_slot_grad_payloads,
