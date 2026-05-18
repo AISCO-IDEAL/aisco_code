@@ -38,6 +38,28 @@ mode:
   print_timing: true  # print backward timing per epoch (useful when benchmarking performance vs diagnostic mode)
 
 # ===========================================================================
+# Gradient clipping (plan 003 — M2: AutoClip)
+# Controls how gradient norms are clipped before each optimizer step.
+# ---------------------------------------------------------------------------
+# mode:
+#   "static"   — fixed clip at static_clip_norm (legacy behaviour, backward-compatible)
+#   "autoclip" — adaptive 80th-percentile of recent gradient norm history (GINN-style)
+#   "none"     — no gradient clipping
+#
+# static_clip_norm: fallback clip value during AutoClip warm-up (first auto_clip_min_len epochs)
+#   and the sole clip value when mode="static". Should match the previous gradient_clip_norm value.
+# auto_clip_percentile: fraction of history to use as threshold (0.8 = 80th percentile)
+# auto_clip_hist_len:   number of gradient norm observations to keep in rolling buffer
+# auto_clip_min_len:    warm-up epochs before switching from static fallback to adaptive threshold
+# ===========================================================================
+gradient_clipping:
+  mode: "autoclip"           # "static" | "autoclip" | "none"
+  static_clip_norm: 100      # warm-up fallback (first 50 epochs) and static mode value
+  auto_clip_percentile: 0.8
+  auto_clip_hist_len: 50
+  auto_clip_min_len: 50
+
+# ===========================================================================
 # GINN / Diversity parameters (merged from GINN.yaml)
 # ===========================================================================
 

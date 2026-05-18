@@ -41,6 +41,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_v
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_v2 import (
     CentralVisManagerV2,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.autoclip import AutoClip
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import build_optimizer, get_optimizer_telemetry
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.visualizer import CADVisualizer
@@ -77,6 +78,7 @@ class DiversityTrainer:
         z_resample_start_epoch: int = 0,
         z_resample_stop_epoch: int = -1,
         gradient_clip_norm: float | None = None,
+        autoclip_config: dict | None = None,
         renderer_manager: VisualisationManager | None = None,
         rendering_freq: int | None = None,
         use_neural_renderer: bool = False,
@@ -110,7 +112,15 @@ class DiversityTrainer:
             gradient_clip_norm: If set, clips the total parameter gradient L2-norm to this
                 value before each optimizer step.  Prevents gradient explosion when eikonal
                 or other losses produce large step sizes on the first few epochs.  ``None``
-                (default) disables clipping (legacy behaviour).            diversity_manager: Optional population-level diversity manager. Set to
+                (default) disables clipping (legacy behaviour).  Superseded by
+                ``autoclip_config`` when both are provided.
+            autoclip_config: Optional dict from the ``gradient_clipping`` sub-key of
+                ``training_config.yaml``.  When provided, an :class:`AutoClip` instance
+                is constructed from it, and ``gradient_clip_norm`` is used only as the
+                fallback value for the warm-up period.  When ``None`` and
+                ``gradient_clip_norm`` is set, a static-clip AutoClip is created that
+                exactly reproduces the legacy behaviour.
+            diversity_manager: Optional population-level diversity manager. Set to
                 ``None`` to skip Phase 2 entirely.
             diversity_num_points / diversity_bbox_scale_factor / norm_order / neighbor_agg_fn: trainer-level
                 sampling params passed to the diversity manager compute call.
@@ -257,7 +267,30 @@ class DiversityTrainer:
             self._model_optimizer: Optimizer = build_optimizer(self._model.parameters(), optimizer_config)
         else:
             self._model_optimizer = torch.optim.Adam(self._model.parameters(), lr=model_lr)
-        self._gradient_clip_norm: float | None = gradient_clip_norm if gradient_clip_norm and gradient_clip_norm > 0 else None
+
+        # Gradient clipping: build AutoClip instance.
+        # Priority:  autoclip_config dict  >  gradient_clip_norm float  >  no clipping.
+        if autoclip_config is not None:
+            # Override the fallback_clip in config with gradient_clip_norm when explicitly given,
+            # so the warm-up period uses the caller-specified value rather than the YAML default.
+            if gradient_clip_norm is not None and gradient_clip_norm > 0:
+                _cfg = dict(autoclip_config)
+                _cfg.setdefault("static_clip_norm", gradient_clip_norm)
+            else:
+                _cfg = autoclip_config
+            self._autoclip: AutoClip = AutoClip.from_config(_cfg)
+        elif gradient_clip_norm is not None and gradient_clip_norm > 0:
+            # Legacy scalar: emulate static clipping via AutoClip (never-triggered adaptive)
+            self._autoclip = AutoClip(
+                percentile=0.8,
+                hist_len=50,
+                min_len=2**31,
+                fallback_clip=gradient_clip_norm,
+                enabled=True,
+            )
+        else:
+            # No clipping
+            self._autoclip = AutoClip(enabled=False)
 
         # Rolling history for the stacked-area competition chart
         self._raw_loss_history: list[dict[str, float]] = []
@@ -772,13 +805,19 @@ class DiversityTrainer:
             for k in range(len(active_constraint_cats)):
                 c_stack = torch.stack([per_z_c_scaled[i][k] for i in range(N)])
                 c_l2_live.append(torch.sqrt(c_stack.pow(2).sum() + 1e-12))
+            _use_linear_formula = getattr(self._alm_manager, "_alm_formula", "quadratic_augmented") == "linear_augmented"
             for k, cat in enumerate(active_constraint_cats):
                 c_name = self._total_loss._constraint_by_category[cat][0]
                 idx = active_constraint_indices[k]
                 lam = self._alm_manager.lamdas[idx].detach().squeeze()
                 mu = self._alm_manager.mus[idx].detach().squeeze()
                 grad_scale = self._norm_manager.get_grad_scale(f"alm_{c_name}")
-                alm_penalty = alm_penalty + grad_scale * (lam * c_l2_live[k] + 0.5 * mu * c_l2_live[k].pow(2))
+                if _use_linear_formula:
+                    # (λ + 0.5μ)·c — GINN-style; both multipliers amplify at 1/c near convergence
+                    alm_penalty = alm_penalty + grad_scale * (lam + 0.5 * mu) * c_l2_live[k]
+                else:
+                    # λ·c + 0.5μ·c² — standard quadratic ALM
+                    alm_penalty = alm_penalty + grad_scale * (lam * c_l2_live[k] + 0.5 * mu * c_l2_live[k].pow(2))
             aggregated_constraints = [c.detach() for c in c_l2_live]
 
         non_alm_total = sum(per_z_non_alm, torch.tensor(0.0, device=self._device)) / N
@@ -870,6 +909,7 @@ class DiversityTrainer:
             for k in range(num_c):
                 c_stack = torch.stack([c_per_z_detached[i][k] for i in range(N)])
                 c_l2_detached.append(torch.sqrt(c_stack.pow(2).sum() + 1e-12))
+            _use_linear_formula = getattr(self._alm_manager, "_alm_formula", "quadratic_augmented") == "linear_augmented"
             weights = [[torch.zeros((), device=self._device) for _ in range(num_c)] for _ in range(N)]
             for k, cat in enumerate(active_constraint_cats):
                 c_name = self._total_loss._constraint_by_category[cat][0]
@@ -877,7 +917,12 @@ class DiversityTrainer:
                 lam = self._alm_manager.lamdas[idx].detach().squeeze()
                 mu = self._alm_manager.mus[idx].detach().squeeze()
                 grad_scale = self._norm_manager.get_grad_scale(f"alm_{c_name}")
-                factor = (lam / c_l2_detached[k] + mu) * grad_scale  # scalar
+                if _use_linear_formula:
+                    # Gradient of (λ + 0.5μ)·‖c‖₂ w.r.t. c_i = (λ + 0.5μ) / ‖c‖₂ · c_i
+                    factor = (lam + 0.5 * mu) / c_l2_detached[k] * grad_scale  # scalar
+                else:
+                    # Gradient of λ·‖c‖ + 0.5μ·‖c‖² w.r.t. c_i = (λ/‖c‖ + μ) · c_i
+                    factor = (lam / c_l2_detached[k] + mu) * grad_scale  # scalar
                 for i in range(N):
                     weights[i][k] = c_per_z_detached[i][k] * factor
 
@@ -1009,8 +1054,9 @@ class DiversityTrainer:
                     diversity_result.weighted.backward(retain_graph=False)
                     _captured["diversity"] = diversity_result
 
-                if self._gradient_clip_norm is not None:
-                    torch.nn.utils.clip_grad_norm_(self._model.parameters(), self._gradient_clip_norm)
+                if not math.isinf(self._autoclip.get_clip_value()):
+                    raw_norm = torch.nn.utils.clip_grad_norm_(self._model.parameters(), self._autoclip.get_clip_value())
+                    self._autoclip.update(float(raw_norm))
                 return torch.tensor(_captured["phase1"][0], dtype=torch.float32, device=self._device)
 
             self._model_optimizer.step(closure)
@@ -1082,8 +1128,13 @@ class DiversityTrainer:
             elif self._diversity_manager is not None and self._diversity_manager.enabled:
                 per_loss_gradient_log_data[f"optimizer_gradients/{self._diversity_manager.loss_name}"] = 0.0
 
-            if self._gradient_clip_norm is not None:
-                torch.nn.utils.clip_grad_norm_(self._model.parameters(), self._gradient_clip_norm)
+            clip_threshold = self._autoclip.get_clip_value()
+            if not math.isinf(clip_threshold):
+                raw_norm = torch.nn.utils.clip_grad_norm_(self._model.parameters(), clip_threshold)
+                self._autoclip.update(float(raw_norm))
+                per_loss_gradient_log_data["grad/total_norm_pre_clip"] = float(raw_norm)
+                per_loss_gradient_log_data["grad/total_norm_post_clip"] = float(min(raw_norm, clip_threshold))
+                per_loss_gradient_log_data["grad/clip_threshold"] = float(clip_threshold)
 
             self._model_optimizer.step()
 

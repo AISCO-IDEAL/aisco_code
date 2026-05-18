@@ -92,8 +92,43 @@ class ALMManager:
         self.alpha: float = gi.get("alpha", 0.99)
         self.gamma: float = gi.get("gamma", 0.01)
         self.gamma_aggressive: float = gi.get("gamma_aggressive", 1.1)
-        self.use_alm_aggressive: bool = gi.get("ALM_aggressive") == "True"
+
+        # ALM_mode (new key) takes precedence over the legacy ALM_aggressive boolean.
+        # Supported modes:
+        #   "aggressive"  -- multiplicative mu ramp (original CAPU behaviour)
+        #   "adaptive"    -- mu = gamma/sqrt(nu) (GINN-style, proportional to violation level)
+        #   "classic"     -- legacy Berzins RMS path (same as adaptive but name kept for compat)
+        _alm_mode: str | None = gi.get("ALM_mode")
+        _alm_aggressive_legacy: bool = gi.get("ALM_aggressive") == "True"
+        if _alm_mode is not None:
+            _valid_alm_modes = ("aggressive", "adaptive", "classic")
+            if _alm_mode not in _valid_alm_modes:
+                raise ValueError(
+                    f"ALM_mode '{_alm_mode}' is not recognised. "
+                    f"Valid values: {_valid_alm_modes}. "
+                    "Set ALM_mode in the general_info section of your losses config."
+                )
+            self.use_alm_aggressive: bool = _alm_mode == "aggressive"
+        else:
+            # Backward-compatible: read legacy boolean flag
+            self.use_alm_aggressive = _alm_aggressive_legacy
+
         self.alm_aggressive_capu: float = gi.get("ALM_aggressive_capu", 0.25)
+
+        # ALM penalty formula.
+        # "quadratic_augmented" (default): λ·c + 0.5·μ·c² — standard ALM
+        # "linear_augmented"              : (λ + 0.5·μ)·c  — GINN-style; both λ and μ terms
+        #                                   amplify at 1/c near convergence.
+        # Both formulas are equal at c=1 (calibration point); linear is stronger at c<1.
+        _alm_formula: str = gi.get("alm_formula", "quadratic_augmented")
+        _valid_alm_formulas = ("quadratic_augmented", "linear_augmented")
+        if _alm_formula not in _valid_alm_formulas:
+            raise ValueError(
+                f"alm_formula '{_alm_formula}' is not recognised. "
+                f"Valid values: {_valid_alm_formulas}. "
+                "Set alm_formula in the general_info section of your losses config."
+            )
+        self._alm_formula: str = _alm_formula
 
         alm_thresholds = gi.get("alm_thresholds")
         if alm_thresholds is None:
@@ -158,7 +193,21 @@ class ALMManager:
     ) -> dict[str, torch.Tensor]:
         """
         Compute the ALM penalty independently per constraint without updating state.
-        Formula: lambda * c + 0.5 * mu * c^2
+
+        Two formulas are available, selected at construction via ``alm_formula`` in the
+        losses config ``general_info`` block:
+
+        * ``"quadratic_augmented"`` (default, backward-compatible):
+            penalty = λ·c + 0.5·μ·c²
+            Gradient w.r.t. c: λ + μ·c  → only λ term amplifies at 1/c near convergence.
+
+        * ``"linear_augmented"`` (GINN-style):
+            penalty = (λ + 0.5·μ)·c
+            Gradient w.r.t. c: (λ + 0.5·μ)  → equivalent to (λ + 0.5·μ)/c × c.
+            Both λ and μ terms contribute 1/c amplification near zero; 25× stronger
+            than quadratic at typical late-training values (c≈0.01, λ≈100, μ≈10000).
+
+        Both formulas are numerically equivalent at c = 1.0 (the calibration point).
 
         Args:
             constraints: List of Tensors, one tensor per active constraint, in the order of active_indices.
@@ -172,7 +221,12 @@ class ALMManager:
             ci: torch.Tensor = constraints[j]
             lam_i: torch.Tensor = self.lamdas[i].detach().clone()
             mu_i: torch.Tensor = self.mus[i].detach().clone()
-            penalties[f"alm_{cname}"] = lam_i * ci + 0.5 * mu_i * ci**2
+            if self._alm_formula == "linear_augmented":
+                # (λ + 0.5μ)·c — both multipliers amplify near convergence
+                penalties[f"alm_{cname}"] = (lam_i + 0.5 * mu_i) * ci
+            else:
+                # λ·c + 0.5μ·c² — standard quadratic ALM (default)
+                penalties[f"alm_{cname}"] = lam_i * ci + 0.5 * mu_i * ci**2
         return penalties
 
     def update_multipliers(self, constraints: list[torch.Tensor], active_indices: list[int] | None = None) -> None:

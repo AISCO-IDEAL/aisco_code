@@ -1,9 +1,27 @@
 general_info:
   CSE: "True"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
-  ALM_aggressive: "True" # capu version of ALM
+
+  # ---------------------------------------------------------------------------
+  # ALM mode (plan 003 — M3): controls μ update dynamics.
+  # "aggressive" — original CAPU mode: μ grows ×1.1/epoch until cap (reaches 10000 at ~epoch 95).
+  # "adaptive"   — GINN-style: μ = γ/√ν, proportional to constraint violation level.
+  # "classic"    — legacy Berzins RMS path (alias for adaptive, kept for backward compat).
+  # The legacy boolean ALM_aggressive is read when ALM_mode is absent (backward compat).
+  ALM_mode: "adaptive"              # activate GINN-style adaptive μ
+  ALM_aggressive: "False"           # kept for backward compat; overridden by ALM_mode above
 
   ALM_aggressive_capu: 0.2 # has constraint decreased sufficiently threshold, only used when ALM_aggressive=True. # weights.py: self.use_alm_aggressive
+
+  # ---------------------------------------------------------------------------
+  # ALM penalty formula (plan 003 — M1).
+  # "quadratic_augmented" (default): λ·c + 0.5μ·c² — standard ALM; μ term loses 1/c
+  #   amplification near convergence.
+  # "linear_augmented"              : (λ + 0.5μ)·c — GINN-style; both multipliers
+  #   retain 1/c amplification. ~25× stronger gradient at c≈0.01 vs quadratic.
+  # Both formulas are numerically equal at c=1.0 (the loss-normalisation calibration point).
+  alm_formula: "linear_augmented"   # activate GINN-style linear penalty formula
+
   # ALM parameter mapping order:
   # - Arrays are supported and can be provided in either format:
   #   (a) ACTIVE constraint order (only currently enabled constraints), or
@@ -306,8 +324,8 @@ cfd:
   mesh_resolution: 50000  # Default: 50000        Recomendation: Has to Match the Value used during respective GAOT-Training
   gradient_max: 0.001       # Options: any float    Recomendation: 0.1
   pressure_integration_mode: "face" # "sdf_vertex_constant_area"
-  pressure_integration_detach_sdf_normals: false 
-  pressure_backprop_mode: "geometry_only"  # Options: pressure_backprop_mode: "full", "geometry_only", "geometry_area_only", "geometry_normal_only" 
+  pressure_integration_detach_sdf_normals: false
+  pressure_backprop_mode: "geometry_only"  # Options: pressure_backprop_mode: "full", "geometry_only", "geometry_area_only", "geometry_normal_only"
   cp_smoothing:
     enabled: true
     preserve_drag: false
@@ -330,8 +348,8 @@ cfd_local:
   mesh_resolution: 50000  # Default: 50000        Recomendation: Has to Match the Value used during respective GAOT-Training
   gradient_max: 0.001       # Options: any float    Recomendation: 0.1
   pressure_integration_mode: "face" # "sdf_vertex_constant_area"
-  pressure_integration_detach_sdf_normals: false 
-  pressure_backprop_mode: "geometry_only"  # Options: pressure_backprop_mode: "full", "geometry_only", "geometry_area_only", "geometry_normal_only" 
+  pressure_integration_detach_sdf_normals: false
+  pressure_backprop_mode: "geometry_only"  # Options: pressure_backprop_mode: "full", "geometry_only", "geometry_area_only", "geometry_normal_only"
   cp_smoothing:
     enabled: true
     preserve_drag: false
