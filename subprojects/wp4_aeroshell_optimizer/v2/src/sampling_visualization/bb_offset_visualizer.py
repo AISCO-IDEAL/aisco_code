@@ -43,9 +43,23 @@ _DEFAULT_CONFIG_PATH = Path(__file__).parents[2] / "configs" / "losses_v0_config
 _TRACE_SPECS: list[dict] = [
     {"key": "inner_raw", "name": "inner raw", "color": "purple", "size": 1.5, "opacity": 1.0, "group": "inner"},
     {"key": "inner_offset", "name": "inner loss (offset)", "color": "red", "size": 2.0, "opacity": 0.8, "group": "inner"},
-    {"key": "inner_masked", "name": "inner masked-out (wheel cap)", "color": "black", "size": 2.5, "opacity": 1.0, "group": "inner"},
+    {
+        "key": "inner_masked",
+        "name": "inner masked-out (wheel cap)",
+        "color": "black",
+        "size": 2.5,
+        "opacity": 1.0,
+        "group": "inner",
+    },
     {"key": "outer_raw", "name": "outer raw", "color": "green", "size": 1.5, "opacity": 0.6, "group": "outer"},
-    {"key": "outer_offset_sides", "name": "outer loss — sides", "color": "darkblue", "size": 1.8, "opacity": 1.0, "group": "outer"},
+    {
+        "key": "outer_offset_sides",
+        "name": "outer loss — sides",
+        "color": "darkblue",
+        "size": 1.8,
+        "opacity": 1.0,
+        "group": "outer",
+    },
     {"key": "outer_offset_bottom", "name": "outer loss — bottom", "color": "cyan", "size": 1.8, "opacity": 1.0, "group": "outer"},
 ]
 
@@ -56,17 +70,34 @@ def _outer_prism_wireframe() -> go.Scatter3d:
     y0, y1 = p["y"]
     z0, z1 = p["z"]
     corners = [
-        (x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0), (x0, y0, z0),
-        (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1), (x0, y0, z1),
+        (x0, y0, z0),
+        (x1, y0, z0),
+        (x1, y1, z0),
+        (x0, y1, z0),
+        (x0, y0, z0),
+        (x0, y0, z1),
+        (x1, y0, z1),
+        (x1, y1, z1),
+        (x0, y1, z1),
+        (x0, y0, z1),
         (None, None, None),
-        (x1, y0, z0), (x1, y0, z1), (None, None, None),
-        (x1, y1, z0), (x1, y1, z1), (None, None, None),
-        (x0, y1, z0), (x0, y1, z1),
+        (x1, y0, z0),
+        (x1, y0, z1),
+        (None, None, None),
+        (x1, y1, z0),
+        (x1, y1, z1),
+        (None, None, None),
+        (x0, y1, z0),
+        (x0, y1, z1),
     ]
     return go.Scatter3d(
-        x=[c[0] for c in corners], y=[c[1] for c in corners], z=[c[2] for c in corners],
-        mode="lines", name="outer prism (regulatory)",
-        line={"color": "black", "width": 2}, showlegend=True,
+        x=[c[0] for c in corners],
+        y=[c[1] for c in corners],
+        z=[c[2] for c in corners],
+        mode="lines",
+        name="outer prism (regulatory)",
+        line={"color": "black", "width": 2},
+        showlegend=True,
     )
 
 
@@ -88,7 +119,9 @@ def build_figure(bb_inner: BbInnerV1, bb_outer: BbOuterV1) -> go.Figure:
         pts = data[spec["key"]].detach().cpu().numpy()
         fig.add_trace(
             go.Scatter3d(
-                x=pts[:, 0], y=pts[:, 1], z=pts[:, 2],
+                x=pts[:, 0],
+                y=pts[:, 1],
+                z=pts[:, 2],
                 mode="markers",
                 name=f"{spec['name']} (n={pts.shape[0]})",
                 marker={"size": spec["size"], "color": spec["color"], "opacity": spec["opacity"]},
