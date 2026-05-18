@@ -66,7 +66,7 @@ class BbInnerV1(BbInnerV0):
         masked_chunks: list[np.ndarray] = []
         total_sampled = 0
         for mesh, count in zip(inner_meshes, inner_counts, strict=False):
-            count = int(count)
+            count = int(count)  # noqa: PLW2901
             if count <= 0:
                 continue
             points, face_idx = trimesh.sample.sample_surface(mesh, count)
