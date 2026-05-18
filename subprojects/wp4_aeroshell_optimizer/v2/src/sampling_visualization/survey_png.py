@@ -81,7 +81,9 @@ def generate_survey_png(  # noqa: PLR0915
 
     matches = [fpath for fpath in input_dir.iterdir() if _SURVEY_PATTERN.match(fpath.name)]
     if not matches:
-        raise ValueError(f"No survey PLY files found in {input_dir}. Expected angle_XXX.ply, x_YY_y_ZZ.ply, or rRR_aAAA.ply.")
+        matches = [fpath for fpath in input_dir.iterdir() if fpath.suffix == ".ply"]
+    if not matches:
+        raise ValueError(f"No PLY files found in {input_dir}.")
 
     # Sort: if all match angle pattern, sort numerically by angle.
     # If all match grid pattern, sort by y then x index.
@@ -173,3 +175,25 @@ def generate_survey_png(  # noqa: PLR0915
         )
     )
     return output_path
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Render PLY files in a directory to a survey PNG.")
+    parser.add_argument("input_dir", type=Path, help="Directory containing PLY files.")
+    parser.add_argument("--out", type=Path, default=None, help="Output PNG path. Defaults to <input_dir>/survey.png.")
+    parser.add_argument("--layout", default="grid", choices=["strip", "grid", "pizza"], help="Thumbnail layout.")
+    parser.add_argument("--thumb_w", type=int, default=None, help="Thumbnail width in pixels.")
+    parser.add_argument("--thumb_h", type=int, default=None, help="Thumbnail height in pixels.")
+    parser.add_argument("--cam_json", type=Path, default=None, help="Optional camera_config.json override.")
+    args = parser.parse_args()
+
+    generate_survey_png(
+        input_dir=args.input_dir,
+        output_path=args.out,
+        layout=args.layout,
+        thumb_w=args.thumb_w,
+        thumb_h=args.thumb_h,
+        cam_json=args.cam_json,
+    )
