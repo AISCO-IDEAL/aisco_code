@@ -1,18 +1,39 @@
 /**
  * Shared Three.js mesh viewer — ES module.
- *
- * Loaded per-template via a dynamic import() so it participates in the
- * existing importmap that resolves "three" from the unpkg CDN:
- *
- *   import("/static/js/mesh_viewer.js").then(({ initMeshViewer }) => { ... });
- *
- * The importmap must already be present on the page (defined in the
- * template's {% block head %} before this module is imported).
  */
 
-import { PerspectiveCamera, Scene, Color, WebGLRenderer, HemisphereLight, DirectionalLight, MeshStandardMaterial, MeshPhongMaterial, Mesh, Vector3 } from "three";
+import { PerspectiveCamera, Scene, Color, WebGLRenderer, HemisphereLight, DirectionalLight, AmbientLight, MeshBasicMaterial, MeshStandardMaterial, MeshPhongMaterial, Mesh, Vector3, Box3, SRGBColorSpace, DoubleSide } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
+
+let glbConfigPromise = null;
+
+function loadGlbConfig() {
+    if (!glbConfigPromise) {
+        glbConfigPromise = fetch("/api/artifacts/glb-config", { cache: "no-store" })
+            .then((resp) => (resp.ok ? resp.json() : {}))
+            .catch(() => ({}));
+    }
+    return glbConfigPromise;
+}
+
+function buildGlbColorMap(config) {
+    return {
+        sdf_mesh: {
+            rgb: Array.isArray(config?.sdf_color) ? config.sdf_color : null,
+            alpha: typeof config?.sdf_alpha === "number" ? config.sdf_alpha : null,
+        },
+        inner_assembly: {
+            rgb: Array.isArray(config?.inner_color) ? config.inner_color : null,
+            alpha: null,
+        },
+        outer_bbox: {
+            rgb: Array.isArray(config?.outer_color) ? config.outer_color : null,
+            alpha: typeof config?.outer_alpha === "number" ? config.outer_alpha : null,
+        },
+    };
+}
 
 /**
  * Initialise a Three.js PLY viewer inside containerEl and return a load
@@ -29,17 +50,21 @@ export function initMeshViewer(containerEl) {
     camera.position.set(0, 0, 3);
 
     const renderer = new WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(containerEl.clientWidth, containerEl.clientHeight);
+    renderer.outputColorSpace = SRGBColorSpace;
     containerEl.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     let onControlsChange = null;
     let suppressControlsCallback = false;
+    let glbControlsHost = null;
 
     scene.add(new HemisphereLight(0xffffff, 0x444444, 1.0));
+    scene.add(new AmbientLight(0xffffff, 0.6));
     const dl = new DirectionalLight(0xffffff, 0.8);
-    dl.position.set(1, 1, 1);
+    dl.position.set(5, 10, 7);
     scene.add(dl);
 
     window.addEventListener("resize", () => {
@@ -49,6 +74,7 @@ export function initMeshViewer(containerEl) {
     });
 
     let currentObj = null;
+    let currentGlbComponents = [];
 
     (function animate() {
         requestAnimationFrame(animate);
@@ -95,84 +121,310 @@ export function initMeshViewer(containerEl) {
         onControlsChange = callback;
     }
 
+    function disposeObject(obj) {
+        obj.traverse((node) => {
+            if (!node.isMesh) {
+                return;
+            }
+            if (node.geometry) {
+                node.geometry.dispose();
+            }
+            const mats = Array.isArray(node.material) ? node.material : [node.material];
+            mats.forEach((m) => {
+                if (m && typeof m.dispose === "function") {
+                    m.dispose();
+                }
+            });
+        });
+    }
+
+    function clearGlbComponents() {
+        currentGlbComponents = [];
+    }
+
+    function getMeshComponents() {
+        return currentGlbComponents.map((entry) => {
+            const mats = Array.isArray(entry.mesh.material) ? entry.mesh.material : [entry.mesh.material];
+            const firstOpacity = mats.length && typeof mats[0]?.opacity === "number" ? mats[0].opacity : 1.0;
+            return {
+                key: entry.key,
+                name: entry.name,
+                visible: entry.mesh.visible,
+                opacity: firstOpacity,
+            };
+        });
+    }
+
+    function setMeshComponentState(key, nextState) {
+        const entry = currentGlbComponents.find((item) => item.key === key);
+        if (!entry || !nextState) {
+            return;
+        }
+        if (Object.prototype.hasOwnProperty.call(nextState, "visible")) {
+            entry.mesh.visible = !!nextState.visible;
+        }
+        if (Object.prototype.hasOwnProperty.call(nextState, "opacity")) {
+            const opacity = Math.min(1, Math.max(0, Number(nextState.opacity)));
+            const mats = Array.isArray(entry.mesh.material) ? entry.mesh.material : [entry.mesh.material];
+            mats.forEach((m) => {
+                if (!m) {
+                    return;
+                }
+                m.opacity = opacity;
+                m.transparent = true;
+                m.depthWrite = opacity >= 0.99;
+                m.needsUpdate = true;
+            });
+        }
+    }
+
+    function renderGlbControls() {
+        if (!glbControlsHost) {
+            return;
+        }
+        glbControlsHost.innerHTML = "";
+        const components = getMeshComponents();
+        if (!components.length) {
+            glbControlsHost.style.display = "none";
+            return;
+        }
+        glbControlsHost.style.display = "block";
+
+        components.forEach((component) => {
+            const row = document.createElement("div");
+            row.style.display = "grid";
+            row.style.gridTemplateColumns = "auto 1fr";
+            row.style.alignItems = "center";
+            row.style.columnGap = "8px";
+            row.style.rowGap = "4px";
+
+            const visible = document.createElement("input");
+            visible.type = "checkbox";
+            visible.checked = !!component.visible;
+            visible.title = "Visible";
+
+            const name = document.createElement("span");
+            name.textContent = component.name;
+            name.style.fontSize = "0.72rem";
+            name.style.whiteSpace = "nowrap";
+            name.style.overflow = "hidden";
+            name.style.textOverflow = "ellipsis";
+
+            const opacityLabel = document.createElement("span");
+            opacityLabel.textContent = "Opacity";
+            opacityLabel.style.fontSize = "0.68rem";
+            opacityLabel.style.opacity = "0.8";
+
+            const opacity = document.createElement("input");
+            opacity.type = "range";
+            opacity.min = "0";
+            opacity.max = "1";
+            opacity.step = "0.01";
+            opacity.value = String(component.opacity);
+
+            visible.addEventListener("change", () => {
+                setMeshComponentState(component.key, { visible: visible.checked });
+            });
+            opacity.addEventListener("input", () => {
+                setMeshComponentState(component.key, { opacity: parseFloat(opacity.value) });
+            });
+
+            row.appendChild(visible);
+            row.appendChild(name);
+            row.appendChild(opacityLabel);
+            row.appendChild(opacity);
+            glbControlsHost.appendChild(row);
+        });
+    }
+
+    function setGlbControlsHost(hostEl) {
+        glbControlsHost = hostEl || null;
+        renderGlbControls();
+    }
+
+    function frameScaledObject(sizeVec) {
+        const vFovHalf = 25 * Math.PI / 180; // half of the 50° FOV
+        const aspect = containerEl.clientWidth / Math.max(containerEl.clientHeight, 1);
+        const hFovHalf = Math.atan(Math.tan(vFovHalf) * aspect);
+        const dFitW = (sizeVec.x / 2) / Math.tan(hFovHalf);
+        const dFitH = (sizeVec.y / 2) / Math.tan(vFovHalf);
+        const radius = Math.max(sizeVec.x, sizeVec.y, sizeVec.z) / 2;
+        const dFitSphere = radius > 0 ? radius / Math.sin(vFovHalf) : 2.5;
+        camera.position.set(0, 0, Math.max(dFitW, dFitH, dFitSphere) * 1.2);
+        camera.near = 0.01;
+        camera.far = 5000;
+        camera.updateProjectionMatrix();
+        controls.target.set(0, 0, 0);
+        controls.update();
+    }
+
+    function fitGlbCamera(root) {
+        const box = new Box3().setFromObject(root);
+        const center = box.getCenter(new Vector3());
+        const size = box.getSize(new Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+
+        // Normalize to the same ~2-unit bounding box used by the PLY path so that
+        // camera sync works correctly across file types (shared camera positions).
+        const scale = maxDim > 0 ? 2.0 / maxDim : 1;
+        root.scale.setScalar(scale);
+        root.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+
+        camera.up.set(0, 0, 1);
+        frameScaledObject(size.clone().multiplyScalar(scale));
+    }
+
+    function getUrlPath(url) {
+        // Artifact URLs have the form /api/artifacts/file?path=...filename.glb
+        // The bare pathname (/api/artifacts/file) has no extension, so we must
+        // check the 'path' query parameter first for the real file extension.
+        try {
+            const u = new URL(url, window.location.origin);
+            const pathParam = u.searchParams.get("path");
+            if (pathParam) {
+                return pathParam.split("?")[0].split("#")[0].toLowerCase();
+            }
+        } catch (_) {
+            // Non-URL strings fall through to the simple split below.
+        }
+        return String(url || "").split("?")[0].split("#")[0].toLowerCase();
+    }
+
     /**
-     * Load (or replace) the PLY mesh at url.
-     * @param {string} url - URL to the .ply file (cache-busted by caller)
-     * @param {function=} onLoad - optional callback invoked after the mesh is added to the scene
+     * Load (or replace) the mesh at url.
+     * Supports .ply and .glb files.
+     * @param {string} url - URL to the mesh file (cache-busted by caller)
+    * @param {function=} onLoad - optional callback invoked after the mesh is added to the scene
+    * @param {function=} onError - optional callback invoked when mesh load fails
      */
-    function loadMesh(url, onLoad) {
+    function loadMesh(url, onLoad, onError) {
+        const cleanPath = getUrlPath(url);
+        if (cleanPath.endsWith(".glb")) {
+            loadGlbConfig().then((config) => {
+                const meshColors = buildGlbColorMap(config);
+                new GLTFLoader().load(
+                    url,
+                    (gltf) => {
+                        const root = gltf.scene;
+                        if (!root) {
+                            if (typeof onError === "function") {
+                                onError(new Error("GLB load error: missing scene root"));
+                            }
+                            return;
+                        }
+
+                        let hasVertexColors = false;
+                        let meshCount = 0;
+                        const glbComponents = [];
+                        root.traverse((node) => {
+                            if (!node.isMesh || !node.geometry) {
+                                return;
+                            }
+                            meshCount += 1;
+                            const cfgEntry = meshColors[node.name] || { rgb: null, alpha: null };
+                            const srcMat = Array.isArray(node.material) ? node.material[0] : node.material;
+                            const baseAlpha = cfgEntry.alpha ?? (typeof srcMat?.opacity === "number" ? srcMat.opacity : 1.0);
+                            const useVertexColors = cfgEntry.rgb === null && node.geometry.hasAttribute("color");
+                            if (useVertexColors) {
+                                hasVertexColors = true;
+                            }
+                            node.material = new MeshBasicMaterial({
+                                vertexColors: useVertexColors,
+                                color: cfgEntry.rgb ? new Color(...cfgEntry.rgb) : 0xffffff,
+                                side: DoubleSide,
+                                transparent: true,
+                                opacity: baseAlpha,
+                                depthWrite: baseAlpha >= 0.99,
+                            });
+                            glbComponents.push({
+                                key: node.uuid,
+                                name: node.name || `mesh_${node.id}`,
+                                mesh: node,
+                            });
+                        });
+
+                        if (meshCount === 0) {
+                            if (typeof onError === "function") {
+                                onError(new Error("GLB scene has no mesh nodes"));
+                            }
+                            return;
+                        }
+
+                        if (currentObj) {
+                            scene.remove(currentObj);
+                            disposeObject(currentObj);
+                        }
+                        currentObj = root;
+                        currentGlbComponents = glbComponents;
+                        scene.add(currentObj);
+                        fitGlbCamera(currentObj);
+                        renderGlbControls();
+
+                        if (onLoad) {
+                            onLoad({
+                                hasVertexColors,
+                                attributes: hasVertexColors ? ["color"] : [],
+                                meshComponents: getMeshComponents(),
+                            });
+                        }
+                    },
+                    undefined,
+                    (err) => {
+                        if (typeof onError === "function") {
+                            onError(err);
+                        }
+                    },
+                );
+            });
+            return;
+        }
+
         new PLYLoader().load(
             url,
             (geo) => {
-                // DEBUG: Log what attributes the geometry has
-                console.log("Loaded geometry attributes:", Object.keys(geo.attributes));
-                if (geo.hasAttribute("color")) {
-                    console.log("✓ Color attribute found");
-                    const colorAttr = geo.getAttribute("color");
-                    console.log(`  - Array type: ${colorAttr.array.constructor.name}`);
-                    console.log(`  - Item size: ${colorAttr.itemSize}`);
-                    console.log(`  - First 9 values (RGB, RGB, RGB): ${Array.from(colorAttr.array.slice(0, 9))}`);
-                } else {
-                    console.log("✗ No color attribute");
-                }
-
                 geo.computeVertexNormals();
                 geo.computeBoundingBox();
-                const c = new Vector3();
-                geo.boundingBox.getCenter(c);
-                geo.translate(-c.x, -c.y, -c.z);
+                const center = new Vector3();
+                geo.boundingBox.getCenter(center);
+                geo.translate(-center.x, -center.y, -center.z);
                 geo.computeBoundingBox();
-                const sz = new Vector3();
-                geo.boundingBox.getSize(sz);
-                const scale = Math.max(sz.x, sz.y, sz.z) > 0 ? 2.0 / Math.max(sz.x, sz.y, sz.z) : 1;
+                const size = new Vector3();
+                geo.boundingBox.getSize(size);
+                const scale = Math.max(size.x, size.y, size.z) > 0 ? 2.0 / Math.max(size.x, size.y, size.z) : 1;
                 if (currentObj) {
                     scene.remove(currentObj);
-                    currentObj.geometry.dispose();
-                    currentObj.material.dispose();
+                    disposeObject(currentObj);
                 }
-                // Use vertex colors if available, otherwise fall back to grey
+                clearGlbComponents();
                 const hasVertexColors = geo.hasAttribute("color");
-                let material;
-                if (hasVertexColors) {
-                    // MeshPhongMaterial shows vertex colors more clearly than MeshStandardMaterial
-                    material = new MeshPhongMaterial({
-                        vertexColors: true,
-                        side: 2,
-                        shininess: 30,
-                    });
-                } else {
-                    // Fallback to grey for meshes without color data
-                    material = new MeshStandardMaterial({
-                        color: 0x99A3A4,
-                        roughness: 0.6,
-                        metalness: 0.2,
-                        side: 2,
-                    });
-                }
+                const material = hasVertexColors
+                    ? new MeshPhongMaterial({ vertexColors: true, side: DoubleSide, shininess: 30 })
+                    : new MeshStandardMaterial({ color: 0x99A3A4, roughness: 0.6, metalness: 0.2, side: DoubleSide });
                 currentObj = new Mesh(geo, material);
                 currentObj.scale.set(scale, scale, scale);
                 scene.add(currentObj);
-                // Compute camera distance so the scaled mesh fills ~90% of the
-                // viewport in whichever axis is tighter (accounts for aspect ratio).
-                const vFovHalf = 25 * Math.PI / 180; // half of the 50° FOV
-                const aspect = containerEl.clientWidth / Math.max(containerEl.clientHeight, 1);
-                const hFovHalf = Math.atan(Math.tan(vFovHalf) * aspect);
-                const dFitW = (sz.x * scale / 2) / Math.tan(hFovHalf);
-                const dFitH = (sz.y * scale / 2) / Math.tan(vFovHalf);
-                camera.position.set(0, 0, Math.max(dFitW, dFitH) * 1.4);
-                controls.target.set(0, 0, 0);
-                controls.update();
+                frameScaledObject(size.clone().multiplyScalar(scale));
+                renderGlbControls();
                 if (onLoad) {
                     onLoad({
                         hasVertexColors,
                         attributes: Object.keys(geo.attributes || {}),
+                        meshComponents: [],
                     });
                 }
             },
             null,
-            (err) => console.error("PLY load error:", err),
+            (err) => {
+                if (typeof onError === "function") {
+                    onError(err);
+                }
+            },
         );
     }
 
-    return { loadMesh, getViewState, setViewState, setOnControlsChange };
+    function refreshGlbControls() {
+        renderGlbControls();
+    }
+
+    return { loadMesh, getViewState, setViewState, setOnControlsChange, setGlbControlsHost, getMeshComponents, setMeshComponentState, refreshGlbControls };
 }

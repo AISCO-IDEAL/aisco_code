@@ -96,7 +96,8 @@ def has_any_gif_artifacts(run_path: Path) -> bool:
 
 
 def has_display_artifacts(run_path: Path) -> bool:
-    meshes = list((run_path / "meshes").glob("*.ply")) + list((run_path / "meshes").glob("*.poly"))
+    mesh_dir = run_path / "meshes"
+    meshes = list(mesh_dir.glob("*.ply")) + list(mesh_dir.glob("*.poly")) + list(mesh_dir.glob("*.glb"))
     return has_any_gif_artifacts(run_path) or bool(meshes)
 
 
@@ -173,5 +174,5 @@ def list_all_runs(storage_root: Path) -> list[dict[str, object]]:
 def extract_epoch(filename: str) -> int | None:
     match = re.search(r"epoch(\d+)", filename)
     if match is None:
-        match = re.search(r"_(\d+)\.(?:png|gif|ply|poly)$", filename)
+        match = re.search(r"_(\d+)\.(?:png|gif|ply|poly|glb)$", filename)
     return int(match.group(1)) if match else None
