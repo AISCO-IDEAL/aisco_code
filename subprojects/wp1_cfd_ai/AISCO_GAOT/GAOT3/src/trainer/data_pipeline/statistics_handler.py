@@ -19,7 +19,7 @@ class StatisticsHandler:
         self.config: dict = config
 
     def calculate_or_load_stats(self, trainer, order_file_path: str, data_root: str) -> None:
-        stats_file = os.path.join(data_root, trainer.dataset_config["name"] + "_norm_stats.pt")
+        stats_file = os.path.join(data_root, self._stats_file_name(trainer.dataset_config))
         need_compute = not os.path.exists(stats_file) or trainer.dataset_config["force_recompute_stats"]
         if need_compute:
             if trainer.setup_config["rank"] == 0:
@@ -38,6 +38,27 @@ class StatisticsHandler:
         trainer.per_head_stats = stats.get("per_head_stats", {})
         if trainer.u_mean is None or trainer.u_std is None:
             raise RuntimeError("Normalization mean/std could not be calculated or loaded.")
+
+    @staticmethod
+    def _stats_file_name(dataset_config: dict) -> str:
+        prefixes = StatisticsHandler._normalized_dataset_prefixes(dataset_config.get("allowed_dataset_prefixes"))
+        if prefixes is None:
+            return f"{dataset_config['name']}_norm_stats.pt"
+        return f"{dataset_config['name']}_prefixes_{'_'.join(prefixes)}_norm_stats.pt"
+
+    @staticmethod
+    def _normalized_dataset_prefixes(raw_prefixes) -> list[str] | None:
+        if raw_prefixes is None:
+            return None
+        if isinstance(raw_prefixes, (str, int)):
+            raw_prefixes = [raw_prefixes]
+        prefixes = {str(prefix).strip() for prefix in raw_prefixes if str(prefix).strip()}
+        if not prefixes:
+            return None
+        invalid = sorted(prefix for prefix in prefixes if not prefix.isdigit())
+        if invalid:
+            raise ValueError(f"allowed_dataset_prefixes must contain only digits, got: {invalid}")
+        return sorted(prefixes, key=int)
 
     def _compute_and_save_stats(self, trainer, order_file_path: str, stats_file: str) -> None:
         logging.getLogger(__name__).info("Calculating normalization statistics from training set...")

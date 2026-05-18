@@ -93,6 +93,15 @@ visual_types:
       vmax: null
       solid_color_rgb: [1.0, 0.3137, 0.3020]
 
+    sdf_influence:
+      enabled: true
+      colormap: "RdYlGn"  # negative=red, zero=yellow, positive=green
+      interval: 10
+      alpha_enabled: null
+      coordinate_system: true
+      vmin: null
+      vmax: null
+
   solar:
     quality:
       enabled: true
