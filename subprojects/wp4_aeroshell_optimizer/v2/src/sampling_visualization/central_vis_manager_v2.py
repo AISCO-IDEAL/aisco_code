@@ -560,7 +560,7 @@ class CentralVisManagerV2(_BaseVisManager):
             )
             return
 
-        values_np = optimizer_update_sdf_displacement(values_np)
+        values_np = np.nan_to_num(values_np, nan=0.0, posinf=0.0, neginf=0.0)
         eff_cfg = dict(type_cfg)
         cfg_vmin = eff_cfg.get("vmin")
         cfg_vmax = eff_cfg.get("vmax")
