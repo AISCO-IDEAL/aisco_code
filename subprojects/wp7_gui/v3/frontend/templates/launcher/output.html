@@ -290,6 +290,9 @@
         }
 
         const file = state.files[state.idx];
+        const previousViewState = state.viewer?.getViewState();
+        const previousGlbState = state.viewer?.getMeshComponents ? state.viewer.getMeshComponents() : [];
+
         import(MESH_VIEWER_MODULE).then(({ initMeshViewer }) => {
             if (!state.viewer) {
                 state.viewer = initMeshViewer(container);
@@ -309,6 +312,33 @@
                     statusDiv.style.display = "block";
                     const vc = info && info.hasVertexColors ? "yes" : "no";
                     statusDiv.textContent = `${file.name} (${state.idx + 1}/${state.files.length}) · VC:${vc}`;
+
+                    // Restore camera view if user had panned/rotated
+                    if (previousViewState) {
+                        state.viewer.setViewState(previousViewState);
+                    }
+
+                    // Restore GLB component opacity/visibility by mesh name
+                    if (previousGlbState.length && info.meshComponents && info.meshComponents.length) {
+                        const stateByName = {};
+                        previousGlbState.forEach((comp) => {
+                            stateByName[comp.name] = comp;
+                        });
+                        info.meshComponents.forEach((comp) => {
+                            const saved = stateByName[comp.name];
+                            if (saved) {
+                                state.viewer.setMeshComponentState(comp.key, {
+                                    visible: saved.visible,
+                                    opacity: saved.opacity,
+                                });
+                            }
+                        });
+                        // Refresh controls to show restored opacity values in sliders
+                        if (state.viewer.refreshGlbControls) {
+                            state.viewer.refreshGlbControls();
+                        }
+                    }
+
                     if (cameraSyncToggleEl && cameraSyncToggleEl.checked) {
                         const stateToApply = latestSyncedViewState || state.viewer.getViewState();
                         latestSyncedViewState = stateToApply;

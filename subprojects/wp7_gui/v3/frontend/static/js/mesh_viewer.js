@@ -263,13 +263,15 @@ export function initMeshViewer(containerEl) {
         const center = box.getCenter(new Vector3());
         const size = box.getSize(new Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        controls.target.copy(center);
+
+        // Normalize to the same ~2-unit bounding box used by the PLY path so that
+        // camera sync works correctly across file types (shared camera positions).
+        const scale = maxDim > 0 ? 2.0 / maxDim : 1;
+        root.scale.setScalar(scale);
+        root.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+
         camera.up.set(0, 0, 1);
-        camera.position.copy(center).addScaledVector(new Vector3(0.4, 1, 0.4).normalize(), Math.max(maxDim, 1e-3) * 2.5);
-        camera.near = Math.max(maxDim * 0.001, 0.001);
-        camera.far = Math.max(maxDim * 100, 1000);
-        camera.updateProjectionMatrix();
-        controls.update();
+        frameScaledObject(size.clone().multiplyScalar(scale));
     }
 
     function getUrlPath(url) {
@@ -420,5 +422,9 @@ export function initMeshViewer(containerEl) {
         );
     }
 
-    return { loadMesh, getViewState, setViewState, setOnControlsChange, setGlbControlsHost, getMeshComponents, setMeshComponentState };
+    function refreshGlbControls() {
+        renderGlbControls();
+    }
+
+    return { loadMesh, getViewState, setViewState, setOnControlsChange, setGlbControlsHost, getMeshComponents, setMeshComponentState, refreshGlbControls };
 }
