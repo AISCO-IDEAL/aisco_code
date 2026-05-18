@@ -142,6 +142,23 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
+def apply_loading_overrides(
+    cfg: dict,
+    ply_path: str | None = None,
+    ply_scaling_factor: float | None = None,
+) -> None:
+    """Override the input mesh without editing testbench_cfg.yaml."""
+    env_ply_path = os.getenv("AISCO_TESTBENCH_PLY_PATH", "").strip()
+    env_scale = os.getenv("AISCO_TESTBENCH_PLY_SCALE", "").strip()
+
+    if ply_path or env_ply_path:
+        cfg["loading"]["ply_path"] = ply_path or env_ply_path
+    if ply_scaling_factor is not None:
+        cfg["loading"]["ply_scaling_factor"] = float(ply_scaling_factor)
+    elif env_scale:
+        cfg["loading"]["ply_scaling_factor"] = float(env_scale)
+
+
 def load_ply_file(ply_path: str, scaling_factor: float) -> tuple[torch.Tensor, torch.Tensor]:
     mesh = _load_mesh(ply_path)
     verts = torch.tensor(mesh.vertices, dtype=torch.float32) * scaling_factor
@@ -149,27 +166,45 @@ def load_ply_file(ply_path: str, scaling_factor: float) -> tuple[torch.Tensor, t
     return verts, faces
 
 
-def setup_vis_manager(cfg: dict, loss_class: str | None = None) -> tuple:
+def _make_testbench_run_dir(cfg: dict) -> Path | None:
+    """Create the top-level output directory shared by one testbench invocation."""
+    if not cfg["vis_manager"]["enabled"]:
+        return None
+
+    base_run_dir = Path(cfg["vis_manager"]["run_dir"])
+    base_run_dir.mkdir(parents=True, exist_ok=True)
+
+    run_id = str(cfg["vis_manager"].get("run_id") or "testbench")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    slurm_job_id = os.getenv("SLURM_JOB_ID", "").strip()
+    run_name = f"{timestamp}_{run_id}_pid{os.getpid()}"
+    if slurm_job_id:
+        run_name = f"{run_name}_job{slurm_job_id}"
+
+    run_dir = base_run_dir / run_name
+    suffix = 1
+    while run_dir.exists():
+        run_dir = base_run_dir / f"{run_name}_{suffix:02d}"
+        suffix += 1
+    run_dir.mkdir(parents=True, exist_ok=False)
+    return run_dir
+
+
+def setup_vis_manager(cfg: dict, loss_class: str | None = None, run_dir: Path | None = None) -> tuple:
     """Setup visualizer manager and return (manager, save_dir).
 
     Returns:
         (vis_manager, save_dir_path) where save_dir_path is None if vis is disabled
     """
     if cfg["vis_manager"]["enabled"]:
-        # Resolve base run_dir
-        base_run_dir = Path(cfg["vis_manager"]["run_dir"])
-        base_run_dir.mkdir(parents=True, exist_ok=True)
+        resolved_run_dir = run_dir or _make_testbench_run_dir(cfg)
+        if resolved_run_dir is None:
+            return NullVisManager(), None
+        loss_run_dir = resolved_run_dir / loss_class if loss_class is not None else resolved_run_dir
+        loss_run_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate unique run_id with timestamp and loss class name
-        if loss_class is not None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            unique_dir_name = f"{timestamp}_{loss_class}"
-            run_dir = base_run_dir / unique_dir_name
-        else:
-            run_dir = base_run_dir / cfg["vis_manager"]["run_id"]
-
-        vis_manager = CentralVisManagerV2(run_dir=run_dir, run_id="data")
-        return vis_manager, run_dir
+        vis_manager = CentralVisManagerV2(run_dir=loss_run_dir, run_id=loss_class or "data")
+        return vis_manager, loss_run_dir
     else:
         return NullVisManager(), None
 
@@ -194,11 +229,18 @@ def _build_sdf_model(cfg: dict, verts: torch.Tensor, faces: torch.Tensor, device
     )
 
 
-def run_one(loss_class: str, cfg: dict, sdf_model: "MeshSDFCallable", device: str, losses_config: dict) -> None:
+def run_one(
+    loss_class: str,
+    cfg: dict,
+    sdf_model: "MeshSDFCallable",
+    device: str,
+    losses_config: dict,
+    run_dir: Path | None = None,
+) -> None:
     vis_enabled = cfg["vis_manager"]["enabled"]
     true_scale = cfg["vis_manager"]["true_scale"]
 
-    vis_manager, save_dir = setup_vis_manager(cfg, loss_class=loss_class)
+    vis_manager, save_dir = setup_vis_manager(cfg, loss_class=loss_class, run_dir=run_dir)
     if save_dir is not None:
         print(f"  vis → {save_dir}")
 
@@ -226,8 +268,9 @@ def run_one(loss_class: str, cfg: dict, sdf_model: "MeshSDFCallable", device: st
     vis_manager.finalize()
 
 
-def single_solar_test() -> None:
+def single_solar_test(ply_path: str | None = None, ply_scaling_factor: float | None = None) -> None:
     cfg = load_config()
+    apply_loading_overrides(cfg, ply_path, ply_scaling_factor)
     loss_class = cfg["solar_loss"]["class"]
     device = get_device()
 
@@ -235,6 +278,9 @@ def single_solar_test() -> None:
     print(f"Loss class : {loss_class}")
     print(f"Vis enabled: {cfg['vis_manager']['enabled']}")
     print(f"Device     : {device}")
+    run_dir = _make_testbench_run_dir(cfg)
+    if run_dir is not None:
+        print(f"Run dir    : {run_dir}")
 
     ply_path = cfg["loading"]["ply_path"]
     ply_scaling = cfg["loading"]["ply_scaling_factor"]
@@ -248,20 +294,24 @@ def single_solar_test() -> None:
     sdf_model = _build_sdf_model(cfg, verts, faces, device)
 
     print(f"\nRunning {loss_class}...")
-    run_one(loss_class, cfg, sdf_model, device, losses_config)
+    run_one(loss_class, cfg, sdf_model, device, losses_config, run_dir=run_dir)
 
 
 # Losses that support vision cone exclusion — skips legacy V3B/V5/V6/V7
 CONE_LOSS_CLASSES = ["SolarSR", "SolarSRRT", "SolarMR", "SolarMRRT"]
 
 
-def all_solar_tests() -> None:
+def all_solar_tests(ply_path: str | None = None, ply_scaling_factor: float | None = None) -> None:
     cfg = load_config()
+    apply_loading_overrides(cfg, ply_path, ply_scaling_factor)
     device = get_device()
 
     print("=== Solar Testbench — all cone-compatible losses ===")
     print(f"Vis enabled: {cfg['vis_manager']['enabled']}")
     print(f"Device     : {device}")
+    run_dir = _make_testbench_run_dir(cfg)
+    if run_dir is not None:
+        print(f"Run dir    : {run_dir}")
 
     ply_path = cfg["loading"]["ply_path"]
     ply_scaling = cfg["loading"]["ply_scaling_factor"]
@@ -280,7 +330,7 @@ def all_solar_tests() -> None:
         print(f"\n--- {loss_class} ---")
         try:
             t0 = time.perf_counter()
-            run_one(loss_class, cfg, sdf_model, device, losses_config)
+            run_one(loss_class, cfg, sdf_model, device, losses_config, run_dir=run_dir)
             results.append((loss_class, time.perf_counter() - t0, float("nan")))
         except Exception as e:
             print(f"  FAILED: {e}")
@@ -293,8 +343,20 @@ def all_solar_tests() -> None:
 
 
 if __name__ == "__main__":
-    import sys
-    if "--all" in sys.argv:
-        all_solar_tests()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run the WP3 solar loss testbench.")
+    parser.add_argument("--all", action="store_true", help="Run all cone-compatible rollout solar losses.")
+    parser.add_argument("--ply-path", default=None, help="Override loading.ply_path from testbench_cfg.yaml.")
+    parser.add_argument(
+        "--ply-scaling-factor",
+        type=float,
+        default=None,
+        help="Override loading.ply_scaling_factor from testbench_cfg.yaml.",
+    )
+    args = parser.parse_args()
+
+    if args.all:
+        all_solar_tests(args.ply_path, args.ply_scaling_factor)
     else:
-        single_solar_test()
+        single_solar_test(args.ply_path, args.ply_scaling_factor)

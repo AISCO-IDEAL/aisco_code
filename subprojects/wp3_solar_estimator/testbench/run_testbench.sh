@@ -2,9 +2,8 @@
 #SBATCH --job-name=solar_testbench
 #SBATCH --time=01:00:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem-per-cpu=2G
-#Sbatch --gpus = 1
+#SBATCH --cpus-per-task=32
+#SBATCH --mem-per-cpu=1G
 #SBATCH --output=/cluster/scratch/%u/logs/solar_testbench_%j.out
 ## run: sbatch ~/AISCO_code/subprojects/wp3_solar_estimator/testbench/run_testbench.sh
 

@@ -1,5 +1,5 @@
 loading:
-  ply_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/wp4_runs/9f0d75f6d9/43_solar-smoke/aero/cp_field/epoch_00251.ply"
+  ply_path: "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/wp4_runs/9f0d75f6d9/43_solar-smoke/aero/cp_field/epoch_00100.ply"
   ply_scaling_factor: 1.0
 
 solar_loss:
