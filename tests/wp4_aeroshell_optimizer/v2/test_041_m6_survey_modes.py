@@ -15,14 +15,15 @@ from __future__ import annotations
 
 import math
 import random
-from pathlib import Path
 
 import yaml
+
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import get_config_base_path
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-_REPO = Path("/cluster/home/kdiehl/AISCO_code")
+_REPO = get_config_base_path() / "AISCO_code"
 _CVM2_PATH = _REPO / "subprojects/wp4_aeroshell_optimizer/v2/src/sampling_visualization/central_vis_manager_v2.py"
 _SURVEY_PNG_PATH = _REPO / "subprojects/wp4_aeroshell_optimizer/v2/src/sampling_visualization/survey_png.py"
 _VIS_CFG_PATH = _REPO / "subprojects/wp4_aeroshell_optimizer/v2/configs/vis_config.yaml"

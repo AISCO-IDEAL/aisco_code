@@ -188,6 +188,26 @@ def solid_rgb(n_verts: int, rgb: tuple[float, float, float]) -> np.ndarray:
 _DARK_BLUE: tuple[float, float, float] = (0.0, 0.0, 139.0 / 255.0)
 
 
+def _fallback_rgb(type_cfg: dict) -> tuple[float, float, float]:
+    """Return per-type solid fallback RGB from config or default dark blue.
+
+    Expects optional key `solid_color_rgb` as [r, g, b] floats in [0, 1].
+    Invalid values gracefully fall back to `_DARK_BLUE`.
+    """
+    raw = type_cfg.get("solid_color_rgb")
+    if raw is None:
+        return _DARK_BLUE
+    if not isinstance(raw, (list, tuple)) or len(raw) != 3:
+        return _DARK_BLUE
+    try:
+        rgb = (float(raw[0]), float(raw[1]), float(raw[2]))
+    except (TypeError, ValueError):
+        return _DARK_BLUE
+    if any((c < 0.0 or c > 1.0) for c in rgb):
+        return _DARK_BLUE
+    return rgb
+
+
 def resolve_mesh_rgb(
     scalars: np.ndarray | None,
     n_verts: int,
@@ -198,7 +218,7 @@ def resolve_mesh_rgb(
 ) -> np.ndarray:
     """Map per-vertex or per-face scalars to an (N, 3) float32 RGB array.
 
-    Falls back to uniform dark-blue when scalars are None, colormap is null,
+    Falls back to a solid color when scalars are None, colormap is null,
     or the scalar shape doesn't match vertices or faces.
 
     Args:
@@ -207,14 +227,17 @@ def resolve_mesh_rgb(
         n_faces: Number of mesh faces.
         faces_np: (F, 3) int face index array, needed for face→vertex averaging.
         verts_np: (V, 3) float vertex array, needed for area-weighted averaging.
-        type_cfg: Visual-type config dict with 'colormap', 'vmin', 'vmax' keys.
+        type_cfg: Visual-type config dict with 'colormap', 'vmin', 'vmax',
+            and optional 'solid_color_rgb' ([r, g, b] floats in [0, 1]).
     """
     from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.mesh_ops import (  # noqa: PLC0415
         face_scalars_to_vertex,
     )
 
+    fallback_rgb = _fallback_rgb(type_cfg)
+
     if scalars is None:
-        return solid_rgb(n_verts, _DARK_BLUE)
+        return solid_rgb(n_verts, fallback_rgb)
 
     sv = np.asarray(scalars, dtype=np.float32).reshape(-1)
 
@@ -223,10 +246,10 @@ def resolve_mesh_rgb(
     elif sv.shape[0] == n_faces and faces_np is not None:
         vertex_scalars = face_scalars_to_vertex(sv, faces_np, verts_np)
     else:
-        return solid_rgb(n_verts, _DARK_BLUE)
+        return solid_rgb(n_verts, fallback_rgb)
 
     colormap: str | None = type_cfg.get("colormap")
     if colormap is None:
-        return solid_rgb(n_verts, _DARK_BLUE)
+        return solid_rgb(n_verts, fallback_rgb)
 
     return map_scalar_to_rgb_mpl(vertex_scalars, colormap, vmin=type_cfg.get("vmin"), vmax=type_cfg.get("vmax"))

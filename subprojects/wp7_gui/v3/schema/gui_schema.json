@@ -1,7 +1,7 @@
 {
   "_comment": "Hand-written whitelist of GUI-editable config parameters. Each entry under 'configs' keys by the config filename (relative to wp4/v2/configs/). 'params' lists editable leaves. Supported types: int, float, bool, string, enum (with 'choices'). Add 'min'/'max' for numeric bounds.",
   "configs": {
-    "training_v0_config.yaml": {
+    "training_config.yaml": {
       "label": "Training",
       "params": [
         {
@@ -41,8 +41,7 @@
           "path": "bb_config.assembly_id",
           "label": "Assembly ID (bb_config)",
           "type": "int",
-          "min": 1,
-          "max": 51
+          "min": 0
         }
       ]
     }

@@ -145,3 +145,29 @@ class AssemblySelectionService:
             return {"warnings": [], "ok": True}
         warnings = [warn.strip() for warn in lines if warn.strip().upper().startswith("[WARNING]")]
         return {"warnings": warnings, "ok": len(warnings) == 0}
+
+    def add_to_map(self) -> dict[str, Any]:
+        with self._lock:
+            if self._module is None:
+                self._rebuild()  # loads module and ensures assembly is up to date
+            fn = getattr(self._module, "add_current_gui_assembly_to_map", None)
+            if fn is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": "GUI_assembly.py missing add_current_gui_assembly_to_map"},
+                )
+            try:
+                assembly_map_id = fn(output_dir=self._assembly_dir)
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail={"message": f"add_to_map failed: {exc}"}) from exc
+        if assembly_map_id is None:
+            return {
+                "status": "rejected",
+                "message": "Assembly has warnings — fix them before generating.",
+                "assembly_map_id": None,
+            }
+        return {
+            "status": "ok",
+            "message": f"Assembly added to map with ID {assembly_map_id}.",
+            "assembly_map_id": assembly_map_id,
+        }

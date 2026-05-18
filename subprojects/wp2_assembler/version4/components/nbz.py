@@ -3,12 +3,44 @@ from pathlib import Path
 
 import cadquery as cq
 import yaml
+from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
+from OCP.gp import gp_Pnt, gp_Trsf
+from OCP.StlAPI import StlAPI_Reader
+from OCP.TopoDS import TopoDS_Shape
 
 from subprojects.wp2_assembler.version4.components.inner.seat import Seat
 from subprojects.wp2_assembler.version4.components.inner.wheels import Wheels
 from subprojects.wp2_assembler.version4.components.outer.outer_nbz import outer_nbz
 from subprojects.wp2_assembler.version4.components.vision import tracker_box, vision_box
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_regulation
+
+_LOSSES_V0_CONFIG_PATH = Path("subprojects/wp4_aeroshell_optimizer/v2/configs/losses_v0_config.yaml")
+_OCCUPANT_CELL_STL_PATH = Path(__file__).parent / "inner" / "occupant_cell.stl"
+
+
+def _get_seat_type() -> str:
+    if not _LOSSES_V0_CONFIG_PATH.exists():
+        return "regulations"
+    with _LOSSES_V0_CONFIG_PATH.open("r") as f:
+        cfg = yaml.safe_load(f) or {}
+    return cfg.get("bb_config", {}).get("seat_type", "regulations")
+
+
+_OCCUPANT_CELL_SCALE = 0.8  # uniform scale to roughly match regulation seat dimensions
+
+
+def _load_occupant_cell(seat_x: float, seat_y: float, seat_z: float) -> cq.Shape:
+    raw = TopoDS_Shape()
+    StlAPI_Reader().Read(raw, str(_OCCUPANT_CELL_STL_PATH))
+    trsf = gp_Trsf()
+    trsf.SetScale(gp_Pnt(0, 0, 0), _OCCUPANT_CELL_SCALE)
+    s = cq.Shape(BRepBuilderAPI_Transform(raw, trsf, True).Shape())
+    bb = s.BoundingBox()
+    # Align back-bottom-center of the bounding box with the assembly-map seat position.
+    dx = seat_x - bb.xmin
+    dy = seat_y - (bb.ymin + bb.ymax) / 2
+    dz = seat_z - bb.zmin
+    return s.translate(cq.Vector(dx, dy, dz))
 
 
 def inner_nbz(assembly_nr: int = 0):
@@ -83,12 +115,21 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
 
         return result
 
+    assembly_map_path = Path(__file__).parent.parent / "config" / "assembly_map.yaml"
+    with assembly_map_path.open("r") as f:
+        assembly_map = yaml.safe_load(f) or {}
+    seat_params = assembly_map[id_number]["seat"]
+
     inner_solids = inner_nbz(id_number).toCompound().Solids()
 
     if len(inner_solids) < 1:
         raise ValueError(f"No inner solids found for assembly {id_number}.")
 
-    seat_solid = inner_solids[0]
+    seat_solid = (
+        _load_occupant_cell(seat_params["x"], seat_params["y"], seat_params["z"])
+        if _get_seat_type() == "occupant_cell"
+        else inner_solids[0]
+    )
     wheel_solids = inner_solids[1:]
 
     seat_bbox = seat_solid.BoundingBox()
@@ -108,13 +149,25 @@ def call_assembly(id_number: int) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
     if cut_outer_nbz is None:
         raise ValueError(f"Outer NBZ was completely removed for assembly {id_number}.")
 
+    outer_solid = cut_outer_nbz.Solids()[0]
+
+    # Recenter both inner and outer to x=0, y=0 using the canonical training frame offset.
+    # See get_training_frame_offset() for the definition and rationale.
+    # Note: z-clipping above does not affect the x/y centroid, so computing the offset
+    # from the unclipped outer_nbz (inside get_training_frame_offset) gives identical cx, cy.
+    cx, cy, cz = get_training_frame_offset(id_number)
+    if abs(cx) > 0.001 or abs(cy) > 0.001 or abs(cz) > 0.001:
+        offset = cq.Vector(-cx, -cy, -cz)
+        outer_solid = outer_solid.translate(offset)
+        cut_inner_solids = [s.translate(offset) for s in cut_inner_solids]
+
     cut_inner_assembly = cq.Assembly()
     for i, s in enumerate(cut_inner_solids):
-        cut_inner_assembly.add(s, name=f"{'inner'}_{i}")
+        cut_inner_assembly.add(s, name=f"inner_{i}")
 
     cut_inner_assembly.name = "inner_assembly"
 
-    return cut_inner_assembly, cut_outer_nbz.Solids()[0], vision_nbz(id_number)
+    return cut_inner_assembly, outer_solid, vision_nbz(id_number)
 
 
 def max_assembly_id() -> int:
@@ -144,6 +197,28 @@ def bounding_box_of_assembly(id_number: int) -> tuple[tuple[float, float, float]
         (inner_bounding_box.xmin, inner_bounding_box.ymin, inner_bounding_box.zmin),
         (inner_bounding_box.xmax, inner_bounding_box.ymax, inner_bounding_box.zmax),
     )
+
+
+def get_training_frame_offset(id_number: int) -> tuple[float, float, float]:
+    """
+    Returns (cx, cy, cz) — the shift that call_assembly() subtracts from all raw assembly
+    coordinates to align geometry with the SDF training domain.
+
+    Any loss or visualiser that needs assembly-relative positions (e.g. wheel contact
+    points) must subtract this offset from raw assembly_map coordinates before evaluating
+    the model. Using raw coordinates without this correction silently places samples in
+    the wrong location and the model will produce geometry artefacts at those points.
+
+    Training domain coords:  x_train = x_raw - cx,  y_train = y_raw - cy,  z_train = z_raw - cz
+
+    Currently cz = 0 (ground plane kept at z = 0), but it is included here so that any
+    future z-shift from WP2 only requires updating this function.
+    """
+    raw_bbox = outer_nbz(id_number).BoundingBox()
+    cx = (raw_bbox.xmin + raw_bbox.xmax) / 2.0
+    cy = (raw_bbox.ymin + raw_bbox.ymax) / 2.0
+    cz = 0.0
+    return cx, cy, cz
 
 
 def vision_nbz(id_number):
@@ -213,12 +288,12 @@ if __name__ == "__main__":
 
     print(max_assembly_id())
 
-    # for i in range(max_assembly_id()):
-    #     show(call_assembly(i))        # noqa: ERA001
+    for i in range(max_assembly_id()):
+        show(call_assembly(i))
 
-    # for demo_id in range(100):
-    #     show(call_assembly(demo_id))  # noqa: ERA001
-    #     print(demo_id)  # noqa: ERA001
+    for demo_id in range(100):
+        show(call_assembly(demo_id))
+        print(demo_id)
 
-    # end = time.time()  # noqa: ERA001
-    # print(end - start)  # noqa: ERA001
+    end = time.time()
+    print(end - start)

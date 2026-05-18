@@ -4,9 +4,23 @@
 # Shared by ply_to_gif.py, points_SDFmesh_to_ply.py, central_vis_manager_v2.py,
 # explore_latent_space.py, and central_vis_manager.py (archived).
 
-# --- GIF rendering (ply_to_gif.py) ---
+# --- Corporate identity ---
+# not used in code, serves as reference (corporate identity of aCe)
+corporate_identity:
+  font_family: "Questrial"
+  colors:
+    background: "#23283E"
+    title_primary: "#FFFFFF"
+    text_standard: "#FFFFFF"
+    title_secondary: "#FF504D"
+    text_highlight: "#FF504D"
+    graphic_lines_thin: "#FF504D"
+    graphic_surface_large: "#C33531"
+    text_box: "#D2E0F2"
+
+# --- GIF / PNG rendering ---
 fps: 10
-window_width: 1280
+window_width: 1280 # pixels; only used for GIF & PNG rendering. Increase for higher-res images, but beware of OOM errors on HPC.
 window_height: 720
 
 camera_direction: "Y"        # which axis the camera looks along: X, Y, or Z
@@ -14,31 +28,18 @@ camera_distance_multiplier: 1.0  # smaller = more zoomed in
 camera_elevation_angle: 0.0     # degrees above the horizontal plane
 
 point_size: 3                    # pixels per rendered point
-background_color: [1.0, 1.0, 1.0, 1.0]  # RGBA; 1.0=white, 0.0=black
-
-# --- PLY export colours (points_SDFmesh_to_ply.py) ---
-mesh_colour_dark_blue: [0, 0, 139]
-point_colour_green: [34, 139, 34]   # target / surface samples
-point_colour_grey: [41, 41, 41]     # eikonal domain samples
-point_colour_red: [220, 30, 30]     # model surface prediction
-
-# --- Latent space exploration (explore_latent_space.py) ---
-latent_space_exploration:
-  n_circle: 90        # Mode 1: equally-spaced samples on the pretrained circle
-  n_interp: 7         # Mode 3: interpolation steps per adjacent pair (controls PLY count)
-  resolution: 64      # marching cubes grid resolution (lower = faster)
-  radii: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]  # Mode 2: radii to sweep per pretrained direction
+background_color: [0.1373, 0.1569, 0.2431, 1.0]  # RGBA for #23283E
 
 # --- CentralVisManager extras (central_vis_manager_v2.py) ---
 extras:
-  alpha_enabled: false           # enable per-vertex RGBA (vs RGB-only) in PLY writes
-  alpha_value: 1.0               # global alpha in [0, 1]; only used when alpha_enabled: true
-  coordinate_system: false       # merge coordinate-frame axes into each PLY
+  alpha_enabled: false          # enable per-vertex RGBA (vs RGB-only) in PLY writes
+  alpha_value: 1.0              # global alpha in [0, 1]; only used when alpha_enabled: true
+  coordinate_system: false      # merge coordinate-frame axes into each PLY
   coordinate_system_scale: 0.1  # axis length as fraction of bounding-box diagonal
 
 # --- Vis-resolution mesh extraction (make_vis_extractor) ---
 vis_extraction:
-  resolution: 64            # marching-cubes grid resolution for vis; 64 is fast, 128 is high quality
+  resolution: 64           # marching-cubes grid resolution for vis; 64 is fast, 128 is high quality
   bbox_scale_factor: 1.6   # vis bbox = outer-prism bounds scaled by this factor
 
 # --- GIF auto-generation settings (central_vis_manager.finalize) ---
@@ -59,75 +60,102 @@ gif:
 #   coordinate_system:  bool | null — per-type override; null = use global extras.coordinate_system
 #   vmin:               float | null — fixed lower colormap bound; null = auto-range per epoch
 #   vmax:               float | null — fixed upper colormap bound; null = auto-range per epoch
+#   solid_color_rgb:    [r,g,b] floats in [0,1] — fallback color when colormap/scalars are unavailable
 visual_types:
   mesh_shape:
     enabled: true
     colormap: null          # uniform dark-blue — shape is the information
-    interval: 1
+    interval: 50
     alpha_enabled: true
     coordinate_system: null
     vmin: null
     vmax: null
+    solid_color_rgb: [0.7608, 0.2078, 0.1922]   # #C33531 corporate large-surface red
 
   aero:
     cp_field:
       enabled: true
-      colormap: "coolwarm"  # diverging: blue=suction, red=stagnation
-      interval: 1
+      colormap: "RdBu_r"     # diverging; aligned with corporate red/light-blue contrast
+      interval: 50
       alpha_enabled: null
       coordinate_system: true
       vmin: -2.0            # fixed range for cross-epoch comparability
       vmax: 1.0
+      solid_color_rgb: [1.0, 0.3137, 0.3020]     # #FF504D highlight red
 
     gradient:
       enabled: false       # aalthaus: did this ever work?
-      colormap: "magma"
-      interval: 1
+      colormap: "RdBu_r"
+      interval: 50
       alpha_enabled: null
       coordinate_system: null
       vmin: null
       vmax: null
+      solid_color_rgb: [1.0, 0.3137, 0.3020]
+
+    sdf_influence:
+      enabled: true
+      colormap: "RdYlGn"  # negative=red, zero=yellow, positive=green
+      interval: 10
+      alpha_enabled: null
+      coordinate_system: true
+      vmin: null
+      vmax: null
 
   solar:
-    quality: 
+    quality:
       enabled: true
-      colormap: "hot"    # [0,1] bounded selection weight
-      interval: 1
+      colormap: "Reds"   # [0,1] bounded selection weight (corporate red ramp)
+      interval: 50
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
       vmax: 1.0
+      solid_color_rgb: [1.0, 0.3137, 0.3020]
     selection:
       enabled: true
-      colormap: "bwr"    # [0,1] bounded selection weight
-      interval: 1
+      colormap: "RdBu_r"  # [0,1] bounded selection weight
+      interval: 50
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
       vmax: 1.0
+      solid_color_rgb: [1.0, 0.3137, 0.3020]
 
     shading:
       enabled: true
-      colormap: "jet"   # [0,1] bounded shading visibility
-      interval: 1
+      colormap: "Blues" # [0,1] bounded shading visibility (corporate light-blue family)
+      interval: 50
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
       vmax: 1.0
+      solid_color_rgb: [0.8235, 0.8784, 0.9490]   # #D2E0F2 text-box blue
 
     penalty:
       enabled: true
-      colormap: "jet"      # per-face power lost to shading, lower-bounded at 0
-      interval: 1
+      colormap: "Reds"     # per-face power lost to shading, lower-bounded at 0
+      interval: 50
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
       vmax: null            # auto upper bound per epoch
+      solid_color_rgb: [0.7608, 0.2078, 0.1922]
 
     numerical_factor:
       enabled: true
-      colormap: "jet"    # [0,1] effective loss multiplier after λ/κ applied to visibility
-      interval: 1
+      colormap: "Reds"   # [0,1] effective loss multiplier after λ/κ applied to visibility
+      interval: 50
+      alpha_enabled: null
+      coordinate_system: null
+      vmin: 0.0
+      vmax: 1.0
+      solid_color_rgb: [1.0, 0.3137, 0.3020]
+
+    receiver_mask:
+      enabled: true
+      colormap: "RdYlGn"  # 0=back-facing (skipped), 1=sun-facing (raytraced)
+      interval: 50
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -136,25 +164,27 @@ visual_types:
   bb_constraint:
     enabled: true          # disabled by default — confirm with user before enabling
     colormap: "Reds"        # violation magnitude, lower-bounded at 0
-    interval: 1
+    interval: 50
     alpha_enabled: null
     coordinate_system: null
     vmin: 0.0
     vmax: null
+    solid_color_rgb: [0.7608, 0.2078, 0.1922]
 
   mesh_assembly_v4:
     enabled: true
     colormap: null          # colours specified per-component via method arguments
-    interval: 1
+    interval: 50
     alpha_enabled: true
     coordinate_system: null
     vmin: null
     vmax: null
+    solid_color_rgb: [0.7608, 0.2078, 0.1922]
     # Per-component colours (RGB in [0, 1]) and opacities (in [0, 1]):
-    sdf_color: [1.0, 0.0, 0.5]       # aeroshell mesh — cyan
+    sdf_color: [0.7608, 0.2078, 0.1922]  # aeroshell mesh — corporate large-surface red (#C33531)
     sdf_alpha: 0.5                   # aeroshell opacity
-    inner_color: [0.0, 1.0, 0.0]     # inner assembly — green
-    outer_color: [0.6, 0.35, 0.30]   # outer bbox — orange-red
+    inner_color: [0.8235, 0.8784, 0.9490]  # inner assembly — corporate text-box blue (#D2E0F2)
+    outer_color: [1.0, 0.3137, 0.3020]     # outer bbox — corporate highlight red (#FF504D)
     outer_alpha: 0.2                 # outer bbox opacity
 
   # Per-loss gradient visualisation (`vis_mesh_gradient`). Each call writes
@@ -165,12 +195,13 @@ visual_types:
   # outward). vmin/vmax null → symmetric ±max(|grad·n|) per epoch.
   mesh_gradients:
     enabled: true
-    colormap: "vanimo"
-    interval: 1
+    colormap: "RdBu_r"
+    interval: 50
     alpha_enabled: null
     coordinate_system: null
     vmin: null
     vmax: null
+    solid_color_rgb: [1.0, 0.3137, 0.3020]
 
   latent:
     sampling:
@@ -181,12 +212,13 @@ visual_types:
       coordinate_system: null
       vmin: null
       vmax: null
+      solid_color_rgb: [1.0, 1.0, 1.0]        # #FFFFFF title/text white
 
 # ===========================================================================
 # Latent pretraining visualisation
 # ===========================================================================
 latent_pretraining:
-  vis_cadence_pretraining: 10
+  vis_cadence_pretraining: 100
   vis_show_domain_pts: true       # include eikonal domain points in latent sampling vis
   vis_show_target_pts: "pts"      # "pts" = surface samples, "mesh" = reconstructed mesh
   mesh_resolution: 128            # marching-cubes resolution for pretraining vis meshes
@@ -201,11 +233,24 @@ latent_pretraining:
     resolution: 64                # marching cubes resolution
     radii: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]  # Mode 2: radii to sweep
 
+# --- Pretraining PLY / PNG export colours ---
+mesh_colour_dark_blue: [0, 0, 139]
+point_colour_green: [34, 139, 34]   # target / surface samples
+point_colour_grey: [41, 41, 41]     # eikonal domain samples
+point_colour_red: [220, 30, 30]     # model surface prediction
+
+# --- Latent space exploration (explore_latent_space.py) ---
+latent_space_exploration:
+  n_circle: 90        # Mode 1: equally-spaced samples on the pretrained circle
+  n_interp: 7         # Mode 3: interpolation steps per adjacent pair (controls PLY count)
+  resolution: 64      # marching cubes grid resolution (lower = faster)
+  radii: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]  # Mode 2: radii to sweep per pretrained direction
+
 # ===========================================================================
 # Latent optimisation visualisation
 # ===========================================================================
 latent_optimisation:
-  vis_cadence_optimisation: 10    # write vis snapshot every N optimisation epochs
+  vis_cadence_optimisation: 100    # write vis snapshot every N optimisation epochs
   vis_strategy: static            # static/dynamic: vis at original pretrained Z circle or those that are actively being evaluated by losses
 
   vis_all_losses: true           # Compute cost = N_slots × N_active_losses renders per vis epoch.
@@ -216,12 +261,13 @@ latent_optimisation:
   # one GIF per survey snapshot.
   vis_latent_circle_survey:
     enabled: true
-    cadence: 5                    # run survey every N optimisation epochs (0 = only after pretraining)
+    cadence: 100                    # run survey every N optimisation epochs (0 = only after pretraining)
     n_circle_samples: 90          # number of evenly-spaced angles on the z-circle
     z_radius: 2.0                 # must match z_radius used in pretraining
     mesh_resolution: 64           # marching-cubes resolution for circle survey meshes
     bbox_scale_factor: 1.2        # vis bbox scale (relative to outer prism)
-    layout: "strip"               # "strip" = horizontal PNG strip; "grid" = 2D Cartesian grid PNG; "pizza" = concentric circles grid PNG
+    layout_from_resample_mode: true  # true = derive layout from z_resample_mode (on_circle→strip, in_circle→pizza); false = use layout above
+    layout: "pizza"               # "strip" = horizontal PNG strip; "grid" = 2D Cartesian grid PNG; "pizza" = concentric circles grid PNG
     save_plys: true               # for further investigation
     # pizza-mode only (ignored for strip/grid):
     pizza_r_min: 0.5              # innermost radius

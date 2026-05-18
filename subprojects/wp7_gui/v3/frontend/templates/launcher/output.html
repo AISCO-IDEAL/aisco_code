@@ -8,9 +8,8 @@
 {% endblock %}
 
 {% block content %}
-<div class="section-grid" style="grid-template-rows: auto auto 1fr; height: 100%;">
+<div class="section-grid" style="grid-template-rows: auto auto 1fr auto auto; height: 100%; overflow-y: auto;">
 
-    <!-- Wizard navigation -->
     <div class="dark-card toolbar">
         {% if pipeline == 'live' %}
         <a href="/launcher/optimization?pipeline=live" class="btn secondary">← Back to Run</a>
@@ -21,9 +20,8 @@
         <a href="/" class="btn">Done — Home</a>
     </div>
 
-    <!-- 3-panel visual grid -->
+    {% if pipeline != 'live' %}
     <div class="visuals-grid">
-        <!-- Assembly GIF -->
         <div class="visual-card">
             <div class="visual-title">Aeroshell Evolution</div>
             <div class="image-slot" id="gifSlot">
@@ -35,7 +33,6 @@
                     GIF</button></div>
         </div>
 
-        <!-- Solar GIF -->
         <div class="visual-card">
             <div class="visual-title">Solar Placement</div>
             <div class="image-slot" id="solarSlot">
@@ -47,7 +44,6 @@
                     GIF</button></div>
         </div>
 
-        <!-- Mesh viewer -->
         <div class="visual-card">
             <div class="visual-title">Aeroshell Mesh</div>
             <div class="mesh-container" id="meshContainer">
@@ -62,8 +58,21 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
-    <!-- Status bar -->
+    {% if pipeline == 'live' %}
+    <div id="extraPlySection" style="display:none;">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px; flex-wrap:wrap;">
+            <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600;">Live Mesh Outputs</div>
+            <label style="display:flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--muted);">
+                <input type="checkbox" id="cameraSyncToggle">
+                Sync camera across mesh boxes
+            </label>
+        </div>
+        <div class="visuals-grid" id="extraPlyGrid"></div>
+    </div>
+    {% endif %}
+
     <div class="dark-card" style="min-height:0; display:flex; align-items:center; gap:12px; padding:8px 12px;">
         <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600;" id="statusLabel">Loading artifacts…</div>
     </div>
@@ -71,40 +80,241 @@
 </div>
 
 <script>
-    // Pipeline and cfg_session from URL / Jinja2
     const pipeline = "{{ pipeline }}";
+    const isLive = pipeline === "live";
     const LAUNCHER_API = "/launcher/api";
     const VIEWER_API = "/viewer/api";
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260514";
 
-    // Read cfg_session from URL query string (completed pipeline only)
+    const statusLabel = document.getElementById("statusLabel");
+
+    const extraPlySection = isLive ? document.getElementById("extraPlySection") : null;
+    const extraPlyGrid = isLive ? document.getElementById("extraPlyGrid") : null;
+    const cameraSyncToggleEl = isLive ? document.getElementById("cameraSyncToggle") : null;
+
+    let plyGroupState = {};
+    let latestSyncedViewState = null;
+
+    function bust(url) {
+        const sep = url.includes("?") ? "&" : "?";
+        return `${url}${sep}t=${Date.now()}`;
+    }
+
+    function clearPlyGroups() {
+        Object.values(plyGroupState).forEach((state) => {
+            if (state.playInterval) {
+                clearInterval(state.playInterval);
+            }
+        });
+        plyGroupState = {};
+        latestSyncedViewState = null;
+        if (extraPlyGrid) {
+            extraPlyGrid.innerHTML = "";
+        }
+        if (extraPlySection) {
+            extraPlySection.style.display = "none";
+        }
+    }
+
+    function broadcastViewState(sourceLabel, viewState) {
+        if (!isLive || !cameraSyncToggleEl || !cameraSyncToggleEl.checked || !viewState) {
+            return;
+        }
+        latestSyncedViewState = viewState;
+        Object.entries(plyGroupState).forEach(([label, state]) => {
+            if (label === sourceLabel || !state.viewer) {
+                return;
+            }
+            state.viewer.setViewState(viewState);
+        });
+    }
+
+    function getAnyExistingViewState() {
+        const states = Object.values(plyGroupState);
+        for (let i = 0; i < states.length; i += 1) {
+            if (states[i].viewer) {
+                return states[i].viewer.getViewState();
+            }
+        }
+        return null;
+    }
+
+    function applyViewStateToAll(viewState) {
+        if (!viewState) {
+            return;
+        }
+        Object.values(plyGroupState).forEach((state) => {
+            if (state.viewer) {
+                state.viewer.setViewState(viewState);
+            }
+        });
+    }
+
+    function loadPlyForGroup(label, container, placeholder, statusDiv) {
+        const state = plyGroupState[label];
+        if (!state || state.idx < 0 || state.idx >= state.files.length) {
+            return;
+        }
+
+        const file = state.files[state.idx];
+        import(MESH_VIEWER_MODULE).then(({ initMeshViewer }) => {
+            if (!state.viewer) {
+                state.viewer = initMeshViewer(container);
+                state.viewer.setOnControlsChange((viewState) => {
+                    broadcastViewState(label, viewState);
+                });
+                if (cameraSyncToggleEl && cameraSyncToggleEl.checked && latestSyncedViewState) {
+                    state.viewer.setViewState(latestSyncedViewState);
+                }
+            }
+            state.viewer.loadMesh(bust(file.url), (info) => {
+                placeholder.style.display = "none";
+                statusDiv.style.display = "block";
+                const vc = info && info.hasVertexColors ? "yes" : "no";
+                statusDiv.textContent = `${file.name} (${state.idx + 1}/${state.files.length}) · VC:${vc}`;
+                if (cameraSyncToggleEl && cameraSyncToggleEl.checked) {
+                    const stateToApply = latestSyncedViewState || state.viewer.getViewState();
+                    latestSyncedViewState = stateToApply;
+                    broadcastViewState(label, stateToApply);
+                }
+            });
+        }).catch((e) => {
+            console.error("Failed to load mesh viewer:", e);
+            statusDiv.style.display = "block";
+            statusDiv.textContent = `Viewer error: ${e.message}`;
+        });
+    }
+
+    function createPlyGroup(group) {
+        const label = group.label;
+        const files = group.ply_files || [];
+        if (!files.length || !extraPlyGrid) {
+            return;
+        }
+
+        const state = {
+            files: files,
+            idx: 0,
+            viewer: null,
+            playing: false,
+            playInterval: null,
+        };
+        plyGroupState[label] = state;
+
+        const card = document.createElement("div");
+        card.className = "visual-card";
+        card.dataset.label = label;
+        card.innerHTML = `
+            <div class="visual-title">${label}</div>
+            <div class="mesh-container" style="position:relative; height:300px; background:#f1f7f3; border-radius:8px; overflow:hidden;">
+                <span class="placeholder-text" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#496456;font-size:0.9rem;z-index:1;">Loading…</span>
+                <div class="mesh-status" style="position:absolute;bottom:8px;left:8px;font-size:0.75rem;color:#496456;z-index:2;background:rgba(255,255,255,0.8);padding:2px 6px;border-radius:4px;display:none;"></div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; font-size:0.82rem;">
+                <input type="range" class="epoch-slider" min="0" max="${files.length - 1}" value="0" style="flex:1;">
+                <button class="play-btn" style="font-size:0.8rem;padding:4px 8px; width:50px;">Play</button>
+            </div>
+        `;
+
+        const slider = card.querySelector(".epoch-slider");
+        const playBtn = card.querySelector(".play-btn");
+        const container = card.querySelector(".mesh-container");
+        const placeholder = card.querySelector(".placeholder-text");
+        const statusDiv = card.querySelector(".mesh-status");
+
+        slider.addEventListener("input", (e) => {
+            if (state.playing) {
+                state.playing = false;
+                clearInterval(state.playInterval);
+                playBtn.textContent = "Play";
+            }
+            state.idx = parseInt(e.target.value, 10);
+            loadPlyForGroup(label, container, placeholder, statusDiv);
+        });
+
+        playBtn.addEventListener("click", () => {
+            if (state.playing) {
+                state.playing = false;
+                clearInterval(state.playInterval);
+                playBtn.textContent = "Play";
+            } else {
+                state.playing = true;
+                playBtn.textContent = "Pause";
+                state.playInterval = setInterval(() => {
+                    state.idx = (state.idx + 1) % state.files.length;
+                    slider.value = String(state.idx);
+                    loadPlyForGroup(label, container, placeholder, statusDiv);
+                    if (state.idx === 0) {
+                        state.playing = false;
+                        clearInterval(state.playInterval);
+                        playBtn.textContent = "Play";
+                    }
+                }, 500);
+            }
+        });
+
+        extraPlyGrid.appendChild(card);
+        loadPlyForGroup(label, container, placeholder, statusDiv);
+    }
+
+    function updateExtraPlyGroups(data) {
+        if (!isLive || !extraPlySection) {
+            return;
+        }
+        const groups = data.extra_ply_groups || [];
+        if (!groups.length) {
+            return;
+        }
+        extraPlySection.style.display = "block";
+        groups.forEach((group) => {
+            if (!plyGroupState[group.label]) {
+                createPlyGroup(group);
+            }
+        });
+    }
+
     const _urlParams = new URLSearchParams(window.location.search);
     const cfgSession = _urlParams.get("cfg_session") || null;
     const cfgFolder = _urlParams.get("cfg_folder") || null;
 
-    let gifEntry = null, gifKey = null;
-    let solarEntry = null, solarKey = null;
-    let meshes = [], meshIdx = 0;
+    let gifEntry = null;
+    let gifKey = null;
+    let solarEntry = null;
+    let solarKey = null;
+    let meshes = [];
+    let meshIdx = 0;
     let artifactPollTimer = null;
 
-    const gifImg = document.getElementById("gifImg");
-    const gifHint = document.getElementById("gifHint");
-    const btnRestartGif = document.getElementById("btnRestartGif");
-    const solarImg = document.getElementById("solarImg");
-    const solarHint = document.getElementById("solarHint");
-    const btnRestartSolar = document.getElementById("btnRestartSolar");
-    const meshSlider = document.getElementById("meshSlider");
-    const meshStatus = document.getElementById("meshStatus");
-    const meshPlaceholder = document.getElementById("meshPlaceholder");
-    const statusLabel = document.getElementById("statusLabel");
+    const gifImg = isLive ? null : document.getElementById("gifImg");
+    const gifHint = isLive ? null : document.getElementById("gifHint");
+    const btnRestartGif = isLive ? null : document.getElementById("btnRestartGif");
+    const solarImg = isLive ? null : document.getElementById("solarImg");
+    const solarHint = isLive ? null : document.getElementById("solarHint");
+    const btnRestartSolar = isLive ? null : document.getElementById("btnRestartSolar");
+    const meshSlider = isLive ? null : document.getElementById("meshSlider");
+    const meshStatus = isLive ? null : document.getElementById("meshStatus");
+    const meshPlaceholder = isLive ? null : document.getElementById("meshPlaceholder");
 
-    // ---------- GIF panels ----------
     function setGif(entry, img, hint, btn, keyRef) {
-        if (!entry) { img.style.display = "none"; hint.textContent = "No GIF yet."; btn.disabled = true; return null; }
-        if (keyRef !== entry.key) { img.src = bust(entry.url); img.style.display = "block"; hint.textContent = ""; btn.disabled = false; }
+        if (!entry) {
+            img.style.display = "none";
+            hint.textContent = "No GIF yet.";
+            btn.disabled = true;
+            return null;
+        }
+        if (keyRef !== entry.key) {
+            img.src = bust(entry.url);
+            img.style.display = "block";
+            hint.textContent = "";
+            btn.disabled = false;
+        }
         return entry.key;
     }
 
     function updateGifs(data) {
+        if (isLive) {
+            return;
+        }
         const glist = data.mesh_assembly_gifs || [];
         if (glist.length) gifEntry = { key: glist[0].rel_path || glist[0].name, url: glist[0].url };
         else gifEntry = null;
@@ -112,54 +322,72 @@
 
         const slist = data.solar_loss_gifs || [];
         if (slist.length) {
-            const s = slist.find(e => e.name === "rendering.gif") || slist[0];
+            const s = slist.find((e) => e.name === "rendering.gif") || slist[0];
             solarEntry = { key: s.rel_path || s.name, url: s.url };
         } else solarEntry = null;
         solarKey = setGif(solarEntry, solarImg, solarHint, btnRestartSolar, solarKey);
     }
 
-    // ---------- Mesh viewer (Three.js) ----------
     let meshViewer = null;
     function load3D(url) {
+        if (isLive) {
+            return;
+        }
         const container = document.getElementById("meshContainer");
-        import("/static/js/mesh_viewer.js").then(({ initMeshViewer }) => {
+        import(MESH_VIEWER_MODULE).then(({ initMeshViewer }) => {
             if (!meshViewer) meshViewer = initMeshViewer(container);
-            meshViewer.loadMesh(bust(url), () => {
+            meshViewer.loadMesh(bust(url), (info) => {
                 meshPlaceholder.style.display = "none";
                 meshStatus.style.display = "block";
+                const vc = info && info.hasVertexColors ? "yes" : "no";
+                meshStatus.textContent = `${meshes[meshIdx].name} · VC:${vc}`;
             });
         });
     }
 
     function updateMesh() {
-        if (!meshes.length) { meshSlider.disabled = true; meshStatus.style.display = "none"; meshPlaceholder.style.display = "block"; return; }
-        meshSlider.disabled = false; meshSlider.max = String(meshes.length - 1);
+        if (isLive) {
+            return;
+        }
+        if (!meshes.length) {
+            meshSlider.disabled = true;
+            meshStatus.style.display = "none";
+            meshPlaceholder.style.display = "block";
+            return;
+        }
+        meshSlider.disabled = false;
+        meshSlider.max = String(meshes.length - 1);
         meshSlider.value = String(meshIdx);
-        meshStatus.textContent = meshes[meshIdx].name;
+        meshStatus.textContent = `${meshes[meshIdx].name} · VC:...`;
         load3D(meshes[meshIdx].url);
     }
 
-    meshSlider.addEventListener("input", e => { meshIdx = parseInt(e.target.value, 10); updateMesh(); });
-    btnRestartGif.addEventListener("click", () => { if (gifEntry) { gifImg.src = bust(gifEntry.url); } });
-    btnRestartSolar.addEventListener("click", () => { if (solarEntry) { solarImg.src = bust(solarEntry.url); } });
+    if (!isLive) {
+        meshSlider.addEventListener("input", (e) => {
+            meshIdx = parseInt(e.target.value, 10);
+            updateMesh();
+        });
+        btnRestartGif.addEventListener("click", () => {
+            if (gifEntry) {
+                gifImg.src = bust(gifEntry.url);
+            }
+        });
+        btnRestartSolar.addEventListener("click", () => {
+            if (solarEntry) {
+                solarImg.src = bust(solarEntry.url);
+            }
+        });
+    }
 
-    // ---------- Artifact loading — dual pipeline ----------
     async function fetchLiveArtifacts() {
         try {
             const data = await (await fetch(`${LAUNCHER_API}/run/artifacts?t=${Date.now()}`, { cache: "no-store" })).json();
-            updateGifs(data);
-            const list = data.meshes || [];
-            if (list.length) {
-                const wasLatest = meshes.length > 0 && meshIdx === meshes.length - 1;
-                const first = meshes.length === 0;
-                const grew = list.length > meshes.length;
-                meshes = list;
-                if (first) { meshIdx = meshes.length - 1; updateMesh(); }
-                else if (grew && wasLatest) { meshIdx = meshes.length - 1; updateMesh(); }
-                else if (grew) { meshSlider.max = String(meshes.length - 1); }
-            } else if (meshes.length) { meshes = []; updateMesh(); }
-            statusLabel.textContent = `Live: ${list.length} mesh(es) · ${(data.mesh_assembly_gifs || []).length} GIF(s)`;
-        } catch (e) { console.error("fetchLiveArtifacts:", e); }
+            updateExtraPlyGroups(data);
+            const groupCount = Object.keys(plyGroupState).length;
+            statusLabel.textContent = `Live: ${groupCount} mesh group(s) · ${(data.meshes || []).length} base mesh(es)`;
+        } catch (e) {
+            console.error("fetchLiveArtifacts:", e);
+        }
     }
 
     async function fetchViewerArtifacts() {
@@ -168,7 +396,6 @@
             return;
         }
         try {
-            // Step 1: find matching run, using cfg_folder for storage root if provided
             const runsParams = new URLSearchParams();
             if (cfgFolder) runsParams.set("cfg_folder", cfgFolder);
             if (cfgSession) runsParams.set("cfg_session", cfgSession);
@@ -177,44 +404,56 @@
             const runsData = await runsResp.json();
             const runs = runsData.runs || [];
             if (!runs.length) {
-                statusLabel.textContent = `No completed run found for this session.`;
+                statusLabel.textContent = "No completed run found for this session.";
                 return;
             }
             const run = runs[0];
             const runId = run.run_id || `${run.model_hash}/${run.name}`;
             statusLabel.textContent = `Showing: ${run.name}`;
 
-            // Step 2: fetch artifacts for that run
             const artResp = await fetch(`${VIEWER_API}/runs/${encodeURIComponent(runId)}/artifacts`);
             if (!artResp.ok) throw new Error(`artifacts ${artResp.status}`);
             const artData = await artResp.json();
             updateGifs(artData);
             meshes = artData.meshes || [];
-            if (meshes.length) { meshIdx = meshes.length - 1; updateMesh(); }
+            if (meshes.length) {
+                meshIdx = meshes.length - 1;
+                updateMesh();
+            }
         } catch (e) {
             statusLabel.textContent = "Error loading viewer artifacts: " + e.message;
             console.error("fetchViewerArtifacts:", e);
         }
     }
 
-    // Start loading on page open
-    if (pipeline === "live") {
-        // Check run state before starting the poll — if already complete, show result immediately.
-        fetch(`${LAUNCHER_API}/run/state`).then(r => r.json()).then(state => {
+    if (isLive && cameraSyncToggleEl) {
+        cameraSyncToggleEl.addEventListener("change", () => {
+            if (!cameraSyncToggleEl.checked) {
+                return;
+            }
+            const initialState = latestSyncedViewState || getAnyExistingViewState();
+            if (initialState) {
+                latestSyncedViewState = initialState;
+                applyViewStateToAll(initialState);
+            }
+        });
+    }
+
+    if (isLive) {
+        fetch(`${LAUNCHER_API}/run/state`).then((r) => r.json()).then((state) => {
             fetchLiveArtifacts();
             if (state.running) {
                 artifactPollTimer = setInterval(fetchLiveArtifacts, 3000);
-                // Stop polling once run is complete
                 (async () => {
                     const s = await (await fetch(`${LAUNCHER_API}/run/state`)).json();
                     if (!s.running && artifactPollTimer) {
                         clearInterval(artifactPollTimer);
                         artifactPollTimer = null;
-                        statusLabel.textContent = "Run complete \u2014 showing final artifacts.";
+                        statusLabel.textContent = "Run complete — showing final artifacts.";
                     }
                 })();
             } else {
-                statusLabel.textContent = "Run complete \u2014 showing final artifacts.";
+                statusLabel.textContent = "Run complete — showing final artifacts.";
             }
         }).catch(() => {
             fetchLiveArtifacts();

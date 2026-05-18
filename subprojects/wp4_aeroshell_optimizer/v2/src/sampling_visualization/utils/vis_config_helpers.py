@@ -7,13 +7,19 @@ from pathlib import Path
 from typing import Any
 
 
-def vis_type_config(visual_types: dict[str, Any], visual_type: str) -> dict[str, Any] | None:
-    """Return the config dict for visual_type, or None if disabled/missing.
+def vis_type_config(visual_types: dict[str, Any], visual_type: str, epoch: int | None = None) -> dict[str, Any] | None:
+    """Return the config dict for visual_type, or None if disabled/missing/not due.
 
     Walks the slash-separated path (e.g. 'aero/cp_field') through the nested
     visual_types dict.  If no exact match is found, walks up the ancestors and
     inherits the first parent that has an 'enabled' key — this is how
     'mesh_shape/slot_00' inherits the 'mesh_shape' config.
+
+    When ``epoch`` is provided, also checks ``epoch % interval == 0`` using the
+    ``interval`` key from the config.  Returns None when the epoch is not due so
+    callers can ``if type_cfg is None: return`` without a separate cadence check.
+    Omitting ``epoch`` (or passing None) skips the interval check entirely —
+    preserving backward-compatibility for callers that are not epoch-aware.
     """
 
     def _get(key_path: str) -> dict[str, Any] | None:
@@ -36,11 +42,15 @@ def vis_type_config(visual_types: dict[str, Any], visual_type: str) -> dict[str,
 
     if cfg is None or not cfg.get("enabled", False):
         return None
+    if epoch is not None:
+        interval = cfg.get("interval")
+        if isinstance(interval, int) and interval > 0 and epoch % interval != 0:
+            return None
     return cfg
 
 
-def vis_is_enabled(visual_types: dict[str, Any], visual_type: str) -> bool:
-    return vis_type_config(visual_types, visual_type) is not None
+def vis_is_enabled(visual_types: dict[str, Any], visual_type: str, epoch: int | None = None) -> bool:
+    return vis_type_config(visual_types, visual_type, epoch=epoch) is not None
 
 
 def resolve_bool(per_type_val: bool | None, global_val: bool | None) -> bool:

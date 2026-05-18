@@ -55,6 +55,8 @@ _COMPONENT_COLORS: list[tuple[list[float] | None, float | None]] = [
 
 _SLOT_PATTERN = re.compile(r"slot(\d{2})_.*?_epoch(\d{5})\.ply")
 _FLAT_PATTERN = re.compile(r"^epoch_?(\d{5})\.ply$")
+_EPOCH_TOKEN_PATTERN = re.compile(r"epoch_?(\d{5})")
+_EPOCH_PARSE_WARNING_EMITTED = [False]
 
 
 def _extract_vertex_colors(geo: object) -> np.ndarray | None:
@@ -341,6 +343,48 @@ def _add_text_overlay(img_array: np.ndarray, epoch: int, camera_dir: str) -> np.
     return np.asarray(img)
 
 
+def _extract_epoch_from_path(fpath: Path) -> int | None:
+    """Extract epoch from a PLY path across flat and slotted layouts.
+
+    Supported examples:
+    - flat: epoch_00042.ply
+    - slotted: epoch_00042/slot_01/mesh.ply
+    - tokenized filename: epoch_00042_slot_01_mesh.ply
+
+    Returns:
+        Parsed epoch integer, or None when no epoch token is found.
+    """
+    # Fast path for canonical flat files.
+    flat_match = _FLAT_PATTERN.match(fpath.name)
+    if flat_match:
+        return int(flat_match.group(1))
+
+    # Search filename and parent directory names (e.g. epoch_XXXXX/slot_YY/mesh.ply).
+    tokens = [fpath.stem, fpath.name]
+    for parent in fpath.parents:
+        if not parent.name:
+            break
+        tokens.append(parent.name)
+
+    for token in tokens:
+        match = _EPOCH_TOKEN_PATTERN.search(token)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _resolve_overlay_epoch(fpath: Path) -> int:
+    """Return a stable overlay epoch with one-time warning on parse failures."""
+    epoch = _extract_epoch_from_path(fpath)
+    if epoch is not None:
+        return epoch
+
+    if not _EPOCH_PARSE_WARNING_EMITTED[0]:
+        print(f"Warning: Could not parse epoch from PLY path for GIF overlay. Falling back to epoch 00000. Example path: {fpath}")
+        _EPOCH_PARSE_WARNING_EMITTED[0] = True
+    return 0
+
+
 def _render_frame(
     renderer: pyrender.OffscreenRenderer,
     fpath: Path,
@@ -362,8 +406,7 @@ def _render_frame(
     for geo in _load_pyrender_geometries(fpath):
         scene.add(geo)
     color, _ = renderer.render(scene)
-    match = re.search(r"epoch_?(\d{5})", fpath.name)
-    epoch = int(match.group(1)) if match else 0
+    epoch = _resolve_overlay_epoch(fpath)
     if add_overlay:
         color = _add_text_overlay(color, epoch, camera_direction)
     return color
@@ -719,6 +762,151 @@ def generate_gifs_flat(
             }
         )
     )
+
+
+_EPOCH_DIR_PATTERN = re.compile(r"^epoch_(\d{5})$")
+_SLOT_SUBDIR_PATTERN = re.compile(r"^slot_(\d{2})$")
+_SLOTTED_MESH_FILE_PATTERN = re.compile(r"^slot_(\d{2})_mesh\.ply$")
+
+
+def generate_gifs_slotted(base_dir: Path, max_frames: int | None = None) -> None:  # noqa: PLR0912
+    """Generate per-slot animation GIFs from an epoch-first directory layout.
+
+    Scans ``base_dir`` for subdirectories named ``epoch_XXXXX/``, collects
+    ``slot_XX_mesh.ply`` files from each epoch, and writes
+    ``epoch_LAST/slot_XX_animation.gif`` into the last epoch directory.
+
+    Backward compatibility: legacy ``epoch_XXXXX/slot_XX/mesh.ply`` layout is
+    also supported during transition.
+
+    This is the counterpart of :func:`generate_gifs_flat` for the epoch-first
+    diversity-training layout produced when ``set_active_slot()`` is active.
+
+    Args:
+        base_dir: Directory whose immediate subdirs follow ``epoch_XXXXX/``
+            and contain ``slot_XX_mesh.ply`` files.
+        max_frames: Maximum GIF frames per slot.  ``None`` falls back to the
+            vis_config ``gif.max_frames`` setting, then no limit.
+
+    Raises:
+        ValueError: If no ``epoch_XXXXX/`` subdirectories are found.
+    """
+    base_dir = Path(base_dir)
+    epoch_subdirs = sorted(
+        (d for d in base_dir.iterdir() if d.is_dir() and _EPOCH_DIR_PATTERN.match(d.name)),
+        key=lambda d: d.name,
+    )
+    if not epoch_subdirs:
+        raise ValueError(f"No epoch_XXXXX/ subdirectories found in {base_dir}.")
+
+    slot_indices: set[int] = set()
+    for ep_dir in epoch_subdirs:
+        for item in ep_dir.iterdir():
+            # New layout: epoch_XXXXX/slot_XX_mesh.ply
+            m_file = _SLOTTED_MESH_FILE_PATTERN.match(item.name)
+            if m_file and item.is_file():
+                slot_indices.add(int(m_file.group(1)))
+                continue
+
+            # Legacy layout: epoch_XXXXX/slot_XX/mesh.ply
+            m_dir = _SLOT_SUBDIR_PATTERN.match(item.name)
+            if m_dir and item.is_dir() and (item / "mesh.ply").exists():
+                slot_indices.add(int(m_dir.group(1)))
+
+    if not slot_indices:
+        raise ValueError(
+            f"No slot_XX_mesh.ply files found under epoch subdirectories in {base_dir} "
+            "(legacy slot_XX/mesh.ply is also accepted)."
+        )
+
+    if max_frames is None:
+        gif_cfg = _CFG.get("gif", {})
+        max_frames = gif_cfg.get("max_frames")
+
+    last_epoch_dir = epoch_subdirs[-1]
+
+    for slot_idx in sorted(slot_indices):
+        slot_name = f"slot_{slot_idx:02d}"
+        try:
+            slot_files: list[Path] = []
+            for ep_dir in epoch_subdirs:
+                # Prefer new layout first.
+                new_path = ep_dir / f"{slot_name}_mesh.ply"
+                if new_path.exists():
+                    slot_files.append(new_path)
+                    continue
+
+                # Fallback to legacy layout.
+                old_path = ep_dir / slot_name / "mesh.ply"
+                if old_path.exists():
+                    slot_files.append(old_path)
+
+            if not slot_files:
+                continue
+
+            if max_frames is not None and len(slot_files) > max_frames:
+                indices = np.round(np.linspace(0, len(slot_files) - 1, max_frames)).astype(int)
+                slot_files = [slot_files[i] for i in indices]
+
+            print(
+                json.dumps(
+                    {
+                        "event": "gif_slotted_render_started",
+                        "base_dir": str(base_dir),
+                        "slot": slot_name,
+                        "n_frames": len(slot_files),
+                    }
+                )
+            )
+
+            all_verts = [v for v in (_get_vertices(fp) for fp in slot_files) if v is not None]
+            if not all_verts:
+                continue
+            cam_pose = _compute_camera_pose(
+                np.vstack(all_verts),
+                direction=CAMERA_DIRECTION,
+                distance_mult=CAMERA_DISTANCE_MULTIPLIER,
+                elevation_angle=CAMERA_ELEVATION_ANGLE,
+            )
+
+            gif_fps: int = _CFG.get("gif", {}).get("fps", FPS)
+            renderer = pyrender.OffscreenRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, point_size=POINT_SIZE)
+            try:
+                frames = [
+                    _render_frame(renderer, fp, cam_pose, camera_direction=CAMERA_DIRECTION, add_overlay=True)
+                    for fp in slot_files
+                ]
+            finally:
+                renderer.delete()
+
+            # Write one slot GIF at the epoch root in the new flattened layout.
+            output_path = last_epoch_dir / f"{slot_name}_animation.gif"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            imageio.mimsave(str(output_path), frames, fps=gif_fps)  # type: ignore[arg-type]
+
+            print(
+                json.dumps(
+                    {
+                        "event": "gif_slotted_render_completed",
+                        "output_path": str(output_path),
+                        "slot": slot_name,
+                        "n_frames": len(frames),
+                    }
+                )
+            )
+        except BaseException as exc:
+            print(
+                json.dumps(
+                    {
+                        "event": "gif_slotted_render_failed",
+                        "base_dir": str(base_dir),
+                        "slot": slot_name,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
+                )
+            )
+            continue
 
 
 def parse_args() -> argparse.Namespace:
